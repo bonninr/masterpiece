@@ -1,8 +1,34 @@
 name: build
 
+# Actions minutes are metered on a private repository, and the rate differs
+# sharply per platform: Linux counts 1x, Windows 2x, macOS 10x. The shape of
+# this file follows from that -- see the macos job at the bottom.
 on:
   push:
+    paths-ignore:
+      - 'README.md'
+      - 'COPYING'
+      - 'LICENCE'
+      - '.gitignore'
+      - 'screenshots/**'
   pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'COPYING'
+      - 'LICENCE'
+      - '.gitignore'
+      - 'screenshots/**'
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: 'Also build macOS (bills at 10x)'
+        type: boolean
+        default: false
+
+# Pushing twice in a minute should not pay for two builds of the older commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -13,9 +39,6 @@ jobs:
           - os: ubuntu-latest
             preset: ci-linux
             artifact: masterpiece-linux-x86_64
-          - os: macos-latest
-            preset: ci-macos
-            artifact: masterpiece-macos
           - os: windows-latest
             preset: ci-windows
             artifact: masterpiece-windows
@@ -26,6 +49,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      # JUCE is recompiled from scratch otherwise, and it is the bulk of every
+      # job. Keyed on the compiler and preset so a toolchain change does not
+      # silently reuse objects built by a different one.
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.preset }}-${{ matrix.os }}
+          max-size: 500M
 
       - name: Dependencies (Linux)
         if: runner.os == 'Linux' && !matrix.arm
@@ -51,8 +83,8 @@ jobs:
               sudo sed -i '/^Types: deb$/a Architectures: amd64' "$f"
           done
 
-          # ARM lives on ports.ubuntu.com, including -security, which
-          # security.ubuntu.com answers 404 for.
+          # ARM lives on ports.ubuntu.com, including -security, for which
+          # security.ubuntu.com answers 404.
           sudo tee /etc/apt/sources.list.d/armhf.sources >/dev/null <<EOF
           Types: deb
           URIs: http://ports.ubuntu.com/ubuntu-ports/
@@ -65,8 +97,8 @@ jobs:
           sudo dpkg --add-architecture armhf
           sudo apt-get update
 
-          # Package names are gcc-<triple>, not <triple>-gcc; the latter is
-          # the binary and matches no package.
+          # Package names are gcc-<triple>, not <triple>-gcc; the latter is the
+          # binary name and matches no package.
           sudo apt-get install -y cmake ninja-build pkg-config \
             gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
             binutils-arm-linux-gnueabihf \
@@ -75,10 +107,6 @@ jobs:
             libfreetype6-dev:armhf libfontconfig1-dev:armhf \
             libglu1-mesa-dev:armhf libxi-dev:armhf
           arm-linux-gnueabihf-g++ --version
-
-      - name: Dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cmake ninja
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
@@ -89,13 +117,15 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: >
+          cmake --preset ${{ matrix.preset }}
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 
-      # A cross-built binary cannot run here, so confirm it is the right
-      # machine type instead.
+      # A cross-built binary cannot run here, so confirm its machine type.
       - name: Check ARM output
         if: matrix.arm
         run: file build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
@@ -130,6 +160,42 @@ jobs:
           path: |
             build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
-            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.component
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
+          if-no-files-found: warn
+
+  # Separate, and off by default. A macOS runner bills ten minutes of the
+  # allowance for every minute it runs -- more than the Linux and Windows jobs
+  # put together. Run it deliberately: on a release tag, or by hand from the
+  # Actions tab with the macos input ticked.
+  macos:
+    if: startsWith(github.ref, 'refs/tags/') || inputs.macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ci-macos-macos-latest
+          max-size: 500M
+
+      - name: Dependencies
+        run: brew install cmake ninja
+
+      - name: Configure
+        run: >
+          cmake --preset ci-macos
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build --preset ci-macos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masterpiece-macos
+          path: |
+            build/ci-macos/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
+            build/ci-macos/apps/MasterpiecePlugin/**/*.vst3
+            build/ci-macos/apps/MasterpiecePlugin/**/*.component
           if-no-files-found: warn
