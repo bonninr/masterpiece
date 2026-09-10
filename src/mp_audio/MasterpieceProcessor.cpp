@@ -1,0 +1,1338 @@
+#include "MasterpieceProcessor.h"
+
+#include "../mp_core/Temperament.h"
+#include <algorithm>
+#include <cmath>
+#include <memory>
+#include <thread>
+#include <vector>
+
+namespace mp {
+
+static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
+  std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
+  // Shoes/controls automatable (M3); M1: master gain + simple-wav toggle.
+  // 0.9 clipped: a 15-stop tutti on a real set peaked at +0.3 dBFS. An organ
+  // is meant to be quiet on one stop and overwhelming on full organ, so the
+  // dynamic range is correct — what was missing is headroom for the top of it.
+  // This is a provisional calibration: proper gain staging (per-rank levels
+  // from the ODF, bus trims, a limiter on the master) is M4 mixer work.
+  p.push_back(std::make_unique<juce::AudioParameterFloat>("masterGain", "Master Gain",
+      // Up to +24 dB. A sample set is recorded at the level the recordist
+      // chose, and a quiet one with a few stops drawn can sit 30 dB below a
+      // tutti — so the fader has to be able to bring that up, not merely trim
+      // a loud one down. The UI drives this in decibels, which is the only
+      // scale on which a volume control feels linear.
+      juce::NormalisableRange<float>(0.0f, 16.0f, 0.0001f), 0.35f));
+  p.push_back(std::make_unique<juce::AudioParameterBool>("simpleWavOnly", "Simple WAV (no DSP)", false));
+  return { p.begin(), p.end() };
+}
+
+MasterpieceProcessor::MasterpieceProcessor()
+  : juce::AudioProcessor(juce::AudioProcessor::BusesProperties()
+      .withOutput("Out", juce::AudioChannelSet::stereo(), true)),
+    apvts_(*this, nullptr, "MP", makeLayout()) {}
+
+void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+  sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
+#if MP_ENABLE_DSP
+  // One filter per enclosure and one LFO per tremulant, built here so the
+  // audio thread never allocates. getTotalNumOutputChannels() is the widest
+  // block we will be handed.
+  const juce::dsp::ProcessSpec spec{
+      sampleRate_, static_cast<juce::uint32>(juce::jmax(1, samplesPerBlock)),
+      static_cast<juce::uint32>(juce::jmax(1, getTotalNumOutputChannels()))};
+
+  enclosureFilters_.clear();
+  busEnclosures_.clear();
+  enclosureBusIndex_.clear();
+  // Stable bus order: enclosure ids ascending, so a reload of the same organ
+  // produces the same layout and a saved registration still lines up.
+  for (const auto& [id, e] : model_.enclosures) {
+    (void)e;
+    busEnclosures_.push_back(id);
+  }
+  std::sort(busEnclosures_.begin(), busEnclosures_.end());
+  for (size_t i = 0; i < busEnclosures_.size(); ++i) {
+    const Id id = busEnclosures_[i];
+    enclosureBusIndex_[id] = static_cast<int>(i);
+    auto& f = enclosureFilters_[id];
+    f.prepare(spec);
+    // Start where the shoe actually is, so loading an organ with the swell
+    // open does not ramp audibly through the first block.
+    f.snapTo(controls_.shutterFor(model_.enclosures.at(id)));
+  }
+  // Everything no box encloses goes to one extra bus that no filter touches.
+  unenclosedBus_ = static_cast<int>(busEnclosures_.size());
+
+  busScratch_.setSize(juce::jmax(1, getTotalNumOutputChannels()),
+                      juce::jmax(1, samplesPerBlock), false, true, false);
+
+  tremulantLfos_.clear();
+  tremOrder_.clear();
+  tremIndexOf_.clear();
+  for (const auto& [id, t] : model_.tremulants) {
+    (void)t;
+    tremulantLfos_[id].reset(sampleRate_);
+    tremOrder_.push_back(id);
+  }
+  std::sort(tremOrder_.begin(), tremOrder_.end());
+  for (size_t i = 0; i < tremOrder_.size(); ++i)
+    tremIndexOf_[tremOrder_[i]] = static_cast<int>(i);
+  tremMods_.assign(tremOrder_.size(), VoiceEngine::TremMod{});
+
+  wind_.reset(model_);
+  convolver_.prepare(spec);
+#else
+  (void)samplesPerBlock;
+#endif
+  // Resolve the organ's tuning once. An unresolved temperament leaves this
+  // empty, which the solver reads as equal — the loader has already warned.
+  organTuning_ = Temperament{};
+  const auto tIt = model_.temperaments.find(model_.defaultTemperamentId);
+  if (tIt != model_.temperaments.end() && tIt->second.resolved) {
+    organTuning_.name = tIt->second.name;
+    organTuning_.centsOffset12 = tIt->second.centsOffset12;
+  }
+
+  // Index the noise ranks by their trigger switch. Doing this once here keeps
+  // a switch flip O(number of noises on that switch) instead of O(all ranks).
+  noiseRanksBySwitch_.clear();
+  for (const auto& [rankId, rank] : model_.ranks) {
+    if (!rank.isNoise || rank.noiseTriggerSwitchId == 0) continue;
+    noiseRanksBySwitch_[rank.noiseTriggerSwitchId].push_back(rankId);
+  }
+
+  // Voice pool is allocated once, here: render() must never allocate.
+  voices_.prepare(sampleRate_, graph_.maxVoices,
+                  juce::jmax(1, getTotalNumOutputChannels()),
+                  juce::jmax(1, samplesPerBlock));
+
+  // Worker pool (ADR-012). Auto means cores - 1, leaving one for the rest of
+  // the system; the audio thread renders a share itself, so the total doing
+  // voice work is that count. Threads are started here, never in the callback.
+  int threads = graph_.parallel.renderThreads;
+  if (threads <= 0) {
+    const int cores = static_cast<int>(std::thread::hardware_concurrency());
+    threads = cores > 2 ? cores - 1 : 1;
+  }
+  voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
+  // Worst case one pipe per rank sounding on a single key.
+  resolveScratch_.reserve(model_.ranks.empty() ? 64 : model_.ranks.size());
+  soundingNotes_.reserve(128);
+  // The key-flow walk runs on every note-on and must not allocate: one press
+  // on a fully coupled console reaches every division at several pitches.
+  keyFlow_.reserve(64);
+  expandScratch_.reserve(juce::jmax<size_t>(16, model_.divisions.size() * 4));
+  metronome_.prepare(sampleRate_);
+  recorder_.prepare(sampleRate_);
+  outgoing_.ensureSize(1024);
+}
+
+int MasterpieceProcessor::busForPipe(Id pipeId) const {
+  const auto encIt = model_.pipeEnclosure.find(pipeId);
+  if (encIt == model_.pipeEnclosure.end()) return unenclosedBus_;
+  const auto busIt = enclosureBusIndex_.find(encIt->second);
+  return busIt == enclosureBusIndex_.end() ? unenclosedBus_ : busIt->second;
+}
+
+void MasterpieceProcessor::advanceTremulants(int numFrames) {
+#if MP_ENABLE_DSP
+  if (tremOrder_.empty() || numFrames <= 0) {
+    voices_.setTremMods(nullptr, 0);
+    return;
+  }
+
+  for (size_t i = 0; i < tremOrder_.size(); ++i) {
+    const Id id = tremOrder_[i];
+    const auto tIt = model_.tremulants.find(id);
+    auto& lfo = tremulantLfos_[id];
+    if (tIt == model_.tremulants.end()) {
+      tremMods_[i] = VoiceEngine::TremMod{};
+      continue;
+    }
+    const Tremulant& t = tIt->second;
+    const bool engaged =
+        t.controllingSwitchId != 0 && switchEngaged(t.controllingSwitchId);
+
+    // Run the LFO across the block and take its value at each end. The voice
+    // ramps between them, which is what keeps a six hertz wobble smooth at a
+    // 256-frame block instead of stepping thirty times a cycle.
+    const float start = lfo.nextSample(t, engaged, graph_.engineSwitch);
+    float end = start;
+    for (int f = 1; f < numFrames; ++f)
+      end = lfo.nextSample(t, engaged, graph_.engineSwitch);
+
+    const float step = numFrames > 1
+                           ? (end - start) / static_cast<float>(numFrames - 1)
+                           : 0.0f;
+    tremMods_[i].ampStart = start;
+    tremMods_[i].ampStep = step;
+    tremMods_[i].pitchStart = start;
+    tremMods_[i].pitchStep = step;
+  }
+  voices_.setTremMods(tremMods_.data(), static_cast<int>(tremMods_.size()));
+#else
+  (void)numFrames;
+  voices_.setTremMods(nullptr, 0);
+#endif
+}
+
+void MasterpieceProcessor::advanceWind(int numFrames) {
+  if (windOrder_.empty()) {
+    voices_.setWindMods(nullptr, 0);
+    return;
+  }
+
+  // What is drawing air. The engine knows which voices are speaking; the voices
+  // carry what their pipes cost.
+  windDemand_.assign(windOrder_.size(), 0.0f);
+  voices_.gatherWindDemand(windDemand_.data(),
+                           static_cast<int>(windDemand_.size()));
+
+  wind_.clearDemand();
+  wind_.addDemandDirect(windOrder_, windDemand_);
+  wind_.advance(static_cast<double>(numFrames) / sampleRate_,
+                graph_.engineSwitch, engagedSwitches_);
+
+  for (size_t i = 0; i < windOrder_.size(); ++i) {
+    const auto mod = wind_.modFor(windOrder_[i]);
+    windMods_[i].ampMul = static_cast<float>(mod.ampMul);
+    windMods_[i].pitchRatio = mod.pitchRatio;
+  }
+  voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
+}
+
+void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
+  const int numCh = buffer.getNumChannels();
+  const int numFrames = buffer.getNumSamples();
+  if (numCh <= 0 || numFrames <= 0) return;
+
+  // One block for the whole callback, whatever the bus count.
+  voices_.beginBlock();
+  advanceWind(numFrames);
+  advanceTremulants(numFrames);
+
+  const bool enclosuresActive =
+#if MP_ENABLE_DSP
+      !graph_.engineSwitch.simpleWavOnly && graph_.engineSwitch.enableEnclosure;
+#else
+      false;
+#endif
+
+  // Without expression there is nothing to separate: render every voice at
+  // once and skip the per-bus scratch entirely.
+  if (!enclosuresActive || busEnclosures_.empty()) {
+    voices_.render(buffer.getArrayOfWritePointers(), numCh, numFrames);
+    return;
+  }
+
+  const int numBuses = unenclosedBus_ + 1;
+  for (int bus = 0; bus < numBuses; ++bus) {
+    busScratch_.clear(0, numFrames);
+    voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus);
+
+#if MP_ENABLE_DSP
+    if (bus < static_cast<int>(busEnclosures_.size())) {
+      const Id encId = busEnclosures_[static_cast<size_t>(bus)];
+      const auto filterIt = enclosureFilters_.find(encId);
+      const auto encIt = model_.enclosures.find(encId);
+      if (filterIt != enclosureFilters_.end() && encIt != model_.enclosures.end()) {
+        juce::dsp::AudioBlock<float> block(
+            busScratch_.getArrayOfWritePointers(),
+            static_cast<size_t>(numCh), static_cast<size_t>(numFrames));
+        filterIt->second.processBlock(block, encIt->second,
+                                      controls_.shutterFor(encIt->second),
+                                      graph_.engineSwitch);
+      }
+    }
+#endif
+
+    for (int ch = 0; ch < numCh; ++ch)
+      buffer.addFrom(ch, 0, busScratch_, ch, 0, numFrames);
+  }
+}
+
+void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
+  // Two sources, one path. The host hands us a merged buffer with no device in
+  // it; the per-device callbacks hand us the same messages tagged. Whichever a
+  // message arrives by, it is handled identically below — the tag is only ever
+  // an extra thing the mapping is allowed to match on.
+  // A clock for debouncing. Block-resolution is plenty: contacts chatter over
+  // milliseconds and a block is a few.
+  blockTimeMs_ += 1000.0 * static_cast<double>(getBlockSize()) /
+                  (sampleRate_ > 0.0 ? sampleRate_ : 48000.0);
+  midiScratch_.clear();
+  for (const auto meta : midi)
+    midiScratch_.emplace_back(MidiDeviceMap::kAnyDevice, meta.getMessage());
+  drainTaggedMidi(midiScratch_);
+
+  for (const auto& [deviceId, msg] : midiScratch_) {
+
+    // What kind of message is this, in the terms the map matches on?
+    MidiSource source;
+    int value = 0;
+    if (msg.isNoteOnOrOff()) {
+      source.kind = MidiSourceKind::Note;
+      source.number = msg.getNoteNumber();
+      value = msg.isNoteOn() ? msg.getVelocity() : 0;
+    } else if (msg.isController()) {
+      source.kind = MidiSourceKind::ControlChange;
+      source.number = msg.getControllerNumber();
+      value = msg.getControllerValue();
+    } else if (msg.isProgramChange()) {
+      source.kind = MidiSourceKind::ProgramChange;
+      source.number = msg.getProgramChangeNumber();
+      value = 127;
+    }
+    source.channel = msg.getChannel();
+    source.deviceId = deviceId;
+
+    // Learning consumes the message: a control being mapped must not also
+    // fire whatever it used to do.
+    if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
+      // Only a press, never a release — otherwise letting go of the key
+      // immediately re-learns it to the note-off.
+      if (value > 0 && midiMap_.learnFrom(source)) {
+        // Learned on the audio thread; written by the message thread.
+        midiMapDirty_.store(true, std::memory_order_release);
+        continue;
+      }
+      if (value == 0) continue;
+    }
+
+    const MidiAction action = midiMap_.actionFor(source, value);
+    if (action.valid()) {
+      switch (action.kind) {
+        case MidiTargetKind::Switch:
+          setSwitchEngaged(action.targetId, action.engage);
+          continue;
+        case MidiTargetKind::ContinuousControl:
+          setControlValue(action.targetId, action.value);
+          continue;
+        case MidiTargetKind::StepperNext:
+          stepperNext();
+          continue;
+        case MidiTargetKind::StepperPrev:
+          stepperPrev();
+          continue;
+        case MidiTargetKind::Keyboard:
+        case MidiTargetKind::None:
+          break;
+      }
+    }
+
+    // Unmapped messages keep the default behaviour, so an organ is playable
+    // the moment it loads rather than only after a mapping session.
+    // Which console this key came from, so an assignment can name one.
+    noteDeviceId_ = deviceId;
+
+    // Learning a manual consumes the key press: the note being used to teach
+    // the range must not also sound.
+    if (msg.isNoteOn() && keyboardLearn_ != 0) {
+      learnKeyboardFrom(deviceId, msg.getChannel(), msg.getNoteNumber());
+      continue;
+    }
+    if (msg.isNoteOff() && keyboardLearn_ != 0) continue;
+    if (msg.isNoteOnOrOff() && !midiMap_.keyboardBindingsEmpty()) {
+      // A mapped rig: the binding decides which manual, which note and what
+      // velocity. One press can reach more than one manual — a split keyboard
+      // does exactly that — so every match is played.
+      keyHits_.clear();
+      midiMap_.matchKeyboards(deviceId, msg.getChannel(), msg.getNoteNumber(),
+                              msg.isNoteOn() ? msg.getVelocity() : 0,
+                              blockTimeMs_, keyHits_);
+      for (const auto& hit : keyHits_) {
+        // Keyed on the manual rather than the channel: two bindings can send
+        // the same note to different manuals and each has to be released on
+        // its own.
+        const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
+        if (hit.on && msg.isNoteOn())
+          startNoteOnKeyboard(hit.keyboardId, key, hit.midiNote, hit.velocity);
+        else
+          stopNoteByKey(key, hit.velocity);
+      }
+      continue;
+    }
+    if (msg.isNoteOn())
+      startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
+    else if (msg.isNoteOff())
+      stopNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
+    else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+      for (const auto& [note, id] : soundingNotes_) {
+        (void)note;
+        voices_.noteOff(id, NoteRelease{});
+      }
+    else if (msg.isController())
+      // With no mapping the control id IS the CC number, which is enough to
+      // drive a swell shoe from a real pedal out of the box.
+      setControlValue(msg.getControllerNumber(), msg.getControllerValue());
+  }
+}
+
+namespace {
+
+// A file name a person can read, from an organ's own name.
+std::string sanitise(const std::string& in) {
+  std::string out;
+  for (char c : in) {
+    if (std::isalnum(static_cast<unsigned char>(c))) out += c;
+    else if (c == ' ' || c == '-' || c == '_') out += '-';
+    if (out.size() >= 48) break;
+  }
+  while (!out.empty() && out.back() == '-') out.pop_back();
+  return out.empty() ? "organ" : out;
+}
+
+// GrandOrgue's fallback, for an organ that declares no id of its own: hash the
+// normalised absolute path. Stable while the set stays where it is, which is
+// the best a path can do.
+std::string pathHash(const juce::File& odf) {
+  const auto full = odf.getFullPathName().toLowerCase().toStdString();
+  uint64_t h = 1469598103934665603ull;
+  for (unsigned char c : full) {
+    h ^= c;
+    h *= 1099511628211ull;
+  }
+  char buf[24];
+  std::snprintf(buf, sizeof(buf), "p%016llx",
+                static_cast<unsigned long long>(h));
+  return buf;
+}
+
+} // namespace
+
+std::string MasterpieceProcessor::organKey() const {
+  if (model_.uniqueOrganId != 0)
+    return sanitise(model_.organName) + "-" +
+           std::to_string(model_.uniqueOrganId);
+  return sanitise(model_.organName) + "-" + pathHash(loadedOdf_);
+}
+
+std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
+  // Only the header is needed, and _General is the first table in the file —
+  // so this does not pay for parsing a 60 000-row Sample table just to find
+  // out where the settings live.
+  OdfLoader loader;
+  OdfLoader::Options opts;
+  opts.headerOnly = true;
+  OrganModel m;
+  OdfDiagnostics d;
+  if (loader.load(odf.getFullPathName().toStdString(), opts, m, d) &&
+      m.uniqueOrganId != 0)
+    return sanitise(m.organName) + "-" + std::to_string(m.uniqueOrganId);
+  return sanitise(m.organName.empty()
+                      ? odf.getFileNameWithoutExtension().toStdString()
+                      : m.organName) +
+         "-" + pathHash(odf);
+}
+
+juce::File MasterpieceProcessor::organFileForSaving(
+    const juce::String& folder, const juce::String& extension) const {
+  if (loadedOdf_.getFullPathName().isEmpty()) return {};
+  // Always the organ's own identity, even when a legacy file was read: the
+  // point of the migration is that it happens once.
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile(folder)
+      .getChildFile(juce::String(organKey()) + extension);
+}
+
+juce::File MasterpieceProcessor::organFile(const juce::File& odf,
+                                          const juce::String& folder,
+                                          const juce::String& extension) const {
+  if (odf.getFullPathName().isEmpty()) return {};
+  // Beside the player's own data, never inside the sample set: writing into a
+  // licensed package is not ours to do.
+  const auto dir =
+      juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+          .getChildFile("Masterpiece")
+          .getChildFile(folder);
+
+  // Named by the organ's own identity, so moving or renaming the sample set
+  // does not orphan everything the player configured for it.
+  const auto key = loadedOdf_ == odf ? organKey() : organKeyFor(odf);
+  const auto wanted = dir.getChildFile(juce::String(key) + extension);
+  if (wanted.existsAsFile()) return wanted;
+
+  // Files were once named after the ODF's filename. Adopt one if it is there
+  // and the new name is not: a player who configured an organ before this
+  // should not lose it, and the next save writes the new name.
+  const auto legacy =
+      dir.getChildFile(odf.getFileNameWithoutExtension() + extension);
+  if (legacy.existsAsFile()) return legacy;
+  return wanted;
+}
+
+juce::File MasterpieceProcessor::midiMapFileFor(const juce::File& odf) const {
+  return organFile(odf, "midi", ".mpmidi");
+}
+
+void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId) {
+  keyboardLearn_ = keyboardId;
+  keyboardLearnLow_ = -1;
+}
+
+bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
+                                             int note) {
+  if (keyboardLearn_ == 0) return false;
+
+  if (keyboardLearnLow_ < 0) {
+    // First press: the bottom of the range, and the console and channel it
+    // came from. Nothing is committed yet — a player who presses the wrong key
+    // can press the right one after the second.
+    keyboardLearnLow_ = note;
+    keyboardLearnDevice_ = deviceId;
+    keyboardLearnChannel_ = channel;
+    return true;
+  }
+
+  MidiMap::KeyboardBinding b;
+  b.keyboardId = keyboardLearn_;
+  b.deviceId = keyboardLearnDevice_;
+  b.channel = keyboardLearnChannel_;
+  b.lowKey = std::min(keyboardLearnLow_, note);
+  b.highKey = std::max(keyboardLearnLow_, note);
+
+  // Line the pressed range up with the manual's own compass. A player taking
+  // the top two octaves of one keyboard for a short manual wants those keys to
+  // play that manual's bottom notes, not to fall off the end of it.
+  const auto it = model_.keyboards.find(keyboardLearn_);
+  if (it != model_.keyboards.end() && it->second.numKeys > 0)
+    b.transpose = it->second.firstMidiNote - b.lowKey;
+
+  midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
+  midiMap_.addKeyboardBinding(b);
+  midiMapDirty_.store(true, std::memory_order_release);
+  keyboardLearn_ = 0;
+  keyboardLearnLow_ = -1;
+  return true;
+}
+
+void MasterpieceProcessor::pushMidi(int deviceId, const juce::MidiMessage& msg) {
+  // Short messages only. Sysex is not something an organ console sends for a
+  // stop or a key, and copying an unbounded blob here would mean allocating on
+  // a real-time callback.
+  const int size = msg.getRawDataSize();
+  if (size <= 0 || size > 3) return;
+
+  const uint32_t slot =
+      midiWrite_.fetch_add(1, std::memory_order_acq_rel) % kMidiQueueSize;
+  TaggedMidi& t = midiQueue_[slot];
+  t.deviceId = deviceId;
+  t.size = size;
+  const auto* raw = msg.getRawData();
+  for (int i = 0; i < size; ++i) t.bytes[i] = raw[i];
+}
+
+void MasterpieceProcessor::drainTaggedMidi(
+    std::vector<std::pair<int, juce::MidiMessage>>& out) {
+  const uint32_t write = midiWrite_.load(std::memory_order_acquire);
+  // Overrun: the queue wrapped past the reader. Skip to what is still there
+  // rather than replaying stale bytes — a lost message is recoverable, a note
+  // that never ends is not.
+  if (write - midiRead_ > kMidiQueueSize) midiRead_ = write - kMidiQueueSize;
+  while (midiRead_ != write) {
+    const TaggedMidi& t = midiQueue_[midiRead_ % kMidiQueueSize];
+    ++midiRead_;
+    if (t.size <= 0) continue;
+    out.emplace_back(t.deviceId, juce::MidiMessage(t.bytes, t.size));
+  }
+}
+
+juce::File MasterpieceProcessor::settingsFileFor(const juce::File& odf) const {
+  return organFile(odf, "organs", ".mporgan");
+}
+
+bool MasterpieceProcessor::saveSettings() const {
+  const auto f = organFileForSaving("organs", ".mporgan");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+
+  const auto& sw = graph_.engineSwitch;
+  juce::String text;
+  text << "# Masterpiece per-organ settings\n";
+  text << "storage " << (samples_.storage() == SampleStorage::Int16 ? 16 : 32)
+       << "\n";
+  text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
+  text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
+  text << "preload " << juce::String(preloadHead_) << "\n";
+  text << "simple " << (sw.simpleWavOnly ? 1 : 0) << "\n";
+  text << "wind " << (sw.enableWindModel ? 1 : 0) << "\n";
+  text << "tremulant " << (sw.enableTremulant ? 1 : 0) << "\n";
+  text << "enclosure " << (sw.enableEnclosure ? 1 : 0) << "\n";
+  text << "voicing " << (sw.enableVoicing ? 1 : 0) << "\n";
+  text << "originalpitch " << (sw.playAtOriginalOrganPitch ? 1 : 0) << "\n";
+  if (const auto* g = apvts_.getRawParameterValue("masterGain"))
+    text << "gain " << juce::String(g->load(), 4) << "\n";
+  return f.replaceWithText(text);
+}
+
+bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
+  const auto f = settingsFileFor(odf);
+  if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
+
+  auto sw = graph_.engineSwitch;
+  for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
+    if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
+    const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
+    const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
+    const bool on = val.getIntValue() != 0;
+    if (key == "storage")
+      samples_.setStorage(val.getIntValue() == 16 ? SampleStorage::Int16
+                                                  : SampleStorage::Float32);
+    else if (key == "stream") samples_.setStreamReleases(on);
+    else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
+    else if (key == "preload") preloadHead_ = val.getLargeIntValue();
+    else if (key == "simple") sw.simpleWavOnly = on;
+    else if (key == "wind") sw.enableWindModel = on;
+    else if (key == "tremulant") sw.enableTremulant = on;
+    else if (key == "enclosure") sw.enableEnclosure = on;
+    else if (key == "voicing") sw.enableVoicing = on;
+    else if (key == "originalpitch") sw.playAtOriginalOrganPitch = on;
+    else if (key == "gain") {
+      if (auto* p = apvts_.getParameter("masterGain"))
+        p->setValueNotifyingHost(p->convertTo0to1(val.getFloatValue()));
+    }
+  }
+  graph_.engineSwitch = sw;
+  return true;
+}
+
+bool MasterpieceProcessor::saveMidiMapIfDirty() {
+  if (!midiMapDirty_.exchange(false, std::memory_order_acq_rel)) return false;
+  return saveMidiMap();
+}
+
+bool MasterpieceProcessor::saveSettingsIfDirty() {
+  if (!settingsDirty_.exchange(false, std::memory_order_acq_rel)) return false;
+  return saveSettings();
+}
+
+bool MasterpieceProcessor::saveMidiMap() const {
+  const auto f = organFileForSaving("midi", ".mpmidi");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText(juce::String(midiMap_.toText()));
+}
+
+bool MasterpieceProcessor::loadMidiMap() {
+  const auto f = midiMapFileFor(loadedOdf_);
+  if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
+  return midiMap_.fromText(f.loadFileAsString().toStdString());
+}
+
+double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
+                                             const SampleRef& sample) const {
+  // What this pipe must sound at. Two modes: at the original instrument's own
+  // pitch (which is why anyone samples a particular organ), or at a tempered
+  // pitch derived from the keyboard. A pipe with no declared original pitch
+  // falls back to the tempered path rather than going silent.
+  double targetHz = 0.0;
+  if (graph_.engineSwitch.playAtOriginalOrganPitch &&
+      pipe.originalOrganPitchHz > 0.0) {
+    targetHz = pipe.originalOrganPitchHz;
+  } else {
+    targetHz = pipeTargetHz(pipe.midiNote, pipe.basePitch64ftHarmonicNum,
+                            model_.basePitchHz, pipe.baseTuningDeviationCents,
+                            organTuning_, 0);
+  }
+
+  // What the file actually holds. An organ sample is recorded from its own
+  // pipe, so this is normally close to targetHz and the ratio near 1.0 —
+  // resampling only trims it into tune. Getting this wrong is not subtle: use
+  // the organ's reference pitch instead of the sample's and every note but A
+  // plays at the wrong speed, collapsing the rank toward one pitch.
+  double recordedHz = sample.pitchHz; // Pitch_ExactSamplePitch, when declared
+  if (recordedHz <= 0.0 && sample.midiNote >= 0) {
+    // Fall back to the note the file claims (smpl chunk / filename), read at
+    // concert pitch — that is the convention those tags are written in.
+    recordedHz = 440.0 * std::pow(2.0, (sample.midiNote - 69) / 12.0);
+  }
+  if (recordedHz <= 0.0) {
+    // Nothing declares a pitch: assume the sample was recorded at the pipe's
+    // own nominal pitch, which makes the ratio 1.0 and is what an untagged
+    // organ sample set means.
+    return 1.0;
+  }
+  return playbackRatio(targetHz, recordedHz);
+}
+
+Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
+  // A binding that names this console beats one that does not, so a rig can be
+  // set up loosely and one keyboard pinned exactly.
+  Id loose = 0;
+  for (const auto& b : midiMap_.keyboardBindings()) {
+    if (b.channel != 0 && b.channel != channel) continue;
+    if (b.deviceId == deviceId && b.deviceId != MidiDeviceMap::kAnyDevice)
+      return b.keyboardId;
+    if (b.deviceId == MidiDeviceMap::kAnyDevice && loose == 0)
+      loose = b.keyboardId;
+  }
+  if (loose != 0) return loose;
+
+  // Hauptwerk's own default: the assignment code IS the channel. Code 1 is the
+  // pedal, 2 the first manual, and so on, so an organ plays the way its author
+  // expected before anyone maps anything.
+  for (Id kb : couplers_.inputKeyboards())
+    if (couplers_.assignmentCodeFor(kb) == channel) return kb;
+
+  return fallbackKeyboard_;
+}
+
+int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == keyboardId && b.channel > 0) return b.channel;
+  const int code = couplers_.assignmentCodeFor(keyboardId);
+  if (code >= 1 && code <= 16) return code;
+  return 1;
+}
+
+void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
+  startNoteOnKeyboard(keyboardForChannel(channel, noteDeviceId_),
+                      noteKey(channel, midiNote), midiNote, velocity);
+}
+
+void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
+  stopNoteByKey(noteKey(channel, midiNote), velocity);
+}
+
+void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  const auto it = soundingNotes_.find(key);
+  if (it == soundingNotes_.end()) return;
+  NoteRelease rel;
+  rel.velocity = velocity;
+  voices_.noteOff(it->second, rel);
+  soundingNotes_.erase(it);
+}
+
+void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
+                                               int midiNote, int velocity) {
+  if (engagedStops_.empty()) return; // nothing drawn: the organ is silent
+
+  const uint64_t noteId = nextNoteId_++;
+  bool anyStarted = false;
+
+  // Which divisions this key actually reaches, at which pitches. This is where
+  // couplers live: a drawn "Great to Pedal" is an edge of the key-flow graph
+  // that is only walkable while its switch is engaged.
+  expandScratch_.clear();
+  couplers_.expandInto(static_cast<int>(keyboard), midiNote,
+                       static_cast<float>(velocity) / 127.0f, engagedSwitches_,
+                       keyFlow_, expandScratch_);
+
+  for (const ExpandedNote& reached : expandScratch_) {
+    const int divisionId = reached.divisionId;
+    resolveScratch_.clear();
+    const auto pipes =
+        resolvePipes(model_, divisionId, reached.midiNote, engagedStops_);
+    for (const auto& rp : pipes) {
+      const auto rankIt = model_.ranks.find(rp.rankId);
+      if (rankIt == model_.ranks.end()) continue;
+      for (const auto& pipe : rankIt->second.pipes) {
+        if (pipe.pipeId != rp.pipeId) continue;
+        for (const auto& layer : pipe.layers) {
+          NoteStrike strike;
+          strike.velocity = velocity;
+          const int attackIndex = selectAttack(layer, strike);
+          if (attackIndex < 0) continue; // this layer stays silent, by design
+
+          VoiceStart vs;
+          vs.pipe = &pipe;
+          vs.layer = &layer;
+          vs.attackIndex = attackIndex;
+          vs.attackId = layer.attacks[static_cast<size_t>(attackIndex)].id;
+          vs.velocity = velocity;
+          // Pitch comes from the solver, against the pitch the FILE holds —
+          // not against the organ's reference A. See playbackRatioFor().
+          vs.ratio = playbackRatioFor(
+              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample);
+          vs.gain = juce::Decibels::decibelsToGain(
+              static_cast<float>(layer.gainDb), -100.0f);
+          // A layer may declare its own loop, overriding the audio file's.
+          vs.loopStartOverride = layer.loopStartFrames;
+          vs.loopEndOverride = layer.loopEndFrames;
+          vs.busIndex = busForPipe(pipe.pipeId);
+          {
+            const auto wIt = pipeWindIndex_.find(pipe.pipeId);
+            vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
+            // What this pipe costs its chest. An organ that declares nothing
+            // still has to sag under a tutti, or the model is decorative.
+            vs.windFlowKgPerSec =
+                pipe.windMassFlowKgPerSec > 0.0
+                    ? static_cast<float>(pipe.windMassFlowKgPerSec)
+                    : 0.0005f;
+
+            // Which tremulant reaches this pipe, and how far it moves it. The
+            // organ states the depth per pipe, so a flute and a reed on the
+            // same chest wobble by different amounts.
+            const auto tm = model_.tremulantPipes.find(pipe.pipeId);
+            if (tm != model_.tremulantPipes.end()) {
+              const auto ti = tremIndexOf_.find(tm->second.tremulantId);
+              if (ti != tremIndexOf_.end()) {
+                vs.tremIndex = ti->second;
+                // Decibels to a linear swing about unity, and percent of a
+                // semitone to semitones.
+                vs.tremAmpDepth = static_cast<float>(
+                    juce::Decibels::decibelsToGain(tm->second.ampDepthDb, -60.0) -
+                    1.0);
+                vs.tremPitchDepth = tm->second.pitchDepthPct / 100.0;
+              }
+            }
+          }
+          // LoopCrossfadeLengthInSrcSampleMs is stated against the SOURCE
+          // sample rate, so convert with the file's rate, not the engine's.
+          vs.loopCrossfadeFrames = static_cast<int>(
+              layer.loopCrossfadeMs * 0.001 * sampleRate_);
+          if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
+        }
+        break;
+      }
+    }
+  }
+
+  if (anyStarted) soundingNotes_[noteKeyId] = noteId;
+}
+
+void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
+  if (engaged) engagedStops_.insert(stopId);
+  else engagedStops_.erase(stopId);
+
+  // Drawing a stop is a physical act on a real console, and sample sets record
+  // it. Move the knob a player would move, not the internal node it feeds:
+  // the node has no wire back, so engaging it directly leaves the knob out and
+  // a general cancel with nothing to push.
+  const auto it = model_.stops.find(stopId);
+  if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
+    setSwitchEngaged(playerSwitchFor(it->second.controllingSwitchId), engaged);
+}
+
+bool MasterpieceProcessor::switchEngaged(Id switchId) const {
+  return engagedSwitches_.count(switchId) != 0;
+}
+
+namespace {
+// Firing a frame is the same act whichever direction the sequencer moved.
+} // namespace
+
+bool MasterpieceProcessor::stepperNext() {
+  const Id combo = stepper_.next();
+  if (combo == 0) return false;
+  fireCombination(combo);
+  return true;
+}
+
+bool MasterpieceProcessor::stepperPrev() {
+  const Id combo = stepper_.prev();
+  if (combo == 0) return false;
+  fireCombination(combo);
+  return true;
+}
+
+bool MasterpieceProcessor::stepperGoto(int frame) {
+  const Id combo = stepper_.gotoFrame(frame);
+  if (combo == 0) return false;
+  fireCombination(combo);
+  return true;
+}
+
+void MasterpieceProcessor::fireCombination(Id comboId) {
+  if (combinations_.captureMode()) {
+    // Holding the setter and stepping SETS each frame as you pass it, which is
+    // how an organist builds a sequence for a piece.
+    combinations_.capture(comboId, [this](Id id) { return switchEngaged(id); });
+    combinationsDirty_.store(true, std::memory_order_release);
+    return;
+  }
+  recallScratch_.clear();
+  combinations_.recall(comboId, recallScratch_);
+  for (const auto& change : recallScratch_)
+    setSwitchEngaged(change.switchId, change.engage);
+}
+
+void MasterpieceProcessor::setControlValue(Id controlId, int value) {
+  controls_.setValue(controlId, value);
+  controls_.propagate(controlId);
+
+  // Fire on whatever MOVED, not on what was set. The control a player moves is
+  // often not the one with the steps behind it: Nancy's visible crescendo
+  // pedal drives control 51, "Crescendo pedal (extension)", through a linkage,
+  // and setting 51 directly is undone by the next propagate.
+  for (auto& [id, previous] : stageValues_) {
+    const int now = controls_.value(id);
+    if (now == previous) continue;
+
+    // A shoe that drives switches fires every threshold it sweeps past, in the
+    // order it passes them. For a crescendo that means each step's
+    // registration lands in turn and the one belonging to where the shoe
+    // stopped is the one that survives — which is what makes dragging it back
+    // down work as well as dragging it up.
+    stageScratch_.clear();
+    stages_.moveControl(id, previous, now, stageScratch_);
+    previous = now;
+    for (const auto& change : stageScratch_)
+      setSwitchEngaged(change.switchId, change.engage);
+  }
+}
+
+Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
+  const auto it = playerSwitch_.find(switchId);
+  return it == playerSwitch_.end() ? switchId : it->second;
+}
+
+bool MasterpieceProcessor::firePiston(Id switchId) {
+  const Id comboId = combinations_.combinationForSwitch(switchId);
+  if (comboId == 0) return false;
+  // Capture reads the RESOLVED state, because that is what the player can see
+  // and hear; the base state would miss a stop pulled by a coupler or by
+  // another piston.
+  fireCombination(comboId);
+  return true;
+}
+
+void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
+  if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
+
+  // The organ's own setter. Holding it turns every piston press into a
+  // capture, which is how a console works and how a player expects it to.
+  if (switchId == setterSwitchId_ && setterSwitchId_ != 0)
+    combinations_.setCaptureMode(engaged);
+
+  // Set what the player set, then let the organ's own wiring decide what that
+  // means. On a wired console the two are different switches: Lemmer's "Pedaal
+  // koppel" is 1006 and every key action that reads it looks at 10101.
+  switches_.set(switchId, engaged);
+  engagedSwitches_ = switches_.engagedSwitches();
+
+  // Every switch whose RESOLVED state moved — which on a wired console is
+  // usually more than the one clicked.
+  for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+    const auto stopIt = stopBySwitch_.find(movedId);
+    if (stopIt != stopBySwitch_.end()) {
+      if (nowEngaged) engagedStops_.insert(stopIt->second);
+      else engagedStops_.erase(stopIt->second);
+    }
+
+    // Reflect the change on the physical console, if the player wants that.
+    if (midiFeedback_ && midiOut_ != nullptr) {
+      if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId)) {
+        const int ch = b->source.channel > 0 ? b->source.channel : 1;
+        if (b->source.kind == MidiSourceKind::Note) {
+          outgoing_.addEvent(
+              nowEngaged ? juce::MidiMessage::noteOn(ch, b->source.number, 1.0f)
+                         : juce::MidiMessage::noteOff(ch, b->source.number),
+              0);
+        } else if (b->source.kind == MidiSourceKind::ControlChange) {
+          outgoing_.addEvent(juce::MidiMessage::controllerEvent(
+                                 ch, b->source.number, nowEngaged ? 127 : 0),
+                             0);
+        }
+      }
+    }
+
+    // The mechanical sound belongs to the switch that actually moved.
+    triggerNoiseFor(movedId, nowEngaged);
+  }
+
+  // A piston fires on the way in, never on the way out, and then lets itself
+  // out again: it is a button, not a drawstop, and leaving it latched would
+  // make the second press do nothing.
+  if (engaged && firePiston(switchId)) {
+    const auto sw = model_.switches.find(switchId);
+    const bool momentary = sw == model_.switches.end() || !sw->second.latching;
+    if (momentary) setSwitchEngaged(switchId, false);
+  }
+}
+
+juce::File MasterpieceProcessor::combinationFileFor(const juce::File& odf) const {
+  return organFile(odf, "combinations", ".mpcomb");
+}
+
+bool MasterpieceProcessor::saveCombinations() const {
+  const auto f = organFileForSaving("combinations", ".mpcomb");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText(juce::String(combinations_.toText()));
+}
+
+bool MasterpieceProcessor::saveCombinationsIfDirty() {
+  if (!combinationsDirty_.exchange(false, std::memory_order_acq_rel))
+    return false;
+  return saveCombinations();
+}
+
+bool MasterpieceProcessor::loadCombinations() {
+  const auto f = combinationFileFor(loadedOdf_);
+  if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
+  return combinations_.fromText(f.loadFileAsString().toStdString());
+}
+
+void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
+  const auto it = noiseRanksBySwitch_.find(switchId);
+  if (it == noiseRanksBySwitch_.end()) return;
+
+  for (const Id rankId : it->second) {
+    const auto rankIt = model_.ranks.find(rankId);
+    if (rankIt == model_.ranks.end()) continue;
+    const Rank& rank = rankIt->second;
+    if (rank.pipes.empty()) continue;
+
+    // A noise rank is not played by key: HW convention is that the pipes are
+    // indexed by event rather than pitch, so pipe 0 is the "on" sound and
+    // pipe 1, when present, the "off" one. A rank with only one pipe uses it
+    // for both directions.
+    size_t index = 0;
+    if (!engaged && rank.pipes.size() > 1) index = 1;
+    const Pipe& pipe = rank.pipes[index];
+
+    const uint64_t noteId = nextNoteId_++;
+    for (const auto& layer : pipe.layers) {
+      NoteStrike strike;
+      strike.velocity = 100;
+      const int attackIndex = selectAttack(layer, strike);
+      if (attackIndex < 0) continue;
+
+      VoiceStart vs;
+      vs.pipe = &pipe;
+      vs.layer = &layer;
+      vs.attackIndex = attackIndex;
+      vs.attackId = layer.attacks[static_cast<size_t>(attackIndex)].id;
+      vs.velocity = strike.velocity;
+      // Noises play at their recorded pitch: they are mechanical sounds, not
+      // pipe speech, so temperament must not touch them.
+      vs.ratio = 1.0;
+      vs.gain = juce::Decibels::decibelsToGain(
+          static_cast<float>(layer.gainDb), -100.0f);
+      // A noise is a one-shot; looping it would leave the console rattling.
+      vs.oneShot = true;
+      vs.busIndex = busForPipe(pipe.pipeId);
+      voices_.startVoice(vs, noteId);
+    }
+  }
+}
+
+void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
+  juce::ScopedNoDenormals noDenormals;
+  buffer.clear();
+
+  // The runtime DSP switch is a plain parameter so a slow machine can drop to
+  // the simple-WAV path without a rebuild (ADR-005).
+  graph_.engineSwitch.simpleWavOnly =
+      *apvts_.getRawParameterValue("simpleWavOnly") > 0.5f;
+
+  // Merge the on-screen keyboard into the same buffer a device would fill, so
+  // mouse and MIDI take one identical path.
+  keyboardState_.processNextMidiBuffer(midi, 0, buffer.getNumSamples(), true);
+
+  // Recording captures what arrived; playback merges its events into the same
+  // buffer, so a recorded performance drives exactly the live path.
+  recorder_.process(midi, buffer.getNumSamples());
+
+  outgoing_.clear();
+  handleMidi(midi);
+  controls_.propagate();
+
+  // Send anything the console should reflect (lit drawstops, moved shoes).
+  if (midiOut_ != nullptr && !outgoing_.isEmpty())
+    midiOut_->sendBlockOfMessagesNow(outgoing_);
+
+  // Each enclosure renders its own voices and filters only those, so an
+  // unenclosed Great stays unenclosed while the Swell shades move.
+  renderBuses(buffer);
+
+  // Room before level: the convolver is part of the instrument's sound, and
+  // the master fader is the last thing in the chain.
+  convolver_.process(buffer);
+  buffer.applyGain(*apvts_.getRawParameterValue("masterGain"));
+
+  // The metronome is a monitoring aid, not part of the instrument, so it sits
+  // after the master fader and is not affected by it.
+  metronome_.process(buffer);
+}
+
+void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
+  setControlValue(controlId, value);
+}
+
+namespace {
+// Phase timing for a load. A load is the one operation a player actually
+// waits on, and "it took a while" is not a diagnosis: on a slow disk the
+// same organ can spend its time in the XML, in the artwork or in the audio,
+// and only the split says which. juce::Logger is a no-op until the host
+// installs one (Masterpiece --log), so this costs a clock read otherwise.
+struct LoadPhases {
+  void mark(const char* phase) {
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    juce::Logger::writeToLog("load: " + juce::String(phase).paddedRight(' ', 14)
+                             + juce::String(now - last_, 1) + " ms");
+    last_ = now;
+  }
+  double started_ = juce::Time::getMillisecondCounterHiRes();
+  double last_ = started_;
+  double sinceStart() const {
+    return juce::Time::getMillisecondCounterHiRes() - started_;
+  }
+};
+}  // namespace
+
+MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
+    const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
+  LoadResult result;
+  LoadPhases phases;
+
+  if (!odfFile.existsAsFile()) {
+    result.error = "no such file: " + odfFile.getFullPathName().toStdString();
+    return result;
+  }
+
+  // A Hauptwerk set puts its definitions in <root>/OrganDefinitions and its
+  // audio in <root>/OrganInstallationPackages, so the root is the definition's
+  // grandparent. Fall back to the containing directory for a loose ODF.
+  juce::File root = odfFile.getParentDirectory();
+  if (root.getFileName().equalsIgnoreCase("OrganDefinitions"))
+    root = root.getParentDirectory();
+
+  // What this organ was last set to. Has to happen before a byte of audio is
+  // read: the resident format, streaming and the preload head all decide how
+  // the samples are read and cannot be changed afterwards.
+  loadedOdf_ = odfFile;
+  loadSettingsFor(odfFile);
+
+  OdfLoader loader;
+  OdfLoader::Options opts;
+  opts.organRootDir = root.getFullPathName().toStdString();
+
+  OrganModel loaded;
+  if (!loader.load(odfFile.getFullPathName().toStdString(), opts, loaded,
+                   result.diagnostics)) {
+    result.error = result.diagnostics.errors.empty()
+                       ? "the organ definition could not be parsed"
+                       : result.diagnostics.errors.front();
+    return result;
+  }
+
+  phases.mark("odf parse");
+
+  // Publish the model before the audio, so a note-on during loading resolves
+  // pipes that simply have no sound yet rather than reading a half-built map.
+  model_ = std::move(loaded);
+  organRootDir_ = opts.organRootDir;
+  loadedOdf_ = odfFile;
+
+  // Console click -> stop. Without this a drawstop would move on screen and
+  // the organ would stay silent, which is the worst of both.
+  stopBySwitch_.clear();
+  for (const auto& [stopId, stop] : model_.stops)
+    if (stop.controllingSwitchId != 0)
+      stopBySwitch_[stop.controllingSwitchId] = stopId;
+
+  // The organ's switch wiring, solved once from the declared defaults. An
+  // organ that ships with its blower running or a unison coupler drawn comes
+  // up that way rather than needing the player to find a switch nobody told
+  // them about.
+  switches_.reset(model_);
+  engagedSwitches_ = switches_.engagedSwitches();
+
+  // Continuous controls. This was never reset, so the bank held no model and
+  // no values: every shoe read as absent, shutterFor() answered "fully open"
+  // for everything, and no swell pedal did anything. It looked healthy from
+  // the outside because a stuck-open enclosure sounds like an organ.
+  controls_.reset(model_);
+
+  // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
+  // "Comb. Master Capture"; an organ without one leaves capture to the UI.
+  combinations_.reset(model_);
+  stepper_.reset(model_);
+
+  // The wind system. Indices are assigned once, in a stable order, so a voice
+  // started in one block still points at the right chest in the next.
+  wind_.reset(model_);
+  windOrder_.clear();
+  windIndexOf_.clear();
+  pipeWindIndex_.clear();
+  for (const auto& [id, wc] : model_.wind) {
+    if (wc.infiniteVolume) continue;
+    windOrder_.push_back(id);
+  }
+  std::sort(windOrder_.begin(), windOrder_.end());
+  for (size_t i = 0; i < windOrder_.size(); ++i)
+    windIndexOf_[windOrder_[i]] = static_cast<int>(i);
+  windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});
+  for (const auto& [rankId, rank] : model_.ranks) {
+    (void)rankId;
+    for (const Pipe& pipe : rank.pipes) {
+      const auto it = windIndexOf_.find(wind_.compartmentForPipe(pipe));
+      if (it != windIndexOf_.end()) pipeWindIndex_[pipe.pipeId] = it->second;
+    }
+  }
+  stages_.reset(model_);
+  stageScratch_.reserve(64);
+  stageValues_.clear();
+  for (Id id : stages_.stagedControls())
+    stageValues_.emplace_back(id, controls_.value(id));
+
+  // Start the organ. An organ does not come up running: it has controls whose
+  // only job is to move once at load and fire the things that have to happen
+  // then — Nancy's are called "__DelayBlower" and "__DelayInit", and the first
+  // of them is what opens the valve between the blower and the rest of the
+  // wind system. Leaving them at rest leaves the blower off, and then every
+  // chest drains the moment a key goes down.
+  //
+  // A control that something else drives is not one of these: the crescendo
+  // pedal has steps behind it too, and sweeping it at load would register the
+  // organ for a fortissimo nobody asked for.
+  {
+    std::unordered_set<Id> driven;
+    for (const auto& l : model_.controlLinkages)
+      if (l.destControlId != 0) driven.insert(l.destControlId);
+    for (Id id : stages_.stagedControls()) {
+      if (driven.count(id) != 0) continue;
+      const auto cit = model_.continuousControls.find(id);
+      if (cit == model_.continuousControls.end()) continue;
+      setControlValue(id, std::max(cit->second.maxValue, cit->second.minValue));
+    }
+  }
+
+  // Now that the blower is on and every valve is where the organ puts it, work
+  // out what "full wind" actually is. Doing this at reset() instead would
+  // measure an organ that is switched off.
+  wind_.settleWith(engagedSwitches_);
+  setterSwitchId_ = 0;
+  for (const auto& [id, sw] : model_.switches)
+    if (sw.asgnCode == 12) {
+      setterSwitchId_ = id;
+      break;
+    }
+  // Worst case a general moves every switch the organ has.
+  recallScratch_.reserve(model_.switches.empty() ? 64 : model_.switches.size());
+
+  // For every switch, the drawn one upstream of it. A stop on a wired console
+  // is three switches deep — the knob, the logical stop and the node the
+  // engine reads — and only the knob is a thing a player can move.
+  playerSwitch_.clear();
+  for (const auto& [id, sw] : model_.switches) {
+    (void)sw;
+    Id at = id;
+    for (int hop = 0; hop < 8; ++hop) {
+      const auto here = model_.switches.find(at);
+      if (here != model_.switches.end() && here->second.dispInstanceId != 0 &&
+          here->second.clickable)
+        break;
+      Id upstream = 0;
+      for (const auto& l : model_.switchLinkages)
+        if (l.destSwitchId == at && l.sourceSwitchId != at &&
+            l.sourceWhenEngaged && l.conditionSwitchId == 0) {
+          upstream = l.sourceSwitchId;
+          break;
+        }
+      if (upstream == 0 || upstream == at) break;
+      at = upstream;
+    }
+    playerSwitch_[id] = at;
+  }
+  engagedStops_.clear();
+  for (const auto& [switchId, stopId] : stopBySwitch_)
+    if (switches_.engaged(switchId)) engagedStops_.insert(stopId);
+
+  // Key flow. This is what makes couplers work at all: without it every
+  // division sounds on every key, and drawing "Great to Pedal" changes
+  // nothing because everything is already coupled to everything.
+  couplers_.reset(model_);
+  // Channel assignments belong to the organ they were made for; loadMidiMap()
+  // below brings back the ones saved for this one.
+  midiMap_.clearKeyboardBindings();
+
+  // Where an unassigned channel goes when the organ declares no assignment
+  // code. The widest compass when the organ declares one, else the unenclosed
+  // manual shipping the most pipework: on a set that declares no compass at
+  // all (Nancy) widest-of-nothing lands on the pedal, and the fallback piano
+  // plays the one division nobody drew stops for.
+  fallbackKeyboard_ = defaultKeyboard(model_, couplers_);
+  // An explicit argument wins; otherwise use the configured preload head, so
+  // the setting in the UI actually governs a load from the file chooser.
+  //
+  // Graphics-only stops here. Everything above this line is the console —
+  // model, artwork, switch network, key flow — and everything below it is
+  // audio. The provider is still set, to an empty library: the voice engine
+  // then finds no audio for a pipe and stays silent, which is the same path a
+  // set with a missing sample already takes.
+  phases.mark("model");
+
+  if (graphicsOnly) {
+    // Not merely "skip the load": the library may still hold the PREVIOUS
+    // organ's audio, and pipe indices from this model would read into it.
+    samples_.clear();
+  } else {
+    const int64_t head =
+        maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
+    result.samples = samples_.loadAll(model_, opts.organRootDir, head);
+  }
+  voices_.setSampleProvider(samples_.provider());
+  phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
+
+  // Rebuild everything that is derived from the model. prepareToPlay may not
+  // have run yet (headless), in which case it will pick this up when it does.
+  if (sampleRate_ > 0.0)
+    prepareToPlay(sampleRate_, juce::jmax(1, getBlockSize()));
+
+  // A mapping and a set of combinations saved for this organ come back with
+  // it. Missing is normal: it means the player has not saved any yet.
+  loadMidiMap();
+  loadCombinations();
+
+  phases.mark("prepare");
+  juce::Logger::writeToLog("load: TOTAL         " +
+                           juce::String(phases.sinceStart(), 1) + " ms  (" +
+                           odfFile.getFileName() + ")");
+
+  result.stopsEngaged = 0;
+  result.ok = true;
+  return result;
+}
+
+std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() const {
+  std::vector<StopEntry> out;
+  out.reserve(model_.stops.size());
+  for (const auto& [id, stop] : model_.stops) {
+    StopEntry e;
+    e.stopId = id;
+    e.divisionId = stop.divisionId;
+    e.name = stop.name;
+    // A stop whose ranks have no pipes cannot sound. Demo sets are full of
+    // them, and a console that shows no difference between a stop that works
+    // and one that was never shipped is actively misleading.
+    for (const auto& entry : stop.ranks) {
+      const auto rit = model_.ranks.find(entry.rankId);
+      if (rit != model_.ranks.end() && !rit->second.pipes.empty()) {
+        e.playable = true;
+        break;
+      }
+    }
+    out.push_back(std::move(e));
+  }
+  std::sort(out.begin(), out.end(), [](const StopEntry& a, const StopEntry& b) {
+    if (a.divisionId != b.divisionId) return a.divisionId < b.divisionId;
+    return a.stopId < b.stopId;
+  });
+  return out;
+}
+
+int MasterpieceProcessor::engageAllStops() {
+  // Through the console, not around it: drawing every stop by hand is what a
+  // player does to hear a tutti, and doing it any other way leaves the switch
+  // states disagreeing with the stop list.
+  for (const auto& [id, stop] : model_.stops) {
+    (void)stop;
+    setStopEngaged(id, true);
+  }
+  return static_cast<int>(engagedStops_.size());
+}
+
+void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {
+  // Loading a 19 GB set must not block the message thread. The audio thread is
+  // unaffected either way: it only ever reads the sample store through an
+  // atomic pointer, and an unfinished load simply has no audio for a pipe yet.
+  juce::Thread::launch([this, odfFile] { loadOrgan(odfFile); });
+}
+
+} // namespace mp

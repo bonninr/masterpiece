@@ -1,0 +1,512 @@
+#include "Ui.h"
+
+namespace mp::ui {
+namespace {
+
+// Divisions are numbered from the pedal upward in Hauptwerk; show that order
+// with a readable name rather than a raw id.
+juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
+  const auto& divs = proc.organModel().divisions;
+  const auto it = divs.find(divisionId);
+  if (it != divs.end() && !it->second.name.empty())
+    return juce::String(it->second.name);
+  return "Division " + juce::String(divisionId);
+}
+
+constexpr int kStopHeight = 26;
+constexpr int kHeaderHeight = 22;
+constexpr int kJambWidth = 320;
+
+} // namespace
+
+// ------------------------------------------------------------------ jamb
+
+StopJamb::StopJamb(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
+
+void StopJamb::rebuild() {
+  entries_.clear();
+  headers_.clear();
+
+  Id lastDivision = -1;
+  for (const auto& s : proc_.stopList()) {
+    if (s.divisionId != lastDivision) {
+      auto header = std::make_unique<juce::Label>();
+      header->setText(divisionLabel(proc_, s.divisionId),
+                      juce::dontSendNotification);
+      header->setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
+      header->setColour(juce::Label::textColourId, juce::Colours::orange);
+      addAndMakeVisible(*header);
+      headers_.push_back(std::move(header));
+      lastDivision = s.divisionId;
+    }
+
+    Entry e;
+    e.stopId = s.stopId;
+    e.divisionId = s.divisionId;
+    e.playable = s.playable;
+    e.button = std::make_unique<juce::TextButton>(juce::String(s.name));
+    e.button->setClickingTogglesState(true);
+    e.button->setToggleState(proc_.stopEngaged(s.stopId),
+                             juce::dontSendNotification);
+    e.button->setEnabled(s.playable);
+    if (!s.playable) {
+      // Say WHY rather than just greying it: on a demo set this is the single
+      // most confusing thing about the instrument.
+      e.button->setTooltip("This stop's ranks ship no pipes in this sample set");
+    }
+    const Id id = s.stopId;
+    auto* raw = e.button.get();
+    e.button->onClick = [this, id, raw] {
+      proc_.setStopEngaged(id, raw->getToggleState());
+    };
+    addAndMakeVisible(*e.button);
+    entries_.push_back(std::move(e));
+  }
+
+  // Height is content-driven; the Viewport scrolls it.
+  const int rows = static_cast<int>(entries_.size());
+  const int heads = static_cast<int>(headers_.size());
+  setSize(kJambWidth, rows * kStopHeight + heads * kHeaderHeight + 8);
+  resized();
+}
+
+void StopJamb::resized() {
+  auto r = getLocalBounds().reduced(4, 4);
+  size_t headerIndex = 0;
+  Id lastDivision = -1;
+  for (auto& e : entries_) {
+    if (e.divisionId != lastDivision && headerIndex < headers_.size()) {
+      headers_[headerIndex++]->setBounds(r.removeFromTop(kHeaderHeight));
+      lastDivision = e.divisionId;
+    }
+    e.button->setBounds(r.removeFromTop(kStopHeight).reduced(1));
+  }
+}
+
+void StopJamb::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff20232a)); }
+
+// ------------------------------------------------------------ expression
+
+ExpressionBar::ExpressionBar(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
+
+void ExpressionBar::rebuild() {
+  shoes_.clear();
+  labels_.clear();
+
+  const auto& model = proc_.organModel();
+  // One shoe per enclosure. Continuous controls that no enclosure uses are
+  // console animation, not expression, and would only clutter this.
+  std::vector<std::pair<Id, juce::String>> shoes;
+  for (const auto& [id, enc] : model.enclosures) {
+    (void)id;
+    if (enc.continuousControlId == 0) continue;
+    shoes.emplace_back(enc.continuousControlId,
+                       enc.name.empty() ? juce::String("Swell")
+                                        : juce::String(enc.name));
+  }
+  std::sort(shoes.begin(), shoes.end());
+
+  for (const auto& [controlId, name] : shoes) {
+    auto label = std::make_unique<juce::Label>();
+    label->setText(name, juce::dontSendNotification);
+    label->setJustificationType(juce::Justification::centred);
+    label->setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible(*label);
+    labels_.push_back(std::move(label));
+
+    auto slider = std::make_unique<juce::Slider>(
+        juce::Slider::LinearVertical, juce::Slider::NoTextBox);
+    slider->setRange(0.0, 127.0, 1.0);
+    // Shoes start open: a console that boots with every box shut sounds broken.
+    slider->setValue(127.0, juce::dontSendNotification);
+    const Id id = controlId;
+    auto* raw = slider.get();
+    slider->onValueChange = [this, id, raw] {
+      proc_.setContinuousControl(id, static_cast<int>(raw->getValue()));
+    };
+    proc_.setContinuousControl(id, 127);
+    addAndMakeVisible(*slider);
+    shoes_.push_back(std::move(slider));
+  }
+  resized();
+}
+
+void ExpressionBar::resized() {
+  if (shoes_.empty()) return;
+  auto r = getLocalBounds().reduced(4);
+  const int w = juce::jmax(40, r.getWidth() / static_cast<int>(shoes_.size()));
+  for (size_t i = 0; i < shoes_.size(); ++i) {
+    auto col = r.removeFromLeft(w);
+    labels_[i]->setBounds(col.removeFromBottom(18));
+    shoes_[i]->setBounds(col);
+  }
+}
+
+// --------------------------------------------------------------- top bar
+
+TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings)
+    : proc_(p) {
+  addAndMakeVisible(load_);
+  addAndMakeVisible(audio_);
+  addAndMakeVisible(simple_);
+  addAndMakeVisible(volumeLabel_);
+  volumeLabel_.setText("Volume", juce::dontSendNotification);
+  volumeLabel_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+  addAndMakeVisible(volume_);
+  volume_.setRange(-40.0, 24.0, 0.1);
+  volume_.setTextValueSuffix(" dB");
+  volume_.setSkewFactor(1.0);
+  if (auto* gain = proc_.apvts().getRawParameterValue("masterGain"))
+    volume_.setValue(juce::Decibels::gainToDecibels(gain->load(), -40.0f),
+                     juce::dontSendNotification);
+  volume_.onValueChange = [this] {
+    // -40 dB is the bottom of the slider and means silence, not 0.01.
+    const auto db = static_cast<float>(volume_.getValue());
+    const float g = db <= -40.0f ? 0.0f : juce::Decibels::decibelsToGain(db);
+    if (auto* p = proc_.apvts().getParameter("masterGain"))
+      p->setValueNotifyingHost(p->convertTo0to1(g));
+    // A sample set's level is its own; remember what this one was set to.
+    proc_.markSettingsDirty();
+  };
+
+  addAndMakeVisible(status_);
+  status_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  load_.onClick = std::move(onLoad);
+  audio_.onClick = std::move(onAudioSettings);
+  simple_.onClick = [this] {
+    auto sw = proc_.engineSwitch();
+    sw.simpleWavOnly = simple_.getToggleState();
+    proc_.setEngineSwitch(sw);
+  };
+}
+
+void TopBar::setStatus(const juce::String& text) {
+  // Loading an organ restores its own volume, so the slider has to follow the
+  // parameter rather than only drive it. Skipped while the player is dragging.
+  if (!volume_.isMouseButtonDown())
+    if (auto* g = proc_.apvts().getRawParameterValue("masterGain")) {
+      const double db = juce::Decibels::gainToDecibels(g->load(), -40.0f);
+      if (std::abs(db - volume_.getValue()) > 0.05)
+        volume_.setValue(db, juce::dontSendNotification);
+    }
+
+  status_.setText(text, juce::dontSendNotification);
+}
+
+void TopBar::resized() {
+  auto r = getLocalBounds().reduced(4);
+  load_.setBounds(r.removeFromLeft(120));
+  r.removeFromLeft(6);
+  audio_.setBounds(r.removeFromLeft(120));
+  r.removeFromLeft(6);
+  simple_.setBounds(r.removeFromLeft(150));
+  r.removeFromLeft(10);
+  volumeLabel_.setBounds(r.removeFromLeft(56));
+  volume_.setBounds(r.removeFromLeft(220));
+  r.removeFromLeft(10);
+  status_.setBounds(r);
+}
+
+// ---------------------------------------------------------------- editor
+
+MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
+    : juce::AudioProcessorEditor(p),
+      proc_(p),
+      top_(p, [this] {
+             chooser_ = std::make_unique<juce::FileChooser>(
+                 "Choose a Hauptwerk organ definition", juce::File(),
+                 "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml");
+             chooser_->launchAsync(
+                 juce::FileBrowserComponent::openMode |
+                     juce::FileBrowserComponent::canSelectFiles,
+                 [this](const juce::FileChooser& fc) {
+                   const auto f = fc.getResult();
+                   if (f.existsAsFile()) loadOrgan(f);
+                 });
+           },
+           [this] { if (onAudioSettings) onAudioSettings(); }),
+      console_(p),
+      jamb_(p),
+      expression_(p),
+      keyboard_(p.keyboardState(),
+                juce::MidiKeyboardComponent::horizontalKeyboard) {
+  addAndMakeVisible(top_);
+
+  // The organ's own console when the set ships artwork; the plain jamb
+  // otherwise, and on demand. A set without artwork must still be playable.
+  addAndMakeVisible(consoleView_);
+  consoleView_.setViewedComponent(&console_, false);
+  addAndMakeVisible(pageTabs_);
+  pageTabs_.addChangeListener(this);
+  addAndMakeVisible(settingsButton_);
+  settingsButton_.onClick = [this] { if (onSettings) onSettings(); };
+
+  // The sequencer. Held with "Set", stepping CAPTURES the frame it lands on,
+  // which is how a registration is built for a piece.
+  addChildComponent(manual_);
+  manual_.onChange = [this] {
+    keyboard_.setMidiChannel(manual_.getSelectedId());
+  };
+
+  addChildComponent(layout_); // shown only when the organ offers a choice
+  layout_.onChange = [this] {
+    console_.setLayout(layout_.getSelectedId() - 1);
+    resized();
+  };
+
+  addAndMakeVisible(setter_);
+  setter_.setTooltip("Hold to store the registration into the frame you step "
+                     "onto, instead of recalling it");
+  setter_.onClick = [this] { proc_.setCaptureMode(setter_.getToggleState()); };
+
+  addAndMakeVisible(stepPrev_);
+  stepPrev_.onClick = [this] { proc_.stepperPrev(); };
+  addAndMakeVisible(stepNext_);
+  stepNext_.onClick = [this] { proc_.stepperNext(); };
+  addAndMakeVisible(stepFrame_);
+  stepFrame_.setJustificationType(juce::Justification::centred);
+  stepFrame_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+
+  addAndMakeVisible(keysButton_);
+  keysButton_.onClick = [this] {
+    showingKeyboard_ = !showingKeyboard_;
+    resized();
+  };
+
+  addAndMakeVisible(toggleView_);
+  toggleView_.onClick = [this] {
+    showingConsole_ = !showingConsole_;
+    toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
+    resized();
+    repaint();
+  };
+
+  addAndMakeVisible(jambView_);
+  jambView_.setViewedComponent(&jamb_, false);
+  addAndMakeVisible(expression_);
+  addAndMakeVisible(keyboard_);
+  keyboard_.setAvailableRange(24, 108);
+  keyboard_.setOctaveForMiddleC(4);
+
+  setSize(1180, 760);
+  setResizable(true, true);
+  top_.setStatus("No organ loaded.");
+  startTimerHz(4);
+}
+
+MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
+
+void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
+  top_.setStatus("Loading " + odf.getFileName() + "...");
+  // Synchronous on purpose for now: a partly-built console is worse than a
+  // brief freeze, and the load is already parallel internally. Moving this to
+  // a background thread needs a progress UI, which is M4 work.
+  const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0,
+                                      graphicsOnly);
+  if (!result.ok) {
+    // Keep it in status_, not just on screen: the timer rewrites the bar every
+    // quarter second, and a failure that vanishes is worse than none at all.
+    status_ = "Failed to load " + odf.getFileName() + ": " +
+              juce::String(result.error);
+    top_.setStatus(status_);
+    return;
+  }
+  // Timed separately from the model: this is where the console artwork is
+  // actually decoded, and on a set with a thousand bitmaps it can dominate a
+  // load that has no audio in it at all.
+  const double artStart = juce::Time::getMillisecondCounterHiRes();
+  jamb_.rebuild();
+  expression_.rebuild();
+  console_.rebuild();
+  juce::Logger::writeToLog(
+      "load: artwork       " +
+      juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
+      " ms");
+
+  pageTabs_.clearTabs();
+  for (int i = 0; i < console_.pageCount(); ++i)
+    pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
+  if (console_.pageCount() > 0) pageTabs_.setCurrentTabIndex(0, false);
+
+  // A set with no console artwork opens on the stop list rather than on an
+  // empty picture.
+  // A set that ships for several console sizes lets the player pick. Rebuilt
+  // per organ, because the count is the organ's.
+  layout_.clear(juce::dontSendNotification);
+  for (int i = 0; i < console_.layoutCount(); ++i)
+    layout_.addItem(i == 0 ? "Console: main"
+                           : "Console: alt " + juce::String(i),
+                    i + 1);
+  layout_.setSelectedId(console_.layout() + 1, juce::dontSendNotification);
+
+  // Which manual the on-screen keys play. Named by division, because "Grand
+  // Orgue" means something to a player and "channel 3" does not.
+  manual_.clear(juce::dontSendNotification);
+  for (Id kb : proc_.playableKeyboards())
+    manual_.addItem(juce::String(proc_.keyboardName(kb)),
+                    proc_.channelForKeyboard(kb));
+  if (manual_.getNumItems() > 0) {
+    // The organ's preferred manual: the widest compass when declared, else
+    // the unenclosed manual shipping the most pipework. On a set that
+    // declares no compass (Nancy) widest-of-nothing is the pedal, which is
+    // how the piano ends up playing the one division with no stops drawn.
+    int best = manual_.getItemId(0);
+    if (const Id def = proc_.preferredKeyboard()) {
+      const int ch = proc_.channelForKeyboard(def);
+      if (manual_.indexOfItemId(ch) >= 0) best = ch;
+    }
+    manual_.setSelectedId(best, juce::dontSendNotification);
+    keyboard_.setMidiChannel(best);
+  }
+
+  // A set whose manuals are backdrop photos draws no keys, so the fallback
+  // piano is the only thing playable with the mouse: show it rather than
+  // leaving a silent console and a hidden piano.
+  if (!proc_.hasDrawnManuals()) showingKeyboard_ = true;
+
+  showingConsole_ = console_.hasArtwork();
+  toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
+  resized();
+
+  const auto& m = proc_.organModel();
+  status_ = juce::String(m.organName.empty() ? odf.getFileNameWithoutExtension()
+                                             : juce::String(m.organName)) +
+            " — " + juce::String(m.stops.size()) + " stops, " +
+            juce::String(m.ranks.size()) + " ranks, ";
+  if (graphicsOnly) {
+    // "0 samples (0 MB)" reads as a set that failed to load. Say what was
+    // actually asked for, so a silent console is not mistaken for a broken one.
+    status_ += "graphics only — no audio loaded";
+  } else {
+    status_ += juce::String(result.samples.loaded) + " samples (" +
+               juce::String(
+                   proc_.sampleLibrary().residentBytes() / (1024 * 1024)) +
+               " MB)";
+    if (result.samples.missing > 0)
+      status_ += ", " + juce::String(result.samples.missing) + " missing";
+  }
+  top_.setStatus(status_);
+
+  if (onOrganLoaded)
+    onOrganLoaded(m.organName.empty()
+                      ? odf.getFileNameWithoutExtension()
+                      : juce::String(m.organName));
+}
+
+void MasterpieceEditor::paint(juce::Graphics& g) {
+  g.fillAll(juce::Colour(0xff15171c));
+}
+
+void MasterpieceEditor::resized() {
+  auto r = getLocalBounds();
+  top_.setBounds(r.removeFromTop(36));
+
+  auto tabRow = r.removeFromTop(28);
+  settingsButton_.setBounds(tabRow.removeFromRight(90).reduced(2));
+  layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
+  if (layout_.isVisible())
+    layout_.setBounds(tabRow.removeFromRight(130).reduced(2));
+  keysButton_.setBounds(tabRow.removeFromRight(70).reduced(2));
+  toggleView_.setBounds(tabRow.removeFromRight(110).reduced(2));
+  // Sequencer, right to left: next, the frame it is on, previous, the setter.
+  stepNext_.setBounds(tabRow.removeFromRight(30).reduced(2));
+  stepFrame_.setBounds(tabRow.removeFromRight(64).reduced(2));
+  stepPrev_.setBounds(tabRow.removeFromRight(30).reduced(2));
+  setter_.setBounds(tabRow.removeFromRight(56).reduced(2));
+  pageTabs_.setBounds(tabRow);
+  pageTabs_.setVisible(showingConsole_ && console_.pageCount() > 1);
+
+  manual_.setVisible(showingKeyboard_ && manual_.getNumItems() > 1);
+  keyboard_.setVisible(showingKeyboard_);
+  if (showingKeyboard_) {
+    auto keys = r.removeFromBottom(96);
+    if (manual_.isVisible())
+      manual_.setBounds(keys.removeFromTop(24).removeFromLeft(200).reduced(2));
+    keyboard_.setBounds(keys);
+    // Size the keys to the window rather than leaving a blank half: the
+    // default key width leaves the component short of its own bounds.
+    if (keys.getWidth() > 0)
+      keyboard_.setKeyWidth(juce::jmax(
+          8.0f, static_cast<float>(keys.getWidth()) / 52.0f));
+  }
+  expression_.setBounds(r.removeFromRight(120));
+
+  consoleView_.setVisible(showingConsole_);
+  jambView_.setVisible(!showingConsole_);
+  if (showingConsole_) {
+    consoleView_.setBounds(r);
+    // Scale the artwork to fit rather than scrolling a 1536x864 console
+    // through a smaller window. JUCE routes mouse events back through the
+    // transform, so drawstops stay clickable at any zoom.
+    const auto art = console_.artworkBounds();
+    if (art.getWidth() > 0 && art.getHeight() > 0) {
+      console_.setTransform({});
+      console_.setBounds(0, 0, art.getRight(), art.getBottom());
+      const float sx = static_cast<float>(r.getWidth()) /
+                       static_cast<float>(art.getRight());
+      const float sy = static_cast<float>(r.getHeight()) /
+                       static_cast<float>(art.getBottom());
+      const float scale = juce::jmin(sx, sy, 1.0f);
+      if (scale < 1.0f) console_.setTransform(juce::AffineTransform::scale(scale));
+    }
+  } else {
+    jambView_.setBounds(r);
+    jamb_.setSize(jambView_.getWidth() - 12, jamb_.getHeight());
+  }
+}
+
+void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
+  if (src == &pageTabs_) console_.setPage(pageTabs_.getCurrentTabIndex());
+}
+
+void MasterpieceEditor::timerCallback() {
+  // A drawstop clicked on the console changes the jamb too, and vice versa.
+  if (showingConsole_) console_.repaint();
+
+  // A piston captured on the audio thread only raised a flag; the writing
+  // happens here, where a file write is allowed. Combinations are the
+  // player's own work and losing them to a crash would be unforgivable, so
+  // this saves as soon as it sees one rather than at shutdown.
+  proc_.saveCombinationsIfDirty();
+  // The same for the per-organ settings and anything just learned: raised on
+  // whichever thread changed it, written here, where a file write is allowed.
+  proc_.saveSettingsIfDirty();
+  proc_.saveMidiMapIfDirty();
+
+  // The sequencer's frame, and whether it has anything to walk. An organ with
+  // no generals says so rather than showing a dash that could mean anything.
+  const auto& seq = proc_.stepper();
+  if (seq.empty()) {
+    stepFrame_.setText("no seq.", juce::dontSendNotification);
+    stepPrev_.setEnabled(false);
+    stepNext_.setEnabled(false);
+  } else {
+    stepFrame_.setText(juce::String(seq.frame()) + " / " +
+                           juce::String(static_cast<int>(seq.frameCount())),
+                       juce::dontSendNotification);
+    stepPrev_.setEnabled(seq.frame() > 1);
+    stepNext_.setEnabled(seq.frame() < static_cast<int>(seq.frameCount()));
+  }
+  setter_.setToggleState(proc_.captureMode(), juce::dontSendNotification);
+
+  // Voice count is the honest health readout: it says whether drawing a stop
+  // and pressing a key actually produced sound.
+  const auto& stats = proc_.voiceStats();
+  juce::String live = status_;
+  if (live.isNotEmpty()) live += "  |  ";
+  live += "voices " + juce::String(stats.activeVoices);
+  if (stats.startsDropped > 0)
+    live += ", dropped " + juce::String(stats.startsDropped);
+  if (stats.samplesMissing > 0)
+    live += ", no audio " + juce::String(stats.samplesMissing);
+  top_.setStatus(live);
+}
+
+} // namespace mp::ui
+
+// Processor -> editor hook (kept here to keep mp_audio UI-free).
+namespace mp {
+juce::AudioProcessorEditor* MasterpieceProcessor::createEditor() {
+  return new ui::MasterpieceEditor(*this);
+}
+} // namespace mp

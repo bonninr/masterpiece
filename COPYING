@@ -1,0 +1,38 @@
+Masterpiece — pipe organ sample player
+Copyright © 2026 Bonni <bonninr@gmail.com>
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+The full licence text is in LICENCE, and at <https://www.gnu.org/licenses/>.
+
+
+THIRD-PARTY COMPONENTS
+----------------------
+
+JUCE 9 — audio, GUI and plugin wrappers.
+  Used under the AGPLv3, the open-source half of its dual licence.
+  Section 13 of the GPLv3 grants permission to combine a GPLv3 work with an
+  AGPLv3 one and to convey the result; the AGPL's network-interaction clause
+  then applies to the combination. Masterpiece offers no network interaction —
+  it is built with JUCE_WEB_BROWSER and JUCE_USE_CURL both off — so that
+  clause imposes nothing further here.
+  https://juce.com/legal/juce-9-licence/
+
+pugixml — XML parsing for the organ-definition loader.
+  MIT.  https://github.com/zeux/pugixml
+
+
+READ, BUT NOT COMPILED IN
+-------------------------
+
+The design owes a debt to three projects. None of their code ships here.
+
+  GrandOrgue    https://github.com/GrandOrgue/GrandOrgue
+  rusty-pipes   https://github.com/dividebysandwich/rusty-pipes
+  HISE          https://github.com/christophhart/HISE

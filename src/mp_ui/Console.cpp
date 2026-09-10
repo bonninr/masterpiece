@@ -1,0 +1,633 @@
+#include "Console.h"
+
+#include "../mp_core/KeyboardLayout.h"
+
+#include <algorithm>
+#include <filesystem>
+#include <set>
+#include <tuple>
+
+namespace mp::ui {
+namespace {
+
+// Hauptwerk installs artwork exactly like audio: under
+// OrganInstallationPackages/<id zero-padded to six digits>. Bitmap filenames
+// are frequently written with a leading slash ("/Images/Numbers/Number0.png"),
+// which is relative to the package, not to the filesystem root.
+std::filesystem::path resolveBitmap(const std::string& rootDir,
+                                    const std::string& fileName, Id packageId) {
+  std::string rel = fileName;
+  std::replace(rel.begin(), rel.end(), '\\', '/');
+  while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
+
+  std::filesystem::path base(rootDir);
+  if (packageId > 0) {
+    std::string digits = std::to_string(packageId);
+    if (digits.size() < 6) digits.insert(0, 6 - digits.size(), '0');
+    base /= "OrganInstallationPackages";
+    base /= digits;
+  }
+  return base / rel;
+}
+
+// Windows-authored sets record whatever case the author used; Linux does not
+// forgive it. Same fallback the sample loader needs, for the same reason.
+std::filesystem::path resolveIgnoringCase(const std::filesystem::path& wanted) {
+  std::error_code ec;
+  if (std::filesystem::exists(wanted, ec)) return wanted;
+  const auto dir = wanted.parent_path();
+  if (!std::filesystem::is_directory(dir, ec)) return wanted;
+
+  std::string target = wanted.filename().string();
+  std::transform(target.begin(), target.end(), target.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    std::string have = entry.path().filename().string();
+    std::transform(have.begin(), have.end(), have.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (have == target) return entry.path();
+  }
+  return wanted;
+}
+
+constexpr int64_t cacheKey(Id setId, int index) {
+  return (static_cast<int64_t>(setId) << 20) ^ static_cast<int64_t>(index);
+}
+
+} // namespace
+
+ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
+
+void ConsoleView::rebuild() {
+  items_.clear();
+  keys_.clear();
+  drawnKeys_.clear();
+  heldKey_ = -1;
+  pageIds_.clear();
+  cache_.clear();
+  hasArtwork_ = false;
+  extent_ = {};
+  organRoot_ = proc_.organRootDir();
+
+  const auto& model = proc_.organModel();
+
+  // Which switch owns which drawn instance. Built once here rather than
+  // searched per item: Nancy has 7983 switches.
+  std::unordered_map<Id, const Switch*> switchByInstance;
+  for (const auto& [id, sw] : model.switches) {
+    (void)id;
+    if (sw.dispInstanceId != 0) switchByInstance[sw.dispInstanceId] = &sw;
+  }
+
+  for (const auto& [pageId, page] : model.displayPages) {
+    (void)page;
+    pageIds_.push_back(pageId);
+  }
+  std::sort(pageIds_.begin(), pageIds_.end());
+  if (pageIndex_ >= static_cast<int>(pageIds_.size())) pageIndex_ = 0;
+  if (pageIds_.empty()) return;
+
+  const Id showing = pageIds_[static_cast<size_t>(pageIndex_)];
+  const auto pageIt = model.displayPages.find(showing);
+  if (pageIt == model.displayPages.end()) return;
+
+  for (const auto& inst : pageIt->second.instances) {
+    const auto setIt = model.imageSets.find(inst.imageSetFor(layout_));
+    if (setIt == model.imageSets.end()) continue;
+
+    Item item;
+    item.instanceId = inst.instanceId;
+    item.imageSetId = inst.imageSetFor(layout_);
+    item.defaultIndex = inst.defaultImageIndex > 0 ? inst.defaultImageIndex : 1;
+    item.layer = inst.layer;
+
+    const auto sit = switchByInstance.find(inst.instanceId);
+
+    // A drawn switch that the organ declares to be a KEY is not a drawstop.
+    // Sets whose manuals are part of a photographed backdrop draw every key
+    // this way; treating them as drawstops makes a manual that toggles
+    // pictures and sounds nothing.
+    if (sit != switchByInstance.end()) {
+      const auto kk = model.keyboardKeys.find(sit->second->switchId);
+      if (kk != model.keyboardKeys.end()) {
+        KeyItem key;
+        key.midiNote = kk->second.midiNote;
+        key.channel = proc_.channelForKeyboard(kk->second.keyboardId);
+        key.imageSetId = inst.imageSetFor(layout_);
+        key.engagedIndex = sit->second->dispIndexEngaged;
+        key.disengagedIndex = sit->second->dispIndexDisengaged;
+        const int kw = setIt->second.widthPx;
+        const int kh = setIt->second.heightPx;
+        key.bounds = {inst.leftFor(layout_), inst.topFor(layout_),
+                      kw > 0 ? kw : 12, kh > 0 ? kh : 60};
+        if (kw <= 0 || kh <= 0)
+          if (const juce::Image* img =
+                  imageFor(key.imageSetId, key.disengagedIndex)) {
+            key.bounds.setWidth(img->getWidth());
+            key.bounds.setHeight(img->getHeight());
+          }
+        // Sharps are drawn over naturals and are the narrower of the two, so
+        // the narrow ones have to be hit-tested first.
+        key.sharp = isSharpPitchClass(pitchClassOf(key.midiNote));
+        extent_ = extent_.getUnion(key.bounds);
+        drawnKeys_.push_back(key);
+        continue;
+      }
+    }
+
+    if (sit != switchByInstance.end()) {
+      item.switchId = sit->second->switchId;
+      item.engagedIndex = sit->second->dispIndexEngaged;
+      item.disengagedIndex = sit->second->dispIndexDisengaged;
+      item.clickable = sit->second->clickable;
+    }
+
+    // The set knows the frame size; the instance knows where it goes, and
+    // whether it repeats to fill a larger rectangle.
+    int w = setIt->second.widthPx;
+    int h = setIt->second.heightPx;
+    const int left = inst.leftFor(layout_);
+    const int top = inst.topFor(layout_);
+    // Most sets declare no size at all and let the bitmap say. Falling back to
+    // a fixed box instead made a drawstop clickable only in its top-left
+    // corner, so clicking the knob did nothing — which looked exactly like a
+    // coupler that was not wired up.
+    if ((w <= 0 || h <= 0) && !inst.tilesFor(layout_)) {
+      if (const juce::Image* img = imageFor(item.imageSetId, item.defaultIndex)) {
+        w = img->getWidth();
+        h = img->getHeight();
+      }
+    }
+    if (inst.tilesFor(layout_)) {
+      item.tiled = true;
+      item.bounds = {left, top, inst.tileRightFor(layout_) - left,
+                     inst.tileBottomFor(layout_) - top};
+    } else {
+      item.bounds = {left, top, w > 0 ? w : 32, h > 0 ? h : 32};
+    }
+
+    // The organ may name a smaller live area inside the picture.
+    item.hitBounds = item.bounds;
+    if (setIt->second.hasClickArea() && !item.tiled) {
+      const auto& set = setIt->second;
+      item.hitBounds = juce::Rectangle<int>(
+          left + set.clickLeftPx, top + set.clickTopPx,
+          set.clickRightPx - set.clickLeftPx,
+          set.clickBottomPx - set.clickTopPx);
+    }
+
+    extent_ = extent_.getUnion(item.bounds);
+    items_.push_back(item);
+  }
+
+  // ScreenLayerNumber is paint order: low layers are the backdrop, high layers
+  // the controls sitting on top of it. stable_sort so instances that share a
+  // layer keep their file order, which is how overlapping artwork is authored.
+  std::stable_sort(items_.begin(), items_.end(),
+                   [](const Item& a, const Item& b) { return a.layer < b.layer; });
+
+  // Keys that came from drawn switches go in front of the assembled ones, and
+  // the sharps in front of those, so a click lands on the narrowest thing
+  // under it.
+  for (const auto& k : drawnKeys_)
+    if (!k.sharp) keys_.push_back(k);
+  for (const auto& k : drawnKeys_)
+    if (k.sharp) keys_.push_back(k);
+  drawnKeys_.clear();
+
+  buildKeyboards(model, showing);
+  for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
+
+  // How many layouts this organ offers. A set with one console size declares
+  // no alternates at all, which is most of them.
+  layoutCount_ = 1;
+  for (const auto& [pid, page] : model.displayPages) {
+    (void)pid;
+    for (const auto& inst : page.instances)
+      for (int a = 3; a >= 1; --a)
+        if (inst.hasLayout(a)) layoutCount_ = std::max(layoutCount_, a + 1);
+  }
+  if (layout_ >= layoutCount_) layout_ = 0;
+
+  hasArtwork_ = !items_.empty() || !keys_.empty();
+  setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
+
+  // Only poll while there is something on screen whose picture can change
+  // under the player's hands.
+  if (!keys_.empty())
+    startTimerHz(30);
+  else
+    stopTimer();
+}
+
+void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
+  // Sharps are collected separately and appended, so they paint over the
+  // naturals they overlap and are hit-tested before them.
+  std::vector<KeyItem> sharps;
+
+  // Hauptwerk models the player's keys and the organ's keys as two separate
+  // Keyboard rows drawn in exactly the same place: one accessible for input,
+  // one for output. Drawing both would stack two identical manuals and make
+  // every click ambiguous, so the second one is dropped. Identity is the
+  // drawn geometry, not the name, which is set-specific.
+  std::set<std::tuple<Id, int, int, int, int>> alreadyDrawn;
+
+  // A keyboard is laid out in a stable order so which of a duplicated pair
+  // wins does not depend on the hash table's iteration order.
+  std::vector<const Keyboard*> ordered;
+  ordered.reserve(model.keyboards.size());
+  for (const auto& [kbId, kb] : model.keyboards) {
+    (void)kbId;
+    ordered.push_back(&kb);
+  }
+  std::sort(ordered.begin(), ordered.end(),
+            [](const Keyboard* a, const Keyboard* b) {
+              return a->keyboardId < b->keyboardId;
+            });
+
+  for (const Keyboard* kbp : ordered) {
+    const Keyboard& kb = *kbp;
+    // A keyboard with no image set is not drawn at all: an input-only manual
+    // and most pedalboards are like this, and Hauptwerk does not draw them
+    // either.
+    const Id keySetId = kb.keyImageSetFor(layout_);
+    if (keySetId == 0 || kb.numKeys <= 0) continue;
+    if (kb.displayPageId != pageId) continue;
+    const auto ksIt = model.keyImageSets.find(keySetId);
+    if (ksIt == model.keyImageSets.end()) continue;
+    if (!alreadyDrawn
+             .insert({keySetId, kb.dispLeftFor(layout_), kb.dispTopFor(layout_),
+                      kb.numKeys, kb.firstMidiNote})
+             .second)
+      continue;
+    const KeyImageSet& ks = ksIt->second;
+    // A drawn manual belongs to one of the organ's keyboards, so its keys must
+    // arrive on that keyboard's channel rather than on a fixed one.
+    const int channel = proc_.channelForKeyboard(kb.keyboardId);
+
+    int x = kb.dispLeftFor(layout_);
+    const int keyTop = kb.dispTopFor(layout_);
+    for (int i = 0; i < kb.numKeys; ++i) {
+      const int note = kb.firstMidiNote + i;
+      const int pc = pitchClassOf(note);
+      const Id shape = keyShapeFor(ks, pc, i == 0, i == kb.numKeys - 1);
+
+      if (shape != 0) {
+        const auto setIt = model.imageSets.find(shape);
+        if (setIt != model.imageSets.end()) {
+          KeyItem item;
+          item.midiNote = note;
+          item.channel = channel;
+          item.imageSetId = shape;
+          item.engagedIndex = ks.indexEngaged;
+          item.disengagedIndex = ks.indexDisengaged;
+          item.sharp = isSharpPitchClass(pc);
+          // Key image sets normally declare no dimensions and let the bitmap
+          // say. The images are tiny and cached, so asking is cheap, and the
+          // answer is what makes a click land on the right key.
+          int w = setIt->second.widthPx;
+          int h = setIt->second.heightPx;
+          if (w <= 0 || h <= 0) {
+            if (const juce::Image* img = imageFor(shape, item.disengagedIndex)) {
+              w = img->getWidth();
+              h = img->getHeight();
+            }
+          }
+          // Every key hangs from the same top edge; a sharp is simply a
+          // shorter image, so it needs no vertical offset of its own.
+          item.bounds = {x, keyTop, w > 0 ? w : 12, h > 0 ? h : 60};
+          (item.sharp ? sharps : keys_).push_back(item);
+        }
+      }
+      x += keyAdvance(ks, pc);
+    }
+  }
+
+  keys_.insert(keys_.end(), sharps.begin(), sharps.end());
+}
+
+int ConsoleView::keyAt(juce::Point<int> p, int* outChannel) const {
+  // Back to front: the sharps are last in the list and sit on top.
+  for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
+    if (it->bounds.contains(p)) {
+      if (outChannel != nullptr) *outChannel = it->channel;
+      return it->midiNote;
+    }
+  return -1;
+}
+
+juce::Rectangle<int> ConsoleView::keysBounds() const {
+  juce::Rectangle<int> r;
+  for (const auto& k : keys_) r = r.getUnion(k.bounds);
+  return r;
+}
+
+void ConsoleView::timerCallback() {
+  // MidiKeyboardState is what the engine already updates from the MIDI stream
+  // every block, so a key lights up whether it was pressed on screen or on the
+  // player's own console.
+  uint64_t hash = 1469598103934665603ull;
+  auto& state = proc_.keyboardState();
+  for (const auto& k : keys_) {
+    hash ^= state.isNoteOn(k.channel, k.midiNote) ? 1u : 0u;
+    hash *= 1099511628211ull;
+  }
+  if (hash == keyStateHash_) return;
+  keyStateHash_ = hash;
+  repaint(keysBounds());
+}
+
+juce::String ConsoleView::pageName(int index) const {
+  if (index < 0 || index >= static_cast<int>(pageIds_.size())) return {};
+  const auto& pages = proc_.organModel().displayPages;
+  const auto it = pages.find(pageIds_[static_cast<size_t>(index)]);
+  if (it == pages.end() || it->second.name.empty())
+    return "Page " + juce::String(index + 1);
+  return juce::String(it->second.name);
+}
+
+void ConsoleView::setLayout(int layout) {
+  if (layout < 0 || layout == layout_) return;
+  layout_ = layout;
+  rebuild();
+  repaint();
+}
+
+void ConsoleView::setPage(int index) {
+  if (index < 0 || index >= static_cast<int>(pageIds_.size())) return;
+  pageIndex_ = index;
+  rebuild();
+  repaint();
+}
+
+int ConsoleView::frameIndexFor(const Item& item) const {
+  if (item.switchId == 0) return item.defaultIndex;
+  const bool on = proc_.switchEngaged(item.switchId);
+  const int chosen = on ? item.engagedIndex : item.disengagedIndex;
+  // A set that names no frame for a state falls back to what the instance
+  // declares, rather than drawing nothing.
+  return chosen > 0 ? chosen : item.defaultIndex;
+}
+
+const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
+  const int64_t key = cacheKey(imageSetId, index);
+  const auto it = cache_.find(key);
+  if (it != cache_.end())
+    return it->second.isValid() ? &it->second : nullptr;
+
+  const auto& model = proc_.organModel();
+  const auto setIt = model.imageSets.find(imageSetId);
+  if (setIt == model.imageSets.end()) {
+    cache_[key] = juce::Image();
+    return nullptr;
+  }
+
+  const ImageSet& set = setIt->second;
+  const ImageSetElement* element = nullptr;
+  for (const auto& el : set.elements)
+    if (el.index == index) { element = &el; break; }
+  // Some sets declare a single frame with no index; use it rather than fail.
+  if (element == nullptr && !set.elements.empty() && index <= 1)
+    element = &set.elements.front();
+
+  if (element == nullptr || element->bitmapFile.empty()) {
+    cache_[key] = juce::Image();
+    return nullptr;
+  }
+
+  const auto path = resolveIgnoringCase(
+      resolveBitmap(organRoot_, element->bitmapFile, set.packageId));
+  juce::Image img = juce::ImageFileFormat::loadFrom(juce::File(path.string()));
+
+  // Hauptwerk predates transparent bitmaps: a set that ships BMPs carries a
+  // separate mask image instead, black where the artwork shows and white where
+  // the console behind it must show through. Without this a round drawstop is
+  // drawn as the square it is stored as.
+  if (img.isValid() && !set.transparencyMaskFile.empty()) {
+    const auto maskPath = resolveIgnoringCase(
+        resolveBitmap(organRoot_, set.transparencyMaskFile, set.packageId));
+    juce::Image mask =
+        juce::ImageFileFormat::loadFrom(juce::File(maskPath.string()));
+    if (mask.isValid()) {
+      img = img.convertedToFormat(juce::Image::ARGB);
+      const int w = std::min(img.getWidth(), mask.getWidth());
+      const int h = std::min(img.getHeight(), mask.getHeight());
+      juce::Image::BitmapData dst(img, juce::Image::BitmapData::readWrite);
+      const juce::Image::BitmapData src(mask, juce::Image::BitmapData::readOnly);
+      for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+          // Brightness, not one channel: masks are authored greyscale but not
+          // always stored that way, and a colour cast must not shift the edge.
+          const auto m = src.getPixelColour(x, y);
+          const auto p = dst.getPixelColour(x, y);
+          const float keep = 1.0f - m.getBrightness();
+          dst.setPixelColour(x, y, p.withMultipliedAlpha(keep));
+        }
+      }
+    }
+  }
+
+  cache_[key] = img; // a failed load is cached too, so it is not retried
+  return img.isValid() ? &cache_[key] : nullptr;
+}
+
+void ConsoleView::paint(juce::Graphics& g) {
+  g.fillAll(juce::Colour(0xff0d0f12));
+
+  if (!hasArtwork_) {
+    g.setColour(juce::Colours::grey);
+    g.drawText("This organ ships no console artwork on this page.",
+               getLocalBounds(), juce::Justification::centred);
+    return;
+  }
+
+  int drawn = 0, missing = 0;
+  for (const auto& item : items_) {
+    const juce::Image* img = imageFor(item.imageSetId, frameIndexFor(item));
+    if (img == nullptr) {
+      ++missing;
+      continue;
+    }
+    if (item.tiled) {
+      // Repeat the tile across the declared rectangle. A backdrop authored as
+      // an 85-pixel strip covers a 1536-wide page this way; drawing it once
+      // leaves a sliver of artwork and bare background beside it.
+      g.saveState();
+      g.reduceClipRegion(item.bounds);
+      g.setTiledImageFill(*img, item.bounds.getX(), item.bounds.getY(), 1.0f);
+      g.fillRect(item.bounds);
+      g.restoreState();
+    } else {
+      g.drawImageAt(*img, item.bounds.getX(), item.bounds.getY(), false);
+    }
+    ++drawn;
+  }
+
+  // The manuals go on top of the console furniture: a drawn manual is the one
+  // thing on the page whose picture changes while the player is playing.
+  auto& keyState = proc_.keyboardState();
+  for (const auto& k : keys_) {
+    const bool down = keyState.isNoteOn(k.channel, k.midiNote);
+    const int frame = down ? k.engagedIndex : k.disengagedIndex;
+    const juce::Image* img = imageFor(k.imageSetId, frame);
+    // Fall back to the other frame rather than leaving a hole in the manual:
+    // some sets ship only the released artwork.
+    if (img == nullptr)
+      img = imageFor(k.imageSetId, down ? k.disengagedIndex : k.engagedIndex);
+    if (img == nullptr) continue;
+    g.drawImageAt(*img, k.bounds.getX(), k.bounds.getY(), false);
+    ++drawn;
+  }
+
+  // While learning, say which control is armed: an invisible mode is a trap.
+  if (proc_.midiMap().learning()) {
+    for (const auto& item : items_) {
+      if (item.switchId != proc_.midiMap().learningTarget()) continue;
+      g.setColour(juce::Colours::orange);
+      g.drawRect(item.bounds, 3);
+      break;
+    }
+  }
+
+  // Say so rather than showing a mysteriously empty console: a set whose
+  // images did not resolve looks identical to one that has none.
+  if (drawn == 0 && missing > 0) {
+    g.setColour(juce::Colours::orangered);
+    g.drawText("Console artwork could not be loaded (" + juce::String(missing) +
+                   " images). Check OrganInstallationPackages.",
+               getLocalBounds().reduced(20), juce::Justification::centred);
+  }
+}
+
+void ConsoleView::mouseDown(const juce::MouseEvent& e) {
+  // A drawn manual is playable: clicking a key sounds it. The click goes
+  // through MidiKeyboardState, which is the same path a physical console
+  // takes, so stops and couplers apply to it identically.
+  if (!e.mods.isPopupMenu()) {
+    int channel = 1;
+    const int note = keyAt(e.getPosition(), &channel);
+    if (note >= 0) {
+      heldKey_ = note;
+      heldChannel_ = channel;
+      proc_.keyboardState().noteOn(channel, note, 0.8f);
+      repaint(keysBounds());
+      return;
+    }
+  }
+
+  // Topmost first: the controls are painted last, so they are hit first.
+  for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
+    if (it->switchId == 0 || !it->clickable) continue;
+    if (!it->hitBounds.contains(e.getPosition())) continue;
+
+    if (e.mods.isPopupMenu()) {
+      showMidiMenu(it->switchId, it->bounds);
+      return;
+    }
+
+    proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+    repaint(it->bounds);
+    return;
+  }
+
+  // A right-click on nothing cancels an armed learn, so an accidental arm is
+  // easy to back out of.
+  if (e.mods.isPopupMenu() && proc_.midiMap().learning()) {
+    proc_.midiMap().cancelLearn();
+    repaint();
+  }
+}
+
+void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
+  // Right-click a drawstop to map it. One message that flips it is what most
+  // consoles send, but plenty send a separate message to draw and to cancel,
+  // and a piston is held rather than latched — so the behaviour is offered
+  // rather than assumed. The list is GrandOrgue's, which documents these
+  // properly; Hauptwerk detects most of it for you and publishes no
+  // equivalent set to copy.
+  auto& map = proc_.midiMap();
+  juce::PopupMenu menu;
+
+  const auto existing = map.bindingsFor(MidiTargetKind::Switch, switchId);
+  if (existing.empty()) {
+    menu.addSectionHeader("Not mapped");
+  } else {
+    for (const MidiBinding* b : existing) {
+      juce::String what =
+          b->source.kind == MidiSourceKind::Note ? "Note " : "CC ";
+      what << b->source.number;
+      if (b->source.channel > 0) what << " ch " << b->source.channel;
+      switch (b->trigger) {
+        case MidiTrigger::Momentary: what << "  (held)"; break;
+        case MidiTrigger::EngageOnly: what << "  (draws)"; break;
+        case MidiTrigger::DisengageOnly: what << "  (cancels)"; break;
+        case MidiTrigger::Toggle: what << "  (toggles)"; break;
+      }
+      menu.addSectionHeader(what);
+    }
+  }
+  menu.addSeparator();
+  menu.addItem(1, "Learn: toggle");
+  menu.addItem(2, "Learn: held while pressed");
+  menu.addItem(3, "Learn: draws it only");
+  menu.addItem(4, "Learn: cancels it only");
+  menu.addSeparator();
+  menu.addItem(5, "Clear mapping", !existing.empty());
+
+  menu.showMenuAsync(
+      juce::PopupMenu::Options().withTargetComponent(this).withTargetScreenArea(
+          localAreaToGlobal(bounds)),
+      [this, switchId, bounds](int choice) {
+        auto& m = proc_.midiMap();
+        switch (choice) {
+          case 1:
+            m.beginLearnAs(MidiTargetKind::Switch, switchId, MidiTrigger::Toggle);
+            break;
+          case 2:
+            m.beginLearnAs(MidiTargetKind::Switch, switchId,
+                           MidiTrigger::Momentary);
+            break;
+          case 3:
+            m.beginLearnAs(MidiTargetKind::Switch, switchId,
+                           MidiTrigger::EngageOnly);
+            break;
+          case 4:
+            m.beginLearnAs(MidiTargetKind::Switch, switchId,
+                           MidiTrigger::DisengageOnly);
+            break;
+          case 5:
+            m.unbindTarget(MidiTargetKind::Switch, switchId);
+            proc_.saveMidiMap();
+            break;
+          default:
+            return;
+        }
+        repaint(bounds);
+      });
+}
+
+void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
+  if (heldKey_ < 0) return;
+  // Sliding along the manual plays it, the way a hand does. Dragging from one
+  // manual onto another switches channel with the key, which is what actually
+  // happens when a hand crosses between them.
+  int channel = heldChannel_;
+  const int note = keyAt(e.getPosition(), &channel);
+  if (note == heldKey_ && channel == heldChannel_) return;
+  proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
+  heldKey_ = note;
+  heldChannel_ = channel;
+  if (note >= 0) proc_.keyboardState().noteOn(channel, note, 0.8f);
+  repaint(keysBounds());
+}
+
+void ConsoleView::mouseUp(const juce::MouseEvent&) {
+  if (heldKey_ < 0) return;
+  proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
+  heldKey_ = -1;
+  repaint(keysBounds());
+}
+
+void ConsoleView::resized() {}
+
+} // namespace mp::ui

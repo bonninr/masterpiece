@@ -1,0 +1,53 @@
+# This repository carries the release tree only: the engine, the application,
+# the plugin, and the README. Everything below stays on the development
+# machine.
+
+# Build + install outputs
+build/
+install/
+_juc*/
+*.o
+*.obj
+
+# Reference material. Third-party documentation that is not ours to
+# redistribute, plus upstream checkouts carrying their own .git.
+specs/
+
+# Development tooling and internal notes, not part of a release.
+tests/
+docs/
+build-scripts/
+apps/mp-render/
+apps/mp-validate-odf/
+PROJECT_SUMMARY.md
+README_BUILD.md
+ROADMAP_M1-M4.md
+
+# CMake user overrides
+CMakeUserPresets.json
+
+# Session and editor clutter
+.claude/
+.vs/
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# Plugin binaries
+*.vst3/
+*.component/
+*.lv2/
+
+# Renders, logs and working screenshots. Anything derived from a licensed
+# sample set is not ours to ship; the published gallery in screenshots/ is
+# captured deliberately.
+*.wav
+*.log
+/console-*.png
+/settings-*.png
+
+# OS clutter
+.DS_Store
+Thumbs.db

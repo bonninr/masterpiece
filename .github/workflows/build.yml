@@ -1,0 +1,135 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            preset: ci-linux
+            artifact: masterpiece-linux-x86_64
+          - os: macos-latest
+            preset: ci-macos
+            artifact: masterpiece-macos
+          - os: windows-latest
+            preset: ci-windows
+            artifact: masterpiece-windows
+          - os: ubuntu-latest
+            preset: ci-linux-arm
+            artifact: masterpiece-linux-armhf
+            arm: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux' && !matrix.arm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxcomposite-dev libfreetype6-dev \
+            libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev
+
+      - name: Dependencies (Linux -> ARM cross-build)
+        if: runner.os == 'Linux' && matrix.arm
+        run: |
+          set -e
+          CODENAME=$(awk -F= '$1=="UBUNTU_CODENAME" {print $2}' /etc/os-release)
+
+          # Ubuntu 24.04 keeps its sources in deb822 files that declare no
+          # Architectures. Adding armhf without pinning these first makes apt
+          # ask the amd64-only mirror for armhf indexes and fail the update.
+          for f in /etc/apt/sources.list.d/*.sources; do
+            [ -e "$f" ] || continue
+            grep -q '^Architectures:' "$f" || \
+              sudo sed -i '/^Types: deb$/a Architectures: amd64' "$f"
+          done
+
+          # ARM lives on ports.ubuntu.com, including -security, which
+          # security.ubuntu.com answers 404 for.
+          sudo tee /etc/apt/sources.list.d/armhf.sources >/dev/null <<EOF
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports/
+          Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security
+          Components: main restricted universe multiverse
+          Architectures: armhf
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+
+          # Package names are gcc-<triple>, not <triple>-gcc; the latter is
+          # the binary and matches no package.
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            binutils-arm-linux-gnueabihf \
+            libasound2-dev:armhf libx11-dev:armhf libxrandr-dev:armhf \
+            libxinerama-dev:armhf libxcursor-dev:armhf libxcomposite-dev:armhf \
+            libfreetype6-dev:armhf libfontconfig1-dev:armhf \
+            libglu1-mesa-dev:armhf libxi-dev:armhf
+          arm-linux-gnueabihf-g++ --version
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja --no-progress -y
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      # A cross-built binary cannot run here, so confirm it is the right
+      # machine type instead.
+      - name: Check ARM output
+        if: matrix.arm
+        run: file build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+
+      - name: Launch check (Linux)
+        if: runner.os == 'Linux' && !matrix.arm
+        run: |
+          sudo apt-get install -y xvfb
+          APP=build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+          chmod +x "$APP"
+          set +e
+          timeout --signal=TERM 20s xvfb-run -a -s "-screen 0 1280x800x24" "$APP"
+          code=$?
+          set -e
+          # 124 is the timeout firing, which means it was still running.
+          test "$code" -eq 124
+
+      - name: Launch check (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = "build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Release/Masterpiece.exe"
+          if (-not (Test-Path $app)) { throw "not built: $app" }
+          $p = Start-Process -FilePath $app -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { throw "exited early with $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
+            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
+            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.component
+            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
+          if-no-files-found: warn

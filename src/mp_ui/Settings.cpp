@@ -1,0 +1,636 @@
+#include "Settings.h"
+
+#include "ManualDialog.h"
+
+namespace mp::ui {
+namespace {
+
+void styleLabel(juce::Label& l, const juce::String& text) {
+  l.setText(text, juce::dontSendNotification);
+  l.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+}
+
+void styleNote(juce::Label& l, const juce::String& text) {
+  l.setText(text, juce::dontSendNotification);
+  l.setColour(juce::Label::textColourId, juce::Colours::grey);
+  l.setJustificationType(juce::Justification::topLeft);
+  l.setFont(juce::Font(juce::FontOptions(12.0f)));
+}
+
+constexpr int kRow = 28;
+constexpr int kGap = 6;
+
+} // namespace
+
+// ---------------------------------------------------------------- engine
+
+EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
+  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
+                  &originalPitch_}) {
+    addAndMakeVisible(*b);
+    b->onClick = [this] { pushSwitches(); };
+  }
+
+  const auto sw = proc_.engineSwitch();
+  simpleWav_.setToggleState(sw.simpleWavOnly, juce::dontSendNotification);
+  wind_.setToggleState(sw.enableWindModel, juce::dontSendNotification);
+  tremulant_.setToggleState(sw.enableTremulant, juce::dontSendNotification);
+  enclosure_.setToggleState(sw.enableEnclosure, juce::dontSendNotification);
+  voicing_.setToggleState(sw.enableVoicing, juce::dontSendNotification);
+  originalPitch_.setToggleState(sw.playAtOriginalOrganPitch,
+                               juce::dontSendNotification);
+
+  addAndMakeVisible(preloadLabel_);
+  styleLabel(preloadLabel_, "Preloaded per sample");
+  addAndMakeVisible(preload_);
+  // The head is a minimum: it is always extended to cover the sustain loop,
+  // so these are "how much MORE than the loop", not a hard cap.
+  preload_.addItem("Whole samples (most memory)", 1);
+  preload_.addItem("Loop + 2 s", 2);
+  preload_.addItem("Loop + 1 s", 3);
+  preload_.addItem("Loop only (least memory)", 4);
+  preload_.setSelectedId(1, juce::dontSendNotification);
+  preload_.onChange = [this] {
+    const int64_t rate = 48000;
+    switch (preload_.getSelectedId()) {
+      case 2: proc_.setPreloadHeadFrames(2 * rate); break;
+      case 3: proc_.setPreloadHeadFrames(rate); break;
+      case 4: proc_.setPreloadHeadFrames(1); break;
+      default: proc_.setPreloadHeadFrames(0); break;
+    }
+  };
+
+  addAndMakeVisible(storageLabel_);
+  styleLabel(storageLabel_, "Resident format");
+  addAndMakeVisible(storage_);
+  storage_.addItem("32-bit float (no conversion)", 1);
+  storage_.addItem("16-bit (half the memory)", 2);
+  storage_.setSelectedId(
+      proc_.sampleStorage() == SampleStorage::Int16 ? 2 : 1,
+      juce::dontSendNotification);
+  storage_.onChange = [this] {
+    proc_.setSampleStorage(storage_.getSelectedId() == 2 ? SampleStorage::Int16
+                                                         : SampleStorage::Float32);
+  };
+
+  addAndMakeVisible(stream_);
+  stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
+  stream_.onClick = [this] {
+    proc_.setStreamReleases(stream_.getToggleState());
+  };
+
+  addAndMakeVisible(memory_);
+  styleLabel(memory_, "");
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "All three settings take effect on the next organ load.\n\n"
+            "The preload head is a minimum, never a cap: it is always extended "
+            "to cover the sustain loop, because a sample whose loop is missing "
+            "does not sustain - the note simply stops when the audio runs "
+            "out.\n\n"
+            "The resident format decides what a held frame costs. 16-bit halves "
+            "the memory and is what Hauptwerk loads by default; each sample is "
+            "scaled by its own peak first, so a quiet stop keeps the full "
+            "sixteen bits instead of only the top few.\n\n"
+            "Streaming holds only the first second of each release and fetches "
+            "the rest from disk while it plays. Releases are the only samples "
+            "in an organ worth streaming - several seconds each, played once, "
+            "straight through, never looped - and an attack cannot be treated "
+            "the same way because its sustain loop has to be resident. On the "
+            "Nancy demo this is 12.2 GB down to 5.6 GB, with the rendered "
+            "audio identical sample for sample. Needs a disk that keeps up; "
+            "the Engine readout says if it did not.");
+  startTimerHz(2);
+}
+
+EnginePanel::~EnginePanel() { stopTimer(); }
+
+void EnginePanel::pushSwitches() {
+  auto sw = proc_.engineSwitch();
+  sw.simpleWavOnly = simpleWav_.getToggleState();
+  sw.enableWindModel = wind_.getToggleState();
+  sw.enableTremulant = tremulant_.getToggleState();
+  sw.enableEnclosure = enclosure_.getToggleState();
+  sw.enableVoicing = voicing_.getToggleState();
+  sw.playAtOriginalOrganPitch = originalPitch_.getToggleState();
+  proc_.setEngineSwitch(sw);
+
+  // simpleWavOnly bypasses everything; showing the others as still-on would
+  // be a lie about what the engine is doing.
+  const bool detailed = !sw.simpleWavOnly;
+  for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
+    b->setEnabled(detailed);
+}
+
+void EnginePanel::timerCallback() {
+  const auto bytes = proc_.sampleLibrary().residentBytes();
+  const bool compact = proc_.sampleStorage() == SampleStorage::Int16;
+  juce::String text = "Resident samples: " +
+                      juce::String(bytes / (1024 * 1024)) + " MB (" +
+                      juce::String(proc_.sampleLibrary().residentCount()) +
+                      " samples, " + (compact ? "16-bit" : "32-bit float") + ")";
+  const auto streamed = proc_.sampleLibrary().streamedCount();
+  if (streamed > 0)
+    text += "  -  " + juce::String(static_cast<int>(streamed)) +
+            " streamed, " +
+            juce::String(proc_.sampleLibrary().streamedBytesSaved() /
+                         (1024 * 1024)) +
+            " MB left on disk";
+  if (const auto under = proc_.streamUnderruns(); under > 0)
+    text += "  -  DISK TOO SLOW: " + juce::String(static_cast<int>(under)) +
+            " underrun(s)";
+  memory_.setText(text, juce::dontSendNotification);
+}
+
+void EnginePanel::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff1b1e24)); }
+
+void EnginePanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
+                  &originalPitch_}) {
+    b->setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(2);
+  }
+  r.removeFromTop(kGap);
+  auto row = r.removeFromTop(kRow);
+  preloadLabel_.setBounds(row.removeFromLeft(180));
+  preload_.setBounds(row.removeFromLeft(260));
+  r.removeFromTop(6);
+  auto storageRow = r.removeFromTop(kRow);
+  storageLabel_.setBounds(storageRow.removeFromLeft(180));
+  storage_.setBounds(storageRow.removeFromLeft(260));
+  r.removeFromTop(6);
+  stream_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  memory_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
+// ---------------------------------------------------------------- reverb
+
+ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(enabled_);
+  enabled_.setToggleState(proc_.convolver().enabled(), juce::dontSendNotification);
+  enabled_.onClick = [this] {
+    proc_.convolver().setEnabled(enabled_.getToggleState());
+  };
+
+  addAndMakeVisible(load_);
+  load_.onClick = [this] {
+    chooser_ = std::make_unique<juce::FileChooser>(
+        "Choose an impulse response", juce::File(), "*.wav;*.aiff;*.aif;*.flac");
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                              juce::FileBrowserComponent::canSelectFiles,
+                          [this](const juce::FileChooser& fc) {
+                            const auto f = fc.getResult();
+                            if (!f.existsAsFile()) return;
+                            if (proc_.convolver().loadImpulseResponse(f)) {
+                              irName_.setText("IR: " + f.getFileName(),
+                                              juce::dontSendNotification);
+                              enabled_.setToggleState(true, juce::sendNotification);
+                            }
+                          });
+  };
+
+  addAndMakeVisible(clear_);
+  clear_.onClick = [this] {
+    proc_.convolver().clear();
+    irName_.setText("No IR loaded", juce::dontSendNotification);
+  };
+
+  addAndMakeVisible(irName_);
+  styleLabel(irName_, proc_.convolver().hasImpulseResponse()
+                          ? "IR: " + proc_.convolver().impulseResponseName()
+                          : "No IR loaded");
+
+  addAndMakeVisible(mixLabel_);
+  styleLabel(mixLabel_, "Wet");
+  addAndMakeVisible(mix_);
+  mix_.setRange(0.0, 1.0, 0.01);
+  mix_.setValue(proc_.convolver().mix(), juce::dontSendNotification);
+  mix_.onValueChange = [this] {
+    proc_.convolver().setMix(static_cast<float>(mix_.getValue()));
+  };
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "Most Hauptwerk sets are recorded in the room they live in, and "
+            "several ship close / far / rear perspectives which ARE the room. "
+            "Convolution is for a dry set, or for headphones, and usually "
+            "wants far less wet signal than a reverb plugin would suggest.");
+}
+
+void ReverbPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  enabled_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  auto row = r.removeFromTop(kRow);
+  load_.setBounds(row.removeFromLeft(110));
+  row.removeFromLeft(kGap);
+  clear_.setBounds(row.removeFromLeft(80));
+  row.removeFromLeft(kGap);
+  irName_.setBounds(row);
+  r.removeFromTop(kGap);
+  row = r.removeFromTop(kRow);
+  mixLabel_.setBounds(row.removeFromLeft(60));
+  mix_.setBounds(row.removeFromLeft(320));
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
+// ------------------------------------------------------------- metronome
+
+MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(enabled_);
+  enabled_.onClick = [this] {
+    proc_.metronome().setEnabled(enabled_.getToggleState());
+  };
+
+  addAndMakeVisible(tempoLabel_);
+  styleLabel(tempoLabel_, "Tempo");
+  addAndMakeVisible(tempo_);
+  tempo_.setRange(20.0, 300.0, 1.0);
+  tempo_.setValue(proc_.metronome().tempo(), juce::dontSendNotification);
+  tempo_.setTextValueSuffix(" bpm");
+  tempo_.onValueChange = [this] { proc_.metronome().setTempo(tempo_.getValue()); };
+
+  addAndMakeVisible(beatsLabel_);
+  styleLabel(beatsLabel_, "Beats per bar");
+  addAndMakeVisible(beats_);
+  beats_.setRange(0.0, 12.0, 1.0);
+  beats_.setValue(proc_.metronome().beatsPerBar(), juce::dontSendNotification);
+  beats_.onValueChange = [this] {
+    proc_.metronome().setBeatsPerBar(static_cast<int>(beats_.getValue()));
+  };
+
+  addAndMakeVisible(levelLabel_);
+  styleLabel(levelLabel_, "Level");
+  addAndMakeVisible(level_);
+  level_.setRange(0.0, 1.0, 0.01);
+  level_.setValue(proc_.metronome().level(), juce::dontSendNotification);
+  level_.onValueChange = [this] {
+    proc_.metronome().setLevel(static_cast<float>(level_.getValue()));
+  };
+
+  addAndMakeVisible(beat_);
+  styleLabel(beat_, "");
+  startTimerHz(12);
+}
+
+MetronomePanel::~MetronomePanel() { stopTimer(); }
+
+void MetronomePanel::timerCallback() {
+  const int b = proc_.metronome().currentBeat();
+  beat_.setText(b > 0 ? "Beat " + juce::String(b) : "", juce::dontSendNotification);
+}
+
+void MetronomePanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  enabled_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  auto row = [&r]() { auto x = r.removeFromTop(kRow); r.removeFromTop(4); return x; };
+  auto a = row();
+  tempoLabel_.setBounds(a.removeFromLeft(120));
+  tempo_.setBounds(a.removeFromLeft(320));
+  auto b = row();
+  beatsLabel_.setBounds(b.removeFromLeft(120));
+  beats_.setBounds(b.removeFromLeft(320));
+  auto c = row();
+  levelLabel_.setBounds(c.removeFromLeft(120));
+  level_.setBounds(c.removeFromLeft(320));
+  beat_.setBounds(row());
+}
+
+// -------------------------------------------------------------- recorder
+
+RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
+  for (auto* b : {&record_, &play_, &stop_, &save_, &load_, &clear_})
+    addAndMakeVisible(*b);
+
+  record_.onClick = [this] { proc_.recorder().startRecording(); };
+  play_.onClick = [this] { proc_.recorder().startPlayback(); };
+  stop_.onClick = [this] {
+    proc_.recorder().stopRecording();
+    proc_.recorder().stopPlayback();
+  };
+  clear_.onClick = [this] { proc_.recorder().clear(); };
+
+  save_.onClick = [this] {
+    chooser_ = std::make_unique<juce::FileChooser>(
+        "Save the performance", juce::File(), "*.mid");
+    chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                              juce::FileBrowserComponent::canSelectFiles |
+                              juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this](const juce::FileChooser& fc) {
+                            const auto f = fc.getResult();
+                            if (f.getFullPathName().isNotEmpty())
+                              proc_.recorder().saveToFile(
+                                  f.withFileExtension(".mid"));
+                          });
+  };
+  load_.onClick = [this] {
+    chooser_ = std::make_unique<juce::FileChooser>(
+        "Load a performance", juce::File(), "*.mid;*.midi");
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                              juce::FileBrowserComponent::canSelectFiles,
+                          [this](const juce::FileChooser& fc) {
+                            const auto f = fc.getResult();
+                            if (f.existsAsFile()) proc_.recorder().loadFromFile(f);
+                          });
+  };
+
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "Records everything that reaches the engine, not just notes: stop "
+            "changes, couplers and shoe movements that arrive as MIDI are "
+            "captured too, so a recording plays back as the same performance "
+            "rather than as notes on whatever registration happens to be "
+            "drawn at the time.");
+  startTimerHz(8);
+}
+
+RecorderPanel::~RecorderPanel() { stopTimer(); }
+
+void RecorderPanel::timerCallback() {
+  const auto& r = proc_.recorder();
+  juce::String s;
+  switch (r.state()) {
+    case MidiRecorder::State::Recording:
+      s = "Recording - " + juce::String(r.positionSeconds(), 1) + " s, " +
+          juce::String(r.eventCount()) + " events";
+      break;
+    case MidiRecorder::State::Playing:
+      s = "Playing - " + juce::String(r.positionSeconds(), 1) + " / " +
+          juce::String(r.lengthSeconds(), 1) + " s";
+      break;
+    case MidiRecorder::State::Idle:
+      s = r.empty() ? "Nothing recorded"
+                    : juce::String(r.eventCount()) + " events, " +
+                          juce::String(r.lengthSeconds(), 1) + " s";
+      break;
+  }
+  status_.setText(s, juce::dontSendNotification);
+  record_.setToggleState(r.isRecording(), juce::dontSendNotification);
+  play_.setEnabled(!r.empty());
+  save_.setEnabled(!r.empty());
+}
+
+void RecorderPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  auto row = r.removeFromTop(kRow);
+  for (auto* b : {&record_, &play_, &stop_}) {
+    b->setBounds(row.removeFromLeft(90));
+    row.removeFromLeft(kGap);
+  }
+  r.removeFromTop(kGap);
+  row = r.removeFromTop(kRow);
+  for (auto* b : {&save_, &load_, &clear_}) {
+    b->setBounds(row.removeFromLeft(110));
+    row.removeFromLeft(kGap);
+  }
+  r.removeFromTop(kGap);
+  status_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
+// ------------------------------------------------------------------ midi
+
+MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
+    : proc_(p), devices_(devices) {
+  addAndMakeVisible(inputsLabel_);
+  styleLabel(inputsLabel_, "MIDI inputs");
+  addAndMakeVisible(outputsLabel_);
+  styleLabel(outputsLabel_, "MIDI output");
+  addAndMakeVisible(keyboardsLabel_);
+  styleLabel(keyboardsLabel_, "Keyboards");
+
+  addAndMakeVisible(output_);
+  output_.onChange = [this] {
+    // Opening the port here rather than in the engine: the device belongs to
+    // the application, and the engine only ever borrows a pointer to it.
+    proc_.setMidiOutput(nullptr);
+    openedOutput_.reset();
+    const int idx = output_.getSelectedId() - 2; // id 1 is "None"
+    const auto devs = juce::MidiOutput::getAvailableDevices();
+    if (idx >= 0 && idx < devs.size()) {
+      openedOutput_ = juce::MidiOutput::openDevice(devs[idx].identifier);
+      proc_.setMidiOutput(openedOutput_.get());
+    }
+  };
+
+  addAndMakeVisible(feedback_);
+  feedback_.setToggleState(proc_.midiFeedbackEnabled(), juce::dontSendNotification);
+  feedback_.onClick = [this] {
+    proc_.setMidiFeedbackEnabled(feedback_.getToggleState());
+  };
+
+  addAndMakeVisible(stepperLabel_);
+  styleLabel(stepperLabel_, "Sequencer");
+  addAndMakeVisible(learnNext_);
+  learnNext_.onClick = [this] {
+    // Momentary: a sequencer piston is a button, and a latching binding would
+    // advance a frame only every other press.
+    proc_.midiMap().beginLearn(MidiTargetKind::StepperNext, 0, false);
+  };
+  addAndMakeVisible(learnPrev_);
+  learnPrev_.onClick = [this] {
+    proc_.midiMap().beginLearn(MidiTargetKind::StepperPrev, 0, false);
+  };
+
+  addAndMakeVisible(saveMap_);
+  saveMap_.onClick = [this] { proc_.saveMidiMap(); };
+  addAndMakeVisible(clearMap_);
+  clearMap_.onClick = [this] { proc_.midiMap().clear(); };
+
+  addAndMakeVisible(mapStatus_);
+  styleLabel(mapStatus_, "");
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "To map a control: right-click a drawstop on the console, then "
+            "move the control on your console. Unmapped messages keep working "
+            "as they are, so an organ is playable the moment it loads rather "
+            "than only after a mapping session.\n\n"
+            "The mapping is saved per organ, in your own application data - "
+            "never inside the sample set.\n\n"
+            "Keyboards: the channel decides which manual your console plays, "
+            "and therefore which division sounds. Couplers work off that, so "
+            "getting it wrong makes a manual sound like the wrong one."
+            "\n\nSequencer: the organ does not declare one, so there is "
+            "nothing on the console to right-click. Press a Learn button here, "
+            "then the piston on your console you want to step with.");
+  refresh();
+  startTimerHz(2);
+}
+
+MidiPanel::~MidiPanel() {
+  stopTimer();
+  proc_.setMidiOutput(nullptr);
+}
+
+void MidiPanel::refresh() {
+  inputs_.clear();
+  for (const auto& in : juce::MidiInput::getAvailableDevices()) {
+    auto b = std::make_unique<juce::ToggleButton>(in.name);
+    b->setToggleState(devices_.isMidiInputDeviceEnabled(in.identifier),
+                      juce::dontSendNotification);
+    const auto id = in.identifier;
+    auto* raw = b.get();
+    b->onClick = [this, id, raw] {
+      devices_.setMidiInputDeviceEnabled(id, raw->getToggleState());
+    };
+    addAndMakeVisible(*b);
+    inputs_.push_back(std::move(b));
+  }
+
+  // Which channel plays which manual. The organ ships a default assignment
+  // (Hauptwerk's own: the pedal is channel 1, the manuals follow), and this is
+  // where a player whose console disagrees says so.
+  keyboardLabels_.clear();
+  keyboardChannels_.clear();
+  keyboardDevices_.clear();
+  keyboardMore_.clear();
+  for (Id kb : proc_.playableKeyboards()) {
+    auto label = std::make_unique<juce::Label>();
+    styleLabel(*label, juce::String(proc_.keyboardName(kb)));
+    addAndMakeVisible(*label);
+    keyboardLabels_.push_back(std::move(label));
+
+    auto box = std::make_unique<juce::ComboBox>();
+    box->addItem("Default (channel " +
+                     juce::String(proc_.channelForKeyboard(kb)) + ")", 1);
+    for (int ch = 1; ch <= 16; ++ch)
+      box->addItem("Channel " + juce::String(ch), ch + 1);
+    const auto& assigned = proc_.channelAssignments();
+    int selected = 1;
+    for (const auto& b : assigned)
+      if (b.keyboardId == kb && b.channel > 0) selected = b.channel + 1;
+    box->setSelectedId(selected, juce::dontSendNotification);
+    auto* raw = box.get();
+    box->onChange = [this, kb, raw] {
+      // Clear any previous claim first: two keyboards on one channel would
+      // make one of them unreachable, and the player would have no way to see
+      // which.
+      if (raw->getSelectedId() > 1)
+        proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb);
+      proc_.saveMidiMap();
+    };
+    addAndMakeVisible(*box);
+    keyboardChannels_.push_back(std::move(box));
+
+    // And which console. Named by the device itself, because a saved mapping
+    // refers to it by name and an id means nothing across runs.
+    auto dev = std::make_unique<juce::ComboBox>();
+    dev->addItem("Any device", 1);
+    const auto& known = proc_.midiDevices();
+    for (size_t i = 0; i < known.names().size(); ++i)
+      dev->addItem(juce::String(known.names()[i]), static_cast<int>(i) + 2);
+    int selectedDev = 1;
+    for (const auto& b : proc_.channelAssignments())
+      if (b.keyboardId == kb && b.deviceId != 0) selectedDev = b.deviceId + 1;
+    dev->setSelectedId(selectedDev, juce::dontSendNotification);
+    auto* rawDev = dev.get();
+    auto* rawBox = keyboardChannels_.back().get();
+    dev->onChange = [this, kb, rawBox, rawDev] {
+      const int channel = rawBox->getSelectedId() > 1
+                              ? rawBox->getSelectedId() - 1
+                              : proc_.channelForKeyboard(kb);
+      proc_.setKeyboardForChannel(channel, kb, rawDev->getSelectedId() - 1);
+      proc_.saveMidiMap();
+    };
+    addAndMakeVisible(*dev);
+    keyboardDevices_.push_back(std::move(dev));
+
+    auto more = std::make_unique<juce::TextButton>("Range, transpose...");
+    more->onClick = [this, kb] { ManualDialog::show(proc_, kb); };
+    addAndMakeVisible(*more);
+    keyboardMore_.push_back(std::move(more));
+  }
+
+  output_.clear(juce::dontSendNotification);
+  output_.addItem("None", 1);
+  int id = 2;
+  for (const auto& out : juce::MidiOutput::getAvailableDevices())
+    output_.addItem(out.name, id++);
+  output_.setSelectedId(1, juce::dontSendNotification);
+  resized();
+}
+
+void MidiPanel::timerCallback() {
+  const auto& map = proc_.midiMap();
+  juce::String s = juce::String(static_cast<int>(map.size())) + " binding(s)";
+  if (map.learning()) s += "  -  LEARNING: move a control now";
+  mapStatus_.setText(s, juce::dontSendNotification);
+}
+
+void MidiPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  inputsLabel_.setBounds(r.removeFromTop(kRow));
+  for (auto& b : inputs_) {
+    b->setBounds(r.removeFromTop(kRow).reduced(12, 0));
+    r.removeFromTop(2);
+  }
+  if (inputs_.empty()) {
+    r.removeFromTop(kRow); // leaves room for the "none found" case
+  }
+  r.removeFromTop(kGap);
+  keyboardsLabel_.setBounds(r.removeFromTop(kRow));
+  for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
+    auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
+    keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150));
+    keyboardChannels_[i]->setBounds(kbRow.removeFromLeft(170));
+    kbRow.removeFromLeft(6);
+    if (i < keyboardDevices_.size())
+      keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(200));
+    kbRow.removeFromLeft(6);
+    if (i < keyboardMore_.size())
+      keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
+    r.removeFromTop(2);
+  }
+
+  r.removeFromTop(kGap);
+  auto row = r.removeFromTop(kRow);
+  outputsLabel_.setBounds(row.removeFromLeft(120));
+  output_.setBounds(row.removeFromLeft(300));
+  r.removeFromTop(4);
+  feedback_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  row = r.removeFromTop(kRow);
+  stepperLabel_.setBounds(row.removeFromLeft(120));
+  learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+
+  r.removeFromTop(kGap);
+  row = r.removeFromTop(kRow);
+  saveMap_.setBounds(row.removeFromLeft(120));
+  row.removeFromLeft(kGap);
+  clearMap_.setBounds(row.removeFromLeft(120));
+  row.removeFromLeft(kGap);
+  mapStatus_.setBounds(row);
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
+// --------------------------------------------------------------- window
+
+SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
+                               juce::AudioDeviceManager& devices)
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices) {
+  const auto bg = juce::Colour(0xff1b1e24);
+  addAndMakeVisible(tabs_);
+  tabs_.addTab("Engine", bg, &engine_, false);
+  tabs_.addTab("Room", bg, &reverb_, false);
+  tabs_.addTab("Metronome", bg, &metronome_, false);
+  tabs_.addTab("Recorder", bg, &recorder_, false);
+  tabs_.addTab("MIDI", bg, &midi_, false);
+  setSize(660, 480);
+}
+
+void SettingsWindow::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff15171c)); }
+void SettingsWindow::resized() { tabs_.setBounds(getLocalBounds()); }
+
+} // namespace mp::ui

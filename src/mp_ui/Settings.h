@@ -1,0 +1,161 @@
+// Settings and session tools: everything that is not the organ itself.
+//
+// One panel with tabs rather than a menu tree, because on a touch console the
+// player is standing at a keyboard, not sitting at a mouse. The engine owns
+// all the state; this only reads and writes it.
+#pragma once
+#include <juce_audio_devices/juce_audio_devices.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+
+#include "../mp_audio/MasterpieceProcessor.h"
+
+#include <memory>
+#include <vector>
+
+namespace mp::ui {
+
+// Engine: DSP switches and how much of each sample is preloaded.
+class EnginePanel : public juce::Component, private juce::Timer {
+public:
+  explicit EnginePanel(MasterpieceProcessor& p);
+  ~EnginePanel() override;
+  void resized() override;
+  void paint(juce::Graphics& g) override;
+
+private:
+  void timerCallback() override;
+  void pushSwitches();
+
+  MasterpieceProcessor& proc_;
+  juce::ToggleButton simpleWav_{"Simple WAV only (bypass all DSP)"};
+  juce::ToggleButton wind_{"Wind model"};
+  juce::ToggleButton tremulant_{"Tremulants"};
+  juce::ToggleButton enclosure_{"Enclosures (swell shades)"};
+  juce::ToggleButton voicing_{"Voicing"};
+  juce::ToggleButton originalPitch_{"Play at the original organ's pitch"};
+  juce::Label preloadLabel_;
+  juce::ComboBox preload_;
+  juce::Label storageLabel_;
+  juce::ComboBox storage_;
+  juce::ToggleButton stream_{"Stream release tails from disk"};
+  juce::Label memory_;
+  juce::Label note_;
+};
+
+// Room: impulse-response convolution.
+class ReverbPanel : public juce::Component {
+public:
+  explicit ReverbPanel(MasterpieceProcessor& p);
+  void resized() override;
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::ToggleButton enabled_{"Impulse-response reverb"};
+  juce::TextButton load_{"Load IR..."};
+  juce::TextButton clear_{"Clear"};
+  juce::Label irName_;
+  juce::Label mixLabel_;
+  juce::Slider mix_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Label note_;
+  std::unique_ptr<juce::FileChooser> chooser_;
+};
+
+// Practice: metronome.
+class MetronomePanel : public juce::Component, private juce::Timer {
+public:
+  explicit MetronomePanel(MasterpieceProcessor& p);
+  ~MetronomePanel() override;
+  void resized() override;
+
+private:
+  void timerCallback() override;
+
+  MasterpieceProcessor& proc_;
+  juce::ToggleButton enabled_{"Metronome"};
+  juce::Label tempoLabel_, beatsLabel_, levelLabel_;
+  juce::Slider tempo_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider beats_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Label beat_;
+};
+
+// Session: MIDI recorder and player.
+class RecorderPanel : public juce::Component, private juce::Timer {
+public:
+  explicit RecorderPanel(MasterpieceProcessor& p);
+  ~RecorderPanel() override;
+  void resized() override;
+
+private:
+  void timerCallback() override;
+
+  MasterpieceProcessor& proc_;
+  juce::TextButton record_{"Record"};
+  juce::TextButton play_{"Play"};
+  juce::TextButton stop_{"Stop"};
+  juce::TextButton save_{"Save MIDI..."};
+  juce::TextButton load_{"Load MIDI..."};
+  juce::TextButton clear_{"Clear"};
+  juce::Label status_;
+  juce::Label note_;
+  std::unique_ptr<juce::FileChooser> chooser_;
+};
+
+// MIDI: what the console sends and what comes back, plus the learned mapping.
+class MidiPanel : public juce::Component, private juce::Timer {
+public:
+  MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  ~MidiPanel() override;
+  void resized() override;
+  void refresh();
+
+private:
+  void timerCallback() override;
+
+  MasterpieceProcessor& proc_;
+  juce::AudioDeviceManager& devices_;
+  juce::Label inputsLabel_, outputsLabel_, keyboardsLabel_;
+  std::vector<std::unique_ptr<juce::ToggleButton>> inputs_;
+  // One row per playable keyboard: which MIDI channel plays it. This is the
+  // setting that decides whether the manual under your hands sounds the Great
+  // or the Pedal, and no organ can guess it for you.
+  std::vector<std::unique_ptr<juce::Label>> keyboardLabels_;
+  std::vector<std::unique_ptr<juce::ComboBox>> keyboardChannels_;
+  // Which physical console plays this manual. Two keyboards both sending on
+  // channel 1 is the ordinary case for anyone with more than one plugged in,
+  // and the channel alone cannot separate them.
+  std::vector<std::unique_ptr<juce::ComboBox>> keyboardDevices_;
+  // Everything the two boxes cannot say: key range, transpose, velocity
+  // window, tracker action, short octave, debounce.
+  std::vector<std::unique_ptr<juce::TextButton>> keyboardMore_;
+  juce::ComboBox output_;
+  juce::ToggleButton feedback_{"Send stop changes back to the console"};
+  juce::TextButton saveMap_{"Save mapping"};
+  juce::TextButton clearMap_{"Clear mapping"};
+  // The sequencer pistons have nothing on the console to right-click, because
+  // the organ does not declare them — Hauptwerk provides the sequencer and the
+  // player maps it. So they get their own learn buttons.
+  juce::Label stepperLabel_;
+  juce::TextButton learnNext_{"Learn sequencer +"};
+  juce::TextButton learnPrev_{"Learn sequencer -"};
+  juce::Label mapStatus_;
+  juce::Label note_;
+  std::unique_ptr<juce::MidiOutput> openedOutput_;
+};
+
+class SettingsWindow : public juce::Component {
+public:
+  SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  void resized() override;
+  void paint(juce::Graphics& g) override;
+
+private:
+  juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
+  EnginePanel engine_;
+  ReverbPanel reverb_;
+  MetronomePanel metronome_;
+  RecorderPanel recorder_;
+  MidiPanel midi_;
+};
+
+} // namespace mp::ui

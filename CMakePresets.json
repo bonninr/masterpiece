@@ -1,0 +1,278 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "MP_FETCH_JUCE": "ON",
+        "MP_JUCE_TAG": "9.0.1"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "dev (Release, all targets)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_BUILD_PLUGIN": "ON",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON"
+      }
+    },
+    {
+      "name": "dev-fast",
+      "displayName": "dev-fast (iteration: no LTO, no plugins)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON",
+        "MP_ENABLE_LTO": "OFF"
+      }
+    },
+    {
+      "name": "dev-debug",
+      "displayName": "dev-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_BUILD_PLUGIN": "ON",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "core-only",
+      "displayName": "core-only (slow machine: no DSP compile, validator+tests)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MP_BUILD_STANDALONE": "OFF",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON",
+        "MP_ENABLE_DSP": "OFF",
+        "MP_ENABLE_STREAMING": "ON"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "displayName": "CI Linux",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-macos",
+      "displayName": "CI macOS (AU+VST3)",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-windows",
+      "displayName": "CI Windows (CLI Ninja, no VS sln)",
+      "inherits": "dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-functional",
+      "displayName": "CI functional (Debug + ASan/UBSan + coverage, tests only)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "MP_BUILD_STANDALONE": "OFF",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON",
+        "MP_BUILD_ASAN": "ON",
+        "MP_BUILD_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "ci-perf",
+      "displayName": "CI perf (Release, tests only, MpPerf ctest)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "MP_BUILD_STANDALONE": "OFF",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "ON",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-arm",
+      "displayName": "CI Linux ARM (cross-compile for RPi, no plugins/tests)",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/arm-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_SYSTEM_NAME": "Linux",
+        "CMAKE_SYSTEM_PROCESSOR": "armv7l",
+        "CMAKE_C_COMPILER": "arm-linux-gnueabihf-gcc",
+        "CMAKE_CXX_COMPILER": "arm-linux-gnueabihf-g++",
+        "CMAKE_C_COMPILER_AR": "arm-linux-gnueabihf-ar",
+        "CMAKE_CXX_COMPILER_AR": "arm-linux-gnueabihf-ar",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "OFF",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON",
+        "MP_ENABLE_LTO": "ON",
+        "MP_NATIVE_ARCH": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Release"
+    },
+    {
+      "name": "dev-fast",
+      "configurePreset": "dev-fast",
+      "configuration": "Release"
+    },
+    {
+      "name": "dev-debug",
+      "configurePreset": "dev-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "core-only",
+      "configurePreset": "core-only",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-macos",
+      "configurePreset": "ci-macos",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-functional",
+      "configurePreset": "ci-functional",
+      "configuration": "Debug"
+    },
+    {
+      "name": "ci-perf",
+      "configurePreset": "ci-perf",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-linux-arm",
+      "configurePreset": "ci-linux-arm",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dev-fast",
+      "configurePreset": "dev-fast",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "core-only",
+      "configurePreset": "core-only",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-macos",
+      "configurePreset": "ci-macos",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-functional",
+      "configurePreset": "ci-functional",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-perf",
+      "configurePreset": "ci-perf",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-linux-arm",
+      "configurePreset": "ci-linux-arm",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

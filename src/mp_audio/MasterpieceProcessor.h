@@ -1,0 +1,580 @@
+// Masterpiece audio processor — JUCE AudioProcessor + APVTS.
+// Standalone + VST3/AU/LV2 from ONE codebase (no Projucer, CMake only).
+// ODF parse (background) -> immutable OrganModel -> AudioGraph (bus list, rank->bus, IR sends).
+// User data (combinations/voicing/MIDI/favourites) as ValueTree + separate files per organ + global.
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_utils/juce_audio_utils.h>
+#include "../mp_core/OrganModel.h"
+#include "../mp_control/Control.h"
+#include "../mp_control/MidiMap.h"
+#include "../mp_control/Combinations.h"
+#include "../mp_control/StageSwitches.h"
+#include "../mp_control/Stepper.h"
+#include "../mp_control/WindSolver.h"
+#include "../mp_control/SwitchNetwork.h"
+#include "../mp_core/Temperament.h"
+#if MP_ENABLE_DSP
+#include "../mp_dsp/Dsp.h"
+#endif
+
+#include "Convolver.h"
+#include "Metronome.h"
+#include "MidiRecorder.h"
+#include "SampleLibrary.h"
+#include "../mp_core/OdfLoader.h"
+#include "../mp_sampler/StreamingEngine.h" // ParallelConfig
+#include "../mp_sampler/VoiceEngine.h"
+
+#include <array>
+#include <atomic>
+#include <string>
+#include <utility>
+#include <unordered_map>
+#include <unordered_set>
+
+namespace mp {
+
+struct AudioGraphConfig {
+  EngineSwitch engineSwitch; // runtime DSP toggle (ADR-005)
+  SampleLoadMode loadMode = SampleLoadMode::Auto;
+  int numBuses = 2; // simple routing default; full mixer expands (M4)
+  // Voice ceiling. The perf budget is written against 500 (laptop) to 2000
+  // (console); the pool is allocated once at prepareToPlay.
+  int maxVoices = 1536;
+  // Voice-render threading (ADR-012). renderThreads 0 = auto (cores - 1).
+  ParallelConfig parallel;
+};
+
+class MasterpieceProcessor : public juce::AudioProcessor {
+public:
+  MasterpieceProcessor();
+  ~MasterpieceProcessor() override = default;
+
+  void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+  void releaseResources() override {}
+  void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+  juce::AudioProcessorEditor* createEditor() override;
+  bool hasEditor() const override { return true; }
+
+  const juce::String getName() const override { return "Masterpiece"; }
+  bool acceptsMidi() const override { return true; }
+  bool producesMidi() const override { return false; }
+  double getTailLengthSeconds() const override { return 5.0; }
+  int getNumPrograms() override { return 1; }
+  int getCurrentProgram() override { return 0; }
+  void setCurrentProgram(int) override {}
+  const juce::String getProgramName(int) override { return "Default"; }
+  void changeProgramName(int, const juce::String&) override {}
+  void getStateInformation(juce::MemoryBlock&) override {}
+  void setStateInformation(const void*, int) override {}
+
+  // Organ loading. `loadOrgan` is synchronous and is what the headless
+  // renderer and the tests use; `loadOrganAsync` runs the same work off the
+  // message thread so the UI stays responsive on a 19 GB set.
+  struct LoadResult {
+    bool ok = false;
+    std::string error;
+    OdfDiagnostics diagnostics;
+    SampleLoadReport samples;
+    int stopsEngaged = 0;
+  };
+  // `graphicsOnly` builds the whole model and console and reads not one byte
+  // of audio: the artwork, the jamb, the drawn manuals and the switch network
+  // all come from the ODF, and only `loadAll` touches the sample tree. It is
+  // what lets a console be drawn — or screenshotted, or smoke-tested in CI —
+  // in a second or two on a machine that has no sample set at all. The organ
+  // is silent by construction; nothing is stubbed to make it so.
+  LoadResult loadOrgan(const juce::File& odfFile,
+                       int64_t maxFramesPerSample = 0,
+                       bool graphicsOnly = false);
+  void loadOrganAsync(const juce::File& odfFile);
+  const OrganModel& organModel() const { return model_; }
+  const SampleLibrary& sampleLibrary() const { return samples_; }
+
+  // The on-screen keyboard plays through the same path as a MIDI device: its
+  // events are merged into the incoming buffer at the top of processBlock, so
+  // there is exactly one note path rather than a second one for the mouse.
+  juce::MidiKeyboardState& keyboardState() { return keyboardState_; }
+
+  // Stops in a stable order for the console: by division, then by id, so the
+  // jamb does not reshuffle between loads.
+  struct StopEntry { Id stopId = 0; Id divisionId = 0; std::string name; bool playable = false; };
+  std::vector<StopEntry> stopList() const;
+  bool stopEngaged(Id stopId) const { return engagedStops_.count(stopId) != 0; }
+
+  // Draw every stop the organ has. Blunt, but it is what a "does this make
+  // sound at all" check wants, and it is how the renderer gets a full organ.
+  int engageAllStops();
+
+  juce::AudioProcessorValueTreeState& apvts() { return apvts_; }
+
+  // Console input: move a swell shoe / crescendo wheel. Safe to call from the
+  // message thread; the audio thread reads the resulting positions per block.
+  void setContinuousControl(Id controlId, int value);
+
+  // Draw or retire a stop. Which stops are engaged decides which pipes a key
+  // press sounds, so this is the other half of the console.
+  void setStopEngaged(Id stopId, bool engaged);
+
+  // Flip a switch (drawstop, coupler, tremulant, blower). Switches with noise
+  // ranks attached fire them: that mechanical sound is most of what makes a
+  // sampled organ feel like an instrument rather than a synthesiser.
+  void setSwitchEngaged(Id switchId, bool engaged);
+  // Switches latch, so there is one state and this is it. Moving one travels
+  // through the organ's own wiring; see SwitchNetwork.
+  bool switchEngaged(Id switchId) const;
+  const SwitchNetwork& switchNetwork() const { return switches_; }
+  // The switch a PLAYER would move to change this one: the drawn knob at the
+  // top of the wiring, or the switch itself when nothing feeds it. Engaging an
+  // internal node directly leaves the knob out and the organ inconsistent —
+  // and a general cancel, which works by turning the logical switch off, then
+  // has nothing to push back.
+  Id playerSwitchFor(Id switchId) const;
+
+  // --- pistons ----------------------------------------------------------
+  // Combinations are the player's own, not the organ builder's, so they are
+  // saved beside the MIDI map in the user's data and never written back into
+  // the sample set.
+  CombinationSystem& combinations() { return combinations_; }
+  const CombinationSystem& combinations() const { return combinations_; }
+  juce::File combinationFileFor(const juce::File& odf) const;
+  bool saveCombinations() const;
+  bool loadCombinations();
+  // Capture can happen on the audio thread — a piston is a MIDI message like
+  // any other — and the audio thread must not write a file. So a capture only
+  // raises a flag, and the message thread does the writing.
+  bool combinationsNeedSaving() const {
+    return combinationsDirty_.load(std::memory_order_acquire);
+  }
+  // Writes the file if anything was captured since the last call. Message
+  // thread only.
+  bool saveCombinationsIfDirty();
+  // Setter mode: with this on, pressing a piston stores what is drawn instead
+  // of recalling what was stored. An organ that has a setter switch of its own
+  // drives this from the console; this is for one that has not, and for a UI
+  // button.
+  void setCaptureMode(bool on) { combinations_.setCaptureMode(on); }
+  bool captureMode() const { return combinations_.captureMode(); }
+
+  // --- the crescendo, and everything else a shoe position moves -----------
+  // Move a continuous control and let it fire whatever thresholds it crosses.
+  // This is the crescendo: one control, a step per row, each firing a
+  // registration. Use it rather than setting the control directly whenever the
+  // move comes from a player.
+  void setControlValue(Id controlId, int value);
+  const StageSwitchBank& stageSwitches() const { return stages_; }
+  // The wind. Read-only from outside: what the pressure is doing is a result,
+  // not a setting, and the only control over it is EngineSwitch::enableWindModel.
+  const WindSolver& wind() const { return wind_; }
+
+  // --- the registration sequencer ---------------------------------------
+  // One thumb piston that walks the organ's generals in order. Not wired in
+  // the organ file — Hauptwerk provides it and the player maps it — so it is
+  // driven from here and from MIDI, never from a drawstop.
+  //
+  // With the setter held, stepping CAPTURES into the frame it lands on, which
+  // is how a registration is built for a piece: hold the setter and walk
+  // forwards, setting each frame as you go.
+  bool stepperNext();
+  bool stepperPrev();
+  bool stepperGoto(int frame);
+  const Stepper& stepper() const { return stepper_; }
+  void stepperRewind() { stepper_.rewind(); }
+  int continuousControlValue(Id controlId) const {
+    return controls_.value(controlId);
+  }
+
+  // MIDI mapping. The player's console is not the organ's, so this is edited by
+  // learning and saved beside the organ rather than inside it. The audio thread
+  // only ever reads it; edits come from the message thread while it is safe to
+  // do so (a mapping change between blocks is not worth a lock-free structure).
+  // --- keyboards and channels ------------------------------------------
+  // The organ's playable keyboards, in a stable order.
+  const std::vector<Id>& playableKeyboards() const {
+    return couplers_.inputKeyboards();
+  }
+  std::string keyboardName(Id keyboardId) const {
+    return couplers_.keyboardName(keyboardId);
+  }
+  // Which keyboard a MIDI channel plays. Unset channels follow Hauptwerk's own
+  // default assignment (code 1 is the pedal, 2 the first manual, ...), and
+  // fall back to the preferred manual — the widest compass when declared,
+  // else the unenclosed manual shipping the most pipework — so an unmapped
+  // keyboard always speaks.
+  // Learn a manual by PLAYING it: press the lowest key you want, then the
+  // highest. Two presses give the device, the channel and the range in one
+  // go, and the transpose falls out of where the organ's own compass starts —
+  // which is the whole of what a player would otherwise type in by hand.
+  void beginKeyboardLearn(Id keyboardId);
+  void cancelKeyboardLearn() { keyboardLearn_ = 0; }
+  Id keyboardLearning() const { return keyboardLearn_; }
+
+  Id keyboardForChannel(int channel, int deviceId = 0) const;
+  // The keyboard the fallback piano plays, and the one an unassigned channel
+  // falls back to. See mp_control::defaultKeyboard.
+  Id preferredKeyboard() const { return defaultKeyboard(model_, couplers_); }
+  // False when the organ draws no manual key-by-key (its manuals are backdrop
+  // photos), and the fallback piano is then the only mouse-playable keys.
+  bool hasDrawnManuals() const { return mp::hasDrawnManuals(model_); }
+  // Assign a manual to a channel, and optionally to one console. The simple
+  // case of the full manual receiver in MidiMap: whole compass, no transpose,
+  // full velocity. Anything more is set through midiMap().addKeyboardBinding().
+  void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0) {
+    midiMap_.removeKeyboardBindingsFor(keyboardId);
+    if (keyboardId != 0 && channel > 0) {
+      MidiMap::KeyboardBinding b;
+      b.channel = channel;
+      b.deviceId = deviceId;
+      b.keyboardId = keyboardId;
+      midiMap_.addKeyboardBinding(b);
+    }
+    midiMapDirty_.store(true, std::memory_order_release);
+  }
+  void clearChannelAssignments() { midiMap_.clearKeyboardBindings(); }
+  const std::vector<MidiMap::KeyboardBinding>& channelAssignments() const {
+    return midiMap_.keyboardBindings();
+  }
+  // The channel that reaches a given keyboard, for the console's own drawn
+  // manuals: clicking a drawn key has to arrive as if played there.
+  int channelForKeyboard(Id keyboardId) const;
+  // True when the organ declared no key flow, so every division sounds on
+  // every key and couplers do nothing. Worth telling the player.
+  bool keyFlowMissing() const { return couplers_.usingFallback(); }
+
+  // --- tagged MIDI input -------------------------------------------------
+  // A message together with the console it came from. The host's merged MIDI
+  // buffer has no device in it, so anything that needs to tell two keyboards
+  // apart has to come in this way instead. Called from each device's own
+  // callback thread; allocation-free and lock-free, because a MIDI callback is
+  // as real-time as the audio one.
+  void pushMidi(int deviceId, const juce::MidiMessage& msg);
+  // Register a console and get its id. Message thread, at device setup.
+  int registerMidiDevice(const juce::String& name) {
+    return midiMap_.devices().idFor(name.toStdString());
+  }
+  const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
+
+  MidiMap& midiMap() { return midiMap_; }
+  const MidiMap& midiMap() const { return midiMap_; }
+  // Persisted next to the organ definition, per organ: a player's console
+  // mapping is theirs, and must never be written into a licensed sample set.
+  // --- which organ is this? ----------------------------------------------
+  // Everything a player configures — the MIDI map, the combinations, the load
+  // settings — is saved per organ, so the organ needs an identity that is
+  // stable across the things a player actually does to their sample library.
+  //
+  // Hauptwerk already answers this: `Identification_UniqueOrganID` in the
+  // _General table. It is part of the organ, so it survives moving the set to
+  // another drive, renaming the folder, or reinstalling it — none of which a
+  // path can survive. That is the primary key.
+  //
+  // GrandOrgue takes the other approach: it hashes the normalised absolute ODF
+  // path and names the .cmb after that. Simple and needs nothing from the
+  // file, but move the organ and the settings are orphaned. It is used here
+  // only as the FALLBACK, for a set that declares no unique id — a CODM organ,
+  // or one somebody wrote by hand.
+  //
+  // The name is carried alongside so the folder is readable rather than a
+  // wall of hex.
+  std::string organKey() const;
+  // The same, for an organ that has not been loaded yet: reads only the
+  // _General table, which is the first thing in the file.
+  static std::string organKeyFor(const juce::File& odf);
+
+  // Where one of an organ's files lives, adopting the older filename-based
+  // name when that is what is on disk.
+  juce::File organFile(const juce::File& odf, const juce::String& folder,
+                       const juce::String& extension) const;
+  // Where it is WRITTEN, which is always the current naming.
+  juce::File organFileForSaving(const juce::String& folder,
+                                const juce::String& extension) const;
+  juce::File midiMapFileFor(const juce::File& odf) const;
+
+  // --- per-organ settings ------------------------------------------------
+  // How this organ should be LOADED — resident format, streaming, preload
+  // head — plus the DSP switches and the master volume. These belong to the
+  // organ and not to the program: a 19 GB set wants streaming and 16-bit, a
+  // one-manual village organ does not, and a player should not have to set
+  // that again every time they open it.
+  //
+  // Read at the START of loadOrgan, because the load options decide how the
+  // samples are read and cannot be applied afterwards. Saved to the player's
+  // own data, never into the sample set.
+  juce::File settingsFileFor(const juce::File& odf) const;
+  bool saveSettings() const;
+  // Applies whatever the file holds. Call before reading any audio.
+  bool loadSettingsFor(const juce::File& odf);
+  // Raised whenever something a settings file holds is changed, so the message
+  // thread can write it without the audio thread touching a disk.
+  void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
+  bool saveSettingsIfDirty();
+  // A mapping learned on the audio thread, written here.
+  bool saveMidiMapIfDirty();
+  bool saveMidiMap() const;
+  bool loadMidiMap();
+
+  // --- practice and session tools -------------------------------------
+  // All three run inside the audio callback, because anything that has to
+  // stay in time with the organ cannot live outside it.
+  Metronome& metronome() { return metronome_; }
+  MidiRecorder& recorder() { return recorder_; }
+  Convolver& convolver() { return convolver_; }
+
+  // MIDI OUT. A physical console lights its own drawstops from what the organ
+  // sends back, so engaging a stop on screen has to reach the hardware.
+  void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
+  juce::MidiOutput* midiOutput() const { return midiOut_; }
+  // Echo switch changes to the console. Off by default: a console that echoes
+  // what it just sent can latch itself into a loop.
+  void setMidiFeedbackEnabled(bool on) { midiFeedback_ = on; }
+  bool midiFeedbackEnabled() const { return midiFeedback_; }
+
+  // --- memory / streaming ----------------------------------------------
+  // How much of each sample is preloaded. The head is a MINIMUM: it is always
+  // extended to cover the sustain loop, because a sample whose loop is missing
+  // does not sustain. 0 loads whole files.
+  void setPreloadHeadFrames(int64_t frames) {
+    preloadHead_ = frames;
+    markSettingsDirty();
+  }
+  int64_t preloadHeadFrames() const { return preloadHead_; }
+
+  // The resident sample format, which is the other half of the memory
+  // question and the larger half: the preload head decides how much of each
+  // file is held, this decides what a held frame costs. Int16 halves it.
+  // Applies to the next load, not the one already resident.
+  void setSampleStorage(SampleStorage s) {
+    samples_.setStorage(s);
+    markSettingsDirty();
+  }
+  SampleStorage sampleStorage() const { return samples_.storage(); }
+
+  // Stream release tails from disk instead of holding them. Releases are
+  // several seconds each, played once, straight through — the only samples in
+  // an organ that stream well. Applies to the next load. See SampleLibrary.
+  void setStreamReleases(bool on) {
+    samples_.setStreamReleases(on);
+    markSettingsDirty();
+  }
+  bool streamReleases() const { return samples_.streamReleases(); }
+  // Frames of a streamed release that stay resident, and how far ahead of each
+  // voice the streamer runs.
+  void setStreamHeadFrames(int64_t f) {
+    samples_.setStreamHeadFrames(f);
+    markSettingsDirty();
+  }
+  void setStreamSeconds(double s) { voices_.setStreamSeconds(s); }
+  // Zero unless the disk could not keep up, in which case a release went
+  // silent partway and the player deserves to know.
+  int64_t streamUnderruns() const { return voices_.streamUnderruns(); }
+
+  // Where the organ was loaded from — the console needs it to resolve artwork
+  // out of the same installation packages the audio comes from.
+  const std::string& organRootDir() const { return organRootDir_; }
+
+  // Where the engine gets sample audio. Injected rather than owned, so the
+  // preloaded and streaming backing stores share one voice path (ADR-004) and
+  // tests can hand it a synthesised tone.
+  void setSampleProvider(SampleProvider provider) {
+    voices_.setSampleProvider(std::move(provider));
+  }
+  const EngineStats& voiceStats() const { return voices_.stats(); }
+
+  // Runtime DSP toggles (ADR-005). DSP always ships; this is how a slow
+  // machine turns it off without a rebuild.
+  void setEngineSwitch(const EngineSwitch& sw) {
+    graph_.engineSwitch = sw;
+    markSettingsDirty();
+  }
+  const EngineSwitch& engineSwitch() const { return graph_.engineSwitch; }
+
+private:
+  // Render each enclosure bus, filter it with its own shades, and sum into
+  // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
+  // allocated here.
+  void renderBuses(juce::AudioBuffer<float>& buffer);
+  // Which bus a pipe belongs to: its enclosure's index, or the unenclosed bus.
+  int busForPipe(Id pipeId) const;
+  // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
+  // so it must not allocate: the pipe list it walks is preallocated scratch.
+  void handleMidi(const juce::MidiBuffer& midi);
+  // Resampling ratio for one pipe playing one recorded sample: the pitch we
+  // want over the pitch the file actually holds.
+  double playbackRatioFor(const Pipe& pipe, const SampleRef& sample) const;
+  // A key press on one of the organ's playable keyboards. The channel decides
+  // which keyboard, and the key-flow graph decides which divisions it reaches
+  // — a coupler is nothing more than an edge of that graph.
+  void startNote(int channel, int midiNote, int velocity);
+  void stopNote(int channel, int midiNote, int velocity);
+  // The same, with the manual already decided. A mapped rig names it outright;
+  // an unmapped one derives it from the channel.
+  void startNoteOnKeyboard(Id keyboard, int noteKeyId, int midiNote,
+                           int velocity);
+  void stopNoteByKey(int noteKeyId, int velocity);
+  // Notes are held per (channel, key): two manuals playing the same key are
+  // two separate presses and one release must not silence both.
+  static int noteKey(int channel, int midiNote) {
+    return (channel << 8) | (midiNote & 0xff);
+  }
+  // Recall or capture the combination this switch fires, if it fires one.
+  // Returns true when the switch was a piston, so the caller knows it has
+  // already been dealt with.
+  bool firePiston(Id switchId);
+  // Recall a combination, or capture into it when the setter is held. Shared
+  // by the pistons and the sequencer, so a frame the sequencer lands on
+  // behaves exactly like the same piston pressed by hand.
+  void fireCombination(Id combinationId);
+  // Fire every noise rank wired to this switch. `engaged` picks the direction:
+  // a drawstop makes one sound going in and a different one coming out.
+  void triggerNoiseFor(Id switchId, bool engaged);
+
+  OrganModel model_;
+  CouplerMatrix couplers_;
+  CombinationSystem combinations_;
+  // Scratch for a recall, so pressing a piston on the audio thread does not
+  // allocate. A general on a large organ moves a few hundred switches.
+  std::vector<CombinationSystem::Change> recallScratch_;
+  // The organ's own setter switch, if it has one, so holding it turns a
+  // recall into a capture exactly as the console does.
+  Id setterSwitchId_ = 0;
+  std::atomic<bool> combinationsDirty_{false};
+  std::atomic<bool> settingsDirty_{false};
+  std::atomic<bool> midiMapDirty_{false};
+  // Shoe positions that move switches: the crescendo, the blower, enclosure
+  // noises. Needs the previous position, because each row is a crossing.
+  Stepper stepper_;
+  // The wind system. Advanced once per block on the audio thread, so its
+  // tables are sized at load and it never allocates here.
+  WindSolver wind_;
+  // One entry per modelled windchest, in the solver's own order, handed to the
+  // voice engine each block. Voices carry an index into it.
+  std::vector<VoiceEngine::WindMod> windMods_;
+  std::vector<Id> windOrder_;
+  std::unordered_map<Id, int> windIndexOf_;
+  // Which windchest each pipe stands on, resolved at load so a note-on does
+  // not search for it.
+  std::unordered_map<Id, int> pipeWindIndex_;
+  // Tremulants, in a stable order, and which one reaches each pipe. Both
+  // resolved at load: a note-on must not search, and a voice started in one
+  // block must still point at the right tremulant in the next.
+  std::vector<Id> tremOrder_;
+  std::unordered_map<Id, int> tremIndexOf_;
+  std::vector<VoiceEngine::TremMod> tremMods_;
+  void advanceTremulants(int numFrames);
+  std::vector<float> windDemand_;
+  // Advance the wind by one block: ask the engine what is drawing air, solve,
+  // and hand the result back for the voices to sound through.
+  void advanceWind(int numFrames);
+  StageSwitchBank stages_;
+  std::vector<StageSwitchBank::Change> stageScratch_;
+  // Where every staged control was, so a move can be told from a rest. Only
+  // the handful of controls that actually drive switches are tracked, and the
+  // control a player moves is often not one of them — Nancy's crescendo pedal
+  // drives an "extension" control through a linkage, and that is the one with
+  // the steps behind it.
+  std::vector<std::pair<Id, int>> stageValues_;
+  // Resolved once at load: for each switch, the drawn one upstream of it.
+  std::unordered_map<Id, Id> playerSwitch_;
+  ContinuousControlBank controls_;
+  VoiceEngine voices_;
+  SampleLibrary samples_;
+  juce::MidiKeyboardState keyboardState_;
+  // The organ's tuning, resolved once at load. Held by value so the audio
+  // thread never chases a pointer into the model while it is being swapped.
+  Temperament organTuning_;
+  std::unordered_set<Id> engagedStops_;
+  // The organ's switch wiring, and its resolved output. A drawstop rarely
+  // drives anything directly: it drives an internal node, and everything else
+  // reads that. `engagedSwitches_` is the network's answer, kept as a set
+  // because the key-flow walk consults it on the audio thread.
+  SwitchNetwork switches_;
+  std::unordered_set<Id> engagedSwitches_;
+  std::string organRootDir_;
+  // A drawstop on the console IS a switch; clicking it must draw the stop, not
+  // merely animate the picture. Built at load so the audio thread never
+  // searches for it.
+  std::unordered_map<Id, Id> stopBySwitch_;
+  MidiMap midiMap_;
+  Metronome metronome_;
+  MidiRecorder recorder_;
+  Convolver convolver_;
+  juce::MidiOutput* midiOut_ = nullptr; // owned by the application
+  bool midiFeedback_ = false;
+  int64_t preloadHead_ = 0;
+  // Reused every block so the audio thread never allocates one.
+  juce::MidiBuffer outgoing_;
+  // Tagged input, filled by the device callbacks and drained by the audio
+  // thread. A fixed ring so neither side allocates; a single producer per slot
+  // is not guaranteed (several devices push), so the write index is atomic and
+  // the whole thing is sized to make an overflow implausible rather than
+  // impossible — a dropped message beats a blocked MIDI thread.
+  struct TaggedMidi {
+    int deviceId = 0;
+    uint8_t bytes[3] = {0, 0, 0};
+    int size = 0;
+  };
+  static constexpr int kMidiQueueSize = 2048;
+  std::array<TaggedMidi, kMidiQueueSize> midiQueue_{};
+  std::atomic<uint32_t> midiWrite_{0};
+  uint32_t midiRead_ = 0;
+  // Drain the tagged queue into `midi` before it is handled, so device-aware
+  // and host-delivered messages take exactly the same path afterwards.
+  void drainTaggedMidi(std::vector<std::pair<int, juce::MidiMessage>>& out);
+  std::vector<std::pair<int, juce::MidiMessage>> midiScratch_;
+  // The console the message being handled came from. Set as each message is
+  // dispatched rather than threaded through every call, because only the note
+  // path cares and threading it would touch a dozen signatures.
+  int noteDeviceId_ = 0;
+  // The manual being learned, and the first key pressed for it. 0 means not
+  // learning; -1 for the note means the low key is still to come.
+  Id keyboardLearn_ = 0;
+  int keyboardLearnLow_ = -1;
+  int keyboardLearnDevice_ = 0;
+  int keyboardLearnChannel_ = 0;
+  // Take a key press as part of learning a manual. Returns true when the
+  // message was consumed and must not also play.
+  bool learnKeyboardFrom(int deviceId, int channel, int note);
+  // Reused every block: matching a key against the manual bindings must not
+  // allocate on the audio thread.
+  std::vector<MidiMap::KeyHit> keyHits_;
+  // Wall clock for the current block, for debouncing chattering contacts.
+  double blockTimeMs_ = 0.0;
+  juce::File loadedOdf_;
+  // Noise ranks keyed by the switch that fires them, built once at
+  // prepareToPlay so a switch flip never walks every rank on the audio thread.
+  std::unordered_map<Id, std::vector<Id>> noiseRanksBySwitch_;
+  // Scratch reused every note-on so the audio thread never allocates.
+  std::vector<ResolvedPipe> resolveScratch_;
+  // (channel, key) -> the note id its voices were started under, so note-off
+  // can find them again.
+  std::unordered_map<int, uint64_t> soundingNotes_;
+  // The keyboard an unassigned channel falls back to when the organ declares
+  // no assignment code. Resolved once at load.
+  Id fallbackKeyboard_ = 0;
+  // Reused every note-on: the key-flow walk must not allocate.
+  KeyFlowScratch keyFlow_;
+  std::vector<ExpandedNote> expandScratch_;
+  uint64_t nextNoteId_ = 1;
+  AudioGraphConfig graph_;
+  juce::AudioProcessorValueTreeState apvts_;
+#if MP_ENABLE_DSP
+  // Keyed by enclosure id so a reload cannot mismatch filters and boxes.
+  std::unordered_map<Id, dsp::EnclosureFilter> enclosureFilters_;
+  // Bus layout, fixed at prepareToPlay: one bus per enclosure in a stable
+  // order, then one final bus for everything unenclosed.
+  std::vector<Id> busEnclosures_;
+  std::unordered_map<Id, int> enclosureBusIndex_;
+  int unenclosedBus_ = 0;
+  // Scratch for one bus. Preallocated: the audio thread must not allocate.
+  juce::AudioBuffer<float> busScratch_;
+  std::unordered_map<Id, dsp::TremulantLfo> tremulantLfos_;
+
+#endif
+  double sampleRate_ = 48000.0;
+
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterpieceProcessor)
+};
+
+} // namespace mp
