@@ -254,6 +254,12 @@ public:
   // The wind. Read-only from outside: what the pressure is doing is a result,
   // not a setting, and the only control over it is EngineSwitch::enableWindModel.
   const WindSolver& wind() const { return wind_; }
+  // How far the wind model's deviation from nominal is scaled. 1 = the
+  // physics as solved; higher exaggerates it so it can be HEARD and judged.
+  // Not a tone control: leaving it above 1 makes the organ lie about its own
+  // wind system.
+  void setWindDepth(double d) { windDepth_ = d < 0.0 ? 0.0 : d; }
+  double windDepth() const { return windDepth_; }
 
   // --- the registration sequencer ---------------------------------------
   // One thumb piston that walks the organ's generals in order. Not wired in
@@ -705,6 +711,7 @@ private:
   // The organ's declared output trim as a linear gain, resolved once at
   // load. 1.0 for a set that declares none.
   float organTrimGain_ = 1.0f;
+  double windDepth_ = 1.0;
   bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;

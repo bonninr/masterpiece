@@ -292,8 +292,14 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 
   for (size_t i = 0; i < windOrder_.size(); ++i) {
     const auto mod = wind_.modFor(windOrder_[i]);
-    windMods_[i].ampMul = static_cast<float>(mod.ampMul);
-    windMods_[i].pitchRatio = mod.pitchRatio;
+    // The solver's answer is physical. This scales the DEVIATION from
+    // nominal, so depth 1 is exactly what the physics said and nothing is
+    // altered by the knob existing. Above 1 is deliberately unphysical: a
+    // listening aid for judging whether the effect is there at all, because
+    // a real chest sags a few percent and a few percent is hard to hear.
+    const double d = windDepth_;
+    windMods_[i].ampMul = static_cast<float>(1.0 + (mod.ampMul - 1.0) * d);
+    windMods_[i].pitchRatio = 1.0 + (mod.pitchRatio - 1.0) * d;
   }
   voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
 }
