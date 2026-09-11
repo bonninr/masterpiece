@@ -113,25 +113,17 @@ public:
 
   // The organ's own level for a layer, as a linear gain factor.
   //
-  // NOT YET APPLIED TO AUDIO, deliberately. Every layer of a real set names a
-  // scaling control, and the value reaching it is computed through the
-  // linkage graph — which we do not yet implement faithfully enough to hand
-  // it the volume knob:
+  // This is also how a set switches between its tremulant and non-tremulant
+  // recordings. Every pipe of a tremmed set carries two layers, and the organ
+  // mutes one of them: Nancy silences 488 that way, Azzio 537 of 996. A set
+  // that ignored this would sound both variants at once.
   //
-  //   - BinaryOperationCode 7 appears on Azzio and is rejected by the loader,
-  //     which only knows the add/subtract/multiply it could confirm.
-  //   - InvertSourceControlValue is not parsed at all.
-  //   - LinkTypeCode is not interpreted.
-  //
-  // Measured consequence on Azzio: 537 of its 996 layers come out silent,
-  // because "Scaling Whole Normal" sits at its declared default of 0 and only
-  // the tremulant alternates sound. Half the organ, permanently tremulant.
-  // Nancy looks plausible on the same code, which is exactly why one organ is
-  // not enough to judge it by.
-  //
-  // Kept, parsed and reported by mp-render --levels so the gap is visible and
-  // measurable rather than forgotten. It reaches the voice the day the graph
-  // is faithful.
+  // Not every linkage that feeds these controls is understood yet —
+  // BinaryOperationCode 7 is rejected by the loader, InvertSourceControlValue
+  // is unparsed, LinkTypeCode uninterpreted — but the crossfade itself is
+  // built from plain conditional linkages, which are. mp-render --levels
+  // reports what each control resolves to, so the remaining gaps stay
+  // measurable.
   //
   // Read at voice start, never per sample: a level is a control-rate thing
   // and a note already sounding keeps the gain it began with, exactly as a

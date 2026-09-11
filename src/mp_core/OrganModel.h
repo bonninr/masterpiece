@@ -477,6 +477,9 @@ struct ContinuousControlLinkage {
   Id sourceControlId = 0;
   Id destControlId = 0;
   Id conditionSwitchId = 0;
+  // InvertSourceControlValue is folded into these at load: the loader negates
+  // the coefficient and adds 127, which mirrors the source within its range.
+  // Nancy marks 203 of her 1097 linkages that way.
   double scale = 1.0;
   int offset = 0;
 };

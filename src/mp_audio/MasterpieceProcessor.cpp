@@ -904,7 +904,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
               pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
               layer);
           vs.gain = juce::Decibels::decibelsToGain(
-              static_cast<float>(layer.gainDb), -100.0f);
+                        static_cast<float>(layer.gainDb), -100.0f) *
+                    layerLevel(layer);
           // A layer may declare its own loop, overriding the audio file's.
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;
@@ -1158,7 +1159,8 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // pipe speech, so temperament must not touch them.
       vs.ratio = 1.0;
       vs.gain = juce::Decibels::decibelsToGain(
-          static_cast<float>(layer.gainDb), -100.0f);
+                    static_cast<float>(layer.gainDb), -100.0f) *
+                layerLevel(layer);
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);
@@ -1340,19 +1342,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       continue;
     controls_.setValue(id, v);
   }
-  // Only when something was actually restored, and pinned to nothing.
+  // Settle the whole graph once, WITH the switch states.
   //
-  // It is tempting to settle the whole graph here so that derived controls
-  // hold computed values rather than declared ones. Measured on a real set,
-  // that is worse: Nancy's declared defaults are the organ's own answer for
-  // the at-rest state, and recomputing them from a linkage graph whose
-  // LinkTypeCode, SourceControlValueIndex and inertia model we do not
-  // implement silenced 488 layers and detuned 3056 of them by up to 50 Hz —
-  // nearly two semitones, from controls that all declare a default of zero.
-  //
-  // Until those semantics are implemented, the declared defaults win.
-  if (!pendingControlValues_.empty())
-    controls_.propagate(0, &engagedSwitches_);
+  // ContinuousControlBank::reset() propagates too, but it knows no switches,
+  // so every conditional linkage is skipped — and a set's tremulant crossfade
+  // is built entirely out of those. Azzio pairs them: one linkage fires while
+  // switch 49 is engaged and its partner while it is not, swapping two levels
+  // between the normal and tremmed scaling controls. Without this call both
+  // sit at their declared defaults and the crossfade never happens.
+  controls_.propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
