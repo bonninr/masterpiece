@@ -179,6 +179,38 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
+// The mixer: how many output pairs the player has, and which one each rank
+// speaks through. Its own tab because the rank list is long — a real organ has
+// dozens — and it is the one settings page that needs to scroll.
+class MixerPanel : public juce::Component {
+public:
+  explicit MixerPanel(MasterpieceProcessor& p);
+  void resized() override;
+  // Rebuild the rank rows. The rank list only exists once an organ is loaded,
+  // so this cannot happen in the constructor.
+  void refresh();
+
+private:
+  void pushRouting();
+  void setBusCount(int buses);
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::Label busesLabel_;
+  juce::ComboBox busCount_;
+  juce::Label status_;
+  juce::TextButton save_{"Save for this organ"};
+  juce::TextButton spread_{"Spread ranks evenly"};
+  juce::TextButton reset_{"All to bus 1"};
+  // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
+  juce::Viewport viewport_;
+  juce::Component rankHolder_;
+  std::vector<Id> rankIds_;
+  std::vector<std::unique_ptr<juce::Label>> rankLabels_;
+  std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
+  juce::Label note_;
+};
+
 // The console's own text display: the little 32-character panel on the jamb
 // that tells the player what the keys cannot. Its own tab rather than a corner
 // of the MIDI page, because the framing bytes belong to the player's hardware
@@ -225,6 +257,7 @@ private:
   MetronomePanel metronome_;
   RecorderPanel recorder_;
   MidiPanel midi_;
+  MixerPanel mixer_;
   DisplayPanel display_;
 };
 

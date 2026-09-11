@@ -782,6 +782,183 @@ void MidiPanel::resized() {
   note_.setBounds(r);
 }
 
+// ----------------------------------------------------------------- mixer
+
+MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Mixer");
+  addAndMakeVisible(busesLabel_);
+  styleLabel(busesLabel_, "Output pairs");
+  addAndMakeVisible(busCount_);
+  for (int i = 1; i <= 8; ++i)
+    busCount_.addItem(juce::String(i) + (i == 1 ? " (stereo)" : " pairs"), i);
+  busCount_.setSelectedId(juce::jmax(1, proc_.mixBusCount()),
+                          juce::dontSendNotification);
+  busCount_.onChange = [this] { setBusCount(busCount_.getSelectedId()); };
+
+  addAndMakeVisible(spread_);
+  spread_.onClick = [this] {
+    // Round-robin, which is the useful starting point rather than a
+    // suggestion about how this organ should be mixed: it makes the routing
+    // audible immediately so the player can hear what they are adjusting.
+    const int buses = juce::jmax(1, proc_.mixBusCount());
+    for (size_t i = 0; i < rankIds_.size(); ++i)
+      rankBuses_[i]->setSelectedId(static_cast<int>(i % buses) + 1,
+                                   juce::dontSendNotification);
+    pushRouting();
+  };
+  addAndMakeVisible(reset_);
+  reset_.onClick = [this] {
+    for (auto& box : rankBuses_)
+      box->setSelectedId(1, juce::dontSendNotification);
+    pushRouting();
+  };
+  addAndMakeVisible(save_);
+  save_.onClick = [this] { proc_.saveSettings(); };
+
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(viewport_);
+  viewport_.setViewedComponent(&rankHolder_, false);
+  viewport_.setScrollBarsShown(true, false);
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "No sample set says anything about audio routing - not one - so "
+            "this is yours to decide, like the MIDI mapping. Output pairs and "
+            "their device channels carry across organs; which rank goes where "
+            "is saved per organ, because a rank number means nothing in a "
+            "different instrument.\n\n"
+            "A rank you never touch plays through the first pair, so an organ "
+            "is audible before you open this page. If you are listening in "
+            "stereo the pairs are summed, so nothing disappears when you "
+            "split them up.");
+
+  refresh();
+}
+
+void MixerPanel::setBusCount(int buses) {
+  auto& mixer = proc_.mixer();
+  mixer.buses.clear();
+  for (int i = 0; i < buses; ++i) {
+    MixerBus b;
+    b.id = BusId{i + 1};
+    // Consecutive pairs on the device. A player with a different layout can
+    // say so in the settings file; guessing anything cleverer here would be
+    // inventing a convention nobody asked for.
+    b.deviceChannels = {2 * i, 2 * i + 1};
+    mixer.buses.push_back(b);
+  }
+  proc_.refreshMixerBuses();
+
+  // A rank pointing at a pair that no longer exists would go quiet for a
+  // reason nowhere on screen, so fold it back to the first one.
+  for (auto& box : rankBuses_) {
+    box->clear(juce::dontSendNotification);
+    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+  }
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const auto& dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
+    int sel = 1;
+    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
+    rankBuses_[i]->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
+                                 juce::dontSendNotification);
+  }
+  pushRouting();
+}
+
+void MixerPanel::pushRouting() {
+  auto& mixer = proc_.mixer();
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    RankRouting r;
+    r.rankId = rankIds_[i];
+    r.perspectives[0].dest = BusId{rankBuses_[i]->getSelectedId()};
+    mixer.rankRoutings[rankIds_[i]] = r;
+  }
+  const auto d = validateMixer(proc_.organModel(), mixer);
+  status_.setText(juce::String(static_cast<int>(rankIds_.size())) +
+                      " rank(s), " + juce::String(proc_.mixBusCount()) +
+                      " pair(s)" +
+                      (d.clean() ? "" : "  -  " +
+                                            juce::String((int)d.unroutedRanks.size()) +
+                                            " unrouted, " +
+                                            juce::String((int)d.ranksRoutedToMissingBus.size()) +
+                                            " stale"),
+                  juce::dontSendNotification);
+}
+
+void MixerPanel::refresh() {
+  rankIds_.clear();
+  rankLabels_.clear();
+  rankBuses_.clear();
+  rankHolder_.removeAllChildren();
+
+  for (const auto& [id, rank] : proc_.organModel().ranks) rankIds_.push_back(id);
+  std::sort(rankIds_.begin(), rankIds_.end());
+
+  const int buses = juce::jmax(1, proc_.mixBusCount());
+  busCount_.setSelectedId(buses, juce::dontSendNotification);
+
+  for (Id rankId : rankIds_) {
+    auto label = std::make_unique<juce::Label>();
+    const auto it = proc_.organModel().ranks.find(rankId);
+    juce::String name = juce::String(static_cast<int>(rankId));
+    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
+      name << "  " << juce::String(it->second.name);
+    styleLabel(*label, name);
+    rankHolder_.addAndMakeVisible(*label);
+    rankLabels_.push_back(std::move(label));
+
+    auto box = std::make_unique<juce::ComboBox>();
+    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+    const auto& dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
+    int sel = 1;
+    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
+    box->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
+                       juce::dontSendNotification);
+    box->onChange = [this] { pushRouting(); };
+    rankHolder_.addAndMakeVisible(*box);
+    rankBuses_.push_back(std::move(box));
+  }
+
+  pushRouting();
+  resized();
+}
+
+void MixerPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  heading_.setBounds(r.removeFromTop(kRow));
+  auto row = r.removeFromTop(kRow);
+  busesLabel_.setBounds(row.removeFromLeft(110));
+  busCount_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  spread_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  row.removeFromLeft(4);
+  reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
+  row.removeFromLeft(4);
+  save_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+  r.removeFromTop(4);
+  status_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+
+  // The note keeps its space; the rank list takes what is left, which is what
+  // makes the page work on an organ with fifty ranks and on one with six.
+  auto noteArea = r.removeFromBottom(juce::jmin(96, r.getHeight() / 3));
+  note_.setBounds(noteArea);
+  r.removeFromBottom(kGap);
+  viewport_.setBounds(r);
+
+  const int rowH = kRow + 2;
+  rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
+                      static_cast<int>(rankIds_.size()) * rowH);
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH,
+                              rankHolder_.getWidth(), kRow);
+    rankBuses_[i]->setBounds(line.removeFromRight(140).reduced(2, 1));
+    rankLabels_[i]->setBounds(line);
+  }
+}
+
 // ------------------------------------------------------- console display
 
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
@@ -965,7 +1142,7 @@ void DisplayPanel::resized() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), display_(p) {
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Engine", bg, &engine_, false);
@@ -973,6 +1150,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Metronome", bg, &metronome_, false);
   tabs_.addTab("Recorder", bg, &recorder_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
+  tabs_.addTab("Mixer", bg, &mixer_, false);
   tabs_.addTab("Display", bg, &display_, false);
   setSize(660, 480);
 }
