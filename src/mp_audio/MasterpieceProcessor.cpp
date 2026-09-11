@@ -99,6 +99,8 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // Clamped because this multiplies everything the organ makes and a corrupt
   // field should not be able to deafen anyone: +/-24 dB is far wider than any
   // real set declares (we have seen -4 to +2) and still finite.
+  refreshMixerBuses();
+
   organTrimGain_ =
       applyOrganTrim_
           ? static_cast<float>(juce::Decibels::decibelsToGain(
@@ -144,6 +146,45 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                    : 0.5f;
   recorder_.prepare(sampleRate_);
   outgoing_.ensureSize(1024);
+}
+
+void MasterpieceProcessor::refreshMixerBuses() {
+  mixBusOrder_.clear();
+  mixBusIndexOf_.clear();
+  for (const auto& b : mixer_.buses) {
+    if (b.id.value == 0) continue;
+    if (mixBusIndexOf_.count(b.id.value) != 0) continue;
+    mixBusIndexOf_[b.id.value] = static_cast<int>(mixBusOrder_.size());
+    mixBusOrder_.push_back(b.id);
+  }
+  // A config with no buses still has to render somewhere. One bus is what the
+  // engine did before there was a mixer at all, so that is the fallback.
+  if (mixBusOrder_.empty()) {
+    mixBusOrder_.push_back(BusId{1});
+    mixBusIndexOf_[1] = 0;
+  }
+}
+
+int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) const {
+  // One bus is the overwhelmingly common case and the default: skip the
+  // routing lookup entirely rather than pay for it on every voice start.
+  if (mixBusOrder_.size() <= 1) return 0;
+
+  const RankRouting routing = mixer_.routingFor(rankId);
+  const auto& primary = routing.perspectives[0];
+  BusId dest{0};
+  if (std::holds_alternative<BusId>(primary.dest)) {
+    dest = std::get<BusId>(primary.dest);
+  } else if (const BusGroup* g = mixer_.group(std::get<int>(primary.dest))) {
+    dest = allocateBus(*g, midiNote, static_cast<int>(rankId),
+                       primary.algorithm, primary.noteOffset);
+  }
+
+  const auto it = mixBusIndexOf_.find(dest.value);
+  // A routing to a bus that no longer exists lands on the first one rather
+  // than on silence. The validator reports it as stale; going quiet here
+  // would make a deleted bus look like a broken engine.
+  return it == mixBusIndexOf_.end() ? 0 : it->second;
 }
 
 int MasterpieceProcessor::busForPipe(Id pipeId) const {
@@ -228,15 +269,17 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
   voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
 }
 
-void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
-  const int numCh = buffer.getNumChannels();
-  const int numFrames = buffer.getNumSamples();
+// One mixer bus, summed ADDITIVELY into `dest`. Does not touch the block
+// counter or the wind: the caller owns those, because they happen once per
+// block however many buses there are.
+//
+// `mixBusFilter` < 0 means every voice, which is the single-bus default and
+// costs nothing — the filter is not even consulted.
+void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
+                                           int mixBusFilter) {
+  const int numCh = dest.getNumChannels();
+  const int numFrames = dest.getNumSamples();
   if (numCh <= 0 || numFrames <= 0) return;
-
-  // One block for the whole callback, whatever the bus count.
-  voices_.beginBlock();
-  advanceWind(numFrames);
-  advanceTremulants(numFrames);
 
   const bool enclosuresActive =
 #if MP_ENABLE_DSP
@@ -246,16 +289,18 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
 #endif
 
   // Without expression there is nothing to separate: render every voice at
-  // once and skip the per-bus scratch entirely.
+  // once and skip the per-enclosure scratch entirely.
   if (!enclosuresActive || busEnclosures_.empty()) {
-    voices_.render(buffer.getArrayOfWritePointers(), numCh, numFrames);
+    voices_.render(dest.getArrayOfWritePointers(), numCh, numFrames, -1,
+                   mixBusFilter);
     return;
   }
 
   const int numBuses = unenclosedBus_ + 1;
   for (int bus = 0; bus < numBuses; ++bus) {
     busScratch_.clear(0, numFrames);
-    voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus);
+    voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus,
+                   mixBusFilter);
 
 #if MP_ENABLE_DSP
     if (bus < static_cast<int>(busEnclosures_.size())) {
@@ -274,9 +319,51 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
 #endif
 
     for (int ch = 0; ch < numCh; ++ch)
-      buffer.addFrom(ch, 0, busScratch_, ch, 0, numFrames);
+      dest.addFrom(ch, 0, busScratch_, ch, 0, numFrames);
   }
 }
+
+void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
+  const int numCh = buffer.getNumChannels();
+  const int numFrames = buffer.getNumSamples();
+  if (numCh <= 0 || numFrames <= 0) return;
+
+  // One block for the whole callback, whatever the bus count.
+  voices_.beginBlock();
+  advanceWind(numFrames);
+  advanceTremulants(numFrames);
+
+  const int buses = static_cast<int>(mixBusOrder_.size());
+
+  // The ordinary case, and the default: one mixer bus means no routing axis at
+  // all, so nothing is filtered and this is exactly what the engine did before
+  // there was a mixer.
+  if (buses <= 1 && mixBusCapture_ == nullptr) {
+    renderOneMixBus(buffer, -1);
+    return;
+  }
+
+  // Several buses into one output pair. A player who has configured a mixer
+  // but is listening in stereo must still hear the whole organ, so the buses
+  // are summed rather than the extra ones dropped.
+  for (int i = 0; i < buses; ++i) {
+    if (mixBusCapture_ == nullptr) {
+      // No capture: add straight into the output, which needs no per-bus
+      // memory at all.
+      renderOneMixBus(buffer, buses <= 1 ? -1 : i);
+      continue;
+    }
+    if (i >= static_cast<int>(mixBusCapture_->size())) break;
+    auto& dest = (*mixBusCapture_)[static_cast<size_t>(i)];
+    dest.clear(0, numFrames);
+    renderOneMixBus(dest, buses <= 1 ? -1 : i);
+    // Summed into the output as well, so capturing does not change what the
+    // callback produces.
+    for (int ch = 0; ch < numCh && ch < dest.getNumChannels(); ++ch)
+      buffer.addFrom(ch, 0, dest, ch, 0, numFrames);
+  }
+}
+
 
 void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // Two sources, one path. The host hands us a merged buffer with no device in
@@ -920,6 +1007,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;
           vs.busIndex = busForPipe(pipe.pipeId);
+          vs.mixBus = mixBusForPipe(rp.rankId, reached.midiNote);
           {
             const auto wIt = pipeWindIndex_.find(pipe.pipeId);
             vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
@@ -1208,6 +1296,9 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);
+      // A noise belongs to the console, not to a division, so it has no rank
+      // routing of its own and stays on the first bus.
+      vs.mixBus = 0;
       voices_.startVoice(vs, noteId);
     }
   }

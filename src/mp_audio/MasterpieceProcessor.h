@@ -24,6 +24,7 @@
 #include "AudioRecorder.h"
 #include "MidiRecorder.h"
 #include "SampleLibrary.h"
+#include "MixerConfig.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
 #include "../mp_sampler/VoiceEngine.h"
@@ -426,6 +427,36 @@ public:
   // reassembled there: a preview that computes its own idea of the state will
   // eventually disagree with the hardware, and then it is worse than none.
   LcdState lcdState() const;
+
+  // --- the mixer -------------------------------------------------------
+  // Whose configuration this is: the player's, not the organ's. No sample set
+  // declares a routing object at all (see MixerConfig.h).
+  MixerConfig& mixer() { return mixer_; }
+  const MixerConfig& mixer() const { return mixer_; }
+  // Rebuild the dense bus indexing after the config changes. Must be called
+  // before the next block, and never from the audio thread.
+  void refreshMixerBuses();
+  int mixBusCount() const { return static_cast<int>(mixBusOrder_.size()); }
+  BusId mixBusAt(int denseIndex) const {
+    return denseIndex >= 0 && denseIndex < static_cast<int>(mixBusOrder_.size())
+               ? mixBusOrder_[static_cast<size_t>(denseIndex)]
+               : BusId{0};
+  }
+  // Capture each mixer bus separately as the normal callback runs.
+  //
+  // A hook rather than a second render path: the per-bus signal has to come
+  // from the same voices, the same wind and the same shades as the audio
+  // anyone actually hears, and a parallel path would drift from it. When set,
+  // each bus is rendered into its own buffer AND summed into the output as
+  // usual, so nothing about the callback changes.
+  //
+  // What lands here is PRE-convolver and pre-master-fader: it is the bus
+  // signal, which is where a per-bus IR will eventually sit. Caller owns the
+  // buffers and must size them to the block; pass nullptr to stop capturing.
+  // Message thread only, and not while audio is running.
+  void setMixBusCapture(std::vector<juce::AudioBuffer<float>>* perBus) {
+    mixBusCapture_ = perBus;
+  }
   // Gathers what the panels show and queues whatever changed. Call from the
   // MESSAGE thread, on a timer: it builds strings, which has no business on
   // the audio thread, and nothing a panel shows moves faster than a person
@@ -494,8 +525,14 @@ private:
   // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
   // allocated here.
   void renderBuses(juce::AudioBuffer<float>& buffer);
+  void renderOneMixBus(juce::AudioBuffer<float>& dest, int mixBusFilter);
   // Which bus a pipe belongs to: its enclosure's index, or the unenclosed bus.
   int busForPipe(Id pipeId) const;
+  // Which MIXER bus a pipe of this rank speaks through, as a dense index into
+  // the per-bus buffers rather than a BusId (ids run to 1024; the buffers are
+  // only as many as the player actually configured). Resolved at note-on
+  // because a group allocation depends on the key.
+  int mixBusForPipe(Id rankId, int midiNote) const;
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
   void handleMidi(const juce::MidiBuffer& midi);
@@ -629,6 +666,12 @@ private:
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
   LcdPanels lcd_;
+  // The player's mixer. Defaults to one stereo bus, which makes the whole
+  // routing path a no-op until someone configures something.
+  MixerConfig mixer_ = MixerConfig::stereoDefault();
+  std::vector<BusId> mixBusOrder_;              // dense index -> BusId
+  std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
+  std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
   // Built on the message thread, drained by the audio thread into outgoing_ so
   // there is one sender to the port. The audio thread takes this with
   // try_lock and simply waits a block if it is contended — an LCD line arriving

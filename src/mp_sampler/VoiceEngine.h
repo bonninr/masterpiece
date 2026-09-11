@@ -146,9 +146,13 @@ struct Voice {
 
   uint64_t startedAtBlock = 0; // for stealing (oldest first)
   const PipeLayer* layer = nullptr;
-  // Which mix bus this voice belongs to. One bus per enclosure plus one for
+  // Which ENCLOSURE this voice sits behind. One bus per enclosure plus one for
   // unenclosed pipework, so the shades act only on what they actually cover.
   int busIndex = 0;
+  // Which MIXER bus it speaks through — an independent axis. A rank in the
+  // Swell is enclosed by the Swell shades whichever output pair the player
+  // sends it to, so these two cannot share a field.
+  int mixBus = 0;
   // Which windchest this pipe stands on, as an index into the engine's wind
   // table. -1 means the organ models no wind for it, and then nothing is
   // applied. The wind moves every block, so it cannot be baked into `gain`
@@ -218,7 +222,8 @@ struct VoiceStart {
   // Noises, percussive ranks and releases must not sustain, and "-1 means use
   // the file's loop" cannot express that.
   bool oneShot = false;
-  int busIndex = 0;
+  int busIndex = 0;  // enclosure
+  int mixBus = 0;    // mixer output
 };
 
 struct EngineStats {
@@ -249,11 +254,15 @@ public:
   void noteOff(uint64_t noteId, const NoteRelease& release);
 
   // Mix active voices into `out` (numChannels planar buffers, additive).
-  // busIndex < 0 renders every voice; otherwise only voices on that bus, which
-  // is how each enclosure gets its own signal to filter.
+  //
+  // Both filters are "< 0 means every voice". They are ANDed, so one call
+  // renders exactly the voices behind enclosure `busIndex` AND routed to
+  // mixer bus `mixBus` — which is what lets a mix bus be assembled from
+  // several enclosures, each filtered by its own shades, without a voice
+  // being rendered twice or missed.
   // Allocation-free and lock-free; safe on the audio thread.
   void render(float* const* out, int numChannels, int numFrames,
-              int busIndex = -1);
+              int busIndex = -1, int mixBus = -1);
   // Advance the block counter once per audio block. render() does this itself
   // when called for all voices; a caller rendering bus by bus must call it
   // exactly once instead, or voice ages drift by the number of buses.
@@ -364,7 +373,7 @@ private:
   // work a thread takes; ranges never overlap, so no voice is touched twice
   // and no locking is needed on the voices themselves.
   void renderRange(size_t begin, size_t end, float* const* out, int numChannels,
-                   int numFrames, int busIndex);
+                   int numFrames, int busIndex, int mixBus);
   void stopWorkers();
 
   std::vector<Voice> voices_;
@@ -453,6 +462,7 @@ private:
   int jobChannels_ = 0;
   int jobFrames_ = 0;
   int jobBus_ = -1;
+  int jobMixBus_ = -1;
 };
 
 } // namespace mp
