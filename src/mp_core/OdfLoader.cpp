@@ -957,6 +957,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     c.clickable = fieldBool(row, "Clickable", nullptr, true);
     c.clickingHigherIncreasesValue =
         fieldBool(row, "ClickingHigherIncreasesValue", nullptr, true);
+    c.rememberState =
+        fieldBool(row, "RememberStateFromLastLoad", nullptr, false);
     if (c.controlId == 0) return;
     if (c.minValue > c.maxValue) {
       outDiag.warnings.emplace_back(

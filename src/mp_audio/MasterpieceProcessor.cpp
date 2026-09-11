@@ -609,19 +609,58 @@ bool MasterpieceProcessor::saveSettings() const {
   const auto f = organFileForSaving("organs", ".mporgan");
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText("# Masterpiece per-organ settings\n" +
-                           settingsBody());
+
+  juce::String text = "# Masterpiece per-organ settings\n";
+  text << settingsBody();
+
+  // Where the player left the organ's own controls: noise levels, audio-group
+  // balance, detuning. Only the ones the ORGAN says to remember — a swell shoe
+  // and a crescendo are marked otherwise and must start where the organ puts
+  // them, not where a previous session happened to stop.
+  //
+  // Per-organ only, never in the global defaults: a control id means nothing
+  // outside the organ that declared it.
+  //
+  // And only controls that are SET rather than DERIVED. A control on the
+  // receiving end of an unconditional linkage is computed from its source
+  // every load, so writing it down records an answer that is about to be
+  // recalculated -- Nancy has some 380 of them, all internal, and they turned
+  // a settings file into a wall of noise. A control fed only by CONDITIONAL
+  // linkages is different: those are preset buttons, they do not fire at
+  // load, and the value really is the player's.
+  std::unordered_set<Id> derived;
+  for (const auto& l : model_.controlLinkages)
+    if (l.destControlId != 0 && l.conditionSwitchId == 0)
+      derived.insert(l.destControlId);
+
+  for (const auto& [id, c] : model_.continuousControls) {
+    if (!c.rememberState || derived.count(id) != 0) continue;
+    const int v = controls_.value(id);
+    if (v == c.defaultValue) continue;  // nothing to say
+    text << "control " << juce::String(id) << " " << juce::String(v) << "\n";
+  }
+  return f.replaceWithText(text);
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
+  pendingControlValues_.clear();
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
   auto sw = graph_.engineSwitch;
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
-    applySettingsLine(line.upToFirstOccurrenceOf(" ", false, false).trim(),
-                      line.fromFirstOccurrenceOf(" ", false, false).trim(), sw);
+    const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
+    const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (key == "control") {
+      // "control <id> <value>". Held rather than applied: the bank does not
+      // exist yet and reset() would discard anything set now.
+      pendingControlValues_.emplace_back(
+          static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
+          val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
+      continue;
+    }
+    applySettingsLine(key, val, sw);
   }
   graph_.engineSwitch = sw;
   return true;
@@ -1215,10 +1254,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
   // the samples are read and cannot be changed afterwards.
-  loadedOdf_ = odfFile;
-  // Floor first, then the organ's own answer on top of it. An organ that has
-  // been configured keeps what it was given; one that has not starts from
-  // whatever this machine was told suits it.
+  //
+  // `loadedOdf_` is deliberately NOT set yet. organFile() takes it matching
+  // as licence to name the file from organKey(), which reads model_ — and the
+  // model is parsed further down. Setting it here made the reader look for a
+  // file under the previous organ's name (or none at all) while the writer
+  // used this one's, so nothing ever loaded back. Leaving it unset sends the
+  // lookup through organKeyFor(), which parses the header only and is what
+  // that function exists for.
   loadGlobalDefaults();
   loadSettingsFor(odfFile);
 
@@ -1262,6 +1305,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // for everything, and no swell pedal did anything. It looked healthy from
   // the outside because a stuck-open enclosure sounds like an organ.
   controls_.reset(model_);
+
+  // Now, and not before: reset() has just put every control at the organ's
+  // default, so positions restored from the player's file go on top of it.
+  // Only controls the organ marks as remembered are ever written, so this
+  // cannot resurrect a swell shoe or a crescendo from a previous session.
+  for (const auto& [id, v] : pendingControlValues_) {
+    const auto it = model_.continuousControls.find(id);
+    if (it == model_.continuousControls.end() || !it->second.rememberState)
+      continue;
+    controls_.setValue(id, v);
+  }
+  // One settle at the end rather than per control: the linkages are the same
+  // either way and a hundred sliders is a hundred passes otherwise.
+  if (!pendingControlValues_.empty())
+    controls_.propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.

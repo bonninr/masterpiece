@@ -416,6 +416,11 @@ struct ContinuousControl {
   // Which way along the image is "more". Stated by the organ rather than
   // inferred, because a swell shoe and a level slider do not agree about it.
   bool clickingHigherIncreasesValue = true;
+  // Whether this position should come back next time. The organ decides, and
+  // it is not the same answer for everything: a noise level is a preference,
+  // but a swell shoe and a crescendo must start where the organ says rather
+  // than where they were left. Nancy marks 49 of its 55 drawn controls.
+  bool rememberState = false;
 };
 
 // How a control's 0..127 shows on its image: a staircase of value bands, each

@@ -558,6 +558,11 @@ private:
   juce::String settingsBody() const;
   void applySettingsLine(const juce::String& key, const juce::String& val,
                          EngineSwitch& sw);
+  // Control positions read from the organ's file, held until the bank exists.
+  // loadSettingsFor runs at the top of loadOrgan, but controls_.reset() is
+  // much further down and would wipe anything set before it — so these wait
+  // and are applied on the far side of it.
+  std::vector<std::pair<Id, int>> pendingControlValues_;
   // The defaults as they stand on disk, kept verbatim so that writing the
   // file for any other reason cannot rewrite them from whatever is loaded.
   juce::String globalBody_;
