@@ -25,6 +25,7 @@
 #include "MidiRecorder.h"
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
+#include "VoicingSet.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
 #include "../mp_sampler/VoiceEngine.h"
@@ -431,6 +432,14 @@ public:
   // --- the mixer -------------------------------------------------------
   // Whose configuration this is: the player's, not the organ's. No sample set
   // declares a routing object at all (see MixerConfig.h).
+  // --- voicing ---------------------------------------------------------
+  // The player's per-rank and per-pipe adjustments. Two slots plus a live
+  // flag, because voicing is done by comparing a change against what was
+  // there before; from memory the comparison always flatters whichever was
+  // heard last.
+  VoicingAB& voicing() { return voicing_; }
+  const VoicingAB& voicing() const { return voicing_; }
+
   MixerConfig& mixer() { return mixer_; }
   const MixerConfig& mixer() const { return mixer_; }
   // Rebuild the dense bus indexing after the config changes. Must be called
@@ -673,6 +682,7 @@ private:
   // The player's mixer. Defaults to one stereo bus, which makes the whole
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
+  VoicingAB voicing_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

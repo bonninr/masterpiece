@@ -922,14 +922,40 @@ bool MasterpieceProcessor::saveSettings() const {
       text << "route " << juce::String(rankId) << " group "
            << juce::String(std::get<int>(primary.dest)) << "\n";
   }
+
+  // Voicing, per organ for the same reason as the routes: a rank or pipe id
+  // means nothing in another instrument. BOTH slots are written, and which one
+  // is live, so an A/B survives a reload — the comparison is the work, and
+  // losing the other side of it on quit throws that work away.
+  {
+    auto writeSet = [&text](const char* slot, const VoicingSet& v) {
+      auto line = [&](const char* what, Id id, const PipeVoicing& pv) {
+        text << "voicing " << slot << " " << what << " " << juce::String(id)
+             << " " << juce::String(pv.gainDb, 3) << " "
+             << juce::String(pv.tuningCents, 3) << " "
+             << juce::String(pv.brightnessDb, 3) << " "
+             << juce::String(pv.balance, 3) << "\n";
+      };
+      for (Id id : v.rankIds()) line("rank", id, v.rank(id));
+      for (Id id : v.pipeIds()) line("pipe", id, v.pipe(id));
+    };
+    writeSet("a", voicing_.a);
+    writeSet("b", voicing_.b);
+    if (voicing_.usingB) text << "voicingslot b\n";
+  }
+
   return f.replaceWithText(text);
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pendingControlValues_.clear();
-  // Routes belong to the organ being left, not the one arriving. Keeping them
-  // would point this organ's rank ids at the previous organ's mix.
+  // Routes and voicing belong to the organ being left, not the one arriving.
+  // Keeping either would point this organ's rank ids at the previous organ's
+  // mix, or worse, at its tuning.
   mixer_.rankRoutings.clear();
+  voicing_.a.clear();
+  voicing_.b.clear();
+  voicing_.usingB = false;
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -944,6 +970,26 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingControlValues_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
+      continue;
+    }
+    if (key == "voicing") {
+      // "voicing a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() < 7) continue;
+      PipeVoicing pv;
+      pv.gainDb = tok[3].getFloatValue();
+      pv.tuningCents = tok[4].getFloatValue();
+      pv.brightnessDb = tok[5].getFloatValue();
+      pv.balance = tok[6].getFloatValue();
+      VoicingSet& set = tok[0] == "b" ? voicing_.b : voicing_.a;
+      const Id id = static_cast<Id>(tok[2].getLargeIntValue());
+      if (tok[1] == "pipe") set.setPipe(id, pv);
+      else set.setRank(id, pv);
+      continue;
+    }
+    if (key == "voicingslot") {
+      voicing_.usingB = val.trim() == "b";
       continue;
     }
     if (key == "route") {
@@ -1201,6 +1247,25 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
           vs.gain = juce::Decibels::decibelsToGain(
                         static_cast<float>(layer.gainDb), -100.0f) *
                     layerLevel(layer);
+
+          // The player's own voicing, on top of what the organ declares.
+          // Gain and tuning only: they are a multiply and a ratio at note-on
+          // and cost nothing per sample, so they apply even with the DSP
+          // switch off. Brightness and balance need per-voice filtering and
+          // are stored but NOT applied — see PipeVoicing.
+          //
+          // The empty() guard is the point of the whole lookup: an organ
+          // nobody has voiced must not pay two hash lookups for every pipe of
+          // every chord.
+          if (!voicing_.live().empty()) {
+            const PipeVoicing pv =
+                voicing_.live().effective(rp.rankId, pipe.pipeId);
+            if (pv.gainDb != 0.0f)
+              vs.gain *= juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
+            if (pv.tuningCents != 0.0f)
+              vs.ratio *= centsRatio(pv.tuningCents);
+          }
+
           // A layer may declare its own loop, overriding the audio file's.
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;

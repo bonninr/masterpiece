@@ -782,6 +782,230 @@ void MidiPanel::resized() {
   note_.setBounds(r);
 }
 
+// --------------------------------------------------------------- voicing
+
+VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Voicing");
+
+  addAndMakeVisible(rankLabel_);
+  styleLabel(rankLabel_, "Rank");
+  addAndMakeVisible(rank_);
+  rank_.onChange = [this] { loadCurrentIntoSliders(); };
+
+  addAndMakeVisible(scopeLabel_);
+  styleLabel(scopeLabel_, "Applies to");
+  addAndMakeVisible(scope_);
+  scope_.addItem("The whole rank", 1);
+  scope_.addItem("One pipe", 2);
+  scope_.setSelectedId(1, juce::dontSendNotification);
+  scope_.onChange = [this] {
+    const bool perPipe = scope_.getSelectedId() == 2;
+    note_.setEnabled(perPipe);
+    noteLabel_.setEnabled(perPipe);
+    loadCurrentIntoSliders();
+  };
+
+  addAndMakeVisible(noteLabel_);
+  styleLabel(noteLabel_, "MIDI note");
+  addAndMakeVisible(note_);
+  note_.setRange(0, 127, 1);
+  note_.setValue(60, juce::dontSendNotification);
+  note_.setEnabled(false);
+  note_.onValueChange = [this] { loadCurrentIntoSliders(); };
+
+  addAndMakeVisible(gainLabel_);
+  styleLabel(gainLabel_, "Level");
+  addAndMakeVisible(gain_);
+  // +/-12 dB is the range a voicer works in. Wider would mostly offer new
+  // ways to make an organ wrong.
+  gain_.setRange(-12.0, 12.0, 0.1);
+  gain_.setTextValueSuffix(" dB");
+  gain_.setValue(0.0, juce::dontSendNotification);
+  gain_.onValueChange = [this] { pushCurrent(); };
+
+  addAndMakeVisible(tuneLabel_);
+  styleLabel(tuneLabel_, "Tuning");
+  // +/-50 cents is half a semitone: past that you are playing a different
+  // note, not tuning this one.
+  tune_.setRange(-50.0, 50.0, 0.1);
+  tune_.setTextValueSuffix(" cents");
+  tune_.setValue(0.0, juce::dontSendNotification);
+  tune_.onValueChange = [this] { pushCurrent(); };
+  addAndMakeVisible(tune_);
+
+  addAndMakeVisible(abSwap_);
+  abSwap_.onClick = [this] {
+    proc_.voicing().swap();
+    loadCurrentIntoSliders();
+    updateStatus();
+  };
+  addAndMakeVisible(abCopy_);
+  abCopy_.onClick = [this] {
+    proc_.voicing().copyToOther();
+    updateStatus();
+  };
+  addAndMakeVisible(resetOne_);
+  resetOne_.onClick = [this] {
+    gain_.setValue(0.0, juce::dontSendNotification);
+    tune_.setValue(0.0, juce::dontSendNotification);
+    pushCurrent();
+  };
+  addAndMakeVisible(resetAll_);
+  resetAll_.onClick = [this] {
+    proc_.voicing().live().clear();
+    loadCurrentIntoSliders();
+    updateStatus();
+  };
+  addAndMakeVisible(save_);
+  save_.onClick = [this] { proc_.saveSettings(); };
+
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(note2_);
+  styleNote(note2_,
+            "A rank adjustment and a pipe adjustment ADD. Pulling one sour "
+            "pipe into tune does not throw away the trim you put on the rank "
+            "it belongs to.\n\n"
+            "A and B are two complete sets. Make a change, swap, and hear it "
+            "against what was there before - from memory the comparison "
+            "always flatters whichever you heard last. Copy to other starts "
+            "the far slot from this one, so B is a variation rather than a "
+            "comparison against an unvoiced organ.\n\n"
+            "Level and tuning are a multiply and a ratio taken once when a "
+            "note starts, so they cost nothing while it sounds and work with "
+            "the DSP switched off. Notes already sounding keep what they "
+            "began with, exactly as a pipe does.\n\n"
+            "Saved per organ: a rank number means nothing in a different "
+            "instrument.");
+  refresh();
+}
+
+void VoicingPanel::refresh() {
+  rankIds_.clear();
+  rank_.clear(juce::dontSendNotification);
+  for (const auto& [id, r] : proc_.organModel().ranks) rankIds_.push_back(id);
+  std::sort(rankIds_.begin(), rankIds_.end());
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const auto it = proc_.organModel().ranks.find(rankIds_[i]);
+    juce::String name = juce::String(static_cast<int>(rankIds_[i]));
+    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
+      name << "  " << juce::String(it->second.name);
+    rank_.addItem(name, static_cast<int>(i) + 1);
+  }
+  if (!rankIds_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
+  loadCurrentIntoSliders();
+  updateStatus();
+}
+
+// The pipe under the current rank and note, or 0 when the rank has no pipe
+// there. A rank does not necessarily span the whole compass.
+static Id pipeAt(const OrganModel& model, Id rankId, int midiNote) {
+  const auto it = model.ranks.find(rankId);
+  if (it == model.ranks.end()) return 0;
+  for (const auto& pipe : it->second.pipes)
+    if (pipe.midiNote == midiNote) return pipe.pipeId;
+  return 0;
+}
+
+void VoicingPanel::loadCurrentIntoSliders() {
+  if (rankIds_.empty()) return;
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
+                               rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+  PipeVoicing pv;
+  if (scope_.getSelectedId() == 2) {
+    const Id pipeId = pipeAt(proc_.organModel(), rankId,
+                             static_cast<int>(note_.getValue()));
+    pv = proc_.voicing().live().pipe(pipeId);
+  } else {
+    pv = proc_.voicing().live().rank(rankId);
+  }
+  // dontSendNotification: these are being loaded FROM the model, and letting
+  // them call back would write them straight back again, turning a read into
+  // a write and a swap into a wipe.
+  gain_.setValue(pv.gainDb, juce::dontSendNotification);
+  tune_.setValue(pv.tuningCents, juce::dontSendNotification);
+  updateStatus();
+}
+
+void VoicingPanel::pushCurrent() {
+  if (rankIds_.empty()) return;
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
+                               rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+
+  if (scope_.getSelectedId() == 2) {
+    const Id pipeId = pipeAt(proc_.organModel(), rankId,
+                             static_cast<int>(note_.getValue()));
+    if (pipeId == 0) {
+      status_.setText("This rank has no pipe at that note",
+                      juce::dontSendNotification);
+      return;
+    }
+    PipeVoicing pv = proc_.voicing().live().pipe(pipeId);
+    pv.gainDb = static_cast<float>(gain_.getValue());
+    pv.tuningCents = static_cast<float>(tune_.getValue());
+    proc_.voicing().live().setPipe(pipeId, pv);
+  } else {
+    PipeVoicing pv = proc_.voicing().live().rank(rankId);
+    pv.gainDb = static_cast<float>(gain_.getValue());
+    pv.tuningCents = static_cast<float>(tune_.getValue());
+    proc_.voicing().live().setRank(rankId, pv);
+  }
+  updateStatus();
+}
+
+void VoicingPanel::updateStatus() {
+  const auto& v = proc_.voicing().live();
+  juce::String s;
+  s << "Slot " << (proc_.voicing().usingB ? "B" : "A") << "  -  "
+    << static_cast<int>(v.ranks().size()) << " rank(s), "
+    << static_cast<int>(v.pipes().size()) << " pipe(s) adjusted";
+  // Voicing is heard on the NEXT note, like a real pipe being touched while
+  // another is sounding. Saying so stops it looking broken.
+  s << "  -  takes effect on the next note";
+  status_.setText(s, juce::dontSendNotification);
+}
+
+void VoicingPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  const int labelW = 110;
+  heading_.setBounds(r.removeFromTop(kRow));
+
+  auto row = r.removeFromTop(kRow);
+  rankLabel_.setBounds(row.removeFromLeft(labelW));
+  rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+  r.removeFromTop(4);
+
+  row = r.removeFromTop(kRow);
+  scopeLabel_.setBounds(row.removeFromLeft(labelW));
+  scope_.setBounds(row.removeFromLeft(180).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  noteLabel_.setBounds(row.removeFromLeft(80));
+  note_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(kGap);
+
+  row = r.removeFromTop(kRow);
+  gainLabel_.setBounds(row.removeFromLeft(labelW));
+  gain_.setBounds(row.reduced(0, 2));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  tuneLabel_.setBounds(row.removeFromLeft(labelW));
+  tune_.setBounds(row.reduced(0, 2));
+  r.removeFromTop(kGap);
+
+  row = r.removeFromTop(kRow);
+  for (auto* b : {&abSwap_, &abCopy_, &resetOne_, &resetAll_, &save_}) {
+    b->setBounds(row.removeFromLeft(130).reduced(2, 1));
+    row.removeFromLeft(2);
+  }
+  r.removeFromTop(4);
+  status_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  note2_.setBounds(r);
+}
+
 // ----------------------------------------------------------------- mixer
 
 MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
@@ -1142,7 +1366,7 @@ void DisplayPanel::resized() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), display_(p) {
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Engine", bg, &engine_, false);
@@ -1151,6 +1375,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Recorder", bg, &recorder_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
   tabs_.addTab("Mixer", bg, &mixer_, false);
+  tabs_.addTab("Voicing", bg, &voicing_, false);
   tabs_.addTab("Display", bg, &display_, false);
   setSize(660, 480);
 }

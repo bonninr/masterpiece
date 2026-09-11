@@ -179,6 +179,41 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
+// Voicing: the player's own adjustments to a rank or a single pipe, the way a
+// voicer goes round an organ with a knife and a tuning cone. Rank level here;
+// the per-pipe rows are reached by picking a rank and a note.
+class VoicingPanel : public juce::Component {
+public:
+  explicit VoicingPanel(MasterpieceProcessor& p);
+  void resized() override;
+  void refresh();
+
+private:
+  void pushCurrent();
+  void loadCurrentIntoSliders();
+  void updateStatus();
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::Label rankLabel_;
+  juce::ComboBox rank_;
+  juce::Label scopeLabel_;
+  juce::ComboBox scope_;   // the whole rank, or one note of it
+  juce::Label noteLabel_;
+  juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  juce::Label gainLabel_, tuneLabel_;
+  juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::TextButton abSwap_{"A / B"};
+  juce::TextButton abCopy_{"Copy to other"};
+  juce::TextButton resetOne_{"Reset this"};
+  juce::TextButton resetAll_{"Reset everything"};
+  juce::TextButton save_{"Save for this organ"};
+  juce::Label status_;
+  juce::Label note2_;
+  std::vector<Id> rankIds_;
+};
+
 // The mixer: how many output pairs the player has, and which one each rank
 // speaks through. Its own tab because the rank list is long — a real organ has
 // dozens — and it is the one settings page that needs to scroll.
@@ -258,6 +293,7 @@ private:
   RecorderPanel recorder_;
   MidiPanel midi_;
   MixerPanel mixer_;
+  VoicingPanel voicing_;
   DisplayPanel display_;
 };
 
