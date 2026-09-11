@@ -40,10 +40,24 @@ sudo apt-get update
 # Package names are gcc-<triple>, not <triple>-gcc; the latter is the binary
 # name and matches no package.
 sudo apt-get install -y cmake ninja-build pkg-config \
-  "gcc-$TRIPLE" "g++-$TRIPLE" "binutils-$TRIPLE" \
-  "libasound2-dev:$ARCH" "libx11-dev:$ARCH" "libxrandr-dev:$ARCH" \
-  "libxinerama-dev:$ARCH" "libxcursor-dev:$ARCH" "libxcomposite-dev:$ARCH" \
-  "libfreetype6-dev:$ARCH" "libfontconfig1-dev:$ARCH" \
-  "libglu1-mesa-dev:$ARCH" "libxi-dev:$ARCH"
+  "gcc-$TRIPLE" "g++-$TRIPLE" "binutils-$TRIPLE"
+
+# The libraries the target binary links against.
+DEV_LIBS="libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+  libxcursor-dev libxcomposite-dev libfreetype6-dev libfontconfig1-dev \
+  libglu1-mesa-dev libxi-dev"
+
+# shellcheck disable=SC2086
+sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done)
+
+# ...and the same set for the HOST, which is not optional and is easy to
+# think it is. A cross-build still builds one thing natively: juceaide, the
+# generator JUCE runs on the build machine to produce headers and resources.
+# It links juce_graphics, so it needs the host's freetype and fontconfig
+# headers, and without them the configure step dies inside juceaide with
+# "ft2build.h: No such file or directory" -- which reads like a missing
+# TARGET library and is not one.
+# shellcheck disable=SC2086
+sudo apt-get install -y $DEV_LIBS
 
 "$TRIPLE-g++" --version
