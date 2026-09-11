@@ -108,6 +108,17 @@ double playbackRatio(double targetHz, double recordedHz) {
   return targetHz / recordedHz;
 }
 
+double detunedTargetHz(double targetHz, int controlValue, double centre,
+                       double sensitivityHzPerUnit) {
+  if (targetHz <= 0.0 || sensitivityHzPerUnit == 0.0) return targetHz;
+  const double fromCentre = controlValue - centre;
+  if (fromCentre == 0.0) return targetHz;
+  const double moved = targetHz + fromCentre * sensitivityHzPerUnit;
+  // Half the target is far beyond any detuning an organ builder means, and
+  // stops a bad sensitivity from dropping a rank an octave or through zero.
+  return moved < targetHz * 0.5 ? targetHz * 0.5 : moved;
+}
+
 double temperedPlaybackRatio(int midiNote, int harmonicNum64ft, double basePitchHz,
                              double deviationCents, const Temperament& t, int transposeSemi) {
   // Return pipeTargetHz / basePitchHz; the pitch ratio relative to base reference.

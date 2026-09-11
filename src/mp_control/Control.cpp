@@ -431,11 +431,16 @@ double ContinuousControlBank::normalised(Id controlId) const {
 
 void ContinuousControlBank::propagate(Id pinned,
                                       const std::unordered_set<Id>* engagedSwitches) {
-  if (model_ == nullptr || model_->controlLinkages.empty()) return;
+  if (model_ == nullptr) return;
+  // Either kind alone is enough to have work to do. Testing only the single
+  // linkages skipped every set that combines controls without chaining them.
+  const size_t linkCount =
+      model_->controlLinkages.size() + model_->controlDoubleLinkages.size();
+  if (linkCount == 0) return;
 
   // One pass per linkage is enough to carry a value along the longest possible
   // acyclic chain; stop early once a pass changes nothing.
-  const size_t maxPasses = model_->controlLinkages.size();
+  const size_t maxPasses = linkCount;
   for (size_t pass = 0; pass < maxPasses; ++pass) {
     bool changed = false;
     for (const auto& l : model_->controlLinkages) {
@@ -463,6 +468,38 @@ void ContinuousControlBank::propagate(Id pinned,
         changed = true;
       }
     }
+
+    // Two-source linkages settle in the same loop, because a chain routinely
+    // runs through both kinds: a slider feeds a single linkage, that feeds a
+    // double one, and its answer is what a pipe layer actually reads.
+    for (const auto& d : model_->controlDoubleLinkages) {
+      const auto dit = model_->continuousControls.find(d.destControlId);
+      if (dit == model_->continuousControls.end()) continue;
+      if (d.destControlId == pinned) continue;
+      const auto a = values_.find(d.firstControlId);
+      const auto b = values_.find(d.secondControlId);
+      if (a == values_.end() || b == values_.end()) continue;
+
+      const double x = a->second * d.firstCoefficient + d.firstIncrement;
+      const double y = b->second * d.secondCoefficient + d.secondIncrement;
+      double combined = 0.0;
+      switch (d.operationCode) {
+        case 1: combined = x + y; break;
+        case 2: combined = x - y; break;
+        case 3: combined = x * y; break;
+        default: continue;  // the loader rejected anything else
+      }
+      const double scaled = combined * d.destCoefficient + d.destIncrement;
+      const int next = clampToRange(
+          dit->second,
+          static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5));
+      int& slot = values_[d.destControlId];
+      if (slot != next) {
+        slot = next;
+        changed = true;
+      }
+    }
+
     if (!changed) break;
   }
 }

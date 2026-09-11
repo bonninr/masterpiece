@@ -1,8 +1,13 @@
 name: build
 
-# Actions minutes are metered on a private repository, and the rate differs
-# sharply per platform: Linux counts 1x, Windows 2x, macOS 10x. The shape of
-# this file follows from that -- see the macos job at the bottom.
+# Four targets, all of them things a player might actually run this on:
+# Windows, Linux x86-64, and a Raspberry Pi in either 64-bit (the default
+# since 2022) or 32-bit form. macOS is written but deliberately not wired to
+# any automatic trigger yet -- see the job at the bottom.
+#
+# On a public repository the standard runners cost nothing, so this no longer
+# has to be shaped around a minute allowance; it is still kept from doing
+# obviously wasted work, because a queue is a cost of its own.
 on:
   push:
     paths-ignore:
@@ -42,10 +47,20 @@ jobs:
           - os: windows-latest
             preset: ci-windows
             artifact: masterpiece-windows
+          # The Pi, both ways round. arm64 is what a current Raspberry Pi OS
+          # install actually is; armhf stays for older 32-bit installs.
+          - os: ubuntu-latest
+            preset: ci-linux-arm64
+            artifact: masterpiece-linux-arm64
+            arm: true
+            debarch: arm64
+            triple: aarch64-linux-gnu
           - os: ubuntu-latest
             preset: ci-linux-arm
             artifact: masterpiece-linux-armhf
             arm: true
+            debarch: armhf
+            triple: arm-linux-gnueabihf
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -68,45 +83,15 @@ jobs:
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
             libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev
 
+      # In a script rather than inline, so the setup this job depends on can be
+      # rehearsed off the runner. These two jobs produce a binary that cannot
+      # be run here to check, which makes being able to reproduce them locally
+      # worth more than it is for the native ones.
       - name: Dependencies (Linux -> ARM cross-build)
         if: runner.os == 'Linux' && matrix.arm
-        run: |
-          set -e
-          CODENAME=$(awk -F= '$1=="UBUNTU_CODENAME" {print $2}' /etc/os-release)
-
-          # Ubuntu 24.04 keeps its sources in deb822 files that declare no
-          # Architectures. Adding armhf without pinning these first makes apt
-          # ask the amd64-only mirror for armhf indexes and fail the update.
-          for f in /etc/apt/sources.list.d/*.sources; do
-            [ -e "$f" ] || continue
-            grep -q '^Architectures:' "$f" || \
-              sudo sed -i '/^Types: deb$/a Architectures: amd64' "$f"
-          done
-
-          # ARM lives on ports.ubuntu.com, including -security, for which
-          # security.ubuntu.com answers 404.
-          sudo tee /etc/apt/sources.list.d/armhf.sources >/dev/null <<EOF
-          Types: deb
-          URIs: http://ports.ubuntu.com/ubuntu-ports/
-          Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security
-          Components: main restricted universe multiverse
-          Architectures: armhf
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          EOF
-
-          sudo dpkg --add-architecture armhf
-          sudo apt-get update
-
-          # Package names are gcc-<triple>, not <triple>-gcc; the latter is the
-          # binary name and matches no package.
-          sudo apt-get install -y cmake ninja-build pkg-config \
-            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            binutils-arm-linux-gnueabihf \
-            libasound2-dev:armhf libx11-dev:armhf libxrandr-dev:armhf \
-            libxinerama-dev:armhf libxcursor-dev:armhf libxcomposite-dev:armhf \
-            libfreetype6-dev:armhf libfontconfig1-dev:armhf \
-            libglu1-mesa-dev:armhf libxi-dev:armhf
-          arm-linux-gnueabihf-g++ --version
+        # Invoked through bash rather than directly: the repository is worked
+        # on from Windows, where the executable bit is not reliably carried.
+        run: bash cmake/ci-arm-multiarch.sh ${{ matrix.debarch }} ${{ matrix.triple }}
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
@@ -125,16 +110,27 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 
-      # A cross-built binary cannot run here, so confirm its machine type.
+      # A cross-built binary cannot run here, so confirm its machine type
+      # instead -- and confirm it is the RIGHT machine type, because a
+      # toolchain that silently fell back to the host compiler would otherwise
+      # produce a green x86 build labelled as the Pi one.
       - name: Check ARM output
         if: matrix.arm
-        run: file build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+        run: |
+          APP=$(find build/${{ matrix.preset }}/apps/MasterpieceApp -name Masterpiece -type f | head -1)
+          test -n "$APP" || { echo "no binary was produced"; exit 1; }
+          file "$APP"
+          file "$APP" | grep -q "${{ matrix.debarch == 'arm64' && 'ARM aarch64' || 'ARM, EABI' }}"
 
       - name: Launch check (Linux)
         if: runner.os == 'Linux' && !matrix.arm
         run: |
           sudo apt-get install -y xvfb
-          APP=build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+          # Located rather than spelled out: JUCE puts artefacts under a
+          # per-configuration subdirectory, so the path carries a Release/
+          # that is easy to leave out and gives "no such file" when you do.
+          APP=$(find build/${{ matrix.preset }}/apps/MasterpieceApp -name Masterpiece -type f | head -1)
+          test -n "$APP" || { echo "no binary was produced"; exit 1; }
           chmod +x "$APP"
           set +e
           timeout --signal=TERM 20s xvfb-run -a -s "-screen 0 1280x800x24" "$APP"
@@ -163,12 +159,13 @@ jobs:
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
           if-no-files-found: warn
 
-  # Separate, and off by default. A macOS runner bills ten minutes of the
-  # allowance for every minute it runs -- more than the Linux and Windows jobs
-  # put together. Run it deliberately: on a release tag, or by hand from the
-  # Actions tab with the macos input ticked.
+  # macOS is not a supported target yet: nothing here has been built or run on
+  # one, so this job is wired to nothing automatic -- not even a release tag,
+  # which would otherwise make a red build the first thing a tag produces. It
+  # runs only when asked for by hand from the Actions tab, which is how the
+  # port will be worked on when it starts.
   macos:
-    if: startsWith(github.ref, 'refs/tags/') || inputs.macos
+    if: inputs.macos
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

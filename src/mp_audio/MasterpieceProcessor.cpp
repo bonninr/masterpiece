@@ -35,6 +35,7 @@ MasterpieceProcessor::MasterpieceProcessor()
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
+  maxBlock_ = juce::jmax(1, samplesPerBlock);
 #if MP_ENABLE_DSP
   // One filter per enclosure and one LFO per tremulant, built here so the
   // audio thread never allocates. getTotalNumOutputChannels() is the widest
@@ -95,6 +96,18 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     organTuning_.centsOffset12 = tIt->second.centsOffset12;
   }
 
+  // The producer's output trim, resolved once here rather than per block.
+  // Clamped because this multiplies everything the organ makes and a corrupt
+  // field should not be able to deafen anyone: +/-24 dB is far wider than any
+  // real set declares (we have seen -4 to +2) and still finite.
+  refreshMixerBuses();
+
+  organTrimGain_ =
+      applyOrganTrim_
+          ? static_cast<float>(juce::Decibels::decibelsToGain(
+                juce::jlimit(-24.0, 24.0, model_.audioOutputTrimDb)))
+          : 1.0f;
+
   // Index the noise ranks by their trigger switch. Doing this once here keeps
   // a switch flip O(number of noises on that switch) instead of O(all ranks).
   noiseRanksBySwitch_.clear();
@@ -136,6 +149,73 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   outgoing_.ensureSize(1024);
 }
 
+void MasterpieceProcessor::refreshMixerBuses() {
+  mixBusOrder_.clear();
+  mixBusIndexOf_.clear();
+  for (const auto& b : mixer_.buses) {
+    if (b.id.value == 0) continue;
+    if (mixBusIndexOf_.count(b.id.value) != 0) continue;
+    mixBusIndexOf_[b.id.value] = static_cast<int>(mixBusOrder_.size());
+    mixBusOrder_.push_back(b.id);
+  }
+  // A config with no buses still has to render somewhere. One bus is what the
+  // engine did before there was a mixer at all, so that is the fallback.
+  if (mixBusOrder_.empty()) {
+    mixBusOrder_.push_back(BusId{1});
+    mixBusIndexOf_[1] = 0;
+  }
+  refreshBusReverbs();
+}
+
+void MasterpieceProcessor::refreshBusReverbs() {
+#if MP_ENABLE_DSP
+  // clear + resize, not assign: assign would copy the null unique_ptr.
+  busConvolvers_.clear();
+  busConvolvers_.resize(mixBusOrder_.size());
+  if (sampleRate_ <= 0.0) return;  // not prepared yet; prepareToPlay redoes this
+
+  juce::dsp::ProcessSpec spec;
+  spec.sampleRate = sampleRate_;
+  spec.maximumBlockSize = static_cast<juce::uint32>(juce::jmax(1, maxBlock_));
+  spec.numChannels = 2;
+
+  for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
+    const BusReverb* r = mixer_.reverbFor(mixBusOrder_[i]);
+    if (r == nullptr || !r->active()) continue;
+    const juce::File ir(juce::String(r->irFile));
+    if (!ir.existsAsFile()) continue;  // ReverbPanel reports; silence is not a fix
+    auto c = std::make_unique<Convolver>();
+    c->prepare(spec);
+    if (!c->loadImpulseResponse(ir)) continue;
+    c->setMix(r->mix);
+    c->setEnabled(true);
+    busConvolvers_[i] = std::move(c);
+  }
+#endif
+}
+
+int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) const {
+  // One bus is the overwhelmingly common case and the default: skip the
+  // routing lookup entirely rather than pay for it on every voice start.
+  if (mixBusOrder_.size() <= 1) return 0;
+
+  const RankRouting routing = mixer_.routingFor(rankId);
+  const auto& primary = routing.perspectives[0];
+  BusId dest{0};
+  if (std::holds_alternative<BusId>(primary.dest)) {
+    dest = std::get<BusId>(primary.dest);
+  } else if (const BusGroup* g = mixer_.group(std::get<int>(primary.dest))) {
+    dest = allocateBus(*g, midiNote, static_cast<int>(rankId),
+                       primary.algorithm, primary.noteOffset);
+  }
+
+  const auto it = mixBusIndexOf_.find(dest.value);
+  // A routing to a bus that no longer exists lands on the first one rather
+  // than on silence. The validator reports it as stale; going quiet here
+  // would make a deleted bus look like a broken engine.
+  return it == mixBusIndexOf_.end() ? 0 : it->second;
+}
+
 int MasterpieceProcessor::busForPipe(Id pipeId) const {
   const auto encIt = model_.pipeEnclosure.find(pipeId);
   if (encIt == model_.pipeEnclosure.end()) return unenclosedBus_;
@@ -145,6 +225,14 @@ int MasterpieceProcessor::busForPipe(Id pipeId) const {
 
 void MasterpieceProcessor::advanceTremulants(int numFrames) {
 #if MP_ENABLE_DSP
+  // Bypassed wholesale rather than per sample. The LFO already answers zero
+  // under these switches, but it was still being asked once per frame per
+  // tremulant — a few thousand calls a block to compute nothing, on exactly
+  // the machines the switch exists to rescue.
+  if (graph_.engineSwitch.simpleWavOnly || !graph_.engineSwitch.enableTremulant) {
+    voices_.setTremMods(nullptr, 0);
+    return;
+  }
   if (tremOrder_.empty() || numFrames <= 0) {
     voices_.setTremMods(nullptr, 0);
     return;
@@ -204,21 +292,29 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 
   for (size_t i = 0; i < windOrder_.size(); ++i) {
     const auto mod = wind_.modFor(windOrder_[i]);
-    windMods_[i].ampMul = static_cast<float>(mod.ampMul);
-    windMods_[i].pitchRatio = mod.pitchRatio;
+    // The solver's answer is physical. This scales the DEVIATION from
+    // nominal, so depth 1 is exactly what the physics said and nothing is
+    // altered by the knob existing. Above 1 is deliberately unphysical: a
+    // listening aid for judging whether the effect is there at all, because
+    // a real chest sags a few percent and a few percent is hard to hear.
+    const double d = windDepth_;
+    windMods_[i].ampMul = static_cast<float>(1.0 + (mod.ampMul - 1.0) * d);
+    windMods_[i].pitchRatio = 1.0 + (mod.pitchRatio - 1.0) * d;
   }
   voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
 }
 
-void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
-  const int numCh = buffer.getNumChannels();
-  const int numFrames = buffer.getNumSamples();
+// One mixer bus, summed ADDITIVELY into `dest`. Does not touch the block
+// counter or the wind: the caller owns those, because they happen once per
+// block however many buses there are.
+//
+// `mixBusFilter` < 0 means every voice, which is the single-bus default and
+// costs nothing — the filter is not even consulted.
+void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
+                                           int mixBusFilter) {
+  const int numCh = dest.getNumChannels();
+  const int numFrames = dest.getNumSamples();
   if (numCh <= 0 || numFrames <= 0) return;
-
-  // One block for the whole callback, whatever the bus count.
-  voices_.beginBlock();
-  advanceWind(numFrames);
-  advanceTremulants(numFrames);
 
   const bool enclosuresActive =
 #if MP_ENABLE_DSP
@@ -228,16 +324,18 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
 #endif
 
   // Without expression there is nothing to separate: render every voice at
-  // once and skip the per-bus scratch entirely.
+  // once and skip the per-enclosure scratch entirely.
   if (!enclosuresActive || busEnclosures_.empty()) {
-    voices_.render(buffer.getArrayOfWritePointers(), numCh, numFrames);
+    voices_.render(dest.getArrayOfWritePointers(), numCh, numFrames, -1,
+                   mixBusFilter);
     return;
   }
 
   const int numBuses = unenclosedBus_ + 1;
   for (int bus = 0; bus < numBuses; ++bus) {
     busScratch_.clear(0, numFrames);
-    voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus);
+    voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus,
+                   mixBusFilter);
 
 #if MP_ENABLE_DSP
     if (bus < static_cast<int>(busEnclosures_.size())) {
@@ -256,9 +354,92 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
 #endif
 
     for (int ch = 0; ch < numCh; ++ch)
-      buffer.addFrom(ch, 0, busScratch_, ch, 0, numFrames);
+      dest.addFrom(ch, 0, busScratch_, ch, 0, numFrames);
   }
 }
+
+void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
+  const int numCh = buffer.getNumChannels();
+  const int numFrames = buffer.getNumSamples();
+  if (numCh <= 0 || numFrames <= 0) return;
+
+  // One block for the whole callback, whatever the bus count.
+  voices_.beginBlock();
+  advanceWind(numFrames);
+  advanceTremulants(numFrames);
+
+  const int buses = static_cast<int>(mixBusOrder_.size());
+  bool anyBusReverb = false;
+#if MP_ENABLE_DSP
+  if (!graph_.engineSwitch.simpleWavOnly)
+    for (const auto& c : busConvolvers_)
+      if (c != nullptr) anyBusReverb = true;
+#endif
+
+  // The ordinary case, and the default: one mixer bus means no routing axis at
+  // all, so nothing is filtered and this is exactly what the engine did before
+  // there was a mixer.
+  if (buses <= 1 && mixBusCapture_ == nullptr && !anyBusReverb) {
+    renderOneMixBus(buffer, -1);
+    return;
+  }
+
+  // A bus with its own room has to be convolved on its own, which means it
+  // needs somewhere of its own to be rendered into. The point of several buses
+  // is that they stand in different places — a Positiv on the gallery rail and
+  // a Pedal at the back of the case do not share a tail — and one IR over the
+  // sum cannot express that.
+  if (anyBusReverb && mixBusCapture_ == nullptr) {
+    if (mixScratch_.getNumChannels() < numCh ||
+        mixScratch_.getNumSamples() < numFrames)
+      mixScratch_.setSize(numCh, numFrames, false, false, true);
+
+    for (int i = 0; i < buses; ++i) {
+      mixScratch_.clear(0, numFrames);
+      renderOneMixBus(mixScratch_, buses <= 1 ? -1 : i);
+#if MP_ENABLE_DSP
+      if (i < static_cast<int>(busConvolvers_.size()) &&
+          busConvolvers_[static_cast<size_t>(i)] != nullptr) {
+        juce::AudioBuffer<float> view(mixScratch_.getArrayOfWritePointers(),
+                                      numCh, numFrames);
+        busConvolvers_[static_cast<size_t>(i)]->process(view);
+      }
+#endif
+      for (int ch = 0; ch < numCh; ++ch)
+        buffer.addFrom(ch, 0, mixScratch_, ch, 0, numFrames);
+    }
+    return;
+  }
+
+  // Several buses into one output pair. A player who has configured a mixer
+  // but is listening in stereo must still hear the whole organ, so the buses
+  // are summed rather than the extra ones dropped.
+  for (int i = 0; i < buses; ++i) {
+    if (mixBusCapture_ == nullptr) {
+      // No capture: add straight into the output, which needs no per-bus
+      // memory at all.
+      renderOneMixBus(buffer, buses <= 1 ? -1 : i);
+      continue;
+    }
+    if (i >= static_cast<int>(mixBusCapture_->size())) break;
+    auto& dest = (*mixBusCapture_)[static_cast<size_t>(i)];
+    dest.clear(0, numFrames);
+    renderOneMixBus(dest, buses <= 1 ? -1 : i);
+#if MP_ENABLE_DSP
+    // The bus's own room belongs to the bus signal, so a captured bus carries
+    // it. Only the MASTER convolver is downstream of this.
+    if (!graph_.engineSwitch.simpleWavOnly &&
+        i < static_cast<int>(busConvolvers_.size()) &&
+        busConvolvers_[static_cast<size_t>(i)] != nullptr)
+      busConvolvers_[static_cast<size_t>(i)]->process(dest);
+#endif
+    // Summed into the output as well, so capturing does not change what the
+    // callback produces.
+    for (int ch = 0; ch < numCh && ch < dest.getNumChannels(); ++ch)
+      buffer.addFrom(ch, 0, dest, ch, 0, numFrames);
+  }
+}
+
 
 void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // Two sources, one path. The host hands us a merged buffer with no device in
@@ -580,6 +761,48 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "originalpitch " << (sw.playAtOriginalOrganPitch ? 1 : 0) << "\n";
   if (const auto* g = apvts_.getRawParameterValue("masterGain"))
     text << "gain " << juce::String(g->load(), 4) << "\n";
+
+  // The mixer's BUSES and GROUPS, but not its routes. A bus is the player's
+  // audio hardware — the same eight outputs whichever organ is loaded — so it
+  // belongs in the tier that carries across organs. Routes name rank ids,
+  // which mean nothing outside the organ that declared them, and are written
+  // per organ in saveSettings.
+  //
+  // One line each, replacing wholesale rather than accumulating: a per-line
+  // encoding has to define what a second `bus 1` means, and every answer to
+  // that is a way to end up with duplicates.
+  if (!mixer_.buses.empty()) {
+    text << "buses";
+    for (const auto& b : mixer_.buses) {
+      text << " " << b.id.value << ":";
+      for (size_t i = 0; i < b.deviceChannels.size(); ++i)
+        text << (i ? "," : "") << b.deviceChannels[i];
+    }
+    text << "\n";
+  }
+  // A bus's own room. One line per bus rather than a single packed line,
+  // because a path can contain anything including spaces, so it has to be last
+  // on its line.
+  {
+    std::vector<int> withReverb;
+    for (const auto& [busId, r] : mixer_.busReverb)
+      if (!r.irFile.empty()) withReverb.push_back(busId);
+    std::sort(withReverb.begin(), withReverb.end());
+    for (int busId : withReverb) {
+      const auto& r = mixer_.busReverb.at(busId);
+      text << "busir " << busId << " " << (r.enabled ? 1 : 0) << " "
+           << juce::String(r.mix, 3) << " " << juce::String(r.irFile) << "\n";
+    }
+  }
+  if (!mixer_.groups.empty()) {
+    text << "groups";
+    for (const auto& g : mixer_.groups) {
+      text << " " << g.groupId << ":";
+      for (size_t i = 0; i < g.members.size(); ++i)
+        text << (i ? "," : "") << g.members[i].value;
+    }
+    text << "\n";
+  }
   return text;
 }
 
@@ -602,6 +825,49 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "gain") {
     if (auto* p = apvts_.getParameter("masterGain"))
       p->setValueNotifyingHost(p->convertTo0to1(val.getFloatValue()));
+  } else if (key == "buses") {
+    mixer_.buses.clear();
+    for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {
+      if (tok.isEmpty()) continue;
+      MixerBus b;
+      b.id = BusId{tok.upToFirstOccurrenceOf(":", false, false).getIntValue()};
+      if (b.id.value == 0) continue;
+      for (const auto& ch : juce::StringArray::fromTokens(
+               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
+        if (ch.isNotEmpty()) b.deviceChannels.push_back(ch.getIntValue());
+      mixer_.buses.push_back(std::move(b));
+    }
+    refreshMixerBuses();
+  } else if (key == "busir") {
+    // "busir <busId> <enabled> <mix> <path...>". The path is last because it
+    // can contain spaces, and splitting it would quietly lose the file.
+    auto rest = val.trim();
+    const int busId = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+    rest = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    const bool on = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue() != 0;
+    rest = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    const float mix = rest.upToFirstOccurrenceOf(" ", false, false).getFloatValue();
+    const juce::String path = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (busId != 0 && path.isNotEmpty()) {
+      BusReverb r;
+      r.enabled = on;
+      r.mix = juce::jlimit(0.0f, 1.0f, mix);
+      r.irFile = path.toStdString();
+      mixer_.busReverb[busId] = std::move(r);
+      refreshBusReverbs();
+    }
+  } else if (key == "groups") {
+    mixer_.groups.clear();
+    for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {
+      if (tok.isEmpty()) continue;
+      BusGroup g;
+      g.groupId = tok.upToFirstOccurrenceOf(":", false, false).getIntValue();
+      if (g.groupId == 0) continue;
+      for (const auto& m : juce::StringArray::fromTokens(
+               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
+        if (m.isNotEmpty()) g.members.push_back(BusId{m.getIntValue()});
+      mixer_.groups.push_back(std::move(g));
+    }
   }
 }
 
@@ -639,11 +905,69 @@ bool MasterpieceProcessor::saveSettings() const {
     if (v == c.defaultValue) continue;  // nothing to say
     text << "control " << juce::String(id) << " " << juce::String(v) << "\n";
   }
+
+  // Where each rank speaks. Per organ because a rank id means nothing
+  // elsewhere, and only the ranks the player actually routed: the rest fall
+  // back to the simple default, and writing them down would record an answer
+  // that is recomputed anyway.
+  //
+  // Sorted, so saving the same mixer twice produces the same file. Routings
+  // live in an unordered_map and would otherwise reshuffle on every save,
+  // which makes the file impossible to diff and noisy in a backup.
+  std::vector<Id> routed;
+  routed.reserve(mixer_.rankRoutings.size());
+  for (const auto& [rankId, routing] : mixer_.rankRoutings)
+    routed.push_back(rankId);
+  std::sort(routed.begin(), routed.end());
+  for (Id rankId : routed) {
+    const auto& primary = mixer_.rankRoutings.at(rankId).perspectives[0];
+    if (std::holds_alternative<BusId>(primary.dest))
+      text << "route " << juce::String(rankId) << " bus "
+           << juce::String(std::get<BusId>(primary.dest).value) << "\n";
+    else
+      text << "route " << juce::String(rankId) << " group "
+           << juce::String(std::get<int>(primary.dest)) << "\n";
+  }
+
+  // Voicing, per organ for the same reason as the routes: a rank or pipe id
+  // means nothing in another instrument. BOTH slots are written, and which one
+  // is live, so an A/B survives a reload — the comparison is the work, and
+  // losing the other side of it on quit throws that work away.
+  {
+    auto writeSet = [&text](const char* slot, const VoicingSet& v) {
+      auto line = [&](const char* what, Id id, const PipeVoicing& pv) {
+        text << "voicingadj " << slot << " " << what << " " << juce::String(id)
+             << " " << juce::String(pv.gainDb, 3) << " "
+             << juce::String(pv.tuningCents, 3) << " "
+             << juce::String(pv.brightnessDb, 3) << " "
+             << juce::String(pv.balance, 3) << "\n";
+      };
+      for (Id id : v.rankIds()) line("rank", id, v.rank(id));
+      for (Id id : v.pipeIds()) line("pipe", id, v.pipe(id));
+    };
+    writeSet("a", voicing_.a);
+    writeSet("b", voicing_.b);
+    if (voicing_.usingB) text << "voicingslot b\n";
+    // Which named set this organ was last using. Stored rather than assumed:
+    // coming back and finding the recital registrations instead of the service
+    // ones is a nasty surprise to meet mid-piece.
+    if (!combinationSet_.empty())
+      text << "combset " << juce::String(combinationSet_) << "\n";
+  }
+
   return f.replaceWithText(text);
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pendingControlValues_.clear();
+  // Routes and voicing belong to the organ being left, not the one arriving.
+  // Keeping either would point this organ's rank ids at the previous organ's
+  // mix, or worse, at its tuning.
+  mixer_.rankRoutings.clear();
+  voicing_.a.clear();
+  voicing_.b.clear();
+  voicing_.usingB = false;
+  combinationSet_.clear();
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -658,6 +982,52 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingControlValues_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
+      continue;
+    }
+    if (key == "voicingadj") {
+      // "voicingadj a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance>"
+      //
+      // NOT "voicing": settingsBody already writes `voicing 0|1` for the DSP
+      // engine switch, and this handler runs BEFORE applySettingsLine. Sharing
+      // the key made this swallow the switch's line and silently stop
+      // restoring it -- turn Voicing off, save, reload, and it was on again.
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() < 7) continue;
+      PipeVoicing pv;
+      pv.gainDb = tok[3].getFloatValue();
+      pv.tuningCents = tok[4].getFloatValue();
+      pv.brightnessDb = tok[5].getFloatValue();
+      pv.balance = tok[6].getFloatValue();
+      VoicingSet& set = tok[0] == "b" ? voicing_.b : voicing_.a;
+      const Id id = static_cast<Id>(tok[2].getLargeIntValue());
+      if (tok[1] == "pipe") set.setPipe(id, pv);
+      else set.setRank(id, pv);
+      continue;
+    }
+    if (key == "combset") {
+      combinationSet_ = val.trim().toStdString();
+      continue;
+    }
+    if (key == "voicingslot") {
+      voicing_.usingB = val.trim() == "b";
+      continue;
+    }
+    if (key == "route") {
+      // "route <rankId> bus|group <id>". Applied straight away: unlike a
+      // control value there is nothing downstream that resets it.
+      const auto rankStr = val.upToFirstOccurrenceOf(" ", false, false).trim();
+      const auto rest = val.fromFirstOccurrenceOf(" ", false, false).trim();
+      const auto kind = rest.upToFirstOccurrenceOf(" ", false, false).trim();
+      const int destId =
+          rest.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue();
+      const Id rankId = static_cast<Id>(rankStr.getLargeIntValue());
+      if (rankId == 0 || destId == 0) continue;
+      RankRouting r = mixer_.routingFor(rankId);
+      r.rankId = rankId;
+      if (kind == "group") r.perspectives[0].dest = destId;
+      else r.perspectives[0].dest = BusId{destId};
+      mixer_.rankRoutings[rankId] = r;
       continue;
     }
     applySettingsLine(key, val, sw);
@@ -681,6 +1051,21 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
+
+  // Favourites are global by nature: the point of one is to get to a
+  // DIFFERENT organ, so storing them inside the organ being left would be
+  // useless. The target goes last on the line because a path can contain
+  // spaces, and a bar separates it from the name because both are free text.
+  for (auto kind : {FavouriteKind::Organ, FavouriteKind::Temperament,
+                    FavouriteKind::CombinationSet}) {
+    const auto& bank = favourites_.bank(kind);
+    for (int slot : bank.used()) {
+      const auto& fav = bank.at(slot);
+      text << "favourite " << Favourites::kindKey(kind) << " " << slot << " "
+           << juce::String(fav.name).replaceCharacter('|', '/') << " | "
+           << juce::String(fav.target) << "\n";
+    }
+  }
   return f.replaceWithText(text);
 }
 
@@ -706,6 +1091,21 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "favourite") {
+      // "favourite <kind> <slot> <name> | <target>". The bar separates them
+      // because both halves are free text and the target can contain spaces;
+      // a bar inside a name is rewritten on the way out rather than escaped.
+      auto rest = val.trim();
+      const auto kindKey = rest.upToFirstOccurrenceOf(" ", false, false).trim();
+      rest = rest.fromFirstOccurrenceOf(" ", false, false);
+      const int slot = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+      rest = rest.fromFirstOccurrenceOf(" ", false, false);
+      Favourite fav;
+      fav.name = rest.upToFirstOccurrenceOf("|", false, false).trim().toStdString();
+      fav.target = rest.fromFirstOccurrenceOf("|", false, false).trim().toStdString();
+      if (slot > 0 && !fav.target.empty())
+        favourites_.bank(Favourites::kindFromKey(kindKey.toStdString()))
+            .set(slot, std::move(fav));
     } else {
       applySettingsLine(key, val, sw);
       body << line << "\n";
@@ -714,6 +1114,29 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   graph_.engineSwitch = sw;
   globalBody_ = body;
   return true;
+}
+
+int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
+  if (loadedOdf_.getFullPathName().isEmpty()) return 0;
+  const std::string target = loadedOdf_.getFullPathName().toStdString();
+
+  // Already on a slot? Return that one rather than making a second copy: the
+  // same organ under two names is a way to wonder later which is the real one.
+  if (const int existing = favourites_.organs.slotOf(target)) return existing;
+
+  const int use = slot > 0 ? slot : favourites_.organs.firstFree();
+  if (use == 0) return 0;  // bank full; the caller says so
+
+  Favourite fav;
+  // The organ's own name, not the file's: a player calls it "Raszczyce", and
+  // the file is called Raszczyce.Organ_Hauptwerk_xml.
+  fav.name = model_.organName.empty()
+                 ? loadedOdf_.getFileNameWithoutExtension().toStdString()
+                 : model_.organName;
+  fav.target = target;
+  favourites_.organs.set(use, std::move(fav));
+  writeGlobalFile();
+  return use;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -760,7 +1183,8 @@ bool MasterpieceProcessor::loadMidiMap() {
 }
 
 double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
-                                             const SampleRef& sample) const {
+                                             const SampleRef& sample,
+                                             const PipeLayer& layer) const {
   // What this pipe must sound at. Two modes: at the original instrument's own
   // pitch (which is why anyone samples a particular organ), or at a tempered
   // pitch derived from the keyboard. A pipe with no declared original pitch
@@ -774,6 +1198,15 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
                             model_.basePitchHz, pipe.baseTuningDeviationCents,
                             organTuning_, 0);
   }
+
+  // Detuning rides on the target, not on the recorded pitch: it is a change
+  // to what this pipe should sound, not a claim about what the file holds.
+  // Applied to the original-organ path too — an instrument left out of tune
+  // was out of tune at its own pitch as well. Zero under simpleWavOnly.
+  if (layer.pitchControlId != 0)
+    targetHz = detunedTargetHz(targetHz, detuneControlValue(layer),
+                               detuneCentre(layer),
+                               layer.pitchSensitivityHzPerUnit);
 
   // What the file actually holds. An organ sample is recorded from its own
   // pipe, so this is normally close to targetHz and the ratio near 1.0 —
@@ -883,13 +1316,35 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
           // Pitch comes from the solver, against the pitch the FILE holds —
           // not against the organ's reference A. See playbackRatioFor().
           vs.ratio = playbackRatioFor(
-              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample);
+              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
+              layer);
           vs.gain = juce::Decibels::decibelsToGain(
-              static_cast<float>(layer.gainDb), -100.0f);
+                        static_cast<float>(layer.gainDb), -100.0f) *
+                    layerLevel(layer);
+
+          // The player's own voicing, on top of what the organ declares.
+          // Gain and tuning only: they are a multiply and a ratio at note-on
+          // and cost nothing per sample, so they apply even with the DSP
+          // switch off. Brightness and balance need per-voice filtering and
+          // are stored but NOT applied — see PipeVoicing.
+          //
+          // The empty() guard is the point of the whole lookup: an organ
+          // nobody has voiced must not pay two hash lookups for every pipe of
+          // every chord.
+          if (!voicing_.live().empty()) {
+            const PipeVoicing pv =
+                voicing_.live().effective(rp.rankId, pipe.pipeId);
+            if (pv.gainDb != 0.0f)
+              vs.gain *= juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
+            if (pv.tuningCents != 0.0f)
+              vs.ratio *= centsRatio(pv.tuningCents);
+          }
+
           // A layer may declare its own loop, overriding the audio file's.
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;
           vs.busIndex = busForPipe(pipe.pipeId);
+          vs.mixBus = mixBusForPipe(rp.rankId, reached.midiNote);
           {
             const auto wIt = pipeWindIndex_.find(pipe.pipeId);
             vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
@@ -1012,6 +1467,40 @@ void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   }
 }
 
+// What the panels show, gathered from the engine in one place. Message thread
+// only: it builds strings.
+LcdState MasterpieceProcessor::lcdState() const {
+  LcdState s;
+  s.organName = model_.organName;
+  s.temperament = organTuning_.name.empty() ? "Equal" : organTuning_.name;
+  s.pitchHz = model_.basePitchHz;
+  s.stopsDrawn = static_cast<int>(engagedStops_.size());
+  if (const Id cres = stages_.crescendoControl())
+    s.crescendoStep = static_cast<int>(stages_.currentStep(cres));
+  // Transpose and combination-set name have no engine-side owner yet; a panel
+  // asking for them reads the default rather than a made-up value.
+  return s;
+}
+
+int MasterpieceProcessor::pumpLcdPanels() {
+  if (lcd_.empty() || midiOut_ == nullptr) return 0;
+  auto msgs = lcd_.update(lcdState());
+  if (msgs.empty()) return 0;
+  {
+    std::lock_guard<std::mutex> lk(lcdQueueLock_);
+    for (auto& m : msgs) lcdQueue_.push_back(std::move(m));
+  }
+  return static_cast<int>(msgs.size());
+}
+
+int MasterpieceProcessor::refreshLcdPanels() {
+  // Drop what the displays are believed to show, then send the real state —
+  // rather than rendering a blank state, which would make any line whose true
+  // value matched the blank one look unchanged and stay unsent.
+  lcd_.forgetDisplayed();
+  return pumpLcdPanels();
+}
+
 Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
   const auto it = playerSwitch_.find(switchId);
   return it == playerSwitch_.end() ? switchId : it->second;
@@ -1081,12 +1570,90 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   }
 }
 
+namespace {
+// A set name becomes part of a file name, so it has to survive being one.
+// Anything a filesystem might object to becomes an underscore rather than an
+// error: the player is naming a registration, not a path, and "Bach: Advent"
+// should not be a failure.
+std::string sanitiseSetName(const std::string& name) {
+  std::string out;
+  out.reserve(name.size());
+  for (char c : name) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    out.push_back(u < 0x20 || c == '/' || c == '\\' || c == ':' || c == '*' ||
+                          c == '?' || c == '"' || c == '<' || c == '>' ||
+                          c == '|'
+                      ? '_'
+                      : c);
+  }
+  // Trailing dots and spaces are legal in the name a player types and illegal
+  // at the end of a Windows file name.
+  while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+  return out;
+}
+
+// The default set keeps the plain extension it has always had, so an organ
+// that never uses sets is untouched by this feature existing.
+juce::String setExtension(const std::string& setName) {
+  const std::string clean = sanitiseSetName(setName);
+  return clean.empty() ? juce::String(".mpcomb")
+                       : juce::String("." + clean + ".mpcomb");
+}
+}  // namespace
+
 juce::File MasterpieceProcessor::combinationFileFor(const juce::File& odf) const {
-  return organFile(odf, "combinations", ".mpcomb");
+  return organFile(odf, "combinations", setExtension(combinationSet_));
+}
+
+std::vector<std::string> MasterpieceProcessor::combinationSets() const {
+  std::vector<std::string> out;
+  const auto base = organFileForSaving("combinations", ".mpcomb");
+  if (base.getFullPathName().isEmpty()) return out;
+
+  const juce::String key = base.getFileNameWithoutExtension();
+  for (const auto& f : base.getParentDirectory().findChildFiles(
+           juce::File::findFiles, false, key + "*.mpcomb")) {
+    // "<key>.mpcomb" is the default set; "<key>.<name>.mpcomb" is a named one.
+    juce::String rest = f.getFileName().fromFirstOccurrenceOf(key, false, false);
+    rest = rest.dropLastCharacters(juce::String(".mpcomb").length());
+    if (rest.startsWithChar('.')) rest = rest.substring(1);
+    out.push_back(rest.toStdString());
+  }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+bool MasterpieceProcessor::switchCombinationSet(const std::string& name) {
+  // Save first. Switching away from unsaved registrations and silently losing
+  // them is the one thing this must not do.
+  saveCombinations();
+  combinationSet_ = sanitiseSetName(name);
+  // Back to what the ORGAN declares before reading the new set, so a set that
+  // defines fewer combinations than the last one leaves no stragglers from it.
+  combinations_.reset(model_);
+  return loadCombinations();
+}
+
+bool MasterpieceProcessor::copyCombinationSetTo(const std::string& name) const {
+  const std::string clean = sanitiseSetName(name);
+  if (clean == sanitiseSetName(combinationSet_)) return false;  // itself
+  const auto f = organFileForSaving("combinations", setExtension(clean));
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText(juce::String(combinations_.toText()));
+}
+
+bool MasterpieceProcessor::deleteCombinationSet(const std::string& name) const {
+  const std::string clean = sanitiseSetName(name);
+  // The default set is the organ's registrations, not a set someone made, so
+  // there is no "delete" that leaves the organ in a sane state.
+  if (clean.empty()) return false;
+  const auto f = organFileForSaving("combinations", setExtension(clean));
+  return !f.getFullPathName().isEmpty() && f.existsAsFile() && f.deleteFile();
 }
 
 bool MasterpieceProcessor::saveCombinations() const {
-  const auto f = organFileForSaving("combinations", ".mpcomb");
+  const auto f = organFileForSaving("combinations", setExtension(combinationSet_));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
   return f.replaceWithText(juce::String(combinations_.toText()));
@@ -1139,10 +1706,14 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // pipe speech, so temperament must not touch them.
       vs.ratio = 1.0;
       vs.gain = juce::Decibels::decibelsToGain(
-          static_cast<float>(layer.gainDb), -100.0f);
+                    static_cast<float>(layer.gainDb), -100.0f) *
+                layerLevel(layer);
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);
+      // A noise belongs to the console, not to a division, so it has no rank
+      // routing of its own and stays on the first bus.
+      vs.mixBus = 0;
       voices_.startVoice(vs, noteId);
     }
   }
@@ -1169,6 +1740,20 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
 
+  // LCD text, built on the message thread, joins the same outgoing stream so
+  // there is one sender to the port. try_lock rather than lock: a panel line
+  // arriving a block late is invisible, and waiting on a message-thread lock
+  // here would not be.
+  if (midiOut_ != nullptr) {
+    std::unique_lock<std::mutex> lk(lcdQueueLock_, std::try_to_lock);
+    if (lk.owns_lock() && !lcdQueue_.empty()) {
+      for (const auto& m : lcdQueue_)
+        outgoing_.addEvent(
+            juce::MidiMessage(m.data(), static_cast<int>(m.size())), 0);
+      lcdQueue_.clear();
+    }
+  }
+
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
     midiOut_->sendBlockOfMessagesNow(outgoing_);
@@ -1179,8 +1764,20 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Room before level: the convolver is part of the instrument's sound, and
   // the master fader is the last thing in the chain.
-  convolver_.process(buffer);
-  buffer.applyGain(*apvts_.getRawParameterValue("masterGain"));
+  //
+  // Skipped entirely under simpleWavOnly. An FFT convolution is the most
+  // expensive thing in this callback by a wide margin, and the switch is
+  // called "no DSP" — a machine that needs it needs this gone more than it
+  // needs anything else gone.
+  if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(buffer);
+
+  // The organ's own output trim, before the player's fader: it is part of how
+  // this set is meant to sound, not a setting. Folded into the same multiply
+  // so it costs nothing, and deliberately NOT gated behind the DSP switch — a
+  // constant gain is not an effect, and a slow machine should still hear the
+  // set at the level its producer intended.
+  buffer.applyGain(organTrimGain_ *
+                   *apvts_.getRawParameterValue("masterGain"));
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.
@@ -1238,6 +1835,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
   LoadResult result;
   LoadPhases phases;
+
+  // Whoever starts a load clears the cancel flag, so a Cancel that arrived
+  // after the previous load already finished cannot kill this one.
+  loadProgress_.cancelled.store(false, std::memory_order_release);
+  loadProgress_.beginPhase(LoadProgress::Phase::ReadingDefinition);
 
   if (!odfFile.existsAsFile()) {
     result.error = "no such file: " + odfFile.getFullPathName().toStdString();
@@ -1316,10 +1918,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       continue;
     controls_.setValue(id, v);
   }
-  // One settle at the end rather than per control: the linkages are the same
-  // either way and a hundred sliders is a hundred passes otherwise.
-  if (!pendingControlValues_.empty())
-    controls_.propagate(0, &engagedSwitches_);
+  // Settle the whole graph once, WITH the switch states.
+  //
+  // ContinuousControlBank::reset() propagates too, but it knows no switches,
+  // so every conditional linkage is skipped — and a set's tremulant crossfade
+  // is built entirely out of those. Azzio pairs them: one linkage fires while
+  // switch 49 is engaged and its partner while it is not, swapping two levels
+  // between the normal and tremmed scaling controls. Without this call both
+  // sit at their declared defaults and the crossfade never happens.
+  controls_.propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
@@ -1360,9 +1967,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // wind system. Leaving them at rest leaves the blower off, and then every
   // chest drains the moment a key goes down.
   //
-  // A control that something else drives is not one of these: the crescendo
-  // pedal has steps behind it too, and sweeping it at load would register the
-  // organ for a fortissimo nobody asked for.
+  // Two kinds of control are NOT one of these, and both exclusions are load-
+  // bearing:
+  //
+  //   - one that something else drives. Nancy's visible crescendo pedal is fed
+  //     through a linkage, and sweeping it would register the organ for a
+  //     fortissimo nobody asked for.
+  //
+  //   - one the player can see. A control with an image is drawn on the
+  //     console: it is the player's, and an organ does not come up with its
+  //     pedals pushed to the floor. Cracow's crescendo is control 2, declared
+  //     default 0, drawn as image set instance 75, and driven by NOTHING — so
+  //     the driven test alone let it through and the organ loaded with all 49
+  //     crescendo steps engaged. A start-up control is internal by nature:
+  //     Nancy's are "__DelayBlower" and "__DelayInit" and no one ever sees
+  //     them.
   {
     std::unordered_set<Id> driven;
     for (const auto& l : model_.controlLinkages)
@@ -1371,6 +1990,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (driven.count(id) != 0) continue;
       const auto cit = model_.continuousControls.find(id);
       if (cit == model_.continuousControls.end()) continue;
+      if (cit->second.imageSetInstanceId != 0) continue;
       setControlValue(id, std::max(cit->second.maxValue, cit->second.minValue));
     }
   }
@@ -1447,7 +2067,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   } else {
     const int64_t head =
         maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
-    result.samples = samples_.loadAll(model_, opts.organRootDir, head);
+    result.samples = samples_.loadAll(model_, opts.organRootDir, head,
+                                      LoopSelection::Longest, &loadProgress_);
+  }
+
+  // A cancelled load is NOT a partly-loaded organ. Half an instrument that
+  // plays some notes and silently drops others is worse than none: the player
+  // would be debugging their sample set rather than remembering they pressed
+  // Cancel. Drop what was read and say so plainly.
+  if (loadProgress_.isCancelled()) {
+    juce::Logger::writeToLog("load: cancelled, discarding partial organ");
+    samples_.clear();
+    model_ = OrganModel{};
+    voices_.setSampleProvider(samples_.provider());
+    loadProgress_.phase.store(LoadProgress::Phase::Cancelled,
+                              std::memory_order_release);
+    result.ok = false;
+    result.error = "cancelled";
+    return result;
   }
   voices_.setSampleProvider(samples_.provider());
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
@@ -1472,6 +2109,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   setLastOrgan(odfFile);
 
   result.stopsEngaged = 0;
+  loadProgress_.phase.store(LoadProgress::Phase::Done,
+                            std::memory_order_release);
   result.ok = true;
   return result;
 }

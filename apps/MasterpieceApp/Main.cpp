@@ -13,6 +13,8 @@
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/Settings.h"
+#include "../../src/mp_ui/Wizard.h"
+#include "../../src/mp_control/Registration.h"
 
 class MasterpieceApp : public juce::JUCEApplication {
 public:
@@ -126,7 +128,123 @@ public:
       if (proc_->reopenLastOrgan()) odf = proc_->lastOrgan();
     }
 
+    // Play a MIDI file through the organ as soon as it is up, with the stops
+    // drawn. Together these turn "show me this organ playing" into one
+    // command -- which is what makes it repeatable across a shelf of them,
+    // and what lets the console be filmed while it plays.
+    juce::File playMidi;
+    juce::File recordAudio;
+    int drawStops = 0;
+    bool drawAll = false;
+    juce::String registration;
+    juce::Array<int> namedStops;
+    for (int i = 0; i < args.size(); ++i) {
+      if (args[i] == "--play-midi" && i + 1 < args.size())
+        playMidi = juce::File::getCurrentWorkingDirectory().getChildFile(
+            args[++i].unquoted());
+      else if (args[i] == "--record-audio" && i + 1 < args.size())
+        recordAudio = juce::File::getCurrentWorkingDirectory().getChildFile(
+            args[++i].unquoted());
+      else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
+        const auto v = args[++i].unquoted();
+        // "all", a count, or the stops themselves by id. The last is how a
+        // registration chosen by ear gets played: --registration is a guess
+        // from the stop names, and a named list is the answer.
+        if (v == "all") drawAll = true;
+        else if (v.containsChar(',')) {
+          for (const auto& tok : juce::StringArray::fromTokens(v, ",", ""))
+            if (tok.trim().isNotEmpty()) namedStops.add(tok.trim().getIntValue());
+        } else {
+          drawStops = v.getIntValue();
+        }
+      }
+      // Register by ear rather than by index. "--draw-stops 4" means the
+      // first four stops in the list, and stop lists are ordered by division
+      // -- so on most organs that is four pedal stops and silent manuals.
+      // --registration reads the stop NAMES and picks a combination that
+      // means something, on an organ nobody has written a preset for.
+      else if (args[i] == "--registration" && i + 1 < args.size())
+        registration = args[++i].unquoted().toLowerCase();
+    }
+
+    if (playMidi != juce::File() || recordAudio != juce::File() || drawAll ||
+        drawStops > 0 || registration.isNotEmpty() || !namedStops.isEmpty()) {
+      win_->onLoaded = [this, playMidi, recordAudio, drawAll, drawStops,
+                        registration, namedStops] {
+        if (!namedStops.isEmpty()) {
+          juce::String drawn;
+          for (int id : namedStops) {
+            const auto it = proc_->organModel().stops.find(id);
+            if (it == proc_->organModel().stops.end()) {
+              juce::Logger::writeToLog("no stop " + juce::String(id) +
+                                       " on this organ");
+              continue;
+            }
+            proc_->setStopEngaged(id, true);
+            drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
+          }
+          juce::Logger::writeToLog("drawn: " + drawn);
+        } else if (registration.isNotEmpty()) {
+          const auto style =
+              mp::registrationFromName(registration.toStdString());
+          const auto chosen =
+              mp::chooseRegistration(proc_->organModel(), style);
+          juce::String drawn;
+          for (mp::Id id : chosen) {
+            proc_->setStopEngaged(id, true);
+            const auto it = proc_->organModel().stops.find(id);
+            if (it != proc_->organModel().stops.end())
+              drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
+          }
+          juce::Logger::writeToLog(juce::String(mp::registrationName(style)) +
+                                   ": " + drawn);
+        } else if (drawAll) {
+          proc_->engageAllStops();
+        } else if (drawStops > 0) {
+          int n = 0;
+          for (const auto& e : proc_->stopList()) {
+            if (n++ >= drawStops) break;
+            proc_->setStopEngaged(e.stopId, true);
+          }
+        }
+        if (playMidi.existsAsFile()) {
+          if (proc_->recorder().loadFromFile(playMidi)) {
+            // A beat of silence first: a file that starts the instant the
+            // console appears is cut off at the head by every recorder.
+            juce::Timer::callAfterDelay(1200, [this, recordAudio] {
+              // Capture from inside the program rather than off the sound
+              // card. What the engine produced is what gets written -- no
+              // loopback device to find, no other application's sounds, and
+              // nothing lost if the machine stutters. Started in the SAME
+              // callback as playback, so the file begins where the music
+              // does.
+              if (recordAudio != juce::File()) {
+                recordAudio.getParentDirectory().createDirectory();
+                if (!proc_->audioRecorder().start(recordAudio,
+                                                  proc_->getSampleRate(), 2))
+                  juce::Logger::writeToLog("could not record to " +
+                                           recordAudio.getFullPathName());
+              }
+              proc_->recorder().startPlayback();
+            });
+          } else {
+            juce::Logger::writeToLog("could not read MIDI: " +
+                                     playMidi.getFullPathName());
+          }
+        }
+      };
+    }
+
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
+
+    // A fresh installation has no audio device chosen, no MIDI input enabled
+    // and no organ. Offering the three in order beats three separate ways of
+    // discovering that nothing happens when you press a key.
+    //
+    // Not in --gui-only: that mode exists for screenshots and smoke tests,
+    // and a modal dialog over the console would defeat both.
+    if (!guiOnly && mp::ui::WizardPanel::isFirstRun(*proc_))
+      win_->showWizard(*proc_);
   }
 
   // Beside the player's own data, with the organ settings and the MIDI maps.
@@ -188,6 +306,7 @@ private:
       // and a blank panel.
       ed->onOrganLoaded = [this](const juce::String& name) {
         setName("Masterpiece - " + name);
+        if (onLoaded) onLoaded();
       };
       editor_ = ed;
       setUsingNativeTitleBar(true);
@@ -201,12 +320,31 @@ private:
     }
 
     mp::ui::MasterpieceEditor& editor() { return *editor_; }
+    // Run once the organ is up. Used to start a demonstration performance
+    // without a human having to click through a file dialog first.
+    std::function<void()> onLoaded;
 
     void showSettings(mp::MasterpieceProcessor& proc) {
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "Masterpiece settings";
+      opts.dialogBackgroundColour = juce::Colour(0xff15171c);
+      opts.escapeKeyTriggersCloseButton = true;
+      opts.useNativeTitleBar = true;
+      opts.resizable = true;
+      opts.launchAsync();
+    }
+
+    void showWizard(mp::MasterpieceProcessor& proc) {
+      auto panel = std::make_unique<mp::ui::WizardPanel>(proc, devices_);
+      panel->setSize(560, 520);
+      // Opening the organ is the application's business: the file dialog and
+      // what happens after a load both live out here.
+      panel->onOpenOrgan = [this] { editor_->chooseAndLoadOrgan(); };
+      juce::DialogWindow::LaunchOptions opts;
+      opts.content.setOwned(panel.release());
+      opts.dialogTitle = "Welcome to Masterpiece";
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;

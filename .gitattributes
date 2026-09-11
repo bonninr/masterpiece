@@ -1,0 +1,23 @@
+# Line endings.
+#
+# The repository is worked on from Windows and built on Linux runners. A
+# shell script that reaches a runner with CRLF endings fails on its first
+# line with a message that names no file and no cause -- bash reports the
+# carriage return as part of the command name. Pinning the text formats is
+# cheaper than diagnosing that once.
+
+* text=auto
+
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.cmake text eol=lf
+
+# Screenshots and any other binary must never be touched.
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.gif   binary
+*.ico   binary
+*.wav   binary
+*.mp4   binary

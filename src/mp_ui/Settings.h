@@ -9,6 +9,7 @@
 
 #include "../mp_audio/MasterpieceProcessor.h"
 
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -178,6 +179,140 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
+// Favourites: numbered slots for the organs a player actually uses, so getting
+// back to one does not mean finding a 19 GB set in a file browser.
+class FavouritesPanel : public juce::Component {
+public:
+  explicit FavouritesPanel(MasterpieceProcessor& p);
+  void resized() override;
+  void refresh();
+
+private:
+  MasterpieceProcessor& proc_;
+  void refreshSets();
+
+  juce::Label heading_;
+  juce::TextButton addCurrent_{"Add the organ now loaded"};
+  // Combination sets live here rather than on their own tab: a set IS a
+  // favourite registration, and the two are reached at the same moment.
+  juce::Label setsHeading_;
+  juce::Label setLabel_;
+  juce::ComboBox setBox_;
+  juce::TextButton setNew_{"Save as new set..."};
+  juce::TextButton setDelete_{"Delete set"};
+  juce::Label setStatus_;
+  std::vector<std::string> setNames_;
+  std::unique_ptr<juce::AlertWindow> setPrompt_;
+  juce::Label status_;
+  juce::Viewport viewport_;
+  juce::Component rows_;
+  std::vector<int> slots_;
+  std::vector<std::unique_ptr<juce::Label>> labels_;
+  std::vector<std::unique_ptr<juce::TextButton>> loads_;
+  std::vector<std::unique_ptr<juce::TextButton>> removes_;
+  juce::Label note_;
+};
+
+// Voicing: the player's own adjustments to a rank or a single pipe, the way a
+// voicer goes round an organ with a knife and a tuning cone. Rank level here;
+// the per-pipe rows are reached by picking a rank and a note.
+class VoicingPanel : public juce::Component {
+public:
+  explicit VoicingPanel(MasterpieceProcessor& p);
+  void resized() override;
+  void refresh();
+
+private:
+  void pushCurrent();
+  void loadCurrentIntoSliders();
+  void updateStatus();
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::Label rankLabel_;
+  juce::ComboBox rank_;
+  juce::Label scopeLabel_;
+  juce::ComboBox scope_;   // the whole rank, or one note of it
+  juce::Label noteLabel_;
+  juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  juce::Label gainLabel_, tuneLabel_;
+  juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::TextButton abSwap_{"A / B"};
+  juce::TextButton abCopy_{"Copy to other"};
+  juce::TextButton resetOne_{"Reset this"};
+  juce::TextButton resetAll_{"Reset everything"};
+  juce::TextButton save_{"Save for this organ"};
+  juce::Label status_;
+  juce::Label note2_;
+  std::vector<Id> rankIds_;
+};
+
+// The mixer: how many output pairs the player has, and which one each rank
+// speaks through. Its own tab because the rank list is long — a real organ has
+// dozens — and it is the one settings page that needs to scroll.
+class MixerPanel : public juce::Component {
+public:
+  explicit MixerPanel(MasterpieceProcessor& p);
+  void resized() override;
+  // Rebuild the rank rows. The rank list only exists once an organ is loaded,
+  // so this cannot happen in the constructor.
+  void refresh();
+
+private:
+  void pushRouting();
+  void setBusCount(int buses);
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::Label busesLabel_;
+  juce::ComboBox busCount_;
+  juce::Label status_;
+  juce::TextButton save_{"Save for this organ"};
+  juce::TextButton spread_{"Spread ranks evenly"};
+  juce::TextButton reset_{"All to bus 1"};
+  // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
+  juce::Viewport viewport_;
+  juce::Component rankHolder_;
+  std::vector<Id> rankIds_;
+  std::vector<std::unique_ptr<juce::Label>> rankLabels_;
+  std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
+  juce::Label note_;
+};
+
+// The console's own text display: the little 32-character panel on the jamb
+// that tells the player what the keys cannot. Its own tab rather than a corner
+// of the MIDI page, because the framing bytes belong to the player's hardware
+// and typing them in needs room to see what you are doing.
+class DisplayPanel : public juce::Component, private juce::Timer {
+public:
+  explicit DisplayPanel(MasterpieceProcessor& p);
+  ~DisplayPanel() override;
+  void resized() override;
+
+private:
+  void timerCallback() override;
+  void rebuild();
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::ToggleButton enable_{"Drive a console display"};
+  juce::Label idLabel_;
+  juce::Slider id_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  juce::Label widthLabel_;
+  juce::ComboBox width_;
+  juce::Label headerLabel_;
+  juce::TextEditor header_;
+  juce::Label linesLabel_;
+  std::array<std::unique_ptr<juce::ComboBox>, 4> lines_;
+  // What the hardware would read, shown before it is sent: the truncation is
+  // the part a player needs to see.
+  juce::Label previewLabel_;
+  juce::Label preview_;
+  juce::TextButton send_{"Send to display"};
+  juce::Label note_;
+};
+
 class SettingsWindow : public juce::Component {
 public:
   SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
@@ -191,6 +326,10 @@ private:
   MetronomePanel metronome_;
   RecorderPanel recorder_;
   MidiPanel midi_;
+  MixerPanel mixer_;
+  VoicingPanel voicing_;
+  FavouritesPanel favourites_;
+  DisplayPanel display_;
 };
 
 } // namespace mp::ui

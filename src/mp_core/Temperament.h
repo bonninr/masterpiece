@@ -25,6 +25,27 @@ double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double baseP
 // Resample ratio: targetHz / recordedHz. Returns 1.0 if recordedHz <= 0.
 double playbackRatio(double targetHz, double recordedHz);
 
+// A pipe's target pitch after detuning. An organ goes out of tune pipe by
+// pipe, so a set declares a control per division and zone and gives each pipe
+// its own sensitivity in Hz per control unit.
+//
+// The control is BIPOLAR: the offset is measured from the middle of its
+// travel, not from zero. Every sensitivity a real set declares is positive —
+// Nancy has 3056 of them and not one is negative — while half its layers name
+// a "...DetPos" control and half a "...DetNeg" one. The sign therefore comes
+// from which side of centre the control sits, and the pair spreads pipes
+// above and below true pitch as detuning is asked for. Read the other way,
+// with the offset measured from zero, every pipe goes sharp together and the
+// whole organ sits about ten cents high while claiming to be in tune.
+//
+// `centre` is the middle of the control's declared range, so a control at
+// rest detunes nothing.
+//
+// Clamped to half the target: detuning is drift, and a pathological
+// sensitivity must not be able to transpose or invert a rank.
+double detunedTargetHz(double targetHz, int controlValue, double centre,
+                       double sensitivityHzPerUnit);
+
 // Tempered playback ratio: pipeTargetHz / basePitchHz (for resampling relative to base).
 double temperedPlaybackRatio(int midiNote, int harmonicNum64ft, double basePitchHz,
                              double deviationCents, const Temperament& t, int transposeSemi = 0);

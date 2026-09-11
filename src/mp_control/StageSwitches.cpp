@@ -41,6 +41,49 @@ size_t StageSwitchBank::stepCount(Id controlId) const {
   return it == rows_.end() ? 0 : it->second.size();
 }
 
+size_t StageSwitchBank::stepMax(Id controlId) const {
+  const auto it = rows_.find(controlId);
+  if (it == rows_.end()) return 0;
+  size_t n = 0;
+  // Only rows that engage on the way up count as steps. A blower's
+  // disengage-on-the-way-down row sits on the same kind of control and would
+  // otherwise be numbered as though it were a registration.
+  for (const auto& row : it->second)
+    if (row.engageWhenIncreasing) ++n;
+  return n;
+}
+
+size_t StageSwitchBank::currentStep(Id controlId) const {
+  const auto engaged = engagedStep_.find(controlId);
+  if (engaged == engagedStep_.end()) return 0;
+  const auto it = rows_.find(controlId);
+  if (it == rows_.end()) return 0;
+
+  // Rows are held sorted by threshold, so counting engaging rows up to the one
+  // holding the engaged switch gives its ordinal directly.
+  size_t n = 0;
+  for (const auto& row : it->second) {
+    if (!row.engageWhenIncreasing) continue;
+    ++n;
+    if (row.controlledSwitchId == engaged->second) return n;
+  }
+  return 0;
+}
+
+Id StageSwitchBank::crescendoControl() const {
+  Id best = 0;
+  size_t bestRows = 0;
+  for (const auto& [id, rows] : rows_) {
+    if (rows.size() <= bestRows) continue;
+    bestRows = rows.size();
+    best = id;
+  }
+  // One or two rows is a blower or a noise trigger, not a crescendo. A real
+  // crescendo has a step per registration and there are never fewer than a
+  // handful.
+  return bestRows >= 4 ? best : 0;
+}
+
 void StageSwitchBank::moveControl(Id controlId, int fromValue, int toValue,
                                   std::vector<Change>& out) {
   if (fromValue == toValue) return;

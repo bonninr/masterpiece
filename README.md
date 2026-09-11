@@ -47,6 +47,96 @@ on-screen keyboard instead.
 
 ---
 
+## Using it
+
+**Loading.** A large library is tens of gigabytes and takes minutes off a slow
+disk, so it loads on its own thread: the window stays live, the progress is
+real, and the estimate is built from the rate the load is actually achieving
+rather than from a file count. Cancel takes effect at the next file and throws
+away what it had read — a half-loaded organ that plays some notes and silently
+drops others would send you hunting through your sample set.
+
+![Loading an organ](screenshots/ui-loading.jpg)
+
+**Playing.** Drawstops, pistons and expression shoes are where the builder put
+them. A key pressed with the mouse takes the same path as the same note
+arriving over MIDI, so anything you can do from the console you can do from a
+real one. The meter shows what reaches the audio device — after the room, the
+organ's own level and the master fader.
+
+![The console, playing](screenshots/ui-console.jpg)
+
+**Registering without artwork.** Some libraries ship no console picture, and
+some ship sixty stops across two jambs you would rather not hunt through. The
+stop list is the same registration by another route, grouped by division.
+
+![The stop list](screenshots/ui-stoplist.jpg)
+
+**The engine.** What costs CPU and what costs memory, in one place. *Simple WAV
+only* bypasses every refinement at once for a machine that cannot afford them.
+Preload and resident format decide how much of a library has to fit in RAM;
+streaming holds only the head of each release tail and fetches the rest while
+it plays. Nothing here writes to disk on its own — changes apply immediately,
+and you choose afterwards whether to forget them, keep them for this organ, or
+make them the default for every organ.
+
+![Engine settings](screenshots/ui-engine.jpg)
+
+**Routing.** No sample library says anything about audio routing, so this is
+yours to decide — like the MIDI mapping. Output pairs and their device channels
+carry across organs; which rank goes where is saved per organ, because a rank
+number means nothing in a different instrument. A rank you never touch plays
+through the first pair, so an organ is audible before you open this page, and
+in stereo the pairs are summed so nothing disappears when you split them up.
+
+![Mixer](screenshots/ui-mixer.jpg)
+
+**Voicing.** A rank adjustment and a single-pipe adjustment add, so pulling one
+sour pipe into tune does not throw away the trim you put on the rank it belongs
+to. A and B are two complete sets: make a change, swap, and hear it against
+what was there before, because from memory the comparison always flatters
+whichever you heard last. Level and tuning are a multiply and a ratio taken
+once when a note starts, so they cost nothing while it sounds and work with the
+DSP switched off.
+
+![Voicing](screenshots/ui-voicing.jpg)
+
+**Getting back to an organ.** A slot number is something a thumb piston can be
+mapped to; a file path is not. Combination sets are whole registration books —
+one for a recital, another for a service — and changing set saves the one you
+are leaving first.
+
+![Favourites and combination sets](screenshots/ui-favourites.jpg)
+
+**Your console.** Which manual a key plays is decided by its MIDI channel, and
+no organ file can guess how your console is wired. Right-click a drawstop and
+move the real one to learn it; the sequencer pistons and the page-turn actions
+get their own learn buttons, because the organ does not declare them and there
+is nothing on screen to right-click.
+
+![MIDI](screenshots/ui-midi.jpg)
+
+**Jamb displays.** The little text panel on a wired console, driven by system
+exclusive. The bytes that introduce the message belong to the display hardware
+rather than to the organ, so they are typed in rather than guessed, and only
+lines whose text actually changed are sent.
+
+![Console display](screenshots/ui-display.jpg)
+
+**Practising and recording.** A MIDI recording is the performance and can be
+replayed through a different registration; the audio capture is what it sounded
+like. Both at once is the useful combination.
+
+![Recorder](screenshots/ui-recorder.jpg)
+
+**The room.** Convolution reverb for libraries recorded dry. A library recorded
+in its own building already carries that acoustic in the samples, and a second
+room on top of it mostly muddies — this earns its keep on a dry set.
+
+![Room](screenshots/ui-room.jpg)
+
+---
+
 ## What it does
 
 **The console.** Artwork, drawstops, pistons, expression shoes, text labels and
@@ -156,12 +246,15 @@ a 40 GB library.
 
 ## Credits
 
-Masterpiece is its own implementation, but it was written with three
+Masterpiece is its own implementation, but it was written with four
 open-source projects open alongside it, and is much the better for them:
 
 - **[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue)** — the shape of the
   voice engine, and the release-crossfade behaviour that stops a key release
   from clicking
+- **[OdfEdit](https://github.com/GrandOrgue/OdfEdit)** — the clearest available
+  reading of the organ-definition format: which objects exist, how they link,
+  and which of them a converter has to give up on
 - **[rusty-pipes](https://github.com/dividebysandwich/rusty-pipes)** — sample
   and loop handling, and a great deal of hard-won file-format knowledge
 - **[HISE](https://github.com/christophhart/HISE)** — the streaming design:

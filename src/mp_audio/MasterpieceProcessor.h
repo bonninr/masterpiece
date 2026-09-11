@@ -11,6 +11,7 @@
 #include "../mp_control/Combinations.h"
 #include "../mp_control/StageSwitches.h"
 #include "../mp_control/Stepper.h"
+#include "../mp_control/LcdPanel.h"
 #include "../mp_control/WindSolver.h"
 #include "../mp_control/SwitchNetwork.h"
 #include "../mp_core/Temperament.h"
@@ -23,12 +24,16 @@
 #include "AudioRecorder.h"
 #include "MidiRecorder.h"
 #include "SampleLibrary.h"
+#include "MixerConfig.h"
+#include "VoicingSet.h"
+#include "Favourites.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
 #include "../mp_sampler/VoiceEngine.h"
 
 #include <array>
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <unordered_map>
@@ -91,6 +96,17 @@ public:
                        int64_t maxFramesPerSample = 0,
                        bool graphicsOnly = false);
   void loadOrganAsync(const juce::File& odfFile);
+
+  // Where a load has got to, and how to stop it. The progress object is read
+  // by a UI timer while the loader's worker threads write it, which is why
+  // everything in it is atomic.
+  const LoadProgress& loadProgress() const { return loadProgress_; }
+  // Ask the running load to stop. Returns immediately; the load ends at the
+  // next file boundary and reports itself cancelled.
+  void cancelLoad() {
+    loadProgress_.cancelled.store(true, std::memory_order_release);
+    juce::Logger::writeToLog("load: cancel requested");
+  }
   const OrganModel& organModel() const { return model_; }
   const SampleLibrary& sampleLibrary() const { return samples_; }
 
@@ -110,6 +126,51 @@ public:
   int engageAllStops();
 
   juce::AudioProcessorValueTreeState& apvts() { return apvts_; }
+
+  // The organ's own level for a layer, as a linear gain factor.
+  //
+  // This is also how a set switches between its tremulant and non-tremulant
+  // recordings. Every pipe of a tremmed set carries two layers, and the organ
+  // mutes one of them: Nancy silences 488 that way, Azzio 537 of 996. A set
+  // that ignored this would sound both variants at once.
+  //
+  // Not every linkage that feeds these controls is understood yet —
+  // BinaryOperationCode 7 is rejected by the loader, InvertSourceControlValue
+  // is unparsed, LinkTypeCode uninterpreted — but the crossfade itself is
+  // built from plain conditional linkages, which are. mp-render --levels
+  // reports what each control resolves to, so the remaining gaps stay
+  // measurable.
+  //
+  // Read at voice start, never per sample: a level is a control-rate thing
+  // and a note already sounding keeps the gain it began with, exactly as a
+  // pipe does when someone moves a fader.
+  float layerLevel(const PipeLayer& layer) const {
+    if (layer.ampScalingControlId == 0) return 1.0f;
+    if (model_.continuousControls.count(layer.ampScalingControlId) == 0)
+      return 1.0f;
+    return static_cast<float>(controls_.normalised(layer.ampScalingControlId));
+  }
+
+  // The same answers the voice engine uses, for tools that want to report on
+  // them without starting a note. Shared rather than reimplemented: a
+  // diagnostic that computes the figure its own way will eventually disagree
+  // with the engine, and then it is worse than having none.
+  float layerLevelFor(const PipeLayer& layer) const { return layerLevel(layer); }
+
+  // The organ's own output trim as a linear gain — the producer's calibration
+  // so two sets recorded at different levels play at a comparable loudness.
+  float organTrimGain() const { return organTrimGain_; }
+  // Ignore that calibration. For measuring what it actually does: rendering
+  // the same organ with and without it is the only way to show the figure
+  // reaches the audio rather than merely being parsed. Set before loading.
+  void setOrganTrimEnabled(bool on) { applyOrganTrim_ = on; }
+  double detuneOffsetHzFor(const PipeLayer& layer, double targetHz) const {
+    if (layer.pitchControlId == 0) return 0.0;
+    return detunedTargetHz(targetHz, detuneControlValue(layer),
+                           detuneCentre(layer),
+                           layer.pitchSensitivityHzPerUnit) -
+           targetHz;
+  }
 
   // A console action a mapped piston asked for, or None if none is waiting.
   // Reading takes it: the editor collects on its timer and acts on the
@@ -157,6 +218,25 @@ public:
   CombinationSystem& combinations() { return combinations_; }
   const CombinationSystem& combinations() const { return combinations_; }
   juce::File combinationFileFor(const juce::File& odf) const;
+
+  // --- combination sets -------------------------------------------------
+  // Several named registrations for one organ: a set for a recital, another
+  // for a service, a third someone else left. One file each, so copying a set
+  // between organs is copying a file and deleting one cannot corrupt another.
+  //
+  // The empty name is the default set, and is what every organ has had until
+  // now — so an organ with no sets keeps working and its file keeps its name.
+  const std::string& combinationSetName() const { return combinationSet_; }
+  // Saves the set now live before switching, then loads the new one. Returns
+  // false if the switch happened but nothing was there to load.
+  bool switchCombinationSet(const std::string& name);
+  // The sets this organ already has, by name, in order. The default set is
+  // reported as an empty string.
+  std::vector<std::string> combinationSets() const;
+  // Write the live registrations out under another name, leaving the current
+  // set alone. How "save a copy before I change everything" is spelled.
+  bool copyCombinationSetTo(const std::string& name) const;
+  bool deleteCombinationSet(const std::string& name) const;
   bool saveCombinations() const;
   bool loadCombinations();
   // Capture can happen on the audio thread — a piston is a MIDI message like
@@ -185,6 +265,12 @@ public:
   // The wind. Read-only from outside: what the pressure is doing is a result,
   // not a setting, and the only control over it is EngineSwitch::enableWindModel.
   const WindSolver& wind() const { return wind_; }
+  // How far the wind model's deviation from nominal is scaled. 1 = the
+  // physics as solved; higher exaggerates it so it can be HEARD and judged.
+  // Not a tone control: leaving it above 1 makes the organ lie about its own
+  // wind system.
+  void setWindDepth(double d) { windDepth_ = d < 0.0 ? 0.0 : d; }
+  double windDepth() const { return windDepth_; }
 
   // --- the registration sequencer ---------------------------------------
   // One thumb piston that walks the organ's generals in order. Not wired in
@@ -372,6 +458,74 @@ public:
   void setMidiFeedbackEnabled(bool on) { midiFeedback_ = on; }
   bool midiFeedbackEnabled() const { return midiFeedback_; }
 
+  // Console LCD panels. Configured by the player, because the framing belongs
+  // to their hardware and not to the organ — see LcdPanel.h.
+  LcdPanels& lcdPanels() { return lcd_; }
+  // What the panels are showing. Shared with the settings preview rather than
+  // reassembled there: a preview that computes its own idea of the state will
+  // eventually disagree with the hardware, and then it is worse than none.
+  LcdState lcdState() const;
+
+  // --- the mixer -------------------------------------------------------
+  // Whose configuration this is: the player's, not the organ's. No sample set
+  // declares a routing object at all (see MixerConfig.h).
+  // --- voicing ---------------------------------------------------------
+  // The player's per-rank and per-pipe adjustments. Two slots plus a live
+  // flag, because voicing is done by comparing a change against what was
+  // there before; from memory the comparison always flatters whichever was
+  // heard last.
+  // --- favourites ------------------------------------------------------
+  // Numbered slots a player can reach without a file dialog. GLOBAL, not per
+  // organ: the whole point is to get to a different organ, so storing them
+  // inside the organ you are leaving would be useless.
+  Favourites& favourites() { return favourites_; }
+  const Favourites& favourites() const { return favourites_; }
+  // Put the organ now loaded on a slot, or on the first free one when slot is
+  // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
+  int addCurrentOrganToFavourites(int slot = 0);
+
+  VoicingAB& voicing() { return voicing_; }
+  const VoicingAB& voicing() const { return voicing_; }
+
+  MixerConfig& mixer() { return mixer_; }
+  const MixerConfig& mixer() const { return mixer_; }
+  // Rebuild the dense bus indexing after the config changes. Must be called
+  // before the next block, and never from the audio thread.
+  void refreshMixerBuses();
+  // Load or drop each bus's impulse response to match the config. Slow (it
+  // reads and re-plans), so it is called when the mixer changes, never per
+  // block, and never from the audio thread.
+  void refreshBusReverbs();
+  int mixBusCount() const { return static_cast<int>(mixBusOrder_.size()); }
+  BusId mixBusAt(int denseIndex) const {
+    return denseIndex >= 0 && denseIndex < static_cast<int>(mixBusOrder_.size())
+               ? mixBusOrder_[static_cast<size_t>(denseIndex)]
+               : BusId{0};
+  }
+  // Capture each mixer bus separately as the normal callback runs.
+  //
+  // A hook rather than a second render path: the per-bus signal has to come
+  // from the same voices, the same wind and the same shades as the audio
+  // anyone actually hears, and a parallel path would drift from it. When set,
+  // each bus is rendered into its own buffer AND summed into the output as
+  // usual, so nothing about the callback changes.
+  //
+  // What lands here is PRE-convolver and pre-master-fader: it is the bus
+  // signal, which is where a per-bus IR will eventually sit. Caller owns the
+  // buffers and must size them to the block; pass nullptr to stop capturing.
+  // Message thread only, and not while audio is running.
+  void setMixBusCapture(std::vector<juce::AudioBuffer<float>>* perBus) {
+    mixBusCapture_ = perBus;
+  }
+  // Gathers what the panels show and queues whatever changed. Call from the
+  // MESSAGE thread, on a timer: it builds strings, which has no business on
+  // the audio thread, and nothing a panel shows moves faster than a person
+  // can read it anyway. Returns how many messages were queued.
+  int pumpLcdPanels();
+  // Re-sends every line regardless, for a console plugged in mid-session and
+  // for the settings page's test button.
+  int refreshLcdPanels();
+
   // --- memory / streaming ----------------------------------------------
   // How much of each sample is preloaded. The head is a MINIMUM: it is always
   // extended to cover the sustain loop, because a sample whose loop is missing
@@ -431,14 +585,42 @@ private:
   // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
   // allocated here.
   void renderBuses(juce::AudioBuffer<float>& buffer);
+  void renderOneMixBus(juce::AudioBuffer<float>& dest, int mixBusFilter);
   // Which bus a pipe belongs to: its enclosure's index, or the unenclosed bus.
   int busForPipe(Id pipeId) const;
+  // Which MIXER bus a pipe of this rank speaks through, as a dense index into
+  // the per-bus buffers rather than a BusId (ids run to 1024; the buffers are
+  // only as many as the player actually configured). Resolved at note-on
+  // because a group allocation depends on the key.
+  int mixBusForPipe(Id rankId, int midiNote) const;
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
   void handleMidi(const juce::MidiBuffer& midi);
   // Resampling ratio for one pipe playing one recorded sample: the pitch we
   // want over the pitch the file actually holds.
-  double playbackRatioFor(const Pipe& pipe, const SampleRef& sample) const;
+  // `layer` is needed as well as the pipe because detuning is declared per
+  // layer: the control that drives it and the Hz it moves per control unit
+  // both live there.
+  double playbackRatioFor(const Pipe& pipe, const SampleRef& sample,
+                          const PipeLayer& layer) const;
+
+  // Where this layer's detuning currently stands. Zero unless the organ
+  // declares detuning AND a player has asked for some — and zero flat out
+  // under simpleWavOnly, which is the switch a slow machine relies on.
+  // The arithmetic itself is detunedTargetHz(), which is JUCE-free and
+  // therefore testable without an organ.
+  int detuneControlValue(const PipeLayer& layer) const {
+    if (graph_.engineSwitch.simpleWavOnly || layer.pitchControlId == 0)
+      return 0;
+    return controls_.value(layer.pitchControlId);
+  }
+
+  // The middle of that control's travel, which is where "no detuning" sits.
+  double detuneCentre(const PipeLayer& layer) const {
+    const auto it = model_.continuousControls.find(layer.pitchControlId);
+    if (it == model_.continuousControls.end()) return 0.0;
+    return (it->second.minValue + it->second.maxValue) / 2.0;
+  }
   // A key press on one of the organ's playable keyboards. The channel decides
   // which keyboard, and the key-flow graph decides which divisions it reaches
   // — a coupler is nothing more than an edge of that graph.
@@ -537,8 +719,38 @@ private:
   MidiRecorder recorder_;
   AudioRecorder audioRecorder_;
   Convolver convolver_;
+  // The organ's declared output trim as a linear gain, resolved once at
+  // load. 1.0 for a set that declares none.
+  float organTrimGain_ = 1.0f;
+  double windDepth_ = 1.0;
+  LoadProgress loadProgress_;
+  bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
+  LcdPanels lcd_;
+  // The player's mixer. Defaults to one stereo bus, which makes the whole
+  // routing path a no-op until someone configures something.
+  MixerConfig mixer_ = MixerConfig::stereoDefault();
+  VoicingAB voicing_;
+  Favourites favourites_;
+  // Empty means the organ's default set.
+  std::string combinationSet_;
+  std::vector<BusId> mixBusOrder_;              // dense index -> BusId
+  std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
+  std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
+  // One convolver per dense bus index, built only for buses that declare an
+  // IR. unique_ptr because a Convolver holds an FFT plan and is neither cheap
+  // nor movable, and most buses will never have one.
+  std::vector<std::unique_ptr<Convolver>> busConvolvers_;
+  // Per-bus scratch, needed only when a bus has its own room: without one the
+  // buses sum straight into the output and cost nothing.
+  juce::AudioBuffer<float> mixScratch_;
+  // Built on the message thread, drained by the audio thread into outgoing_ so
+  // there is one sender to the port. The audio thread takes this with
+  // try_lock and simply waits a block if it is contended — an LCD line arriving
+  // 10 ms late is invisible, and blocking for it would not be.
+  std::mutex lcdQueueLock_;
+  std::vector<SysexMessage> lcdQueue_;
   // Written only by the audio thread, read only by the meter. `held_` is the
   // audio thread's own running value and needs no synchronisation; the atomic
   // is the copy the UI is allowed to see.
@@ -637,6 +849,9 @@ private:
 
 #endif
   double sampleRate_ = 48000.0;
+  // Remembered so a mixer change can re-plan a bus convolver without waiting
+  // for the next prepareToPlay.
+  int maxBlock_ = 512;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterpieceProcessor)
 };

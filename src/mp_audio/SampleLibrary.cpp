@@ -252,7 +252,8 @@ void SampleLibrary::readLoopPoints(const juce::AudioFormatReader& reader,
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                         const std::string& organRootDir,
                                         int64_t maxFramesPerSample,
-                                        LoopSelection loopSelection) {
+                                        LoopSelection loopSelection,
+                                        LoadProgress* progress) {
   SampleLoadReport report;
 
   // Only what the pipework can actually play. A Sample row for a rank with no
@@ -312,6 +313,10 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   std::mutex resultMutex;
   std::atomic<size_t> cursor{0};
 
+  if (progress != nullptr)
+    progress->beginPhase(LoadProgress::Phase::LoadingSamples,
+                         static_cast<int>(wanted.size()));
+
   auto worker = [&]() {
     // Each thread needs its own format manager: AudioFormatManager is not
     // documented as thread-safe for concurrent reader creation.
@@ -319,8 +324,15 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     formats.registerBasicFormats();
 
     for (;;) {
+      // Checked per file rather than per batch: a file is the granularity at
+      // which this work can actually stop, and on a slow disk one of them can
+      // take a noticeable moment.
+      if (progress != nullptr && progress->isCancelled()) return;
+
       const size_t i = cursor.fetch_add(1, std::memory_order_relaxed);
       if (i >= wanted.size()) return;
+      if (progress != nullptr)
+        progress->done.store(static_cast<int>(i), std::memory_order_relaxed);
 
       const auto refIt = model.samples.find(wanted[i]);
       if (refIt == model.samples.end()) continue;

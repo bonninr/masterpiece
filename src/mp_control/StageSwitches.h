@@ -54,6 +54,27 @@ public:
   std::vector<Id> stagedControls() const;
   size_t stepCount(Id controlId) const;
 
+  // Which step a control is ACTUALLY on: the 1-based position of the row whose
+  // switch this control last engaged, or 0 if none is. Purely a readout, so a
+  // console display can say "24" without re-deriving the organ's thresholds.
+  //
+  // Deliberately read from what was engaged rather than computed from the
+  // control's value. A crossing and a position are different things: Cracow
+  // loads with its crescendo control sitting at 127 having crossed nothing, so
+  // counting thresholds at or below the value reports step 49 of an organ with
+  // no stops drawn. What the bank engaged is the truth; where the value
+  // happens to sit is not.
+  size_t currentStep(Id controlId) const;
+
+  // How many steps that control has — engaging rows only, so a blower's
+  // disengage-on-the-way-down row is not counted as a registration. This is
+  // the denominator for currentStep.
+  size_t stepMax(Id controlId) const;
+
+  // The control most likely to BE the crescendo: the one with the most steps.
+  // An organ that has none returns 0.
+  Id crescendoControl() const;
+
 private:
   const OrganModel* model_ = nullptr;
   // Rows per control, sorted by threshold so a sweep can walk them in order.

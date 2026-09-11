@@ -713,6 +713,7 @@ void MidiPanel::timerCallback() {
   juce::String s = juce::String(static_cast<int>(map.size())) + " binding(s)";
   if (map.learning()) s += "  -  LEARNING: move a control now";
   mapStatus_.setText(s, juce::dontSendNotification);
+
 }
 
 void MidiPanel::resized() {
@@ -781,11 +782,825 @@ void MidiPanel::resized() {
   note_.setBounds(r);
 }
 
+// ------------------------------------------------------------ favourites
+
+FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Favourite organs");
+  addAndMakeVisible(addCurrent_);
+  addCurrent_.onClick = [this] {
+    const int slot = proc_.addCurrentOrganToFavourites();
+    if (slot == 0)
+      status_.setText("Nothing to add - load an organ first, or all 64 slots "
+                      "are taken",
+                      juce::dontSendNotification);
+    else
+      status_.setText("On slot " + juce::String(slot),
+                      juce::dontSendNotification);
+    refresh();
+  };
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(viewport_);
+  viewport_.setViewedComponent(&rows_, false);
+  viewport_.setScrollBarsShown(true, false);
+  // --- combination sets --------------------------------------------------
+  addAndMakeVisible(setsHeading_);
+  styleLabel(setsHeading_, "Combination sets");
+  addAndMakeVisible(setLabel_);
+  styleLabel(setLabel_, "In use");
+  addAndMakeVisible(setBox_);
+  setBox_.onChange = [this] {
+    const int idx = setBox_.getSelectedId() - 1;
+    if (idx < 0 || idx >= static_cast<int>(setNames_.size())) return;
+    const std::string want = setNames_[static_cast<size_t>(idx)];
+    if (want == proc_.combinationSetName()) return;
+    // Switching saves the live registrations first, so changing set never
+    // silently discards what was just captured.
+    proc_.switchCombinationSet(want);
+    proc_.saveSettings();
+    setStatus_.setText("Now using " +
+                           (want.empty() ? juce::String("the default set")
+                                         : juce::String(want)),
+                       juce::dontSendNotification);
+  };
+
+  addAndMakeVisible(setNew_);
+  setNew_.onClick = [this] {
+    setPrompt_ = std::make_unique<juce::AlertWindow>(
+        "Save as new set", "A name for this registration set:",
+        juce::MessageBoxIconType::NoIcon);
+    setPrompt_->addTextEditor("name", "", "Name");
+    setPrompt_->addButton("Save", 1);
+    setPrompt_->addButton("Cancel", 0);
+    setPrompt_->enterModalState(
+        true, juce::ModalCallbackFunction::create([this](int result) {
+          const juce::String name =
+              result == 1 && setPrompt_ != nullptr
+                  ? setPrompt_->getTextEditorContents("name").trim()
+                  : juce::String();
+          setPrompt_.reset();
+          if (name.isEmpty()) return;
+          // Copy, then switch onto it: "save as" means the player carries on
+          // in the new set, not that they made a backup and kept editing the
+          // old one.
+          proc_.copyCombinationSetTo(name.toStdString());
+          proc_.switchCombinationSet(name.toStdString());
+          proc_.saveSettings();
+          refreshSets();
+          setStatus_.setText("Now using " + name, juce::dontSendNotification);
+        }));
+  };
+
+  addAndMakeVisible(setDelete_);
+  setDelete_.onClick = [this] {
+    const std::string live = proc_.combinationSetName();
+    if (live.empty()) {
+      setStatus_.setText("The default set cannot be deleted",
+                         juce::dontSendNotification);
+      return;
+    }
+    // Move off it first: deleting the file under the live set would leave the
+    // organ pointing at something that is no longer there.
+    proc_.switchCombinationSet("");
+    proc_.deleteCombinationSet(live);
+    proc_.saveSettings();
+    refreshSets();
+    setStatus_.setText("Deleted " + juce::String(live) + ", back on the default",
+                       juce::dontSendNotification);
+  };
+  addAndMakeVisible(setStatus_);
+  styleLabel(setStatus_, "");
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "A slot number is something a thumb piston can be mapped to; a "
+            "file path is not. That is what these are for: on a console you "
+            "are standing at a keyboard with both hands busy, and finding a "
+            "19 GB set in a file browser is not something that happens "
+            "between two pieces.\n\n"
+            "Gaps are kept. Removing slot 1 does not renumber slot 5, because "
+            "the numbers are the thing you learned.\n\n"
+            "Loading starts in the background - a large set takes a while, and "
+            "the organ you are playing keeps sounding until the new one is "
+            "ready.\n\n"
+            "A combination set is a whole registration book: one for a "
+            "recital, another for a service. Changing set saves the one you "
+            "are leaving first, so nothing you captured is lost by switching.");
+  refresh();
+}
+
+// The sets this organ has on disk, plus the default. Rebuilt rather than
+// cached: another window, or another copy of the program, may have made one.
+void FavouritesPanel::refreshSets() {
+  setNames_ = proc_.combinationSets();
+  // The default set always exists, whether or not a file has been written for
+  // it yet, so it is offered even when findChildFiles saw nothing.
+  if (std::find(setNames_.begin(), setNames_.end(), std::string()) ==
+      setNames_.end())
+    setNames_.insert(setNames_.begin(), std::string());
+
+  setBox_.clear(juce::dontSendNotification);
+  int selected = 1;
+  for (size_t i = 0; i < setNames_.size(); ++i) {
+    const auto& n = setNames_[i];
+    setBox_.addItem(n.empty() ? "(default)" : juce::String(n),
+                    static_cast<int>(i) + 1);
+    if (n == proc_.combinationSetName()) selected = static_cast<int>(i) + 1;
+  }
+  setBox_.setSelectedId(selected, juce::dontSendNotification);
+}
+
+void FavouritesPanel::refresh() {
+  refreshSets();
+  slots_.clear();
+  labels_.clear();
+  loads_.clear();
+  removes_.clear();
+  rows_.removeAllChildren();
+
+  const auto& bank = proc_.favourites().organs;
+  slots_ = bank.used();
+  for (int slot : slots_) {
+    const auto& fav = bank.at(slot);
+    auto label = std::make_unique<juce::Label>();
+    styleLabel(*label, juce::String(slot) + ".  " + juce::String(fav.name));
+    // The path as a tooltip: two sets can share a name, and then the only
+    // thing that tells them apart is where they live.
+    label->setTooltip(juce::String(fav.target));
+    rows_.addAndMakeVisible(*label);
+    labels_.push_back(std::move(label));
+
+    auto load = std::make_unique<juce::TextButton>("Load");
+    const juce::String path(fav.target);
+    load->onClick = [this, path] {
+      const juce::File f(path);
+      if (!f.existsAsFile()) {
+        // A moved or unplugged set. Saying so beats a silent no-op, and the
+        // favourite is left alone: the drive may come back.
+        status_.setText("Not found: " + f.getFullPathName(),
+                        juce::dontSendNotification);
+        return;
+      }
+      status_.setText("Loading " + f.getFileName() + "...",
+                      juce::dontSendNotification);
+      proc_.loadOrganAsync(f);
+    };
+    rows_.addAndMakeVisible(*load);
+    loads_.push_back(std::move(load));
+
+    auto rm = std::make_unique<juce::TextButton>("Remove");
+    rm->onClick = [this, slot] {
+      proc_.favourites().organs.clear(slot);
+      proc_.saveGlobalDefaults();
+      refresh();
+    };
+    rows_.addAndMakeVisible(*rm);
+    removes_.push_back(std::move(rm));
+  }
+  if (slots_.empty())
+    status_.setText("No favourites yet", juce::dontSendNotification);
+  resized();
+}
+
+void FavouritesPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  heading_.setBounds(r.removeFromTop(kRow));
+  auto row = r.removeFromTop(kRow);
+  addCurrent_.setBounds(row.removeFromLeft(220).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  status_.setBounds(row);
+  r.removeFromTop(kGap);
+
+  auto noteArea = r.removeFromBottom(juce::jmin(110, r.getHeight() / 3));
+  note_.setBounds(noteArea);
+  r.removeFromBottom(kGap);
+
+  // Sets sit under the list, where a player looks after choosing an organ.
+  // Heading on its own line: the heading, a label, a box and two buttons on
+  // one row overflowed the dialog and squeezed the last button's label.
+  auto setsArea = r.removeFromBottom(kRow * 3 + 12);
+  setsHeading_.setBounds(setsArea.removeFromTop(kRow));
+  setsArea.removeFromTop(4);
+  auto setRow = setsArea.removeFromTop(kRow);
+  setLabel_.setBounds(setRow.removeFromLeft(60));
+  setBox_.setBounds(setRow.removeFromLeft(200).reduced(0, 1));
+  setRow.removeFromLeft(kGap);
+  setNew_.setBounds(setRow.removeFromLeft(160).reduced(0, 1));
+  setRow.removeFromLeft(6);
+  setDelete_.setBounds(setRow.removeFromLeft(120).reduced(0, 1));
+  setsArea.removeFromTop(4);
+  setStatus_.setBounds(setsArea.removeFromTop(kRow));
+  r.removeFromBottom(kGap);
+
+  viewport_.setBounds(r);
+
+  const int rowH = kRow + 2;
+  rows_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
+                static_cast<int>(slots_.size()) * rowH);
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH, rows_.getWidth(),
+                              kRow);
+    removes_[i]->setBounds(line.removeFromRight(90).reduced(2, 1));
+    loads_[i]->setBounds(line.removeFromRight(80).reduced(2, 1));
+    labels_[i]->setBounds(line);
+  }
+}
+
+// --------------------------------------------------------------- voicing
+
+VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Voicing");
+
+  addAndMakeVisible(rankLabel_);
+  styleLabel(rankLabel_, "Rank");
+  addAndMakeVisible(rank_);
+  rank_.onChange = [this] { loadCurrentIntoSliders(); };
+
+  addAndMakeVisible(scopeLabel_);
+  styleLabel(scopeLabel_, "Applies to");
+  addAndMakeVisible(scope_);
+  scope_.addItem("The whole rank", 1);
+  scope_.addItem("One pipe", 2);
+  scope_.setSelectedId(1, juce::dontSendNotification);
+  scope_.onChange = [this] {
+    const bool perPipe = scope_.getSelectedId() == 2;
+    note_.setEnabled(perPipe);
+    noteLabel_.setEnabled(perPipe);
+    loadCurrentIntoSliders();
+  };
+
+  addAndMakeVisible(noteLabel_);
+  styleLabel(noteLabel_, "MIDI note");
+  addAndMakeVisible(note_);
+  note_.setRange(0, 127, 1);
+  note_.setValue(60, juce::dontSendNotification);
+  note_.setEnabled(false);
+  note_.onValueChange = [this] { loadCurrentIntoSliders(); };
+
+  addAndMakeVisible(gainLabel_);
+  styleLabel(gainLabel_, "Level");
+  addAndMakeVisible(gain_);
+  // +/-12 dB is the range a voicer works in. Wider would mostly offer new
+  // ways to make an organ wrong.
+  gain_.setRange(-12.0, 12.0, 0.1);
+  gain_.setTextValueSuffix(" dB");
+  gain_.setValue(0.0, juce::dontSendNotification);
+  gain_.onValueChange = [this] { pushCurrent(); };
+
+  addAndMakeVisible(tuneLabel_);
+  styleLabel(tuneLabel_, "Tuning");
+  // +/-50 cents is half a semitone: past that you are playing a different
+  // note, not tuning this one.
+  tune_.setRange(-50.0, 50.0, 0.1);
+  tune_.setTextValueSuffix(" cents");
+  tune_.setValue(0.0, juce::dontSendNotification);
+  tune_.onValueChange = [this] { pushCurrent(); };
+  addAndMakeVisible(tune_);
+
+  addAndMakeVisible(abSwap_);
+  abSwap_.onClick = [this] {
+    proc_.voicing().swap();
+    loadCurrentIntoSliders();
+    updateStatus();
+  };
+  addAndMakeVisible(abCopy_);
+  abCopy_.onClick = [this] {
+    proc_.voicing().copyToOther();
+    updateStatus();
+  };
+  addAndMakeVisible(resetOne_);
+  resetOne_.onClick = [this] {
+    gain_.setValue(0.0, juce::dontSendNotification);
+    tune_.setValue(0.0, juce::dontSendNotification);
+    pushCurrent();
+  };
+  addAndMakeVisible(resetAll_);
+  resetAll_.onClick = [this] {
+    proc_.voicing().live().clear();
+    loadCurrentIntoSliders();
+    updateStatus();
+  };
+  addAndMakeVisible(save_);
+  save_.onClick = [this] { proc_.saveSettings(); };
+
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(note2_);
+  styleNote(note2_,
+            "A rank adjustment and a pipe adjustment ADD. Pulling one sour "
+            "pipe into tune does not throw away the trim you put on the rank "
+            "it belongs to.\n\n"
+            "A and B are two complete sets. Make a change, swap, and hear it "
+            "against what was there before - from memory the comparison "
+            "always flatters whichever you heard last. Copy to other starts "
+            "the far slot from this one, so B is a variation rather than a "
+            "comparison against an unvoiced organ.\n\n"
+            "Level and tuning are a multiply and a ratio taken once when a "
+            "note starts, so they cost nothing while it sounds and work with "
+            "the DSP switched off. Notes already sounding keep what they "
+            "began with, exactly as a pipe does.\n\n"
+            "Saved per organ: a rank number means nothing in a different "
+            "instrument.");
+  refresh();
+}
+
+void VoicingPanel::refresh() {
+  rankIds_.clear();
+  rank_.clear(juce::dontSendNotification);
+  for (const auto& [id, r] : proc_.organModel().ranks) rankIds_.push_back(id);
+  std::sort(rankIds_.begin(), rankIds_.end());
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const auto it = proc_.organModel().ranks.find(rankIds_[i]);
+    juce::String name = juce::String(static_cast<int>(rankIds_[i]));
+    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
+      name << "  " << juce::String(it->second.name);
+    rank_.addItem(name, static_cast<int>(i) + 1);
+  }
+  if (!rankIds_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
+  loadCurrentIntoSliders();
+  updateStatus();
+}
+
+// The pipe under the current rank and note, or 0 when the rank has no pipe
+// there. A rank does not necessarily span the whole compass.
+static Id pipeAt(const OrganModel& model, Id rankId, int midiNote) {
+  const auto it = model.ranks.find(rankId);
+  if (it == model.ranks.end()) return 0;
+  for (const auto& pipe : it->second.pipes)
+    if (pipe.midiNote == midiNote) return pipe.pipeId;
+  return 0;
+}
+
+void VoicingPanel::loadCurrentIntoSliders() {
+  if (rankIds_.empty()) return;
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
+                               rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+  PipeVoicing pv;
+  if (scope_.getSelectedId() == 2) {
+    const Id pipeId = pipeAt(proc_.organModel(), rankId,
+                             static_cast<int>(note_.getValue()));
+    pv = proc_.voicing().live().pipe(pipeId);
+  } else {
+    pv = proc_.voicing().live().rank(rankId);
+  }
+  // dontSendNotification: these are being loaded FROM the model, and letting
+  // them call back would write them straight back again, turning a read into
+  // a write and a swap into a wipe.
+  gain_.setValue(pv.gainDb, juce::dontSendNotification);
+  tune_.setValue(pv.tuningCents, juce::dontSendNotification);
+  updateStatus();
+}
+
+void VoicingPanel::pushCurrent() {
+  if (rankIds_.empty()) return;
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
+                               rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+
+  if (scope_.getSelectedId() == 2) {
+    const Id pipeId = pipeAt(proc_.organModel(), rankId,
+                             static_cast<int>(note_.getValue()));
+    if (pipeId == 0) {
+      status_.setText("This rank has no pipe at that note",
+                      juce::dontSendNotification);
+      return;
+    }
+    PipeVoicing pv = proc_.voicing().live().pipe(pipeId);
+    pv.gainDb = static_cast<float>(gain_.getValue());
+    pv.tuningCents = static_cast<float>(tune_.getValue());
+    proc_.voicing().live().setPipe(pipeId, pv);
+  } else {
+    PipeVoicing pv = proc_.voicing().live().rank(rankId);
+    pv.gainDb = static_cast<float>(gain_.getValue());
+    pv.tuningCents = static_cast<float>(tune_.getValue());
+    proc_.voicing().live().setRank(rankId, pv);
+  }
+  updateStatus();
+}
+
+void VoicingPanel::updateStatus() {
+  const auto& v = proc_.voicing().live();
+  juce::String s;
+  s << "Slot " << (proc_.voicing().usingB ? "B" : "A") << "  -  "
+    << static_cast<int>(v.ranks().size()) << " rank(s), "
+    << static_cast<int>(v.pipes().size()) << " pipe(s) adjusted";
+  // Voicing is heard on the NEXT note, like a real pipe being touched while
+  // another is sounding. Saying so stops it looking broken.
+  s << "  -  takes effect on the next note";
+  status_.setText(s, juce::dontSendNotification);
+}
+
+void VoicingPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  const int labelW = 110;
+  heading_.setBounds(r.removeFromTop(kRow));
+
+  auto row = r.removeFromTop(kRow);
+  rankLabel_.setBounds(row.removeFromLeft(labelW));
+  rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+  r.removeFromTop(4);
+
+  row = r.removeFromTop(kRow);
+  scopeLabel_.setBounds(row.removeFromLeft(labelW));
+  scope_.setBounds(row.removeFromLeft(180).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  noteLabel_.setBounds(row.removeFromLeft(80));
+  note_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(kGap);
+
+  row = r.removeFromTop(kRow);
+  gainLabel_.setBounds(row.removeFromLeft(labelW));
+  gain_.setBounds(row.reduced(0, 2));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  tuneLabel_.setBounds(row.removeFromLeft(labelW));
+  tune_.setBounds(row.reduced(0, 2));
+  r.removeFromTop(kGap);
+
+  // Four then one. Five across overflowed the dialog and squeezed the last
+  // button until its label no longer fitted inside it.
+  row = r.removeFromTop(kRow);
+  for (auto* b : {&abSwap_, &abCopy_, &resetOne_, &resetAll_}) {
+    b->setBounds(row.removeFromLeft(140).reduced(2, 1));
+    row.removeFromLeft(4);
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  save_.setBounds(row.removeFromLeft(180).reduced(2, 1));
+  r.removeFromTop(4);
+  status_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  note2_.setBounds(r);
+}
+
+// ----------------------------------------------------------------- mixer
+
+MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Mixer");
+  addAndMakeVisible(busesLabel_);
+  styleLabel(busesLabel_, "Output pairs");
+  addAndMakeVisible(busCount_);
+  for (int i = 1; i <= 8; ++i)
+    busCount_.addItem(juce::String(i) + (i == 1 ? " (stereo)" : " pairs"), i);
+  busCount_.setSelectedId(juce::jmax(1, proc_.mixBusCount()),
+                          juce::dontSendNotification);
+  busCount_.onChange = [this] { setBusCount(busCount_.getSelectedId()); };
+
+  addAndMakeVisible(spread_);
+  spread_.onClick = [this] {
+    // Round-robin, which is the useful starting point rather than a
+    // suggestion about how this organ should be mixed: it makes the routing
+    // audible immediately so the player can hear what they are adjusting.
+    const int buses = juce::jmax(1, proc_.mixBusCount());
+    for (size_t i = 0; i < rankIds_.size(); ++i)
+      rankBuses_[i]->setSelectedId(static_cast<int>(i % buses) + 1,
+                                   juce::dontSendNotification);
+    pushRouting();
+  };
+  addAndMakeVisible(reset_);
+  reset_.onClick = [this] {
+    for (auto& box : rankBuses_)
+      box->setSelectedId(1, juce::dontSendNotification);
+    pushRouting();
+  };
+  addAndMakeVisible(save_);
+  save_.onClick = [this] { proc_.saveSettings(); };
+
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(viewport_);
+  viewport_.setViewedComponent(&rankHolder_, false);
+  viewport_.setScrollBarsShown(true, false);
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "No sample set says anything about audio routing - not one - so "
+            "this is yours to decide, like the MIDI mapping. Output pairs and "
+            "their device channels carry across organs; which rank goes where "
+            "is saved per organ, because a rank number means nothing in a "
+            "different instrument.\n\n"
+            "A rank you never touch plays through the first pair, so an organ "
+            "is audible before you open this page. If you are listening in "
+            "stereo the pairs are summed, so nothing disappears when you "
+            "split them up.");
+
+  refresh();
+}
+
+void MixerPanel::setBusCount(int buses) {
+  auto& mixer = proc_.mixer();
+  mixer.buses.clear();
+  for (int i = 0; i < buses; ++i) {
+    MixerBus b;
+    b.id = BusId{i + 1};
+    // Consecutive pairs on the device. A player with a different layout can
+    // say so in the settings file; guessing anything cleverer here would be
+    // inventing a convention nobody asked for.
+    b.deviceChannels = {2 * i, 2 * i + 1};
+    mixer.buses.push_back(b);
+  }
+  proc_.refreshMixerBuses();
+
+  // A rank pointing at a pair that no longer exists would go quiet for a
+  // reason nowhere on screen, so fold it back to the first one.
+  for (auto& box : rankBuses_) {
+    box->clear(juce::dontSendNotification);
+    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+  }
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const auto& dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
+    int sel = 1;
+    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
+    rankBuses_[i]->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
+                                 juce::dontSendNotification);
+  }
+  pushRouting();
+}
+
+void MixerPanel::pushRouting() {
+  auto& mixer = proc_.mixer();
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    RankRouting r;
+    r.rankId = rankIds_[i];
+    r.perspectives[0].dest = BusId{rankBuses_[i]->getSelectedId()};
+    mixer.rankRoutings[rankIds_[i]] = r;
+  }
+  const auto d = validateMixer(proc_.organModel(), mixer);
+  status_.setText(juce::String(static_cast<int>(rankIds_.size())) +
+                      " rank(s), " + juce::String(proc_.mixBusCount()) +
+                      " pair(s)" +
+                      (d.clean() ? "" : "  -  " +
+                                            juce::String((int)d.unroutedRanks.size()) +
+                                            " unrouted, " +
+                                            juce::String((int)d.ranksRoutedToMissingBus.size()) +
+                                            " stale"),
+                  juce::dontSendNotification);
+}
+
+void MixerPanel::refresh() {
+  rankIds_.clear();
+  rankLabels_.clear();
+  rankBuses_.clear();
+  rankHolder_.removeAllChildren();
+
+  for (const auto& [id, rank] : proc_.organModel().ranks) rankIds_.push_back(id);
+  std::sort(rankIds_.begin(), rankIds_.end());
+
+  const int buses = juce::jmax(1, proc_.mixBusCount());
+  busCount_.setSelectedId(buses, juce::dontSendNotification);
+
+  for (Id rankId : rankIds_) {
+    auto label = std::make_unique<juce::Label>();
+    const auto it = proc_.organModel().ranks.find(rankId);
+    juce::String name = juce::String(static_cast<int>(rankId));
+    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
+      name << "  " << juce::String(it->second.name);
+    styleLabel(*label, name);
+    rankHolder_.addAndMakeVisible(*label);
+    rankLabels_.push_back(std::move(label));
+
+    auto box = std::make_unique<juce::ComboBox>();
+    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+    const auto& dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
+    int sel = 1;
+    if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
+    box->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
+                       juce::dontSendNotification);
+    box->onChange = [this] { pushRouting(); };
+    rankHolder_.addAndMakeVisible(*box);
+    rankBuses_.push_back(std::move(box));
+  }
+
+  pushRouting();
+  resized();
+}
+
+void MixerPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  heading_.setBounds(r.removeFromTop(kRow));
+  // Two rows. One row of five controls overflowed the dialog and squeezed the
+  // last button until its label wrapped inside it.
+  auto row = r.removeFromTop(kRow);
+  busesLabel_.setBounds(row.removeFromLeft(110));
+  busCount_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  status_.setBounds(row);
+  r.removeFromTop(4);
+
+  row = r.removeFromTop(kRow);
+  spread_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  row.removeFromLeft(6);
+  reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
+  row.removeFromLeft(6);
+  save_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  r.removeFromTop(kGap);
+
+  // The note keeps a little space; the rank list takes the rest, which is what
+  // makes the page work on an organ with fifty ranks and on one with six.
+  auto noteArea = r.removeFromBottom(juce::jmin(76, r.getHeight() / 3));
+  note_.setBounds(noteArea);
+  r.removeFromBottom(kGap);
+  viewport_.setBounds(r);
+
+  const int rowH = kRow + 2;
+  rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
+                      static_cast<int>(rankIds_.size()) * rowH);
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH,
+                              rankHolder_.getWidth(), kRow);
+    rankBuses_[i]->setBounds(line.removeFromRight(140).reduced(2, 1));
+    rankLabels_[i]->setBounds(line);
+  }
+}
+
+// ------------------------------------------------------- console display
+
+DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Console display");
+  addAndMakeVisible(enable_);
+  enable_.onClick = [this] { rebuild(); };
+
+  addAndMakeVisible(idLabel_);
+  styleLabel(idLabel_, "Display number");
+  addAndMakeVisible(id_);
+  id_.setRange(0, 15, 1);
+  id_.setValue(0, juce::dontSendNotification);
+  id_.onValueChange = [this] { rebuild(); };
+
+  addAndMakeVisible(widthLabel_);
+  styleLabel(widthLabel_, "Characters per line");
+  addAndMakeVisible(width_);
+  int wid = 1;
+  for (int w : {16, 20, 32, 40}) width_.addItem(juce::String(w), wid++);
+  width_.setSelectedId(3, juce::dontSendNotification); // 32, the usual one
+  width_.onChange = [this] { rebuild(); };
+
+  addAndMakeVisible(headerLabel_);
+  styleLabel(headerLabel_, "Sys-ex prefix (hex)");
+  addAndMakeVisible(header_);
+  header_.setText("7D", juce::dontSendNotification);
+  header_.setInputRestrictions(23, "0123456789abcdefABCDEF ");
+  header_.onReturnKey = [this] { rebuild(); };
+  header_.onFocusLost = [this] { rebuild(); };
+
+  addAndMakeVisible(linesLabel_);
+  styleLabel(linesLabel_, "Lines");
+  // The fields a jamb display is worth having for. Deliberately short: a
+  // player reads this at a glance between pieces, not as a report.
+  const char* fields[] = {"(blank)",   "Organ",       "Temperament",
+                          "Pitch",     "Transpose",   "Stops drawn",
+                          "Crescendo", "Combination set"};
+  for (size_t i = 0; i < lines_.size(); ++i) {
+    lines_[i] = std::make_unique<juce::ComboBox>();
+    addAndMakeVisible(*lines_[i]);
+    int id = 1;
+    for (const char* f : fields) lines_[i]->addItem(f, id++);
+    lines_[i]->onChange = [this] { rebuild(); };
+  }
+  // Something useful out of the box, so the first send shows the player it is
+  // working rather than four blank lines.
+  lines_[0]->setSelectedId(2, juce::dontSendNotification); // Organ
+  lines_[1]->setSelectedId(3, juce::dontSendNotification); // Temperament
+  lines_[2]->setSelectedId(4, juce::dontSendNotification); // Pitch
+  lines_[3]->setSelectedId(7, juce::dontSendNotification); // Crescendo
+
+  addAndMakeVisible(previewLabel_);
+  styleLabel(previewLabel_, "What the display reads");
+  addAndMakeVisible(preview_);
+  // Monospaced and top-left: the preview is fixed-width lines, and the whole
+  // point is that the columns line up the way the glass does. The bars mark
+  // where the panel ends, which is what makes a truncation visible.
+  preview_.setFont(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(),
+                                     13.0f, juce::Font::plain));
+  preview_.setJustificationType(juce::Justification::topLeft);
+
+  addAndMakeVisible(send_);
+  send_.onClick = [this] { proc_.refreshLcdPanels(); };
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "A console display is driven by system exclusive messages, and the "
+            "bytes that introduce one belong to the display hardware rather "
+            "than to the organ - so they are typed in here rather than "
+            "guessed. 7D is the id the MIDI specification reserves for "
+            "non-commercial use, which is the honest default when your "
+            "manufacturer's prefix is unknown.\n\n"
+            "Choose the MIDI output on the MIDI page first: this sends "
+            "through the same port that lights your drawstops.\n\n"
+            "Only lines whose text actually changed are sent, so a display "
+            "showing a steady temperament costs nothing. Accented letters are "
+            "transliterated, because system exclusive carries seven bits and a "
+            "high byte would end the message rather than draw a character.");
+
+  rebuild();
+  startTimerHz(2);
+}
+
+DisplayPanel::~DisplayPanel() { stopTimer(); }
+
+// The panel description belongs to the engine, which owns the state a line
+// shows; this only assembles it from the boxes.
+void DisplayPanel::rebuild() {
+  auto& panels = proc_.lcdPanels();
+  panels.clear();
+  if (!enable_.getToggleState()) return;
+
+  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
+  // non-commercial id rather than to silence, so a typo leaves something on
+  // the wire to see instead of looking like a dead feature.
+  std::vector<uint8_t> header;
+  for (const auto& tok :
+       juce::StringArray::fromTokens(header_.getText(), " ", "")) {
+    if (tok.isEmpty()) continue;
+    header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
+  }
+  if (!panels.setHeader(header)) panels.setHeader({0x7D});
+
+  LcdPanel p;
+  p.hardwareId = static_cast<int>(id_.getValue());
+  const int widths[] = {16, 20, 32, 40};
+  p.lineWidth = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
+  const LcdField byId[] = {LcdField::Literal,       LcdField::OrganName,
+                           LcdField::Temperament,   LcdField::PitchHz,
+                           LcdField::Transpose,     LcdField::StopsDrawn,
+                           LcdField::CrescendoStep, LcdField::CombinationSet};
+  for (auto& box : lines_) {
+    const int sel = juce::jlimit(1, 8, box->getSelectedId());
+    p.lines.push_back({byId[sel - 1], ""});
+  }
+  panels.addPanel(std::move(p));
+  proc_.refreshLcdPanels();
+}
+
+void DisplayPanel::timerCallback() {
+  // The display's own refresh. Twice a second is far faster than anyone reads
+  // a jamb panel and far slower than the wire, and nothing goes out unless a
+  // line's text actually changed.
+  proc_.pumpLcdPanels();
+
+  if (!enable_.getToggleState()) {
+    preview_.setText("", juce::dontSendNotification);
+    return;
+  }
+  juce::String text;
+  const LcdState st = proc_.lcdState();
+  for (const auto& panel : proc_.lcdPanels().panels())
+    for (const auto& line : panel.lines)
+      text << "|" << LcdPanels::renderLine(line, st, panel.lineWidth) << "|\n";
+  preview_.setText(text, juce::dontSendNotification);
+}
+
+void DisplayPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  const int labelW = 170;
+
+  heading_.setBounds(r.removeFromTop(kRow));
+  enable_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(12));
+  r.removeFromTop(kGap);
+
+  auto row = r.removeFromTop(kRow);
+  idLabel_.setBounds(row.removeFromLeft(labelW));
+  id_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  widthLabel_.setBounds(row.removeFromLeft(labelW));
+  width_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  headerLabel_.setBounds(row.removeFromLeft(labelW));
+  header_.setBounds(row.removeFromLeft(160).reduced(0, 2));
+  row.removeFromLeft(kGap);
+  send_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+
+  // Four line pickers, two to a row: four across does not fit the dialog and
+  // wrapping them is better than clipping the last one.
+  r.removeFromTop(kGap);
+  linesLabel_.setBounds(r.removeFromTop(kRow));
+  for (size_t i = 0; i < lines_.size(); i += 2) {
+    row = r.removeFromTop(kRow).withTrimmedLeft(12);
+    lines_[i]->setBounds(row.removeFromLeft(200).reduced(0, 1));
+    row.removeFromLeft(kGap);
+    lines_[i + 1]->setBounds(row.removeFromLeft(200).reduced(0, 1));
+    r.removeFromTop(2);
+  }
+
+  r.removeFromTop(kGap);
+  previewLabel_.setBounds(r.removeFromTop(kRow));
+  preview_.setBounds(r.removeFromTop(kRow * 3).withTrimmedLeft(12));
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
 // --------------------------------------------------------------- window
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices) {
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Engine", bg, &engine_, false);
@@ -793,6 +1608,10 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Metronome", bg, &metronome_, false);
   tabs_.addTab("Recorder", bg, &recorder_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
+  tabs_.addTab("Mixer", bg, &mixer_, false);
+  tabs_.addTab("Voicing", bg, &voicing_, false);
+  tabs_.addTab("Favourites", bg, &favourites_, false);
+  tabs_.addTab("Display", bg, &display_, false);
   setSize(660, 480);
 }
 

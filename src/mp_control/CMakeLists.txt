@@ -3,6 +3,7 @@ add_library(mp_control STATIC Control.h Control.cpp MidiMap.h MidiMap.cpp
                               Combinations.h Combinations.cpp
                               StageSwitches.h StageSwitches.cpp
                               Stepper.h Stepper.cpp
+                              LcdPanel.h LcdPanel.cpp
                               WindSolver.h WindSolver.cpp)
 target_include_directories(mp_control PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_control PUBLIC cxx_std_20)

@@ -270,6 +270,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       outModel.uniqueOrganId = fieldInt(row, "Identification_UniqueOrganID", "b", 0);
       outModel.organVersion = field(row, "Control_OrganVersion", "u");
       outModel.basePitchHz = fieldDouble(row, "AudioEngine_BasePitchHz", "n1", 440.0);
+      // The producer's own output trim, so two sets recorded at different
+      // levels play at a comparable loudness. Every set we have declares one
+      // and they are not all zero: Azzio +2 dB, Raszczyce -4 dB. Ignoring it
+      // leaves a 6 dB step between sets that the producer meant to remove.
+      outModel.audioOutputTrimDb =
+          fieldDouble(row, "AudioOut_AmplitudeLevelAdjustDecibels", nullptr, 0.0);
     });
     if (!found)
       outDiag.errors.emplace_back("missing required table: _General");
@@ -299,7 +305,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (isEncryptedFile(file)) reportEncrypted(outModel, outDiag, file);
   }
   if (outModel.hasEncryptedSamples)
-    outDiag.warnings.emplace_back("ODF references encrypted HBW/HBX samples (v1: detect + explain, load in Hauptwerk)");
+    // Said plainly, and without an internal issue number: a player reading
+    // this needs to know the set cannot be opened by anything but the program
+    // it was encrypted for, and that nothing here is broken.
+    outDiag.warnings.emplace_back(
+        "This set's samples are encrypted (.hbw/.hbx). Encrypted sets can only "
+        "be played by the program they were encrypted for.");
 
   // ---- M1.2 validator: missing WAVs on disk ----
   if (!opts.organRootDir.empty()) {
@@ -406,6 +417,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     layer.gainDb = fieldDouble(row, "AmpLvl_LevelAdjustDecibels", "h", 0.0);
     layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o", 0);
     layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p", 0);
+    // How the organ's own level sliders reach this layer. Every layer of a
+    // real set names one.
+    layer.ampScalingControlId =
+        fieldInt(row, "AmpLvl_ScalingContinuousControlID", nullptr, 0);
+    layer.pitchControlId =
+        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", nullptr, 0);
+    layer.pitchSensitivityHzPerUnit = fieldDouble(
+        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", nullptr, 0.0);
     pipeIt->second->layers.push_back(std::move(layer));
     layerById[layerId] = &pipeIt->second->layers.back();
   });
@@ -992,6 +1011,37 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
                 return a.highestValue < b.highestValue;
               });
   }
+
+  // ---- Two controls combined into a third ----
+  // An organ builds a level out of several sliders this way: the audio-group
+  // level times the noise level, renormalised. Without it, every level slider
+  // on a set's own settings page moves a number that reaches no pipe.
+  forEachRow(odfRoot, "ContinuousControlDoubleLinkage", [&](pugi::xml_node row) {
+    ContinuousControlDoubleLinkage d;
+    d.destControlId = fieldInt(row, "DestControl_ID", nullptr, 0);
+    d.firstControlId = fieldInt(row, "FirstSourceControl_ID", nullptr, 0);
+    d.secondControlId = fieldInt(row, "SecondSourceControl_ID", nullptr, 0);
+    if (d.destControlId == 0 || d.firstControlId == 0 || d.secondControlId == 0)
+      return;
+    d.operationCode = fieldInt(row, "BinaryOperationCode", nullptr, 0);
+    d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", nullptr, 1.0);
+    d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", nullptr, 0.0);
+    d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", nullptr, 1.0);
+    d.secondIncrement = fieldDouble(row, "SecondSourceControl_Increment", nullptr, 0.0);
+    // The coefficient is routinely absent, and 1.0 is the identity that means
+    // "no renormalisation" — which is right for an add and wrong for nothing.
+    d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", nullptr, 1.0);
+    d.destIncrement = fieldDouble(row, "DestControl_Increment", nullptr, 0.0);
+
+    if (d.operationCode < 1 || d.operationCode > 3) {
+      outDiag.warnings.emplace_back(
+          "ContinuousControlDoubleLinkage into control " +
+          std::to_string(d.destControlId) + ": unknown operation code " +
+          std::to_string(d.operationCode) + "; the linkage is ignored");
+      return;
+    }
+    outModel.controlDoubleLinkages.push_back(d);
+  });
 
   // ---- M2.4: ContinuousControlLinkage (one control driving another) ----
   forEachRow(odfRoot, "ContinuousControlLinkage", [&](pugi::xml_node row) {

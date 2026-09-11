@@ -313,6 +313,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.releaseGain = 1.0f;
   v.layer = start.layer;
   v.busIndex = start.busIndex;
+  v.mixBus = start.mixBus;
   v.windIndex = start.windIndex;
   v.windFlow = start.windFlowKgPerSec;
   v.tremIndex = start.tremIndex;
@@ -677,11 +678,13 @@ void VoiceEngine::gatherWindDemand(float* out, int count) const {
 }
 
 void VoiceEngine::renderRange(size_t begin, size_t end, float* const* out,
-                              int numChannels, int numFrames, int busIndex) {
+                              int numChannels, int numFrames, int busIndex,
+                              int mixBus) {
   for (size_t i = begin; i < end && i < voices_.size(); ++i) {
     Voice& v = voices_[i];
     if (!v.active() || v.buffer == nullptr) continue;
     if (busIndex >= 0 && v.busIndex != busIndex) continue;
+    if (mixBus >= 0 && v.mixBus != mixBus) continue;
     renderVoice(v, out, numChannels, numFrames);
   }
 }
@@ -730,13 +733,14 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
         const int channels = jobChannels_;
         const int frames = jobFrames_;
         const int bus = jobBus_;
+        const int mixBus = jobMixBus_;
         auto* planes = workers_[w].planes.data();
         lock.unlock();
 
         std::fill(workers_[w].scratch.begin(),
                   workers_[w].scratch.begin() +
                       static_cast<ptrdiff_t>(channels) * frames, 0.0f);
-        renderRange(begin, end, planes, channels, frames, bus);
+        renderRange(begin, end, planes, channels, frames, bus, mixBus);
 
         {
           std::lock_guard<std::mutex> done(jobMutex_);
@@ -748,10 +752,10 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
 }
 
 void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
-                         int busIndex) {
+                         int busIndex, int mixBus) {
   // Rendering everything is one block by definition. Per-bus rendering makes
   // several calls per block, so the caller owns the counter via beginBlock().
-  if (busIndex < 0) ++blockCounter_;
+  if (busIndex < 0 && mixBus < 0) ++blockCounter_;
   if (out == nullptr || numFrames <= 0 || numChannels <= 0) return;
 
   const int active = activeVoiceCount();
@@ -763,7 +767,8 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
 
   if (!worthSplitting) {
     // Inline: below the threshold, thread handoff costs more than it saves.
-    renderRange(0, voices_.size(), out, numChannels, numFrames, busIndex);
+    renderRange(0, voices_.size(), out, numChannels, numFrames, busIndex,
+                mixBus);
     stats_.activeVoices = active;
     return;
   }
@@ -783,13 +788,15 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
     jobChannels_ = numChannels;
     jobFrames_ = numFrames;
     jobBus_ = busIndex;
+    jobMixBus_ = mixBus;
     jobsOutstanding_ = static_cast<int>(workers_.size());
     ++jobGeneration_;
   }
   jobCv_.notify_all();
 
   // The audio thread takes the first share rather than blocking idle.
-  renderRange(0, std::min(total, share), out, numChannels, numFrames, busIndex);
+  renderRange(0, std::min(total, share), out, numChannels, numFrames, busIndex,
+              mixBus);
 
   {
     std::unique_lock<std::mutex> lock(jobMutex_);
