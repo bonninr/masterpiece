@@ -107,6 +107,8 @@ public:
   // draws the console without reading any audio — see
   // MasterpieceProcessor::loadOrgan.
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
+  // Ask for an organ file and load it. Shared with the first-run wizard.
+  void chooseAndLoadOrgan();
   // Fired once an organ is on screen, with its name. The host puts it in the
   // window title, which is the only load-progress signal visible from outside
   // the process — the status bar cannot be read, and a fixed wait is a guess

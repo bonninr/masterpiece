@@ -269,21 +269,26 @@ void TopBar::resized() {
 
 // ---------------------------------------------------------------- editor
 
+// The organ file dialog. Its own method rather than a lambda in the member
+// list, because the first-run wizard needs the same door.
+void MasterpieceEditor::chooseAndLoadOrgan() {
+  // The extension pattern names the format because that IS the file name on
+  // disk; the prompt does not, because the player is choosing an organ.
+  chooser_ = std::make_unique<juce::FileChooser>(
+      "Choose an organ definition file", juce::File(),
+      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml");
+  chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                            juce::FileBrowserComponent::canSelectFiles,
+                        [this](const juce::FileChooser& fc) {
+                          const auto f = fc.getResult();
+                          if (f.existsAsFile()) loadOrgan(f);
+                        });
+}
+
 MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     : juce::AudioProcessorEditor(p),
       proc_(p),
-      top_(p, [this] {
-             chooser_ = std::make_unique<juce::FileChooser>(
-                 "Choose a Hauptwerk organ definition", juce::File(),
-                 "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml");
-             chooser_->launchAsync(
-                 juce::FileBrowserComponent::openMode |
-                     juce::FileBrowserComponent::canSelectFiles,
-                 [this](const juce::FileChooser& fc) {
-                   const auto f = fc.getResult();
-                   if (f.existsAsFile()) loadOrgan(f);
-                 });
-           },
+      top_(p, [this] { chooseAndLoadOrgan(); },
            [this] { if (onAudioSettings) onAudioSettings(); }),
       console_(p),
       jamb_(p),

@@ -13,6 +13,7 @@
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/Settings.h"
+#include "../../src/mp_ui/Wizard.h"
 
 class MasterpieceApp : public juce::JUCEApplication {
 public:
@@ -127,6 +128,15 @@ public:
     }
 
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
+
+    // A fresh installation has no audio device chosen, no MIDI input enabled
+    // and no organ. Offering the three in order beats three separate ways of
+    // discovering that nothing happens when you press a key.
+    //
+    // Not in --gui-only: that mode exists for screenshots and smoke tests,
+    // and a modal dialog over the console would defeat both.
+    if (!guiOnly && mp::ui::WizardPanel::isFirstRun(*proc_))
+      win_->showWizard(*proc_);
   }
 
   // Beside the player's own data, with the organ settings and the MIDI maps.
@@ -207,6 +217,22 @@ private:
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "Masterpiece settings";
+      opts.dialogBackgroundColour = juce::Colour(0xff15171c);
+      opts.escapeKeyTriggersCloseButton = true;
+      opts.useNativeTitleBar = true;
+      opts.resizable = true;
+      opts.launchAsync();
+    }
+
+    void showWizard(mp::MasterpieceProcessor& proc) {
+      auto panel = std::make_unique<mp::ui::WizardPanel>(proc, devices_);
+      panel->setSize(560, 520);
+      // Opening the organ is the application's business: the file dialog and
+      // what happens after a load both live out here.
+      panel->onOpenOrgan = [this] { editor_->chooseAndLoadOrgan(); };
+      juce::DialogWindow::LaunchOptions opts;
+      opts.content.setOwned(panel.release());
+      opts.dialogTitle = "Welcome to Masterpiece";
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
