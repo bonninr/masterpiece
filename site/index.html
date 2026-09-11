@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masterpiece — a pipe organ sample player</title>
+<meta name="description" content="A pipe organ sample player. It reads XML-defined sample sets, draws the instrument's own console, and plays it.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap masthead">
+    <h1>Masterpiece</h1>
+    <p class="tagline">A pipe organ sample player. It reads XML-defined sample
+      libraries, draws the instrument's own console, and plays it.</p>
+    <div class="badges">
+      <span class="badge">Standalone · VST3 · AU · LV2</span>
+      <span class="badge">Windows · Linux · Raspberry&nbsp;Pi</span>
+      <span class="badge">C++20 · JUCE</span>
+      <span class="badge">GPLv3</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <figure class="hero">
+    <img src="screenshots/Friesach.jpg" alt="The Friesach organ console drawn by Masterpiece">
+    <figcaption>Friesach — three manuals, jambs on their own pages. The console
+      is the instrument's own: artwork, drawstop positions, keyboards and
+      pedalboard all come out of the library's definition.</figcaption>
+  </figure>
+
+  <section id="what">
+    <h2>What it is</h2>
+    <h3>An instrument, not a mixer with stop names</h3>
+    <p class="lead">Sampled pipe organs are distributed as large libraries: a
+      recording of every pipe, plus an XML definition describing the instrument
+      around them — how the console is drawn, which key reaches which pipe, what
+      the couplers do, how the wind system is built.</p>
+    <p>Masterpiece reads those libraries and turns them back into a playable
+      instrument. It is a fresh design rather than a fork. The console is the
+      real one, so an organ looks and behaves like itself.</p>
+    <p>It runs as a standalone application and as a VST3, AU or LV2 plugin —
+      the same engine either way.</p>
+  </section>
+
+  <section id="consoles">
+    <h2>The console</h2>
+    <h3>The same program, reading different libraries</h3>
+    <div class="grid">
+      <figure>
+        <img src="screenshots/Lipiny.jpg" alt="Lipiny console">
+        <figcaption>Lipiny — a historic case, drawstops lettered in Fraktur</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/CracowStJohnCantius.jpg" alt="Kraków console">
+        <figcaption>Kraków, St. John Cantius</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/MelcerChamberMusicHall.jpg" alt="Melcer console">
+        <figcaption>Melcer Chamber Music Hall</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Raszczyce.jpg" alt="Raszczyce console">
+        <figcaption>Raszczyce</figcaption>
+      </figure>
+    </div>
+    <p class="note" style="margin-top:26px">Libraries that ship several console
+      sizes offer them all; the chooser only appears when there is a choice to
+      make. A set whose manuals are part of a photographed backdrop falls back
+      to an on-screen keyboard instead.</p>
+  </section>
+
+  <section id="using">
+    <h2>Using it</h2>
+    <h3>What you actually do with it</h3>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-loading.jpg" alt="Loading an organ, with progress and a cancel button"></div>
+      <div>
+        <h4>Loading</h4>
+        <p>A large library is tens of gigabytes and takes minutes off a slow
+          disk, so it loads on its own thread: the window stays live and the
+          estimate is built from the rate the load is actually achieving, not
+          from a file count. Cancel takes effect at the next file and throws
+          away what it had read — a half-loaded organ that plays some notes and
+          silently drops others would send you hunting through your library.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-console.jpg" alt="The console being played"></div>
+      <div>
+        <h4>Playing</h4>
+        <p>Drawstops, pistons and expression shoes are where the builder put
+          them. A key pressed with the mouse takes the same path as the same
+          note arriving over MIDI. The meter shows what reaches the audio
+          device — after the room, the organ's own level and the master
+          fader.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-stoplist.jpg" alt="The stop list, grouped by division"></div>
+      <div>
+        <h4>Registering without artwork</h4>
+        <p>Some libraries ship no console picture, and some ship sixty stops
+          across two jambs you would rather not hunt through. The stop list is
+          the same registration by another route, grouped by division.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-mixer.jpg" alt="Mixer: routing ranks to output pairs"></div>
+      <div>
+        <h4>Routing</h4>
+        <p>No sample library says anything about audio routing, so this is
+          yours to decide — like the MIDI mapping. Output pairs carry across
+          organs; which rank goes where is saved per organ, because a rank
+          number means nothing in a different instrument. A rank you never touch
+          plays through the first pair, and in stereo the pairs are summed, so
+          nothing disappears when you split them up.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
+      <div>
+        <h4>Voicing</h4>
+        <p>A rank adjustment and a single-pipe adjustment add, so pulling one
+          sour pipe into tune does not throw away the trim you put on the rank
+          it belongs to. A and B are two complete sets: make a change, swap, and
+          hear it against what was there before — from memory the comparison
+          always flatters whichever you heard last.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-midi.jpg" alt="MIDI settings: keyboards, channels and learning"></div>
+      <div>
+        <h4>Your console</h4>
+        <p>Which manual a key plays is decided by its MIDI channel, and no organ
+          file can guess how your console is wired. Right-click a drawstop and
+          move the real one to learn it. The sequencer pistons and page-turn
+          actions get their own learn buttons, because the organ does not
+          declare them and there is nothing on screen to right-click.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-favourites.jpg" alt="Favourites and combination sets"></div>
+      <div>
+        <h4>Getting back to an organ</h4>
+        <p>A slot number is something a thumb piston can be mapped to; a file
+          path is not. Combination sets are whole registration books — one for a
+          recital, another for a service — and changing set saves the one you
+          are leaving first.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-engine.jpg" alt="Engine settings: DSP switches, preload and streaming"></div>
+      <div>
+        <h4>What it costs</h4>
+        <p>CPU and memory in one place. <em>Simple WAV only</em> bypasses every
+          refinement at once for a machine that cannot afford them. Streaming
+          holds only the head of each release tail and fetches the rest while it
+          plays. Nothing here writes to disk on its own: changes apply
+          immediately, and you choose afterwards whether to forget them, keep
+          them for this organ, or make them the default.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="does">
+    <h2>What it does</h2>
+    <h3>Under the console</h3>
+    <div class="features">
+      <div class="feature">
+        <h4>The sound</h4>
+        <p>Each pipe plays its own recording — attack, sustain loop, and a
+          matched release tail crossfaded in rather than cut to, so releasing a
+          key leaves the room's own decay behind.</p>
+      </div>
+      <div class="feature">
+        <h4>Tuning</h4>
+        <p>Equal temperament or one of eight historical temperaments, each
+          derived from its fifth-chain definition rather than transcribed.</p>
+      </div>
+      <div class="feature">
+        <h4>Expression and tremulants</h4>
+        <p>Enclosed divisions are filtered per box as the shades move, so an
+          unenclosed division stays unenclosed.</p>
+      </div>
+      <div class="feature">
+        <h4>Wind</h4>
+        <p>For libraries that describe their own pneumatics — compartments,
+          bellows, conduits — the pressure moves as the organ draws on it.</p>
+      </div>
+      <div class="feature">
+        <h4>Registration</h4>
+        <p>Couplers, combinations and a registration sequencer, because a key
+          reaching a pipe is a walk through the instrument's switch network.</p>
+      </div>
+      <div class="feature">
+        <h4>Memory</h4>
+        <p>A large library can be held entirely in RAM, or its release tails
+          streamed from disk — on one set that is 12.2&nbsp;GB down to
+          5.6&nbsp;GB with the rendered audio identical sample for sample.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="building">
+    <h2>Building</h2>
+    <h3>CMake and a compiler</h3>
+<pre><code>cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build</code></pre>
+    <p class="note">Windows, Linux and Raspberry&nbsp;Pi are built in CI. The
+      standalone application is the product; the plugin wrappers come from the
+      same engine.</p>
+  </section>
+
+  <section id="credits">
+    <h2>Credits</h2>
+    <h3>Written with three projects open alongside</h3>
+    <p>Masterpiece is its own implementation, but it is much the better for
+      them. <strong>None of their code is compiled in.</strong></p>
+    <div class="features">
+      <div class="feature">
+        <h4><a href="https://github.com/GrandOrgue/GrandOrgue">GrandOrgue</a></h4>
+        <p>The shape of the voice engine, and the release-crossfade behaviour
+          that stops a key release from clicking.</p>
+      </div>
+      <div class="feature">
+        <h4><a href="https://github.com/dividebysandwich/rusty-pipes">rusty-pipes</a></h4>
+        <p>Sample and loop handling, and a great deal of hard-won file-format
+          knowledge.</p>
+      </div>
+      <div class="feature">
+        <h4><a href="https://github.com/christophhart/HISE">HISE</a></h4>
+        <p>The streaming design: per-voice ring buffers refilled off a
+          background thread.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>Masterpiece is licensed under the GPLv3. It is not affiliated with, nor
+      endorsed by, any sample library producer or any other organ software.
+      Sample libraries remain the property of their producers.</p>
+  </div>
+</footer>
+
+</body>
+</html>
