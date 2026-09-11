@@ -685,6 +685,34 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "originalpitch " << (sw.playAtOriginalOrganPitch ? 1 : 0) << "\n";
   if (const auto* g = apvts_.getRawParameterValue("masterGain"))
     text << "gain " << juce::String(g->load(), 4) << "\n";
+
+  // The mixer's BUSES and GROUPS, but not its routes. A bus is the player's
+  // audio hardware — the same eight outputs whichever organ is loaded — so it
+  // belongs in the tier that carries across organs. Routes name rank ids,
+  // which mean nothing outside the organ that declared them, and are written
+  // per organ in saveSettings.
+  //
+  // One line each, replacing wholesale rather than accumulating: a per-line
+  // encoding has to define what a second `bus 1` means, and every answer to
+  // that is a way to end up with duplicates.
+  if (!mixer_.buses.empty()) {
+    text << "buses";
+    for (const auto& b : mixer_.buses) {
+      text << " " << b.id.value << ":";
+      for (size_t i = 0; i < b.deviceChannels.size(); ++i)
+        text << (i ? "," : "") << b.deviceChannels[i];
+    }
+    text << "\n";
+  }
+  if (!mixer_.groups.empty()) {
+    text << "groups";
+    for (const auto& g : mixer_.groups) {
+      text << " " << g.groupId << ":";
+      for (size_t i = 0; i < g.members.size(); ++i)
+        text << (i ? "," : "") << g.members[i].value;
+    }
+    text << "\n";
+  }
   return text;
 }
 
@@ -707,6 +735,31 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "gain") {
     if (auto* p = apvts_.getParameter("masterGain"))
       p->setValueNotifyingHost(p->convertTo0to1(val.getFloatValue()));
+  } else if (key == "buses") {
+    mixer_.buses.clear();
+    for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {
+      if (tok.isEmpty()) continue;
+      MixerBus b;
+      b.id = BusId{tok.upToFirstOccurrenceOf(":", false, false).getIntValue()};
+      if (b.id.value == 0) continue;
+      for (const auto& ch : juce::StringArray::fromTokens(
+               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
+        if (ch.isNotEmpty()) b.deviceChannels.push_back(ch.getIntValue());
+      mixer_.buses.push_back(std::move(b));
+    }
+    refreshMixerBuses();
+  } else if (key == "groups") {
+    mixer_.groups.clear();
+    for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {
+      if (tok.isEmpty()) continue;
+      BusGroup g;
+      g.groupId = tok.upToFirstOccurrenceOf(":", false, false).getIntValue();
+      if (g.groupId == 0) continue;
+      for (const auto& m : juce::StringArray::fromTokens(
+               tok.fromFirstOccurrenceOf(":", false, false), ",", ""))
+        if (m.isNotEmpty()) g.members.push_back(BusId{m.getIntValue()});
+      mixer_.groups.push_back(std::move(g));
+    }
   }
 }
 
@@ -744,11 +797,37 @@ bool MasterpieceProcessor::saveSettings() const {
     if (v == c.defaultValue) continue;  // nothing to say
     text << "control " << juce::String(id) << " " << juce::String(v) << "\n";
   }
+
+  // Where each rank speaks. Per organ because a rank id means nothing
+  // elsewhere, and only the ranks the player actually routed: the rest fall
+  // back to the simple default, and writing them down would record an answer
+  // that is recomputed anyway.
+  //
+  // Sorted, so saving the same mixer twice produces the same file. Routings
+  // live in an unordered_map and would otherwise reshuffle on every save,
+  // which makes the file impossible to diff and noisy in a backup.
+  std::vector<Id> routed;
+  routed.reserve(mixer_.rankRoutings.size());
+  for (const auto& [rankId, routing] : mixer_.rankRoutings)
+    routed.push_back(rankId);
+  std::sort(routed.begin(), routed.end());
+  for (Id rankId : routed) {
+    const auto& primary = mixer_.rankRoutings.at(rankId).perspectives[0];
+    if (std::holds_alternative<BusId>(primary.dest))
+      text << "route " << juce::String(rankId) << " bus "
+           << juce::String(std::get<BusId>(primary.dest).value) << "\n";
+    else
+      text << "route " << juce::String(rankId) << " group "
+           << juce::String(std::get<int>(primary.dest)) << "\n";
+  }
   return f.replaceWithText(text);
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pendingControlValues_.clear();
+  // Routes belong to the organ being left, not the one arriving. Keeping them
+  // would point this organ's rank ids at the previous organ's mix.
+  mixer_.rankRoutings.clear();
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -763,6 +842,23 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingControlValues_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
+      continue;
+    }
+    if (key == "route") {
+      // "route <rankId> bus|group <id>". Applied straight away: unlike a
+      // control value there is nothing downstream that resets it.
+      const auto rankStr = val.upToFirstOccurrenceOf(" ", false, false).trim();
+      const auto rest = val.fromFirstOccurrenceOf(" ", false, false).trim();
+      const auto kind = rest.upToFirstOccurrenceOf(" ", false, false).trim();
+      const int destId =
+          rest.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue();
+      const Id rankId = static_cast<Id>(rankStr.getLargeIntValue());
+      if (rankId == 0 || destId == 0) continue;
+      RankRouting r = mixer_.routingFor(rankId);
+      r.rankId = rankId;
+      if (kind == "group") r.perspectives[0].dest = destId;
+      else r.perspectives[0].dest = BusId{destId};
+      mixer_.rankRoutings[rankId] = r;
       continue;
     }
     applySettingsLine(key, val, sw);
