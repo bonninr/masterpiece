@@ -142,6 +142,14 @@ public:
   // diagnostic that computes the figure its own way will eventually disagree
   // with the engine, and then it is worse than having none.
   float layerLevelFor(const PipeLayer& layer) const { return layerLevel(layer); }
+
+  // The organ's own output trim as a linear gain — the producer's calibration
+  // so two sets recorded at different levels play at a comparable loudness.
+  float organTrimGain() const { return organTrimGain_; }
+  // Ignore that calibration. For measuring what it actually does: rendering
+  // the same organ with and without it is the only way to show the figure
+  // reaches the audio rather than merely being parsed. Set before loading.
+  void setOrganTrimEnabled(bool on) { applyOrganTrim_ = on; }
   double detuneOffsetHzFor(const PipeLayer& layer, double targetHz) const {
     if (layer.pitchControlId == 0) return 0.0;
     return detunedTargetHz(targetHz, detuneControlValue(layer),
@@ -614,6 +622,10 @@ private:
   MidiRecorder recorder_;
   AudioRecorder audioRecorder_;
   Convolver convolver_;
+  // The organ's declared output trim as a linear gain, resolved once at
+  // load. 1.0 for a set that declares none.
+  float organTrimGain_ = 1.0f;
+  bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
   LcdPanels lcd_;

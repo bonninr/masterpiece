@@ -701,6 +701,10 @@ struct OrganModel {
   Id uniqueOrganId = 0;
   std::string organVersion;
   double basePitchHz = 440.0;
+  // AudioOut_AmplitudeLevelAdjustDecibels on _General: the producer's
+  // output trim, applied to everything the organ makes so sets recorded at
+  // different levels play at a comparable loudness.
+  double audioOutputTrimDb = 0.0;
 
   std::unordered_map<Id, Rank> ranks;
   std::unordered_map<Id, Stop> stops;

@@ -95,6 +95,16 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     organTuning_.centsOffset12 = tIt->second.centsOffset12;
   }
 
+  // The producer's output trim, resolved once here rather than per block.
+  // Clamped because this multiplies everything the organ makes and a corrupt
+  // field should not be able to deafen anyone: +/-24 dB is far wider than any
+  // real set declares (we have seen -4 to +2) and still finite.
+  organTrimGain_ =
+      applyOrganTrim_
+          ? static_cast<float>(juce::Decibels::decibelsToGain(
+                juce::jlimit(-24.0, 24.0, model_.audioOutputTrimDb)))
+          : 1.0f;
+
   // Index the noise ranks by their trigger switch. Doing this once here keeps
   // a switch flip O(number of noises on that switch) instead of O(all ranks).
   noiseRanksBySwitch_.clear();
@@ -1254,7 +1264,14 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // called "no DSP" — a machine that needs it needs this gone more than it
   // needs anything else gone.
   if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(buffer);
-  buffer.applyGain(*apvts_.getRawParameterValue("masterGain"));
+
+  // The organ's own output trim, before the player's fader: it is part of how
+  // this set is meant to sound, not a setting. Folded into the same multiply
+  // so it costs nothing, and deliberately NOT gated behind the DSP switch — a
+  // constant gain is not an effect, and a slow machine should still hear the
+  // set at the level its producer intended.
+  buffer.applyGain(organTrimGain_ *
+                   *apvts_.getRawParameterValue("masterGain"));
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.
