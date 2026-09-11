@@ -189,8 +189,20 @@ public:
 
 private:
   MasterpieceProcessor& proc_;
+  void refreshSets();
+
   juce::Label heading_;
   juce::TextButton addCurrent_{"Add the organ now loaded"};
+  // Combination sets live here rather than on their own tab: a set IS a
+  // favourite registration, and the two are reached at the same moment.
+  juce::Label setsHeading_;
+  juce::Label setLabel_;
+  juce::ComboBox setBox_;
+  juce::TextButton setNew_{"Save as new set..."};
+  juce::TextButton setDelete_{"Delete set"};
+  juce::Label setStatus_;
+  std::vector<std::string> setNames_;
+  std::unique_ptr<juce::AlertWindow> setPrompt_;
   juce::Label status_;
   juce::Viewport viewport_;
   juce::Component rows_;

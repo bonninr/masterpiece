@@ -942,6 +942,11 @@ bool MasterpieceProcessor::saveSettings() const {
     writeSet("a", voicing_.a);
     writeSet("b", voicing_.b);
     if (voicing_.usingB) text << "voicingslot b\n";
+    // Which named set this organ was last using. Stored rather than assumed:
+    // coming back and finding the recital registrations instead of the service
+    // ones is a nasty surprise to meet mid-piece.
+    if (!combinationSet_.empty())
+      text << "combset " << juce::String(combinationSet_) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -956,6 +961,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.a.clear();
   voicing_.b.clear();
   voicing_.usingB = false;
+  combinationSet_.clear();
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -986,6 +992,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       const Id id = static_cast<Id>(tok[2].getLargeIntValue());
       if (tok[1] == "pipe") set.setPipe(id, pv);
       else set.setRank(id, pv);
+      continue;
+    }
+    if (key == "combset") {
+      combinationSet_ = val.trim().toStdString();
       continue;
     }
     if (key == "voicingslot") {
@@ -1549,12 +1559,90 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   }
 }
 
+namespace {
+// A set name becomes part of a file name, so it has to survive being one.
+// Anything a filesystem might object to becomes an underscore rather than an
+// error: the player is naming a registration, not a path, and "Bach: Advent"
+// should not be a failure.
+std::string sanitiseSetName(const std::string& name) {
+  std::string out;
+  out.reserve(name.size());
+  for (char c : name) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    out.push_back(u < 0x20 || c == '/' || c == '\\' || c == ':' || c == '*' ||
+                          c == '?' || c == '"' || c == '<' || c == '>' ||
+                          c == '|'
+                      ? '_'
+                      : c);
+  }
+  // Trailing dots and spaces are legal in the name a player types and illegal
+  // at the end of a Windows file name.
+  while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+  return out;
+}
+
+// The default set keeps the plain extension it has always had, so an organ
+// that never uses sets is untouched by this feature existing.
+juce::String setExtension(const std::string& setName) {
+  const std::string clean = sanitiseSetName(setName);
+  return clean.empty() ? juce::String(".mpcomb")
+                       : juce::String("." + clean + ".mpcomb");
+}
+}  // namespace
+
 juce::File MasterpieceProcessor::combinationFileFor(const juce::File& odf) const {
-  return organFile(odf, "combinations", ".mpcomb");
+  return organFile(odf, "combinations", setExtension(combinationSet_));
+}
+
+std::vector<std::string> MasterpieceProcessor::combinationSets() const {
+  std::vector<std::string> out;
+  const auto base = organFileForSaving("combinations", ".mpcomb");
+  if (base.getFullPathName().isEmpty()) return out;
+
+  const juce::String key = base.getFileNameWithoutExtension();
+  for (const auto& f : base.getParentDirectory().findChildFiles(
+           juce::File::findFiles, false, key + "*.mpcomb")) {
+    // "<key>.mpcomb" is the default set; "<key>.<name>.mpcomb" is a named one.
+    juce::String rest = f.getFileName().fromFirstOccurrenceOf(key, false, false);
+    rest = rest.dropLastCharacters(juce::String(".mpcomb").length());
+    if (rest.startsWithChar('.')) rest = rest.substring(1);
+    out.push_back(rest.toStdString());
+  }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+bool MasterpieceProcessor::switchCombinationSet(const std::string& name) {
+  // Save first. Switching away from unsaved registrations and silently losing
+  // them is the one thing this must not do.
+  saveCombinations();
+  combinationSet_ = sanitiseSetName(name);
+  // Back to what the ORGAN declares before reading the new set, so a set that
+  // defines fewer combinations than the last one leaves no stragglers from it.
+  combinations_.reset(model_);
+  return loadCombinations();
+}
+
+bool MasterpieceProcessor::copyCombinationSetTo(const std::string& name) const {
+  const std::string clean = sanitiseSetName(name);
+  if (clean == sanitiseSetName(combinationSet_)) return false;  // itself
+  const auto f = organFileForSaving("combinations", setExtension(clean));
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText(juce::String(combinations_.toText()));
+}
+
+bool MasterpieceProcessor::deleteCombinationSet(const std::string& name) const {
+  const std::string clean = sanitiseSetName(name);
+  // The default set is the organ's registrations, not a set someone made, so
+  // there is no "delete" that leaves the organ in a sane state.
+  if (clean.empty()) return false;
+  const auto f = organFileForSaving("combinations", setExtension(clean));
+  return !f.getFullPathName().isEmpty() && f.existsAsFile() && f.deleteFile();
 }
 
 bool MasterpieceProcessor::saveCombinations() const {
-  const auto f = organFileForSaving("combinations", ".mpcomb");
+  const auto f = organFileForSaving("combinations", setExtension(combinationSet_));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
   return f.replaceWithText(juce::String(combinations_.toText()));

@@ -207,6 +207,25 @@ public:
   CombinationSystem& combinations() { return combinations_; }
   const CombinationSystem& combinations() const { return combinations_; }
   juce::File combinationFileFor(const juce::File& odf) const;
+
+  // --- combination sets -------------------------------------------------
+  // Several named registrations for one organ: a set for a recital, another
+  // for a service, a third someone else left. One file each, so copying a set
+  // between organs is copying a file and deleting one cannot corrupt another.
+  //
+  // The empty name is the default set, and is what every organ has had until
+  // now — so an organ with no sets keeps working and its file keeps its name.
+  const std::string& combinationSetName() const { return combinationSet_; }
+  // Saves the set now live before switching, then loads the new one. Returns
+  // false if the switch happened but nothing was there to load.
+  bool switchCombinationSet(const std::string& name);
+  // The sets this organ already has, by name, in order. The default set is
+  // reported as an empty string.
+  std::vector<std::string> combinationSets() const;
+  // Write the live registrations out under another name, leaving the current
+  // set alone. How "save a copy before I change everything" is spelled.
+  bool copyCombinationSetTo(const std::string& name) const;
+  bool deleteCombinationSet(const std::string& name) const;
   bool saveCombinations() const;
   bool loadCombinations();
   // Capture can happen on the audio thread — a piston is a MIDI message like
@@ -695,6 +714,8 @@ private:
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
   Favourites favourites_;
+  // Empty means the organ's default set.
+  std::string combinationSet_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

@@ -804,6 +804,74 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(viewport_);
   viewport_.setViewedComponent(&rows_, false);
   viewport_.setScrollBarsShown(true, false);
+  // --- combination sets --------------------------------------------------
+  addAndMakeVisible(setsHeading_);
+  styleLabel(setsHeading_, "Combination sets");
+  addAndMakeVisible(setLabel_);
+  styleLabel(setLabel_, "In use");
+  addAndMakeVisible(setBox_);
+  setBox_.onChange = [this] {
+    const int idx = setBox_.getSelectedId() - 1;
+    if (idx < 0 || idx >= static_cast<int>(setNames_.size())) return;
+    const std::string want = setNames_[static_cast<size_t>(idx)];
+    if (want == proc_.combinationSetName()) return;
+    // Switching saves the live registrations first, so changing set never
+    // silently discards what was just captured.
+    proc_.switchCombinationSet(want);
+    proc_.saveSettings();
+    setStatus_.setText("Now using " +
+                           (want.empty() ? juce::String("the default set")
+                                         : juce::String(want)),
+                       juce::dontSendNotification);
+  };
+
+  addAndMakeVisible(setNew_);
+  setNew_.onClick = [this] {
+    setPrompt_ = std::make_unique<juce::AlertWindow>(
+        "Save as new set", "A name for this registration set:",
+        juce::MessageBoxIconType::NoIcon);
+    setPrompt_->addTextEditor("name", "", "Name");
+    setPrompt_->addButton("Save", 1);
+    setPrompt_->addButton("Cancel", 0);
+    setPrompt_->enterModalState(
+        true, juce::ModalCallbackFunction::create([this](int result) {
+          const juce::String name =
+              result == 1 && setPrompt_ != nullptr
+                  ? setPrompt_->getTextEditorContents("name").trim()
+                  : juce::String();
+          setPrompt_.reset();
+          if (name.isEmpty()) return;
+          // Copy, then switch onto it: "save as" means the player carries on
+          // in the new set, not that they made a backup and kept editing the
+          // old one.
+          proc_.copyCombinationSetTo(name.toStdString());
+          proc_.switchCombinationSet(name.toStdString());
+          proc_.saveSettings();
+          refreshSets();
+          setStatus_.setText("Now using " + name, juce::dontSendNotification);
+        }));
+  };
+
+  addAndMakeVisible(setDelete_);
+  setDelete_.onClick = [this] {
+    const std::string live = proc_.combinationSetName();
+    if (live.empty()) {
+      setStatus_.setText("The default set cannot be deleted",
+                         juce::dontSendNotification);
+      return;
+    }
+    // Move off it first: deleting the file under the live set would leave the
+    // organ pointing at something that is no longer there.
+    proc_.switchCombinationSet("");
+    proc_.deleteCombinationSet(live);
+    proc_.saveSettings();
+    refreshSets();
+    setStatus_.setText("Deleted " + juce::String(live) + ", back on the default",
+                       juce::dontSendNotification);
+  };
+  addAndMakeVisible(setStatus_);
+  styleLabel(setStatus_, "");
+
   addAndMakeVisible(note_);
   styleNote(note_,
             "A slot number is something a thumb piston can be mapped to; a "
@@ -815,11 +883,36 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
             "the numbers are the thing you learned.\n\n"
             "Loading starts in the background - a large set takes a while, and "
             "the organ you are playing keeps sounding until the new one is "
-            "ready.");
+            "ready.\n\n"
+            "A combination set is a whole registration book: one for a "
+            "recital, another for a service. Changing set saves the one you "
+            "are leaving first, so nothing you captured is lost by switching.");
   refresh();
 }
 
+// The sets this organ has on disk, plus the default. Rebuilt rather than
+// cached: another window, or another copy of the program, may have made one.
+void FavouritesPanel::refreshSets() {
+  setNames_ = proc_.combinationSets();
+  // The default set always exists, whether or not a file has been written for
+  // it yet, so it is offered even when findChildFiles saw nothing.
+  if (std::find(setNames_.begin(), setNames_.end(), std::string()) ==
+      setNames_.end())
+    setNames_.insert(setNames_.begin(), std::string());
+
+  setBox_.clear(juce::dontSendNotification);
+  int selected = 1;
+  for (size_t i = 0; i < setNames_.size(); ++i) {
+    const auto& n = setNames_[i];
+    setBox_.addItem(n.empty() ? "(default)" : juce::String(n),
+                    static_cast<int>(i) + 1);
+    if (n == proc_.combinationSetName()) selected = static_cast<int>(i) + 1;
+  }
+  setBox_.setSelectedId(selected, juce::dontSendNotification);
+}
+
 void FavouritesPanel::refresh() {
+  refreshSets();
   slots_.clear();
   labels_.clear();
   loads_.clear();
@@ -882,6 +975,21 @@ void FavouritesPanel::resized() {
   auto noteArea = r.removeFromBottom(juce::jmin(110, r.getHeight() / 3));
   note_.setBounds(noteArea);
   r.removeFromBottom(kGap);
+
+  // Sets sit under the list, where a player looks after choosing an organ.
+  auto setsArea = r.removeFromBottom(kRow * 2 + 8);
+  auto setRow = setsArea.removeFromTop(kRow);
+  setsHeading_.setBounds(setRow.removeFromLeft(150));
+  setLabel_.setBounds(setRow.removeFromLeft(60));
+  setBox_.setBounds(setRow.removeFromLeft(200).reduced(0, 1));
+  setRow.removeFromLeft(kGap);
+  setNew_.setBounds(setRow.removeFromLeft(160).reduced(0, 1));
+  setRow.removeFromLeft(4);
+  setDelete_.setBounds(setRow.removeFromLeft(110).reduced(0, 1));
+  setsArea.removeFromTop(4);
+  setStatus_.setBounds(setsArea.removeFromTop(kRow));
+  r.removeFromBottom(kGap);
+
   viewport_.setBounds(r);
 
   const int rowH = kRow + 2;
