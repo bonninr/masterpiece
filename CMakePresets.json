@@ -147,6 +147,29 @@
         "MP_ENABLE_LTO": "ON",
         "MP_NATIVE_ARCH": "OFF"
       }
+    },
+    {
+      "name": "ci-linux-arm64",
+      "displayName": "CI Linux ARM64 (cross-compile for 64-bit RPi, no plugins/tests)",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/arm64-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_SYSTEM_NAME": "Linux",
+        "CMAKE_SYSTEM_PROCESSOR": "aarch64",
+        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++",
+        "CMAKE_C_COMPILER_AR": "aarch64-linux-gnu-ar",
+        "CMAKE_CXX_COMPILER_AR": "aarch64-linux-gnu-ar",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_BUILD_PLUGIN": "OFF",
+        "MP_BUILD_VALIDATOR": "ON",
+        "MP_BUILD_TESTS": "OFF",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON",
+        "MP_ENABLE_LTO": "ON",
+        "MP_NATIVE_ARCH": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -198,6 +221,11 @@
     {
       "name": "ci-linux-arm",
       "configurePreset": "ci-linux-arm",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-linux-arm64",
+      "configurePreset": "ci-linux-arm64",
       "configuration": "Release"
     }
   ],

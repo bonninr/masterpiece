@@ -246,12 +246,15 @@ a 40 GB library.
 
 ## Credits
 
-Masterpiece is its own implementation, but it was written with three
+Masterpiece is its own implementation, but it was written with four
 open-source projects open alongside it, and is much the better for them:
 
 - **[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue)** — the shape of the
   voice engine, and the release-crossfade behaviour that stops a key release
   from clicking
+- **[OdfEdit](https://github.com/GrandOrgue/OdfEdit)** — the clearest available
+  reading of the organ-definition format: which objects exist, how they link,
+  and which of them a converter has to give up on
 - **[rusty-pipes](https://github.com/dividebysandwich/rusty-pipes)** — sample
   and loop handling, and a great deal of hard-won file-format knowledge
 - **[HISE](https://github.com/christophhart/HISE)** — the streaming design:

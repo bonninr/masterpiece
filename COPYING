@@ -31,8 +31,9 @@ pugixml — XML parsing for the organ-definition loader.
 READ, BUT NOT COMPILED IN
 -------------------------
 
-The design owes a debt to three projects. None of their code ships here.
+The design owes a debt to four projects. None of their code ships here.
 
   GrandOrgue    https://github.com/GrandOrgue/GrandOrgue
+  OdfEdit       https://github.com/GrandOrgue/OdfEdit
   rusty-pipes   https://github.com/dividebysandwich/rusty-pipes
   HISE          https://github.com/christophhart/HISE

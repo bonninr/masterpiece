@@ -14,6 +14,7 @@
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/Settings.h"
 #include "../../src/mp_ui/Wizard.h"
+#include "../../src/mp_control/Registration.h"
 
 class MasterpieceApp : public juce::JUCEApplication {
 public:
@@ -135,6 +136,8 @@ public:
     juce::File recordAudio;
     int drawStops = 0;
     bool drawAll = false;
+    juce::String registration;
+    juce::Array<int> namedStops;
     for (int i = 0; i < args.size(); ++i) {
       if (args[i] == "--play-midi" && i + 1 < args.size())
         playMidi = juce::File::getCurrentWorkingDirectory().getChildFile(
@@ -143,16 +146,59 @@ public:
         recordAudio = juce::File::getCurrentWorkingDirectory().getChildFile(
             args[++i].unquoted());
       else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
-        const auto v = args[++i];
+        const auto v = args[++i].unquoted();
+        // "all", a count, or the stops themselves by id. The last is how a
+        // registration chosen by ear gets played: --registration is a guess
+        // from the stop names, and a named list is the answer.
         if (v == "all") drawAll = true;
-        else drawStops = v.getIntValue();
+        else if (v.containsChar(',')) {
+          for (const auto& tok : juce::StringArray::fromTokens(v, ",", ""))
+            if (tok.trim().isNotEmpty()) namedStops.add(tok.trim().getIntValue());
+        } else {
+          drawStops = v.getIntValue();
+        }
       }
+      // Register by ear rather than by index. "--draw-stops 4" means the
+      // first four stops in the list, and stop lists are ordered by division
+      // -- so on most organs that is four pedal stops and silent manuals.
+      // --registration reads the stop NAMES and picks a combination that
+      // means something, on an organ nobody has written a preset for.
+      else if (args[i] == "--registration" && i + 1 < args.size())
+        registration = args[++i].unquoted().toLowerCase();
     }
 
     if (playMidi != juce::File() || recordAudio != juce::File() || drawAll ||
-        drawStops > 0) {
-      win_->onLoaded = [this, playMidi, recordAudio, drawAll, drawStops] {
-        if (drawAll) {
+        drawStops > 0 || registration.isNotEmpty() || !namedStops.isEmpty()) {
+      win_->onLoaded = [this, playMidi, recordAudio, drawAll, drawStops,
+                        registration, namedStops] {
+        if (!namedStops.isEmpty()) {
+          juce::String drawn;
+          for (int id : namedStops) {
+            const auto it = proc_->organModel().stops.find(id);
+            if (it == proc_->organModel().stops.end()) {
+              juce::Logger::writeToLog("no stop " + juce::String(id) +
+                                       " on this organ");
+              continue;
+            }
+            proc_->setStopEngaged(id, true);
+            drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
+          }
+          juce::Logger::writeToLog("drawn: " + drawn);
+        } else if (registration.isNotEmpty()) {
+          const auto style =
+              mp::registrationFromName(registration.toStdString());
+          const auto chosen =
+              mp::chooseRegistration(proc_->organModel(), style);
+          juce::String drawn;
+          for (mp::Id id : chosen) {
+            proc_->setStopEngaged(id, true);
+            const auto it = proc_->organModel().stops.find(id);
+            if (it != proc_->organModel().stops.end())
+              drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
+          }
+          juce::Logger::writeToLog(juce::String(mp::registrationName(style)) +
+                                   ": " + drawn);
+        } else if (drawAll) {
           proc_->engageAllStops();
         } else if (drawStops > 0) {
           int n = 0;
