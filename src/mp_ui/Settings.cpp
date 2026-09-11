@@ -977,15 +977,18 @@ void FavouritesPanel::resized() {
   r.removeFromBottom(kGap);
 
   // Sets sit under the list, where a player looks after choosing an organ.
-  auto setsArea = r.removeFromBottom(kRow * 2 + 8);
+  // Heading on its own line: the heading, a label, a box and two buttons on
+  // one row overflowed the dialog and squeezed the last button's label.
+  auto setsArea = r.removeFromBottom(kRow * 3 + 12);
+  setsHeading_.setBounds(setsArea.removeFromTop(kRow));
+  setsArea.removeFromTop(4);
   auto setRow = setsArea.removeFromTop(kRow);
-  setsHeading_.setBounds(setRow.removeFromLeft(150));
   setLabel_.setBounds(setRow.removeFromLeft(60));
   setBox_.setBounds(setRow.removeFromLeft(200).reduced(0, 1));
   setRow.removeFromLeft(kGap);
   setNew_.setBounds(setRow.removeFromLeft(160).reduced(0, 1));
-  setRow.removeFromLeft(4);
-  setDelete_.setBounds(setRow.removeFromLeft(110).reduced(0, 1));
+  setRow.removeFromLeft(6);
+  setDelete_.setBounds(setRow.removeFromLeft(120).reduced(0, 1));
   setsArea.removeFromTop(4);
   setStatus_.setBounds(setsArea.removeFromTop(kRow));
   r.removeFromBottom(kGap);
@@ -1217,11 +1220,16 @@ void VoicingPanel::resized() {
   tune_.setBounds(row.reduced(0, 2));
   r.removeFromTop(kGap);
 
+  // Four then one. Five across overflowed the dialog and squeezed the last
+  // button until its label no longer fitted inside it.
   row = r.removeFromTop(kRow);
-  for (auto* b : {&abSwap_, &abCopy_, &resetOne_, &resetAll_, &save_}) {
-    b->setBounds(row.removeFromLeft(130).reduced(2, 1));
-    row.removeFromLeft(2);
+  for (auto* b : {&abSwap_, &abCopy_, &resetOne_, &resetAll_}) {
+    b->setBounds(row.removeFromLeft(140).reduced(2, 1));
+    row.removeFromLeft(4);
   }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  save_.setBounds(row.removeFromLeft(180).reduced(2, 1));
   r.removeFromTop(4);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
@@ -1374,22 +1382,26 @@ void MixerPanel::refresh() {
 void MixerPanel::resized() {
   auto r = getLocalBounds().reduced(12);
   heading_.setBounds(r.removeFromTop(kRow));
+  // Two rows. One row of five controls overflowed the dialog and squeezed the
+  // last button until its label wrapped inside it.
   auto row = r.removeFromTop(kRow);
   busesLabel_.setBounds(row.removeFromLeft(110));
   busCount_.setBounds(row.removeFromLeft(150).reduced(0, 1));
   row.removeFromLeft(kGap);
-  spread_.setBounds(row.removeFromLeft(160).reduced(0, 1));
-  row.removeFromLeft(4);
-  reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
-  row.removeFromLeft(4);
-  save_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+  status_.setBounds(row);
   r.removeFromTop(4);
-  status_.setBounds(r.removeFromTop(kRow));
+
+  row = r.removeFromTop(kRow);
+  spread_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  row.removeFromLeft(6);
+  reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
+  row.removeFromLeft(6);
+  save_.setBounds(row.removeFromLeft(160).reduced(0, 1));
   r.removeFromTop(kGap);
 
-  // The note keeps its space; the rank list takes what is left, which is what
+  // The note keeps a little space; the rank list takes the rest, which is what
   // makes the page work on an organ with fifty ranks and on one with six.
-  auto noteArea = r.removeFromBottom(juce::jmin(96, r.getHeight() / 3));
+  auto noteArea = r.removeFromBottom(juce::jmin(76, r.getHeight() / 3));
   note_.setBounds(noteArea);
   r.removeFromBottom(kGap);
   viewport_.setBounds(r);
