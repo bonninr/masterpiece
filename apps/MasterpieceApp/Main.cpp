@@ -132,11 +132,15 @@ public:
     // command -- which is what makes it repeatable across a shelf of them,
     // and what lets the console be filmed while it plays.
     juce::File playMidi;
+    juce::File recordAudio;
     int drawStops = 0;
     bool drawAll = false;
     for (int i = 0; i < args.size(); ++i) {
       if (args[i] == "--play-midi" && i + 1 < args.size())
         playMidi = juce::File::getCurrentWorkingDirectory().getChildFile(
+            args[++i].unquoted());
+      else if (args[i] == "--record-audio" && i + 1 < args.size())
+        recordAudio = juce::File::getCurrentWorkingDirectory().getChildFile(
             args[++i].unquoted());
       else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
         const auto v = args[++i];
@@ -145,8 +149,9 @@ public:
       }
     }
 
-    if (playMidi != juce::File() || drawAll || drawStops > 0) {
-      win_->onLoaded = [this, playMidi, drawAll, drawStops] {
+    if (playMidi != juce::File() || recordAudio != juce::File() || drawAll ||
+        drawStops > 0) {
+      win_->onLoaded = [this, playMidi, recordAudio, drawAll, drawStops] {
         if (drawAll) {
           proc_->engageAllStops();
         } else if (drawStops > 0) {
@@ -160,7 +165,20 @@ public:
           if (proc_->recorder().loadFromFile(playMidi)) {
             // A beat of silence first: a file that starts the instant the
             // console appears is cut off at the head by every recorder.
-            juce::Timer::callAfterDelay(1200, [this] {
+            juce::Timer::callAfterDelay(1200, [this, recordAudio] {
+              // Capture from inside the program rather than off the sound
+              // card. What the engine produced is what gets written -- no
+              // loopback device to find, no other application's sounds, and
+              // nothing lost if the machine stutters. Started in the SAME
+              // callback as playback, so the file begins where the music
+              // does.
+              if (recordAudio != juce::File()) {
+                recordAudio.getParentDirectory().createDirectory();
+                if (!proc_->audioRecorder().start(recordAudio,
+                                                  proc_->getSampleRate(), 2))
+                  juce::Logger::writeToLog("could not record to " +
+                                           recordAudio.getFullPathName());
+              }
               proc_->recorder().startPlayback();
             });
           } else {
