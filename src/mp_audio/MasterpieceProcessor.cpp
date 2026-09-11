@@ -125,6 +125,13 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   keyFlow_.reserve(64);
   expandScratch_.reserve(juce::jmax<size_t>(16, model_.divisions.size() * 4));
   metronome_.prepare(sampleRate_);
+
+  // Meter fall: 0.3 s to decay by 1/e. Computed here so the audio thread
+  // never calls a transcendental function for the sake of a lamp.
+  meterFall_ = sampleRate_ > 0.0
+                   ? std::exp(-static_cast<float>(samplesPerBlock) /
+                              static_cast<float>(sampleRate_ * 0.3))
+                   : 0.5f;
   recorder_.prepare(sampleRate_);
   outgoing_.ensureSize(1024);
 }
@@ -315,6 +322,19 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         case MidiTargetKind::StepperPrev:
           stepperPrev();
+          continue;
+        // The console belongs to the editor, and this is the audio thread, so
+        // the action is left in a slot for the editor to collect. One slot is
+        // enough: these are thumb pistons, pressed at human speed, and
+        // dropping the earlier of two presses in the same tick is better than
+        // a queue the audio thread has to manage.
+        case MidiTargetKind::ConsoleNextPage:
+        case MidiTargetKind::ConsolePrevPage:
+        case MidiTargetKind::ConsoleNextLayout:
+        case MidiTargetKind::ConsoleToggleStopList:
+        case MidiTargetKind::ConsoleToggleKeyboard:
+          pendingConsoleAction_.store(static_cast<int>(action.kind),
+                                      std::memory_order_release);
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
@@ -544,14 +564,9 @@ juce::File MasterpieceProcessor::settingsFileFor(const juce::File& odf) const {
   return organFile(odf, "organs", ".mporgan");
 }
 
-bool MasterpieceProcessor::saveSettings() const {
-  const auto f = organFileForSaving("organs", ".mporgan");
-  if (f.getFullPathName().isEmpty()) return false;
-  f.getParentDirectory().createDirectory();
-
+juce::String MasterpieceProcessor::settingsBody() const {
   const auto& sw = graph_.engineSwitch;
   juce::String text;
-  text << "# Masterpiece per-organ settings\n";
   text << "storage " << (samples_.storage() == SampleStorage::Int16 ? 16 : 32)
        << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
@@ -565,7 +580,37 @@ bool MasterpieceProcessor::saveSettings() const {
   text << "originalpitch " << (sw.playAtOriginalOrganPitch ? 1 : 0) << "\n";
   if (const auto* g = apvts_.getRawParameterValue("masterGain"))
     text << "gain " << juce::String(g->load(), 4) << "\n";
-  return f.replaceWithText(text);
+  return text;
+}
+
+void MasterpieceProcessor::applySettingsLine(const juce::String& key,
+                                             const juce::String& val,
+                                             EngineSwitch& sw) {
+  const bool on = val.getIntValue() != 0;
+  if (key == "storage")
+    samples_.setStorage(val.getIntValue() == 16 ? SampleStorage::Int16
+                                                : SampleStorage::Float32);
+  else if (key == "stream") samples_.setStreamReleases(on);
+  else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
+  else if (key == "preload") preloadHead_ = val.getLargeIntValue();
+  else if (key == "simple") sw.simpleWavOnly = on;
+  else if (key == "wind") sw.enableWindModel = on;
+  else if (key == "tremulant") sw.enableTremulant = on;
+  else if (key == "enclosure") sw.enableEnclosure = on;
+  else if (key == "voicing") sw.enableVoicing = on;
+  else if (key == "originalpitch") sw.playAtOriginalOrganPitch = on;
+  else if (key == "gain") {
+    if (auto* p = apvts_.getParameter("masterGain"))
+      p->setValueNotifyingHost(p->convertTo0to1(val.getFloatValue()));
+  }
+}
+
+bool MasterpieceProcessor::saveSettings() const {
+  const auto f = organFileForSaving("organs", ".mporgan");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText("# Masterpiece per-organ settings\n" +
+                           settingsBody());
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
@@ -575,28 +620,81 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   auto sw = graph_.engineSwitch;
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
-    const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
-    const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
-    const bool on = val.getIntValue() != 0;
-    if (key == "storage")
-      samples_.setStorage(val.getIntValue() == 16 ? SampleStorage::Int16
-                                                  : SampleStorage::Float32);
-    else if (key == "stream") samples_.setStreamReleases(on);
-    else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
-    else if (key == "preload") preloadHead_ = val.getLargeIntValue();
-    else if (key == "simple") sw.simpleWavOnly = on;
-    else if (key == "wind") sw.enableWindModel = on;
-    else if (key == "tremulant") sw.enableTremulant = on;
-    else if (key == "enclosure") sw.enableEnclosure = on;
-    else if (key == "voicing") sw.enableVoicing = on;
-    else if (key == "originalpitch") sw.playAtOriginalOrganPitch = on;
-    else if (key == "gain") {
-      if (auto* p = apvts_.getParameter("masterGain"))
-        p->setValueNotifyingHost(p->convertTo0to1(val.getFloatValue()));
-    }
+    applySettingsLine(line.upToFirstOccurrenceOf(" ", false, false).trim(),
+                      line.fromFirstOccurrenceOf(" ", false, false).trim(), sw);
   }
   graph_.engineSwitch = sw;
   return true;
+}
+
+juce::File MasterpieceProcessor::globalSettingsFile() const {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("settings.mpglobal");
+}
+
+bool MasterpieceProcessor::writeGlobalFile() const {
+  const auto f = globalSettingsFile();
+  f.getParentDirectory().createDirectory();
+  juce::String text;
+  text << "# Masterpiece defaults for organs that have no settings of their own\n";
+  text << globalBody_;
+  text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  if (lastOrgan_.getFullPathName().isNotEmpty())
+    text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
+  return f.replaceWithText(text);
+}
+
+bool MasterpieceProcessor::saveGlobalDefaults() {
+  // The one place the live state becomes everyone's starting point, and it
+  // happens only because a player asked for it.
+  globalBody_ = settingsBody();
+  return writeGlobalFile();
+}
+
+bool MasterpieceProcessor::loadGlobalDefaults() {
+  const auto f = globalSettingsFile();
+  if (!f.existsAsFile()) return false;
+
+  juce::String body;
+  auto sw = graph_.engineSwitch;
+  for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
+    if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
+    const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
+    // A path may contain spaces, so the value is taken whole, not tokenised.
+    const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (key == "reopenlast") {
+      reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "lastorgan") {
+      lastOrgan_ = juce::File(val);
+    } else {
+      applySettingsLine(key, val, sw);
+      body << line << "\n";
+    }
+  }
+  graph_.engineSwitch = sw;
+  globalBody_ = body;
+  return true;
+}
+
+void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
+  if (lastOrgan_ == odf) return;
+  lastOrgan_ = odf;
+  writeGlobalFile();
+}
+
+juce::File MasterpieceProcessor::lastOrgan() const {
+  // Answer only for a file that is still there: a set on a drive that is not
+  // plugged in should open the file chooser, not an error.
+  return lastOrgan_.existsAsFile() ? lastOrgan_ : juce::File();
+}
+
+void MasterpieceProcessor::setReopenLastOrgan(bool on) {
+  if (reopenLastOrgan_ == on) return;
+  reopenLastOrgan_ = on;
+  // Not saveGlobalDefaults(): a preference about startup is not a request to
+  // adopt the open organ's settings as everyone's.
+  writeGlobalFile();
 }
 
 bool MasterpieceProcessor::saveMidiMapIfDirty() {
@@ -852,7 +950,7 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   controls_.setValue(controlId, value);
-  controls_.propagate(controlId);
+  controls_.propagate(controlId, &engagedSwitches_);
 
   // Fire on whatever MOVED, not on what was set. The control a player moves is
   // often not the one with the steps behind it: Nancy's visible crescendo
@@ -1030,7 +1128,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   outgoing_.clear();
   handleMidi(midi);
-  controls_.propagate();
+  controls_.propagate(0, &engagedSwitches_);
 
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
@@ -1045,9 +1143,31 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   convolver_.process(buffer);
   buffer.applyGain(*apvts_.getRawParameterValue("masterGain"));
 
+  // Capture before the metronome. A click track belongs to the practice room,
+  // not to the recording.
+  audioRecorder_.write(buffer);
+
   // The metronome is a monitoring aid, not part of the instrument, so it sits
   // after the master fader and is not affected by it.
   metronome_.process(buffer);
+
+  // Meter last, so it shows what actually leaves. The rise is instant — a
+  // meter that eases upward under-reads exactly when it matters — and the
+  // fall is slow, which is what makes a sustained tutti readable.
+  //
+  // getMagnitude is a SIMD scan and the coefficient was computed once in
+  // prepareToPlay, so the whole meter costs one vectorised pass over a block
+  // the engine has already touched. It adds no latency whatever: this runs
+  // after the audio is finished and only reads it.
+  const int chans = juce::jmin(2, buffer.getNumChannels());
+  const float fall = meterFall_;
+  for (int c = 0; c < chans; ++c) {
+    const float block = buffer.getMagnitude(c, 0, buffer.getNumSamples());
+    peakHeld_[c] = juce::jmax(block, peakHeld_[c] * fall);
+    outPeak_[c].store(peakHeld_[c], std::memory_order_relaxed);
+  }
+  // A mono device must not leave the right lamp lit at whatever it last was.
+  for (int c = chans; c < 2; ++c) outPeak_[c].store(0.0f, std::memory_order_relaxed);
 }
 
 void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
@@ -1096,6 +1216,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // read: the resident format, streaming and the preload head all decide how
   // the samples are read and cannot be changed afterwards.
   loadedOdf_ = odfFile;
+  // Floor first, then the organ's own answer on top of it. An organ that has
+  // been configured keeps what it was given; one that has not starts from
+  // whatever this machine was told suits it.
+  loadGlobalDefaults();
   loadSettingsFor(odfFile);
 
   OdfLoader loader;
@@ -1284,6 +1408,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   juce::Logger::writeToLog("load: TOTAL         " +
                            juce::String(phases.sinceStart(), 1) + " ms  (" +
                            odfFile.getFileName() + ")");
+
+  // Only now, having got this far: an organ that failed to load is not one
+  // worth reopening on the next start.
+  setLastOrgan(odfFile);
 
   result.stopsEngaged = 0;
   result.ok = true;

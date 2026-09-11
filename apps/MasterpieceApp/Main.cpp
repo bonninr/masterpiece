@@ -23,12 +23,44 @@ public:
   void initialise(const juce::String& commandLine) override {
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
 
+    // Automation surface (docs/automation/gui-automation.md), read before
+    // anything is built, because some of it decides how things are built:
+    //   --odf <path>       load an organ at startup
+    //   --gui-only         draw its console without reading any audio
+    //   --virtual-midi [n] publish a MIDI input port of our own
+    //   --log <path>       write the load phase timings to a file
+    //
+    // fromTokens(..., true) PRESERVES the quotes it split on, so every value
+    // taken from here is unquoted before use. Organ paths almost always
+    // contain spaces.
+    const auto args = juce::StringArray::fromTokens(commandLine, true);
+    const bool guiOnly = args.contains("--gui-only");
+
+    // Installed before anything is loaded, because the load is what it is
+    // there to time. Nothing logs until this exists.
+    for (int i = 0; i < args.size(); ++i)
+      if (args[i] == "--log" && i + 1 < args.size()) {
+        logger_ = std::make_unique<juce::FileLogger>(
+            juce::File::getCurrentWorkingDirectory().getChildFile(
+                args[i + 1].unquoted()),
+            "Masterpiece load log");
+        juce::Logger::setCurrentLogger(logger_.get());
+      }
+
     // Audio first: the device's real rate and block size are what the engine
     // must be prepared for, and asking for them before the organ loads means
     // the voice pool and DSP are sized once rather than twice.
     player_ = std::make_unique<juce::AudioProcessorPlayer>();
     devices_ = std::make_unique<juce::AudioDeviceManager>();
-    const auto audioError = devices_->initialiseWithDefaultDevices(0, 2);
+    // The driver, rate and buffer a player chose are properties of the
+    // machine, not of any organ, and re-choosing them every launch is the
+    // kind of thing that makes a program feel unfinished. JUCE serialises
+    // the lot; a saved state that no longer matches the hardware is ignored
+    // and the defaults come back.
+    std::unique_ptr<juce::XmlElement> saved(
+        juce::XmlDocument::parse(audioSettingsFile()));
+    const auto audioError =
+        devices_->initialise(0, 2, saved.get(), /*selectDefaultDeviceOnFailure*/ true);
     if (audioError.isNotEmpty())
       juce::Logger::writeToLog("audio device: " + audioError);
 
@@ -51,42 +83,80 @@ public:
       routes_.push_back({in.identifier, std::move(route)});
     }
 
+    // A port of our own, so anything that can send MIDI can play this organ
+    // without a console plugged in. macOS and Linux let a process publish one;
+    // Windows has no such API, and needs a helper such as loopMIDI, whose port
+    // the loop above picks up like any other device.
+#if JUCE_MAC || JUCE_LINUX
+    for (int i = 0; i < args.size(); ++i)
+      if (args[i] == "--virtual-midi") {
+        const auto name = (i + 1 < args.size() && !args[i + 1].startsWith("--"))
+                              ? args[i + 1].unquoted()
+                              : juce::String("Masterpiece");
+        virtualRoute_ = std::make_unique<DeviceRoute>(
+            *proc_, proc_->registerMidiDevice(name.toStdString()));
+        virtualInput_ = juce::MidiInput::createNewDevice(name, virtualRoute_.get());
+        if (virtualInput_ != nullptr) {
+          virtualInput_->start();
+          juce::Logger::writeToLog("virtual MIDI input: " + name);
+        } else {
+          juce::Logger::writeToLog("could not create a virtual MIDI input");
+        }
+      }
+#endif
+
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
 
-    // Automation surface (docs/automation/gui-automation.md):
-    //   --odf <path>   load an organ at startup, for agent-driven testing
-    //   --gui-only     draw that organ's console without reading any audio
-    //   --log <path>   write the load phase timings to a file
-    auto args = juce::StringArray::fromTokens(commandLine, true);
-    const bool guiOnly = args.contains("--gui-only");
-
-    // Installed before anything is loaded, because the load is what it is
-    // there to time. Nothing logs until this exists.
-    for (int i = 0; i < args.size(); ++i)
-      if (args[i] == "--log" && i + 1 < args.size()) {
-        logger_ = std::make_unique<juce::FileLogger>(
-            juce::File::getCurrentWorkingDirectory().getChildFile(
-                args[i + 1].unquoted()),
-            "Masterpiece load log");
-        juce::Logger::setCurrentLogger(logger_.get());
-      }
+    juce::File odf;
     for (int i = 0; i < args.size(); ++i)
       if (args[i] == "--odf" && i + 1 < args.size()) {
         // fromTokens(..., true) PRESERVES the quotes it split on, so a path
         // with spaces arrives as "C:\...xml" including the quote characters
         // and resolves to nothing. Organ paths almost always contain spaces.
         const auto path = args[++i].unquoted();
-        win_->editor().loadOrgan(
-            juce::File::getCurrentWorkingDirectory().getChildFile(path),
-            guiOnly);
+        odf = juce::File::getCurrentWorkingDirectory().getChildFile(path);
       }
+
+    // Nothing named on the command line: pick up where the player left off.
+    // loadGlobalDefaults is what knows which organ that was, and it answers
+    // with nothing if the file has since moved or the drive is unplugged.
+    if (odf == juce::File()) {
+      proc_->loadGlobalDefaults();
+      if (proc_->reopenLastOrgan()) odf = proc_->lastOrgan();
+    }
+
+    if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
+  }
+
+  // Beside the player's own data, with the organ settings and the MIDI maps.
+  static juce::File audioSettingsFile() {
+    return juce::File::getSpecialLocation(
+               juce::File::userApplicationDataDirectory)
+        .getChildFile("Masterpiece")
+        .getChildFile("audio.xml");
   }
 
   void shutdown() override {
+    // The device state is written on the way out rather than on every change:
+    // a player dragging a buffer-size slider would otherwise rewrite the file
+    // once per pixel.
+    if (devices_)
+      if (auto state = devices_->createStateXml()) {
+        const auto f = audioSettingsFile();
+        f.getParentDirectory().createDirectory();
+        f.replaceWithText(state->toString());
+      }
+
     // Before the logger is destroyed: JUCE asserts on a dangling current
     // logger, and shutdown is the one place that is guaranteed to run.
     juce::Logger::setCurrentLogger(nullptr);
+
+    // Stop the port before its callback can be destroyed under it.
+    if (virtualInput_) virtualInput_->stop();
+    virtualInput_.reset();
+    virtualRoute_.reset();
+
     if (devices_ && player_) {
       devices_->removeAudioCallback(player_.get());
       for (auto& r : routes_)
@@ -186,6 +256,11 @@ private:
   std::unique_ptr<juce::AudioProcessorPlayer> player_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
+  // Our own published port, where the platform allows one. The input holds a
+  // pointer to its route, so the route is declared FIRST and therefore
+  // destroyed last — the input goes away while its callback is still valid.
+  std::unique_ptr<DeviceRoute> virtualRoute_;
+  std::unique_ptr<juce::MidiInput> virtualInput_;
 };
 
 START_JUCE_APPLICATION(MasterpieceApp)

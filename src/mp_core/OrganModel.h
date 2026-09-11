@@ -407,6 +407,26 @@ struct ContinuousControl {
   // is preserved and reported, never guessed (ADR-002).
   int typeCode = 0;
   bool inverted = false;
+
+  // The drawn thing a player actually moves. Only a minority of controls have
+  // one — an organ declares a control for every audio-group level and every
+  // detuning parameter, and draws the handful it means you to touch.
+  Id imageSetInstanceId = 0;
+  bool clickable = true;
+  // Which way along the image is "more". Stated by the organ rather than
+  // inferred, because a swell shoe and a level slider do not agree about it.
+  bool clickingHigherIncreasesValue = true;
+};
+
+// How a control's 0..127 shows on its image: a staircase of value bands, each
+// naming the frame to draw. Keyed by IMAGE SET, not by control, so several
+// controls drawn with the same artwork share one ladder — which is how an
+// organ affords a hundred identical percentage sliders.
+//
+// Rows do NOT arrive in value order and must be sorted before use.
+struct ContinuousControlImageStage {
+  int highestValue = 0;  // top of the band, inclusive
+  int imageIndex = 1;
 };
 
 // A shoe position that moves a switch. This is how a crescendo works: the
@@ -660,6 +680,9 @@ struct OrganModel {
   std::unordered_map<Id, OrganTemperament> temperaments; // M2.2
   Id defaultTemperamentId = 0;                           // 0 = equal
   std::unordered_map<Id, ContinuousControl> continuousControls; // M2.4
+  // Image set id -> its value/frame staircase, sorted ascending by value.
+  std::unordered_map<Id, std::vector<ContinuousControlImageStage>>
+      continuousControlStages;
   std::vector<ContinuousControlLinkage> controlLinkages;        // M2.4
   // M3: shoe positions that move switches. Ordered, because a sweep fires the
   // thresholds it crosses in the order it crosses them, and the last one to

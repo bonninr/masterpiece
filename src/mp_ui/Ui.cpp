@@ -144,15 +144,69 @@ void ExpressionBar::resized() {
 
 // --------------------------------------------------------------- top bar
 
+namespace {
+// Where the lamps change colour. An organ sits loud for long stretches, so
+// amber has to mean "loud and fine" rather than "nearly clipping", or it is
+// lit the whole time and says nothing.
+constexpr int kMeterSegments = 14;
+constexpr float kMeterFloorDb = -48.0f;
+constexpr int kFirstAmber = 9;
+constexpr int kFirstRed = 12;
+} // namespace
+
+LevelMeter::LevelMeter(MasterpieceProcessor& p) : proc_(p) { startTimerHz(30); }
+LevelMeter::~LevelMeter() { stopTimer(); }
+
+void LevelMeter::timerCallback() {
+  bool changed = false;
+  for (int c = 0; c < 2; ++c) {
+    const float db =
+        juce::Decibels::gainToDecibels(proc_.outputPeak(c), kMeterFloorDb);
+    const int lit = juce::jlimit(
+        0, kMeterSegments,
+        juce::roundToInt((db - kMeterFloorDb) / -kMeterFloorDb * kMeterSegments));
+    if (lit != lit_[c]) {
+      lit_[c] = lit;
+      changed = true;
+    }
+  }
+  // Only when a lamp actually moved: the console behind this is expensive to
+  // repaint and a silent organ should cost nothing.
+  if (changed) repaint();
+}
+
+void LevelMeter::paint(juce::Graphics& g) {
+  auto r = getLocalBounds().reduced(1);
+  const int rowH = r.getHeight() / 2;
+  const float segW = r.getWidth() / static_cast<float>(kMeterSegments);
+
+  for (int c = 0; c < 2; ++c) {
+    const int y = r.getY() + c * rowH;
+    for (int s = 0; s < kMeterSegments; ++s) {
+      const bool on = s < lit_[c];
+      juce::Colour col = s >= kFirstRed     ? juce::Colour(0xffe05555)
+                         : s >= kFirstAmber ? juce::Colour(0xffe0b155)
+                                            : juce::Colour(0xff5fd07a);
+      // Unlit lamps stay visible but dark, so the meter reads as a scale
+      // rather than appearing and disappearing.
+      g.setColour(on ? col : col.withAlpha(0.16f));
+      g.fillRect(juce::Rectangle<float>(r.getX() + s * segW, float(y) + 1.0f,
+                                        segW - 1.5f, float(rowH) - 2.0f));
+    }
+  }
+}
+
 TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings)
-    : proc_(p) {
+    : proc_(p), meter_(p) {
   addAndMakeVisible(load_);
   addAndMakeVisible(audio_);
   addAndMakeVisible(simple_);
-  addAndMakeVisible(volumeLabel_);
-  volumeLabel_.setText("Volume", juce::dontSendNotification);
-  volumeLabel_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+  addAndMakeVisible(meter_);
   addAndMakeVisible(volume_);
+  // The readout is given a fixed, modest width. Left to itself it takes a
+  // proportion of the slider, which on a narrow bar leaves a track too short
+  // to aim at.
+  volume_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 58, 20);
   volume_.setRange(-40.0, 24.0, 0.1);
   volume_.setTextValueSuffix(" dB");
   volume_.setSkewFactor(1.0);
@@ -165,8 +219,10 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
     const float g = db <= -40.0f ? 0.0f : juce::Decibels::decibelsToGain(db);
     if (auto* p = proc_.apvts().getParameter("masterGain"))
       p->setValueNotifyingHost(p->convertTo0to1(g));
-    // A sample set's level is its own; remember what this one was set to.
-    proc_.markSettingsDirty();
+    // Deliberately does not write. The settings file holds the engine's whole
+    // state, so a write triggered from here would also commit whatever was
+    // changed in Settings and left there unsaved — which would make "Keep
+    // changes" a lie. Level is saved with everything else, when asked.
   };
 
   addAndMakeVisible(status_);
@@ -195,15 +251,19 @@ void TopBar::setStatus(const juce::String& text) {
 
 void TopBar::resized() {
   auto r = getLocalBounds().reduced(4);
-  load_.setBounds(r.removeFromLeft(120));
+  load_.setBounds(r.removeFromLeft(64));
   r.removeFromLeft(6);
-  audio_.setBounds(r.removeFromLeft(120));
+  audio_.setBounds(r.removeFromLeft(64));
   r.removeFromLeft(6);
-  simple_.setBounds(r.removeFromLeft(150));
+  simple_.setBounds(r.removeFromLeft(88));
   r.removeFromLeft(10);
-  volumeLabel_.setBounds(r.removeFromLeft(56));
-  volume_.setBounds(r.removeFromLeft(220));
+  volume_.setBounds(r.removeFromLeft(130));
+  r.removeFromLeft(8);
+  // Beside the fader it answers for: the two are read together.
+  meter_.setBounds(r.removeFromLeft(112).reduced(0, 5));
   r.removeFromLeft(10);
+  // Whatever is left. The status line is the one thing here that can be
+  // shortened without losing a control, so it takes the squeeze.
   status_.setBounds(r);
 }
 
@@ -368,10 +428,10 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
   resized();
 
+  // The organ's name is in the window title, so the bar says what the title
+  // cannot: how much instrument arrived, and whether it has any audio.
   const auto& m = proc_.organModel();
-  status_ = juce::String(m.organName.empty() ? odf.getFileNameWithoutExtension()
-                                             : juce::String(m.organName)) +
-            " — " + juce::String(m.stops.size()) + " stops, " +
+  status_ = juce::String(m.stops.size()) + " stops, " +
             juce::String(m.ranks.size()) + " ranks, ";
   if (graphicsOnly) {
     // "0 samples (0 MB)" reads as a set that failed to load. Say what was
@@ -399,22 +459,29 @@ void MasterpieceEditor::paint(juce::Graphics& g) {
 
 void MasterpieceEditor::resized() {
   auto r = getLocalBounds();
-  top_.setBounds(r.removeFromTop(36));
 
-  auto tabRow = r.removeFromTop(28);
-  settingsButton_.setBounds(tabRow.removeFromRight(90).reduced(2));
+  // One band for every control. These are the editor's own children rather
+  // than the bar's, so they are placed into the right of the same strip and
+  // the bar lays itself out in whatever is left -- no reparenting, and the
+  // status line absorbs the difference.
+  auto bar = r.removeFromTop(36);
+  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
   layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
   if (layout_.isVisible())
-    layout_.setBounds(tabRow.removeFromRight(130).reduced(2));
-  keysButton_.setBounds(tabRow.removeFromRight(70).reduced(2));
-  toggleView_.setBounds(tabRow.removeFromRight(110).reduced(2));
+    layout_.setBounds(bar.removeFromRight(130).reduced(2));
+  keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
+  toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
-  stepNext_.setBounds(tabRow.removeFromRight(30).reduced(2));
-  stepFrame_.setBounds(tabRow.removeFromRight(64).reduced(2));
-  stepPrev_.setBounds(tabRow.removeFromRight(30).reduced(2));
-  setter_.setBounds(tabRow.removeFromRight(56).reduced(2));
-  pageTabs_.setBounds(tabRow);
+  stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
+  stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
+  stepPrev_.setBounds(bar.removeFromRight(30).reduced(2));
+  setter_.setBounds(bar.removeFromRight(56).reduced(2));
+  top_.setBounds(bar);
+
+  // The tabs keep a strip of their own, and only when there is more than one
+  // page to choose between -- so a single-page organ shows one row in total.
   pageTabs_.setVisible(showingConsole_ && console_.pageCount() > 1);
+  if (pageTabs_.isVisible()) pageTabs_.setBounds(r.removeFromTop(28));
 
   manual_.setVisible(showingKeyboard_ && manual_.getNumItems() > 1);
   keyboard_.setVisible(showingKeyboard_);
@@ -462,6 +529,36 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // A drawstop clicked on the console changes the jamb too, and vice versa.
   if (showingConsole_) console_.repaint();
+
+  // A console piston pressed on a physical manual. Collected here because a
+  // component may only be touched from the message thread.
+  switch (proc_.takeConsoleAction()) {
+    case MidiTargetKind::ConsoleNextPage:
+      if (console_.pageCount() > 1)
+        pageTabs_.setCurrentTabIndex(
+            (pageTabs_.getCurrentTabIndex() + 1) % console_.pageCount());
+      break;
+    case MidiTargetKind::ConsolePrevPage:
+      if (console_.pageCount() > 1)
+        pageTabs_.setCurrentTabIndex(
+            (pageTabs_.getCurrentTabIndex() + console_.pageCount() - 1) %
+            console_.pageCount());
+      break;
+    case MidiTargetKind::ConsoleNextLayout:
+      if (console_.layoutCount() > 1)
+        layout_.setSelectedId(
+            console_.layout() + 2 > console_.layoutCount() ? 1
+                                                           : console_.layout() + 2);
+      break;
+    case MidiTargetKind::ConsoleToggleStopList:
+      toggleView_.triggerClick();
+      break;
+    case MidiTargetKind::ConsoleToggleKeyboard:
+      keysButton_.triggerClick();
+      break;
+    default:
+      break;
+  }
 
   // A piston captured on the audio thread only raised a flag; the writing
   // happens here, where a file write is allowed. Combinations are the

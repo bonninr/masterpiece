@@ -79,6 +79,15 @@ void ConsoleView::rebuild() {
     if (sw.dispInstanceId != 0) switchByInstance[sw.dispInstanceId] = &sw;
   }
 
+  // And which continuous control owns which. An organ declares a control for
+  // every level and every detuning parameter and draws only the handful it
+  // means you to touch: Nancy has 1420 and draws 55.
+  std::unordered_map<Id, const ContinuousControl*> controlByInstance;
+  for (const auto& [id, c] : model.continuousControls) {
+    (void)id;
+    if (c.imageSetInstanceId != 0) controlByInstance[c.imageSetInstanceId] = &c;
+  }
+
   for (const auto& [pageId, page] : model.displayPages) {
     (void)page;
     pageIds_.push_back(pageId);
@@ -140,6 +149,13 @@ void ConsoleView::rebuild() {
       item.engagedIndex = sit->second->dispIndexEngaged;
       item.disengagedIndex = sit->second->dispIndexDisengaged;
       item.clickable = sit->second->clickable;
+    }
+
+    if (const auto cit = controlByInstance.find(inst.instanceId);
+        cit != controlByInstance.end()) {
+      item.controlId = cit->second->controlId;
+      item.clickable = cit->second->clickable;
+      item.controlHigherIsMore = cit->second->clickingHigherIncreasesValue;
     }
 
     // The set knows the frame size; the instance knows where it goes, and
@@ -361,6 +377,21 @@ void ConsoleView::setPage(int index) {
 }
 
 int ConsoleView::frameIndexFor(const Item& item) const {
+  // A dragged control picks its frame from its position, off the staircase
+  // the organ declares for its image set.
+  if (item.controlId != 0) {
+    const auto& stages = proc_.organModel().continuousControlStages;
+    const auto it = stages.find(item.imageSetId);
+    if (it == stages.end() || it->second.empty()) return item.defaultIndex;
+    const int v = proc_.continuousControlValue(item.controlId);
+    // First band whose top is at or above the value. Sorted ascending at
+    // load, so this is the lowest band that still contains it.
+    for (const auto& s : it->second)
+      if (v <= s.highestValue) return s.imageIndex;
+    // Above every declared band: the organ drew the top of the travel.
+    return it->second.back().imageIndex;
+  }
+
   if (item.switchId == 0) return item.defaultIndex;
   const bool on = proc_.switchEngaged(item.switchId);
   const int chosen = on ? item.engagedIndex : item.disengagedIndex;
@@ -517,11 +548,25 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
 
   // Topmost first: the controls are painted last, so they are hit first.
   for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
-    if (it->switchId == 0 || !it->clickable) continue;
+    if (!it->clickable) continue;
+    if (it->switchId == 0 && it->controlId == 0) continue;
     if (!it->hitBounds.contains(e.getPosition())) continue;
 
     if (e.mods.isPopupMenu()) {
-      showMidiMenu(it->switchId, it->bounds);
+      if (it->switchId != 0) showMidiMenu(it->switchId, it->bounds);
+      return;
+    }
+
+    // A shoe or slider. The press only takes hold of it — the value does not
+    // move until the mouse does, which is what "click it, hold, and drag"
+    // means and what stops a stray click from throwing a setting across its
+    // range.
+    if (it->controlId != 0) {
+      heldControl_ = it->controlId;
+      heldControlBounds_ = it->hitBounds;
+      heldControlHigherIsMore_ = it->controlHigherIsMore;
+      heldControlStartY_ = e.getPosition().getY();
+      heldControlStartValue_ = proc_.continuousControlValue(it->controlId);
       return;
     }
 
@@ -606,7 +651,40 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
       });
 }
 
+void ConsoleView::setControlFromMouse(juce::Point<int> p) {
+  if (heldControl_ == 0) return;
+
+  // Vertical, always, and RELATIVE to where the value already was.
+  //
+  // Nancy prints the rule on its own settings page: "To change numeric value
+  // click it with mouse, hold mouse buton and drag up and down." So the axis
+  // is up/down even for a control drawn 208 wide and 61 tall — the image's
+  // shape says nothing about it, and `ClickingHigherIncreasesValue` was the
+  // clue, since "higher" is a vertical word.
+  //
+  // Relative matters as much as the axis. Mapping the pointer's absolute
+  // position onto the image would jump the value the instant it was clicked,
+  // and across a 61-pixel image with 101 frames it would move two steps per
+  // pixel. Starting from the value in hand is both what the organ describes
+  // and what can actually be aimed.
+  const int dy = heldControlStartY_ - p.getY(); // up is positive
+  const double perPixel = heldControlHigherIsMore_ ? 0.5 : -0.5;
+  const int v = juce::jlimit(
+      0, 127, heldControlStartValue_ + juce::roundToInt(dy * perPixel));
+
+  if (v == proc_.continuousControlValue(heldControl_)) return;
+  proc_.setContinuousControl(heldControl_, v);
+  repaint(heldControlBounds_);
+}
+
 void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
+  if (heldControl_ != 0) {
+    // Deliberately not clamped to the image: a hand that slides off the side
+    // of a shoe while pushing it is still pushing it, and the position
+    // saturates at the end of the travel rather than jumping.
+    setControlFromMouse(e.getPosition());
+    return;
+  }
   if (heldKey_ < 0) return;
   // Sliding along the manual plays it, the way a hand does. Dragging from one
   // manual onto another switches channel with the key, which is what actually
@@ -622,6 +700,7 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ConsoleView::mouseUp(const juce::MouseEvent&) {
+  heldControl_ = 0;
   if (heldKey_ < 0) return;
   proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
   heldKey_ = -1;

@@ -26,11 +26,21 @@ enum class MidiTargetKind {
   Switch,            // a drawstop, coupler or tremulant: on/off
   ContinuousControl, // a shoe or wheel: 0..127
   Keyboard,          // a manual: notes play through it
-  // The registration sequencer. Not in the organ file — Hauptwerk provides it
-  // and the player maps it — so it is a target with no id: the two thumb
+  // The registration sequencer. Not in the organ file — the program provides
+  // it and the player maps it — so it is a target with no id: the two thumb
   // pistons an organist actually uses.
   StepperNext,
   StepperPrev,
+
+  // Console actions. Also not in the organ file, and for the same reason a
+  // real console has thumb pistons that change nothing about the instrument:
+  // a player whose hands are on the keys cannot reach for a mouse to turn a
+  // page. These carry no id either — there is one of each.
+  ConsoleNextPage,
+  ConsolePrevPage,
+  ConsoleNextLayout,
+  ConsoleToggleStopList,
+  ConsoleToggleKeyboard,
 };
 
 // The kind of message, reduced to what a mapping needs to match on.

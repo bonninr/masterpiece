@@ -193,7 +193,17 @@ public:
   // such a pair. Without a pin the twin's old value wins on the very first
   // pass and the shoe snaps straight back to where it was, which looks exactly
   // like a crescendo that was never wired up.
-  void propagate(Id pinned = 0);
+  // `engagedSwitches` decides which linkages are live. A linkage that names a
+  // ConditionSwitchID is NOT a permanent wire: it is what a preset Load or a
+  // "reset to defaults" button is made of, and it must fire only while its
+  // switch is engaged. Running them unconditionally holds every control the
+  // organ offers a preset for at its stored value, so dragging one snaps
+  // straight back and the panel looks broken rather than wrongly wired.
+  //
+  // Passing nothing means "no switch is engaged", which is the safe reading:
+  // an unconditional wire still runs, a conditional one waits to be asked.
+  void propagate(Id pinned = 0,
+                 const std::unordered_set<Id>* engagedSwitches = nullptr);
 
   // Convenience for the audio graph: shutter position 0..1 for an enclosure,
   // via whichever continuous control drives it. An enclosure with no control

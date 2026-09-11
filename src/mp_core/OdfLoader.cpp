@@ -947,7 +947,16 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // ClickingHigherIncreasesValue is about mouse direction on the console
     // image, not about inverting the value, so it is deliberately not read
     // into `inverted` — that would silently reverse every shoe it appears on.
+    // It belongs to the drawn control instead, below.
     c.inverted = false;
+
+    // What makes a control something a player can move rather than a number
+    // the organ keeps to itself. Only the drawn ones have an instance: Nancy
+    // declares 1420 controls and draws 55.
+    c.imageSetInstanceId = fieldInt(row, "ImageSetInstanceID", nullptr, 0);
+    c.clickable = fieldBool(row, "Clickable", nullptr, true);
+    c.clickingHigherIncreasesValue =
+        fieldBool(row, "ClickingHigherIncreasesValue", nullptr, true);
     if (c.controlId == 0) return;
     if (c.minValue > c.maxValue) {
       outDiag.warnings.emplace_back(
@@ -957,6 +966,30 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
     outModel.continuousControls[c.controlId] = std::move(c);
   });
+
+  // ---- How a drawn control SHOWS its position ----
+  // A staircase per image set: the frame to draw for each band of 0..127.
+  // Keyed by image set rather than by control, so a hundred identical sliders
+  // share one ladder.
+  forEachRow(odfRoot, "ContinuousControlImageSetStage", [&](pugi::xml_node row) {
+    const Id setId = fieldInt(row, "ImageSetID", nullptr, 0);
+    if (setId == 0) return;
+    ContinuousControlImageStage s;
+    s.highestValue = fieldInt(row, "HighestContinuousControlValue", nullptr, 0);
+    s.imageIndex = fieldInt(row, "ImageSetIndex", nullptr, 1);
+    outModel.continuousControlStages[setId].push_back(s);
+  });
+  // The rows do NOT arrive in value order — a real set has the lowest band
+  // last — and a lookup that walked them as written would pick the wrong
+  // frame for most of the travel.
+  for (auto& [setId, stages] : outModel.continuousControlStages) {
+    (void)setId;
+    std::sort(stages.begin(), stages.end(),
+              [](const ContinuousControlImageStage& a,
+                 const ContinuousControlImageStage& b) {
+                return a.highestValue < b.highestValue;
+              });
+  }
 
   // ---- M2.4: ContinuousControlLinkage (one control driving another) ----
   forEachRow(odfRoot, "ContinuousControlLinkage", [&](pugi::xml_node row) {

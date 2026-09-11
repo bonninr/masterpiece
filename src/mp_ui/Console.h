@@ -31,6 +31,8 @@ public:
   void mouseDown(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
+  // Position a dragged control from a mouse point inside its image.
+  void setControlFromMouse(juce::Point<int> p);
   void resized() override;
 
   // Which console layout to draw. A set that ships for more than one console
@@ -62,6 +64,11 @@ private:
     Id instanceId = 0;
     Id imageSetId = 0;
     Id switchId = 0;          // 0 = decoration, not a control
+    // A shoe, wheel or slider: dragged rather than toggled, and its frame is
+    // chosen from its value instead of from an on/off pair. Mutually
+    // exclusive with switchId in every set seen so far, but not assumed to be.
+    Id controlId = 0;
+    bool controlHigherIsMore = true;
     int defaultIndex = 1;
     int engagedIndex = 0;
     int disengagedIndex = 0;
@@ -121,6 +128,16 @@ private:
   // mouse-up even if the pointer has wandered off it.
   int heldKey_ = -1;
   int heldChannel_ = 1;
+  // The control under the mouse for the duration of a drag. Its geometry is
+  // kept here so a drag that wanders outside the image still moves the right
+  // thing along the right axis.
+  Id heldControl_ = 0;
+  juce::Rectangle<int> heldControlBounds_;
+  bool heldControlHigherIsMore_ = true;
+  // Where the drag began, and the value it began from: the gesture is
+  // relative, so both are needed for its whole duration.
+  int heldControlStartY_ = 0;
+  int heldControlStartValue_ = 0;
   // Last seen sounding set, to repaint only when it actually changed.
   uint64_t keyStateHash_ = 0;
   bool hasArtwork_ = false;

@@ -25,8 +25,25 @@ public:
 private:
   void timerCallback() override;
   void pushSwitches();
+  // Put the engine, and the controls, back to the state captured when this
+  // panel was built.
+  void revert();
+  void closeDialog();
 
   MasterpieceProcessor& proc_;
+
+  // Settings here apply live, so leaving is not by itself a decision: the
+  // player needs a way back that does not depend on remembering what was
+  // there. Captured once, on open.
+  EngineSwitch openSwitch_;
+  int64_t openPreload_ = 0;
+  SampleStorage openStorage_ = SampleStorage::Float32;
+  bool openStream_ = false;
+
+  juce::TextButton revert_{"Revert changes"};
+  juce::TextButton keep_{"Keep changes"};
+  juce::TextButton saveOrgan_{"Save for this organ"};
+  juce::TextButton saveGlobal_{"Save as default"};
   juce::ToggleButton simpleWav_{"Simple WAV only (bypass all DSP)"};
   juce::ToggleButton wind_{"Wind model"};
   juce::ToggleButton tremulant_{"Tremulants"};
@@ -99,6 +116,16 @@ private:
   juce::Label status_;
   juce::Label note_;
   std::unique_ptr<juce::FileChooser> chooser_;
+
+  // Audio capture is a separate recording from the MIDI one and they are
+  // useful together: the MIDI file is the performance and can be replayed
+  // through a different registration, the WAV is what it sounded like.
+  juce::Label audioHeading_;
+  juce::TextButton audioRecord_{"Record audio..."};
+  juce::TextButton audioStop_{"Stop"};
+  juce::Label audioStatus_;
+  juce::Label audioNote_;
+  std::unique_ptr<juce::FileChooser> audioChooser_;
 };
 
 // MIDI: what the console sends and what comes back, plus the learned mapping.
@@ -138,6 +165,14 @@ private:
   juce::Label stepperLabel_;
   juce::TextButton learnNext_{"Learn sequencer +"};
   juce::TextButton learnPrev_{"Learn sequencer -"};
+  // Console actions a real console's thumb pistons would do. A player whose
+  // hands are on the keys cannot reach for a mouse to turn a page.
+  juce::Label consoleHeading_;
+  juce::TextButton learnPageNext_{"Learn page +"};
+  juce::TextButton learnPagePrev_{"Learn page -"};
+  juce::TextButton learnLayout_{"Learn console size"};
+  juce::TextButton learnStopList_{"Learn stop list"};
+  juce::TextButton learnKeyboard_{"Learn keyboard"};
   juce::Label mapStatus_;
   juce::Label note_;
   std::unique_ptr<juce::MidiOutput> openedOutput_;

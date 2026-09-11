@@ -54,6 +54,24 @@ private:
 };
 
 // Organ name, load button, audio settings, and what the load actually found.
+// A row of lamps per channel, lit up to the current level. Discrete segments
+// rather than a continuous bar because the eye reads a count at a glance and
+// has to measure a length; on an instrument whose loud registrations sit
+// pinned near the top, "how many lamps" is the useful question.
+class LevelMeter : public juce::Component, private juce::Timer {
+public:
+  explicit LevelMeter(MasterpieceProcessor& p);
+  ~LevelMeter() override;
+  void paint(juce::Graphics& g) override;
+
+private:
+  void timerCallback() override;
+  MasterpieceProcessor& proc_;
+  // What was last painted, so a still meter does not repaint 30 times a
+  // second behind a console that is doing real work.
+  int lit_[2] = {-1, -1};
+};
+
 class TopBar : public juce::Component {
 public:
   using Callback = std::function<void()>;
@@ -63,13 +81,15 @@ public:
 
 private:
   MasterpieceProcessor& proc_;
-  juce::TextButton load_{"Load organ..."};
-  juce::TextButton audio_{"Audio/MIDI..."};
-  juce::ToggleButton simple_{"Simple (no DSP)"};
+  // Terse on purpose: everything the console offers has to share one row, and
+  // a slider that reads out in dB does not also need a label saying "Volume".
+  juce::TextButton load_{"Open"};
+  juce::TextButton audio_{"Audio"};
+  juce::ToggleButton simple_{"No DSP"};
+  LevelMeter meter_;
   // In decibels, because that is the only scale a volume control feels linear
   // on: the useful part of a 0..16 gain range is all crowded below 1.
   juce::Slider volume_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Label volumeLabel_;
   juce::Label status_;
 };
 

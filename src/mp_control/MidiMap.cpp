@@ -75,6 +75,11 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::Keyboard: return "keyboard";
     case MidiTargetKind::StepperNext: return "stepper-next";
     case MidiTargetKind::StepperPrev: return "stepper-prev";
+    case MidiTargetKind::ConsoleNextPage: return "console-next-page";
+    case MidiTargetKind::ConsolePrevPage: return "console-prev-page";
+    case MidiTargetKind::ConsoleNextLayout: return "console-next-layout";
+    case MidiTargetKind::ConsoleToggleStopList: return "console-stop-list";
+    case MidiTargetKind::ConsoleToggleKeyboard: return "console-keyboard";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -86,6 +91,11 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "keyboard") return MidiTargetKind::Keyboard;
   if (s == "stepper-next") return MidiTargetKind::StepperNext;
   if (s == "stepper-prev") return MidiTargetKind::StepperPrev;
+  if (s == "console-next-page") return MidiTargetKind::ConsoleNextPage;
+  if (s == "console-prev-page") return MidiTargetKind::ConsolePrevPage;
+  if (s == "console-next-layout") return MidiTargetKind::ConsoleNextLayout;
+  if (s == "console-stop-list") return MidiTargetKind::ConsoleToggleStopList;
+  if (s == "console-keyboard") return MidiTargetKind::ConsoleToggleKeyboard;
   return MidiTargetKind::None;
 }
 
@@ -218,9 +228,14 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
       break;
     case MidiTargetKind::StepperNext:
     case MidiTargetKind::StepperPrev:
-      // A sequencer piston fires on the press. Acting on the release too would
-      // advance two frames per press, which is exactly the failure an organist
-      // would notice mid-piece and could not explain.
+    case MidiTargetKind::ConsoleNextPage:
+    case MidiTargetKind::ConsolePrevPage:
+    case MidiTargetKind::ConsoleNextLayout:
+    case MidiTargetKind::ConsoleToggleStopList:
+    case MidiTargetKind::ConsoleToggleKeyboard:
+      // These fire on the press. Acting on the release too would move two
+      // frames, or turn a page and turn it straight back -- exactly the
+      // failure an organist would notice mid-piece and could not explain.
       if (value <= 0) action.kind = MidiTargetKind::None;
       break;
     case MidiTargetKind::None:

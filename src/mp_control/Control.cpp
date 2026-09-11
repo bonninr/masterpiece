@@ -429,7 +429,8 @@ double ContinuousControlBank::normalised(Id controlId) const {
   return c.inverted ? 1.0 - t : t;
 }
 
-void ContinuousControlBank::propagate(Id pinned) {
+void ContinuousControlBank::propagate(Id pinned,
+                                      const std::unordered_set<Id>* engagedSwitches) {
   if (model_ == nullptr || model_->controlLinkages.empty()) return;
 
   // One pass per linkage is enough to carry a value along the longest possible
@@ -442,6 +443,14 @@ void ContinuousControlBank::propagate(Id pinned) {
       const auto dit = model_->continuousControls.find(l.destControlId);
       if (dit == model_->continuousControls.end()) continue;
       if (l.destControlId == pinned) continue; // the player's own move stands
+      // A conditional linkage is a button, not a wire. Nancy hangs her preset
+      // Load buttons and her "reset all settings to defaults" off these, and
+      // running them whenever they are looked at pins every control they
+      // touch to its stored value.
+      if (l.conditionSwitchId != 0 &&
+          (engagedSwitches == nullptr ||
+           engagedSwitches->count(l.conditionSwitchId) == 0))
+        continue;
       const auto sit = values_.find(l.sourceControlId);
       if (sit == values_.end()) continue;
 

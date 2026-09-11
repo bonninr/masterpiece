@@ -25,6 +25,12 @@ constexpr int kGap = 6;
 // ---------------------------------------------------------------- engine
 
 EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
+  // Before a single control is wired: what Revert goes back to.
+  openSwitch_ = proc_.engineSwitch();
+  openPreload_ = proc_.preloadHeadFrames();
+  openStorage_ = proc_.sampleStorage();
+  openStream_ = proc_.streamReleases();
+
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
     addAndMakeVisible(*b);
@@ -79,6 +85,23 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.setStreamReleases(stream_.getToggleState());
   };
 
+  // Nothing on this panel writes to disk on its own. Changes are live the
+  // moment they are made, and what happens to them afterwards is the
+  // player's to say: forget them, keep them for this session, give them to
+  // this organ, or make them where every organ starts.
+  for (auto* b : {&revert_, &keep_, &saveOrgan_, &saveGlobal_})
+    addAndMakeVisible(*b);
+  revert_.onClick = [this] { revert(); };
+  keep_.onClick = [this] { closeDialog(); };
+  saveOrgan_.onClick = [this] {
+    proc_.saveSettings();
+    closeDialog();
+  };
+  saveGlobal_.onClick = [this] {
+    proc_.saveGlobalDefaults();
+    closeDialog();
+  };
+
   addAndMakeVisible(memory_);
   styleLabel(memory_, "");
   addAndMakeVisible(note_);
@@ -89,8 +112,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
             "does not sustain - the note simply stops when the audio runs "
             "out.\n\n"
             "The resident format decides what a held frame costs. 16-bit halves "
-            "the memory and is what Hauptwerk loads by default; each sample is "
-            "scaled by its own peak first, so a quiet stop keeps the full "
+            "the memory and is what most players load by default; each sample "
+            "is scaled by its own peak first, so a quiet stop keeps the full "
             "sixteen bits instead of only the top few.\n\n"
             "Streaming holds only the first second of each release and fetches "
             "the rest from disk while it plays. Releases are the only samples "
@@ -104,6 +127,43 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
 }
 
 EnginePanel::~EnginePanel() { stopTimer(); }
+
+void EnginePanel::revert() {
+  proc_.setEngineSwitch(openSwitch_);
+  proc_.setPreloadHeadFrames(openPreload_);
+  proc_.setSampleStorage(openStorage_);
+  proc_.setStreamReleases(openStream_);
+
+  simpleWav_.setToggleState(openSwitch_.simpleWavOnly, juce::dontSendNotification);
+  wind_.setToggleState(openSwitch_.enableWindModel, juce::dontSendNotification);
+  tremulant_.setToggleState(openSwitch_.enableTremulant, juce::dontSendNotification);
+  enclosure_.setToggleState(openSwitch_.enableEnclosure, juce::dontSendNotification);
+  voicing_.setToggleState(openSwitch_.enableVoicing, juce::dontSendNotification);
+  originalPitch_.setToggleState(openSwitch_.playAtOriginalOrganPitch,
+                                juce::dontSendNotification);
+  storage_.setSelectedId(openStorage_ == SampleStorage::Int16 ? 2 : 1,
+                         juce::dontSendNotification);
+  stream_.setToggleState(openStream_, juce::dontSendNotification);
+  // The preload combo is a coarse choice over a frame count, so it is matched
+  // back rather than stored twice.
+  const int64_t rate = 48000;
+  preload_.setSelectedId(openPreload_ == 0          ? 1
+                         : openPreload_ == 2 * rate ? 2
+                         : openPreload_ == rate     ? 3
+                                                    : 4,
+                         juce::dontSendNotification);
+
+  // simpleWavOnly greys the rest out; restoring the states has to restore
+  // that too, or the panel lies about what is reachable.
+  const bool detailed = !openSwitch_.simpleWavOnly;
+  for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
+    b->setEnabled(detailed);
+}
+
+void EnginePanel::closeDialog() {
+  if (auto* dw = findParentComponentOfClass<juce::DialogWindow>())
+    dw->closeButtonPressed();
+}
 
 void EnginePanel::pushSwitches() {
   auto sw = proc_.engineSwitch();
@@ -164,6 +224,19 @@ void EnginePanel::resized() {
   r.removeFromTop(kGap);
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
+
+  // Footer, taken from the bottom before the note gets what is left. Read
+  // left to right it goes from discarding to committing hardest, so the
+  // consequence grows with the distance from "put it back".
+  auto footer = r.removeFromBottom(kRow + 4);
+  revert_.setBounds(footer.removeFromLeft(130).reduced(0, 2));
+  footer.removeFromLeft(kGap);
+  keep_.setBounds(footer.removeFromLeft(120).reduced(0, 2));
+  saveGlobal_.setBounds(footer.removeFromRight(150).reduced(0, 2));
+  footer.removeFromRight(kGap);
+  saveOrgan_.setBounds(footer.removeFromRight(160).reduced(0, 2));
+  r.removeFromBottom(kGap);
+
   note_.setBounds(r);
 }
 
@@ -215,7 +288,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "Most Hauptwerk sets are recorded in the room they live in, and "
+            "Most sample sets are recorded in the room they live in, and "
             "several ship close / far / rear perspectives which ARE the room. "
             "Convolution is for a dry set, or for headphones, and usually "
             "wants far less wet signal than a reverb plugin would suggest.");
@@ -349,6 +422,39 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
             "captured too, so a recording plays back as the same performance "
             "rather than as notes on whatever registration happens to be "
             "drawn at the time.");
+
+  addAndMakeVisible(audioHeading_);
+  styleLabel(audioHeading_, "Audio");
+  for (auto* b : {&audioRecord_, &audioStop_}) addAndMakeVisible(*b);
+  addAndMakeVisible(audioStatus_);
+  styleLabel(audioStatus_, "");
+  addAndMakeVisible(audioNote_);
+  styleNote(audioNote_,
+            "Captures the organ's output after the master fader and before "
+            "the metronome, so the click stays out of the file. Written on a "
+            "background thread at 24-bit; the audio callback only hands over "
+            "the block it has already finished.");
+
+  audioRecord_.onClick = [this] {
+    audioChooser_ = std::make_unique<juce::FileChooser>(
+        "Record the organ to", juce::File(), "*.wav");
+    audioChooser_->launchAsync(
+        juce::FileBrowserComponent::saveMode |
+            juce::FileBrowserComponent::canSelectFiles |
+            juce::FileBrowserComponent::warnAboutOverwriting,
+        [this](const juce::FileChooser& fc) {
+          const auto f = fc.getResult();
+          if (f.getFullPathName().isEmpty()) return;
+          // The device's rate, not the organ's: this is what is leaving.
+          if (!proc_.audioRecorder().start(f.withFileExtension(".wav"),
+                                           proc_.getSampleRate(),
+                                           proc_.getTotalNumOutputChannels()))
+            audioStatus_.setText("Could not open that file for writing",
+                                 juce::dontSendNotification);
+        });
+  };
+  audioStop_.onClick = [this] { proc_.audioRecorder().stop(); };
+
   startTimerHz(8);
 }
 
@@ -376,6 +482,16 @@ void RecorderPanel::timerCallback() {
   record_.setToggleState(r.isRecording(), juce::dontSendNotification);
   play_.setEnabled(!r.empty());
   save_.setEnabled(!r.empty());
+
+  auto& a = proc_.audioRecorder();
+  const bool on = a.isRecording();
+  audioStatus_.setText(
+      on ? "Recording " + a.file().getFileName() + " - " +
+               juce::String(a.secondsRecorded(), 1) + " s"
+         : "Not recording",
+      juce::dontSendNotification);
+  audioRecord_.setEnabled(!on);
+  audioStop_.setEnabled(on);
 }
 
 void RecorderPanel::resized() {
@@ -394,7 +510,22 @@ void RecorderPanel::resized() {
   r.removeFromTop(kGap);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
-  note_.setBounds(r);
+  note_.setBounds(r.removeFromTop(72));
+
+  // Audio capture below the MIDI half, with its own heading: they are two
+  // recordings of the same performance and mixing the controls would suggest
+  // one set of transport buttons drives both.
+  r.removeFromTop(kGap * 2);
+  audioHeading_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(2);
+  row = r.removeFromTop(kRow);
+  audioRecord_.setBounds(row.removeFromLeft(140));
+  row.removeFromLeft(kGap);
+  audioStop_.setBounds(row.removeFromLeft(90));
+  r.removeFromTop(kGap);
+  audioStatus_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
+  audioNote_.setBounds(r);
 }
 
 // ------------------------------------------------------------------ midi
@@ -459,9 +590,27 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
             "Keyboards: the channel decides which manual your console plays, "
             "and therefore which division sounds. Couplers work off that, so "
             "getting it wrong makes a manual sound like the wrong one."
-            "\n\nSequencer: the organ does not declare one, so there is "
-            "nothing on the console to right-click. Press a Learn button here, "
-            "then the piston on your console you want to step with.");
+            "\n\nSequencer and console actions: the organ declares none of "
+            "these, so there is nothing on the console to right-click. Press "
+            "a Learn button here, then the piston you want to use.");
+
+  addAndMakeVisible(consoleHeading_);
+  styleLabel(consoleHeading_, "Console");
+  struct { juce::TextButton* b; MidiTargetKind k; } consoleLearn[] = {
+      {&learnPageNext_, MidiTargetKind::ConsoleNextPage},
+      {&learnPagePrev_, MidiTargetKind::ConsolePrevPage},
+      {&learnLayout_, MidiTargetKind::ConsoleNextLayout},
+      {&learnStopList_, MidiTargetKind::ConsoleToggleStopList},
+      {&learnKeyboard_, MidiTargetKind::ConsoleToggleKeyboard},
+  };
+  for (auto& e : consoleLearn) {
+    addAndMakeVisible(*e.b);
+    const auto kind = e.k;
+    e.b->onClick = [this, kind] {
+      proc_.midiMap().beginLearn(kind, 0, false);
+    };
+  }
+
   refresh();
   startTimerHz(2);
 }
@@ -603,6 +752,23 @@ void MidiPanel::resized() {
   learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
   row.removeFromLeft(6);
   learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+
+  // Console actions, on their own row under the same idea: things a physical
+  // console's thumb pistons do that the organ file never mentions.
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  consoleHeading_.setBounds(row.removeFromLeft(120));
+  for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
+    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  row.removeFromLeft(120);
+  for (auto* b : {&learnStopList_, &learnKeyboard_}) {
+    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+  }
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);

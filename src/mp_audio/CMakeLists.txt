@@ -10,6 +10,7 @@ add_library(mp_audio STATIC
   MasterpieceProcessor.h MasterpieceProcessor.cpp
   SampleLibrary.h SampleLibrary.cpp
   Metronome.h Metronome.cpp
+  AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
   Convolver.h Convolver.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h

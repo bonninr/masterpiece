@@ -20,6 +20,7 @@
 
 #include "Convolver.h"
 #include "Metronome.h"
+#include "AudioRecorder.h"
 #include "MidiRecorder.h"
 #include "SampleLibrary.h"
 #include "../mp_core/OdfLoader.h"
@@ -109,6 +110,22 @@ public:
   int engageAllStops();
 
   juce::AudioProcessorValueTreeState& apvts() { return apvts_; }
+
+  // A console action a mapped piston asked for, or None if none is waiting.
+  // Reading takes it: the editor collects on its timer and acts on the
+  // message thread, which is the only thread allowed to touch a component.
+  MidiTargetKind takeConsoleAction() {
+    return static_cast<MidiTargetKind>(
+        pendingConsoleAction_.exchange(0, std::memory_order_acq_rel));
+  }
+
+  // Output level, for a meter. The audio thread does the decay itself and
+  // publishes a single value per channel: a reader that polled more slowly
+  // than the blocks arrive would otherwise miss every peak between looks.
+  // Post-fader and post-metronome — what the meter shows is what leaves.
+  float outputPeak(int channel) const {
+    return outPeak_[channel & 1].load(std::memory_order_relaxed);
+  }
 
   // Console input: move a swell shoe / crescendo wheel. Safe to call from the
   // message thread; the audio thread reads the resulting positions per block.
@@ -306,6 +323,28 @@ public:
   bool saveSettings() const;
   // Applies whatever the file holds. Call before reading any audio.
   bool loadSettingsFor(const juce::File& odf);
+
+  // The same keys one tier up: where a newly opened organ STARTS before its
+  // own file, if it has one, is applied on top. Some of these settings are
+  // really about the machine rather than the instrument — whether this disk
+  // wants streaming, whether this much RAM wants 16-bit — and re-choosing
+  // them per organ is answering the same question repeatedly.
+  //
+  // A floor, never an override: an organ that has been configured keeps what
+  // it was given.
+  juce::File globalSettingsFile() const;
+  bool saveGlobalDefaults();
+  bool loadGlobalDefaults();
+
+  // What to reopen when the program starts with no organ named. Held with the
+  // global defaults because it belongs to the program, not to any one organ.
+  juce::File lastOrgan() const;
+  bool reopenLastOrgan() const { return reopenLastOrgan_; }
+  void setReopenLastOrgan(bool on);
+  // Remembering which organ was open must not quietly promote that organ's
+  // settings to everyone's defaults, so this rewrites the file around the
+  // defaults already in it rather than around the live state.
+  void setLastOrgan(const juce::File& odf);
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
@@ -320,6 +359,8 @@ public:
   // stay in time with the organ cannot live outside it.
   Metronome& metronome() { return metronome_; }
   MidiRecorder& recorder() { return recorder_; }
+  // Captures what leaves, minus the metronome. See AudioRecorder.
+  AudioRecorder& audioRecorder() { return audioRecorder_; }
   Convolver& convolver() { return convolver_; }
 
   // MIDI OUT. A physical console lights its own drawstops from what the organ
@@ -337,7 +378,6 @@ public:
   // does not sustain. 0 loads whole files.
   void setPreloadHeadFrames(int64_t frames) {
     preloadHead_ = frames;
-    markSettingsDirty();
   }
   int64_t preloadHeadFrames() const { return preloadHead_; }
 
@@ -347,7 +387,6 @@ public:
   // Applies to the next load, not the one already resident.
   void setSampleStorage(SampleStorage s) {
     samples_.setStorage(s);
-    markSettingsDirty();
   }
   SampleStorage sampleStorage() const { return samples_.storage(); }
 
@@ -356,14 +395,12 @@ public:
   // an organ that stream well. Applies to the next load. See SampleLibrary.
   void setStreamReleases(bool on) {
     samples_.setStreamReleases(on);
-    markSettingsDirty();
   }
   bool streamReleases() const { return samples_.streamReleases(); }
   // Frames of a streamed release that stay resident, and how far ahead of each
   // voice the streamer runs.
   void setStreamHeadFrames(int64_t f) {
     samples_.setStreamHeadFrames(f);
-    markSettingsDirty();
   }
   void setStreamSeconds(double s) { voices_.setStreamSeconds(s); }
   // Zero unless the disk could not keep up, in which case a release went
@@ -386,7 +423,6 @@ public:
   // machine turns it off without a rebuild.
   void setEngineSwitch(const EngineSwitch& sw) {
     graph_.engineSwitch = sw;
-    markSettingsDirty();
   }
   const EngineSwitch& engineSwitch() const { return graph_.engineSwitch; }
 
@@ -499,10 +535,33 @@ private:
   MidiMap midiMap_;
   Metronome metronome_;
   MidiRecorder recorder_;
+  AudioRecorder audioRecorder_;
   Convolver convolver_;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
+  // Written only by the audio thread, read only by the meter. `held_` is the
+  // audio thread's own running value and needs no synchronisation; the atomic
+  // is the copy the UI is allowed to see.
+  std::atomic<int> pendingConsoleAction_{0};
+  std::atomic<float> outPeak_[2]{{0.0f}, {0.0f}};
+  float peakHeld_[2] = {0.0f, 0.0f};
+  // Per-block decay, worked out once in prepareToPlay. A host that varies its
+  // block size shifts the fall slightly; nobody can see that in a lamp, and
+  // it is not worth an exp() per callback to correct.
+  float meterFall_ = 0.5f;
+
   int64_t preloadHead_ = 0;
+  bool reopenLastOrgan_ = true;
+  juce::File lastOrgan_;
+  // One writer and one reader for the keys both settings tiers share, so the
+  // global defaults and an organ's own file cannot drift apart.
+  juce::String settingsBody() const;
+  void applySettingsLine(const juce::String& key, const juce::String& val,
+                         EngineSwitch& sw);
+  // The defaults as they stand on disk, kept verbatim so that writing the
+  // file for any other reason cannot rewrite them from whatever is loaded.
+  juce::String globalBody_;
+  bool writeGlobalFile() const;
   // Reused every block so the audio thread never allocates one.
   juce::MidiBuffer outgoing_;
   // Tagged input, filled by the device callbacks and drained by the audio
