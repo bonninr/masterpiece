@@ -127,6 +127,50 @@ public:
       if (proc_->reopenLastOrgan()) odf = proc_->lastOrgan();
     }
 
+    // Play a MIDI file through the organ as soon as it is up, with the stops
+    // drawn. Together these turn "show me this organ playing" into one
+    // command -- which is what makes it repeatable across a shelf of them,
+    // and what lets the console be filmed while it plays.
+    juce::File playMidi;
+    int drawStops = 0;
+    bool drawAll = false;
+    for (int i = 0; i < args.size(); ++i) {
+      if (args[i] == "--play-midi" && i + 1 < args.size())
+        playMidi = juce::File::getCurrentWorkingDirectory().getChildFile(
+            args[++i].unquoted());
+      else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
+        const auto v = args[++i];
+        if (v == "all") drawAll = true;
+        else drawStops = v.getIntValue();
+      }
+    }
+
+    if (playMidi != juce::File() || drawAll || drawStops > 0) {
+      win_->onLoaded = [this, playMidi, drawAll, drawStops] {
+        if (drawAll) {
+          proc_->engageAllStops();
+        } else if (drawStops > 0) {
+          int n = 0;
+          for (const auto& e : proc_->stopList()) {
+            if (n++ >= drawStops) break;
+            proc_->setStopEngaged(e.stopId, true);
+          }
+        }
+        if (playMidi.existsAsFile()) {
+          if (proc_->recorder().loadFromFile(playMidi)) {
+            // A beat of silence first: a file that starts the instant the
+            // console appears is cut off at the head by every recorder.
+            juce::Timer::callAfterDelay(1200, [this] {
+              proc_->recorder().startPlayback();
+            });
+          } else {
+            juce::Logger::writeToLog("could not read MIDI: " +
+                                     playMidi.getFullPathName());
+          }
+        }
+      };
+    }
+
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
 
     // A fresh installation has no audio device chosen, no MIDI input enabled
@@ -198,6 +242,7 @@ private:
       // and a blank panel.
       ed->onOrganLoaded = [this](const juce::String& name) {
         setName("Masterpiece - " + name);
+        if (onLoaded) onLoaded();
       };
       editor_ = ed;
       setUsingNativeTitleBar(true);
@@ -211,6 +256,9 @@ private:
     }
 
     mp::ui::MasterpieceEditor& editor() { return *editor_; }
+    // Run once the organ is up. Used to start a demonstration performance
+    // without a human having to click through a file dialog first.
+    std::function<void()> onLoaded;
 
     void showSettings(mp::MasterpieceProcessor& proc) {
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
