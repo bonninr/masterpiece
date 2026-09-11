@@ -340,6 +340,12 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     resized();
   };
 
+  addAndMakeVisible(swellButton_);
+  swellButton_.onClick = [this] {
+    showingSwell_ = !showingSwell_;
+    resized();
+  };
+
   addAndMakeVisible(toggleView_);
   toggleView_.onClick = [this] {
     showingConsole_ = !showingConsole_;
@@ -350,7 +356,28 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
   addAndMakeVisible(jambView_);
   jambView_.setViewedComponent(&jamb_, false);
-  addAndMakeVisible(expression_);
+
+  // Scrollbars, made to stop shouting.
+  //
+  // JUCE's default thumb is a bright blue bar the full height of the window.
+  // Next to an organ console that reads as a control -- a fader down the side
+  // of the instrument -- rather than as a scrollbar, and it is the first thing
+  // the eye goes to in a window whose subject is the artwork.
+  //
+  // The console never needs one at all: the artwork is scaled to fit, so it
+  // cannot overflow. The stop list genuinely scrolls, and keeps a slim, dark
+  // vertical one; its content is sized to the viewport width, so the
+  // horizontal bar only ever appeared as a stub.
+  consoleView_.setScrollBarsShown(false, false);
+  jambView_.setScrollBarsShown(true, false);
+  jambView_.setScrollBarThickness(10);
+  for (auto* bar : {&jambView_.getVerticalScrollBar(),
+                    &jambView_.getHorizontalScrollBar()}) {
+    bar->setColour(juce::ScrollBar::thumbColourId, juce::Colour(0xff4c5464));
+    bar->setColour(juce::ScrollBar::trackColourId, juce::Colour(0xff20232a));
+    bar->setColour(juce::ScrollBar::backgroundColourId, juce::Colour(0xff20232a));
+  }
+  addChildComponent(expression_);  // shown by the Swell toggle
   addAndMakeVisible(keyboard_);
   keyboard_.setAvailableRange(24, 108);
   keyboard_.setOctaveForMiddleC(4);
@@ -515,6 +542,10 @@ void MasterpieceEditor::resized() {
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
+  // No swell button on an organ with nothing to enclose.
+  swellButton_.setVisible(expression_.shoeCount() > 0);
+  if (swellButton_.isVisible())
+    swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
@@ -541,25 +572,50 @@ void MasterpieceEditor::resized() {
       keyboard_.setKeyWidth(juce::jmax(
           8.0f, static_cast<float>(keys.getWidth()) / 52.0f));
   }
-  expression_.setBounds(r.removeFromRight(120));
+  // Collapsed, the strip takes no width at all -- it used to remove 120px
+  // whether or not the organ had a single enclosure to show in it.
+  const bool swellVisible = showingSwell_ && expression_.shoeCount() > 0;
+  expression_.setVisible(swellVisible);
+  if (swellVisible) expression_.setBounds(r.removeFromRight(120));
 
   consoleView_.setVisible(showingConsole_);
   jambView_.setVisible(!showingConsole_);
   if (showingConsole_) {
-    consoleView_.setBounds(r);
     // Scale the artwork to fit rather than scrolling a 1536x864 console
     // through a smaller window. JUCE routes mouse events back through the
     // transform, so drawstops stay clickable at any zoom.
     const auto art = console_.artworkBounds();
-    if (art.getWidth() > 0 && art.getHeight() > 0) {
+    if (art.getWidth() <= 0 || art.getHeight() <= 0) {
+      consoleView_.setBounds(r);
+    } else {
       console_.setTransform({});
       console_.setBounds(0, 0, art.getRight(), art.getBottom());
       const float sx = static_cast<float>(r.getWidth()) /
                        static_cast<float>(art.getRight());
       const float sy = static_cast<float>(r.getHeight()) /
                        static_cast<float>(art.getBottom());
-      const float scale = juce::jmin(sx, sy, 1.0f);
-      if (scale < 1.0f) console_.setTransform(juce::AffineTransform::scale(scale));
+      // Scale UP as well as down. The old cap at 1.0 meant a console drawn
+      // smaller than the window sat at its native size with a band of dead
+      // background beside it, which read as part of the program rather than
+      // as empty space.
+      //
+      // Uniformly, and never to fill the width exactly: the console is a
+      // photograph of a real instrument, so stretching it to the window's
+      // aspect would visibly distort the case and the keys. Whichever
+      // dimension runs out first sets the size.
+      const float scale = juce::jmin(sx, sy);
+      console_.setTransform(juce::AffineTransform::scale(scale));
+
+      // Centre by moving the VIEWPORT, not the console inside it: a viewport
+      // positions its own viewed component, so a translation applied to the
+      // console is overwritten the moment the viewport lays out. Sizing the
+      // viewport to the scaled artwork and centring that leaves the spare
+      // width split evenly either side instead of banked in one strip.
+      const int w = juce::roundToInt(static_cast<float>(art.getRight()) * scale);
+      const int h = juce::roundToInt(static_cast<float>(art.getBottom()) * scale);
+      consoleView_.setBounds(
+          r.withSizeKeepingCentre(juce::jmin(w, r.getWidth()),
+                                  juce::jmin(h, r.getHeight())));
     }
   } else {
     jambView_.setBounds(r);

@@ -47,6 +47,10 @@ public:
   void rebuild();
   void resized() override;
 
+  // How many enclosures this organ actually has. An unenclosed organ should
+  // not be offered a swell control at all, rather than an empty strip.
+  int shoeCount() const { return static_cast<int>(shoes_.size()); }
+
 private:
   MasterpieceProcessor& proc_;
   std::vector<std::unique_ptr<juce::Slider>> shoes_;
@@ -144,6 +148,7 @@ private:
   juce::TextButton toggleView_{"Stop list"};
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};
+  juce::TextButton swellButton_{"Swell"};
   // The registration sequencer. Two thumb pistons and a frame number, which is
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —
@@ -166,6 +171,11 @@ private:
   // there for a machine with no MIDI console attached.
   bool showingKeyboard_ = false;
   bool showingConsole_ = true;
+  // The expression shoes as a strip of faders down the side. Off by default:
+  // it took 120px of console width permanently, and on a set that draws its
+  // own shoes it was showing the same control twice. Kept because a set whose
+  // shoes are not drawn has no other way to work them with a mouse.
+  bool showingSwell_ = false;
   StopJamb jamb_;
   ExpressionBar expression_;
   juce::MidiKeyboardComponent keyboard_;
