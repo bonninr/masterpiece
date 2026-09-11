@@ -57,3 +57,8 @@ DerivedData/
 # OS clutter
 .DS_Store
 Thumbs.db
+
+# Secrets. Never committed, to either repo.
+.env
+.env.*
+*.key

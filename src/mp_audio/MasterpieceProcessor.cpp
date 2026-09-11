@@ -930,7 +930,7 @@ bool MasterpieceProcessor::saveSettings() const {
   {
     auto writeSet = [&text](const char* slot, const VoicingSet& v) {
       auto line = [&](const char* what, Id id, const PipeVoicing& pv) {
-        text << "voicing " << slot << " " << what << " " << juce::String(id)
+        text << "voicingadj " << slot << " " << what << " " << juce::String(id)
              << " " << juce::String(pv.gainDb, 3) << " "
              << juce::String(pv.tuningCents, 3) << " "
              << juce::String(pv.brightnessDb, 3) << " "
@@ -978,8 +978,13 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
       continue;
     }
-    if (key == "voicing") {
-      // "voicing a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance>"
+    if (key == "voicingadj") {
+      // "voicingadj a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance>"
+      //
+      // NOT "voicing": settingsBody already writes `voicing 0|1` for the DSP
+      // engine switch, and this handler runs BEFORE applySettingsLine. Sharing
+      // the key made this swallow the switch's line and silently stop
+      // restoring it -- turn Voicing off, save, reload, and it was on again.
       auto tok = juce::StringArray::fromTokens(val, " ", "");
       tok.removeEmptyStrings();
       if (tok.size() < 7) continue;
