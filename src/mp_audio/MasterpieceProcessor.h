@@ -96,6 +96,17 @@ public:
                        int64_t maxFramesPerSample = 0,
                        bool graphicsOnly = false);
   void loadOrganAsync(const juce::File& odfFile);
+
+  // Where a load has got to, and how to stop it. The progress object is read
+  // by a UI timer while the loader's worker threads write it, which is why
+  // everything in it is atomic.
+  const LoadProgress& loadProgress() const { return loadProgress_; }
+  // Ask the running load to stop. Returns immediately; the load ends at the
+  // next file boundary and reports itself cancelled.
+  void cancelLoad() {
+    loadProgress_.cancelled.store(true, std::memory_order_release);
+    juce::Logger::writeToLog("load: cancel requested");
+  }
   const OrganModel& organModel() const { return model_; }
   const SampleLibrary& sampleLibrary() const { return samples_; }
 
@@ -712,6 +723,7 @@ private:
   // load. 1.0 for a set that declares none.
   float organTrimGain_ = 1.0f;
   double windDepth_ = 1.0;
+  LoadProgress loadProgress_;
   bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;

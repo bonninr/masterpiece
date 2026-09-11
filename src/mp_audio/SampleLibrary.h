@@ -15,6 +15,7 @@
 // with audio stopped, because a voice may still hold a pointer into one.
 #pragma once
 #include "../mp_core/OrganModel.h"
+#include "../mp_core/LoadProgress.h"
 #include "../mp_sampler/VoiceEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -65,9 +66,13 @@ public:
   // always extended to cover the sustain loop, because a head that stops short
   // of the loop makes the note die rather than merely preloading less.
   // 0 means the whole file (Preloaded mode).
+  // `progress`, when given, is updated as files are decoded and is polled for
+  // cancellation between them. A cancelled load returns whatever it had
+  // managed so far; the caller decides that this is not an organ.
   SampleLoadReport loadAll(const OrganModel& model, const std::string& organRootDir,
                            int64_t maxFramesPerSample = 0,
-                           LoopSelection loopSelection = LoopSelection::Longest);
+                           LoopSelection loopSelection = LoopSelection::Longest,
+                           LoadProgress* progress = nullptr);
 
   // How resident audio is stored. An organ IS its sample data, so this is the
   // largest single lever on how big a set a machine can hold: Int16 halves the

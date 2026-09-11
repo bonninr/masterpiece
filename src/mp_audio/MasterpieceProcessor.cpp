@@ -1836,6 +1836,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   LoadResult result;
   LoadPhases phases;
 
+  // Whoever starts a load clears the cancel flag, so a Cancel that arrived
+  // after the previous load already finished cannot kill this one.
+  loadProgress_.cancelled.store(false, std::memory_order_release);
+  loadProgress_.beginPhase(LoadProgress::Phase::ReadingDefinition);
+
   if (!odfFile.existsAsFile()) {
     result.error = "no such file: " + odfFile.getFullPathName().toStdString();
     return result;
@@ -2062,7 +2067,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   } else {
     const int64_t head =
         maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
-    result.samples = samples_.loadAll(model_, opts.organRootDir, head);
+    result.samples = samples_.loadAll(model_, opts.organRootDir, head,
+                                      LoopSelection::Longest, &loadProgress_);
+  }
+
+  // A cancelled load is NOT a partly-loaded organ. Half an instrument that
+  // plays some notes and silently drops others is worse than none: the player
+  // would be debugging their sample set rather than remembering they pressed
+  // Cancel. Drop what was read and say so plainly.
+  if (loadProgress_.isCancelled()) {
+    juce::Logger::writeToLog("load: cancelled, discarding partial organ");
+    samples_.clear();
+    model_ = OrganModel{};
+    voices_.setSampleProvider(samples_.provider());
+    loadProgress_.phase.store(LoadProgress::Phase::Cancelled,
+                              std::memory_order_release);
+    result.ok = false;
+    result.error = "cancelled";
+    return result;
   }
   voices_.setSampleProvider(samples_.provider());
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
@@ -2087,6 +2109,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   setLastOrgan(odfFile);
 
   result.stopsEngaged = 0;
+  loadProgress_.phase.store(LoadProgress::Phase::Done,
+                            std::memory_order_release);
   result.ok = true;
   return result;
 }

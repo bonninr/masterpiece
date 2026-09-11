@@ -1,5 +1,7 @@
 #include "Ui.h"
 
+#include "LoadingDialog.h"
+
 namespace mp::ui {
 namespace {
 
@@ -362,20 +364,58 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
 
 void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
+  if (loading_) return;  // one load at a time; the dialog is the interlock
+  loading_ = true;
   top_.setStatus("Loading " + odf.getFileName() + "...");
-  // Synchronous on purpose for now: a partly-built console is worse than a
-  // brief freeze, and the load is already parallel internally. Moving this to
-  // a background thread needs a progress UI, which is M4 work.
-  const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0,
-                                      graphicsOnly);
+
+  // The load runs on its own thread and the message loop keeps running, so
+  // the window paints and the Cancel button answers. Doing this work on the
+  // message thread is what used to whiten the window for minutes and let
+  // Windows offer to kill the program.
+  auto dialog = std::make_unique<LoadingDialog>(proc_, odf.getFileNameWithoutExtension());
+  dialog->onCancel = [this] { proc_.cancelLoad(); };
+  dialog->setSize(460, 190);
+
+  juce::DialogWindow::LaunchOptions opts;
+  opts.content.setOwned(dialog.release());
+  opts.dialogTitle = "Loading";
+  opts.dialogBackgroundColour = juce::Colour(0xff15171c);
+  // No escape-to-close and no title-bar close: leaving this window while the
+  // load runs would strand it with nothing watching and no way back.
+  opts.escapeKeyTriggersCloseButton = false;
+  opts.useNativeTitleBar = true;
+  opts.resizable = false;
+  loadWindow_ = opts.launchAsync();
+
+  juce::Thread::launch([this, odf, graphicsOnly] {
+    const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+    // Everything past here touches components, so it belongs to the message
+    // thread. The lambda copies what it needs; the loader thread ends here.
+    juce::MessageManager::callAsync(
+        [this, odf, graphicsOnly, result] { finishLoad(odf, graphicsOnly, result); });
+  });
+}
+
+// The message-thread half of a load: close the dialog, then either report the
+// failure or build the console from the model that is now in place.
+void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
+                                   const MasterpieceProcessor::LoadResult& result) {
+  loading_ = false;
+  if (loadWindow_ != nullptr) {
+    delete loadWindow_;
+    loadWindow_ = nullptr;
+  }
+
   if (!result.ok) {
-    // Keep it in status_, not just on screen: the timer rewrites the bar every
-    // quarter second, and a failure that vanishes is worse than none at all.
-    status_ = "Failed to load " + odf.getFileName() + ": " +
-              juce::String(result.error);
+    // Cancelling is a choice, not a fault, and must not look like one.
+    status_ = result.error == "cancelled"
+                  ? "Load cancelled - no organ is loaded"
+                  : "Failed to load " + odf.getFileName() + ": " +
+                        juce::String(result.error);
     top_.setStatus(status_);
     return;
   }
+
   // Timed separately from the model: this is where the console artwork is
   // actually decoded, and on a set with a thousand bitmaps it can dominate a
   // load that has no audio in it at all.

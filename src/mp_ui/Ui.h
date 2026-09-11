@@ -109,6 +109,17 @@ public:
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
   // Ask for an organ file and load it. Shared with the first-run wizard.
   void chooseAndLoadOrgan();
+
+private:
+  // The message-thread half of a load, run once the loader thread is done.
+  void finishLoad(const juce::File& odf, bool graphicsOnly,
+                  const MasterpieceProcessor::LoadResult& result);
+  // Non-owning: the dialog window owns itself once launched async, and this
+  // is how it gets closed when the load ends.
+  juce::DialogWindow* loadWindow_ = nullptr;
+  bool loading_ = false;
+
+public:
   // Fired once an organ is on screen, with its name. The host puts it in the
   // window title, which is the only load-progress signal visible from outside
   // the process — the status bar cannot be read, and a fixed wait is a guess
