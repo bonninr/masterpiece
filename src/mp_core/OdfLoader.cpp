@@ -410,6 +410,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // real set names one.
     layer.ampScalingControlId =
         fieldInt(row, "AmpLvl_ScalingContinuousControlID", nullptr, 0);
+    layer.pitchControlId =
+        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", nullptr, 0);
+    layer.pitchSensitivityHzPerUnit = fieldDouble(
+        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", nullptr, 0.0);
     pipeIt->second->layers.push_back(std::move(layer));
     layerById[layerId] = &pipeIt->second->layers.back();
   });

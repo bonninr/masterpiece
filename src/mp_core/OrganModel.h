@@ -105,6 +105,15 @@ struct PipeLayer {
   // double linkage combines it with the group level, and the answer lands
   // here. 0 means the layer plays at its declared gain and nothing else.
   Id ampScalingControlId = 0;
+  // Detuning, as a control and a rate. An organ drifts out of tune pipe by
+  // pipe, never as a block, so a set declares a control per division and zone
+  // and gives each pipe its own sensitivity — Nancy has 245 such controls and
+  // a different rate on almost every layer. offsetHz = value * sensitivity.
+  //
+  // Both sit at zero until a player asks for detuning, so a set that ships
+  // this costs nothing until it is used.
+  Id pitchControlId = 0;
+  double pitchSensitivityHzPerUnit = 0.0;
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;
   double tremDepthDb = 0.0;

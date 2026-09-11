@@ -128,9 +128,18 @@ public:
     return static_cast<float>(controls_.normalised(layer.ampScalingControlId));
   }
 
-  // The same answer the voice engine uses, for tools that want to report on
-  // it without starting a note.
+  // The same answers the voice engine uses, for tools that want to report on
+  // them without starting a note. Shared rather than reimplemented: a
+  // diagnostic that computes the figure its own way will eventually disagree
+  // with the engine, and then it is worse than having none.
   float layerLevelFor(const PipeLayer& layer) const { return layerLevel(layer); }
+  double detuneOffsetHzFor(const PipeLayer& layer, double targetHz) const {
+    if (layer.pitchControlId == 0) return 0.0;
+    return detunedTargetHz(targetHz, detuneControlValue(layer),
+                           detuneCentre(layer),
+                           layer.pitchSensitivityHzPerUnit) -
+           targetHz;
+  }
 
   // A console action a mapped piston asked for, or None if none is waiting.
   // Reading takes it: the editor collects on its timer and acts on the
@@ -459,7 +468,29 @@ private:
   void handleMidi(const juce::MidiBuffer& midi);
   // Resampling ratio for one pipe playing one recorded sample: the pitch we
   // want over the pitch the file actually holds.
-  double playbackRatioFor(const Pipe& pipe, const SampleRef& sample) const;
+  // `layer` is needed as well as the pipe because detuning is declared per
+  // layer: the control that drives it and the Hz it moves per control unit
+  // both live there.
+  double playbackRatioFor(const Pipe& pipe, const SampleRef& sample,
+                          const PipeLayer& layer) const;
+
+  // Where this layer's detuning currently stands. Zero unless the organ
+  // declares detuning AND a player has asked for some — and zero flat out
+  // under simpleWavOnly, which is the switch a slow machine relies on.
+  // The arithmetic itself is detunedTargetHz(), which is JUCE-free and
+  // therefore testable without an organ.
+  int detuneControlValue(const PipeLayer& layer) const {
+    if (graph_.engineSwitch.simpleWavOnly || layer.pitchControlId == 0)
+      return 0;
+    return controls_.value(layer.pitchControlId);
+  }
+
+  // The middle of that control's travel, which is where "no detuning" sits.
+  double detuneCentre(const PipeLayer& layer) const {
+    const auto it = model_.continuousControls.find(layer.pitchControlId);
+    if (it == model_.continuousControls.end()) return 0.0;
+    return (it->second.minValue + it->second.maxValue) / 2.0;
+  }
   // A key press on one of the organ's playable keyboards. The channel decides
   // which keyboard, and the key-flow graph decides which divisions it reaches
   // — a coupler is nothing more than an edge of that graph.

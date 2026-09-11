@@ -768,7 +768,8 @@ bool MasterpieceProcessor::loadMidiMap() {
 }
 
 double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
-                                             const SampleRef& sample) const {
+                                             const SampleRef& sample,
+                                             const PipeLayer& layer) const {
   // What this pipe must sound at. Two modes: at the original instrument's own
   // pitch (which is why anyone samples a particular organ), or at a tempered
   // pitch derived from the keyboard. A pipe with no declared original pitch
@@ -782,6 +783,15 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
                             model_.basePitchHz, pipe.baseTuningDeviationCents,
                             organTuning_, 0);
   }
+
+  // Detuning rides on the target, not on the recorded pitch: it is a change
+  // to what this pipe should sound, not a claim about what the file holds.
+  // Applied to the original-organ path too — an instrument left out of tune
+  // was out of tune at its own pitch as well. Zero under simpleWavOnly.
+  if (layer.pitchControlId != 0)
+    targetHz = detunedTargetHz(targetHz, detuneControlValue(layer),
+                               detuneCentre(layer),
+                               layer.pitchSensitivityHzPerUnit);
 
   // What the file actually holds. An organ sample is recorded from its own
   // pipe, so this is normally close to targetHz and the ratio near 1.0 —
@@ -891,7 +901,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
           // Pitch comes from the solver, against the pitch the FILE holds —
           // not against the organ's reference A. See playbackRatioFor().
           vs.ratio = playbackRatioFor(
-              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample);
+              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
+              layer);
           vs.gain = juce::Decibels::decibelsToGain(
                         static_cast<float>(layer.gainDb), -100.0f) *
                     layerLevel(layer);
@@ -1331,13 +1342,19 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       continue;
     controls_.setValue(id, v);
   }
-  // Always, not only when something was restored. Derived controls — the ones
-  // a linkage computes, including every "mixed level" a pipe layer reads —
-  // otherwise sit at whatever default they declare until a player happens to
-  // move something, and the organ plays at a level nobody chose. One settle
-  // here rather than one per restored control: the graph is the same either
-  // way and a hundred sliders would otherwise be a hundred passes.
-  controls_.propagate(0, &engagedSwitches_);
+  // Only when something was actually restored, and pinned to nothing.
+  //
+  // It is tempting to settle the whole graph here so that derived controls
+  // hold computed values rather than declared ones. Measured on a real set,
+  // that is worse: Nancy's declared defaults are the organ's own answer for
+  // the at-rest state, and recomputing them from a linkage graph whose
+  // LinkTypeCode, SourceControlValueIndex and inertia model we do not
+  // implement silenced 488 layers and detuned 3056 of them by up to 50 Hz —
+  // nearly two semitones, from controls that all declare a default of zero.
+  //
+  // Until those semantics are implemented, the declared defaults win.
+  if (!pendingControlValues_.empty())
+    controls_.propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
