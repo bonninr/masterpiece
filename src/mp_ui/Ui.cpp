@@ -491,10 +491,12 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     keyboard_.setMidiChannel(best);
   }
 
-  // A set whose manuals are backdrop photos draws no keys, so the fallback
-  // piano is the only thing playable with the mouse: show it rather than
-  // leaving a silent console and a hidden piano.
-  if (!proc_.hasDrawnManuals()) showingKeyboard_ = true;
+  // The on-screen keyboard stays hidden on every organ, including the sets
+  // whose manuals are backdrop photos and draw no clickable keys. It used to
+  // force itself on for those, on the reasoning that it was the only thing
+  // playable with a mouse -- but a mouse is not how this is played, and the
+  // strip sat across the bottom of every console that happened to be
+  // photographed that way. The Keys button is there when it is wanted.
 
   showingConsole_ = console_.hasArtwork();
   toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
