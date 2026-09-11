@@ -83,46 +83,15 @@ jobs:
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
             libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev
 
+      # In a script rather than inline, so the setup this job depends on can be
+      # rehearsed off the runner. These two jobs produce a binary that cannot
+      # be run here to check, which makes being able to reproduce them locally
+      # worth more than it is for the native ones.
       - name: Dependencies (Linux -> ARM cross-build)
         if: runner.os == 'Linux' && matrix.arm
-        run: |
-          set -e
-          CODENAME=$(awk -F= '$1=="UBUNTU_CODENAME" {print $2}' /etc/os-release)
-
-          # Ubuntu 24.04 keeps its sources in deb822 files that declare no
-          # Architectures. Adding armhf without pinning these first makes apt
-          # ask the amd64-only mirror for armhf indexes and fail the update.
-          for f in /etc/apt/sources.list.d/*.sources; do
-            [ -e "$f" ] || continue
-            grep -q '^Architectures:' "$f" || \
-              sudo sed -i '/^Types: deb$/a Architectures: amd64' "$f"
-          done
-
-          # ARM lives on ports.ubuntu.com, including -security, for which
-          # security.ubuntu.com answers 404.
-          ARCH=${{ matrix.debarch }}
-          TRIPLE=${{ matrix.triple }}
-          sudo tee /etc/apt/sources.list.d/$ARCH.sources >/dev/null <<EOF
-          Types: deb
-          URIs: http://ports.ubuntu.com/ubuntu-ports/
-          Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security
-          Components: main restricted universe multiverse
-          Architectures: $ARCH
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-          EOF
-
-          sudo dpkg --add-architecture $ARCH
-          sudo apt-get update
-
-          # Package names are gcc-<triple>, not <triple>-gcc; the latter is the
-          # binary name and matches no package.
-          sudo apt-get install -y cmake ninja-build pkg-config \
-            gcc-$TRIPLE g++-$TRIPLE binutils-$TRIPLE \
-            libasound2-dev:$ARCH libx11-dev:$ARCH libxrandr-dev:$ARCH \
-            libxinerama-dev:$ARCH libxcursor-dev:$ARCH libxcomposite-dev:$ARCH \
-            libfreetype6-dev:$ARCH libfontconfig1-dev:$ARCH \
-            libglu1-mesa-dev:$ARCH libxi-dev:$ARCH
-          $TRIPLE-g++ --version
+        # Invoked through bash rather than directly: the repository is worked
+        # on from Windows, where the executable bit is not reliably carried.
+        run: bash cmake/ci-arm-multiarch.sh ${{ matrix.debarch }} ${{ matrix.triple }}
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
