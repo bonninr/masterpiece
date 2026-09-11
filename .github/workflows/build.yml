@@ -110,16 +110,27 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 
-      # A cross-built binary cannot run here, so confirm its machine type.
+      # A cross-built binary cannot run here, so confirm its machine type
+      # instead -- and confirm it is the RIGHT machine type, because a
+      # toolchain that silently fell back to the host compiler would otherwise
+      # produce a green x86 build labelled as the Pi one.
       - name: Check ARM output
         if: matrix.arm
-        run: file build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+        run: |
+          APP=$(find build/${{ matrix.preset }}/apps/MasterpieceApp -name Masterpiece -type f | head -1)
+          test -n "$APP" || { echo "no binary was produced"; exit 1; }
+          file "$APP"
+          file "$APP" | grep -q "${{ matrix.debarch == 'arm64' && 'ARM aarch64' || 'ARM, EABI' }}"
 
       - name: Launch check (Linux)
         if: runner.os == 'Linux' && !matrix.arm
         run: |
           sudo apt-get install -y xvfb
-          APP=build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Masterpiece
+          # Located rather than spelled out: JUCE puts artefacts under a
+          # per-configuration subdirectory, so the path carries a Release/
+          # that is easy to leave out and gives "no such file" when you do.
+          APP=$(find build/${{ matrix.preset }}/apps/MasterpieceApp -name Masterpiece -type f | head -1)
+          test -n "$APP" || { echo "no binary was produced"; exit 1; }
           chmod +x "$APP"
           set +e
           timeout --signal=TERM 20s xvfb-run -a -s "-screen 0 1280x800x24" "$APP"

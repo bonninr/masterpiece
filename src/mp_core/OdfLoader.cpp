@@ -305,7 +305,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (isEncryptedFile(file)) reportEncrypted(outModel, outDiag, file);
   }
   if (outModel.hasEncryptedSamples)
-    outDiag.warnings.emplace_back("ODF references encrypted HBW/HBX samples (v1: detect + explain, load in Hauptwerk)");
+    // Said plainly, and without an internal issue number: a player reading
+    // this needs to know the set cannot be opened by anything but the program
+    // it was encrypted for, and that nothing here is broken.
+    outDiag.warnings.emplace_back(
+        "This set's samples are encrypted (.hbw/.hbx). Encrypted sets can only "
+        "be played by the program they were encrypted for.");
 
   // ---- M1.2 validator: missing WAVs on disk ----
   if (!opts.organRootDir.empty()) {

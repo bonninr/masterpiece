@@ -24,11 +24,12 @@ bool SampleHandle::open(const std::string& wavPath, std::string& error) {
                       });
   };
   if (hasSuffix(".hbw") || hasSuffix(".hbx")) {
-    error = "encrypted HBW/HBX (ADR-003): load in Hauptwerk";
+    error = "encrypted sample (.hbw/.hbx): only the program it was encrypted "
+            "for can read it";
     return false;
   }
   if (!(hasSuffix(".wav") || hasSuffix(".wv"))) {
-    error = "unsupported sample format (ADR-011: .wav or .wv only)";
+    error = "unsupported sample format: .wav and .wv only";
     return false;
   }
   impl = std::make_shared<Impl>();
