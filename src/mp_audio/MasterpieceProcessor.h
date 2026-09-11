@@ -113,10 +113,25 @@ public:
 
   // The organ's own level for a layer, as a linear gain factor.
   //
-  // This is what makes a set's settings page do something: its noise-level
-  // and audio-group sliders feed a control through the linkage graph, and
-  // every layer names the control that scales it. A layer naming none, or
-  // naming one this organ does not declare, plays at its declared gain.
+  // NOT YET APPLIED TO AUDIO, deliberately. Every layer of a real set names a
+  // scaling control, and the value reaching it is computed through the
+  // linkage graph — which we do not yet implement faithfully enough to hand
+  // it the volume knob:
+  //
+  //   - BinaryOperationCode 7 appears on Azzio and is rejected by the loader,
+  //     which only knows the add/subtract/multiply it could confirm.
+  //   - InvertSourceControlValue is not parsed at all.
+  //   - LinkTypeCode is not interpreted.
+  //
+  // Measured consequence on Azzio: 537 of its 996 layers come out silent,
+  // because "Scaling Whole Normal" sits at its declared default of 0 and only
+  // the tremulant alternates sound. Half the organ, permanently tremulant.
+  // Nancy looks plausible on the same code, which is exactly why one organ is
+  // not enough to judge it by.
+  //
+  // Kept, parsed and reported by mp-render --levels so the gap is visible and
+  // measurable rather than forgotten. It reaches the voice the day the graph
+  // is faithful.
   //
   // Read at voice start, never per sample: a level is a control-rate thing
   // and a note already sounding keeps the gain it began with, exactly as a

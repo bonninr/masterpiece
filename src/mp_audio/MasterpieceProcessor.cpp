@@ -904,8 +904,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
               pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
               layer);
           vs.gain = juce::Decibels::decibelsToGain(
-                        static_cast<float>(layer.gainDb), -100.0f) *
-                    layerLevel(layer);
+              static_cast<float>(layer.gainDb), -100.0f);
           // A layer may declare its own loop, overriding the audio file's.
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;
@@ -1159,8 +1158,7 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // pipe speech, so temperament must not touch them.
       vs.ratio = 1.0;
       vs.gain = juce::Decibels::decibelsToGain(
-                    static_cast<float>(layer.gainDb), -100.0f) *
-                layerLevel(layer);
+          static_cast<float>(layer.gainDb), -100.0f);
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);
