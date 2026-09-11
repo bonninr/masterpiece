@@ -23,6 +23,12 @@ PROJECT_SUMMARY.md
 README_BUILD.md
 ROADMAP_M1-M4.md
 
+# The local tooling repository. Same working tree, different history: it
+# versions the development tree this repository deliberately leaves out, so
+# that work still has a baseline to diff and revert against. It has no remote
+# and never pushes.  git tool <command>
+/.git-local/
+
 # CMake user overrides
 CMakeUserPresets.json
 

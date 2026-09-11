@@ -145,6 +145,14 @@ int MasterpieceProcessor::busForPipe(Id pipeId) const {
 
 void MasterpieceProcessor::advanceTremulants(int numFrames) {
 #if MP_ENABLE_DSP
+  // Bypassed wholesale rather than per sample. The LFO already answers zero
+  // under these switches, but it was still being asked once per frame per
+  // tremulant — a few thousand calls a block to compute nothing, on exactly
+  // the machines the switch exists to rescue.
+  if (graph_.engineSwitch.simpleWavOnly || !graph_.engineSwitch.enableTremulant) {
+    voices_.setTremMods(nullptr, 0);
+    return;
+  }
   if (tremOrder_.empty() || numFrames <= 0) {
     voices_.setTremMods(nullptr, 0);
     return;
@@ -885,7 +893,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
           vs.ratio = playbackRatioFor(
               pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample);
           vs.gain = juce::Decibels::decibelsToGain(
-              static_cast<float>(layer.gainDb), -100.0f);
+                        static_cast<float>(layer.gainDb), -100.0f) *
+                    layerLevel(layer);
           // A layer may declare its own loop, overriding the audio file's.
           vs.loopStartOverride = layer.loopStartFrames;
           vs.loopEndOverride = layer.loopEndFrames;
@@ -1139,7 +1148,8 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // pipe speech, so temperament must not touch them.
       vs.ratio = 1.0;
       vs.gain = juce::Decibels::decibelsToGain(
-          static_cast<float>(layer.gainDb), -100.0f);
+                    static_cast<float>(layer.gainDb), -100.0f) *
+                layerLevel(layer);
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);
@@ -1179,7 +1189,12 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Room before level: the convolver is part of the instrument's sound, and
   // the master fader is the last thing in the chain.
-  convolver_.process(buffer);
+  //
+  // Skipped entirely under simpleWavOnly. An FFT convolution is the most
+  // expensive thing in this callback by a wide margin, and the switch is
+  // called "no DSP" — a machine that needs it needs this gone more than it
+  // needs anything else gone.
+  if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(buffer);
   buffer.applyGain(*apvts_.getRawParameterValue("masterGain"));
 
   // Capture before the metronome. A click track belongs to the practice room,
@@ -1316,10 +1331,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       continue;
     controls_.setValue(id, v);
   }
-  // One settle at the end rather than per control: the linkages are the same
-  // either way and a hundred sliders is a hundred passes otherwise.
-  if (!pendingControlValues_.empty())
-    controls_.propagate(0, &engagedSwitches_);
+  // Always, not only when something was restored. Derived controls — the ones
+  // a linkage computes, including every "mixed level" a pipe layer reads —
+  // otherwise sit at whatever default they declare until a player happens to
+  // move something, and the organ plays at a level nobody chose. One settle
+  // here rather than one per restored control: the graph is the same either
+  // way and a hundred sliders would otherwise be a hundred passes.
+  controls_.propagate(0, &engagedSwitches_);
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.

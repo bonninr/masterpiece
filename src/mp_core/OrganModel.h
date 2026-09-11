@@ -98,6 +98,13 @@ struct PipeLayer {
   std::vector<ReleaseSample> releases;
   int optimalChannel = 0; // AudioOut_OptimalChannelFormatCode (M2.1 stored, M4 routed)
   int optimalResolution = 0; // AudioOut_OptimalSampleResolutionCode
+  // The control that scales this layer's amplitude. EVERY layer names one —
+  // it is how an organ's own level sliders reach the pipework. A noise layer
+  // points at its audio group's noise level; a pipe layer at that group's
+  // mixed level for its division. The player moves a percentage slider, a
+  // double linkage combines it with the group level, and the answer lands
+  // here. 0 means the layer plays at its declared gain and nothing else.
+  Id ampScalingControlId = 0;
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;
   double tremDepthDb = 0.0;
@@ -465,6 +472,31 @@ struct ContinuousControlLinkage {
   int offset = 0;
 };
 
+// Two controls combined into a third. This is how an organ builds a level out
+// of several sliders: "AG 0 Noises 0" is the Close audio-group level TIMES the
+// key-action noise level, renormalised by a coefficient of 1/127 so the
+// product lands back in 0..127.
+//
+//   dest = destCoefficient * op(first*firstCoef + firstInc,
+//                               second*secondCoef + secondInc)
+//
+// Operation codes, each confirmed against the organ's own names and declared
+// defaults rather than guessed: 1 adds (a row named "SpeedSum"), 2 subtracts
+// (127 - 127 = 0, which is the destination's stated default), 3 multiplies.
+// Anything else is reported and leaves its destination alone (ADR-002).
+struct ContinuousControlDoubleLinkage {
+  Id destControlId = 0;
+  Id firstControlId = 0;
+  Id secondControlId = 0;
+  int operationCode = 0;
+  double firstCoefficient = 1.0;
+  double firstIncrement = 0.0;
+  double secondCoefficient = 1.0;
+  double secondIncrement = 0.0;
+  double destCoefficient = 1.0;
+  double destIncrement = 0.0;
+};
+
 struct Tremulant {
   Id tremulantId = 0;
   std::string name;
@@ -689,6 +721,7 @@ struct OrganModel {
   std::unordered_map<Id, std::vector<ContinuousControlImageStage>>
       continuousControlStages;
   std::vector<ContinuousControlLinkage> controlLinkages;        // M2.4
+  std::vector<ContinuousControlDoubleLinkage> controlDoubleLinkages;
   // M3: shoe positions that move switches. Ordered, because a sweep fires the
   // thresholds it crosses in the order it crosses them, and the last one to
   // fire decides the registration.

@@ -111,6 +111,27 @@ public:
 
   juce::AudioProcessorValueTreeState& apvts() { return apvts_; }
 
+  // The organ's own level for a layer, as a linear gain factor.
+  //
+  // This is what makes a set's settings page do something: its noise-level
+  // and audio-group sliders feed a control through the linkage graph, and
+  // every layer names the control that scales it. A layer naming none, or
+  // naming one this organ does not declare, plays at its declared gain.
+  //
+  // Read at voice start, never per sample: a level is a control-rate thing
+  // and a note already sounding keeps the gain it began with, exactly as a
+  // pipe does when someone moves a fader.
+  float layerLevel(const PipeLayer& layer) const {
+    if (layer.ampScalingControlId == 0) return 1.0f;
+    if (model_.continuousControls.count(layer.ampScalingControlId) == 0)
+      return 1.0f;
+    return static_cast<float>(controls_.normalised(layer.ampScalingControlId));
+  }
+
+  // The same answer the voice engine uses, for tools that want to report on
+  // it without starting a note.
+  float layerLevelFor(const PipeLayer& layer) const { return layerLevel(layer); }
+
   // A console action a mapped piston asked for, or None if none is waiting.
   // Reading takes it: the editor collects on its timer and acts on the
   // message thread, which is the only thread allowed to touch a component.
