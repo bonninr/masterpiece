@@ -782,6 +782,120 @@ void MidiPanel::resized() {
   note_.setBounds(r);
 }
 
+// ------------------------------------------------------------ favourites
+
+FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Favourite organs");
+  addAndMakeVisible(addCurrent_);
+  addCurrent_.onClick = [this] {
+    const int slot = proc_.addCurrentOrganToFavourites();
+    if (slot == 0)
+      status_.setText("Nothing to add - load an organ first, or all 64 slots "
+                      "are taken",
+                      juce::dontSendNotification);
+    else
+      status_.setText("On slot " + juce::String(slot),
+                      juce::dontSendNotification);
+    refresh();
+  };
+  addAndMakeVisible(status_);
+  styleLabel(status_, "");
+  addAndMakeVisible(viewport_);
+  viewport_.setViewedComponent(&rows_, false);
+  viewport_.setScrollBarsShown(true, false);
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "A slot number is something a thumb piston can be mapped to; a "
+            "file path is not. That is what these are for: on a console you "
+            "are standing at a keyboard with both hands busy, and finding a "
+            "19 GB set in a file browser is not something that happens "
+            "between two pieces.\n\n"
+            "Gaps are kept. Removing slot 1 does not renumber slot 5, because "
+            "the numbers are the thing you learned.\n\n"
+            "Loading starts in the background - a large set takes a while, and "
+            "the organ you are playing keeps sounding until the new one is "
+            "ready.");
+  refresh();
+}
+
+void FavouritesPanel::refresh() {
+  slots_.clear();
+  labels_.clear();
+  loads_.clear();
+  removes_.clear();
+  rows_.removeAllChildren();
+
+  const auto& bank = proc_.favourites().organs;
+  slots_ = bank.used();
+  for (int slot : slots_) {
+    const auto& fav = bank.at(slot);
+    auto label = std::make_unique<juce::Label>();
+    styleLabel(*label, juce::String(slot) + ".  " + juce::String(fav.name));
+    // The path as a tooltip: two sets can share a name, and then the only
+    // thing that tells them apart is where they live.
+    label->setTooltip(juce::String(fav.target));
+    rows_.addAndMakeVisible(*label);
+    labels_.push_back(std::move(label));
+
+    auto load = std::make_unique<juce::TextButton>("Load");
+    const juce::String path(fav.target);
+    load->onClick = [this, path] {
+      const juce::File f(path);
+      if (!f.existsAsFile()) {
+        // A moved or unplugged set. Saying so beats a silent no-op, and the
+        // favourite is left alone: the drive may come back.
+        status_.setText("Not found: " + f.getFullPathName(),
+                        juce::dontSendNotification);
+        return;
+      }
+      status_.setText("Loading " + f.getFileName() + "...",
+                      juce::dontSendNotification);
+      proc_.loadOrganAsync(f);
+    };
+    rows_.addAndMakeVisible(*load);
+    loads_.push_back(std::move(load));
+
+    auto rm = std::make_unique<juce::TextButton>("Remove");
+    rm->onClick = [this, slot] {
+      proc_.favourites().organs.clear(slot);
+      proc_.saveGlobalDefaults();
+      refresh();
+    };
+    rows_.addAndMakeVisible(*rm);
+    removes_.push_back(std::move(rm));
+  }
+  if (slots_.empty())
+    status_.setText("No favourites yet", juce::dontSendNotification);
+  resized();
+}
+
+void FavouritesPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  heading_.setBounds(r.removeFromTop(kRow));
+  auto row = r.removeFromTop(kRow);
+  addCurrent_.setBounds(row.removeFromLeft(220).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  status_.setBounds(row);
+  r.removeFromTop(kGap);
+
+  auto noteArea = r.removeFromBottom(juce::jmin(110, r.getHeight() / 3));
+  note_.setBounds(noteArea);
+  r.removeFromBottom(kGap);
+  viewport_.setBounds(r);
+
+  const int rowH = kRow + 2;
+  rows_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
+                static_cast<int>(slots_.size()) * rowH);
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH, rows_.getWidth(),
+                              kRow);
+    removes_[i]->setBounds(line.removeFromRight(90).reduced(2, 1));
+    loads_[i]->setBounds(line.removeFromRight(80).reduced(2, 1));
+    labels_[i]->setBounds(line);
+  }
+}
+
 // --------------------------------------------------------------- voicing
 
 VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
@@ -1366,7 +1480,7 @@ void DisplayPanel::resized() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), display_(p) {
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Engine", bg, &engine_, false);
@@ -1376,6 +1490,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("MIDI", bg, &midi_, false);
   tabs_.addTab("Mixer", bg, &mixer_, false);
   tabs_.addTab("Voicing", bg, &voicing_, false);
+  tabs_.addTab("Favourites", bg, &favourites_, false);
   tabs_.addTab("Display", bg, &display_, false);
   setSize(660, 480);
 }

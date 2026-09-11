@@ -179,6 +179,28 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
+// Favourites: numbered slots for the organs a player actually uses, so getting
+// back to one does not mean finding a 19 GB set in a file browser.
+class FavouritesPanel : public juce::Component {
+public:
+  explicit FavouritesPanel(MasterpieceProcessor& p);
+  void resized() override;
+  void refresh();
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::TextButton addCurrent_{"Add the organ now loaded"};
+  juce::Label status_;
+  juce::Viewport viewport_;
+  juce::Component rows_;
+  std::vector<int> slots_;
+  std::vector<std::unique_ptr<juce::Label>> labels_;
+  std::vector<std::unique_ptr<juce::TextButton>> loads_;
+  std::vector<std::unique_ptr<juce::TextButton>> removes_;
+  juce::Label note_;
+};
+
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
@@ -294,6 +316,7 @@ private:
   MidiPanel midi_;
   MixerPanel mixer_;
   VoicingPanel voicing_;
+  FavouritesPanel favourites_;
   DisplayPanel display_;
 };
 

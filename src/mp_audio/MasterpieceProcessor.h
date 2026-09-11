@@ -26,6 +26,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "Favourites.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
 #include "../mp_sampler/VoiceEngine.h"
@@ -437,6 +438,16 @@ public:
   // flag, because voicing is done by comparing a change against what was
   // there before; from memory the comparison always flatters whichever was
   // heard last.
+  // --- favourites ------------------------------------------------------
+  // Numbered slots a player can reach without a file dialog. GLOBAL, not per
+  // organ: the whole point is to get to a different organ, so storing them
+  // inside the organ you are leaving would be useless.
+  Favourites& favourites() { return favourites_; }
+  const Favourites& favourites() const { return favourites_; }
+  // Put the organ now loaded on a slot, or on the first free one when slot is
+  // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
+  int addCurrentOrganToFavourites(int slot = 0);
+
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -683,6 +694,7 @@ private:
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
+  Favourites favourites_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

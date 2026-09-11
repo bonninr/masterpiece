@@ -1030,6 +1030,21 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
+
+  // Favourites are global by nature: the point of one is to get to a
+  // DIFFERENT organ, so storing them inside the organ being left would be
+  // useless. The target goes last on the line because a path can contain
+  // spaces, and a bar separates it from the name because both are free text.
+  for (auto kind : {FavouriteKind::Organ, FavouriteKind::Temperament,
+                    FavouriteKind::CombinationSet}) {
+    const auto& bank = favourites_.bank(kind);
+    for (int slot : bank.used()) {
+      const auto& fav = bank.at(slot);
+      text << "favourite " << Favourites::kindKey(kind) << " " << slot << " "
+           << juce::String(fav.name).replaceCharacter('|', '/') << " | "
+           << juce::String(fav.target) << "\n";
+    }
+  }
   return f.replaceWithText(text);
 }
 
@@ -1055,6 +1070,21 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "favourite") {
+      // "favourite <kind> <slot> <name> | <target>". The bar separates them
+      // because both halves are free text and the target can contain spaces;
+      // a bar inside a name is rewritten on the way out rather than escaped.
+      auto rest = val.trim();
+      const auto kindKey = rest.upToFirstOccurrenceOf(" ", false, false).trim();
+      rest = rest.fromFirstOccurrenceOf(" ", false, false);
+      const int slot = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+      rest = rest.fromFirstOccurrenceOf(" ", false, false);
+      Favourite fav;
+      fav.name = rest.upToFirstOccurrenceOf("|", false, false).trim().toStdString();
+      fav.target = rest.fromFirstOccurrenceOf("|", false, false).trim().toStdString();
+      if (slot > 0 && !fav.target.empty())
+        favourites_.bank(Favourites::kindFromKey(kindKey.toStdString()))
+            .set(slot, std::move(fav));
     } else {
       applySettingsLine(key, val, sw);
       body << line << "\n";
@@ -1063,6 +1093,29 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   graph_.engineSwitch = sw;
   globalBody_ = body;
   return true;
+}
+
+int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
+  if (loadedOdf_.getFullPathName().isEmpty()) return 0;
+  const std::string target = loadedOdf_.getFullPathName().toStdString();
+
+  // Already on a slot? Return that one rather than making a second copy: the
+  // same organ under two names is a way to wonder later which is the real one.
+  if (const int existing = favourites_.organs.slotOf(target)) return existing;
+
+  const int use = slot > 0 ? slot : favourites_.organs.firstFree();
+  if (use == 0) return 0;  // bank full; the caller says so
+
+  Favourite fav;
+  // The organ's own name, not the file's: a player calls it "Raszczyce", and
+  // the file is called Raszczyce.Organ_Hauptwerk_xml.
+  fav.name = model_.organName.empty()
+                 ? loadedOdf_.getFileNameWithoutExtension().toStdString()
+                 : model_.organName;
+  fav.target = target;
+  favourites_.organs.set(use, std::move(fav));
+  writeGlobalFile();
+  return use;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
