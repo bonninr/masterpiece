@@ -39,6 +39,8 @@ The same program, reading different libraries.
 | ![Długa Kościelna](screenshots/DlugaKoscielna.jpg) | ![Raszczyce](screenshots/Raszczyce.jpg) |
 | **Strassburg** | **Friesach** — three manuals, jambs on their own pages |
 | ![Strassburg](screenshots/Strassburg.jpg) | ![Friesach](screenshots/Friesach.jpg) |
+| **Nancy** — four manuals; the keys are part of the photograph, and the drawstops are colour-coded by division | **Lemmer** — a Flentrop under the saints, with the recording perspective on the case |
+| ![Nancy](screenshots/Nancy.jpg) | ![Lemmer](screenshots/Lemmer.jpg) |
 
 Sets that ship several console sizes offer them all; the chooser only appears
 when there is a choice to make. Drawn keys and drawstops are clickable, and a
