@@ -35,6 +35,7 @@ MasterpieceProcessor::MasterpieceProcessor()
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
+  maxBlock_ = juce::jmax(1, samplesPerBlock);
 #if MP_ENABLE_DSP
   // One filter per enclosure and one LFO per tremulant, built here so the
   // audio thread never allocates. getTotalNumOutputChannels() is the widest
@@ -163,6 +164,34 @@ void MasterpieceProcessor::refreshMixerBuses() {
     mixBusOrder_.push_back(BusId{1});
     mixBusIndexOf_[1] = 0;
   }
+  refreshBusReverbs();
+}
+
+void MasterpieceProcessor::refreshBusReverbs() {
+#if MP_ENABLE_DSP
+  // clear + resize, not assign: assign would copy the null unique_ptr.
+  busConvolvers_.clear();
+  busConvolvers_.resize(mixBusOrder_.size());
+  if (sampleRate_ <= 0.0) return;  // not prepared yet; prepareToPlay redoes this
+
+  juce::dsp::ProcessSpec spec;
+  spec.sampleRate = sampleRate_;
+  spec.maximumBlockSize = static_cast<juce::uint32>(juce::jmax(1, maxBlock_));
+  spec.numChannels = 2;
+
+  for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
+    const BusReverb* r = mixer_.reverbFor(mixBusOrder_[i]);
+    if (r == nullptr || !r->active()) continue;
+    const juce::File ir(juce::String(r->irFile));
+    if (!ir.existsAsFile()) continue;  // ReverbPanel reports; silence is not a fix
+    auto c = std::make_unique<Convolver>();
+    c->prepare(spec);
+    if (!c->loadImpulseResponse(ir)) continue;
+    c->setMix(r->mix);
+    c->setEnabled(true);
+    busConvolvers_[i] = std::move(c);
+  }
+#endif
 }
 
 int MasterpieceProcessor::mixBusForPipe(Id rankId, int midiNote) const {
@@ -334,12 +363,45 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
   advanceTremulants(numFrames);
 
   const int buses = static_cast<int>(mixBusOrder_.size());
+  bool anyBusReverb = false;
+#if MP_ENABLE_DSP
+  if (!graph_.engineSwitch.simpleWavOnly)
+    for (const auto& c : busConvolvers_)
+      if (c != nullptr) anyBusReverb = true;
+#endif
 
   // The ordinary case, and the default: one mixer bus means no routing axis at
   // all, so nothing is filtered and this is exactly what the engine did before
   // there was a mixer.
-  if (buses <= 1 && mixBusCapture_ == nullptr) {
+  if (buses <= 1 && mixBusCapture_ == nullptr && !anyBusReverb) {
     renderOneMixBus(buffer, -1);
+    return;
+  }
+
+  // A bus with its own room has to be convolved on its own, which means it
+  // needs somewhere of its own to be rendered into. The point of several buses
+  // is that they stand in different places — a Positiv on the gallery rail and
+  // a Pedal at the back of the case do not share a tail — and one IR over the
+  // sum cannot express that.
+  if (anyBusReverb && mixBusCapture_ == nullptr) {
+    if (mixScratch_.getNumChannels() < numCh ||
+        mixScratch_.getNumSamples() < numFrames)
+      mixScratch_.setSize(numCh, numFrames, false, false, true);
+
+    for (int i = 0; i < buses; ++i) {
+      mixScratch_.clear(0, numFrames);
+      renderOneMixBus(mixScratch_, buses <= 1 ? -1 : i);
+#if MP_ENABLE_DSP
+      if (i < static_cast<int>(busConvolvers_.size()) &&
+          busConvolvers_[static_cast<size_t>(i)] != nullptr) {
+        juce::AudioBuffer<float> view(mixScratch_.getArrayOfWritePointers(),
+                                      numCh, numFrames);
+        busConvolvers_[static_cast<size_t>(i)]->process(view);
+      }
+#endif
+      for (int ch = 0; ch < numCh; ++ch)
+        buffer.addFrom(ch, 0, mixScratch_, ch, 0, numFrames);
+    }
     return;
   }
 
@@ -357,6 +419,14 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
     auto& dest = (*mixBusCapture_)[static_cast<size_t>(i)];
     dest.clear(0, numFrames);
     renderOneMixBus(dest, buses <= 1 ? -1 : i);
+#if MP_ENABLE_DSP
+    // The bus's own room belongs to the bus signal, so a captured bus carries
+    // it. Only the MASTER convolver is downstream of this.
+    if (!graph_.engineSwitch.simpleWavOnly &&
+        i < static_cast<int>(busConvolvers_.size()) &&
+        busConvolvers_[static_cast<size_t>(i)] != nullptr)
+      busConvolvers_[static_cast<size_t>(i)]->process(dest);
+#endif
     // Summed into the output as well, so capturing does not change what the
     // callback produces.
     for (int ch = 0; ch < numCh && ch < dest.getNumChannels(); ++ch)
@@ -704,6 +774,20 @@ juce::String MasterpieceProcessor::settingsBody() const {
     }
     text << "\n";
   }
+  // A bus's own room. One line per bus rather than a single packed line,
+  // because a path can contain anything including spaces, so it has to be last
+  // on its line.
+  {
+    std::vector<int> withReverb;
+    for (const auto& [busId, r] : mixer_.busReverb)
+      if (!r.irFile.empty()) withReverb.push_back(busId);
+    std::sort(withReverb.begin(), withReverb.end());
+    for (int busId : withReverb) {
+      const auto& r = mixer_.busReverb.at(busId);
+      text << "busir " << busId << " " << (r.enabled ? 1 : 0) << " "
+           << juce::String(r.mix, 3) << " " << juce::String(r.irFile) << "\n";
+    }
+  }
   if (!mixer_.groups.empty()) {
     text << "groups";
     for (const auto& g : mixer_.groups) {
@@ -748,6 +832,24 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       mixer_.buses.push_back(std::move(b));
     }
     refreshMixerBuses();
+  } else if (key == "busir") {
+    // "busir <busId> <enabled> <mix> <path...>". The path is last because it
+    // can contain spaces, and splitting it would quietly lose the file.
+    auto rest = val.trim();
+    const int busId = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+    rest = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    const bool on = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue() != 0;
+    rest = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    const float mix = rest.upToFirstOccurrenceOf(" ", false, false).getFloatValue();
+    const juce::String path = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (busId != 0 && path.isNotEmpty()) {
+      BusReverb r;
+      r.enabled = on;
+      r.mix = juce::jlimit(0.0f, 1.0f, mix);
+      r.irFile = path.toStdString();
+      mixer_.busReverb[busId] = std::move(r);
+      refreshBusReverbs();
+    }
   } else if (key == "groups") {
     mixer_.groups.clear();
     for (const auto& tok : juce::StringArray::fromTokens(val, " ", "")) {

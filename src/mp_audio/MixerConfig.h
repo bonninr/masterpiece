@@ -25,10 +25,37 @@
 
 namespace mp {
 
+// A bus's own room. Separate from the master IR because the point of several
+// buses is that they stand in different places: a Positiv on the gallery rail
+// and a Pedal at the back of the case do not share a reverb tail, and running
+// one IR over the sum cannot express that.
+struct BusReverb {
+  std::string irFile;   // empty = no IR on this bus
+  float mix = 0.25f;    // wet fraction, 0..1
+  bool enabled = false;
+
+  bool active() const { return enabled && !irFile.empty(); }
+};
+
 // One rank's routing, plus the buses and groups it can reach.
 struct MixerConfig {
   std::vector<MixerBus> buses;
   std::vector<BusGroup> groups;
+  // Indexed by BusId.value, so a bus with no entry simply has no reverb. Kept
+  // beside the bus list rather than inside MixerBus because AudioGraph.h is
+  // the shared contract with the UI and validator, and a file path is neither
+  // of their business.
+  std::unordered_map<int, BusReverb> busReverb;
+
+  const BusReverb* reverbFor(BusId id) const {
+    const auto it = busReverb.find(id.value);
+    return it == busReverb.end() ? nullptr : &it->second;
+  }
+  bool anyBusReverb() const {
+    for (const auto& [id, r] : busReverb)
+      if (r.active()) return true;
+    return false;
+  }
   // Only ranks the player has actually routed. Anything absent falls back to
   // the simple default, so a fresh organ is audible before anyone opens the
   // mixer -- the same principle as an unmapped MIDI message still playing.

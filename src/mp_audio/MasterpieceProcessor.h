@@ -436,6 +436,10 @@ public:
   // Rebuild the dense bus indexing after the config changes. Must be called
   // before the next block, and never from the audio thread.
   void refreshMixerBuses();
+  // Load or drop each bus's impulse response to match the config. Slow (it
+  // reads and re-plans), so it is called when the mixer changes, never per
+  // block, and never from the audio thread.
+  void refreshBusReverbs();
   int mixBusCount() const { return static_cast<int>(mixBusOrder_.size()); }
   BusId mixBusAt(int denseIndex) const {
     return denseIndex >= 0 && denseIndex < static_cast<int>(mixBusOrder_.size())
@@ -672,6 +676,13 @@ private:
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
+  // One convolver per dense bus index, built only for buses that declare an
+  // IR. unique_ptr because a Convolver holds an FFT plan and is neither cheap
+  // nor movable, and most buses will never have one.
+  std::vector<std::unique_ptr<Convolver>> busConvolvers_;
+  // Per-bus scratch, needed only when a bus has its own room: without one the
+  // buses sum straight into the output and cost nothing.
+  juce::AudioBuffer<float> mixScratch_;
   // Built on the message thread, drained by the audio thread into outgoing_ so
   // there is one sender to the port. The audio thread takes this with
   // try_lock and simply waits a block if it is contended — an LCD line arriving
@@ -776,6 +787,9 @@ private:
 
 #endif
   double sampleRate_ = 48000.0;
+  // Remembered so a mixer change can re-plan a bus convolver without waiting
+  // for the next prepareToPlay.
+  int maxBlock_ = 512;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterpieceProcessor)
 };
