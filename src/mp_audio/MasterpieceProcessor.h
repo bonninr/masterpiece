@@ -11,6 +11,7 @@
 #include "../mp_control/Combinations.h"
 #include "../mp_control/StageSwitches.h"
 #include "../mp_control/Stepper.h"
+#include "../mp_control/LcdPanel.h"
 #include "../mp_control/WindSolver.h"
 #include "../mp_control/SwitchNetwork.h"
 #include "../mp_core/Temperament.h"
@@ -29,6 +30,7 @@
 
 #include <array>
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <unordered_map>
@@ -409,6 +411,22 @@ public:
   void setMidiFeedbackEnabled(bool on) { midiFeedback_ = on; }
   bool midiFeedbackEnabled() const { return midiFeedback_; }
 
+  // Console LCD panels. Configured by the player, because the framing belongs
+  // to their hardware and not to the organ — see LcdPanel.h.
+  LcdPanels& lcdPanels() { return lcd_; }
+  // What the panels are showing. Shared with the settings preview rather than
+  // reassembled there: a preview that computes its own idea of the state will
+  // eventually disagree with the hardware, and then it is worse than none.
+  LcdState lcdState() const;
+  // Gathers what the panels show and queues whatever changed. Call from the
+  // MESSAGE thread, on a timer: it builds strings, which has no business on
+  // the audio thread, and nothing a panel shows moves faster than a person
+  // can read it anyway. Returns how many messages were queued.
+  int pumpLcdPanels();
+  // Re-sends every line regardless, for a console plugged in mid-session and
+  // for the settings page's test button.
+  int refreshLcdPanels();
+
   // --- memory / streaming ----------------------------------------------
   // How much of each sample is preloaded. The head is a MINIMUM: it is always
   // extended to cover the sustain loop, because a sample whose loop is missing
@@ -598,6 +616,13 @@ private:
   Convolver convolver_;
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
+  LcdPanels lcd_;
+  // Built on the message thread, drained by the audio thread into outgoing_ so
+  // there is one sender to the port. The audio thread takes this with
+  // try_lock and simply waits a block if it is contended — an LCD line arriving
+  // 10 ms late is invisible, and blocking for it would not be.
+  std::mutex lcdQueueLock_;
+  std::vector<SysexMessage> lcdQueue_;
   // Written only by the audio thread, read only by the meter. `held_` is the
   // audio thread's own running value and needs no synchronisation; the atomic
   // is the copy the UI is allowed to see.

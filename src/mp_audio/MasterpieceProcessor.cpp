@@ -1032,6 +1032,40 @@ void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   }
 }
 
+// What the panels show, gathered from the engine in one place. Message thread
+// only: it builds strings.
+LcdState MasterpieceProcessor::lcdState() const {
+  LcdState s;
+  s.organName = model_.organName;
+  s.temperament = organTuning_.name.empty() ? "Equal" : organTuning_.name;
+  s.pitchHz = model_.basePitchHz;
+  s.stopsDrawn = static_cast<int>(engagedStops_.size());
+  if (const Id cres = stages_.crescendoControl())
+    s.crescendoStep = static_cast<int>(stages_.currentStep(cres));
+  // Transpose and combination-set name have no engine-side owner yet; a panel
+  // asking for them reads the default rather than a made-up value.
+  return s;
+}
+
+int MasterpieceProcessor::pumpLcdPanels() {
+  if (lcd_.empty() || midiOut_ == nullptr) return 0;
+  auto msgs = lcd_.update(lcdState());
+  if (msgs.empty()) return 0;
+  {
+    std::lock_guard<std::mutex> lk(lcdQueueLock_);
+    for (auto& m : msgs) lcdQueue_.push_back(std::move(m));
+  }
+  return static_cast<int>(msgs.size());
+}
+
+int MasterpieceProcessor::refreshLcdPanels() {
+  // Drop what the displays are believed to show, then send the real state —
+  // rather than rendering a blank state, which would make any line whose true
+  // value matched the blank one look unchanged and stay unsent.
+  lcd_.forgetDisplayed();
+  return pumpLcdPanels();
+}
+
 Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
   const auto it = playerSwitch_.find(switchId);
   return it == playerSwitch_.end() ? switchId : it->second;
@@ -1189,6 +1223,20 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   outgoing_.clear();
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
+
+  // LCD text, built on the message thread, joins the same outgoing stream so
+  // there is one sender to the port. try_lock rather than lock: a panel line
+  // arriving a block late is invisible, and waiting on a message-thread lock
+  // here would not be.
+  if (midiOut_ != nullptr) {
+    std::unique_lock<std::mutex> lk(lcdQueueLock_, std::try_to_lock);
+    if (lk.owns_lock() && !lcdQueue_.empty()) {
+      for (const auto& m : lcdQueue_)
+        outgoing_.addEvent(
+            juce::MidiMessage(m.data(), static_cast<int>(m.size())), 0);
+      lcdQueue_.clear();
+    }
+  }
 
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
@@ -1391,9 +1439,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // wind system. Leaving them at rest leaves the blower off, and then every
   // chest drains the moment a key goes down.
   //
-  // A control that something else drives is not one of these: the crescendo
-  // pedal has steps behind it too, and sweeping it at load would register the
-  // organ for a fortissimo nobody asked for.
+  // Two kinds of control are NOT one of these, and both exclusions are load-
+  // bearing:
+  //
+  //   - one that something else drives. Nancy's visible crescendo pedal is fed
+  //     through a linkage, and sweeping it would register the organ for a
+  //     fortissimo nobody asked for.
+  //
+  //   - one the player can see. A control with an image is drawn on the
+  //     console: it is the player's, and an organ does not come up with its
+  //     pedals pushed to the floor. Cracow's crescendo is control 2, declared
+  //     default 0, drawn as image set instance 75, and driven by NOTHING — so
+  //     the driven test alone let it through and the organ loaded with all 49
+  //     crescendo steps engaged. A start-up control is internal by nature:
+  //     Nancy's are "__DelayBlower" and "__DelayInit" and no one ever sees
+  //     them.
   {
     std::unordered_set<Id> driven;
     for (const auto& l : model_.controlLinkages)
@@ -1402,6 +1462,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (driven.count(id) != 0) continue;
       const auto cit = model_.continuousControls.find(id);
       if (cit == model_.continuousControls.end()) continue;
+      if (cit->second.imageSetInstanceId != 0) continue;
       setControlValue(id, std::max(cit->second.maxValue, cit->second.minValue));
     }
   }

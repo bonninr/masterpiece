@@ -713,6 +713,7 @@ void MidiPanel::timerCallback() {
   juce::String s = juce::String(static_cast<int>(map.size())) + " binding(s)";
   if (map.learning()) s += "  -  LEARNING: move a control now";
   mapStatus_.setText(s, juce::dontSendNotification);
+
 }
 
 void MidiPanel::resized() {
@@ -781,11 +782,190 @@ void MidiPanel::resized() {
   note_.setBounds(r);
 }
 
+// ------------------------------------------------------- console display
+
+DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, "Console display");
+  addAndMakeVisible(enable_);
+  enable_.onClick = [this] { rebuild(); };
+
+  addAndMakeVisible(idLabel_);
+  styleLabel(idLabel_, "Display number");
+  addAndMakeVisible(id_);
+  id_.setRange(0, 15, 1);
+  id_.setValue(0, juce::dontSendNotification);
+  id_.onValueChange = [this] { rebuild(); };
+
+  addAndMakeVisible(widthLabel_);
+  styleLabel(widthLabel_, "Characters per line");
+  addAndMakeVisible(width_);
+  int wid = 1;
+  for (int w : {16, 20, 32, 40}) width_.addItem(juce::String(w), wid++);
+  width_.setSelectedId(3, juce::dontSendNotification); // 32, the usual one
+  width_.onChange = [this] { rebuild(); };
+
+  addAndMakeVisible(headerLabel_);
+  styleLabel(headerLabel_, "Sys-ex prefix (hex)");
+  addAndMakeVisible(header_);
+  header_.setText("7D", juce::dontSendNotification);
+  header_.setInputRestrictions(23, "0123456789abcdefABCDEF ");
+  header_.onReturnKey = [this] { rebuild(); };
+  header_.onFocusLost = [this] { rebuild(); };
+
+  addAndMakeVisible(linesLabel_);
+  styleLabel(linesLabel_, "Lines");
+  // The fields a jamb display is worth having for. Deliberately short: a
+  // player reads this at a glance between pieces, not as a report.
+  const char* fields[] = {"(blank)",   "Organ",       "Temperament",
+                          "Pitch",     "Transpose",   "Stops drawn",
+                          "Crescendo", "Combination set"};
+  for (size_t i = 0; i < lines_.size(); ++i) {
+    lines_[i] = std::make_unique<juce::ComboBox>();
+    addAndMakeVisible(*lines_[i]);
+    int id = 1;
+    for (const char* f : fields) lines_[i]->addItem(f, id++);
+    lines_[i]->onChange = [this] { rebuild(); };
+  }
+  // Something useful out of the box, so the first send shows the player it is
+  // working rather than four blank lines.
+  lines_[0]->setSelectedId(2, juce::dontSendNotification); // Organ
+  lines_[1]->setSelectedId(3, juce::dontSendNotification); // Temperament
+  lines_[2]->setSelectedId(4, juce::dontSendNotification); // Pitch
+  lines_[3]->setSelectedId(7, juce::dontSendNotification); // Crescendo
+
+  addAndMakeVisible(previewLabel_);
+  styleLabel(previewLabel_, "What the display reads");
+  addAndMakeVisible(preview_);
+  // Monospaced and top-left: the preview is fixed-width lines, and the whole
+  // point is that the columns line up the way the glass does. The bars mark
+  // where the panel ends, which is what makes a truncation visible.
+  preview_.setFont(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(),
+                                     13.0f, juce::Font::plain));
+  preview_.setJustificationType(juce::Justification::topLeft);
+
+  addAndMakeVisible(send_);
+  send_.onClick = [this] { proc_.refreshLcdPanels(); };
+
+  addAndMakeVisible(note_);
+  styleNote(note_,
+            "A console display is driven by system exclusive messages, and the "
+            "bytes that introduce one belong to the display hardware rather "
+            "than to the organ - so they are typed in here rather than "
+            "guessed. 7D is the id the MIDI specification reserves for "
+            "non-commercial use, which is the honest default when your "
+            "manufacturer's prefix is unknown.\n\n"
+            "Choose the MIDI output on the MIDI page first: this sends "
+            "through the same port that lights your drawstops.\n\n"
+            "Only lines whose text actually changed are sent, so a display "
+            "showing a steady temperament costs nothing. Accented letters are "
+            "transliterated, because system exclusive carries seven bits and a "
+            "high byte would end the message rather than draw a character.");
+
+  rebuild();
+  startTimerHz(2);
+}
+
+DisplayPanel::~DisplayPanel() { stopTimer(); }
+
+// The panel description belongs to the engine, which owns the state a line
+// shows; this only assembles it from the boxes.
+void DisplayPanel::rebuild() {
+  auto& panels = proc_.lcdPanels();
+  panels.clear();
+  if (!enable_.getToggleState()) return;
+
+  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
+  // non-commercial id rather than to silence, so a typo leaves something on
+  // the wire to see instead of looking like a dead feature.
+  std::vector<uint8_t> header;
+  for (const auto& tok :
+       juce::StringArray::fromTokens(header_.getText(), " ", "")) {
+    if (tok.isEmpty()) continue;
+    header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
+  }
+  if (!panels.setHeader(header)) panels.setHeader({0x7D});
+
+  LcdPanel p;
+  p.hardwareId = static_cast<int>(id_.getValue());
+  const int widths[] = {16, 20, 32, 40};
+  p.lineWidth = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
+  const LcdField byId[] = {LcdField::Literal,       LcdField::OrganName,
+                           LcdField::Temperament,   LcdField::PitchHz,
+                           LcdField::Transpose,     LcdField::StopsDrawn,
+                           LcdField::CrescendoStep, LcdField::CombinationSet};
+  for (auto& box : lines_) {
+    const int sel = juce::jlimit(1, 8, box->getSelectedId());
+    p.lines.push_back({byId[sel - 1], ""});
+  }
+  panels.addPanel(std::move(p));
+  proc_.refreshLcdPanels();
+}
+
+void DisplayPanel::timerCallback() {
+  // The display's own refresh. Twice a second is far faster than anyone reads
+  // a jamb panel and far slower than the wire, and nothing goes out unless a
+  // line's text actually changed.
+  proc_.pumpLcdPanels();
+
+  if (!enable_.getToggleState()) {
+    preview_.setText("", juce::dontSendNotification);
+    return;
+  }
+  juce::String text;
+  const LcdState st = proc_.lcdState();
+  for (const auto& panel : proc_.lcdPanels().panels())
+    for (const auto& line : panel.lines)
+      text << "|" << LcdPanels::renderLine(line, st, panel.lineWidth) << "|\n";
+  preview_.setText(text, juce::dontSendNotification);
+}
+
+void DisplayPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  const int labelW = 170;
+
+  heading_.setBounds(r.removeFromTop(kRow));
+  enable_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(12));
+  r.removeFromTop(kGap);
+
+  auto row = r.removeFromTop(kRow);
+  idLabel_.setBounds(row.removeFromLeft(labelW));
+  id_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  widthLabel_.setBounds(row.removeFromLeft(labelW));
+  width_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  headerLabel_.setBounds(row.removeFromLeft(labelW));
+  header_.setBounds(row.removeFromLeft(160).reduced(0, 2));
+  row.removeFromLeft(kGap);
+  send_.setBounds(row.removeFromLeft(150).reduced(0, 1));
+
+  // Four line pickers, two to a row: four across does not fit the dialog and
+  // wrapping them is better than clipping the last one.
+  r.removeFromTop(kGap);
+  linesLabel_.setBounds(r.removeFromTop(kRow));
+  for (size_t i = 0; i < lines_.size(); i += 2) {
+    row = r.removeFromTop(kRow).withTrimmedLeft(12);
+    lines_[i]->setBounds(row.removeFromLeft(200).reduced(0, 1));
+    row.removeFromLeft(kGap);
+    lines_[i + 1]->setBounds(row.removeFromLeft(200).reduced(0, 1));
+    r.removeFromTop(2);
+  }
+
+  r.removeFromTop(kGap);
+  previewLabel_.setBounds(r.removeFromTop(kRow));
+  preview_.setBounds(r.removeFromTop(kRow * 3).withTrimmedLeft(12));
+  r.removeFromTop(kGap);
+  note_.setBounds(r);
+}
+
 // --------------------------------------------------------------- window
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices) {
+    : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Engine", bg, &engine_, false);
@@ -793,6 +973,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Metronome", bg, &metronome_, false);
   tabs_.addTab("Recorder", bg, &recorder_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
+  tabs_.addTab("Display", bg, &display_, false);
   setSize(660, 480);
 }
 

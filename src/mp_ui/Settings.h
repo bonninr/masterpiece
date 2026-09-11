@@ -9,6 +9,7 @@
 
 #include "../mp_audio/MasterpieceProcessor.h"
 
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -178,6 +179,39 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
+// The console's own text display: the little 32-character panel on the jamb
+// that tells the player what the keys cannot. Its own tab rather than a corner
+// of the MIDI page, because the framing bytes belong to the player's hardware
+// and typing them in needs room to see what you are doing.
+class DisplayPanel : public juce::Component, private juce::Timer {
+public:
+  explicit DisplayPanel(MasterpieceProcessor& p);
+  ~DisplayPanel() override;
+  void resized() override;
+
+private:
+  void timerCallback() override;
+  void rebuild();
+
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::ToggleButton enable_{"Drive a console display"};
+  juce::Label idLabel_;
+  juce::Slider id_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  juce::Label widthLabel_;
+  juce::ComboBox width_;
+  juce::Label headerLabel_;
+  juce::TextEditor header_;
+  juce::Label linesLabel_;
+  std::array<std::unique_ptr<juce::ComboBox>, 4> lines_;
+  // What the hardware would read, shown before it is sent: the truncation is
+  // the part a player needs to see.
+  juce::Label previewLabel_;
+  juce::Label preview_;
+  juce::TextButton send_{"Send to display"};
+  juce::Label note_;
+};
+
 class SettingsWindow : public juce::Component {
 public:
   SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
@@ -191,6 +225,7 @@ private:
   MetronomePanel metronome_;
   RecorderPanel recorder_;
   MidiPanel midi_;
+  DisplayPanel display_;
 };
 
 } // namespace mp::ui
