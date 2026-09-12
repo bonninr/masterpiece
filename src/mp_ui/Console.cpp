@@ -348,9 +348,28 @@ void ConsoleView::timerCallback() {
     hash ^= state.isNoteOn(k.channel, k.midiNote) ? 1u : 0u;
     hash *= 1099511628211ull;
   }
-  if (hash == keyStateHash_) return;
+
+  // The drawstops are watched the same way, and for the same reason: a stop
+  // can change without anyone clicking it. A piston, a combination, the
+  // sequencer or the command line all move the switch in the engine, and
+  // repainting only on a mouse click leaves the jamb showing the registration
+  // the player last set by hand rather than the one that is actually drawn.
+  uint64_t stopHash = 1469598103934665603ull;
+  for (const auto& item : items_) {
+    if (item.switchId == 0 && item.controlId == 0) continue;
+    stopHash ^= static_cast<uint64_t>(frameIndexFor(item));
+    stopHash *= 1099511628211ull;
+  }
+
+  const bool keysMoved = hash != keyStateHash_;
+  const bool stopsMoved = stopHash != stopStateHash_;
   keyStateHash_ = hash;
-  repaint(keysBounds());
+  stopStateHash_ = stopHash;
+
+  // A stop changing means repainting the console furniture; a key changing
+  // needs only the manuals, which is the common case and the cheap one.
+  if (stopsMoved) repaint();
+  else if (keysMoved) repaint(keysBounds());
 }
 
 juce::String ConsoleView::pageName(int index) const {

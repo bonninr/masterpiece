@@ -23,7 +23,11 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
       // tutti — so the fader has to be able to bring that up, not merely trim
       // a loud one down. The UI drives this in decibels, which is the only
       // scale on which a volume control feels linear.
-      juce::NormalisableRange<float>(0.0f, 16.0f, 0.0001f), 0.35f));
+      // Starts at unity rather than the 0.35 (-9 dB) it used to, which had
+      // the organ sounding timid the first time anyone pressed a key. Unity
+      // is what the recordist's own level gives, and the fader reaches +24 dB
+      // above it for a quiet set.
+      juce::NormalisableRange<float>(0.0f, 16.0f, 0.0001f), 1.0f));
   p.push_back(std::make_unique<juce::AudioParameterBool>("simpleWavOnly", "Simple WAV (no DSP)", false));
   return { p.begin(), p.end() };
 }
@@ -1397,6 +1401,12 @@ void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
   const auto it = model_.stops.find(stopId);
   if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
     setSwitchEngaged(playerSwitchFor(it->second.controllingSwitchId), engaged);
+
+  // And the drawn knob, when the wiring did not lead to one. Without this the
+  // stop speaks and the console shows nothing moving, which reads as a stop
+  // that failed to engage.
+  const auto knob = stopKnob_.find(stopId);
+  if (knob != stopKnob_.end()) setSwitchEngaged(knob->second, engaged);
 }
 
 bool MasterpieceProcessor::switchEngaged(Id switchId) const {
@@ -1736,6 +1746,20 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // buffer, so a recorded performance drives exactly the live path.
   recorder_.process(midi, buffer.getNumSamples());
 
+  // Panic. Every key on every channel is released, as note-offs in the same
+  // buffer, so they take the ordinary path: a voice stopped this way still
+  // gets its release sample and the room's own decay, rather than being cut
+  // dead. Done after the recorder so a stuck note cannot be re-triggered by
+  // an event already queued this block.
+  if (releaseAll_.exchange(false, std::memory_order_acq_rel)) {
+    for (int ch = 1; ch <= 16; ++ch) {
+      for (int note = 0; note < 128; ++note)
+        if (keyboardState_.isNoteOn(ch, note))
+          midi.addEvent(juce::MidiMessage::noteOff(ch, note), 0);
+      keyboardState_.allNotesOff(ch);
+    }
+  }
+
   outgoing_.clear();
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
@@ -2011,26 +2035,92 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // For every switch, the drawn one upstream of it. A stop on a wired console
   // is three switches deep — the knob, the logical stop and the node the
   // engine reads — and only the knob is a thing a player can move.
+  // Reverse the linkages once. Walking the whole list per switch is O(n*m),
+  // and a large organ has thousands of each.
+  std::unordered_map<Id, std::vector<Id>> feeders;
+  for (const auto& l : model_.switchLinkages)
+    if (l.sourceSwitchId != l.destSwitchId && l.sourceWhenEngaged)
+      feeders[l.destSwitchId].push_back(l.sourceSwitchId);
+
+  auto isKnob = [this](Id id) {
+    const auto it = model_.switches.find(id);
+    return it != model_.switches.end() && it->second.dispInstanceId != 0 &&
+           it->second.clickable;
+  };
+
+  // Breadth-first, not a single chain.
+  //
+  // This used to follow one unconditional edge at a time and give up if that
+  // chain did not reach a drawn switch. On Friesach that is every stop: the
+  // knob reaches the stop's switch through a branch, so the walk ended on an
+  // undrawn node, and drawing a stop from a piston or the command line left
+  // the console showing a registration it was in fact playing.
+  //
+  // Conditional edges are followed too. A conditional linkage is how a
+  // console wires a knob that acts only when something else is set, and the
+  // knob at the far end of one is still the thing a player pulls.
   playerSwitch_.clear();
+  std::vector<Id> queue;
+  std::unordered_set<Id> seen;
   for (const auto& [id, sw] : model_.switches) {
     (void)sw;
-    Id at = id;
-    for (int hop = 0; hop < 8; ++hop) {
-      const auto here = model_.switches.find(at);
-      if (here != model_.switches.end() && here->second.dispInstanceId != 0 &&
-          here->second.clickable)
-        break;
-      Id upstream = 0;
-      for (const auto& l : model_.switchLinkages)
-        if (l.destSwitchId == at && l.sourceSwitchId != at &&
-            l.sourceWhenEngaged && l.conditionSwitchId == 0) {
-          upstream = l.sourceSwitchId;
-          break;
-        }
-      if (upstream == 0 || upstream == at) break;
-      at = upstream;
+    if (isKnob(id)) { playerSwitch_[id] = id; continue; }
+
+    queue.clear();
+    seen.clear();
+    queue.push_back(id);
+    seen.insert(id);
+    Id found = id;
+    for (size_t head = 0; head < queue.size() && head < 512; ++head) {
+      const auto fit = feeders.find(queue[head]);
+      if (fit == feeders.end()) continue;
+      bool done = false;
+      for (Id up : fit->second) {
+        if (!seen.insert(up).second) continue;
+        if (isKnob(up)) { found = up; done = true; break; }
+        queue.push_back(up);
+      }
+      if (done) break;
     }
-    playerSwitch_[id] = at;
+    playerSwitch_[id] = found;
+  }
+
+  // The knob that belongs to each stop, for the cases where the wiring does
+  // not lead to one.
+  //
+  // Friesach points every Stop at a switch named "DelayedStop: N" which no
+  // linkage in the file drives and nothing draws -- the console's knobs are a
+  // separate chain, paired to their shadow switch by assignment code rather
+  // than by a linkage. Registering from a piston or the command line
+  // therefore sounded correct and left every drawstop sitting in.
+  //
+  // Matched on the name, and only as a fallback, because that is what the set
+  // actually gives us to go on: the knob is "01. P Untersatz 32'" where the
+  // stop is "P Untersatz 32'". A set whose wiring reaches a real knob never
+  // reaches this code.
+  auto tidy = [](std::string s) {
+    size_t i = 0;
+    while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) ||
+                            s[i] == '.' || s[i] == '_' || s[i] == ' '))
+      ++i;
+    s.erase(0, i);
+    while (!s.empty() && s.back() == ' ') s.pop_back();
+    return s;
+  };
+  std::unordered_map<std::string, Id> knobByName;
+  for (const auto& [id, sw] : model_.switches) {
+    if (sw.dispInstanceId == 0 || !sw.clickable || sw.name.empty()) continue;
+    // First wins: the console page is listed before the shadow copies, and
+    // either lights the same stop anyway.
+    knobByName.emplace(tidy(sw.name), id);
+  }
+  stopKnob_.clear();
+  for (const auto& [stopId, stop] : model_.stops) {
+    if (stop.controllingSwitchId == 0) continue;
+    const Id ps = playerSwitchFor(stop.controllingSwitchId);
+    if (isKnob(ps)) continue;                 // the wiring already found one
+    const auto it = knobByName.find(tidy(stop.name));
+    if (it != knobByName.end()) stopKnob_[stopId] = it->second;
   }
   engagedStops_.clear();
   for (const auto& [switchId, stopId] : stopBySwitch_)

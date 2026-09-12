@@ -8,7 +8,9 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <functional>
 #include <memory>
+#include <vector>
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_ui/Ui.h"
@@ -128,34 +130,64 @@ public:
       if (proc_->reopenLastOrgan()) odf = proc_->lastOrgan();
     }
 
-    // Play a MIDI file through the organ as soon as it is up, with the stops
-    // drawn. Together these turn "show me this organ playing" into one
-    // command -- which is what makes it repeatable across a shelf of them,
-    // and what lets the console be filmed while it plays.
-    juce::File playMidi;
-    juce::File recordAudio;
-    int drawStops = 0;
-    bool drawAll = false;
-    juce::String registration;
-    juce::Array<int> namedStops;
+    // Play MIDI through the organ as soon as it is up, with the stops drawn.
+    // Together these turn "show me this organ playing" into one command --
+    // what makes it repeatable across a shelf of them, and what lets the
+    // console be filmed while it plays.
+    //
+    // A RECITAL rather than a single piece: every one of these switches may
+    // be given more than once, and each --play-midi begins a new take that
+    // the --draw-stops and --record-audio around it belong to.
+    //
+    //   --draw-stops 1,2,11 --play-midi toccata.mid --record-audio t.wav
+    //   --draw-stops 4,9    --play-midi chorale.mid --record-audio c.wav
+    //
+    // This exists because loading is the expensive part. A large set takes
+    // fifteen minutes off this disk, and recording three pieces used to mean
+    // paying that three times over for the same organ.
+    struct Take {
+      juce::File midi;
+      juce::File audio;
+      juce::Array<int> stopIds;   // explicit ids
+      juce::String registration;  // or a recipe read off the stop names
+      int firstN = 0;             // or the first N stops
+      bool all = false;           // or everything
+      bool wants() const {
+        return midi != juce::File() || audio != juce::File() || all ||
+               firstN > 0 || registration.isNotEmpty() || !stopIds.isEmpty();
+      }
+    };
+    std::vector<Take> takes(1);
+    bool stayOpen = args.contains("--stay-open");
+
+    auto cwdFile = [](const juce::String& s) {
+      return juce::File::getCurrentWorkingDirectory().getChildFile(s.unquoted());
+    };
+
     for (int i = 0; i < args.size(); ++i) {
-      if (args[i] == "--play-midi" && i + 1 < args.size())
-        playMidi = juce::File::getCurrentWorkingDirectory().getChildFile(
-            args[++i].unquoted());
-      else if (args[i] == "--record-audio" && i + 1 < args.size())
-        recordAudio = juce::File::getCurrentWorkingDirectory().getChildFile(
-            args[++i].unquoted());
-      else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
+      if (args[i] == "--play-midi" && i + 1 < args.size()) {
+        // A second piece starts a new take rather than replacing the first.
+        if (takes.back().midi != juce::File()) takes.emplace_back();
+        takes.back().midi = cwdFile(args[++i]);
+      } else if (args[i] == "--record-audio" && i + 1 < args.size()) {
+        takes.back().audio = cwdFile(args[++i]);
+      } else if (args[i] == "--draw-stops" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted();
         // "all", a count, or the stops themselves by id. The last is how a
         // registration chosen by ear gets played: --registration is a guess
         // from the stop names, and a named list is the answer.
-        if (v == "all") drawAll = true;
-        else if (v.containsChar(',')) {
+        //
+        // Applied to the NEXT take when the current one already has its
+        // music, so the switches may be written either side of --play-midi.
+        Take& t = (takes.back().midi != juce::File()) ? takes.emplace_back()
+                                                      : takes.back();
+        if (v == "all") {
+          t.all = true;
+        } else if (v.containsChar(',')) {
           for (const auto& tok : juce::StringArray::fromTokens(v, ",", ""))
-            if (tok.trim().isNotEmpty()) namedStops.add(tok.trim().getIntValue());
+            if (tok.trim().isNotEmpty()) t.stopIds.add(tok.trim().getIntValue());
         } else {
-          drawStops = v.getIntValue();
+          t.firstN = v.getIntValue();
         }
       }
       // Register by ear rather than by index. "--draw-stops 4" means the
@@ -163,75 +195,151 @@ public:
       // -- so on most organs that is four pedal stops and silent manuals.
       // --registration reads the stop NAMES and picks a combination that
       // means something, on an organ nobody has written a preset for.
-      else if (args[i] == "--registration" && i + 1 < args.size())
-        registration = args[++i].unquoted().toLowerCase();
+      else if (args[i] == "--registration" && i + 1 < args.size()) {
+        Take& t = (takes.back().midi != juce::File()) ? takes.emplace_back()
+                                                      : takes.back();
+        t.registration = args[++i].unquoted().toLowerCase();
+      }
     }
+    while (takes.size() > 1 && !takes.back().wants()) takes.pop_back();
 
-    if (playMidi != juce::File() || recordAudio != juce::File() || drawAll ||
-        drawStops > 0 || registration.isNotEmpty() || !namedStops.isEmpty()) {
-      win_->onLoaded = [this, playMidi, recordAudio, drawAll, drawStops,
-                        registration, namedStops] {
-        if (!namedStops.isEmpty()) {
-          juce::String drawn;
-          for (int id : namedStops) {
-            const auto it = proc_->organModel().stops.find(id);
-            if (it == proc_->organModel().stops.end()) {
-              juce::Logger::writeToLog("no stop " + juce::String(id) +
-                                       " on this organ");
-              continue;
-            }
-            proc_->setStopEngaged(id, true);
-            drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
+    if (takes.front().wants()) {
+      win_->onLoaded = [this, takes, stayOpen] {
+        // Held by the chain of callbacks below rather than by the lambda, so
+        // that each take can hand the next one on without copying the list.
+        auto list = std::make_shared<std::vector<Take>>(takes);
+        auto playFrom = std::make_shared<std::function<void(size_t)>>();
+
+        *playFrom = [this, list, playFrom, stayOpen](size_t index) {
+          if (index >= list->size()) {
+            // Deliberately still running unless told otherwise. Closing would
+            // throw away a sample set that cost a quarter of an hour to read,
+            // and the usual reason to script this is to record more than one
+            // thing on the same organ.
+            juce::Logger::writeToLog("recital finished");
+            if (!stayOpen) juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            return;
           }
-          juce::Logger::writeToLog("drawn: " + drawn);
-        } else if (registration.isNotEmpty()) {
-          const auto style =
-              mp::registrationFromName(registration.toStdString());
-          const auto chosen =
-              mp::chooseRegistration(proc_->organModel(), style);
+          const Take& t = (*list)[index];
+
+          // Let go of anything the previous piece left holding. A file that
+          // ends on a held chord leaves those pipes speaking, and an organ has
+          // no decay to cover it: the note sounds through the gap and into the
+          // next take.
+          proc_->releaseAllKeys();
+
+          // Each take registers from scratch: leaving the previous one drawn
+          // would make take two the sum of both, which is the sort of thing
+          // nobody notices until the recording is listened to.
+          for (const auto& e : proc_->stopList())
+            proc_->setStopEngaged(e.stopId, false);
+
           juce::String drawn;
-          for (mp::Id id : chosen) {
-            proc_->setStopEngaged(id, true);
+          auto note = [&drawn, this](mp::Id id) {
             const auto it = proc_->organModel().stops.find(id);
             if (it != proc_->organModel().stops.end())
               drawn += (drawn.isEmpty() ? "" : ", ") + juce::String(it->second.name);
-          }
-          juce::Logger::writeToLog(juce::String(mp::registrationName(style)) +
-                                   ": " + drawn);
-        } else if (drawAll) {
-          proc_->engageAllStops();
-        } else if (drawStops > 0) {
-          int n = 0;
-          for (const auto& e : proc_->stopList()) {
-            if (n++ >= drawStops) break;
-            proc_->setStopEngaged(e.stopId, true);
-          }
-        }
-        if (playMidi.existsAsFile()) {
-          if (proc_->recorder().loadFromFile(playMidi)) {
-            // A beat of silence first: a file that starts the instant the
-            // console appears is cut off at the head by every recorder.
-            juce::Timer::callAfterDelay(1200, [this, recordAudio] {
-              // Capture from inside the program rather than off the sound
-              // card. What the engine produced is what gets written -- no
-              // loopback device to find, no other application's sounds, and
-              // nothing lost if the machine stutters. Started in the SAME
-              // callback as playback, so the file begins where the music
-              // does.
-              if (recordAudio != juce::File()) {
-                recordAudio.getParentDirectory().createDirectory();
-                if (!proc_->audioRecorder().start(recordAudio,
-                                                  proc_->getSampleRate(), 2))
-                  juce::Logger::writeToLog("could not record to " +
-                                           recordAudio.getFullPathName());
+          };
+          if (!t.stopIds.isEmpty()) {
+            for (int id : t.stopIds) {
+              if (proc_->organModel().stops.count(id) == 0) {
+                juce::Logger::writeToLog("no stop " + juce::String(id) +
+                                         " on this organ");
+                continue;
               }
-              proc_->recorder().startPlayback();
-            });
-          } else {
-            juce::Logger::writeToLog("could not read MIDI: " +
-                                     playMidi.getFullPathName());
+              proc_->setStopEngaged(id, true);
+              note(id);
+            }
+          } else if (t.registration.isNotEmpty()) {
+            const auto style =
+                mp::registrationFromName(t.registration.toStdString());
+            for (mp::Id id : mp::chooseRegistration(proc_->organModel(), style)) {
+              proc_->setStopEngaged(id, true);
+              note(id);
+            }
+          } else if (t.all) {
+            proc_->engageAllStops();
+            drawn = "everything";
+          } else if (t.firstN > 0) {
+            int n = 0;
+            for (const auto& e : proc_->stopList()) {
+              if (n++ >= t.firstN) break;
+              proc_->setStopEngaged(e.stopId, true);
+              note(e.stopId);
+            }
           }
-        }
+          juce::Logger::writeToLog("take " + juce::String((int)index + 1) + "/" +
+                                   juce::String((int)list->size()) +
+                                   " drawn: " + drawn);
+
+          if (!t.midi.existsAsFile()) {
+            if (t.midi != juce::File())
+              juce::Logger::writeToLog("no such MIDI: " + t.midi.getFullPathName());
+            (*playFrom)(index + 1);
+            return;
+          }
+          if (!proc_->recorder().loadFromFile(t.midi)) {
+            juce::Logger::writeToLog("could not read MIDI: " +
+                                     t.midi.getFullPathName());
+            (*playFrom)(index + 1);
+            return;
+          }
+
+          // A beat of silence first: a file that starts the instant the
+          // console appears is cut off at the head by every recorder. The
+          // same beat also lets the previous take's release tails die away
+          // rather than bleeding into the next one.
+          juce::Timer::callAfterDelay(1500, [this, list, playFrom, index] {
+            const Take& take = (*list)[index];
+            // Capture from inside the program rather than off the sound card.
+            // What the engine produced is what gets written -- no loopback
+            // device to find, no other application's sounds, and nothing lost
+            // if the machine stutters. Started in the SAME callback as
+            // playback, so the file begins where the music does.
+            if (take.audio != juce::File()) {
+              take.audio.getParentDirectory().createDirectory();
+              if (!proc_->audioRecorder().start(take.audio,
+                                                proc_->getSampleRate(), 2))
+                juce::Logger::writeToLog("could not record to " +
+                                         take.audio.getFullPathName());
+            }
+            // Wall-clock, to the millisecond, at the instant the music
+            // starts. A screen recording of a whole recital is one long file,
+            // and this is what lets it be cut back into takes afterwards
+            // without lining anything up by eye.
+            juce::Logger::writeToLog(
+                "take " + juce::String((int)index + 1) + " starts at " +
+                juce::String(juce::Time::getCurrentTime().toMilliseconds()));
+            proc_->recorder().startPlayback();
+
+            // Poll for the end of the piece. The recorder reports whether it
+            // is playing but announces nothing when it stops, and a poll at
+            // this rate costs nothing next to rendering the organ.
+            struct Watch : public juce::Timer {
+              MasterpieceApp* app;
+              std::shared_ptr<std::vector<Take>> list;
+              std::shared_ptr<std::function<void(size_t)>> playFrom;
+              size_t index;
+              void timerCallback() override {
+                if (app->proc_->recorder().isPlaying()) return;
+                stopTimer();
+                app->proc_->audioRecorder().stop();
+                auto next = playFrom;
+                const size_t i = index;
+                // Deleted from outside its own callback.
+                juce::MessageManager::callAsync([next, i] { (*next)(i + 1); });
+                delete this;
+              }
+            };
+            auto* w = new Watch{};
+            w->app = this;
+            w->list = list;
+            w->playFrom = playFrom;
+            w->index = index;
+            w->startTimer(250);
+          });
+        };
+        (*playFrom)(0);
       };
     }
 

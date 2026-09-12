@@ -115,6 +115,18 @@ public:
   // there is exactly one note path rather than a second one for the mouse.
   juce::MidiKeyboardState& keyboardState() { return keyboardState_; }
 
+  // Let go of every key on every channel, the way a console's cancel does.
+  //
+  // A piece can stop with notes still down -- a file that ends on a held
+  // chord, or playback halted part-way -- and an organ pipe has no decay to
+  // hide it: it simply keeps speaking. That is a cipher, and it sounds
+  // through the silence and into whatever plays next.
+  //
+  // Asked for here, done on the audio thread: the MIDI path must not be fed
+  // from the message thread, so this raises a flag that the next block acts
+  // on.
+  void releaseAllKeys() { releaseAll_.store(true, std::memory_order_release); }
+
   // Stops in a stable order for the console: by division, then by id, so the
   // jamb does not reshuffle between loads.
   struct StopEntry { Id stopId = 0; Id divisionId = 0; std::string name; bool playable = false; };
@@ -695,10 +707,15 @@ private:
   std::vector<std::pair<Id, int>> stageValues_;
   // Resolved once at load: for each switch, the drawn one upstream of it.
   std::unordered_map<Id, Id> playerSwitch_;
+  // Stop -> the drawn knob that stands for it, for sets whose Stop points at
+  // a switch nothing draws and no linkage drives.
+  std::unordered_map<Id, Id> stopKnob_;
   ContinuousControlBank controls_;
   VoiceEngine voices_;
   SampleLibrary samples_;
   juce::MidiKeyboardState keyboardState_;
+  // Raised by releaseAllKeys(), consumed at the top of the next block.
+  std::atomic<bool> releaseAll_{false};
   // The organ's tuning, resolved once at load. Held by value so the audio
   // thread never chases a pointer into the model while it is being swapped.
   Temperament organTuning_;

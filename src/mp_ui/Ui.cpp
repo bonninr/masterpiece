@@ -340,6 +340,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     resized();
   };
 
+  addAndMakeVisible(panicButton_);
+  panicButton_.setTooltip("Release every key on every manual and the pedal");
+  panicButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe0a0a0));
+  panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
+
   addAndMakeVisible(swellButton_);
   swellButton_.onClick = [this] {
     showingSwell_ = !showingSwell_;
@@ -545,6 +550,7 @@ void MasterpieceEditor::resized() {
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
   // No swell button on an organ with nothing to enclose.
+  panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
   swellButton_.setVisible(expression_.shoeCount() > 0);
   if (swellButton_.isVisible())
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));

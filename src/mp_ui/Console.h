@@ -140,6 +140,9 @@ private:
   int heldControlStartValue_ = 0;
   // Last seen sounding set, to repaint only when it actually changed.
   uint64_t keyStateHash_ = 0;
+  // Same trick for the drawstops, so a registration set by anything other than
+  // a mouse click still shows on the jamb.
+  uint64_t stopStateHash_ = 0;
   bool hasArtwork_ = false;
   juce::Rectangle<int> extent_;
   std::string organRoot_;
