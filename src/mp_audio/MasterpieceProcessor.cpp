@@ -1284,6 +1284,26 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity) {
   if (engagedStops_.empty()) return; // nothing drawn: the organ is silent
 
+  // A key that is already down is being struck again. Let go of it first.
+  //
+  // soundingNotes_ holds ONE note id per key, and the last line of this
+  // function overwrites it. Without this the previous id is simply lost: its
+  // voices are still running, nothing holds their handle any more, and no
+  // note-off will ever reach them. A pipe has no decay, so each orphan sounds
+  // until the organ is unloaded.
+  //
+  // It went unnoticed because it needs a repeated note to happen at all. One
+  // note is perfect; a piece full of them silts up as it plays, which is what
+  // a toccata sounds like when its rests are louder than its chords.
+  //
+  // A real key cannot be pressed twice without being released, so releasing
+  // the old note is also what the instrument would do.
+  const auto already = soundingNotes_.find(noteKeyId);
+  if (already != soundingNotes_.end()) {
+    voices_.noteOff(already->second, NoteRelease{});
+    soundingNotes_.erase(already);
+  }
+
   const uint64_t noteId = nextNoteId_++;
   bool anyStarted = false;
 
@@ -1745,6 +1765,19 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Recording captures what arrived; playback merges its events into the same
   // buffer, so a recorded performance drives exactly the live path.
   recorder_.process(midi, buffer.getNumSamples());
+
+  // Then fold the playback back into the keyboard state.
+  //
+  // The state was read above, BEFORE the recorder added anything, so a note
+  // played from a file was never in it. Two things read that state and both
+  // were quietly wrong because of it: the drawn manuals, which stayed still
+  // through an entire recorded performance, and Panic, which had nothing to
+  // release and so did nothing at all.
+  //
+  // injectIndirectEvents is false here: the on-screen keyboard's own events
+  // were already merged by the call above, and adding them twice would play
+  // every moused note twice.
+  keyboardState_.processNextMidiBuffer(midi, 0, buffer.getNumSamples(), false);
 
   // Panic. Every key on every channel is released, as note-offs in the same
   // buffer, so they take the ordinary path: a voice stopped this way still
