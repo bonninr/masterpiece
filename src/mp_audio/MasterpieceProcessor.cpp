@@ -2190,8 +2190,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   } else {
     const int64_t head =
         maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
+    // The ranks the caller asked for, if it asked for any.
+    std::unordered_set<Id> onlyRanks;
+    for (Id stopId : preloadStops_) {
+      const auto it = model_.stops.find(stopId);
+      if (it == model_.stops.end()) continue;
+      for (const auto& e : it->second.ranks) onlyRanks.insert(e.rankId);
+    }
+    if (!onlyRanks.empty())
+      juce::Logger::writeToLog("load: PARTIAL -- " +
+                               juce::String((int)onlyRanks.size()) +
+                               " rank(s) of " + juce::String((int)model_.ranks.size()) +
+                               "; every other stop will be silent");
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
-                                      LoopSelection::Longest, &loadProgress_);
+                                      LoopSelection::Longest, &loadProgress_,
+                                      onlyRanks.empty() ? nullptr : &onlyRanks);
   }
 
   // A cancelled load is NOT a partly-loaded organ. Half an instrument that

@@ -253,7 +253,11 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                         const std::string& organRootDir,
                                         int64_t maxFramesPerSample,
                                         LoopSelection loopSelection,
-                                        LoadProgress* progress) {
+                                        LoadProgress* progress,
+                                        const std::unordered_set<Id>* onlyRanks) {
+  auto rankWanted = [onlyRanks](Id rankId) {
+    return onlyRanks == nullptr || onlyRanks->count(rankId) != 0;
+  };
   SampleLoadReport report;
 
   // Only what the pipework can actually play. A Sample row for a rank with no
@@ -268,7 +272,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   {
     std::unordered_set<Id> seen;
     for (const auto& [rankId, rank] : model.ranks) {
-      (void)rankId;
+      if (!rankWanted(rankId)) continue;
       for (const auto& pipe : rank.pipes)
         for (const auto& layer : pipe.layers) {
           for (const auto& a : layer.attacks)
@@ -285,7 +289,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         }
     }
     for (const auto& [rankId, rank] : model.ranks) {
-      (void)rankId;
+      if (!rankWanted(rankId)) continue;
       for (const auto& pipe : rank.pipes)
         for (const auto& layer : pipe.layers)
           for (const auto& a : layer.attacks) releaseIds.erase(a.sample.sampleId);

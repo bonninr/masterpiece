@@ -26,6 +26,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace mp {
@@ -69,10 +70,17 @@ public:
   // `progress`, when given, is updated as files are decoded and is polled for
   // cancellation between them. A cancelled load returns whatever it had
   // managed so far; the caller decides that this is not an organ.
+  // `onlyRanks`, when given, loads ONLY those ranks. This is not a smaller
+  // organ, it is an incomplete one: every stop outside the set is silent, and
+  // nothing in the engine will say so. It exists because a load is the slow
+  // part of trying anything -- minutes for a large set -- and a test that
+  // needs four stops should not pay for four hundred. Callers say so
+  // explicitly; nothing turns it on by itself.
   SampleLoadReport loadAll(const OrganModel& model, const std::string& organRootDir,
                            int64_t maxFramesPerSample = 0,
                            LoopSelection loopSelection = LoopSelection::Longest,
-                           LoadProgress* progress = nullptr);
+                           LoadProgress* progress = nullptr,
+                           const std::unordered_set<Id>* onlyRanks = nullptr);
 
   // How resident audio is stored. An organ IS its sample data, so this is the
   // largest single lever on how big a set a machine can hold: Int16 halves the

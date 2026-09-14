@@ -343,6 +343,22 @@ public:
       };
     }
 
+    // --preload-drawn reads only the ranks the recital will actually draw.
+    // On a large set that is the difference between a minute and a few
+    // seconds, which is the whole cost of trying a registration. Everything
+    // NOT in the list is silent afterwards, so it is opt-in and says so in
+    // the log.
+    if (args.contains("--preload-drawn")) {
+      std::vector<mp::Id> wanted;
+      for (const auto& t : takes)
+        for (int id : t.stopIds) wanted.push_back(id);
+      if (wanted.empty())
+        juce::Logger::writeToLog(
+            "--preload-drawn ignored: no --draw-stops id list to narrow to");
+      else
+        proc_->setPreloadStops(std::move(wanted));
+    }
+
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
 
     // A fresh installation has no audio device chosen, no MIDI input enabled

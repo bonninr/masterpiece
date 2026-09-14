@@ -97,6 +97,15 @@ public:
                        bool graphicsOnly = false);
   void loadOrganAsync(const juce::File& odfFile);
 
+  // Load only the ranks these stops need, on the NEXT load.
+  //
+  // Not a lighter organ, an incomplete one: every stop outside the list is
+  // silent afterwards and nothing will warn you. It is here because loading is
+  // what makes trying anything slow -- minutes on a large set -- and a test
+  // that draws four stops should not read four hundred ranks. Empty (the
+  // default) loads the whole instrument.
+  void setPreloadStops(std::vector<Id> stops) { preloadStops_ = std::move(stops); }
+
   // Where a load has got to, and how to stop it. The progress object is read
   // by a UI timer while the loader's worker threads write it, which is why
   // everything in it is atomic.
@@ -713,6 +722,7 @@ private:
   ContinuousControlBank controls_;
   VoiceEngine voices_;
   SampleLibrary samples_;
+  std::vector<Id> preloadStops_;
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
   std::atomic<bool> releaseAll_{false};
