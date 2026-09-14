@@ -1,0 +1,61 @@
+name: release
+
+# Tagging vX.Y.Z builds every supported target and publishes the binaries.
+#
+# The build matrix is not repeated here: this calls build.yml, so a release is
+# produced by exactly the steps that verify an ordinary push. macOS is absent
+# because it is not a supported target yet.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish'
+        required: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # One archive per target, named for the tag, so a downloaded file still
+      # says what it is after it leaves the browser.
+      - name: Package
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          mkdir -p dist
+          for d in artifacts/*/; do
+            name=$(basename "$d")
+            case "$name" in
+              masterpiece-windows) ext=zip ;;
+              *)                   ext=tar.gz ;;
+            esac
+            if [ "$ext" = zip ]; then
+              (cd "$d" && zip -qr "../../dist/${name}-${tag}.zip" .)
+            else
+              tar -czf "dist/${name}-${tag}.tar.gz" -C "$d" .
+            fi
+          done
+          ls -lh dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$tag" dist/* \
+            --title "Masterpiece $tag" \
+            --generate-notes \
+            --verify-tag || gh release upload "$tag" dist/* --clobber

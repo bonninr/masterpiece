@@ -29,6 +29,9 @@ on:
         description: 'Also build macOS (bills at 10x)'
         type: boolean
         default: false
+  # release.yml calls this rather than repeating the matrix, so a tagged
+  # release is built by exactly the same steps as an ordinary push.
+  workflow_call:
 
 # Pushing twice in a minute should not pay for two builds of the older commit.
 concurrency:
