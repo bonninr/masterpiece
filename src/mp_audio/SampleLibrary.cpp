@@ -105,7 +105,7 @@ void SampleLibrary::retireOldGenerations() {
 
 bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                              int64_t maxFrames, LoopSelection selection,
-                             SampleStorage storage) {
+                             SampleStorage storage, bool loadMono) {
   const int64_t total = static_cast<int64_t>(reader.lengthInSamples);
   if (total <= 0) return false;
 
@@ -124,11 +124,23 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     constexpr int64_t kCrossfadeMargin = 8192;
     want = std::max(want, std::min(total, loopEnd + kCrossfadeMargin));
   }
-  const int channels = std::max(1, static_cast<int>(reader.numChannels));
+  const int fileChannels = std::max(1, static_cast<int>(reader.numChannels));
 
-  juce::AudioBuffer<float> scratch(channels, static_cast<int>(want));
-  if (!reader.read(&scratch, 0, static_cast<int>(want), 0, true, channels > 1))
+  juce::AudioBuffer<float> scratch(fileChannels, static_cast<int>(want));
+  if (!reader.read(&scratch, 0, static_cast<int>(want), 0, true,
+                   fileChannels > 1))
     return false;
+
+  // Fold to mono before anything else looks at the buffer, so quantising,
+  // interleaving and the byte count all see one channel. The average, not the
+  // sum: summing two correlated channels clips.
+  if (loadMono && fileChannels > 1) {
+    for (int c = 1; c < fileChannels; ++c)
+      scratch.addFrom(0, 0, scratch, c, 0, static_cast<int>(want));
+    scratch.applyGain(0, 0, static_cast<int>(want),
+                      1.0f / static_cast<float>(fileChannels));
+  }
+  const int channels = (loadMono && fileChannels > 1) ? 1 : fileChannels;
 
   out.numChannels = channels;
   out.sampleRate = reader.sampleRate > 0.0 ? reader.sampleRate : 48000.0;
@@ -137,7 +149,7 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
 
   // Interleave: the voice engine reads frame-major, which keeps a stereo
   // voice's two channels on the same cache line.
-  if (storage == SampleStorage::Int16) {
+  if (storage == SampleStorage::Int16 || storage == SampleStorage::Int8) {
     // Scale by this file's own peak before quantising. Organ samples are not
     // normalised — a soft stop's samples can sit 20 dB down, and truncating
     // those straight to int16 would throw away three bits that cost nothing to
@@ -147,20 +159,26 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     for (int c = 0; c < channels; ++c)
       peak = std::max(peak, scratch.getMagnitude(c, 0, static_cast<int>(want)));
 
-    out.pcmScale = peak > 0.0f ? peak / 32767.0f : 1.0f;
-    const float toCounts = peak > 0.0f ? 32767.0f / peak : 0.0f;
-    out.pcm16.resize(count);
+    // Full scale for the chosen width. Eight bits is 127 rather than 128 for
+    // the same reason sixteen is 32767: the negative rail is one count further
+    // out, and using it would make the scale asymmetric.
+    const bool byteWide = storage == SampleStorage::Int8;
+    const float full = byteWide ? 127.0f : 32767.0f;
+
+    out.pcmScale = peak > 0.0f ? peak / full : 1.0f;
+    const float toCounts = peak > 0.0f ? full / peak : 0.0f;
+    if (byteWide) out.pcm8.resize(count); else out.pcm16.resize(count);
     for (int64_t f = 0; f < want; ++f)
       for (int c = 0; c < channels; ++c) {
         const float v = scratch.getSample(c, static_cast<int>(f)) * toCounts;
         // Round rather than truncate, and clamp: getMagnitude is the peak, so
-        // the product cannot exceed 32767 except by rounding, but a sample set
-        // with a NaN in it must not wrap to full scale.
+        // the product cannot exceed full scale except by rounding, but a
+        // sample set with a NaN in it must not wrap to the opposite rail.
         const float r = std::round(v);
-        out.pcm16[static_cast<size_t>(f * channels + c)] =
-            static_cast<int16_t>(std::isfinite(r)
-                                     ? std::clamp(r, -32767.0f, 32767.0f)
-                                     : 0.0f);
+        const float q = std::isfinite(r) ? std::clamp(r, -full, full) : 0.0f;
+        const auto i = static_cast<size_t>(f * channels + c);
+        if (byteWide) out.pcm8[i] = static_cast<int8_t>(q);
+        else out.pcm16[i] = static_cast<int16_t>(q);
       }
   } else {
     out.pcmScale = 1.0f;
@@ -372,7 +390,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       const int64_t head = stream ? streamHead_ : maxFramesPerSample;
       const bool ok =
           reader != nullptr &&
-          readInto(*reader, *buffer, head, loopSelection, storage_);
+          readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_);
       if (ok && stream && reader->lengthInSamples > buffer->numFrames)
         attachTail(*buffer, path.string(),
                    static_cast<int64_t>(reader->lengthInSamples));
@@ -406,6 +424,10 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
                                int64_t totalFrames) const {
   auto tail = std::make_shared<SampleTail>();
   tail->totalFrames = totalFrames;
+  // The head may have been folded to mono; the file on disk was not. Without
+  // folding the tail the same way, a streamed release would splice from a
+  // downmix straight into a bare left channel.
+  const bool foldToMono = loadMono_;
 
   // The reader is opened on first use, on the streaming thread, and then kept.
   // Opening it here would mean holding a file handle per streamed sample for
@@ -420,8 +442,8 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
   auto shared = std::make_shared<Shared>();
   shared->path = path;
 
-  tail->read = [shared](int64_t startFrame, int numFrames, float* dest,
-                        int channels) -> int64_t {
+  tail->read = [shared, foldToMono](int64_t startFrame, int numFrames,
+                                    float* dest, int channels) -> int64_t {
     if (dest == nullptr || numFrames <= 0 || channels <= 0) return 0;
     // One reader, one thread at a time. The streamer is single-threaded today;
     // the lock is what makes that a choice rather than an assumption.
@@ -436,11 +458,20 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       if (shared->reader == nullptr) return 0;
     }
 
-    const int ch = std::min(channels,
-                            static_cast<int>(shared->reader->numChannels));
+    const int fileCh = std::max(1, static_cast<int>(shared->reader->numChannels));
+    // When folding, every channel of the file is needed to make the average,
+    // even though only one comes out.
+    const int ch = (foldToMono && channels == 1)
+                       ? fileCh
+                       : std::min(channels, fileCh);
     juce::AudioBuffer<float> scratch(std::max(1, ch), numFrames);
     if (!shared->reader->read(&scratch, 0, numFrames, startFrame, true, ch > 1))
       return 0;
+
+    if (foldToMono && channels == 1 && ch > 1) {
+      for (int c = 1; c < ch; ++c) scratch.addFrom(0, 0, scratch, c, 0, numFrames);
+      scratch.applyGain(0, 0, numFrames, 1.0f / static_cast<float>(ch));
+    }
 
     // Interleave into the ring, the same layout the resident head uses.
     for (int f = 0; f < numFrames; ++f)

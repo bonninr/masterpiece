@@ -565,6 +565,11 @@ public:
   }
   SampleStorage sampleStorage() const { return samples_.storage(); }
 
+  // Fold a stereo set to one channel while loading. Halves everything, and
+  // gives up the recording's stereo image to do it. Applies to the next load.
+  void setLoadMono(bool on) { samples_.setLoadMono(on); }
+  bool loadMono() const { return samples_.loadMono(); }
+
   // Stream release tails from disk instead of holding them. Releases are
   // several seconds each, played once, straight through — the only samples in
   // an organ that stream well. Applies to the next load. See SampleLibrary.

@@ -2240,6 +2240,26 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                            juce::String(phases.sinceStart(), 1) + " ms  (" +
                            odfFile.getFileName() + ")");
 
+  // What the organ costs to hold, in the library's own terms. The process
+  // will always be larger than this -- artwork, JUCE, the heap it has not
+  // returned -- but this is the part that the memory settings actually move,
+  // and it is the number to compare between two configurations of the same
+  // set.
+  {
+    const auto mb = [](int64_t b) {
+      return juce::String(b / (1024.0 * 1024.0), 1);
+    };
+    juce::Logger::writeToLog(
+        "memory: resident " + mb(samples_.residentBytes()) + " MB" +
+        ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +
+        ", storage=" +
+        (samples_.storage() == SampleStorage::Int8    ? "int8"
+         : samples_.storage() == SampleStorage::Int16  ? "int16"
+                                                       : "float32") +
+        ", mono=" + (samples_.loadMono() ? "on" : "off") +
+        ", streamReleases=" + (samples_.streamReleases() ? "on" : "off"));
+  }
+
   // Only now, having got this far: an organ that failed to load is not one
   // worth reopening on the next start.
   setLastOrgan(odfFile);

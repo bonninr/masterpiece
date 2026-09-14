@@ -87,6 +87,15 @@ public:
   // footprint against the decoder's native float. Takes effect on the next
   // load — converting a live set would have to be done underneath sounding
   // voices, and there is no reason to.
+  // Fold a stereo set down to one channel as it is read. Halves everything
+  // that follows and costs the recording's stereo image, which is a real
+  // loss on a set recorded in a building -- and the difference between
+  // loading and not loading on a small machine. The streamed tail is folded
+  // the same way, or the splice from head to tail would step from a downmix
+  // to a bare left channel.
+  void setLoadMono(bool on) { loadMono_ = on; }
+  bool loadMono() const { return loadMono_; }
+
   void setStorage(SampleStorage s) { storage_ = s; }
   SampleStorage storage() const { return storage_; }
 
@@ -134,9 +143,11 @@ private:
 
   void publish(std::shared_ptr<const Store> next);
 
+  // Static, so everything it depends on arrives as an argument: `loadMono`
+  // is the member of the same name, passed rather than read.
   static bool readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                        int64_t maxFrames, LoopSelection selection,
-                       SampleStorage storage);
+                       SampleStorage storage, bool loadMono);
   // Attach a tail that reads the rest of `path` on demand. The reader is
   // opened lazily, on the streaming thread, and kept for the buffer's life.
   void attachTail(SampleBuffer& out, const std::string& path,
@@ -156,6 +167,7 @@ private:
   juce::AudioFormatManager formats_;
   int loadThreads_ = 0;
   SampleStorage storage_ = SampleStorage::Float32;
+  bool loadMono_ = false;
   bool streamReleases_ = false;
   int64_t streamHead_ = 48000; // one second
   // Files a streamed buffer may need to reopen. Kept here so a tail outlives

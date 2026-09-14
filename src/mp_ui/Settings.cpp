@@ -30,6 +30,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openPreload_ = proc_.preloadHeadFrames();
   openStorage_ = proc_.sampleStorage();
   openStream_ = proc_.streamReleases();
+  openMono_ = proc_.loadMono();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -45,6 +46,23 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   voicing_.setToggleState(sw.enableVoicing, juce::dontSendNotification);
   originalPitch_.setToggleState(sw.playAtOriginalOrganPitch,
                                juce::dontSendNotification);
+
+  // The profile is the control most players should ever need. It is first on
+  // the panel and it moves all four settings below it; those stay visible
+  // because someone who knows their machine should not have to accept a
+  // profile to get at them.
+  addAndMakeVisible(profileLabel_);
+  styleLabel(profileLabel_, "Memory profile");
+  addAndMakeVisible(profile_);
+  profile_.addItem("Best quality - hold everything", 1);
+  profile_.addItem("Recommended - 16-bit, stream releases", 2);
+  profile_.addItem("Small machine - 16-bit mono, stream releases", 3);
+  profile_.addItem("Raspberry Pi - 8-bit mono, stream releases", 4);
+  profile_.addItem("Custom", 5);
+  profile_.onChange = [this] {
+    if (applyingProfile_) return;
+    if (profile_.getSelectedId() != 5) applyProfile(profile_.getSelectedId());
+  };
 
   addAndMakeVisible(preloadLabel_);
   styleLabel(preloadLabel_, "Preloaded per sample");
@@ -64,26 +82,42 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       case 4: proc_.setPreloadHeadFrames(1); break;
       default: proc_.setPreloadHeadFrames(0); break;
     }
+    syncProfile();
   };
 
   addAndMakeVisible(storageLabel_);
   styleLabel(storageLabel_, "Resident format");
   addAndMakeVisible(storage_);
-  storage_.addItem("32-bit float (no conversion)", 1);
-  storage_.addItem("16-bit (half the memory)", 2);
-  storage_.setSelectedId(
-      proc_.sampleStorage() == SampleStorage::Int16 ? 2 : 1,
-      juce::dontSendNotification);
+  storage_.addItem("32-bit float - no conversion", 1);
+  storage_.addItem("16-bit - half the memory", 2);
+  storage_.addItem("8-bit - a quarter, audible on quiet stops", 3);
+  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int8    ? 3
+                         : proc_.sampleStorage() == SampleStorage::Int16 ? 2
+                                                                         : 1,
+                         juce::dontSendNotification);
   storage_.onChange = [this] {
-    proc_.setSampleStorage(storage_.getSelectedId() == 2 ? SampleStorage::Int16
-                                                         : SampleStorage::Float32);
+    const int id = storage_.getSelectedId();
+    proc_.setSampleStorage(id == 3   ? SampleStorage::Int8
+                           : id == 2 ? SampleStorage::Int16
+                                     : SampleStorage::Float32);
+    syncProfile();
   };
 
   addAndMakeVisible(stream_);
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
     proc_.setStreamReleases(stream_.getToggleState());
+    syncProfile();
   };
+
+  addAndMakeVisible(mono_);
+  mono_.setToggleState(proc_.loadMono(), juce::dontSendNotification);
+  mono_.onClick = [this] {
+    proc_.setLoadMono(mono_.getToggleState());
+    syncProfile();
+  };
+
+  syncProfile();
 
   // Nothing on this panel writes to disk on its own. Changes are live the
   // moment they are made, and what happens to them afterwards is the
@@ -106,7 +140,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(memory_, "");
   addAndMakeVisible(note_);
   styleNote(note_,
-            "All three settings take effect on the next organ load.\n\n"
+            "These settings take effect on the next organ load.\n\n"
             "The preload head is a minimum, never a cap: it is always extended "
             "to cover the sustain loop, because a sample whose loop is missing "
             "does not sustain - the note simply stops when the audio runs "
@@ -133,6 +167,9 @@ void EnginePanel::revert() {
   proc_.setPreloadHeadFrames(openPreload_);
   proc_.setSampleStorage(openStorage_);
   proc_.setStreamReleases(openStream_);
+  proc_.setLoadMono(openMono_);
+  mono_.setToggleState(openMono_, juce::dontSendNotification);
+  syncProfile();
 
   simpleWav_.setToggleState(openSwitch_.simpleWavOnly, juce::dontSendNotification);
   wind_.setToggleState(openSwitch_.enableWindModel, juce::dontSendNotification);
@@ -204,6 +241,74 @@ void EnginePanel::timerCallback() {
 
 void EnginePanel::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff1b1e24)); }
 
+// The four memory settings, as combinations worth having rather than as four
+// independent questions. Measured on a 44-stop set these span 21.6 GB down to
+// roughly 1.2 GB; the individual controls below can still reach anything.
+void EnginePanel::applyProfile(int id) {
+  applyingProfile_ = true;
+  struct Profile {
+    SampleStorage storage;
+    bool mono;
+    bool stream;
+    int64_t head;
+  };
+  const Profile p = id == 1   ? Profile{SampleStorage::Float32, false, false, 0}
+                    : id == 2 ? Profile{SampleStorage::Int16, false, true, 0}
+                    : id == 3 ? Profile{SampleStorage::Int16, true, true, 0}
+                              : Profile{SampleStorage::Int8, true, true, 0};
+
+  proc_.setSampleStorage(p.storage);
+  proc_.setLoadMono(p.mono);
+  proc_.setStreamReleases(p.stream);
+  proc_.setPreloadHeadFrames(p.head);
+
+  storage_.setSelectedId(p.storage == SampleStorage::Int8    ? 3
+                         : p.storage == SampleStorage::Int16 ? 2
+                                                             : 1,
+                         juce::dontSendNotification);
+  mono_.setToggleState(p.mono, juce::dontSendNotification);
+  stream_.setToggleState(p.stream, juce::dontSendNotification);
+  preload_.setSelectedId(1, juce::dontSendNotification);
+  applyingProfile_ = false;
+}
+
+void EnginePanel::syncProfile() {
+  const auto st = proc_.sampleStorage();
+  const bool mono = proc_.loadMono();
+  const bool stream = proc_.streamReleases();
+  const bool wholeHead = proc_.preloadHeadFrames() == 0;
+
+  int id = 5; // Custom, until the settings match one of the four exactly
+  if (wholeHead) {
+    if (st == SampleStorage::Float32 && !mono && !stream) id = 1;
+    else if (st == SampleStorage::Int16 && !mono && stream) id = 2;
+    else if (st == SampleStorage::Int16 && mono && stream) id = 3;
+    else if (st == SampleStorage::Int8 && mono && stream) id = 4;
+  }
+  applyingProfile_ = true;
+  profile_.setSelectedId(id, juce::dontSendNotification);
+  applyingProfile_ = false;
+}
+
+juce::String EnginePanel::projection(SampleStorage s, bool mono) const {
+  // Scaled from what THIS organ actually loaded, because the only honest
+  // basis for a projection is a measurement. Format and channel count are
+  // exact linear multipliers on the same frames; streaming is not projected
+  // here at all, since how much of a set is release tail differs per set and
+  // the live figure beside this one already reports it.
+  const int64_t held = proc_.sampleLibrary().residentBytes();
+  if (held <= 0) return {};
+
+  const auto width = [](SampleStorage f) {
+    return f == SampleStorage::Int8 ? 1 : f == SampleStorage::Int16 ? 2 : 4;
+  };
+  const double formatRatio =
+      static_cast<double>(width(s)) / static_cast<double>(width(proc_.sampleStorage()));
+  const double channelRatio = (mono == proc_.loadMono()) ? 1.0 : (mono ? 0.5 : 2.0);
+  const double mb = static_cast<double>(held) / (1024.0 * 1024.0) * formatRatio * channelRatio;
+  return juce::String(mb / 1024.0, 2) + " GB";
+}
+
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
@@ -212,6 +317,10 @@ void EnginePanel::resized() {
     r.removeFromTop(2);
   }
   r.removeFromTop(kGap);
+  auto profileRow = r.removeFromTop(kRow);
+  profileLabel_.setBounds(profileRow.removeFromLeft(180));
+  profile_.setBounds(profileRow.removeFromLeft(320));
+  r.removeFromTop(10);
   auto row = r.removeFromTop(kRow);
   preloadLabel_.setBounds(row.removeFromLeft(180));
   preload_.setBounds(row.removeFromLeft(260));
@@ -221,6 +330,8 @@ void EnginePanel::resized() {
   storage_.setBounds(storageRow.removeFromLeft(260));
   r.removeFromTop(6);
   stream_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(2);
+  mono_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);

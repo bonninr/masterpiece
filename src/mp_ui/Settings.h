@@ -26,6 +26,15 @@ public:
 private:
   void timerCallback() override;
   void pushSwitches();
+  // Apply one of the named profiles to all four memory settings at once.
+  void applyProfile(int id);
+  // Move the profile box to whichever profile the current settings match, or
+  // to Custom when they match none.
+  void syncProfile();
+  // What the next load would hold, given a format and a channel count.
+  // Exact for those two -- both are linear multipliers on the same frames --
+  // and it says so rather than guessing at what streaming would save.
+  juce::String projection(SampleStorage s, bool mono) const;
   // Put the engine, and the controls, back to the state captured when this
   // panel was built.
   void revert();
@@ -40,6 +49,10 @@ private:
   int64_t openPreload_ = 0;
   SampleStorage openStorage_ = SampleStorage::Float32;
   bool openStream_ = false;
+  bool openMono_ = false;
+  // Set while a profile is writing the individual controls, so their
+  // onChange handlers do not bounce the profile straight back to Custom.
+  bool applyingProfile_ = false;
 
   juce::TextButton revert_{"Revert changes"};
   juce::TextButton keep_{"Keep changes"};
@@ -55,7 +68,10 @@ private:
   juce::ComboBox preload_;
   juce::Label storageLabel_;
   juce::ComboBox storage_;
+  juce::Label profileLabel_;
+  juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};
+  juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
   juce::Label memory_;
   juce::Label note_;
 };
