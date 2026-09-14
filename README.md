@@ -11,7 +11,7 @@ drawstops, keyboards, pedalboard — and plays it.
 [![JUCE 9](https://img.shields.io/badge/JUCE-9-8DC63F?logo=juce&logoColor=white)](https://juce.com/)
 [![CMake](https://img.shields.io/badge/CMake%20%2B%20Ninja-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
 [![platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi-555?logo=linux&logoColor=white)](#building)
-[![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20AU%20%7C%20LV2-6b4f9e)](#building)
+[![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20LV2-6b4f9e)](#building)
 [![licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENCE)
 
 ![Friesach](screenshots/Friesach.jpg)
@@ -32,9 +32,11 @@ own audio output.
 
 ## Highlights
 
-- **Standalone and plugin.** One engine, shipped as an application and as
-  VST3, AU and LV2 — so the organ can be one instrument among others in a DAW,
-  sequenced, rendered offline, or tracked alongside strings and choir.
+- **Standalone and plugin.** One engine, shipped as an application and as VST3
+  and LV2 — so the organ can be one instrument among others in a DAW,
+  sequenced, rendered offline, or tracked alongside strings and choir. The
+  Raspberry Pi builds are standalone only; AU is built from the same target and
+  ships when macOS does.
 - **Streaming sampler.** Attacks and loops stay resident; release tails keep
   only their head in RAM and stream the rest into per-voice ring buffers while
   the note sounds. One set drops from 12.2 GB to 5.6 GB, sample-identical.
@@ -67,8 +69,9 @@ artwork, the drawstop positions, the keyboards and the pedalboard all come out
 of the set's own definition, so an organ looks and behaves like itself rather
 than a generic mixer with the stop names changed.
 
-It runs as a standalone application and as a VST3, AU or LV2 plugin — the same
-engine either way.
+It runs as a standalone application and as a VST3 or LV2 plugin — the same
+engine either way. An AU is built from the same target for macOS, which is not
+a supported platform yet.
 
 ---
 
@@ -204,8 +207,8 @@ transparency masks, drawn manuals and pedalboards, multiple display pages, and
 alternate layouts. Clicking a key or a drawstop takes exactly the same path as
 the equivalent MIDI message.
 
-**In a DAW.** The standalone application and the VST3, AU and LV2 plugins are
-the same engine. As a plugin the organ is one instrument among others: put your
+**In a DAW.** The standalone application and the VST3 and LV2 plugins are the
+same engine. As a plugin the organ is one instrument among others: put your
 own convolution after it, render a take offline, or give each division its own
 track through the multi-channel routing.
 
@@ -297,7 +300,7 @@ if you want to know where the time went.
 | XML | pugixml |
 | Build | CMake + Ninja, command line only |
 | Platforms | Windows, macOS, Linux; Raspberry Pi via cross-build |
-| Formats | Standalone, VST3, AU, LV2 |
+| Formats | Standalone, VST3, LV2 (AU builds, macOS not yet supported) |
 
 The engine is split so the parts with no user interface can be tested without
 one:
