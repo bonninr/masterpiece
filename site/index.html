@@ -215,99 +215,88 @@
   </section>
 
   <section id="does">
-    <h2>What it does</h2>
+    <h2>Summary</h2>
     <h3>Under the console</h3>
     <div class="features">
       <div class="feature">
-        <h4>Standalone, or inside your DAW</h4>
-        <p>The same engine ships as a standalone application and as a VST3 and
-          LV2 plugin. As a plugin the organ is one instrument among others:
-          sequence it, render it offline, put a convolution of your own room
-          after it, or play it alongside strings and choir on separate
-          tracks. The Raspberry&nbsp;Pi builds are standalone only; an AU is
-          built from the same target and ships when macOS does.</p>
+        <h4>Formats</h4>
+        <p>Standalone application, plus VST3 and LV2 plugins built from the
+          same engine, so the organ can be sequenced, rendered offline or
+          tracked alongside other instruments. Raspberry&nbsp;Pi builds are
+          standalone only; an AU is built from the same target and ships when
+          macOS does.</p>
       </div>
       <div class="feature">
-        <h4>Streaming sampler</h4>
-        <p>A full organ is tens of gigabytes because every pipe is a separate
-          recording. Attacks and loops stay resident; each release tail keeps
-          only its head in RAM and the remainder is fetched by a background
-          thread into per-voice ring buffers while the note sounds. One set
-          goes from 12.2&nbsp;GB to 5.6&nbsp;GB, and the rendered audio is
-          identical sample for sample.</p>
+        <h4>Streaming pipe loading</h4>
+        <p>Attacks and loops stay resident; each release tail keeps only its
+          head in RAM and a background thread refills per-voice ring buffers
+          while the note sounds. One 12.2&nbsp;GB set is resident in
+          5.6&nbsp;GB with output identical sample for sample. Reduced-precision
+          storage roughly halves the footprint again.</p>
       </div>
       <div class="feature">
         <h4>Wind model</h4>
-        <p>For libraries that describe their own pneumatics, the wind system is
-          solved as a physical one — compartments, bellows, valves, conduits,
-          and the air each pipe draws. Pull a full registration and the
-          pressure sags the way the real instrument does, so the tuning and the
-          attack move with it instead of staying glassy.</p>
+        <p>For sets that describe their pneumatics, compartments, bellows,
+          valves and per-pipe air demand are solved as a physical system.
+          Registration load lowers the pressure, and tuning and attack follow
+          it.</p>
       </div>
       <div class="feature">
-        <h4>Voicing, down to the pipe</h4>
-        <p>Level and tuning per rank, and per individual pipe, which add rather
-          than replace: pulling one sour pipe into tune keeps the trim on the
-          rank it belongs to. A and B hold two complete sets for instant
-          comparison. Both are a multiply and a ratio taken once when a note
-          starts, so they cost nothing while it sounds and work with the DSP
-          switched off.</p>
+        <h4>Voicing</h4>
+        <p>Level and tuning per rank and per individual pipe, composed rather
+          than overriding, so a single-pipe correction keeps its rank's trim.
+          Applied once at note start: no per-sample cost, and it works with DSP
+          off. A and B hold two full sets for comparison.</p>
       </div>
       <div class="feature">
-        <h4>Every pipe, its own recording</h4>
-        <p>Attack, sustain loop, and a matched release tail crossfaded in
-          rather than cut to, so a key release leaves the room's own decay
-          behind. Transposed ranks are resampled with four-point
-          interpolation.</p>
+        <h4>Sample playback</h4>
+        <p>Per pipe: attack, sustain loop, and a matched release tail
+          crossfaded in rather than cut to, so a key release leaves the room's
+          own decay behind. Transposed ranks use four-point interpolation.</p>
       </div>
       <div class="feature">
-        <h4>Polyphony that fails gracefully</h4>
-        <p>When voices run out the engine steals a decaying release first, then
-          the oldest quietest note. A key you have just pressed is never taken,
-          so a full chord under a full registration thins from the back rather
-          than dropping what you played.</p>
+        <h4>Polyphony</h4>
+        <p>Bounded, with voice stealing: decaying releases first, then the
+          oldest and quietest note. A key just pressed is never stolen, so a
+          chord under a full registration thins from the back.</p>
       </div>
       <div class="feature">
-        <h4>Couplers as a switch network</h4>
-        <p>A key reaching a pipe is a walk through the instrument's own switch
-          graph, not a checkbox — so couplers, sub- and super-octaves and
-          unison-off compose exactly as the builder wired them. Thumb pistons,
-          combinations with capture, general cancel, crescendo, and a sequencer
-          stepping the generals.</p>
+        <h4>Registration</h4>
+        <p>Couplers are resolved through the set's own switch graph, so
+          sub- and super-octaves and unison-off compose as the builder wired
+          them. Thumb pistons, combinations with capture, general cancel,
+          crescendo, and a sequencer over the generals.</p>
       </div>
       <div class="feature">
-        <h4>Enclosure and tremulants</h4>
-        <p>Enclosed divisions are filtered per box as the shades move, so an
-          unenclosed division stays unenclosed. Tremulants modulate amplitude
-          and pitch per pipe, which lets one chest wobble while another does
-          not.</p>
+        <h4>Tuning</h4>
+        <p>Equal, plus eight historical temperaments generated from fifth-chain
+          definitions rather than transcribed tables. A set naming an
+          unrecognised temperament is reported, not silently played in
+          equal.</p>
       </div>
       <div class="feature">
-        <h4>Historical temperaments</h4>
-        <p>Equal, or one of eight historical temperaments, each generated from
-          its own fifth-chain definition rather than transcribed from a table.
-          A set naming a temperament nobody recognises is reported, never
-          quietly played in equal.</p>
+        <h4>Expression</h4>
+        <p>Enclosure filtering per box as the shades move, so an unenclosed
+          division stays unenclosed. Tremulant amplitude and pitch modulation
+          is per pipe, so one chest can wobble while another does not.</p>
       </div>
       <div class="feature">
-        <h4>Multi-channel routing</h4>
-        <p>No sample library says anything about audio routing, so ranks are
-          assigned to output pairs by you and saved per organ. In stereo the
-          pairs are summed, so nothing disappears when you split them up.</p>
+        <h4>Audio routing</h4>
+        <p>Ranks are assigned to output pairs and saved per organ, since a rank
+          number means nothing in another instrument. Pairs are summed in
+          stereo, so nothing disappears when they are split.</p>
       </div>
       <div class="feature">
-        <h4>Your console, learned</h4>
-        <p>Every MIDI input device at once, each knowing which manual it is.
-          Right-click a drawstop and move the real one to learn it. MIDI out
-          lights the drawstops on a physical console, and a jamb display is
-          driven over system exclusive.</p>
+        <h4>MIDI</h4>
+        <p>All input devices simultaneously, each mapped to a division.
+          Per-drawstop learn. MIDI out lights the drawstops on a physical
+          console, and a jamb display is driven over system exclusive.</p>
       </div>
       <div class="feature">
         <h4>Recording</h4>
-        <p>A MIDI capture takes stop changes and shoe movements as well as
-          notes, so a performance can be replayed through a different
-          registration; the audio capture is what it sounded like. Both at once
-          is the useful combination.</p>
+        <p>MIDI capture includes stop changes and shoe movement, so a take can
+          be replayed through a different registration. Audio capture runs in
+          parallel.</p>
       </div>
     </div>
   </section>

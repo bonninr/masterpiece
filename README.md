@@ -30,29 +30,24 @@ own audio output.
 
 ---
 
-## Highlights
+## Summary
 
-- **Standalone and plugin.** One engine, shipped as an application and as VST3
-  and LV2 — so the organ can be one instrument among others in a DAW,
-  sequenced, rendered offline, or tracked alongside strings and choir. The
-  Raspberry Pi builds are standalone only; AU is built from the same target and
-  ships when macOS does.
-- **Streaming sampler.** Attacks and loops stay resident; release tails keep
-  only their head in RAM and stream the rest into per-voice ring buffers while
-  the note sounds. One set drops from 12.2 GB to 5.6 GB, sample-identical.
-- **Wind model.** Compartments, bellows, valves and the air each pipe draws,
-  solved as a physical system: a full registration sags the wind, and tuning
-  and attack move with it.
-- **Voicing per pipe.** Level and tuning per rank *and* per pipe, adding rather
-  than replacing, with A/B sets for comparison — and free at playing time,
-  because both are applied once when a note starts.
-- **Couplers as a switch network.** A key reaching a pipe is a walk through the
-  instrument's own switch graph, so couplers, octaves and unison-off compose
-  the way the builder wired them.
-- **Eight historical temperaments**, each generated from its fifth-chain
-  definition rather than transcribed.
-- **The real console**, drawn from the set's own definition — and a stop list
-  for libraries that ship no artwork.
+| | |
+|---|---|
+| Formats | Standalone application; VST3 and LV2 plugins from the same engine. Raspberry Pi builds are standalone only. |
+| Sample playback | Per-pipe attack, sustain loop and matched release tail, crossfaded rather than cut. Four-point interpolation on transposed ranks. |
+| Memory | Streaming pipe loading: release tails read from disk on demand, refilled into per-voice ring buffers by a background thread. One 12.2 GB set is resident in 5.6 GB with output identical sample for sample. Optional reduced-precision storage roughly halves the footprint again. |
+| Wind | Compartments, bellows, valves and per-pipe air demand solved as a physical system, for sets that describe their pneumatics. Registration load lowers pressure; tuning and attack follow. |
+| Voicing | Level and tuning per rank and per pipe, composed rather than overriding. Applied once at note start, so there is no per-sample cost and it works with DSP off. Two full sets, A and B, for comparison. |
+| Registration | Couplers resolved through the set's own switch graph. Thumb pistons, combinations with capture, general cancel, crescendo, sequencer over the generals. |
+| Tuning | Equal plus eight historical temperaments, generated from fifth-chain definitions. An unrecognised temperament is reported, not silently replaced. |
+| Expression | Per-box enclosure filtering. Tremulant amplitude and pitch modulation per pipe. |
+| Polyphony | Bounded, with voice stealing: decaying releases first, then oldest and quietest. A key just pressed is never stolen. |
+| Audio routing | Ranks assigned to output pairs, saved per organ; pairs summed in stereo. |
+| MIDI | All input devices simultaneously, each mapped to a division. Per-drawstop learn. MIDI out to a physical console; jamb display over system exclusive. |
+| Console | Rendered from the set's definition: artwork, drawstops, pistons, shoes, drawn manuals and pedalboards, multiple pages. Stop list as a fallback for sets without artwork. |
+| Recording | MIDI capture including stop and shoe movement, replayable through a different registration; audio capture in parallel. |
+| Platforms | Windows, Linux x86-64, Raspberry Pi 64-bit and 32-bit. macOS builds but is not a supported target. |
 
 ---
 
