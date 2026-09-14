@@ -36,7 +36,7 @@ own audio output.
 |---|---|
 | Formats | Standalone application; VST3 and LV2 plugins from the same engine. Raspberry Pi builds are standalone only. |
 | Sample playback | Per-pipe attack, sustain loop and matched release tail, crossfaded rather than cut. Four-point interpolation on transposed ranks. |
-| Memory | Streaming pipe loading: release tails read from disk on demand, refilled into per-voice ring buffers by a background thread. One 12.2 GB set is resident in 5.6 GB with output identical sample for sample. Optional reduced-precision storage roughly halves the footprint again. |
+| Memory | Four settings, measured on a 44-stop 17 GB set. Streaming pipe loading reads release tails from disk on demand, refilled into per-voice ring buffers by a background thread — 55% of the sample data, and a faster load, because those tails are never read up front. Resident format is 32-bit float, 16-bit or 8-bit; a stereo set can be folded to mono as it loads. Every step is an exact halving: 21.6 GB fully resident, 4.65 GB at 16-bit with releases streamed, 1.16 GB at 8-bit mono. |
 | Wind | Compartments, bellows, valves and per-pipe air demand solved as a physical system, for sets that describe their pneumatics. Registration load lowers pressure; tuning and attack follow. |
 | Voicing | Level and tuning per rank and per pipe, composed rather than overriding. Applied once at note start, so there is no per-sample cost and it works with DSP off. Two full sets, A and B, for comparison. |
 | Registration | Couplers resolved through the set's own switch graph. Thumb pistons, combinations with capture, general cancel, crescendo, sequencer over the generals. |

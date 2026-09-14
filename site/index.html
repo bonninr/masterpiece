@@ -168,6 +168,15 @@
     <div class="shot">
       <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
       <div>
+        <h4>Resident format and channels</h4>
+        <p>A held frame can be 32-bit float, 16-bit or 8-bit, and a stereo set
+          can be folded to mono as it loads. Each step is an exact halving,
+          measured: the same 44-stop instrument is 21.6&nbsp;GB fully resident,
+          4.65&nbsp;GB at 16-bit with releases streamed, and 1.16&nbsp;GB at
+          8-bit mono. The settings page offers them as profiles rather than as
+          four separate questions.</p>
+      </div>
+      <div class="feature">
         <h4>Voicing</h4>
         <p>A rank adjustment and a single-pipe adjustment add, so pulling one
           sour pipe into tune does not throw away the trim you put on the rank
@@ -230,9 +239,9 @@
         <h4>Streaming pipe loading</h4>
         <p>Attacks and loops stay resident; each release tail keeps only its
           head in RAM and a background thread refills per-voice ring buffers
-          while the note sounds. One 12.2&nbsp;GB set is resident in
-          5.6&nbsp;GB with output identical sample for sample. Reduced-precision
-          storage roughly halves the footprint again.</p>
+          while the note sounds. On a 44-stop, 17&nbsp;GB set that leaves 55%
+          of the sample data on disk and halves the load time, because those
+          tails are never read up front.</p>
       </div>
       <div class="feature">
         <h4>Wind model</h4>
@@ -240,6 +249,15 @@
           valves and per-pipe air demand are solved as a physical system.
           Registration load lowers the pressure, and tuning and attack follow
           it.</p>
+      </div>
+      <div class="feature">
+        <h4>Resident format and channels</h4>
+        <p>A held frame can be 32-bit float, 16-bit or 8-bit, and a stereo set
+          can be folded to mono as it loads. Each step is an exact halving,
+          measured: the same 44-stop instrument is 21.6&nbsp;GB fully resident,
+          4.65&nbsp;GB at 16-bit with releases streamed, and 1.16&nbsp;GB at
+          8-bit mono. The settings page offers them as profiles rather than as
+          four separate questions.</p>
       </div>
       <div class="feature">
         <h4>Voicing</h4>
