@@ -1,9 +1,9 @@
 # Masterpiece
 
-### A pipe organ sample player that draws the instrument's own console
+### An open-source pipe organ sample player supporting industry-standard sample sets.
 
-It reads XML-defined sample sets, builds the real console out of the set's own
-definition — artwork, drawstops, keyboards, pedalboard — and plays it.
+It builds the instrument's own console out of the set's definition — artwork,
+drawstops, keyboards, pedalboard — and plays it.
 
 [![build](https://github.com/bonninr/masterpiece/actions/workflows/build.yml/badge.svg)](https://github.com/bonninr/masterpiece/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/bonninr/masterpiece?include_prereleases&label=release&color=c8a97e)](https://github.com/bonninr/masterpiece/releases)
