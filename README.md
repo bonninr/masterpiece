@@ -30,6 +30,30 @@ own audio output.
 
 ---
 
+## Highlights
+
+- **Standalone and plugin.** One engine, shipped as an application and as
+  VST3, AU and LV2 — so the organ can be one instrument among others in a DAW,
+  sequenced, rendered offline, or tracked alongside strings and choir.
+- **Streaming sampler.** Attacks and loops stay resident; release tails keep
+  only their head in RAM and stream the rest into per-voice ring buffers while
+  the note sounds. One set drops from 12.2 GB to 5.6 GB, sample-identical.
+- **Wind model.** Compartments, bellows, valves and the air each pipe draws,
+  solved as a physical system: a full registration sags the wind, and tuning
+  and attack move with it.
+- **Voicing per pipe.** Level and tuning per rank *and* per pipe, adding rather
+  than replacing, with A/B sets for comparison — and free at playing time,
+  because both are applied once when a note starts.
+- **Couplers as a switch network.** A key reaching a pipe is a walk through the
+  instrument's own switch graph, so couplers, octaves and unison-off compose
+  the way the builder wired them.
+- **Eight historical temperaments**, each generated from its fifth-chain
+  definition rather than transcribed.
+- **The real console**, drawn from the set's own definition — and a stop list
+  for libraries that ship no artwork.
+
+---
+
 ## What it is
 
 Sampled pipe organs are distributed as large libraries: a recording of every
@@ -180,6 +204,11 @@ transparency masks, drawn manuals and pedalboards, multiple display pages, and
 alternate layouts. Clicking a key or a drawstop takes exactly the same path as
 the equivalent MIDI message.
 
+**In a DAW.** The standalone application and the VST3, AU and LV2 plugins are
+the same engine. As a plugin the organ is one instrument among others: put your
+own convolution after it, render a take offline, or give each division its own
+track through the multi-channel routing.
+
 **The sound.** Each pipe plays its own recording — attack, sustain loop, and a
 matched release tail crossfaded in rather than cut to, so releasing a key
 leaves the room's own decay behind. Transposed ranks are resampled with
@@ -206,8 +235,16 @@ combinations with capture, a general cancel, a crescendo, and a sequencer that
 steps through the generals. Captured registrations are saved beside your own
 settings, never written back into the sample library.
 
-**Memory.** A large set can be held entirely in RAM, or its release tails
-streamed from disk while the rest stays resident — the same audio either way.
+**Voicing.** Level and tuning per rank and per individual pipe. The two add
+rather than replace, so pulling one sour pipe into tune keeps the trim on its
+rank. A and B are two complete sets, for comparing a change against what was
+there before. Both are a multiply and a ratio taken once when a note starts, so
+they cost nothing while it sounds and work with the DSP switched off.
+
+**Memory and streaming.** A large set can be held entirely in RAM, or its
+release tails streamed from disk while attacks and loops stay resident — the
+same audio either way, sample for sample, and 12.2 GB down to 5.6 GB on one
+set. A background thread refills per-voice ring buffers while the note sounds.
 Samples can also be kept at reduced precision, which roughly halves the
 footprint for a set that would not otherwise fit.
 
