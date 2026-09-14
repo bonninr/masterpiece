@@ -1,9 +1,32 @@
 # Masterpiece
 
-A pipe organ sample player. It reads XML-defined sample sets, draws the
-instrument's own console, and plays it.
+### A pipe organ sample player that draws the instrument's own console
+
+It reads XML-defined sample sets, builds the real console out of the set's own
+definition — artwork, drawstops, keyboards, pedalboard — and plays it.
+
+[![build](https://github.com/bonninr/masterpiece/actions/workflows/build.yml/badge.svg)](https://github.com/bonninr/masterpiece/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/bonninr/masterpiece?include_prereleases&label=release&color=c8a97e)](https://github.com/bonninr/masterpiece/releases)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/20)
+[![JUCE 9](https://img.shields.io/badge/JUCE-9-8DC63F?logo=juce&logoColor=white)](https://juce.com/)
+[![CMake](https://img.shields.io/badge/CMake%20%2B%20Ninja-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
+[![platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi-555?logo=linux&logoColor=white)](#building)
+[![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20AU%20%7C%20LV2-6b4f9e)](#building)
+[![licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENCE)
 
 ![Friesach](screenshots/Friesach.jpg)
+
+---
+
+## Demonstration recording
+
+Thirty-three works on nine organs, 17 minutes, recorded from the application's
+own audio output.
+
+[![Demonstration recording](screenshots/recital-poster.jpg)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-recital.mp4)
+
+**[Watch (MP4, 66 MB)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-recital.mp4)** ·
+[Programme and credits](ATTRIBUTION.md#music)
 
 ---
 
@@ -33,14 +56,25 @@ The same program, reading different libraries.
 |:--:|:--:|
 | **Lipiny** — a historic case, drawstops lettered in Fraktur | **Melcer Chamber Music Hall** |
 | ![Lipiny](screenshots/Lipiny.jpg) | ![Melcer](screenshots/MelcerChamberMusicHall.jpg) |
+| A. Volkmann, 1898 · 25 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/lipiny/) | chamber organ · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/melcer-chamber-music-hall/) |
 | **Azzio** | **Kraków, St. John Cantius** |
 | ![Azzio](screenshots/Azzio.jpg) | ![Kraków](screenshots/CracowStJohnCantius.jpg) |
+| Mascioni, 2016 · 12 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/azzio/) | 40 stops, three manuals · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/cracow-st-john-cantius/) |
 | **Długa Kościelna** | **Raszczyce** |
 | ![Długa Kościelna](screenshots/DlugaKoscielna.jpg) | ![Raszczyce](screenshots/Raszczyce.jpg) |
+| 22 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/dluga-koscielna/) | Vermeulen, 1965 · 21 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/raszczyce/) |
 | **Strassburg** | **Friesach** — three manuals, jambs on their own pages |
 | ![Strassburg](screenshots/Strassburg.jpg) | ![Friesach](screenshots/Friesach.jpg) |
+| C. Werner, 1743 · 20 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/strassburg/) | Eisenbarth, 2000 · 44 stops · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/friesach/) |
 | **Nancy** — four manuals; the keys are part of the photograph, and the drawstops are colour-coded by division | **Lemmer** — a Flentrop under the saints, with the recording perspective on the case |
 | ![Nancy](screenshots/Nancy.jpg) | ![Lemmer](screenshots/Lemmer.jpg) |
+| 65 stops, four manuals · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/nancy/) | Flentrop, 1977–78 · 9 registers · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Lemmer.php) |
+
+Each organ above is a freely published sample library and is not part of this
+repository. Nine of the ten are produced by [Piotr
+Grabowski](https://piotrgrabowski.pl/); the tenth by [Augustine's Virtual
+Organs](https://hauptwerk-augustine.info/). Full credits:
+[ATTRIBUTION.md](ATTRIBUTION.md).
 
 Sets that ship several console sizes offer them all; the chooser only appears
 when there is a choice to make. Drawn keys and drawstops are clickable, and a
@@ -263,6 +297,9 @@ open-source projects open alongside it, and is much the better for them:
   per-voice ring buffers refilled off a background thread
 
 None of their code is compiled in.
+
+Sample libraries and MIDI sequences are credited in
+**[ATTRIBUTION.md](ATTRIBUTION.md)**.
 
 ---
 

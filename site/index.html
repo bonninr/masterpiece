@@ -17,9 +17,16 @@
     <div class="badges">
       <span class="badge">Standalone · VST3 · AU · LV2</span>
       <span class="badge">Windows · Linux · Raspberry&nbsp;Pi</span>
-      <span class="badge">C++20 · JUCE</span>
+      <span class="badge">C++20 · JUCE&nbsp;9</span>
+      <span class="badge">CMake · Ninja</span>
       <span class="badge">GPLv3</span>
     </div>
+    <nav class="topnav">
+      <a href="https://github.com/bonninr/masterpiece">Source</a>
+      <a href="https://github.com/bonninr/masterpiece/releases">Releases</a>
+      <a href="#hear">Recital</a>
+      <a href="attribution.html">Attribution</a>
+    </nav>
   </div>
 </header>
 
@@ -31,6 +38,23 @@
       is the instrument's own: artwork, drawstop positions, keyboards and
       pedalboard all come out of the library's definition.</figcaption>
   </figure>
+
+  <section id="hear">
+    <h2>Demonstration recording</h2>
+    <h3>Thirty-three works on nine organs, 17 minutes</h3>
+    <p class="lead">Recorded from the application's own audio output. The
+      consoles animate because a MIDI note takes the same path through the
+      instrument that a physical console would drive.</p>
+    <video class="recital" controls preload="none"
+           poster="screenshots/recital-poster.jpg"
+           src="https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-recital.mp4">
+      <p>Your browser cannot play this video.
+        <a href="https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-recital.mp4">Download it instead</a>.</p>
+    </video>
+    <p class="note">The programme, the sequencers and the sample library
+      producers are listed on the <a href="attribution.html">attribution
+      page</a>.</p>
+  </section>
 
   <section id="what">
     <h2>What it is</h2>
@@ -52,30 +76,36 @@
     <div class="grid">
       <figure>
         <img src="screenshots/Lipiny.jpg" alt="Lipiny console">
-        <figcaption>Lipiny — a historic case, drawstops lettered in Fraktur</figcaption>
+        <figcaption>Lipiny — a historic case, drawstops lettered in Fraktur<br><span class="credit">A. Volkmann, 1898 · 25 stops · sample set by <a href="https://piotrgrabowski.pl/lipiny/">Piotr Grabowski</a></span></figcaption>
       </figure>
       <figure>
         <img src="screenshots/CracowStJohnCantius.jpg" alt="Kraków console">
-        <figcaption>Kraków, St. John Cantius</figcaption>
+        <figcaption>Kraków, St. John Cantius<br><span class="credit">40 stops, three manuals · sample set by <a href="https://piotrgrabowski.pl/cracow-st-john-cantius/">Piotr Grabowski</a></span></figcaption>
       </figure>
       <figure>
         <img src="screenshots/MelcerChamberMusicHall.jpg" alt="Melcer console">
-        <figcaption>Melcer Chamber Music Hall</figcaption>
+        <figcaption>Melcer Chamber Music Hall<br><span class="credit">chamber organ · sample set by <a href="https://piotrgrabowski.pl/melcer-chamber-music-hall/">Piotr Grabowski</a></span></figcaption>
       </figure>
       <figure>
         <img src="screenshots/Raszczyce.jpg" alt="Raszczyce console">
-        <figcaption>Raszczyce</figcaption>
+        <figcaption>Raszczyce<br><span class="credit">Vermeulen, 1965 · 21 stops · sample set by <a href="https://piotrgrabowski.pl/raszczyce/">Piotr Grabowski</a></span></figcaption>
       </figure>
       <figure>
         <img src="screenshots/Nancy.jpg" alt="Nancy console">
-        <figcaption>Nancy — four manuals, drawstops colour-coded by division</figcaption>
+        <figcaption>Nancy — four manuals, drawstops colour-coded by division<br><span class="credit">65 stops, four manuals · sample set by <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></span></figcaption>
       </figure>
       <figure>
         <img src="screenshots/Lemmer.jpg" alt="Lemmer console">
-        <figcaption>Lemmer — a Flentrop, with the recording perspective on the case</figcaption>
+        <figcaption>Lemmer — a Flentrop, with the recording perspective on the case<br><span class="credit">Flentrop, 1977–78 · 9 registers · sample set by <a href="https://hauptwerk-augustine.info/Lemmer.php">Augustine’s Virtual Organs</a></span></figcaption>
       </figure>
     </div>
-    <p class="note" style="margin-top:26px">Libraries that ship several console
+    <p class="note" style="margin-top:26px">Each organ above is a freely
+      published sample library and is not part of this project. Nine of the ten
+      are produced by <a href="https://piotrgrabowski.pl/">Piotr Grabowski</a>,
+      the tenth by <a href="https://hauptwerk-augustine.info/">Augustine’s
+      Virtual Organs</a>. Full credits are on the
+      <a href="attribution.html">attribution page</a>.</p>
+    <p class="note">Libraries that ship several console
       sizes offer them all; the chooser only appears when there is a choice to
       make. A set whose manuals are part of a photographed backdrop falls back
       to an on-screen keyboard instead.</p>
@@ -268,6 +298,9 @@ cmake --build build</code></pre>
     <p>Masterpiece is licensed under the GPLv3. It is not affiliated with, nor
       endorsed by, any sample library producer or any other organ software.
       Sample libraries remain the property of their producers.</p>
+    <p><a href="https://github.com/bonninr/masterpiece">Source</a> ·
+       <a href="https://github.com/bonninr/masterpiece/releases">Releases</a> ·
+       <a href="attribution.html">Attribution</a></p>
   </div>
 </footer>
 

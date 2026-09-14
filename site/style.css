@@ -174,3 +174,56 @@ footer p { color: var(--faint); }
   .shot:nth-child(even) .shot-img { order: 0; }
   .masthead { padding: 48px 0 36px; }
 }
+
+/* ------------------------------------------------------------- recital */
+
+/* The film is a release asset rather than a file in this repository: it is
+   65 MB, it changes when the programme changes, and a page in git history
+   should not carry a new copy of it each time. preload="none" means the
+   poster costs a JPEG and nothing else until somebody presses play. */
+video.recital {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: #000;
+  margin: 26px 0 18px;
+}
+
+.topnav { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 20px; }
+.topnav a { font-size: 15px; color: var(--dim); }
+.topnav a:hover { color: var(--accent); }
+
+/* The line under a console picture that says whose recording it is. */
+.credit { color: var(--faint); font-size: 13px; }
+
+/* ---------------------------------------------------- attribution page */
+
+table.credits {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 22px 0 8px;
+  font-size: 15px;
+}
+table.credits th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--dim);
+  border-bottom: 1px solid var(--edge);
+  padding: 8px 14px 8px 0;
+}
+table.credits td {
+  border-bottom: 1px solid var(--edge);
+  padding: 9px 14px 9px 0;
+  vertical-align: top;
+}
+table.credits tr:hover td { background: var(--panel); }
+table.credits td.who { color: var(--dim); white-space: nowrap; }
+
+.callout {
+  border-left: 3px solid var(--accent-dim);
+  background: var(--panel);
+  padding: 14px 18px;
+  margin: 24px 0;
+  color: var(--dim);
+}
