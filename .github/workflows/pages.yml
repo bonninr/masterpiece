@@ -33,6 +33,19 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
+      # The demonstration recording is a release asset, not a file in git: it
+      # is 66 MB and is replaced whenever the programme changes, which is not
+      # something history should carry a copy of each time. It is fetched here
+      # so that Pages serves it as video/mp4 -- release assets are served as
+      # application/octet-stream, and a browser picks its decoder from the
+      # media type, so a <video> pointed straight at the asset will not play.
+      - name: Fetch the demonstration recording
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY"             --pattern 'masterpiece-recital.mp4' --output site/recital.mp4             || echo "no recording published yet; the page will link out instead"
+          ls -lh site/recital.mp4 || true
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

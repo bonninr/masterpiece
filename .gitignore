@@ -62,3 +62,6 @@ Thumbs.db
 .env
 .env.*
 *.key
+
+# The demonstration recording is fetched from the release at deploy time.
+site/recital.mp4
