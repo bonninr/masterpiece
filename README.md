@@ -1,9 +1,12 @@
 # Masterpiece
 
-### An open-source pipe organ sample player compatible with Hauptwerk sample sets.
+### An open-source, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
 
-It builds the instrument's own console out of the set's definition — artwork,
-drawstops, keyboards, pedalboard — and plays it.
+
+
+https://github.com/user-attachments/assets/c3181de2-64ec-496a-be90-b5677b79f9be
+
+
 
 <!-- hero: the demonstration clip goes on the next line, as a github.com/user-attachments URL -->
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)
