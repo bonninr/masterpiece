@@ -1,4 +1,4 @@
-<img width="500"  alt="logo" src="https://github.com/user-attachments/assets/9362280d-1438-4f67-a5ab-be8045857ad5" />
+<center><img width="500"  alt="logo" src="https://github.com/user-attachments/assets/9362280d-1438-4f67-a5ab-be8045857ad5" /></center>
 
 ### An open-source, cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
 **Video Demo (activate sound)**
