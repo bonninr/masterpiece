@@ -43,7 +43,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo "$GITHUB_REPOSITORY"             --pattern 'masterpiece-recital.mp4' --output site/recital.mp4             || echo "no recording published yet; the page will link out instead"
+          # The recording is not rebuilt for every release, so "latest" is not
+          # where it necessarily lives. Take the newest release that actually
+          # carries it; a release without it must not blank the video.
+          tag=$(gh release list --limit 30 --json tagName -q '.[].tagName' | while read -r t; do
+            if gh release view "$t" --json assets -q '.assets[].name' | grep -qx 'masterpiece-recital.mp4'; then
+              echo "$t"; break
+            fi
+          done)
+          if [ -n "$tag" ]; then
+            echo "recording comes from $tag"
+            gh release download "$tag" --pattern 'masterpiece-recital.mp4' --output site/recital.mp4
+          else
+            echo "no release carries the recording; the page will link out instead"
+          fi
           ls -lh site/recital.mp4 || true
 
       - uses: actions/upload-pages-artifact@v3
