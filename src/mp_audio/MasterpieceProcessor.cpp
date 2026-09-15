@@ -827,6 +827,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
+  else if (key == "rate") samples_.setLoadSampleRate(val.getDoubleValue());
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
@@ -2267,6 +2268,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
          : samples_.storage() == SampleStorage::Int24 ? "int24"
                                                       : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +
+        ", rate=" + (samples_.loadSampleRate() > 0.0
+                         ? juce::String(samples_.loadSampleRate(), 0)
+                         : juce::String("as recorded")) +
         ", streamReleases=" + (samples_.streamReleases() ? "on" : "off"));
   }
 

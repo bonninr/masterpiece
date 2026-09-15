@@ -96,6 +96,16 @@ public:
   void setLoadMono(bool on) { loadMono_ = on; }
   bool loadMono() const { return loadMono_; }
 
+  // Convert sample data to this rate as it is read. 0 keeps whatever rate
+  // each file already has, which is what every set did before this existed.
+  //
+  // A 96 kHz set played through a 48 kHz device is held at twice the size it
+  // needs and resampled once per voice per note; converting at load pays for
+  // it once. It is a real conversion, so it is also a real decision: nothing
+  // above the target's Nyquist survives it.
+  void setLoadSampleRate(double hz) { loadRate_ = hz > 0.0 ? hz : 0.0; }
+  double loadSampleRate() const { return loadRate_; }
+
   void setStorage(SampleStorage s) { storage_ = s; }
   SampleStorage storage() const { return storage_; }
 
@@ -147,11 +157,16 @@ private:
   // is the member of the same name, passed rather than read.
   static bool readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                        int64_t maxFrames, LoopSelection selection,
-                       SampleStorage storage, bool loadMono);
+                       SampleStorage storage, bool loadMono,
+                       double targetRate);
   // Attach a tail that reads the rest of `path` on demand. The reader is
   // opened lazily, on the streaming thread, and kept for the buffer's life.
+  // `totalFrames` counts RESIDENT frames, not frames of the file: when the
+  // head has been converted to another rate the tail is measured in the same
+  // frames the voice engine asks for. srcRate/dstRate tell it how to get back
+  // to the file.
   void attachTail(SampleBuffer& out, const std::string& path,
-                  int64_t totalFrames) const;
+                  int64_t totalFrames, double srcRate, double dstRate) const;
   // Sustain loop from the WAV 'smpl' chunk, applied to what is resident.
   static void readLoopPoints(const juce::AudioFormatReader& reader,
                              SampleBuffer& out, LoopSelection selection);
@@ -169,6 +184,7 @@ private:
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
   bool loadMono_ = false;
+  double loadRate_ = 0.0;   // 0 = keep each file's own rate
   bool streamReleases_ = false;
   int64_t streamHead_ = 48000; // one second
   // Files a streamed buffer may need to reopen. Kept here so a tail outlives

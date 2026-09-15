@@ -31,6 +31,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStorage_ = proc_.sampleStorage();
   openStream_ = proc_.streamReleases();
   openMono_ = proc_.loadMono();
+  openRate_ = proc_.loadSampleRate();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -105,6 +106,26 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     syncProfile();
   };
 
+  // Converting on the way in, rather than once per voice on the way out. A
+  // set recorded at 96 kHz and played through a 48 kHz device is otherwise
+  // held at twice the size it needs. Converting up is never offered: it
+  // invents nothing and costs the memory anyway.
+  addAndMakeVisible(rateLabel_);
+  styleLabel(rateLabel_, "Sample rate");
+  addAndMakeVisible(rate_);
+  rate_.addItem("As recorded", 1);
+  rate_.addItem("48 kHz", 2);
+  rate_.addItem("44.1 kHz", 3);
+  const auto hz = proc_.loadSampleRate();
+  rate_.setSelectedId(hz >= 47000.0 && hz <= 49000.0   ? 2
+                      : hz >= 43000.0 && hz <= 45000.0 ? 3
+                                                       : 1,
+                      juce::dontSendNotification);
+  rate_.onChange = [this] {
+    const int id = rate_.getSelectedId();
+    proc_.setLoadSampleRate(id == 2 ? 48000.0 : id == 3 ? 44100.0 : 0.0);
+  };
+
   addAndMakeVisible(stream_);
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
@@ -171,6 +192,11 @@ void EnginePanel::revert() {
   proc_.setStreamReleases(openStream_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
+  proc_.setLoadSampleRate(openRate_);
+  rate_.setSelectedId(openRate_ >= 47000.0 && openRate_ <= 49000.0   ? 2
+                      : openRate_ >= 43000.0 && openRate_ <= 45000.0 ? 3
+                                                                     : 1,
+                      juce::dontSendNotification);
   syncProfile();
 
   simpleWav_.setToggleState(openSwitch_.simpleWavOnly, juce::dontSendNotification);
@@ -231,7 +257,12 @@ void EnginePanel::timerCallback() {
                       (fmt == SampleStorage::Int16     ? "16-bit"
                        : fmt == SampleStorage::Float32 ? "32-bit float"
                                                        : "24-bit") +
-                      ", " + (proc_.loadMono() ? "mono" : "stereo") + ")";
+                      ", " + (proc_.loadMono() ? "mono" : "stereo") +
+                      (proc_.loadSampleRate() > 0.0
+                           ? ", " + juce::String(proc_.loadSampleRate() / 1000.0, 1) +
+                                 " kHz"
+                           : juce::String()) +
+                      ")";
   const auto streamed = proc_.sampleLibrary().streamedCount();
   if (streamed > 0)
     text += "  -  " + juce::String(static_cast<int>(streamed)) +
@@ -313,6 +344,10 @@ void EnginePanel::resized() {
   auto storageRow = r.removeFromTop(kRow);
   storageLabel_.setBounds(storageRow.removeFromLeft(180));
   storage_.setBounds(storageRow.removeFromLeft(260));
+  r.removeFromTop(6);
+  auto rateRow = r.removeFromTop(kRow);
+  rateLabel_.setBounds(rateRow.removeFromLeft(180));
+  rate_.setBounds(rateRow.removeFromLeft(260));
   r.removeFromTop(6);
   stream_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);

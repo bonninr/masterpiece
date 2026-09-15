@@ -105,7 +105,8 @@ void SampleLibrary::retireOldGenerations() {
 
 bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                              int64_t maxFrames, LoopSelection selection,
-                             SampleStorage storage, bool loadMono) {
+                             SampleStorage storage, bool loadMono,
+                             double targetRate) {
   const int64_t total = static_cast<int64_t>(reader.lengthInSamples);
   if (total <= 0) return false;
 
@@ -145,6 +146,43 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   out.numChannels = channels;
   out.sampleRate = reader.sampleRate > 0.0 ? reader.sampleRate : 48000.0;
   out.numFrames = want;
+
+  // The loop is read here, before any conversion, because the smpl chunk
+  // counts frames of the FILE. Reading it afterwards would measure the
+  // converted buffer against the original's numbers.
+  out.loopStart = -1;
+  out.loopEnd = -1;
+  readLoopPoints(reader, out, selection);
+
+  // Convert to the requested rate, if it is not the one the file already has.
+  // Lagrange rather than linear: this runs once per sample at load time, so
+  // the cost is paid where nobody is listening, and a cheap interpolator here
+  // would put its error into every note for the life of the organ.
+  if (targetRate > 0.0 && std::abs(targetRate - out.sampleRate) > 1.0) {
+    const double ratio = out.sampleRate / targetRate;   // source frames per output frame
+    const auto newFrames =
+        std::max<int64_t>(1, static_cast<int64_t>(std::floor(want / ratio)));
+    juce::AudioBuffer<float> converted(channels, static_cast<int>(newFrames));
+    for (int c = 0; c < channels; ++c) {
+      juce::LagrangeInterpolator interp;
+      interp.process(ratio, scratch.getReadPointer(c),
+                     converted.getWritePointer(c), static_cast<int>(newFrames));
+    }
+    scratch = std::move(converted);
+
+    // A loop point that lands a frame out clicks on every wrap, so these
+    // move with the audio rather than being recomputed from the metadata.
+    if (out.loopStart >= 0 && out.loopEnd > out.loopStart) {
+      out.loopStart = static_cast<int64_t>(std::llround(out.loopStart / ratio));
+      out.loopEnd = static_cast<int64_t>(std::llround(out.loopEnd / ratio));
+      if (out.loopEnd > newFrames) out.loopEnd = newFrames;
+      if (out.loopStart >= out.loopEnd) { out.loopStart = -1; out.loopEnd = -1; }
+    }
+    want = newFrames;
+    out.numFrames = newFrames;
+    out.sampleRate = targetRate;
+  }
+
   const auto count = static_cast<size_t>(want) * static_cast<size_t>(channels);
 
   // Interleave: the voice engine reads frame-major, which keeps a stereo
@@ -204,13 +242,10 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
             scratch.getSample(c, static_cast<int>(f));
   }
 
-  // Sustain loop from the WAV 'smpl' chunk, which is where every organ sample
-  // set puts it. JUCE surfaces it as metadata; without this a held note plays
-  // its sample once and stops, which is the difference between an instrument
-  // and a demo.
-  out.loopStart = -1;
-  out.loopEnd = -1;
-  readLoopPoints(reader, out, selection);
+  // The sustain loop was read above, before any rate conversion, and scaled
+  // with the audio if there was one. Without a loop a held note plays its
+  // sample once and stops, which is the difference between an instrument and
+  // a demo.
   return true;
 }
 
@@ -405,10 +440,22 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       const int64_t head = stream ? streamHead_ : maxFramesPerSample;
       const bool ok =
           reader != nullptr &&
-          readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_);
-      if (ok && stream && reader->lengthInSamples > buffer->numFrames)
-        attachTail(*buffer, path.string(),
-                   static_cast<int64_t>(reader->lengthInSamples));
+          readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_,
+                   loadRate_);
+      if (ok && stream) {
+        // Both sides of this comparison have to be in the same units. The
+        // file's length is in ITS frames; the resident head may have been
+        // converted to another rate, so the file's length is converted too
+        // before asking whether anything is left to stream.
+        const double srcRate =
+            reader->sampleRate > 0.0 ? reader->sampleRate : buffer->sampleRate;
+        const double dstRate = buffer->sampleRate;
+        const double toResident = (srcRate > 0.0) ? dstRate / srcRate : 1.0;
+        const auto totalResident = static_cast<int64_t>(
+            std::llround(static_cast<double>(reader->lengthInSamples) * toResident));
+        if (totalResident > buffer->numFrames)
+          attachTail(*buffer, path.string(), totalResident, srcRate, dstRate);
+      }
 
       std::lock_guard<std::mutex> lock(resultMutex);
       if (!ok) {
@@ -436,13 +483,18 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
 }
 
 void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
-                               int64_t totalFrames) const {
+                               int64_t totalFrames, double srcRate,
+                               double dstRate) const {
   auto tail = std::make_shared<SampleTail>();
   tail->totalFrames = totalFrames;
   // The head may have been folded to mono; the file on disk was not. Without
   // folding the tail the same way, a streamed release would splice from a
   // downmix straight into a bare left channel.
   const bool foldToMono = loadMono_;
+  // Source frames per resident frame. Exactly 1 when no conversion happened,
+  // which is the path every set took before the rate became a setting.
+  const double rateRatio =
+      (srcRate > 0.0 && dstRate > 0.0) ? (srcRate / dstRate) : 1.0;
 
   // The reader is opened on first use, on the streaming thread, and then kept.
   // Opening it here would mean holding a file handle per streamed sample for
@@ -457,8 +509,8 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
   auto shared = std::make_shared<Shared>();
   shared->path = path;
 
-  tail->read = [shared, foldToMono](int64_t startFrame, int numFrames,
-                                    float* dest, int channels) -> int64_t {
+  tail->read = [shared, foldToMono, rateRatio](int64_t startFrame, int numFrames,
+                                               float* dest, int channels) -> int64_t {
     if (dest == nullptr || numFrames <= 0 || channels <= 0) return 0;
     // One reader, one thread at a time. The streamer is single-threaded today;
     // the lock is what makes that a choice rather than an assumption.
@@ -471,6 +523,62 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       shared->reader.reset(
           shared->formats->createReaderFor(juce::File(shared->path)));
       if (shared->reader == nullptr) return 0;
+    }
+
+    // ---- converted tail -------------------------------------------------
+    // Output frames are counted at the resident rate, so each one is placed
+    // back into the file and interpolated there. Catmull-Rom needs one frame
+    // before and two after the position, which is why the read is widened.
+    if (rateRatio != 1.0) {
+      const int fCh = std::max(1, static_cast<int>(shared->reader->numChannels));
+      const int useCh = (foldToMono && channels == 1)
+                            ? fCh
+                            : std::min(channels, fCh);
+      const double firstPos = static_cast<double>(startFrame) * rateRatio;
+      const double lastPos =
+          static_cast<double>(startFrame + numFrames - 1) * rateRatio;
+      const int64_t srcFrom = static_cast<int64_t>(std::floor(firstPos)) - 1;
+      const int64_t srcTo = static_cast<int64_t>(std::ceil(lastPos)) + 2;
+      const auto srcCount = static_cast<int>(srcTo - srcFrom + 1);
+      if (srcCount <= 0) return 0;
+
+      juce::AudioBuffer<float> src(std::max(1, useCh), srcCount);
+      src.clear();
+      // A block at the very start of the file asks for a frame before it;
+      // that gap stays zero rather than reading off the front.
+      const int64_t readFrom = std::max<int64_t>(0, srcFrom);
+      const int skip = static_cast<int>(readFrom - srcFrom);
+      if (skip < srcCount)
+        shared->reader->read(&src, skip, srcCount - skip, readFrom, true,
+                             useCh > 1);
+
+      if (foldToMono && channels == 1 && useCh > 1) {
+        for (int c = 1; c < useCh; ++c)
+          src.addFrom(0, 0, src, c, 0, srcCount);
+        src.applyGain(0, 0, srcCount, 1.0f / static_cast<float>(useCh));
+      }
+
+      const auto at = [&src, srcCount](int c, int64_t i) {
+        const auto k = static_cast<int>(std::clamp<int64_t>(i, 0, srcCount - 1));
+        return src.getSample(c, k);
+      };
+      for (int f = 0; f < numFrames; ++f) {
+        const double pos =
+            static_cast<double>(startFrame + f) * rateRatio - static_cast<double>(srcFrom);
+        const auto i1 = static_cast<int64_t>(std::floor(pos));
+        const auto t = static_cast<float>(pos - static_cast<double>(i1));
+        for (int c = 0; c < channels; ++c) {
+          const int sc = std::min(c, useCh - 1);
+          const float p0 = at(sc, i1 - 1), p1 = at(sc, i1);
+          const float p2 = at(sc, i1 + 1), p3 = at(sc, i1 + 2);
+          const float a = 0.5f * (-p0 + 3.0f * p1 - 3.0f * p2 + p3);
+          const float b = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
+          const float cc = 0.5f * (-p0 + p2);
+          dest[static_cast<size_t>(f) * static_cast<size_t>(channels) +
+               static_cast<size_t>(c)] = ((a * t + b) * t + cc) * t + p1;
+        }
+      }
+      return numFrames;
     }
 
     const int fileCh = std::max(1, static_cast<int>(shared->reader->numChannels));
