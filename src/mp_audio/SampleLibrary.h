@@ -130,6 +130,37 @@ public:
   size_t streamedCount() const;
   int64_t streamedBytesSaved() const;
 
+
+  // ---- the sample cache ------------------------------------------------
+  //
+  // Loading decodes every file and converts it; the result depends only on
+  // the files and the settings, so it is worth keeping. A cache turns the
+  // second load of the same organ into a sequential read.
+  enum class CacheMode { Off, Single, PerOrgan };
+
+  // Where cache files live. Empty disables caching however CacheMode is set.
+  void setCacheDir(const std::string& dir) { cacheDir_ = dir; }
+  const std::string& cacheDir() const { return cacheDir_; }
+
+  // Off, one cache replaced as organs change, or one per organ. Single is the
+  // default: these files are gigabytes, and a cache per organ per settings
+  // combination fills a disk without ever being asked to.
+  void setCacheMode(CacheMode m) { cacheMode_ = m; }
+  CacheMode cacheMode() const { return cacheMode_; }
+
+  // Identifies WHICH organ, for the filename, and whether the definition has
+  // changed since the cache was written. Both come from the caller because the
+  // library is handed a model, not a path.
+  void setCacheIdentity(const std::string& organId, const std::string& odfStamp) {
+    cacheOrganId_ = organId;
+    cacheOdfStamp_ = odfStamp;
+  }
+
+  // Bytes read from a cache on the last load, and written to one. Zero for
+  // both means the load did it the long way.
+  int64_t cacheBytesRead() const { return cacheRead_; }
+  int64_t cacheBytesWritten() const { return cacheWritten_; }
+
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
   SampleProvider provider() const;
@@ -152,6 +183,23 @@ private:
   using Store = std::unordered_map<Id, std::shared_ptr<SampleBuffer>>;
 
   void publish(std::shared_ptr<const Store> next);
+
+  // Everything that changes the resident bytes, in one string. If it differs,
+  // the cache is not ours.
+  std::string cacheFingerprint(const std::unordered_set<Id>* onlyRanks,
+                               int64_t maxFramesPerSample,
+                               LoopSelection loopSelection) const;
+  std::string cachePath() const;
+  bool writeCache(const Store& store, const std::string& fingerprint) const;
+  bool readCache(Store& out, const std::string& fingerprint) const;
+
+  std::string cacheDir_;
+  std::string cacheOrganId_;
+  std::string cacheOdfStamp_;
+  CacheMode cacheMode_ = CacheMode::Single;
+  mutable int64_t cacheRead_ = 0;
+  mutable int64_t cacheWritten_ = 0;
+
 
   // Static, so everything it depends on arrives as an argument: `loadMono`
   // is the member of the same name, passed rather than read.

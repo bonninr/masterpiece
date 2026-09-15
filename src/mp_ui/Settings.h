@@ -47,6 +47,7 @@ private:
   bool openStream_ = false;
   bool openMono_ = false;
   double openRate_ = 0.0;
+  SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
   // Set while a profile is writing the individual controls, so their
   // onChange handlers do not bounce the profile straight back to Custom.
   bool applyingProfile_ = false;
@@ -67,6 +68,8 @@ private:
   juce::ComboBox storage_;
   juce::Label rateLabel_;
   juce::ComboBox rate_;
+  juce::Label cacheLabel_;
+  juce::ComboBox cache_;
   juce::Label profileLabel_;
   juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};

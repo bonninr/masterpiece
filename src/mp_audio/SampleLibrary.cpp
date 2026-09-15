@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <atomic>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <ostream>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -327,6 +330,25 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     return onlyRanks == nullptr || onlyRanks->count(rankId) != 0;
   };
   SampleLoadReport report;
+  cacheRead_ = cacheWritten_ = 0;
+
+  // A cache of a previous load of this organ, at these settings, is the whole
+  // of the work below already done. Reading it is sequential; doing it again
+  // is twelve thousand file opens and a decode each.
+  const std::string fingerprint =
+      cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection);
+  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty()) {
+    auto cached = std::make_shared<Store>();
+    if (readCache(*cached, fingerprint) && !cached->empty()) {
+      report.loaded = static_cast<int>(cached->size());
+      publish(std::move(cached));
+      if (progress != nullptr) {
+        progress->total.store(report.loaded, std::memory_order_release);
+        progress->done.store(report.loaded, std::memory_order_release);
+      }
+      return report;
+    }
+  }
 
   // Only what the pipework can actually play. A Sample row for a rank with no
   // pipes is unreachable, and on a demo set that is most of them.
@@ -478,6 +500,12 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     for (auto& t : pool) t.join();
   }
 
+  // Keep the result, so the next load of this organ at these settings is a
+  // read. Written after publish: the organ is playable either way, and a
+  // cache that fails to write is not a failed load.
+  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0)
+    writeCache(*next, fingerprint);
+
   publish(std::move(next));
   return report;
 }
@@ -495,6 +523,12 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
   // which is the path every set took before the rate became a setting.
   const double rateRatio =
       (srcRate > 0.0 && dstRate > 0.0) ? (srcRate / dstRate) : 1.0;
+
+  // Recorded on the buffer as well as captured below, so the cache can write
+  // down what it would take to rebuild this reader.
+  out.tailPath = path;
+  out.tailSrcRate = srcRate;
+  out.tailDstRate = dstRate;
 
   // The reader is opened on first use, on the streaming thread, and then kept.
   // Opening it here would mean holding a file handle per streamed sample for
@@ -607,6 +641,227 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
   out.tail = std::move(tail);
 }
 
+// ---------------------------------------------------------------- cache
+//
+// Format, little-endian throughout:
+//
+//   "MPSC", version, fingerprint, sample count
+//   per sample: id, frames, channels, rate, loop points, scale, width,
+//               payload, and — when it streams — what the tail needs to be
+//               re-attached without opening the file now.
+//
+// Everything is fixed width or length-prefixed, so a truncated file fails at
+// the length check rather than halfway through a buffer.
+namespace {
+
+constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
+constexpr uint32_t kCacheVersion = 1;
+
+template <typename T>
+void putPod(std::ostream& os, const T& v) {
+  os.write(reinterpret_cast<const char*>(&v), sizeof(T));
+}
+template <typename T>
+bool getPod(std::istream& is, T& v) {
+  is.read(reinterpret_cast<char*>(&v), sizeof(T));
+  return static_cast<bool>(is);
+}
+void putStr(std::ostream& os, const std::string& s) {
+  putPod<uint32_t>(os, static_cast<uint32_t>(s.size()));
+  os.write(s.data(), static_cast<std::streamsize>(s.size()));
+}
+bool getStr(std::istream& is, std::string& s, uint32_t cap = 64u * 1024u) {
+  uint32_t n = 0;
+  if (!getPod(is, n) || n > cap) return false;
+  s.assign(n, '\0');
+  if (n) is.read(s.data(), n);
+  return static_cast<bool>(is);
+}
+
+// 0 float32, 1 int24, 2 int16 — written rather than the enum's ordinal, so
+// reordering SampleStorage cannot silently reinterpret an old cache.
+uint8_t widthCode(const mp::SampleBuffer& b) {
+  if (!b.pcm24.empty()) return 1;
+  if (!b.pcm16.empty()) return 2;
+  return 0;
+}
+
+} // namespace
+
+std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRanks,
+                                            int64_t maxFramesPerSample,
+                                            LoopSelection loopSelection) const {
+  std::string s = "v1|" + cacheOdfStamp_;
+  s += "|w" + std::to_string(static_cast<int>(storage_));
+  s += "|m" + std::to_string(loadMono_ ? 1 : 0);
+  s += "|r" + std::to_string(static_cast<int64_t>(loadRate_));
+  s += "|h" + std::to_string(maxFramesPerSample);
+  s += "|l" + std::to_string(static_cast<int>(loopSelection));
+  s += "|s" + std::to_string(streamReleases_ ? 1 : 0);
+  s += "|t" + std::to_string(streamHead_);
+  // A partial load holds a different set of samples from a full one, and the
+  // two must never be mistaken for each other: a cache written by
+  // --preload-drawn would otherwise come back as a whole organ with most of
+  // its ranks silent.
+  if (onlyRanks != nullptr) {
+    std::vector<Id> ids(onlyRanks->begin(), onlyRanks->end());
+    std::sort(ids.begin(), ids.end());
+    uint64_t h = 1469598103934665603ull;
+    for (Id id : ids) {
+      h ^= static_cast<uint64_t>(id);
+      h *= 1099511628211ull;
+    }
+    s += "|p" + std::to_string(ids.size()) + "-" + std::to_string(h);
+  } else {
+    s += "|pall";
+  }
+  return s;
+}
+
+std::string SampleLibrary::cachePath() const {
+  if (cacheDir_.empty() || cacheMode_ == CacheMode::Off) return {};
+  std::filesystem::path dir(cacheDir_);
+  // One file, replaced as organs change, unless asked for one per organ.
+  const std::string name = (cacheMode_ == CacheMode::PerOrgan && !cacheOrganId_.empty())
+                               ? ("samples-" + cacheOrganId_ + ".mpcache")
+                               : std::string("samples.mpcache");
+  return (dir / name).string();
+}
+
+bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprint) const {
+  const std::string path = cachePath();
+  if (path.empty()) return false;
+
+  std::error_code ec;
+  std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+
+  // Written beside and moved into place, so an interrupted write leaves the
+  // old cache rather than a half one that passes its own length checks.
+  const std::string tmp = path + ".part";
+  {
+    std::ofstream os(tmp, std::ios::binary | std::ios::trunc);
+    if (!os) return false;
+    os.write(kCacheMagic, 4);
+    putPod(os, kCacheVersion);
+    putStr(os, fingerprint);
+    putPod<uint64_t>(os, static_cast<uint64_t>(store.size()));
+
+    for (const auto& [id, buf] : store) {
+      if (buf == nullptr) continue;
+      putPod<uint32_t>(os, static_cast<uint32_t>(id));
+      putPod<int64_t>(os, buf->numFrames);
+      putPod<int32_t>(os, buf->numChannels);
+      putPod<double>(os, buf->sampleRate);
+      putPod<int64_t>(os, buf->loopStart);
+      putPod<int64_t>(os, buf->loopEnd);
+      putPod<float>(os, buf->pcmScale);
+      putPod<uint8_t>(os, widthCode(*buf));
+
+      const char* data = nullptr;
+      uint64_t bytes = 0;
+      if (!buf->pcm24.empty()) {
+        data = reinterpret_cast<const char*>(buf->pcm24.data());
+        bytes = buf->pcm24.size() * sizeof(Pcm24);
+      } else if (!buf->pcm16.empty()) {
+        data = reinterpret_cast<const char*>(buf->pcm16.data());
+        bytes = buf->pcm16.size() * sizeof(int16_t);
+      } else {
+        data = reinterpret_cast<const char*>(buf->frames.data());
+        bytes = buf->frames.size() * sizeof(float);
+      }
+      putPod<uint64_t>(os, bytes);
+      if (bytes) os.write(data, static_cast<std::streamsize>(bytes));
+
+      // A streamed sample keeps only its head here. What the tail needs to be
+      // rebuilt is recorded so the file is not opened until a note asks.
+      const bool streams = buf->streams();
+      putPod<uint8_t>(os, streams ? 1u : 0u);
+      if (streams) {
+        putPod<int64_t>(os, buf->tail->totalFrames);
+        putStr(os, buf->tailPath);
+        putPod<double>(os, buf->tailSrcRate);
+        putPod<double>(os, buf->tailDstRate);
+      }
+      if (!os) return false;
+    }
+    cacheWritten_ = static_cast<int64_t>(os.tellp());
+  }
+
+  std::filesystem::rename(tmp, path, ec);
+  if (ec) {
+    std::filesystem::remove(tmp, ec);
+    return false;
+  }
+  return true;
+}
+
+bool SampleLibrary::readCache(Store& out, const std::string& fingerprint) const {
+  const std::string path = cachePath();
+  if (path.empty()) return false;
+  std::ifstream is(path, std::ios::binary);
+  if (!is) return false;
+
+  char magic[4] = {};
+  is.read(magic, 4);
+  if (!is || std::memcmp(magic, kCacheMagic, 4) != 0) return false;
+  uint32_t version = 0;
+  if (!getPod(is, version) || version != kCacheVersion) return false;
+  std::string got;
+  if (!getStr(is, got) || got != fingerprint) return false;
+
+  uint64_t count = 0;
+  if (!getPod(is, count) || count > 4000000ull) return false;
+
+  Store loaded;
+  loaded.reserve(static_cast<size_t>(count));
+  for (uint64_t i = 0; i < count; ++i) {
+    uint32_t id = 0;
+    int32_t channels = 0;
+    uint8_t width = 0, streams = 0;
+    uint64_t bytes = 0;
+    auto buf = std::make_shared<SampleBuffer>();
+    if (!getPod(is, id) || !getPod(is, buf->numFrames) || !getPod(is, channels) ||
+        !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
+        !getPod(is, buf->loopEnd) || !getPod(is, buf->pcmScale) ||
+        !getPod(is, width) || !getPod(is, bytes))
+      return false;
+    buf->numChannels = channels;
+    if (bytes > (uint64_t)1 << 34) return false;   // 16 GB for one sample: corrupt
+
+    if (width == 1) {
+      buf->pcm24.resize(static_cast<size_t>(bytes / sizeof(Pcm24)));
+      if (bytes) is.read(reinterpret_cast<char*>(buf->pcm24.data()),
+                         static_cast<std::streamsize>(bytes));
+    } else if (width == 2) {
+      buf->pcm16.resize(static_cast<size_t>(bytes / sizeof(int16_t)));
+      if (bytes) is.read(reinterpret_cast<char*>(buf->pcm16.data()),
+                         static_cast<std::streamsize>(bytes));
+    } else {
+      buf->frames.resize(static_cast<size_t>(bytes / sizeof(float)));
+      if (bytes) is.read(reinterpret_cast<char*>(buf->frames.data()),
+                         static_cast<std::streamsize>(bytes));
+    }
+    if (!is) return false;
+
+    if (!getPod(is, streams)) return false;
+    if (streams) {
+      int64_t total = 0;
+      std::string tp;
+      double sr = 0.0, dr = 0.0;
+      if (!getPod(is, total) || !getStr(is, tp, 4096u) || !getPod(is, sr) ||
+          !getPod(is, dr))
+        return false;
+      // Rebuilt rather than stored: the tail is a reader and a lambda, and
+      // the only durable parts of it are the path and the two rates.
+      attachTail(*buf, tp, total, sr, dr);
+    }
+    loaded.emplace(static_cast<Id>(id), std::move(buf));
+  }
+  cacheRead_ = static_cast<int64_t>(is.tellg());
+  out = std::move(loaded);
+  return true;
+}
+
 size_t SampleLibrary::streamedCount() const {
   const Store* store = live_.load(std::memory_order_acquire);
   if (store == nullptr) return 0;
@@ -626,8 +881,10 @@ int64_t SampleLibrary::streamedBytesSaved() const {
     (void)id;
     if (!buf->streams()) continue;
     const int64_t skipped = buf->totalFrames() - buf->numFrames;
+    // Not compact() ? 2 : 4 -- compact() is true of 16-bit AND 24-bit, so
+    // that understated every 24-bit figure by a third.
     const int64_t perFrame = static_cast<int64_t>(buf->numChannels) *
-                             (buf->compact() ? 2 : 4);
+                             buf->bytesPerSample();
     saved += skipped * perFrame;
   }
   return saved;

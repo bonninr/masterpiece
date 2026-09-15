@@ -584,6 +584,14 @@ public:
   void setLoadMono(bool on) { samples_.setLoadMono(on); }
   bool loadMono() const { return samples_.loadMono(); }
 
+  // The sample cache: a previous load of this organ at these settings, kept
+  // so the next one is a read instead of twelve thousand decodes. One file by
+  // default, replaced as organs change, because these run to gigabytes.
+  void setCacheMode(SampleLibrary::CacheMode m) { samples_.setCacheMode(m); }
+  SampleLibrary::CacheMode cacheMode() const { return samples_.cacheMode(); }
+  int64_t cacheBytesRead() const { return samples_.cacheBytesRead(); }
+  int64_t cacheBytesWritten() const { return samples_.cacheBytesWritten(); }
+
   // Convert sample data to this rate while loading; 0 keeps each file's own.
   // A 96 kHz set on a 48 kHz device is otherwise held at twice the size and
   // resampled once per voice. Applies to the next load.

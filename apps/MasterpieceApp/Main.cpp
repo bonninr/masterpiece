@@ -350,6 +350,7 @@ public:
     //   --storage int24|int16    what a resident frame costs
     //   --load-mono on           fold a stereo set to one channel
     //   --load-rate 48000        convert as it loads (0 = as recorded)
+    //   --cache single|off       keep the decoded samples for the next load
     //   --stream-releases on     hold only the head of each release tail
     //   --preload-head <frames>  minimum head of every sample (0 = whole file)
     for (int i = 0; i < args.size(); ++i) {
@@ -370,6 +371,11 @@ public:
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setLoadMono(v == "on" || v == "1" || v == "true" || v == "yes");
         proc_->overrideSetting("mono");
+      } else if (args[i] == "--cache" && i + 1 < args.size()) {
+        const auto v = args[++i].unquoted().trim().toLowerCase();
+        proc_->setCacheMode(v == "off"        ? mp::SampleLibrary::CacheMode::Off
+                            : v == "per-organ" ? mp::SampleLibrary::CacheMode::PerOrgan
+                                               : mp::SampleLibrary::CacheMode::Single);
       } else if (args[i] == "--load-rate" && i + 1 < args.size()) {
         proc_->setLoadSampleRate(args[++i].unquoted().getDoubleValue());
         proc_->overrideSetting("rate");
