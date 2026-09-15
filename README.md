@@ -42,12 +42,12 @@ Measured figures, and the method behind them, are in
 |---|---|
 | Formats | Standalone application; VST3 and LV2 plugins from the same engine. Raspberry Pi builds are standalone only. |
 | Sample playback | Per-pipe attack, sustain loop and matched release tail, crossfaded rather than cut. Four-point interpolation on transposed ranks. |
-| Memory | Five settings, measured on a 44-stop 17 GB set ([the measurements](PERFORMANCE.md)). Streaming pipe loading reads release tails from disk on demand, refilled into per-voice ring buffers by a background thread — 55% of the sample data, and a faster load, because those tails are never read up front. Resident format is 32-bit float, 16-bit or 8-bit; a stereo set can be folded to mono as it loads. Sample data can also be converted to another rate as it loads, for libraries recorded at 96 kHz. Every step is exact: 21.6 GB fully resident at 32-bit float, 16.2 GB at 24-bit which is what the files are, 4.65 GB at 16-bit with releases streamed, 2.33 GB folded to mono. |
-| Cache | The decoded samples kept as one file, so the next load of the same organ is a read rather than 12,148 decodes. Keyed to the definition and every setting that changes the bytes, so a stale cache is a miss rather than a wrong answer. Worth what the settings take away: at 16-bit mono a 2.4 GB read replaces a ~7 GB source read and the organ opens in 18.9 s instead of 25.9; at 24-bit, where the cache is the same size as the data, it saves nothing. One file by default, replaceable per organ, or off. |
+| Memory | Measured on a 44-stop, 17 GB set ([the report](PERFORMANCE.md)): up to **9.3x less** than holding every sample as 32-bit float, and the organ opens up to **3x faster**. Samples are held at 24-bit, bit-for-bit identical to the files (1.3x less), or at 16-bit; a stereo set can be folded to mono as it loads. Release tails stream from disk into per-voice ring buffers refilled by a background thread, which leaves 56% of the sample data on disk. 21.6 GB at 32-bit float, 16.2 GB at 24-bit, 4.65 GB at 16-bit with releases streamed, 2.33 GB folded to mono. Sample data can also be converted to the device's rate as it loads, for libraries recorded at 96 kHz. |
+| Cache | The decoded samples kept as one file, so the next load of the same organ is one read instead of 12,148 decodes: up to **5x faster** sample loading. Keyed to the definition and every setting that changes the bytes, so a changed setting rebuilds the cache instead of reading a stale one. One file by default, replaced as organs change; one per organ, or off. |
 | Wind | Compartments, bellows, valves and per-pipe air demand solved as a physical system, for sets that describe their pneumatics. Registration load lowers pressure; tuning and attack follow. |
 | Voicing | Level and tuning per rank and per pipe, composed rather than overriding. Applied once at note start, so there is no per-sample cost and it works with DSP off. Two full sets, A and B, for comparison. |
 | Registration | Couplers resolved through the set's own switch graph. Thumb pistons, combinations with capture, general cancel, crescendo, sequencer over the generals. |
-| Tuning | Equal plus eight historical temperaments, generated from fifth-chain definitions. An unrecognised temperament is reported, not silently replaced. |
+| Tuning | Equal plus seven historical temperaments, generated from fifth-chain definitions. An unrecognised temperament is reported, not silently replaced. |
 | Expression | Per-box enclosure filtering. Tremulant amplitude and pitch modulation per pipe. |
 | Polyphony | Bounded, with voice stealing: decaying releases first, then oldest and quietest. A key just pressed is never stolen. |
 | Audio routing | Ranks assigned to output pairs, saved per organ; pairs summed in stereo. |
@@ -221,7 +221,7 @@ four-point interpolation. When polyphony runs out, the voice that gets stolen
 is a decaying release first and the oldest quietest note next; a note you have
 just pressed is never taken.
 
-**Tuning.** Equal temperament, or one of eight historical temperaments, each
+**Tuning.** Equal temperament, or one of seven historical temperaments, each
 generated from its own fifth-chain definition rather than transcribed. A set
 naming a temperament nobody recognises is reported, never quietly played in
 equal.
@@ -248,10 +248,10 @@ they cost nothing while it sounds and work with the DSP switched off.
 
 **Memory and streaming.** A large set can be held entirely in RAM, or its
 release tails streamed from disk while attacks and loops stay resident — the
-same audio either way, sample for sample, and 12.2 GB down to 5.6 GB on one
-set. A background thread refills per-voice ring buffers while the note sounds.
-Samples can also be kept at reduced precision, which roughly halves the
-footprint for a set that would not otherwise fit.
+same audio either way, sample for sample. A background thread refills
+per-voice ring buffers while the note sounds. Samples are held at 24-bit, exact
+to the files, or at 16-bit, and a stereo set can be folded to mono: together up
+to 9.3x less memory than 32-bit float, measured in [PERFORMANCE.md](PERFORMANCE.md).
 
 **MIDI.** Every input device at once, each knowing which manual it is.
 Right-click a drawstop to learn a control. MIDI out lights the drawstops on a

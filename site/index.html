@@ -257,12 +257,13 @@
       </div>
       <div class="feature">
         <h4>Resident format and channels</h4>
-        <p>A held frame can be 32-bit float, 16-bit or 8-bit, and a stereo set
-          can be folded to mono as it loads. Each step is an exact halving,
-          measured: the same 44-stop instrument is 21.6&nbsp;GB fully resident,
-          4.65&nbsp;GB at 16-bit with releases streamed, and 1.16&nbsp;GB at
-          8-bit mono. The settings page offers them as profiles rather than as
-          four separate questions.</p>
+        <p>Samples are held at 24-bit, bit-for-bit identical to the files, or
+          at 16-bit, and a stereo set can be folded to mono as it loads. Each
+          step is an exact ratio, measured: the same 44-stop instrument is
+          21.6&nbsp;GB as 32-bit float, 16.2&nbsp;GB at 24-bit, 4.65&nbsp;GB at
+          16-bit with releases streamed, and 2.33&nbsp;GB folded to mono, up
+          to 9.3x less. The settings page offers them as profiles rather than
+          as four separate questions.</p>
       </div>
       <div class="feature">
         <h4>Voicing</h4>
@@ -292,7 +293,7 @@
       </div>
       <div class="feature">
         <h4>Tuning</h4>
-        <p>Equal, plus eight historical temperaments generated from fifth-chain
+        <p>Equal, plus seven historical temperaments generated from fifth-chain
           definitions rather than transcribed tables. A set naming an
           unrecognised temperament is reported, not silently played in
           equal.</p>
