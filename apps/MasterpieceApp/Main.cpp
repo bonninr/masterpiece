@@ -347,35 +347,42 @@ public:
     // from a script rather than from the settings page. All three apply to
     // the NEXT load, which is why they are read before loadOrgan below.
     //
-    //   --storage int16          what a resident frame costs
+    //   --storage int24|int16    what a resident frame costs
     //   --load-mono on           fold a stereo set to one channel
     //   --stream-releases on     hold only the head of each release tail
     //   --preload-head <frames>  minimum head of every sample (0 = whole file)
     for (int i = 0; i < args.size(); ++i) {
       if (args[i] == "--storage" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
-        if (v == "int16") {
+        if (v == "int24") {
+          proc_->setSampleStorage(mp::SampleStorage::Int24);
+        } else if (v == "int16") {
           proc_->setSampleStorage(mp::SampleStorage::Int16);
         } else if (v == "float32") {
           proc_->setSampleStorage(mp::SampleStorage::Float32);
         } else {
           juce::Logger::writeToLog(
-              "--storage: expected float32 or int16, got " + v);
+              "--storage: expected int24, int16 or float32, got " + v);
         }
+        proc_->overrideSetting("storage");
       } else if (args[i] == "--load-mono" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setLoadMono(v == "on" || v == "1" || v == "true" || v == "yes");
+        proc_->overrideSetting("mono");
       } else if (args[i] == "--stream-releases" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setStreamReleases(v == "on" || v == "1" || v == "true" || v == "yes");
+        proc_->overrideSetting("stream");
       } else if (args[i] == "--preload-head" && i + 1 < args.size()) {
         proc_->setPreloadHeadFrames((int64_t)args[++i].unquoted().getLargeIntValue());
+        proc_->overrideSetting("preload");
       }
     }
     juce::Logger::writeToLog(
         juce::String("memory config: storage=") +
-        (proc_->sampleStorage() == mp::SampleStorage::Int16 ? "int16"
-                                                            : "float32") +
+        (proc_->sampleStorage() == mp::SampleStorage::Int16   ? "int16"
+         : proc_->sampleStorage() == mp::SampleStorage::Int24 ? "int24"
+                                                              : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
         ", streamReleases=" + (proc_->streamReleases() ? "on" : "off") +
         ", preloadHead=" + juce::String(proc_->preloadHeadFrames()) + " frames");

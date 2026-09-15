@@ -57,7 +57,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // Named for what they do, not for a machine they suit. The figures that
   // actually decide whether one fits are in the readout below the controls,
   // measured on the organ in front of you rather than assumed.
-  profile_.addItem("Best quality - hold everything", 1);
+  profile_.addItem("Best quality - 24-bit, hold everything", 1);
   profile_.addItem("Recommended - 16-bit, stream releases", 2);
   profile_.addItem("Smallest - 16-bit mono, stream releases", 3);
   profile_.addItem("Custom", 4);
@@ -90,13 +90,18 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(storageLabel_);
   styleLabel(storageLabel_, "Resident format");
   addAndMakeVisible(storage_);
-  storage_.addItem("32-bit float - no conversion", 1);
-  storage_.addItem("16-bit - half the memory, inaudible", 2);
-  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int16 ? 2 : 1,
+  storage_.addItem("24-bit - what the samples are", 1);
+  storage_.addItem("16-bit - two thirds of that, inaudible", 2);
+  storage_.addItem("32-bit float - larger than the source", 3);
+  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int16     ? 2
+                         : proc_.sampleStorage() == SampleStorage::Float32 ? 3
+                                                                           : 1,
                          juce::dontSendNotification);
   storage_.onChange = [this] {
-    proc_.setSampleStorage(storage_.getSelectedId() == 2 ? SampleStorage::Int16
-                                                         : SampleStorage::Float32);
+    const int id = storage_.getSelectedId();
+    proc_.setSampleStorage(id == 2   ? SampleStorage::Int16
+                           : id == 3 ? SampleStorage::Float32
+                                     : SampleStorage::Int24);
     syncProfile();
   };
 
@@ -218,11 +223,14 @@ void EnginePanel::pushSwitches() {
 
 void EnginePanel::timerCallback() {
   const auto bytes = proc_.sampleLibrary().residentBytes();
-  const bool compact = proc_.sampleStorage() == SampleStorage::Int16;
+  const auto fmt = proc_.sampleStorage();
   juce::String text = "Resident samples: " +
                       juce::String(bytes / (1024 * 1024)) + " MB (" +
                       juce::String(proc_.sampleLibrary().residentCount()) +
-                      " samples, " + (compact ? "16-bit" : "32-bit float") +
+                      " samples, " +
+                      (fmt == SampleStorage::Int16     ? "16-bit"
+                       : fmt == SampleStorage::Float32 ? "32-bit float"
+                                                       : "24-bit") +
                       ", " + (proc_.loadMono() ? "mono" : "stereo") + ")";
   const auto streamed = proc_.sampleLibrary().streamedCount();
   if (streamed > 0)
@@ -250,7 +258,7 @@ void EnginePanel::applyProfile(int id) {
     bool stream;
     int64_t head;
   };
-  const Profile p = id == 1   ? Profile{SampleStorage::Float32, false, false, 0}
+  const Profile p = id == 1   ? Profile{SampleStorage::Int24, false, false, 0}
                     : id == 2 ? Profile{SampleStorage::Int16, false, true, 0}
                               : Profile{SampleStorage::Int16, true, true, 0};
 
@@ -259,7 +267,9 @@ void EnginePanel::applyProfile(int id) {
   proc_.setStreamReleases(p.stream);
   proc_.setPreloadHeadFrames(p.head);
 
-  storage_.setSelectedId(p.storage == SampleStorage::Int16 ? 2 : 1,
+  storage_.setSelectedId(p.storage == SampleStorage::Int16     ? 2
+                         : p.storage == SampleStorage::Float32 ? 3
+                                                               : 1,
                          juce::dontSendNotification);
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
@@ -275,7 +285,7 @@ void EnginePanel::syncProfile() {
 
   int id = 4; // Custom, until the settings match one of the three exactly
   if (wholeHead) {
-    if (st == SampleStorage::Float32 && !mono && !stream) id = 1;
+    if (st == SampleStorage::Int24 && !mono && !stream) id = 1;
     else if (st == SampleStorage::Int16 && !mono && stream) id = 2;
     else if (st == SampleStorage::Int16 && mono && stream) id = 3;
   }

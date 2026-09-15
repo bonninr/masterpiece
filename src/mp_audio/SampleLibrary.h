@@ -166,7 +166,8 @@ private:
 
   juce::AudioFormatManager formats_;
   int loadThreads_ = 0;
-  SampleStorage storage_ = SampleStorage::Float32;
+  // 24-bit: what the sample sets are. See SampleStorage.
+  SampleStorage storage_ = SampleStorage::Int24;
   bool loadMono_ = false;
   bool streamReleases_ = false;
   int64_t streamHead_ = 48000; // one second

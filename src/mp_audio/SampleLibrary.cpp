@@ -149,7 +149,25 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
 
   // Interleave: the voice engine reads frame-major, which keeps a stereo
   // voice's two channels on the same cache line.
-  if (storage == SampleStorage::Int16) {
+  if (storage == SampleStorage::Int24) {
+    // No peak normalisation here, on purpose. JUCE decodes a 24-bit sample by
+    // dividing by 8388608, so multiplying back recovers the original integer
+    // exactly; scaling by the file's peak first would round it to something
+    // else for no gain. What is stored is what the file holds.
+    constexpr float kFull = 8388608.0f;
+    out.pcmScale = 1.0f / kFull;
+    out.pcm24.resize(count);
+    for (int64_t f = 0; f < want; ++f)
+      for (int c = 0; c < channels; ++c) {
+        const float r = std::round(scratch.getSample(c, static_cast<int>(f)) * kFull);
+        const int v = static_cast<int>(
+            std::isfinite(r) ? std::clamp(r, -8388608.0f, 8388607.0f) : 0.0f);
+        auto& d = out.pcm24[static_cast<size_t>(f * channels + c)];
+        d.b[0] = static_cast<unsigned char>(v & 0xFF);
+        d.b[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+        d.b[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
+      }
+  } else if (storage == SampleStorage::Int16) {
     // Scale by this file's own peak before quantising. Organ samples are not
     // normalised — a soft stop's samples can sit 20 dB down, and truncating
     // those straight to int16 would throw away three bits that cost nothing to

@@ -565,6 +565,20 @@ public:
   }
   SampleStorage sampleStorage() const { return samples_.storage(); }
 
+  // Keys named here are ignored when a settings file is read, so a value the
+  // player stated explicitly is not quietly replaced by a stored one.
+  //
+  // The order of a load makes this necessary rather than merely tidy: the
+  // command line is applied at startup, and loadSettingsFor() runs inside
+  // loadOrgan(), so without this the file always wins and the flag looks
+  // broken rather than overridden.
+  void overrideSetting(const juce::String& key) {
+    overridden_.addIfNotAlreadyThere(key);
+  }
+  bool isOverridden(const juce::String& key) const {
+    return overridden_.contains(key);
+  }
+
   // Fold a stereo set to one channel while loading. Halves everything, and
   // gives up the recording's stereo image to do it. Applies to the next load.
   void setLoadMono(bool on) { samples_.setLoadMono(on); }
@@ -728,6 +742,7 @@ private:
   VoiceEngine voices_;
   SampleLibrary samples_;
   std::vector<Id> preloadStops_;
+  juce::StringArray overridden_;   // settings the command line has claimed
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
   std::atomic<bool> releaseAll_{false};

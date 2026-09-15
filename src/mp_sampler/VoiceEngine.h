@@ -39,14 +39,39 @@ namespace mp {
 //             keeps the full sixteen bits rather than only the top few: this
 //             is meaningfully better than a plain truncation, and it costs
 //             nothing at run time because the scale folds into the voice gain.
-// What a resident frame costs. Float32 is the decoded sample; Int16 quantises
-// against the file's OWN peak, so a stop recorded 20 dB down still uses every
-// bit it is given, and holds about 78 dB of signal to quantisation noise on
-// real samples -- inaudible, for half the memory.
+// What a resident frame costs.
+//
+// Int24 is the default because it is what the material is: organ sample sets
+// are 24-bit, and holding them as 32-bit float is exact but a third larger
+// for nothing. It stores the source integers unchanged, so the audio is
+// bit-for-bit what the file held.
+//
+// Int16 quantises against the file's OWN peak, so a stop recorded 20 dB down
+// still uses every bit it is given; on real samples that is about 78 dB of
+// signal to quantisation noise, which is inaudible, for two thirds of Int24.
+//
+// Float32 remains for a set that is genuinely float, and because processing
+// happens in float regardless -- that is where 32 bits belongs.
 //
 // An 8-bit width was built and withdrawn: it held about 32 dB, which is
 // audible hiss under a quiet stop.
-enum class SampleStorage { Float32, Int16 };
+//
+// The order matters: settings files store a bit WIDTH, not this ordinal, but
+// tests pin it so a reordering cannot pass unnoticed.
+enum class SampleStorage { Float32, Int24, Int16 };
+
+// Three bytes, little-endian, signed -- the layout a 24-bit WAV already uses.
+// Converts to a raw count, like the other integer storage: the scale is folded
+// into the voice gain once, not applied per tap.
+struct Pcm24 {
+  unsigned char b[3];
+  operator float() const {
+    int v = b[0] | (b[1] << 8) | (b[2] << 16);
+    if (v & 0x800000) v -= 0x1000000;
+    return static_cast<float>(v);
+  }
+};
+static_assert(sizeof(Pcm24) == 3, "24-bit storage must not be padded");
 
 // Where the rest of a sample lives when only its head is resident.
 //
@@ -74,6 +99,7 @@ struct SampleTail {
 struct SampleBuffer {
   std::vector<float> frames;   // Float32 storage
   std::vector<int16_t> pcm16;  // Int16 storage
+  std::vector<Pcm24> pcm24;    // Int24 storage
   // What an int16 count is worth as a float. Carries both the 1/32767 and the
   // per-file peak, so a sample that peaked at -20 dBFS still uses every bit.
   float pcmScale = 1.0f;
@@ -94,11 +120,13 @@ struct SampleBuffer {
   bool streams() const { return tail != nullptr && tail->totalFrames > numFrames; }
 
   // True when the audio is held as integer counts and pcmScale means
-  // something.
-  bool compact() const { return !pcm16.empty(); }
+  // something. Which integer width is a separate question, asked below.
+  bool compact() const { return !pcm16.empty() || !pcm24.empty(); }
+  bool wide() const { return !pcm24.empty(); }
   int64_t residentBytes() const {
     return static_cast<int64_t>(frames.size() * sizeof(float) +
-                                pcm16.size() * sizeof(int16_t));
+                                pcm16.size() * sizeof(int16_t) +
+                                pcm24.size() * sizeof(Pcm24));
   }
 
   bool loops() const {
@@ -108,7 +136,9 @@ struct SampleBuffer {
     if (frame < 0 || frame >= numFrames) return 0.0f;
     const int ch = channel < numChannels ? channel : numChannels - 1;
     const auto i = static_cast<size_t>(frame * numChannels + ch);
-    return compact() ? static_cast<float>(pcm16[i]) * pcmScale : frames[i];
+    if (!pcm24.empty()) return static_cast<float>(pcm24[i]) * pcmScale;
+    if (!pcm16.empty()) return static_cast<float>(pcm16[i]) * pcmScale;
+    return frames[i];
   }
 };
 

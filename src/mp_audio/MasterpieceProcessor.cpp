@@ -754,7 +754,10 @@ juce::String MasterpieceProcessor::settingsBody() const {
   juce::String text;
   // A bit width rather than an enum ordinal, so the file stays readable
   // and a width added later does not renumber the existing ones.
-  text << "storage " << (samples_.storage() == SampleStorage::Int16 ? 16 : 32)
+  text << "storage "
+       << (samples_.storage() == SampleStorage::Int16   ? 16
+           : samples_.storage() == SampleStorage::Int24 ? 24
+                                                        : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
@@ -817,9 +820,12 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                                              const juce::String& val,
                                              EngineSwitch& sw) {
   const bool on = val.getIntValue() != 0;
+  // A value given on the command line outranks the one in the file.
+  if (isOverridden(key)) return;
   if (key == "storage")
-    samples_.setStorage(val.getIntValue() == 16 ? SampleStorage::Int16
-                                                : SampleStorage::Float32);
+    samples_.setStorage(val.getIntValue() == 16   ? SampleStorage::Int16
+                        : val.getIntValue() == 32 ? SampleStorage::Float32
+                                                  : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
@@ -2257,7 +2263,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         "memory: resident " + mb(samples_.residentBytes()) + " MB" +
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +
         ", storage=" +
-        (samples_.storage() == SampleStorage::Int16 ? "int16" : "float32") +
+        (samples_.storage() == SampleStorage::Int16   ? "int16"
+         : samples_.storage() == SampleStorage::Int24 ? "int24"
+                                                      : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +
         ", streamReleases=" + (samples_.streamReleases() ? "on" : "off"));
   }

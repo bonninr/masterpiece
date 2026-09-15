@@ -37,6 +37,10 @@ template <>
 inline const int16_t* storageOf<int16_t>(const SampleBuffer& buf) {
   return buf.pcm16.data();
 }
+template <>
+inline const Pcm24* storageOf<Pcm24>(const SampleBuffer& buf) {
+  return buf.pcm24.data();
+}
 
 inline float storageScale(const SampleBuffer& buf) {
   return buf.compact() ? buf.pcmScale : 1.0f;
@@ -438,7 +442,9 @@ inline float readInterior(const T* frames, int channels, int channel, int64_t i,
 void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
                               int numFrames) {
   const size_t index = static_cast<size_t>(&v - voices_.data());
-  if (v.buffer != nullptr && v.buffer->compact())
+  if (v.buffer != nullptr && v.buffer->wide())
+    renderVoiceFrom<Pcm24>(v, index, out, numChannels, numFrames);
+  else if (v.buffer != nullptr && v.buffer->compact())
     renderVoiceFrom<int16_t>(v, index, out, numChannels, numFrames);
   else
     renderVoiceFrom<float>(v, index, out, numChannels, numFrames);
