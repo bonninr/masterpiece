@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Masterpiece VERSION 0.3.2 LANGUAGES C CXX)
+project(Masterpiece VERSION 0.3.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
