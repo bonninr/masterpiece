@@ -54,14 +54,16 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(profileLabel_);
   styleLabel(profileLabel_, "Memory profile");
   addAndMakeVisible(profile_);
+  // Named for what they do, not for a machine they suit. The figures that
+  // actually decide whether one fits are in the readout below the controls,
+  // measured on the organ in front of you rather than assumed.
   profile_.addItem("Best quality - hold everything", 1);
   profile_.addItem("Recommended - 16-bit, stream releases", 2);
-  profile_.addItem("Small machine - 16-bit mono, stream releases", 3);
-  profile_.addItem("Raspberry Pi - 8-bit mono, stream releases", 4);
-  profile_.addItem("Custom", 5);
+  profile_.addItem("Smallest - 16-bit mono, stream releases", 3);
+  profile_.addItem("Custom", 4);
   profile_.onChange = [this] {
     if (applyingProfile_) return;
-    if (profile_.getSelectedId() != 5) applyProfile(profile_.getSelectedId());
+    if (profile_.getSelectedId() != 4) applyProfile(profile_.getSelectedId());
   };
 
   addAndMakeVisible(preloadLabel_);
@@ -89,17 +91,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(storageLabel_, "Resident format");
   addAndMakeVisible(storage_);
   storage_.addItem("32-bit float - no conversion", 1);
-  storage_.addItem("16-bit - half the memory", 2);
-  storage_.addItem("8-bit - a quarter, audible on quiet stops", 3);
-  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int8    ? 3
-                         : proc_.sampleStorage() == SampleStorage::Int16 ? 2
-                                                                         : 1,
+  storage_.addItem("16-bit - half the memory, inaudible", 2);
+  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int16 ? 2 : 1,
                          juce::dontSendNotification);
   storage_.onChange = [this] {
-    const int id = storage_.getSelectedId();
-    proc_.setSampleStorage(id == 3   ? SampleStorage::Int8
-                           : id == 2 ? SampleStorage::Int16
-                                     : SampleStorage::Float32);
+    proc_.setSampleStorage(storage_.getSelectedId() == 2 ? SampleStorage::Int16
+                                                         : SampleStorage::Float32);
     syncProfile();
   };
 
@@ -225,7 +222,8 @@ void EnginePanel::timerCallback() {
   juce::String text = "Resident samples: " +
                       juce::String(bytes / (1024 * 1024)) + " MB (" +
                       juce::String(proc_.sampleLibrary().residentCount()) +
-                      " samples, " + (compact ? "16-bit" : "32-bit float") + ")";
+                      " samples, " + (compact ? "16-bit" : "32-bit float") +
+                      ", " + (proc_.loadMono() ? "mono" : "stereo") + ")";
   const auto streamed = proc_.sampleLibrary().streamedCount();
   if (streamed > 0)
     text += "  -  " + juce::String(static_cast<int>(streamed)) +
@@ -241,9 +239,9 @@ void EnginePanel::timerCallback() {
 
 void EnginePanel::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff1b1e24)); }
 
-// The four memory settings, as combinations worth having rather than as four
-// independent questions. Measured on a 44-stop set these span 21.6 GB down to
-// roughly 1.2 GB; the individual controls below can still reach anything.
+// The memory settings as combinations worth having, rather than as four
+// independent questions. Measured on a 44-stop, 17 GB set these span 21.6 GB
+// down to 2.3 GB; the individual controls below can still reach anything.
 void EnginePanel::applyProfile(int id) {
   applyingProfile_ = true;
   struct Profile {
@@ -254,17 +252,14 @@ void EnginePanel::applyProfile(int id) {
   };
   const Profile p = id == 1   ? Profile{SampleStorage::Float32, false, false, 0}
                     : id == 2 ? Profile{SampleStorage::Int16, false, true, 0}
-                    : id == 3 ? Profile{SampleStorage::Int16, true, true, 0}
-                              : Profile{SampleStorage::Int8, true, true, 0};
+                              : Profile{SampleStorage::Int16, true, true, 0};
 
   proc_.setSampleStorage(p.storage);
   proc_.setLoadMono(p.mono);
   proc_.setStreamReleases(p.stream);
   proc_.setPreloadHeadFrames(p.head);
 
-  storage_.setSelectedId(p.storage == SampleStorage::Int8    ? 3
-                         : p.storage == SampleStorage::Int16 ? 2
-                                                             : 1,
+  storage_.setSelectedId(p.storage == SampleStorage::Int16 ? 2 : 1,
                          juce::dontSendNotification);
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
@@ -278,35 +273,15 @@ void EnginePanel::syncProfile() {
   const bool stream = proc_.streamReleases();
   const bool wholeHead = proc_.preloadHeadFrames() == 0;
 
-  int id = 5; // Custom, until the settings match one of the four exactly
+  int id = 4; // Custom, until the settings match one of the three exactly
   if (wholeHead) {
     if (st == SampleStorage::Float32 && !mono && !stream) id = 1;
     else if (st == SampleStorage::Int16 && !mono && stream) id = 2;
     else if (st == SampleStorage::Int16 && mono && stream) id = 3;
-    else if (st == SampleStorage::Int8 && mono && stream) id = 4;
   }
   applyingProfile_ = true;
   profile_.setSelectedId(id, juce::dontSendNotification);
   applyingProfile_ = false;
-}
-
-juce::String EnginePanel::projection(SampleStorage s, bool mono) const {
-  // Scaled from what THIS organ actually loaded, because the only honest
-  // basis for a projection is a measurement. Format and channel count are
-  // exact linear multipliers on the same frames; streaming is not projected
-  // here at all, since how much of a set is release tail differs per set and
-  // the live figure beside this one already reports it.
-  const int64_t held = proc_.sampleLibrary().residentBytes();
-  if (held <= 0) return {};
-
-  const auto width = [](SampleStorage f) {
-    return f == SampleStorage::Int8 ? 1 : f == SampleStorage::Int16 ? 2 : 4;
-  };
-  const double formatRatio =
-      static_cast<double>(width(s)) / static_cast<double>(width(proc_.sampleStorage()));
-  const double channelRatio = (mono == proc_.loadMono()) ? 1.0 : (mono ? 0.5 : 2.0);
-  const double mb = static_cast<double>(held) / (1024.0 * 1024.0) * formatRatio * channelRatio;
-  return juce::String(mb / 1024.0, 2) + " GB";
 }
 
 void EnginePanel::resized() {

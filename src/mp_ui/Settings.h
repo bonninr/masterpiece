@@ -31,10 +31,6 @@ private:
   // Move the profile box to whichever profile the current settings match, or
   // to Custom when they match none.
   void syncProfile();
-  // What the next load would hold, given a format and a channel count.
-  // Exact for those two -- both are linear multipliers on the same frames --
-  // and it says so rather than guessing at what streaming would save.
-  juce::String projection(SampleStorage s, bool mono) const;
   // Put the engine, and the controls, back to the state captured when this
   // panel was built.
   void revert();

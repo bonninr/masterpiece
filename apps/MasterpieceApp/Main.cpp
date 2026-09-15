@@ -347,22 +347,20 @@ public:
     // from a script rather than from the settings page. All three apply to
     // the NEXT load, which is why they are read before loadOrgan below.
     //
-    //   --storage int16|int8     what a resident frame costs
+    //   --storage int16          what a resident frame costs
     //   --load-mono on           fold a stereo set to one channel
     //   --stream-releases on     hold only the head of each release tail
     //   --preload-head <frames>  minimum head of every sample (0 = whole file)
     for (int i = 0; i < args.size(); ++i) {
       if (args[i] == "--storage" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
-        if (v == "int8") {
-          proc_->setSampleStorage(mp::SampleStorage::Int8);
-        } else if (v == "int16") {
+        if (v == "int16") {
           proc_->setSampleStorage(mp::SampleStorage::Int16);
         } else if (v == "float32") {
           proc_->setSampleStorage(mp::SampleStorage::Float32);
         } else {
           juce::Logger::writeToLog(
-              "--storage: expected float32, int16 or int8, got " + v);
+              "--storage: expected float32 or int16, got " + v);
         }
       } else if (args[i] == "--load-mono" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
@@ -376,9 +374,8 @@ public:
     }
     juce::Logger::writeToLog(
         juce::String("memory config: storage=") +
-        (proc_->sampleStorage() == mp::SampleStorage::Int8    ? "int8"
-         : proc_->sampleStorage() == mp::SampleStorage::Int16  ? "int16"
-                                                               : "float32") +
+        (proc_->sampleStorage() == mp::SampleStorage::Int16 ? "int16"
+                                                            : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
         ", streamReleases=" + (proc_->streamReleases() ? "on" : "off") +
         ", preloadHead=" + juce::String(proc_->preloadHeadFrames()) + " frames");

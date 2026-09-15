@@ -39,11 +39,14 @@ namespace mp {
 //             keeps the full sixteen bits rather than only the top few: this
 //             is meaningfully better than a plain truncation, and it costs
 //             nothing at run time because the scale folds into the voice gain.
-// What a resident frame costs. Float32 is the decoded sample; the integer
-// formats quantise against the file's OWN peak, so a stop recorded 20 dB down
-// still uses every bit it is given. Measured on a 44-stop set the ratio is
-// exactly linear -- 4 bytes, 2 bytes, 1 byte -- because that is all this is.
-enum class SampleStorage { Float32, Int16, Int8 };
+// What a resident frame costs. Float32 is the decoded sample; Int16 quantises
+// against the file's OWN peak, so a stop recorded 20 dB down still uses every
+// bit it is given, and holds about 78 dB of signal to quantisation noise on
+// real samples -- inaudible, for half the memory.
+//
+// An 8-bit width was built and withdrawn: it held about 32 dB, which is
+// audible hiss under a quiet stop.
+enum class SampleStorage { Float32, Int16 };
 
 // Where the rest of a sample lives when only its head is resident.
 //
@@ -71,7 +74,6 @@ struct SampleTail {
 struct SampleBuffer {
   std::vector<float> frames;   // Float32 storage
   std::vector<int16_t> pcm16;  // Int16 storage
-  std::vector<int8_t> pcm8;    // Int8 storage
   // What an int16 count is worth as a float. Carries both the 1/32767 and the
   // per-file peak, so a sample that peaked at -20 dBFS still uses every bit.
   float pcmScale = 1.0f;
@@ -92,13 +94,11 @@ struct SampleBuffer {
   bool streams() const { return tail != nullptr && tail->totalFrames > numFrames; }
 
   // True when the audio is held as integer counts and pcmScale means
-  // something. Which integer width is a separate question, asked below.
-  bool compact() const { return !pcm16.empty() || !pcm8.empty(); }
-  bool byteSized() const { return !pcm8.empty(); }
+  // something.
+  bool compact() const { return !pcm16.empty(); }
   int64_t residentBytes() const {
     return static_cast<int64_t>(frames.size() * sizeof(float) +
-                                pcm16.size() * sizeof(int16_t) +
-                                pcm8.size() * sizeof(int8_t));
+                                pcm16.size() * sizeof(int16_t));
   }
 
   bool loops() const {
@@ -108,9 +108,7 @@ struct SampleBuffer {
     if (frame < 0 || frame >= numFrames) return 0.0f;
     const int ch = channel < numChannels ? channel : numChannels - 1;
     const auto i = static_cast<size_t>(frame * numChannels + ch);
-    if (!pcm8.empty()) return static_cast<float>(pcm8[i]) * pcmScale;
-    if (!pcm16.empty()) return static_cast<float>(pcm16[i]) * pcmScale;
-    return frames[i];
+    return compact() ? static_cast<float>(pcm16[i]) * pcmScale : frames[i];
   }
 };
 

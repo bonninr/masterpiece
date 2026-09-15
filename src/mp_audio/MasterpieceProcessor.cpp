@@ -752,8 +752,11 @@ juce::File MasterpieceProcessor::settingsFileFor(const juce::File& odf) const {
 juce::String MasterpieceProcessor::settingsBody() const {
   const auto& sw = graph_.engineSwitch;
   juce::String text;
+  // A bit width rather than an enum ordinal, so the file stays readable
+  // and a width added later does not renumber the existing ones.
   text << "storage " << (samples_.storage() == SampleStorage::Int16 ? 16 : 32)
        << "\n";
+  text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
@@ -817,6 +820,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   if (key == "storage")
     samples_.setStorage(val.getIntValue() == 16 ? SampleStorage::Int16
                                                 : SampleStorage::Float32);
+  else if (key == "mono") samples_.setLoadMono(on);
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
@@ -2253,9 +2257,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         "memory: resident " + mb(samples_.residentBytes()) + " MB" +
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +
         ", storage=" +
-        (samples_.storage() == SampleStorage::Int8    ? "int8"
-         : samples_.storage() == SampleStorage::Int16  ? "int16"
-                                                       : "float32") +
+        (samples_.storage() == SampleStorage::Int16 ? "int16" : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +
         ", streamReleases=" + (samples_.streamReleases() ? "on" : "off"));
   }

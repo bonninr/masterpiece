@@ -149,7 +149,7 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
 
   // Interleave: the voice engine reads frame-major, which keeps a stereo
   // voice's two channels on the same cache line.
-  if (storage == SampleStorage::Int16 || storage == SampleStorage::Int8) {
+  if (storage == SampleStorage::Int16) {
     // Scale by this file's own peak before quantising. Organ samples are not
     // normalised — a soft stop's samples can sit 20 dB down, and truncating
     // those straight to int16 would throw away three bits that cost nothing to
@@ -159,15 +159,13 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     for (int c = 0; c < channels; ++c)
       peak = std::max(peak, scratch.getMagnitude(c, 0, static_cast<int>(want)));
 
-    // Full scale for the chosen width. Eight bits is 127 rather than 128 for
-    // the same reason sixteen is 32767: the negative rail is one count further
-    // out, and using it would make the scale asymmetric.
-    const bool byteWide = storage == SampleStorage::Int8;
-    const float full = byteWide ? 127.0f : 32767.0f;
+    // 32767 rather than 32768: the negative rail is one count further out,
+    // and using it would make the scale asymmetric.
+    constexpr float full = 32767.0f;
 
     out.pcmScale = peak > 0.0f ? peak / full : 1.0f;
     const float toCounts = peak > 0.0f ? full / peak : 0.0f;
-    if (byteWide) out.pcm8.resize(count); else out.pcm16.resize(count);
+    out.pcm16.resize(count);
     for (int64_t f = 0; f < want; ++f)
       for (int c = 0; c < channels; ++c) {
         const float v = scratch.getSample(c, static_cast<int>(f)) * toCounts;
@@ -176,9 +174,8 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
         // sample set with a NaN in it must not wrap to the opposite rail.
         const float r = std::round(v);
         const float q = std::isfinite(r) ? std::clamp(r, -full, full) : 0.0f;
-        const auto i = static_cast<size_t>(f * channels + c);
-        if (byteWide) out.pcm8[i] = static_cast<int8_t>(q);
-        else out.pcm16[i] = static_cast<int16_t>(q);
+        out.pcm16[static_cast<size_t>(f * channels + c)] =
+            static_cast<int16_t>(q);
       }
   } else {
     out.pcmScale = 1.0f;
