@@ -1,9 +1,10 @@
 name: build
 
-# Four targets, all of them things a player might actually run this on:
-# Windows, Linux x86-64, and a Raspberry Pi in either 64-bit (the default
-# since 2022) or 32-bit form. macOS is written but deliberately not wired to
-# any automatic trigger yet -- see the job at the bottom.
+# Six targets, all of them things a player might actually run this on:
+# Windows, Linux x86-64, a Raspberry Pi in either 64-bit (the default since
+# 2022) or 32-bit form, and macOS on both Apple silicon and Intel. The two
+# Macs are built natively and shipped separately, as GrandOrgue does, rather
+# than as one universal binary.
 #
 # On a public repository the standard runners cost nothing, so this no longer
 # has to be shaped around a minute allowance; it is still kept from doing
@@ -24,11 +25,6 @@ on:
       - '.gitignore'
       - 'screenshots/**'
   workflow_dispatch:
-    inputs:
-      macos:
-        description: 'Also build macOS (bills at 10x)'
-        type: boolean
-        default: false
   # release.yml calls this rather than repeating the matrix, so a tagged
   # release is built by exactly the same steps as an ordinary push.
   workflow_call:
@@ -64,6 +60,20 @@ jobs:
             arm: true
             debarch: armhf
             triple: arm-linux-gnueabihf
+          # Both Macs, each built on its own architecture. The Intel build
+          # names the oldest macOS it must run on; the Apple-silicon one
+          # cannot predate the hardware, so it takes the toolchain default.
+          - os: macos-14
+            preset: ci-macos
+            artifact: masterpiece-macos-arm64
+            mac: true
+            macarch: arm64
+          - os: macos-15-intel
+            preset: ci-macos
+            artifact: masterpiece-macos-x86_64
+            mac: true
+            macarch: x86_64
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=12.1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +106,10 @@ jobs:
         # on from Windows, where the executable bit is not reliably carried.
         run: bash cmake/ci-arm-multiarch.sh ${{ matrix.debarch }} ${{ matrix.triple }}
 
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
         run: choco install ninja --no-progress -y
@@ -109,6 +123,7 @@ jobs:
           cmake --preset ${{ matrix.preset }}
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ${{ matrix.cmake_extra }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -153,49 +168,53 @@ jobs:
           if ($p.HasExited) { throw "exited early with $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
 
+      # Same check the other native targets get, plus the machine type: two
+      # Mac jobs differing only in the runner would otherwise be impossible to
+      # tell apart from their artefacts.
+      - name: Launch check (macOS)
+        if: matrix.mac
+        run: |
+          APP=build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Release/Masterpiece.app
+          BIN="$APP/Contents/MacOS/Masterpiece"
+          test -x "$BIN" || { echo "no binary was produced"; exit 1; }
+          file "$BIN"
+          file "$BIN" | grep -q "${{ matrix.macarch }}"
+          "$BIN" &
+          pid=$!
+          sleep 15
+          kill -0 "$pid" || { echo "exited early"; exit 1; }
+          kill "$pid"
+
+      # Packed on the Mac itself: uploading a .app as loose files loses the
+      # executable bit, and an app bundle that cannot be executed is not an
+      # app. ditto is the tool that keeps a bundle intact through a zip.
+      - name: Package (macOS)
+        if: matrix.mac
+        run: |
+          stage=$(mktemp -d)/Masterpiece
+          mkdir -p "$stage"
+          cp -R build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Release/Masterpiece.app "$stage/"
+          for f in AU/Masterpiece.component VST3/Masterpiece.vst3; do
+            src=build/${{ matrix.preset }}/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release/$f
+            [ -e "$src" ] && cp -R "$src" "$stage/"
+          done
+          mkdir -p dist
+          ditto -c -k --keepParent "$stage" "dist/${{ matrix.artifact }}.zip"
+          ls -lh dist
+
       - uses: actions/upload-artifact@v4
+        if: matrix.mac
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: '!matrix.mac'
         with:
           name: ${{ matrix.artifact }}
           path: |
             build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
-          if-no-files-found: warn
-
-  # macOS is not a supported target yet: nothing here has been built or run on
-  # one, so this job is wired to nothing automatic -- not even a release tag,
-  # which would otherwise make a red build the first thing a tag produces. It
-  # runs only when asked for by hand from the Actions tab, which is how the
-  # port will be worked on when it starts.
-  macos:
-    if: inputs.macos
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ci-macos-macos-latest
-          max-size: 500M
-
-      - name: Dependencies
-        run: brew install cmake ninja
-
-      - name: Configure
-        run: >
-          cmake --preset ci-macos
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build
-        run: cmake --build --preset ci-macos
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: masterpiece-macos
-          path: |
-            build/ci-macos/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
-            build/ci-macos/apps/MasterpiecePlugin/**/*.vst3
-            build/ci-macos/apps/MasterpiecePlugin/**/*.component
           if-no-files-found: warn

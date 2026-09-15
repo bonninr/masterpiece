@@ -18,6 +18,8 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)
 
 [![Windows](https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-windows.zip)
+[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-macos-arm64.zip)
+[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-macos-x86_64.zip)
 [![Linux](https://img.shields.io/badge/Download-Linux%20x86--64-FCC624?logo=linux&logoColor=black)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-x86_64.tar.gz)
 [![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-arm64.tar.gz)
 [![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-armhf.tar.gz)
@@ -27,8 +29,8 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/20)
 [![JUCE 9](https://img.shields.io/badge/JUCE-9-8DC63F?logo=juce&logoColor=white)](https://juce.com/)
 [![CMake](https://img.shields.io/badge/CMake%20%2B%20Ninja-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
-[![platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi-555?logo=linux&logoColor=white)](#building)
-[![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20LV2-6b4f9e)](#building)
+[![platforms](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Raspberry%20Pi-555?logo=linux&logoColor=white)](#building)
+[![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20LV2%20%7C%20AU-6b4f9e)](#building)
 [![licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENCE)
 
 ---
@@ -40,7 +42,7 @@ Measured figures, and the method behind them, are in
 
 | | |
 |---|---|
-| Formats | Standalone application; VST3 and LV2 plugins from the same engine. Raspberry Pi builds are standalone only. |
+| Formats | Standalone application; VST3 and LV2 plugins from the same engine, and an Audio Unit on macOS. Raspberry Pi builds are standalone only. |
 | Sample playback | Per-pipe attack, sustain loop and matched release tail, crossfaded rather than cut. Four-point interpolation on transposed ranks. |
 | Memory | Measured on a 44-stop, 17 GB set ([the report](PERFORMANCE.md)): up to **9.3x less** than holding every sample as 32-bit float, and the organ opens up to **3x faster**. Samples are held at 24-bit, bit-for-bit identical to the files (1.3x less), or at 16-bit; a stereo set can be folded to mono as it loads. Release tails stream from disk into per-voice ring buffers refilled by a background thread, which leaves 56% of the sample data on disk. 21.6 GB at 32-bit float, 16.2 GB at 24-bit, 4.65 GB at 16-bit with releases streamed, 2.33 GB folded to mono. Sample data can also be converted to the device's rate as it loads, for libraries recorded at 96 kHz. |
 | Cache | The decoded samples kept as one file, so the next load of the same organ is one read instead of 12,148 decodes: up to **5x faster** sample loading. Keyed to the definition and every setting that changes the bytes, so a changed setting rebuilds the cache instead of reading a stale one. One file by default, replaced as organs change; one per organ, or off. |
@@ -54,7 +56,7 @@ Measured figures, and the method behind them, are in
 | MIDI | All input devices simultaneously, each mapped to a division. Per-drawstop learn. MIDI out to a physical console; jamb display over system exclusive. |
 | Console | Rendered from the set's definition: artwork, drawstops, pistons, shoes, drawn manuals and pedalboards, multiple pages. Stop list as a fallback for sets without artwork. |
 | Recording | MIDI capture including stop and shoe movement, replayable through a different registration; audio capture in parallel. |
-| Platforms | Windows, Linux x86-64, Raspberry Pi 64-bit and 32-bit. macOS builds but is not a supported target. |
+| Platforms | Windows, macOS on Apple silicon and Intel, Linux x86-64, Raspberry Pi 64-bit and 32-bit. |
 
 ---
 
@@ -72,8 +74,9 @@ of the set's own definition, so an organ looks and behaves like itself rather
 than a generic mixer with the stop names changed.
 
 It runs as a standalone application and as a VST3 or LV2 plugin — the same
-engine either way. An AU is built from the same target for macOS, which is not
-a supported platform yet.
+engine either way. On macOS it is also built as an Audio Unit, for both Apple
+silicon and Intel; those builds are not signed by Apple, so the first time you
+open the application, right-click it and choose Open.
 
 ---
 
@@ -301,8 +304,8 @@ if you want to know where the time went.
 | Audio and GUI | JUCE 9 |
 | XML | pugixml |
 | Build | CMake + Ninja, command line only |
-| Platforms | Windows, macOS, Linux; Raspberry Pi via cross-build |
-| Formats | Standalone, VST3, LV2 (AU builds, macOS not yet supported) |
+| Platforms | Windows, macOS (Apple silicon and Intel), Linux; Raspberry Pi via cross-build |
+| Formats | Standalone, VST3, LV2, AU on macOS |
 
 The engine is split so the parts with no user interface can be tested without
 one:

@@ -3,8 +3,7 @@ name: release
 # Tagging vX.Y.Z builds every supported target and publishes the binaries.
 #
 # The build matrix is not repeated here: this calls build.yml, so a release is
-# produced by exactly the steps that verify an ordinary push. macOS is absent
-# because it is not a supported target yet.
+# produced by exactly the steps that verify an ordinary push.
 on:
   push:
     tags: ['v*']
@@ -39,6 +38,12 @@ jobs:
           mkdir -p dist
           for d in artifacts/*/; do
             name=$(basename "$d")
+            # macOS arrives already packed: a .app loses its executable bit if
+            # it is uploaded as loose files, so that job zips it on the Mac.
+            if [ "$(ls "$d" | wc -l)" = 1 ] && [ -f "$d/${name}.zip" ]; then
+              cp "$d/${name}.zip" "dist/${name}.zip"
+              continue
+            fi
             case "$name" in
               masterpiece-windows) ext=zip ;;
               *)                   ext=tar.gz ;;
