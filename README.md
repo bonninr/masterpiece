@@ -1,7 +1,7 @@
 # Masterpiece
 
-### An open-source, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
-
+### An open-source, cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
+**Video Demo (activate sound)**
 
 
 https://github.com/user-attachments/assets/c3181de2-64ec-496a-be90-b5677b79f9be
