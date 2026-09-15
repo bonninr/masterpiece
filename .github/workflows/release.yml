@@ -30,8 +30,9 @@ jobs:
         with:
           path: artifacts
 
-      # One archive per target, named for the tag, so a downloaded file still
-      # says what it is after it leaves the browser.
+      # One archive per target under a name that does not change between
+      # releases, so releases/latest/download/<name> is a permanent link --
+      # the README download badges point at exactly that.
       - name: Package
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
@@ -43,9 +44,9 @@ jobs:
               *)                   ext=tar.gz ;;
             esac
             if [ "$ext" = zip ]; then
-              (cd "$d" && zip -qr "../../dist/${name}-${tag}.zip" .)
+              (cd "$d" && zip -qr "../../dist/${name}.zip" .)
             else
-              tar -czf "dist/${name}-${tag}.tar.gz" -C "$d" .
+              tar -czf "dist/${name}.tar.gz" -C "$d" .
             fi
           done
           ls -lh dist
