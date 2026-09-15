@@ -100,9 +100,11 @@ void LoadingDialog::timerCallback() {
       if (eta.isNotEmpty()) text += "   -   " + eta + " left";
       detail_.setText(text, juce::dontSendNotification);
     }
-  } else if (!cancelling_ && phase == LoadProgress::Phase::ReadingDefinition) {
-    // No item count exists yet, and inventing one would be a lie that the
-    // next phase immediately contradicts.
+  } else if (!cancelling_) {
+    // Every other phase counts nothing, and inventing a number would be a lie
+    // the next phase immediately contradicts. The phase line carries the
+    // meaning; this one stays empty rather than holding the last phase's
+    // sample count while something else entirely is happening.
     detail_.setText("", juce::dontSendNotification);
   }
 }

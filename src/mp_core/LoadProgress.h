@@ -17,7 +17,15 @@ struct LoadProgress {
   enum class Phase {
     Idle,
     ReadingDefinition,  // parsing the ODF; no useful item count yet
+    // Between the definition and the samples the instrument is built, and on
+    // a large set that is ten seconds during which the old label said
+    // "reading". Named for what is actually happening, because a dialog that
+    // claims to be reading a file for ten seconds after it has read it
+    // teaches the player to distrust it.
+    BuildingWind,       // solving the wind system: the long half of the build
+    WiringConsole,      // linkages, couplers, the key-flow walk
     LoadingSamples,     // the long one: done/total are meaningful here
+    Preparing,          // audio graph, MIDI map, combinations: after the samples
     BuildingConsole,    // artwork decode, back on the message thread
     Done,
     Cancelled,
@@ -53,7 +61,10 @@ struct LoadProgress {
   static const char* phaseName(Phase p) {
     switch (p) {
       case Phase::ReadingDefinition: return "Reading the organ definition";
+      case Phase::BuildingWind:      return "Building the wind model";
+      case Phase::WiringConsole:     return "Wiring the console";
       case Phase::LoadingSamples:    return "Loading samples";
+      case Phase::Preparing:         return "Preparing to play";
       case Phase::BuildingConsole:   return "Building the console";
       case Phase::Done:              return "Ready";
       case Phase::Cancelled:         return "Cancelled";

@@ -2010,6 +2010,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
   phases.mark("model: controls");
+  // Five seconds on a large set, and it used to report itself as
+  // "reading the organ definition", which was finished long before.
+  loadProgress_.beginPhase(LoadProgress::Phase::BuildingWind);
   combinations_.reset(model_);
   stepper_.reset(model_);
 
@@ -2080,6 +2083,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // out what "full wind" actually is. Doing this at reset() instead would
   // measure an organ that is switched off.
   phases.mark("model: stages");
+  loadProgress_.beginPhase(LoadProgress::Phase::WiringConsole);
   wind_.settleWith(engagedSwitches_);
   setterSwitchId_ = 0;
   for (const auto& [id, sw] : model_.switches)
@@ -2264,6 +2268,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
   voices_.setSampleProvider(samples_.provider());
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
+
+  // Nearly six seconds on a large set, after the sample counter has reached
+  // its total and stopped moving. Without a phase of its own the dialog sat
+  // at "12148 of 12148 samples" while it did something else entirely.
+  loadProgress_.beginPhase(LoadProgress::Phase::Preparing);
 
   // Rebuild everything that is derived from the model. prepareToPlay may not
   // have run yet (headless), in which case it will pick this up when it does.
