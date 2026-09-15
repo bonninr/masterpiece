@@ -1975,6 +1975,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // organ that ships with its blower running or a unison coupler drawn comes
   // up that way rather than needing the player to find a switch nobody told
   // them about.
+  phases.mark("model: stop map");
   switches_.reset(model_);
   engagedSwitches_ = switches_.engagedSwitches();
 
@@ -1982,6 +1983,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // no values: every shoe read as absent, shutterFor() answered "fully open"
   // for everything, and no swell pedal did anything. It looked healthy from
   // the outside because a stuck-open enclosure sounds like an organ.
+  phases.mark("model: switches");
+  phases.mark("model: switch solve");
   controls_.reset(model_);
 
   // Now, and not before: reset() has just put every control at the organ's
@@ -2006,6 +2009,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   // Pistons. The organ's own setter is the switch Hauptwerk assigns code 12,
   // "Comb. Master Capture"; an organ without one leaves capture to the UI.
+  phases.mark("model: controls");
   combinations_.reset(model_);
   stepper_.reset(model_);
 
@@ -2030,6 +2034,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (it != windIndexOf_.end()) pipeWindIndex_[pipe.pipeId] = it->second;
     }
   }
+  phases.mark("model: wind");
   stages_.reset(model_);
   stageScratch_.reserve(64);
   stageValues_.clear();
@@ -2074,6 +2079,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Now that the blower is on and every valve is where the organ puts it, work
   // out what "full wind" actually is. Doing this at reset() instead would
   // measure an organ that is switched off.
+  phases.mark("model: stages");
   wind_.settleWith(engagedSwitches_);
   setterSwitchId_ = 0;
   for (const auto& [id, sw] : model_.switches)
