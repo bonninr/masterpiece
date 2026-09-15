@@ -1,9 +1,17 @@
 # Masterpiece
 
-### An open-source pipe organ sample player supporting industry-standard sample sets.
+### An open-source pipe organ sample player compatible with Hauptwerk sample sets.
 
 It builds the instrument's own console out of the set's definition — artwork,
 drawstops, keyboards, pedalboard — and plays it.
+
+<!-- hero: the demonstration clip goes on the next line, as a github.com/user-attachments URL -->
+**[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)
+
+[![Windows](https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-windows.zip)
+[![Linux](https://img.shields.io/badge/Download-Linux%20x86--64-FCC624?logo=linux&logoColor=black)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-x86_64.tar.gz)
+[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-arm64.tar.gz)
+[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/latest/download/masterpiece-linux-armhf.tar.gz)
 
 [![build](https://github.com/bonninr/masterpiece/actions/workflows/build.yml/badge.svg)](https://github.com/bonninr/masterpiece/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/bonninr/masterpiece?include_prereleases&label=release&color=c8a97e)](https://github.com/bonninr/masterpiece/releases)
@@ -13,20 +21,6 @@ drawstops, keyboards, pedalboard — and plays it.
 [![platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi-555?logo=linux&logoColor=white)](#building)
 [![formats](https://img.shields.io/badge/Standalone%20%7C%20VST3%20%7C%20LV2-6b4f9e)](#building)
 [![licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue)](LICENCE)
-
-![Friesach](screenshots/Friesach.jpg)
-
----
-
-## Demonstration recording
-
-Thirty-three works on nine organs, 17 minutes, recorded from the application's
-own audio output.
-
-[![Demonstration recording](screenshots/recital-poster.jpg)](https://bonninr.github.io/masterpiece/#hear)
-
-**[Watch it on the project page](https://bonninr.github.io/masterpiece/#hear)** ·
-[programme and credits](ATTRIBUTION.md#music)
 
 ---
 
@@ -343,5 +337,8 @@ Sample libraries and MIDI sequences are credited in
 ---
 
 ## Licence
+
+Hauptwerk is a trademark of its owner. Masterpiece is an independent project,
+not affiliated with or endorsed by it.
 
 GPL-3.0-only. See [`LICENCE`](LICENCE) and [`COPYING`](COPYING).
