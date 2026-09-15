@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <string>
 #include <vector>
 
 namespace mp {
@@ -110,6 +111,14 @@ struct SampleBuffer {
   int64_t loopStart = -1;
   int64_t loopEnd = -1;
 
+  // Where the streamed remainder lives, and the two rates needed to read it
+  // back. Only meaningful when `tail` is set. Held as data rather than only
+  // inside the reader's closure so a cache can rebuild the tail later without
+  // opening the file now.
+  std::string tailPath;
+  double tailSrcRate = 0.0;
+  double tailDstRate = 0.0;
+
   // The rest of the file, when only the head is resident. Null means what is
   // here is all there is, which is what every preloaded sample looks like.
   std::shared_ptr<const SampleTail> tail;
@@ -123,6 +132,9 @@ struct SampleBuffer {
   // something. Which integer width is a separate question, asked below.
   bool compact() const { return !pcm16.empty() || !pcm24.empty(); }
   bool wide() const { return !pcm24.empty(); }
+  // What one sample of one channel costs, resident. Asking compact() alone
+  // cannot answer this any more: it is true of both integer widths.
+  int bytesPerSample() const { return wide() ? 3 : compact() ? 2 : 4; }
   int64_t residentBytes() const {
     return static_cast<int64_t>(frames.size() * sizeof(float) +
                                 pcm16.size() * sizeof(int16_t) +

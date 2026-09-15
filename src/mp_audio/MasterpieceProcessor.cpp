@@ -760,6 +760,8 @@ juce::String MasterpieceProcessor::settingsBody() const {
                                                         : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
+  text << "rate " << juce::String(samples_.loadSampleRate(), 0) << "\n";
+  text << "cache " << static_cast<int>(samples_.cacheMode()) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
@@ -828,6 +830,12 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
   else if (key == "rate") samples_.setLoadSampleRate(val.getDoubleValue());
+  else if (key == "cache") {
+    const int v = val.getIntValue();
+    samples_.setCacheMode(v == 0   ? SampleLibrary::CacheMode::Off
+                          : v == 2 ? SampleLibrary::CacheMode::PerOrgan
+                                   : SampleLibrary::CacheMode::Single);
+  }
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
@@ -2213,6 +2221,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                                juce::String((int)onlyRanks.size()) +
                                " rank(s) of " + juce::String((int)model_.ranks.size()) +
                                "; every other stop will be silent");
+    // What the cache is keyed to: which organ, and whether its definition has
+    // changed since the cache was written. Both are cheap to read and neither
+    // is guessable from the model alone.
+    samples_.setCacheDir(
+        juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile("Masterpiece")
+            .getChildFile("cache")
+            .getFullPathName()
+            .toStdString());
+    samples_.setCacheIdentity(
+        organKey(),
+        odfFile.getFullPathName().toStdString() + "|" +
+            std::to_string(odfFile.getSize()) + "|" +
+            std::to_string(odfFile.getLastModificationTime().toMilliseconds()));
+
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
@@ -2260,6 +2283,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const auto mb = [](int64_t b) {
       return juce::String(b / (1024.0 * 1024.0), 1);
     };
+    if (samples_.cacheBytesRead() > 0)
+      juce::Logger::writeToLog("cache: read " + mb(samples_.cacheBytesRead()) +
+                               " MB, samples not decoded");
+    else if (samples_.cacheBytesWritten() > 0)
+      juce::Logger::writeToLog("cache: wrote " + mb(samples_.cacheBytesWritten()) +
+                               " MB for the next load");
     juce::Logger::writeToLog(
         "memory: resident " + mb(samples_.residentBytes()) + " MB" +
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +

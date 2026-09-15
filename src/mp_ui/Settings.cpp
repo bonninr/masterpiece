@@ -32,6 +32,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStream_ = proc_.streamReleases();
   openMono_ = proc_.loadMono();
   openRate_ = proc_.loadSampleRate();
+  openCache_ = proc_.cacheMode();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -126,6 +127,27 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.setLoadSampleRate(id == 2 ? 48000.0 : id == 3 ? 44100.0 : 0.0);
   };
 
+  // Keeping the decoded samples, so the next load of the same organ is a read
+  // rather than twelve thousand decodes. One file by default: these run to
+  // gigabytes, and a cache per organ per settings combination would fill a
+  // disk without ever being asked to. Loading something else replaces it.
+  addAndMakeVisible(cacheLabel_);
+  styleLabel(cacheLabel_, "Sample cache");
+  addAndMakeVisible(cache_);
+  cache_.addItem("One cache, replaced as organs change", 1);
+  cache_.addItem("One cache per organ (uses more disk)", 2);
+  cache_.addItem("Off", 3);
+  cache_.setSelectedId(proc_.cacheMode() == SampleLibrary::CacheMode::Off        ? 3
+                       : proc_.cacheMode() == SampleLibrary::CacheMode::PerOrgan ? 2
+                                                                                 : 1,
+                       juce::dontSendNotification);
+  cache_.onChange = [this] {
+    const int id = cache_.getSelectedId();
+    proc_.setCacheMode(id == 3   ? SampleLibrary::CacheMode::Off
+                       : id == 2 ? SampleLibrary::CacheMode::PerOrgan
+                                 : SampleLibrary::CacheMode::Single);
+  };
+
   addAndMakeVisible(stream_);
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
@@ -193,6 +215,11 @@ void EnginePanel::revert() {
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setLoadSampleRate(openRate_);
+  proc_.setCacheMode(openCache_);
+  cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
+                       : openCache_ == SampleLibrary::CacheMode::PerOrgan ? 2
+                                                                          : 1,
+                       juce::dontSendNotification);
   rate_.setSelectedId(openRate_ >= 47000.0 && openRate_ <= 49000.0   ? 2
                       : openRate_ >= 43000.0 && openRate_ <= 45000.0 ? 3
                                                                      : 1,
@@ -348,6 +375,10 @@ void EnginePanel::resized() {
   auto rateRow = r.removeFromTop(kRow);
   rateLabel_.setBounds(rateRow.removeFromLeft(180));
   rate_.setBounds(rateRow.removeFromLeft(260));
+  r.removeFromTop(6);
+  auto cacheRow = r.removeFromTop(kRow);
+  cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
+  cache_.setBounds(cacheRow.removeFromLeft(300));
   r.removeFromTop(6);
   stream_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
@@ -1743,7 +1774,10 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Voicing", bg, &voicing_, false);
   tabs_.addTab("Favourites", bg, &favourites_, false);
   tabs_.addTab("Display", bg, &display_, false);
-  setSize(660, 480);
+  // The Engine tab is the tallest: six switches, five memory controls, a
+  // readout and a footer. Adding a row without adding height pushes the
+  // Save buttons off the bottom, where they cannot be pressed at all.
+  setSize(660, 560);
 }
 
 void SettingsWindow::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff15171c)); }
