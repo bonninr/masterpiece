@@ -23,8 +23,6 @@ drawstops, keyboards, pedalboard — and plays it.
 Thirty-three works on nine organs, 17 minutes, recorded from the application's
 own audio output.
 
-<video src="https://github.com/bonninr/masterpiece/releases/download/v0.2.0/masterpiece-recital.mp4" poster="screenshots/recital-poster.jpg" controls muted playsinline width="880"></video>
-
 [![Demonstration recording](screenshots/recital-poster.jpg)](https://bonninr.github.io/masterpiece/#hear)
 
 **[Watch it on the project page](https://bonninr.github.io/masterpiece/#hear)** ·
