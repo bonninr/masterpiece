@@ -584,6 +584,12 @@ public:
   void setLoadMono(bool on) { samples_.setLoadMono(on); }
   bool loadMono() const { return samples_.loadMono(); }
 
+  // Convert sample data to this rate while loading; 0 keeps each file's own.
+  // A 96 kHz set on a 48 kHz device is otherwise held at twice the size and
+  // resampled once per voice. Applies to the next load.
+  void setLoadSampleRate(double hz) { samples_.setLoadSampleRate(hz); }
+  double loadSampleRate() const { return samples_.loadSampleRate(); }
+
   // Stream release tails from disk instead of holding them. Releases are
   // several seconds each, played once, straight through — the only samples in
   // an organ that stream well. Applies to the next load. See SampleLibrary.

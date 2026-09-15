@@ -349,6 +349,7 @@ public:
     //
     //   --storage int24|int16    what a resident frame costs
     //   --load-mono on           fold a stereo set to one channel
+    //   --load-rate 48000        convert as it loads (0 = as recorded)
     //   --stream-releases on     hold only the head of each release tail
     //   --preload-head <frames>  minimum head of every sample (0 = whole file)
     for (int i = 0; i < args.size(); ++i) {
@@ -369,6 +370,9 @@ public:
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setLoadMono(v == "on" || v == "1" || v == "true" || v == "yes");
         proc_->overrideSetting("mono");
+      } else if (args[i] == "--load-rate" && i + 1 < args.size()) {
+        proc_->setLoadSampleRate(args[++i].unquoted().getDoubleValue());
+        proc_->overrideSetting("rate");
       } else if (args[i] == "--stream-releases" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setStreamReleases(v == "on" || v == "1" || v == "true" || v == "yes");
@@ -384,6 +388,9 @@ public:
          : proc_->sampleStorage() == mp::SampleStorage::Int24 ? "int24"
                                                               : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
+        ", rate=" + (proc_->loadSampleRate() > 0.0
+                         ? juce::String(proc_->loadSampleRate(), 0)
+                         : juce::String("as recorded")) +
         ", streamReleases=" + (proc_->streamReleases() ? "on" : "off") +
         ", preloadHead=" + juce::String(proc_->preloadHeadFrames()) + " frames");
 
