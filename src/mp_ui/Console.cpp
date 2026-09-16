@@ -3,6 +3,7 @@
 #include "../mp_core/KeyboardLayout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <set>
 #include <tuple>
@@ -60,6 +61,7 @@ ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
 
 void ConsoleView::rebuild() {
   items_.clear();
+  texts_.clear();
   keys_.clear();
   drawnKeys_.clear();
   heldKey_ = -1;
@@ -212,6 +214,7 @@ void ConsoleView::rebuild() {
   drawnKeys_.clear();
 
   buildKeyboards(model, showing);
+  buildTexts(model, showing);
   for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
 
   // How many layouts this organ offers. A set with one console size declares
@@ -225,7 +228,7 @@ void ConsoleView::rebuild() {
   }
   if (layout_ >= layoutCount_) layout_ = 0;
 
-  hasArtwork_ = !items_.empty() || !keys_.empty();
+  hasArtwork_ = !items_.empty() || !keys_.empty() || !texts_.empty();
   setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
 
   // Only poll while there is something on screen whose picture can change
@@ -234,6 +237,86 @@ void ConsoleView::rebuild() {
     startTimerHz(30);
   else
     stopTimer();
+}
+
+void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
+  const auto pageIt = model.displayPages.find(pageId);
+  if (pageIt == model.displayPages.end()) return;
+
+  // Text can be positioned relative to a drawn thing, so the instances of
+  // this page have to be reachable by id.
+  std::unordered_map<Id, const ImageSetInstance*> byId;
+  for (const auto& inst : pageIt->second.instances)
+    byId[inst.instanceId] = &inst;
+
+  for (const auto& t : pageIt->second.texts) {
+    if (t.text.empty()) continue;
+
+    // A missing style is not a missing label: Hauptwerk's defaults are
+    // Arial 10, normal weight, black, centred across its position.
+    TextStyle style;
+    if (const auto sit = model.textStyles.find(t.styleId);
+        sit != model.textStyles.end())
+      style = sit->second;
+
+    TextItem item;
+    item.text = juce::String::fromUTF8(t.text.c_str());
+    // The set names a Windows, a Mac and a Linux face for the same style.
+    // Whichever this machine has is the one the engraver meant; JUCE falls
+    // back to the default face when none of them is installed.
+    juce::String face = juce::String::fromUTF8(style.faceWindows.c_str());
+   #if JUCE_MAC
+    if (!style.faceMac.empty()) face = juce::String::fromUTF8(style.faceMac.c_str());
+   #elif JUCE_LINUX
+    if (!style.faceLinux.empty()) face = juce::String::fromUTF8(style.faceLinux.c_str());
+   #endif
+    if (face.isEmpty()) face = "Arial";
+    // Font_SizePixels is a height in pixels, which is what JUCE wants.
+    const float height = static_cast<float>(style.sizePx > 0 ? style.sizePx : 10);
+    int flags = juce::Font::plain;
+    if (style.weightCode >= 3) flags |= juce::Font::bold;
+    if (style.italic) flags |= juce::Font::italic;
+    if (style.underline) flags |= juce::Font::underlined;
+    item.font = juce::Font(juce::FontOptions(face, height, flags));
+    item.colour = juce::Colour(static_cast<juce::uint8>(style.red),
+                               static_cast<juce::uint8>(style.green),
+                               static_cast<juce::uint8>(style.blue));
+
+    // The position is an anchor, and the alignment codes say which part of
+    // the text sits on it.
+    int x = t.xPx;
+    int y = t.yPx;
+    if (t.attachedInstanceId != 0 && t.posRelativeToInstance) {
+      const auto ait = byId.find(t.attachedInstanceId);
+      if (ait != byId.end()) {
+        x += ait->second->leftFor(layout_);
+        y += ait->second->topFor(layout_);
+      }
+    }
+
+    const bool centred = style.hAlignCode == 0 || style.hAlignCode == 3;
+    const bool rightAligned = style.hAlignCode == 2;
+    // A bounding box is only declared for wrapped text; everything else is
+    // measured from the string itself so the anchor lands where it should.
+    int w = t.boxWidthPx;
+    int h = t.boxHeightPx;
+    item.wrap = w > 0 && h > 0;
+    if (!item.wrap) {
+      w = juce::GlyphArrangement::getStringWidthInt(item.font, item.text) + 2;
+      h = static_cast<int>(std::ceil(item.font.getHeight()));
+    }
+    if (centred) x -= w / 2;
+    else if (rightAligned) x -= w;
+    if (style.vAlignCode == 0) y -= h / 2;
+    else if (style.vAlignCode == 2) y -= h;
+
+    item.justification = centred      ? juce::Justification::centredTop
+                         : rightAligned ? juce::Justification::topRight
+                                        : juce::Justification::topLeft;
+    item.bounds = {x, y, w, h};
+    extent_ = extent_.getUnion(item.bounds);
+    texts_.push_back(std::move(item));
+  }
 }
 
 void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
@@ -307,6 +390,24 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
             if (const juce::Image* img = imageFor(shape, item.disengagedIndex)) {
               w = img->getWidth();
               h = img->getHeight();
+            }
+          }
+          // No picture at all: the set names one of Hauptwerk's standard key
+          // images, which that application ships and a sample set does not.
+          // The manual is still fully described -- the spacings say how wide
+          // a key is -- so draw it from those numbers rather than leaving a
+          // hole where the keyboard should be.
+          if (w <= 0 || h <= 0) {
+            item.synthetic = true;
+            const int unit = ks.spacingNaturalToNatural > 0
+                                 ? ks.spacingNaturalToNatural
+                                 : 12;
+            if (item.sharp) {
+              w = std::max(3, (unit * 11) / 20);
+              h = unit * 3;
+            } else {
+              w = std::max(4, unit - 1);
+              h = unit * 5;
             }
           }
           // Every key hangs from the same top edge; a sharp is simply a
@@ -513,12 +614,37 @@ void ConsoleView::paint(juce::Graphics& g) {
     ++drawn;
   }
 
+  // Engraved text sits on the furniture it labels, so it is drawn after the
+  // artwork and before the manuals.
+  for (const auto& t : texts_) {
+    g.setFont(t.font);
+    g.setColour(t.colour);
+    if (t.wrap)
+      g.drawFittedText(t.text, t.bounds, t.justification, 8);
+    else
+      g.drawText(t.text, t.bounds, t.justification, false);
+    ++drawn;
+  }
+
   // The manuals go on top of the console furniture: a drawn manual is the one
   // thing on the page whose picture changes while the player is playing.
   auto& keyState = proc_.keyboardState();
   for (const auto& k : keys_) {
     const bool down = keyState.isNoteOn(k.channel, k.midiNote);
     const int frame = down ? k.engagedIndex : k.disengagedIndex;
+    if (k.synthetic) {
+      // Ivory and ebony, with the pressed key shaded rather than moved: the
+      // set gives no travel, and a key that jumps would be a lie about it.
+      const juce::Colour face =
+          k.sharp ? juce::Colour(down ? 0xff454545 : 0xff1a1a1a)
+                  : juce::Colour(down ? 0xffd8d2c2 : 0xfff2ece0);
+      g.setColour(face);
+      g.fillRect(k.bounds);
+      g.setColour(juce::Colour(0xff2a2a2a));
+      g.drawRect(k.bounds, 1);
+      ++drawn;
+      continue;
+    }
     const juce::Image* img = imageFor(k.imageSetId, frame);
     // Fall back to the other frame rather than leaving a hole in the manual:
     // some sets ship only the released artwork.

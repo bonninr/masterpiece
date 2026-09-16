@@ -1291,7 +1291,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       return;
     }
     ImageSetElement el;
-    el.index = fieldInt(row, "ImageIndexWithinSet", "b", 0);
+    // Hauptwerk's own default is 1, and sets rely on it: the Barton
+    // theatre consoles write the index only on the second frame, so a
+    // default of 0 left every "up" picture unreachable.
+    el.index = fieldInt(row, "ImageIndexWithinSet", "b", 1);
     el.name = field(row, "Name", "c");
     el.bitmapFile = field(row, "BitmapFilename", "d");
     setIt->second.elements.push_back(std::move(el));
@@ -1383,11 +1386,44 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
     TextInstance t;
     t.textInstanceId = fieldInt(row, "TextInstanceID", "a", 0);
+    t.name = field(row, "Name", "b");
     t.text = field(row, "Text", "d");
     t.styleId = fieldInt(row, "TextStyleID", "c", 0);
     t.xPx = fieldInt(row, "XPosPixels", "f", 0);
     t.yPx = fieldInt(row, "YPosPixels", "g", 0);
+    t.boxWidthPx = fieldInt(row, "BoundingBoxWidthPixelsIfWordWrap", "h", 0);
+    t.boxHeightPx = fieldInt(row, "BoundingBoxHeightPixelsIfWordWrap", "i", 0);
+    // The flag and the ID are separate fields, and a set that fills in the ID
+    // without setting the flag still means it.
+    t.attachedInstanceId = fieldInt(row, "AttachedToImageSetInstanceID", "k", 0);
+    if (!fieldBool(row, "AttachedToAnImageSetInstance", "j", true))
+      t.attachedInstanceId = 0;
+    t.posRelativeToInstance =
+        fieldBool(row, "PosRelativeToTopLeftOfImageSetInstance", "l", false);
     pageIt->second.texts.push_back(std::move(t));
+  });
+
+  // ---- TextStyle: the font a TextInstance is drawn in ----
+  // Defaults follow Hauptwerk's own: Arial, 10 pixels, normal weight, black,
+  // centred horizontally and aligned to the top vertically.
+  forEachRow(odfRoot, "TextStyle", [&](pugi::xml_node row) {
+    TextStyle t;
+    t.styleId = fieldInt(row, "StyleID", "a", 0);
+    if (t.styleId == 0) return;
+    t.name = field(row, "Name", "b");
+    t.faceWindows = field(row, "Face_WindowsName", "c");
+    t.faceMac = field(row, "Face_MacName", "d");
+    t.faceLinux = field(row, "Face_LinuxName", "e");
+    t.sizePx = fieldInt(row, "Font_SizePixels", "f", 10);
+    t.weightCode = fieldInt(row, "Font_WeightCode", "g", 2);
+    t.italic = fieldBool(row, "Font_Italic", "h", false);
+    t.underline = fieldBool(row, "Font_Underline", "i", false);
+    t.red = fieldInt(row, "Colour_Red", "j", 0);
+    t.green = fieldInt(row, "Colour_Green", "k", 0);
+    t.blue = fieldInt(row, "Colour_Blue", "l", 0);
+    t.hAlignCode = fieldInt(row, "HorizontalAlignmentCode", "m", 0);
+    t.vAlignCode = fieldInt(row, "VerticalAlignmentCode", "n", 1);
+    outModel.textStyles[t.styleId] = std::move(t);
   });
 
   // ---- M1.4 validator: missing images / empty pages / unreferenced sets ----

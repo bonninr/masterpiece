@@ -96,7 +96,28 @@ private:
     int disengagedIndex = 2;
     juce::Rectangle<int> bounds;
     bool sharp = false;
+    // True when the key's artwork is one of Hauptwerk's own standard images,
+    // which ship with that application rather than with the sample set. The
+    // key is then drawn from its measurements instead of from a bitmap: a
+    // theatre console whose manuals are standard keys is otherwise invisible
+    // and unplayable.
+    bool synthetic = false;
   };
+
+  // A piece of engraved console text. Many sets paint the stop names into
+  // the artwork; the rest write them as text over it, and a console that
+  // ignores that draws blank knobs.
+  struct TextItem {
+    juce::String text;
+    juce::Rectangle<int> bounds;
+    juce::Font font{juce::FontOptions{}};
+    juce::Colour colour;
+    juce::Justification justification{juce::Justification::centred};
+    bool wrap = false;
+  };
+
+  // Lay out the text written over the current page.
+  void buildTexts(const OrganModel& model, Id pageId);
 
   // The right-click menu on a drawstop: what it is mapped to now, and the
   // behaviours it can be taught.
@@ -114,6 +135,7 @@ private:
 
   MasterpieceProcessor& proc_;
   std::vector<Item> items_;      // sorted by layer: painter's order
+  std::vector<TextItem> texts_;  // drawn over the artwork, under the keys
   std::vector<Id> pageIds_;
   int pageIndex_ = 0;
   int layout_ = 0;

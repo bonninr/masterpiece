@@ -668,11 +668,38 @@ struct ImageSetInstance {
   }
 };
 
+// How a piece of console text is drawn. A set that engraves its stop names
+// rather than painting them into the artwork needs all of this, or its
+// drawstops come out blank.
+struct TextStyle {
+  Id styleId = 0;
+  std::string name;
+  std::string faceWindows, faceMac, faceLinux;
+  int sizePx = 10;
+  int weightCode = 2; // 1 light, 2 normal, 3 bold
+  bool italic = false, underline = false;
+  int red = 0, green = 0, blue = 0;
+  // 0 or 3 centre, 1 left, 2 right. The position is the anchor, not the
+  // corner: centred text sits astride its XPosPixels.
+  int hAlignCode = 0;
+  // 0 centre, 1 top, 2 bottom.
+  int vAlignCode = 1;
+};
+
 struct TextInstance {
   Id textInstanceId = 0;
+  std::string name;
   std::string text;
-  Id styleId = 0; // TextStyle (font resolved at M4 render)
+  Id styleId = 0;
   int xPx = 0, yPx = 0;
+  // Word wrap happens inside this box when the set declares one.
+  int boxWidthPx = 0, boxHeightPx = 0;
+  // Text can be tied to a drawn thing, and then either carry its own absolute
+  // position or one measured from that thing's top-left corner. A stop label
+  // is written the second way, so it travels with its knob when the set is
+  // drawn at another console size.
+  Id attachedInstanceId = 0;
+  bool posRelativeToInstance = false;
 };
 
 struct DisplayPage {
@@ -718,6 +745,7 @@ struct OrganModel {
   // Switch id -> the key it is. Keyed by switch because that is what a console
   // click arrives as.
   std::unordered_map<Id, KeyboardKeyRef> keyboardKeys;
+  std::unordered_map<Id, TextStyle> textStyles;
   std::unordered_map<Id, Combination> combinations;
   std::unordered_map<Id, Enclosure> enclosures;
   std::unordered_map<Id, Tremulant> tremulants;
