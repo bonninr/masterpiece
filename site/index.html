@@ -16,14 +16,15 @@
       It builds the instrument's own console out of the set's definition —
       artwork, drawstops, keyboards, pedalboard — and plays it.</p>
     <div class="badges">
-      <span class="badge">Standalone · VST3 · LV2</span>
-      <span class="badge">Windows · Linux · Raspberry&nbsp;Pi</span>
+      <span class="badge">Standalone · VST3 · LV2 · AU</span>
+      <span class="badge">Windows · macOS · Linux · Raspberry&nbsp;Pi</span>
       <span class="badge">C++20 · JUCE&nbsp;9</span>
       <span class="badge">CMake · Ninja</span>
       <span class="badge">GPLv3</span>
     </div>
     <nav class="topnav">
       <a href="https://github.com/bonninr/masterpiece">Source</a>
+      <a href="https://github.com/bonninr/masterpiece/releases/latest">Download</a>
       <a href="https://github.com/bonninr/masterpiece/releases">Releases</a>
       <a href="#hear">Recital</a>
       <a href="attribution.html">Attribution</a>
@@ -60,8 +61,8 @@
     <p>Masterpiece reads those libraries and turns them back into a playable
       instrument. It is a fresh design rather than a fork. The console is the
       real one, so an organ looks and behaves like itself.</p>
-    <p>It runs as a standalone application and as a VST3 or LV2 plugin — the
-      same engine either way.</p>
+    <p>It runs as a standalone application and as a VST3 or LV2 plugin, or an
+      Audio Unit on macOS — the same engine either way.</p>
   </section>
 
   <section id="consoles">
@@ -236,9 +237,8 @@
         <h4>Formats</h4>
         <p>Standalone application, plus VST3 and LV2 plugins built from the
           same engine, so the organ can be sequenced, rendered offline or
-          tracked alongside other instruments. Raspberry&nbsp;Pi builds are
-          standalone only; an AU is built from the same target and ships when
-          macOS does.</p>
+          tracked alongside other instruments, and an Audio Unit on macOS.
+          Raspberry&nbsp;Pi builds are standalone only.</p>
       </div>
       <div class="feature">
         <h4>Streaming pipe loading</h4>
@@ -330,9 +330,9 @@
     <h3>CMake and a compiler</h3>
 <pre><code>cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build</code></pre>
-    <p class="note">Windows, Linux and Raspberry&nbsp;Pi are built in CI. The
-      standalone application is the product; the plugin wrappers come from the
-      same engine.</p>
+    <p class="note">Windows, macOS (Apple silicon and Intel), Linux and
+      Raspberry&nbsp;Pi are built in CI. The standalone application is the
+      product; the plugin wrappers come from the same engine.</p>
   </section>
 
   <section id="credits">

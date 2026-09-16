@@ -140,7 +140,10 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // The key-flow walk runs on every note-on and must not allocate: one press
   // on a fully coupled console reaches every division at several pitches.
   keyFlow_.reserve(64);
-  expandScratch_.reserve(juce::jmax<size_t>(16, model_.divisions.size() * 4));
+  // std::max, not juce::jmax: on 64-bit macOS size_t is `unsigned long`,
+  // and juce_dsp's jmax overload for SIMDRegister then instantiates
+  // SIMDNativeOps<unsigned long>, which the SSE header does not define.
+  expandScratch_.reserve(std::max<size_t>(16, model_.divisions.size() * 4));
   metronome_.prepare(sampleRate_);
 
   // Meter fall: 0.3 s to decay by 1/e. Computed here so the audio thread
