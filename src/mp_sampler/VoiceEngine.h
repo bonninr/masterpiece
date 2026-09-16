@@ -107,6 +107,12 @@ struct SampleBuffer {
   int numChannels = 1;
   double sampleRate = 48000.0;
   int64_t numFrames = 0;
+  // Where the release begins inside THIS file, in frames; -1 when the file
+  // holds no such marker. Some sets ship one recording per pipe holding the
+  // attack, the sustain loop AND the release, and mark the release with a cue
+  // point: the organ definition then names the same sample for both, and the
+  // release is that file played from the marker rather than from its start.
+  int64_t releaseCue = -1;
   // Loop points in frames; -1 disables looping (percussive ranks, releases).
   int64_t loopStart = -1;
   int64_t loopEnd = -1;

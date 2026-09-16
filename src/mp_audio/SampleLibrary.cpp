@@ -128,6 +128,14 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
     constexpr int64_t kCrossfadeMargin = 8192;
     want = std::max(want, std::min(total, loopEnd + kCrossfadeMargin));
   }
+
+  // A file that carries its own release after the loop has to be read whole:
+  // the release is played from the marker, and truncating the read at the
+  // loop would leave nothing there to play. Read from the FILE's length, not
+  // from what has been decided to be resident, because that is the number the
+  // marker counts in.
+  const int64_t cueInFile = releaseCueInFile(reader, total, loopEnd);
+  if (cueInFile > 0) want = total;
   const int fileChannels = std::max(1, static_cast<int>(reader.numChannels));
 
   juce::AudioBuffer<float> scratch(fileChannels, static_cast<int>(want));
@@ -155,6 +163,7 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   // converted buffer against the original's numbers.
   out.loopStart = -1;
   out.loopEnd = -1;
+  out.releaseCue = cueInFile;
   readLoopPoints(reader, out, selection);
 
   // Convert to the requested rate, if it is not the one the file already has.
@@ -180,6 +189,11 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
       out.loopEnd = static_cast<int64_t>(std::llround(out.loopEnd / ratio));
       if (out.loopEnd > newFrames) out.loopEnd = newFrames;
       if (out.loopStart >= out.loopEnd) { out.loopStart = -1; out.loopEnd = -1; }
+    }
+    // The release marker is a position in the same audio, so it moves with it.
+    if (out.releaseCue > 0) {
+      out.releaseCue = static_cast<int64_t>(std::llround(out.releaseCue / ratio));
+      if (out.releaseCue >= newFrames) out.releaseCue = -1;
     }
     want = newFrames;
     out.numFrames = newFrames;
@@ -294,6 +308,36 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
       outEnd = e;
     }
   }
+}
+
+int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
+                                       int64_t totalFrames, int64_t loopEnd) {
+  // A set may ship one recording per pipe -- attack, sustain loop and release
+  // together -- and mark where the release begins with a cue point. The organ
+  // definition then names that same sample as the pipe's release and says, in
+  // its load-range fields, that it starts at the marker. Without this the
+  // release is the whole file played again from the top: the note sounds on
+  // for several more seconds at full strength, and a piece silts up.
+  //
+  // JUCE exposes the cue chunk as flat metadata: "NumCuePoints", then
+  // "Cue<N>Offset" per cue (juce_WavAudioFormat.cpp, CueChunk::copyTo).
+  const auto& meta = reader.metadataValues;
+  const int numCues = meta.getValue("NumCuePoints", "0").getIntValue();
+  if (numCues <= 0) return -1;
+
+  // The one that marks the release sits after the sustain loop. Where several
+  // are declared, the earliest past the loop is the release; with no loop to
+  // judge against, the earliest cue inside the file has to serve.
+  int64_t best = -1;
+  for (int i = 0; i < numCues; ++i) {
+    const juce::String key = "Cue" + juce::String(i) + "Offset";
+    if (!meta.containsKey(key)) continue;
+    const auto at = static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
+    if (at <= 0 || at >= totalFrames) continue;
+    if (loopEnd > 0 && at < loopEnd) continue;
+    if (best < 0 || at < best) best = at;
+  }
+  return best;
 }
 
 void SampleLibrary::readLoopPoints(const juce::AudioFormatReader& reader,
@@ -646,16 +690,18 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
 // Format, little-endian throughout:
 //
 //   "MPSC", version, fingerprint, sample count
-//   per sample: id, frames, channels, rate, loop points, scale, width,
-//               payload, and — when it streams — what the tail needs to be
-//               re-attached without opening the file now.
+//   per sample: id, frames, channels, rate, loop points, release marker,
+//               scale, width, payload, and — when it streams — what the tail
+//               needs to be re-attached without opening the file now.
 //
 // Everything is fixed width or length-prefixed, so a truncated file fails at
 // the length check rather than halfway through a buffer.
 namespace {
 
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
-constexpr uint32_t kCacheVersion = 1;
+// 2: the per-sample record carries the release marker of a file that holds
+//    attack, loop and release together.
+constexpr uint32_t kCacheVersion = 2;
 
 template <typename T>
 void putPod(std::ostream& os, const T& v) {
@@ -754,6 +800,7 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       putPod<double>(os, buf->sampleRate);
       putPod<int64_t>(os, buf->loopStart);
       putPod<int64_t>(os, buf->loopEnd);
+      putPod<int64_t>(os, buf->releaseCue);
       putPod<float>(os, buf->pcmScale);
       putPod<uint8_t>(os, widthCode(*buf));
 
@@ -822,7 +869,8 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint) const 
     auto buf = std::make_shared<SampleBuffer>();
     if (!getPod(is, id) || !getPod(is, buf->numFrames) || !getPod(is, channels) ||
         !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
-        !getPod(is, buf->loopEnd) || !getPod(is, buf->pcmScale) ||
+        !getPod(is, buf->loopEnd) || !getPod(is, buf->releaseCue) ||
+        !getPod(is, buf->pcmScale) ||
         !getPod(is, width) || !getPod(is, bytes))
       return false;
     buf->numChannels = channels;

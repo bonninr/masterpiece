@@ -216,6 +216,10 @@ private:
   void attachTail(SampleBuffer& out, const std::string& path,
                   int64_t totalFrames, double srcRate, double dstRate) const;
   // Sustain loop from the WAV 'smpl' chunk, applied to what is resident.
+  // Where the release begins inside a file that also holds the attack, in
+  // FILE frames, or -1 when the file marks no such point.
+  static int64_t releaseCueInFile(const juce::AudioFormatReader& reader,
+                                  int64_t totalFrames, int64_t loopEnd);
   static void readLoopPoints(const juce::AudioFormatReader& reader,
                              SampleBuffer& out, LoopSelection selection);
   // Choose one loop from the metadata, judged against `limitFrames`.

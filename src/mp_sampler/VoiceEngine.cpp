@@ -404,7 +404,17 @@ void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
       // pipe at the same pitch, so it must be resampled identically.
       v.buffer = relBuf;
       v.sampleId = relSampleId;
-      v.cursor = 0.0;
+      // ...unless the set ships attack, loop and release as ONE recording and
+      // points the release at a marker inside it. Starting at the head then
+      // replays the attack and the whole sustain: the note goes on sounding
+      // for as long as the original took to reach its release, and a piece
+      // piles up note on note. The organ says so in the release's load range;
+      // the file says where, with a cue point.
+      const ReleaseSample& row = v.layer->releases[static_cast<size_t>(chosen)];
+      const bool fromMarker = row.loadStartValue > 0 || row.loadStartType > 0;
+      v.cursor = (fromMarker && relBuf->releaseCue > 0)
+                     ? static_cast<double>(relBuf->releaseCue)
+                     : 0.0;
       // A release is a one-shot: it must not inherit the attack's loop.
       v.loopStart = -1;
       v.loopEnd = -1;
