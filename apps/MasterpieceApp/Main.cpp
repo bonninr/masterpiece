@@ -34,7 +34,7 @@ bool audioOutputAlive(juce::AudioDeviceManager& dm) {
 class MasterpieceApp : public juce::JUCEApplication {
 public:
   const juce::String getApplicationName() override { return "Masterpiece"; }
-  const juce::String getApplicationVersion() override { return "0.3.9"; }
+  const juce::String getApplicationVersion() override { return "0.4.0"; }
   bool moreThanOneInstanceAllowed() override { return true; }
 
   void initialise(const juce::String& commandLine) override {
