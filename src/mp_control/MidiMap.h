@@ -224,9 +224,16 @@ public:
   int matchKeyboards(int deviceId, int channel, int note, int velocity,
                      double timeMs, std::vector<KeyHit>& out) const;
 
+  // True when any manual binding could answer for this console and channel:
+  // a binding names a device (or any) and a channel (or any). A note on a
+  // channel NO binding claims keeps the organ's own default assignment
+  // rather than going silent, so a partially mapped rig still plays every
+  // manual — and so do the on-screen keys, which arrive with no device and
+  // match no device-specific binding.
+  bool hasChannelBinding(int deviceId, int channel) const;
+
   void addKeyboardBinding(const KeyboardBinding& b);
-  void removeKeyboardBindingsFor(Id keyboardId);
-  // Drop every claim on this channel from a DIFFERENT keyboard, for the same
+  void removeKeyboardBindingsFor(Id keyboardId);  // Drop every claim on this channel from a DIFFERENT keyboard, for the same
   // console. Two manuals on one channel make one of them unreachable, and
   // nothing on screen says which, so an assignment takes the channel rather
   // than sharing it. `deviceId` 0 (any console) collides with everything.

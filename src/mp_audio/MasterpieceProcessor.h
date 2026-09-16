@@ -771,6 +771,13 @@ private:
   // Stop -> the drawn knob that stands for it, for sets whose Stop points at
   // a switch nothing draws and no linkage drives.
   std::unordered_map<Id, Id> stopKnob_;
+  // The reverse, drawn switch -> the stops it stands for. Clicking a knob
+  // moves that switch; the stops follow through the wiring — except on sets
+  // (Friesach) whose knobs are a separate chain with no linkage into the
+  // stop's own switch, where nothing downstream moves and the stop would
+  // stay silent behind a drawn picture. Built at load; read on the audio
+  // thread, never written there.
+  std::unordered_map<Id, std::vector<Id>> stopsBySwitch_;
   ContinuousControlBank controls_;
   VoiceEngine voices_;
   SampleLibrary samples_;

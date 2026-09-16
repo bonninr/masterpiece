@@ -553,10 +553,19 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       continue;
     }
     if (msg.isNoteOff() && keyboardLearn_ != 0) continue;
-    if (msg.isNoteOnOrOff() && !midiMap_.keyboardBindingsEmpty()) {
-      // A mapped rig: the binding decides which manual, which note and what
-      // velocity. One press can reach more than one manual — a split keyboard
-      // does exactly that — so every match is played.
+    // A mapped rig, for the channels it claims: the binding decides which
+    // manual, which note and what velocity. One press can reach more than
+    // one manual — a split keyboard does exactly that — so every match is
+    // played. A channel no binding claims falls through to the default path
+    // below instead: a rig with three of four manuals mapped still plays
+    // the fourth, and so do the on-screen keys, which carry no device.
+    const bool claimed = msg.isNoteOnOrOff() &&
+                         midiMap_.hasChannelBinding(deviceId, msg.getChannel());
+    if (!claimed && logging && msg.isNoteOnOrOff() &&
+        !midiMap_.keyboardBindingsEmpty())
+      juce::Logger::writeToLog("midi:     no binding claims this device/channel"
+                               " -- the organ's own default assignment");
+    if (claimed) {
       keyHits_.clear();
       midiMap_.matchKeyboards(deviceId, msg.getChannel(), msg.getNoteNumber(),
                               msg.isNoteOn() ? msg.getVelocity() : 0,
@@ -1641,6 +1650,16 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
       if (nowEngaged) engagedStops_.insert(stopIt->second);
       else engagedStops_.erase(stopIt->second);
     }
+    // And every stop the moved switch STANDS for, whether or not the wiring
+    // reaches it: on Friesach the knob and the stop's own switch are
+    // separate chains, so the knob moves alone and this is the only thing
+    // that draws the stop with it.
+    if (const auto stoodFor = stopsBySwitch_.find(movedId);
+        stoodFor != stopsBySwitch_.end())
+      for (Id stopId : stoodFor->second) {
+        if (nowEngaged) engagedStops_.insert(stopId);
+        else engagedStops_.erase(stopId);
+      }
 
     // Reflect the change on the physical console, if the player wants that.
     if (midiFeedback_ && midiOut_ != nullptr) {
@@ -2237,6 +2256,25 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     if (isKnob(ps)) continue;                 // the wiring already found one
     const auto it = knobByName.find(tidy(stop.name));
     if (it != knobByName.end()) stopKnob_[stopId] = it->second;
+  }
+  // Drawn switch -> stops, for the console click path. The wiring carries a
+  // knob to its stop through linkages on most sets; on the rest (Friesach)
+  // there is no linkage and only the two maps built here know they belong
+  // together. Without this a clicked knob animates and sounds nothing.
+  stopsBySwitch_.clear();
+  {
+    auto standsFor = [&](Id switchId, Id stopId) {
+      auto& v = stopsBySwitch_[switchId];
+      if (std::find(v.begin(), v.end(), stopId) == v.end())
+        v.push_back(stopId);
+    };
+    for (const auto& [stopId, stop] : model_.stops) {
+      if (stop.controllingSwitchId == 0) continue;
+      standsFor(stop.controllingSwitchId, stopId);
+      standsFor(playerSwitchFor(stop.controllingSwitchId), stopId);
+      const auto knob = stopKnob_.find(stopId);
+      if (knob != stopKnob_.end()) standsFor(knob->second, stopId);
+    }
   }
   engagedStops_.clear();
   for (const auto& [switchId, stopId] : stopBySwitch_)

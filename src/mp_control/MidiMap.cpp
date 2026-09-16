@@ -348,6 +348,17 @@ void MidiMap::addKeyboardBinding(const KeyboardBinding& b) {
   keyboardBindings_.push_back(b);
 }
 
+bool MidiMap::hasChannelBinding(int deviceId, int channel) const {
+  for (const auto& b : keyboardBindings_) {
+    if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId)
+      continue;
+    // Channel 0 means any channel, which is what a fresh binding claims.
+    if (b.channel != 0 && b.channel != channel) continue;
+    return true;
+  }
+  return false;
+}
+
 void MidiMap::removeKeyboardBindingsFor(Id keyboardId) {
   keyboardBindings_.erase(
       std::remove_if(keyboardBindings_.begin(), keyboardBindings_.end(),

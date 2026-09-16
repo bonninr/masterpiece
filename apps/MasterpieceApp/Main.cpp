@@ -18,6 +18,19 @@
 #include "../../src/mp_ui/Wizard.h"
 #include "../../src/mp_control/Registration.h"
 
+namespace {
+// True when the open device can actually produce sound. A saved setup can
+// name hardware that is gone — or select a type with no output at all while
+// still reporting success — and either way the organ would run silent with
+// flat meters and no MIDI processed. Checked after every open, so a dead
+// setup falls back to defaults rather than running mute.
+bool audioOutputAlive(juce::AudioDeviceManager& dm) {
+  auto* dev = dm.getCurrentAudioDevice();
+  return dev != nullptr &&
+         dev->getActiveOutputChannels().countNumberOfSetBits() > 0;
+}
+} // namespace
+
 class MasterpieceApp : public juce::JUCEApplication {
 public:
   const juce::String getApplicationName() override { return "Masterpiece"; }
@@ -73,10 +86,27 @@ public:
     // and the defaults come back.
     std::unique_ptr<juce::XmlElement> saved(
         juce::XmlDocument::parse(audioSettingsFile()));
-    const auto audioError =
+    auto audioError =
         devices_->initialise(0, 2, saved.get(), /*selectDefaultDeviceOnFailure*/ true);
-    if (audioError.isNotEmpty())
-      juce::Logger::writeToLog("audio device: " + audioError);
+    if (audioError.isNotEmpty() || !audioOutputAlive(*devices_)) {
+      // Not merely a failed open: a setup that opens with no live output is
+      // the same silence. Fall back to factory defaults, which is what a
+      // fresh install gets and what the user expects on relaunch.
+      if (audioError.isNotEmpty())
+        juce::Logger::writeToLog("audio device: " + audioError);
+      else
+        juce::Logger::writeToLog("audio device: saved setup has no live output,"
+                                 " falling back to defaults");
+      devices_->closeAudioDevice();
+      audioError = devices_->initialise(0, 2, nullptr, true);
+      if (audioError.isNotEmpty())
+        juce::Logger::writeToLog("audio device: " + audioError);
+    }
+    if (auto* dev = devices_->getCurrentAudioDevice())
+      juce::Logger::writeToLog(
+          "audio device: " + dev->getName() + ", " +
+          juce::String(dev->getCurrentSampleRate(), 0) + " Hz, " +
+          juce::String(dev->getCurrentBufferSizeSamples()) + " samples");
 
     player_->setProcessor(proc_.get());
     devices_->addAudioCallback(player_.get());
