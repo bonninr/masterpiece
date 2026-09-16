@@ -1,4 +1,5 @@
 juce_add_gui_app(MasterpieceApp
+  VERSION "${PROJECT_VERSION}"
   PRODUCT_NAME "Masterpiece"
   COMPANY_NAME "Masterpiece"
   BUNDLE_ID "org.masterpiece.player"

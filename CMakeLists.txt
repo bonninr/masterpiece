@@ -2,6 +2,17 @@ cmake_minimum_required(VERSION 3.22)
 
 project(Masterpiece VERSION 0.3.6 LANGUAGES C CXX)
 
+# A release build linked to the DLL C runtime needs the Visual C++
+# Redistributable installed on the machine it runs on; a plain download of
+# the zip with nothing else on the system fails to launch at all, with an
+# error naming VCRUNTIME140.dll or MSVCP140.dll. Statically linking it makes
+# the standalone app and the plugin self-contained -- a few hundred KB larger,
+# nothing else installed required. CMP0091 is NEW by default here because
+# cmake_minimum_required above asks for 3.22.
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
