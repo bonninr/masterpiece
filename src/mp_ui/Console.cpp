@@ -296,8 +296,13 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
 
     const bool centred = style.hAlignCode == 0 || style.hAlignCode == 3;
     const bool rightAligned = style.hAlignCode == 2;
-    // A bounding box is only declared for wrapped text; everything else is
-    // measured from the string itself so the anchor lands where it should.
+    // XPosPixels and YPosPixels are the top-left corner of the text's box,
+    // not the middle of the text: the alignment codes place the string INSIDE
+    // that box. Treating the position as a centre anchor pulled every label
+    // half its own width to the left, which is how this was first written.
+    //
+    // The box is declared only for wrapped text, so when there is none the
+    // string is measured and the alignment has nothing to move it within.
     int w = t.boxWidthPx;
     int h = t.boxHeightPx;
     item.wrap = w > 0 && h > 0;
@@ -305,14 +310,14 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
       w = juce::GlyphArrangement::getStringWidthInt(item.font, item.text) + 2;
       h = static_cast<int>(std::ceil(item.font.getHeight()));
     }
-    if (centred) x -= w / 2;
-    else if (rightAligned) x -= w;
-    if (style.vAlignCode == 0) y -= h / 2;
-    else if (style.vAlignCode == 2) y -= h;
 
-    item.justification = centred      ? juce::Justification::centredTop
-                         : rightAligned ? juce::Justification::topRight
-                                        : juce::Justification::topLeft;
+    const int horizontal = centred ? juce::Justification::horizontallyCentred
+                           : rightAligned ? juce::Justification::right
+                                          : juce::Justification::left;
+    const int vertical = style.vAlignCode == 0 ? juce::Justification::verticallyCentred
+                         : style.vAlignCode == 2 ? juce::Justification::bottom
+                                                 : juce::Justification::top;
+    item.justification = juce::Justification(horizontal | vertical);
     item.bounds = {x, y, w, h};
     extent_ = extent_.getUnion(item.bounds);
     texts_.push_back(std::move(item));

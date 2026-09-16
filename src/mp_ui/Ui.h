@@ -113,6 +113,10 @@ public:
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
   // Ask for an organ file and load it. Shared with the first-run wizard.
   void chooseAndLoadOrgan();
+  // Show one of the organ's console pages, counting from 1. A set with jambs
+  // on their own pages cannot be photographed from a script otherwise, and
+  // this is also what --console-page drives.
+  void showConsolePage(int oneBased);
 
 private:
   // The message-thread half of a load, run once the loader thread is done.

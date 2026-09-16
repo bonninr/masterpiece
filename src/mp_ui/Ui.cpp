@@ -631,6 +631,12 @@ void MasterpieceEditor::resized() {
   }
 }
 
+void MasterpieceEditor::showConsolePage(int oneBased) {
+  const int index = oneBased - 1;
+  if (index < 0 || index >= console_.pageCount()) return;
+  pageTabs_.setCurrentTabIndex(index, true);
+}
+
 void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
   if (src == &pageTabs_) console_.setPage(pageTabs_.getCurrentTabIndex());
 }

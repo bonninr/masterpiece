@@ -39,6 +39,13 @@ public:
     // contain spaces.
     const auto args = juce::StringArray::fromTokens(commandLine, true);
     const bool guiOnly = args.contains("--gui-only");
+    // Which console page to show once the organ is up, counting from 1. A set
+    // that puts its jambs on their own pages needs this to be photographed,
+    // and clicking the tab from a script is not reliable across display
+    // scalings.
+    int consolePage = 0;
+    for (int i = 0; i + 1 < args.size(); ++i)
+      if (args[i] == "--console-page") consolePage = args[i + 1].getIntValue();
 
     // Installed before anything is loaded, because the load is what it is
     // there to time. Nothing logs until this exists.
@@ -414,6 +421,17 @@ public:
             "--preload-drawn ignored: no --draw-stops id list to narrow to");
       else
         proc_->setPreloadStops(std::move(wanted));
+    }
+
+    if (consolePage > 0) {
+      auto* win = win_.get();
+      // Chained rather than assigned: a take list may already have claimed
+      // this hook, and choosing a page must not cancel the performance.
+      auto previous = std::move(win->onLoaded);
+      win->onLoaded = [win, consolePage, previous] {
+        win->editor().showConsolePage(consolePage);
+        if (previous) previous();
+      };
     }
 
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
