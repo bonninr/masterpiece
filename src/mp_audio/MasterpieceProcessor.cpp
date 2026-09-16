@@ -464,6 +464,16 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
 
   for (const auto& [deviceId, msg] : midiScratch_) {
 
+    // Mirror device input in the keyboard state, so drawn manuals and the
+    // piano strip light up for an external console exactly as they do for
+    // file playback. processNextMidiEvent updates state WITHOUT queueing
+    // for injection (unlike noteOn), so this cannot retrigger the note on
+    // the next block; host-buffer messages already passed through the state
+    // fold above and are skipped. A side benefit: Panic now releases
+    // externally held notes too, instead of leaving them ciphering.
+    if (deviceId != MidiDeviceMap::kAnyDevice)
+      keyboardState_.processNextMidiEvent(msg);
+
     // What kind of message is this, in the terms the map matches on?
     MidiSource source;
     int value = 0;

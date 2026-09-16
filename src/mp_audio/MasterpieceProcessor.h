@@ -122,6 +122,9 @@ public:
   // The on-screen keyboard plays through the same path as a MIDI device: its
   // events are merged into the incoming buffer at the top of processBlock, so
   // there is exactly one note path rather than a second one for the mouse.
+  // Device input is mirrored back into this state (display only, never
+  // re-injected), so the drawn manuals and the piano strip light up for an
+  // external console too.
   juce::MidiKeyboardState& keyboardState() { return keyboardState_; }
 
   // Let go of every key on every channel, the way a console's cancel does.
