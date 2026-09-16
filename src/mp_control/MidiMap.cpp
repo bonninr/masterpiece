@@ -357,6 +357,20 @@ void MidiMap::removeKeyboardBindingsFor(Id keyboardId) {
       keyboardBindings_.end());
 }
 
+void MidiMap::releaseChannel(int channel, int deviceId, Id keepKeyboardId) {
+  if (channel <= 0) return;
+  keyboardBindings_.erase(
+      std::remove_if(keyboardBindings_.begin(), keyboardBindings_.end(),
+                     [channel, deviceId, keepKeyboardId](const KeyboardBinding& b) {
+                       if (b.keyboardId == keepKeyboardId) return false;
+                       if (b.channel != channel) return false;
+                       // "Any console" overlaps every console, either way round.
+                       return b.deviceId == deviceId || b.deviceId == 0 ||
+                              deviceId == 0;
+                     }),
+      keyboardBindings_.end());
+}
+
 int MidiMap::matchKeyboards(int deviceId, int channel, int note, int velocity,
                             double timeMs, std::vector<KeyHit>& out) const {
   int added = 0;

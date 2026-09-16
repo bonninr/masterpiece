@@ -483,6 +483,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     source.channel = msg.getChannel();
     source.deviceId = deviceId;
 
+    const bool logging = logMidi_.load(std::memory_order_acquire);
+    if (logging && source.kind != MidiSourceKind::None)
+      juce::Logger::writeToLog(
+          "midi: in  dev=" + juce::String(deviceId) + " ch=" +
+          juce::String(source.channel) + " " +
+          (msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
+          "=" + juce::String(source.number) + " val=" + juce::String(value));
+
     // Learning consumes the message: a control being mapped must not also
     // fire whatever it used to do.
     if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
@@ -497,6 +505,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     }
 
     const MidiAction action = midiMap_.actionFor(source, value);
+    if (action.valid() && logging)
+      juce::Logger::writeToLog("midi:     consumed by a mapping, kind=" +
+                               juce::String(static_cast<int>(action.kind)));
     if (action.valid()) {
       switch (action.kind) {
         case MidiTargetKind::Switch:
@@ -550,6 +561,13 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       midiMap_.matchKeyboards(deviceId, msg.getChannel(), msg.getNoteNumber(),
                               msg.isNoteOn() ? msg.getVelocity() : 0,
                               blockTimeMs_, keyHits_);
+      if (logging)
+        juce::Logger::writeToLog(
+            "midi:     mapped rig: " + juce::String(static_cast<int>(keyHits_.size())) +
+            " manual(s) matched" +
+            (keyHits_.empty() ? " -- NOTHING PLAYS: no binding covers this"
+                                " device/channel/note"
+                              : ""));
       for (const auto& hit : keyHits_) {
         // Keyed on the manual rather than the channel: two bindings can send
         // the same note to different manuals and each has to be released on
@@ -562,6 +580,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       }
       continue;
     }
+    if (logging && msg.isNoteOnOrOff())
+      juce::Logger::writeToLog("midi:     unmapped default path, keyboard for ch=" +
+                               juce::String(msg.getChannel()) + " is " +
+                               juce::String(static_cast<int>(
+                                   keyboardForChannel(msg.getChannel(), deviceId))));
     if (msg.isNoteOn())
       startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isNoteOff())
@@ -1304,7 +1327,13 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
 
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity) {
-  if (engagedStops_.empty()) return; // nothing drawn: the organ is silent
+  if (engagedStops_.empty()) {
+    // nothing drawn: the organ is silent
+    if (logMidi_.load(std::memory_order_acquire))
+      juce::Logger::writeToLog(
+          "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
+    return;
+  }
 
   // A key that is already down is being struck again. Let go of it first.
   //
@@ -1430,6 +1459,28 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   }
 
   if (anyStarted) soundingNotes_[noteKeyId] = noteId;
+
+  if (logMidi_.load(std::memory_order_acquire)) {
+    // Which divisions, and what is drawn on them: "no pipe answered" is either
+    // nothing drawn on THIS division or a division whose stops resolve to no
+    // pipe at this note, and those are different faults.
+    juce::String divs;
+    for (const auto& r : expandScratch_)
+      divs << (divs.isEmpty() ? "" : ",") << juce::String(r.divisionId) << "@"
+           << juce::String(r.midiNote);
+    juce::String drawnOn;
+    for (Id sid : engagedStops_) {
+      const auto it = model_.stops.find(sid);
+      if (it != model_.stops.end())
+        drawnOn << (drawnOn.isEmpty() ? "" : ",") << juce::String(it->second.divisionId);
+    }
+    juce::Logger::writeToLog(
+        "midi:     keyboard=" + juce::String(static_cast<int>(keyboard)) +
+        " note=" + juce::String(midiNote) + " -> division(s) " + divs +
+        "; " + juce::String(static_cast<int>(engagedStops_.size())) +
+        " stop(s) drawn on division(s) " + drawnOn + "; " +
+        (anyStarted ? "SOUNDING" : "NOTHING PLAYS: no pipe answered"));
+  }
 }
 
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {

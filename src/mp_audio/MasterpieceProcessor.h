@@ -322,6 +322,12 @@ public:
   std::string keyboardName(Id keyboardId) const {
     return couplers_.keyboardName(keyboardId);
   }
+  // The assignment code the key-flow walk RESOLVED for this keyboard, which is
+  // not always the one the organ file states: exposed so a diagnostic can tell
+  // the two apart.
+  int assignmentCodeOf(Id keyboardId) const {
+    return couplers_.assignmentCodeFor(keyboardId);
+  }
   // Which keyboard a MIDI channel plays. Unset channels follow Hauptwerk's own
   // default assignment (code 1 is the pedal, 2 the first manual, ...), and
   // fall back to the preferred manual — the widest compass when declared,
@@ -347,6 +353,11 @@ public:
   // full velocity. Anything more is set through midiMap().addKeyboardBinding().
   void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0) {
     midiMap_.removeKeyboardBindingsFor(keyboardId);
+    // Take the channel rather than share it. Without this the comment below
+    // was untrue: three manuals ended up claiming channel 1 on a real saved
+    // mapping, which made two of them unplayable and sent every manual to the
+    // pedal.
+    midiMap_.releaseChannel(channel, deviceId, keyboardId);
     if (keyboardId != 0 && channel > 0) {
       MidiMap::KeyboardBinding b;
       b.channel = channel;
@@ -374,6 +385,14 @@ public:
   // callback thread; allocation-free and lock-free, because a MIDI callback is
   // as real-time as the audio one.
   void pushMidi(int deviceId, const juce::MidiMessage& msg);
+  // Report every incoming MIDI message and what became of it, to the log.
+  // For diagnosing "my console does not play it": the answer is always one of
+  // a handful of things -- the message never arrived, it was swallowed by a
+  // mapping, it reached a manual that no stop is drawn on, or it sounded --
+  // and none of them can be told apart from outside. Writing to the log from
+  // the audio thread is not real-time safe, so this is a diagnostic to turn
+  // on deliberately (--log-midi), not something left running.
+  void setMidiLogging(bool on) { logMidi_.store(on, std::memory_order_release); }
   // Register a console and get its id. Message thread, at device setup.
   int registerMidiDevice(const juce::String& name) {
     return midiMap_.devices().idFor(name.toStdString());
@@ -764,6 +783,7 @@ private:
   // thread never chases a pointer into the model while it is being swapped.
   Temperament organTuning_;
   std::unordered_set<Id> engagedStops_;
+  std::atomic<bool> logMidi_{false};
   // The organ's switch wiring, and its resolved output. A drawstop rarely
   // drives anything directly: it drives an internal node, and everything else
   // reads that. `engagedSwitches_` is the network's answer, kept as a set

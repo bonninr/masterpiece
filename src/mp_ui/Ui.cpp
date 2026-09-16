@@ -312,7 +312,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // which is how a registration is built for a piece.
   addChildComponent(manual_);
   manual_.onChange = [this] {
-    keyboard_.setMidiChannel(manual_.getSelectedId());
+    // The item is a keyboard; the channel it plays on is looked up, so the two
+    // cannot drift apart.
+    keyboard_.setMidiChannel(
+        proc_.channelForKeyboard(static_cast<Id>(manual_.getSelectedId())));
   };
 
   addChildComponent(layout_); // shown only when the organ offers a choice
@@ -479,21 +482,24 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // Which manual the on-screen keys play. Named by division, because "Grand
   // Orgue" means something to a player and "channel 3" does not.
   manual_.clear(juce::dontSendNotification);
+  // Keyed by KEYBOARD, not by channel. A ComboBox ticks every item sharing the
+  // selected id, so two manuals answering to one channel used to look like
+  // three selected at once and left one of them unreachable -- which is
+  // exactly what a saved mapping with three manuals on channel 1 produced.
+  // Keyboard ids are unique by construction.
   for (Id kb : proc_.playableKeyboards())
-    manual_.addItem(juce::String(proc_.keyboardName(kb)),
-                    proc_.channelForKeyboard(kb));
+    manual_.addItem(juce::String(proc_.keyboardName(kb)), static_cast<int>(kb));
   if (manual_.getNumItems() > 0) {
     // The organ's preferred manual: the widest compass when declared, else
     // the unenclosed manual shipping the most pipework. On a set that
     // declares no compass (Nancy) widest-of-nothing is the pedal, which is
     // how the piano ends up playing the one division with no stops drawn.
     int best = manual_.getItemId(0);
-    if (const Id def = proc_.preferredKeyboard()) {
-      const int ch = proc_.channelForKeyboard(def);
-      if (manual_.indexOfItemId(ch) >= 0) best = ch;
-    }
+    if (const Id def = proc_.preferredKeyboard())
+      if (manual_.indexOfItemId(static_cast<int>(def)) >= 0)
+        best = static_cast<int>(def);
     manual_.setSelectedId(best, juce::dontSendNotification);
-    keyboard_.setMidiChannel(best);
+    keyboard_.setMidiChannel(proc_.channelForKeyboard(static_cast<Id>(best)));
   }
 
   // The on-screen keyboard stays hidden on every organ, including the sets

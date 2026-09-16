@@ -39,6 +39,9 @@ public:
     // contain spaces.
     const auto args = juce::StringArray::fromTokens(commandLine, true);
     const bool guiOnly = args.contains("--gui-only");
+    // Report every MIDI message and what became of it. The one question a
+    // player with a silent console cannot answer from outside.
+    const bool logMidi = args.contains("--log-midi");
     // Which console page to show once the organ is up, counting from 1. A set
     // that puts its jambs on their own pages needs this to be photographed,
     // and clicking the tab from a script is not reliable across display
@@ -430,6 +433,35 @@ public:
       auto previous = std::move(win->onLoaded);
       win->onLoaded = [win, consolePage, previous] {
         win->editor().showConsolePage(consolePage);
+        if (previous) previous();
+      };
+    }
+
+    if (logMidi) {
+      proc_->setMidiLogging(true);
+      juce::Logger::writeToLog(
+          "midi: logging on. Every message and its outcome follows.");
+      for (const auto& in : juce::MidiInput::getAvailableDevices())
+        juce::Logger::writeToLog("midi: input device present: " + in.name);
+      // The manual selector is built from this list, keyed by channel. Two
+      // keyboards answering to the same channel collide in that menu, so the
+      // list is worth seeing outright. Chained onto the load hook rather than
+      // assigned, so it cannot cancel a performance that claimed it first.
+      auto* win = win_.get();
+      auto previous = std::move(win->onLoaded);
+      win->onLoaded = [this, win, previous] {
+        juce::Logger::writeToLog("midi: playable keyboards (id, channel, name):");
+        for (mp::Id kb : proc_->playableKeyboards())
+          juce::Logger::writeToLog(
+              "midi:   keyboard " + juce::String(static_cast<int>(kb)) +
+              " -> channel " + juce::String(proc_->channelForKeyboard(kb)) +
+              "  code(model)=" +
+              juce::String(proc_->organModel().keyboards.count(kb)
+                               ? proc_->organModel().keyboards.at(kb).assignmentCode
+                               : -1) +
+              "  code(resolved)=" + juce::String(proc_->assignmentCodeOf(kb)) +
+              "  \"" + juce::String(proc_->keyboardName(kb)) + "\"");
+        (void)win;
         if (previous) previous();
       };
     }
