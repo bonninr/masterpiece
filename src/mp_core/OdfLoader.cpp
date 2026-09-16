@@ -270,6 +270,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       outModel.uniqueOrganId = fieldInt(row, "Identification_UniqueOrganID", "b", 0);
       outModel.organVersion = field(row, "Control_OrganVersion", "u");
       outModel.basePitchHz = fieldDouble(row, "AudioEngine_BasePitchHz", "n1", 440.0);
+      // A zero here means "not stated", not "silence". The Barton theatre
+      // consoles write 0, and taking it literally tuned every pipe to 0 Hz --
+      // an organ that loads, draws and plays nothing audible.
+      if (!(outModel.basePitchHz > 0.0)) outModel.basePitchHz = 440.0;
       // The producer's own output trim, so two sets recorded at different
       // levels play at a comparable loudness. Every set we have declares one
       // and they are not all zero: Azzio +2 dB, Raszczyce -4 dB. Ignoring it
