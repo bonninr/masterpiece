@@ -164,7 +164,7 @@ room on top muddies it.
 
 ---
 
-## What it does
+## Parts of a VPO
 
 **The console.** Artwork, drawstops, pistons, expression shoes, text labels and
 transparency masks, drawn manuals and pedalboards, multiple display pages, and
