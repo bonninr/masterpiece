@@ -530,6 +530,23 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     if (result.samples.missing > 0)
       status_ += ", " + juce::String(result.samples.missing) + " missing";
   }
+  // Say it out loud, once. The status line has no room beside the console's
+  // buttons, and a mapping that changes without a word costs more trust than
+  // the fault it fixes. Only shown when a repair actually happened, which is
+  // the first load of a mapping saved by 0.3.7 or earlier.
+  if (const int fixed = proc_.midiMapRepairedOnLoad(); fixed > 0) {
+    status_ += "  -  MIDI mapping repaired";
+    juce::AlertWindow::showMessageBoxAsync(
+        juce::MessageBoxIconType::InfoIcon, "MIDI mapping repaired",
+        "The saved MIDI mapping for this organ assigned more than one manual "
+        "to the same channel, which left some manuals silent. " +
+            juce::String(fixed) + " conflicting assignment" +
+            (fixed == 1 ? " was" : "s were") +
+            " removed, and each manual now uses the organ's own channel.\n\n"
+            "Your previous mapping was saved next to the new one with the "
+            "ending \".before-repair\". You can reassign manuals in "
+            "Settings > MIDI.");
+  }
   top_.setStatus(status_);
 
   if (onOrganLoaded)

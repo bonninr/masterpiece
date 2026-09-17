@@ -238,6 +238,18 @@ public:
   // nothing on screen says which, so an assignment takes the channel rather
   // than sharing it. `deviceId` 0 (any console) collides with everything.
   void releaseChannel(int channel, int deviceId, Id keepKeyboardId);
+  // Repair a mapping that cannot be what anyone meant, and say how many
+  // bindings went. Two things are dropped:
+  //   - a binding for a keyboard this organ does not have (a stale file, or
+  //     one written for a different set), and
+  //   - EVERY binding in a channel collision: two or more manuals claiming one
+  //     channel on overlapping consoles. There is no way to know which of them
+  //     the player intended, and keeping any one of them keeps a manual
+  //     unreachable, so all of them give way and the organ's own assignment
+  //     takes over, which is correct for every set we have seen.
+  // Versions up to 0.3.7 could write such collisions; a mapping saved by one
+  // of them is repaired the first time it is loaded.
+  int repairKeyboardBindings(const std::vector<Id>& playableKeyboards);
   const std::vector<KeyboardBinding>& keyboardBindings() const {
     return keyboardBindings_;
   }

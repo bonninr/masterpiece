@@ -1245,9 +1245,28 @@ bool MasterpieceProcessor::saveMidiMap() const {
 }
 
 bool MasterpieceProcessor::loadMidiMap() {
+  midiMapRepaired_ = 0;
   const auto f = midiMapFileFor(loadedOdf_);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
-  return midiMap_.fromText(f.loadFileAsString().toStdString());
+  const auto text = f.loadFileAsString();
+  const bool ok = midiMap_.fromText(text.toStdString());
+
+  // A mapping that sends two manuals to one channel, or names a manual this
+  // organ does not have, is repaired here rather than obeyed. Up to 0.3.7 the
+  // settings page could write such a file, and obeying it silently left
+  // manuals unplayable. The original is kept beside the repaired one, so a
+  // player who wants to see what was there can.
+  midiMapRepaired_ = midiMap_.repairKeyboardBindings(couplers_.inputKeyboards());
+  if (midiMapRepaired_ > 0) {
+    const auto backup = f.getSiblingFile(f.getFileName() + ".before-repair");
+    if (!backup.existsAsFile()) backup.replaceWithText(text);
+    saveMidiMap();
+    juce::Logger::writeToLog(
+        "midi: repaired the saved mapping: " + juce::String(midiMapRepaired_) +
+        " conflicting or stale manual assignment(s) removed; the organ's own "
+        "channels apply. The original is kept as " + backup.getFileName());
+  }
+  return ok;
 }
 
 double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,

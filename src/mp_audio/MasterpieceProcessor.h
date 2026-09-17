@@ -396,6 +396,7 @@ public:
   // the audio thread is not real-time safe, so this is a diagnostic to turn
   // on deliberately (--log-midi), not something left running.
   void setMidiLogging(bool on) { logMidi_.store(on, std::memory_order_release); }
+  int midiMapRepairedOnLoad() const { return midiMapRepaired_; }
   // Register a console and get its id. Message thread, at device setup.
   int registerMidiDevice(const juce::String& name) {
     return midiMap_.devices().idFor(name.toStdString());
@@ -794,6 +795,10 @@ private:
   Temperament organTuning_;
   std::unordered_set<Id> engagedStops_;
   std::atomic<bool> logMidi_{false};
+  // How many manual assignments the last load had to discard from a saved
+  // mapping. Shown to the player, because a mapping that changes under them
+  // without a word would cost more trust than the fault it fixes.
+  int midiMapRepaired_ = 0;
   // The organ's switch wiring, and its resolved output. A drawstop rarely
   // drives anything directly: it drives an internal node, and everything else
   // reads that. `engagedSwitches_` is the network's answer, kept as a set

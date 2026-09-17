@@ -382,6 +382,39 @@ void MidiMap::releaseChannel(int channel, int deviceId, Id keepKeyboardId) {
       keyboardBindings_.end());
 }
 
+int MidiMap::repairKeyboardBindings(const std::vector<Id>& playableKeyboards) {
+  const size_t before = keyboardBindings_.size();
+  auto playable = [&playableKeyboards](Id kb) {
+    return std::find(playableKeyboards.begin(), playableKeyboards.end(), kb) !=
+           playableKeyboards.end();
+  };
+
+  // Which bindings collide: same channel, overlapping console, different
+  // keyboard. Channel 0 ("any channel") overlaps every channel.
+  auto overlaps = [](const KeyboardBinding& x, const KeyboardBinding& y) {
+    const bool sameChannel =
+        x.channel == y.channel || x.channel == 0 || y.channel == 0;
+    const bool sameConsole =
+        x.deviceId == y.deviceId || x.deviceId == 0 || y.deviceId == 0;
+    return sameChannel && sameConsole && x.keyboardId != y.keyboardId;
+  };
+  std::vector<bool> drop(keyboardBindings_.size(), false);
+  for (size_t i = 0; i < keyboardBindings_.size(); ++i) {
+    if (!playable(keyboardBindings_[i].keyboardId)) drop[i] = true;
+    for (size_t j = i + 1; j < keyboardBindings_.size(); ++j)
+      if (overlaps(keyboardBindings_[i], keyboardBindings_[j])) {
+        drop[i] = true;
+        drop[j] = true;
+      }
+  }
+  std::vector<KeyboardBinding> kept;
+  kept.reserve(keyboardBindings_.size());
+  for (size_t i = 0; i < keyboardBindings_.size(); ++i)
+    if (!drop[i]) kept.push_back(keyboardBindings_[i]);
+  keyboardBindings_ = std::move(kept);
+  return static_cast<int>(before - keyboardBindings_.size());
+}
+
 int MidiMap::matchKeyboards(int deviceId, int channel, int note, int velocity,
                             double timeMs, std::vector<KeyHit>& out) const {
   int added = 0;
