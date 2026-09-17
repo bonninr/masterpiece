@@ -177,27 +177,36 @@ void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
   }
 
   const int next = loadTickNext_.load(std::memory_order_acquire);
+  const double rate0 = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  const int numCh0 = buffer.getNumChannels();
+  const int numFrames0 = buffer.getNumSamples();
+  if (numFrames0 > 0) {
+    loadTickCooldown_ -= static_cast<double>(numFrames0) / rate0;
+    if (loadTickCooldown_ < 0.0) loadTickCooldown_ = 0.0;
+  }
   if (pct >= next && next <= 100) {
-    // One tap per block at most: a load that jumps several thresholds in one
-    // block announces itself once rather than stuttering.
-    loadTickLeft_ = static_cast<int>(sampleRate_ * 0.03);
-    loadTickPhase_ = 0.0;
-    loadTickAmp_ = 0.2;
+    // At most one tap per block, and no faster than one every couple of
+    // seconds: a cached load jumps several thresholds in one block and must
+    // announce itself once rather than stuttering. Skipped thresholds are
+    // still consumed, so they never fire late.
+    if (loadTickCooldown_ <= 0.0 && numCh0 > 0) {
+      loadTickLeft_ = static_cast<int>(rate0 * 0.03);
+      loadTickPhase_ = 0.0;
+      loadTickAmp_ = 0.2;
+      loadTickCooldown_ = 2.0;
+    }
     loadTickNext_.store(next + 10, std::memory_order_release);
   }
 
   if (loadTickLeft_ <= 0) return;
-  const int numCh = buffer.getNumChannels();
-  const int numFrames = buffer.getNumSamples();
-  if (numCh <= 0 || numFrames <= 0) return;
-  const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
-  const int n = std::min(loadTickLeft_, numFrames);
-  const double step = 2.0 * 3.141592653589793 * 1760.0 / rate;
+  if (numCh0 <= 0 || numFrames0 <= 0) return;
+  const int n = std::min(loadTickLeft_, numFrames0);
+  const double step = 2.0 * 3.141592653589793 * 1760.0 / rate0;
   // Exponential to near-silence across the tap: swift, with no click where it ends.
-  const double decay = std::pow(0.001, 1.0 / (rate * 0.03));
+  const double decay = std::pow(0.001, 1.0 / (rate0 * 0.03));
   for (int i = 0; i < n; ++i) {
     const float s = static_cast<float>(loadTickAmp_ * std::sin(loadTickPhase_));
-    for (int ch = 0; ch < numCh; ++ch)
+    for (int ch = 0; ch < numCh0; ++ch)
       buffer.addSample(ch, i, s);
     loadTickPhase_ += step;
     loadTickAmp_ *= decay;

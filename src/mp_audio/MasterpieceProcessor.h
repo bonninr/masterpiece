@@ -877,6 +877,9 @@ private:
   int loadTickLeft_ = 0;
   double loadTickPhase_ = 0.0;
   double loadTickAmp_ = 0.0;
+  // Seconds before another tap may start. A cached load crosses every
+  // threshold in a few blocks; without this it machine-guns ten taps.
+  double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
