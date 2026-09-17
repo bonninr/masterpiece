@@ -38,15 +38,19 @@ jobs:
           mkdir -p dist
           for d in artifacts/*/; do
             name=$(basename "$d")
-            # Already a finished file, published under its own name: the macOS
-            # zips (packed on the Mac, since a .app loses its executable bit as
-            # loose files), the Windows setup program and the .deb packages.
-            if [ "$(ls "$d" | wc -l)" = 1 ]; then
-              f=$(ls "$d")
-              case "$f" in
-                *.zip|*.exe|*.deb) cp "$d/$f" "dist/$f"; continue ;;
-              esac
-            fi
+            # Already a finished package, published under its own name: the
+            # macOS zips (packed on the Mac, since a .app loses its executable
+            # bit as loose files), the Windows setup program and the .debs.
+            # Named jobs rather than "one file inside", which would also catch
+            # a loose-file artifact that happened to hold a single binary and
+            # publish that instead of the archive people are linked to.
+            case "$name" in
+              masterpiece-windows-setup|*-deb|masterpiece-macos-*)
+                f=$(ls "$d")
+                test "$(ls "$d" | wc -l)" = 1 || { echo "$name: expected one file, found:"; ls "$d"; exit 1; }
+                cp "$d/$f" "dist/$f"
+                continue ;;
+            esac
             case "$name" in
               masterpiece-windows) ext=zip ;;
               *)                   ext=tar.gz ;;
