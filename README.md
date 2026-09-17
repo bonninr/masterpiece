@@ -1,7 +1,8 @@
 <p align="center">
   <img width="500" alt="Masterpiece, virtual pipe organ" src="https://github.com/user-attachments/assets/9362280d-1438-4f67-a5ab-be8045857ad5" />
 </p>
-### An open-source, cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
+
+### A cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
 
 https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 
