@@ -272,6 +272,15 @@ Masterpiece --odf "<path to the definition>" --gui-only
 silent and appears in a second or two. `--log <file>` writes the load timings,
 if you want to know where the time went.
 
+On macOS the download is unsigned, so Gatekeeper may refuse it as "damaged".
+Strip the quarantine flag and open it explicitly:
+
+```
+xattr -cr Masterpiece.app
+```
+
+then right-click the application and choose Open.
+
 ---
 
 ## How it is built
