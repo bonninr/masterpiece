@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Masterpiece synthetic test fixture (own content). M2.3/M2.4 expression:
+     enclosures, tremulants, continuous controls, control linkages and noise
+     ranks, including the fault cases each validator query is meant to catch:
+       - enclosure 2 encloses no pipework      -> enclosure-without-shades
+       - tremulant 2 is switched but has no depth -> trem-depth-zero-but-enabled
+       - continuous control 3 has no type code -> continuous-control-unmapped
+       - controls 4 and 5 drive each other     -> feedback loop
+       - noise rank 92 has no attacks          -> noise-rank-without-sample -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="6.00">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <UniqueOrganID>90010</UniqueOrganID>
+      <Name>Masterpiece M2.4 Expression Test</Name>
+      <OrganInfo_Builder>Masterpiece</OrganInfo_Builder>
+    </_General>
+  </ObjectList>
+
+  <ObjectList ObjectType="Switch">
+    <Switch><SwitchID>1</SwitchID><Name>Swell Tremulant</Name></Switch>
+    <Switch><SwitchID>2</SwitchID><Name>Great Tremulant</Name></Switch>
+    <Switch><SwitchID>3</SwitchID><Name>Blower</Name></Switch>
+  </ObjectList>
+
+  <ObjectList ObjectType="ContinuousControl">
+    <ContinuousControl>
+      <ControlID>1</ControlID>
+      <Name>Swell Shoe</Name>
+      <DefaultInputOutputContinuousCtrlAsgnCode>1</DefaultInputOutputContinuousCtrlAsgnCode>
+      <DefaultValue>0</DefaultValue>
+    </ContinuousControl>
+    <ContinuousControl>
+      <ControlID>2</ControlID>
+      <Name>Crescendo Wheel</Name>
+      <DefaultInputOutputContinuousCtrlAsgnCode>2</DefaultInputOutputContinuousCtrlAsgnCode>
+      <DefaultValue>0</DefaultValue>
+    </ContinuousControl>
+    <ContinuousControl>
+      <ControlID>3</ControlID>
+      <Name>Unknown Control</Name>
+    </ContinuousControl>
+    <ContinuousControl>
+      <ControlID>4</ControlID>
+      <Name>Loop A</Name>
+      <DefaultInputOutputContinuousCtrlAsgnCode>1</DefaultInputOutputContinuousCtrlAsgnCode>
+    </ContinuousControl>
+    <ContinuousControl>
+      <ControlID>5</ControlID>
+      <Name>Loop B</Name>
+      <DefaultInputOutputContinuousCtrlAsgnCode>1</DefaultInputOutputContinuousCtrlAsgnCode>
+    </ContinuousControl>
+  </ObjectList>
+
+  <ObjectList ObjectType="ContinuousControlLinkage">
+    <ContinuousControlLinkage>
+      <LinkageID>1</LinkageID>
+      <SourceControlID>1</SourceControlID>
+      <DestControlID>2</DestControlID>
+      <SourceControlValueCoefficient>0.5</SourceControlValueCoefficient>
+    </ContinuousControlLinkage>
+    <ContinuousControlLinkage>
+      <LinkageID>2</LinkageID>
+      <SourceControlID>4</SourceControlID>
+      <DestControlID>5</DestControlID>
+    </ContinuousControlLinkage>
+    <ContinuousControlLinkage>
+      <LinkageID>3</LinkageID>
+      <SourceControlID>5</SourceControlID>
+      <DestControlID>4</DestControlID>
+    </ContinuousControlLinkage>
+  </ObjectList>
+
+  <ObjectList ObjectType="Enclosure">
+    <Enclosure>
+      <EnclosureID>1</EnclosureID>
+      <Name>Swell Box</Name>
+      <ShutterPositionContinuousControlID>1</ShutterPositionContinuousControlID>
+      <ShadesClosedFilterFreqHz>700</ShadesClosedFilterFreqHz>
+      <ShadesOpenFilterFreqHz>14000</ShadesOpenFilterFreqHz>
+      <ShadesClosedAttenuationDb>-20</ShadesClosedAttenuationDb>
+      <ShadesOpenAttenuationDb>0</ShadesOpenAttenuationDb>
+    </Enclosure>
+    <Enclosure>
+      <EnclosureID>2</EnclosureID>
+      <Name>Empty Box</Name>
+      <ShutterPositionContinuousControlID>1</ShutterPositionContinuousControlID>
+    </Enclosure>
+  </ObjectList>
+
+  <!-- Pipe 9101 is enclosed; pipe 9102 deliberately is not, so the per-rank
+       routing has something to get wrong. Pipe 9102 named twice by different
+       boxes would be an authoring error and is reported, not resolved. -->
+  <ObjectList ObjectType="EnclosurePipe">
+    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9101</PipeID></EnclosurePipe>
+    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9103</PipeID></EnclosurePipe>
+  </ObjectList>
+
+  <ObjectList ObjectType="Tremulant">
+    <Tremulant>
+      <TremulantID>1</TremulantID>
+      <Name>Swell Tremulant</Name>
+      <ControllingSwitchID>1</ControllingSwitchID>
+      <FrequencyWhenEngagedHz>6.4</FrequencyWhenEngagedHz>
+      <FrequencyWhenDisengagedHz>5.0</FrequencyWhenDisengagedHz>
+      <StartRatePercent>60</StartRatePercent>
+      <StopRatePercent>40</StopRatePercent>
+    </Tremulant>
+    <Tremulant>
+      <TremulantID>2</TremulantID>
+      <Name>Silent Tremulant</Name>
+      <ControllingSwitchID>2</ControllingSwitchID>
+      <FrequencyWhenEngagedHz>6.0</FrequencyWhenEngagedHz>
+    </Tremulant>
+  </ObjectList>
+
+  <ObjectList ObjectType="TremulantWaveform">
+    <TremulantWaveform>
+      <TremulantWaveformID>500</TremulantWaveformID>
+      <TremulantID>1</TremulantID>
+    </TremulantWaveform>
+  </ObjectList>
+
+  <ObjectList ObjectType="TremulantWaveformPipe">
+    <TremulantWaveformPipe>
+      <PipeID>9101</PipeID>
+      <TremulantWaveformID>500</TremulantWaveformID>
+      <AmplitudeModDepthAdjustDecibels>-3.5</AmplitudeModDepthAdjustDecibels>
+    </TremulantWaveformPipe>
+  </ObjectList>
+
+  <ObjectList ObjectType="Rank">
+    <Rank><RankID>91</RankID><Name>Blower Hum</Name></Rank>
+    <Rank><RankID>92</RankID><Name>Silent Key Clunk</Name></Rank>
+  </ObjectList>
+
+  <ObjectList ObjectType="Pipe_SoundEngine01">
+    <Pipe_SoundEngine01>
+      <PipeID>9101</PipeID>
+      <RankID>91</RankID>
+      <NormalMIDINoteNumber>36</NormalMIDINoteNumber>
+    </Pipe_SoundEngine01>
+    <Pipe_SoundEngine01>
+      <PipeID>9102</PipeID>
+      <RankID>91</RankID>
+      <NormalMIDINoteNumber>37</NormalMIDINoteNumber>
+    </Pipe_SoundEngine01>
+  </ObjectList>
+
+  <ObjectList ObjectType="Pipe_SoundEngine01_Layer">
+    <Pipe_SoundEngine01_Layer>
+      <LayerID>9101</LayerID>
+      <PipeID>9101</PipeID>
+    </Pipe_SoundEngine01_Layer>
+  </ObjectList>
+
+  <ObjectList ObjectType="Pipe_SoundEngine01_AttackSample">
+    <Pipe_SoundEngine01_AttackSample>
+      <UniqueID>9101</UniqueID>
+      <LayerID>9101</LayerID>
+      <SampleID>9101</SampleID>
+    </Pipe_SoundEngine01_AttackSample>
+  </ObjectList>
+
+  <ObjectList ObjectType="Sample">
+    <Sample>
+      <SampleID>9101</SampleID>
+      <SampleFilename>blower.wav</SampleFilename>
+    </Sample>
+  </ObjectList>
+
+  <ObjectList ObjectType="Noise">
+    <Noise><NoiseID>1</NoiseID><RankID>91</RankID><TriggerSwitchID>3</TriggerSwitchID></Noise>
+    <Noise><NoiseID>2</NoiseID><RankID>92</RankID></Noise>
+  </ObjectList>
+</Hauptwerk>

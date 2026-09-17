@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Masterpiece synthetic test fixture. Our own content (no Hauptwerk or
+     GrandOrgue material). TRUE CODM layout (guide-attested): <Hauptwerk
+     FileFormat="CustomOrgan"> with <ObjectList ObjectType="..."> row
+     lists and <Field>value</Field> children — nothing like full-ODF
+     attribute syntax. Only guide-attested table/field names are used;
+     SomeFutureTable exercises the unknown-ObjectType path. -->
+<Hauptwerk FileFormat="CustomOrgan" FileFormatVersion="6.00">
+  <ObjectList ObjectType="_general">
+    <_general>
+      <UniqueOrganID>90002</UniqueOrganID>
+      <Name>Masterpiece CODM Test Church</Name>
+    </_general>
+  </ObjectList>
+  <ObjectList ObjectType="customdisplaypage">
+    <customdisplaypage>
+      <DisplayPageID>1</DisplayPageID>
+      <Name>Console</Name>
+      <BackgroundImageFilename>HauptwerkStandardImages/DarkCherry.png</BackgroundImageFilename>
+      <BackgroundImageFileInstallationPackageID>1</BackgroundImageFileInstallationPackageID>
+    </customdisplaypage>
+  </ObjectList>
+  <ObjectList ObjectType="division">
+    <division>
+      <Name>Manual I</Name>
+      <WindModel_WindchestPressureDropPctAtMaxLoad>5</WindModel_WindchestPressureDropPctAtMaxLoad>
+    </division>
+  </ObjectList>
+  <ObjectList ObjectType="SomeFutureTable">
+    <somefuturetable>
+      <Name>X</Name>
+    </somefuturetable>
+  </ObjectList>
+</Hauptwerk>

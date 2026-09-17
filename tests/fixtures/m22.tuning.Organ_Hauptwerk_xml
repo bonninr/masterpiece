@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Masterpiece synthetic test fixture (own content). M2.2 tuning:
+       - temperament 1 names a tuning the built-in library knows
+       - temperament 2 spells its offsets out explicitly (they win over a name)
+       - temperament 3 names one we cannot resolve -> temperament-unknown-code
+       - pipe 12 declares a 1/64' footage that puts it above hearing
+         -> pipe-pitch-out-of-range
+     Pipes 10 and 11 are ordinary 8' and 16' pipes that must NOT be flagged. -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="6.00">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <UniqueOrganID>90011</UniqueOrganID>
+      <Name>Masterpiece M2.2 Tuning Test</Name>
+    </_General>
+  </ObjectList>
+
+  <ObjectList ObjectType="Temperament">
+    <Temperament>
+      <TemperamentID>1</TemperamentID>
+      <Name>Vallotti</Name>
+    </Temperament>
+    <Temperament>
+      <TemperamentID>2</TemperamentID>
+      <Name>House Tuning</Name>
+      <CentsOffsetC>0</CentsOffsetC>
+      <CentsOffsetCsharp>-6</CentsOffsetCsharp>
+      <CentsOffsetD>-4</CentsOffsetD>
+      <CentsOffsetDsharp>-2</CentsOffsetDsharp>
+      <CentsOffsetE>-8</CentsOffsetE>
+      <CentsOffsetF>2</CentsOffsetF>
+      <CentsOffsetFsharp>-8</CentsOffsetFsharp>
+      <CentsOffsetG>-2</CentsOffsetG>
+      <CentsOffsetGsharp>-4</CentsOffsetGsharp>
+      <CentsOffsetA>-6</CentsOffsetA>
+      <CentsOffsetAsharp>0</CentsOffsetAsharp>
+      <CentsOffsetB>-10</CentsOffsetB>
+    </Temperament>
+    <Temperament>
+      <TemperamentID>3</TemperamentID>
+      <Name>Nonesuch Irregular 1712</Name>
+    </Temperament>
+  </ObjectList>
+
+  <ObjectList ObjectType="Rank">
+    <Rank><RankID>10</RankID><Name>Principal</Name></Rank>
+  </ObjectList>
+
+  <ObjectList ObjectType="Pipe_SoundEngine01">
+    <Pipe_SoundEngine01>
+      <PipeID>10</PipeID>
+      <RankID>10</RankID>
+      <NormalMIDINoteNumber>69</NormalMIDINoteNumber>
+      <Pitch_RankBasePitch64ftHarmonicNum>8</Pitch_RankBasePitch64ftHarmonicNum>
+    </Pipe_SoundEngine01>
+    <Pipe_SoundEngine01>
+      <PipeID>11</PipeID>
+      <RankID>10</RankID>
+      <NormalMIDINoteNumber>36</NormalMIDINoteNumber>
+      <Pitch_RankBasePitch64ftHarmonicNum>4</Pitch_RankBasePitch64ftHarmonicNum>
+    </Pipe_SoundEngine01>
+    <Pipe_SoundEngine01>
+      <PipeID>12</PipeID>
+      <RankID>10</RankID>
+      <NormalMIDINoteNumber>108</NormalMIDINoteNumber>
+      <Pitch_RankBasePitch64ftHarmonicNum>4096</Pitch_RankBasePitch64ftHarmonicNum>
+    </Pipe_SoundEngine01>
+  </ObjectList>
+</Hauptwerk>

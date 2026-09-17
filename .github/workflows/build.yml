@@ -131,6 +131,17 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 
+      # The suite needs no sample library and runs in about a second, so every
+      # target that can execute its own build runs it. The cross-built ARM jobs
+      # cannot, and are covered by the package tests in their own containers.
+      - name: Tests
+        if: '!matrix.arm'
+        shell: bash
+        run: |
+          TESTS=$(find build/${{ matrix.preset }}/tests -name 'mp_tests*' -type f | head -1)
+          test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
+          "$TESTS" --no-perf
+
       # A cross-built binary cannot run here, so confirm its machine type
       # instead -- and confirm it is the RIGHT machine type, because a
       # toolchain that silently fell back to the host compiler would otherwise

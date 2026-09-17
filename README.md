@@ -261,6 +261,19 @@ Presets are also provided for each CI target: `ci-linux`, `ci-macos`,
 
 ---
 
+**Tests.** The suite needs no sample library and runs in about a second:
+
+```
+cmake --build --preset dev --target mp_tests
+build/dev/tests/mp_tests --no-perf      # --perf-only for the timing ones
+```
+
+It covers the loader, the switch network and key flow, the voice engine, MIDI
+mapping and the DSP, against hand-written organ definitions in
+`tests/fixtures`. CI runs it on every target that can execute its own build.
+
+---
+
 ## Installing
 
 **Windows.** Run `masterpiece-windows-setup.exe`. It installs Masterpiece with
