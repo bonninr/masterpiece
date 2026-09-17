@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Edge fixture: unknown tables must load with warnings (ADR-002),
+     never hard-fail. True ObjectList layout. -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="4.0">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <Identification_UniqueOrganID>90003</Identification_UniqueOrganID>
+      <Identification_Name>Edge Case Organ</Identification_Name>
+    </_General>
+  </ObjectList>
+  <ObjectList ObjectType="Sample">
+    <Sample>
+      <SampleID>101</SampleID>
+      <InstallationPackageID>1</InstallationPackageID>
+      <SampleFilename>001-C.wav</SampleFilename>
+    </Sample>
+  </ObjectList>
+  <ObjectList ObjectType="SomeFutureTable">
+    <SomeFutureTable>
+      <UniqueID>1</UniqueID>
+    </SomeFutureTable>
+  </ObjectList>
+  <ObjectList ObjectType="AnotherUnknownObject">
+    <AnotherUnknownObject>
+      <VersionProbe>10</VersionProbe>
+    </AnotherUnknownObject>
+  </ObjectList>
+  <ObjectList ObjectType="Rank">
+    <Rank>
+      <RankID>201</RankID>
+      <Name>Future Rank</Name>
+      <SomeNewAttribute>y</SomeNewAttribute>
+    </Rank>
+  </ObjectList>
+</Hauptwerk>

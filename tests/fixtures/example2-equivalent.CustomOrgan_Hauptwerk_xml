@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Masterpiece synthetic test fixture (own content). Example2-equivalent:
+     a small classical organ exercising every registered CODM table path.
+     Row/field names below are structural placeholders EXCEPT guide-attested
+     ones (UniqueOrganID, Name, DisplayPageID, Encl_*/Trem_*/WindModel_*,
+     Pitch_*/Samples_*); the M1.5 compiler only consumes attested fields and
+     reports the rest via CODM-UNHANDLED-FIELD for M2 licensed-install
+     verification. -->
+<Hauptwerk FileFormat="CustomOrgan" FileFormatVersion="6.00">
+  <ObjectList ObjectType="_general">
+    <_general>
+      <UniqueOrganID>90003</UniqueOrganID>
+      <Name>Masterpiece CODM Example 2</Name>
+    </_general>
+  </ObjectList>
+  <ObjectList ObjectType="division">
+    <division>
+      <Name>Great</Name>
+      <WindModel_WindchestPressureDropPctAtMaxLoad>5</WindModel_WindchestPressureDropPctAtMaxLoad>
+    </division>
+    <division>
+      <Name>Swell</Name>
+      <WindModel_WindchestPressureDropPctAtMaxLoad>7</WindModel_WindchestPressureDropPctAtMaxLoad>
+    </division>
+    <division>
+      <Name>Pedal</Name>
+    </division>
+  </ObjectList>
+  <ObjectList ObjectType="rank">
+    <rank>
+      <Name>Great Principal 8</Name>
+      <Pitch_RankBaseOutputPitch64ftHarmonicNum>8</Pitch_RankBaseOutputPitch64ftHarmonicNum>
+      <Samples_RankBasePitch64ftHarmNumIfAssumedTunedToConcertPitch>8</Samples_RankBasePitch64ftHarmNumIfAssumedTunedToConcertPitch>
+    </rank>
+    <rank>
+      <Name>Key Clunks</Name>
+      <Trem_TremulantCode>0</Trem_TremulantCode>
+    </rank>
+  </ObjectList>
+  <ObjectList ObjectType="stop">
+    <stop>
+      <Name>Principal 8</Name>
+    </stop>
+    <stop>
+      <Name>Flute 4</Name>
+    </stop>
+  </ObjectList>
+  <ObjectList ObjectType="coupler">
+    <coupler>
+      <Name>Swell to Great</Name>
+    </coupler>
+  </ObjectList>
+  <ObjectList ObjectType="tremulant">
+    <tremulant>
+      <Name>Tremulant</Name>
+    </tremulant>
+  </ObjectList>
+  <ObjectList ObjectType="enclosure">
+    <enclosure>
+      <Name>Swell</Name>
+      <Encl_EnclosureCode>211</Encl_EnclosureCode>
+    </enclosure>
+  </ObjectList>
+  <ObjectList ObjectType="customdisplaypage">
+    <customdisplaypage>
+      <DisplayPageID>1</DisplayPageID>
+      <Name>Console</Name>
+    </customdisplaypage>
+  </ObjectList>
+</Hauptwerk>

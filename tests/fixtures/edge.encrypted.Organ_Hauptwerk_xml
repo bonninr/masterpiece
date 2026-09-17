@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Edge fixture: encrypted samples (.hbw/.hbx, both cases) must be
+     detected + listed (ADR-003), model still loads. True ObjectList layout. -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="4.0">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <Identification_UniqueOrganID>90004</Identification_UniqueOrganID>
+      <Identification_Name>Encrypted Ref Organ</Identification_Name>
+    </_General>
+  </ObjectList>
+  <ObjectList ObjectType="RequiredInstallationPackage">
+    <RequiredInstallationPackage>
+      <InstallationPackageID>1</InstallationPackageID>
+      <Name>EncryptedDemo</Name>
+    </RequiredInstallationPackage>
+  </ObjectList>
+  <ObjectList ObjectType="Sample">
+    <Sample>
+      <SampleID>101</SampleID>
+      <InstallationPackageID>1</InstallationPackageID>
+      <SampleFilename>036-C.hbw</SampleFilename>
+      <LicenceSerialNumRequiredForSampleFile>1</LicenceSerialNumRequiredForSampleFile>
+    </Sample>
+    <Sample>
+      <SampleID>102</SampleID>
+      <InstallationPackageID>1</InstallationPackageID>
+      <SampleFilename>037-C#.hbx</SampleFilename>
+      <LicenceSerialNumRequiredForSampleFile>1</LicenceSerialNumRequiredForSampleFile>
+    </Sample>
+  </ObjectList>
+  <ObjectList ObjectType="Rank">
+    <Rank>
+      <RankID>201</RankID>
+      <Name>Encrypted Rank</Name>
+    </Rank>
+  </ObjectList>
+</Hauptwerk>

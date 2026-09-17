@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Edge fixture: dangling ID references must load + report (M1.2/M1.3/M1.5
+     queries). True ObjectList layout. -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="4.0">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <Identification_UniqueOrganID>90005</Identification_UniqueOrganID>
+      <Identification_Name>Dangling Ref Organ</Identification_Name>
+    </_General>
+  </ObjectList>
+  <ObjectList ObjectType="Rank">
+    <Rank>
+      <RankID>201</RankID>
+      <Name>Dangling Rank</Name>
+    </Rank>
+  </ObjectList>
+  <ObjectList ObjectType="Pipe_SoundEngine01">
+    <Pipe_SoundEngine01>
+      <PipeID>301</PipeID>
+      <RankID>9999</RankID>
+      <NormalMIDINoteNumber>36</NormalMIDINoteNumber>
+    </Pipe_SoundEngine01>
+  </ObjectList>
+  <ObjectList ObjectType="Pipe_SoundEngine01_Layer">
+    <Pipe_SoundEngine01_Layer>
+      <LayerID>401</LayerID>
+      <PipeID>9999</PipeID>
+    </Pipe_SoundEngine01_Layer>
+  </ObjectList>
+  <ObjectList ObjectType="Pipe_SoundEngine01_AttackSample">
+    <Pipe_SoundEngine01_AttackSample>
+      <UniqueID>501</UniqueID>
+      <LayerID>8888</LayerID>
+      <SampleID>7777</SampleID>
+    </Pipe_SoundEngine01_AttackSample>
+  </ObjectList>
+  <ObjectList ObjectType="Stop">
+    <Stop>
+      <StopID>901</StopID>
+      <Name>Ghost Stop</Name>
+      <DivisionID>801</DivisionID>
+    </Stop>
+  </ObjectList>
+  <ObjectList ObjectType="CombinationElement">
+    <CombinationElement>
+      <CombinationElementID>1301</CombinationElementID>
+      <CombinationID>8888</CombinationID>
+      <ControlledSwitchID>8888</ControlledSwitchID>
+      <CapturedSwitchID>9999</CapturedSwitchID>
+    </CombinationElement>
+  </ObjectList>
+</Hauptwerk>

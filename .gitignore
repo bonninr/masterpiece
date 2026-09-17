@@ -13,8 +13,9 @@ _juc*/
 # redistribute, plus upstream checkouts carrying their own .git.
 specs/
 
-# Development tooling and internal notes, not part of a release.
-tests/
+# Development tooling and internal notes, not part of a release. The test
+# suite is not among them: it needs no sample library, runs in a second, and
+# is what catches the faults this project keeps finding by ear.
 docs/
 build-scripts/
 apps/mp-render/
