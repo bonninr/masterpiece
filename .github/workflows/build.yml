@@ -40,7 +40,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # 22.04 rather than latest: a binary needs the glibc it was built
+          # against or newer, and 24.04's (2.39) is newer than Debian 12 and
+          # Raspberry Pi OS (2.36) have. Built here, the packages run on both.
+          - os: ubuntu-22.04
             preset: ci-linux
             artifact: masterpiece-linux-x86_64
           - os: windows-latest
@@ -48,13 +51,13 @@ jobs:
             artifact: masterpiece-windows
           # The Pi, both ways round. arm64 is what a current Raspberry Pi OS
           # install actually is; armhf stays for older 32-bit installs.
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             preset: ci-linux-arm64
             artifact: masterpiece-linux-arm64
             arm: true
             debarch: arm64
             triple: aarch64-linux-gnu
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             preset: ci-linux-arm
             artifact: masterpiece-linux-armhf
             arm: true
@@ -235,7 +238,10 @@ jobs:
         run: |
           $dest = Join-Path $env:RUNNER_TEMP "Masterpiece"
           $key  = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Masterpiece'
-          $menu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Masterpiece"
+          # Either Start menu: an installer may register for all users or
+          # just this one, and both are legitimate.
+          $menus = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Masterpiece",
+                     "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Masterpiece")
           $i = Start-Process dist/masterpiece-windows-setup.exe -ArgumentList "/S", "/D=$dest" -PassThru -Wait
           if ($i.ExitCode -ne 0) { throw "silent install exited $($i.ExitCode)" }
 
@@ -244,7 +250,9 @@ jobs:
           $expected = @("bin\Masterpiece.exe", "Uninstall.exe")
           if (Compare-Object $files $expected) { throw "installed files differ from: $($expected -join ', ')" }
           if (-not (Test-Path $key)) { throw "not registered for Add/Remove Programs" }
-          if (-not (Test-Path "$menu\Masterpiece.lnk")) { throw "no Start menu shortcut" }
+          $shortcuts = $menus | Where-Object { Test-Path "$_\Masterpiece.lnk" }
+          if (-not $shortcuts) { throw "no Start menu shortcut in either menu" }
+          $shortcuts | ForEach-Object { Write-Host "  shortcut: $_" }
 
           $p = Start-Process (Join-Path $dest "bin\Masterpiece.exe") -PassThru
           Start-Sleep -Seconds 15
@@ -258,7 +266,8 @@ jobs:
           Start-Sleep -Seconds 3
           if (Test-Path "$dest\bin\Masterpiece.exe") { throw "uninstall left the program behind" }
           if (Test-Path $key) { throw "uninstall left the registry entry behind" }
-          if (Test-Path "$menu\Masterpiece.lnk") { throw "uninstall left the Start menu shortcut behind" }
+          $left = $menus | Where-Object { Test-Path "$_\Masterpiece.lnk" }
+          if ($left) { throw "uninstall left the Start menu shortcut behind: $left" }
           Write-Host "install, launch and uninstall all clean"
 
       - name: Package (Linux .deb)

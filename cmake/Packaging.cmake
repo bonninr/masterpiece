@@ -127,8 +127,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
   set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Openpipes <https://github.com/bonninr/masterpiece>")
-  # Listed rather than discovered: dpkg-shlibdeps cannot inspect a
-  # cross-built binary on the build machine, and the three packages must agree.
+  # For a native build, let dpkg work the dependencies out from the binary
+  # itself: it gets the versions right too (libc6 >= ..., which is what stops
+  # the package installing on a system too old to run it). A cross-built
+  # binary cannot be inspected that way, so those fall back to the list below.
+  if(NOT CMAKE_CROSSCOMPILING)
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  endif()
   # Each alternative covers the t64 renames in Debian 13 and Ubuntu 24.04.
   set(CPACK_DEBIAN_PACKAGE_DEPENDS
       "libasound2 | libasound2t64, libfreetype6, libfontconfig1, libx11-6, \
