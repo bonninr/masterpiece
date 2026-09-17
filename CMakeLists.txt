@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Masterpiece VERSION 0.4.0 LANGUAGES C CXX)
+project(Masterpiece VERSION 0.4.1 LANGUAGES C CXX)
 
 # A release build linked to the DLL C runtime needs the Visual C++
 # Redistributable installed on the machine it runs on; a plain download of
