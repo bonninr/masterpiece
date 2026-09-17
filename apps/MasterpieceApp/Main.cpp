@@ -4,6 +4,8 @@
 // are secondary. It owns the audio device and MIDI input and drives the same
 // MasterpieceProcessor the plugin and the headless renderer use, so there is
 // one engine and three front ends rather than three engines.
+#include <iostream>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -34,7 +36,7 @@ bool audioOutputAlive(juce::AudioDeviceManager& dm) {
 class MasterpieceApp : public juce::JUCEApplication {
 public:
   const juce::String getApplicationName() override { return "Masterpiece"; }
-  const juce::String getApplicationVersion() override { return "0.4.0"; }
+  const juce::String getApplicationVersion() override { return MP_VERSION; }
   bool moreThanOneInstanceAllowed() override { return true; }
 
   void initialise(const juce::String& commandLine) override {
@@ -51,6 +53,15 @@ public:
     // taken from here is unquoted before use. Organ paths almost always
     // contain spaces.
     const auto args = juce::StringArray::fromTokens(commandLine, true);
+    // Say which build this is and stop. The window title carries it too, but
+    // a player on a forum needs something they can copy.
+    if (args.contains("--version")) {
+      std::cout << "Masterpiece " << MP_VERSION << std::endl;
+      juce::JUCEApplication::getInstance()->setApplicationReturnValue(0);
+      quit();
+      return;
+    }
+
     const bool guiOnly = args.contains("--gui-only");
     // Report every MIDI message and what became of it. The one question a
     // player with a silent console cannot answer from outside.
@@ -554,7 +565,8 @@ public:
 private:
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
-        : DocumentWindow("Masterpiece", juce::Colour(0xff15171c), allButtons),
+        : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
+                         allButtons),
           devices_(dm) {
       auto* ed = new mp::ui::MasterpieceEditor(p);
       // The editor must not reach for hardware itself; the application owns
@@ -566,7 +578,10 @@ private:
       // a duration, which on a slow disk is the difference between a console
       // and a blank panel.
       ed->onOrganLoaded = [this](const juce::String& name) {
-        setName("Masterpiece - " + name);
+        // The version stays in the title with the organ's name. Asked for:
+        // a player who has downloaded a build has no other way to tell which
+        // one they are running.
+        setName("Masterpiece " MP_VERSION " - " + name);
         if (onLoaded) onLoaded();
       };
       editor_ = ed;

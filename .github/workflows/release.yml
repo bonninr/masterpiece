@@ -61,6 +61,16 @@ jobs:
               tar -czf "dist/${name}.tar.gz" -C "$d" .
             fi
           done
+          # Every package a second time with the version in its name, so a
+          # player can tell from the file alone which build they have. The
+          # unversioned names stay: releases/latest/download/<name> is what the
+          # README badges link to, and those links must not move.
+          ver="${tag#v}"
+          for b in $(ls dist); do
+            case "$b" in
+              masterpiece-*) cp "dist/$b" "dist/masterpiece-${ver}-${b#masterpiece-}" ;;
+            esac
+          done
           ls -lh dist
 
       - name: Publish

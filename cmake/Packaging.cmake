@@ -57,7 +57,18 @@ if(WIN32)
   # folder per version would pile up. Spelled without quotes because CPack
   # re-reads this value and quotes inside it split it into a list.
   set(CPACK_NSIS_PACKAGE_NAME "Masterpiece")
-  set(CPACK_NSIS_DEFINES "!define MUI_STARTMENUPAGE_DEFAULTFOLDER Masterpiece")
+  # CPack writes no version into the setup program itself, so its Properties
+  # were blank and a downloaded installer could not be told apart from any
+  # other. These go in verbatim. Values are single words: CPack re-reads this
+  # text, and quotes inside it would split it into a list.
+  set(CPACK_NSIS_DEFINES
+"!define MUI_STARTMENUPAGE_DEFAULTFOLDER Masterpiece
+VIProductVersion ${PROJECT_VERSION}.0
+VIAddVersionKey ProductName Masterpiece
+VIAddVersionKey ProductVersion ${PROJECT_VERSION}
+VIAddVersionKey FileVersion ${PROJECT_VERSION}
+VIAddVersionKey CompanyName Openpipes
+VIAddVersionKey LegalCopyright GPL-3.0-only")
   set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/bonninr/masterpiece")
   set(CPACK_NSIS_HELP_LINK "https://github.com/bonninr/masterpiece/issues")
   # Off, as GrandOrgue has it. When on, the installer first runs whatever
