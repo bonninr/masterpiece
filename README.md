@@ -1,18 +1,9 @@
 <p align="center">
   <img width="500" alt="Masterpiece, virtual pipe organ" src="https://github.com/user-attachments/assets/9362280d-1438-4f67-a5ab-be8045857ad5" />
 </p>
-
 ### An open-source, cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
-**Video Demo (activate sound)**
-
-
-
 
 https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
-
-
-
-
 
 <!-- hero: the demonstration clip goes on the next line, as a github.com/user-attachments URL -->
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)
@@ -35,31 +26,6 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 
 ---
 
-## Summary
-
-Measured figures, and the method behind them, are in
-[PERFORMANCE.md](PERFORMANCE.md).
-
-| | |
-|---|---|
-| Formats | Standalone application; VST3 and LV2 plugins from the same engine, and an Audio Unit on macOS. Raspberry Pi builds are standalone only. |
-| Sample playback | Per-pipe attack, sustain loop and matched release tail, crossfaded rather than cut. Four-point interpolation on transposed ranks. |
-| Memory | Measured on a 44-stop, 17 GB set ([the report](PERFORMANCE.md)): up to **9.3x less** than holding every sample as 32-bit float, and the organ opens up to **3x faster**. Samples are held at 24-bit, bit-for-bit identical to the files (1.3x less), or at 16-bit; a stereo set can be folded to mono as it loads. Release tails stream from disk into per-voice ring buffers refilled by a background thread, which leaves 56% of the sample data on disk. 21.6 GB at 32-bit float, 16.2 GB at 24-bit, 4.65 GB at 16-bit with releases streamed, 2.33 GB folded to mono. Sample data can also be converted to the device's rate as it loads, for libraries recorded at 96 kHz. |
-| Cache | The decoded samples kept as one file, so the next load of the same organ is one read instead of 12,148 decodes: up to **5x faster** sample loading. Keyed to the definition and every setting that changes the bytes, so a changed setting rebuilds the cache instead of reading a stale one. One file by default, replaced as organs change; one per organ, or off. |
-| Wind | Compartments, bellows, valves and per-pipe air demand solved as a physical system, for sets that describe their pneumatics. Registration load lowers pressure; tuning and attack follow. |
-| Voicing | Level and tuning per rank and per pipe, composed rather than overriding. Applied once at note start, so there is no per-sample cost and it works with DSP off. Two full sets, A and B, for comparison. |
-| Registration | Couplers resolved through the set's own switch graph. Thumb pistons, combinations with capture, general cancel, crescendo, sequencer over the generals. |
-| Tuning | Equal plus seven historical temperaments, generated from fifth-chain definitions. An unrecognised temperament is reported, not silently replaced. |
-| Expression | Per-box enclosure filtering. Tremulant amplitude and pitch modulation per pipe. |
-| Polyphony | Bounded, with voice stealing: decaying releases first, then oldest and quietest. A key just pressed is never stolen. |
-| Audio routing | Ranks assigned to output pairs, saved per organ; pairs summed in stereo. |
-| MIDI | All input devices simultaneously, each mapped to a division. Per-drawstop learn. MIDI out to a physical console; jamb display over system exclusive. |
-| Console | Rendered from the set's definition: artwork, drawstops, pistons, shoes, drawn manuals and pedalboards, multiple pages. Stop list as a fallback for sets without artwork. |
-| Recording | MIDI capture including stop and shoe movement, replayable through a different registration; audio capture in parallel. |
-| Platforms | Windows, macOS on Apple silicon and Intel, Linux x86-64, Raspberry Pi 64-bit and 32-bit. |
-
----
-
 ## What it is
 
 Sampled pipe organs are distributed as large libraries: a recording of every
@@ -68,14 +34,10 @@ console is drawn, which key reaches which pipe, what the couplers do, how the
 wind system is built. Masterpiece reads those libraries and turns them back
 into a playable instrument.
 
-It is a fresh design rather than a fork. The console is the real one: the
-artwork, the drawstop positions, the keyboards and the pedalboard all come out
-of the set's own definition, so an organ looks and behaves like itself rather
-than a generic mixer with the stop names changed.
-
-It runs as a standalone application and as a VST3 or LV2 plugin — the same
+Written from scratch, it runs as a standalone application and as a VST3 or
+LV2 plugin — the same
 engine either way. On macOS it is also built as an Audio Unit, for both Apple
-silicon and Intel; those builds are not signed by Apple, so the first time you
+silicon and Intel; those builds ship unsigned, so the first time you
 open the application, right-click it and choose Open.
 
 ---
@@ -102,7 +64,8 @@ The same program, reading different libraries.
 | ![Nancy](screenshots/Nancy.jpg) | ![Lemmer](screenshots/Lemmer.jpg) |
 | 65 stops, four manuals · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/nancy/) | Flentrop, 1977–78 · 9 registers · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Lemmer.php) |
 
-Each organ above is a freely published sample library and is not part of this
+Each organ above is a freely published sample library, separate
+from this
 repository. Nine of the ten are produced by [Piotr
 Grabowski](https://piotrgrabowski.pl/); the tenth by [Augustine's Virtual
 Organs](https://hauptwerk-augustine.info/). Full credits:
@@ -119,24 +82,23 @@ on-screen keyboard instead.
 
 **Loading.** A large library is tens of gigabytes and takes minutes off a slow
 disk, so it loads on its own thread: the window stays live, the progress is
-real, and the estimate is built from the rate the load is actually achieving
-rather than from a file count. Cancel takes effect at the next file and throws
-away what it had read — a half-loaded organ that plays some notes and silently
-drops others would send you hunting through your sample set.
+real, and the estimate is built from the rate the load actually achieves.
+Cancel takes effect at the next file and throws
+away what it had read. A cancelled load leaves no partial organ behind.
 
 ![Loading an organ](screenshots/ui-loading.jpg)
 
 **Playing.** Drawstops, pistons and expression shoes are where the builder put
-them. A key pressed with the mouse takes the same path as the same note
-arriving over MIDI, so anything you can do from the console you can do from a
-real one. The meter shows what reaches the audio device — after the room, the
+them. A key pressed with the mouse takes the same path as that note arriving
+over MIDI, so anything done from the console works from a real one. The meter
+shows what reaches the audio device — after the room, the
 organ's own level and the master fader.
 
 ![The console, playing](screenshots/ui-console.jpg)
 
-**Registering without artwork.** Some libraries ship no console picture, and
-some ship sixty stops across two jambs you would rather not hunt through. The
-stop list is the same registration by another route, grouped by division.
+**Registering without artwork.** The stop list covers sets with no console
+picture, or stops spread across several jambs: the same registration,
+grouped by division.
 
 ![The stop list](screenshots/ui-stoplist.jpg)
 
@@ -144,62 +106,60 @@ stop list is the same registration by another route, grouped by division.
 only* bypasses every refinement at once for a machine that cannot afford them.
 Preload and resident format decide how much of a library has to fit in RAM;
 streaming holds only the head of each release tail and fetches the rest while
-it plays. Nothing here writes to disk on its own — changes apply immediately,
+it plays. Disk writes happen only on request — changes apply immediately,
 and you choose afterwards whether to forget them, keep them for this organ, or
 make them the default for every organ.
 
 ![Engine settings](screenshots/ui-engine.jpg)
 
-**Routing.** No sample library says anything about audio routing, so this is
-yours to decide — like the MIDI mapping. Output pairs and their device channels
+**Routing.** Sample libraries describe no audio routing. Output pairs and
+their device channels
 carry across organs; which rank goes where is saved per organ, because a rank
-number means nothing in a different instrument. A rank you never touch plays
-through the first pair, so an organ is audible before you open this page, and
-in stereo the pairs are summed so nothing disappears when you split them up.
+number means nothing in a different instrument. An unrouted rank plays
+through the first pair, so an organ is audible before you open this page. In
+stereo the pairs are summed, so every rank stays audible when you split them up.
 
 ![Mixer](screenshots/ui-mixer.jpg)
 
-**Voicing.** A rank adjustment and a single-pipe adjustment add, so pulling one
-sour pipe into tune does not throw away the trim you put on the rank it belongs
-to. A and B are two complete sets: make a change, swap, and hear it against
-what was there before, because from memory the comparison always flatters
-whichever you heard last. Level and tuning are a multiply and a ratio taken
+**Voicing.** Rank and per-pipe level and tuning adjustments add, so correcting
+one pipe keeps the rank trim.
+A and B are two complete sets for direct comparison of a change against
+what was there before. Level and tuning are a multiply and a ratio taken
 once when a note starts, so they cost nothing while it sounds and work with the
 DSP switched off.
 
 ![Voicing](screenshots/ui-voicing.jpg)
 
-**Getting back to an organ.** A slot number is something a thumb piston can be
-mapped to; a file path is not. Combination sets are whole registration books —
+**Getting back to an organ.** Favourites point at numbered slots, which thumb
+pistons trigger. Combination sets hold whole registration books —
 one for a recital, another for a service — and changing set saves the one you
 are leaving first.
 
 ![Favourites and combination sets](screenshots/ui-favourites.jpg)
 
 **Your console.** Which manual a key plays is decided by its MIDI channel, and
-no organ file can guess how your console is wired. Right-click a drawstop and
+each console is wired differently. Right-click a drawstop and
 move the real one to learn it; the sequencer pistons and the page-turn actions
-get their own learn buttons, because the organ does not declare them and there
-is nothing on screen to right-click.
+get their own learn buttons, with nothing on screen to right-click.
 
 ![MIDI](screenshots/ui-midi.jpg)
 
 **Jamb displays.** The little text panel on a wired console, driven by system
-exclusive. The bytes that introduce the message belong to the display hardware
-rather than to the organ, so they are typed in rather than guessed, and only
+exclusive. The bytes that introduce the message belong to the display hardware,
+so you type them in, and only
 lines whose text actually changed are sent.
 
 ![Console display](screenshots/ui-display.jpg)
 
 **Practising and recording.** A MIDI recording is the performance and can be
 replayed through a different registration; the audio capture is what it sounded
-like. Both at once is the useful combination.
+like. Record both at once.
 
 ![Recorder](screenshots/ui-recorder.jpg)
 
 **The room.** Convolution reverb for libraries recorded dry. A library recorded
-in its own building already carries that acoustic in the samples, and a second
-room on top of it mostly muddies — this earns its keep on a dry set.
+in its own building already carries that acoustic in the samples; a second
+room on top muddies it.
 
 ![Room](screenshots/ui-room.jpg)
 
@@ -218,34 +178,32 @@ own convolution after it, render a take offline, or give each division its own
 track through the multi-channel routing.
 
 **The sound.** Each pipe plays its own recording — attack, sustain loop, and a
-matched release tail crossfaded in rather than cut to, so releasing a key
-leaves the room's own decay behind. Transposed ranks are resampled with
+matched release tail crossfaded in, so releases keep the room's own decay.
+Transposed ranks are resampled with
 four-point interpolation. When polyphony runs out, the voice that gets stolen
-is a decaying release first and the oldest quietest note next; a note you have
-just pressed is never taken.
+is a decaying release first and the oldest quietest note next. A just-pressed
+key is exempt from stealing.
 
 **Tuning.** Equal temperament, or one of seven historical temperaments, each
-generated from its own fifth-chain definition rather than transcribed. A set
-naming a temperament nobody recognises is reported, never quietly played in
-equal.
+generated from its own fifth-chain definition. An unrecognised temperament
+is reported.
 
 **Expression and tremulants.** Enclosed divisions are filtered per box as the
-shoe moves. Tremulants modulate amplitude and pitch per pipe, so one chest can
-wobble while another does not.
+shoe moves. Tremulants modulate amplitude and pitch per pipe, each chest with
+its own depth.
 
 **Wind.** For sets that describe their own pneumatics — compartments, bellows,
 valves, and the air each pipe draws — the wind system is solved as a physical
 one, and a large registration sags the wind the way the real instrument does.
 
-**Registration.** Couplers, because a key reaching a pipe is a walk through the
-instrument's own switch graph rather than a checkbox. Thumb pistons and
+**Registration.** Couplers work through the instrument's own switch graph.
+Thumb pistons and
 combinations with capture, a general cancel, a crescendo, and a sequencer that
 steps through the generals. Captured registrations are saved beside your own
-settings, never written back into the sample library.
+settings.
 
-**Voicing.** Level and tuning per rank and per individual pipe. The two add
-rather than replace, so pulling one sour pipe into tune keeps the trim on its
-rank. A and B are two complete sets, for comparing a change against what was
+**Voicing.** Level and tuning per rank and per individual pipe. The two add,
+so correcting one pipe keeps the rank trim. A and B are two complete sets, for comparing a change against what was
 there before. Both are a multiply and a ratio taken once when a note starts, so
 they cost nothing while it sounds and work with the DSP switched off.
 
@@ -262,6 +220,28 @@ physical console.
 
 **Alongside the organ.** A metronome, impulse-response reverb, and a recorder
 that captures stop changes and shoe movements as well as notes.
+
+---
+
+## Performance
+
+Measured on a 44-stop, 17 GB set. Method and full figures:
+[PERFORMANCE.md](PERFORMANCE.md).
+
+- **Memory:** up to **9.3x less** than holding every sample as 32-bit float.
+  Samples are held at 24-bit, bit-for-bit identical to the files (1.3x
+  less), or at 16-bit; a stereo set can be folded to mono as it loads.
+  Release tails stream from disk into per-voice ring buffers refilled by a
+  background thread, leaving 56% of the sample data on disk. 21.6 GB at
+  32-bit float becomes 16.2 GB at 24-bit, 4.65 GB at 16-bit with releases
+  streamed, 2.33 GB folded to mono. Sample data can be converted to the
+  device's rate as it loads, for libraries recorded at 96 kHz.
+- **Loading:** the organ opens up to **3x faster**. Decoded samples are kept
+  as one cache file, so the next load of the same organ is one read instead
+  of 12,148 decodes: up to **5x faster** sample loading. The cache is keyed
+  to the definition and every setting that changes the bytes, so a changed
+  setting rebuilds it instead of reading a stale one. One file by default,
+  replaced as organs change; one per organ, or off.
 
 ---
 
@@ -284,7 +264,7 @@ Presets are also provided for each CI target: `ci-linux`, `ci-macos`,
 
 Launch the app, then **Load organ…** and choose the set's XML definition.
 
-Two flags are useful when you do not want to wait on a multi-gigabyte load:
+Two flags are useful for skipping a multi-gigabyte load:
 
 ```
 Masterpiece --odf "<path to the definition>" --gui-only
@@ -341,7 +321,7 @@ open-source projects open alongside it, and is much the better for them:
 - **[HISE](https://github.com/christophhart/HISE)** — the streaming design:
   per-voice ring buffers refilled off a background thread
 
-None of their code is compiled in.
+The implementation throughout is original; all four stand as references.
 
 Sample libraries and MIDI sequences are credited in
 **[ATTRIBUTION.md](ATTRIBUTION.md)**.
@@ -350,7 +330,6 @@ Sample libraries and MIDI sequences are credited in
 
 ## Licence
 
-Hauptwerk is a trademark of its owner. Masterpiece is an independent project,
-not affiliated with or endorsed by it.
+Hauptwerk is a trademark of its owner. Masterpiece is an independent project.
 
 GPL-3.0-only. See [`LICENCE`](LICENCE) and [`COPYING`](COPYING).
