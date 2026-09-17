@@ -35,8 +35,8 @@ wind system is built. Masterpiece reads those libraries and turns them back
 into a playable instrument.
 
 Written from scratch, it runs as a standalone application and as a VST3 or
-LV2 plugin — the same
-engine either way. On macOS it is also built as an Audio Unit, for both Apple
+LV2 plugin — the same engine either way. On macOS it is also built as an
+Audio Unit, for both Apple
 silicon and Intel; those builds ship unsigned, so the first time you
 open the application, right-click it and choose Open.
 
@@ -64,8 +64,7 @@ The same program, reading different libraries.
 | ![Nancy](screenshots/Nancy.jpg) | ![Lemmer](screenshots/Lemmer.jpg) |
 | 65 stops, four manuals · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/nancy/) | Flentrop, 1977–78 · 9 registers · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Lemmer.php) |
 
-Each organ above is a freely published sample library, separate
-from this
+Each organ above is a freely published sample library, separate from this
 repository. Nine of the ten are produced by [Piotr
 Grabowski](https://piotrgrabowski.pl/); the tenth by [Augustine's Virtual
 Organs](https://hauptwerk-augustine.info/). Full credits:
@@ -91,8 +90,8 @@ away what it had read. A cancelled load leaves no partial organ behind.
 **Playing.** Drawstops, pistons and expression shoes are where the builder put
 them. A key pressed with the mouse takes the same path as that note arriving
 over MIDI, so anything done from the console works from a real one. The meter
-shows what reaches the audio device — after the room, the
-organ's own level and the master fader.
+shows what reaches the audio device — after the room, the organ's own level
+and the master fader.
 
 ![The console, playing](screenshots/ui-console.jpg)
 
@@ -113,8 +112,8 @@ make them the default for every organ.
 ![Engine settings](screenshots/ui-engine.jpg)
 
 **Routing.** Sample libraries describe no audio routing. Output pairs and
-their device channels
-carry across organs; which rank goes where is saved per organ, because a rank
+their device channels carry across organs; which rank goes where is saved
+per organ, because a rank
 number means nothing in a different instrument. An unrouted rank plays
 through the first pair, so an organ is audible before you open this page. In
 stereo the pairs are summed, so every rank stays audible when you split them up.
@@ -146,8 +145,7 @@ get their own learn buttons, with nothing on screen to right-click.
 
 **Jamb displays.** The little text panel on a wired console, driven by system
 exclusive. The bytes that introduce the message belong to the display hardware,
-so you type them in, and only
-lines whose text actually changed are sent.
+so you type them in, and only lines whose text actually changed are sent.
 
 ![Console display](screenshots/ui-display.jpg)
 
@@ -179,8 +177,7 @@ track through the multi-channel routing.
 
 **The sound.** Each pipe plays its own recording — attack, sustain loop, and a
 matched release tail crossfaded in, so releases keep the room's own decay.
-Transposed ranks are resampled with
-four-point interpolation. When polyphony runs out, the voice that gets stolen
+Transposed ranks are resampled with four-point interpolation. When polyphony runs out, the voice that gets stolen
 is a decaying release first and the oldest quietest note next. A just-pressed
 key is exempt from stealing.
 
@@ -203,8 +200,8 @@ steps through the generals. Captured registrations are saved beside your own
 settings.
 
 **Voicing.** Level and tuning per rank and per individual pipe. The two add,
-so correcting one pipe keeps the rank trim. A and B are two complete sets, for comparing a change against what was
-there before. Both are a multiply and a ratio taken once when a note starts, so
+so correcting one pipe keeps the rank trim. A and B are two complete sets,
+for comparing a change against what was there before. Both are a multiply and a ratio taken once when a note starts, so
 they cost nothing while it sounds and work with the DSP switched off.
 
 **Memory and streaming.** A large set can be held entirely in RAM, or its
