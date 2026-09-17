@@ -48,6 +48,10 @@ private:
   bool openMono_ = false;
   double openRate_ = 0.0;
   SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
+  // General config rather than per-organ state, but shown here because this
+  // is the panel about loading. Reverted like the rest; each change writes
+  // the global file at once.
+  bool openLoadTicks_ = false;
   // Set while a profile is writing the individual controls, so their
   // onChange handlers do not bounce the profile straight back to Custom.
   bool applyingProfile_ = false;
@@ -74,6 +78,7 @@ private:
   juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};
   juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
+  juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
   juce::Label memory_;
   juce::Label note_;
 };

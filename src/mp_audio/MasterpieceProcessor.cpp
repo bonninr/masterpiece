@@ -156,8 +156,65 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   outgoing_.ensureSize(1024);
 }
 
-void MasterpieceProcessor::refreshMixerBuses() {
-  mixBusOrder_.clear();
+void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
+  if (!loadTicks_.load(std::memory_order_acquire)) {
+    loadTickLeft_ = 0;
+    return;
+  }
+
+  // Which percent the load has reached, when that question has an answer.
+  // Only the sample phase counts items; earlier phases have no bar to tap
+  // along with, and Done is the 100% tap.
+  const auto phase = loadProgress_.phase.load(std::memory_order_acquire);
+  int pct = -1;
+  if (phase == LoadProgress::Phase::Done) {
+    pct = 100;
+  } else if (phase == LoadProgress::Phase::LoadingSamples) {
+    const double f = loadProgress_.fraction();
+    if (f >= 0.0) pct = static_cast<int>(f * 100.0);
+  } else if (phase == LoadProgress::Phase::Idle) {
+    loadTickNext_.store(10, std::memory_order_release);
+  }
+
+  const int next = loadTickNext_.load(std::memory_order_acquire);
+  const double rate0 = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  const int numCh0 = buffer.getNumChannels();
+  const int numFrames0 = buffer.getNumSamples();
+  if (numFrames0 > 0) {
+    loadTickCooldown_ -= static_cast<double>(numFrames0) / rate0;
+    if (loadTickCooldown_ < 0.0) loadTickCooldown_ = 0.0;
+  }
+  if (pct >= next && next <= 100) {
+    // At most one tap per block, and no faster than one every couple of
+    // seconds: a cached load jumps several thresholds in one block and must
+    // announce itself once rather than stuttering. Skipped thresholds are
+    // still consumed, so they never fire late.
+    if (loadTickCooldown_ <= 0.0 && numCh0 > 0) {
+      loadTickLeft_ = static_cast<int>(rate0 * 0.03);
+      loadTickPhase_ = 0.0;
+      loadTickAmp_ = 0.2;
+      loadTickCooldown_ = 2.0;
+    }
+    loadTickNext_.store(next + 10, std::memory_order_release);
+  }
+
+  if (loadTickLeft_ <= 0) return;
+  if (numCh0 <= 0 || numFrames0 <= 0) return;
+  const int n = std::min(loadTickLeft_, numFrames0);
+  const double step = 2.0 * 3.141592653589793 * 1760.0 / rate0;
+  // Exponential to near-silence across the tap: swift, with no click where it ends.
+  const double decay = std::pow(0.001, 1.0 / (rate0 * 0.03));
+  for (int i = 0; i < n; ++i) {
+    const float s = static_cast<float>(loadTickAmp_ * std::sin(loadTickPhase_));
+    for (int ch = 0; ch < numCh0; ++ch)
+      buffer.addSample(ch, i, s);
+    loadTickPhase_ += step;
+    loadTickAmp_ *= decay;
+  }
+  loadTickLeft_ -= n;
+}
+
+void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
   mixBusIndexOf_.clear();
   for (const auto& b : mixer_.buses) {
     if (b.id.value == 0) continue;
@@ -1117,6 +1174,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "# Masterpiece defaults for organs that have no settings of their own\n";
   text << globalBody_;
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  text << "loadticks "
+       << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
 
@@ -1157,6 +1216,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
     if (key == "reopenlast") {
       reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "loadticks") {
+      loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
     } else if (key == "favourite") {
@@ -1224,6 +1285,14 @@ void MasterpieceProcessor::setReopenLastOrgan(bool on) {
   reopenLastOrgan_ = on;
   // Not saveGlobalDefaults(): a preference about startup is not a request to
   // adopt the open organ's settings as everyone's.
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLoadTicks(bool on) {
+  if (loadTicks_.load(std::memory_order_acquire) == on) return;
+  loadTicks_.store(on, std::memory_order_release);
+  // Written at once, like the startup preference above: a general config is
+  // not something a player sets per organ.
   writeGlobalFile();
 }
 
@@ -2035,6 +2104,10 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // after the master fader and is not affected by it.
   metronome_.process(buffer);
 
+  // Load-progress taps, if asked for. Audible, post-recording, beside the
+  // metronome: the same kind of thing for the same reason.
+  maybeLoadTick(buffer);
+
   // Meter last, so it shows what actually leaves. The rise is instant — a
   // meter that eases upward under-reads exactly when it matters — and the
   // fall is slow, which is what makes a sustained tutti readable.
@@ -2087,6 +2160,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Whoever starts a load clears the cancel flag, so a Cancel that arrived
   // after the previous load already finished cannot kill this one.
   loadProgress_.cancelled.store(false, std::memory_order_release);
+  // And the tap thresholds start over, so the first 10% of this load taps
+  // rather than whatever the last one reached.
+  loadTickNext_.store(10, std::memory_order_release);
   loadProgress_.beginPhase(LoadProgress::Phase::ReadingDefinition);
 
   if (!odfFile.existsAsFile()) {

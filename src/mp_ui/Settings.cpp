@@ -33,6 +33,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openMono_ = proc_.loadMono();
   openRate_ = proc_.loadSampleRate();
   openCache_ = proc_.cacheMode();
+  openLoadTicks_ = proc_.loadTicks();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -162,6 +163,15 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     syncProfile();
   };
 
+  // Audible load progress for large organs. General config: written to the
+  // global file at once rather than kept for an organ, and off unless asked.
+  addAndMakeVisible(loadTicks_);
+  loadTicks_.setToggleState(proc_.loadTicks(), juce::dontSendNotification);
+  loadTicks_.setTooltip(
+      "Play a short tap at each 10% of an organ load, so a large set can be "
+      "followed by ear.");
+  loadTicks_.onClick = [this] { proc_.setLoadTicks(loadTicks_.getToggleState()); };
+
   syncProfile();
 
   // Nothing on this panel writes to disk on its own. Changes are live the
@@ -214,6 +224,8 @@ void EnginePanel::revert() {
   proc_.setStreamReleases(openStream_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
+  proc_.setLoadTicks(openLoadTicks_);
+  loadTicks_.setToggleState(openLoadTicks_, juce::dontSendNotification);
   proc_.setLoadSampleRate(openRate_);
   proc_.setCacheMode(openCache_);
   cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
@@ -383,6 +395,8 @@ void EnginePanel::resized() {
   stream_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
   mono_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(2);
+  loadTicks_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);

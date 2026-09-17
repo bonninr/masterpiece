@@ -471,6 +471,10 @@ public:
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
   void setReopenLastOrgan(bool on);
+  // Audible load progress: a swift tap at each 10% of a load. Off unless
+  // asked. Global, never per organ: it suits the room, not the instrument.
+  bool loadTicks() const { return loadTicks_.load(std::memory_order_acquire); }
+  void setLoadTicks(bool on);
   // Remembering which organ was open must not quietly promote that organ's
   // settings to everyone's defaults, so this rewrites the file around the
   // defaults already in it rather than around the live state.
@@ -662,7 +666,10 @@ private:
   // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
   // allocated here.
   void renderBuses(juce::AudioBuffer<float>& buffer);
-  void renderOneMixBus(juce::AudioBuffer<float>& dest, int mixBusFilter);
+  // Sound one load-progress tap when a 10% threshold passes and render any
+  // tap in flight. Audio thread only, after the recorder: taps are a
+  // monitoring aid, not the performance.
+  void maybeLoadTick(juce::AudioBuffer<float>& buffer);  void renderOneMixBus(juce::AudioBuffer<float>& dest, int mixBusFilter);
   // Which bus a pipe belongs to: its enclosure's index, or the unenclosed bus.
   int busForPipe(Id pipeId) const;
   // Which MIXER bus a pipe of this rank speaks through, as a dense index into
@@ -860,6 +867,19 @@ private:
 
   int64_t preloadHead_ = 0;
   bool reopenLastOrgan_ = true;
+  std::atomic<bool> loadTicks_{false};
+  // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
+  // load and advanced by the audio thread, so both sides use an atomic and
+  // neither waits on the other.
+  std::atomic<int> loadTickNext_{10};
+  // A tap in flight. Audio thread only: set when a threshold passes and
+  // rendered into the buffer over the next blocks.
+  int loadTickLeft_ = 0;
+  double loadTickPhase_ = 0.0;
+  double loadTickAmp_ = 0.0;
+  // Seconds before another tap may start. A cached load crosses every
+  // threshold in a few blocks; without this it machine-guns ten taps.
+  double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
