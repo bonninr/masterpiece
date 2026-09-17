@@ -347,9 +347,21 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   return slot;
 }
 
+void VoiceEngine::noteOffPipe(uint64_t noteId, Id pipeId,
+                              const NoteRelease& release) {
+  releaseVoices(noteId, pipeId, release);
+}
+
 void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
+  releaseVoices(noteId, 0, release);
+}
+
+// pipeId 0 means every pipe of the note; otherwise only that one.
+void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
+                                const NoteRelease& release) {
   for (auto& v : voices_) {
     if (!v.active() || v.noteId != noteId) continue;
+    if (pipeId != 0 && v.pipeId != pipeId) continue;
     if (v.phase == VoicePhase::Release) continue;
 
     // Pick the release sample that matches the attack this voice actually

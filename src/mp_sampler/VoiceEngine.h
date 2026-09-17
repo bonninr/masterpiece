@@ -309,6 +309,15 @@ public:
   // Move every voice of this key press into release. `strike` carries the
   // key-off context the release matrix selects on.
   void noteOff(uint64_t noteId, const NoteRelease& release);
+  // Release only the voices of ONE pipe of a held note, leaving the rest of
+  // the note sounding. This is a stop pushed in while a key is down: that
+  // rank stops speaking, the others carry on, and the key is still held.
+  void noteOffPipe(uint64_t noteId, Id pipeId, const NoteRelease& release);
+
+private:
+  // The body of both: one pipe of a note, or all of them.
+  void releaseVoices(uint64_t noteId, Id pipeId, const NoteRelease& release);
+public:
 
   // Mix active voices into `out` (numChannels planar buffers, additive).
   //

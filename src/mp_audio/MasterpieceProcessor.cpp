@@ -609,9 +609,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     else if (msg.isNoteOff())
       stopNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
-      for (const auto& [note, id] : soundingNotes_) {
+      for (const auto& [note, held] : soundingNotes_) {
         (void)note;
-        voices_.noteOff(id, NoteRelease{});
+        voices_.noteOff(held.id, NoteRelease{});
       }
     else if (msg.isController())
       // With no mapping the control id IS the CC number, which is enough to
@@ -1359,43 +1359,14 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   if (it == soundingNotes_.end()) return;
   NoteRelease rel;
   rel.velocity = velocity;
-  voices_.noteOff(it->second, rel);
+  voices_.noteOff(it->second.id, rel);
   soundingNotes_.erase(it);
 }
 
-void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
-                                               int midiNote, int velocity) {
-  if (engagedStops_.empty()) {
-    // nothing drawn: the organ is silent
-    if (logMidi_.load(std::memory_order_acquire))
-      juce::Logger::writeToLog(
-          "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
-    return;
-  }
-
-  // A key that is already down is being struck again. Let go of it first.
-  //
-  // soundingNotes_ holds ONE note id per key, and the last line of this
-  // function overwrites it. Without this the previous id is simply lost: its
-  // voices are still running, nothing holds their handle any more, and no
-  // note-off will ever reach them. A pipe has no decay, so each orphan sounds
-  // until the organ is unloaded.
-  //
-  // It went unnoticed because it needs a repeated note to happen at all. One
-  // note is perfect; a piece full of them silts up as it plays, which is what
-  // a toccata sounds like when its rests are louder than its chords.
-  //
-  // A real key cannot be pressed twice without being released, so releasing
-  // the old note is also what the instrument would do.
-  const auto already = soundingNotes_.find(noteKeyId);
-  if (already != soundingNotes_.end()) {
-    voices_.noteOff(already->second, NoteRelease{});
-    soundingNotes_.erase(already);
-  }
-
-  const uint64_t noteId = nextNoteId_++;
+bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
+                                             int velocity, uint64_t noteId,
+                                             const std::unordered_set<Id>& stops) {
   bool anyStarted = false;
-
   // Which divisions this key actually reaches, at which pitches. This is where
   // couplers live: a drawn "Great to Pedal" is an edge of the key-flow graph
   // that is only walkable while its switch is engaged.
@@ -1408,7 +1379,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
     const int divisionId = reached.divisionId;
     resolveScratch_.clear();
     const auto pipes =
-        resolvePipes(model_, divisionId, reached.midiNote, engagedStops_);
+        resolvePipes(model_, divisionId, reached.midiNote, stops);
     for (const auto& rp : pipes) {
       const auto rankIt = model_.ranks.find(rp.rankId);
       if (rankIt == model_.ranks.end()) continue;
@@ -1496,7 +1467,46 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
     }
   }
 
-  if (anyStarted) soundingNotes_[noteKeyId] = noteId;
+  return anyStarted;
+}
+
+void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
+                                               int midiNote, int velocity) {
+  if (engagedStops_.empty()) {
+    // nothing drawn: the organ is silent
+    if (logMidi_.load(std::memory_order_acquire))
+      juce::Logger::writeToLog(
+          "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
+    return;
+  }
+
+  // A key that is already down is being struck again. Let go of it first.
+  //
+  // soundingNotes_ holds ONE note id per key, and the last line of this
+  // function overwrites it. Without this the previous id is simply lost: its
+  // voices are still running, nothing holds their handle any more, and no
+  // note-off will ever reach them. A pipe has no decay, so each orphan sounds
+  // until the organ is unloaded.
+  //
+  // It went unnoticed because it needs a repeated note to happen at all. One
+  // note is perfect; a piece full of them silts up as it plays, which is what
+  // a toccata sounds like when its rests are louder than its chords.
+  //
+  // A real key cannot be pressed twice without being released, so releasing
+  // the old note is also what the instrument would do.
+  const auto already = soundingNotes_.find(noteKeyId);
+  if (already != soundingNotes_.end()) {
+    voices_.noteOff(already->second.id, NoteRelease{});
+    soundingNotes_.erase(already);
+  }
+
+  const uint64_t noteId = nextNoteId_++;
+
+  const bool anyStarted =
+      startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_);
+
+  if (anyStarted)
+    soundingNotes_[noteKeyId] = HeldNote{noteId, keyboard, midiNote, velocity};
 
   if (logMidi_.load(std::memory_order_acquire)) {
     // Which divisions, and what is drawn on them: "no pipe answered" is either
@@ -1521,9 +1531,63 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   }
 }
 
+// A stop moved while keys are down. On a real organ the slider admits wind to
+// a rank that is already being asked for, so the pipe speaks at once and stops
+// at once when it is pushed in -- without the key moving. Reported by a player:
+// "if I'm playing a note and turn on a stop the pipe doesn't play until I play
+// the note again. The note doesn't stop when I turn the stop off."
+void MasterpieceProcessor::applyStopChangeToHeldNotes() {
+  if (soundingNotes_.empty()) {
+    appliedStops_ = engagedStops_;
+    return;
+  }
+
+  // What was drawn, and what was pushed in, since the last block.
+  stopDiffScratch_.clear();
+  for (Id s : engagedStops_)
+    if (appliedStops_.count(s) == 0) stopDiffScratch_.push_back(s);
+  if (!stopDiffScratch_.empty()) {
+    stopSetScratch_.clear();
+    stopSetScratch_.insert(stopDiffScratch_.begin(), stopDiffScratch_.end());
+    // Started under the key's own note id, so the note-off still to come
+    // releases these along with the rest of the note.
+    for (const auto& [key, held] : soundingNotes_) {
+      (void)key;
+      startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
+                        stopSetScratch_);
+    }
+  }
+
+  stopDiffScratch_.clear();
+  for (Id s : appliedStops_)
+    if (engagedStops_.count(s) == 0) stopDiffScratch_.push_back(s);
+  if (!stopDiffScratch_.empty()) {
+    stopSetScratch_.clear();
+    stopSetScratch_.insert(stopDiffScratch_.begin(), stopDiffScratch_.end());
+    for (const auto& [key, held] : soundingNotes_) {
+      (void)key;
+      expandScratch_.clear();
+      couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote,
+                           static_cast<float>(held.velocity) / 127.0f,
+                           engagedSwitches_, keyFlow_, expandScratch_);
+      for (const ExpandedNote& reached : expandScratch_) {
+        const auto pipes = resolvePipes(model_, reached.divisionId,
+                                        reached.midiNote, stopSetScratch_);
+        // Only this rank's pipes let go; the rest of the note plays on, and
+        // the key is still down.
+        for (const auto& rp : pipes)
+          voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
+      }
+    }
+  }
+
+  appliedStops_ = engagedStops_;
+}
+
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
+  stopsChanged_.store(true, std::memory_order_release);
 
   // Drawing a stop is a physical act on a real console, and sample sets record
   // it. Move the knob a player would move, not the internal node it feeds:
@@ -1678,6 +1742,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     if (stopIt != stopBySwitch_.end()) {
       if (nowEngaged) engagedStops_.insert(stopIt->second);
       else engagedStops_.erase(stopIt->second);
+      stopsChanged_.store(true, std::memory_order_release);
     }
     // And every stop the moved switch STANDS for, whether or not the wiring
     // reaches it: on Friesach the knob and the stop's own switch are
@@ -1913,6 +1978,11 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
       keyboardState_.allNotesOff(ch);
     }
   }
+
+  // A stop drawn or pushed in since the last block reaches the notes already
+  // sounding, before this block's own keys are dealt with.
+  if (stopsChanged_.exchange(false, std::memory_order_acq_rel))
+    applyStopChangeToHeldNotes();
 
   outgoing_.clear();
   handleMidi(midi);
@@ -2308,6 +2378,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   engagedStops_.clear();
   for (const auto& [switchId, stopId] : stopBySwitch_)
     if (switches_.engaged(switchId)) engagedStops_.insert(stopId);
+  // A new organ starts a new registration, so what the audio thread believes
+  // is drawn has to be replaced rather than compared with the last organ's.
+  stopsChanged_.store(true, std::memory_order_release);
 
   // Key flow. This is what makes couplers work at all: without it every
   // division sounds on every key, and drawing "Great to Pedal" changes

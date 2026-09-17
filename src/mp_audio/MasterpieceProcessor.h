@@ -921,7 +921,31 @@ private:
   std::vector<ResolvedPipe> resolveScratch_;
   // (channel, key) -> the note id its voices were started under, so note-off
   // can find them again.
-  std::unordered_map<int, uint64_t> soundingNotes_;
+  // A key that is down, and enough about it to work out again what it should
+  // be sounding. Needed because the registration can change under a held note:
+  // on a real organ, drawing a stop while a key is down makes that rank speak,
+  // and pushing it in silences it, without touching the key.
+  struct HeldNote {
+    uint64_t id = 0;      // groups this key's voices
+    Id keyboard = 0;
+    int midiNote = 60;
+    int velocity = 64;
+  };
+  std::unordered_map<int, HeldNote> soundingNotes_;
+  // The registration the sounding notes were started with, owned by the audio
+  // thread, so a change can be told from what is already playing.
+  std::unordered_set<Id> appliedStops_;
+  std::atomic<bool> stopsChanged_{false};
+  std::vector<Id> stopDiffScratch_;
+  std::unordered_set<Id> stopSetScratch_;
+
+  // Start the voices one key press asks for, drawing only on `stops`. The
+  // whole registration when a key is struck; only what just moved when a stop
+  // changes under a key already down. Returns whether any pipe answered.
+  bool startVoicesForKey(Id keyboard, int midiNote, int velocity,
+                         uint64_t noteId, const std::unordered_set<Id>& stops);
+  // Bring the sounding notes into line with the registration.
+  void applyStopChangeToHeldNotes();
   // The keyboard an unassigned channel falls back to when the organ declares
   // no assignment code. Resolved once at load.
   Id fallbackKeyboard_ = 0;
