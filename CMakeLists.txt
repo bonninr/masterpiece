@@ -176,3 +176,6 @@ if(MP_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
   enable_testing()
   add_subdirectory(tests)
 endif()
+
+# Installers (NSIS on Windows, .deb on Linux). See cmake/Packaging.cmake.
+include(cmake/Packaging.cmake)

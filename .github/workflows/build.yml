@@ -202,6 +202,142 @@ jobs:
           ditto -c -k --keepParent "$stage" "dist/${{ matrix.artifact }}.zip"
           ls -lh dist
 
+      # ---- Installers -------------------------------------------------------
+      # The setup program and the .deb are built by CPack from the same install
+      # rules (cmake/Packaging.cmake), then installed on this runner exactly as a
+      # player would install them, and checked: installed where expected,
+      # nothing extra packed, the installed program starts, and it uninstalls
+      # clean. A package that is only built is a package nobody has tried.
+
+      - name: Installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # makensis ships with the runner image; install it if it ever stops.
+          $nsis = "${env:ProgramFiles(x86)}\NSIS"
+          if (-not (Test-Path "$nsis\makensis.exe")) { choco install nsis --no-progress -y }
+          $env:PATH = "$nsis;$env:PATH"
+          # By full path: on this runner a bare "cpack" is Chocolatey's.
+          $cpack = Join-Path (Split-Path (Get-Command cmake).Source) "cpack.exe"
+          Push-Location "build/${{ matrix.preset }}"
+          & $cpack -G NSIS
+          if ($LASTEXITCODE -ne 0) { Get-Content _CPack_Packages/*/NSIS/NSISOutput.log -EA SilentlyContinue | Select-Object -Last 40; throw "cpack failed" }
+          Pop-Location
+          $setup = "build/${{ matrix.preset }}/masterpiece-windows-setup.exe"
+          if (-not (Test-Path $setup)) { throw "no installer was produced" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item $setup dist/
+          Get-Item dist/masterpiece-windows-setup.exe | Format-Table Name, Length
+
+      - name: Installer test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP "Masterpiece"
+          $key  = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Masterpiece'
+          $menu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Masterpiece"
+          $i = Start-Process dist/masterpiece-windows-setup.exe -ArgumentList "/S", "/D=$dest" -PassThru -Wait
+          if ($i.ExitCode -ne 0) { throw "silent install exited $($i.ExitCode)" }
+
+          $files = Get-ChildItem $dest -Recurse -File | ForEach-Object { $_.FullName.Substring($dest.Length + 1) } | Sort-Object
+          $files | ForEach-Object { Write-Host "  installed: $_" }
+          $expected = @("bin\Masterpiece.exe", "Uninstall.exe")
+          if (Compare-Object $files $expected) { throw "installed files differ from: $($expected -join ', ')" }
+          if (-not (Test-Path $key)) { throw "not registered for Add/Remove Programs" }
+          if (-not (Test-Path "$menu\Masterpiece.lnk")) { throw "no Start menu shortcut" }
+
+          $p = Start-Process (Join-Path $dest "bin\Masterpiece.exe") -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { throw "installed program exited early with $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+          Start-Sleep -Seconds 2
+
+          $u = Start-Process (Join-Path $dest "Uninstall.exe") -ArgumentList "/S" -PassThru -Wait
+          # The uninstaller copies itself away and returns before it is done.
+          for ($n = 0; $n -lt 60 -and ((Test-Path "$dest\bin\Masterpiece.exe") -or (Test-Path $key)); $n++) { Start-Sleep -Seconds 1 }
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dest\bin\Masterpiece.exe") { throw "uninstall left the program behind" }
+          if (Test-Path $key) { throw "uninstall left the registry entry behind" }
+          if (Test-Path "$menu\Masterpiece.lnk") { throw "uninstall left the Start menu shortcut behind" }
+          Write-Host "install, launch and uninstall all clean"
+
+      - name: Package (Linux .deb)
+        if: runner.os == 'Linux'
+        run: |
+          (cd build/${{ matrix.preset }} && cpack -G DEB)
+          DEB=$(ls build/${{ matrix.preset }}/masterpiece-linux-*.deb)
+          mkdir -p dist && cp "$DEB" dist/
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB"
+          # The binary inside must be the target's, not the build machine's.
+          tmp=$(mktemp -d) && dpkg-deb -x "$DEB" "$tmp"
+          file "$tmp/usr/bin/masterpiece"
+          test -x "$tmp/usr/bin/masterpiece"
+          test -f "$tmp/usr/share/applications/masterpiece.desktop"
+          test -f "$tmp/usr/share/icons/hicolor/256x256/apps/masterpiece.png"
+
+      # The ARM packages are installed in an emulated container of their own
+      # architecture, which is the only honest test of their dependency list.
+      - name: Emulation for the ARM package test
+        if: runner.os == 'Linux' && matrix.arm
+        uses: docker/setup-qemu-action@v3
+
+      - name: Package test (Linux .deb)
+        if: runner.os == 'Linux'
+        run: |
+          DEB=$(basename dist/masterpiece-linux-*.deb)
+          case "${{ matrix.debarch }}" in
+            arm64) platform=linux/arm64 ;;
+            armhf) platform=linux/arm/v7 ;;
+            *)     platform=linux/amd64 ;;
+          esac
+          # Both library namings: Debian 12 before the t64 renames, Ubuntu 24.04 after.
+          for image in debian:12 ubuntu:24.04; do
+            echo "== $image ($platform)"
+            docker run --rm --platform "$platform" -v "$PWD/dist:/pkg" "$image" bash -ec "
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq /pkg/$DEB >/dev/null
+              test -x /usr/bin/masterpiece
+              if ldd /usr/bin/masterpiece | grep 'not found'; then exit 1; fi
+              apt-get remove -y -qq masterpiece >/dev/null
+              test ! -e /usr/bin/masterpiece
+              echo 'installs, resolves every library, removes clean'
+            "
+          done
+
+      # A native package can also be started once installed. Only here: the
+      # emulated ARM containers would take many minutes to draw a window.
+      - name: Package launch check (Linux .deb)
+        if: runner.os == 'Linux' && !matrix.arm
+        run: |
+          DEB=$(basename dist/masterpiece-linux-*.deb)
+          docker run --rm -v "$PWD/dist:/pkg" ubuntu:24.04 bash -ec "
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq /pkg/$DEB xvfb xauth >/dev/null
+            set +e
+            timeout --signal=TERM 20s xvfb-run -a -s '-screen 0 1280x800x24' masterpiece
+            code=\$?
+            set -e
+            echo \"exit \$code\"
+            test \"\$code\" -eq 124
+          "
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: masterpiece-windows-setup
+          path: dist/masterpiece-windows-setup.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: ${{ matrix.artifact }}-deb
+          path: dist/masterpiece-linux-*.deb
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@v4
         if: matrix.mac
         with:

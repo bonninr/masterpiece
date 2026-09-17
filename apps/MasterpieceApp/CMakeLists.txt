@@ -3,7 +3,7 @@ juce_add_gui_app(MasterpieceApp
   PRODUCT_NAME "Masterpiece"
   COMPANY_NAME "Masterpiece"
   BUNDLE_ID "org.masterpiece.player"
-  ICON_BIG ""
+  ICON_BIG "${CMAKE_SOURCE_DIR}/packaging/masterpiece.png"
   ICON_SMALL ""
 )
 

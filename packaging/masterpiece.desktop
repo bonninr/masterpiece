@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Masterpiece
+GenericName=Pipe organ sample player
+Comment=Open-source pipe organ sample player
+Exec=masterpiece
+Icon=masterpiece
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+Keywords=organ;pipe organ;sampler;midi;

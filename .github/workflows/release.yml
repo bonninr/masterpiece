@@ -38,11 +38,14 @@ jobs:
           mkdir -p dist
           for d in artifacts/*/; do
             name=$(basename "$d")
-            # macOS arrives already packed: a .app loses its executable bit if
-            # it is uploaded as loose files, so that job zips it on the Mac.
-            if [ "$(ls "$d" | wc -l)" = 1 ] && [ -f "$d/${name}.zip" ]; then
-              cp "$d/${name}.zip" "dist/${name}.zip"
-              continue
+            # Already a finished file, published under its own name: the macOS
+            # zips (packed on the Mac, since a .app loses its executable bit as
+            # loose files), the Windows setup program and the .deb packages.
+            if [ "$(ls "$d" | wc -l)" = 1 ]; then
+              f=$(ls "$d")
+              case "$f" in
+                *.zip|*.exe|*.deb) cp "$d/$f" "dist/$f"; continue ;;
+              esac
             fi
             case "$name" in
               masterpiece-windows) ext=zip ;;
