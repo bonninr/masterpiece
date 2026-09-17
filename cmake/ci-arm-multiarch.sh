@@ -23,6 +23,13 @@ for f in /etc/apt/sources.list.d/*.sources; do
   grep -q '^Architectures:' "$f" || sudo sed -i '/^Types: deb$/a Architectures: amd64' "$f"
 done
 
+# Ubuntu 22.04 and earlier keep one-line entries in sources.list, which the
+# loop above does not touch. Same problem, same fix: say amd64 explicitly, or
+# apt asks the amd64-only mirror for ARM indexes and gets a 404.
+if [ -f /etc/apt/sources.list ]; then
+  sudo sed -i -E 's|^deb[[:space:]]+([a-z+]+:)|deb [arch=amd64] \1|' /etc/apt/sources.list
+fi
+
 # ARM lives on ports.ubuntu.com, including -security, for which
 # security.ubuntu.com answers 404.
 sudo tee "/etc/apt/sources.list.d/$ARCH.sources" >/dev/null <<EOF

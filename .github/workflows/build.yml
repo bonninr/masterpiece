@@ -238,10 +238,15 @@ jobs:
         run: |
           $dest = Join-Path $env:RUNNER_TEMP "Masterpiece"
           $key  = 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Masterpiece'
-          # Either Start menu: an installer may register for all users or
-          # just this one, and both are legitimate.
-          $menus = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Masterpiece",
-                     "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Masterpiece")
+          # Every place the shortcut may legitimately be: for all users or
+          # just this one, and in a folder of its own or directly under
+          # Programs -- a silent install has no page to choose a folder on.
+          $menus = @()
+          foreach ($root in "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+                            "$env:APPDATA\Microsoft\Windows\Start Menu\Programs") {
+            $menus += $root
+            $menus += "$root\Masterpiece"
+          }
           $i = Start-Process dist/masterpiece-windows-setup.exe -ArgumentList "/S", "/D=$dest" -PassThru -Wait
           if ($i.ExitCode -ne 0) { throw "silent install exited $($i.ExitCode)" }
 

@@ -53,7 +53,11 @@ if(WIN32)
   set(CPACK_PACKAGE_EXECUTABLES "Masterpiece" "Masterpiece")
   set(CPACK_CREATE_DESKTOP_LINKS "Masterpiece")
   set(CPACK_NSIS_DISPLAY_NAME "Masterpiece")
-  set(CPACK_NSIS_PACKAGE_NAME "Masterpiece ${PROJECT_VERSION}")
+  # No version in the name: it is the Start menu folder's default, and a
+  # folder per version would pile up. Spelled without quotes because CPack
+  # re-reads this value and quotes inside it split it into a list.
+  set(CPACK_NSIS_PACKAGE_NAME "Masterpiece")
+  set(CPACK_NSIS_DEFINES "!define MUI_STARTMENUPAGE_DEFAULTFOLDER Masterpiece")
   set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/bonninr/masterpiece")
   set(CPACK_NSIS_HELP_LINK "https://github.com/bonninr/masterpiece/issues")
   # Off, as GrandOrgue has it. When on, the installer first runs whatever
