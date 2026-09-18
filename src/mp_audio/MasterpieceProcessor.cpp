@@ -1324,6 +1324,12 @@ bool MasterpieceProcessor::saveMasterGain() const {
   juce::StringArray lines;
   if (f.existsAsFile())
     lines = juce::StringArray::fromLines(f.loadFileAsString());
+  // fromLines returns an empty last entry for text that ends in a newline,
+  // which every file written here does. Kept, it would be joined back with a
+  // newline of its own and the file would gain a blank line on every save --
+  // one per touch of the volume slider, for ever.
+  while (!lines.isEmpty() && lines[lines.size() - 1].trim().isEmpty())
+    lines.remove(lines.size() - 1);
   bool replaced = false;
   for (auto& line : lines) {
     if (line.upToFirstOccurrenceOf(" ", false, false).trim() == "gain") {

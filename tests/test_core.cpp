@@ -4729,8 +4729,25 @@ public:
              "lines the gain save did not own survive it untouched");
     MP_CHECK(lines.contains("gain 0.7500"),
              "and the gain line carries the new value");
-    MP_CHECK(lines.size() == 4,
+    // Counted without blank entries: fromLines reports one for the file's
+    // closing newline, and that is formatting, not content.
+    int contentLines = 0;
+    for (const auto& l : lines)
+      if (l.trim().isNotEmpty()) ++contentLines;
+    MP_CHECK(contentLines == 4,
              "the gain-only save neither duplicated nor dropped a line");
+
+    // And saving again must not grow the file. Before the writer dropped the
+    // trailing blank entry, every save added a blank line.
+    const auto sizeAfterOne = fileA.getSize();
+    setGain(0.6f);
+    proc.markMasterGainDirty();
+    proc.saveMasterGainIfDirty();
+    setGain(0.75f);
+    proc.markMasterGainDirty();
+    proc.saveMasterGainIfDirty();
+    MP_CHECK(fileA.getSize() == sizeAfterOne,
+             "repeated saves leave the file the same size");
   }
 };
 #endif // MP_TEST_HAS_AUDIO
