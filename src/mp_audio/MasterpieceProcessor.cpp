@@ -2229,10 +2229,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   // A Hauptwerk set puts its definitions in <root>/OrganDefinitions and its
   // audio in <root>/OrganInstallationPackages, so the root is the definition's
-  // grandparent. Fall back to the containing directory for a loose ODF.
-  juce::File root = odfFile.getParentDirectory();
-  if (root.getFileName().equalsIgnoreCase("OrganDefinitions"))
-    root = root.getParentDirectory();
+  // grandparent. deriveOrganRoot (mp_core, shared with the loader so the two
+  // never disagree) also copes with a set that has been reorganised with
+  // symlinks -- OrganDefinitions or OrganInstallationPackages relocated onto
+  // another drive -- where the plain parent walk can land somewhere that no
+  // longer has OrganInstallationPackages beside it.
+  const juce::File root(mp::deriveOrganRoot(odfFile.getFullPathName().toStdString()));
 
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
