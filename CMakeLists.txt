@@ -120,6 +120,28 @@ if(TARGET juce::juce_core)
     # raises a hard #error when it is left on without a VST2 target.
     JUCE_VST3_CAN_REPLACE_VST2=0
   )
+  # ASIO, on Windows only. It is the driver model a player with a real audio
+  # interface will look for, and without it the lowest latency on offer is
+  # WASAPI exclusive. GrandOrgue reaches for WDM-KS instead -- its users
+  # measure 10 ms at 64-sample buffers against WASAPI's 30 -- but JUCE has no
+  # WDM-KS backend, so that answer is not available here and this is.
+  #
+  # The old blocker was the licence: the Steinberg SDK was proprietary and
+  # needed a signed agreement, which is why GrandOrgue's sources can compile
+  # with ASIO and its official builds ship without it. Steinberg relicensed in
+  # October 2025, and the SDK JUCE bundles is now offered under "the Steinberg
+  # ASIO License, or alternatively ... the General Public License (GPL)
+  # Version 3", the choice being ours. Masterpiece is GPL-3.0-only, so we take
+  # the GPL arm; nothing is signed and nothing extra is downloaded. The
+  # headers travel with JUCE, in modules/juce_audio_devices/native/asio/.
+  #
+  # Windows-only because that is where the driver model exists. The flag is
+  # harmless elsewhere -- JUCE guards the code with JUCE_WINDOWS -- but a
+  # definition that only means something on one platform is clearer set on
+  # that platform.
+  if(WIN32)
+    add_compile_definitions(JUCE_ASIO=1)
+  endif()
   # macOS: prefer Apple's vDSP framework for audio processing to avoid SIMD
   # template instantiation issues with JUCE 9.0.1 on Apple Clang.
   if(APPLE)
