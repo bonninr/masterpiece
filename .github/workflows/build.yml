@@ -97,7 +97,8 @@ jobs:
           sudo apt-get install -y cmake ninja-build pkg-config \
             libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
-            libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev
+            libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev \
+            libjack-jackd2-dev
 
       # In a script rather than inline, so the setup this job depends on can be
       # rehearsed off the runner. These two jobs produce a binary that cannot

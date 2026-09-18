@@ -150,11 +150,17 @@ if(TARGET juce::juce_core)
   # GrandOrgue has offered this choice for years -- its device names carry the
   # API that reaches them -- and this is the same idea with JUCE's parts.
   #
-  # Nothing is linked: JUCE dlopens libjack.so.0 when it scans, so a machine
-  # without it simply does not list the type, and the build needs no new
-  # package on any runner. The device-type dropdown in
-  # AudioDeviceSelectorComponent appears by itself once a second type exists,
-  # so this needs no UI work either.
+  # Nothing is LINKED: JUCE dlopens libjack.so.0 when it scans, so a machine
+  # without JACK simply does not list the type and the shipped .deb gains no
+  # dependency. The headers are another matter -- juce_audio_devices.cpp
+  # includes <jack/jack.h> to compile the backend at all -- so every Linux
+  # builder needs libjack-jackd2-dev present, which the CI dependency lists
+  # and cmake/ci-arm-multiarch.sh now install. A development box that already
+  # had them will build this without noticing, which is exactly how it got
+  # committed claiming otherwise.
+  #
+  # The device-type dropdown in AudioDeviceSelectorComponent appears by itself
+  # once a second type exists, so this needs no UI work.
   if(UNIX AND NOT APPLE)
     add_compile_definitions(
       JUCE_JACK=1
