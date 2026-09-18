@@ -29,9 +29,9 @@ jobs:
         with:
           path: artifacts
 
-      # One archive per target under a name that does not change between
-      # releases, so releases/latest/download/<name> is a permanent link --
-      # the README download badges point at exactly that.
+      # One archive per target, every published file carrying the version in
+      # its name, so a player can tell from the file alone which build they
+      # have. That was the whole complaint: a download you cannot identify.
       - name: Package
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
@@ -61,17 +61,26 @@ jobs:
               tar -czf "dist/${name}.tar.gz" -C "$d" .
             fi
           done
-          # Every package a second time with the version in its name, so a
-          # player can tell from the file alone which build they have. The
-          # unversioned names stay: releases/latest/download/<name> is what the
-          # README badges link to, and those links must not move.
+          # Put the version into every name. Nothing is published unversioned:
+          # releases up to 0.4.1 also carried a second, unversioned copy for
+          # the sake of releases/latest/download/<name>, and those stay where
+          # they are -- but the README badges now link to a tagged file, so
+          # there is nothing left pointing at a name with no version in it.
           ver="${tag#v}"
           for b in $(ls dist); do
             case "$b" in
-              masterpiece-*) cp "dist/$b" "dist/masterpiece-${ver}-${b#masterpiece-}" ;;
+              masterpiece-"${ver}"-*) ;;
+              masterpiece-*) mv "dist/$b" "dist/masterpiece-${ver}-${b#masterpiece-}" ;;
             esac
           done
           ls -lh dist
+          # A name without the version in it is the fault this guards against.
+          for b in $(ls dist); do
+            case "$b" in
+              masterpiece-"${ver}"-*) ;;
+              *) echo "unversioned asset: $b"; exit 1 ;;
+            esac
+          done
 
       - name: Publish
         env:
