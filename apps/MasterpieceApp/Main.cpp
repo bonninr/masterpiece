@@ -45,6 +45,7 @@ public:
     // Automation surface (docs/automation/gui-automation.md), read before
     // anything is built, because some of it decides how things are built:
     //   --odf <path>       load an organ at startup
+    //   --draw-only        draw the stops, then hand over the console
     //   --gui-only         draw its console without reading any audio
     //   --virtual-midi [n] publish a MIDI input port of our own
     //   --log <path>       write the load phase timings to a file
@@ -209,7 +210,14 @@ public:
       }
     };
     std::vector<Take> takes(1);
-    bool stayOpen = args.contains("--stay-open");
+    // Draw the stops and hand the console over, rather than treating the
+    // request as a recital. --draw-stops exists to set up a take: it draws,
+    // plays, and quits, which is right for rendering and wrong for a player
+    // who only wanted a few stops out without waiting for the whole organ to
+    // preload. Asked for interactively it looks exactly like a crash, and was
+    // reported as one. --draw-only says what it does and keeps the window.
+    const bool drawOnly = args.contains("--draw-only");
+    bool stayOpen = args.contains("--stay-open") || drawOnly;
 
     auto cwdFile = [](const juce::String& s) {
       return juce::File::getCurrentWorkingDirectory().getChildFile(s.unquoted());
@@ -255,13 +263,13 @@ public:
     while (takes.size() > 1 && !takes.back().wants()) takes.pop_back();
 
     if (takes.front().wants()) {
-      win_->onLoaded = [this, takes, stayOpen] {
+      win_->onLoaded = [this, takes, stayOpen, drawOnly] {
         // Held by the chain of callbacks below rather than by the lambda, so
         // that each take can hand the next one on without copying the list.
         auto list = std::make_shared<std::vector<Take>>(takes);
         auto playFrom = std::make_shared<std::function<void(size_t)>>();
 
-        *playFrom = [this, list, playFrom, stayOpen](size_t index) {
+        *playFrom = [this, list, playFrom, stayOpen, drawOnly](size_t index) {
           if (index >= list->size()) {
             // Deliberately still running unless told otherwise. Closing would
             // throw away a sample set that cost a quarter of an hour to read,
@@ -322,6 +330,14 @@ public:
           juce::Logger::writeToLog("take " + juce::String((int)index + 1) + "/" +
                                    juce::String((int)list->size()) +
                                    " drawn: " + drawn);
+
+          // Stop here under --draw-only: no piece to play, nothing to advance
+          // to, and above all no quit. The organ is loaded and the stops are
+          // out; the console belongs to whoever is sitting at it.
+          if (drawOnly) {
+            juce::Logger::writeToLog("draw-only: console ready, stops drawn");
+            return;
+          }
 
           if (!t.midi.existsAsFile()) {
             if (t.midi != juce::File())
