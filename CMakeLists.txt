@@ -142,6 +142,27 @@ if(TARGET juce::juce_core)
   if(WIN32)
     add_compile_definitions(JUCE_ASIO=1)
   endif()
+  # JACK on Linux, which on a current distribution usually means PipeWire.
+  # JUCE compiles ALSA only by default, so the audio panel had exactly one
+  # device type and therefore no way to choose anything: Linux audio has moved
+  # from ALSA to PulseAudio to PipeWire inside this project's lifetime, and a
+  # player on a machine where one route is silent needs another to try.
+  # GrandOrgue has offered this choice for years -- its device names carry the
+  # API that reaches them -- and this is the same idea with JUCE's parts.
+  #
+  # Nothing is linked: JUCE dlopens libjack.so.0 when it scans, so a machine
+  # without it simply does not list the type, and the build needs no new
+  # package on any runner. The device-type dropdown in
+  # AudioDeviceSelectorComponent appears by itself once a second type exists,
+  # so this needs no UI work either.
+  if(UNIX AND NOT APPLE)
+    add_compile_definitions(
+      JUCE_JACK=1
+      # What a patchbay shows. The default is "JUCEJack", which tells an
+      # organist nothing about which program is asking for their outputs.
+      JUCE_JACK_CLIENT_NAME="Masterpiece"
+    )
+  endif()
   # macOS: prefer Apple's vDSP framework for audio processing to avoid SIMD
   # template instantiation issues with JUCE 9.0.1 on Apple Clang.
   if(APPLE)

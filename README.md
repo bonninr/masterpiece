@@ -333,6 +333,14 @@ shared-mode device adds enough delay between key and pipe to be felt at the
 keyboard. ASIO appears only if an ASIO driver is present, which normally means
 the one that came with your audio interface.
 
+**Audio driver, on Linux.** The audio panel offers two device types, ALSA and
+JACK, and it is worth trying both. On a current distribution JACK is usually
+PipeWire answering in JACK's place, and on a machine where one route is silent
+the other often is not. Masterpiece appears in a patchbay under its own name.
+The JACK type is listed only when a JACK library is installed — on Fedora that
+is the `pipewire-jack-audio-connection-kit` package, on Debian and Ubuntu
+`pipewire-jack` or `libjack-jackd2-0`.
+
 ---
 
 ## How it is built
