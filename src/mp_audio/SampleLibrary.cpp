@@ -165,6 +165,10 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   out.loopEnd = -1;
   out.releaseCue = cueInFile;
   readLoopPoints(reader, out, selection);
+  // Read from the same metadata, and deliberately NOT adjusted by the rate
+  // conversion below: converting the rate resamples the audio and plays it
+  // back at the new rate, so what the recording sounds at does not move.
+  readFileMidiNote(reader, out);
 
   // Convert to the requested rate, if it is not the one the file already has.
   // Lagrange rather than linear: this runs once per sample at load time, so
@@ -362,6 +366,36 @@ void SampleLibrary::readLoopPoints(const juce::AudioFormatReader& reader,
   if (start < 0) return;
   out.loopStart = start;
   out.loopEnd = end;
+}
+
+void SampleLibrary::readFileMidiNote(const juce::AudioFormatReader& reader,
+                                     SampleBuffer& out) {
+  // Same flat-metadata convention as the loop points: "MidiUnityNote" and
+  // "MidiPitchFraction" (juce_WavAudioFormat.cpp, SMPLChunk::copyTo).
+  //
+  // Read with an EMPTY default and reject it, never with a numeric one. JUCE
+  // has a createDefaultSMPLMetadata() carrying "MidiUnityNote" = "60", and a
+  // reader that asks for a default of 60 cannot tell a file that declares
+  // middle C from one that declares nothing -- which would retune an entire
+  // organ to a note none of its pipes claimed.
+  const auto& meta = reader.metadataValues;
+  const juce::String unity = meta.getValue("MidiUnityNote", "");
+  if (unity.isEmpty()) return;
+  const int note = unity.getIntValue();
+  if (note < 0 || note > 127) return;
+
+  // The fraction is the pipe's own detuning and is worth keeping: across
+  // Friesach's Principal 8 it runs 2 to 9 cents and differs pipe by pipe. It
+  // is an unsigned 32-bit fraction OF A SEMITONE, so it is read as a 64-bit
+  // value -- .getIntValue() would overflow on anything above half a semitone
+  // and come back negative.
+  const juce::String fracStr = meta.getValue("MidiPitchFraction", "");
+  double frac = 0.0;
+  if (fracStr.isNotEmpty()) {
+    const double raw = static_cast<double>(fracStr.getLargeIntValue());
+    if (raw > 0.0) frac = raw / 4294967296.0; // 2^32
+  }
+  out.fileMidiNote = static_cast<double>(note) + frac;
 }
 
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
@@ -701,7 +735,7 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
-constexpr uint32_t kCacheVersion = 2;
+constexpr uint32_t kCacheVersion = 3; // 3 adds the file's declared pitch
 
 template <typename T>
 void putPod(std::ostream& os, const T& v) {
@@ -801,6 +835,7 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       putPod<int64_t>(os, buf->loopStart);
       putPod<int64_t>(os, buf->loopEnd);
       putPod<int64_t>(os, buf->releaseCue);
+      putPod<double>(os, buf->fileMidiNote);
       putPod<float>(os, buf->pcmScale);
       putPod<uint8_t>(os, widthCode(*buf));
 
@@ -870,7 +905,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint) const 
     if (!getPod(is, id) || !getPod(is, buf->numFrames) || !getPod(is, channels) ||
         !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
         !getPod(is, buf->loopEnd) || !getPod(is, buf->releaseCue) ||
-        !getPod(is, buf->pcmScale) ||
+        !getPod(is, buf->fileMidiNote) || !getPod(is, buf->pcmScale) ||
         !getPod(is, width) || !getPod(is, bytes))
       return false;
     buf->numChannels = channels;

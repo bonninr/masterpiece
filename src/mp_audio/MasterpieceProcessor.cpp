@@ -1338,6 +1338,64 @@ bool MasterpieceProcessor::loadMidiMap() {
   return ok;
 }
 
+void MasterpieceProcessor::resolveSamplePitches() {
+  // What every sample actually holds, decided once per load rather than per
+  // note-on, and written into the pipework where the ratio is computed.
+  //
+  // The registry and the pipework hold SEPARATE COPIES of each SampleRef
+  // (OdfLoader assigns `attack.sample = sampleIt->second`), and it is the
+  // pipework's copies that a sounding note reads. Resolving only the registry
+  // would look entirely correct in a debugger and change nothing anybody can
+  // hear.
+  const auto provider = samples_.provider();
+  std::unordered_map<Id, std::pair<double, double>> resolved; // id -> {fileNote, hz}
+  std::array<int, 7> tally{};
+
+  auto resolveOne = [&](SampleRef& ref) {
+    const auto it = resolved.find(ref.sampleId);
+    if (it != resolved.end()) {
+      ref.fileMidiNote = it->second.first;
+      ref.resolvedPitchHz = it->second.second;
+      return;
+    }
+    SamplePitchInputs in;
+    in.methodCode = ref.pitchMethodCode;
+    in.exactHz = ref.pitchHz;
+    in.normalMidiNote = ref.midiNote;
+    in.rankBasePitch64ftHarmonicNum = ref.rankBasePitch64ftHarmonicNum;
+    in.fileName = ref.fileName;
+    if (const SampleBuffer* buf = provider(ref.sampleId))
+      in.fileMidiNote = buf->fileMidiNote;
+
+    const SamplePitchResult r = resolveSamplePitch(in);
+    ref.fileMidiNote = in.fileMidiNote;
+    ref.resolvedPitchHz = r.hz;
+    resolved.emplace(ref.sampleId,
+                     std::make_pair(in.fileMidiNote, r.hz));
+    const auto slot = static_cast<size_t>(r.route);
+    if (slot < tally.size()) ++tally[slot];
+  };
+
+  for (auto& [id, ref] : model_.samples) resolveOne(ref);
+  for (auto& [rankId, rank] : model_.ranks)
+    for (auto& pipe : rank.pipes)
+      for (auto& layer : pipe.layers) {
+        for (auto& a : layer.attacks) resolveOne(a.sample);
+        for (auto& rel : layer.releases) resolveOne(rel.sample);
+      }
+
+  // Said out loud, because a set resolving entirely by file name or not at
+  // all is a set whose pitch nobody has checked -- and it sounds plausible
+  // right up to the first rank that reuses one recording across pipes.
+  juce::String line = "pitch: samples resolved by";
+  for (size_t i = 0; i < tally.size(); ++i) {
+    if (tally[i] == 0) continue;
+    line << " " << pitchRouteName(static_cast<PitchRoute>(i)) << "="
+         << tally[i];
+  }
+  juce::Logger::writeToLog(line);
+}
+
 double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
                                              const SampleRef& sample,
                                              const PipeLayer& layer) const {
@@ -1369,12 +1427,10 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
   // resampling only trims it into tune. Getting this wrong is not subtle: use
   // the organ's reference pitch instead of the sample's and every note but A
   // plays at the wrong speed, collapsing the rank toward one pitch.
-  double recordedHz = sample.pitchHz; // Pitch_ExactSamplePitch, when declared
-  if (recordedHz <= 0.0 && sample.midiNote >= 0) {
-    // Fall back to the note the file claims (smpl chunk / filename), read at
-    // concert pitch — that is the convention those tags are written in.
-    recordedHz = 440.0 * std::pow(2.0, (sample.midiNote - 69) / 12.0);
-  }
+  // Decided at load time by resolveSamplePitches(), which obeys the set's own
+  // Pitch_SpecificationMethodCode instead of guessing from whichever field
+  // happens to be filled in. Zero means the set declares no pitch at all.
+  double recordedHz = sample.resolvedPitchHz;
   if (recordedHz <= 0.0) {
     // Nothing declares a pitch: assume the sample was recorded at the pipe's
     // own nominal pitch, which makes the ratio 1.0 and is what an untagged
@@ -2519,6 +2575,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
+
+    // Now that the files have been opened, and only now, each sample can be
+    // asked what pitch it holds. This has to happen after loading because one
+    // of the routes the format offers is "it is in the file".
+    resolveSamplePitches();
   }
 
   // A cancelled load is NOT a partly-loaded organ. Half an instrument that

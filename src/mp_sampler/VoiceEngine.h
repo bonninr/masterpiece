@@ -113,6 +113,13 @@ struct SampleBuffer {
   // point: the organ definition then names the same sample for both, and the
   // release is that file played from the marker rather than from its start.
   int64_t releaseCue = -1;
+  // What the FILE says it sounds at: the smpl chunk's MIDIUnityNote plus its
+  // MIDIPitchFraction, as a fractional concert-pitch MIDI note. Negative when
+  // the file declares none. Sets whose organ definition says "the pitch is in
+  // the sample" carry it nowhere else, and for a mixture -- where one
+  // recording serves several pipes -- it is the only thing that puts the
+  // upper pipes on the right note.
+  double fileMidiNote = -1.0;
   // Loop points in frames; -1 disables looping (percussive ranks, releases).
   int64_t loopStart = -1;
   int64_t loopEnd = -1;

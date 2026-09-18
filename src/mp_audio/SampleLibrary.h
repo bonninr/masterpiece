@@ -220,6 +220,10 @@ private:
   // FILE frames, or -1 when the file marks no such point.
   static int64_t releaseCueInFile(const juce::AudioFormatReader& reader,
                                   int64_t totalFrames, int64_t loopEnd);
+  // What the file's own smpl chunk says it sounds at, as a fractional
+  // concert-pitch MIDI note. Left negative when the file declares none.
+  static void readFileMidiNote(const juce::AudioFormatReader& reader,
+                               SampleBuffer& out);
   static void readLoopPoints(const juce::AudioFormatReader& reader,
                              SampleBuffer& out, LoopSelection selection);
   // Choose one loop from the metadata, judged against `limitFrames`.
