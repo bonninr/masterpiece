@@ -35,6 +35,7 @@
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_audio/AudioRecorder.h"
 #include "../src/mp_audio/SampleLibrary.h"
+#include "../src/mp_audio/MasterpieceProcessor.h"
 #endif
 
 #include <algorithm>
@@ -4626,6 +4627,112 @@ class AudioRecorderTest final : public mp::test::Test {
     dir.deleteRecursively();
   }
 };
+
+// Issue #13: the master fader lived only for the running session. Nothing
+// wrote it down, and switching organs (or restarting the app, which is the
+// same load path with a colder cache) always found it back at unity.
+//
+// This exercises the processor's real per-organ files under the player's
+// own AppData, the way the app actually saves and loads — graphics-only, per
+// the note on loadOrgan(), is exactly the path meant for a headless check
+// like this one. A small RAII guard puts every touched file back exactly as
+// it was found (including the GLOBAL defaults file, which a real profile on
+// this machine may already have), so the test leaves no trace either way.
+class MasterGainPersistenceTest final : public mp::test::Test {
+public:
+  MasterGainPersistenceTest()
+    : Test("functional.settings.master-gain", Category::Functional) {}
+
+  struct RestoreFile {
+    juce::File file;
+    bool existed = false;
+    juce::String content;
+    explicit RestoreFile(juce::File f) : file(std::move(f)) {
+      existed = file.existsAsFile();
+      if (existed) content = file.loadFileAsString();
+    }
+    ~RestoreFile() {
+      if (existed) file.replaceWithText(content);
+      else file.deleteFile();
+    }
+  };
+
+  void run() override {
+    const juce::File odfA(juce::String(MP_TEST_FIXTURES_DIR) +
+                          "/minimal.Organ_Hauptwerk_xml");
+    const juce::File odfB(juce::String(MP_TEST_FIXTURES_DIR) +
+                          "/minimal.CustomOrgan_Hauptwerk_xml");
+    MP_CHECK(odfA.existsAsFile() && odfB.existsAsFile(),
+             "both fixtures are present on disk");
+
+    mp::MasterpieceProcessor proc;
+
+    // Guards constructed before anything runs, so whatever state each file
+    // is in right now — including "does not exist" — is what comes back.
+    RestoreFile keepGlobal(proc.globalSettingsFile());
+    RestoreFile keepA(proc.settingsFileFor(odfA));
+    RestoreFile keepB(proc.settingsFileFor(odfB));
+
+    auto gain = [&] {
+      const auto* g = proc.apvts().getRawParameterValue("masterGain");
+      return g != nullptr ? g->load() : -1.0f;
+    };
+    auto setGain = [&](float v) {
+      if (auto* p = proc.apvts().getParameter("masterGain"))
+        p->setValueNotifyingHost(p->convertTo0to1(v));
+    };
+
+    // A synthetic organ that has never had anything saved for it starts at
+    // unity (0 dB) — whatever the previous processor state happened to be.
+    auto r1 = proc.loadOrgan(odfA, 0, /*graphicsOnly=*/true);
+    MP_CHECK(r1.ok, "the first fixture loads graphics-only");
+    MP_CHECK(std::abs(gain() - 1.0f) < 1e-4f,
+             "an organ with nothing saved starts at unity");
+
+    // Move the fader the way the volume slider does, and flush it the way
+    // the editor's timer does.
+    setGain(0.5f);
+    proc.markMasterGainDirty();
+    MP_CHECK(proc.saveMasterGainIfDirty(), "the dirty flag causes a write");
+    MP_CHECK(!proc.saveMasterGainIfDirty(),
+             "and only once — the flag clears itself");
+    MP_CHECK(proc.settingsFileFor(odfA).existsAsFile(),
+             "a per-organ settings file now holds the level");
+
+    // A different organ, never touched, must not inherit this one's live
+    // value just because it is still sitting in the parameter.
+    auto r2 = proc.loadOrgan(odfB, 0, true);
+    MP_CHECK(r2.ok, "the second fixture loads graphics-only");
+    MP_CHECK(std::abs(gain() - 1.0f) < 1e-4f,
+             "switching to an untouched organ resets to unity rather than "
+             "carrying the first organ's level");
+
+    // Coming back to the first organ restores exactly what was saved for it,
+    // unprompted — no Settings dialog, no explicit save.
+    auto r3 = proc.loadOrgan(odfA, 0, true);
+    MP_CHECK(r3.ok, "the first fixture reloads");
+    MP_CHECK(std::abs(gain() - 0.5f) < 1e-4f,
+             "and its own saved level comes back on its own");
+
+    // The write itself has to leave everything else in the file alone: a
+    // Settings-dialog change the player only "kept" for the session must
+    // never ride along on the next tick of the volume slider.
+    const auto fileA = proc.settingsFileFor(odfA);
+    fileA.replaceWithText(
+        juce::String("# Masterpiece per-organ settings\n") +
+        "mono 1\ngain 1.0000\nwind 1\n");
+    setGain(0.75f);
+    proc.markMasterGainDirty();
+    proc.saveMasterGainIfDirty();
+    const auto lines = juce::StringArray::fromLines(fileA.loadFileAsString());
+    MP_CHECK(lines.contains("mono 1") && lines.contains("wind 1"),
+             "lines the gain save did not own survive it untouched");
+    MP_CHECK(lines.contains("gain 0.7500"),
+             "and the gain line carries the new value");
+    MP_CHECK(lines.size() == 4,
+             "the gain-only save neither duplicated nor dropped a line");
+  }
+};
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_DSP
@@ -6894,6 +7001,7 @@ static SampleHandleTest g_sampleHandle;
 #endif
 #ifdef MP_TEST_HAS_AUDIO
 static AudioRecorderTest g_audioRecorder;
+static MasterGainPersistenceTest g_masterGainPersistence;
 #endif
 #ifdef MP_TEST_HAS_DSP
 #ifdef MP_TEST_HAS_AUDIO

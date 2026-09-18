@@ -221,10 +221,14 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
     const float g = db <= -40.0f ? 0.0f : juce::Decibels::decibelsToGain(db);
     if (auto* p = proc_.apvts().getParameter("masterGain"))
       p->setValueNotifyingHost(p->convertTo0to1(g));
-    // Deliberately does not write. The settings file holds the engine's whole
-    // state, so a write triggered from here would also commit whatever was
-    // changed in Settings and left there unsaved — which would make "Keep
-    // changes" a lie. Level is saved with everything else, when asked.
+    // Marks the gain alone as needing a write, flushed on the editor's timer
+    // below. Does NOT call proc_.markSettingsDirty(): that flag drives a
+    // rewrite of the whole per-organ file from the live engine state, which
+    // would also commit whatever was changed in Settings and left there
+    // unsaved — turning a knob here would make "Keep changes" a lie. The
+    // fader gets its own flag and its own writer that touches only the
+    // "gain" line.
+    proc_.markMasterGainDirty();
   };
 
   addAndMakeVisible(status_);
@@ -707,6 +711,7 @@ void MasterpieceEditor::timerCallback() {
   // whichever thread changed it, written here, where a file write is allowed.
   proc_.saveSettingsIfDirty();
   proc_.saveMidiMapIfDirty();
+  proc_.saveMasterGainIfDirty();
 
   // The sequencer's frame, and whether it has anything to walk. An organ with
   // no generals says so rather than showing a dash that could mean anything.
