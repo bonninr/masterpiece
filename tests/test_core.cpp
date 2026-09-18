@@ -44,6 +44,7 @@
 #include <thread>
 #include <cstdio>
 #include <filesystem>
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -5400,6 +5401,14 @@ private:
                             const std::filesystem::path& link) {
     std::error_code ec;
     std::filesystem::create_directory_symlink(target, link, ec);
+    // Said out loud when it happens. The layouts return early on a refusal,
+    // and the test then reports PASS having checked nothing -- on a Windows
+    // box without Developer Mode that is every layout. A skip that looks like
+    // a pass is how a fix goes unexercised without anyone noticing.
+    if (ec)
+      std::cout << "        SKIPPED symlink layout (" << link.filename().string()
+                << "): the OS refused to create a symlink -- " << ec.message()
+                << "\n";
     return !ec;
   }
 
