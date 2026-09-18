@@ -326,6 +326,13 @@ Masterpiece --odf "<path to the definition>" --gui-only
 silent and appears in a second or two. `--log <file>` writes the load timings,
 if you want to know where the time went.
 
+**Audio driver, on Windows.** The settings page lists Windows Audio (shared),
+Windows Audio (exclusive), DirectSound and — when a driver for your interface
+is installed — ASIO. Exclusive mode and ASIO are the two worth trying: a
+shared-mode device adds enough delay between key and pipe to be felt at the
+keyboard. ASIO appears only if an ASIO driver is present, which normally means
+the one that came with your audio interface.
+
 ---
 
 ## How it is built
@@ -385,3 +392,9 @@ Sample libraries and MIDI sequences are credited in
 Hauptwerk is a trademark of its owner. Masterpiece is an independent project.
 
 GPL-3.0-only. See [`LICENCE`](LICENCE) and [`COPYING`](COPYING).
+
+The Windows build includes ASIO support. The Steinberg ASIO SDK is offered
+under either the Steinberg ASIO License or the GPL version 3; Masterpiece uses
+it under the GPL arm, which is what makes it distributable here at all. The
+headers ship with JUCE, in `modules/juce_audio_devices/native/asio/`. ASIO is a
+trademark and software of Steinberg Media Technologies GmbH.
