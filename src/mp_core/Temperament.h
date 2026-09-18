@@ -44,13 +44,20 @@ enum class PitchRoute {
   ExactHz,     // code 4: Pitch_ExactSamplePitch
   Tremulant,   // codes 2 and 5: tremulant waveform, no tuning
   Filename,    // last resort: the leading digits of the file name
+  NoisePlaceholder, // an unpitched sample's stand-in frequency
 };
 
 const char* pitchRouteName(PitchRoute r);
 
 struct SamplePitchInputs {
   int methodCode = -1;         // Pitch_SpecificationMethodCode; -1 = absent
-  double exactHz = 0.0;        // Pitch_ExactSamplePitch
+  // Pitch_ExactSamplePitch. A noise sample declares a PLACEHOLDER here --
+  // "in case of noise sample, Pitch_ExactSamplePitch can be 100 or the value
+  // of AudioEngine_BasePitchHz" (OdfEdit, OdfEdit.py:9759) -- because a key
+  // click or a stop action has no pitch to declare. Taken literally it is a
+  // claim that a tracker rattle sounds at 100 Hz, and a rank keyed 1..88
+  // against it is then transposed by up to forty semitones.
+  double exactHz = 0.0;
   int normalMidiNote = -1;     // Pitch_NormalMIDINoteNumber
   int rankBasePitch64ftHarmonicNum = 8;
   // The note the FILE says it sounds, fractional, as a concert-pitch (A=440)
@@ -72,8 +79,11 @@ struct SamplePitchResult {
 // note is written against concert pitch, NOT against the organ's own base
 // pitch. (Verified on Friesach, whose _General declares no base pitch at all
 // and whose metadata sits 2-9 cents above 440-based equal temperament.)
+// `organBasePitchHz`, when given, is the set's AudioEngine_BasePitchHz: the
+// other value the noise placeholder is allowed to take.
 SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
-                                     double concertAHz = 440.0);
+                                     double concertAHz = 440.0,
+                                     double organBasePitchHz = 0.0);
 
 // The leading digits of a bare file name, read as a MIDI note, or -1.
 // "036-c.wav" -> 36. The convention is near-universal in sample sets and is

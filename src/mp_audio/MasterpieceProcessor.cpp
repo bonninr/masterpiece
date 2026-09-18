@@ -1349,7 +1349,7 @@ void MasterpieceProcessor::resolveSamplePitches() {
   // hear.
   const auto provider = samples_.provider();
   std::unordered_map<Id, std::pair<double, double>> resolved; // id -> {fileNote, hz}
-  std::array<int, 7> tally{};
+  std::array<int, 8> tally{};
 
   auto resolveOne = [&](SampleRef& ref) {
     const auto it = resolved.find(ref.sampleId);
@@ -1367,7 +1367,8 @@ void MasterpieceProcessor::resolveSamplePitches() {
     if (const SampleBuffer* buf = provider(ref.sampleId))
       in.fileMidiNote = buf->fileMidiNote;
 
-    const SamplePitchResult r = resolveSamplePitch(in);
+    const SamplePitchResult r =
+        resolveSamplePitch(in, 440.0, model_.basePitchHz);
     ref.fileMidiNote = in.fileMidiNote;
     ref.resolvedPitchHz = r.hz;
     resolved.emplace(ref.sampleId,

@@ -151,6 +151,7 @@ const char* pitchRouteName(PitchRoute r) {
     case PitchRoute::ExactHz:      return "exact-hz";
     case PitchRoute::Tremulant:    return "tremulant";
     case PitchRoute::Filename:     return "filename";
+    case PitchRoute::NoisePlaceholder: return "noise-placeholder";
     case PitchRoute::Unresolved:   break;
   }
   return "unresolved";
@@ -185,8 +186,35 @@ double noteToHz(double midiNote, double concertAHz) {
 } // namespace
 
 SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
-                                     double concertAHz) {
+                                     double concertAHz,
+                                     double organBasePitchHz) {
   const double aHz = (concertAHz > 0.0) ? concertAHz : 440.0;
+
+
+  // What "the exact frequency" means when the set reaches for it. An
+  // unpitched sample declares a PLACEHOLDER here rather than a pitch -- "in
+  // case of noise sample, Pitch_ExactSamplePitch can be 100 or the value of
+  // AudioEngine_BasePitchHz" (OdfEdit.py:9759). Believing it turns a tracker
+  // click into a 9 Hz thud on a rank keyed from 1, and the engine already
+  // plays the noise ranks it can IDENTIFY at their recorded pitch; this is
+  // the same rule for the sets that ship no Noise table at all, as Friesach
+  // does. Exactly 100.000 Hz sits between G2 and G#2, where no real pipe is
+  // declared to four decimal places.
+  //
+  // The declaration beats the file: Friesach's key-action releases share one
+  // silent Noises/BlankLoop.wav whose smpl chunk claims note 98.3, an
+  // artefact of whatever wrote it, and obeying that transposed a blank by six
+  // semitones. It is only consulted where the set actually asks for the exact
+  // frequency -- a set that says "the pitch is in the file" is not talking
+  // about this field at all.
+  auto useExactHz = [&]() -> SamplePitchResult {
+    const bool placeholder =
+        std::abs(in.exactHz - 100.0) < 1e-9 ||
+        (organBasePitchHz > 0.0 &&
+         std::abs(in.exactHz - organBasePitchHz) < 1e-9);
+    if (placeholder) return {0.0, PitchRoute::NoisePlaceholder};
+    return {in.exactHz, PitchRoute::ExactHz};
+  };
 
   // The declared route first, and only the declared route. Falling through to
   // another field because the declared one is empty would undo the point of
@@ -218,7 +246,7 @@ SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
       }
       break;
     case 4:
-      if (in.exactHz > 0.0) return {in.exactHz, PitchRoute::ExactHz};
+      if (in.exactHz > 0.0) return useExactHz();
       break;
     default:
       break;
@@ -227,7 +255,12 @@ SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
   // No code, or the declared route had nothing in it. Take whatever is
   // actually present, most precise first: an explicit frequency, then the
   // file's own metadata, then the tempered fields.
-  if (in.exactHz > 0.0) return {in.exactHz, PitchRoute::ExactHz};
+  if (in.exactHz > 0.0) {
+    const auto r = useExactHz();
+    if (r.route == PitchRoute::ExactHz) return r;
+    // A placeholder with no code behind it says nothing either way; keep
+    // looking rather than declaring the sample unpitched on its own.
+  }
   if (in.fileMidiNote >= 0.0)
     return {noteToHz(in.fileMidiNote, aHz), PitchRoute::FileMetadata};
   if (in.normalMidiNote >= 0) {

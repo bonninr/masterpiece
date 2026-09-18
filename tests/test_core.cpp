@@ -5458,6 +5458,49 @@ public:
       MP_CHECK(std::abs(r.hz - want) < 1e-6, "036 means MIDI note 36");
     }
 
+    // A noise sample's placeholder frequency is not a pitch. Friesach ships
+    // no Noise table, so its key- and stop-action ranks are ordinary ranks
+    // keyed 1..88 against a declared 100 Hz; believing it transposed a
+    // tracker click down by as much as forty semitones.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 100.0;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::NoisePlaceholder,
+               "100 Hz exactly is the documented stand-in");
+      MP_CHECK(r.hz == 0.0, "so the click plays as recorded");
+    }
+    {
+      // The other spelling of the same placeholder: the organ's base pitch.
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 465.0;
+      const auto r = mp::resolveSamplePitch(in, a4, 465.0);
+      MP_CHECK(r.route == mp::PitchRoute::NoisePlaceholder,
+               "the base pitch is the other stand-in");
+    }
+    {
+      // ...but a real pipe that happens to sit near it is still a pipe: the
+      // rule is exact equality, and a file that declares its own note is
+      // evidence the sample is pitched after all.
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 100.5;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::ExactHz, "100.5 Hz is a pitch");
+      // The declaration beats the file, though: Friesach's key-action
+      // releases share one silent BlankLoop.wav whose metadata claims note
+      // 98.3, and obeying that transposed a blank by six semitones.
+      mp::SamplePitchInputs in2;
+      in2.methodCode = 4;
+      in2.exactHz = 100.0;
+      in2.fileMidiNote = 98.336;
+      const auto r2 = mp::resolveSamplePitch(in2, a4);
+      MP_CHECK(r2.route == mp::PitchRoute::NoisePlaceholder,
+               "the set saying 'unpitched' beats the file's own metadata");
+    }
+
     // And when even that says nothing, say so rather than inventing a pitch.
     {
       mp::SamplePitchInputs in;
