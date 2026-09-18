@@ -143,4 +143,143 @@ bool pipeHzInRange(double hz) {
   return hz >= kMinPipeHz && hz <= kMaxPipeHz;
 }
 
+const char* pitchRouteName(PitchRoute r) {
+  switch (r) {
+    case PitchRoute::NoTuning:     return "declared-none";
+    case PitchRoute::FileMetadata: return "file-metadata";
+    case PitchRoute::Tempered:     return "tempered-fields";
+    case PitchRoute::ExactHz:      return "exact-hz";
+    case PitchRoute::Tremulant:    return "tremulant";
+    case PitchRoute::Filename:     return "filename";
+    case PitchRoute::NoisePlaceholder: return "noise-placeholder";
+    case PitchRoute::Unresolved:   break;
+  }
+  return "unresolved";
+}
+
+int midiNoteFromFileName(const std::string& fileName) {
+  // The bare name, after either separator: sets are written on Windows and
+  // read here, and a set that says "Rank\036-c.wav" means the same file as
+  // one that says "Rank/036-c.wav".
+  const size_t cut = fileName.find_last_of("/\\");
+  const std::string base =
+      (cut == std::string::npos) ? fileName : fileName.substr(cut + 1);
+
+  size_t n = 0;
+  while (n < base.size() && n < 3 &&
+         std::isdigit(static_cast<unsigned char>(base[n])))
+    ++n;
+  if (n == 0) return -1;
+  // A digit immediately after the run means the leading digits are part of a
+  // longer number and not a note: "1234-c.wav" is not note 123.
+  if (n < base.size() && std::isdigit(static_cast<unsigned char>(base[n])))
+    return -1;
+
+  const int note = std::stoi(base.substr(0, n));
+  return (note >= 0 && note <= 127) ? note : -1;
+}
+
+namespace {
+double noteToHz(double midiNote, double concertAHz) {
+  return concertAHz * std::pow(2.0, (midiNote - 69.0) / 12.0);
+}
+} // namespace
+
+SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
+                                     double concertAHz,
+                                     double organBasePitchHz) {
+  const double aHz = (concertAHz > 0.0) ? concertAHz : 440.0;
+
+
+  // What "the exact frequency" means when the set reaches for it. An
+  // unpitched sample declares a PLACEHOLDER here rather than a pitch -- "in
+  // case of noise sample, Pitch_ExactSamplePitch can be 100 or the value of
+  // AudioEngine_BasePitchHz" (OdfEdit.py:9759). Believing it turns a tracker
+  // click into a 9 Hz thud on a rank keyed from 1, and the engine already
+  // plays the noise ranks it can IDENTIFY at their recorded pitch; this is
+  // the same rule for the sets that ship no Noise table at all, as Friesach
+  // does. Exactly 100.000 Hz sits between G2 and G#2, where no real pipe is
+  // declared to four decimal places.
+  //
+  // The declaration beats the file: Friesach's key-action releases share one
+  // silent Noises/BlankLoop.wav whose smpl chunk claims note 98.3, an
+  // artefact of whatever wrote it, and obeying that transposed a blank by six
+  // semitones. It is only consulted where the set actually asks for the exact
+  // frequency -- a set that says "the pitch is in the file" is not talking
+  // about this field at all.
+  auto useExactHz = [&]() -> SamplePitchResult {
+    const bool placeholder =
+        std::abs(in.exactHz - 100.0) < 1e-9 ||
+        (organBasePitchHz > 0.0 &&
+         std::abs(in.exactHz - organBasePitchHz) < 1e-9);
+    if (placeholder) return {0.0, PitchRoute::NoisePlaceholder};
+    return {in.exactHz, PitchRoute::ExactHz};
+  };
+
+  // The declared route first, and only the declared route. Falling through to
+  // another field because the declared one is empty would undo the point of
+  // reading the code: a set that says "the pitch is in the file" and ships a
+  // file without metadata is telling us it does not know, and guessing from a
+  // stale neighbouring field is worse than admitting that.
+  switch (in.methodCode) {
+    case 0:
+      return {0.0, PitchRoute::NoTuning};
+    case 2:
+    case 5:
+      return {0.0, PitchRoute::Tremulant};
+    case 1:
+      if (in.fileMidiNote >= 0.0)
+        return {noteToHz(in.fileMidiNote, aHz), PitchRoute::FileMetadata};
+      break;
+    case 3:
+      if (in.normalMidiNote >= 0) {
+        // The harmonic number is half of this route, not decoration. A rank
+        // declared at 1 1/3' (harmonic 48) sounds 31 semitones above the note
+        // its pipes are keyed at, and reading the note without it puts the
+        // whole rank two and a half octaves flat.
+        const int harm = (in.rankBasePitch64ftHarmonicNum > 0)
+                             ? in.rankBasePitch64ftHarmonicNum
+                             : 8;
+        const double note = static_cast<double>(in.normalMidiNote) +
+                            12.0 * std::log2(static_cast<double>(harm) / 8.0);
+        return {noteToHz(note, aHz), PitchRoute::Tempered};
+      }
+      break;
+    case 4:
+      if (in.exactHz > 0.0) return useExactHz();
+      break;
+    default:
+      break;
+  }
+
+  // No code, or the declared route had nothing in it. Take whatever is
+  // actually present, most precise first: an explicit frequency, then the
+  // file's own metadata, then the tempered fields.
+  if (in.exactHz > 0.0) {
+    const auto r = useExactHz();
+    if (r.route == PitchRoute::ExactHz) return r;
+    // A placeholder with no code behind it says nothing either way; keep
+    // looking rather than declaring the sample unpitched on its own.
+  }
+  if (in.fileMidiNote >= 0.0)
+    return {noteToHz(in.fileMidiNote, aHz), PitchRoute::FileMetadata};
+  if (in.normalMidiNote >= 0) {
+    const int harm = (in.rankBasePitch64ftHarmonicNum > 0)
+                         ? in.rankBasePitch64ftHarmonicNum
+                         : 8;
+    const double note = static_cast<double>(in.normalMidiNote) +
+                        12.0 * std::log2(static_cast<double>(harm) / 8.0);
+    return {noteToHz(note, aHz), PitchRoute::Tempered};
+  }
+
+  // Nothing declared anywhere. The file name is the last thing left, and it
+  // is a guess: it fixes the gross case (one recording serving several pipes)
+  // and cannot know the pipe's own few cents of detuning.
+  const int fromName = midiNoteFromFileName(in.fileName);
+  if (fromName >= 0)
+    return {noteToHz(static_cast<double>(fromName), aHz), PitchRoute::Filename};
+
+  return {0.0, PitchRoute::Unresolved};
+}
+
 } // namespace mp

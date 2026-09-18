@@ -25,6 +25,73 @@ double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double baseP
 // Resample ratio: targetHz / recordedHz. Returns 1.0 if recordedHz <= 0.
 double playbackRatio(double targetHz, double recordedHz);
 
+// ---- Which pitch a sample file actually holds ----------------------------
+//
+// A Sample row does not merely carry pitch fields: it DECLARES which of them
+// to believe, in Pitch_SpecificationMethodCode. Reading the fields without
+// reading the code is how this went wrong for a year -- a set whose samples
+// all say "the pitch is in the file's own metadata" leaves every pitch field
+// empty, the guesswork falls through to "assume it is already in tune", and
+// every pipe served by a sample recorded for a DIFFERENT note plays at the
+// wrong pitch. That is most of a mixture: one recording commonly serves two
+// or three pipes a few semitones apart, so the stop drifts into a chord it
+// was never meant to make.
+enum class PitchRoute {
+  Unresolved,  // nothing declares a pitch: the caller plays the file as it is
+  NoTuning,    // code 0: the set says apply none
+  FileMetadata,// code 1: the WAV's own smpl chunk
+  Tempered,    // code 3: NormalMIDINoteNumber + RankBasePitch64ftHarmonicNum
+  ExactHz,     // code 4: Pitch_ExactSamplePitch
+  Tremulant,   // codes 2 and 5: tremulant waveform, no tuning
+  Filename,    // last resort: the leading digits of the file name
+  NoisePlaceholder, // an unpitched sample's stand-in frequency
+};
+
+const char* pitchRouteName(PitchRoute r);
+
+struct SamplePitchInputs {
+  int methodCode = -1;         // Pitch_SpecificationMethodCode; -1 = absent
+  // Pitch_ExactSamplePitch. A noise sample declares a PLACEHOLDER here --
+  // "in case of noise sample, Pitch_ExactSamplePitch can be 100 or the value
+  // of AudioEngine_BasePitchHz" (OdfEdit, OdfEdit.py:9759) -- because a key
+  // click or a stop action has no pitch to declare. Taken literally it is a
+  // claim that a tracker rattle sounds at 100 Hz, and a rank keyed 1..88
+  // against it is then transposed by up to forty semitones.
+  double exactHz = 0.0;
+  int normalMidiNote = -1;     // Pitch_NormalMIDINoteNumber
+  int rankBasePitch64ftHarmonicNum = 8;
+  // The note the FILE says it sounds, fractional, as a concert-pitch (A=440)
+  // MIDI note: the smpl chunk's MIDIUnityNote plus MIDIPitchFraction. A
+  // negative value means the file declared none. Fractional because the
+  // fraction IS the pipe's own detuning -- on Friesach's Principal 8 it runs
+  // 2 to 9 cents across the rank -- and rounding it away throws that out.
+  double fileMidiNote = -1.0;
+  std::string fileName;        // for the last-resort route only
+};
+
+struct SamplePitchResult {
+  double hz = 0.0;             // 0 when nothing could be resolved
+  PitchRoute route = PitchRoute::Unresolved;
+};
+
+// Resolve what a sample file holds, in Hz. `concertAHz` is the reference the
+// MIDI-note routes are read against, and is 440 by convention: a file's smpl
+// note is written against concert pitch, NOT against the organ's own base
+// pitch. (Verified on Friesach, whose _General declares no base pitch at all
+// and whose metadata sits 2-9 cents above 440-based equal temperament.)
+// `organBasePitchHz`, when given, is the set's AudioEngine_BasePitchHz: the
+// other value the noise placeholder is allowed to take.
+SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
+                                     double concertAHz = 440.0,
+                                     double organBasePitchHz = 0.0);
+
+// The leading digits of a bare file name, read as a MIDI note, or -1.
+// "036-c.wav" -> 36. The convention is near-universal in sample sets and is
+// the only thing left when a set declares nothing and ships no metadata; it
+// is a guess, and callers are expected to say so rather than apply it
+// silently.
+int midiNoteFromFileName(const std::string& fileName);
+
 // A pipe's target pitch after detuning. An organ goes out of tune pipe by
 // pipe, so a set declares a control per division and zone and gives each pipe
 // its own sensitivity in Hz per control unit.

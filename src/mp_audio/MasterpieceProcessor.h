@@ -685,6 +685,10 @@ private:
   // `layer` is needed as well as the pipe because detuning is declared per
   // layer: the control that drives it and the Hz it moves per control unit
   // both live there.
+  // Decide what each sample file holds, after loading and before playing.
+  // Obeys the set's Pitch_SpecificationMethodCode; writes the answer into
+  // both the sample registry and the pipework's own copies.
+  void resolveSamplePitches();
   double playbackRatioFor(const Pipe& pipe, const SampleRef& sample,
                           const PipeLayer& layer) const;
 

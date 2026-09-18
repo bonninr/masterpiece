@@ -5373,6 +5373,214 @@ public:
   }
 };
 
+// Which pitch source a Sample row DECLARES, and what happens when the
+// declared one is empty. Friesach declares code 1 on 11400 of its 12146
+// samples and leaves every pitch field blank; reading the fields and not the
+// code resolved nothing, so every pipe served by a recording made for a
+// different note played at that other note. In a mixture, where one recording
+// commonly serves two or three pipes, the stop drifts into a chord.
+class SamplePitchRouteTest final : public mp::test::Test {
+public:
+  SamplePitchRouteTest()
+    : Test("functional.pitch.sample-route", Category::Functional) {}
+  void run() override {
+    const double a4 = 440.0;
+
+    // Code 4: the exact frequency, believed as stated.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 261.3;
+      in.fileMidiNote = 69.0; // present, and must NOT win over the declaration
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::ExactHz, "code 4 is the exact Hz");
+      MP_CHECK(std::abs(r.hz - 261.3) < 1e-9, "stated Hz, unaltered");
+    }
+
+    // Code 1: the file's own metadata, fraction and all.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 1;
+      in.fileMidiNote = 69.5; // half a semitone above concert A
+      in.exactHz = 100.0;     // a stale neighbour that must not be used
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::FileMetadata, "code 1 is the file");
+      const double want = 440.0 * std::pow(2.0, 0.5 / 12.0);
+      MP_CHECK(std::abs(r.hz - want) < 1e-6, "the fraction is kept, not rounded");
+    }
+
+    // Code 3: the note AND the harmonic number. A 1 1/3' rank (harmonic 48)
+    // sounds 31 semitones above the note its pipes are keyed at; dropping the
+    // harmonic puts the rank two and a half octaves flat.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 3;
+      in.normalMidiNote = 69;
+      in.rankBasePitch64ftHarmonicNum = 48;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::Tempered, "code 3 is the fields");
+      const double want = 440.0 * (48.0 / 8.0);
+      MP_CHECK(std::abs(r.hz - want) < 1e-6, "harmonic 48 is six times 8 foot");
+    }
+
+    // Code 0 says apply nothing, and codes 2 and 5 are tremulant waveforms.
+    // All three must resolve to "no pitch", which the caller plays as it is --
+    // NOT fall through to a neighbouring field.
+    for (int code : {0, 2, 5}) {
+      mp::SamplePitchInputs in;
+      in.methodCode = code;
+      in.exactHz = 261.6;
+      in.fileMidiNote = 60.0;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.hz == 0.0, "a declared no-tuning code applies no tuning");
+      MP_CHECK(r.route != mp::PitchRoute::ExactHz, "and does not fall through");
+    }
+
+    // No code at all: take the most precise field actually present.
+    {
+      mp::SamplePitchInputs in;
+      in.fileMidiNote = 72.0;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::FileMetadata,
+               "with no code, metadata beats nothing");
+    }
+
+    // Nothing declared anywhere: the file name is the last resort, and it is
+    // reported as such so a caller can say the pitch was guessed.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 1;          // says "the file knows"...
+      in.fileMidiNote = -1.0;     // ...and the file does not
+      in.fileName = "far/09_Subbas16/036-c.wav";
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::Filename, "the name is last");
+      const double want = 440.0 * std::pow(2.0, (36.0 - 69.0) / 12.0);
+      MP_CHECK(std::abs(r.hz - want) < 1e-6, "036 means MIDI note 36");
+    }
+
+    // A noise sample's placeholder frequency is not a pitch. Friesach ships
+    // no Noise table, so its key- and stop-action ranks are ordinary ranks
+    // keyed 1..88 against a declared 100 Hz; believing it transposed a
+    // tracker click down by as much as forty semitones.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 100.0;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::NoisePlaceholder,
+               "100 Hz exactly is the documented stand-in");
+      MP_CHECK(r.hz == 0.0, "so the click plays as recorded");
+    }
+    {
+      // The other spelling of the same placeholder: the organ's base pitch.
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 465.0;
+      const auto r = mp::resolveSamplePitch(in, a4, 465.0);
+      MP_CHECK(r.route == mp::PitchRoute::NoisePlaceholder,
+               "the base pitch is the other stand-in");
+    }
+    {
+      // ...but a real pipe that happens to sit near it is still a pipe: the
+      // rule is exact equality, and a file that declares its own note is
+      // evidence the sample is pitched after all.
+      mp::SamplePitchInputs in;
+      in.methodCode = 4;
+      in.exactHz = 100.5;
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::ExactHz, "100.5 Hz is a pitch");
+      // The declaration beats the file, though: Friesach's key-action
+      // releases share one silent BlankLoop.wav whose metadata claims note
+      // 98.3, and obeying that transposed a blank by six semitones.
+      mp::SamplePitchInputs in2;
+      in2.methodCode = 4;
+      in2.exactHz = 100.0;
+      in2.fileMidiNote = 98.336;
+      const auto r2 = mp::resolveSamplePitch(in2, a4);
+      MP_CHECK(r2.route == mp::PitchRoute::NoisePlaceholder,
+               "the set saying 'unpitched' beats the file's own metadata");
+    }
+
+    // And when even that says nothing, say so rather than inventing a pitch.
+    {
+      mp::SamplePitchInputs in;
+      in.fileName = "Noises/Blower.wav";
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::Unresolved, "no pitch is not 440");
+      MP_CHECK(r.hz == 0.0, "zero, which the caller plays unaltered");
+    }
+  }
+};
+
+// The leading digits of a file name, which are a MIDI note by convention in
+// every set that ships one -- and are not a note when they are part of a
+// longer number.
+class SampleFileNameNoteTest final : public mp::test::Test {
+public:
+  SampleFileNameNoteTest()
+    : Test("functional.pitch.filename-note", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::midiNoteFromFileName("036-c.wav") == 36, "036 is 36");
+    MP_CHECK(mp::midiNoteFromFileName("091-g.wav") == 91, "091 is 91");
+    MP_CHECK(mp::midiNoteFromFileName("far/A0/037-c#.wav") == 37, "after a slash");
+    MP_CHECK(mp::midiNoteFromFileName("far\\A0\\037-c#.wav") == 37, "after a backslash");
+    MP_CHECK(mp::midiNoteFromFileName("Blower.wav") == -1, "no digits, no note");
+    MP_CHECK(mp::midiNoteFromFileName("1234-c.wav") == -1,
+             "four digits are a serial number, not note 123");
+    MP_CHECK(mp::midiNoteFromFileName("") == -1, "an empty name is not a note");
+  }
+};
+
+// The ODF must carry the method code into the model. Before this it was
+// parsed nowhere, so the one field that says which pitch to believe was the
+// one field the loader ignored.
+class SamplePitchCodeParsedTest final : public mp::test::Test {
+public:
+  SamplePitchCodeParsedTest()
+    : Test("functional.loader.sample-pitch-code", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_Name>X</Identification_Name>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Sample\"><Sample>"
+                 "<SampleID>7</SampleID>"
+                 "<SampleFilename>R/036-c.wav</SampleFilename>"
+                 "<Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+                 "<Pitch_ExactSamplePitch></Pitch_ExactSamplePitch>"
+                 "</Sample></ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "a set that names its pitch method must load");
+    const auto it = m.samples.find(7);
+    MP_CHECK(it != m.samples.end(), "the sample row is in the registry");
+    MP_CHECK(it->second.pitchMethodCode == 1, "code 1 is carried into the model");
+    MP_CHECK(it->second.pitchHz == 0.0, "an empty pitch field stays empty");
+
+    // The compact v7 spelling of the same field.
+    mp::OrganModel m2;
+    mp::OdfDiagnostics d2;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<c>X</c><b>1</b></_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Sample\">"
+                 "<o><a>7</a><c>R/036-c.wav</c><d>4</d><g>261.3</g></o>"
+                 "</ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m2, d2),
+             "the compact spelling must load too");
+    const auto it2 = m2.samples.find(7);
+    MP_CHECK(it2 != m2.samples.end(), "the compact sample row is registered");
+    MP_CHECK(it2->second.pitchMethodCode == 4, "short code d is the method");
+    MP_CHECK(std::abs(it2->second.pitchHz - 261.3) < 1e-9, "short code g is the Hz");
+  }
+};
+
 // One manual per channel. A saved mapping on a real machine had three manuals
 // all claiming channel 1: two of them became unplayable, the on-screen manual
 // selector ticked three entries at once, and every manual sounded the pedal.
@@ -6003,6 +6211,9 @@ static DisplayTextTest g_displayText;
 static MidiChannelExclusiveTest g_midiChannelExclusive;
 static MidiMapRepairTest g_midiMapRepair;
 static BasePitchZeroTest g_basePitchZero;
+static SamplePitchRouteTest g_samplePitchRoute;
+static SampleFileNameNoteTest g_sampleFileNameNote;
+static SamplePitchCodeParsedTest g_samplePitchCodeParsed;
 static FixtureCombinationsTest g_combinations;
 static CombinationDanglingTest g_combDangling;
 static CodmStructuralTest g_codmStruct;

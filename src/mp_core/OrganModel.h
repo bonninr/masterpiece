@@ -51,9 +51,21 @@ struct SampleRef {
   std::string packageId;   // RequiredInstallationPackage (legacy string form)
   std::string fileName;    // e.g. "036-C.wav"
   bool encrypted = false;  // .hbw/.hbx detected -> report, don't load (v1 legal rule)
-  double pitchHz = 0.0;    // SpecificationMethodCode==PitchHz path
-  int midiNote = -1;       // metadata/filename fallback
+  double pitchHz = 0.0;    // Pitch_ExactSamplePitch (method code 4)
+  int midiNote = -1;       // Pitch_NormalMIDINoteNumber (method code 3)
   int rankBasePitch64ftHarmonicNum = 8; // tempered path base
+  // Which of the fields above the SET says to believe: 0 none, 1 the file's
+  // own metadata, 2/5 tremulant, 3 the note + harmonic, 4 the exact Hz.
+  // -1 means the row declared no code at all. Reading the fields without
+  // this is guesswork -- see resolveSamplePitch() in Temperament.h.
+  int pitchMethodCode = -1;
+  // Filled in after the file is opened, not by the ODF parser: the note the
+  // WAV's own smpl chunk says it sounds, fractional, concert pitch. Negative
+  // until known, and still negative for a file that declares none.
+  double fileMidiNote = -1.0;
+  // What the sample actually holds, in Hz, once the code above has been
+  // obeyed. 0 means "nothing declares one" -- play the file as it is.
+  double resolvedPitchHz = 0.0;
 };
 
 struct AttackSample {
