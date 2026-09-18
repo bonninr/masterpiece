@@ -50,9 +50,14 @@ sudo apt-get install -y cmake ninja-build pkg-config \
   "gcc-$TRIPLE" "g++-$TRIPLE" "binutils-$TRIPLE"
 
 # The libraries the target binary links against.
+# libjack-jackd2-dev is HEADERS ONLY as far as the binary is concerned:
+# JUCE includes <jack/jack.h> to compile the backend and then dlopens
+# libjack.so.0 at runtime, so nothing links against it and the .deb gains
+# no dependency. It still has to be present to BUILD, on the target
+# architecture and on the host, like everything else here.
 DEV_LIBS="libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
   libxcursor-dev libxcomposite-dev libfreetype6-dev libfontconfig1-dev \
-  libglu1-mesa-dev libxi-dev"
+  libglu1-mesa-dev libxi-dev libjack-jackd2-dev"
 
 # shellcheck disable=SC2086
 sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done)
