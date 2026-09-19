@@ -43,6 +43,8 @@
 #include <ctime>
 #include <thread>
 #include <cstdio>
+#include <filesystem>
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -5345,6 +5347,167 @@ public:
   }
 };
 
+// Issue #12: a set reorganised with symbolic links -- OrganInstallationPackages
+// itself, a single package folder inside it, or OrganDefinitions relocated
+// onto another drive and linked back in -- has to resolve exactly like the
+// same set laid out directly. std::filesystem already follows a symlink
+// transparently in exists()/is_directory(), so what actually needed fixing
+// was the M1.2 missing-sample check building the wrong path (it never looked
+// under the sample's own installation package) and deriveOrganRoot needing to
+// fall back to the ODF's resolved path when the one it was given does not
+// have OrganInstallationPackages beside it.
+//
+// Windows refuses create_directory_symlink outright without Developer Mode
+// enabled; each layout below is skipped (not failed) when that happens, so
+// this test is a no-op verification stub on an unprivileged Windows machine
+// and a real one everywhere CI runs it (Linux, macOS).
+class SymlinkedOrganTest final : public mp::test::Test {
+public:
+  SymlinkedOrganTest()
+    : Test("functional.loader.symlinked-organ", Category::Functional) {}
+
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path base =
+        fs::temp_directory_path(ec) / "mp_symlink_test_9f3a1c2e";
+    if (ec) return; // no temp directory available; nothing to test against
+    fs::remove_all(base, ec);
+    fs::create_directories(base, ec);
+    if (ec) return; // read-only or otherwise unusable; skip cleanly
+
+    struct Cleanup {
+      fs::path p;
+      ~Cleanup() { std::error_code e; std::filesystem::remove_all(p, e); }
+    } cleanup{base};
+
+    const std::string xml = readFixture("minimal.Organ_Hauptwerk_xml");
+    MP_CHECK(!xml.empty(), "fixture must read");
+
+    layoutPackagesFolderSymlinked(base, xml);
+    layoutSinglePackageSymlinked(base, xml);
+    layoutDefinitionsFolderSymlinked(base, xml);
+  }
+
+private:
+  static void writeFile(const std::filesystem::path& p, const std::string& content) {
+    std::error_code ec;
+    std::filesystem::create_directories(p.parent_path(), ec);
+    std::ofstream f(p, std::ios::binary);
+    f << content;
+  }
+
+  static bool trySymlinkDir(const std::filesystem::path& target,
+                            const std::filesystem::path& link) {
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(target, link, ec);
+    // Said out loud when it happens. The layouts return early on a refusal,
+    // and the test then reports PASS having checked nothing -- on a Windows
+    // box without Developer Mode that is every layout. A skip that looks like
+    // a pass is how a fix goes unexercised without anyone noticing.
+    if (ec)
+      std::cout << "        SKIPPED symlink layout (" << link.filename().string()
+                << "): the OS refused to create a symlink -- " << ec.message()
+                << "\n";
+    return !ec;
+  }
+
+  // Layout A: OrganInstallationPackages itself is a symlink to a folder that
+  // lives elsewhere (the common case: the audio is the bulk of a set, so it
+  // is the folder actually worth relocating to another drive).
+  void layoutPackagesFolderSymlinked(const std::filesystem::path& base,
+                                     const std::string& xml) {
+    namespace fs = std::filesystem;
+    const fs::path root = base / "layoutA";
+    const fs::path realPackages = base / "layoutA-real-packages";
+    writeFile(root / "OrganDefinitions" / "test.Organ_Hauptwerk_xml", xml);
+    writeFile(realPackages / "000001" / "001-C.wav", "x");
+    writeFile(realPackages / "000001" / "001-C_Trem.wav", "x");
+    if (!trySymlinkDir(realPackages, root / "OrganInstallationPackages")) return;
+
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    o.organRootDir = root.string();
+    MP_CHECK(l.loadFromXmlString(xml, "test.Organ_Hauptwerk_xml", o, m, d),
+             "layout A: set must load");
+    MP_CHECK(d.missingSampleFiles.empty(),
+             "layout A: samples reached through a symlinked "
+             "OrganInstallationPackages must be found");
+  }
+
+  // Layout B: an individual package folder under OrganInstallationPackages is
+  // the symlink; the rest of the tree is ordinary.
+  void layoutSinglePackageSymlinked(const std::filesystem::path& base,
+                                    const std::string& xml) {
+    namespace fs = std::filesystem;
+    const fs::path root = base / "layoutB";
+    const fs::path realPackage = base / "layoutB-real-package";
+    writeFile(root / "OrganDefinitions" / "test.Organ_Hauptwerk_xml", xml);
+    writeFile(realPackage / "001-C.wav", "x");
+    writeFile(realPackage / "001-C_Trem.wav", "x");
+    std::error_code ec;
+    fs::create_directories(root / "OrganInstallationPackages", ec);
+    if (!trySymlinkDir(realPackage, root / "OrganInstallationPackages" / "000001"))
+      return;
+
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    o.organRootDir = root.string();
+    MP_CHECK(l.loadFromXmlString(xml, "test.Organ_Hauptwerk_xml", o, m, d),
+             "layout B: set must load");
+    MP_CHECK(d.missingSampleFiles.empty(),
+             "layout B: samples reached through a symlinked package folder "
+             "must be found");
+  }
+
+  // Layout C: the whole organ was found through a symlink whose own name (as
+  // given to the loader) is not "OrganDefinitions" -- the closest a synthetic
+  // test can get to what a macOS file dialog can hand back after resolving a
+  // symlink partway through a path, where the component name the code goes
+  // looking for is simply not there anymore. deriveOrganRoot has to notice
+  // that the root implied by the given path has no OrganInstallationPackages
+  // and fall back to the path's own resolved (canonical) form, which does.
+  void layoutDefinitionsFolderSymlinked(const std::filesystem::path& base,
+                                        const std::string& xml) {
+    namespace fs = std::filesystem;
+    const fs::path realRoot = base / "layoutC-real";
+    writeFile(realRoot / "OrganDefinitions" / "test.Organ_Hauptwerk_xml", xml);
+    writeFile(realRoot / "OrganInstallationPackages" / "000001" / "001-C.wav", "x");
+    writeFile(realRoot / "OrganInstallationPackages" / "000001" / "001-C_Trem.wav", "x");
+
+    const fs::path localRoot = base / "layoutC-local";
+    std::error_code ec;
+    fs::create_directories(localRoot, ec);
+    // Linked under a name that is deliberately NOT "OrganDefinitions", so the
+    // logical parent walk cannot recognise it and has to fall back.
+    if (!trySymlinkDir(realRoot / "OrganDefinitions", localRoot / "LinkedDefs"))
+      return;
+
+    const fs::path odfPath = localRoot / "LinkedDefs" / "test.Organ_Hauptwerk_xml";
+    const std::string derivedRoot = mp::deriveOrganRoot(odfPath.string());
+    const bool sameAsReal = fs::equivalent(derivedRoot, realRoot, ec) && !ec;
+    MP_CHECK(sameAsReal,
+             "layout C: deriveOrganRoot must resolve through the symlink to "
+             "find OrganInstallationPackages when the given path's own "
+             "parent does not have one");
+
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    o.organRootDir = derivedRoot;
+    MP_CHECK(l.loadFromXmlString(xml, "test.Organ_Hauptwerk_xml", o, m, d),
+             "layout C: set must load");
+    MP_CHECK(d.missingSampleFiles.empty(),
+             "layout C: samples must be found once the root is derived "
+             "through the symlink");
+  }
+};
+
 // Engraved console text: the stop names a set writes over its artwork rather
 // than painting into it. Issue #1 was that these were parsed and then never
 // drawn, which left such an organ with blank drawstops.
@@ -6206,6 +6369,7 @@ static MatrixSelectionTest g_matrix;
 static MatrixCoverageQueryTest g_matrixCoverage;
 static PipeReserveStressTest g_reserveStress;
 static FixtureDisplayTest g_display;
+static SymlinkedOrganTest g_symlinkedOrgan;
 static DisplayEmptyTest g_displayEmpty;
 static DisplayTextTest g_displayText;
 static MidiChannelExclusiveTest g_midiChannelExclusive;

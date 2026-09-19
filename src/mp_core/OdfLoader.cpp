@@ -321,11 +321,21 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         "be played by the program they were encrypted for.");
 
   // ---- M1.2 validator: missing WAVs on disk ----
+  // SampleFilename is relative to the sample's OWN installation package, not
+  // to the set root (see resolvePath in SampleLibrary.cpp, which resolves the
+  // same samples for real at load time) -- so a package-bearing sample has to
+  // be checked under OrganInstallationPackages/<id>, the same place the
+  // loader will actually look, or every packaged sample reports missing
+  // regardless of whether it truly is.
   if (!opts.organRootDir.empty()) {
     for (const auto& [id, s] : outModel.samples) {
       (void)id;
       if (s.encrypted || s.fileName.empty()) continue;
-      if (diskMissing(opts.organRootDir, s.fileName))
+      std::string rel = s.fileName;
+      if (s.installationPackageId > 0)
+        rel = "OrganInstallationPackages/" + packageDirName(s.installationPackageId) +
+              "/" + rel;
+      if (diskMissing(opts.organRootDir, rel))
         outDiag.missingSampleFiles.push_back(s.fileName);
     }
   }
@@ -1824,6 +1834,48 @@ bool parseCodm(const pugi::xml_node& odfRoot, const OdfLoader::Options& opts,
   // MP-CODM-HWv9 fixed defaults (CodmCompiler): setter + jamb/divisional rules.
   mp::codm::applyCodmDefaults(model, diag);
   return diag.ok();
+}
+
+namespace {
+
+// The definition's grandparent, unless the immediate parent is itself named
+// OrganDefinitions (case-insensitively -- these sets are authored on
+// Windows), in which case its parent is the root. A loose ODF with neither
+// falls back to its own containing directory.
+std::filesystem::path organRootFrom(const std::filesystem::path& odfPath) {
+  std::filesystem::path root = odfPath.parent_path();
+  const std::string name = lower(root.filename().string());
+  if (name == "organdefinitions") root = root.parent_path();
+  return root;
+}
+
+bool hasInstallationPackages(const std::filesystem::path& root) {
+  std::error_code ec;
+  return std::filesystem::is_directory(root / "OrganInstallationPackages", ec);
+}
+
+} // namespace
+
+std::string deriveOrganRoot(const std::string& odfPath) {
+  const std::filesystem::path odf(odfPath);
+  const std::filesystem::path logicalRoot = organRootFrom(odf);
+  if (hasInstallationPackages(logicalRoot)) return logicalRoot.string();
+
+  // The logical root has no OrganInstallationPackages sibling -- try again
+  // with the ODF's own symlinks resolved. A set with OrganDefinitions moved
+  // onto another drive and linked back in can hand back a path whose plain
+  // textual parent is no longer where OrganInstallationPackages lives; asking
+  // the filesystem what the path actually resolves to finds it again. This
+  // never applies to a set with no installation packages at all: if the
+  // canonical root does not have one either, the logical answer is kept.
+  std::error_code ec;
+  const std::filesystem::path canonicalOdf =
+      std::filesystem::weakly_canonical(odf, ec);
+  if (!ec && canonicalOdf != odf) {
+    const std::filesystem::path canonicalRoot = organRootFrom(canonicalOdf);
+    if (hasInstallationPackages(canonicalRoot)) return canonicalRoot.string();
+  }
+  return logicalRoot.string();
 }
 
 } // namespace mp

@@ -91,4 +91,19 @@ public:
                          OdfDiagnostics& outDiag);
 };
 
+// Given the path to a *.Organ_Hauptwerk_xml (or *.CustomOrgan_Hauptwerk_xml)
+// file, return the directory OrganInstallationPackages and OrganDefinitions
+// hang off. Ordinarily that is just the ODF's grandparent — <root>/
+// OrganDefinitions/Foo.Organ_Hauptwerk_xml -> <root> — but a set someone has
+// reorganised with symbolic links (moving OrganDefinitions, or
+// OrganInstallationPackages, or a single package folder inside it, onto
+// another drive) can hand back an odfPath whose plain parent-directory walk
+// no longer lines up with where the audio actually lives, because a symlink
+// resolved to a differently-named ancestor somewhere along the way. Tried as
+// given first, then with the path's symlinks resolved, keeping whichever one
+// actually has an OrganInstallationPackages sibling; falls back to the
+// as-given answer if neither does, so a loose ODF with no installation
+// packages at all is unaffected.
+std::string deriveOrganRoot(const std::string& odfPath);
+
 } // namespace mp
