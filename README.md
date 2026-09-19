@@ -47,10 +47,23 @@ via MIDI keyboards, pedalboard, and stop hardware, via the on-screen console,
 or via MIDI from a DAW. Output is to the audio interface, with per-rank
 routing and optional convolution reverb for sets recorded dry.
 
-Masterpiece is such a player, compatible with Hauptwerk sample sets. It is
-written from scratch and runs as a standalone application and as a VST3 or LV2
-plugin — the same engine either way. On macOS it is also built as an Audio
-Unit, for Apple silicon and Intel.
+Masterpiece is such a player. It reads unencrypted Hauptwerk-format sets
+directly, so existing libraries transfer without conversion; copy-protected
+(.hbw/.hbx) sets are reported, not played, and remain locked to the program
+they were encrypted for. GrandOrgue, the open-source incumbent, uses its own
+`.organ` definition format and is not a source of sets here. Masterpiece is an
+independent GPL-3.0-only implementation. It runs as a standalone application
+and as a VST3 or LV2 plugin — the same engine either way. On macOS it is also
+built as an Audio Unit, for Apple silicon and Intel. Platforms are Windows,
+macOS, Linux, and Raspberry Pi.
+
+The differentiator is resource use. The sampler streams release tails from
+disk into per-voice ring buffers while attacks and sustain loops stay
+resident, with 24-bit bit-exact, 16-bit, and mono-folding options plus a
+decoded sample cache. Measured on Friesach (44 stops, 17 GB, 12148 files):
+21.6 GB as 32-bit float resident becomes 16.2 GB at 24-bit, 4.7 GB streamed
+stereo 16-bit, 2.3 GB streamed mono 16-bit; open time 77 s to 26 s. Streaming
+assumes SSD-class storage. Method and full figures: [PERFORMANCE.md](PERFORMANCE.md).
 
 ---
 
