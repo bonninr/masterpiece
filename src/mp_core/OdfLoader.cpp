@@ -1088,6 +1088,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.sourceControlId = fieldInt(row, "SourceControlID", "b", 0);
     l.destControlId = fieldInt(row, "DestControlID", "c", 0);
     l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "d", 0);
+    l.conditionWhenEngaged =
+        fieldBool(row, "ConditionSwitchLinkIfEngaged", nullptr, true);
     l.scale = fieldDouble(row, "SourceControlValueCoefficient", "e", 1.0);
     l.offset = fieldInt(row, "SourceControlValueIncrement", "f", 0);
     if (fieldBool(row, "InvertSourceControlValue", nullptr, false)) {

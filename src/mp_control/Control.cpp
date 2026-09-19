@@ -440,7 +440,9 @@ void ContinuousControlBank::propagate(Id pinned,
 
   // One pass per linkage is enough to carry a value along the longest possible
   // acyclic chain; stop early once a pass changes nothing.
-  const size_t maxPasses = linkCount;
+  // Capped: real chains are a handful of links long, and a file whose
+  // linkages disagree would otherwise cost linkCount squared on every block.
+  const size_t maxPasses = std::min<size_t>(linkCount, 64);
   for (size_t pass = 0; pass < maxPasses; ++pass) {
     bool changed = false;
     for (const auto& l : model_->controlLinkages) {
@@ -452,10 +454,15 @@ void ContinuousControlBank::propagate(Id pinned,
       // Load buttons and her "reset all settings to defaults" off these, and
       // running them whenever they are looked at pins every control they
       // touch to its stored value.
-      if (l.conditionSwitchId != 0 &&
-          (engagedSwitches == nullptr ||
-           engagedSwitches->count(l.conditionSwitchId) == 0))
-        continue;
+      //
+      // The condition has a sense. Reading every one as "while engaged" made
+      // both halves of a tremulant pair live at once, and two linkages then
+      // overwrote the same control on every pass without ever settling.
+      if (l.conditionSwitchId != 0) {
+        const bool on = engagedSwitches != nullptr &&
+                        engagedSwitches->count(l.conditionSwitchId) != 0;
+        if (on != l.conditionWhenEngaged) continue;
+      }
       const auto sit = values_.find(l.sourceControlId);
       if (sit == values_.end()) continue;
 

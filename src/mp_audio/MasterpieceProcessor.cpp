@@ -1856,7 +1856,14 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   controls_.setValue(controlId, value);
   controls_.propagate(controlId, &engagedSwitches_);
+  fireMovedStages();
+}
 
+// Every staged control whose value moved since it was last looked at fires
+// the switches it sweeps past. Called after a player's move and after the
+// per-block solve: a control the organ drives itself -- a pipe-delay ramp that
+// opens a pallet once it reaches the top -- moves without anyone setting it.
+void MasterpieceProcessor::fireMovedStages() {
   // Fire on whatever MOVED, not on what was set. The control a player moves is
   // often not the one with the steps behind it: Nancy's visible crescendo
   // pedal drives control 51, "Crescendo pedal (extension)", through a linkage,
@@ -2249,6 +2256,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   outgoing_.clear();
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
+  fireMovedStages();
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line

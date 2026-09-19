@@ -2750,6 +2750,40 @@ public:
   }
 };
 
+// A tremulant crossfade feeds one control from two linkages on the same
+// switch, one live while it is engaged and one while it is not. Reading both
+// as "while engaged" set them fighting: with the tremulant on, each pass
+// overwrote the other's value, the solver never settled, and Erfurt spent a
+// second on every audio block.
+class ConditionSenseTest final : public mp::test::Test {
+public:
+  ConditionSenseTest()
+    : Test("functional.control.condition-sense", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {mp::Id(23), mp::Id(24), mp::Id(41)})
+      m.continuousControls[id] = DoubleLinkageTest::control(id, 0);
+    mp::ContinuousControlLinkage on, off;
+    on.sourceControlId = 23; on.destControlId = 41;
+    on.conditionSwitchId = 702; on.conditionWhenEngaged = true;
+    off.sourceControlId = 24; off.destControlId = 41;
+    off.conditionSwitchId = 702; off.conditionWhenEngaged = false;
+    m.controlLinkages = {off, on};
+
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    bank.setValue(23, 100);
+    bank.setValue(24, 20);
+    std::unordered_set<mp::Id> sw;
+    bank.propagate(0, &sw);
+    MP_CHECK(bank.value(41) == 20, "tremulant off: the disengaged-sense link drives");
+    sw.insert(702);
+    bank.propagate(0, &sw);
+    MP_CHECK(bank.value(41) == 100, "tremulant on: only the engaged-sense link drives");
+  }
+};
+
+
 class StageSwitchTest final : public mp::test::Test {
 public:
   StageSwitchTest()
@@ -7238,6 +7272,7 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+static ConditionSenseTest g_conditionSense;
 static EncryptedDetectionTest g_encrypted;
 static FixtureCorpusTest g_fixtures;
 static CodmCodesTest g_codm;

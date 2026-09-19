@@ -1007,6 +1007,7 @@ private:
   // Only ranks that no StopRank reaches are indexed. A pipe reached both ways
   // would otherwise speak twice.
   void buildPalletIndex();
+  void fireMovedStages();
   void palletMoved(Id switchId, bool engaged);
   // Pallet switch -> the pipes it opens, with their rank.
   std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;

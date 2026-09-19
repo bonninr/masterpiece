@@ -495,6 +495,10 @@ struct ContinuousControlLinkage {
   Id sourceControlId = 0;
   Id destControlId = 0;
   Id conditionSwitchId = 0;
+  // Whether the linkage is live while the condition switch is engaged, or
+  // while it is disengaged. Tremulant crossfades come in such pairs, one of
+  // each sense, feeding the same control.
+  bool conditionWhenEngaged = true;
   // InvertSourceControlValue is folded into these at load: the loader negates
   // the coefficient and adds 127, which mirrors the source within its range.
   // Nancy marks 203 of her 1097 linkages that way.
