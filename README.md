@@ -32,20 +32,34 @@ Portable archives for every platform, and the plugins on their own, are on the
 
 ## What it is
 
-A virtual pipe organ (VPO) is a sampler specialized for pipe organs: it
-reproduces a specific recorded instrument from a sample set. A set consists of
-audio recordings — typically attack, sustain loop, and release per pipe, plus
-key, stop, and blower noise — and an organ definition (XML) specifying ranks,
-stops, manuals, couplers, wind system, temperament, and console layout.
+A pipe organ is not one instrument but thousands. Every pipe sounds exactly
+one note in one colour, so a single stop -- a Principal 8', say -- is a row of
+56 separate pipes, one per key. The organist draws stops to choose which rows
+speak, couples keyboards together, and plays on several manuals and a
+pedalboard. Wind from the bellows reaches the pipes through the chests, and
+the building itself is half the sound.
 
-The player loads the definition, maps keys, drawstops, pistons, and expression
-shoes to the corresponding samples, and renders the selected registration in
-real time: one sample stream per active pipe, with pitch correction, looping,
-and release crossfade, through the coupler and switch network, enclosure
-filters, tremulant modulation, and wind model defined by the set. Control is
-via MIDI keyboards, pedalboard, and stop hardware, via the on-screen console,
-or via MIDI from a DAW. Output is to the audio interface, with per-rank
-routing and optional convolution reverb for sets recorded dry.
+A virtual pipe organ (VPO) recreates a specific instrument from recordings. A
+producer records every pipe of a real organ, one at a time, in its own church:
+the start of the note, a stretch of steady tone that can be looped for as long
+as a key is held, and the release with the room's reverberation dying away --
+often several releases, because a note held for a beat decays differently
+from one held for a bar. Key action, stop and blower noises are recorded too.
+The result is a sample set of tens of thousands of files and many gigabytes,
+shipped with a definition of the instrument: which pipes each stop owns, what
+the couplers and pistons do, how the console looks, how the wind and the swell
+box behave.
+
+The player software turns that library back into an organ. It draws the
+console, so stops can be drawn with the mouse or from MIDI hardware, and for
+every key pressed it works out which pipes should speak -- through the stops,
+couplers and switch network, wired exactly as on the original console. For
+each pipe it plays the right recording, loops the sustain without a seam,
+chooses the release that matches how long the note was held, tunes it to the
+chosen temperament, and applies what the definition asks of the instrument:
+tremulants, swell shades, the wind sagging under a full chord. All of it is
+mixed in real time, with latency low enough to play from a keyboard. Connect a
+MIDI keyboard or a whole console, load a set, and you have that organ at home.
 
 Masterpiece is such a player. It reads unencrypted Hauptwerk-format sets
 directly, so existing libraries transfer without conversion; copy-protected
