@@ -45,8 +45,7 @@ and release crossfade, through the coupler and switch network, enclosure
 filters, tremulant modulation, and wind model defined by the set. Control is
 via MIDI keyboards, pedalboard, and stop hardware, via the on-screen console,
 or via MIDI from a DAW. Output is to the audio interface, with per-rank
-routing and optional convolution reverb for sets recorded dry. See
-[Parts of a VPO](#parts-of-a-vpo) for the components implemented here.
+routing and optional convolution reverb for sets recorded dry.
 
 Masterpiece is such a player, compatible with Hauptwerk sample sets. It is
 written from scratch and runs as a standalone application and as a VST3 or LV2
@@ -173,63 +172,6 @@ in its own building already carries that acoustic in the samples; a second
 room on top muddies it.
 
 ![Room](screenshots/ui-room.jpg)
-
----
-
-## Parts of a VPO
-
-**The console.** Artwork, drawstops, pistons, expression shoes, text labels and
-transparency masks, drawn manuals and pedalboards, multiple display pages, and
-alternate layouts. Clicking a key or a drawstop takes exactly the same path as
-the equivalent MIDI message.
-
-**In a DAW.** The standalone application and the VST3 and LV2 plugins are the
-same engine. As a plugin the organ is one instrument among others: put your
-own convolution after it, render a take offline, or give each division its own
-track through the multi-channel routing.
-
-**The sound.** Each pipe plays its own recording — attack, sustain loop, and a
-matched release tail crossfaded in, so releases keep the room's own decay.
-Transposed ranks are resampled with four-point interpolation. When polyphony runs out, the voice that gets stolen
-is a decaying release first and the oldest quietest note next. A just-pressed
-key is exempt from stealing.
-
-**Tuning.** Equal temperament, or one of seven historical temperaments, each
-generated from its own fifth-chain definition. An unrecognised temperament
-is reported.
-
-**Expression and tremulants.** Enclosed divisions are filtered per box as the
-shoe moves. Tremulants modulate amplitude and pitch per pipe, each chest with
-its own depth.
-
-**Wind.** For sets that describe their own pneumatics — compartments, bellows,
-valves, and the air each pipe draws — the wind system is solved as a physical
-one, and a large registration sags the wind the way the real instrument does.
-
-**Registration.** Couplers work through the instrument's own switch graph.
-Thumb pistons and
-combinations with capture, a general cancel, a crescendo, and a sequencer that
-steps through the generals. Captured registrations are saved beside your own
-settings.
-
-**Voicing.** Level and tuning per rank and per individual pipe. The two add,
-so correcting one pipe keeps the rank trim. A and B are two complete sets,
-for comparing a change against what was there before. Both are a multiply and a ratio taken once when a note starts, so
-they cost nothing while it sounds and work with the DSP switched off.
-
-**Memory and streaming.** A large set can be held entirely in RAM, or its
-release tails streamed from disk while attacks and loops stay resident — the
-same audio either way, sample for sample. A background thread refills
-per-voice ring buffers while the note sounds. Samples are held at 24-bit, exact
-to the files, or at 16-bit, and a stereo set can be folded to mono: together up
-to 9.3x less memory than 32-bit float, measured in [PERFORMANCE.md](PERFORMANCE.md).
-
-**MIDI.** Every input device at once, each knowing which manual it is.
-Right-click a drawstop to learn a control. MIDI out lights the drawstops on a
-physical console.
-
-**Alongside the organ.** A metronome, impulse-response reverb, and a recorder
-that captures stop changes and shoe movements as well as notes.
 
 ---
 
