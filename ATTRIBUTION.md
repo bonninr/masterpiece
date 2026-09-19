@@ -129,8 +129,8 @@ in LilyPond and released to the public domain.
 
 ## Software
 
-Masterpiece is an independent implementation and compiles none of the following
-code. It was written with these projects as references:
+The published work of these projects was a reference and a source of
+understanding throughout, and is gratefully acknowledged:
 [GrandOrgue](https://github.com/GrandOrgue/GrandOrgue),
 [OdfEdit](https://github.com/GrandOrgue/OdfEdit),
 [rusty-pipes](https://github.com/dividebysandwich/rusty-pipes) and
