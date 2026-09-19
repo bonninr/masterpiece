@@ -665,11 +665,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isNoteOff())
       stopNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
-    else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+    else if (msg.isAllNotesOff() || msg.isAllSoundOff()) {
       for (const auto& [note, held] : soundingNotes_) {
         (void)note;
         voices_.noteOff(held.id, NoteRelease{});
       }
+      // Keys held as switches let go too, or their pallets stay open.
+      while (!heldKeySwitches_.empty())
+        stopNoteByKey(heldKeySwitches_.begin()->first, 0);
+    }
     else if (msg.isController())
       // With no mapping the control id IS the CC number, which is enough to
       // drive a swell shoe from a real pedal out of the box.
@@ -1525,6 +1529,12 @@ void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
 }
 
 void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
+    const Id switchId = ks->second;
+    heldKeySwitches_.erase(ks);
+    palletVelocity_ = velocity;
+    setSwitchEngaged(switchId, false);
+  }
   const auto it = soundingNotes_.find(key);
   if (it == soundingNotes_.end()) return;
   NoteRelease rel;
@@ -1555,83 +1565,8 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
       if (rankIt == model_.ranks.end()) continue;
       for (const auto& pipe : rankIt->second.pipes) {
         if (pipe.pipeId != rp.pipeId) continue;
-        for (const auto& layer : pipe.layers) {
-          NoteStrike strike;
-          strike.velocity = velocity;
-          const int attackIndex = selectAttack(layer, strike);
-          if (attackIndex < 0) continue; // this layer stays silent, by design
-
-          VoiceStart vs;
-          vs.pipe = &pipe;
-          vs.layer = &layer;
-          vs.attackIndex = attackIndex;
-          vs.attackId = layer.attacks[static_cast<size_t>(attackIndex)].id;
-          vs.velocity = velocity;
-          // Pitch comes from the solver, against the pitch the FILE holds —
-          // not against the organ's reference A. See playbackRatioFor().
-          vs.ratio = playbackRatioFor(
-              pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
-              layer);
-          vs.gain = juce::Decibels::decibelsToGain(
-                        static_cast<float>(layer.gainDb), -100.0f) *
-                    layerLevel(layer);
-
-          // The player's own voicing, on top of what the organ declares.
-          // Gain and tuning only: they are a multiply and a ratio at note-on
-          // and cost nothing per sample, so they apply even with the DSP
-          // switch off. Brightness and balance need per-voice filtering and
-          // are stored but NOT applied — see PipeVoicing.
-          //
-          // The empty() guard is the point of the whole lookup: an organ
-          // nobody has voiced must not pay two hash lookups for every pipe of
-          // every chord.
-          if (!voicing_.live().empty()) {
-            const PipeVoicing pv =
-                voicing_.live().effective(rp.rankId, pipe.pipeId);
-            if (pv.gainDb != 0.0f)
-              vs.gain *= juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
-            if (pv.tuningCents != 0.0f)
-              vs.ratio *= centsRatio(pv.tuningCents);
-          }
-
-          // A layer may declare its own loop, overriding the audio file's.
-          vs.loopStartOverride = layer.loopStartFrames;
-          vs.loopEndOverride = layer.loopEndFrames;
-          vs.busIndex = busForPipe(pipe.pipeId);
-          vs.mixBus = mixBusForPipe(rp.rankId, reached.midiNote);
-          {
-            const auto wIt = pipeWindIndex_.find(pipe.pipeId);
-            vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
-            // What this pipe costs its chest. An organ that declares nothing
-            // still has to sag under a tutti, or the model is decorative.
-            vs.windFlowKgPerSec =
-                pipe.windMassFlowKgPerSec > 0.0
-                    ? static_cast<float>(pipe.windMassFlowKgPerSec)
-                    : 0.0005f;
-
-            // Which tremulant reaches this pipe, and how far it moves it. The
-            // organ states the depth per pipe, so a flute and a reed on the
-            // same chest wobble by different amounts.
-            const auto tm = model_.tremulantPipes.find(pipe.pipeId);
-            if (tm != model_.tremulantPipes.end()) {
-              const auto ti = tremIndexOf_.find(tm->second.tremulantId);
-              if (ti != tremIndexOf_.end()) {
-                vs.tremIndex = ti->second;
-                // Decibels to a linear swing about unity, and percent of a
-                // semitone to semitones.
-                vs.tremAmpDepth = static_cast<float>(
-                    juce::Decibels::decibelsToGain(tm->second.ampDepthDb, -60.0) -
-                    1.0);
-                vs.tremPitchDepth = tm->second.pitchDepthPct / 100.0;
-              }
-            }
-          }
-          // LoopCrossfadeLengthInSrcSampleMs is stated against the SOURCE
-          // sample rate, so convert with the file's rate, not the engine's.
-          vs.loopCrossfadeFrames = static_cast<int>(
-              layer.loopCrossfadeMs * 0.001 * sampleRate_);
-          if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
-        }
+        if (startPipeLayers(pipe, rp.rankId, reached.midiNote, velocity, noteId))
+          anyStarted = true;
         break;
       }
     }
@@ -1640,8 +1575,109 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
   return anyStarted;
 }
 
+// One pipe, every layer of it, under `noteId`. Shared by the key path, which
+// reaches pipes through the stops, and the pallet path, which reaches them
+// through the organ's own switch wiring: a pipe sounds the same whichever way
+// it was asked for.
+bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
+                                           int midiNote, int velocity,
+                                           uint64_t noteId) {
+  bool anyStarted = false;
+  for (const auto& layer : pipe.layers) {
+    NoteStrike strike;
+    strike.velocity = velocity;
+    const int attackIndex = selectAttack(layer, strike);
+    if (attackIndex < 0) continue; // this layer stays silent, by design
+
+    VoiceStart vs;
+    vs.pipe = &pipe;
+    vs.layer = &layer;
+    vs.attackIndex = attackIndex;
+    vs.attackId = layer.attacks[static_cast<size_t>(attackIndex)].id;
+    vs.velocity = velocity;
+    // Pitch comes from the solver, against the pitch the FILE holds —
+    // not against the organ's reference A. See playbackRatioFor().
+    vs.ratio = playbackRatioFor(
+        pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
+        layer);
+    vs.gain = juce::Decibels::decibelsToGain(
+                  static_cast<float>(layer.gainDb), -100.0f) *
+              layerLevel(layer);
+
+    // The player's own voicing, on top of what the organ declares.
+    // Gain and tuning only: they are a multiply and a ratio at note-on
+    // and cost nothing per sample, so they apply even with the DSP
+    // switch off. Brightness and balance need per-voice filtering and
+    // are stored but NOT applied — see PipeVoicing.
+    //
+    // The empty() guard is the point of the whole lookup: an organ
+    // nobody has voiced must not pay two hash lookups for every pipe of
+    // every chord.
+    if (!voicing_.live().empty()) {
+      const PipeVoicing pv =
+          voicing_.live().effective(rankId, pipe.pipeId);
+      if (pv.gainDb != 0.0f)
+        vs.gain *= juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
+      if (pv.tuningCents != 0.0f)
+        vs.ratio *= centsRatio(pv.tuningCents);
+    }
+
+    // A layer may declare its own loop, overriding the audio file's.
+    vs.loopStartOverride = layer.loopStartFrames;
+    vs.loopEndOverride = layer.loopEndFrames;
+    vs.busIndex = busForPipe(pipe.pipeId);
+    vs.mixBus = mixBusForPipe(rankId, midiNote);
+    {
+      const auto wIt = pipeWindIndex_.find(pipe.pipeId);
+      vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
+      // What this pipe costs its chest. An organ that declares nothing
+      // still has to sag under a tutti, or the model is decorative.
+      vs.windFlowKgPerSec =
+          pipe.windMassFlowKgPerSec > 0.0
+              ? static_cast<float>(pipe.windMassFlowKgPerSec)
+              : 0.0005f;
+
+      // Which tremulant reaches this pipe, and how far it moves it. The
+      // organ states the depth per pipe, so a flute and a reed on the
+      // same chest wobble by different amounts.
+      const auto tm = model_.tremulantPipes.find(pipe.pipeId);
+      if (tm != model_.tremulantPipes.end()) {
+        const auto ti = tremIndexOf_.find(tm->second.tremulantId);
+        if (ti != tremIndexOf_.end()) {
+          vs.tremIndex = ti->second;
+          // Decibels to a linear swing about unity, and percent of a
+          // semitone to semitones.
+          vs.tremAmpDepth = static_cast<float>(
+              juce::Decibels::decibelsToGain(tm->second.ampDepthDb, -60.0) -
+              1.0);
+          vs.tremPitchDepth = tm->second.pitchDepthPct / 100.0;
+        }
+      }
+    }
+    // LoopCrossfadeLengthInSrcSampleMs is stated against the SOURCE
+    // sample rate, so convert with the file's rate, not the engine's.
+    vs.loopCrossfadeFrames = static_cast<int>(
+        layer.loopCrossfadeMs * 0.001 * sampleRate_);
+    if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
+  }
+  return anyStarted;
+}
+
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity) {
+  // The key is a switch, too, when the organ says so. Engaging it lets the
+  // wiring open whatever pallets it reaches -- which is how an organ with no
+  // StopRank plays at all, and how every organ's key action sounds. This comes
+  // before the no-stops check: key action speaks with nothing drawn.
+  if (!keySwitchByKey_.empty()) {
+    const auto ks = keySwitchByKey_.find(static_cast<int>(keyboard) * 256 + midiNote);
+    if (ks != keySwitchByKey_.end()) {
+      palletVelocity_ = velocity;
+      heldKeySwitches_[noteKeyId] = ks->second;
+      setSwitchEngaged(ks->second, true);
+    }
+  }
+
   if (engagedStops_.empty()) {
     // nothing drawn: the organ is silent
     if (logMidi_.load(std::memory_order_acquire))
@@ -1820,7 +1856,14 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
   controls_.setValue(controlId, value);
   controls_.propagate(controlId, &engagedSwitches_);
+  fireMovedStages();
+}
 
+// Every staged control whose value moved since it was last looked at fires
+// the switches it sweeps past. Called after a player's move and after the
+// per-block solve: a control the organ drives itself -- a pipe-delay ramp that
+// opens a pallet once it reaches the top -- moves without anyone setting it.
+void MasterpieceProcessor::fireMovedStages() {
   // Fire on whatever MOVED, not on what was set. The control a player moves is
   // often not the one with the steps behind it: Nancy's visible crescendo
   // pedal drives control 51, "Crescendo pedal (extension)", through a linkage,
@@ -1944,6 +1987,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
 
     // The mechanical sound belongs to the switch that actually moved.
     triggerNoiseFor(movedId, nowEngaged);
+    palletMoved(movedId, nowEngaged);
   }
 
   // A piston fires on the way in, never on the way out, and then lets itself
@@ -2057,6 +2101,61 @@ bool MasterpieceProcessor::loadCombinations() {
   return combinations_.fromText(f.loadFileAsString().toStdString());
 }
 
+void MasterpieceProcessor::buildPalletIndex() {
+  palletPipes_.clear();
+  keySwitchByKey_.clear();
+  heldKeySwitches_.clear();
+  palletNotes_.clear();
+
+  std::unordered_set<Id> viaStops;
+  for (const auto& [stopId, stop] : model_.stops) {
+    (void)stopId;
+    for (const StopRankEntry& e : stop.ranks) {
+      viaStops.insert(e.rankId);
+      if (e.alternateRankId != 0) viaStops.insert(e.alternateRankId);
+    }
+  }
+  for (const auto& [rankId, rank] : model_.ranks) {
+    if (viaStops.count(rankId) != 0) continue;
+    // A noise the Noise table already triggers has its own path.
+    if (rank.isNoise && rank.noiseTriggerSwitchId != 0) continue;
+    for (const Pipe& pipe : rank.pipes)
+      if (pipe.palletSwitchId != 0 && !pipe.layers.empty())
+        palletPipes_[pipe.palletSwitchId].emplace_back(rankId, &pipe);
+  }
+  if (palletPipes_.empty()) return; // nothing to open: keys stay plain keys
+
+  for (const auto& [switchId, key] : model_.keyboardKeys)
+    keySwitchByKey_[static_cast<int>(key.keyboardId) * 256 + key.midiNote] = switchId;
+  palletNotes_.reserve(palletPipes_.size());
+  heldKeySwitches_.reserve(256);
+}
+
+void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
+  if (palletPipes_.empty()) return;
+  const auto it = palletPipes_.find(switchId);
+  if (it == palletPipes_.end()) return;
+
+  const auto open = palletNotes_.find(switchId);
+  if (!engaged) {
+    if (open == palletNotes_.end()) return;
+    NoteRelease rel;
+    rel.velocity = palletVelocity_;
+    voices_.noteOff(open->second, rel);
+    palletNotes_.erase(open);
+    return;
+  }
+  if (open != palletNotes_.end()) return; // already speaking
+
+  const uint64_t noteId = nextNoteId_++;
+  bool any = false;
+  for (const auto& [rankId, pipe] : it->second)
+    if (startPipeLayers(*pipe, rankId, pipe->midiNote, palletVelocity_, noteId)) {
+      any = true;
+    }
+  if (any) palletNotes_[switchId] = noteId;
+}
+
 void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
   const auto it = noiseRanksBySwitch_.find(switchId);
   if (it == noiseRanksBySwitch_.end()) return;
@@ -2157,6 +2256,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   outgoing_.clear();
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
+  fireMovedStages();
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -2196,6 +2296,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // set at the level its producer intended.
   buffer.applyGain(organTrimGain_ *
                    *apvts_.getRawParameterValue("masterGain"));
+
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.
@@ -2336,6 +2437,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   phases.mark("model: stop map");
   switches_.reset(model_);
   engagedSwitches_ = switches_.engagedSwitches();
+  buildPalletIndex();
 
   // Continuous controls. This was never reset, so the bank held no model and
   // no values: every shoe read as absent, shutterFor() answered "fully open"
@@ -2606,6 +2708,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (it == model_.stops.end()) continue;
       for (const auto& e : it->second.ranks) onlyRanks.insert(e.rankId);
     }
+    // Pallet-wired ranks belong to no stop the loader can name without
+    // walking the wiring, so a partial load keeps all of them. On an organ
+    // wired only this way that is the whole organ, which is also what an
+    // empty list means.
+    if (!onlyRanks.empty())
+      for (const auto& [palletId, pipes] : palletPipes_) {
+        (void)palletId;
+        for (const auto& [rankId, pipe] : pipes) {
+          (void)pipe;
+          onlyRanks.insert(rankId);
+        }
+      }
+    if (!preloadRanks_.empty())
+      onlyRanks = std::unordered_set<Id>(preloadRanks_.begin(), preloadRanks_.end());
     if (!onlyRanks.empty())
       juce::Logger::writeToLog("load: PARTIAL -- " +
                                juce::String((int)onlyRanks.size()) +

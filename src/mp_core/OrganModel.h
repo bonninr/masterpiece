@@ -155,6 +155,12 @@ struct Pipe {
   // pitch instead of a tempered one, which is the whole point of sampling a
   // specific organ; 0 means the file does not say.
   double originalOrganPitchHz = 0.0;
+  // The switch whose state opens this pipe's pallet
+  // (ControllingPalletSwitchID). An organ can wire its pipework entirely
+  // through the switch network -- key switch, through the stop's switch, to
+  // the pallet -- and declare no StopRank at all; the pipe then speaks while
+  // this switch is engaged and at no other time. 0 means the file names none.
+  Id palletSwitchId = 0;
 };
 
 struct Rank {
@@ -489,6 +495,10 @@ struct ContinuousControlLinkage {
   Id sourceControlId = 0;
   Id destControlId = 0;
   Id conditionSwitchId = 0;
+  // Whether the linkage is live while the condition switch is engaged, or
+  // while it is disengaged. Tremulant crossfades come in such pairs, one of
+  // each sense, feeding the same control.
+  bool conditionWhenEngaged = true;
   // InvertSourceControlValue is folded into these at load: the loader negates
   // the coefficient and adds 127, which mirrors the source within its range.
   // Nancy marks 203 of her 1097 linkages that way.
