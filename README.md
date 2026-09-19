@@ -375,21 +375,20 @@ a 40 GB library.
 
 ## Credits
 
-Masterpiece is its own implementation, but it was written with four
-open-source projects open alongside it, and is much the better for them:
+Masterpiece owes a real debt to four open-source projects. Their authors
+worked out, and generously published, much of what anyone building a player
+like this has to understand, and their work was a constant reference:
 
-- **[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue)** — the shape of the
-  voice engine, and the release-crossfade behaviour that stops a key release
-  from clicking
-- **[OdfEdit](https://github.com/GrandOrgue/OdfEdit)** — the clearest available
-  reading of the organ-definition format: which objects exist, how they link,
-  and which of them a converter has to give up on
-- **[rusty-pipes](https://github.com/dividebysandwich/rusty-pipes)** — sample
-  and loop handling, and a great deal of hard-won file-format knowledge
-- **[HISE](https://github.com/christophhart/HISE)** — the streaming design:
-  per-voice ring buffers refilled off a background thread
-
-The implementation throughout is original; all four stand as references.
+- **[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue)** — for showing
+  what a mature pipe organ player has to get right, above all a release that
+  does not click
+- **[OdfEdit](https://github.com/GrandOrgue/OdfEdit)** — for the clearest
+  public explanation of the organ-definition format: which objects exist, how
+  they connect, and where a conversion has to give way
+- **[rusty-pipes](https://github.com/dividebysandwich/rusty-pipes)** — for its
+  generous sharing of hard-won knowledge about samples, loops and file formats
+- **[HISE](https://github.com/christophhart/HISE)** — for the idea of streaming
+  samples from disk through small per-voice buffers refilled in the background
 
 Sample libraries and MIDI sequences are credited in
 **[ATTRIBUTION.md](ATTRIBUTION.md)**.
