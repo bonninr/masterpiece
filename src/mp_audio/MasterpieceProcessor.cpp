@@ -1665,9 +1665,6 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
 
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity) {
-  if (std::getenv("MP_PALLET_TRACE"))
-    std::fprintf(stderr, "key kb=%d note=%d keysw=%zu\n", (int)keyboard, midiNote,
-                 keySwitchByKey_.count(static_cast<int>(keyboard) * 256 + midiNote));
   // The key is a switch, too, when the organ says so. Engaging it lets the
   // wiring open whatever pallets it reaches -- which is how an organ with no
   // StopRank plays at all, and how every organ's key action sounds. This comes
@@ -2131,10 +2128,6 @@ void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
   if (palletPipes_.empty()) return;
   const auto it = palletPipes_.find(switchId);
   if (it == palletPipes_.end()) return;
-  if (std::getenv("MP_PALLET_TRACE"))
-    std::fprintf(stderr, "pallet %d %s (%zu pipes, rank %d note %d)\n",
-                 (int)switchId, engaged ? "OPEN" : "close", it->second.size(),
-                 (int)it->second.front().first, it->second.front().second->midiNote);
 
   const auto open = palletNotes_.find(switchId);
   if (!engaged) {
@@ -2152,9 +2145,6 @@ void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
   for (const auto& [rankId, pipe] : it->second)
     if (startPipeLayers(*pipe, rankId, pipe->midiNote, palletVelocity_, noteId)) {
       any = true;
-      if (std::getenv("MP_PALLET_TRACE"))
-        std::fprintf(stderr, "  started rank %d pipe %d layers %zu level %.3f c41 %.3f c1401 %.3f c23 %.3f c24 %.3f\n", (int)rankId,
-                     (int)pipe->pipeId, pipe->layers.size(), layerLevel(pipe->layers[0]), controls_.normalised(41), controls_.normalised(1401), controls_.normalised(23), controls_.normalised(24));
     }
   if (any) palletNotes_[switchId] = noteId;
 }
@@ -2298,6 +2288,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // set at the level its producer intended.
   buffer.applyGain(organTrimGain_ *
                    *apvts_.getRawParameterValue("masterGain"));
+
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.

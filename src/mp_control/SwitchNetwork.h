@@ -22,11 +22,28 @@
 //     Propagation stops as soon as a switch is already in the state it is
 //     being set to, which is what makes those loops terminate.
 //
-// Each wire says: when the source (and the condition, if there is one) is in
-// the state that fires it, do `engageAction` to the destination; otherwise do
-// `disengageAction`. Codes 1 and 4 engage, 2 and 7 disengage, which covers
-// every wiring real organs use — a plain follow (1/2 or 4/7) and an inverting
-// one (7/4, or 1/2 driven from the source's OFF state) — with no special cases.
+// Each wire asserts its destination when the source (and the condition, if
+// there is one) is in the state that fires it: do `engageAction`; when it stops
+// firing, do `disengageAction`. Codes 1 and 4 engage, 2 and 7 disengage, which
+// covers every wiring real organs use — a plain follow (1/2 or 4/7) and an
+// inverting one (7/4, or 1/2 driven from the source's OFF state).
+//
+// A wire that is NOT firing asserts NOTHING. This is the rule that matters for
+// organs whose pipework hangs off pallet switches: a pallet carries one wire
+// per tremulant state — one conditioned on "tremulant off", one on "tremulant
+// on" — and with the tremulant off the first one fires while the second sits
+// idle. Driving the idle wire's disengage action anyway slammed the pallet
+// shut in the same breath as the key opened it, and the pipe, started and
+// released in one instant, sounded as an attack followed by a release tail.
+// GrandOrgue's Hauptwerk importer reads the same wiring the same way: a
+// destination is the OR of the wires currently firing into it.
+//
+// Verified on Alessandria, Erfurt Predigerkirche and Swieta Lipka, whose
+// pipework is reached only through pallets, and against the switch tests.
+//
+// So a disengage assertion is applied only when no other wire firing into the
+// same destination is asserting engagement. That OR is also what two parallel
+// wires into one stop mean on an organ that reaches a switch by two routes.
 #pragma once
 #include "../mp_core/OrganModel.h"
 
@@ -41,9 +58,9 @@ namespace mp {
 
 class SwitchNetwork {
 public:
-  // Build from a model. Every switch starts at its declared default and those
-  // defaults propagate, so an organ that ships with its blower running or its
-  // unison couplers drawn comes up that way.
+  // Build from a model. Every switch starts at its declared default and every
+  // wire firing at that state asserts its destination, so an organ that ships
+  // with its blower running or its unison couplers drawn comes up that way.
   void reset(const OrganModel& model);
 
   // Move a switch, and let the change travel. Everything the move reached is
@@ -70,20 +87,33 @@ public:
 
 private:
   void propagate(Id switchId, bool engaged);
+  // Move every queued assertion and re-evaluate the wires it touches, until
+  // nothing moves. Shared by set() and reset().
+  void drain();
   static bool actionEngages(int code) { return code == 1 || code == 4; }
   static bool actionDisengages(int code) { return code == 2 || code == 7; }
-  // What this wire is currently asserting about its destination, given the
-  // state of its source and its condition. Returns false when the wire says
-  // nothing, which is what an action code we do not model means.
-  bool assertion(const SwitchLinkage& l, bool& outEngage) const;
+  // Does this wire presently fire: its source, and its condition when it has
+  // one, in the states the organ requires.
+  bool fires(const SwitchLinkage& l) const;
+  // The wire's firing state changed: assert what its action says, subject to
+  // the OR rule for a disengage.
+  void reevaluate(const SwitchLinkage& l);
+  // Is any wire other than `except` currently firing into `dest` and asserting
+  // engagement? If so a disengage against `dest` must not be applied.
+  bool anotherEngagingWire(Id dest, const SwitchLinkage* except) const;
 
   const OrganModel* model_ = nullptr;
   std::vector<SwitchLinkage> links_;
   // Wires indexed by what makes them re-evaluate: their source, and their
-  // condition. Both matter — a condition switch moving changes what a wire is
-  // asserting just as surely as its source moving does.
+  // condition. Both matter — a condition switch moving changes whether a wire
+  // fires just as surely as its source moving does.
   std::unordered_map<Id, std::vector<const SwitchLinkage*>> bySource_;
   std::unordered_map<Id, std::vector<const SwitchLinkage*>> byCondition_;
+  // Wires indexed by destination, for the OR rule above.
+  std::unordered_map<Id, std::vector<const SwitchLinkage*>> byDest_;
+  // Whether each wire fired at the last evaluation, parallel to links_. A
+  // wire asserts its destination on the edges, not on the level.
+  std::vector<uint8_t> fired_;
 
   std::unordered_set<Id> engaged_;
   std::vector<std::pair<Id, bool>> changes_;

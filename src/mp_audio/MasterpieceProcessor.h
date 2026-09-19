@@ -478,6 +478,13 @@ public:
   // asked. Global, never per organ: it suits the room, not the instrument.
   bool loadTicks() const { return loadTicks_.load(std::memory_order_acquire); }
   void setLoadTicks(bool on);
+  // Session-only form of the above: flips the switch without writing the
+  // global file. Headless tools use this so a measurement render never
+  // carries the progress taps, and without changing the player's preference
+  // behind their back.
+  void setLoadTicksSession(bool on) {
+    loadTicks_.store(on, std::memory_order_release);
+  }
   // Remembering which organ was open must not quietly promote that organ's
   // settings to everyone's defaults, so this rewrites the file around the
   // defaults already in it rather than around the live state.
