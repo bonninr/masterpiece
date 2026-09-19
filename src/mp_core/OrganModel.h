@@ -410,6 +410,27 @@ struct Combination {
   }
 };
 
+// A reversible piston: a physical control (thumb or toe piston) that TOGGLES
+// a target switch each time it fires — press once to engage the target,
+// press again to disengage it. It recalls nothing, unlike a Combination; it
+// just flips one switch, and does so from whatever state that switch is
+// actually in, including a state something else put it in.
+//
+// Every real set we have on hand (Lemmer, Melcer Chamber Music Hall) declares
+// the ReversiblePiston table but leaves it empty, and OdfEdit's own attribute
+// dictionary carries it as a stub with zero known fields. So the names below
+// are not lifted from a verified Hauptwerk spec; they follow the two roles
+// this codebase already names for the same shapes elsewhere — the piston's
+// own switch as Combination.ActivatingSwitchID, the switch it acts on as
+// CombinationElement.ControlledSwitchID — and the loader also tries the
+// bare "SwitchID" / "TargetSwitchID" spelling in case a set uses that
+// instead.
+struct ReversiblePiston {
+  std::string name;
+  Id activatingSwitchId = 0; // the piston's own switch: pressing this fires it
+  Id controlledSwitchId = 0; // the switch it toggles
+};
+
 struct Enclosure {
   Id enclosureId = 0;
   std::string name;
@@ -759,6 +780,7 @@ struct OrganModel {
   std::unordered_map<Id, KeyboardKeyRef> keyboardKeys;
   std::unordered_map<Id, TextStyle> textStyles;
   std::unordered_map<Id, Combination> combinations;
+  std::vector<ReversiblePiston> reversiblePistons;
   std::unordered_map<Id, Enclosure> enclosures;
   std::unordered_map<Id, Tremulant> tremulants;
   // Pipe -> what its tremulant does to it. Empty on an organ whose tremulants

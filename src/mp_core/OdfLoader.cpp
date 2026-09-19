@@ -54,7 +54,7 @@ const std::unordered_set<std::string>& knownTables() {
     "DisplayPage", "ImageSet", "ImageSetElement", "ImageSetInstance",
     "TextInstance", "TextStyle",
     // combinations
-    "Combination", "CombinationElement",
+    "Combination", "CombinationElement", "ReversiblePiston",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
     "Enclosure", "EnclosurePipe", "WindCompartment", "WindCompartmentLinkage",
     "ContinuousControl", "ContinuousControlDoubleLinkage",
@@ -1523,6 +1523,30 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (el.capturedSwitchId != 0 && outModel.switches.count(el.capturedSwitchId) == 0)
       outDiag.danglingIds.push_back(el.capturedSwitchId);
     comboIt->second.elements.push_back(el);
+  });
+
+  // ---- ReversiblePiston: toggles a target switch, no recall involved. No
+  // real set in hand declares a non-empty table and the OdfEdit dictionary
+  // has no letter codes for it, so both a documented-looking spelling and
+  // this codebase's own naming for the same roles are tried; a compact file
+  // falls back to the first two field slots, same convention as every other
+  // table here. A row naming no target is dropped — a piston that toggles
+  // nothing is not worth carrying into the control layer. ----
+  forEachRow(odfRoot, "ReversiblePiston", [&](pugi::xml_node row) {
+    ReversiblePiston p;
+    p.name = field(row, "Name", "b");
+    p.activatingSwitchId = fieldInt(row, "ActivatingSwitchID", "a", 0);
+    if (p.activatingSwitchId == 0)
+      p.activatingSwitchId = fieldInt(row, "SwitchID", "a", 0);
+    p.controlledSwitchId = fieldInt(row, "ControlledSwitchID", "b", 0);
+    if (p.controlledSwitchId == 0)
+      p.controlledSwitchId = fieldInt(row, "TargetSwitchID", "b", 0);
+    if (p.activatingSwitchId == 0 || p.controlledSwitchId == 0) return;
+    if (outModel.switches.count(p.activatingSwitchId) == 0)
+      outDiag.danglingIds.push_back(p.activatingSwitchId);
+    if (outModel.switches.count(p.controlledSwitchId) == 0)
+      outDiag.danglingIds.push_back(p.controlledSwitchId);
+    outModel.reversiblePistons.push_back(std::move(p));
   });
 
   return outDiag.ok();

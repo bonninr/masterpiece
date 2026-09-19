@@ -47,6 +47,11 @@ public:
     return bySwitch_;
   }
 
+  // The switch this ReversiblePiston toggles, or 0 if the switch pressed is
+  // not one. A reversible piston recalls nothing — it is not a combination —
+  // so it gets its own map rather than living in bySwitch_.
+  Id reversiblePistonTarget(Id switchId) const;
+
   // Recall: what this combination wants every switch it controls to be.
   // Respects the combination's own permissions — a cancel may only disengage,
   // and a fixed combination may only engage — so a piston that is allowed to
@@ -80,6 +85,8 @@ private:
   // organ's own InitialStoredStateIsEngaged and replaced by capture.
   std::unordered_map<Id, std::unordered_map<Id, bool>> stored_;
   std::unordered_map<Id, Id> bySwitch_; // activating switch -> combination
+  // Reversible piston's own switch -> the switch it toggles.
+  std::unordered_map<Id, Id> reversibleBySwitch_;
   bool captureMode_ = false;
 };
 

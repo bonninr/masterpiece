@@ -5890,6 +5890,128 @@ public:
   }
 };
 
+// A reversible piston toggles a target switch instead of recalling a
+// registration. Two rows: one spelled with the documented-looking full names,
+// one with the compact single-letter fallback this file uses everywhere else
+// (field 'a' = the piston's own switch, 'b' = its target) - both must parse
+// to the same shape. A third row names a target that is not a real switch,
+// which must report dangling rather than silently drop the piston.
+class ReversiblePistonParseTest final : public mp::test::Test {
+public:
+  ReversiblePistonParseTest()
+    : Test("functional.reversiblepiston.parse", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_Name>X</Identification_Name>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Switch\">"
+                 "<Switch><SwitchID>10</SwitchID><Name>Piston1</Name></Switch>"
+                 "<Switch><SwitchID>20</SwitchID><Name>Target1</Name></Switch>"
+                 "<Switch><SwitchID>11</SwitchID><Name>Piston2</Name></Switch>"
+                 "<Switch><SwitchID>21</SwitchID><Name>Target2</Name></Switch>"
+                 "<Switch><SwitchID>12</SwitchID><Name>Piston3</Name></Switch>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"ReversiblePiston\">"
+                 // full-name spelling
+                 "<ReversiblePiston><Name>Full</Name>"
+                 "<ActivatingSwitchID>10</ActivatingSwitchID>"
+                 "<ControlledSwitchID>20</ControlledSwitchID></ReversiblePiston>"
+                 // compact letter-code spelling
+                 "<ReversiblePiston><a>11</a><b>21</b></ReversiblePiston>"
+                 // dangling target: 999 is not a declared switch
+                 "<ReversiblePiston><Name>Dangling</Name>"
+                 "<ActivatingSwitchID>12</ActivatingSwitchID>"
+                 "<ControlledSwitchID>999</ControlledSwitchID></ReversiblePiston>"
+                 "</ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "reversible piston rows must load, never hard-fail");
+    MP_CHECK(m.reversiblePistons.size() == 3, "all three rows kept");
+    MP_CHECK(m.unknownTables.empty(),
+             "ReversiblePiston is a known table now, not forward-compat");
+
+    bool sawFull = false, sawCompact = false, sawDangling = false;
+    for (const mp::ReversiblePiston& p : m.reversiblePistons) {
+      if (p.activatingSwitchId == 10) {
+        sawFull = p.controlledSwitchId == 20;
+      } else if (p.activatingSwitchId == 11) {
+        sawCompact = p.controlledSwitchId == 21;
+      } else if (p.activatingSwitchId == 12) {
+        sawDangling = p.controlledSwitchId == 999;
+      }
+    }
+    MP_CHECK(sawFull, "full-name spelling parsed");
+    MP_CHECK(sawCompact, "compact letter-code spelling parsed");
+    MP_CHECK(sawDangling, "dangling-target row still kept");
+
+    bool danglingReported = false;
+    for (mp::Id id : d.danglingIds)
+      if (id == 999) danglingReported = true;
+    MP_CHECK(danglingReported, "target 999 reported dangling, not silently dropped");
+  }
+};
+
+class ReversiblePistonToggleTest final : public mp::test::Test {
+public:
+  ReversiblePistonToggleTest()
+    : Test("functional.reversiblepiston.toggle", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+
+    // The piston's own switch is momentary, like every piston; the target is
+    // an ordinary latching drawstop switch, starting out.
+    mp::Switch piston;
+    piston.switchId = 10;
+    piston.latching = false;
+    m.switches[10] = piston;
+
+    mp::Switch target;
+    target.switchId = 20;
+    target.latching = true;
+    m.switches[20] = target;
+
+    mp::ReversiblePiston rp;
+    rp.activatingSwitchId = 10;
+    rp.controlledSwitchId = 20;
+    m.reversiblePistons.push_back(rp);
+
+    mp::CombinationSystem combos;
+    combos.reset(m);
+    mp::SwitchNetwork net;
+    net.reset(m);
+
+    MP_CHECK(combos.reversiblePistonTarget(10) == 20,
+             "the piston's switch resolves to its target");
+    MP_CHECK(combos.reversiblePistonTarget(20) == 0,
+             "the target switch is not itself a piston");
+
+    // press -> target engages
+    MP_CHECK(!net.engaged(20), "target starts out");
+    net.set(20, !net.engaged(20));
+    MP_CHECK(net.engaged(20), "first press draws the target");
+
+    // press again -> target disengages
+    net.set(20, !net.engaged(20));
+    MP_CHECK(!net.engaged(20), "second press cancels it");
+
+    // Something ELSE moves the target (a coupler, another piston, a
+    // SwitchLinkage) - the next press must still read the live state and
+    // flip it from there, not from a count of presses.
+    net.set(20, true);
+    MP_CHECK(net.engaged(20), "target engaged by something other than the piston");
+    net.set(20, !net.engaged(20));
+    MP_CHECK(!net.engaged(20),
+             "the piston's next press disengages it, honouring who last moved "
+             "it rather than replaying its own press count");
+  }
+};
+
 class CodmStructuralTest final : public mp::test::Test {
 public:
   CodmStructuralTest()
@@ -6216,6 +6338,8 @@ static SampleFileNameNoteTest g_sampleFileNameNote;
 static SamplePitchCodeParsedTest g_samplePitchCodeParsed;
 static FixtureCombinationsTest g_combinations;
 static CombinationDanglingTest g_combDangling;
+static ReversiblePistonParseTest g_reversiblePistonParse;
+static ReversiblePistonToggleTest g_reversiblePistonToggle;
 static CodmStructuralTest g_codmStruct;
 static CodmExample2Test g_codmEx2;
 static CodmFileFormatTest g_codmFormat;

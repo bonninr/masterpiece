@@ -8,6 +8,7 @@ void CombinationSystem::reset(const OrganModel& model) {
   model_ = &model;
   stored_.clear();
   bySwitch_.clear();
+  reversibleBySwitch_.clear();
   captureMode_ = false;
 
   // Switches indexed by their assignment code, which is how a piston finds its
@@ -36,11 +37,23 @@ void CombinationSystem::reset(const OrganModel& model) {
         bySwitch_[activating] = id;
     }
   }
+
+  // First piston wins a contested switch, same rule as combinations above, so
+  // two badly-authored rows sharing a switch do not depend on hash order.
+  for (const ReversiblePiston& p : model.reversiblePistons) {
+    if (p.activatingSwitchId == 0 || p.controlledSwitchId == 0) continue;
+    reversibleBySwitch_.emplace(p.activatingSwitchId, p.controlledSwitchId);
+  }
 }
 
 Id CombinationSystem::combinationForSwitch(Id switchId) const {
   const auto it = bySwitch_.find(switchId);
   return it == bySwitch_.end() ? 0 : it->second;
+}
+
+Id CombinationSystem::reversiblePistonTarget(Id switchId) const {
+  const auto it = reversibleBySwitch_.find(switchId);
+  return it == reversibleBySwitch_.end() ? 0 : it->second;
 }
 
 void CombinationSystem::recall(Id combinationId,

@@ -1839,12 +1839,24 @@ Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
 
 bool MasterpieceProcessor::firePiston(Id switchId) {
   const Id comboId = combinations_.combinationForSwitch(switchId);
-  if (comboId == 0) return false;
-  // Capture reads the RESOLVED state, because that is what the player can see
-  // and hear; the base state would miss a stop pulled by a coupler or by
-  // another piston.
-  fireCombination(comboId);
-  return true;
+  if (comboId != 0) {
+    // Capture reads the RESOLVED state, because that is what the player can
+    // see and hear; the base state would miss a stop pulled by a coupler or
+    // by another piston.
+    fireCombination(comboId);
+    return true;
+  }
+
+  // A reversible piston recalls nothing: it flips whatever state its target
+  // is ACTUALLY in right now, including a state something else — a coupler,
+  // another piston, a SwitchLinkage — put it in. Reading switches_ rather
+  // than caching the target's last-known state is what makes that true.
+  if (const Id target = combinations_.reversiblePistonTarget(switchId); target != 0) {
+    setSwitchEngaged(target, !switches_.engaged(target));
+    return true;
+  }
+
+  return false;
 }
 
 void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
