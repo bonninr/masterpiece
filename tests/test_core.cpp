@@ -133,6 +133,50 @@ public:
   }
 };
 
+// An EMPTY unknown table is a placeholder, not a feature the set uses.
+// Hauptwerk writes several object lists with nothing in them -- every one of
+// the 22 sets on hand carries six such -- and warning about each sent an
+// implementation plan after features no set here uses. It is still recorded,
+// so nothing is lost; it just is not announced. A table with rows still warns.
+class LoaderEmptyTableTest final : public mp::test::Test {
+public:
+  LoaderEmptyTableTest()
+    : Test("functional.odf.empty-unknown-table-quiet", Category::Functional) {}
+  void run() override {
+    auto load = [](const char* tableXml, mp::OrganModel& m, mp::OdfDiagnostics& d) {
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      return l.loadFromXmlString(
+          std::string("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                      "<ObjectList ObjectType=\"_General\"><_General>"
+                      "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                      "</_General></ObjectList>") +
+              tableXml + "</Hauptwerk>",
+          "a.Organ_Hauptwerk_xml", o, m, d);
+    };
+    auto mentions = [](const mp::OdfDiagnostics& d, const std::string& what) {
+      for (const auto& w : d.warnings)
+        if (w.find(what) != std::string::npos) return true;
+      return false;
+    };
+
+    mp::OrganModel m1; mp::OdfDiagnostics d1;
+    MP_CHECK(load("<ObjectList ObjectType=\"ReversiblePiston\"></ObjectList>", m1, d1),
+             "a set with an empty unknown table loads");
+    MP_CHECK(!mentions(d1, "ReversiblePiston"),
+             "an empty table is not announced as an unsupported feature");
+    MP_CHECK(m1.unknownTables.size() == 1,
+             "but it is still recorded, so nothing is lost");
+
+    mp::OrganModel m2; mp::OdfDiagnostics d2;
+    MP_CHECK(load("<ObjectList ObjectType=\"ReversiblePiston\">"
+                  "<ReversiblePiston/><ReversiblePiston/></ObjectList>", m2, d2),
+             "a set with a populated unknown table loads");
+    MP_CHECK(mentions(d2, "ReversiblePiston") && mentions(d2, "2 row(s)"),
+             "a table with rows warns, and says how many it ignored");
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -7126,6 +7170,7 @@ public:
 static DetectTypeTest g_detect;
 static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
+static LoaderEmptyTableTest g_emptyTable;
 static EncryptedDetectionTest g_encrypted;
 static FixtureCorpusTest g_fixtures;
 static CodmCodesTest g_codm;
