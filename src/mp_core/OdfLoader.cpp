@@ -379,6 +379,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     p.pipeId = fieldInt(row, "PipeID", "a", 0);
     const Id rankId = fieldInt(row, "RankID", "b", 0);
     p.midiNote = fieldInt(row, "NormalMIDINoteNumber", "d", 60);
+    p.palletSwitchId = fieldInt(row, "ControllingPalletSwitchID", "c", 0);
     p.baseTuningDeviationCents =
         fieldDouble(row, "Pitch_Tempered_BaseTuningDeviation", "g", 0.0);
     // What this pipe does to the wind: where it draws from, where it exhausts

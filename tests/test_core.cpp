@@ -177,6 +177,72 @@ public:
   }
 };
 
+// An organ can declare no StopRank at all and reach every pipe through its
+// switch wiring: the key is a switch, it is wired through the stop's switch to
+// a pallet switch, and each pipe names its pallet. Alessandria, Erfurt and
+// Swieta Lipka are built this way and were silent. The loader has to keep the
+// pallet, and the network has to open it only while the key AND the stop are
+// down, and close it when either lets go.
+class PalletSwitchTest final : public mp::test::Test {
+public:
+  PalletSwitchTest()
+    : Test("functional.odf.pallet-switch", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>9001</SwitchID><Name>Key 36</Name><Latching>N</Latching></Switch>"
+        "<Switch><SwitchID>20002</SwitchID><Name>Stop</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>327999</SwitchID><Name>Pallet</Name><Latching>N</Latching></Switch>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"KeyboardKey\"><KeyboardKey><KeyboardID>1</KeyboardID>"
+        "<SwitchID>9001</SwitchID><NormalMIDINoteNumber>36</NormalMIDINoteNumber>"
+        "</KeyboardKey></ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\"><SwitchLinkage>"
+        "<SourceSwitchID>9001</SourceSwitchID><DestSwitchID>327999</DestSwitchID>"
+        "<ConditionSwitchID>20002</ConditionSwitchID>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode>"
+        "</SwitchLinkage></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>1</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01>"
+        "<PipeID>101</PipeID><RankID>1</RankID>"
+        "<ControllingPalletSwitchID>327999</ControllingPalletSwitchID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber>"
+        "</Pipe_SoundEngine01></ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "a pallet-wired organ loads");
+    const auto rank = m.ranks.find(1);
+    MP_CHECK(rank != m.ranks.end() && rank->second.pipes.size() == 1 &&
+                 rank->second.pipes[0].palletSwitchId == 327999,
+             "the pipe keeps the switch that opens its pallet");
+    MP_CHECK(m.keyboardKeys.count(9001) == 1, "the key is a switch");
+
+    mp::SwitchNetwork net;
+    net.reset(m);
+    net.set(9001, true);
+    MP_CHECK(!net.engaged(327999), "a key with the stop in opens no pallet");
+    net.set(20002, true);
+    MP_CHECK(net.engaged(327999),
+             "drawing the stop under a held key opens the pallet at once");
+    net.set(9001, false);
+    MP_CHECK(!net.engaged(327999), "letting go of the key closes it");
+    net.set(9001, true);
+    MP_CHECK(net.engaged(327999), "key and stop together open it");
+    net.set(20002, false);
+    MP_CHECK(!net.engaged(327999), "pushing the stop in under the key closes it");
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -7171,6 +7237,7 @@ static DetectTypeTest g_detect;
 static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
+static PalletSwitchTest g_palletSwitch;
 static EncryptedDetectionTest g_encrypted;
 static FixtureCorpusTest g_fixtures;
 static CodmCodesTest g_codm;

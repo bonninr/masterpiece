@@ -464,7 +464,9 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     }
     // A model with no pipework at all (a CODM shell, or a test) still has a
     // Sample table worth honouring; falling back keeps that case working.
-    if (wanted.empty())
+    // Not when the caller named ranks: a filter that matches nothing means
+    // nothing, not the whole organ.
+    if (wanted.empty() && onlyRanks == nullptr)
       for (const auto& [id, ref] : model.samples) {
         (void)ref;
         wanted.push_back(id);

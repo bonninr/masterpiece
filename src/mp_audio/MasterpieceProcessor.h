@@ -105,6 +105,9 @@ public:
   // that draws four stops should not read four hundred ranks. Empty (the
   // default) loads the whole instrument.
   void setPreloadStops(std::vector<Id> stops) { preloadStops_ = std::move(stops); }
+  // Load exactly these ranks and no others. For testing one rank of a large
+  // set in seconds; overrides setPreloadStops.
+  void setPreloadRanks(std::vector<Id> ranks) { preloadRanks_ = std::move(ranks); }
 
   // Where a load has got to, and how to stop it. The progress object is read
   // by a UI timer while the loader's worker threads write it, which is why
@@ -808,6 +811,7 @@ private:
   VoiceEngine voices_;
   SampleLibrary samples_;
   std::vector<Id> preloadStops_;
+  std::vector<Id> preloadRanks_;
   juce::StringArray overridden_;   // settings the command line has claimed
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
@@ -981,6 +985,34 @@ private:
                          uint64_t noteId, const std::unordered_set<Id>& stops);
   // Bring the sounding notes into line with the registration.
   void applyStopChangeToHeldNotes();
+  // Every layer of one pipe, under `noteId`.
+  bool startPipeLayers(const Pipe& pipe, Id rankId, int midiNote, int velocity,
+                       uint64_t noteId);
+
+  // Pallet-driven pipework. Some organs reach their pipes through the switch
+  // network instead of through StopRank: a key is a switch, the key switch is
+  // wired through the stop's switch to a pallet switch, and the pipe speaks
+  // while its pallet is engaged. Alessandria, Erfurt and Swieta Lipka declare
+  // no StopRank at all, and every set we have tested sounds its key and stop
+  // action this way. The network already follows the wiring, so the pipes only
+  // have to answer the pallet switches it moves.
+  //
+  // Only ranks that no StopRank reaches are indexed. A pipe reached both ways
+  // would otherwise speak twice.
+  void buildPalletIndex();
+  void palletMoved(Id switchId, bool engaged);
+  // Pallet switch -> the pipes it opens, with their rank.
+  std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;
+  // (keyboard, note) -> the switch that key IS, for organs that declare one.
+  std::unordered_map<int, Id> keySwitchByKey_;
+  // The key switches held down, by the same key id soundingNotes_ uses, so a
+  // note-off finds the switch its note-on engaged.
+  std::unordered_map<int, Id> heldKeySwitches_;
+  // Open pallets and the note id their voices sound under. Reserved at load
+  // to the number of pallets, so opening one does not allocate.
+  std::unordered_map<Id, uint64_t> palletNotes_;
+  // The strike velocity of the key that is moving the network now.
+  int palletVelocity_ = 100;
   // The keyboard an unassigned channel falls back to when the organ declares
   // no assignment code. Resolved once at load.
   Id fallbackKeyboard_ = 0;
