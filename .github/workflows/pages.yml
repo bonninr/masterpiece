@@ -39,25 +39,31 @@ jobs:
       # so that Pages serves it as video/mp4 -- release assets are served as
       # application/octet-stream, and a browser picks its decoder from the
       # media type, so a <video> pointed straight at the asset will not play.
-      - name: Fetch the demonstration recording
+      - name: Fetch the recordings
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The recording is not rebuilt for every release, so "latest" is not
-          # where it necessarily lives. Take the newest release that actually
-          # carries it; a release without it must not blank the video.
-          tag=$(gh release list --limit 30 --json tagName -q '.[].tagName' | while read -r t; do
-            if gh release view "$t" --json assets -q '.assets[].name' | grep -qx 'masterpiece-recital.mp4'; then
-              echo "$t"; break
+          # The recordings are not rebuilt for every release, so "latest" is
+          # not where they necessarily live. For each, take the newest release
+          # that actually carries it; a release without it must not blank the
+          # video.
+          fetch () {  # asset name on the release | file name on the site
+            local asset="$1" out="$2" tag
+            tag=$(gh release list --limit 30 --json tagName -q '.[].tagName' | while read -r t; do
+              if gh release view "$t" --json assets -q '.assets[].name' | grep -qx "$asset"; then
+                echo "$t"; break
+              fi
+            done)
+            if [ -n "$tag" ]; then
+              echo "$asset comes from $tag"
+              gh release download "$tag" --pattern "$asset" --output "site/$out"
+            else
+              echo "no release carries $asset; the page will link out instead"
             fi
-          done)
-          if [ -n "$tag" ]; then
-            echo "recording comes from $tag"
-            gh release download "$tag" --pattern 'masterpiece-recital.mp4' --output site/recital.mp4
-          else
-            echo "no release carries the recording; the page will link out instead"
-          fi
-          ls -lh site/recital.mp4 || true
+          }
+          fetch masterpiece-recital.mp4 recital.mp4
+          fetch masterpiece-recital-2.mp4 recital-2.mp4
+          ls -lh site/*.mp4 || true
 
       - uses: actions/upload-pages-artifact@v3
         with:
