@@ -26,8 +26,27 @@ the property of its producer and is governed by that producer's terms.
 | [Azzio](https://piotrgrabowski.pl/azzio/) | Mascioni, 2016 | 12 stops, II/P | Piotr Grabowski |
 | [Melcer Chamber Music Hall](https://piotrgrabowski.pl/melcer-chamber-music-hall/) | — | chamber organ | Piotr Grabowski |
 | [Lemmer](https://hauptwerk-augustine.info/Lemmer.php) | Flentrop, 1977–78 | 9 registers, I/P | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Giubiasco](https://piotrgrabowski.pl/giubiasco/) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Alessandria](https://piotrgrabowski.pl/alessandria/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Pinerolo](https://piotrgrabowski.pl/pinerolo/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Ermelo](https://piotrgrabowski.pl/ermelo/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Święta Lipka](https://piotrgrabowski.pl/swieta-lipka/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Nitra](https://piotrgrabowski.pl/nitra/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Erfurt-Büßleben](https://piotrgrabowski.pl/erfurt-bussleben/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Erfurt, Predigerkirche](https://piotrgrabowski.pl/erfurt-predigerkirche/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Obervellach](https://piotrgrabowski.pl/obervellach/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Düren](https://piotrgrabowski.pl/duren/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Chorzów, St Hedwig of Silesia](https://piotrgrabowski.pl/chorzow-sw-jadwiga-slaska/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Goch](https://piotrgrabowski.pl/goch/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Oloron-Sainte-Marie](https://piotrgrabowski.pl/oloron-sainte-marie/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Bégard](https://piotrgrabowski.pl/begard/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 
 ---
+
+The second recording, *New tested instruments* (thirty works on fifteen
+organs, filmed from the running console), has its own programme and
+sequencer credits:
+[attribution for New tested instruments](https://bonninr.github.io/masterpiece/attribution-2.html).
 
 ## Music
 
@@ -110,8 +129,8 @@ in LilyPond and released to the public domain.
 
 ## Software
 
-Masterpiece is an independent implementation and compiles none of the following
-code. It was written with these projects as references:
+The published work of these projects was a reference and a source of
+understanding throughout, and is gratefully acknowledged:
 [GrandOrgue](https://github.com/GrandOrgue/GrandOrgue),
 [OdfEdit](https://github.com/GrandOrgue/OdfEdit),
 [rusty-pipes](https://github.com/dividebysandwich/rusty-pipes) and
