@@ -32,17 +32,26 @@ Portable archives for every platform, and the plugins on their own, are on the
 
 ## What it is
 
-Sampled pipe organs are distributed as large libraries: a recording of every
-pipe, plus an XML definition describing the instrument around them — how the
-console is drawn, which key reaches which pipe, what the couplers do, how the
-wind system is built. Masterpiece reads those libraries and turns them back
-into a playable instrument.
+A virtual pipe organ (VPO) is a sampler specialized for pipe organs: it
+reproduces a specific recorded instrument from a sample set. A set consists of
+audio recordings — typically attack, sustain loop, and release per pipe, plus
+key, stop, and blower noise — and an organ definition (XML) specifying ranks,
+stops, manuals, couplers, wind system, temperament, and console layout.
 
-Written from scratch, it runs as a standalone application and as a VST3 or
-LV2 plugin — the same engine either way. On macOS it is also built as an
-Audio Unit, for both Apple
-silicon and Intel; those builds ship unsigned, so the first time you
-open the application, right-click it and choose Open.
+The player loads the definition, maps keys, drawstops, pistons, and expression
+shoes to the corresponding samples, and renders the selected registration in
+real time: one sample stream per active pipe, with pitch correction, looping,
+and release crossfade, through the coupler and switch network, enclosure
+filters, tremulant modulation, and wind model defined by the set. Control is
+via MIDI keyboards, pedalboard, and stop hardware, via the on-screen console,
+or via MIDI from a DAW. Output is to the audio interface, with per-rank
+routing and optional convolution reverb for sets recorded dry. See
+[Parts of a VPO](#parts-of-a-vpo) for the components implemented here.
+
+Masterpiece is such a player, compatible with Hauptwerk sample sets. It is
+written from scratch and runs as a standalone application and as a VST3 or LV2
+plugin — the same engine either way. On macOS it is also built as an Audio
+Unit, for Apple silicon and Intel.
 
 ---
 
