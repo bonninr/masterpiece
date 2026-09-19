@@ -1306,6 +1306,50 @@ bool MasterpieceProcessor::saveSettingsIfDirty() {
   return saveSettings();
 }
 
+bool MasterpieceProcessor::saveMasterGain() const {
+  const auto f = organFileForSaving("organs", ".mporgan");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+
+  const auto* g = apvts_.getRawParameterValue("masterGain");
+  if (g == nullptr) return false;
+  const juce::String gainLine = "gain " + juce::String(g->load(), 4);
+
+  // Rewrite only the "gain" line, keeping every other line exactly as it
+  // was. saveSettings() writes the whole file from the live engine state,
+  // which is right when the player asks for it in the Settings dialog but
+  // wrong here: a change made there and only "kept" for the session must
+  // not get dragged onto disk just because the player also moved the
+  // volume slider.
+  juce::StringArray lines;
+  if (f.existsAsFile())
+    lines = juce::StringArray::fromLines(f.loadFileAsString());
+  // fromLines returns an empty last entry for text that ends in a newline,
+  // which every file written here does. Kept, it would be joined back with a
+  // newline of its own and the file would gain a blank line on every save --
+  // one per touch of the volume slider, for ever.
+  while (!lines.isEmpty() && lines[lines.size() - 1].trim().isEmpty())
+    lines.remove(lines.size() - 1);
+  bool replaced = false;
+  for (auto& line : lines) {
+    if (line.upToFirstOccurrenceOf(" ", false, false).trim() == "gain") {
+      line = gainLine;
+      replaced = true;
+      break;
+    }
+  }
+  if (!replaced) {
+    if (lines.isEmpty()) lines.add("# Masterpiece per-organ settings");
+    lines.add(gainLine);
+  }
+  return f.replaceWithText(lines.joinIntoString("\n") + "\n");
+}
+
+bool MasterpieceProcessor::saveMasterGainIfDirty() {
+  if (!masterGainDirty_.exchange(false, std::memory_order_acq_rel)) return false;
+  return saveMasterGain();
+}
+
 bool MasterpieceProcessor::saveMidiMap() const {
   const auto f = organFileForSaving("midi", ".mpmidi");
   if (f.getFullPathName().isEmpty()) return false;
@@ -2247,6 +2291,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // used this one's, so nothing ever loaded back. Leaving it unset sends the
   // lookup through organKeyFor(), which parses the header only and is what
   // that function exists for.
+  // The fader belongs to the organ about to load, not the one just left.
+  // Neither file below is guaranteed to mention "gain" — an organ that was
+  // never touched simply has no line for it — so without this the slider
+  // would sit wherever the previous organ left it instead of at unity.
+  if (auto* p = apvts_.getParameter("masterGain"))
+    p->setValueNotifyingHost(p->convertTo0to1(1.0f));
+
   loadGlobalDefaults();
   loadSettingsFor(odfFile);
 

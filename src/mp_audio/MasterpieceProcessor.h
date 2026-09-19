@@ -483,6 +483,16 @@ public:
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
   bool saveSettingsIfDirty();
+  // The fader alone, raised from the UI on every drag and flushed on the same
+  // timer as the rest. Deliberately its own flag and its own writer rather
+  // than routing through markSettingsDirty()/saveSettings(): that pair
+  // rewrites the whole per-organ file from the LIVE engine state, which would
+  // let a Settings-dialog change the player only "kept" for the session ride
+  // along on the next tick of the volume slider. This one touches nothing but
+  // the "gain" line.
+  void markMasterGainDirty() { masterGainDirty_.store(true, std::memory_order_release); }
+  bool saveMasterGainIfDirty();
+  bool saveMasterGain() const;
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
   bool saveMidiMap() const;
@@ -748,6 +758,7 @@ private:
   std::atomic<bool> combinationsDirty_{false};
   std::atomic<bool> settingsDirty_{false};
   std::atomic<bool> midiMapDirty_{false};
+  std::atomic<bool> masterGainDirty_{false};
   // Shoe positions that move switches: the crescendo, the blower, enclosure
   // noises. Needs the previous position, because each row is a crossing.
   Stepper stepper_;
