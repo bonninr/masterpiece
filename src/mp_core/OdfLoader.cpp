@@ -253,8 +253,21 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       const std::string name = list.attribute("ObjectType").value();
       if (name.empty() || knownTables().count(name) != 0 || seen.count(name) != 0) continue;
       seen.insert(name);
-      outDiag.warnings.emplace_back("unknown table preserved (forward-compat): " + name);
       outModel.unknownTables.push_back(name);
+      // Warn only when the table has rows. Hauptwerk writes many object lists
+      // as empty placeholders -- all 22 sets on hand carry ReversiblePiston,
+      // ExternalRank, SwitchExclusiveSelectGroup and three more with nothing
+      // in them -- and a warning for a list with no content reads as an
+      // unsupported feature. It sent a whole implementation plan after six
+      // features no set here uses. A table that DOES have rows is the case
+      // worth hearing about, and it says how many, so it stands out.
+      size_t rows = 0;
+      for (pugi::xml_node row : list.children())
+        if (row.type() == pugi::node_element) ++rows;
+      if (rows > 0)
+        outDiag.warnings.emplace_back("unknown table preserved (forward-compat): " +
+                                      name + " -- " + std::to_string(rows) +
+                                      " row(s) ignored");
     }
   }
 
