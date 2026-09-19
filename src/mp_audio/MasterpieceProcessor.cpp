@@ -2132,7 +2132,8 @@ void MasterpieceProcessor::buildPalletIndex() {
 }
 
 void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
-  if (palletPipes_.empty()) return;
+  if (palletPipes_.empty() || !palletsLive_.load(std::memory_order_acquire))
+    return;
   const auto it = palletPipes_.find(switchId);
   if (it == palletPipes_.end()) return;
 
@@ -2256,7 +2257,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   outgoing_.clear();
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
-  fireMovedStages();
+  if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -2358,6 +2359,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
   LoadResult result;
   LoadPhases phases;
+  // The audio thread keeps running through a load; keep it off the stage
+  // table until it has been rebuilt for the new organ.
+  stagesReady_.store(false, std::memory_order_release);
+  // Starting the organ moves switches -- the blower, the init controls -- and
+  // those can open pallets. No pallet may start a voice before the new
+  // organ's audio is in place.
+  palletsLive_.store(false, std::memory_order_release);
 
   // Whoever starts a load clears the cancel flag, so a Cancel that arrived
   // after the previous load already finished cannot kill this one.
@@ -2824,6 +2832,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   setLastOrgan(odfFile);
 
   result.stopsEngaged = 0;
+  // Only now: starting the organ above moves switches on this thread, and
+  // the audio thread's own stage check must not move them at the same time.
+  stagesReady_.store(true, std::memory_order_release);
+  palletsLive_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
   result.ok = true;

@@ -1008,6 +1008,10 @@ private:
   // would otherwise speak twice.
   void buildPalletIndex();
   void fireMovedStages();
+  // False while a load is rebuilding the stage table; see loadOrgan().
+  std::atomic<bool> stagesReady_{false};
+  // False until a load has finished; pallets start no voices before then.
+  std::atomic<bool> palletsLive_{false};
   void palletMoved(Id switchId, bool engaged);
   // Pallet switch -> the pipes it opens, with their rank.
   std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;
