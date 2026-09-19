@@ -40,3 +40,5 @@ Commits: no AI or tool attribution.
   - checking pipeWindIndex_ for pipe 1425 and what the wind solver reports (`mp-render --wind`).
 - Also check `mixBusForPipe(14, 60)`.
 - OdfEdit (it converts Hauptwerk ODFs to GrandOrgue) resolves pallet chains and wind: its source is worth reading for how pallet-driven ranks map to GrandOrgue stops.
+
+- Ruled out wind and DSP: `--simple` gives an identical render (peak -14.3 dBFS, rms 0.00398). Next suspects: VoiceEngine start (ratio or pitch, a sample-rate mismatch, missing audio for the pipe index), mixBusForPipe, and what "300 missing audio" counts. Compare against a Begard StopRank pipe that is known to sound.
