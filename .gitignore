@@ -66,3 +66,7 @@ Thumbs.db
 
 # The demonstration recording is fetched from the release at deploy time.
 site/recital.mp4
+
+# Nonfree binaries (bundled in releases, never checked into source control)
+unrar
+unrar.exe

@@ -1,6 +1,7 @@
 #include "Ui.h"
 
 #include "LoadingDialog.h"
+#include "OrganDialog.h"
 
 namespace mp::ui {
 namespace {
@@ -257,7 +258,7 @@ void TopBar::setStatus(const juce::String& text) {
 
 void TopBar::resized() {
   auto r = getLocalBounds().reduced(4);
-  load_.setBounds(r.removeFromLeft(64));
+  load_.setBounds(r.removeFromLeft(72));
   r.removeFromLeft(6);
   audio_.setBounds(r.removeFromLeft(64));
   r.removeFromLeft(6);
@@ -291,10 +292,14 @@ void MasterpieceEditor::chooseAndLoadOrgan() {
                         });
 }
 
+void MasterpieceEditor::showOrganDialog() {
+  OrganDialog::show(*this, proc_);
+}
+
 MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     : juce::AudioProcessorEditor(p),
       proc_(p),
-      top_(p, [this] { chooseAndLoadOrgan(); },
+      top_(p, [this] { showOrganDialog(); },
            [this] { if (onAudioSettings) onAudioSettings(); }),
       console_(p),
       jamb_(p),
@@ -402,6 +407,18 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
 MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
 
+void MasterpieceEditor::unloadOrgan() {
+  proc_.unloadOrgan();
+  jamb_.rebuild();
+  expression_.rebuild();
+  console_.rebuild();
+  pageTabs_.clearTabs();
+  layout_.clear(juce::dontSendNotification);
+  status_ = "No organ loaded";
+  top_.setStatus(status_);
+  if (onOrganLoaded) onOrganLoaded("No organ loaded");
+}
+
 void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;  // one load at a time; the dialog is the interlock
   loading_ = true;
@@ -427,6 +444,9 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   loadWindow_ = opts.launchAsync();
 
   juce::Thread::launch([this, odf, graphicsOnly] {
+    if (!graphicsOnly) {
+      triggerBackgroundAudioStatPrecomputation(odf);
+    }
     const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
     // Everything past here touches components, so it belongs to the message
     // thread. The lambda copies what it needs; the loader thread ends here.

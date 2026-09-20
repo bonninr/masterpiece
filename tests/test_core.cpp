@@ -36,6 +36,7 @@
 #include "../src/mp_audio/AudioRecorder.h"
 #include "../src/mp_audio/SampleLibrary.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
+#include "../src/mp_ui/OrganDialog.h"
 #endif
 
 #include <algorithm>
@@ -5003,6 +5004,388 @@ public:
              "repeated saves leave the file the same size");
   }
 };
+
+class RecentOrgansTest final : public mp::test::Test {
+public:
+  RecentOrgansTest()
+      : Test("functional.organs.recent-organs", Category::Functional) {}
+  void run() override {
+    const auto dir = mp::MasterpieceProcessor::dataDirectory();
+    MP_CHECK(dir.getFullPathName().isNotEmpty(), "data directory must not be empty");
+    MP_CHECK(dir.getFileName() == "Masterpiece", "data directory name is Masterpiece");
+
+    mp::MasterpieceProcessor proc;
+    const juce::File f1("/path/to/Organ1.Organ_Hauptwerk_xml");
+    const juce::File f2("/path/to/Organ2.Organ_Hauptwerk_xml");
+
+    proc.addRecentOrgan(f1);
+    proc.addRecentOrgan(f2);
+    MP_CHECK(proc.recentOrgans().size() >= 2, "recent organs added");
+    MP_CHECK(proc.recentOrgans()[0] == f2, "most recent organ is at the front");
+    MP_CHECK(proc.recentOrgans()[1] == f1, "earlier organ follows");
+
+    proc.addRecentOrgan(f1);
+    MP_CHECK(proc.recentOrgans()[0] == f1, "re-added organ moves to front");
+    MP_CHECK(proc.recentOrgans()[1] == f2, "other organ pushed back");
+
+    proc.removeRecentOrgan(f2);
+    MP_CHECK(std::find(proc.recentOrgans().begin(), proc.recentOrgans().end(), f2) ==
+             proc.recentOrgans().end(), "removed organ is gone");
+  }
+};
+
+class ArchiveFilteringTest final : public mp::test::Test {
+public:
+  ArchiveFilteringTest()
+      : Test("functional.organs.archive-filtering", Category::Functional) {}
+  void run() override {
+    const auto d = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("mp_archive_test_" + juce::String::toHexString(juce::Random::getSystemRandom().nextInt64()));
+    d.createDirectory();
+
+    const auto singleRar = d.getChildFile("SinglePackage.CompPkg_Hauptwerk_rar");
+    singleRar.create();
+
+    const auto p1 = d.getChildFile("MultiSet.part1.rar");
+    const auto p2 = d.getChildFile("MultiSet.part2.rar");
+    const auto p3 = d.getChildFile("MultiSet.part3.rar");
+    p1.create();
+    p2.create();
+    p3.create();
+
+    const auto b01 = d.getChildFile("SetB.part01.rar");
+    const auto b02 = d.getChildFile("SetB.part02.rar");
+    b01.create();
+    b02.create();
+
+    const auto oldRar = d.getChildFile("OldStyle.rar");
+    const auto oldR00 = d.getChildFile("OldStyle.r00");
+    const auto oldR01 = d.getChildFile("OldStyle.r01");
+    oldRar.create();
+    oldR00.create();
+    oldR01.create();
+
+    juce::Array<juce::File> allFiles = {singleRar, p1, p2, p3, b01, b02, oldRar, oldR00, oldR01};
+    const auto filtered = mp::ui::filterArchivesForExtraction(allFiles);
+
+    MP_CHECK(filtered.size() == 4, "filtered down to primary archives of each set");
+    MP_CHECK(filtered.contains(singleRar), "standalone archive kept");
+    MP_CHECK(filtered.contains(p1), "part1 kept");
+    MP_CHECK(!filtered.contains(p2), "part2 excluded");
+    MP_CHECK(!filtered.contains(p3), "part3 excluded");
+    MP_CHECK(filtered.contains(b01), "part01 kept");
+    MP_CHECK(!filtered.contains(b02), "part02 excluded");
+    MP_CHECK(filtered.contains(oldRar), "old style .rar kept");
+    MP_CHECK(!filtered.contains(oldR00), ".r00 excluded");
+    MP_CHECK(!filtered.contains(oldR01), ".r01 excluded");
+
+    juce::Array<juce::File> onlyPart2 = {p2};
+    const auto resolved = mp::ui::filterArchivesForExtraction(onlyPart2);
+    MP_CHECK(resolved.size() == 1 && resolved.contains(p1),
+             "selecting secondary part resolves to part1 if present");
+
+    d.deleteRecursively();
+  }
+};
+
+class OrganNameParsingTest final : public mp::test::Test {
+public:
+  OrganNameParsingTest()
+      : Test("functional.organs.name-parsing", Category::Functional) {}
+  void run() override {
+    const auto fixturePath = juce::File::getCurrentWorkingDirectory()
+                                 .getChildFile("tests")
+                                 .getChildFile("minimal.Organ_Hauptwerk_xml");
+    if (fixturePath.existsAsFile()) {
+      const auto name = mp::ui::readOrganNameFromOdf(fixturePath);
+      MP_CHECK(name == "Masterpiece Test Church", "organ name parsed from Identification_Name");
+    }
+
+    const auto d = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("mp_odf_name_test_" + juce::String::toHexString(juce::Random::getSystemRandom().nextInt64()));
+    d.createDirectory();
+
+    const auto tempFile = d.getChildFile("Custom.Organ_Hauptwerk_xml");
+    tempFile.replaceWithText(
+        "<?xml version=\"1.0\"?>\n"
+        "<Hauptwerk FileFormat=\"Organ\">\n"
+        "  <ObjectList ObjectType=\"_General\">\n"
+        "    <_General>\n"
+        "      <Identification_OrganName>St. Sulpice Paris</Identification_OrganName>\n"
+        "    </_General>\n"
+        "  </ObjectList>\n"
+        "</Hauptwerk>");
+    const auto parsedName = mp::ui::readOrganNameFromOdf(tempFile);
+    MP_CHECK(parsedName == "St. Sulpice Paris", "organ name parsed from Identification_OrganName");
+
+    const auto fallbackFile = d.getChildFile("FallbackName.Organ_Hauptwerk_xml");
+    fallbackFile.replaceWithText("<Hauptwerk></Hauptwerk>");
+    const auto fallbackName = mp::ui::readOrganNameFromOdf(fallbackFile);
+    MP_CHECK(fallbackName == "FallbackName", "falls back to file basename when no name tag exists");
+
+    d.deleteRecursively();
+  }
+};
+
+class OrganEtaTest final : public mp::test::Test {
+public:
+  OrganEtaTest()
+      : Test("functional.organs.eta-calculation", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::ui::humaniseEta(10.0) == "less than a minute", "under 45s is less than a minute");
+    MP_CHECK(mp::ui::humaniseEta(44.0) == "less than a minute", "44s is less than a minute");
+    MP_CHECK(mp::ui::humaniseEta(45.0) == "about a minute", "45s rounds to about a minute");
+    MP_CHECK(mp::ui::humaniseEta(80.0) == "about a minute", "80s rounds to about a minute");
+    MP_CHECK(mp::ui::humaniseEta(90.0) == "about 2 minutes", "90s rounds to about 2 minutes");
+    MP_CHECK(mp::ui::humaniseEta(150.0) == "about 3 minutes", "150s rounds to about 3 minutes");
+    MP_CHECK(mp::ui::humaniseEta(600.0) == "about 10 minutes", "600s is about 10 minutes");
+  }
+};
+
+class UnrarDiscoveryTest final : public mp::test::Test {
+public:
+  UnrarDiscoveryTest()
+      : Test("functional.organs.unrar-discovery", Category::Functional) {}
+  void run() override {
+    const auto unrar = mp::ui::findUnrarBinary();
+    if (unrar.existsAsFile()) {
+      MP_CHECK(unrar.getFileNameWithoutExtension().toLowerCase() == "unrar",
+               "discovered binary is unrar");
+    }
+  }
+};
+
+class OrganDiskSpaceFormatTest final : public mp::test::Test {
+public:
+  OrganDiskSpaceFormatTest()
+      : Test("functional.organs.disk-space-format", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::ui::formatByteSize(0) == "0 B", "0 bytes formatted");
+    MP_CHECK(mp::ui::formatByteSize(512) == "512 B", "512 B formatted");
+    MP_CHECK(mp::ui::formatByteSize(1024) == "1.0 KB", "1 KB formatted");
+    MP_CHECK(mp::ui::formatByteSize(1572864) == "1.5 MB", "1.5 MB formatted");
+    MP_CHECK(mp::ui::formatByteSize(static_cast<juce::int64>(2.5 * 1024 * 1024 * 1024)) == "2.50 GB", "2.5 GB formatted");
+  }
+};
+
+class OrganDetailsAndPackagesTest final : public mp::test::Test {
+public:
+  OrganDetailsAndPackagesTest()
+      : Test("functional.organs.details-and-packages", Category::Functional) {}
+  void run() override {
+    const auto fixturePath = juce::File::getCurrentWorkingDirectory()
+                                 .getChildFile("tests")
+                                 .getChildFile("minimal.Organ_Hauptwerk_xml");
+    if (fixturePath.existsAsFile()) {
+      mp::MasterpieceProcessor proc;
+      const auto details = mp::ui::getOrganDetails(fixturePath, proc);
+      MP_CHECK(details.name == "Masterpiece Test Church", "details organ name matches");
+      MP_CHECK(details.uniqueOrganId == "90001", "details unique organ ID matches");
+      MP_CHECK(details.odfSizeBytes > 0, "ODF size is positive");
+      MP_CHECK(details.diskSpaceBytes >= details.odfSizeBytes, "total disk space includes ODF");
+      MP_CHECK(details.packages.size() == 1, "found 1 required package");
+      if (details.packages.size() == 1) {
+        MP_CHECK(details.packages[0].packageId == 1, "package ID is 1");
+        MP_CHECK(details.packages[0].name == "MinimalTestPackage", "package name is MinimalTestPackage");
+        MP_CHECK(details.packages[0].directory.getFileName() == "000001", "directory ends in 000001");
+      }
+    }
+  }
+};
+
+class OrganHidingTest final : public mp::test::Test {
+public:
+  OrganHidingTest()
+      : Test("functional.organs.hidden-organs", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const juce::File testOdf("/tmp/dummy_test_organ.Organ_Hauptwerk_xml");
+
+    MP_CHECK(!proc.isOrganHidden(testOdf), "organ not initially hidden");
+    proc.hideOrgan(testOdf);
+    MP_CHECK(proc.isOrganHidden(testOdf), "organ is hidden after hideOrgan");
+    proc.unhideOrgan(testOdf);
+    MP_CHECK(!proc.isOrganHidden(testOdf), "organ unhidden after unhideOrgan");
+  }
+};
+
+class OrganOfflineAudioSettingsTest final : public mp::test::Test {
+public:
+  OrganOfflineAudioSettingsTest()
+      : Test("functional.organs.offline-audio-settings", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const auto d = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("mp_audio_cfg_test_" + juce::String::toHexString(juce::Random::getSystemRandom().nextInt64()));
+    d.createDirectory();
+
+    const auto odf = d.getChildFile("OfflineOrgan.Organ_Hauptwerk_xml");
+    odf.create();
+
+    auto cfg = mp::ui::loadOrganAudioConfig(proc, odf);
+    MP_CHECK(cfg.storage == mp::SampleStorage::Int24, "default storage is 24-bit");
+    MP_CHECK(!cfg.mono, "default mono is false");
+
+    cfg.storage = mp::SampleStorage::Int16;
+    cfg.mono = true;
+    cfg.streamReleases = true;
+    cfg.sampleRate = 48000.0;
+    cfg.engineSwitch.simpleWavOnly = true;
+
+    MP_CHECK(mp::ui::saveOrganAudioConfig(proc, odf, cfg), "saveOrganAudioConfig succeeded");
+
+    const auto loadedCfg = mp::ui::loadOrganAudioConfig(proc, odf);
+    MP_CHECK(loadedCfg.storage == mp::SampleStorage::Int16, "storage restored as 16-bit");
+
+    MP_CHECK(loadedCfg.mono, "mono restored as true");
+    MP_CHECK(loadedCfg.streamReleases, "stream releases restored as true");
+    MP_CHECK(loadedCfg.sampleRate == 48000.0, "sample rate restored as 48000");
+    MP_CHECK(loadedCfg.engineSwitch.simpleWavOnly, "simpleWavOnly switch restored");
+
+    const auto organKey = mp::MasterpieceProcessor::organKeyFor(odf);
+    const auto organFile = mp::MasterpieceProcessor::dataDirectory().getChildFile("organs").getChildFile(juce::String(organKey) + ".mporgan");
+    if (organFile.existsAsFile()) organFile.deleteFile();
+    d.deleteRecursively();
+  }
+};
+
+class OrganRamEstimationTest final : public mp::test::Test {
+public:
+  OrganRamEstimationTest()
+      : Test("functional.organs.ram-estimation", Category::Functional) {}
+  void run() override {
+    mp::ui::OrganAudioStat stat;
+    stat.totalAudioFrames = 1000000;
+    stat.attackFrames = 600000;
+    stat.releaseFrames = 400000;
+    stat.attackLoopFrames = 200000;
+    stat.attackCount = 10;
+    stat.releaseCount = 10;
+    stat.rawPcmBytes = 6000000;
+    stat.hasStats = true;
+
+    // 24-bit stereo full hold: (600000 + 400000) * 3 * 2 + 128MB overhead
+    mp::ui::OrganAudioConfig c24;
+    c24.storage = mp::SampleStorage::Int24;
+    c24.mono = false;
+    c24.streamReleases = false;
+    c24.preloadHeadFrames = 0;
+    juce::int64 ram24 = mp::ui::estimateRamFootprintBytes(stat, c24);
+    MP_CHECK(ram24 == (1000000LL * 6LL + 128LL * 1024 * 1024), "24-bit stereo matches formula");
+
+    // 16-bit stereo full hold: (1000000) * 2 * 2 + 128MB overhead
+    mp::ui::OrganAudioConfig c16;
+    c16.storage = mp::SampleStorage::Int16;
+    c16.mono = false;
+    c16.streamReleases = false;
+    c16.preloadHeadFrames = 0;
+    juce::int64 ram16 = mp::ui::estimateRamFootprintBytes(stat, c16);
+    MP_CHECK(ram16 == (1000000LL * 4LL + 128LL * 1024 * 1024), "16-bit stereo matches formula");
+
+    // 16-bit mono full hold: (1000000) * 2 * 1 + 128MB overhead
+    mp::ui::OrganAudioConfig cMono;
+    cMono.storage = mp::SampleStorage::Int16;
+    cMono.mono = true;
+    cMono.streamReleases = false;
+    cMono.preloadHeadFrames = 0;
+    juce::int64 ramMono = mp::ui::estimateRamFootprintBytes(stat, cMono);
+    MP_CHECK(ramMono == (1000000LL * 2LL + 128LL * 1024 * 1024), "16-bit mono matches formula");
+
+    // 16-bit stereo stream releases (streamHead=44100):
+    // resident attack = 600000, resident release = 10 * 44100 = 441000.
+    // resident frames = 600000 + 441000 = 1041000, but capped at total release frames (400000) -> 600000 + 400000.
+    // If streamHead = 10000: release = 10 * 10000 = 100000. resident frames = 700000.
+    mp::ui::OrganAudioConfig cStream;
+    cStream.storage = mp::SampleStorage::Int16;
+    cStream.mono = false;
+    cStream.streamReleases = true;
+    cStream.streamHeadFrames = 10000;
+    cStream.preloadHeadFrames = 0;
+    juce::int64 ramStream = mp::ui::estimateRamFootprintBytes(stat, cStream);
+    MP_CHECK(ramStream == (700000LL * 4LL + 128LL * 1024 * 1024), "stream releases reduces release RAM");
+
+    // Check discoverOrgans filters out placeholder "Organ1"
+    mp::MasterpieceProcessor proc;
+    proc.addRecentOrgan(juce::File("/nonexistent/path/Organ1.Organ_Hauptwerk_xml"));
+    auto organs = mp::ui::discoverOrgans(proc);
+    bool foundDummyOrgan1 = false;
+    for (const auto& o : organs) {
+      if (o.name == "Organ1" && !o.exists) {
+        foundDummyOrgan1 = true;
+        break;
+      }
+    }
+    MP_CHECK(!foundDummyOrgan1, "discoverOrgans eliminated missing dummy Organ1 entry");
+  }
+};
+
+class OrganAsyncStatScanTest final : public mp::test::Test {
+public:
+  OrganAsyncStatScanTest()
+      : Test("functional.organs.async-stat-scan", Category::Functional) {}
+  void run() override {
+    const auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getChildFile("mp_stat_test_" + juce::String::toHexString(juce::Random::getSystemRandom().nextInt64()));
+    tempDir.createDirectory();
+
+    const auto odfFile = tempDir.getChildFile("TestOrgan.Organ_Hauptwerk_xml");
+    odfFile.replaceWithText("<Organ><General Identification_UniqueOrganID=\"TEST_SCAN_ORGAN_999\"><Identification_Name>Test Organ</Identification_Name></General></Organ>");
+
+    const auto pipeDir = tempDir.getChildFile("PipeSamples").getChildFile("000001");
+    pipeDir.createDirectory();
+
+    const auto wavFile = pipeDir.getChildFile("test.wav");
+    {
+      juce::WavAudioFormat wavFmt;
+      std::unique_ptr<juce::AudioFormatWriter> writer(
+          wavFmt.createWriterFor(wavFile.createOutputStream().release(), 44100.0, 2, 24, {}, 0));
+      if (writer != nullptr) {
+        juce::AudioBuffer<float> buf(2, 4410);
+        buf.clear();
+        writer->writeFromAudioSampleBuffer(buf, 0, 4410);
+      }
+    }
+
+    mp::MasterpieceProcessor proc;
+    auto entry = mp::ui::getOrganDetails(odfFile, proc);
+    MP_CHECK(entry.exists, "entry exists");
+
+    const auto cacheFile = mp::ui::getOrganAudioStatCacheFile(entry);
+    if (cacheFile.existsAsFile()) cacheFile.deleteFile();
+
+    MP_CHECK(!mp::ui::hasCachedOrganAudioStat(entry), "hasCachedOrganAudioStat is false before calculation");
+
+    std::atomic<bool> cancelFlag{true};
+    auto cancelledStat = mp::ui::computeOrganAudioStat(entry, proc, nullptr, &cancelFlag);
+    MP_CHECK(!cancelledStat.hasStats, "cancelled stat aborted");
+    MP_CHECK(!mp::ui::hasCachedOrganAudioStat(entry), "still not cached after cancel");
+
+    cancelFlag.store(false);
+    double reportedProgress = 0.0;
+    int reportedFiles = 0;
+    auto stat = mp::ui::computeOrganAudioStat(
+        entry, proc,
+        [&](double p, int cur, int tot) {
+          reportedProgress = p;
+          reportedFiles = cur;
+        },
+        &cancelFlag);
+
+    MP_CHECK(stat.hasStats, "stat calculation succeeded");
+    MP_CHECK(stat.totalAudioFrames == 4410, "scanned 4410 audio frames");
+    MP_CHECK(reportedProgress >= 1.0, "progress reached 1.0");
+    MP_CHECK(reportedFiles >= 1, "reported at least 1 file");
+    MP_CHECK(mp::ui::hasCachedOrganAudioStat(entry), "hasCachedOrganAudioStat is true after scan");
+
+    auto cachedStat = mp::ui::computeOrganAudioStat(entry, proc);
+    MP_CHECK(cachedStat.hasStats, "cached stat loaded");
+    MP_CHECK(cachedStat.totalAudioFrames == 4410, "cached totalAudioFrames matches");
+
+    if (cacheFile.existsAsFile()) cacheFile.deleteFile();
+    tempDir.deleteRecursively();
+  }
+};
+
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_DSP
@@ -7555,6 +7938,17 @@ public:
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
 static MemoryDefaultsTest g_memoryDefaults;
+static RecentOrgansTest g_recentOrgans;
+static ArchiveFilteringTest g_archiveFiltering;
+static OrganNameParsingTest g_organNameParsing;
+static UnrarDiscoveryTest g_unrarDiscovery;
+static OrganEtaTest g_organEta;
+static OrganDiskSpaceFormatTest g_organDiskSpace;
+static OrganDetailsAndPackagesTest g_organDetails;
+static OrganHidingTest g_organHiding;
+static OrganOfflineAudioSettingsTest g_organOfflineAudio;
+static OrganRamEstimationTest g_organRamEstimation;
+static OrganAsyncStatScanTest g_organAsyncStatScan;
 #endif
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;

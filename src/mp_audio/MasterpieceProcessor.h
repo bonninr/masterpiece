@@ -472,6 +472,7 @@ public:
   // What to reopen when the program starts with no organ named. Held with the
   // global defaults because it belongs to the program, not to any one organ.
   juce::File lastOrgan() const;
+  juce::File loadedOdf() const { return loadedOdf_; }
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
   void setReopenLastOrgan(bool on);
   // Audible load progress: a swift tap at each 10% of a load. Off unless
@@ -486,6 +487,23 @@ public:
   void setCacheDirectory(const juce::File& dir);
   static juce::File defaultCacheDirectory();
   juce::File cacheDirectorySetting() const { return cacheDir_; }
+
+  // The root data directory for Masterpiece settings, cache, and installed organs.
+  static juce::File dataDirectory();
+
+  // Known / previously used ODF locations. Global, saved in settings.mpglobal.
+  const std::vector<juce::File>& recentOrgans() const { return recentOrgans_; }
+  void addRecentOrgan(const juce::File& odf);
+  void removeRecentOrgan(const juce::File& odf);
+
+  // Hidden / ignored organs (e.g. removed from list while keeping files on disk)
+  const std::vector<juce::File>& hiddenOrgans() const { return hiddenOrgans_; }
+  void hideOrgan(const juce::File& odf);
+  void unhideOrgan(const juce::File& odf);
+  bool isOrganHidden(const juce::File& odf) const;
+
+  // Unload currently loaded organ
+  void unloadOrgan();
   void setLoadTicks(bool on);
   // Session-only form of the above: flips the switch without writing the
   // global file. Headless tools use this so a measurement render never
@@ -925,6 +943,8 @@ private:
   // threshold in a few blocks; without this it machine-guns ten taps.
   double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
+  std::vector<juce::File> recentOrgans_;
+  std::vector<juce::File> hiddenOrgans_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
   juce::String settingsBody() const;

@@ -738,13 +738,17 @@ std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
          "-" + pathHash(odf);
 }
 
+juce::File MasterpieceProcessor::dataDirectory() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece");
+}
+
 juce::File MasterpieceProcessor::organFileForSaving(
     const juce::String& folder, const juce::String& extension) const {
   if (loadedOdf_.getFullPathName().isEmpty()) return {};
   // Always the organ's own identity, even when a legacy file was read: the
   // point of the migration is that it happens once.
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return dataDirectory()
       .getChildFile(folder)
       .getChildFile(juce::String(organKey()) + extension);
 }
@@ -755,10 +759,7 @@ juce::File MasterpieceProcessor::organFile(const juce::File& odf,
   if (odf.getFullPathName().isEmpty()) return {};
   // Beside the player's own data, never inside the sample set: writing into a
   // licensed package is not ours to do.
-  const auto dir =
-      juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-          .getChildFile("Masterpiece")
-          .getChildFile(folder);
+  const auto dir = dataDirectory().getChildFile(folder);
 
   // Named by the organ's own identity, so moving or renaming the sample set
   // does not orphan everything the player configured for it.
@@ -1171,9 +1172,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
 }
 
 juce::File MasterpieceProcessor::globalSettingsFile() const {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
-      .getChildFile("settings.mpglobal");
+  return dataDirectory().getChildFile("settings.mpglobal");
 }
 
 bool MasterpieceProcessor::writeGlobalFile() const {
@@ -1189,6 +1188,14 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
+  for (const auto& f : recentOrgans_) {
+    if (f.getFullPathName().isNotEmpty() && f != lastOrgan_)
+      text << "recentorgan " << f.getFullPathName() << "\n";
+  }
+  for (const auto& f : hiddenOrgans_) {
+    if (f.getFullPathName().isNotEmpty())
+      text << "hiddenorgan " << f.getFullPathName() << "\n";
+  }
 
   // Favourites are global by nature: the point of one is to get to a
   // DIFFERENT organ, so storing them inside the organ being left would be
@@ -1236,6 +1243,18 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "recentorgan") {
+      if (val.isNotEmpty()) {
+        const juce::File f(val);
+        if (std::find(recentOrgans_.begin(), recentOrgans_.end(), f) == recentOrgans_.end())
+          recentOrgans_.push_back(f);
+      }
+    } else if (key == "hiddenorgan") {
+      if (val.isNotEmpty()) {
+        const juce::File f(val);
+        if (std::find(hiddenOrgans_.begin(), hiddenOrgans_.end(), f) == hiddenOrgans_.end())
+          hiddenOrgans_.push_back(f);
+      }
     } else if (key == "favourite") {
       // "favourite <kind> <slot> <name> | <target>". The bar separates them
       // because both halves are free text and the target can contain spaces;
@@ -1255,6 +1274,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       applySettingsLine(key, val, sw);
       body << line << "\n";
     }
+  }
+  if (lastOrgan_.existsAsFile()) {
+    auto it = std::find(recentOrgans_.begin(), recentOrgans_.end(), lastOrgan_);
+    if (it != recentOrgans_.end()) recentOrgans_.erase(it);
+    recentOrgans_.insert(recentOrgans_.begin(), lastOrgan_);
   }
   graph_.engineSwitch = sw;
   globalBody_ = body;
@@ -1284,7 +1308,66 @@ int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
   return use;
 }
 
+void MasterpieceProcessor::addRecentOrgan(const juce::File& odf) {
+  if (odf == juce::File() || odf.getFullPathName().isEmpty()) return;
+  auto it = std::find(recentOrgans_.begin(), recentOrgans_.end(), odf);
+  if (it != recentOrgans_.end())
+    recentOrgans_.erase(it);
+  recentOrgans_.insert(recentOrgans_.begin(), odf);
+  if (recentOrgans_.size() > 50)
+    recentOrgans_.resize(50);
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::removeRecentOrgan(const juce::File& odf) {
+  auto it = std::find(recentOrgans_.begin(), recentOrgans_.end(), odf);
+  if (it != recentOrgans_.end()) {
+    recentOrgans_.erase(it);
+    writeGlobalFile();
+  }
+}
+
+void MasterpieceProcessor::hideOrgan(const juce::File& odf) {
+  if (odf.getFullPathName().isEmpty()) return;
+  if (std::find(hiddenOrgans_.begin(), hiddenOrgans_.end(), odf) == hiddenOrgans_.end()) {
+    hiddenOrgans_.push_back(odf);
+    writeGlobalFile();
+  }
+}
+
+void MasterpieceProcessor::unhideOrgan(const juce::File& odf) {
+  auto it = std::find(hiddenOrgans_.begin(), hiddenOrgans_.end(), odf);
+  if (it != hiddenOrgans_.end()) {
+    hiddenOrgans_.erase(it);
+    writeGlobalFile();
+  }
+}
+
+bool MasterpieceProcessor::isOrganHidden(const juce::File& odf) const {
+  return std::find(hiddenOrgans_.begin(), hiddenOrgans_.end(), odf) != hiddenOrgans_.end();
+}
+
+void MasterpieceProcessor::unloadOrgan() {
+  loadedOdf_ = juce::File();
+  model_ = OrganModel();
+  organRootDir_.clear();
+  stopsBySwitch_.clear();
+  switches_.reset(model_);
+  controls_.reset(model_);
+  samples_.clear();
+  engagedSwitches_.clear();
+  buildPalletIndex();
+  combinations_.reset(model_);
+  stepper_.reset(model_);
+}
+
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
+  if (odf.existsAsFile()) {
+    auto it = std::find(recentOrgans_.begin(), recentOrgans_.end(), odf);
+    if (it != recentOrgans_.end()) recentOrgans_.erase(it);
+    recentOrgans_.insert(recentOrgans_.begin(), odf);
+    if (recentOrgans_.size() > 50) recentOrgans_.resize(50);
+  }
   if (lastOrgan_ == odf) return;
   lastOrgan_ = odf;
   writeGlobalFile();
@@ -1305,9 +1388,7 @@ void MasterpieceProcessor::setReopenLastOrgan(bool on) {
 }
 
 juce::File MasterpieceProcessor::defaultCacheDirectory() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
-      .getChildFile("cache");
+  return dataDirectory().getChildFile("cache");
 }
 
 juce::File MasterpieceProcessor::cacheDirectory() const {
