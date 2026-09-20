@@ -356,6 +356,10 @@ jobs:
           name: masterpiece-windows-setup
           path: dist/masterpiece-windows-setup.exe
           if-no-files-found: error
+          # A CI build is worth keeping only until someone has looked at it.
+          # The default is 90 days, and at a few hundred megabytes a run that
+          # fills the account's storage on its own.
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
@@ -363,6 +367,10 @@ jobs:
           name: ${{ matrix.artifact }}-deb
           path: dist/masterpiece-linux-*.deb
           if-no-files-found: error
+          # A CI build is worth keeping only until someone has looked at it.
+          # The default is 90 days, and at a few hundred megabytes a run that
+          # fills the account's storage on its own.
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         if: matrix.mac
@@ -370,6 +378,10 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.zip
           if-no-files-found: error
+          # A CI build is worth keeping only until someone has looked at it.
+          # The default is 90 days, and at a few hundred megabytes a run that
+          # fills the account's storage on its own.
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         if: '!matrix.mac'
@@ -380,3 +392,4 @@ jobs:
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
           if-no-files-found: warn
+          retention-days: 7

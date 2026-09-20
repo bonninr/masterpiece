@@ -1180,6 +1180,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
+  if (cacheDir_.getFullPathName().isNotEmpty())
+    text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
 
@@ -1222,6 +1224,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
+    } else if (key == "cachedir") {
+      // A path, taken whole: the sample cache can be gigabytes, and a player
+      // with a small fast disk and a large slow one wants to choose which of
+      // them holds it.
+      cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
     } else if (key == "favourite") {
@@ -1289,6 +1296,32 @@ void MasterpieceProcessor::setReopenLastOrgan(bool on) {
   reopenLastOrgan_ = on;
   // Not saveGlobalDefaults(): a preference about startup is not a request to
   // adopt the open organ's settings as everyone's.
+  writeGlobalFile();
+}
+
+juce::File MasterpieceProcessor::defaultCacheDirectory() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("cache");
+}
+
+juce::File MasterpieceProcessor::cacheDirectory() const {
+  // The folder the player chose, as long as it can be created: a cache on a
+  // drive that is not plugged in must not stop an organ from loading. It only
+  // means this load is not cached.
+  if (cacheDir_.getFullPathName().isNotEmpty()) {
+    cacheDir_.createDirectory();
+    if (cacheDir_.isDirectory()) return cacheDir_;
+  }
+  return defaultCacheDirectory();
+}
+
+void MasterpieceProcessor::setCacheDirectory(const juce::File& dir) {
+  if (dir == cacheDir_) return;
+  cacheDir_ = dir;
+  samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
+  // Written at once, like the other general preferences: where the cache
+  // lives is a property of the machine, not of the organ that is open.
   writeGlobalFile();
 }
 
@@ -2738,12 +2771,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     // What the cache is keyed to: which organ, and whether its definition has
     // changed since the cache was written. Both are cheap to read and neither
     // is guessable from the model alone.
-    samples_.setCacheDir(
-        juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-            .getChildFile("Masterpiece")
-            .getChildFile("cache")
-            .getFullPathName()
-            .toStdString());
+    samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
     samples_.setCacheIdentity(
         organKey(),
         odfFile.getFullPathName().toStdString() + "|" +

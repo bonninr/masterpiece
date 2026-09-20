@@ -74,6 +74,12 @@ private:
   juce::ComboBox rate_;
   juce::Label cacheLabel_;
   juce::ComboBox cache_;
+  juce::Label cacheDirLabel_;
+  juce::Label cacheDirValue_;
+  juce::TextButton cacheDirChoose_{"Choose..."};
+  juce::TextButton cacheDirDefault_{"Default"};
+  std::unique_ptr<juce::FileChooser> cacheDirChooser_;
+  void showCacheDir();
   juce::Label profileLabel_;
   juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};

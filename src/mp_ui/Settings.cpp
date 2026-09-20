@@ -149,6 +149,34 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                                  : SampleLibrary::CacheMode::Single);
   };
 
+  // Where that cache is written. It is as large as the organs played through
+  // it, so a machine with a small fast disk and a large slow one needs to be
+  // able to say which holds it.
+  addAndMakeVisible(cacheDirLabel_);
+  styleLabel(cacheDirLabel_, "Cache folder");
+  addAndMakeVisible(cacheDirValue_);
+  cacheDirValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  showCacheDir();
+  addAndMakeVisible(cacheDirChoose_);
+  cacheDirChoose_.onClick = [this] {
+    cacheDirChooser_ = std::make_unique<juce::FileChooser>(
+        "Where should the sample cache be written?", proc_.cacheDirectory());
+    cacheDirChooser_->launchAsync(
+        juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectDirectories,
+        [this](const juce::FileChooser& fc) {
+          const auto dir = fc.getResult();
+          if (dir.getFullPathName().isEmpty()) return;
+          proc_.setCacheDirectory(dir);
+          showCacheDir();
+        });
+  };
+  addAndMakeVisible(cacheDirDefault_);
+  cacheDirDefault_.onClick = [this] {
+    proc_.setCacheDirectory(juce::File());
+    showCacheDir();
+  };
+
   addAndMakeVisible(stream_);
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
@@ -364,6 +392,17 @@ void EnginePanel::syncProfile() {
   applyingProfile_ = false;
 }
 
+// The folder as the player sees it: the chosen one, or the default place
+// named as such, since an empty field would look like a missing setting.
+void EnginePanel::showCacheDir() {
+  const auto chosen = proc_.cacheDirectorySetting();
+  cacheDirValue_.setText(chosen.getFullPathName().isEmpty()
+                             ? "Default (" + proc_.cacheDirectory().getFullPathName() + ")"
+                             : chosen.getFullPathName(),
+                         juce::dontSendNotification);
+  cacheDirValue_.setTooltip(proc_.cacheDirectory().getFullPathName());
+}
+
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
@@ -391,6 +430,14 @@ void EnginePanel::resized() {
   auto cacheRow = r.removeFromTop(kRow);
   cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
   cache_.setBounds(cacheRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  auto cacheDirRow = r.removeFromTop(kRow);
+  cacheDirLabel_.setBounds(cacheDirRow.removeFromLeft(180));
+  cacheDirChoose_.setBounds(cacheDirRow.removeFromRight(90).reduced(0, 2));
+  cacheDirRow.removeFromRight(6);
+  cacheDirDefault_.setBounds(cacheDirRow.removeFromRight(80).reduced(0, 2));
+  cacheDirRow.removeFromRight(8);
+  cacheDirValue_.setBounds(cacheDirRow);
   r.removeFromTop(6);
   stream_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
