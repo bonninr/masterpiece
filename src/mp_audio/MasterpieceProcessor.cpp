@@ -871,6 +871,8 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
+  if (organRootOverride_.getFullPathName().isNotEmpty())
+    text << "root " << organRootOverride_.getFullPathName() << "\n";
   text << "simple " << (sw.simpleWavOnly ? 1 : 0) << "\n";
   text << "wind " << (sw.enableWindModel ? 1 : 0) << "\n";
   text << "tremulant " << (sw.enableTremulant ? 1 : 0) << "\n";
@@ -945,6 +947,9 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
+  // Where this organ's OrganInstallationPackages actually is, for a layout
+  // the definition's path cannot reveal. Taken whole: a path may have spaces.
+  else if (key == "root") organRootOverride_ = val.isEmpty() ? juce::File() : juce::File(val);
   else if (key == "simple") sw.simpleWavOnly = on;
   else if (key == "wind") sw.enableWindModel = on;
   else if (key == "tremulant") sw.enableTremulant = on;
@@ -1180,6 +1185,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
+  if (cacheDir_.getFullPathName().isNotEmpty())
+    text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
 
@@ -1222,6 +1229,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
+    } else if (key == "cachedir") {
+      // A path, taken whole: the sample cache can be gigabytes, and a player
+      // with a small fast disk and a large slow one wants to choose which of
+      // them holds it.
+      cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
     } else if (key == "favourite") {
@@ -1289,6 +1301,32 @@ void MasterpieceProcessor::setReopenLastOrgan(bool on) {
   reopenLastOrgan_ = on;
   // Not saveGlobalDefaults(): a preference about startup is not a request to
   // adopt the open organ's settings as everyone's.
+  writeGlobalFile();
+}
+
+juce::File MasterpieceProcessor::defaultCacheDirectory() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("cache");
+}
+
+juce::File MasterpieceProcessor::cacheDirectory() const {
+  // The folder the player chose, as long as it can be created: a cache on a
+  // drive that is not plugged in must not stop an organ from loading. It only
+  // means this load is not cached.
+  if (cacheDir_.getFullPathName().isNotEmpty()) {
+    cacheDir_.createDirectory();
+    if (cacheDir_.isDirectory()) return cacheDir_;
+  }
+  return defaultCacheDirectory();
+}
+
+void MasterpieceProcessor::setCacheDirectory(const juce::File& dir) {
+  if (dir == cacheDir_) return;
+  cacheDir_ = dir;
+  samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
+  // Written at once, like the other general preferences: where the cache
+  // lives is a property of the machine, not of the organ that is open.
   writeGlobalFile();
 }
 
@@ -2413,6 +2451,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   OdfLoader loader;
   OdfLoader::Options opts;
   opts.organRootDir = root.getFullPathName().toStdString();
+  // A folder the player named for this organ wins over anything derived from
+  // the definition's own path. Some layouts cannot be worked out from the
+  // path at all: a link followed on the way in can leave the definition in a
+  // tree that holds no packages, and only the player knows where they are.
+  if (organRootOverride_.isDirectory()) {
+    opts.organRootDir = organRootOverride_.getFullPathName().toStdString();
+    juce::Logger::writeToLog("load: organ root set by hand: " +
+                             organRootOverride_.getFullPathName());
+  }
 
   OrganModel loaded;
   if (!loader.load(odfFile.getFullPathName().toStdString(), opts, loaded,
@@ -2738,12 +2785,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     // What the cache is keyed to: which organ, and whether its definition has
     // changed since the cache was written. Both are cheap to read and neither
     // is guessable from the model alone.
-    samples_.setCacheDir(
-        juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-            .getChildFile("Masterpiece")
-            .getChildFile("cache")
-            .getFullPathName()
-            .toStdString());
+    samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
     samples_.setCacheIdentity(
         organKey(),
         odfFile.getFullPathName().toStdString() + "|" +

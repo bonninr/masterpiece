@@ -16,6 +16,27 @@
 namespace mp::ui {
 
 // Engine: DSP switches and how much of each sample is preloaded.
+// A tab that scrolls when the window is too short for its contents. The
+// Engine tab has more in it than fits a small window -- reported on macOS,
+// where the default window left the last rows off the bottom with no way to
+// reach them but resizing.
+class ScrollHost : public juce::Viewport {
+public:
+  explicit ScrollHost(juce::Component& c, int minHeight) : minHeight_(minHeight) {
+    setViewedComponent(&c, false);
+    setScrollBarsShown(true, false);
+  }
+  void resized() override {
+    juce::Viewport::resized();
+    if (auto* c = getViewedComponent())
+      c->setSize(getMaximumVisibleWidth(),
+                 juce::jmax(minHeight_, getMaximumVisibleHeight()));
+  }
+
+private:
+  int minHeight_;
+};
+
 class EnginePanel : public juce::Component, private juce::Timer {
 public:
   explicit EnginePanel(MasterpieceProcessor& p);
@@ -74,6 +95,18 @@ private:
   juce::ComboBox rate_;
   juce::Label cacheLabel_;
   juce::ComboBox cache_;
+  juce::Label cacheDirLabel_;
+  juce::Label cacheDirValue_;
+  juce::TextButton cacheDirChoose_{"Choose..."};
+  juce::TextButton cacheDirDefault_{"Default"};
+  std::unique_ptr<juce::FileChooser> cacheDirChooser_;
+  void showCacheDir();
+  juce::Label organRootLabel_;
+  juce::Label organRootValue_;
+  juce::TextButton organRootChoose_{"Choose..."};
+  juce::TextButton organRootDefault_{"Default"};
+  std::unique_ptr<juce::FileChooser> organRootChooser_;
+  void showOrganRoot();
   juce::Label profileLabel_;
   juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};
@@ -345,6 +378,8 @@ public:
 private:
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   EnginePanel engine_;
+  // Tall enough for every row of the Engine tab; see ScrollHost.
+  ScrollHost engineScroll_{engine_, 720};
   ReverbPanel reverb_;
   MetronomePanel metronome_;
   RecorderPanel recorder_;

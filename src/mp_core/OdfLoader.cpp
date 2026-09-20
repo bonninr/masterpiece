@@ -29,6 +29,7 @@
 #include <functional>
 #include <cstdlib>
 #include <filesystem>
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
@@ -1877,19 +1878,34 @@ std::string deriveOrganRoot(const std::string& odfPath) {
   const std::filesystem::path logicalRoot = organRootFrom(odf);
   if (hasInstallationPackages(logicalRoot)) return logicalRoot.string();
 
-  // The logical root has no OrganInstallationPackages sibling -- try again
-  // with the ODF's own symlinks resolved. A set with OrganDefinitions moved
-  // onto another drive and linked back in can hand back a path whose plain
-  // textual parent is no longer where OrganInstallationPackages lives; asking
-  // the filesystem what the path actually resolves to finds it again. This
-  // never applies to a set with no installation packages at all: if the
-  // canonical root does not have one either, the logical answer is kept.
+  // The logical root has no OrganInstallationPackages sibling. A set whose
+  // folders are linked in from elsewhere can hand back a path whose textual
+  // parent is not where the packages live, so the search widens:
+  //
+  //   * the same path with its symlinks resolved -- OrganDefinitions moved to
+  //     another drive and linked back in resolves to where it really is;
+  //   * the ancestors of both, because a link can land the definition several
+  //     levels below the folder that holds the packages.
+  //
+  // A set that genuinely has no packages keeps the logical answer, so nothing
+  // about a loose ODF changes.
   std::error_code ec;
+  std::vector<std::filesystem::path> starts{logicalRoot};
   const std::filesystem::path canonicalOdf =
       std::filesystem::weakly_canonical(odf, ec);
-  if (!ec && canonicalOdf != odf) {
-    const std::filesystem::path canonicalRoot = organRootFrom(canonicalOdf);
-    if (hasInstallationPackages(canonicalRoot)) return canonicalRoot.string();
+  if (!ec && canonicalOdf != odf) starts.push_back(organRootFrom(canonicalOdf));
+
+  // Four levels is past any layout we have seen and stops well short of a
+  // drive's root, where a stray folder of that name would be someone else's.
+  constexpr int kMaxAncestors = 4;
+  for (const auto& start : starts) {
+    std::filesystem::path dir = start;
+    for (int up = 0; up <= kMaxAncestors; ++up) {
+      if (hasInstallationPackages(dir)) return dir.string();
+      const std::filesystem::path parent = dir.parent_path();
+      if (parent.empty() || parent == dir) break;
+      dir = parent;
+    }
   }
   return logicalRoot.string();
 }

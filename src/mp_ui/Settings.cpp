@@ -149,6 +149,66 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                                  : SampleLibrary::CacheMode::Single);
   };
 
+  // Where that cache is written. It is as large as the organs played through
+  // it, so a machine with a small fast disk and a large slow one needs to be
+  // able to say which holds it.
+  addAndMakeVisible(cacheDirLabel_);
+  styleLabel(cacheDirLabel_, "Cache folder");
+  addAndMakeVisible(cacheDirValue_);
+  cacheDirValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  showCacheDir();
+  addAndMakeVisible(cacheDirChoose_);
+  cacheDirChoose_.onClick = [this] {
+    cacheDirChooser_ = std::make_unique<juce::FileChooser>(
+        "Where should the sample cache be written?", proc_.cacheDirectory());
+    cacheDirChooser_->launchAsync(
+        juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectDirectories,
+        [this](const juce::FileChooser& fc) {
+          const auto dir = fc.getResult();
+          if (dir.getFullPathName().isEmpty()) return;
+          proc_.setCacheDirectory(dir);
+          showCacheDir();
+        });
+  };
+  addAndMakeVisible(cacheDirDefault_);
+  cacheDirDefault_.onClick = [this] {
+    proc_.setCacheDirectory(juce::File());
+    showCacheDir();
+  };
+
+  // Where this organ's OrganInstallationPackages is. Normally worked out
+  // from the definition's path; a set whose folders are linked in from
+  // another tree can leave that path pointing nowhere near the audio, and
+  // then only the player knows. Takes effect the next time it loads.
+  addAndMakeVisible(organRootLabel_);
+  styleLabel(organRootLabel_, "Organ folder");
+  addAndMakeVisible(organRootValue_);
+  organRootValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  showOrganRoot();
+  addAndMakeVisible(organRootChoose_);
+  organRootChoose_.onClick = [this] {
+    organRootChooser_ = std::make_unique<juce::FileChooser>(
+        "Which folder holds OrganInstallationPackages?",
+        juce::File(proc_.organRootDir()));
+    organRootChooser_->launchAsync(
+        juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectDirectories,
+        [this](const juce::FileChooser& fc) {
+          const auto dir = fc.getResult();
+          if (dir.getFullPathName().isEmpty()) return;
+          proc_.setOrganRootOverride(dir);
+          proc_.markSettingsDirty();
+          showOrganRoot();
+        });
+  };
+  addAndMakeVisible(organRootDefault_);
+  organRootDefault_.onClick = [this] {
+    proc_.setOrganRootOverride(juce::File());
+    proc_.markSettingsDirty();
+    showOrganRoot();
+  };
+
   addAndMakeVisible(stream_);
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
@@ -364,6 +424,28 @@ void EnginePanel::syncProfile() {
   applyingProfile_ = false;
 }
 
+// The folder as the player sees it: the chosen one, or the default place
+// named as such, since an empty field would look like a missing setting.
+void EnginePanel::showCacheDir() {
+  const auto chosen = proc_.cacheDirectorySetting();
+  cacheDirValue_.setText(chosen.getFullPathName().isEmpty()
+                             ? "Default (" + proc_.cacheDirectory().getFullPathName() + ")"
+                             : chosen.getFullPathName(),
+                         juce::dontSendNotification);
+  cacheDirValue_.setTooltip(proc_.cacheDirectory().getFullPathName());
+}
+
+// The folder as the player sees it: the one they named, or the one derived
+// from the definition's path, marked as derived so the two cannot be
+// confused.
+void EnginePanel::showOrganRoot() {
+  const auto chosen = proc_.organRootOverride();
+  organRootValue_.setText(chosen.getFullPathName().isEmpty()
+                              ? "From the definition (" + juce::String(proc_.organRootDir()) + ")"
+                              : chosen.getFullPathName() + "  -- loads next time",
+                          juce::dontSendNotification);
+}
+
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
@@ -391,6 +473,22 @@ void EnginePanel::resized() {
   auto cacheRow = r.removeFromTop(kRow);
   cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
   cache_.setBounds(cacheRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  auto cacheDirRow = r.removeFromTop(kRow);
+  cacheDirLabel_.setBounds(cacheDirRow.removeFromLeft(180));
+  cacheDirChoose_.setBounds(cacheDirRow.removeFromRight(90).reduced(0, 2));
+  cacheDirRow.removeFromRight(6);
+  cacheDirDefault_.setBounds(cacheDirRow.removeFromRight(80).reduced(0, 2));
+  cacheDirRow.removeFromRight(8);
+  cacheDirValue_.setBounds(cacheDirRow);
+  r.removeFromTop(6);
+  auto organRootRow = r.removeFromTop(kRow);
+  organRootLabel_.setBounds(organRootRow.removeFromLeft(180));
+  organRootChoose_.setBounds(organRootRow.removeFromRight(90).reduced(0, 2));
+  organRootRow.removeFromRight(6);
+  organRootDefault_.setBounds(organRootRow.removeFromRight(80).reduced(0, 2));
+  organRootRow.removeFromRight(8);
+  organRootValue_.setBounds(organRootRow);
   r.removeFromTop(6);
   stream_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
@@ -1779,7 +1877,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
-  tabs_.addTab("Engine", bg, &engine_, false);
+  tabs_.addTab("Engine", bg, &engineScroll_, false);
   tabs_.addTab("Room", bg, &reverb_, false);
   tabs_.addTab("Metronome", bg, &metronome_, false);
   tabs_.addTab("Recorder", bg, &recorder_, false);

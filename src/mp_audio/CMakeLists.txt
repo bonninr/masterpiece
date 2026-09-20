@@ -15,6 +15,8 @@ add_library(mp_audio STATIC
   Convolver.h Convolver.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Settings.h

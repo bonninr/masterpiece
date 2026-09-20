@@ -477,6 +477,15 @@ public:
   // Audible load progress: a swift tap at each 10% of a load. Off unless
   // asked. Global, never per organ: it suits the room, not the instrument.
   bool loadTicks() const { return loadTicks_.load(std::memory_order_acquire); }
+
+  // Where the sample cache is written. A cache is as large as the organs
+  // played through it, so a machine with a small fast disk and a large slow
+  // one has to be told which to use. An empty file means the default place,
+  // beside the other settings; setting one saves the choice at once.
+  juce::File cacheDirectory() const;
+  void setCacheDirectory(const juce::File& dir);
+  static juce::File defaultCacheDirectory();
+  juce::File cacheDirectorySetting() const { return cacheDir_; }
   void setLoadTicks(bool on);
   // Session-only form of the above: flips the switch without writing the
   // global file. Headless tools use this so a measurement render never
@@ -666,6 +675,13 @@ public:
   // out of the same installation packages the audio comes from.
   const std::string& organRootDir() const { return organRootDir_; }
 
+  // Where this organ's OrganInstallationPackages lives, when the definition's
+  // own path does not lead there -- a folder linked in from another tree, for
+  // instance. Empty means work it out from the path, which is the usual case.
+  // Set before loading; saved with the organ's other settings.
+  juce::File organRootOverride() const { return organRootOverride_; }
+  void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
+
   // Where the engine gets sample audio. Injected rather than owned, so the
   // preloaded and streaming backing stores share one voice path (ADR-004) and
   // tests can hand it a synthesised tone.
@@ -839,6 +855,7 @@ private:
   SwitchNetwork switches_;
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
+  juce::File organRootOverride_;
   // A drawstop on the console IS a switch; clicking it must draw the stop, not
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
@@ -894,6 +911,7 @@ private:
   int64_t preloadHead_ = 0;
   bool reopenLastOrgan_ = true;
   std::atomic<bool> loadTicks_{false};
+  juce::File cacheDir_; // empty: the default place
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
   // load and advanced by the audio thread, so both sides use an atomic and
   // neither waits on the other.
