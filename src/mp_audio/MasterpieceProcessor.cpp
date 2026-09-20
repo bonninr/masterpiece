@@ -871,6 +871,8 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
+  if (organRootOverride_.getFullPathName().isNotEmpty())
+    text << "root " << organRootOverride_.getFullPathName() << "\n";
   text << "simple " << (sw.simpleWavOnly ? 1 : 0) << "\n";
   text << "wind " << (sw.enableWindModel ? 1 : 0) << "\n";
   text << "tremulant " << (sw.enableTremulant ? 1 : 0) << "\n";
@@ -945,6 +947,9 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
+  // Where this organ's OrganInstallationPackages actually is, for a layout
+  // the definition's path cannot reveal. Taken whole: a path may have spaces.
+  else if (key == "root") organRootOverride_ = val.isEmpty() ? juce::File() : juce::File(val);
   else if (key == "simple") sw.simpleWavOnly = on;
   else if (key == "wind") sw.enableWindModel = on;
   else if (key == "tremulant") sw.enableTremulant = on;
@@ -2446,6 +2451,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   OdfLoader loader;
   OdfLoader::Options opts;
   opts.organRootDir = root.getFullPathName().toStdString();
+  // A folder the player named for this organ wins over anything derived from
+  // the definition's own path. Some layouts cannot be worked out from the
+  // path at all: a link followed on the way in can leave the definition in a
+  // tree that holds no packages, and only the player knows where they are.
+  if (organRootOverride_.isDirectory()) {
+    opts.organRootDir = organRootOverride_.getFullPathName().toStdString();
+    juce::Logger::writeToLog("load: organ root set by hand: " +
+                             organRootOverride_.getFullPathName());
+  }
 
   OrganModel loaded;
   if (!loader.load(odfFile.getFullPathName().toStdString(), opts, loaded,

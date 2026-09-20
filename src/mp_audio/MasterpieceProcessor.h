@@ -675,6 +675,13 @@ public:
   // out of the same installation packages the audio comes from.
   const std::string& organRootDir() const { return organRootDir_; }
 
+  // Where this organ's OrganInstallationPackages lives, when the definition's
+  // own path does not lead there -- a folder linked in from another tree, for
+  // instance. Empty means work it out from the path, which is the usual case.
+  // Set before loading; saved with the organ's other settings.
+  juce::File organRootOverride() const { return organRootOverride_; }
+  void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
+
   // Where the engine gets sample audio. Injected rather than owned, so the
   // preloaded and streaming backing stores share one voice path (ADR-004) and
   // tests can hand it a synthesised tone.
@@ -848,6 +855,7 @@ private:
   SwitchNetwork switches_;
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
+  juce::File organRootOverride_;
   // A drawstop on the console IS a switch; clicking it must draw the stop, not
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.

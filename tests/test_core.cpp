@@ -243,6 +243,113 @@ public:
   }
 };
 
+#ifdef MP_TEST_HAS_AUDIO
+#include "../src/mp_ui/BmpImage.h"
+
+// Console artwork in BMP. JUCE reads PNG, JPEG and GIF; the older Hauptwerk
+// sets paint their consoles in BMP, and those came out black (issue #24).
+// The depths and layouts checked here are the ones such a set uses.
+class BmpImageTest final : public mp::test::Test {
+public:
+  BmpImageTest() : Test("functional.ui.bmp-artwork", Category::Functional) {}
+
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec) / "mp_bmp_test_51c7";
+    if (ec) return;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    if (ec) return;
+    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code e; std::filesystem::remove_all(p,e);} } cleanup{dir};
+
+    // Red, green, blue and white across a four-pixel row.
+    const std::vector<std::array<int, 3>> want = {
+        {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
+
+    check(dir / "b24.bmp", write24(dir / "b24.bmp"), want, 24);
+    check(dir / "b32.bmp", write32(dir / "b32.bmp", 255), want, 32);
+    // Alpha bytes left at zero: the image must still be visible.
+    check(dir / "b32z.bmp", write32(dir / "b32z.bmp", 0), want, 32);
+    check(dir / "b8.bmp", write8(dir / "b8.bmp"), want, 8);
+    check(dir / "btd.bmp", writeTopDown(dir / "btd.bmp"), want, -24);
+
+    // Not a BMP at all: an invalid image, not a crash and not a guess.
+    const auto junk = dir / "junk.bmp";
+    { std::ofstream f(junk, std::ios::binary); f << "not a bitmap at all"; }
+    MP_CHECK(!mp::loadBmpImage(juce::File(junk.string())).isValid(),
+             "a file that is not a BMP gives an invalid image");
+  }
+
+private:
+  static void put32(std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back((uint8_t)(x & 0xff)); v.push_back((uint8_t)((x >> 8) & 0xff));
+    v.push_back((uint8_t)((x >> 16) & 0xff)); v.push_back((uint8_t)((x >> 24) & 0xff));
+  }
+  static void put16(std::vector<uint8_t>& v, uint16_t x) {
+    v.push_back((uint8_t)(x & 0xff)); v.push_back((uint8_t)((x >> 8) & 0xff));
+  }
+  static void writeFile(const std::filesystem::path& p, const std::vector<uint8_t>& v) {
+    std::ofstream f(p, std::ios::binary);
+    f.write(reinterpret_cast<const char*>(v.data()), (std::streamsize) v.size());
+  }
+  // One row of four pixels, so padding is exercised only where it matters.
+  static std::vector<uint8_t> header(int w, int h, int bpp, size_t dataSize, int palette = 0) {
+    std::vector<uint8_t> v;
+    const uint32_t off = 14 + 40 + (uint32_t)(palette * 4);
+    v.push_back('B'); v.push_back('M');
+    put32(v, (uint32_t)(off + dataSize)); put16(v, 0); put16(v, 0); put32(v, off);
+    put32(v, 40); put32(v, (uint32_t) w); put32(v, (uint32_t) h);
+    put16(v, 1); put16(v, (uint16_t) bpp); put32(v, 0); put32(v, (uint32_t) dataSize);
+    put32(v, 2835); put32(v, 2835); put32(v, (uint32_t) palette); put32(v, 0);
+    return v;
+  }
+  static bool write24(const std::filesystem::path& p) {
+    std::vector<uint8_t> rows{0,0,255, 0,255,0, 255,0,0, 255,255,255};
+    auto v = header(4, 1, 24, rows.size());
+    v.insert(v.end(), rows.begin(), rows.end());
+    writeFile(p, v); return true;
+  }
+  static bool write32(const std::filesystem::path& p, int alpha) {
+    std::vector<uint8_t> rows{0,0,255,(uint8_t)alpha, 0,255,0,(uint8_t)alpha,
+                              255,0,0,(uint8_t)alpha, 255,255,255,(uint8_t)alpha};
+    auto v = header(4, 1, 32, rows.size());
+    v.insert(v.end(), rows.begin(), rows.end());
+    writeFile(p, v); return true;
+  }
+  static bool write8(const std::filesystem::path& p) {
+    auto v = header(4, 1, 8, 4, 4);
+    const uint8_t pal[16] = {0,0,255,0, 0,255,0,0, 255,0,0,0, 255,255,255,0};
+    v.insert(v.end(), pal, pal + 16);
+    const uint8_t rows[4] = {0, 1, 2, 3};
+    v.insert(v.end(), rows, rows + 4);
+    writeFile(p, v); return true;
+  }
+  static bool writeTopDown(const std::filesystem::path& p) {
+    std::vector<uint8_t> rows{0,0,255, 0,255,0, 255,0,0, 255,255,255};
+    auto v = header(4, -1, 24, rows.size());
+    v.insert(v.end(), rows.begin(), rows.end());
+    writeFile(p, v); return true;
+  }
+  void check(const std::filesystem::path& p, bool written,
+             const std::vector<std::array<int, 3>>& want, int what) {
+    if (!written) return;
+    const juce::Image img = mp::loadBmpImage(juce::File(p.string()));
+    const std::string tag = std::to_string(what) + "-bit";
+    MP_CHECK(img.isValid() && img.getWidth() == 4,
+             tag + ": the bitmap loads at its stated size");
+    if (!img.isValid()) return;
+    for (int x = 0; x < 4; ++x) {
+      const juce::Colour c = img.getPixelAt(x, 0);
+      MP_CHECK(c.getRed() == want[(size_t) x][0] && c.getGreen() == want[(size_t) x][1] &&
+                   c.getBlue() == want[(size_t) x][2] && c.getAlpha() == 255,
+               tag + ": pixel " + std::to_string(x) + " keeps its colour, opaque");
+    }
+  }
+};
+
+#endif // MP_TEST_HAS_AUDIO
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -5655,6 +5762,7 @@ public:
     layoutPackagesFolderSymlinked(base, xml);
     layoutSinglePackageSymlinked(base, xml);
     layoutDefinitionsFolderSymlinked(base, xml);
+    layoutDefinitionsLinkedOutOfTree(base, xml);
   }
 
 private:
@@ -5739,6 +5847,48 @@ private:
   // looking for is simply not there anymore. deriveOrganRoot has to notice
   // that the root implied by the given path has no OrganInstallationPackages
   // and fall back to the path's own resolved (canonical) form, which does.
+  // Layout D, reported against 0.5.0: OrganDefinitions is a link whose TARGET
+  // lives in a tree of its own, and the packages sit beside the link rather
+  // than beside the target. Opened through the link the path leads to the
+  // packages; opened through the resolved path -- which is what a file
+  // chooser can hand back -- nothing in the path leads anywhere near them.
+  // No search of the path can find them, so this is what the organ root
+  // setting is for.
+  void layoutDefinitionsLinkedOutOfTree(const std::filesystem::path& base,
+                                        const std::string& xml) {
+    namespace fs = std::filesystem;
+    const fs::path setRoot = base / "layoutD-set";
+    const fs::path defsElsewhere = base / "layoutD-defs";
+    writeFile(defsElsewhere / "test.Organ_Hauptwerk_xml", xml);
+    writeFile(setRoot / "OrganInstallationPackages" / "000001" / "001-C.wav", "x");
+    writeFile(setRoot / "OrganInstallationPackages" / "000001" / "001-C_Trem.wav", "x");
+    if (!trySymlinkDir(defsElsewhere, setRoot / "OrganDefinitions")) return;
+
+    // Through the link, the plain parent walk already lands on the set.
+    const fs::path throughLink =
+        setRoot / "OrganDefinitions" / "test.Organ_Hauptwerk_xml";
+    std::error_code ec;
+    MP_CHECK(fs::equivalent(mp::deriveOrganRoot(throughLink.string()), setRoot, ec) && !ec,
+             "layout D: the path as given leads to the packages");
+
+    // Through the resolved path it cannot, and must not invent one.
+    const fs::path resolved = defsElsewhere / "test.Organ_Hauptwerk_xml";
+    const std::string derived = mp::deriveOrganRoot(resolved.string());
+    MP_CHECK(!fs::is_directory(fs::path(derived) / "OrganInstallationPackages", ec),
+             "layout D: a resolved path genuinely has no packages to find");
+
+    // Naming the root is what loads it.
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    o.organRootDir = setRoot.string();
+    MP_CHECK(l.loadFromXmlString(xml, "test.Organ_Hauptwerk_xml", o, m, d),
+             "layout D: set must load with the root named");
+    MP_CHECK(d.missingSampleFiles.empty(),
+             "layout D: samples must be found under the named root");
+  }
+
   void layoutDefinitionsFolderSymlinked(const std::filesystem::path& base,
                                         const std::string& xml) {
     namespace fs = std::filesystem;
@@ -7272,6 +7422,9 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+#ifdef MP_TEST_HAS_AUDIO
+static BmpImageTest g_bmpImage;
+#endif
 static ConditionSenseTest g_conditionSense;
 static EncryptedDetectionTest g_encrypted;
 static FixtureCorpusTest g_fixtures;

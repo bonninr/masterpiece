@@ -483,6 +483,27 @@ public:
         proc_->setPreloadStops(std::move(wanted));
     }
 
+    // --organ-root <dir>: where this organ's OrganInstallationPackages is,
+    // for a layout the definition's own path cannot reveal.
+    {
+      const int at = args.indexOf("--organ-root");
+      if (at >= 0 && at + 1 < args.size())
+        proc_->setOrganRootOverride(juce::File(args[at + 1]));
+    }
+
+    // --preload-ranks 2,4,14: load exactly these ranks. For organs whose
+    // stops reach their pipes through pallets, where the drawn stops name no
+    // ranks and --preload-drawn cannot narrow the load.
+    {
+      const int at = args.indexOf("--preload-ranks");
+      if (at >= 0 && at + 1 < args.size()) {
+        std::vector<mp::Id> ranks;
+        for (const auto& s : juce::StringArray::fromTokens(args[at + 1], ",", ""))
+          if (s.getIntValue() > 0) ranks.push_back(s.getIntValue());
+        proc_->setPreloadRanks(std::move(ranks));
+      }
+    }
+
     if (consolePage > 0) {
       auto* win = win_.get();
       // Chained rather than assigned: a take list may already have claimed
