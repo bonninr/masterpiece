@@ -1,5 +1,7 @@
 #include "Console.h"
 
+#include "BmpImage.h"
+
 #include "../mp_core/KeyboardLayout.h"
 
 #include <algorithm>
@@ -553,7 +555,7 @@ const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
 
   const auto path = resolveIgnoringCase(
       resolveBitmap(organRoot_, element->bitmapFile, set.packageId));
-  juce::Image img = juce::ImageFileFormat::loadFrom(juce::File(path.string()));
+  juce::Image img = loadConsoleImage(juce::File(path.string()));
 
   // Hauptwerk predates transparent bitmaps: a set that ships BMPs carries a
   // separate mask image instead, black where the artwork shows and white where
@@ -562,8 +564,7 @@ const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
   if (img.isValid() && !set.transparencyMaskFile.empty()) {
     const auto maskPath = resolveIgnoringCase(
         resolveBitmap(organRoot_, set.transparencyMaskFile, set.packageId));
-    juce::Image mask =
-        juce::ImageFileFormat::loadFrom(juce::File(maskPath.string()));
+    juce::Image mask = loadConsoleImage(juce::File(maskPath.string()));
     if (mask.isValid()) {
       img = img.convertedToFormat(juce::Image::ARGB);
       const int w = std::min(img.getWidth(), mask.getWidth());
