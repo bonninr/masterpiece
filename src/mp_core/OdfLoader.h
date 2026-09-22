@@ -106,4 +106,13 @@ public:
 // packages at all is unaffected.
 std::string deriveOrganRoot(const std::string& odfPath);
 
+// Of these library roots, the first whose OrganInstallationPackages holds the
+// packages this model names, or an empty string. For a definition whose path
+// cannot lead to its audio: both standard folders linked to unrelated drives
+// leave no shared parent to find. Checking the package ids the definition
+// names is what makes the answer right rather than a guess -- a library that
+// holds other organs is passed over.
+std::string findLibraryHolding(const std::vector<std::string>& roots,
+                               const OrganModel& model);
+
 } // namespace mp

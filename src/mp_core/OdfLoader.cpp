@@ -2021,6 +2021,37 @@ bool hasInstallationPackages(const std::filesystem::path& root) {
 
 } // namespace
 
+std::string findLibraryHolding(const std::vector<std::string>& roots,
+                               const OrganModel& model) {
+  std::vector<Id> wanted;
+  for (const auto& [id, ref] : model.samples) {
+    (void)id;
+    if (ref.installationPackageId > 0 &&
+        std::find(wanted.begin(), wanted.end(), ref.installationPackageId) == wanted.end())
+      wanted.push_back(ref.installationPackageId);
+    if (wanted.size() >= 4) break; // four is plenty to tell libraries apart
+  }
+  if (wanted.empty()) return {};
+
+  std::error_code ec;
+  for (const auto& root : roots) {
+    const std::filesystem::path packages =
+        std::filesystem::path(root) / "OrganInstallationPackages";
+    if (!std::filesystem::is_directory(packages, ec)) continue;
+    bool all = true;
+    for (Id id : wanted) {
+      std::string digits = std::to_string(id);
+      if (digits.size() < 6) digits.insert(0, 6 - digits.size(), '0');
+      if (!std::filesystem::is_directory(packages / digits, ec)) {
+        all = false;
+        break;
+      }
+    }
+    if (all) return root;
+  }
+  return {};
+}
+
 std::string deriveOrganRoot(const std::string& odfPath) {
   const std::filesystem::path odf(odfPath);
   const std::filesystem::path logicalRoot = organRootFrom(odf);

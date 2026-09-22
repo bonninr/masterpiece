@@ -1185,6 +1185,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
+  for (const auto& lib : libraries_)
+    text << "library " << lib.getFullPathName() << "\n";
   if (cacheDir_.getFullPathName().isNotEmpty())
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
@@ -1229,6 +1231,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
+    } else if (key == "library") {
+      const juce::File dir(val);
+      if (val.isNotEmpty() &&
+          std::find(libraries_.begin(), libraries_.end(), dir) == libraries_.end())
+        libraries_.push_back(dir);
     } else if (key == "cachedir") {
       // A path, taken whole: the sample cache can be gigabytes, and a player
       // with a small fast disk and a large slow one wants to choose which of
@@ -1301,6 +1308,38 @@ void MasterpieceProcessor::setReopenLastOrgan(bool on) {
   reopenLastOrgan_ = on;
   // Not saveGlobalDefaults(): a preference about startup is not a request to
   // adopt the open organ's settings as everyone's.
+  writeGlobalFile();
+}
+
+// Does one of the known libraries hold the packages this organ names? The
+// matching itself lives in the core, where it can be tested without a
+// processor writing to anyone's settings.
+juce::File MasterpieceProcessor::libraryHolding(const OrganModel& model) const {
+  std::vector<std::string> roots;
+  for (const auto& lib : libraries_) roots.push_back(lib.getFullPathName().toStdString());
+  const std::string found = mp::findLibraryHolding(roots, model);
+  return found.empty() ? juce::File() : juce::File(found);
+}
+
+// The place a Hauptwerk installation keeps its libraries, so the first load
+// after installing Masterpiece already knows where to look. Added only if it
+// is really there.
+void MasterpieceProcessor::seedSampleLibraries() {
+  const auto standard =
+      juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+          .getChildFile("Hauptwerk")
+          .getChildFile("HauptwerkSampleSetsAndComponents");
+  if (standard.getChildFile("OrganInstallationPackages").isDirectory() &&
+      std::find(libraries_.begin(), libraries_.end(), standard) == libraries_.end())
+    libraries_.push_back(standard);
+}
+
+void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {
+  if (!root.isDirectory()) return;
+  if (!root.getChildFile("OrganInstallationPackages").isDirectory()) return;
+  if (std::find(libraries_.begin(), libraries_.end(), root) != libraries_.end())
+    return;
+  libraries_.push_back(root);
   writeGlobalFile();
 }
 
@@ -2517,6 +2556,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   // Publish the model before the audio, so a note-on during loading resolves
   // pipes that simply have no sound yet rather than reading a half-built map.
+  // The definition parsed, so its package ids are known. If the root worked
+  // out from the path does not hold them -- both standard folders linked to
+  // unrelated drives is the reported case, and no path can bridge that -- ask
+  // the libraries this machine knows about.
+  if (!organRootOverride_.isDirectory()) {
+    const juce::File derived(opts.organRootDir);
+    const auto packages = derived.getChildFile("OrganInstallationPackages");
+    if (!packages.isDirectory()) {
+      seedSampleLibraries();
+      const juce::File lib = libraryHolding(loaded);
+      if (lib.isDirectory()) {
+        opts.organRootDir = lib.getFullPathName().toStdString();
+        juce::Logger::writeToLog("load: packages found in a known library: " +
+                                 lib.getFullPathName());
+      }
+    }
+  }
+
   model_ = std::move(loaded);
   organRootDir_ = opts.organRootDir;
   loadedOdf_ = odfFile;
@@ -2915,6 +2972,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Only now, having got this far: an organ that failed to load is not one
   // worth reopening on the next start.
   setLastOrgan(odfFile);
+  // And the library it came from, so a definition moved away from its audio
+  // later can still be matched to it.
+  if (!graphicsOnly) rememberSampleLibrary(juce::File(organRootDir_));
 
   result.stopsEngaged = 0;
   // Only now: starting the organ above moves switches on this thread, and

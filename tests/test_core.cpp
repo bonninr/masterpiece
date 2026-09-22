@@ -548,6 +548,63 @@ private:
 
 #endif // MP_TEST_HAS_AUDIO
 
+// Reported in #12 after 0.5.3: both standard Hauptwerk folders linked to
+// two unrelated drives -- OrganDefinitions into Dropbox, the packages onto
+// an external disk. The definition's real path leads nowhere near its audio,
+// and no walk up from it can, so the organ is matched to a library this
+// machine already knows by the package ids it names.
+class LibraryMatchTest final : public mp::test::Test {
+public:
+  LibraryMatchTest() : Test("functional.loader.library-match", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path base = fs::temp_directory_path(ec) / "mp_library_test_7e21";
+    if (ec) return;
+    fs::remove_all(base, ec);
+    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code e; std::filesystem::remove_all(p,e);} } cleanup{base};
+
+    // Two libraries: one holds this organ's package, the other someone else's.
+    const fs::path other = base / "SomeOtherDrive";
+    const fs::path mine = base / "SanDisk";
+    fs::create_directories(other / "OrganInstallationPackages" / "000009", ec);
+    fs::create_directories(mine / "OrganInstallationPackages" / "002213", ec);
+    // And the definition somewhere unrelated to both.
+    const fs::path defs = base / "Dropbox" / "Hauptwerk" / "OrganDefinitions";
+    fs::create_directories(defs, ec);
+    MP_CHECK(!ec, "the layout can be built");
+
+    mp::OrganModel m;
+    mp::SampleRef s;
+    s.sampleId = 1;
+    s.installationPackageId = 2213;
+    s.fileName = "Pipe/036-C.wav";
+    m.samples[1] = s;
+
+    // Nothing in the definition's own path leads to the audio.
+    const std::string derived =
+        mp::deriveOrganRoot((defs / "Friesach.Organ_Hauptwerk_xml").string());
+    MP_CHECK(!fs::is_directory(fs::path(derived) / "OrganInstallationPackages", ec),
+             "the definition's path genuinely leads to no packages");
+
+    // The library that holds its package is found; the other is passed over,
+    // whichever order they are listed in.
+    const std::string a = mp::findLibraryHolding({other.string(), mine.string()}, m);
+    const std::string b = mp::findLibraryHolding({mine.string(), other.string()}, m);
+    MP_CHECK(fs::equivalent(a, mine, ec) && fs::equivalent(b, mine, ec),
+             "the library holding the named package is the one chosen");
+
+    // A library that holds other organs only is never chosen.
+    MP_CHECK(mp::findLibraryHolding({other.string()}, m).empty(),
+             "no library is chosen when none holds the package");
+
+    // A definition that names no package cannot be matched by guesswork.
+    mp::OrganModel bare;
+    MP_CHECK(mp::findLibraryHolding({mine.string()}, bare).empty(),
+             "a definition naming no package matches nothing");
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -7635,6 +7692,7 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
 static BmpImageTest g_bmpImage;

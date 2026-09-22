@@ -682,6 +682,16 @@ public:
   // instance. Empty means work it out from the path, which is the usual case.
   // Set before loading; saved with the organ's other settings.
   juce::File organRootOverride() const { return organRootOverride_; }
+
+  // The folders this machine keeps sample libraries in: anything holding an
+  // OrganInstallationPackages directory. A definition whose own path leads
+  // nowhere near its audio -- both standard folders linked to unrelated
+  // drives, which is what a Hauptwerk installation reorganised by hand looks
+  // like -- is found by asking each of these whether it holds the packages
+  // the definition names. Seeded with the standard location, added to by
+  // every load that works, and saved with the other machine-wide settings.
+  const std::vector<juce::File>& sampleLibraries() const { return libraries_; }
+  void rememberSampleLibrary(const juce::File& root);
   void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
 
   // Where the engine gets sample audio. Injected rather than owned, so the
@@ -858,6 +868,10 @@ private:
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
   juce::File organRootOverride_;
+  std::vector<juce::File> libraries_;
+  // The root that holds the packages this model names, or an empty file.
+  juce::File libraryHolding(const OrganModel& model) const;
+  void seedSampleLibraries();
   // A drawstop on the console IS a switch; clicking it must draw the stop, not
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
