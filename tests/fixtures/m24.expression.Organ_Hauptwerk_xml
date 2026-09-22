@@ -70,15 +70,16 @@
     </ContinuousControlLinkage>
   </ObjectList>
 
+  <!-- An Enclosure row carries no filter numbers: Hauptwerk states the box's
+       filter per PIPE, on EnclosurePipe, against each pipe's own pitch. The
+       engine filters one bus per box, so the loader takes the median of the
+       pipes' values; this fixture states both pipes identically so the median
+       is exactly the figure the test pins (700 Hz, 14 kHz, -20 dB). -->
   <ObjectList ObjectType="Enclosure">
     <Enclosure>
       <EnclosureID>1</EnclosureID>
       <Name>Swell Box</Name>
       <ShutterPositionContinuousControlID>1</ShutterPositionContinuousControlID>
-      <ShadesClosedFilterFreqHz>700</ShadesClosedFilterFreqHz>
-      <ShadesOpenFilterFreqHz>14000</ShadesOpenFilterFreqHz>
-      <ShadesClosedAttenuationDb>-20</ShadesClosedAttenuationDb>
-      <ShadesOpenAttenuationDb>0</ShadesOpenAttenuationDb>
     </Enclosure>
     <Enclosure>
       <EnclosureID>2</EnclosureID>
@@ -91,8 +92,22 @@
        routing has something to get wrong. Pipe 9102 named twice by different
        boxes would be an authoring error and is reported, not resolved. -->
   <ObjectList ObjectType="EnclosurePipe">
-    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9101</PipeID></EnclosurePipe>
-    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9103</PipeID></EnclosurePipe>
+    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9101</PipeID>
+      <FiltParamWhenClsd_OverallAttnDb>20</FiltParamWhenClsd_OverallAttnDb>
+      <FiltParamWhenClsd_MaxFreqHz>700</FiltParamWhenClsd_MaxFreqHz>
+      <FiltParamWhenClsd_MinFreqHz>7000</FiltParamWhenClsd_MinFreqHz>
+      <FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>
+      <FiltParamWhenOpen_MaxFreqHz>14000</FiltParamWhenOpen_MaxFreqHz>
+      <FiltParamWhenOpen_MinFreqHz>20000</FiltParamWhenOpen_MinFreqHz>
+    </EnclosurePipe>
+    <EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>9103</PipeID>
+      <FiltParamWhenClsd_OverallAttnDb>20</FiltParamWhenClsd_OverallAttnDb>
+      <FiltParamWhenClsd_MaxFreqHz>700</FiltParamWhenClsd_MaxFreqHz>
+      <FiltParamWhenClsd_MinFreqHz>7000</FiltParamWhenClsd_MinFreqHz>
+      <FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>
+      <FiltParamWhenOpen_MaxFreqHz>14000</FiltParamWhenOpen_MaxFreqHz>
+      <FiltParamWhenOpen_MinFreqHz>20000</FiltParamWhenOpen_MinFreqHz>
+    </EnclosurePipe>
   </ObjectList>
 
   <ObjectList ObjectType="Tremulant">

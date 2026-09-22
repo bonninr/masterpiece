@@ -126,6 +126,21 @@ struct PipeLayer {
   // this costs nothing until it is used.
   Id pitchControlId = 0;
   double pitchSensitivityHzPerUnit = 0.0;
+  // How hard the key was struck changes how loud the pipe speaks. The organ
+  // states the attenuation at the softest touch; full velocity is unattenuated.
+  // Half the corpus declares one, and without it every note plays at one
+  // level, which is what a tracker action is NOT. `invert` swaps the sense
+  // for the sets whose couplers or second touch need it (AmpLvl_Invert...).
+  // The raw sign is kept as the file writes it — producers disagree (+5 on
+  // Alessandria, -6 on Giubiasco) and the magnitude is the attenuation.
+  double velSensMaxAttenDb = 0.0; // AmpLvl_VelocitySensitivityMaxAttenuationDecibels
+  bool invertVelocitySens = false;
+  // How far THIS layer's tremulant depth is adjusted from the pipe's own.
+  // The depth belongs to the chest (TremulantWaveformPipe); these are the
+  // per-layer trims on top of it, and applying them per layer is what keeps a
+  // flute and a reed on the same tremulant wobbling differently.
+  double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
+  double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;
   double tremDepthDb = 0.0;
@@ -192,6 +207,12 @@ struct Stop {
   int defaultAsgnCode = 0; // 20xx-30xx determines capture division + jamb sort
   std::vector<StopRankEntry> ranks;
   Id controllingSwitchId = 0;
+  // Hint_PrimaryAssociatedRankID: the rank this stop draws, for the sets —
+  // and every demo set that ships part of its pipework — that declare no
+  // StopRank rows at all. The reference converters follow it; without it the
+  // stop draws and plays nothing. Gathered into `ranks` at load when it is
+  // safe to do so; see the loader for the one case where it is not.
+  Id hintPrimaryRankId = 0;
 };
 
 // One edge of the key-flow graph: keys played on `sourceKeyboard` also reach
@@ -420,8 +441,16 @@ struct Enclosure {
   Id enclosureId = 0;
   std::string name;
   Id continuousControlId = 0;
+  // The filter the shades impose, as the engine's one-cutoff-one-gain model
+  // takes it. Hauptwerk states these PER PIPE (EnclosurePipe's FiltParam...),
+  // relative to each pipe's own pitch, so there is no single enclosure-level
+  // number in the file: these are the medians of the pipes' values gathered at
+  // load, which is the representative figure for a bus-level filter. Set from
+  // the pipes when the set declares any; the numbers below are only the
+  // fallback for a box that ships none.
   double closedFilterHz = 800.0, openFilterHz = 12000.0;
   double closedAttnDb = -24.0, openAttnDb = 0.0;
+  bool filterParamsFromPipes = false;
   // Shade positions the ODF actually declares (EnclosurePipe rows). An
   // enclosure with none is inert — the validator reports it rather than
   // silently swallowing the swell pedal (query enclosure-without-shades).

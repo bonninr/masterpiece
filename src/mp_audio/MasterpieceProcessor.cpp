@@ -1642,6 +1642,23 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
                   static_cast<float>(layer.gainDb), -100.0f) *
               layerLevel(layer);
 
+    // How hard the key was struck. The organ states the attenuation at the
+    // softest touch; full velocity is unattenuated. Inverted, the sense
+    // swaps. Applied here and not per sample: a pipe keeps the level it
+    // began with until the next strike, which is what an organ does.
+    //
+    // The MAGNITUDE is the attenuation: every set stores one constant for
+    // its whole pipework, and while some write it +5 dB others write -5 or
+    // -6 (Alessandria +5, Giubiasco -6, Cracow -10). Read as a signed gain
+    // the negative sets would get LOUDER when played softly, which no
+    // tracker organ does; the field's own name is MaxAttenuation.
+    if (layer.velSensMaxAttenDb != 0.0) {
+      const double v01 = juce::jlimit(0.0, 1.0, static_cast<double>(velocity) / 127.0);
+      const double attn = layer.invertVelocitySens ? v01 : 1.0 - v01;
+      vs.gain *= juce::Decibels::decibelsToGain(
+          static_cast<float>(-std::fabs(layer.velSensMaxAttenDb) * attn), -100.0f);
+    }
+
     // The player's own voicing, on top of what the organ declares.
     // Gain and tuning only: they are a multiply and a ratio at note-on
     // and cost nothing per sample, so they apply even with the DSP
@@ -1677,7 +1694,9 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
 
       // Which tremulant reaches this pipe, and how far it moves it. The
       // organ states the depth per pipe, so a flute and a reed on the
-      // same chest wobble by different amounts.
+      // same chest wobble by different amounts — and the LAYER trims that
+      // depth again, which is how one stop on a chest can be left nearly
+      // steady while its neighbour shakes.
       const auto tm = model_.tremulantPipes.find(pipe.pipeId);
       if (tm != model_.tremulantPipes.end()) {
         const auto ti = tremIndexOf_.find(tm->second.tremulantId);
@@ -1686,9 +1705,12 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
           // Decibels to a linear swing about unity, and percent of a
           // semitone to semitones.
           vs.tremAmpDepth = static_cast<float>(
-              juce::Decibels::decibelsToGain(tm->second.ampDepthDb, -60.0) -
+              juce::Decibels::decibelsToGain(
+                  tm->second.ampDepthDb + layer.tremAmpDepthAdjustDb, -60.0) -
               1.0);
-          vs.tremPitchDepth = tm->second.pitchDepthPct / 100.0;
+          vs.tremPitchDepth =
+              tm->second.pitchDepthPct / 100.0 *
+              juce::jlimit(0.0, 4.0, layer.tremPitchDepthAdjustPct / 100.0);
         }
       }
     }
@@ -2163,8 +2185,11 @@ void MasterpieceProcessor::buildPalletIndex() {
   }
   if (palletPipes_.empty()) return; // nothing to open: keys stay plain keys
 
-  for (const auto& [switchId, key] : model_.keyboardKeys)
+  keySwitchIds_.clear();
+  for (const auto& [switchId, key] : model_.keyboardKeys) {
     keySwitchByKey_[static_cast<int>(key.keyboardId) * 256 + key.midiNote] = switchId;
+    keySwitchIds_.insert(switchId);
+  }
   palletNotes_.reserve(palletPipes_.size());
   heldKeySwitches_.reserve(256);
 }
@@ -2213,10 +2238,20 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
     if (!engaged && rank.pipes.size() > 1) index = 1;
     const Pipe& pipe = rank.pipes[index];
 
+    // A key-action noise is the sound of the strike, so it takes the strike's
+    // velocity; a stop or blower noise is a mechanical event at a medium
+    // touch. The sets state a velocity response for the former and this is
+    // the only place their figures can act — the noise is not played by a
+    // key, so startPipeLayers never sees it.
+    const int noiseVelocity =
+        keySwitchIds_.count(switchId) != 0
+            ? juce::jlimit(1, 127, palletVelocity_)
+            : 100;
+
     const uint64_t noteId = nextNoteId_++;
     for (const auto& layer : pipe.layers) {
       NoteStrike strike;
-      strike.velocity = 100;
+      strike.velocity = noiseVelocity;
       const int attackIndex = selectAttack(layer, strike);
       if (attackIndex < 0) continue;
 
@@ -2232,6 +2267,14 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       vs.gain = juce::Decibels::decibelsToGain(
                     static_cast<float>(layer.gainDb), -100.0f) *
                 layerLevel(layer);
+      // The organ's velocity response reaches noises too, and on every set
+      // that declares one it is the NOISE layers that carry it.
+      if (layer.velSensMaxAttenDb != 0.0) {
+        const double v01 = static_cast<double>(noiseVelocity) / 127.0;
+        const double attn = layer.invertVelocitySens ? v01 : 1.0 - v01;
+        vs.gain *= juce::Decibels::decibelsToGain(
+            static_cast<float>(-std::fabs(layer.velSensMaxAttenDb) * attn), -100.0f);
+      }
       // A noise is a one-shot; looping it would leave the console rattling.
       vs.oneShot = true;
       vs.busIndex = busForPipe(pipe.pipeId);

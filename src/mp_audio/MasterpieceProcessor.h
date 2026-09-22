@@ -357,13 +357,15 @@ public:
   // Assign a manual to a channel, and optionally to one console. The simple
   // case of the full manual receiver in MidiMap: whole compass, no transpose,
   // full velocity. Anything more is set through midiMap().addKeyboardBinding().
-  void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0) {
+  // `exclusive` decides what happens to the manuals already on that channel.
+  // Learning one from a pressed key takes it from them: a player teaching a
+  // rig one keyboard at a time means this manual, not both. A channel chosen
+  // by hand shares it, which is how one keyboard is made to play two
+  // divisions at once.
+  void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0,
+                             bool exclusive = true) {
     midiMap_.removeKeyboardBindingsFor(keyboardId);
-    // Take the channel rather than share it. Without this the comment below
-    // was untrue: three manuals ended up claiming channel 1 on a real saved
-    // mapping, which made two of them unplayable and sent every manual to the
-    // pedal.
-    midiMap_.releaseChannel(channel, deviceId, keyboardId);
+    if (exclusive) midiMap_.releaseChannel(channel, deviceId, keyboardId);
     if (keyboardId != 0 && channel > 0) {
       MidiMap::KeyboardBinding b;
       b.channel = channel;
@@ -1035,6 +1037,10 @@ private:
   std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;
   // (keyboard, note) -> the switch that key IS, for organs that declare one.
   std::unordered_map<int, Id> keySwitchByKey_;
+  // The same switches as a set, for the noise path: a key-action noise fired
+  // by a KEY switch belongs to the strike and takes its velocity, while one
+  // fired by a stop switch is a mechanical event at a fixed touch.
+  std::unordered_set<Id> keySwitchIds_;
   // The key switches held down, by the same key id soundingNotes_ uses, so a
   // note-off finds the switch its note-on engaged.
   std::unordered_map<int, Id> heldKeySwitches_;
