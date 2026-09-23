@@ -443,6 +443,42 @@ public:
 
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/BmpImage.h"
+#include "../src/mp_audio/Convolver.h"
+
+// A Hauptwerk impulse-response package ships one room at several sample
+// rates. Picking the file recorded at the device's rate avoids resampling the
+// room, which is audible as a change of its size.
+class IrRateTest final : public mp::test::Test {
+public:
+  IrRateTest() : Test("functional.dsp.ir-rate-sibling", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec) / "mp_ir_rate_test_3b9d";
+    if (ec) return;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    if (ec) return;
+    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code e; std::filesystem::remove_all(p,e);} } cleanup{dir};
+    for (const char* rate : {"44100", "48000", "96000"}) {
+      std::ofstream f(dir / ("Room, omni {id}-" + std::string(rate) + "Hz.wav"));
+      f << "x";
+    }
+    const juce::File given((dir / "Room, omni {id}-44100Hz.wav").string());
+    MP_CHECK(mp::Convolver::fileForRate(given, 48000.0).getFileName() ==
+                 "Room, omni {id}-48000Hz.wav",
+             "the sibling at the device's rate is chosen");
+    MP_CHECK(mp::Convolver::fileForRate(given, 96000.0).getFileName() ==
+                 "Room, omni {id}-96000Hz.wav",
+             "and at 96 kHz");
+    MP_CHECK(mp::Convolver::fileForRate(given, 88200.0) == given,
+             "with no file at that rate, the one chosen is kept");
+
+    const juce::File plain((dir / "plain.wav").string());
+    MP_CHECK(mp::Convolver::fileForRate(plain, 48000.0) == plain,
+             "a file not named by rate is used as it is");
+  }
+};
 
 // Console artwork in BMP. JUCE reads PNG, JPEG and GIF; the older Hauptwerk
 // sets paint their consoles in BMP, and those came out black (issue #24).
@@ -7696,6 +7732,7 @@ static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
 static BmpImageTest g_bmpImage;
+static IrRateTest g_irRate;
 #endif
 static ConditionSenseTest g_conditionSense;
 static EncryptedDetectionTest g_encrypted;
