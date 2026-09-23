@@ -176,6 +176,14 @@ void ConsoleView::rebuild() {
       if (const juce::Image* img = imageFor(item.imageSetId, item.defaultIndex)) {
         w = img->getWidth();
         h = img->getHeight();
+      } else if (setIt->second.clickRightPx > 0 && setIt->second.clickBottomPx > 0) {
+        // No size declared and no picture to measure -- the images live in a
+        // package that is not installed. The clickable area is the next best
+        // measure of the control: a list item on Hajós is a 152x14 strip, and
+        // the fixed box below made every one of them a 32x32 square piled on
+        // its neighbours.
+        w = setIt->second.clickRightPx;
+        h = setIt->second.clickBottomPx;
       }
     }
     if (inst.tilesFor(layout_)) {
@@ -603,6 +611,20 @@ void ConsoleView::paint(juce::Graphics& g) {
     const juce::Image* img = imageFor(item.imageSetId, frameIndexFor(item));
     if (img == nullptr) {
       ++missing;
+      // A control whose picture is not here still has to be seen and clicked.
+      // Sets that build their control pages from "Hauptwerk Standard
+      // Components" -- a package that ships with Hauptwerk, not with the set
+      // -- write black labels meant to sit on light buttons. Without the
+      // buttons that is black on black, and the page reads as empty. Draw a
+      // plain one, lit when engaged, so the label and the state are legible.
+      if (item.switchId != 0 && !item.tiled) {
+        const bool on = frameIndexFor(item) == item.engagedIndex;
+        const auto r = item.bounds.toFloat().reduced(1.0f);
+        g.setColour(on ? juce::Colour(0xffe6cf7a) : juce::Colour(0xffc9c4b8));
+        g.fillRoundedRectangle(r, 3.0f);
+        g.setColour(juce::Colour(0xff5a5446));
+        g.drawRoundedRectangle(r, 3.0f, 1.0f);
+      }
       continue;
     }
     if (item.tiled) {
