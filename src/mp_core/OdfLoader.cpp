@@ -2021,6 +2021,60 @@ bool hasInstallationPackages(const std::filesystem::path& root) {
 
 } // namespace
 
+std::string restoreLogicalOdfPath(
+    const std::string& odfPath,
+    const std::vector<std::string>& libraryRoots) {
+  namespace fs = std::filesystem;
+
+  std::error_code ec;
+  const fs::path selected =
+      fs::weakly_canonical(fs::path(odfPath), ec);
+
+  if (ec) return odfPath;
+
+  for (const auto& root : libraryRoots) {
+    const fs::path logicalDefinitions =
+        fs::path(root) / "OrganDefinitions";
+
+    ec.clear();
+    if (!fs::is_directory(logicalDefinitions, ec))
+      continue;
+
+    ec.clear();
+    const fs::path physicalDefinitions =
+        fs::weakly_canonical(logicalDefinitions, ec);
+
+    if (ec)
+      continue;
+
+    const fs::path relative =
+        selected.lexically_relative(physicalDefinitions);
+
+    if (relative.empty() || relative.is_absolute())
+      continue;
+
+    bool escapes = false;
+    for (const auto& part : relative) {
+      if (part == "..") {
+        escapes = true;
+        break;
+      }
+    }
+
+    if (escapes)
+      continue;
+
+    const fs::path candidate =
+        logicalDefinitions / relative;
+
+    ec.clear();
+    if (fs::is_regular_file(candidate, ec))
+      return candidate.string();
+  }
+
+  return odfPath;
+}
+
 std::string findLibraryHolding(const std::vector<std::string>& roots,
                                const OrganModel& model) {
   std::vector<Id> wanted;

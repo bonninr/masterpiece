@@ -91,6 +91,14 @@ public:
                          OdfDiagnostics& outDiag);
 };
 
+// A native file chooser may resolve a symlinked OrganDefinitions directory
+// before returning the selected file. If the physical file belongs underneath
+// the OrganDefinitions directory of one of the known library roots, rebuild
+// the equivalent path through that logical directory.
+std::string restoreLogicalOdfPath(
+    const std::string& odfPath,
+    const std::vector<std::string>& libraryRoots);
+
 // Given the path to a *.Organ_Hauptwerk_xml (or *.CustomOrgan_Hauptwerk_xml)
 // file, return the directory OrganInstallationPackages and OrganDefinitions
 // hang off. Ordinarily that is just the ODF's grandparent — <root>/

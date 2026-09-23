@@ -2507,7 +2507,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // symlinks -- OrganDefinitions or OrganInstallationPackages relocated onto
   // another drive -- where the plain parent walk can land somewhere that no
   // longer has OrganInstallationPackages beside it.
-  const juce::File root(mp::deriveOrganRoot(odfFile.getFullPathName().toStdString()));
 
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
@@ -2528,7 +2527,25 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     p->setValueNotifyingHost(p->convertTo0to1(1.0f));
 
   loadGlobalDefaults();
-  loadSettingsFor(odfFile);
+  seedSampleLibraries();
+
+  std::vector<std::string> libraryRoots;
+  libraryRoots.reserve(libraries_.size());
+
+  for (const auto& library : libraries_)
+    libraryRoots.push_back(
+        library.getFullPathName().toStdString());
+
+  const juce::File effectiveOdf(
+      mp::restoreLogicalOdfPath(
+          odfFile.getFullPathName().toStdString(),
+          libraryRoots));
+
+  const juce::File root(
+      mp::deriveOrganRoot(
+          effectiveOdf.getFullPathName().toStdString()));
+
+  loadSettingsFor(effectiveOdf);
 
   OdfLoader loader;
   OdfLoader::Options opts;
@@ -2544,8 +2561,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
 
   OrganModel loaded;
-  if (!loader.load(odfFile.getFullPathName().toStdString(), opts, loaded,
-                   result.diagnostics)) {
+  if (!loader.load(effectiveOdf.getFullPathName().toStdString(),
+            opts, loaded, result.diagnostics)) {
     result.error = result.diagnostics.errors.empty()
                        ? "the organ definition could not be parsed"
                        : result.diagnostics.errors.front();
@@ -2576,7 +2593,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   model_ = std::move(loaded);
   organRootDir_ = opts.organRootDir;
-  loadedOdf_ = odfFile;
+  loadedOdf_ = effectiveOdf;
 
   // Console click -> stop. Without this a drawstop would move on screen and
   // the organ would stay silent, which is the worst of both.
@@ -2888,9 +2905,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
     samples_.setCacheIdentity(
         organKey(),
-        odfFile.getFullPathName().toStdString() + "|" +
-            std::to_string(odfFile.getSize()) + "|" +
-            std::to_string(odfFile.getLastModificationTime().toMilliseconds()));
+        effectiveOdf.getFullPathName().toStdString() + "|" +
+            std::to_string(effectiveOdf.getSize()) + "|" +
+            std::to_string(
+                effectiveOdf.getLastModificationTime().toMilliseconds()));
 
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
@@ -2971,7 +2989,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   // Only now, having got this far: an organ that failed to load is not one
   // worth reopening on the next start.
-  setLastOrgan(odfFile);
+  setLastOrgan(effectiveOdf);
   // And the library it came from, so a definition moved away from its audio
   // later can still be matched to it.
   if (!graphicsOnly) rememberSampleLibrary(juce::File(organRootDir_));
