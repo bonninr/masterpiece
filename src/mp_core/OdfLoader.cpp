@@ -1355,6 +1355,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // ---- M2.3: TremulantWaveform -> the tremulant it belongs to ----
+  //
+  // A tremulant can have many waveforms, not one. A set that samples the
+  // tremulant pipe by pipe gives each its own: Hajós has 352 for a single
+  // tremulant, one per note of each rank. Keeping only the last of them per
+  // tremulant left every other pipe unable to find its tremulant, so those
+  // pipes did not tremble at all, and each one was reported as a dangling id.
+  std::unordered_map<Id, Id> tremOfWaveform;
   forEachRow(odfRoot, "TremulantWaveform", [&](pugi::xml_node row) {
     const Id waveformId = fieldInt(row, "TremulantWaveformID", "a", 0);
     // Field c, not b — b is the Name. Reading the tremulant id out of the name
@@ -1366,8 +1373,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       if (tremId != 0) outDiag.danglingIds.push_back(tremId);
       return;
     }
-    it->second.waveformId = waveformId;
-    it->second.hasWaveform = waveformId != 0;
+    if (waveformId == 0) return;
+    tremOfWaveform[waveformId] = tremId;
+    // The first waveform stands for the tremulant where one is wanted.
+    if (!it->second.hasWaveform) {
+      it->second.waveformId = waveformId;
+      it->second.hasWaveform = true;
+    }
   });
 
   // TremulantWaveformPipe says how far one tremulant moves one pipe. This is
@@ -1375,9 +1387,6 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // tremulant belongs to a chest, and the stops on that chest wobble by
   // different amounts.
   {
-    std::unordered_map<Id, Id> tremOfWaveform;
-    for (const auto& [id, t] : outModel.tremulants)
-      if (t.waveformId != 0) tremOfWaveform[t.waveformId] = id;
 
     forEachRow(odfRoot, "TremulantWaveformPipe", [&](pugi::xml_node row) {
       const Id pipeId = fieldInt(row, "PipeID", "a", 0);

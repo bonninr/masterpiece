@@ -641,6 +641,52 @@ public:
   }
 };
 
+// A tremulant sampled pipe by pipe has a waveform per pipe, not one. Found on
+// Angster Hajós: 352 waveforms for one tremulant. Keeping only the last per
+// tremulant left the other pipes without any tremulant at all, each reported
+// as a dangling id.
+class TremulantWaveformsTest final : public mp::test::Test {
+public:
+  TremulantWaveformsTest()
+    : Test("functional.odf.tremulant-many-waveforms", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Tremulant\"><Tremulant>"
+        "<TremulantID>1710</TremulantID><Name>Tremulant</Name>"
+        "</Tremulant></ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveform\">"
+        "<TremulantWaveform><TremulantWaveformID>1</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "<TremulantWaveform><TremulantWaveformID>2</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "<TremulantWaveform><TremulantWaveformID>3</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveformPipe\">"
+        "<TremulantWaveformPipe><PipeID>101</PipeID><TremulantWaveformID>1</TremulantWaveformID></TremulantWaveformPipe>"
+        "<TremulantWaveformPipe><PipeID>102</PipeID><TremulantWaveformID>2</TremulantWaveformID></TremulantWaveformPipe>"
+        "<TremulantWaveformPipe><PipeID>103</PipeID><TremulantWaveformID>3</TremulantWaveformID></TremulantWaveformPipe>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.tremulantPipes.size() == 3,
+             "every pipe reaches the tremulant through its own waveform");
+    for (mp::Id pipe : {101, 102, 103})
+      MP_CHECK(m.tremulantPipes.count(pipe) == 1 &&
+                   m.tremulantPipes.at(pipe).tremulantId == 1710,
+               "pipe " + std::to_string(pipe) + " is moved by tremulant 1710");
+    MP_CHECK(d.danglingIds.empty(), "no waveform is reported as dangling");
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -7735,6 +7781,7 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+static TremulantWaveformsTest g_tremulantWaveforms;
 static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
