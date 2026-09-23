@@ -6164,6 +6164,13 @@ private:
 
     // Through the resolved path it cannot, and must not invent one.
     const fs::path resolved = defsElsewhere / "test.Organ_Hauptwerk_xml";
+    const std::string restored =
+        mp::restoreLogicalOdfPath(resolved.string(), {setRoot.string()});
+
+    MP_CHECK(fs::path(restored).lexically_normal() ==
+                 throughLink.lexically_normal(),
+             "layout D: a resolved ODF path must be restored through the "
+             "known OrganDefinitions symlink");
     const std::string derived = mp::deriveOrganRoot(resolved.string());
     MP_CHECK(!fs::is_directory(fs::path(derived) / "OrganInstallationPackages", ec),
              "layout D: a resolved path genuinely has no packages to find");
