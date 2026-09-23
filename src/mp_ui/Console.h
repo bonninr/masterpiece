@@ -16,6 +16,8 @@
 
 #include "../mp_audio/MasterpieceProcessor.h"
 
+#include <filesystem>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -123,6 +125,14 @@ private:
   // behaviours it can be taught.
   void showMidiMenu(Id switchId, juce::Rectangle<int> bounds);
   const juce::Image* imageFor(Id imageSetId, int index);
+  // A bitmap from "Hauptwerk Standard Components" (package ids 1 to 10),
+  // which ships with Hauptwerk rather than with the set. When the set's own
+  // root does not have it, a Hauptwerk installation among the known sample
+  // libraries may; the path there, or `found` unchanged.
+  std::filesystem::path standardComponent(const std::filesystem::path& found,
+                                          const std::string& fileName, Id packageId) const;
+  // Image sets drawn with generated wood because their pictures are missing.
+  std::set<Id> generatedWood_;
   int frameIndexFor(const Item& item) const;
   // Lay out every drawn manual on the current page.
   void buildKeyboards(const OrganModel& model, Id pageId);
