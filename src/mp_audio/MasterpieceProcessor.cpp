@@ -2500,14 +2500,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     return result;
   }
 
-  // A Hauptwerk set puts its definitions in <root>/OrganDefinitions and its
-  // audio in <root>/OrganInstallationPackages, so the root is the definition's
-  // grandparent. deriveOrganRoot (mp_core, shared with the loader so the two
-  // never disagree) also copes with a set that has been reorganised with
-  // symlinks -- OrganDefinitions or OrganInstallationPackages relocated onto
-  // another drive -- where the plain parent walk can land somewhere that no
-  // longer has OrganInstallationPackages beside it.
-
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
   // the samples are read and cannot be changed afterwards.
@@ -2529,21 +2521,27 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   loadGlobalDefaults();
   seedSampleLibraries();
 
+  // The path the definition is known by. A native file chooser can hand back
+  // a symlinked OrganDefinitions already resolved, which loses the folder its
+  // packages sit beside; when the file lies under a known library's linked
+  // OrganDefinitions, the path is rebuilt through that link. Everything below
+  // -- the root, the settings, the cache and the organ to reopen -- uses it.
   std::vector<std::string> libraryRoots;
   libraryRoots.reserve(libraries_.size());
-
   for (const auto& library : libraries_)
-    libraryRoots.push_back(
-        library.getFullPathName().toStdString());
+    libraryRoots.push_back(library.getFullPathName().toStdString());
+  const juce::File effectiveOdf(mp::restoreLogicalOdfPath(
+      odfFile.getFullPathName().toStdString(), libraryRoots));
 
-  const juce::File effectiveOdf(
-      mp::restoreLogicalOdfPath(
-          odfFile.getFullPathName().toStdString(),
-          libraryRoots));
-
+  // A Hauptwerk set puts its definitions in <root>/OrganDefinitions and its
+  // audio in <root>/OrganInstallationPackages, so the root is the definition's
+  // grandparent. deriveOrganRoot (mp_core, shared with the loader so the two
+  // never disagree) also copes with a set that has been reorganised with
+  // symlinks -- OrganDefinitions or OrganInstallationPackages relocated onto
+  // another drive -- where the plain parent walk can land somewhere that no
+  // longer has OrganInstallationPackages beside it.
   const juce::File root(
-      mp::deriveOrganRoot(
-          effectiveOdf.getFullPathName().toStdString()));
+      mp::deriveOrganRoot(effectiveOdf.getFullPathName().toStdString()));
 
   loadSettingsFor(effectiveOdf);
 
@@ -2561,8 +2559,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
 
   OrganModel loaded;
-  if (!loader.load(effectiveOdf.getFullPathName().toStdString(),
-            opts, loaded, result.diagnostics)) {
+  if (!loader.load(effectiveOdf.getFullPathName().toStdString(), opts, loaded,
+                   result.diagnostics)) {
     result.error = result.diagnostics.errors.empty()
                        ? "the organ definition could not be parsed"
                        : result.diagnostics.errors.front();
@@ -2907,8 +2905,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         organKey(),
         effectiveOdf.getFullPathName().toStdString() + "|" +
             std::to_string(effectiveOdf.getSize()) + "|" +
-            std::to_string(
-                effectiveOdf.getLastModificationTime().toMilliseconds()));
+            std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds()));
 
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
