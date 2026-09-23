@@ -5262,6 +5262,13 @@ public:
     RestoreFile keepGlobal(proc.globalSettingsFile());
     RestoreFile keepA(proc.settingsFileFor(odfA));
     RestoreFile keepB(proc.settingsFileFor(odfB));
+    // And start from none of them. A real profile's global defaults can carry
+    // a saved level, which every organ without settings of its own starts
+    // at; read here, it made "starts at unity" fail on a player's machine and
+    // pass on a clean CI runner. The guards above put the files back.
+    keepGlobal.file.deleteFile();
+    keepA.file.deleteFile();
+    keepB.file.deleteFile();
 
     auto gain = [&] {
       const auto* g = proc.apvts().getRawParameterValue("masterGain");
