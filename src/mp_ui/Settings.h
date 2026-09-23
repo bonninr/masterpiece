@@ -212,6 +212,11 @@ private:
   // Everything the two boxes cannot say: key range, transpose, velocity
   // window, tracker action, short octave, debounce.
   std::vector<std::unique_ptr<juce::TextButton>> keyboardMore_;
+  // Which manuals share a channel, said out loud. Sharing one is allowed --
+  // it is how a single keyboard plays two divisions -- but a player who did
+  // it by accident would otherwise hear two divisions and not know why.
+  juce::Label sharedNote_;
+  void showSharedChannels();
   juce::ComboBox output_;
   juce::ToggleButton feedback_{"Send stop changes back to the console"};
   juce::TextButton saveMap_{"Save mapping"};

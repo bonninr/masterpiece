@@ -243,8 +243,242 @@ public:
   }
 };
 
+// Elements the corpus fills that the loader left unread (2026-09-20):
+// Stop -> Rank through the hint, the swell box's per-pipe filter, the
+// per-layer velocity response, and the per-layer tremulant trims. Each was
+// verified present in shipped sets before it was parsed — see the field
+// survey in the gap register's method — and each is silent when unread: the
+// stop plays nothing, the box loses its real tone, every note is one level,
+// every stop on a chest wobbles alike.
+class LoaderMissingElementsTest final : public mp::test::Test {
+public:
+  LoaderMissingElementsTest()
+    : Test("functional.odf.loader-missing-elements", Category::Functional) {}
+
+  static std::string palletOrgan(bool pipeHasPallet) {
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>1</KeyboardID><Name>Manual</Name>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID>"
+        "</Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\">"
+        "<Division><DivisionID>1</DivisionID><Name>Great</Name></Division>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Principal 8</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>101</ControllingSwitchID>"
+        "<Hint_PrimaryAssociatedRankID>7</Hint_PrimaryAssociatedRankID></Stop>"
+        "<Stop><StopID>2</StopID><Name>Octave 4</Name><DivisionID>1</DivisionID>"
+        "<Hint_PrimaryAssociatedRankID>8</Hint_PrimaryAssociatedRankID></Stop>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>2</StopID><RankID>8</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes>"
+        "</StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\">"
+        "<Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Octave</Name></Rank>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>71</PipeID><RankID>7</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>";
+    if (pipeHasPallet)
+      odf += "<ControllingPalletSwitchID>555</ControllingPalletSwitchID>";
+    odf +=
+        "</Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>81</PipeID><RankID>8</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "</ObjectList></Hauptwerk>";
+    return odf;
+  }
+
+  void run() override {
+    // --- the hint reaches a rank StopRank never named ------------------
+    {
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      MP_CHECK(l.loadFromXmlString(palletOrgan(false), "a.Organ_Hauptwerk_xml",
+                                   o, m, d),
+               "an organ whose stop names its rank by hint loads");
+      const auto s1 = m.stops.find(1);
+      MP_CHECK(s1 != m.stops.end() && s1->second.ranks.size() == 1,
+               "the hintless stop gains a rank entry");
+      MP_CHECK(s1 != m.stops.end() && s1->second.ranks[0].rankId == 7,
+               "and it names the hinted rank");
+      MP_CHECK(s1 != m.stops.end() &&
+                   s1->second.ranks[0].firstMappedDivisionNote == 36 &&
+                   s1->second.ranks[0].numMappedNotes == 61,
+               "mapped over the division keyboard's own compass, not a guess");
+      // A stop that DID declare StopRank rows keeps exactly those.
+      const auto s2 = m.stops.find(2);
+      MP_CHECK(s2 != m.stops.end() && s2->second.ranks.size() == 1 &&
+                   s2->second.ranks[0].rankId == 8,
+               "a stop with StopRank rows is untouched by the hint");
+    }
+
+    // --- the hint must not bypass pallet wiring ------------------------
+    // On a pallet organ the switch network decides when the pipe speaks
+    // (key AND stop AND routing). A synthesized direct path would sound the
+    // rank whenever the key reached the division, whether the box's own
+    // wiring agrees or not.
+    {
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      MP_CHECK(l.loadFromXmlString(palletOrgan(true), "a.Organ_Hauptwerk_xml",
+                                   o, m, d),
+               "a pallet-wired organ with a hint loads");
+      const auto s1 = m.stops.find(1);
+      MP_CHECK(s1 != m.stops.end() && s1->second.ranks.empty(),
+               "a hinted rank reached by pallets keeps its wiring: no entry");
+    }
+
+    // --- the swell box's filter, from its pipes ------------------------
+    {
+      const std::string odf =
+          "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+          "<ObjectList ObjectType=\"_General\"><_General>"
+          "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+          "</_General></ObjectList>"
+          "<ObjectList ObjectType=\"Enclosure\">"
+          "<Enclosure><EnclosureID>1</EnclosureID><Name>Swell</Name>"
+          "<ShutterPositionContinuousControlID>9</ShutterPositionContinuousControlID>"
+          "</Enclosure></ObjectList>"
+          "<ObjectList ObjectType=\"ContinuousControl\">"
+          "<ContinuousControl><ControlID>9</ControlID><Name>Swell shoe</Name>"
+          "</ContinuousControl></ObjectList>"
+          "<ObjectList ObjectType=\"EnclosurePipe\">"
+          "<EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>11</PipeID>"
+          "<FiltParamWhenClsd_OverallAttnDb>10</FiltParamWhenClsd_OverallAttnDb>"
+          "<FiltParamWhenClsd_MaxFreqHz>400</FiltParamWhenClsd_MaxFreqHz>"
+          "<FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>"
+          "<FiltParamWhenOpen_MaxFreqHz>4000</FiltParamWhenOpen_MaxFreqHz>"
+          "</EnclosurePipe>"
+          "<EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>12</PipeID>"
+          "<FiltParamWhenClsd_OverallAttnDb>10</FiltParamWhenClsd_OverallAttnDb>"
+          "<FiltParamWhenClsd_MaxFreqHz>800</FiltParamWhenClsd_MaxFreqHz>"
+          "<FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>"
+          "<FiltParamWhenOpen_MaxFreqHz>8000</FiltParamWhenOpen_MaxFreqHz>"
+          "</EnclosurePipe>"
+          "<EnclosurePipe><EnclosureID>1</EnclosureID><PipeID>13</PipeID>"
+          "<FiltParamWhenClsd_OverallAttnDb>10</FiltParamWhenClsd_OverallAttnDb>"
+          "<FiltParamWhenClsd_MaxFreqHz>1200</FiltParamWhenClsd_MaxFreqHz>"
+          "<FiltParamWhenClsd_ExtraAttnAtMinDb>0</FiltParamWhenClsd_ExtraAttnAtMinDb>"
+          "<FiltParamWhenOpen_MaxFreqHz>12000</FiltParamWhenOpen_MaxFreqHz>"
+          "</EnclosurePipe></ObjectList></Hauptwerk>";
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+               "an enclosure whose filter is stated on its pipes loads");
+      const auto e = m.enclosures.find(1);
+      MP_CHECK(e != m.enclosures.end() && e->second.filterParamsFromPipes,
+               "the box knows its filter came from the pipes");
+      // The figures are stated against each pipe's own pitch, so the box takes
+      // the upper quartile: the median would describe a pipe lower than most
+      // of what is heard, and an "open" box would sound permanently closed.
+      MP_CHECK(e != m.enclosures.end() && e->second.closedFilterHz == 1200.0,
+               "the closed cutoff is the upper quartile of the pipes' maxima");
+      MP_CHECK(e != m.enclosures.end() && e->second.openFilterHz == 12000.0,
+               "the open cutoff is the upper quartile too");
+      MP_CHECK(e != m.enclosures.end() && e->second.closedAttnDb == -10.0,
+               "the closed attenuation is insertion loss plus the extra at min");
+      MP_CHECK(e != m.enclosures.end() && e->second.openAttnDb == 0.0,
+               "an open box takes the insertion loss off");
+    }
+
+    // --- the per-layer velocity response and tremulant trims -----------
+    {
+      const std::string odf =
+          "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+          "<ObjectList ObjectType=\"_General\"><_General>"
+          "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+          "</_General></ObjectList>"
+          "<ObjectList ObjectType=\"Rank\"><Rank><RankID>1</RankID>"
+          "<Name>R</Name></Rank></ObjectList>"
+          "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+          "<Pipe_SoundEngine01><PipeID>10</PipeID><RankID>1</RankID>"
+          "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+          "</ObjectList>"
+          "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+          "<Pipe_SoundEngine01_Layer><LayerID>100</LayerID><PipeID>10</PipeID>"
+          "<AmpLvl_VelocitySensitivityMaxAttenuationDecibels>-12.5"
+          "</AmpLvl_VelocitySensitivityMaxAttenuationDecibels>"
+          "<AmpLvl_InvertVelocitySensitivity>Y</AmpLvl_InvertVelocitySensitivity>"
+          "<AmpLvl_TremulantModDepthAdjustDecibels>-3"
+          "</AmpLvl_TremulantModDepthAdjustDecibels>"
+          "<PitchLvl_TremulantModDepthAdjustPercent>50"
+          "</PitchLvl_TremulantModDepthAdjustPercent>"
+          "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+               "a layer with a velocity response loads");
+      const auto r = m.ranks.find(1);
+      MP_CHECK(r != m.ranks.end() && r->second.pipes.size() == 1 &&
+                   r->second.pipes[0].layers.size() == 1,
+               "the layer is there");
+      const mp::PipeLayer& lay = r->second.pipes[0].layers[0];
+      MP_CHECK(lay.velSensMaxAttenDb == -12.5,
+               "the velocity ceiling is read raw — the sign is the file's");
+      MP_CHECK(lay.invertVelocitySens, "the inversion flag is read");
+      MP_CHECK(lay.tremAmpDepthAdjustDb == -3.0, "the tremulant amp trim is read");
+      MP_CHECK(lay.tremPitchDepthAdjustPct == 50.0, "the tremulant pitch trim is read");
+    }
+  }
+};
+
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/BmpImage.h"
+#include "../src/mp_audio/Convolver.h"
+
+// A Hauptwerk impulse-response package ships one room at several sample
+// rates. Picking the file recorded at the device's rate avoids resampling the
+// room, which is audible as a change of its size.
+class IrRateTest final : public mp::test::Test {
+public:
+  IrRateTest() : Test("functional.dsp.ir-rate-sibling", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec) / "mp_ir_rate_test_3b9d";
+    if (ec) return;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    if (ec) return;
+    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code e; std::filesystem::remove_all(p,e);} } cleanup{dir};
+    for (const char* rate : {"44100", "48000", "96000"}) {
+      std::ofstream f(dir / ("Room, omni {id}-" + std::string(rate) + "Hz.wav"));
+      f << "x";
+    }
+    const juce::File given((dir / "Room, omni {id}-44100Hz.wav").string());
+    MP_CHECK(mp::Convolver::fileForRate(given, 48000.0).getFileName() ==
+                 "Room, omni {id}-48000Hz.wav",
+             "the sibling at the device's rate is chosen");
+    MP_CHECK(mp::Convolver::fileForRate(given, 96000.0).getFileName() ==
+                 "Room, omni {id}-96000Hz.wav",
+             "and at 96 kHz");
+    MP_CHECK(mp::Convolver::fileForRate(given, 88200.0) == given,
+             "with no file at that rate, the one chosen is kept");
+
+    const juce::File plain((dir / "plain.wav").string());
+    MP_CHECK(mp::Convolver::fileForRate(plain, 48000.0) == plain,
+             "a file not named by rate is used as it is");
+  }
+};
 
 // Console artwork in BMP. JUCE reads PNG, JPEG and GIF; the older Hauptwerk
 // sets paint their consoles in BMP, and those came out black (issue #24).
@@ -349,6 +583,63 @@ private:
 };
 
 #endif // MP_TEST_HAS_AUDIO
+
+// Reported in #12 after 0.5.3: both standard Hauptwerk folders linked to
+// two unrelated drives -- OrganDefinitions into Dropbox, the packages onto
+// an external disk. The definition's real path leads nowhere near its audio,
+// and no walk up from it can, so the organ is matched to a library this
+// machine already knows by the package ids it names.
+class LibraryMatchTest final : public mp::test::Test {
+public:
+  LibraryMatchTest() : Test("functional.loader.library-match", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path base = fs::temp_directory_path(ec) / "mp_library_test_7e21";
+    if (ec) return;
+    fs::remove_all(base, ec);
+    struct Cleanup { fs::path p; ~Cleanup(){ std::error_code e; std::filesystem::remove_all(p,e);} } cleanup{base};
+
+    // Two libraries: one holds this organ's package, the other someone else's.
+    const fs::path other = base / "SomeOtherDrive";
+    const fs::path mine = base / "SanDisk";
+    fs::create_directories(other / "OrganInstallationPackages" / "000009", ec);
+    fs::create_directories(mine / "OrganInstallationPackages" / "002213", ec);
+    // And the definition somewhere unrelated to both.
+    const fs::path defs = base / "Dropbox" / "Hauptwerk" / "OrganDefinitions";
+    fs::create_directories(defs, ec);
+    MP_CHECK(!ec, "the layout can be built");
+
+    mp::OrganModel m;
+    mp::SampleRef s;
+    s.sampleId = 1;
+    s.installationPackageId = 2213;
+    s.fileName = "Pipe/036-C.wav";
+    m.samples[1] = s;
+
+    // Nothing in the definition's own path leads to the audio.
+    const std::string derived =
+        mp::deriveOrganRoot((defs / "Friesach.Organ_Hauptwerk_xml").string());
+    MP_CHECK(!fs::is_directory(fs::path(derived) / "OrganInstallationPackages", ec),
+             "the definition's path genuinely leads to no packages");
+
+    // The library that holds its package is found; the other is passed over,
+    // whichever order they are listed in.
+    const std::string a = mp::findLibraryHolding({other.string(), mine.string()}, m);
+    const std::string b = mp::findLibraryHolding({mine.string(), other.string()}, m);
+    MP_CHECK(fs::equivalent(a, mine, ec) && fs::equivalent(b, mine, ec),
+             "the library holding the named package is the one chosen");
+
+    // A library that holds other organs only is never chosen.
+    MP_CHECK(mp::findLibraryHolding({other.string()}, m).empty(),
+             "no library is chosen when none holds the package");
+
+    // A definition that names no package cannot be matched by guesswork.
+    mp::OrganModel bare;
+    MP_CHECK(mp::findLibraryHolding({mine.string()}, bare).empty(),
+             "a definition naming no package matches nothing");
+  }
+};
 
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
@@ -6226,14 +6517,16 @@ public:
   }
 };
 
-// The mapping found on a real machine, verbatim: three manuals on channel 1.
-// Loaded as it was, two manuals were unplayable and every manual sounded the
-// pedal. It must come back repaired, with the organ's own channels in charge.
+// Manuals sharing a MIDI channel. Up to 0.5.3 every binding in such a
+// mapping was dropped on load, which is what a rig with one keyboard and
+// three manuals looks like -- and reported as #29: only two manuals could be
+// mapped to one channel because the third undid them. Sharing is now kept:
+// one keyboard playing several divisions is a coupler a player can build.
 class MidiMapRepairTest final : public mp::test::Test {
 public:
   MidiMapRepairTest() : Test("functional.midi.repair-saved-map", Category::Functional) {}
   void run() override {
-    const std::string corrupt =
+    const std::string shared =
         "# Masterpiece MIDI map\n"
         "# <source> <channel> <number> <target> <id> <latching> <invert>\n"
         "manual 3 1 0 127 0 1 127 0 0 0 any\n"
@@ -6242,12 +6535,16 @@ public:
     const std::vector<mp::Id> playable{1, 2, 3, 4};
 
     mp::MidiMap map;
-    MP_CHECK(map.fromText(corrupt), "the damaged file still parses");
+    MP_CHECK(map.fromText(shared), "the file parses");
     MP_CHECK(map.keyboardBindings().size() == 3, "all three claims were read");
-    MP_CHECK(map.repairKeyboardBindings(playable) == 3,
-             "every manual in the collision gives way");
-    MP_CHECK(map.keyboardBindingsEmpty(),
-             "nothing ambiguous survives: the organ's own channels apply");
+    MP_CHECK(map.repairKeyboardBindings(playable) == 0,
+             "three manuals on one channel is a choice, not a fault");
+    MP_CHECK(map.keyboardBindings().size() == 3, "all three survive the load");
+
+    // And they all sound: one note on channel 1 reaches every one of them.
+    std::vector<mp::MidiMap::KeyHit> hits;
+    map.matchKeyboards(0, 1, 60, 100, 0.0, hits);
+    MP_CHECK(hits.size() == 3, "one key press plays all three manuals");
 
     // A sound mapping is left exactly alone.
     mp::MidiMap good;
@@ -6256,12 +6553,20 @@ public:
     MP_CHECK(good.repairKeyboardBindings(playable) == 0, "a good mapping is kept");
     MP_CHECK(good.keyboardBindings().size() == 2, "both assignments survive");
 
-    // A split keyboard -- one manual bound twice -- is legitimate.
+    // A split keyboard -- one manual bound twice over two halves.
     mp::MidiMap split;
     split.fromText("manual 2 1 36 60 0 1 127 0 0 0 any\n"
                    "manual 2 1 61 96 0 1 127 0 0 0 any\n");
     MP_CHECK(split.repairKeyboardBindings(playable) == 0,
-             "one manual bound twice is not a collision");
+             "one manual bound over two halves is kept");
+
+    // The same binding listed twice only doubles the work of every note.
+    mp::MidiMap twice;
+    twice.fromText("manual 2 1 0 127 0 1 127 0 0 0 any\n"
+                   "manual 2 1 0 127 0 1 127 0 0 0 any\n");
+    MP_CHECK(twice.repairKeyboardBindings(playable) == 1,
+             "an identical duplicate goes");
+    MP_CHECK(twice.keyboardBindings().size() == 1, "one copy stays");
 
     // A manual this organ does not have is stale, whatever else is right.
     mp::MidiMap stale;
@@ -6272,11 +6577,12 @@ public:
                  stale.keyboardBindings().front().keyboardId == 2,
              "the valid one stays");
 
-    // Round trip: the repaired map written out and read back needs no repair.
+    // Round trip: what was loaded is what is written back.
     mp::MidiMap again;
     again.fromText(map.toText());
     MP_CHECK(again.repairKeyboardBindings(playable) == 0,
-             "a repaired file stays repaired");
+             "a shared mapping survives being saved and read again");
+    MP_CHECK(again.keyboardBindings().size() == 3, "all three come back");
   }
 };
 
@@ -7422,8 +7728,11 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+static LibraryMatchTest g_libraryMatch;
+static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
 static BmpImageTest g_bmpImage;
+static IrRateTest g_irRate;
 #endif
 static ConditionSenseTest g_conditionSense;
 static EncryptedDetectionTest g_encrypted;

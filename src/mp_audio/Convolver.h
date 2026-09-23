@@ -41,8 +41,26 @@ public:
   // so it is safe to call unconditionally from processBlock.
   void process(juce::AudioBuffer<float>& buffer);
 
+  // A Hauptwerk impulse-response package ships the same room once per
+  // sample rate, as "<name>-44100Hz.wav", "-48000Hz.wav" and so on. Given any
+  // one of them, the sibling recorded at `rate`, or the file itself if there
+  // is none. Resampling a room is audible as a change of its size.
+  static juce::File fileForRate(const juce::File& irFile, double rate);
+
 private:
-  juce::dsp::Convolution convolution_;
+  // Non-uniform partitioning: a short head at the audio block size keeps the
+  // reverb at zero latency, and the long tail is done in large partitions.
+  // Uniform partitioning at an ASIO-sized block (32 or 64 samples) spent
+  // most of a core on a two-second room, and live that is a crackle --
+  // reported as "just scratching sound" in #29.
+  static constexpr int kHeadSize = 256;
+  // Two engines, for a true-stereo IR: one carries the left input to both
+  // outputs, the other the right. A two-channel IR uses only the first.
+  juce::dsp::Convolution fromLeft_{juce::dsp::Convolution::NonUniform{kHeadSize}};
+  juce::dsp::Convolution fromRight_{juce::dsp::Convolution::NonUniform{kHeadSize}};
+  bool trueStereo_ = false;
+  double sampleRate_ = 0.0;
+  juce::AudioBuffer<float> right_;
   juce::AudioBuffer<float> dry_;
   bool enabled_ = false;
   bool loaded_ = false;

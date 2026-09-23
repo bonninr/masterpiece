@@ -389,23 +389,20 @@ int MidiMap::repairKeyboardBindings(const std::vector<Id>& playableKeyboards) {
            playableKeyboards.end();
   };
 
-  // Which bindings collide: same channel, overlapping console, different
-  // keyboard. Channel 0 ("any channel") overlaps every channel.
-  auto overlaps = [](const KeyboardBinding& x, const KeyboardBinding& y) {
-    const bool sameChannel =
-        x.channel == y.channel || x.channel == 0 || y.channel == 0;
-    const bool sameConsole =
-        x.deviceId == y.deviceId || x.deviceId == 0 || y.deviceId == 0;
-    return sameChannel && sameConsole && x.keyboardId != y.keyboardId;
+  // The same binding twice over. Two manuals on one channel is a choice a
+  // player can make -- one keyboard playing two divisions is a coupler of
+  // their own making -- but the same manual, channel, console and compass
+  // listed twice only doubles the work of every note.
+  auto identical = [](const KeyboardBinding& x, const KeyboardBinding& y) {
+    return x.keyboardId == y.keyboardId && x.channel == y.channel &&
+           x.deviceId == y.deviceId && x.lowKey == y.lowKey &&
+           x.highKey == y.highKey && x.transpose == y.transpose;
   };
   std::vector<bool> drop(keyboardBindings_.size(), false);
   for (size_t i = 0; i < keyboardBindings_.size(); ++i) {
     if (!playable(keyboardBindings_[i].keyboardId)) drop[i] = true;
     for (size_t j = i + 1; j < keyboardBindings_.size(); ++j)
-      if (overlaps(keyboardBindings_[i], keyboardBindings_[j])) {
-        drop[i] = true;
-        drop[j] = true;
-      }
+      if (identical(keyboardBindings_[i], keyboardBindings_[j])) drop[j] = true;
   }
   std::vector<KeyboardBinding> kept;
   kept.reserve(keyboardBindings_.size());

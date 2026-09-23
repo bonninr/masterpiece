@@ -24,6 +24,7 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <functional>
@@ -32,6 +33,7 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace mp {
@@ -464,6 +466,18 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldInt(row, "PitchLvl_IncrementingContinuousControlID", nullptr, 0);
     layer.pitchSensitivityHzPerUnit = fieldDouble(
         row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", nullptr, 0.0);
+    // How hard the key is struck reaches the pipe's level, and how far this
+    // layer trims the chest's tremulant depth. All four are stated per layer
+    // and two thirds of the corpus fills them; unread they made every note
+    // one level and every stop on a tremmed chest wobble alike.
+    layer.velSensMaxAttenDb = fieldDouble(
+        row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", nullptr, 0.0);
+    layer.invertVelocitySens =
+        fieldBool(row, "AmpLvl_InvertVelocitySensitivity", nullptr, false);
+    layer.tremAmpDepthAdjustDb = fieldDouble(
+        row, "AmpLvl_TremulantModDepthAdjustDecibels", nullptr, 0.0);
+    layer.tremPitchDepthAdjustPct = fieldDouble(
+        row, "PitchLvl_TremulantModDepthAdjustPercent", nullptr, 100.0);
     pipeIt->second->layers.push_back(std::move(layer));
     layerById[layerId] = &pipeIt->second->layers.back();
   });
@@ -740,6 +754,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     s.controllingSwitchId = fieldInt(row, "ControllingSwitchID", "d", 0);
     s.defaultAsgnCode =
         fieldInt(row, "Hint_DefaultAssignmentCodeOfAssocInputOutputSwitch", "e", 0);
+    s.hintPrimaryRankId = fieldInt(row, "Hint_PrimaryAssociatedRankID", "f", 0);
     if (s.stopId != 0) outModel.stops[s.stopId] = std::move(s);
   });
 
@@ -886,6 +901,73 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
 
     outModel.switchLinkages.push_back(l);
   });
+
+  // ---- Stop -> Rank through Hint_PrimaryAssociatedRankID ----
+  // A set — and every demo set that ships only part of its pipework — may
+  // declare no StopRank rows at all and leave the stop's rank in this hint.
+  // The reference converters follow it, and without it the stop draws, moves
+  // its switch and plays nothing. It is applied only when the hinted rank's
+  // pipes are NOT pallet-wired: those organs reach every pipe through the
+  // switch network (key AND stop AND routing), and a synthesized direct path
+  // would bypass the very wiring that decides when a pipe speaks. Ranks the
+  // pallet index owns keep their wiring untouched.
+  {
+    std::unordered_set<Id> palletRanks;
+    for (const auto& [rankId, rank] : outModel.ranks)
+      for (const Pipe& p : rank.pipes)
+        if (p.palletSwitchId != 0) {
+          palletRanks.insert(rankId);
+          break;
+        }
+
+    // The division's own keyboard gives the compass the hint maps over. A
+    // division with no keyboard (or one of unstated size) gets Hauptwerk's
+    // own default of 61 notes from 36, which is what an unstated StopRank
+    // maps anyway.
+    auto compassFor = [&outModel](Id divisionId, int& firstNote, int& numKeys) {
+      firstNote = 36;
+      numKeys = 61;
+      const auto divIt = outModel.divisions.find(divisionId);
+      if (divIt == outModel.divisions.end()) return;
+      for (Id kbId : divIt->second.keyboardIds) {
+        const auto kbIt = outModel.keyboards.find(kbId);
+        if (kbIt == outModel.keyboards.end()) continue;
+        if (kbIt->second.numKeys <= 0) continue;
+        firstNote = kbIt->second.firstMidiNote;
+        numKeys = kbIt->second.numKeys;
+        return;
+      }
+    };
+
+    int hintStops = 0;
+    for (auto& [stopId, stop] : outModel.stops) {
+      if (!stop.ranks.empty()) continue;
+      if (stop.hintPrimaryRankId == 0) continue;
+      const auto rankIt = outModel.ranks.find(stop.hintPrimaryRankId);
+      if (rankIt == outModel.ranks.end()) {
+        outDiag.danglingIds.push_back(stop.hintPrimaryRankId);
+        continue;
+      }
+      // Only when the rank actually holds pipework. On every set surveyed the
+      // hint names either a rank the demo does not ship (no Pipe rows) or one
+      // the pallets own; mapping to an empty rank would sound nothing and
+      // would erase the stopsWithoutRanks diagnostic that truthfully says the
+      // stop can never play as installed.
+      if (rankIt->second.pipes.empty()) continue;
+      if (palletRanks.count(stop.hintPrimaryRankId) != 0) continue;
+      StopRankEntry e;
+      e.rankId = stop.hintPrimaryRankId;
+      compassFor(stop.divisionId, e.firstMappedDivisionNote, e.numMappedNotes);
+      stop.ranks.push_back(e);
+      ++hintStops;
+    }
+    if (hintStops > 0)
+      outDiag.warnings.emplace_back(
+          std::to_string(hintStops) +
+          " stop(s) reach their rank through Hint_PrimaryAssociatedRankID "
+          "(no StopRank rows declared); the hint is followed as the reference "
+          "converters do");
+  }
 
   // ---- M1.3 validator: stops without StopRank rows (full ODF only;
   // CODM gains its rows at M1.5 compile time) ----
@@ -1144,10 +1226,9 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldInt(row, "ShutterPositionContinuousControlID", "c", 0);
     if (e.continuousControlId == 0)
       e.continuousControlId = fieldInt(row, "ContinuousControlID", nullptr, 0);
-    e.closedFilterHz = fieldDouble(row, "ShadesClosedFilterFreqHz", "d", e.closedFilterHz);
-    e.openFilterHz = fieldDouble(row, "ShadesOpenFilterFreqHz", "e", e.openFilterHz);
-    e.closedAttnDb = fieldDouble(row, "ShadesClosedAttenuationDb", "f", e.closedAttnDb);
-    e.openAttnDb = fieldDouble(row, "ShadesOpenAttenuationDb", "g", e.openAttnDb);
+    // An Enclosure row carries no filter numbers at all — the dictionary gives
+    // it exactly three attributes (id, name, shutter control). The filter is
+    // stated per pipe on EnclosurePipe and gathered there, below.
     if (e.enclosureId == 0) return;
     if (e.continuousControlId != 0 &&
         outModel.continuousControls.count(e.continuousControlId) == 0)
@@ -1158,28 +1239,95 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // EnclosurePipe rows say which pipework each box encloses. This is what
   // makes expression per rank rather than a filter over the whole organ: an
   // unenclosed Great must stay unenclosed while the Swell shades move.
-  forEachRow(odfRoot, "EnclosurePipe", [&](pugi::xml_node row) {
-    const Id encId = fieldInt(row, "EnclosureID", "a", 0);
-    auto it = outModel.enclosures.find(encId);
-    if (it == outModel.enclosures.end()) {
-      if (encId != 0) outDiag.danglingIds.push_back(encId);
-      return;
+  //
+  // The row also carries the box's filter, stated against each pipe's own
+  // pitch: OverallAttnDb insertion loss, and the [MaxFreq, MinFreq] band the
+  // shades move it between (closed one band, open higher). The engine filters
+  // one bus per box rather than one filter per voice, so the box gets the
+  // MEDIAN of its pipes' values — the representative figure for the box —
+  // and the raw spread stays in the file where a per-voice filter can use it
+  // later. Read as the dictionary numbers them: c..h.
+  {
+    // Per enclosure, the six values from every row, for a median at the end.
+    std::unordered_map<Id, std::vector<std::array<double, 6>>> shadeParams;
+    forEachRow(odfRoot, "EnclosurePipe", [&](pugi::xml_node row) {
+      const Id encId = fieldInt(row, "EnclosureID", "a", 0);
+      auto it = outModel.enclosures.find(encId);
+      if (it == outModel.enclosures.end()) {
+        if (encId != 0) outDiag.danglingIds.push_back(encId);
+        return;
+      }
+      ++it->second.numShades;
+      const Id pipeId = fieldInt(row, "PipeID", "b", 0);
+      if (pipeId != 0) {
+        // A pipe named by two boxes is an authoring error; first wins and the
+        // conflict is reported rather than silently resolved.
+        const auto existing = outModel.pipeEnclosure.find(pipeId);
+        if (existing != outModel.pipeEnclosure.end() && existing->second != encId)
+          outDiag.warnings.emplace_back(
+              "Pipe " + std::to_string(pipeId) + " is enclosed by both " +
+              std::to_string(existing->second) + " and " + std::to_string(encId) +
+              "; keeping the first");
+        else
+          outModel.pipeEnclosure[pipeId] = encId;
+      }
+      std::array<double, 6> v{
+          fieldDouble(row, "FiltParamWhenClsd_OverallAttnDb", "c", 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_MaxFreqHz", "d", 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_MinFreqHz", "e", 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_ExtraAttnAtMinDb", "f", 0.0),
+          fieldDouble(row, "FiltParamWhenOpen_MaxFreqHz", "g", 0.0),
+          fieldDouble(row, "FiltParamWhenOpen_MinFreqHz", "h", 0.0)};
+      if (v[1] > 0.0 || v[4] > 0.0)
+        shadeParams[encId].push_back(v);
+    });
+
+    for (auto& [encId, rows] : shadeParams) {
+      auto encIt = outModel.enclosures.find(encId);
+      if (encIt == outModel.enclosures.end() || rows.empty()) continue;
+      // The 75th percentile, not the median. Each pipe's figure is stated
+      // against its own pitch, so a box's values climb with the compass and
+      // its median describes a pipe LOWER than most of what is heard: on
+      // Bégard the open median is 1.7 kHz, which would leave a box that is
+      // open sounding permanently closed. The upper quartile is the bus
+      // filter's honest compromise — the open box stays close to
+      // transparent, the closed one clearly muffled, and the numbers are
+      // still the set's own (Bégard closed 932 Hz / open 3.7 kHz, against
+      // invented 800 Hz / 12 kHz before). A per-pipe filter is the faithful
+      // model and this is where it would go; see the Enclosure comment in
+      // OrganModel.h.
+      auto quantile = [&rows](size_t i, double q) {
+        std::vector<double> col;
+        col.reserve(rows.size());
+        for (const auto& r : rows)
+          if (r[i] > 0.0) col.push_back(r[i]);
+        if (col.empty()) return 0.0;
+        std::sort(col.begin(), col.end());
+        const double pos = q * static_cast<double>(col.size() - 1);
+        return col[static_cast<size_t>(pos + 0.5)];
+      };
+      Enclosure& e = encIt->second;
+      const double closedMax = quantile(1, 0.75), closedMin = quantile(2, 0.75);
+      const double openMax = quantile(4, 0.75), openMin = quantile(5, 0.75);
+      if (closedMax > 0.0) e.closedFilterHz = closedMax;
+      else if (closedMin > 0.0) e.closedFilterHz = closedMin;
+      if (openMax > 0.0) e.openFilterHz = openMax;
+      else if (openMin > 0.0) e.openFilterHz = openMin;
+      // Closed attenuation is the insertion loss plus the extra at the bottom
+      // of the band; an open box takes the insertion loss off entirely.
+      auto meanPositive = [&rows](size_t i) {
+        double sum = 0.0;
+        size_t n = 0;
+        for (const auto& r : rows) {
+          if (r[i] > 0.0) { sum += r[i]; ++n; }
+        }
+        return n > 0 ? sum / static_cast<double>(n) : 0.0;
+      };
+      e.closedAttnDb = -(meanPositive(0) + meanPositive(3));
+      e.openAttnDb = 0.0;
+      e.filterParamsFromPipes = true;
     }
-    ++it->second.numShades;
-    const Id pipeId = fieldInt(row, "PipeID", "b", 0);
-    if (pipeId != 0) {
-      // A pipe named by two boxes is an authoring error; first wins and the
-      // conflict is reported rather than silently resolved.
-      const auto existing = outModel.pipeEnclosure.find(pipeId);
-      if (existing != outModel.pipeEnclosure.end() && existing->second != encId)
-        outDiag.warnings.emplace_back(
-            "Pipe " + std::to_string(pipeId) + " is enclosed by both " +
-            std::to_string(existing->second) + " and " + std::to_string(encId) +
-            "; keeping the first");
-      else
-        outModel.pipeEnclosure[pipeId] = encId;
-    }
-  });
+  }
 
   // ---- M2.3: Tremulant table ----
   forEachRow(odfRoot, "Tremulant", [&](pugi::xml_node row) {
@@ -1872,6 +2020,37 @@ bool hasInstallationPackages(const std::filesystem::path& root) {
 }
 
 } // namespace
+
+std::string findLibraryHolding(const std::vector<std::string>& roots,
+                               const OrganModel& model) {
+  std::vector<Id> wanted;
+  for (const auto& [id, ref] : model.samples) {
+    (void)id;
+    if (ref.installationPackageId > 0 &&
+        std::find(wanted.begin(), wanted.end(), ref.installationPackageId) == wanted.end())
+      wanted.push_back(ref.installationPackageId);
+    if (wanted.size() >= 4) break; // four is plenty to tell libraries apart
+  }
+  if (wanted.empty()) return {};
+
+  std::error_code ec;
+  for (const auto& root : roots) {
+    const std::filesystem::path packages =
+        std::filesystem::path(root) / "OrganInstallationPackages";
+    if (!std::filesystem::is_directory(packages, ec)) continue;
+    bool all = true;
+    for (Id id : wanted) {
+      std::string digits = std::to_string(id);
+      if (digits.size() < 6) digits.insert(0, 6 - digits.size(), '0');
+      if (!std::filesystem::is_directory(packages / digits, ec)) {
+        all = false;
+        break;
+      }
+    }
+    if (all) return root;
+  }
+  return {};
+}
 
 std::string deriveOrganRoot(const std::string& odfPath) {
   const std::filesystem::path odf(odfPath);

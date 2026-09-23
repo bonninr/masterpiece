@@ -242,13 +242,14 @@ public:
   // bindings went. Two things are dropped:
   //   - a binding for a keyboard this organ does not have (a stale file, or
   //     one written for a different set), and
-  //   - EVERY binding in a channel collision: two or more manuals claiming one
-  //     channel on overlapping consoles. There is no way to know which of them
-  //     the player intended, and keeping any one of them keeps a manual
-  //     unreachable, so all of them give way and the organ's own assignment
-  //     takes over, which is correct for every set we have seen.
-  // Versions up to 0.3.7 could write such collisions; a mapping saved by one
-  // of them is repaired the first time it is loaded.
+  //   - a binding listed twice over, identical in every field, which only
+  //     doubles the work of each note.
+  //
+  // Manuals sharing a channel are NOT a fault. One keyboard playing two
+  // divisions is a coupler a player can build for themselves, and a rig with
+  // more manuals than keyboards has no other way to reach them. Up to 0.5.3
+  // every binding in such a collision was dropped, which made the mapping
+  // impossible to keep.
   int repairKeyboardBindings(const std::vector<Id>& playableKeyboards);
   const std::vector<KeyboardBinding>& keyboardBindings() const {
     return keyboardBindings_;

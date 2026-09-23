@@ -1,5 +1,7 @@
 #include "Settings.h"
 
+#include <map>
+
 #include "ManualDialog.h"
 
 namespace mp::ui {
@@ -810,6 +812,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   styleLabel(inputsLabel_, "MIDI inputs");
   addAndMakeVisible(outputsLabel_);
   styleLabel(outputsLabel_, "MIDI output");
+  addAndMakeVisible(sharedNote_);
+  sharedNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(keyboardsLabel_);
   styleLabel(keyboardsLabel_, "Keyboards");
 
@@ -894,6 +898,29 @@ MidiPanel::~MidiPanel() {
   proc_.setMidiOutput(nullptr);
 }
 
+// Manuals that answer the same channel, named. Sharing one is a way of
+// playing two divisions from one keyboard; doing it unawares is how a manual
+// ends up sounding the wrong division, which is what this line prevents.
+void MidiPanel::showSharedChannels() {
+  std::map<int, juce::StringArray> byChannel;
+  for (const auto& b : proc_.channelAssignments()) {
+    if (b.channel <= 0) continue;
+    const auto it = proc_.organModel().keyboards.find(b.keyboardId);
+    byChannel[b.channel].add(it != proc_.organModel().keyboards.end() &&
+                                     !it->second.name.empty()
+                                 ? juce::String(it->second.name)
+                                 : "keyboard " + juce::String((int) b.keyboardId));
+  }
+  juce::String text;
+  for (const auto& [channel, names] : byChannel) {
+    if (names.size() < 2) continue;
+    text << (text.isEmpty() ? "" : "   ") << "Channel " << channel << ": "
+         << names.joinIntoString(", ");
+  }
+  sharedNote_.setText(text.isEmpty() ? "" : "Shared -- " + text,
+                      juce::dontSendNotification);
+}
+
 void MidiPanel::refresh() {
   inputs_.clear();
   for (const auto& in : juce::MidiInput::getAvailableDevices()) {
@@ -934,12 +961,14 @@ void MidiPanel::refresh() {
     box->setSelectedId(selected, juce::dontSendNotification);
     auto* raw = box.get();
     box->onChange = [this, kb, raw] {
-      // Clear any previous claim first: two keyboards on one channel would
-      // make one of them unreachable, and the player would have no way to see
-      // which.
+      // Shared, not taken: a channel chosen here may already belong to another
+      // manual, and one keyboard playing two divisions is a coupler a player
+      // can build for themselves. The line under the row says who else is on
+      // it, so nothing is hidden.
       if (raw->getSelectedId() > 1)
-        proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb);
+        proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
       proc_.saveMidiMap();
+      showSharedChannels();
     };
     addAndMakeVisible(*box);
     keyboardChannels_.push_back(std::move(box));
@@ -1014,6 +1043,8 @@ void MidiPanel::resized() {
       keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
     r.removeFromTop(2);
   }
+
+  sharedNote_.setBounds(r.removeFromTop(kRow).reduced(12, 0));
 
   r.removeFromTop(kGap);
   auto row = r.removeFromTop(kRow);
