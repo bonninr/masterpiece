@@ -1025,6 +1025,14 @@ private:
   // dispatched rather than threaded through every call, because only the note
   // path cares and threading it would touch a dozen signatures.
   int noteDeviceId_ = 0;
+  // The channel of the message being handled, for the same reason.
+  int noteChannel_ = 0;
+  // Where each held key switch came from, as (channel, device): a key can be
+  // a switch with no note sounding, on an organ played through its pallets.
+  std::unordered_map<int, std::pair<int, int>> heldKeySwitchOrigin_;
+  // Release everything played from this channel of this device -- what All
+  // Notes Off and its relatives mean, per the MIDI standard.
+  void releaseChannel(int channel, int deviceId);
   // The manual being learned, and the first key pressed for it. 0 means not
   // learning; -1 for the note means the low key is still to come.
   Id keyboardLearn_ = 0;
@@ -1056,6 +1064,10 @@ private:
     Id keyboard = 0;
     int midiNote = 60;
     int velocity = 64;
+    // Where the press came from, so a channel's All Notes Off can find the
+    // notes that are that channel's and leave every other manual alone.
+    int channel = 0;
+    int device = 0;
   };
   std::unordered_map<int, HeldNote> soundingNotes_;
   // The registration the sounding notes were started with, owned by the audio

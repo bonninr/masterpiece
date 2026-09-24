@@ -627,6 +627,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // the moment it loads rather than only after a mapping session.
     // Which console this key came from, so an assignment can name one.
     noteDeviceId_ = deviceId;
+    noteChannel_ = msg.getChannel();
 
     // Learning a manual consumes the key press: the note being used to teach
     // the range must not also sound.
@@ -680,15 +681,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isNoteOff())
       stopNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
-    else if (msg.isAllNotesOff() || msg.isAllSoundOff()) {
-      for (const auto& [note, held] : soundingNotes_) {
-        (void)note;
-        voices_.noteOff(held.id, NoteRelease{});
-      }
-      // Keys held as switches let go too, or their pallets stay open.
-      while (!heldKeySwitches_.empty())
-        stopNoteByKey(heldKeySwitches_.begin()->first, 0);
-    }
+    // All Sound Off, All Notes Off and the mode messages that imply it
+    // (120, 123-127) are CHANNEL messages. Releasing every manual on any of
+    // them silenced a whole console from one keyboard: some keyboards and
+    // encoders send All Notes Off on their own channel as a matter of
+    // course, and every other manual's held notes stopped with it (#33).
+    else if (msg.isController() &&
+             (msg.getControllerNumber() == 120 || msg.getControllerNumber() >= 123))
+      releaseChannel(msg.getChannel(), deviceId);
     else if (msg.isController())
       // With no mapping the control id IS the CC number, which is enough to
       // drive a swell shoe from a real pedal out of the box.
@@ -1665,7 +1665,22 @@ void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
   stopNoteByKey(noteKey(channel, midiNote), velocity);
 }
 
+void MasterpieceProcessor::releaseChannel(int channel, int deviceId) {
+  // A message from a device releases only what that device played; one that
+  // came with no device (the host's merged buffer) speaks for the channel.
+  auto fromHere = [channel, deviceId](int ch, int dev) {
+    return ch == channel && (deviceId == MidiDeviceMap::kAnyDevice || dev == deviceId);
+  };
+  std::vector<int> keys;
+  for (const auto& [key, held] : soundingNotes_)
+    if (fromHere(held.channel, held.device)) keys.push_back(key);
+  for (const auto& [key, origin] : heldKeySwitchOrigin_)
+    if (fromHere(origin.first, origin.second)) keys.push_back(key);
+  for (int key : keys) stopNoteByKey(key, 0);
+}
+
 void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  heldKeySwitchOrigin_.erase(key);
   if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
     const Id switchId = ks->second;
     heldKeySwitches_.erase(ks);
@@ -1833,6 +1848,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
     if (ks != keySwitchByKey_.end()) {
       palletVelocity_ = velocity;
       heldKeySwitches_[noteKeyId] = ks->second;
+      heldKeySwitchOrigin_[noteKeyId] = {noteChannel_, noteDeviceId_};
       setSwitchEngaged(ks->second, true);
     }
   }
@@ -1871,7 +1887,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
       startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_);
 
   if (anyStarted)
-    soundingNotes_[noteKeyId] = HeldNote{noteId, keyboard, midiNote, velocity};
+    soundingNotes_[noteKeyId] =
+        HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
 
   if (logMidi_.load(std::memory_order_acquire)) {
     // Which divisions, and what is drawn on them: "no pipe answered" is either
@@ -2264,6 +2281,7 @@ void MasterpieceProcessor::buildPalletIndex() {
   palletPipes_.clear();
   keySwitchByKey_.clear();
   heldKeySwitches_.clear();
+  heldKeySwitchOrigin_.clear();
   palletNotes_.clear();
 
   std::unordered_set<Id> viaStops;

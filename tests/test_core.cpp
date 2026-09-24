@@ -1484,6 +1484,122 @@ public:
   }
 };
 
+// An All Notes Off is a CHANNEL message. Releasing every manual on it let a
+// keyboard that sends one of its own accord silence the rest of the console:
+// press a key on one manual and the other manual's held notes stopped (#33).
+class AllNotesOffChannelTest final : public mp::test::Test {
+public:
+  AllNotesOffChannelTest()
+    : Test("functional.midi.all-notes-off-per-channel", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-issue33");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const auto odf = defs.getChildFile("two.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Two manuals</Identification_Name>"
+        "<Identification_UniqueOrganID>33</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>A</Name></Rank><Rank><RankID>202</RankID><Name>B</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>401</LayerID><PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "<Keyboard><KeyboardID>702</KeyboardID><Name>II</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division>"
+        "<Division><DivisionID>802</DivisionID><Name>S</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        "<KeyAction><SourceKeyboardID>702</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>901</StopID><Name>A</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>901</StopID><RankID>201</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>902</StopID><RankID>202</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList></Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    proc.prepareToPlay(48000.0, 256);
+    auto r = proc.loadOrgan(odf, 0, false);
+    MP_CHECK(r.ok, "the two-manual organ loads");
+    proc.setStopEngaged(901, true);
+    proc.setStopEngaged(902, true);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    on.addEvent(juce::MidiMessage::noteOn(2, 36, 0.8f), 0);
+    block(on);
+    for (int i = 0; i < 4; ++i) block({});
+    const int both = proc.voiceStats().activeVoices;
+    MP_CHECK(both == 2, "a key held on each manual sounds, got " + std::to_string(both));
+
+    // Manual II's keyboard sends All Notes Off on its own channel.
+    juce::MidiBuffer off;
+    off.addEvent(juce::MidiMessage::allNotesOff(2), 0);
+    block(off);
+    for (int i = 0; i < 400; ++i) block({});  // past any release
+    MP_CHECK(proc.voiceStats().activeVoices == 1,
+             "manual I is still held after manual II's All Notes Off");
+
+    // And the same arriving from a device, the way a console delivers it.
+    proc.pushMidi(3, juce::MidiMessage::noteOn(2, 36, 0.8f));
+    block({});
+    proc.pushMidi(3, juce::MidiMessage::allNotesOff(2));
+    for (int i = 0; i < 400; ++i) block({});
+    MP_CHECK(proc.voiceStats().activeVoices == 1,
+             "a device's All Notes Off leaves the other manual sounding too");
+
+    proc.releaseResources();
+    settings.deleteFile();
+    root.deleteRecursively();
+  }
+};
+
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
   VoiceEngineRenderTest()
@@ -8149,6 +8265,7 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
 static MidiQueueThreadsTest g_midiQueueThreads;
