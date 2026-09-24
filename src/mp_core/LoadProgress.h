@@ -48,6 +48,32 @@ struct LoadProgress {
 
   bool isCancelled() const { return cancelled.load(std::memory_order_acquire); }
 
+  // A memory ceiling for the samples of this load, in bytes; 0 is none. The
+  // loader charges each sample as it lands, and the first one that takes the
+  // total past the ceiling stops the load exactly as Cancel would, with
+  // overBudget saying why. Stopping cleanly at the limit is the point: a
+  // load that runs the machine out of memory takes the program down with
+  // it, and the player loses more than the organ.
+  std::atomic<int64_t> budgetBytes{0};
+  std::atomic<int64_t> usedBytes{0};
+  std::atomic<bool> overBudget{false};
+
+  void resetBudget(int64_t bytes) {
+    budgetBytes.store(bytes, std::memory_order_relaxed);
+    usedBytes.store(0, std::memory_order_relaxed);
+    overBudget.store(false, std::memory_order_release);
+  }
+  // Count `bytes` against the ceiling. Returns false, and stops the load, once
+  // the total is past it.
+  bool charge(int64_t bytes) {
+    const int64_t used = usedBytes.fetch_add(bytes, std::memory_order_relaxed) + bytes;
+    const int64_t budget = budgetBytes.load(std::memory_order_relaxed);
+    if (budget <= 0 || used <= budget) return true;
+    overBudget.store(true, std::memory_order_release);
+    cancelled.store(true, std::memory_order_release);
+    return false;
+  }
+
   // 0..1, or -1 when this phase has no countable items. The caller decides
   // whether that means a spinner or a bar; both are honest, a fake bar is not.
   double fraction() const {

@@ -627,6 +627,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // the moment it loads rather than only after a mapping session.
     // Which console this key came from, so an assignment can name one.
     noteDeviceId_ = deviceId;
+    noteChannel_ = msg.getChannel();
 
     // Learning a manual consumes the key press: the note being used to teach
     // the range must not also sound.
@@ -680,15 +681,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isNoteOff())
       stopNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
-    else if (msg.isAllNotesOff() || msg.isAllSoundOff()) {
-      for (const auto& [note, held] : soundingNotes_) {
-        (void)note;
-        voices_.noteOff(held.id, NoteRelease{});
-      }
-      // Keys held as switches let go too, or their pallets stay open.
-      while (!heldKeySwitches_.empty())
-        stopNoteByKey(heldKeySwitches_.begin()->first, 0);
-    }
+    // All Sound Off, All Notes Off and the mode messages that imply it
+    // (120, 123-127) are CHANNEL messages. Releasing every manual on any of
+    // them silenced a whole console from one keyboard: some keyboards and
+    // encoders send All Notes Off on their own channel as a matter of
+    // course, and every other manual's held notes stopped with it (#33).
+    else if (msg.isController() &&
+             (msg.getControllerNumber() == 120 || msg.getControllerNumber() >= 123))
+      releaseChannel(msg.getChannel(), deviceId);
     else if (msg.isController())
       // With no mapping the control id IS the CC number, which is enough to
       // drive a swell shoe from a real pedal out of the box.
@@ -842,13 +842,14 @@ void MasterpieceProcessor::pushMidi(int deviceId, const juce::MidiMessage& msg) 
   const int size = msg.getRawDataSize();
   if (size <= 0 || size > 3) return;
 
-  const uint32_t slot =
-      midiWrite_.fetch_add(1, std::memory_order_acq_rel) % kMidiQueueSize;
-  TaggedMidi& t = midiQueue_[slot];
+  const uint32_t index = midiWrite_.fetch_add(1, std::memory_order_acq_rel);
+  TaggedMidi& t = midiQueue_[index % kMidiQueueSize];
   t.deviceId = deviceId;
   t.size = size;
   const auto* raw = msg.getRawData();
   for (int i = 0; i < size; ++i) t.bytes[i] = raw[i];
+  // Published last: until this store the reader leaves the slot alone.
+  t.ready.store(index + 1, std::memory_order_release);
 }
 
 void MasterpieceProcessor::drainTaggedMidi(
@@ -860,6 +861,9 @@ void MasterpieceProcessor::drainTaggedMidi(
   if (write - midiRead_ > kMidiQueueSize) midiRead_ = write - kMidiQueueSize;
   while (midiRead_ != write) {
     const TaggedMidi& t = midiQueue_[midiRead_ % kMidiQueueSize];
+    // Claimed but not yet written: stop here and take it next block, in
+    // order, rather than reading a half-filled slot.
+    if (t.ready.load(std::memory_order_acquire) != midiRead_ + 1) break;
     ++midiRead_;
     if (t.size <= 0) continue;
     out.emplace_back(t.deviceId, juce::MidiMessage(t.bytes, t.size));
@@ -1197,7 +1201,12 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   juce::String text;
   text << "# Masterpiece defaults for organs that have no settings of their own\n";
   text << globalBody_;
-  text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  // A new key: the old one was written on every save, whether or not anyone
+  // chose it, so it cannot tell a choice from a default. Only this one counts.
+  text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
+  if (runningOrgan_.getFullPathName().isNotEmpty())
+    text << "running " << runningOrgan_.getFullPathName() << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   for (const auto& lib : libraries_)
@@ -1233,7 +1242,10 @@ bool MasterpieceProcessor::saveGlobalDefaults() {
 
 bool MasterpieceProcessor::loadGlobalDefaults() {
   const auto f = globalSettingsFile();
-  if (!f.existsAsFile()) return false;
+  if (!f.existsAsFile()) {
+    globalsReadOnce_ = true;  // a first start: nothing can have crashed
+    return false;
+  }
 
   juce::String body;
   auto sw = graph_.engineSwitch;
@@ -1243,7 +1255,17 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     // A path may contain spaces, so the value is taken whole, not tokenised.
     const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
     if (key == "reopenlast") {
+      // Superseded by reopenlastorgan: dropped, so everyone starts with the
+      // reopen off and turns it on only by choosing to.
+    } else if (key == "reopenlastorgan") {
       reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "memlimit") {
+      memoryLimitMB_ = std::max(0, val.getIntValue());
+    } else if (key == "running") {
+      // Still here at the first read of a session: the last one did not exit
+      // cleanly. Every later read finds this session's own entry, which says
+      // nothing about a crash.
+      if (!globalsReadOnce_) crashedOrgan_ = juce::File(val);
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "library") {
@@ -1280,6 +1302,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   }
   graph_.engineSwitch = sw;
   globalBody_ = body;
+  globalsReadOnce_ = true;
   return true;
 }
 
@@ -1316,6 +1339,28 @@ juce::File MasterpieceProcessor::lastOrgan() const {
   // Answer only for a file that is still there: a set on a drive that is not
   // plugged in should open the file chooser, not an error.
   return lastOrgan_.existsAsFile() ? lastOrgan_ : juce::File();
+}
+
+void MasterpieceProcessor::clearRunningOrgan() {
+  if (runningOrgan_.getFullPathName().isEmpty()) return;
+  runningOrgan_ = juce::File();
+  writeGlobalFile();
+}
+
+int MasterpieceProcessor::defaultMemoryLimitMB() {
+  return std::max(512, juce::SystemStats::getMemorySizeInMegabytes() * 8 / 10);
+}
+
+void MasterpieceProcessor::setMemoryLimitMB(int mb) {
+  mb = std::max(0, mb);
+  if (memoryLimitMB_ == mb) return;
+  memoryLimitMB_ = mb;
+  writeGlobalFile();
+}
+
+int64_t MasterpieceProcessor::memoryLimitBytes() const {
+  const int mb = memoryLimitMB_ > 0 ? memoryLimitMB_ : defaultMemoryLimitMB();
+  return static_cast<int64_t>(mb) * 1024 * 1024;
 }
 
 void MasterpieceProcessor::setReopenLastOrgan(bool on) {
@@ -1620,7 +1665,22 @@ void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
   stopNoteByKey(noteKey(channel, midiNote), velocity);
 }
 
+void MasterpieceProcessor::releaseChannel(int channel, int deviceId) {
+  // A message from a device releases only what that device played; one that
+  // came with no device (the host's merged buffer) speaks for the channel.
+  auto fromHere = [channel, deviceId](int ch, int dev) {
+    return ch == channel && (deviceId == MidiDeviceMap::kAnyDevice || dev == deviceId);
+  };
+  std::vector<int> keys;
+  for (const auto& [key, held] : soundingNotes_)
+    if (fromHere(held.channel, held.device)) keys.push_back(key);
+  for (const auto& [key, origin] : heldKeySwitchOrigin_)
+    if (fromHere(origin.first, origin.second)) keys.push_back(key);
+  for (int key : keys) stopNoteByKey(key, 0);
+}
+
 void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  heldKeySwitchOrigin_.erase(key);
   if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
     const Id switchId = ks->second;
     heldKeySwitches_.erase(ks);
@@ -1788,6 +1848,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
     if (ks != keySwitchByKey_.end()) {
       palletVelocity_ = velocity;
       heldKeySwitches_[noteKeyId] = ks->second;
+      heldKeySwitchOrigin_[noteKeyId] = {noteChannel_, noteDeviceId_};
       setSwitchEngaged(ks->second, true);
     }
   }
@@ -1826,7 +1887,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
       startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_);
 
   if (anyStarted)
-    soundingNotes_[noteKeyId] = HeldNote{noteId, keyboard, midiNote, velocity};
+    soundingNotes_[noteKeyId] =
+        HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
 
   if (logMidi_.load(std::memory_order_acquire)) {
     // Which divisions, and what is drawn on them: "no pipe answered" is either
@@ -2219,6 +2281,7 @@ void MasterpieceProcessor::buildPalletIndex() {
   palletPipes_.clear();
   keySwitchByKey_.clear();
   heldKeySwitches_.clear();
+  heldKeySwitchOrigin_.clear();
   palletNotes_.clear();
 
   std::unordered_set<Id> viaStops;
@@ -2555,6 +2618,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   loadGlobalDefaults();
   seedSampleLibraries();
+
+  // After the defaults, which hold both: the ceiling a player set, and the
+  // rest of the global file, which writing the marker rewrites around.
+  // The samples of this load may take up to the memory ceiling, and no more.
+  loadProgress_.resetBudget(graphicsOnly ? 0 : memoryLimitBytes());
+  // Written before the load can crash, cleared only by a clean exit.
+  if (crashGuard_ && !graphicsOnly && odfFile.existsAsFile()) {
+    runningOrgan_ = odfFile;
+    writeGlobalFile();
+  }
 
   // The path the definition is known by. A native file chooser can hand back
   // a symlinked OrganDefinitions already resolved, which loses the folder its
@@ -2963,14 +3036,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // would be debugging their sample set rather than remembering they pressed
   // Cancel. Drop what was read and say so plainly.
   if (loadProgress_.isCancelled()) {
-    juce::Logger::writeToLog("load: cancelled, discarding partial organ");
+    const bool outOfMemory = loadProgress_.overBudget.load(std::memory_order_acquire);
+    juce::Logger::writeToLog(outOfMemory
+                                 ? "load: stopped at the memory limit, discarding partial organ"
+                                 : "load: cancelled, discarding partial organ");
     samples_.clear();
     model_ = OrganModel{};
     voices_.setSampleProvider(samples_.provider());
-    loadProgress_.phase.store(LoadProgress::Phase::Cancelled,
+    loadProgress_.phase.store(outOfMemory ? LoadProgress::Phase::Failed
+                                          : LoadProgress::Phase::Cancelled,
                               std::memory_order_release);
     result.ok = false;
-    result.error = "cancelled";
+    result.outOfMemory = outOfMemory;
+    result.error = outOfMemory
+                       ? "out of memory: this organ's samples need more than the " +
+                             std::to_string(memoryLimitBytes() / (1024 * 1024)) +
+                             " MB memory limit"
+                       : "cancelled";
     return result;
   }
   voices_.setSampleProvider(samples_.provider());

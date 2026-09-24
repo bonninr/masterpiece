@@ -36,6 +36,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openRate_ = proc_.loadSampleRate();
   openCache_ = proc_.cacheMode();
   openLoadTicks_ = proc_.loadTicks();
+  openReopen_ = proc_.reopenLastOrgan();
+  openMemLimit_ = proc_.memoryLimitSettingMB();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -234,6 +236,27 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       "followed by ear.");
   loadTicks_.onClick = [this] { proc_.setLoadTicks(loadTicks_.getToggleState()); };
 
+  // Startup and memory: general config, written to the global file at once.
+  addAndMakeVisible(reopen_);
+  reopen_.setToggleState(proc_.reopenLastOrgan(), juce::dontSendNotification);
+  reopen_.setTooltip(
+      "Off by default. Even when on, an organ that was loaded when Masterpiece "
+      "last closed unexpectedly is not reopened.");
+  reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
+
+  addAndMakeVisible(memLimitLabel_);
+  styleLabel(memLimitLabel_, "Memory limit for samples");
+  addAndMakeVisible(memLimit_);
+  memLimit_.setTooltip(
+      "A load that would take more than this stops and says so, instead of "
+      "running the computer out of memory.");
+  fillMemLimit();
+  memLimit_.onChange = [this] {
+    const int id = memLimit_.getSelectedId();
+    // Ids above 1000 are a size in megabytes plus 1000; 1 is the default.
+    proc_.setMemoryLimitMB(id == 1 ? 0 : id - 1000);
+  };
+
   syncProfile();
 
   // Nothing on this panel writes to disk on its own. Changes are live the
@@ -279,6 +302,24 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
 
 EnginePanel::~EnginePanel() { stopTimer(); }
 
+void EnginePanel::fillMemLimit() {
+  memLimit_.clear(juce::dontSendNotification);
+  const int ram = juce::SystemStats::getMemorySizeInMegabytes();
+  auto gb = [](int mb) { return juce::String(mb / 1024.0, 1) + " GB"; };
+  memLimit_.addItem("Default: 80% of memory (" +
+                        gb(MasterpieceProcessor::defaultMemoryLimitMB()) + ")", 1);
+  const int current = proc_.memoryLimitSettingMB();
+  bool listed = current == 0;
+  for (int pct : {50, 60, 70, 90}) {
+    const int mb = ram * pct / 100;
+    memLimit_.addItem(juce::String(pct) + "% of memory (" + gb(mb) + ")", 1000 + mb);
+    if (mb == current) listed = true;
+  }
+  // A size set in the file that is none of the above is still shown as itself.
+  if (!listed) memLimit_.addItem(gb(current), 1000 + current);
+  memLimit_.setSelectedId(current == 0 ? 1 : 1000 + current, juce::dontSendNotification);
+}
+
 void EnginePanel::revert() {
   proc_.setEngineSwitch(openSwitch_);
   proc_.setPreloadHeadFrames(openPreload_);
@@ -288,6 +329,10 @@ void EnginePanel::revert() {
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setLoadTicks(openLoadTicks_);
   loadTicks_.setToggleState(openLoadTicks_, juce::dontSendNotification);
+  proc_.setReopenLastOrgan(openReopen_);
+  reopen_.setToggleState(openReopen_, juce::dontSendNotification);
+  proc_.setMemoryLimitMB(openMemLimit_);
+  fillMemLimit();
   proc_.setLoadSampleRate(openRate_);
   proc_.setCacheMode(openCache_);
   cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
@@ -497,6 +542,12 @@ void EnginePanel::resized() {
   mono_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
   loadTicks_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(2);
+  reopen_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(6);
+  auto memRow = r.removeFromTop(kRow);
+  memLimitLabel_.setBounds(memRow.removeFromLeft(180));
+  memLimit_.setBounds(memRow.removeFromLeft(300));
   r.removeFromTop(kGap);
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);

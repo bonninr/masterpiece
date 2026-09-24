@@ -417,7 +417,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection);
   if (cacheMode_ != CacheMode::Off && !cacheDir_.empty()) {
     auto cached = std::make_shared<Store>();
-    if (readCache(*cached, fingerprint) && !cached->empty()) {
+    if (readCache(*cached, fingerprint, progress) && !cached->empty()) {
       report.loaded = static_cast<int>(cached->size());
       publish(std::move(cached));
       if (progress != nullptr) {
@@ -426,6 +426,9 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       }
       return report;
     }
+    // Over the ceiling on the cache's own size: stopped before reading it.
+    if (progress != nullptr && progress->overBudget.load(std::memory_order_acquire))
+      return report;
   }
 
   // Only what the pipework can actually play. A Sample row for a rank with no
@@ -558,6 +561,11 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         if (totalResident > buffer->numFrames)
           attachTail(*buffer, path.string(), totalResident, srcRate, dstRate);
       }
+
+      // Against the memory ceiling, before it is kept: the sample that would
+      // take the load past it is not added, and the load stops here.
+      if (ok && progress != nullptr && !progress->charge(buffer->residentBytes()))
+        return;
 
       std::lock_guard<std::mutex> lock(resultMutex);
       if (!ok) {
@@ -879,7 +887,8 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   return true;
 }
 
-bool SampleLibrary::readCache(Store& out, const std::string& fingerprint) const {
+bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
+                              LoadProgress* progress) const {
   const std::string path = cachePath();
   if (path.empty()) return false;
   std::ifstream is(path, std::ios::binary);
@@ -892,6 +901,15 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint) const 
   if (!getPod(is, version) || version != kCacheVersion) return false;
   std::string got;
   if (!getStr(is, got) || got != fingerprint) return false;
+
+  // This cache is this load's, and it is the organ's resident audio written
+  // out, so its size is what reading it back would cost. Past the memory
+  // ceiling, stop before reading any of it.
+  std::error_code sizeError;
+  const auto cacheBytes = std::filesystem::file_size(path, sizeError);
+  if (!sizeError && progress != nullptr &&
+      !progress->charge(static_cast<int64_t>(cacheBytes)))
+    return false;
 
   uint64_t count = 0;
   if (!getPod(is, count) || count > 4000000ull) return false;

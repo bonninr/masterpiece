@@ -453,6 +453,17 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                   : "Failed to load " + odf.getFileName() + ": " +
                         juce::String(result.error);
     top_.setStatus(status_);
+    // Stopping at the memory limit is the one failure a player can fix from
+    // here, so it is said in full rather than left in the status line.
+    if (result.outOfMemory)
+      juce::AlertWindow::showMessageBoxAsync(
+          juce::MessageBoxIconType::WarningIcon, "Not enough memory for this organ",
+          odf.getFileNameWithoutExtension() +
+              " was not loaded: its samples need more than the memory limit (" +
+              juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
+              " GB).\n\nIn Settings, Engine: load 16-bit samples, stream the release "
+              "tails, load in mono or preload less of each sample -- or raise the "
+              "limit, if this computer has the memory to spare.");
     return;
   }
 

@@ -85,6 +85,8 @@ public:
     OdfDiagnostics diagnostics;
     SampleLoadReport samples;
     int stopsEngaged = 0;
+    // Stopped at the memory limit rather than failing on its own.
+    bool outOfMemory = false;
   };
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
@@ -482,6 +484,26 @@ public:
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
   void setReopenLastOrgan(bool on);
+
+  // Crash guard. While the guard is on, a load writes the organ into the
+  // global file as "running", and only a clean exit takes it out again. An
+  // entry still there at the next start means the program died with that
+  // organ loading or loaded -- and reopening it automatically would crash it
+  // straight away again, before the player could do anything about it. The
+  // application turns the guard on; tools and tests leave it off, since they
+  // never exit the way the application does.
+  void setCrashGuard(bool on) { crashGuard_ = on; }
+  void clearRunningOrgan();
+  // The organ the previous session died with, read by loadGlobalDefaults.
+  juce::File crashedOrgan() const { return crashedOrgan_; }
+
+  // The most memory an organ's samples may take, in megabytes. 0 means the
+  // default, 80% of this machine's memory. A load that would pass it stops
+  // cleanly and says so, rather than running the machine out of memory.
+  int memoryLimitSettingMB() const { return memoryLimitMB_; }
+  void setMemoryLimitMB(int mb);
+  static int defaultMemoryLimitMB();
+  int64_t memoryLimitBytes() const;
   // Audible load progress: a swift tap at each 10% of a load. Off unless
   // asked. Global, never per organ: it suits the room, not the instrument.
   bool loadTicks() const { return loadTicks_.load(std::memory_order_acquire); }
@@ -936,7 +958,14 @@ private:
   float meterFall_ = 0.5f;
 
   int64_t preloadHead_ = 0;
-  bool reopenLastOrgan_ = true;
+  // Off unless asked for: reopening at start is what turns one crash into a
+  // loop of them.
+  bool reopenLastOrgan_ = false;
+  bool crashGuard_ = false;
+  juce::File runningOrgan_;
+  juce::File crashedOrgan_;
+  bool globalsReadOnce_ = false;
+  int memoryLimitMB_ = 0;
   std::atomic<bool> loadTicks_{false};
   juce::File cacheDir_; // empty: the default place
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
@@ -977,6 +1006,12 @@ private:
     int deviceId = 0;
     uint8_t bytes[3] = {0, 0, 0};
     int size = 0;
+    // Which write this slot holds, plus one, stored after the bytes: the
+    // reader takes a slot only once this says it is complete. Several
+    // consoles push from their own MIDI threads, and reading a slot between
+    // a writer claiming it and filling it replayed whatever message had
+    // been there a lap of the queue before.
+    std::atomic<uint32_t> ready{0};
   };
   static constexpr int kMidiQueueSize = 2048;
   std::array<TaggedMidi, kMidiQueueSize> midiQueue_{};
@@ -990,6 +1025,14 @@ private:
   // dispatched rather than threaded through every call, because only the note
   // path cares and threading it would touch a dozen signatures.
   int noteDeviceId_ = 0;
+  // The channel of the message being handled, for the same reason.
+  int noteChannel_ = 0;
+  // Where each held key switch came from, as (channel, device): a key can be
+  // a switch with no note sounding, on an organ played through its pallets.
+  std::unordered_map<int, std::pair<int, int>> heldKeySwitchOrigin_;
+  // Release everything played from this channel of this device -- what All
+  // Notes Off and its relatives mean, per the MIDI standard.
+  void releaseChannel(int channel, int deviceId);
   // The manual being learned, and the first key pressed for it. 0 means not
   // learning; -1 for the note means the low key is still to come.
   Id keyboardLearn_ = 0;
@@ -1021,6 +1064,10 @@ private:
     Id keyboard = 0;
     int midiNote = 60;
     int velocity = 64;
+    // Where the press came from, so a channel's All Notes Off can find the
+    // notes that are that channel's and leave every other manual alone.
+    int channel = 0;
+    int device = 0;
   };
   std::unordered_map<int, HeldNote> soundingNotes_;
   // The registration the sounding notes were started with, owned by the audio
