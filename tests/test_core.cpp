@@ -713,6 +713,12 @@ public:
         "<o><a>523</a><b>524</b><c>prs ind</c><k>-6.35e+1</k><l>8</l></o>"
         "<o><a>30</a><b>31</b><c>detune s</c><d>2</d><h>702</h><i>Y</i>"
         "<k>1.26e+2</k><l>5e-1</l></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"WindCompartment\">"
+        "<o><a>1</a><c>Y</c><b>Open air</b></o>"
+        "<o><a>5</a><f>523</f><k>1</k><l>1</l><e1>520</e1><g>Y</g><b>reservoir</b>"
+        "<d>4.2e-1</d><h>1.3416407865</h><i>1.3416407865</i><j>7.259259259259e-1</j>"
+        "<n>2.744081632653e+2</n><p>2.744081632653e+2</p><r>2.5e+1</r></o>"
         "</ObjectList></Hauptwerk>";
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
@@ -720,6 +726,19 @@ public:
     mp::OdfDiagnostics d;
     MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
              "the definition loads");
+    // A compartment is finite unless it says Y: compact files write it only
+    // for the room and the blower.
+    MP_CHECK(m.wind.count(1) && m.wind.at(1).infiniteVolume, "the room is infinite");
+    MP_CHECK(m.wind.count(5) && !m.wind.at(5).infiniteVolume, "a reservoir is not");
+    if (m.wind.count(5)) {
+      const auto& r = m.wind.at(5);
+      MP_CHECK(r.pressureOutputControlId == 523, "f names the gauge control");
+      MP_CHECK(std::fabs(r.bellowsWidthM - 1.3416407865) < 1e-9 &&
+                   std::fabs(r.bellowsExtensionM - 0.7259259259259) < 1e-9 &&
+                   std::fabs(r.bellowsMassKg - 274.4081632653) < 1e-6 &&
+                   std::fabs(r.bellowsDamping - 25.0) < 1e-9,
+               "the bellows are read from their compact letters");
+    }
     MP_CHECK(m.controlLinkages.size() == 3, "every linkage is read");
     if (m.controlLinkages.size() != 3) return;
     const auto& valve = m.controlLinkages[0];
