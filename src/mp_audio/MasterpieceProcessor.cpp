@@ -533,6 +533,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   for (const auto meta : midi)
     midiScratch_.emplace_back(MidiDeviceMap::kAnyDevice, meta.getMessage());
   drainTaggedMidi(midiScratch_);
+  // Console input reaches the recorder here: it is not in the host's buffer,
+  // which is all the recorder saw.
+  if (recorder_.isRecording())
+    for (const auto& [deviceId, msg] : midiScratch_)
+      if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg);
 
   for (const auto& [deviceId, msg] : midiScratch_) {
 

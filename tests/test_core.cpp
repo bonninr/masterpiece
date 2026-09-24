@@ -1600,6 +1600,34 @@ public:
   }
 };
 
+// Recording a real console. Its keys come through the processor's device
+// queue, not the host's buffer, and the recorder only saw the latter: a
+// recording made at a console held nothing but the on-screen keys.
+class RecordConsoleTest final : public mp::test::Test {
+public:
+  RecordConsoleTest() : Test("functional.midi.record-console", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    proc.recorder().startRecording();
+    buf.clear();
+    proc.processBlock(buf, none);
+    proc.pushMidi(1, juce::MidiMessage::noteOn(2, 60, 0.8f));
+    buf.clear();
+    proc.processBlock(buf, none);
+    proc.pushMidi(1, juce::MidiMessage::noteOff(2, 60));
+    buf.clear();
+    proc.processBlock(buf, none);
+    proc.recorder().stopRecording();
+    MP_CHECK(proc.recorder().eventCount() == 2,
+             "a console's note on and note off are recorded, got " +
+                 std::to_string(proc.recorder().eventCount()));
+    proc.releaseResources();
+  }
+};
+
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
   VoiceEngineRenderTest()
@@ -8265,6 +8293,7 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static RecordConsoleTest g_recordConsole;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;

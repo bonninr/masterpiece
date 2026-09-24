@@ -1,5 +1,7 @@
 #include "MidiRecorder.h"
 
+#include <algorithm>
+
 namespace mp {
 
 void MidiRecorder::prepare(double sampleRate) {
@@ -47,10 +49,20 @@ double MidiRecorder::positionSeconds() const {
   return static_cast<double>(pos) / sampleRate_;
 }
 
+void MidiRecorder::captureLive(const juce::MidiMessage& message) {
+  if (state_ != State::Recording) return;
+  // In time order: after everything at or before the start of this block.
+  const auto at = std::upper_bound(
+      events_.begin(), events_.end(), blockStart_,
+      [](int64_t pos, const Event& e) { return pos < e.samplePos; });
+  events_.insert(at, Event{blockStart_, message});
+}
+
 void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
   if (numSamples <= 0) return;
 
   if (state_ == State::Recording) {
+    blockStart_ = writePos_;
     for (const auto meta : midi) {
       // events_ may grow here, which allocates. Recording is a deliberate act
       // and the reserve above covers a long session; a reallocation costs one
