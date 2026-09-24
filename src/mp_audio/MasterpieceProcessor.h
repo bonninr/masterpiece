@@ -218,6 +218,12 @@ public:
   // Console input: move a swell shoe / crescendo wheel. Safe to call from the
   // message thread; the audio thread reads the resulting positions per block.
   void setContinuousControl(Id controlId, int value);
+  // The control a PLAYER moves to set this one: follow the unconditional
+  // linkages that feed it upstream to one nothing feeds. An enclosure's
+  // shutters are often driven from its pedal, and the pedal from the shoe
+  // drawn on the console; setting the shutters directly is undone by the
+  // next propagate, and leaves both drawn shoes where they were.
+  Id playerControlFor(Id controlId) const;
 
   // Draw or retire a stop. Which stops are engaged decides which pipes a key
   // press sounds, so this is the other half of the console.
@@ -807,6 +813,9 @@ private:
   // voice engine each block. Voices carry an index into it.
   std::vector<VoiceEngine::WindMod> windMods_;
   std::vector<Id> windOrder_;
+  // Compartments that report their pressure to a continuous control, and
+  // which control: the console's wind gauges hang off these.
+  std::vector<std::pair<Id, Id>> windGauges_;
   std::unordered_map<Id, int> windIndexOf_;
   // Which windchest each pipe stands on, resolved at load so a note-on does
   // not search for it.
@@ -822,6 +831,8 @@ private:
   // Advance the wind by one block: ask the engine what is drawing air, solve,
   // and hand the result back for the voices to sound through.
   void advanceWind(int numFrames);
+  // Hand each gauge-driving compartment's pressure to its control.
+  void publishWindPressures();
   StageSwitchBank stages_;
   std::vector<StageSwitchBank::Change> stageScratch_;
   // Where every staged control was, so a move can be told from a rest. Only

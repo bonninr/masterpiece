@@ -641,6 +641,190 @@ public:
   }
 };
 
+// A tremulant sampled pipe by pipe has a waveform per pipe, not one. Found on
+// Angster Hajós: 352 waveforms for one tremulant. Keeping only the last per
+// tremulant left the other pipes without any tremulant at all, each reported
+// as a dangling id.
+class TremulantWaveformsTest final : public mp::test::Test {
+public:
+  TremulantWaveformsTest()
+    : Test("functional.odf.tremulant-many-waveforms", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Tremulant\"><Tremulant>"
+        "<TremulantID>1710</TremulantID><Name>Tremulant</Name>"
+        "</Tremulant></ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveform\">"
+        "<TremulantWaveform><TremulantWaveformID>1</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "<TremulantWaveform><TremulantWaveformID>2</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "<TremulantWaveform><TremulantWaveformID>3</TremulantWaveformID>"
+        "<TremulantID>1710</TremulantID></TremulantWaveform>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveformPipe\">"
+        "<TremulantWaveformPipe><PipeID>101</PipeID><TremulantWaveformID>1</TremulantWaveformID></TremulantWaveformPipe>"
+        "<TremulantWaveformPipe><PipeID>102</PipeID><TremulantWaveformID>2</TremulantWaveformID></TremulantWaveformPipe>"
+        "<TremulantWaveformPipe><PipeID>103</PipeID><TremulantWaveformID>3</TremulantWaveformID></TremulantWaveformPipe>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.tremulantPipes.size() == 3,
+             "every pipe reaches the tremulant through its own waveform");
+    for (mp::Id pipe : {101, 102, 103})
+      MP_CHECK(m.tremulantPipes.count(pipe) == 1 &&
+                   m.tremulantPipes.at(pipe).tremulantId == 1710,
+               "pipe " + std::to_string(pipe) + " is moved by tremulant 1710");
+    MP_CHECK(d.danglingIds.empty(), "no waveform is reported as dangling");
+  }
+};
+
+// Compact linkage rows, as the custom-organ template writes them: a wind
+// gauge reads its compartment's pressure control through (value - 63.5) * 8,
+// a reservoir's regulator valve is its extension inverted, and a detune link
+// is (value + 126) / 2. Letters past h are not OdfEdit's, and the increment
+// is added before the coefficient multiplies; either mistake sends every one
+// of these out of range.
+class CompactLinkageTest final : public mp::test::Test {
+public:
+  CompactLinkageTest()
+    : Test("functional.odf.compact-linkage", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o>"
+        "<a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><o><a>702</a><b>Trem</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<o><a>520</a><b>extn</b></o><o><a>522</a><b>valve</b></o>"
+        "<o><a>523</a><b>prs</b></o><o><a>524</a><b>prs ind</b></o>"
+        "<o><a>30</a><b>detune</b></o><o><a>31</a><b>detune s</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+        "<o><a>520</a><b>522</b><j>Y</j><c>regulator valve</c><k>-3.15e+1</k><l>2</l></o>"
+        "<o><a>523</a><b>524</b><c>prs ind</c><k>-6.35e+1</k><l>8</l></o>"
+        "<o><a>30</a><b>31</b><c>detune s</c><d>2</d><h>702</h><i>Y</i>"
+        "<k>1.26e+2</k><l>5e-1</l></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"WindCompartment\">"
+        "<o><a>1</a><c>Y</c><b>Open air</b></o>"
+        "<o><a>5</a><f>523</f><k>1</k><l>1</l><e1>520</e1><g>Y</g><b>reservoir</b>"
+        "<d>4.2e-1</d><h>1.3416407865</h><i>1.3416407865</i><j>7.259259259259e-1</j>"
+        "<n>2.744081632653e+2</n><p>2.744081632653e+2</p><r>2.5e+1</r></o>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    // A compartment is finite unless it says Y: compact files write it only
+    // for the room and the blower.
+    MP_CHECK(m.wind.count(1) && m.wind.at(1).infiniteVolume, "the room is infinite");
+    MP_CHECK(m.wind.count(5) && !m.wind.at(5).infiniteVolume, "a reservoir is not");
+    if (m.wind.count(5)) {
+      const auto& r = m.wind.at(5);
+      MP_CHECK(r.pressureOutputControlId == 523, "f names the gauge control");
+      MP_CHECK(std::fabs(r.bellowsWidthM - 1.3416407865) < 1e-9 &&
+                   std::fabs(r.bellowsExtensionM - 0.7259259259259) < 1e-9 &&
+                   std::fabs(r.bellowsMassKg - 274.4081632653) < 1e-6 &&
+                   std::fabs(r.bellowsDamping - 25.0) < 1e-9,
+               "the bellows are read from their compact letters");
+    }
+    MP_CHECK(m.controlLinkages.size() == 3, "every linkage is read");
+    if (m.controlLinkages.size() != 3) return;
+    const auto& valve = m.controlLinkages[0];
+    MP_CHECK(valve.sourceControlId == 520 && valve.destControlId == 522,
+             "a is the source and b the destination");
+    MP_CHECK(valve.invert && valve.conditionSwitchId == 0, "j is the invert flag");
+    MP_CHECK(std::fabs(valve.increment + 31.5) < 1e-9 &&
+                 std::fabs(valve.coefficient - 2.0) < 1e-9,
+             "k is the increment and l the coefficient");
+    const auto& detune = m.controlLinkages[2];
+    MP_CHECK(detune.conditionSwitchId == 702 && detune.conditionWhenEngaged,
+             "h is the condition switch and i its sense");
+    MP_CHECK(!m.controlLinkages[1].conditionWhenEngaged,
+             "an absent sense is 'while disengaged'");
+    MP_CHECK(d.danglingIds.empty(), "a link type is not read as a switch id");
+
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    bank.setValue(523, 73);  // 63.5 + 9.5 inches / 2 -> 9.5 inches, rounded
+    bank.setValue(520, 127); // reservoir full
+    bank.setValue(30, 0);
+    bank.propagate();
+    MP_CHECK(bank.value(524) == 76, "the gauge reads (73 - 63.5) * 8");
+    MP_CHECK(bank.value(522) == 0, "a full reservoir shuts its regulator valve");
+    bank.setValue(520, 0);
+    bank.propagate();
+    MP_CHECK(bank.value(522) == 127, "an empty one opens it");
+    std::unordered_set<mp::Id> sw{702};
+    bank.propagate(0, &sw);
+    MP_CHECK(bank.value(31) == 63, "a detune link centres: (0 + 126) / 2");
+  }
+};
+
+// The Swell panel moves the control a player moves. On the custom-organ
+// template an enclosure's shutters (541) follow its pedal (210), which follows
+// the shoe drawn on the console (542); setting the shutters directly was
+// undone on the next block, so the panel did nothing and no shoe moved.
+class PlayerControlTest final : public mp::test::Test {
+public:
+  PlayerControlTest()
+    : Test("functional.control.player-control", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-player-control");
+    dir.getChildFile("OrganDefinitions").createDirectory();
+    const juce::File odf =
+        dir.getChildFile("OrganDefinitions").getChildFile("pc.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<o><a>210</a><b>Exp.1</b><f>127</f><h>Y</h></o>"
+        "<o><a>541</a><b>shutters</b></o>"
+        "<o><a>542</a><b>shoe in</b><d>Y</d><f>127</f><h>Y</h><i>Y</i><j>183</j></o>"
+        "<o><a>543</a><b>shoe out</b><f>127</f></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Enclosure\"><o><a>210</a><b>Exp.1</b><c>541</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+        "<o><a>542</a><b>210</b><c>in</c></o>"
+        "<o><a>210</a><b>543</b><c>out</c></o>"
+        "<o><a>210</a><b>541</b><c>shutters</c><d>3</d></o>"
+        "</ObjectList></Hauptwerk>");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool hadSettings = settings.existsAsFile();
+    auto r = proc.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+    MP_CHECK(r.ok, "the organ loads");
+    const auto& cc = proc.organModel().continuousControls;
+    MP_CHECK(cc.count(542) && cc.at(542).defaultValue == 127 &&
+                 cc.at(542).imageSetInstanceId == 183 && cc.at(542).clickable &&
+                 cc.at(542).clickingHigherIncreasesValue,
+             "a compact control reads its default (f), picture (j) and click flags (h, i)");
+    MP_CHECK(cc.count(543) && !cc.at(543).clickable,
+             "a compact control without h is not clickable");
+    MP_CHECK(proc.playerControlFor(541) == 542,
+             "the shutters are moved from the shoe drawn on the console");
+    MP_CHECK(proc.playerControlFor(542) == 542, "the shoe is its own player control");
+    proc.setContinuousControl(542, 40);
+    MP_CHECK(proc.continuousControlValue(541) == 40 &&
+                 proc.continuousControlValue(543) == 40,
+             "moving it moves the shutters and the other drawn shoe");
+    if (!hadSettings) settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -1085,6 +1269,69 @@ public:
     }
     MP_CHECK(two.activeVoiceCount() == 1,
              "only the named note let go; the other key still sounds");
+  }
+};
+
+// Once a pipe's valve closes, the chest no longer reaches it: what sounds is
+// its release and the room. A releasing voice therefore keeps the wind it last
+// spoke with. Following the chest instead slid every tail in pitch and level
+// as the pressure recovered after a chord let go, which is exactly when a
+// player hears it.
+class ReleaseIgnoresWindTest final : public mp::test::Test {
+public:
+  ReleaseIgnoresWindTest()
+    : Test("functional.voice.release-ignores-wind", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.velocity = 100;
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.windIndex = 0;
+
+    mp::VoiceEngine::WindMod steady;          // nominal
+    mp::VoiceEngine::WindMod sagged;
+    sagged.ampMul = 0.5f;
+
+    auto make = [&](mp::VoiceEngine& eng) {
+      eng.prepare(48000.0, 64, 1);
+      eng.setSampleProvider(fx.provider());
+      eng.setWindMods(&steady, 1);
+      eng.startVoice(st, 1);
+    };
+    std::vector<float> a(512), b(512);
+    float* outA[1] = {a.data()};
+    float* outB[1] = {b.data()};
+
+    // While the key is down the wind is heard.
+    mp::VoiceEngine held, heldSag;
+    make(held);
+    make(heldSag);
+    heldSag.setWindMods(&sagged, 1);
+    held.render(outA, 1, 512);
+    heldSag.render(outB, 1, 512);
+    MP_CHECK(voicetest::rms(b) < 0.75 * voicetest::rms(a),
+             "a sustaining pipe follows its chest");
+
+    // Once it is released, it does not.
+    mp::VoiceEngine rel, relSag;
+    make(rel);
+    make(relSag);
+    std::fill(a.begin(), a.end(), 0.0f);
+    rel.render(outA, 1, 512);
+    relSag.render(outA, 1, 512);
+    rel.noteOff(1, mp::NoteRelease{});
+    relSag.noteOff(1, mp::NoteRelease{});
+    relSag.setWindMods(&sagged, 1);
+    std::fill(a.begin(), a.end(), 0.0f);
+    std::fill(b.begin(), b.end(), 0.0f);
+    rel.render(outA, 1, 512);
+    relSag.render(outB, 1, 512);
+    MP_CHECK(voicetest::rms(a) > 0.0, "the release is sounding");
+    MP_CHECK(std::fabs(voicetest::rms(a) - voicetest::rms(b)) < 1e-6,
+             "a releasing pipe keeps the wind it last spoke with");
   }
 };
 
@@ -4642,7 +4889,7 @@ public:
 
     // --- linkages ---
     MP_CHECK(m.controlLinkages.size() == 3, "all linkages parsed");
-    MP_CHECK(std::fabs(m.controlLinkages[0].scale - 0.5) < 1e-9,
+    MP_CHECK(std::fabs(m.controlLinkages[0].coefficient - 0.5) < 1e-9,
              "linkage scaling parsed");
     // Mutually-referencing linkages are ordinary in Hauptwerk and are NOT a
     // fault; only a control wired directly to itself is.
@@ -5216,6 +5463,13 @@ public:
     RestoreFile keepGlobal(proc.globalSettingsFile());
     RestoreFile keepA(proc.settingsFileFor(odfA));
     RestoreFile keepB(proc.settingsFileFor(odfB));
+    // And start from none of them. A real profile's global defaults can carry
+    // a saved level, which every organ without settings of its own starts
+    // at; read here, it made "starts at unity" fail on a player's machine and
+    // pass on a clean CI runner. The guards above put the files back.
+    keepGlobal.file.deleteFile();
+    keepA.file.deleteFile();
+    keepB.file.deleteFile();
 
     auto gain = [&] {
       const auto* g = proc.apvts().getRawParameterValue("masterGain");
@@ -6620,7 +6874,9 @@ public:
                  "<Colour_Blue>120</Colour_Blue>"
                  "<HorizontalAlignmentCode>1</HorizontalAlignmentCode>"
                  "<VerticalAlignmentCode>2</VerticalAlignmentCode>"
-                 "</TextStyle></ObjectList>"
+                 "</TextStyle>"
+                 "<TextStyle><StyleID>6</StyleID><Name>Tab11Black/WhtTxt</Name>"
+                 "<Colour_Red>254</Colour_Red></TextStyle></ObjectList>"
                  "<ObjectList ObjectType=\"TextInstance\">"
                  "<TextInstance><TextInstanceID>7</TextInstanceID>"
                  "<TextStyleID>5</TextStyleID><Text>Tibia Clausa 8</Text>"
@@ -6657,14 +6913,22 @@ public:
     MP_CHECK(st->second.hAlignCode == 1 && st->second.vAlignCode == 2,
              "alignment codes read");
 
-    // A label with no style of its own is still drawn: Hauptwerk's defaults
-    // are Arial 10, black, centred across its position and hung from its top.
+    // What a style leaves out is at its default: white, centred both ways.
+    // A file writes zeros when it means them, so an absent channel is full.
+    const auto sparse = m.textStyles.find(6);
+    MP_CHECK(sparse != m.textStyles.end() && sparse->second.red == 254 &&
+                 sparse->second.green == 255 && sparse->second.blue == 255,
+             "an absent colour channel is at full, not zero");
+    MP_CHECK(sparse->second.hAlignCode == 0 && sparse->second.vAlignCode == 0,
+             "an absent alignment is centred");
+
+    // A label with no style of its own is still drawn, with those defaults.
     const auto& plain = page->second.texts.back();
     MP_CHECK(plain.styleId == 0 && plain.attachedInstanceId == 0,
              "an unattached, unstyled label is loaded as such");
     mp::TextStyle dflt;
     MP_CHECK(dflt.sizePx == 10 && dflt.weightCode == 2 && dflt.hAlignCode == 0 &&
-                 dflt.vAlignCode == 1,
+                 dflt.vAlignCode == 0 && dflt.red == 255,
              "the defaults are Hauptwerk's own");
   }
 };
@@ -7735,6 +7999,10 @@ static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
+static TremulantWaveformsTest g_tremulantWaveforms;
+static ReleaseIgnoresWindTest g_releaseIgnoresWind;
+static CompactLinkageTest g_compactLinkage;
+static PlayerControlTest g_playerControl;
 static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO

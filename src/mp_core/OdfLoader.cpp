@@ -456,26 +456,26 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     PipeLayer layer;
     layer.layerId = layerId;
     layer.gainDb = fieldDouble(row, "AmpLvl_LevelAdjustDecibels", "h", 0.0);
-    layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o", 0);
-    layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p", 0);
+    layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o1", 0);
+    layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p1", 0);
     // How the organ's own level sliders reach this layer. Every layer of a
     // real set names one.
     layer.ampScalingControlId =
-        fieldInt(row, "AmpLvl_ScalingContinuousControlID", nullptr, 0);
+        fieldInt(row, "AmpLvl_ScalingContinuousControlID", "s", 0);
     layer.pitchControlId =
-        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", nullptr, 0);
+        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", "a1", 0);
     layer.pitchSensitivityHzPerUnit = fieldDouble(
-        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", nullptr, 0.0);
+        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", "b1", 0.0);
     // How hard the key is struck reaches the pipe's level, and how far this
     // layer trims the chest's tremulant depth. All four are stated per layer
     // and two thirds of the corpus fills them; unread they made every note
     // one level and every stop on a tremmed chest wobble alike.
     layer.velSensMaxAttenDb = fieldDouble(
-        row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", nullptr, 0.0);
+        row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", "i", 0.0);
     layer.invertVelocitySens =
-        fieldBool(row, "AmpLvl_InvertVelocitySensitivity", nullptr, false);
+        fieldBool(row, "AmpLvl_InvertVelocitySensitivity", "j", false);
     layer.tremAmpDepthAdjustDb = fieldDouble(
-        row, "AmpLvl_TremulantModDepthAdjustDecibels", nullptr, 0.0);
+        row, "AmpLvl_TremulantModDepthAdjustDecibels", "p", 0.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", nullptr, 100.0);
     pipeIt->second->layers.push_back(std::move(layer));
@@ -805,7 +805,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     wc.compartmentId = fieldInt(row, "WindCompartmentID", "a", 0);
     if (wc.compartmentId == 0) return;
     wc.name = field(row, "Name", "b");
-    wc.infiniteVolume = fieldBool(row, "InfiniteVolume", "c", true);
+    // Absent is finite. Compact files write Y for the room and the blower and
+    // nothing for the reservoirs and chests; reading absent as infinite gave
+    // every compact organ a wind system with nothing in it to solve.
+    wc.infiniteVolume = fieldBool(row, "InfiniteVolume", "c", false);
     wc.volumeM3 = fieldDouble(row, "StandardVolumeMetresCubed", "d", 0.0);
     wc.defaultPressureInches =
         fieldDouble(row, "DefaultAirPressureInches", "e", 0.0);
@@ -813,15 +816,15 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldInt(row, "PressureOutputContinuousControlID", "f", 0);
     wc.hasBellows = fieldBool(row, "Bellows_HasBellows", "g", false);
     wc.bellowsMassKg = fieldDouble(
-        row, "Bellows_MassOfMovingBoardGivingRiseToInertiaKg", nullptr, 0.0);
+        row, "Bellows_MassOfMovingBoardGivingRiseToInertiaKg", "p", 0.0);
     wc.bellowsDamping =
-        fieldDouble(row, "Bellows_PositiveDampingCoefficient", nullptr, 0.0);
+        fieldDouble(row, "Bellows_PositiveDampingCoefficient", "r", 0.0);
     wc.bellowsWidthM =
-        fieldDouble(row, "Bellows_FrameBaseWidthMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_FrameBaseWidthMetres", "h", 0.0);
     wc.bellowsLengthM =
-        fieldDouble(row, "Bellows_FrameBaseLengthMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_FrameBaseLengthMetres", "i", 0.0);
     wc.bellowsExtensionM =
-        fieldDouble(row, "Bellows_MaximumExtensionMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_MaximumExtensionMetres", "j", 0.0);
     // A finite compartment with no volume cannot hold air; treating it as
     // finite would divide by zero in the solver.
     if (!wc.infiniteVolume && wc.volumeM3 <= 0.0) wc.infiniteVolume = true;
@@ -1081,7 +1084,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // The only code on the row is the default console/MIDI assignment, and it
     // is normally empty — HW controls are plain 0..127 with no declared range.
     c.typeCode = fieldInt(row, "DefaultInputOutputContinuousCtrlAsgnCode", "c", 0);
-    c.defaultValue = fieldInt(row, "DefaultValue", "d", 0);
+    c.defaultValue = fieldInt(row, "DefaultValue", "f", 0);
     c.minValue = 0;
     c.maxValue = 127;
     // ClickingHigherIncreasesValue is about mouse direction on the console
@@ -1093,12 +1096,19 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // What makes a control something a player can move rather than a number
     // the organ keeps to itself. Only the drawn ones have an instance: Nancy
     // declares 1420 controls and draws 55.
-    c.imageSetInstanceId = fieldInt(row, "ImageSetInstanceID", nullptr, 0);
-    c.clickable = fieldBool(row, "Clickable", nullptr, true);
+    //
+    // Compact rows had none of these letters, and read DefaultValue from d,
+    // which is AccessibleForInput: no compact organ's shoe was tied to its
+    // picture, so none could be dragged or seen to move. A compact file
+    // writes h and i only as Y, so there absent means no; long-form files
+    // keep the old default.
+    const bool compactRow = std::string(row.name()) == "o";
+    c.imageSetInstanceId = fieldInt(row, "ImageSetInstanceID", "j", 0);
+    c.clickable = fieldBool(row, "Clickable", "h", !compactRow);
     c.clickingHigherIncreasesValue =
-        fieldBool(row, "ClickingHigherIncreasesValue", nullptr, true);
+        fieldBool(row, "ClickingHigherIncreasesValue", "i", !compactRow);
     c.rememberState =
-        fieldBool(row, "RememberStateFromLastLoad", nullptr, false);
+        fieldBool(row, "RememberStateFromLastLoad", "g", false);
     if (c.controlId == 0) return;
     if (c.minValue > c.maxValue) {
       outDiag.warnings.emplace_back(
@@ -1114,11 +1124,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // Keyed by image set rather than by control, so a hundred identical sliders
   // share one ladder.
   forEachRow(odfRoot, "ContinuousControlImageSetStage", [&](pugi::xml_node row) {
-    const Id setId = fieldInt(row, "ImageSetID", nullptr, 0);
+    const Id setId = fieldInt(row, "ImageSetID", "a", 0);
     if (setId == 0) return;
     ContinuousControlImageStage s;
-    s.highestValue = fieldInt(row, "HighestContinuousControlValue", nullptr, 0);
-    s.imageIndex = fieldInt(row, "ImageSetIndex", nullptr, 1);
+    s.highestValue = fieldInt(row, "HighestContinuousControlValue", "b", 0);
+    s.imageIndex = fieldInt(row, "ImageSetIndex", "c", 1);
     outModel.continuousControlStages[setId].push_back(s);
   });
   // The rows do NOT arrive in value order — a real set has the lowest band
@@ -1139,20 +1149,20 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // on a set's own settings page moves a number that reaches no pipe.
   forEachRow(odfRoot, "ContinuousControlDoubleLinkage", [&](pugi::xml_node row) {
     ContinuousControlDoubleLinkage d;
-    d.destControlId = fieldInt(row, "DestControl_ID", nullptr, 0);
-    d.firstControlId = fieldInt(row, "FirstSourceControl_ID", nullptr, 0);
-    d.secondControlId = fieldInt(row, "SecondSourceControl_ID", nullptr, 0);
+    d.destControlId = fieldInt(row, "DestControl_ID", "i", 0);
+    d.firstControlId = fieldInt(row, "FirstSourceControl_ID", "c", 0);
+    d.secondControlId = fieldInt(row, "SecondSourceControl_ID", "f", 0);
     if (d.destControlId == 0 || d.firstControlId == 0 || d.secondControlId == 0)
       return;
-    d.operationCode = fieldInt(row, "BinaryOperationCode", nullptr, 0);
-    d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", nullptr, 1.0);
-    d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", nullptr, 0.0);
-    d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", nullptr, 1.0);
-    d.secondIncrement = fieldDouble(row, "SecondSourceControl_Increment", nullptr, 0.0);
+    d.operationCode = fieldInt(row, "BinaryOperationCode", "b", 0);
+    d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", "e", 1.0);
+    d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", "d", 0.0);
+    d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", "h", 1.0);
+    d.secondIncrement = fieldDouble(row, "SecondSourceControl_Increment", "g", 0.0);
     // The coefficient is routinely absent, and 1.0 is the identity that means
     // "no renormalisation" — which is right for an add and wrong for nothing.
-    d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", nullptr, 1.0);
-    d.destIncrement = fieldDouble(row, "DestControl_Increment", nullptr, 0.0);
+    d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", "k", 1.0);
+    d.destIncrement = fieldDouble(row, "DestControl_Increment", "j", 0.0);
 
     if (d.operationCode < 1 || d.operationCode > 3) {
       outDiag.warnings.emplace_back(
@@ -1165,22 +1175,24 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // ---- M2.4: ContinuousControlLinkage (one control driving another) ----
+  // The compact letters are not OdfEdit's for this table past h: real files
+  // carry i only alongside a condition switch (its sense), j alone (invert),
+  // and numbers in k and l -- -63.5 and 8 on every wind-gauge link, which
+  // cannot be an invert flag. k is the increment and l the coefficient.
   forEachRow(odfRoot, "ContinuousControlLinkage", [&](pugi::xml_node row) {
     ContinuousControlLinkage l;
-    l.linkageId = fieldInt(row, "ContinuousControlLinkageID", "a", 0);
-    l.sourceControlId = fieldInt(row, "SourceControlID", "b", 0);
-    l.destControlId = fieldInt(row, "DestControlID", "c", 0);
-    l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "d", 0);
+    l.linkageId = fieldInt(row, "ContinuousControlLinkageID", nullptr, 0);
+    l.sourceControlId = fieldInt(row, "SourceControlID", "a", 0);
+    l.destControlId = fieldInt(row, "DestControlID", "b", 0);
+    l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "h", 0);
+    // Absent is "while disengaged": compact files write i only as Y, and
+    // only on linkages that have a condition. Long-form files always spell
+    // it out, so the default only ever applies to compact ones.
     l.conditionWhenEngaged =
-        fieldBool(row, "ConditionSwitchLinkIfEngaged", nullptr, true);
-    l.scale = fieldDouble(row, "SourceControlValueCoefficient", "e", 1.0);
-    l.offset = fieldInt(row, "SourceControlValueIncrement", "f", 0);
-    if (fieldBool(row, "InvertSourceControlValue", nullptr, false)) {
-      // Invert about the 0..127 range rather than negating, which would drive
-      // the destination out of range.
-      l.scale = -l.scale;
-      l.offset += 127;
-    }
+        fieldBool(row, "ConditionSwitchLinkIfEngaged", "i", false);
+    l.invert = fieldBool(row, "InvertSourceControlValue", "j", false);
+    l.increment = fieldDouble(row, "SourceControlValueIncrement", "k", 0.0);
+    l.coefficient = fieldDouble(row, "SourceControlValueCoefficient", "l", 1.0);
     for (Id ref : {l.sourceControlId, l.destControlId})
       if (ref != 0 && outModel.continuousControls.count(ref) == 0)
         outDiag.danglingIds.push_back(ref);
@@ -1355,6 +1367,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // ---- M2.3: TremulantWaveform -> the tremulant it belongs to ----
+  //
+  // A tremulant can have many waveforms, not one. A set that samples the
+  // tremulant pipe by pipe gives each its own: Hajós has 352 for a single
+  // tremulant, one per note of each rank. Keeping only the last of them per
+  // tremulant left every other pipe unable to find its tremulant, so those
+  // pipes did not tremble at all, and each one was reported as a dangling id.
+  std::unordered_map<Id, Id> tremOfWaveform;
   forEachRow(odfRoot, "TremulantWaveform", [&](pugi::xml_node row) {
     const Id waveformId = fieldInt(row, "TremulantWaveformID", "a", 0);
     // Field c, not b — b is the Name. Reading the tremulant id out of the name
@@ -1366,8 +1385,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       if (tremId != 0) outDiag.danglingIds.push_back(tremId);
       return;
     }
-    it->second.waveformId = waveformId;
-    it->second.hasWaveform = waveformId != 0;
+    if (waveformId == 0) return;
+    tremOfWaveform[waveformId] = tremId;
+    // The first waveform stands for the tremulant where one is wanted.
+    if (!it->second.hasWaveform) {
+      it->second.waveformId = waveformId;
+      it->second.hasWaveform = true;
+    }
   });
 
   // TremulantWaveformPipe says how far one tremulant moves one pipe. This is
@@ -1375,9 +1399,6 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // tremulant belongs to a chest, and the stops on that chest wobble by
   // different amounts.
   {
-    std::unordered_map<Id, Id> tremOfWaveform;
-    for (const auto& [id, t] : outModel.tremulants)
-      if (t.waveformId != 0) tremOfWaveform[t.waveformId] = id;
 
     forEachRow(odfRoot, "TremulantWaveformPipe", [&](pugi::xml_node row) {
       const Id pipeId = fieldInt(row, "PipeID", "a", 0);
@@ -1515,7 +1536,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     inst.name = field(row, "Name", "b");
     inst.imageSetId = setId;
     inst.defaultImageIndex = fieldInt(row, "DefaultImageIndexWithinSet", "d", 0);
-    inst.layer = fieldInt(row, "ScreenLayerNumber", "f", 0);
+    // Absent means the default, and the default is not 1 or 2: sets built
+    // on the custom-organ template write 1 for page backgrounds and 2 for the
+    // panels on them, then leave it out for the dial frames, headings and
+    // labels that must show on top of both. 12 is where the controls go.
+    inst.layer = fieldInt(row, "ScreenLayerNumber", "f", 3);
     inst.leftPx = fieldInt(row, "LeftXPosPixels", "g", 0);
     inst.tileRightPx = fieldInt(row, "RightXPosPixelsIfTiling", "i", -1);
     inst.tileBottomPx = fieldInt(row, "BottomYPosPixelsIfTiling", "j", -1);
@@ -1607,11 +1632,16 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     t.weightCode = fieldInt(row, "Font_WeightCode", "g", 2);
     t.italic = fieldBool(row, "Font_Italic", "h", false);
     t.underline = fieldBool(row, "Font_Underline", "i", false);
-    t.red = fieldInt(row, "Colour_Red", "j", 0);
-    t.green = fieldInt(row, "Colour_Green", "k", 0);
-    t.blue = fieldInt(row, "Colour_Blue", "l", 0);
+    // Absent fields are at their defaults, and the defaults are white and
+    // centred: compact files omit a default and write everything else, so a
+    // style for dark red spells out <k>0</k><l>0</l> and one that hangs its
+    // text from the top spells out <n>1</n>. "Tab11Black/WhtTxt" names no
+    // colour at all, and neither do the labels painted on dark stop tabs.
+    t.red = fieldInt(row, "Colour_Red", "j", 255);
+    t.green = fieldInt(row, "Colour_Green", "k", 255);
+    t.blue = fieldInt(row, "Colour_Blue", "l", 255);
     t.hAlignCode = fieldInt(row, "HorizontalAlignmentCode", "m", 0);
-    t.vAlignCode = fieldInt(row, "VerticalAlignmentCode", "n", 1);
+    t.vAlignCode = fieldInt(row, "VerticalAlignmentCode", "n", 0);
     outModel.textStyles[t.styleId] = std::move(t);
   });
 

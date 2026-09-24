@@ -102,7 +102,8 @@ void ExpressionBar::rebuild() {
   for (const auto& [id, enc] : model.enclosures) {
     (void)id;
     if (enc.continuousControlId == 0) continue;
-    shoes.emplace_back(enc.continuousControlId,
+    // The shoe the player moves, which may be upstream of the shutters.
+    shoes.emplace_back(proc_.playerControlFor(enc.continuousControlId),
                        enc.name.empty() ? juce::String("Swell")
                                         : juce::String(enc.name));
   }

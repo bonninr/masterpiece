@@ -10,12 +10,12 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
 **[Watch "New tested instruments"](https://bonninr.github.io/masterpiece/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://bonninr.github.io/masterpiece/attribution-2.html)
 
-[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-windows-setup.exe)
-[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-macos-arm64.zip)
-[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-macos-x86_64.zip)
-[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-linux-amd64.deb)
-[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-linux-arm64.deb)
-[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.4/masterpiece-0.5.4-linux-armhf.deb)
+[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-windows-setup.exe)
+[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-macos-arm64.zip)
+[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-macos-x86_64.zip)
+[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-linux-amd64.deb)
+[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-linux-arm64.deb)
+[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.5.5/masterpiece-0.5.5-linux-armhf.deb)
 
 Portable archives for every platform, and the plugins on their own, are on the
 [releases page](https://github.com/bonninr/masterpiece/releases/latest).
@@ -284,18 +284,18 @@ tag `v0.4.2` and the release workflow builds and publishes everything.
 
 ## Installing
 
-**Windows.** Run `masterpiece-0.5.4-windows-setup.exe`. It installs
+**Windows.** Run `masterpiece-0.5.5-windows-setup.exe`. It installs
 Masterpiece with a Start menu entry, and removes it again from
-*Settings → Apps*. The portable `masterpiece-0.5.4-windows.zip` needs no
+*Settings → Apps*. The portable `masterpiece-0.5.5-windows.zip` needs no
 installation and carries the VST3 plugin.
 
 **Debian, Ubuntu, Raspberry Pi OS.** Install the package with `apt`, which
 fetches anything it needs:
 
 ```
-sudo apt install ./masterpiece-0.5.4-linux-amd64.deb     # PC
-sudo apt install ./masterpiece-0.5.4-linux-arm64.deb     # Raspberry Pi OS, 64-bit
-sudo apt install ./masterpiece-0.5.4-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+sudo apt install ./masterpiece-0.5.5-linux-amd64.deb     # PC
+sudo apt install ./masterpiece-0.5.5-linux-arm64.deb     # Raspberry Pi OS, 64-bit
+sudo apt install ./masterpiece-0.5.5-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
 Masterpiece then appears in the applications menu and runs as `masterpiece`.
