@@ -195,8 +195,6 @@ video.recital {
 .topnav a:hover { color: var(--accent); }
 .kofi { margin-top: 22px; }
 .kofi img { display: block; }
-.topnav a.support { color: var(--accent); }
-.topnav a.support:hover { text-decoration: underline; }
 
 /* The line under a console picture that says whose recording it is. */
 .credit { color: var(--faint); font-size: 13px; }
