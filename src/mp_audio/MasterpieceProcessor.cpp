@@ -842,13 +842,14 @@ void MasterpieceProcessor::pushMidi(int deviceId, const juce::MidiMessage& msg) 
   const int size = msg.getRawDataSize();
   if (size <= 0 || size > 3) return;
 
-  const uint32_t slot =
-      midiWrite_.fetch_add(1, std::memory_order_acq_rel) % kMidiQueueSize;
-  TaggedMidi& t = midiQueue_[slot];
+  const uint32_t index = midiWrite_.fetch_add(1, std::memory_order_acq_rel);
+  TaggedMidi& t = midiQueue_[index % kMidiQueueSize];
   t.deviceId = deviceId;
   t.size = size;
   const auto* raw = msg.getRawData();
   for (int i = 0; i < size; ++i) t.bytes[i] = raw[i];
+  // Published last: until this store the reader leaves the slot alone.
+  t.ready.store(index + 1, std::memory_order_release);
 }
 
 void MasterpieceProcessor::drainTaggedMidi(
@@ -860,6 +861,9 @@ void MasterpieceProcessor::drainTaggedMidi(
   if (write - midiRead_ > kMidiQueueSize) midiRead_ = write - kMidiQueueSize;
   while (midiRead_ != write) {
     const TaggedMidi& t = midiQueue_[midiRead_ % kMidiQueueSize];
+    // Claimed but not yet written: stop here and take it next block, in
+    // order, rather than reading a half-filled slot.
+    if (t.ready.load(std::memory_order_acquire) != midiRead_ + 1) break;
     ++midiRead_;
     if (t.size <= 0) continue;
     out.emplace_back(t.deviceId, juce::MidiMessage(t.bytes, t.size));

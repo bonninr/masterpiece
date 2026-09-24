@@ -977,6 +977,12 @@ private:
     int deviceId = 0;
     uint8_t bytes[3] = {0, 0, 0};
     int size = 0;
+    // Which write this slot holds, plus one, stored after the bytes: the
+    // reader takes a slot only once this says it is complete. Several
+    // consoles push from their own MIDI threads, and reading a slot between
+    // a writer claiming it and filling it replayed whatever message had
+    // been there a lap of the queue before.
+    std::atomic<uint32_t> ready{0};
   };
   static constexpr int kMidiQueueSize = 2048;
   std::array<TaggedMidi, kMidiQueueSize> midiQueue_{};

@@ -1335,6 +1335,40 @@ public:
   }
 };
 
+// Several consoles push MIDI from their own threads at once. Every press has
+// to reach the audio thread whole and exactly once: a slot read between a
+// writer claiming it and filling it gave a lost or garbled message.
+class MidiQueueThreadsTest final : public mp::test::Test {
+public:
+  MidiQueueThreadsTest()
+    : Test("functional.midi.queue-from-threads", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    // Four consoles, a channel each, 96 keys apiece, all at the same time.
+    std::vector<std::thread> consoles;
+    for (int c = 0; c < 4; ++c)
+      consoles.emplace_back([&proc, c] {
+        for (int note = 16; note < 112; ++note)
+          proc.pushMidi(c + 1, juce::MidiMessage::noteOn(c + 1, note, 0.8f));
+      });
+    for (auto& t : consoles) t.join();
+    for (int i = 0; i < 4; ++i) {
+      buf.clear();
+      proc.processBlock(buf, none);
+    }
+    int arrived = 0;
+    for (int c = 0; c < 4; ++c)
+      for (int note = 16; note < 112; ++note)
+        if (proc.keyboardState().isNoteOn(c + 1, note)) ++arrived;
+    MP_CHECK(arrived == 4 * 96, "every press from every console arrives, got " +
+                                    std::to_string(arrived) + " of 384");
+    proc.releaseResources();
+  }
+};
+
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
   VoiceEngineRenderTest()
@@ -8000,6 +8034,7 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static MidiQueueThreadsTest g_midiQueueThreads;
 static ReleaseIgnoresWindTest g_releaseIgnoresWind;
 static CompactLinkageTest g_compactLinkage;
 static PlayerControlTest g_playerControl;
