@@ -1441,6 +1441,9 @@ public:
     mp::MasterpieceProcessor probe;
     Keep global(probe.globalSettingsFile());
     Keep organ(probe.settingsFileFor(odf));
+    // A clean machine -- a CI runner -- has no settings folder yet, and a
+    // file written into a folder that is not there is silently not written.
+    global.file.getParentDirectory().createDirectory();
 
     global.file.replaceWithText("reopenlast 1\n");
     {
