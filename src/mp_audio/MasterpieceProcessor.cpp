@@ -340,6 +340,7 @@ void MasterpieceProcessor::advanceTremulants(int numFrames) {
 void MasterpieceProcessor::advanceWind(int numFrames) {
   if (windOrder_.empty()) {
     voices_.setWindMods(nullptr, 0);
+    publishWindPressures();
     return;
   }
 
@@ -366,6 +367,20 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
     windMods_[i].pitchRatio = 1.0 + (mod.pitchRatio - 1.0) * d;
   }
   voices_.setWindMods(windMods_.data(), static_cast<int>(windMods_.size()));
+  publishWindPressures();
+}
+
+// Every compartment that says so reports its pressure to a continuous control,
+// which is what a console's wind gauges are driven from. The scale is 63.5 at
+// zero and half an inch of water per step: that is what the sets' own gauge
+// linkages undo, (value - 63.5) * 8 across a needle whose 81 frames run 0 to
+// 20 inches. The next block's propagate carries it to the needle.
+void MasterpieceProcessor::publishWindPressures() {
+  for (const auto& [compartment, control] : windGauges_) {
+    const double v = 63.5 + wind_.pressureFor(compartment) * 0.5;
+    const int next = static_cast<int>(std::lround(std::clamp(v, 0.0, 127.0)));
+    if (controls_.value(control) != next) controls_.setValue(control, next);
+  }
 }
 
 // One mixer bus, summed ADDITIVELY into `dest`. Does not touch the block
@@ -2657,6 +2672,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     windOrder_.push_back(id);
   }
   std::sort(windOrder_.begin(), windOrder_.end());
+  windGauges_.clear();
+  for (const auto& [id, wc] : model_.wind)
+    if (wc.pressureOutputControlId != 0 &&
+        model_.continuousControls.count(wc.pressureOutputControlId) != 0)
+      windGauges_.emplace_back(id, wc.pressureOutputControlId);
+  std::sort(windGauges_.begin(), windGauges_.end());
   for (size_t i = 0; i < windOrder_.size(); ++i)
     windIndexOf_[windOrder_[i]] = static_cast<int>(i);
   windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});

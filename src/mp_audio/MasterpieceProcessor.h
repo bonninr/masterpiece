@@ -807,6 +807,9 @@ private:
   // voice engine each block. Voices carry an index into it.
   std::vector<VoiceEngine::WindMod> windMods_;
   std::vector<Id> windOrder_;
+  // Compartments that report their pressure to a continuous control, and
+  // which control: the console's wind gauges hang off these.
+  std::vector<std::pair<Id, Id>> windGauges_;
   std::unordered_map<Id, int> windIndexOf_;
   // Which windchest each pipe stands on, resolved at load so a note-on does
   // not search for it.
@@ -822,6 +825,8 @@ private:
   // Advance the wind by one block: ask the engine what is drawing air, solve,
   // and hand the result back for the voices to sound through.
   void advanceWind(int numFrames);
+  // Hand each gauge-driving compartment's pressure to its control.
+  void publishWindPressures();
   StageSwitchBank stages_;
   std::vector<StageSwitchBank::Change> stageScratch_;
   // Where every staged control was, so a move can be told from a rest. Only

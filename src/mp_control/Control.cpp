@@ -466,7 +466,7 @@ void ContinuousControlBank::propagate(Id pinned,
       const auto sit = values_.find(l.sourceControlId);
       if (sit == values_.end()) continue;
 
-      const double scaled = sit->second * l.scale + l.offset;
+      const double scaled = l.apply(sit->second);
       const int next = clampToRange(
           dit->second, static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5));
       int& slot = values_[l.destControlId];

@@ -687,6 +687,72 @@ public:
   }
 };
 
+// Compact linkage rows, as the custom-organ template writes them: a wind
+// gauge reads its compartment's pressure control through (value - 63.5) * 8,
+// a reservoir's regulator valve is its extension inverted, and a detune link
+// is (value + 126) / 2. Letters past h are not OdfEdit's, and the increment
+// is added before the coefficient multiplies; either mistake sends every one
+// of these out of range.
+class CompactLinkageTest final : public mp::test::Test {
+public:
+  CompactLinkageTest()
+    : Test("functional.odf.compact-linkage", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o>"
+        "<a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><o><a>702</a><b>Trem</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<o><a>520</a><b>extn</b></o><o><a>522</a><b>valve</b></o>"
+        "<o><a>523</a><b>prs</b></o><o><a>524</a><b>prs ind</b></o>"
+        "<o><a>30</a><b>detune</b></o><o><a>31</a><b>detune s</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+        "<o><a>520</a><b>522</b><j>Y</j><c>regulator valve</c><k>-3.15e+1</k><l>2</l></o>"
+        "<o><a>523</a><b>524</b><c>prs ind</c><k>-6.35e+1</k><l>8</l></o>"
+        "<o><a>30</a><b>31</b><c>detune s</c><d>2</d><h>702</h><i>Y</i>"
+        "<k>1.26e+2</k><l>5e-1</l></o>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.controlLinkages.size() == 3, "every linkage is read");
+    if (m.controlLinkages.size() != 3) return;
+    const auto& valve = m.controlLinkages[0];
+    MP_CHECK(valve.sourceControlId == 520 && valve.destControlId == 522,
+             "a is the source and b the destination");
+    MP_CHECK(valve.invert && valve.conditionSwitchId == 0, "j is the invert flag");
+    MP_CHECK(std::fabs(valve.increment + 31.5) < 1e-9 &&
+                 std::fabs(valve.coefficient - 2.0) < 1e-9,
+             "k is the increment and l the coefficient");
+    const auto& detune = m.controlLinkages[2];
+    MP_CHECK(detune.conditionSwitchId == 702 && detune.conditionWhenEngaged,
+             "h is the condition switch and i its sense");
+    MP_CHECK(!m.controlLinkages[1].conditionWhenEngaged,
+             "an absent sense is 'while disengaged'");
+    MP_CHECK(d.danglingIds.empty(), "a link type is not read as a switch id");
+
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    bank.setValue(523, 73);  // 63.5 + 9.5 inches / 2 -> 9.5 inches, rounded
+    bank.setValue(520, 127); // reservoir full
+    bank.setValue(30, 0);
+    bank.propagate();
+    MP_CHECK(bank.value(524) == 76, "the gauge reads (73 - 63.5) * 8");
+    MP_CHECK(bank.value(522) == 0, "a full reservoir shuts its regulator valve");
+    bank.setValue(520, 0);
+    bank.propagate();
+    MP_CHECK(bank.value(522) == 127, "an empty one opens it");
+    std::unordered_set<mp::Id> sw{702};
+    bank.propagate(0, &sw);
+    MP_CHECK(bank.value(31) == 63, "a detune link centres: (0 + 126) / 2");
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -4688,7 +4754,7 @@ public:
 
     // --- linkages ---
     MP_CHECK(m.controlLinkages.size() == 3, "all linkages parsed");
-    MP_CHECK(std::fabs(m.controlLinkages[0].scale - 0.5) < 1e-9,
+    MP_CHECK(std::fabs(m.controlLinkages[0].coefficient - 0.5) < 1e-9,
              "linkage scaling parsed");
     // Mutually-referencing linkages are ordinary in Hauptwerk and are NOT a
     // fault; only a control wired directly to itself is.
@@ -7799,6 +7865,7 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static CompactLinkageTest g_compactLinkage;
 static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO

@@ -805,7 +805,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     wc.compartmentId = fieldInt(row, "WindCompartmentID", "a", 0);
     if (wc.compartmentId == 0) return;
     wc.name = field(row, "Name", "b");
-    wc.infiniteVolume = fieldBool(row, "InfiniteVolume", "c", true);
+    // Absent is finite. Compact files write Y for the room and the blower and
+    // nothing for the reservoirs and chests; reading absent as infinite gave
+    // every compact organ a wind system with nothing in it to solve.
+    wc.infiniteVolume = fieldBool(row, "InfiniteVolume", "c", false);
     wc.volumeM3 = fieldDouble(row, "StandardVolumeMetresCubed", "d", 0.0);
     wc.defaultPressureInches =
         fieldDouble(row, "DefaultAirPressureInches", "e", 0.0);
@@ -813,15 +816,15 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldInt(row, "PressureOutputContinuousControlID", "f", 0);
     wc.hasBellows = fieldBool(row, "Bellows_HasBellows", "g", false);
     wc.bellowsMassKg = fieldDouble(
-        row, "Bellows_MassOfMovingBoardGivingRiseToInertiaKg", nullptr, 0.0);
+        row, "Bellows_MassOfMovingBoardGivingRiseToInertiaKg", "p", 0.0);
     wc.bellowsDamping =
-        fieldDouble(row, "Bellows_PositiveDampingCoefficient", nullptr, 0.0);
+        fieldDouble(row, "Bellows_PositiveDampingCoefficient", "r", 0.0);
     wc.bellowsWidthM =
-        fieldDouble(row, "Bellows_FrameBaseWidthMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_FrameBaseWidthMetres", "h", 0.0);
     wc.bellowsLengthM =
-        fieldDouble(row, "Bellows_FrameBaseLengthMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_FrameBaseLengthMetres", "i", 0.0);
     wc.bellowsExtensionM =
-        fieldDouble(row, "Bellows_MaximumExtensionMetres", nullptr, 0.0);
+        fieldDouble(row, "Bellows_MaximumExtensionMetres", "j", 0.0);
     // A finite compartment with no volume cannot hold air; treating it as
     // finite would divide by zero in the solver.
     if (!wc.infiniteVolume && wc.volumeM3 <= 0.0) wc.infiniteVolume = true;
@@ -1165,22 +1168,24 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // ---- M2.4: ContinuousControlLinkage (one control driving another) ----
+  // The compact letters are not OdfEdit's for this table past h: real files
+  // carry i only alongside a condition switch (its sense), j alone (invert),
+  // and numbers in k and l -- -63.5 and 8 on every wind-gauge link, which
+  // cannot be an invert flag. k is the increment and l the coefficient.
   forEachRow(odfRoot, "ContinuousControlLinkage", [&](pugi::xml_node row) {
     ContinuousControlLinkage l;
-    l.linkageId = fieldInt(row, "ContinuousControlLinkageID", "a", 0);
-    l.sourceControlId = fieldInt(row, "SourceControlID", "b", 0);
-    l.destControlId = fieldInt(row, "DestControlID", "c", 0);
-    l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "d", 0);
+    l.linkageId = fieldInt(row, "ContinuousControlLinkageID", nullptr, 0);
+    l.sourceControlId = fieldInt(row, "SourceControlID", "a", 0);
+    l.destControlId = fieldInt(row, "DestControlID", "b", 0);
+    l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "h", 0);
+    // Absent is "while disengaged": compact files write i only as Y, and
+    // only on linkages that have a condition. Long-form files always spell
+    // it out, so the default only ever applies to compact ones.
     l.conditionWhenEngaged =
-        fieldBool(row, "ConditionSwitchLinkIfEngaged", nullptr, true);
-    l.scale = fieldDouble(row, "SourceControlValueCoefficient", "e", 1.0);
-    l.offset = fieldInt(row, "SourceControlValueIncrement", "f", 0);
-    if (fieldBool(row, "InvertSourceControlValue", nullptr, false)) {
-      // Invert about the 0..127 range rather than negating, which would drive
-      // the destination out of range.
-      l.scale = -l.scale;
-      l.offset += 127;
-    }
+        fieldBool(row, "ConditionSwitchLinkIfEngaged", "i", false);
+    l.invert = fieldBool(row, "InvertSourceControlValue", "j", false);
+    l.increment = fieldDouble(row, "SourceControlValueIncrement", "k", 0.0);
+    l.coefficient = fieldDouble(row, "SourceControlValueCoefficient", "l", 1.0);
     for (Id ref : {l.sourceControlId, l.destControlId})
       if (ref != 0 && outModel.continuousControls.count(ref) == 0)
         outDiag.danglingIds.push_back(ref);
