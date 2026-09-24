@@ -124,11 +124,32 @@ The same program, reading different libraries.
 | **Oloron-Sainte-Marie** | **Bégard** |
 | ![Oloron-Sainte-Marie](screenshots/OloronSainteMarie.jpg) | ![Bégard](screenshots/Begard.jpg) |
 | demonstration set · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/oloron-sainte-marie/) | demonstration set · [sample set by Piotr Grabowski](https://piotrgrabowski.pl/begard/) |
+| **Nagyrákos** — an Angster organ | **Hungarian village organs** — the organs of two village churches in one set |
+| ![Nagyrákos](screenshots/AngsterNagyrakos.jpg) | ![Hungarian village organs](screenshots/HungarianVillage.jpg) |
+| Angster, 1938 · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Angster_Nagyrakos.php) | composite set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Hungarian_village.php) |
+| **Zalalövő** — a modern baroque organ | **Császár** — a Luber organ |
+| ![Zalalövő](screenshots/Zalalovo.jpg) | ![Császár](screenshots/LuberCsaszar.jpg) |
+| Aquincum · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Zalalovo.php) | F. X. Luber, 1793 · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Luber_Csaszar.php) |
+| **Vasvár, Dominican church** | **Kézdimartonfalva** — a Dutch harmonium |
+| ![Vasvár, Dominican church](screenshots/Vasvar.jpg) | ![Kézdimartonfalva](screenshots/DutchHarmonium.jpg) |
+| demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Vasvar.php) | harmonium · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Dutch_harmonium.php) |
+| **Szombathely** — an Eule organ | **Hajós** — an Angster organ |
+| ![Szombathely](screenshots/EuleSzombathely.jpg) | ![Hajós](screenshots/AngsterHajos.jpg) |
+| Eule · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Eule_Szombathely.php) | Angster · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Angster_Hajos.php) |
+| **Székesfehérvár, Franciscan church** — a Mauracher organ | **Székesfehérvár, Cistercian church** — an Angster organ |
+| ![Székesfehérvár, Franciscan church](screenshots/MauracherSzekesfehervar.jpg) | ![Székesfehérvár, Cistercian church](screenshots/AngsterCistercian.jpg) |
+| Mauracher · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Mauracher_Fehervar.php) | Angster · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Angster__Cistercian.php) |
+| **Ják Abbey** — an Angster organ | **Monor, Reformed church** — a Rieger organ |
+| ![Ják Abbey](screenshots/AngsterJak.jpg) | ![Monor, Reformed church](screenshots/RiegerMonor.jpg) |
+| Angster, 1902 · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Angster_Jak.php) | Rieger · demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Rieger_Monor.php) |
+| **Budapest, Church of the Holy Spirit** |  |
+| ![Budapest, Church of the Holy Spirit](screenshots/HolySpiritBudapest.jpg) |  |
+| demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Holy_Spirit.php) |  |
 
 Each organ above is a freely published sample library, separate from this
-repository. Twenty-three of the twenty-four are produced by [Piotr
-Grabowski](https://piotrgrabowski.pl/); the other by [Augustine's Virtual
-Organs](https://hauptwerk-augustine.info/). Most of the newer ones are his
+repository. Twenty-three of the thirty-seven are produced by [Piotr
+Grabowski](https://piotrgrabowski.pl/); the other fourteen by [Augustine's
+Virtual Organs](https://hauptwerk-augustine.info/). Most of the newer ones are
 demonstration sets, which include only some of each organ's stops. Full
 credits: [ATTRIBUTION.md](ATTRIBUTION.md).
 
