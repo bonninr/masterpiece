@@ -1616,11 +1616,16 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     t.weightCode = fieldInt(row, "Font_WeightCode", "g", 2);
     t.italic = fieldBool(row, "Font_Italic", "h", false);
     t.underline = fieldBool(row, "Font_Underline", "i", false);
-    t.red = fieldInt(row, "Colour_Red", "j", 0);
-    t.green = fieldInt(row, "Colour_Green", "k", 0);
-    t.blue = fieldInt(row, "Colour_Blue", "l", 0);
+    // Absent fields are at their defaults, and the defaults are white and
+    // centred: compact files omit a default and write everything else, so a
+    // style for dark red spells out <k>0</k><l>0</l> and one that hangs its
+    // text from the top spells out <n>1</n>. "Tab11Black/WhtTxt" names no
+    // colour at all, and neither do the labels painted on dark stop tabs.
+    t.red = fieldInt(row, "Colour_Red", "j", 255);
+    t.green = fieldInt(row, "Colour_Green", "k", 255);
+    t.blue = fieldInt(row, "Colour_Blue", "l", 255);
     t.hAlignCode = fieldInt(row, "HorizontalAlignmentCode", "m", 0);
-    t.vAlignCode = fieldInt(row, "VerticalAlignmentCode", "n", 1);
+    t.vAlignCode = fieldInt(row, "VerticalAlignmentCode", "n", 0);
     outModel.textStyles[t.styleId] = std::move(t);
   });
 

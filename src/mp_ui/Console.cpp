@@ -281,8 +281,8 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
   for (const auto& t : pageIt->second.texts) {
     if (t.text.empty()) continue;
 
-    // A missing style is not a missing label: Hauptwerk's defaults are
-    // Arial 10, normal weight, black, centred across its position.
+    // A missing style is not a missing label: the defaults are Arial 10,
+    // normal weight, white, centred.
     TextStyle style;
     if (const auto sit = model.textStyles.find(t.styleId);
         sit != model.textStyles.end())
@@ -325,19 +325,25 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
 
     const bool centred = style.hAlignCode == 0 || style.hAlignCode == 3;
     const bool rightAligned = style.hAlignCode == 2;
-    // XPosPixels and YPosPixels are the top-left corner of the text's box,
-    // not the middle of the text: the alignment codes place the string INSIDE
-    // that box. Treating the position as a centre anchor pulled every label
-    // half its own width to the left, which is how this was first written.
+    // With a box, XPosPixels and YPosPixels are its top-left corner and the
+    // alignment codes place the string INSIDE it. Treating that position as a
+    // centre anchor pulled every boxed label half its own width to the left,
+    // which is how this was first written.
     //
-    // The box is declared only for wrapped text, so when there is none the
-    // string is measured and the alignment has nothing to move it within.
+    // Without a box the position is the anchor itself: centred text sits
+    // astride it, right-aligned text ends on it. Hajós centres "GREAT" on
+    // x=508, the middle of its 252..764 manual, and "Exp.1" on the middle of
+    // its shoe; hung from their left edge they sat half a word to the right.
     int w = t.boxWidthPx;
     int h = t.boxHeightPx;
     item.wrap = w > 0 && h > 0;
     if (!item.wrap) {
       w = juce::GlyphArrangement::getStringWidthInt(item.font, item.text) + 2;
       h = static_cast<int>(std::ceil(item.font.getHeight()));
+      if (centred) x -= w / 2;
+      else if (rightAligned) x -= w;
+      if (style.vAlignCode == 0) y -= h / 2;
+      else if (style.vAlignCode == 2) y -= h;
     }
 
     const int horizontal = centred ? juce::Justification::horizontallyCentred

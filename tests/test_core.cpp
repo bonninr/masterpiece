@@ -6673,7 +6673,9 @@ public:
                  "<Colour_Blue>120</Colour_Blue>"
                  "<HorizontalAlignmentCode>1</HorizontalAlignmentCode>"
                  "<VerticalAlignmentCode>2</VerticalAlignmentCode>"
-                 "</TextStyle></ObjectList>"
+                 "</TextStyle>"
+                 "<TextStyle><StyleID>6</StyleID><Name>Tab11Black/WhtTxt</Name>"
+                 "<Colour_Red>254</Colour_Red></TextStyle></ObjectList>"
                  "<ObjectList ObjectType=\"TextInstance\">"
                  "<TextInstance><TextInstanceID>7</TextInstanceID>"
                  "<TextStyleID>5</TextStyleID><Text>Tibia Clausa 8</Text>"
@@ -6710,14 +6712,22 @@ public:
     MP_CHECK(st->second.hAlignCode == 1 && st->second.vAlignCode == 2,
              "alignment codes read");
 
-    // A label with no style of its own is still drawn: Hauptwerk's defaults
-    // are Arial 10, black, centred across its position and hung from its top.
+    // What a style leaves out is at its default: white, centred both ways.
+    // A file writes zeros when it means them, so an absent channel is full.
+    const auto sparse = m.textStyles.find(6);
+    MP_CHECK(sparse != m.textStyles.end() && sparse->second.red == 254 &&
+                 sparse->second.green == 255 && sparse->second.blue == 255,
+             "an absent colour channel is at full, not zero");
+    MP_CHECK(sparse->second.hAlignCode == 0 && sparse->second.vAlignCode == 0,
+             "an absent alignment is centred");
+
+    // A label with no style of its own is still drawn, with those defaults.
     const auto& plain = page->second.texts.back();
     MP_CHECK(plain.styleId == 0 && plain.attachedInstanceId == 0,
              "an unattached, unstyled label is loaded as such");
     mp::TextStyle dflt;
     MP_CHECK(dflt.sizePx == 10 && dflt.weightCode == 2 && dflt.hAlignCode == 0 &&
-                 dflt.vAlignCode == 1,
+                 dflt.vAlignCode == 0 && dflt.red == 255,
              "the defaults are Hauptwerk's own");
   }
 };

@@ -729,12 +729,14 @@ struct TextStyle {
   int sizePx = 10;
   int weightCode = 2; // 1 light, 2 normal, 3 bold
   bool italic = false, underline = false;
-  int red = 0, green = 0, blue = 0;
-  // 0 or 3 centre, 1 left, 2 right. The position is the anchor, not the
-  // corner: centred text sits astride its XPosPixels.
+  // White unless the style says otherwise: see the loader.
+  int red = 255, green = 255, blue = 255;
+  // 0 or 3 centre, 1 left, 2 right. Inside the text's box when it has one;
+  // without one the position is the anchor, and centred text sits astride
+  // its XPosPixels.
   int hAlignCode = 0;
   // 0 centre, 1 top, 2 bottom.
-  int vAlignCode = 1;
+  int vAlignCode = 0;
 };
 
 struct TextInstance {
