@@ -160,8 +160,65 @@ def bevel(w, h, fill, light, dark, radius, name):
     save(img, w, h, name)
 
 
+# --- round buttons and drawknobs --------------------------------------------
+# The sets write their labels over these: black on the ivory ones, light grey
+# on the wooden ones, so the faces are chosen for that lettering to read.
+IVORY = ((246, 240, 224, 255), (206, 196, 172, 255))  # face, shadow
+IVORY_ON = ((250, 224, 150, 255), (196, 160, 80, 255))
+WALNUT = ((92, 62, 38, 255), (46, 30, 18, 255))
+WALNUT_ON = ((128, 86, 50, 255), (60, 38, 20, 255))
+
+
+def round_button(w, h, face, rim, pressed, name, ring=None):
+    img, d = canvas(w, h)
+    s = SS
+    pad = 1 * s
+    box = [pad, pad, w * s - 1 - pad, h * s - 1 - pad]
+    d.ellipse(box, fill=rim)
+    inset = max(1, round(min(w, h) * 0.08)) * s
+    # A pressed button's light falls on its lower edge, a raised one's top.
+    shift = inset // 3 if pressed else -(inset // 3)
+    d.ellipse([box[0] + inset, box[1] + inset + shift,
+               box[2] - inset, box[3] - inset + shift], fill=face)
+    if ring is not None:
+        d.ellipse([box[0] + inset // 2, box[1] + inset // 2,
+                   box[2] - inset // 2, box[3] - inset // 2], outline=ring, width=2 * s)
+    save(img, w, h, name)
+
+
+def drawknob(size, on, name):
+    # A turned wooden knob seen end-on. Drawn out, it stands proud: a wider
+    # shadow ring and a lighter face.
+    img, d = canvas(size, size)
+    s = SS
+    c = size * s / 2
+    r = (size / 2 - 2) * s
+    d.ellipse([c - r, c - r, c + r, c + r], fill=(30, 20, 12, 255))
+    shank = r * (0.94 if on else 0.9)
+    d.ellipse([c - shank, c - shank, c + shank, c + shank],
+              fill=(118, 80, 46, 255) if on else (84, 56, 34, 255))
+    face = r * 0.78
+    d.ellipse([c - face, c - face, c + face, c + face],
+              fill=WALNUT_ON[0] if on else WALNUT[0])
+    d.ellipse([c - face, c - face, c + face, c + face], outline=(170, 130, 70, 255), width=2 * s)
+    save(img, size, size, name)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
+    for base, w, h in (('Button01', 31, 30), ('Button03', 15, 15)):
+        round_button(w, h, IVORY[0], IVORY[1], False, base)
+        round_button(w, h, IVORY_ON[0], IVORY_ON[1], True, base + 'In')
+    round_button(47, 47, IVORY[0], IVORY[1], False, 'Button04-White-Large-Off')
+    round_button(47, 47, IVORY_ON[0], IVORY_ON[1], True, 'Button04-White-Large-On')
+    round_button(47, 47, WALNUT[0], WALNUT[1], False, 'Button06-Wood-Large-Off',
+                 ring=(150, 110, 60, 255))
+    round_button(47, 47, WALNUT_ON[0], WALNUT_ON[1], True, 'Button06-Wood-Large-On',
+                 ring=(236, 190, 90, 255))
+    drawknob(85, False, 'Stop06-Drawknob-Wood-Large-Off')
+    drawknob(85, True, 'Stop06-Drawknob-Wood-Large-On')
+    bevel(78, 22, (240, 234, 218, 255), (252, 250, 242, 255), (130, 120, 100, 255), 3,
+          'Label01')
     dial('WindPressureDialGauge', scale=True)
     dial('WindReserveGauge', scale=False)
     for q in range(81):
