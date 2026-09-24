@@ -5,6 +5,7 @@ juce_add_gui_app(MasterpieceApp
   BUNDLE_ID "org.masterpiece.player"
   ICON_BIG "${CMAKE_SOURCE_DIR}/packaging/masterpiece.png"
   ICON_SMALL ""
+  ICON_COMPOSER_BUNDLE "${CMAKE_SOURCE_DIR}/packaging/masterpiece.icon"
 )
 
 target_sources(MasterpieceApp PRIVATE Main.cpp)
