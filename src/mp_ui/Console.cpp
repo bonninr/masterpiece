@@ -52,6 +52,26 @@ juce::Image woodTileFor(const std::string& name) {
   return {};
 }
 
+// A stand-in for one of the standard components by its file name, without
+// directory or extension and ignoring case: "HauptwerkStandardImages/
+// WindDialNeedle07.25.bmp" is resources/standard/WindDialNeedle07.25.png.
+juce::Image standardStandIn(const std::string& bitmapFile) {
+  const juce::String wanted = juce::String(bitmapFile)
+                                  .replaceCharacter('\\', '/')
+                                  .fromLastOccurrenceOf("/", false, false)
+                                  .upToLastOccurrenceOf(".", false, false);
+  if (wanted.isEmpty()) return {};
+  for (int i = 0; i < MpAssets::namedResourceListSize; ++i) {
+    const juce::String original(MpAssets::originalFilenames[i]);
+    if (!original.upToLastOccurrenceOf(".", false, false).equalsIgnoreCase(wanted))
+      continue;
+    int size = 0;
+    if (const char* data = MpAssets::getNamedResource(MpAssets::namedResourceList[i], size))
+      return juce::ImageFileFormat::loadFrom(data, static_cast<size_t>(size));
+  }
+  return {};
+}
+
 // Windows-authored sets record whatever case the author used; Linux does not
 // forgive it. Same fallback the sample loader needs, for the same reason.
 std::filesystem::path resolveIgnoringCase(const std::filesystem::path& wanted) {
@@ -261,8 +281,12 @@ void ConsoleView::rebuild() {
   setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
 
   // Only poll while there is something on screen whose picture can change
-  // under the player's hands.
-  if (!keys_.empty())
+  // under the player's hands -- or by itself: a wind gauge moves with the
+  // pressure, and a page of them has no keys.
+  const bool anyControl = std::any_of(items_.begin(), items_.end(), [](const Item& i) {
+    return i.switchId != 0 || i.controlId != 0;
+  });
+  if (!keys_.empty() || anyControl)
     startTimerHz(30);
   else
     stopTimer();
@@ -617,6 +641,13 @@ const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
       }
     }
   }
+
+  // Anything else from those components -- dials, needles, expression shoes,
+  // list items -- has a stand-in of the same name, drawn by
+  // tools/gen-standard.py, so the controls the set wired to them can be seen
+  // moving and the labels written for them have something to sit on.
+  if (!img.isValid() && set.packageId > 0 && set.packageId <= 10)
+    img = standardStandIn(element->bitmapFile);
 
   // Wood the set expected from Hauptwerk's own components and could not find:
   // one of ours instead, drawn as a repeating fill, so the page keeps its
