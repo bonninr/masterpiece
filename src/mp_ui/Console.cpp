@@ -461,6 +461,24 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
           // The manual is still fully described -- the spacings say how wide
           // a key is -- so draw it from those numbers rather than leaving a
           // hole where the keyboard should be.
+          // The shape's clickable area, when it has one, is the key itself:
+          // 12x52 for a standard manual natural, 6x28 for its sharp, 9x42 for
+          // the harmonium's small pedals. Guessing from the spacing drew
+          // those pedals 90 pixels tall, over the pistons beneath them.
+          if ((w <= 0 || h <= 0) && setIt->second.clickRightPx > 0 &&
+              setIt->second.clickBottomPx > 0) {
+            item.synthetic = true;
+            w = setIt->second.clickRightPx;
+            h = setIt->second.clickBottomPx;
+            // Pedal sets give a sharp the natural's whole length to click, but
+            // it stands only on the back of the board; drawn full length the
+            // pedalboard reads as a row of black and white stripes.
+            if (item.sharp) {
+              const auto nat = model.imageSets.find(keyShapeFor(ks, 0, false, false));
+              if (nat != model.imageSets.end() && nat->second.clickBottomPx == h)
+                h = (h * 3) / 5;
+            }
+          }
           if (w <= 0 || h <= 0) {
             item.synthetic = true;
             const int unit = ks.spacingNaturalToNatural > 0

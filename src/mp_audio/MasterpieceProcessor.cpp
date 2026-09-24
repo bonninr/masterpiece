@@ -2469,6 +2469,26 @@ void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
   setControlValue(controlId, value);
 }
 
+Id MasterpieceProcessor::playerControlFor(Id controlId) const {
+  Id at = controlId;
+  std::unordered_set<Id> seen{at};
+  for (;;) {
+    // Prefer a feeder the player can click, since that is the one drawn on
+    // the console; otherwise any unconditional one will do.
+    Id next = 0;
+    for (const auto& l : model_.controlLinkages) {
+      if (l.destControlId != at || l.conditionSwitchId != 0 || l.sourceControlId == 0)
+        continue;
+      const auto cit = model_.continuousControls.find(l.sourceControlId);
+      const bool clickable = cit != model_.continuousControls.end() && cit->second.clickable;
+      if (next == 0 || clickable) next = l.sourceControlId;
+      if (clickable) break;
+    }
+    if (next == 0 || !seen.insert(next).second) return at;
+    at = next;
+  }
+}
+
 namespace {
 // Phase timing for a load. A load is the one operation a player actually
 // waits on, and "it took a while" is not a diagnosis: on a slow disk the

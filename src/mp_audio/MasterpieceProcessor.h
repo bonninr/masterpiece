@@ -218,6 +218,12 @@ public:
   // Console input: move a swell shoe / crescendo wheel. Safe to call from the
   // message thread; the audio thread reads the resulting positions per block.
   void setContinuousControl(Id controlId, int value);
+  // The control a PLAYER moves to set this one: follow the unconditional
+  // linkages that feed it upstream to one nothing feeds. An enclosure's
+  // shutters are often driven from its pedal, and the pedal from the shoe
+  // drawn on the console; setting the shutters directly is undone by the
+  // next propagate, and leaves both drawn shoes where they were.
+  Id playerControlFor(Id controlId) const;
 
   // Draw or retire a stop. Which stops are engaged decides which pipes a key
   // press sounds, so this is the other half of the console.

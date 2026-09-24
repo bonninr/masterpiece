@@ -772,6 +772,59 @@ public:
   }
 };
 
+// The Swell panel moves the control a player moves. On the custom-organ
+// template an enclosure's shutters (541) follow its pedal (210), which follows
+// the shoe drawn on the console (542); setting the shutters directly was
+// undone on the next block, so the panel did nothing and no shoe moved.
+class PlayerControlTest final : public mp::test::Test {
+public:
+  PlayerControlTest()
+    : Test("functional.control.player-control", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-player-control");
+    dir.getChildFile("OrganDefinitions").createDirectory();
+    const juce::File odf =
+        dir.getChildFile("OrganDefinitions").getChildFile("pc.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<o><a>210</a><b>Exp.1</b><f>127</f><h>Y</h></o>"
+        "<o><a>541</a><b>shutters</b></o>"
+        "<o><a>542</a><b>shoe in</b><d>Y</d><f>127</f><h>Y</h><i>Y</i><j>183</j></o>"
+        "<o><a>543</a><b>shoe out</b><f>127</f></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Enclosure\"><o><a>210</a><b>Exp.1</b><c>541</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+        "<o><a>542</a><b>210</b><c>in</c></o>"
+        "<o><a>210</a><b>543</b><c>out</c></o>"
+        "<o><a>210</a><b>541</b><c>shutters</c><d>3</d></o>"
+        "</ObjectList></Hauptwerk>");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool hadSettings = settings.existsAsFile();
+    auto r = proc.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+    MP_CHECK(r.ok, "the organ loads");
+    const auto& cc = proc.organModel().continuousControls;
+    MP_CHECK(cc.count(542) && cc.at(542).defaultValue == 127 &&
+                 cc.at(542).imageSetInstanceId == 183 && cc.at(542).clickable &&
+                 cc.at(542).clickingHigherIncreasesValue,
+             "a compact control reads its default (f), picture (j) and click flags (h, i)");
+    MP_CHECK(cc.count(543) && !cc.at(543).clickable,
+             "a compact control without h is not clickable");
+    MP_CHECK(proc.playerControlFor(541) == 542,
+             "the shutters are moved from the shoe drawn on the console");
+    MP_CHECK(proc.playerControlFor(542) == 542, "the shoe is its own player control");
+    proc.setContinuousControl(542, 40);
+    MP_CHECK(proc.continuousControlValue(541) == 40 &&
+                 proc.continuousControlValue(543) == 40,
+             "moving it moves the shutters and the other drawn shoe");
+    if (!hadSettings) settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
   EncryptedDetectionTest()
@@ -7885,6 +7938,7 @@ static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
 static CompactLinkageTest g_compactLinkage;
+static PlayerControlTest g_playerControl;
 static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO

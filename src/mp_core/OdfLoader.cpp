@@ -456,26 +456,26 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     PipeLayer layer;
     layer.layerId = layerId;
     layer.gainDb = fieldDouble(row, "AmpLvl_LevelAdjustDecibels", "h", 0.0);
-    layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o", 0);
-    layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p", 0);
+    layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o1", 0);
+    layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p1", 0);
     // How the organ's own level sliders reach this layer. Every layer of a
     // real set names one.
     layer.ampScalingControlId =
-        fieldInt(row, "AmpLvl_ScalingContinuousControlID", nullptr, 0);
+        fieldInt(row, "AmpLvl_ScalingContinuousControlID", "s", 0);
     layer.pitchControlId =
-        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", nullptr, 0);
+        fieldInt(row, "PitchLvl_IncrementingContinuousControlID", "a1", 0);
     layer.pitchSensitivityHzPerUnit = fieldDouble(
-        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", nullptr, 0.0);
+        row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", "b1", 0.0);
     // How hard the key is struck reaches the pipe's level, and how far this
     // layer trims the chest's tremulant depth. All four are stated per layer
     // and two thirds of the corpus fills them; unread they made every note
     // one level and every stop on a tremmed chest wobble alike.
     layer.velSensMaxAttenDb = fieldDouble(
-        row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", nullptr, 0.0);
+        row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", "i", 0.0);
     layer.invertVelocitySens =
-        fieldBool(row, "AmpLvl_InvertVelocitySensitivity", nullptr, false);
+        fieldBool(row, "AmpLvl_InvertVelocitySensitivity", "j", false);
     layer.tremAmpDepthAdjustDb = fieldDouble(
-        row, "AmpLvl_TremulantModDepthAdjustDecibels", nullptr, 0.0);
+        row, "AmpLvl_TremulantModDepthAdjustDecibels", "p", 0.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", nullptr, 100.0);
     pipeIt->second->layers.push_back(std::move(layer));
@@ -1084,7 +1084,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // The only code on the row is the default console/MIDI assignment, and it
     // is normally empty — HW controls are plain 0..127 with no declared range.
     c.typeCode = fieldInt(row, "DefaultInputOutputContinuousCtrlAsgnCode", "c", 0);
-    c.defaultValue = fieldInt(row, "DefaultValue", "d", 0);
+    c.defaultValue = fieldInt(row, "DefaultValue", "f", 0);
     c.minValue = 0;
     c.maxValue = 127;
     // ClickingHigherIncreasesValue is about mouse direction on the console
@@ -1096,12 +1096,19 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // What makes a control something a player can move rather than a number
     // the organ keeps to itself. Only the drawn ones have an instance: Nancy
     // declares 1420 controls and draws 55.
-    c.imageSetInstanceId = fieldInt(row, "ImageSetInstanceID", nullptr, 0);
-    c.clickable = fieldBool(row, "Clickable", nullptr, true);
+    //
+    // Compact rows had none of these letters, and read DefaultValue from d,
+    // which is AccessibleForInput: no compact organ's shoe was tied to its
+    // picture, so none could be dragged or seen to move. A compact file
+    // writes h and i only as Y, so there absent means no; long-form files
+    // keep the old default.
+    const bool compactRow = std::string(row.name()) == "o";
+    c.imageSetInstanceId = fieldInt(row, "ImageSetInstanceID", "j", 0);
+    c.clickable = fieldBool(row, "Clickable", "h", !compactRow);
     c.clickingHigherIncreasesValue =
-        fieldBool(row, "ClickingHigherIncreasesValue", nullptr, true);
+        fieldBool(row, "ClickingHigherIncreasesValue", "i", !compactRow);
     c.rememberState =
-        fieldBool(row, "RememberStateFromLastLoad", nullptr, false);
+        fieldBool(row, "RememberStateFromLastLoad", "g", false);
     if (c.controlId == 0) return;
     if (c.minValue > c.maxValue) {
       outDiag.warnings.emplace_back(
@@ -1117,11 +1124,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // Keyed by image set rather than by control, so a hundred identical sliders
   // share one ladder.
   forEachRow(odfRoot, "ContinuousControlImageSetStage", [&](pugi::xml_node row) {
-    const Id setId = fieldInt(row, "ImageSetID", nullptr, 0);
+    const Id setId = fieldInt(row, "ImageSetID", "a", 0);
     if (setId == 0) return;
     ContinuousControlImageStage s;
-    s.highestValue = fieldInt(row, "HighestContinuousControlValue", nullptr, 0);
-    s.imageIndex = fieldInt(row, "ImageSetIndex", nullptr, 1);
+    s.highestValue = fieldInt(row, "HighestContinuousControlValue", "b", 0);
+    s.imageIndex = fieldInt(row, "ImageSetIndex", "c", 1);
     outModel.continuousControlStages[setId].push_back(s);
   });
   // The rows do NOT arrive in value order — a real set has the lowest band
@@ -1142,20 +1149,20 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // on a set's own settings page moves a number that reaches no pipe.
   forEachRow(odfRoot, "ContinuousControlDoubleLinkage", [&](pugi::xml_node row) {
     ContinuousControlDoubleLinkage d;
-    d.destControlId = fieldInt(row, "DestControl_ID", nullptr, 0);
-    d.firstControlId = fieldInt(row, "FirstSourceControl_ID", nullptr, 0);
-    d.secondControlId = fieldInt(row, "SecondSourceControl_ID", nullptr, 0);
+    d.destControlId = fieldInt(row, "DestControl_ID", "i", 0);
+    d.firstControlId = fieldInt(row, "FirstSourceControl_ID", "c", 0);
+    d.secondControlId = fieldInt(row, "SecondSourceControl_ID", "f", 0);
     if (d.destControlId == 0 || d.firstControlId == 0 || d.secondControlId == 0)
       return;
-    d.operationCode = fieldInt(row, "BinaryOperationCode", nullptr, 0);
-    d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", nullptr, 1.0);
-    d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", nullptr, 0.0);
-    d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", nullptr, 1.0);
-    d.secondIncrement = fieldDouble(row, "SecondSourceControl_Increment", nullptr, 0.0);
+    d.operationCode = fieldInt(row, "BinaryOperationCode", "b", 0);
+    d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", "e", 1.0);
+    d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", "d", 0.0);
+    d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", "h", 1.0);
+    d.secondIncrement = fieldDouble(row, "SecondSourceControl_Increment", "g", 0.0);
     // The coefficient is routinely absent, and 1.0 is the identity that means
     // "no renormalisation" — which is right for an add and wrong for nothing.
-    d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", nullptr, 1.0);
-    d.destIncrement = fieldDouble(row, "DestControl_Increment", nullptr, 0.0);
+    d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", "k", 1.0);
+    d.destIncrement = fieldDouble(row, "DestControl_Increment", "j", 0.0);
 
     if (d.operationCode < 1 || d.operationCode > 3) {
       outDiag.warnings.emplace_back(
