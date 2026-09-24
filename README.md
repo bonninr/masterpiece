@@ -4,6 +4,8 @@
 
 ### A cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/openpipesorg)
+
 https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 
 <!-- hero: the demonstration clip goes on the next line, as a github.com/user-attachments URL -->
