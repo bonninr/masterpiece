@@ -414,7 +414,7 @@ public:
     // from a script rather than from the settings page. All three apply to
     // the NEXT load, which is why they are read before loadOrgan below.
     //
-    //   --storage int24|int16    what a resident frame costs
+    //   --storage int24|int16 what a resident frame costs
     //   --load-mono on           fold a stereo set to one channel
     //   --load-rate 48000        convert as it loads (0 = as recorded)
     //   --cache single|off       keep the decoded samples for the next load
@@ -654,7 +654,7 @@ private:
       panel->setSize(560, 520);
       // Opening the organ is the application's business: the file dialog and
       // what happens after a load both live out here.
-      panel->onOpenOrgan = [this] { editor_->chooseAndLoadOrgan(); };
+      panel->onOpenOrgan = [this] { editor_->showOrganDialog(); };
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "Welcome to Masterpiece";

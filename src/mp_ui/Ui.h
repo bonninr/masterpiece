@@ -87,7 +87,7 @@ private:
   MasterpieceProcessor& proc_;
   // Terse on purpose: everything the console offers has to share one row, and
   // a slider that reads out in dB does not also need a label saying "Volume".
-  juce::TextButton load_{"Open"};
+  juce::TextButton load_{"Organs"};
   juce::TextButton audio_{"Audio"};
   juce::ToggleButton simple_{"No DSP"};
   LevelMeter meter_;
@@ -111,6 +111,9 @@ public:
   // draws the console without reading any audio — see
   // MasterpieceProcessor::loadOrgan.
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
+  void unloadOrgan();
+  // Show the Organs dialog (installed organs list, ODF picker, package installer).
+  void showOrganDialog();
   // Ask for an organ file and load it. Shared with the first-run wizard.
   void chooseAndLoadOrgan();
   // Show one of the organ's console pages, counting from 1. A set with jambs

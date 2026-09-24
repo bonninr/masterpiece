@@ -46,6 +46,10 @@ if(WIN32)
   # a resource, which install(TARGETS) insists on a destination for. The icon
   # is already inside the executable.
   install(PROGRAMS "$<TARGET_FILE:MasterpieceApp>" DESTINATION bin COMPONENT app)
+  find_program(UNRAR_EXECUTABLE NAMES unrar.exe unrar PATHS "C:/ProgramData/chocolatey/bin" "${CMAKE_BINARY_DIR}")
+  if(UNRAR_EXECUTABLE)
+    install(PROGRAMS "${UNRAR_EXECUTABLE}" DESTINATION bin COMPONENT app)
+  endif()
 
   set(CPACK_GENERATOR "NSIS")
   set(CPACK_PACKAGE_FILE_NAME "masterpiece-windows-setup")
@@ -103,6 +107,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # Lower case on the command line, as every other program there is.
   install(PROGRAMS "$<TARGET_FILE:MasterpieceApp>"
           DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME masterpiece COMPONENT app)
+  find_program(UNRAR_EXECUTABLE NAMES unrar PATHS "/usr/bin" "/usr/local/bin" "${CMAKE_BINARY_DIR}")
+  if(UNRAR_EXECUTABLE)
+    install(PROGRAMS "${UNRAR_EXECUTABLE}" DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
+  endif()
   install(FILES "${_mp_pkg_dir}/masterpiece.desktop"
           DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
   install(FILES "${_mp_pkg_dir}/masterpiece.png"

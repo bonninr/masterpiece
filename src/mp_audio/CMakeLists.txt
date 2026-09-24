@@ -25,6 +25,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/LoadingDialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ManualDialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ManualDialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/OrganDialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/OrganDialog.cpp
 )
 target_include_directories(mp_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_audio PUBLIC cxx_std_20)

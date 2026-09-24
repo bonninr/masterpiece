@@ -116,7 +116,9 @@ jobs:
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
-        run: choco install ninja --no-progress -y
+        run: |
+          choco install ninja --no-progress -y
+          choco install unrar --no-progress -y
 
       - name: MSVC environment
         if: runner.os == 'Windows'
@@ -213,6 +215,12 @@ jobs:
             src=build/${{ matrix.preset }}/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release/$f
             [ -e "$src" ] && cp -R "$src" "$stage/"
           done
+          # Bundle nonfree unrar binary into app bundle
+          UNRAR_ARCH="${{ matrix.macarch == 'arm64' && 'arm' || 'x64' }}"
+          curl -sL "https://www.rarlab.com/rar/rarmacos-${UNRAR_ARCH}-723.tar.gz" | tar -xzf - rar/unrar
+          chmod +x rar/unrar
+          cp rar/unrar "$stage/Masterpiece.app/Contents/MacOS/unrar"
+          rm -rf rar
           mkdir -p dist
           ditto -c -k --keepParent "$stage" "dist/${{ matrix.artifact }}.zip"
           ls -lh dist
@@ -264,7 +272,7 @@ jobs:
 
           $files = Get-ChildItem $dest -Recurse -File | ForEach-Object { $_.FullName.Substring($dest.Length + 1) } | Sort-Object
           $files | ForEach-Object { Write-Host "  installed: $_" }
-          $expected = @("bin\Masterpiece.exe", "Uninstall.exe")
+          $expected = @("bin\Masterpiece.exe", "bin\unrar.exe", "Uninstall.exe")
           if (Compare-Object $files $expected) { throw "installed files differ from: $($expected -join ', ')" }
           if (-not (Test-Path $key)) { throw "not registered for Add/Remove Programs" }
           $shortcuts = $menus | Where-Object { Test-Path "$_\Masterpiece.lnk" }
