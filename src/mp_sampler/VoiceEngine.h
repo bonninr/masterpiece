@@ -226,6 +226,12 @@ struct Voice {
   // second. Carried on the voice because the engine is what knows which pipes
   // are actually sounding, and the wind model is what knows what that costs.
   float windFlow = 0.0f;
+  // The wind this pipe last spoke with. Once its valve closes the chest no
+  // longer reaches it -- what sounds is the release and the room -- so a
+  // releasing voice keeps this instead of following the pressure as it
+  // recovers, which slid every tail in pitch the moment a chord let go.
+  float heldWindAmp = 1.0f;
+  double heldWindPitch = 1.0;
   // Which tremulant reaches this pipe, as an index into the engine's table,
   // and how far it moves THIS pipe. Hauptwerk states the depth per pipe: a
   // tremulant belongs to a chest, and the stops on it wobble by different

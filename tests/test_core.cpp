@@ -1272,6 +1272,69 @@ public:
   }
 };
 
+// Once a pipe's valve closes, the chest no longer reaches it: what sounds is
+// its release and the room. A releasing voice therefore keeps the wind it last
+// spoke with. Following the chest instead slid every tail in pitch and level
+// as the pressure recovered after a chord let go, which is exactly when a
+// player hears it.
+class ReleaseIgnoresWindTest final : public mp::test::Test {
+public:
+  ReleaseIgnoresWindTest()
+    : Test("functional.voice.release-ignores-wind", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.velocity = 100;
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.windIndex = 0;
+
+    mp::VoiceEngine::WindMod steady;          // nominal
+    mp::VoiceEngine::WindMod sagged;
+    sagged.ampMul = 0.5f;
+
+    auto make = [&](mp::VoiceEngine& eng) {
+      eng.prepare(48000.0, 64, 1);
+      eng.setSampleProvider(fx.provider());
+      eng.setWindMods(&steady, 1);
+      eng.startVoice(st, 1);
+    };
+    std::vector<float> a(512), b(512);
+    float* outA[1] = {a.data()};
+    float* outB[1] = {b.data()};
+
+    // While the key is down the wind is heard.
+    mp::VoiceEngine held, heldSag;
+    make(held);
+    make(heldSag);
+    heldSag.setWindMods(&sagged, 1);
+    held.render(outA, 1, 512);
+    heldSag.render(outB, 1, 512);
+    MP_CHECK(voicetest::rms(b) < 0.75 * voicetest::rms(a),
+             "a sustaining pipe follows its chest");
+
+    // Once it is released, it does not.
+    mp::VoiceEngine rel, relSag;
+    make(rel);
+    make(relSag);
+    std::fill(a.begin(), a.end(), 0.0f);
+    rel.render(outA, 1, 512);
+    relSag.render(outA, 1, 512);
+    rel.noteOff(1, mp::NoteRelease{});
+    relSag.noteOff(1, mp::NoteRelease{});
+    relSag.setWindMods(&sagged, 1);
+    std::fill(a.begin(), a.end(), 0.0f);
+    std::fill(b.begin(), b.end(), 0.0f);
+    rel.render(outA, 1, 512);
+    relSag.render(outB, 1, 512);
+    MP_CHECK(voicetest::rms(a) > 0.0, "the release is sounding");
+    MP_CHECK(std::fabs(voicetest::rms(a) - voicetest::rms(b)) < 1e-6,
+             "a releasing pipe keeps the wind it last spoke with");
+  }
+};
+
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
   VoiceEngineRenderTest()
@@ -7937,6 +8000,7 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static ReleaseIgnoresWindTest g_releaseIgnoresWind;
 static CompactLinkageTest g_compactLinkage;
 static PlayerControlTest g_playerControl;
 static LibraryMatchTest g_libraryMatch;

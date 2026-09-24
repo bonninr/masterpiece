@@ -320,6 +320,13 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.mixBus = start.mixBus;
   v.windIndex = start.windIndex;
   v.windFlow = start.windFlowKgPerSec;
+  {
+    // A release started as a voice of its own begins from the chest as it
+    // is now, and keeps that; a sustaining one follows it from here on.
+    const WindMod w = windModFor(v.windIndex);
+    v.heldWindAmp = w.ampMul;
+    v.heldWindPitch = w.pitchRatio;
+  }
   v.tremIndex = start.tremIndex;
   v.tremAmpDepth = start.tremAmpDepth;
   v.tremPitchDepth = start.tremPitchDepth;
@@ -490,7 +497,14 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // The wind, read once per voice per block rather than per sample: the
   // pressure moves on the order of tenths of a second and the inner loop runs
   // twenty-five million times a second.
-  const WindMod wind = windModFor(v.windIndex);
+  WindMod wind = windModFor(v.windIndex);
+  if (v.phase == VoicePhase::Release) {
+    wind.ampMul = v.heldWindAmp;
+    wind.pitchRatio = v.heldWindPitch;
+  } else {
+    v.heldWindAmp = wind.ampMul;
+    v.heldWindPitch = wind.pitchRatio;
+  }
   const double windRatio = v.ratio * wind.pitchRatio;
   // The tremulant, as a ramp across the block. Its own value is a signed
   // swing in -1..1; this pipe's depths turn that into a gain and a pitch.
