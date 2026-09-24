@@ -38,6 +38,19 @@ the property of its producer and is governed by that producer's terms.
 | [Düren](https://piotrgrabowski.pl/duren/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 | [Chorzów, St Hedwig of Silesia](https://piotrgrabowski.pl/chorzow-sw-jadwiga-slaska/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 | [Goch](https://piotrgrabowski.pl/goch/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
+| [Nagyrákos](https://hauptwerk-augustine.info/Angster_Nagyrakos.php) (demonstration set) | Angster, 1938 | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Hungarian village organs](https://hauptwerk-augustine.info/Hungarian_village.php) (composite set) | — | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Zalalövő](https://hauptwerk-augustine.info/Zalalovo.php) (demonstration set) | Aquincum | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Császár](https://hauptwerk-augustine.info/Luber_Csaszar.php) (demonstration set) | F. X. Luber, 1793 | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Vasvár, Dominican church](https://hauptwerk-augustine.info/Vasvar.php) (demonstration set) | — | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Kézdimartonfalva](https://hauptwerk-augustine.info/Dutch_harmonium.php) | harmonium | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Szombathely](https://hauptwerk-augustine.info/Eule_Szombathely.php) (demonstration set) | Eule | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Hajós](https://hauptwerk-augustine.info/Angster_Hajos.php) (demonstration set) | Angster | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Székesfehérvár, Franciscan church](https://hauptwerk-augustine.info/Mauracher_Fehervar.php) (demonstration set) | Mauracher | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Székesfehérvár, Cistercian church](https://hauptwerk-augustine.info/Angster__Cistercian.php) (demonstration set) | Angster | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Ják Abbey](https://hauptwerk-augustine.info/Angster_Jak.php) (demonstration set) | Angster, 1902 | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Monor, Reformed church](https://hauptwerk-augustine.info/Rieger_Monor.php) (demonstration set) | Rieger | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
+| [Budapest, Church of the Holy Spirit](https://hauptwerk-augustine.info/Holy_Spirit.php) (demonstration set) | — | — | [Augustine's Virtual Organs](https://hauptwerk-augustine.info/) |
 | [Oloron-Sainte-Marie](https://piotrgrabowski.pl/oloron-sainte-marie/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 | [Bégard](https://piotrgrabowski.pl/begard/) (demonstration set) | — | — | [Piotr Grabowski](https://piotrgrabowski.pl/) |
 
