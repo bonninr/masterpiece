@@ -73,6 +73,8 @@ private:
   // is the panel about loading. Reverted like the rest; each change writes
   // the global file at once.
   bool openLoadTicks_ = false;
+  bool openReopen_ = false;
+  int openMemLimit_ = 0;
   // Set while a profile is writing the individual controls, so their
   // onChange handlers do not bounce the profile straight back to Custom.
   bool applyingProfile_ = false;
@@ -112,6 +114,11 @@ private:
   juce::ToggleButton stream_{"Stream release tails from disk"};
   juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
   juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
+  juce::ToggleButton reopen_{"Reopen the last organ when Masterpiece starts"};
+  juce::Label memLimitLabel_;
+  juce::ComboBox memLimit_;
+  // Fill the memory-limit choices around the current setting.
+  void fillMemLimit();
   juce::Label memory_;
   juce::Label note_;
 };

@@ -1369,6 +1369,118 @@ public:
   }
 };
 
+// A load stops at the memory limit instead of running the machine out of
+// memory: the sample that would take it past the ceiling is not kept, the load
+// says why it stopped, and under a generous limit the same load completes.
+class MemoryLimitTest final : public mp::test::Test {
+public:
+  MemoryLimitTest() : Test("functional.samples.memory-limit", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-memory-limit");
+    root.createDirectory();
+    mp::OrganModel m;
+    for (int n = 1; n <= 3; ++n) {
+      const auto f = root.getChildFile("s" + juce::String(n) + ".wav");
+      f.deleteFile();
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(f.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          fmt.createWriterFor(os.release(), 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(0.05 * i)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+      w.reset();
+      mp::SampleRef ref;
+      ref.sampleId = n;
+      ref.fileName = f.getFileName().toStdString();
+      m.samples[n] = ref;
+    }
+    const auto rootPath = root.getFullPathName().toStdString();
+
+    mp::LoadProgress tight;
+    tight.resetBudget(1000);  // far less than one second of audio
+    mp::SampleLibrary a;
+    const auto ra = a.loadAll(m, rootPath, 0, mp::LoopSelection::Longest, &tight);
+    MP_CHECK(tight.overBudget.load(), "the load says it stopped at the limit");
+    MP_CHECK(tight.isCancelled(), "and it stopped");
+    MP_CHECK(ra.loaded == 0, "no sample past the limit is kept");
+
+    mp::LoadProgress roomy;
+    roomy.resetBudget(int64_t(1) << 30);
+    mp::SampleLibrary b;
+    const auto rb = b.loadAll(m, rootPath, 0, mp::LoopSelection::Longest, &roomy);
+    MP_CHECK(!roomy.overBudget.load() && rb.loaded == 3,
+             "under a generous limit every sample loads");
+    root.deleteRecursively();
+  }
+};
+
+// Reopening the last organ is off unless chosen, the old key that was written
+// on every save does not count as a choice, and an organ loaded when the
+// program died is named at the next start and cleared by a clean exit.
+class StartupSafetyTest final : public mp::test::Test {
+public:
+  StartupSafetyTest() : Test("functional.settings.startup-safety", Category::Functional) {}
+  struct Keep {
+    juce::File file;
+    bool existed = false;
+    juce::String content;
+    explicit Keep(juce::File f) : file(std::move(f)) {
+      existed = file.existsAsFile();
+      if (existed) content = file.loadFileAsString();
+    }
+    ~Keep() {
+      if (existed) file.replaceWithText(content);
+      else file.deleteFile();
+    }
+  };
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organ(probe.settingsFileFor(odf));
+
+    global.file.replaceWithText("reopenlast 1\n");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(!p.reopenLastOrgan(), "the old always-written key is not a choice");
+    }
+    global.file.replaceWithText("reopenlastorgan 1\n");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.reopenLastOrgan(), "the new key is honoured");
+    }
+
+    global.file.deleteFile();
+    {
+      mp::MasterpieceProcessor p;
+      MP_CHECK(!p.reopenLastOrgan(), "reopening is off by default");
+      p.setCrashGuard(true);
+      p.loadOrgan(odf, 0, false);
+      // No clean exit: the program "dies" here.
+    }
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.crashedOrgan() == odf, "the next start names the organ it died with");
+      p.setCrashGuard(true);
+      p.loadOrgan(odf, 0, false);
+      MP_CHECK(p.crashedOrgan() == odf,
+               "a load in the new session does not rewrite what the last one did");
+      p.clearRunningOrgan();  // a clean exit
+    }
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.crashedOrgan() == juce::File(), "after a clean exit nothing crashed");
+    }
+  }
+};
+
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
   VoiceEngineRenderTest()
@@ -8034,6 +8146,8 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
+static MemoryLimitTest g_memoryLimit;
+static StartupSafetyTest g_startupSafety;
 static MidiQueueThreadsTest g_midiQueueThreads;
 static ReleaseIgnoresWindTest g_releaseIgnoresWind;
 static CompactLinkageTest g_compactLinkage;

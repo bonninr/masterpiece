@@ -85,6 +85,8 @@ public:
     OdfDiagnostics diagnostics;
     SampleLoadReport samples;
     int stopsEngaged = 0;
+    // Stopped at the memory limit rather than failing on its own.
+    bool outOfMemory = false;
   };
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
@@ -482,6 +484,26 @@ public:
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
   void setReopenLastOrgan(bool on);
+
+  // Crash guard. While the guard is on, a load writes the organ into the
+  // global file as "running", and only a clean exit takes it out again. An
+  // entry still there at the next start means the program died with that
+  // organ loading or loaded -- and reopening it automatically would crash it
+  // straight away again, before the player could do anything about it. The
+  // application turns the guard on; tools and tests leave it off, since they
+  // never exit the way the application does.
+  void setCrashGuard(bool on) { crashGuard_ = on; }
+  void clearRunningOrgan();
+  // The organ the previous session died with, read by loadGlobalDefaults.
+  juce::File crashedOrgan() const { return crashedOrgan_; }
+
+  // The most memory an organ's samples may take, in megabytes. 0 means the
+  // default, 80% of this machine's memory. A load that would pass it stops
+  // cleanly and says so, rather than running the machine out of memory.
+  int memoryLimitSettingMB() const { return memoryLimitMB_; }
+  void setMemoryLimitMB(int mb);
+  static int defaultMemoryLimitMB();
+  int64_t memoryLimitBytes() const;
   // Audible load progress: a swift tap at each 10% of a load. Off unless
   // asked. Global, never per organ: it suits the room, not the instrument.
   bool loadTicks() const { return loadTicks_.load(std::memory_order_acquire); }
@@ -936,7 +958,14 @@ private:
   float meterFall_ = 0.5f;
 
   int64_t preloadHead_ = 0;
-  bool reopenLastOrgan_ = true;
+  // Off unless asked for: reopening at start is what turns one crash into a
+  // loop of them.
+  bool reopenLastOrgan_ = false;
+  bool crashGuard_ = false;
+  juce::File runningOrgan_;
+  juce::File crashedOrgan_;
+  bool globalsReadOnce_ = false;
+  int memoryLimitMB_ = 0;
   std::atomic<bool> loadTicks_{false};
   juce::File cacheDir_; // empty: the default place
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a

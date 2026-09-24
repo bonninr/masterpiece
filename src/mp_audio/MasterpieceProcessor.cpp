@@ -1201,7 +1201,12 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   juce::String text;
   text << "# Masterpiece defaults for organs that have no settings of their own\n";
   text << globalBody_;
-  text << "reopenlast " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  // A new key: the old one was written on every save, whether or not anyone
+  // chose it, so it cannot tell a choice from a default. Only this one counts.
+  text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
+  if (runningOrgan_.getFullPathName().isNotEmpty())
+    text << "running " << runningOrgan_.getFullPathName() << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   for (const auto& lib : libraries_)
@@ -1237,7 +1242,10 @@ bool MasterpieceProcessor::saveGlobalDefaults() {
 
 bool MasterpieceProcessor::loadGlobalDefaults() {
   const auto f = globalSettingsFile();
-  if (!f.existsAsFile()) return false;
+  if (!f.existsAsFile()) {
+    globalsReadOnce_ = true;  // a first start: nothing can have crashed
+    return false;
+  }
 
   juce::String body;
   auto sw = graph_.engineSwitch;
@@ -1247,7 +1255,17 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     // A path may contain spaces, so the value is taken whole, not tokenised.
     const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
     if (key == "reopenlast") {
+      // Superseded by reopenlastorgan: dropped, so everyone starts with the
+      // reopen off and turns it on only by choosing to.
+    } else if (key == "reopenlastorgan") {
       reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "memlimit") {
+      memoryLimitMB_ = std::max(0, val.getIntValue());
+    } else if (key == "running") {
+      // Still here at the first read of a session: the last one did not exit
+      // cleanly. Every later read finds this session's own entry, which says
+      // nothing about a crash.
+      if (!globalsReadOnce_) crashedOrgan_ = juce::File(val);
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "library") {
@@ -1284,6 +1302,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   }
   graph_.engineSwitch = sw;
   globalBody_ = body;
+  globalsReadOnce_ = true;
   return true;
 }
 
@@ -1320,6 +1339,28 @@ juce::File MasterpieceProcessor::lastOrgan() const {
   // Answer only for a file that is still there: a set on a drive that is not
   // plugged in should open the file chooser, not an error.
   return lastOrgan_.existsAsFile() ? lastOrgan_ : juce::File();
+}
+
+void MasterpieceProcessor::clearRunningOrgan() {
+  if (runningOrgan_.getFullPathName().isEmpty()) return;
+  runningOrgan_ = juce::File();
+  writeGlobalFile();
+}
+
+int MasterpieceProcessor::defaultMemoryLimitMB() {
+  return std::max(512, juce::SystemStats::getMemorySizeInMegabytes() * 8 / 10);
+}
+
+void MasterpieceProcessor::setMemoryLimitMB(int mb) {
+  mb = std::max(0, mb);
+  if (memoryLimitMB_ == mb) return;
+  memoryLimitMB_ = mb;
+  writeGlobalFile();
+}
+
+int64_t MasterpieceProcessor::memoryLimitBytes() const {
+  const int mb = memoryLimitMB_ > 0 ? memoryLimitMB_ : defaultMemoryLimitMB();
+  return static_cast<int64_t>(mb) * 1024 * 1024;
 }
 
 void MasterpieceProcessor::setReopenLastOrgan(bool on) {
@@ -2560,6 +2601,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   loadGlobalDefaults();
   seedSampleLibraries();
 
+  // After the defaults, which hold both: the ceiling a player set, and the
+  // rest of the global file, which writing the marker rewrites around.
+  // The samples of this load may take up to the memory ceiling, and no more.
+  loadProgress_.resetBudget(graphicsOnly ? 0 : memoryLimitBytes());
+  // Written before the load can crash, cleared only by a clean exit.
+  if (crashGuard_ && !graphicsOnly && odfFile.existsAsFile()) {
+    runningOrgan_ = odfFile;
+    writeGlobalFile();
+  }
+
   // The path the definition is known by. A native file chooser can hand back
   // a symlinked OrganDefinitions already resolved, which loses the folder its
   // packages sit beside; when the file lies under a known library's linked
@@ -2967,14 +3018,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // would be debugging their sample set rather than remembering they pressed
   // Cancel. Drop what was read and say so plainly.
   if (loadProgress_.isCancelled()) {
-    juce::Logger::writeToLog("load: cancelled, discarding partial organ");
+    const bool outOfMemory = loadProgress_.overBudget.load(std::memory_order_acquire);
+    juce::Logger::writeToLog(outOfMemory
+                                 ? "load: stopped at the memory limit, discarding partial organ"
+                                 : "load: cancelled, discarding partial organ");
     samples_.clear();
     model_ = OrganModel{};
     voices_.setSampleProvider(samples_.provider());
-    loadProgress_.phase.store(LoadProgress::Phase::Cancelled,
+    loadProgress_.phase.store(outOfMemory ? LoadProgress::Phase::Failed
+                                          : LoadProgress::Phase::Cancelled,
                               std::memory_order_release);
     result.ok = false;
-    result.error = "cancelled";
+    result.outOfMemory = outOfMemory;
+    result.error = outOfMemory
+                       ? "out of memory: this organ's samples need more than the " +
+                             std::to_string(memoryLimitBytes() / (1024 * 1024)) +
+                             " MB memory limit"
+                       : "cancelled";
     return result;
   }
   voices_.setSampleProvider(samples_.provider());

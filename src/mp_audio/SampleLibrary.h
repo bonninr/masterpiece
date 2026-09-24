@@ -191,7 +191,8 @@ private:
                                LoopSelection loopSelection) const;
   std::string cachePath() const;
   bool writeCache(const Store& store, const std::string& fingerprint) const;
-  bool readCache(Store& out, const std::string& fingerprint) const;
+  bool readCache(Store& out, const std::string& fingerprint,
+                 LoadProgress* progress = nullptr) const;
 
   std::string cacheDir_;
   std::string cacheOrganId_;

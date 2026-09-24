@@ -41,6 +41,9 @@ public:
 
   void initialise(const juce::String& commandLine) override {
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
+    // Remember which organ is loaded until a clean exit, so a crash is not
+    // repeated by reopening the organ it happened with.
+    proc_->setCrashGuard(true);
 
     // Automation surface (docs/automation/gui-automation.md), read before
     // anything is built, because some of it decides how things are built:
@@ -177,9 +180,19 @@ public:
     // Nothing named on the command line: pick up where the player left off.
     // loadGlobalDefaults is what knows which organ that was, and it answers
     // with nothing if the file has since moved or the drive is unplugged.
-    if (odf == juce::File()) {
-      proc_->loadGlobalDefaults();
-      if (proc_->reopenLastOrgan()) odf = proc_->lastOrgan();
+    // Read the global file first in any case: it is also what says whether
+    // the last session ended cleanly.
+    proc_->loadGlobalDefaults();
+    const juce::File crashed = proc_->crashedOrgan();
+    bool skippedReopen = false;
+    if (odf == juce::File() && proc_->reopenLastOrgan()) {
+      odf = proc_->lastOrgan();
+      // Never reopen the organ the last session died with: whatever took it
+      // down would take it down again before the player could intervene.
+      if (odf != juce::File() && odf == crashed) {
+        odf = juce::File();
+        skippedReopen = true;
+      }
     }
 
     // Play MIDI through the organ as soon as it is up, with the stops drawn.
@@ -546,6 +559,16 @@ public:
 
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
 
+    // Say what happened last time, once, and what can be done about it.
+    if (!guiOnly && crashed != juce::File())
+      juce::AlertWindow::showMessageBoxAsync(
+          juce::MessageBoxIconType::WarningIcon, "Masterpiece closed unexpectedly",
+          "The last session ended while " + crashed.getFileNameWithoutExtension() +
+              " was loaded" +
+              (skippedReopen ? ", so it was not reopened this time." : ".") +
+              "\n\nIf it happens again, a lower memory limit or 16-bit samples "
+              "(Settings, Engine) let a large organ fit in less memory.");
+
     // A fresh installation has no audio device chosen, no MIDI input enabled
     // and no organ. Offering the three in order beats three separate ways of
     // discovering that nothing happens when you press a key.
@@ -591,6 +614,8 @@ public:
       routes_.clear();
     }
     if (player_) player_->setProcessor(nullptr);
+    // A clean exit: the organ that was loaded did not crash anything.
+    if (proc_) proc_->clearRunningOrgan();
     win_.reset();
     player_.reset();
     devices_.reset();
