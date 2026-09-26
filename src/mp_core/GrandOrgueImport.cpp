@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -254,6 +255,7 @@ struct Emitter {
 constexpr int kKeyboardBase = 0;       // keyboard = manual number + 1
 constexpr int kRankBase = 1000;        // explicit ranks
 constexpr int kStopRankBase = 5000;    // ranks built from a stop's own pipes
+constexpr int kAltRankBase = 60000;    // + rank id: the take recorded with the tremulant
 constexpr int kStopBase = 2000;
 constexpr int kStopSwitchBase = 3000;
 constexpr int kCouplerSwitchBase = 4000;
@@ -403,7 +405,13 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
   };
 
   // One rank: a [RankNNN], or a stop that carries its pipes itself.
-  auto buildRank = [&](const std::string& rankSec, int rankId, int palletSwitch = 0) {
+  // A rank whose pipes were also recorded with a tremulant running keeps
+  // those takes apart: `tremulantTake` 0 builds the rank from the takes
+  // without (IsTremulant=0) and the unmarked ones, 1 the twin from the takes
+  // with it (IsTremulant=1) and the unmarked ones. The twin is swapped in by
+  // the tremulant's switch.
+  auto buildRank = [&](const std::string& rankSec, int rankId, int palletSwitch = 0,
+                       int tremulantTake = 0) {
     auto r = out.row("Rank");
     Emitter::set(r, "RankID", rankId);
     Emitter::set(r, "Name", ini.str(rankSec, "Name", rankSec));
@@ -457,39 +465,63 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       struct Attack {
         std::string file;
         int minVelocity = 0;
+        int maxRestMs = -1;  // GrandOrgue's MaxTimeSinceLastRelease; -1 any
         std::string prefix;
+        int highestVelocity = 127;
+        int minRestMs = 0;
       };
       std::vector<Attack> attacks;
+      // Whether a take belongs in this rank: the other tremulant state's
+      // takes are the twin's.
+      auto inThisTake = [&](const std::string& prefix) {
+        const int t = ini.num(sec, prefix + "IsTremulant", -1);
+        return t < 0 || t == tremulantTake;
+      };
       auto addAttack = [&](const std::string& prefix, const std::string& f) {
-        if (f.empty()) return;
-        if (ini.num(sec, prefix + "MaxTimeSinceLastRelease", -1) >= 0) {
-          note("repetition attacks (MaxTimeSinceLastRelease) are left out; the normal attack is used");
-          return;
-        }
-        if (ini.num(sec, prefix + "IsTremulant", -1) == 1) {
-          note("recorded tremulant samples (IsTremulant=1) are left out; the tremulant is synthesised");
-          return;
-        }
+        if (f.empty() || !inThisTake(prefix)) return;
         if (ini.num(sec, prefix + "LoopCount", 0) > 0)
           note("loops declared in the definition are not used; each file's own loop is");
-        attacks.push_back({f, ini.num(sec, prefix + "AttackVelocity", 0), prefix});
+        attacks.push_back({f, ini.num(sec, prefix + "AttackVelocity", 0),
+                           ini.num(sec, prefix + "MaxTimeSinceLastRelease", -1), prefix});
       };
       addAttack(key, file);
       for (int a = 1; a <= ini.num(sec, key + "AttackCount", 0); ++a) {
         const std::string pre = key + "Attack" + n3(a);
         addAttack(pre, ini.str(sec, pre));
       }
-      std::stable_sort(attacks.begin(), attacks.end(),
-                       [](const Attack& a, const Attack& b) { return a.minVelocity < b.minVelocity; });
+      // GrandOrgue picks an attack by the lowest velocity it is for and the
+      // longest rest it may follow. The attack table is read first-match,
+      // each row with the highest velocity and the shortest rest it takes:
+      // so by velocity band, lowest first, and within a band the longest rest
+      // first, each row taking only rests longer than the next row allows.
+      std::stable_sort(attacks.begin(), attacks.end(), [](const Attack& a, const Attack& b) {
+        if (a.minVelocity != b.minVelocity) return a.minVelocity < b.minVelocity;
+        const long long ra = a.maxRestMs < 0 ? LLONG_MAX : a.maxRestMs;
+        const long long rb = b.maxRestMs < 0 ? LLONG_MAX : b.maxRestMs;
+        return ra > rb;
+      });
+      for (size_t i = 0; i < attacks.size(); ++i) {
+        size_t next = i + 1;
+        while (next < attacks.size() && attacks[next].minVelocity == attacks[i].minVelocity) ++next;
+        attacks[i].highestVelocity =
+            next < attacks.size() ? std::max(0, attacks[next].minVelocity - 1) : 127;
+        const bool sameBandFollows =
+            i + 1 < attacks.size() && attacks[i + 1].minVelocity == attacks[i].minVelocity;
+        attacks[i].minRestMs = sameBandFollows && attacks[i + 1].maxRestMs >= 0
+                                   ? attacks[i + 1].maxRestMs + 1
+                                   : 0;
+      }
       for (size_t i = 0; i < attacks.size(); ++i) {
         const int sampleId = sampleFor(attacks[i].file, nominalHz);
-        const int highest = (i + 1 < attacks.size()) ? std::max(0, attacks[i + 1].minVelocity - 1) : 127;
+        const int highest = attacks[i].highestVelocity;
         auto at = out.row("Pipe_SoundEngine01_AttackSample");
         const int attackUid = nextUniqueId++;
         Emitter::set(at, "UniqueID", attackUid);
         Emitter::set(at, "LayerID", pipeId);
         Emitter::set(at, "SampleID", sampleId);
         Emitter::set(at, "AttackSelCriteria_HighestVelocity", highest);
+        if (attacks[i].minRestMs > 0)
+          Emitter::set(at, "AttackSelCriteria_MinTimeSincePrevPipeCloseMs", attacks[i].minRestMs);
         const int xfade = ini.num(sec, attacks[i].prefix + "LoopCrossfadeLength", 0);
         if (xfade > 0) Emitter::set(at, "LoopCrossfadeLengthInSrcSampleMs", xfade);
         // Unless the pipe is percussive, its release is the end of the same
@@ -510,8 +542,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       for (int r = 1; r <= ini.num(sec, key + "ReleaseCount", 0); ++r) {
         const std::string pre = key + "Release" + n3(r);
         const std::string f = ini.str(sec, pre);
-        if (f.empty()) continue;
-        if (ini.num(sec, pre + "IsTremulant", -1) == 1) continue;
+        if (f.empty() || !inThisTake(pre)) continue;
         auto rel = out.row("Pipe_SoundEngine01_ReleaseSample");
         Emitter::set(rel, "UniqueID", nextUniqueId++);
         Emitter::set(rel, "LayerID", pipeId);
@@ -524,8 +555,31 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
   };
 
+  // Whether a rank (or a stop carrying its pipes) has takes recorded with a
+  // tremulant, which makes it a twin of ranks.
+  auto hasTremulantTakes = [&](const std::string& rankSec) {
+    for (int p = 1; p <= ini.num(rankSec, "NumberOfLogicalPipes", 0); ++p) {
+      const std::string key = "Pipe" + n3(p);
+      if (ini.num(rankSec, key + "IsTremulant", -1) == 1) return true;
+      for (int a = 1; a <= ini.num(rankSec, key + "AttackCount", 0); ++a)
+        if (ini.num(rankSec, key + "Attack" + n3(a) + "IsTremulant", -1) == 1) return true;
+      for (int r = 1; r <= ini.num(rankSec, key + "ReleaseCount", 0); ++r)
+        if (ini.num(rankSec, key + "Release" + n3(r) + "IsTremulant", -1) == 1) return true;
+    }
+    return false;
+  };
+  std::map<int, int> alternateOf;             // rank id -> its tremulant twin
+  std::map<int, std::string> rankSectionOf;   // for finding its windchest
+  auto buildWithTwin = [&](const std::string& rankSec, int rankId, int palletSwitch = 0) {
+    buildRank(rankSec, rankId, palletSwitch);
+    rankSectionOf[rankId] = rankSec;
+    if (hasTremulantTakes(rankSec)) {
+      buildRank(rankSec, kAltRankBase + rankId, palletSwitch, 1);
+      alternateOf[rankId] = kAltRankBase + rankId;
+    }
+  };
   const int rankCount = ini.num("Organ", "NumberOfRanks", 0);
-  for (int r = 1; r <= rankCount; ++r) buildRank("Rank" + n3(r), kRankBase + r);
+  for (int r = 1; r <= rankCount; ++r) buildWithTwin("Rank" + n3(r), kRankBase + r);
 
   // ---- switches -------------------------------------------------------------
   // GrandOrgue drives a stop, coupler or tremulant either from its own
@@ -629,8 +683,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     auto wf = out.row("TremulantWaveform");
     Emitter::set(wf, "TremulantWaveformID", kTremulantBase + t);
     Emitter::set(wf, "TremulantID", kTremulantBase + t);
-    if (lower(ini.str(sec, "TremulantType", "Synth")) == "wave")
-      note("recorded (wave) tremulants are played as synthesised ones");
+    // A wave tremulant is the recordings made with it running, swapped in
+    // by its switch; it modulates nothing itself.
   }
   const int encCount = ini.num("Organ", "NumberOfEnclosures", 0);
   std::map<int, pugi::xml_node> enclosureControls;
@@ -663,6 +717,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
     for (int t : chestTremulants[p.windchest]) {
       if (t < 1 || t > tremCount) continue;
+      if (lower(ini.str("Tremulant" + n3(t), "TremulantType", "Synth")) == "wave") continue;
       const double depth = ini.real("Tremulant" + n3(t), "AmpModDepth", 0.0);
       auto tp = out.row("TremulantWaveformPipe");
       Emitter::set(tp, "PipeID", p.pipeId);
@@ -773,14 +828,29 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         Emitter::set(sr, "MIDINoteNumOfFirstMappedDivisionInputNode", keyMidi);
         Emitter::set(sr, "NumberOfMappedDivisionInputNodes", count);
         Emitter::set(sr, "MIDINoteNumIncrementFromDivisionToRank", pipeMidi - keyMidi);
+        // The tremulant take, swapped in by the wave tremulant on the rank's
+        // windchest, re-sounding held notes as GrandOrgue does.
+        const auto alt = alternateOf.find(rankId);
+        if (alt != alternateOf.end()) {
+          const int chest = ini.num(rankSectionOf[rankId], "WindchestGroup", 1);
+          for (int t : chestTremulants[chest])
+            if (t >= 1 && t <= tremCount &&
+                lower(ini.str("Tremulant" + n3(t), "TremulantType", "Synth")) == "wave") {
+              Emitter::set(sr, "AlternateRankID", alt->second);
+              Emitter::set(sr, "SwitchIDToSwitchToAlternateRank",
+                           controlFor("Tremulant" + n3(t), kTremulantSwitchBase + t));
+              Emitter::yn(sr, "RetriggerNotesWhenSwitchingBetweenNormalAndAlternateRanks", true);
+              break;
+            }
+        }
       };
       if (ranksInStop == 0) {
         // The stop carries its pipes itself: it is its own rank.
         const int rankId = kStopRankBase + stopNo;
         if (!rankPipeIds.count(rankId)) {
-          buildRank(ssec, rankId);
+          buildWithTwin(ssec, rankId);
           for (const auto& [k, p] : pipeOfRankPipe)
-            if (k / 1000 == rankId) wirePipe(p);
+            if (k / 1000 == rankId || k / 1000 == kAltRankBase + rankId) wirePipe(p);
         }
         mapRank(rankId, firstKey, firstPipe, accessible);
       } else {

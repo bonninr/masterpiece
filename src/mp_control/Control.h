@@ -30,9 +30,12 @@ struct ResolvedPipe {
 // A stop sounds when its stopId is engaged AND it belongs to the division.
 // Each StopRankEntry maps [first, first+num) division notes to rank notes
 // via midiIncrement; missing rank pipe note = silent (no fallback).
+// With `engagedSwitches`, a stop rank whose alternate-rank switch is engaged
+// resolves to its alternate rank instead.
 std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
                                        int midiNote,
-                                       const std::unordered_set<Id>& engagedStops);
+                                       const std::unordered_set<Id>& engagedStops,
+                                       const std::unordered_set<Id>* engagedSwitches = nullptr);
 
 // Key flow: which divisions a key press actually reaches, and at what pitch.
 //

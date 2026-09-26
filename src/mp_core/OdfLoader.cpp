@@ -785,6 +785,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     e.numMappedNotes = fieldInt(row, "NumberOfMappedDivisionInputNodes", "i", 61);
     e.midiIncrement = fieldInt(row, "MIDINoteNumIncrementFromDivisionToRank", "j", 0);
     e.alternateRankId = fieldInt(row, "AlternateRankID", "p", 0);
+    e.alternateSwitchId = fieldInt(row, "SwitchIDToSwitchToAlternateRank", nullptr, 0);
     e.retriggerOnAlternate = fieldBool(
         row, "RetriggerNotesWhenSwitchingBetweenNormalAndAlternateRanks", "n", false);
     stopIt->second.ranks.push_back(e);

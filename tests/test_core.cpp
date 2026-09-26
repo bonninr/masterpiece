@@ -8559,6 +8559,57 @@ public:
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;
 
+// A GrandOrgue wave tremulant is the pipes recorded with it running: those
+// takes make a twin rank that the tremulant's switch swaps in. And an attack
+// for quick repetition is chosen by the time since the pipe let go.
+class GrandOrgueTakesTest final : public mp::test::Test {
+public:
+  GrandOrgueTakesTest() : Test("functional.odf.grandorgue-takes", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfTremulants=1\nNumberOfWindchestGroups=1\n"
+        "[Tremulant001]\nName=Trem\nTremulantType=Wave\n"
+        "[WindchestGroup001]\nName=W\nNumberOfTremulants=1\nTremulant001=1\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nWindchestGroup=1\n"
+        "Pipe001=plain.wav\nPipe001IsTremulant=0\nPipe001AttackCount=2\n"
+        "Pipe001Attack001=trem.wav\nPipe001Attack001IsTremulant=1\n"
+        "Pipe001Attack002=quick.wav\nPipe001Attack002IsTremulant=0\n"
+        "Pipe001Attack002MaxTimeSinceLastRelease=150\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=1\nNumberOfTremulants=1\n"
+        "Tremulant001=1\n"
+        "[Stop001]\nName=P\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.ranks.count(1001) && m.ranks.count(61001), "the tremulant takes make a twin rank");
+    const auto& entry = m.stops.at(2001).ranks.at(0);
+    MP_CHECK(entry.alternateRankId == 61001 && entry.alternateSwitchId != 0 &&
+                 entry.retriggerOnAlternate,
+             "the stop swaps to the twin on the tremulant's switch, re-sounding held notes");
+    const std::unordered_set<mp::Id> drawn{2001};
+    const std::unordered_set<mp::Id> tremOn{entry.alternateSwitchId};
+    MP_CHECK(mp::resolvePipes(m, 2, 36, drawn).at(0).rankId == 1001, "without it, the plain take");
+    MP_CHECK(mp::resolvePipes(m, 2, 36, drawn, &tremOn).at(0).rankId == 61001,
+             "with it, the take recorded with the tremulant");
+    // The plain rank: the normal attack for a note after a rest, the quick
+    // one only within 150 ms of the pipe letting go.
+    const auto& attacks = m.ranks.at(1001).pipes.at(0).layers.at(0).attacks;
+    MP_CHECK(attacks.size() == 2, "the plain rank has the plain and the quick attack");
+    MP_CHECK(attacks[0].minTimeSinceCloseMs == 151 && attacks[1].minTimeSinceCloseMs == 0,
+             "after a rest of more than 150 ms the normal attack, sooner the quick one");
+    MP_CHECK(m.ranks.at(61001).pipes.at(0).layers.at(0).attacks.size() == 1,
+             "the twin has only the tremulant take");
+    MP_CHECK(m.tremulantPipes.empty(), "a wave tremulant modulates nothing itself");
+  }
+};
+static GrandOrgueTakesTest g_grandOrgueTakes;
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {
