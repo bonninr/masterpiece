@@ -635,6 +635,9 @@ private:
       // the device manager and hands the panel down.
       ed->onAudioSettings = [this] { showAudioSettings(); };
       ed->onSettings = [this, &p] { showSettings(p); };
+      ed->onBeforeFirstLoad = [this, &p](std::function<void()> load) {
+        showSettings(p, std::move(load));
+      };
       // A document window should name its document. It also lets anything
       // driving the app from outside wait for the organ rather than guess at
       // a duration, which on a slow disk is the difference between a console
@@ -662,8 +665,9 @@ private:
     // without a human having to click through a file dialog first.
     std::function<void()> onLoaded;
 
-    void showSettings(mp::MasterpieceProcessor& proc) {
+    void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
+      panel->onClosed = std::move(onClosed);
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "Masterpiece settings";

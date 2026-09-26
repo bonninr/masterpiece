@@ -7,6 +7,7 @@
 
 #include "../src/mp_core/CodmCompiler.h"
 #include "../src/mp_core/GrandOrgueImport.h"
+#include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -8558,6 +8559,54 @@ public:
   }
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;
+// Which archives belong to one organ, from their names alone: the numbered
+// packages, the parts and a multi-volume set are one organ each, and a
+// different organ in the same folder is not pulled in.
+class OrganArchiveGroupingTest final : public mp::test::Test {
+public:
+  OrganArchiveGroupingTest()
+    : Test("functional.archive.grouping", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-grouping";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    for (const char* name :
+         {"01_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part02.Organ.CompPkg.Hauptwerk.rar",
+          "Big.part1.rar", "Big.part2.rar", "Big.part3.rar",
+          "Old.rar", "Old.r00", "Old.r01",
+          "Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar", "notes.txt"})
+      std::ofstream(dir / name) << "x";
+    auto group = [&](const char* name) {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / name).string(), error), error);
+      return a.archives();
+    };
+    const auto mauracher = group("02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(mauracher.size() == 2, "numbered packages are one organ");
+    const auto vasvar = group("Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(vasvar.size() == 2, "parts are one organ");
+    const auto big = group("Big.part2.rar");
+    MP_CHECK(big.size() == 1 && big[0].size() == 3 &&
+                 fs::path(big[0][0]).filename() == "Big.part1.rar",
+             "a multi-volume set is one archive, its volumes in order");
+    const auto old = group("Old.rar");
+    MP_CHECK(old.size() == 1 && old[0].size() == 3 &&
+                 fs::path(old[0][0]).filename() == "Old.rar",
+             "the old volume scheme starts with the plain .rar");
+    const auto savaria = group("Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar");
+    MP_CHECK(savaria.size() == 1, "another organ is not pulled in");
+    MP_CHECK(mp::isOrganArchive("x.RAR") && !mp::isOrganArchive("x.Organ_Hauptwerk_xml"),
+             "archives are known by extension");
+    fs::remove_all(dir, ec);
+  }
+};
+static OrganArchiveGroupingTest g_organArchiveGrouping;
 
 // A GrandOrgue wave tremulant is the pipes recorded with it running: those
 // takes make a twin rank that the tremulant's switch swaps in. And an attack

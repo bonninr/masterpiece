@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -490,6 +492,8 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
 
   std::mutex resultMutex;
   std::atomic<size_t> cursor{0};
+  // Samples not on disk that the organ's archives hold: key -> sample ids.
+  std::unordered_map<std::string, std::vector<Id>> fromArchive;
 
   if (progress != nullptr)
     progress->beginPhase(LoadProgress::Phase::LoadingSamples,
@@ -529,6 +533,14 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       std::error_code ec;
       if (!std::filesystem::exists(path, ec)) {
         std::lock_guard<std::mutex> lock(resultMutex);
+        if (archive_ != nullptr) {
+          const auto rel = std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
+                               .generic_string();
+          if (archive_->find(rel) != nullptr) {
+            fromArchive[OrganArchive::key(rel)].push_back(refIt->first);
+            continue;
+          }
+        }
         ++report.missing;
         if (report.missingFiles.size() < 50)
           report.missingFiles.push_back(ref.fileName);
@@ -587,6 +599,112 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     pool.reserve(static_cast<size_t>(threads));
     for (int t = 0; t < threads; ++t) pool.emplace_back(worker);
     for (auto& t : pool) t.join();
+  }
+
+  // What the disk did not have, from the archives. Each archive is read once,
+  // front to back, by its own thread -- RAR has no other way in -- and the
+  // files it yields are decoded from memory by the usual pool. The queue
+  // between them is bounded, so a fast archive cannot fill memory with bytes
+  // the decoders have not reached.
+  if (!fromArchive.empty() && !(progress != nullptr && progress->isCancelled())) {
+    // The progress count picks up where the disk left off.
+    if (progress != nullptr) {
+      size_t fromArchiveCount = 0;
+      for (const auto& [key, ids] : fromArchive) fromArchiveCount += ids.size();
+      progress->done.store(static_cast<int>(wanted.size() - fromArchiveCount), std::memory_order_relaxed);
+    }
+    std::vector<std::unordered_set<std::string>> perArchive(archive_->archives().size());
+    for (const auto& [key, ids] : fromArchive)
+      if (const auto* e = archive_->find(key)) perArchive[e->archive].insert(key);
+
+    struct Item {
+      std::string key;
+      std::shared_ptr<juce::MemoryBlock> bytes;
+    };
+    std::deque<Item> queue;
+    std::mutex queueMutex;
+    std::condition_variable queueChanged;
+    size_t queuedBytes = 0;
+    int producersLeft = 0;
+    bool stop = false;
+    constexpr size_t kQueueCap = size_t(512) << 20;
+
+    std::vector<std::thread> producers;
+    for (size_t a = 0; a < perArchive.size(); ++a) {
+      if (perArchive[a].empty()) continue;
+      ++producersLeft;
+      producers.emplace_back([&, a] {
+        std::string error;
+        archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
+          auto block = std::make_shared<juce::MemoryBlock>(bytes.data(), bytes.size());
+          std::unique_lock<std::mutex> lock(queueMutex);
+          queueChanged.wait(lock, [&] { return stop || queuedBytes < kQueueCap; });
+          if (stop) return false;
+          queuedBytes += block->getSize();
+          queue.push_back({key, std::move(block)});
+          queueChanged.notify_all();
+          return true;
+        }, error);
+        if (!error.empty()) {
+          std::lock_guard<std::mutex> lock(resultMutex);
+          ++report.failed;
+          if (report.failedFiles.size() < 50) report.failedFiles.push_back(error);
+        }
+        std::lock_guard<std::mutex> lock(queueMutex);
+        --producersLeft;
+        queueChanged.notify_all();
+      });
+    }
+
+    auto decoder = [&]() {
+      juce::AudioFormatManager formats;
+      registerSampleFormats(formats);
+      for (;;) {
+        Item item;
+        {
+          std::unique_lock<std::mutex> lock(queueMutex);
+          queueChanged.wait(lock, [&] { return stop || !queue.empty() || producersLeft == 0; });
+          if (stop || (queue.empty() && producersLeft == 0)) return;
+          item = std::move(queue.front());
+          queue.pop_front();
+          queuedBytes -= item.bytes->getSize();
+          queueChanged.notify_all();
+        }
+        for (const Id id : fromArchive[item.key]) {
+          if (progress != nullptr && progress->isCancelled()) {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            stop = true;
+            queueChanged.notify_all();
+            return;
+          }
+          std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(
+              std::make_unique<juce::MemoryInputStream>(*item.bytes, false)));
+          auto buffer = std::make_shared<SampleBuffer>();
+          const bool ok = reader != nullptr &&
+                          readInto(*reader, *buffer, maxFramesPerSample, loopSelection, storage_,
+                                   loadMono_, loadRate_);
+          if (ok && progress != nullptr && !progress->charge(buffer->residentBytes())) {
+            std::lock_guard<std::mutex> lock(queueMutex);
+            stop = true;
+            queueChanged.notify_all();
+            return;
+          }
+          std::lock_guard<std::mutex> lock(resultMutex);
+          if (progress != nullptr) progress->done.fetch_add(1, std::memory_order_relaxed);
+          if (!ok) {
+            ++report.failed;
+            if (report.failedFiles.size() < 50) report.failedFiles.push_back(item.key);
+            continue;
+          }
+          (*next)[id] = std::move(buffer);
+          ++report.loaded;
+        }
+      }
+    };
+    std::vector<std::thread> decoders;
+    for (int t = 0; t < std::max(1, threads); ++t) decoders.emplace_back(decoder);
+    for (auto& t : producers) t.join();
+    for (auto& t : decoders) t.join();
   }
 
   // Keep the result, so the next load of this organ at these settings is a

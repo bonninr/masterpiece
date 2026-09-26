@@ -384,7 +384,12 @@ private:
 class SettingsWindow : public juce::Component {
 public:
   SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  ~SettingsWindow() override;
   void resized() override;
+
+  // Run once the window has closed, on the message thread: an organ's first
+  // load waits here for its engine settings.
+  std::function<void()> onClosed;
   void paint(juce::Graphics& g) override;
 
 private:

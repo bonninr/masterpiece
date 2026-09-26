@@ -105,6 +105,45 @@ else()
   find_package(pugixml CONFIG REQUIRED)
 endif()
 
+# ---- libarchive (organs played straight from their RAR packages) ----
+# Read-only, and only for RAR: its own RAR and RAR5 decoders need no other
+# library, so every optional codec, crypto backend and tool is switched off.
+# BSD-licensed, which is what lets it ship inside a GPL program -- unlike the
+# RAR project's own unrar source.
+option(MP_FETCH_LIBARCHIVE "Fetch libarchive via FetchContent" ON)
+set(MP_LIBARCHIVE_TAG "v3.8.1" CACHE STRING "libarchive git tag for FetchContent")
+if(MP_FETCH_LIBARCHIVE)
+  include(FetchContent)
+  foreach(opt ENABLE_MBEDTLS ENABLE_NETTLE ENABLE_OPENSSL ENABLE_LIBB2 ENABLE_LZ4
+              ENABLE_LZO ENABLE_LZMA ENABLE_ZSTD ENABLE_ZLIB ENABLE_BZip2
+              ENABLE_LIBXML2 ENABLE_EXPAT ENABLE_WIN32_XMLLITE ENABLE_PCREPOSIX
+              ENABLE_PCRE2POSIX ENABLE_LIBGCC ENABLE_CNG ENABLE_TAR ENABLE_CPIO
+              ENABLE_CAT ENABLE_UNZIP ENABLE_XATTR ENABLE_ACL ENABLE_ICONV
+              ENABLE_TEST ENABLE_COVERAGE ENABLE_INSTALL)
+    set(${opt} OFF CACHE BOOL "" FORCE)
+  endforeach()
+  # The regex library only serves the command-line tools; searching for one
+  # stops the configure on Windows.
+  set(POSIX_REGEX_LIB "NONE" CACHE STRING "" FORCE)
+  FetchContent_Declare(
+    libarchive
+    GIT_REPOSITORY https://github.com/libarchive/libarchive.git
+    GIT_TAG ${MP_LIBARCHIVE_TAG}
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+  )
+  FetchContent_MakeAvailable(libarchive)
+  # Linked statically; the headers come with the target only from the
+  # source tree.
+  set(MP_LIBARCHIVE_TARGET archive_static)
+  target_include_directories(archive_static INTERFACE
+    $<BUILD_INTERFACE:${libarchive_SOURCE_DIR}/libarchive>)
+  target_compile_definitions(archive_static INTERFACE LIBARCHIVE_STATIC)
+else()
+  find_package(LibArchive REQUIRED)
+  set(MP_LIBARCHIVE_TARGET LibArchive::LibArchive)
+endif()
+
 # ---- WavPack (GrandOrgue sets ship their samples compressed with it) ----
 # The decoder library only: no programs, plugins or hand-written assembly.
 # BSD-licensed.
@@ -207,6 +246,7 @@ if(TARGET juce::juce_core)
 endif()
 
 add_subdirectory(src/mp_core)
+add_subdirectory(src/mp_archive)
 if(MP_ENABLE_STREAMING)
   add_subdirectory(src/mp_sampler)
 endif()

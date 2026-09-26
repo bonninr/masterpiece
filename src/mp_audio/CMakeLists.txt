@@ -48,7 +48,7 @@ juce_add_binary_data(mp_assets
 
 target_link_libraries(mp_audio PUBLIC
   mp_assets
-  mp_core mp_control ${MP_WAVPACK_TARGET}
+  mp_core mp_control mp_archive ${MP_WAVPACK_TARGET}
   juce::juce_audio_processors juce::juce_audio_utils juce::juce_audio_devices
   juce::juce_audio_formats juce::juce_data_structures
   juce::juce_gui_basics juce::juce_graphics
