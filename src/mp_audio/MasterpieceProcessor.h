@@ -99,6 +99,12 @@ public:
                        bool graphicsOnly = false);
   void loadOrganAsync(const juce::File& odfFile);
 
+  // An organ still in its RAR packages. Indexes them and unpacks the small
+  // files -- definitions, artwork -- into a folder of its own, once; later
+  // calls reuse it. Returns the organ definitions found there. Loading one of
+  // them is an ordinary load whose samples come out of the archives.
+  juce::Array<juce::File> openPackagedOrgan(const juce::File& archive, juce::String& error);
+
   // Load only the ranks these stops need, on the NEXT load.
   //
   // Not a lighter organ, an incomplete one: every stop outside the list is
@@ -909,6 +915,11 @@ private:
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
   std::unordered_map<Id, Id> stopBySwitch_;
+  // Switches that swap a stop's rank for its alternate and re-sound held
+  // notes when they do, with the stops concerned; and the switch state just
+  // before the latest change, which says what was sounding.
+  std::unordered_map<Id, std::vector<Id>> alternateStopsBySwitch_;
+  std::unordered_set<Id> previousSwitches_;
   MidiMap midiMap_;
   Metronome metronome_;
   MidiRecorder recorder_;

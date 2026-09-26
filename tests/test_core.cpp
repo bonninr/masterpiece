@@ -7,6 +7,7 @@
 
 #include "../src/mp_core/CodmCompiler.h"
 #include "../src/mp_core/GrandOrgueImport.h"
+#include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -8629,6 +8630,159 @@ public:
   }
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;
+// Which archives belong to one organ, from their names alone: the numbered
+// packages, the parts and a multi-volume set are one organ each, and a
+// different organ in the same folder is not pulled in.
+class OrganArchiveGroupingTest final : public mp::test::Test {
+public:
+  OrganArchiveGroupingTest()
+    : Test("functional.archive.grouping", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-grouping";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    for (const char* name :
+         {"01_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part02.Organ.CompPkg.Hauptwerk.rar",
+          "Big.part1.rar", "Big.part2.rar", "Big.part3.rar",
+          "Old.rar", "Old.r00", "Old.r01",
+          "Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar", "notes.txt"})
+      std::ofstream(dir / name) << "x";
+    auto group = [&](const char* name) {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / name).string(), error), error);
+      return a.archives();
+    };
+    const auto mauracher = group("02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(mauracher.size() == 2, "numbered packages are one organ");
+    const auto vasvar = group("Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(vasvar.size() == 2, "parts are one organ");
+    const auto big = group("Big.part2.rar");
+    MP_CHECK(big.size() == 1 && big[0].size() == 3 &&
+                 fs::path(big[0][0]).filename() == "Big.part1.rar",
+             "a multi-volume set is one archive, its volumes in order");
+    const auto old = group("Old.rar");
+    MP_CHECK(old.size() == 1 && old[0].size() == 3 &&
+                 fs::path(old[0][0]).filename() == "Old.rar",
+             "the old volume scheme starts with the plain .rar");
+    const auto savaria = group("Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar");
+    MP_CHECK(savaria.size() == 1, "another organ is not pulled in");
+    MP_CHECK(mp::isOrganArchive("x.RAR") && !mp::isOrganArchive("x.Organ_Hauptwerk_xml"),
+             "archives are known by extension");
+    fs::remove_all(dir, ec);
+  }
+};
+static OrganArchiveGroupingTest g_organArchiveGrouping;
+
+// A GrandOrgue wave tremulant is the pipes recorded with it running: those
+// takes make a twin rank that the tremulant's switch swaps in. And an attack
+// for quick repetition is chosen by the time since the pipe let go.
+class GrandOrgueTakesTest final : public mp::test::Test {
+public:
+  GrandOrgueTakesTest() : Test("functional.odf.grandorgue-takes", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfTremulants=1\nNumberOfWindchestGroups=1\n"
+        "[Tremulant001]\nName=Trem\nTremulantType=Wave\n"
+        "[WindchestGroup001]\nName=W\nNumberOfTremulants=1\nTremulant001=1\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nWindchestGroup=1\n"
+        "Pipe001=plain.wav\nPipe001IsTremulant=0\nPipe001AttackCount=2\n"
+        "Pipe001Attack001=trem.wav\nPipe001Attack001IsTremulant=1\n"
+        "Pipe001Attack002=quick.wav\nPipe001Attack002IsTremulant=0\n"
+        "Pipe001Attack002MaxTimeSinceLastRelease=150\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=1\nNumberOfTremulants=1\n"
+        "Tremulant001=1\n"
+        "[Stop001]\nName=P\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.ranks.count(1001) && m.ranks.count(61001), "the tremulant takes make a twin rank");
+    const auto& entry = m.stops.at(2001).ranks.at(0);
+    MP_CHECK(entry.alternateRankId == 61001 && entry.alternateSwitchId != 0 &&
+                 entry.retriggerOnAlternate,
+             "the stop swaps to the twin on the tremulant's switch, re-sounding held notes");
+    const std::unordered_set<mp::Id> drawn{2001};
+    const std::unordered_set<mp::Id> tremOn{entry.alternateSwitchId};
+    MP_CHECK(mp::resolvePipes(m, 2, 36, drawn).at(0).rankId == 1001, "without it, the plain take");
+    MP_CHECK(mp::resolvePipes(m, 2, 36, drawn, &tremOn).at(0).rankId == 61001,
+             "with it, the take recorded with the tremulant");
+    // The plain rank: the normal attack for a note after a rest, the quick
+    // one only within 150 ms of the pipe letting go.
+    const auto& attacks = m.ranks.at(1001).pipes.at(0).layers.at(0).attacks;
+    MP_CHECK(attacks.size() == 2, "the plain rank has the plain and the quick attack");
+    MP_CHECK(attacks[0].minTimeSinceCloseMs == 151 && attacks[1].minTimeSinceCloseMs == 0,
+             "after a rest of more than 150 ms the normal attack, sooner the quick one");
+    MP_CHECK(m.ranks.at(61001).pipes.at(0).layers.at(0).attacks.size() == 1,
+             "the twin has only the tremulant take");
+    MP_CHECK(m.tremulantPipes.empty(), "a wave tremulant modulates nothing itself");
+  }
+};
+static GrandOrgueTakesTest g_grandOrgueTakes;
+
+// A reversible piston flips its drawstop on each press and does nothing when
+// let go: a 3/7 linkage, as the reversibles of Friesach, Giubiasco and
+// Alessandria are wired, and as a GrandOrgue reversible piston is imported.
+// The same organ's general sets and clears what it names and leaves the rest.
+class ReversiblePistonTest final : public mp::test::Test {
+public:
+  ReversiblePistonTest() : Test("functional.switches.reversible-piston", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfReversiblePistons=1\nNumberOfGenerals=1\n"
+        "[ReversiblePiston001]\nName=Rev\nObjectType=STOP\nManualNumber=1\nObjectNumber=1\n"
+        "[General001]\nName=G\nNumberOfStops=2\nStopManual001=1\nStopNumber001=1\n"
+        "StopManual002=1\nStopNumber002=-2\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=3\nStop001=1\nStop002=2\nStop003=3\n"
+        "[Stop001]\nName=A\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop002]\nName=B\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop003]\nName=C\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(d.unmappedLinkageCodes.empty(), "3/7 is a known wiring");
+    const mp::Id stopA = m.stops.at(2001).controllingSwitchId;
+    mp::SwitchNetwork net;
+    net.reset(m);
+    const mp::Id piston = 12501;
+    MP_CHECK(!net.engaged(stopA), "the stop starts off");
+    net.set(piston, true);
+    MP_CHECK(net.engaged(stopA), "a press draws it");
+    net.set(piston, false);
+    MP_CHECK(net.engaged(stopA), "letting go does nothing");
+    net.set(piston, true);
+    net.set(piston, false);
+    MP_CHECK(!net.engaged(stopA), "the next press puts it back in");
+
+    MP_CHECK(m.combinations.size() == 1, "the general is a combination");
+    const auto& combo = m.combinations.begin()->second;
+    MP_CHECK(combo.elements.size() == 2, "naming two stops, not the third");
+    bool aOn = false, bOff = false;
+    for (const auto& e : combo.elements) {
+      if (e.controlledSwitchId == stopA) aOn = e.storedEngaged;
+      if (e.controlledSwitchId == m.stops.at(2002).controllingSwitchId) bOff = !e.storedEngaged;
+    }
+    MP_CHECK(aOn && bOff, "A is stored on, B off");
+  }
+};
+static ReversiblePistonTest g_reversiblePiston;
 
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;

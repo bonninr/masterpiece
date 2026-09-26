@@ -802,6 +802,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     e.numMappedNotes = fieldInt(row, "NumberOfMappedDivisionInputNodes", "i", 61);
     e.midiIncrement = fieldInt(row, "MIDINoteNumIncrementFromDivisionToRank", "j", 0);
     e.alternateRankId = fieldInt(row, "AlternateRankID", "p", 0);
+    e.alternateSwitchId = fieldInt(row, "SwitchIDToSwitchToAlternateRank", nullptr, 0);
     e.retriggerOnAlternate = fieldBool(
         row, "RetriggerNotesWhenSwitchingBetweenNormalAndAlternateRanks", "n", false);
     stopIt->second.ranks.push_back(e);
@@ -917,11 +918,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.engageAction = fieldInt(row, "EngageLinkActionCode", "f", 1);
     l.disengageAction = fieldInt(row, "DisengageLinkActionCode", "g", 2);
 
-    // Codes 1 and 4 engage the destination, 2 and 7 disengage it. Anything
+    // Codes 1 and 4 engage the destination, 2 and 7 disengage it, 3 flips it
+    // (a reversible piston). Anything
     // else is a latching or momentary behaviour we do not model, and treating
     // it as a plain follow would rewire the organ behind the player's back.
     for (int code : {l.engageAction, l.disengageAction})
-      if (code != 1 && code != 2 && code != 4 && code != 7 &&
+      if (code != 1 && code != 2 && code != 3 && code != 4 && code != 7 &&
           std::find(outDiag.unmappedLinkageCodes.begin(),
                     outDiag.unmappedLinkageCodes.end(),
                     code) == outDiag.unmappedLinkageCodes.end())

@@ -415,7 +415,8 @@ void CouplerMatrix::setMasterCoupler(int t, int f, int k, bool e) {
 
 std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
                                        int midiNote,
-                                       const std::unordered_set<Id>& engagedStops) {
+                                       const std::unordered_set<Id>& engagedStops,
+                                       const std::unordered_set<Id>* engagedSwitches) {
   std::vector<ResolvedPipe> out;
   for (const auto& [stopId, stop] : model.stops) {
     if (stop.divisionId != divisionId) continue;
@@ -425,13 +426,17 @@ std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
           midiNote >= entry.firstMappedDivisionNote + entry.numMappedNotes)
         continue;
       const int pipeNote = midiNote + entry.midiIncrement;
-      auto rankIt = model.ranks.find(entry.rankId);
+      Id rankId = entry.rankId;
+      if (entry.alternateRankId != 0 && entry.alternateSwitchId != 0 &&
+          engagedSwitches != nullptr && engagedSwitches->count(entry.alternateSwitchId) != 0)
+        rankId = entry.alternateRankId;
+      auto rankIt = model.ranks.find(rankId);
       if (rankIt == model.ranks.end()) continue;
       for (const Pipe& pipe : rankIt->second.pipes) {
         if (pipe.midiNote != pipeNote) continue;
         ResolvedPipe rp;
         rp.stopId = stopId;
-        rp.rankId = entry.rankId;
+        rp.rankId = rankId;
         rp.pipeId = pipe.pipeId;
         rp.pipeMidiNote = pipeNote;
         out.push_back(rp);

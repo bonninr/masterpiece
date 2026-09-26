@@ -1,4 +1,5 @@
 #include "Ui.h"
+#include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
 
@@ -278,12 +279,12 @@ void TopBar::resized() {
 
 // The organ file dialog. Its own method rather than a lambda in the member
 // list, because the first-run wizard needs the same door.
-void MasterpieceEditor::chooseAndLoadOrgan() {
+void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // The extension pattern names the format because that IS the file name on
   // disk; the prompt does not, because the player is choosing an organ.
   chooser_ = std::make_unique<juce::FileChooser>(
-      "Choose an organ definition file", juce::File(),
-      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
+      "Choose an organ definition file", startIn,
+      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
   chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                             juce::FileBrowserComponent::canSelectFiles,
                         [this](const juce::FileChooser& fc) {
@@ -405,6 +406,53 @@ MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
 
 void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;  // one load at a time; the dialog is the interlock
+
+  // An organ still in its packages is opened first, on its own thread, since
+  // indexing a solid archive means decompressing it. What comes out is an
+  // ordinary organ definition, loaded like any other. Packages that hold
+  // several, as demo sets often do, leave the choice to the player in the
+  // same file chooser, opened where they were unpacked.
+  if (mp::isOrganArchive(odf.getFullPathName().toStdString())) {
+    loading_ = true;
+    top_.setStatus("Opening " + odf.getFileName() + "...");
+    juce::Thread::launch([this, odf, graphicsOnly] {
+      juce::String error;
+      const auto definitions = proc_.openPackagedOrgan(odf, error);
+      juce::MessageManager::callAsync([this, odf, graphicsOnly, definitions, error] {
+        loading_ = false;
+        if (definitions.size() == 1) {
+          loadOrgan(definitions.getFirst(), graphicsOnly);
+        } else if (definitions.size() > 1) {
+          top_.setStatus("These packages hold several organs: choose one");
+          chooseAndLoadOrgan(definitions.getFirst().getParentDirectory());
+        } else {
+          status_ = "Failed to open " + odf.getFileName() + ": " + error;
+          top_.setStatus(status_);
+        }
+      });
+    });
+    return;
+  }
+
+  // The first time an organ is loaded, the engine settings come first: they
+  // decide how much memory it will take -- 16-bit samples, mono, streamed
+  // releases -- and they only act at load time. Closing them starts the load.
+  if (!graphicsOnly && onBeforeFirstLoad && !proc_.settingsFileFor(odf).existsAsFile()) {
+    // The window can also close because the application is quitting: then
+    // there is nothing to load into, and perhaps no editor left.
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    onBeforeFirstLoad([self, odf] {
+      if (self == nullptr || juce::MessageManager::getInstance()->hasStopMessageBeenSent())
+        return;
+      self->startLoad(odf, false);
+    });
+    return;
+  }
+  startLoad(odf, graphicsOnly);
+}
+
+void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
+  if (loading_) return;
   loading_ = true;
   top_.setStatus("Loading " + odf.getFileName() + "...");
 

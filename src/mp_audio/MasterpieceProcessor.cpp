@@ -1,4 +1,5 @@
 #include "MasterpieceProcessor.h"
+#include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/Temperament.h"
@@ -444,7 +445,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
   if (numCh <= 0 || numFrames <= 0) return;
 
   // One block for the whole callback, whatever the bus count.
-  voices_.beginBlock();
+  voices_.beginBlock(numFrames);
   advanceWind(numFrames);
   advanceTremulants(numFrames);
 
@@ -1726,7 +1727,7 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
     const int divisionId = reached.divisionId;
     resolveScratch_.clear();
     const auto pipes =
-        resolvePipes(model_, divisionId, reached.midiNote, stops);
+        resolvePipes(model_, divisionId, reached.midiNote, stops, &engagedSwitches_);
     for (const auto& rp : pipes) {
       const auto rankIt = model_.ranks.find(rp.rankId);
       if (rankIt == model_.ranks.end()) continue;
@@ -1753,6 +1754,7 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
   for (const auto& layer : pipe.layers) {
     NoteStrike strike;
     strike.velocity = velocity;
+    strike.timeSinceCloseMs = voices_.msSincePipeClosed(pipe.pipeId);
     const int attackIndex = selectAttack(layer, strike);
     if (attackIndex < 0) continue; // this layer stays silent, by design
 
@@ -1969,7 +1971,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
                            engagedSwitches_, keyFlow_, expandScratch_);
       for (const ExpandedNote& reached : expandScratch_) {
         const auto pipes = resolvePipes(model_, reached.divisionId,
-                                        reached.midiNote, stopSetScratch_);
+                                        reached.midiNote, stopSetScratch_, &engagedSwitches_);
         // Only this rank's pipes let go; the rest of the note plays on, and
         // the key is still down.
         for (const auto& rp : pipes)
@@ -2137,7 +2139,36 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // means. On a wired console the two are different switches: Lemmer's "Pedaal
   // koppel" is 1006 and every key action that reads it looks at 10101.
   switches_.set(switchId, engaged);
+  const bool swapsRanks = !alternateStopsBySwitch_.empty();
+  if (swapsRanks) previousSwitches_ = engagedSwitches_;
   engagedSwitches_ = switches_.engagedSwitches();
+  // A switch that swaps a stop's rank for its alternate -- a tremulant whose
+  // pipes were also recorded with it running -- re-sounds the notes held on
+  // those stops, when the organ asks for that: what was sounding lets go and
+  // the other rank's pipes speak.
+  if (swapsRanks && !soundingNotes_.empty())
+    for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+      (void)nowEngaged;
+      const auto alt = alternateStopsBySwitch_.find(movedId);
+      if (alt == alternateStopsBySwitch_.end()) continue;
+      stopSetScratch_.clear();
+      for (Id s : alt->second)
+        if (engagedStops_.count(s) != 0) stopSetScratch_.insert(s);
+      if (stopSetScratch_.empty()) continue;
+      for (const auto& [key, held] : soundingNotes_) {
+        (void)key;
+        expandScratch_.clear();
+        couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote,
+                             static_cast<float>(held.velocity) / 127.0f,
+                             previousSwitches_, keyFlow_, expandScratch_);
+        for (const ExpandedNote& reached : expandScratch_)
+          for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
+                                             stopSetScratch_, &previousSwitches_))
+            voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
+        startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
+                          stopSetScratch_);
+      }
+    }
 
   // Every switch whose RESOLVED state moved — which on a wired console is
   // usually more than the one clicked.
@@ -2725,6 +2756,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Console click -> stop. Without this a drawstop would move on screen and
   // the organ would stay silent, which is the worst of both.
   stopBySwitch_.clear();
+  alternateStopsBySwitch_.clear();
+  for (const auto& [stopId, stop] : model_.stops)
+    for (const StopRankEntry& e : stop.ranks)
+      if (e.alternateRankId != 0 && e.alternateSwitchId != 0 && e.retriggerOnAlternate)
+        alternateStopsBySwitch_[e.alternateSwitchId].push_back(stopId);
   for (const auto& [stopId, stop] : model_.stops)
     if (stop.controllingSwitchId != 0)
       stopBySwitch_[stop.controllingSwitchId] = stopId;
@@ -3060,6 +3096,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     }
     samples_.setCacheIdentity(organKey(), odfStamp);
 
+    // An organ unpacked from its packages keeps its samples there: the
+    // folder says which archives, and its saved index says where in them.
+    {
+      std::shared_ptr<const OrganArchive> packaged;
+      const std::string archivePath = readArchiveMarker(opts.organRootDir);
+      if (!archivePath.empty()) {
+        auto archive = std::make_shared<OrganArchive>();
+        std::string error;
+        const std::string index = juce::File(juce::String::fromUTF8(opts.organRootDir.c_str()))
+                                      .getChildFile("archive-index.txt")
+                                      .getFullPathName()
+                                      .toStdString();
+        if (archive->loadIndex(index) || archive->open(archivePath, error)) {
+          packaged = archive;
+          juce::Logger::writeToLog("load: samples from " + juce::String((int)archive->archives().size()) +
+                                   " archive(s) beside " + juce::String(archivePath));
+        } else {
+          juce::Logger::writeToLog("load: the organ's archives cannot be read: " + juce::String(error));
+        }
+      }
+      samples_.setArchive(packaged);
+    }
+
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
@@ -3201,6 +3260,45 @@ int MasterpieceProcessor::engageAllStops() {
     setStopEngaged(id, true);
   }
   return static_cast<int>(engagedStops_.size());
+}
+
+juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File& archiveFile,
+                                                               juce::String& error) {
+  OrganArchive archive;
+  std::string why;
+  const std::string archivePath = archiveFile.getFullPathName().toStdString();
+  if (!archive.discover(archivePath, why)) {
+    error = why;
+    return {};
+  }
+  // Named by the archives themselves, so the same packages open the same
+  // folder -- and the organ keeps its settings -- however they were reached.
+  const juce::File dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                             .getChildFile("Masterpiece")
+                             .getChildFile("Packaged")
+                             .getChildFile(archive.identity());
+  const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
+  const bool ready = !readArchiveMarker(dir.getFullPathName().toStdString()).empty() &&
+                     archive.loadIndex(index);
+  if (!ready) {
+    dir.deleteRecursively();
+    dir.createDirectory();
+    if (!archive.index(why) ||
+        !archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why)) {
+      error = why;
+      dir.deleteRecursively();
+      return {};
+    }
+    archive.saveIndex(index);
+    // Written last: a folder without it is an unpack that did not finish.
+    writeArchiveMarker(dir.getFullPathName().toStdString(), archivePath);
+  }
+  juce::Array<juce::File> definitions;
+  dir.findChildFiles(definitions, juce::File::findFiles, true,
+                     "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
+  definitions.sort();
+  if (definitions.isEmpty()) error = "no organ definition in " + archiveFile.getFileName();
+  return definitions;
 }
 
 void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {

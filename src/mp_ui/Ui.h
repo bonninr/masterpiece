@@ -111,8 +111,11 @@ public:
   // draws the console without reading any audio — see
   // MasterpieceProcessor::loadOrgan.
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
+  // The load itself, past the first-time settings.
+  void startLoad(const juce::File& odf, bool graphicsOnly);
   // Ask for an organ file and load it. Shared with the first-run wizard.
-  void chooseAndLoadOrgan();
+  // `startIn` is where the chooser opens; empty is wherever it last was.
+  void chooseAndLoadOrgan(const juce::File& startIn = {});
   // Show one of the organ's console pages, counting from 1. A set with jambs
   // on their own pages cannot be photographed from a script otherwise, and
   // this is also what --console-page drives.
@@ -139,6 +142,9 @@ public:
   // Supplied by the application, which owns the device manager the settings
   // panel needs.
   std::function<void()> onSettings;
+  // Asked before an organ's first load, with the load to run afterwards.
+  // Unset, the load simply starts.
+  std::function<void(std::function<void()>)> onBeforeFirstLoad;
 
 private:
   void timerCallback() override;

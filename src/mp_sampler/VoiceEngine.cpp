@@ -354,6 +354,13 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   return slot;
 }
 
+int64_t VoiceEngine::msSincePipeClosed(Id pipeId) const {
+  const auto it = pipeClosedAt_.find(pipeId);
+  if (it == pipeClosedAt_.end() || sampleRate_ <= 0.0) return INT64_MAX;
+  return static_cast<int64_t>(static_cast<double>(framesRendered_ - it->second) * 1000.0 /
+                              sampleRate_);
+}
+
 void VoiceEngine::noteOffPipe(uint64_t noteId, Id pipeId,
                               const NoteRelease& release) {
   releaseVoices(noteId, pipeId, release);
@@ -370,6 +377,7 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     if (!v.active() || v.noteId != noteId) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
     if (v.phase == VoicePhase::Release) continue;
+    if (v.pipeId != 0) pipeClosedAt_[v.pipeId] = framesRendered_;
 
     // Pick the release sample that matches the attack this voice actually
     // played — that pairing is what makes a release sound like the same pipe.
@@ -797,7 +805,10 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
                          int busIndex, int mixBus) {
   // Rendering everything is one block by definition. Per-bus rendering makes
   // several calls per block, so the caller owns the counter via beginBlock().
-  if (busIndex < 0 && mixBus < 0) ++blockCounter_;
+  if (busIndex < 0 && mixBus < 0) {
+    ++blockCounter_;
+    framesRendered_ += numFrames;
+  }
   if (out == nullptr || numFrames <= 0 || numChannels <= 0) return;
 
   const int active = activeVoiceCount();

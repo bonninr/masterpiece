@@ -36,14 +36,19 @@ file(GLOB MP_WOOD_TILES CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/wood/*.png)
 file(GLOB MP_STANDARD_STANDINS CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/standard/*.png)
+# Stand-ins for GrandOrgue's stock console images, drawn by
+# tools/gen-grandorgue.py; converted GrandOrgue organs reference them as
+# standard components.
+file(GLOB MP_GRANDORGUE_STANDINS CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/grandorgue/*.png)
 juce_add_binary_data(mp_assets
   HEADER_NAME MpAssets.h
   NAMESPACE MpAssets
-  SOURCES ${MP_WOOD_TILES} ${MP_STANDARD_STANDINS})
+  SOURCES ${MP_WOOD_TILES} ${MP_STANDARD_STANDINS} ${MP_GRANDORGUE_STANDINS})
 
 target_link_libraries(mp_audio PUBLIC
   mp_assets
-  mp_core mp_control ${MP_WAVPACK_TARGET}
+  mp_core mp_control mp_archive ${MP_WAVPACK_TARGET}
   juce::juce_audio_processors juce::juce_audio_utils juce::juce_audio_devices
   juce::juce_audio_formats juce::juce_data_structures
   juce::juce_gui_basics juce::juce_graphics

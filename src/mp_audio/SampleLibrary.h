@@ -17,6 +17,7 @@
 #include "../mp_core/OrganModel.h"
 #include "../mp_core/LoadProgress.h"
 #include "../mp_sampler/VoiceEngine.h"
+#include "../mp_archive/OrganArchive.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -161,6 +162,14 @@ public:
   int64_t cacheBytesRead() const { return cacheRead_; }
   int64_t cacheBytesWritten() const { return cacheWritten_; }
 
+  // The archives an organ is played from, when it is not unpacked. A sample
+  // that is not on disk under the organ's root is read from them instead:
+  // decompressed into memory in one pass per archive, never written out.
+  // Such samples are always resident -- there is no file to stream a tail
+  // from. Null for an ordinary organ.
+  void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
+  const std::shared_ptr<const OrganArchive>& archive() const { return archive_; }
+
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
   SampleProvider provider() const;
@@ -194,6 +203,7 @@ private:
   bool readCache(Store& out, const std::string& fingerprint,
                  LoadProgress* progress = nullptr) const;
 
+  std::shared_ptr<const OrganArchive> archive_;
   std::string cacheDir_;
   std::string cacheOrganId_;
   std::string cacheOdfStamp_;

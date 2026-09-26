@@ -197,6 +197,9 @@ struct StopRankEntry {
   int numMappedNotes = 61;
   int midiIncrement = 0;
   Id alternateRankId = 0;
+  // The switch that swaps the alternate rank in -- typically a tremulant's,
+  // when the alternate holds pipes recorded with the tremulant running.
+  Id alternateSwitchId = 0;
   bool retriggerOnAlternate = false;
 };
 

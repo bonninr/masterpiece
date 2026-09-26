@@ -6,7 +6,7 @@ target_compile_features(mp_tests PRIVATE cxx_std_20)
 # mp_control supplies resolvePipes() and the coupler/combination systems the
 # tests exercise; the WSL fast loop compiles it directly, so a missing link
 # here only ever shows up in the full CMake build.
-target_link_libraries(mp_tests PRIVATE mp_core mp_control)
+target_link_libraries(mp_tests PRIVATE mp_core mp_control mp_archive)
 target_compile_definitions(mp_tests PRIVATE
   MP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
 )
