@@ -1104,6 +1104,9 @@ private:
   std::atomic<bool> stagesReady_{false};
   // False until a load has finished; pallets start no voices before then.
   std::atomic<bool> palletsLive_{false};
+  // Set with palletsLive_: the first block after a load opens the pallets of
+  // switches that came up engaged -- a blower that runs from the start.
+  std::atomic<bool> palletsOpenEngaged_{false};
   void palletMoved(Id switchId, bool engaged);
   // Pallet switch -> the pipes it opens, with their rank.
   std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;

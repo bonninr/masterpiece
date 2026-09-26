@@ -1,5 +1,6 @@
 #include "MasterpieceProcessor.h"
 
+#include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/Temperament.h"
 #include <algorithm>
 #include <cmath>
@@ -2456,6 +2457,11 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
+  // A pallet switch that was engaged before the organ went live never moved
+  // while pallets listened, so its pipes are opened here, once.
+  if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
+    for (const auto& [switchId, pipes] : palletPipes_)
+      if (switches_.engaged(switchId)) palletMoved(switchId, true);
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -2584,6 +2590,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // those can open pallets. No pallet may start a voice before the new
   // organ's audio is in place.
   palletsLive_.store(false, std::memory_order_release);
+  palletsOpenEngaged_.store(false, std::memory_order_release);
 
   // Whoever starts a load clears the cancel flag, so a Cancel that arrived
   // after the previous load already finished cannot kill this one.
@@ -3015,11 +3022,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     // changed since the cache was written. Both are cheap to read and neither
     // is guessable from the model alone.
     samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
-    samples_.setCacheIdentity(
-        organKey(),
-        effectiveOdf.getFullPathName().toStdString() + "|" +
-            std::to_string(effectiveOdf.getSize()) + "|" +
-            std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds()));
+    std::string odfStamp = effectiveOdf.getFullPathName().toStdString() + "|" +
+                           std::to_string(effectiveOdf.getSize()) + "|" +
+                           std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds());
+    // A converted organ's sample table is the importer's work, not the
+    // file's: a newer importer can number the same samples differently
+    // while the .organ file stays as it was. The stamp covers the table
+    // itself, so a cache from another importer is never read against it.
+    if (isGrandOrgueDefinition(effectiveOdf.getFullPathName().toStdString())) {
+      std::vector<std::pair<Id, const SampleRef*>> rows;
+      for (const auto& [id, ref] : model_.samples) rows.emplace_back(id, &ref);
+      std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+      uint64_t h = 1469598103934665603ull;
+      auto mix = [&h](const std::string& s) {
+        for (unsigned char c : s) {
+          h ^= c;
+          h *= 1099511628211ull;
+        }
+      };
+      for (const auto& [id, ref] : rows)
+        mix(std::to_string(id) + "|" + ref->fileName + "|" + std::to_string(ref->pitchHz) + ";");
+      odfStamp += "|samples " + std::to_string(h);
+    }
+    samples_.setCacheIdentity(organKey(), odfStamp);
 
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
@@ -3119,6 +3144,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // the audio thread's own stage check must not move them at the same time.
   stagesReady_.store(true, std::memory_order_release);
   palletsLive_.store(true, std::memory_order_release);
+  palletsOpenEngaged_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
   result.ok = true;
