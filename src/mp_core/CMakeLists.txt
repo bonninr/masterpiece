@@ -1,6 +1,7 @@
 add_library(mp_core STATIC
   OrganModel.h
   OdfLoader.h OdfLoader.cpp
+  GrandOrgueImport.h GrandOrgueImport.cpp
   CodmCompiler.h CodmCompiler.cpp
   Temperament.h Temperament.cpp
 )
