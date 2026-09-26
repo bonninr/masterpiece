@@ -28,7 +28,8 @@
 
 namespace mp {
 
-// True for a name the importer treats as an organ package (.rar, any case).
+// True for a name the importer treats as an organ package: a .rar, or a
+// GrandOrgue .orgue (any case).
 bool isOrganArchive(const std::string& path);
 
 class OrganArchive {

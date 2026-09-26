@@ -78,6 +78,9 @@ struct Reader {
   Reader() {
     archive_read_support_format_rar(a);
     archive_read_support_format_rar5(a);
+    // GrandOrgue's .orgue packages: ZIP, every file stored uncompressed, so
+    // no codec is needed to read them.
+    archive_read_support_format_zip(a);
   }
   ~Reader() { archive_read_free(a); }
   bool open(const std::vector<std::string>& volumes) {
@@ -107,8 +110,54 @@ bool readAll(archive* a, int64_t size, std::vector<char>& out) {
 }  // namespace
 
 bool isOrganArchive(const std::string& path) {
-  return endsWith(lower(path), ".rar");
+  const std::string p = lower(path);
+  return endsWith(p, ".rar") || endsWith(p, ".orgue");
 }
+
+namespace {
+
+// One file's bytes, from an archive, by name. For the small index a package
+// carries about itself.
+bool readOne(const std::vector<std::string>& volumes, const std::string& wantedKey,
+             std::vector<char>& out) {
+  Reader r;
+  if (!r.open(volumes)) return false;
+  archive_entry* entry = nullptr;
+  while (archive_read_next_header(r.a, &entry) == ARCHIVE_OK) {
+    const char* name = archive_entry_pathname_utf8(entry);
+    if (name == nullptr) name = archive_entry_pathname(entry);
+    if (name != nullptr && OrganArchive::key(name) == wantedKey)
+      return readAll(r.a, archive_entry_size(entry), out);
+    archive_read_data_skip(r.a);
+  }
+  return false;
+}
+
+// The packages a GrandOrgue package depends on, by package id, from its
+// organindex.ini: [DependencyNNN] PackageID=...
+std::vector<std::string> orgueDependencies(const std::string& path) {
+  std::vector<char> bytes;
+  std::vector<std::string> ids;
+  if (!readOne({path}, "organindex.ini", bytes)) return ids;
+  std::string section;
+  size_t i = 0;
+  const std::string text(bytes.begin(), bytes.end());
+  while (i < text.size()) {
+    size_t e = text.find('\n', i);
+    if (e == std::string::npos) e = text.size();
+    std::string line = text.substr(i, e - i);
+    i = e + 1;
+    while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+    if (!line.empty() && line.front() == '[') {
+      section = lower(line);
+    } else if (section.rfind("[dependency", 0) == 0 && lower(line).rfind("packageid=", 0) == 0) {
+      ids.push_back(lower(line.substr(10)));
+    }
+  }
+  return ids;
+}
+
+}  // namespace
 
 std::string OrganArchive::key(const std::string& path) {
   std::string k = lower(path);
@@ -129,6 +178,32 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   const fs::path chosen(path);
   const fs::path dir = chosen.parent_path();
   const std::string stem = stemOf(chosen.filename().string());
+
+  // A GrandOrgue package names what else it needs by package id, and a
+  // package is published with that id in its file name ("demo-4232D4....
+  // orgue"). Its dependencies are the packages beside it that carry them.
+  if (endsWith(lower(path), ".orgue")) {
+    archives_.push_back({path});
+    std::error_code ec;
+    for (const auto& id : orgueDependencies(path)) {
+      bool found = false;
+      for (const auto& e : fs::directory_iterator(dir.empty() ? fs::path(".") : dir, ec)) {
+        const std::string name = lower(e.path().filename().string());
+        if (endsWith(name, ".orgue") && name.find(id) != std::string::npos &&
+            e.path() != chosen) {
+          archives_.push_back({e.path().string()});
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        error = "the package needs another package, id " + id +
+                ", which is not beside it";
+        return false;
+      }
+    }
+    return true;
+  }
 
   // The siblings: every archive in the folder with the same organ stem.
   // Members of one multi-volume set become a single archive.

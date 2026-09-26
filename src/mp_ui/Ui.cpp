@@ -284,7 +284,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // disk; the prompt does not, because the player is choosing an organ.
   chooser_ = std::make_unique<juce::FileChooser>(
       "Choose an organ definition file", startIn,
-      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.rar");
+      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.rar;*.orgue");
   chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                             juce::FileBrowserComponent::canSelectFiles,
                         [this](const juce::FileChooser& fc) {
