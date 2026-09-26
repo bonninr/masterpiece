@@ -6,6 +6,7 @@
 #include "MpTest.h"
 
 #include "../src/mp_core/CodmCompiler.h"
+#include "../src/mp_core/GrandOrgueImport.h"
 #include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
@@ -8427,6 +8428,137 @@ static CompactStoragePerfTest g_compactPerf;
 static VoicePolyphonyPerfTest g_voicePerf;
 static TemperamentThroughputTest g_tempThroughput;
 
+// A GrandOrgue definition, converted in memory and loaded like any other:
+// the manuals become keyboards with their divisions, a stop that carries its
+// own pipes becomes a rank, a coupler keys the other division, and the
+// enclosure and tremulant reach the pipes on their windchest group.
+class GrandOrgueImportTest final : public mp::test::Test {
+public:
+  GrandOrgueImportTest()
+    : Test("functional.odf.grandorgue-import", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "\xEF\xBB\xBF; a comment\r\n"
+        "[Organ]\r\nChurchName=Test Church\r\nHasPedals=Y\r\n"
+        "NumberOfManuals=1\r\nNumberOfEnclosures=1\r\nNumberOfTremulants=1\r\n"
+        "NumberOfWindchestGroups=1\r\nNumberOfRanks=1\r\n"
+        "[Enclosure001]\r\nName=Swell\r\nAmpMinimumLevel=10\r\n"
+        "[Tremulant001]\r\nName=Trem\r\nPeriod=200\r\nAmpModDepth=18\r\n"
+        "[WindchestGroup001]\r\nName=Main\r\nNumberOfEnclosures=1\r\nEnclosure001=1\r\n"
+        "NumberOfTremulants=1\r\nTremulant001=1\r\n"
+        "[Rank001]\r\nName=Principal 8\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=3\r\n"
+        "WindchestGroup=1\r\nPipe001=P8\036.wav\r\nPipe002=DUMMY\r\nPipe003=P8\038.wav\r\n"
+        "[Manual000]\r\nName=Pedal\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=3\r\nNumberOfStops=2\r\nStop001=1\r\nStop002=3\r\n"
+        "[Manual001]\r\nname=Great\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=3\r\nNumberOfStops=1\r\nStop001=2\r\n"
+        "NumberOfCouplers=1\r\nCoupler001=1\r\n"
+        "[Stop001]\r\nName=Subbass 16\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\nHarmonicNumber=4\r\n"
+        "Pipe001=S16\036.wav\r\nPipe002=S16\037.wav\r\n"
+        "[Stop003]\r\nName=Borrowed\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nPipe001=REF:001:001:002\r\nPipe002=REF:001:001:003\r\n"
+        "[Stop002]\r\nName=Principal 8\r\nNumberOfRanks=1\r\nRank001=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nNumberOfAccessiblePipes=3\r\n"
+        "[Coupler001]\r\nName=Great to Pedal\r\nDestinationManual=0\r\n";
+    const mp::GrandOrgueImportReport rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, "conversion failed: " + rep.error);
+
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "test.organ", o, m, d),
+             "converted definition must load");
+    MP_CHECK(m.keyboards.size() == 2 && m.divisions.size() == 2,
+             "pedal and one manual make two keyboards and two divisions");
+    MP_CHECK(m.ranks.count(1001) && m.ranks.at(1001).pipes.size() == 2,
+             "the explicit rank has two pipes; the DUMMY one is skipped");
+    MP_CHECK(m.ranks.count(5001) && m.ranks.at(5001).pipes.size() == 2,
+             "a stop with its own pipes becomes a rank");
+    // A borrowed pipe takes its own slot: pedal key 36 plays the rank's
+    // pipe 2, but it is the borrowing stop's first pipe. (The rank's pipe 2
+    // is DUMMY, so only the second borrowed pipe exists.)
+    MP_CHECK(m.ranks.count(5003) && m.ranks.at(5003).pipes.size() == 1 &&
+                 m.ranks.at(5003).pipes[0].midiNote == 37,
+             "a REF pipe sits in the slot it is written in");
+    MP_CHECK(m.stops.count(2002) && m.stops.at(2002).ranks.size() == 1 &&
+                 m.stops.at(2002).ranks[0].rankId == 1001,
+             "the Great stop draws the rank");
+    bool coupled = false;
+    for (const auto& ka : m.keyActions)
+      if (ka.conditionSwitchId == 4001 && ka.destDivision == 1) coupled = true;
+    MP_CHECK(coupled, "the coupler keys the pedal division under its switch");
+    MP_CHECK(m.pipeEnclosure.size() == 5, "every pipe on the chest is enclosed, borrowed ones too");
+    MP_CHECK(m.tremulantPipes.size() == 5, "every pipe on the chest is tremulated, borrowed ones too");
+    MP_CHECK(m.tremulants.count(101) &&
+                 std::abs(m.tremulants.at(101).engagedHz - 5.0) < 1e-9,
+             "a 200 ms period is 5 Hz");
+    // Same text, same organ; different text, different organ.
+    MP_CHECK(mp::convertGrandOrgueText(organ).xml == rep.xml,
+             "conversion is deterministic");
+    MP_CHECK(mp::convertGrandOrgueText(organ + "; changed\r\n").xml != rep.xml,
+             "the organ id follows the file");
+    MP_CHECK(!mp::convertGrandOrgueText("[Stop001]\nName=x\n").ok,
+             "a file with no [Organ] is refused");
+  }
+};
+static GrandOrgueImportTest g_grandOrgueImport;
+
+// GrandOrgue switch logic, through the real switch network: a stop that is
+// the And of its drawstop and the blower sounds only while both are on, an
+// effect stop's pipe opens with its switch, and a drawn panel becomes a page
+// whose drawstop picture is bound to the switch.
+class GrandOrgueSwitchesTest final : public mp::test::Test {
+public:
+  GrandOrgueSwitchesTest()
+    : Test("functional.odf.grandorgue-switches", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfSwitches=2\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=W\n"
+        "[Switch001]\nName=Blower\nDefaultToEngaged=Y\nDisplayed=N\n"
+        "[Switch002]\nName=Principal\nDisplayed=Y\nPositionX=10\nPositionY=20\n"
+        "ImageOn=on.png\nImageOff=off.png\nDispLabelText=\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "[Stop001]\nName=Principal\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=And\nSwitchCount=2\nSwitch001=002\nSwitch002=001\n"
+        "[Stop002]\nName=Blower noise\nNumberOfLogicalPipes=1\nNumberOfAccessiblePipes=1\n"
+        "Pipe001=blower.wav\nFunction=And\nSwitchCount=1\nSwitch001=001\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.stops.count(2001), "the stop is there");
+    const mp::Id gate = m.stops.at(2001).controllingSwitchId;
+    mp::SwitchNetwork net;
+    net.reset(m);
+    MP_CHECK(net.engaged(8001), "the blower comes up running");
+    MP_CHECK(!net.engaged(gate), "an undrawn stop is off");
+    net.set(8002, true);
+    MP_CHECK(net.engaged(gate), "drawing it with the blower on engages the stop");
+    net.set(8001, false);
+    MP_CHECK(!net.engaged(gate), "stopping the blower silences it");
+    net.set(8001, true);
+    MP_CHECK(net.engaged(gate), "and starting it again brings it back");
+    MP_CHECK(!m.stops.count(2002), "an effect stop is not a stop on the jamb");
+    bool pallet = false;
+    for (const auto& [id, rank] : m.ranks)
+      for (const auto& p : rank.pipes)
+        if (p.palletSwitchId == 8001) pallet = true;
+    MP_CHECK(pallet, "the blower noise opens with the blower switch");
+    MP_CHECK(m.displayPages.size() == 1, "the main panel is a page");
+    MP_CHECK(m.switches.count(8002) && m.switches.at(8002).dispInstanceId != 0,
+             "the drawstop picture is bound to its switch");
+  }
+};
+static GrandOrgueSwitchesTest g_grandOrgueSwitches;
 // Which archives belong to one organ, from their names alone: the numbered
 // packages, the parts and a multi-volume set are one organ each, and a
 // different organ in the same folder is not pulled in.

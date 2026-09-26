@@ -144,6 +144,36 @@ else()
   set(MP_LIBARCHIVE_TARGET LibArchive::LibArchive)
 endif()
 
+# ---- WavPack (GrandOrgue sets ship their samples compressed with it) ----
+# The decoder library only: no programs, plugins or hand-written assembly.
+# BSD-licensed.
+option(MP_FETCH_WAVPACK "Fetch WavPack via FetchContent" ON)
+set(MP_WAVPACK_TAG "5.8.1" CACHE STRING "WavPack git tag for FetchContent")
+if(MP_FETCH_WAVPACK)
+  include(FetchContent)
+  foreach(opt WAVPACK_BUILD_PROGRAMS WAVPACK_BUILD_COOLEDIT_PLUGIN
+              WAVPACK_BUILD_WINAMP_PLUGIN WAVPACK_BUILD_DOCS WAVPACK_ENABLE_ASM
+              WAVPACK_ENABLE_LIBCRYPTO WAVPACK_INSTALL_CMAKE_MODULE
+              WAVPACK_INSTALL_DOCS WAVPACK_INSTALL_PKGCONFIG_MODULE BUILD_TESTING)
+    set(${opt} OFF CACHE BOOL "" FORCE)
+  endforeach()
+  # Files from WavPack 1 to 3 as well: organ sets outlive their encoders, and
+  # a decoder without these refuses the oldest ones outright.
+  set(WAVPACK_ENABLE_LEGACY ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    wavpack
+    GIT_REPOSITORY https://github.com/dbry/WavPack.git
+    GIT_TAG ${MP_WAVPACK_TAG}
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+  )
+  FetchContent_MakeAvailable(wavpack)
+  set(MP_WAVPACK_TARGET wavpack)
+else()
+  find_package(WavPack REQUIRED)
+  set(MP_WAVPACK_TARGET WavPack::WavPack)
+endif()
+
 # JUCE feature flags. An organ player has no use for an embedded web browser,
 # and pulling one in would make GTK + WebKit a hard build dependency on Linux
 # for no gain. Curl is off for the same reason: nothing here talks HTTP.

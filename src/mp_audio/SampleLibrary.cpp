@@ -1,4 +1,5 @@
 #include "SampleLibrary.h"
+#include "WavPackFormat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -80,7 +81,7 @@ std::filesystem::path resolveIgnoringCase(const std::filesystem::path& wanted) {
 SampleLibrary::SampleLibrary() {
   // WAV and AIFF cover ADR-003's v1 scope. WavPack (.wv) joins here at ADR-011
   // by registering its own AudioFormat.
-  formats_.registerBasicFormats();
+  registerSampleFormats(formats_);
   publish(std::make_shared<const Store>()); // start with an empty generation
 }
 
@@ -502,7 +503,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     // Each thread needs its own format manager: AudioFormatManager is not
     // documented as thread-safe for concurrent reader creation.
     juce::AudioFormatManager formats;
-    formats.registerBasicFormats();
+    registerSampleFormats(formats);
 
     for (;;) {
       // Checked per file rather than per batch: a file is the granularity at
@@ -657,7 +658,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
 
     auto decoder = [&]() {
       juce::AudioFormatManager formats;
-      formats.registerBasicFormats();
+      registerSampleFormats(formats);
       for (;;) {
         Item item;
         {
@@ -759,7 +760,7 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       if (shared->tried) return 0; // already failed once; do not retry per block
       shared->tried = true;
       shared->formats = std::make_unique<juce::AudioFormatManager>();
-      shared->formats->registerBasicFormats();
+      registerSampleFormats(*shared->formats);
       shared->reader.reset(
           shared->formats->createReaderFor(juce::File(shared->path)));
       if (shared->reader == nullptr) return 0;

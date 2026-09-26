@@ -9,6 +9,7 @@
 add_library(mp_audio STATIC
   MasterpieceProcessor.h MasterpieceProcessor.cpp
   SampleLibrary.h SampleLibrary.cpp
+  WavPackFormat.h WavPackFormat.cpp
   Metronome.h Metronome.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
@@ -42,7 +43,7 @@ juce_add_binary_data(mp_assets
 
 target_link_libraries(mp_audio PUBLIC
   mp_assets
-  mp_core mp_control mp_archive
+  mp_core mp_control mp_archive ${MP_WAVPACK_TARGET}
   juce::juce_audio_processors juce::juce_audio_utils juce::juce_audio_devices
   juce::juce_audio_formats juce::juce_data_structures
   juce::juce_gui_basics juce::juce_graphics
