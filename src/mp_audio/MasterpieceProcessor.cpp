@@ -1,5 +1,6 @@
 #include "MasterpieceProcessor.h"
 
+#include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/Temperament.h"
 #include <algorithm>
 #include <cmath>
@@ -3021,11 +3022,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     // changed since the cache was written. Both are cheap to read and neither
     // is guessable from the model alone.
     samples_.setCacheDir(cacheDirectory().getFullPathName().toStdString());
-    samples_.setCacheIdentity(
-        organKey(),
-        effectiveOdf.getFullPathName().toStdString() + "|" +
-            std::to_string(effectiveOdf.getSize()) + "|" +
-            std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds()));
+    std::string odfStamp = effectiveOdf.getFullPathName().toStdString() + "|" +
+                           std::to_string(effectiveOdf.getSize()) + "|" +
+                           std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds());
+    // A converted organ's sample table is the importer's work, not the
+    // file's: a newer importer can number the same samples differently
+    // while the .organ file stays as it was. The stamp covers the table
+    // itself, so a cache from another importer is never read against it.
+    if (isGrandOrgueDefinition(effectiveOdf.getFullPathName().toStdString())) {
+      std::vector<std::pair<Id, const SampleRef*>> rows;
+      for (const auto& [id, ref] : model_.samples) rows.emplace_back(id, &ref);
+      std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+      uint64_t h = 1469598103934665603ull;
+      auto mix = [&h](const std::string& s) {
+        for (unsigned char c : s) {
+          h ^= c;
+          h *= 1099511628211ull;
+        }
+      };
+      for (const auto& [id, ref] : rows)
+        mix(std::to_string(id) + "|" + ref->fileName + "|" + std::to_string(ref->pitchHz) + ";");
+      odfStamp += "|samples " + std::to_string(h);
+    }
+    samples_.setCacheIdentity(organKey(), odfStamp);
 
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
