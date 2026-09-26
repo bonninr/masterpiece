@@ -1216,6 +1216,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
+  for (const auto& [role, channel] : defaultConsole_)
+    text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
     text << "library " << lib.getFullPathName() << "\n";
   if (cacheDir_.getFullPathName().isNotEmpty())
@@ -1273,6 +1275,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // cleanly. Every later read finds this session's own entry, which says
       // nothing about a crash.
       if (!globalsReadOnce_) crashedOrgan_ = juce::File(val);
+    } else if (key == "consolechannel") {
+      // "consolechannel <role> <channel>": the player's own console.
+      const int role = val.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+      const int channel = val.fromFirstOccurrenceOf(" ", false, false).getIntValue();
+      if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "library") {
@@ -1505,12 +1512,46 @@ bool MasterpieceProcessor::saveMidiMap() const {
   return f.replaceWithText(juce::String(midiMap_.toText()));
 }
 
+int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
+  const int code = couplers_.assignmentCodeFor(keyboardId);
+  return code >= 1 && code <= 16 ? code - 1 : -1;
+}
+
+void MasterpieceProcessor::applyDefaultConsole() {
+  // Shared, not exclusive: a default that puts two roles on one channel was
+  // the player's choice, and the MIDI page says so.
+  for (Id kb : couplers_.inputKeyboards()) {
+    const auto it = defaultConsole_.find(consoleRoleOf(kb));
+    if (it != defaultConsole_.end()) setKeyboardForChannel(it->second, kb, 0, false);
+  }
+}
+
+void MasterpieceProcessor::useChannelsAsDefaultConsole() {
+  defaultConsole_.clear();
+  for (Id kb : couplers_.inputKeyboards()) {
+    const int role = consoleRoleOf(kb);
+    if (role >= 0) defaultConsole_[role] = channelForKeyboard(kb);
+  }
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::clearDefaultConsole() {
+  defaultConsole_.clear();
+  writeGlobalFile();
+}
+
 bool MasterpieceProcessor::loadMidiMap() {
   midiMapRepaired_ = 0;
   const auto f = midiMapFileFor(loadedOdf_);
-  if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
+  // Nothing saved for this organ: the player's own console, when there is one.
+  if (f.getFullPathName().isEmpty() || !f.existsAsFile()) {
+    applyDefaultConsole();
+    return false;
+  }
   const auto text = f.loadFileAsString();
   const bool ok = midiMap_.fromText(text.toStdString());
+  // A mapping saved for other things -- pistons, stops -- but no manuals.
+  if (midiMap_.keyboardBindings().empty()) applyDefaultConsole();
 
   // A mapping that sends two manuals to one channel, or names a manual this
   // organ does not have, is repaired here rather than obeyed. Up to 0.3.7 the

@@ -8784,6 +8784,74 @@ public:
 };
 static ReversiblePistonTest g_reversiblePiston;
 
+#ifdef MP_TEST_HAS_AUDIO
+// The player's own console: channels set on one organ, taken as the default,
+// are what an organ with nothing saved for it starts from -- by role, the
+// pedal on the pedal and the first manual on the first manual.
+class DefaultConsoleTest final : public mp::test::Test {
+public:
+  DefaultConsoleTest() : Test("functional.midi.default-console", Category::Functional) {}
+  static juce::File organ(const juce::File& dir, const char* name, int id) {
+    const juce::String xml =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>" + juce::String(name) +
+        "</Identification_Name><Identification_UniqueOrganID>" + juce::String(id) +
+        "</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Pedal</Name></Division>"
+        "<Division><DivisionID>2</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>1</KeyboardID><Name>Pedal</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "<Keyboard><KeyboardID>2</KeyboardID><Name>Great</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<Hint_PrimaryAssociatedDivisionID>2</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>1</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+        "<DestDivisionID>1</DestDivisionID><ActionTypeCode>1</ActionTypeCode></KeyAction>"
+        "<KeyAction><SourceKeyboardID>2</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+        "<DestDivisionID>2</DestDivisionID><ActionTypeCode>1</ActionTypeCode></KeyAction></ObjectList>"
+        "</Hauptwerk>";
+    const auto f = dir.getChildFile(juce::String(name) + ".Organ_Hauptwerk_xml");
+    f.replaceWithText(xml);
+    return f;
+  }
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-default-console");
+    dir.createDirectory();
+    const juce::File a = organ(dir, "ConsoleA", 918273641);
+    const juce::File b = organ(dir, "ConsoleB", 918273642);
+    mp::MasterpieceProcessor proc;
+    const juce::File global = proc.globalSettingsFile();
+    const bool hadGlobal = global.existsAsFile();
+    const juce::String globalText = hadGlobal ? global.loadFileAsString() : juce::String();
+
+    proc.loadGlobalDefaults();
+    MP_CHECK(proc.loadOrgan(a, 0, true).ok, "organ A loads");
+    proc.setKeyboardForChannel(5, 1);
+    proc.setKeyboardForChannel(1, 2);
+    proc.useChannelsAsDefaultConsole();
+    MP_CHECK(proc.defaultConsole().at(0) == 5 && proc.defaultConsole().at(1) == 1,
+             "the pedal on 5 and the first manual on 1 become the default");
+
+    MP_CHECK(proc.loadOrgan(b, 0, true).ok, "organ B loads");
+    MP_CHECK(proc.channelForKeyboard(1) == 5 && proc.channelForKeyboard(2) == 1,
+             "an organ with nothing saved starts from the default console");
+
+    proc.clearDefaultConsole();
+    MP_CHECK(proc.defaultConsole().empty(), "and the default can be cleared");
+
+    for (const auto& f : {a, b}) {
+      proc.settingsFileFor(f).deleteFile();
+      proc.midiMapFileFor(f).deleteFile();
+    }
+    if (hadGlobal) global.replaceWithText(globalText);
+    else global.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static DefaultConsoleTest g_defaultConsole;
+#endif
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

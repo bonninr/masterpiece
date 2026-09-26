@@ -164,7 +164,8 @@ void ConsoleView::rebuild() {
       if (kk != model.keyboardKeys.end()) {
         KeyItem key;
         key.midiNote = kk->second.midiNote;
-        key.channel = proc_.channelForKeyboard(kk->second.keyboardId);
+        key.keyboardId = kk->second.keyboardId;
+        key.channel = proc_.channelForKeyboard(key.keyboardId);
         key.imageSetId = inst.imageSetFor(layout_);
         key.engagedIndex = sit->second->dispIndexEngaged;
         key.disengagedIndex = sit->second->dispIndexDisengaged;
@@ -466,6 +467,7 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
           KeyItem item;
           item.midiNote = note;
           item.channel = channel;
+          item.keyboardId = kb.keyboardId;
           item.imageSetId = shape;
           item.engagedIndex = ks.indexEngaged;
           item.disengagedIndex = ks.indexDisengaged;
@@ -552,6 +554,17 @@ void ConsoleView::timerCallback() {
   // player's own console.
   uint64_t hash = 1469598103934665603ull;
   auto& state = proc_.keyboardState();
+  // The player may have moved a manual to another channel in Settings since
+  // the console was built; the drawn keys follow without a reload.
+  bool channelsMoved = false;
+  for (auto& k : keys_) {
+    const int now = proc_.channelForKeyboard(k.keyboardId);
+    if (now != k.channel) {
+      k.channel = now;
+      channelsMoved = true;
+    }
+  }
+  if (channelsMoved) hash ^= 0x9e3779b97f4a7c15ull;
   for (const auto& k : keys_) {
     hash ^= state.isNoteOn(k.channel, k.midiNote) ? 1u : 0u;
     hash *= 1099511628211ull;
