@@ -6,6 +6,7 @@
 #include "MpTest.h"
 
 #include "../src/mp_core/CodmCompiler.h"
+#include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -772,6 +773,7 @@ public:
   }
 };
 
+#ifdef MP_TEST_HAS_AUDIO  // the processor and JUCE: full build only
 // The Swell panel moves the control a player moves. On the custom-organ
 // template an enclosure's shutters (541) follow its pedal (210), which follows
 // the shoe drawn on the console (542); setting the shutters directly was
@@ -824,6 +826,8 @@ public:
     dir.deleteRecursively();
   }
 };
+
+#endif // MP_TEST_HAS_AUDIO
 
 class EncryptedDetectionTest final : public mp::test::Test {
 public:
@@ -1335,6 +1339,7 @@ public:
   }
 };
 
+#ifdef MP_TEST_HAS_AUDIO  // the processor and JUCE: full build only
 // Several consoles push MIDI from their own threads at once. Every press has
 // to reach the audio thread whole and exactly once: a slot read between a
 // writer claiming it and filling it gave a lost or garbled message.
@@ -1599,6 +1604,8 @@ public:
     root.deleteRecursively();
   }
 };
+
+#endif // MP_TEST_HAS_AUDIO
 
 class VoiceEngineRenderTest final : public mp::test::Test {
 public:
@@ -8265,17 +8272,17 @@ static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
-static AllNotesOffChannelTest g_allNotesOffChannel;
-static MemoryLimitTest g_memoryLimit;
-static StartupSafetyTest g_startupSafety;
-static MidiQueueThreadsTest g_midiQueueThreads;
 static ReleaseIgnoresWindTest g_releaseIgnoresWind;
 static CompactLinkageTest g_compactLinkage;
-static PlayerControlTest g_playerControl;
 static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
 static BmpImageTest g_bmpImage;
+static AllNotesOffChannelTest g_allNotesOffChannel;
+static MemoryLimitTest g_memoryLimit;
+static StartupSafetyTest g_startupSafety;
+static MidiQueueThreadsTest g_midiQueueThreads;
+static PlayerControlTest g_playerControl;
 static IrRateTest g_irRate;
 #endif
 static ConditionSenseTest g_conditionSense;
@@ -8419,6 +8426,55 @@ static VoicePolyphonyThreadedPerfTest g_voicePerfThreaded;
 static CompactStoragePerfTest g_compactPerf;
 static VoicePolyphonyPerfTest g_voicePerf;
 static TemperamentThroughputTest g_tempThroughput;
+
+// Which archives belong to one organ, from their names alone: the numbered
+// packages, the parts and a multi-volume set are one organ each, and a
+// different organ in the same folder is not pulled in.
+class OrganArchiveGroupingTest final : public mp::test::Test {
+public:
+  OrganArchiveGroupingTest()
+    : Test("functional.archive.grouping", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-grouping";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    for (const char* name :
+         {"01_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar",
+          "Vasvar_demo_part02.Organ.CompPkg.Hauptwerk.rar",
+          "Big.part1.rar", "Big.part2.rar", "Big.part3.rar",
+          "Old.rar", "Old.r00", "Old.r01",
+          "Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar", "notes.txt"})
+      std::ofstream(dir / name) << "x";
+    auto group = [&](const char* name) {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / name).string(), error), error);
+      return a.archives();
+    };
+    const auto mauracher = group("02_Mauracher_Fehervar_demo.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(mauracher.size() == 2, "numbered packages are one organ");
+    const auto vasvar = group("Vasvar_demo_part01.Organ.CompPkg.Hauptwerk.rar");
+    MP_CHECK(vasvar.size() == 2, "parts are one organ");
+    const auto big = group("Big.part2.rar");
+    MP_CHECK(big.size() == 1 && big[0].size() == 3 &&
+                 fs::path(big[0][0]).filename() == "Big.part1.rar",
+             "a multi-volume set is one archive, its volumes in order");
+    const auto old = group("Old.rar");
+    MP_CHECK(old.size() == 1 && old[0].size() == 3 &&
+                 fs::path(old[0][0]).filename() == "Old.rar",
+             "the old volume scheme starts with the plain .rar");
+    const auto savaria = group("Savaria_stereo-mix_demo.Organ.CompPkg.Hauptwerk-002.rar");
+    MP_CHECK(savaria.size() == 1, "another organ is not pulled in");
+    MP_CHECK(mp::isOrganArchive("x.RAR") && !mp::isOrganArchive("x.Organ_Hauptwerk_xml"),
+             "archives are known by extension");
+    fs::remove_all(dir, ec);
+  }
+};
+static OrganArchiveGroupingTest g_organArchiveGrouping;
 
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;

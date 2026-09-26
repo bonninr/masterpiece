@@ -1,4 +1,5 @@
 #include "MasterpieceProcessor.h"
+#include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/Temperament.h"
 #include <algorithm>
@@ -3021,6 +3022,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
             std::to_string(effectiveOdf.getSize()) + "|" +
             std::to_string(effectiveOdf.getLastModificationTime().toMilliseconds()));
 
+    // An organ unpacked from its packages keeps its samples there: the
+    // folder says which archives, and its saved index says where in them.
+    {
+      std::shared_ptr<const OrganArchive> packaged;
+      const std::string archivePath = readArchiveMarker(opts.organRootDir);
+      if (!archivePath.empty()) {
+        auto archive = std::make_shared<OrganArchive>();
+        std::string error;
+        const std::string index = juce::File(juce::String::fromUTF8(opts.organRootDir.c_str()))
+                                      .getChildFile("archive-index.txt")
+                                      .getFullPathName()
+                                      .toStdString();
+        if (archive->loadIndex(index) || archive->open(archivePath, error)) {
+          packaged = archive;
+          juce::Logger::writeToLog("load: samples from " + juce::String((int)archive->archives().size()) +
+                                   " archive(s) beside " + juce::String(archivePath));
+        } else {
+          juce::Logger::writeToLog("load: the organ's archives cannot be read: " + juce::String(error));
+        }
+      }
+      samples_.setArchive(packaged);
+    }
+
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
@@ -3161,6 +3185,45 @@ int MasterpieceProcessor::engageAllStops() {
     setStopEngaged(id, true);
   }
   return static_cast<int>(engagedStops_.size());
+}
+
+juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File& archiveFile,
+                                                               juce::String& error) {
+  OrganArchive archive;
+  std::string why;
+  const std::string archivePath = archiveFile.getFullPathName().toStdString();
+  if (!archive.discover(archivePath, why)) {
+    error = why;
+    return {};
+  }
+  // Named by the archives themselves, so the same packages open the same
+  // folder -- and the organ keeps its settings -- however they were reached.
+  const juce::File dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                             .getChildFile("Masterpiece")
+                             .getChildFile("Packaged")
+                             .getChildFile(archive.identity());
+  const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
+  const bool ready = !readArchiveMarker(dir.getFullPathName().toStdString()).empty() &&
+                     archive.loadIndex(index);
+  if (!ready) {
+    dir.deleteRecursively();
+    dir.createDirectory();
+    if (!archive.index(why) ||
+        !archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why)) {
+      error = why;
+      dir.deleteRecursively();
+      return {};
+    }
+    archive.saveIndex(index);
+    // Written last: a folder without it is an unpack that did not finish.
+    writeArchiveMarker(dir.getFullPathName().toStdString(), archivePath);
+  }
+  juce::Array<juce::File> definitions;
+  dir.findChildFiles(definitions, juce::File::findFiles, true,
+                     "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
+  definitions.sort();
+  if (definitions.isEmpty()) error = "no organ definition in " + archiveFile.getFileName();
+  return definitions;
 }
 
 void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {

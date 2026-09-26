@@ -1954,6 +1954,11 @@ void DisplayPanel::resized() {
 
 // --------------------------------------------------------------- window
 
+SettingsWindow::~SettingsWindow() {
+  // Posted, not called: the window is still being torn down here.
+  if (onClosed) juce::MessageManager::callAsync(std::move(onClosed));
+}
+
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
     : engine_(p), reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p) {

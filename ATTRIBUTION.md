@@ -149,7 +149,9 @@ understanding throughout, and is gratefully acknowledged:
 [rusty-pipes](https://github.com/dividebysandwich/rusty-pipes) and
 [HISE](https://github.com/christophhart/HISE).
 
-It is built on [JUCE](https://juce.com/) and [pugixml](https://pugixml.org/).
+It is built on [JUCE](https://juce.com/), [pugixml](https://pugixml.org/) and
+[libarchive](https://www.libarchive.org/), which reads organs straight from their RAR
+packages (BSD licence).
 
 Masterpiece is not affiliated with, nor endorsed by, any sample library
 producer or any other organ software.
