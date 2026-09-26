@@ -1,4 +1,5 @@
 #include "Convolver.h"
+#include "WavPackFormat.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -40,7 +41,7 @@ bool Convolver::loadImpulseResponse(const juce::File& chosen) {
   const juce::File irFile = fileForRate(chosen, sampleRate_);
 
   juce::AudioFormatManager formats;
-  formats.registerBasicFormats();
+  registerSampleFormats(formats);
   std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(irFile));
   if (reader == nullptr || reader->lengthInSamples <= 0) return false;
 

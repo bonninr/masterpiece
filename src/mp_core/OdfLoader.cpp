@@ -19,6 +19,7 @@
 #include "OdfLoader.h"
 
 #include "CodmCompiler.h"
+#include "GrandOrgueImport.h"
 #include "Temperament.h"
 
 #include <pugixml.hpp>
@@ -196,6 +197,17 @@ OdfType OdfLoader::detectType(const std::string& xmlHead, const std::string& fil
 bool OdfLoader::load(const std::string& odfPath, const Options& opts,
                      OrganModel& outModel, OdfDiagnostics& outDiag, ProgressFn progress) {
   (void)progress;
+  // A GrandOrgue definition is converted to the equivalent definition in
+  // memory and loaded as that; nothing past this point knows the difference.
+  if (isGrandOrgueDefinition(odfPath)) {
+    const GrandOrgueImportReport go = convertGrandOrgue(odfPath);
+    if (!go.ok) {
+      outDiag.errors.emplace_back(go.error);
+      return false;
+    }
+    for (const auto& n : go.notes) outDiag.warnings.emplace_back("GrandOrgue import: " + n);
+    return loadFromXmlString(go.xml, odfPath, opts, outModel, outDiag);
+  }
   std::ifstream f(odfPath, std::ios::binary);
   if (!f) {
     outDiag.errors.emplace_back("cannot open ODF file: " + odfPath);
@@ -2155,6 +2167,8 @@ std::string findLibraryHolding(const std::vector<std::string>& roots,
 
 std::string deriveOrganRoot(const std::string& odfPath) {
   const std::filesystem::path odf(odfPath);
+  // A GrandOrgue set's paths are relative to the .organ file's own folder.
+  if (isGrandOrgueDefinition(odfPath)) return odf.parent_path().string();
   const std::filesystem::path logicalRoot = organRootFrom(odf);
   if (hasInstallationPackages(logicalRoot)) return logicalRoot.string();
 
