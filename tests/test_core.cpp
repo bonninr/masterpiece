@@ -8449,6 +8449,50 @@ static CompactStoragePerfTest g_compactPerf;
 static VoicePolyphonyPerfTest g_voicePerf;
 static TemperamentThroughputTest g_tempThroughput;
 
+// A console draws its manuals as keyboards of their own. The drawn one stands
+// for the keyboard the player plays -- whichever way the unison key flow runs
+// between them -- and a coupler does not make one keyboard stand for another.
+// This is what lets a drawn manual light on the channel the player gave the
+// real one (issue #33: Manual I moved to channel 1 lit the drawn pedalboard).
+class DrawnKeyboardInputTest final : public mp::test::Test {
+public:
+  DrawnKeyboardInputTest()
+    : Test("functional.keyflow.drawn-keyboard-input", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    auto keyboard = [&m](mp::Id id, int code, bool input) {
+      mp::Keyboard k;
+      k.keyboardId = id;
+      k.assignmentCode = code;
+      k.accessibleForInput = input;
+      m.keyboards[id] = k;
+    };
+    keyboard(1, 1, true);   // pedal, played
+    keyboard(2, 2, true);   // manual I, played
+    keyboard(11, 0, false); // drawn pedal, fed by the played one
+    keyboard(12, 0, false); // drawn manual I, which feeds the played one
+    auto toKeyboard = [&m](int from, int to, mp::Id condition) {
+      mp::KeyAction a;
+      a.sourceKeyboard = from;
+      a.destIsKeyboard = true;
+      a.destKeyboard = to;
+      a.conditionSwitchId = condition;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    };
+    toKeyboard(1, 11, 0);
+    toKeyboard(12, 2, 0);
+    toKeyboard(2, 11, 900); // manual I to pedal: a coupler, not the same keyboard
+    mp::CouplerMatrix flow;
+    flow.reset(m);
+    MP_CHECK(flow.inputKeyboardFor(1) == 1 && flow.inputKeyboardFor(2) == 2,
+             "a played keyboard stands for itself");
+    MP_CHECK(flow.inputKeyboardFor(11) == 1, "the drawn pedal is the pedal, fed from it");
+    MP_CHECK(flow.inputKeyboardFor(12) == 2, "the drawn manual is manual I, feeding it");
+  }
+};
+static DrawnKeyboardInputTest g_drawnKeyboardInput;
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

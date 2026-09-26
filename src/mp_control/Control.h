@@ -108,6 +108,11 @@ public:
   // carry it; the organ's internal keyboards they feed do, so this follows the
   // ungated key flow until it finds one. 0 when nothing declares it.
   int assignmentCodeFor(Id keyboardId) const;
+  // The keyboard a player plays that this one stands for. A console draws
+  // its manuals as keyboards of their own, joined to the playable ones by
+  // plain unison key flow, and it is the playable one the player assigns to
+  // a MIDI channel. A playable keyboard is its own; 0 when none is joined.
+  Id inputKeyboardFor(Id keyboardId) const;
   // A display name for a playable keyboard, taken from the division it
   // reaches rather than from its own name, which is a layout label
   // ("CustPg1_InputKbd_DivCode2") and no use to a player.
@@ -134,6 +139,7 @@ private:
   std::vector<Id> inputKeyboards_;
   std::unordered_map<Id, Id> primaryDivision_;
   std::unordered_map<Id, int> assignmentCode_;
+  std::unordered_map<Id, Id> inputFor_;
   // The division each keyboard sounds. Usually the organ's own hint; for the
   // internal coupling keyboards, inherited from whatever feeds them.
   std::unordered_map<Id, Id> divisionOfKeyboard_;

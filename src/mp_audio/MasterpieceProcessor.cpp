@@ -1654,9 +1654,18 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
 }
 
 int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {
+  // A drawn manual answers to the channel of the keyboard it stands for: the
+  // player assigns channels to the keyboards they play, not to the pictures
+  // of them. Asked of the drawn one directly, a console whose Manual I was
+  // moved to channel 1 lit its pedalboard, which kept the organ's default 1.
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == played && b.channel > 0) return b.channel;
   for (const auto& b : midiMap_.keyboardBindings())
     if (b.keyboardId == keyboardId && b.channel > 0) return b.channel;
-  const int code = couplers_.assignmentCodeFor(keyboardId);
+  int code = couplers_.assignmentCodeFor(played);
+  if (code < 1) code = couplers_.assignmentCodeFor(keyboardId);
   if (code >= 1 && code <= 16) return code;
   return 1;
 }
