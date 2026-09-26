@@ -8610,6 +8610,60 @@ public:
 };
 static GrandOrgueTakesTest g_grandOrgueTakes;
 
+// A reversible piston flips its drawstop on each press and does nothing when
+// let go: a 3/7 linkage, as the reversibles of Friesach, Giubiasco and
+// Alessandria are wired, and as a GrandOrgue reversible piston is imported.
+// The same organ's general sets and clears what it names and leaves the rest.
+class ReversiblePistonTest final : public mp::test::Test {
+public:
+  ReversiblePistonTest() : Test("functional.switches.reversible-piston", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfReversiblePistons=1\nNumberOfGenerals=1\n"
+        "[ReversiblePiston001]\nName=Rev\nObjectType=STOP\nManualNumber=1\nObjectNumber=1\n"
+        "[General001]\nName=G\nNumberOfStops=2\nStopManual001=1\nStopNumber001=1\n"
+        "StopManual002=1\nStopNumber002=-2\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=3\nStop001=1\nStop002=2\nStop003=3\n"
+        "[Stop001]\nName=A\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop002]\nName=B\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop003]\nName=C\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(d.unmappedLinkageCodes.empty(), "3/7 is a known wiring");
+    const mp::Id stopA = m.stops.at(2001).controllingSwitchId;
+    mp::SwitchNetwork net;
+    net.reset(m);
+    const mp::Id piston = 12501;
+    MP_CHECK(!net.engaged(stopA), "the stop starts off");
+    net.set(piston, true);
+    MP_CHECK(net.engaged(stopA), "a press draws it");
+    net.set(piston, false);
+    MP_CHECK(net.engaged(stopA), "letting go does nothing");
+    net.set(piston, true);
+    net.set(piston, false);
+    MP_CHECK(!net.engaged(stopA), "the next press puts it back in");
+
+    MP_CHECK(m.combinations.size() == 1, "the general is a combination");
+    const auto& combo = m.combinations.begin()->second;
+    MP_CHECK(combo.elements.size() == 2, "naming two stops, not the third");
+    bool aOn = false, bOff = false;
+    for (const auto& e : combo.elements) {
+      if (e.controlledSwitchId == stopA) aOn = e.storedEngaged;
+      if (e.controlledSwitchId == m.stops.at(2002).controllingSwitchId) bOff = !e.storedEngaged;
+    }
+    MP_CHECK(aOn && bOff, "A is stored on, B off");
+  }
+};
+static ReversiblePistonTest g_reversiblePiston;
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

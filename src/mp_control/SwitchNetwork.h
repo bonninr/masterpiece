@@ -24,8 +24,11 @@
 //
 // Each wire asserts its destination when the source (and the condition, if
 // there is one) is in the state that fires it: do `engageAction`; when it stops
-// firing, do `disengageAction`. Codes 1 and 4 engage, 2 and 7 disengage, which
-// covers every wiring real organs use — a plain follow (1/2 or 4/7) and an
+// firing, do `disengageAction`. Codes 1 and 4 engage, 2 and 7 disengage, and
+// an engage action of 3 toggles the destination on each firing (a reversible
+// piston) and does nothing when the wire stops firing. Together these cover
+// every wiring real organs use — a plain follow (1/2 or 4/7), a reversible
+// (3/7) and an
 // inverting one (7/4, or 1/2 driven from the source's OFF state).
 //
 // A wire that is NOT firing asserts NOTHING. This is the rule that matters for
@@ -90,6 +93,8 @@ private:
   // Move every queued assertion and re-evaluate the wires it touches, until
   // nothing moves. Shared by set() and reset().
   void drain();
+  // Engage action 3 flips the destination each time the wire fires.
+  static constexpr int kToggle = 3;
   static bool actionEngages(int code) { return code == 1 || code == 4; }
   static bool actionDisengages(int code) { return code == 2 || code == 7; }
   // Does this wire presently fire: its source, and its condition when it has

@@ -272,6 +272,7 @@ constexpr int kDivisionalBase = 11000; // divisional pistons: + manual * 100
 constexpr int kSetterGeneralBase = 12000;  // GrandOrgue's own programmable generals
 constexpr int kSetterSwitch = 12900;       // its Set button
 constexpr int kGeneralCancel = 12950;      // its GC button
+constexpr int kReversibleBase = 12500;     // reversible pistons
 
 struct PipeRef {
   int pipeId = 0;
@@ -598,7 +599,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     Emitter::set(sw, "Name", name);
     Emitter::yn(sw, "DefaultToEngaged", engaged);
   };
-  auto link = [&](int source, int dest, int condition, bool sourceEngaged) {
+  auto link = [&](int source, int dest, int condition, bool sourceEngaged, int engageCode = 1,
+                  int disengageCode = 2) {
     auto l = out.row("SwitchLinkage");
     Emitter::set(l, "SourceSwitchID", source);
     Emitter::set(l, "DestSwitchID", dest);
@@ -607,8 +609,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       Emitter::yn(l, "ConditionSwitchLinkIfEngaged", true);
     }
     Emitter::yn(l, "SourceSwitchLinkIfEngaged", sourceEngaged);
-    Emitter::set(l, "EngageLinkActionCode", 1);
-    Emitter::set(l, "DisengageLinkActionCode", 2);
+    Emitter::set(l, "EngageLinkActionCode", engageCode);
+    Emitter::set(l, "DisengageLinkActionCode", disengageCode);
   };
   int gates = 0;
   std::map<std::string, int> gateMemo;
@@ -900,14 +902,32 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       const std::string type = lower(ini.str(csec, "CouplerType", "Normal"));
       if (type == "bass" || type == "melody")
         note("bass and melody couplers couple every key, like normal ones");
+      // A coupler that feeds the destination's own couplers reaches its
+      // keyboard, whose key flow carries on; one that does not reaches its
+      // pipes alone. GrandOrgue names five kinds of coupler it may pass
+      // through; the key flow here has no such kinds, so any of them lets
+      // the coupled notes on. A manual coupled to itself never does, or the
+      // notes would come round again.
+      const bool feedsOn =
+          dest != m && (ini.yes(csec, "CoupleToSubsequentUnisonIntermanualCouplers", false) ||
+                        ini.yes(csec, "CoupleToSubsequentUpwardIntermanualCouplers", false) ||
+                        ini.yes(csec, "CoupleToSubsequentDownwardIntermanualCouplers", false) ||
+                        ini.yes(csec, "CoupleToSubsequentUpwardIntramanualCouplers", false) ||
+                        ini.yes(csec, "CoupleToSubsequentDownwardIntramanualCouplers", false));
+      // Only the keys the coupler covers.
+      const int first = std::max(info.firstMidi, ini.num(csec, "FirstMIDINoteNumber", 0));
+      const int last = std::min(info.firstMidi + info.keys, ini.num(csec, "FirstMIDINoteNumber", 0) +
+                                                                ini.num(csec, "NumberOfKeys", 127));
+      if (last <= first) continue;
       auto ka = out.row("KeyAction");
       Emitter::set(ka, "SourceKeyboardID", info.kb);
-      Emitter::yn(ka, "DestIsKeyboardNotDivision", false);
-      Emitter::set(ka, "DestDivisionID", dIt->second.kb);
+      Emitter::yn(ka, "DestIsKeyboardNotDivision", feedsOn);
+      if (feedsOn) Emitter::set(ka, "DestKeyboardID", dIt->second.kb);
+      else Emitter::set(ka, "DestDivisionID", dIt->second.kb);
       Emitter::set(ka, "ActionTypeCode", 1);
       Emitter::set(ka, "ActionEffectCode", 1);
-      Emitter::set(ka, "MIDINoteNumOfFirstSourceKey", info.firstMidi);
-      Emitter::set(ka, "NumberOfKeys", info.keys);
+      Emitter::set(ka, "MIDINoteNumOfFirstSourceKey", first);
+      Emitter::set(ka, "NumberOfKeys", last - first);
       Emitter::set(ka, "MIDINoteNumberIncrement", ini.num(csec, "DestinationKeyshift", 0));
       Emitter::set(ka, "ConditionSwitchID", sw);
       Emitter::yn(ka, "ConditionSwitchLinkIfEngaged", true);
@@ -1081,8 +1101,25 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     return 0;
   };
 
-  if (ini.num("Organ", "NumberOfReversiblePistons", 0) > 0)
-    note("reversible pistons are not imported yet");
+  // A reversible piston flips one drawstop each time it is pressed: a
+  // momentary switch wired to it by a toggling link (3/7), as the reversible
+  // pistons of the sets built for the other format are.
+  const int reversibleCount = ini.num("Organ", "NumberOfReversiblePistons", 0);
+  for (int r = 1; r <= reversibleCount; ++r) {
+    const std::string sec = "ReversiblePiston" + n3(r);
+    const std::string type = lower(ini.str(sec, "ObjectType"));
+    const int m = ini.num(sec, "ManualNumber", 1), k = ini.num(sec, "ObjectNumber", 1);
+    const int target = type == "stop"        ? manualStopSwitch(m, k)
+                       : type == "coupler"   ? manualCouplerSwitch(m, k)
+                       : type == "tremulant" ? tremulantSwitch(k)
+                       : type == "switch"    ? kGoSwitchBase + k
+                                             : 0;
+    if (target == 0) continue;
+    const int piston = kReversibleBase + r;
+    emitSwitch(piston, ini.str(sec, "Name", "Reversible " + std::to_string(r)), false);
+    Emitter::yn(switchRows[piston], "Latching", false);
+    link(piston, target, 0, true, 3, 7);
+  }
   if (ini.num("Organ", "NumberOfDivisionalCouplers", 0) > 0)
     note("divisional couplers are not imported yet");
 
@@ -1530,6 +1567,10 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         for (int g = 1; g <= generalCount; ++g)
           if (ini.yes("General" + n3(g), "Displayed", false))
             els.push_back(button("General" + n3(g), "General" + n3(g), kGeneralBase + g, true));
+        for (int r = 1; r <= reversibleCount; ++r)
+          if (ini.yes("ReversiblePiston" + n3(r), "Displayed", false))
+            els.push_back(button("ReversiblePiston" + n3(r), "ReversiblePiston" + n3(r),
+                                 kReversibleBase + r, true));
         for (int n = 1; n <= switchCount; ++n)
           if (ini.yes("Switch" + n3(n), "Displayed", false))
             els.push_back(button("Switch" + n3(n), "Switch" + n3(n), kGoSwitchBase + n, false));
@@ -1584,8 +1625,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
             addManual(ini.num(sec, "Manual", 1), sec);
           } else if (type == "Label") {
             els.push_back({Kind::Label, sec});
-          } else if (type == "ReversiblePiston" || type == "DivisionalCoupler") {
-            note("reversible pistons and divisional couplers on panels are not drawn yet");
+          } else if (type == "ReversiblePiston") {
+            const int r = ini.num(sec, "ReversiblePiston", 1);
+            els.push_back(button(sec, "ReversiblePiston" + n3(r), kReversibleBase + r, true));
+          } else if (type == "DivisionalCoupler") {
+            note("divisional couplers are not imported yet");
           } else if (const int sw = setterControl(type)) {
             Element e = button(sec, sec, sw, true);
             e.name = type;
@@ -1609,6 +1653,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         for (int i = 1; i <= ini.num(group, "NumberOfGenerals", 0); ++i) {
           const int g = ini.num(group, "General" + n3(i), 0);
           els.push_back(button(prefix + "General" + n3(g), "General" + n3(g), kGeneralBase + g, true));
+        }
+        for (int i = 1; i <= ini.num(group, "NumberOfReversiblePistons", 0); ++i) {
+          const int r = ini.num(group, "ReversiblePiston" + n3(i), 0);
+          els.push_back(button(prefix + "ReversiblePiston" + n3(r), "ReversiblePiston" + n3(r),
+                               kReversibleBase + r, true));
         }
         for (int i = 1; i <= ini.num(group, "NumberOfSwitches", 0); ++i) {
           const int n = ini.num(group, "Switch" + n3(i), 0);
