@@ -23,7 +23,7 @@
 
 #include <set>
 #include "../src/mp_control/StageSwitches.h"
-#include "../src/mp_control/Stepper.h"
+#include "../src/mp_control/PlayerCombinations.h"
 #include "../src/mp_control/WindSolver.h"
 #include "../src/mp_control/SwitchNetwork.h"
 #ifdef MP_TEST_HAS_SAMPLER
@@ -3507,82 +3507,255 @@ public:
   }
 };
 
-// The registration sequencer: one thumb piston that walks the generals in
-// order. Unlike everything else in M3 this is NOT wired in the organ file —
-// Hauptwerk provides it and the player maps it — so what it walks, and in what
-// order, is a decision rather than a reading.
-class StepperTest final : public mp::test::Test {
+// The player's own pistons: generals, divisionals, cancels and a stepper that
+// exist on every organ whatever its file declares. What they capture is the
+// registration -- stops, couplers, tremulants -- and nothing else, and a
+// divisional reaches exactly one division's share of it.
+class PlayerCombinationsTest final : public mp::test::Test {
 public:
-  StepperTest() : Test("functional.control.stepper", Category::Functional) {}
+  PlayerCombinationsTest()
+      : Test("functional.control.player-combinations", Category::Functional) {}
 
-  static void addCombo(mp::OrganModel& m, mp::Id id, int type,
-                       const char* name, bool withElements = true) {
-    mp::Combination c;
-    c.combinationId = id;
-    c.type = type;
-    c.name = name;
-    if (withElements) {
-      mp::CombinationElement el;
-      el.combinationId = id;
-      el.controlledSwitchId = 201;
-      c.elements.push_back(el);
-    }
-    if (c.isCancel()) {
-      c.canEngage = false;
-      c.canDisengage = true;
-    }
-    m.combinations[id] = std::move(c);
+  // Pedal (division 1) and Great (2), each with two stops; a Pedal-to-Great
+  // coupler played from the Great; a tremulant shaking the Great's pipes; a
+  // blower that is none of the registration; and the organ's own general
+  // piston and setter, which are not registration either.
+  static mp::OrganModel organ() {
+    mp::OrganModel m;
+    auto division = [&](mp::Id id, const char* name, int manual) {
+      mp::Division d;
+      d.divisionId = id;
+      d.name = name;
+      d.manualNumber = manual;
+      m.divisions[id] = d;
+    };
+    division(2, "Great", 1);
+    division(1, "Pedal", 0);
+    auto sw = [&](mp::Id id, const char* name, int asgn = 0) {
+      mp::Switch s;
+      s.switchId = id;
+      s.name = name;
+      s.asgnCode = asgn;
+      m.switches[id] = s;
+    };
+    auto stop = [&](mp::Id id, mp::Id div, const char* name, mp::Id rank) {
+      sw(100 + id, name);
+      mp::Stop st;
+      st.stopId = id;
+      st.divisionId = div;
+      st.name = name;
+      st.controllingSwitchId = 100 + id;
+      mp::StopRankEntry e;
+      e.rankId = rank;
+      st.ranks.push_back(e);
+      m.stops[id] = st;
+      mp::Rank r;
+      r.rankId = rank;
+      mp::Pipe pipe;
+      pipe.pipeId = rank * 10;
+      r.pipes.push_back(pipe);
+      m.ranks[rank] = r;
+    };
+    stop(1, 1, "Subbass 16", 11);
+    stop(2, 1, "Octave 8", 12);
+    stop(3, 2, "Principal 8", 13);
+    stop(4, 2, "Flute 4", 14);
+
+    mp::Keyboard great;
+    great.keyboardId = 2;
+    great.primaryDivisionHint = 2;
+    m.keyboards[2] = great;
+    mp::Keyboard pedal;
+    pedal.keyboardId = 1;
+    pedal.primaryDivisionHint = 1;
+    m.keyboards[1] = pedal;
+
+    sw(300, "Pedal to Great");
+    mp::KeyAction coupler;
+    coupler.sourceKeyboard = 2;
+    coupler.destKeyboard = 1;
+    coupler.conditionSwitchId = 300;
+    m.keyActions.push_back(coupler);
+
+    sw(400, "Tremulant");
+    mp::Tremulant t;
+    t.tremulantId = 40;
+    t.controllingSwitchId = 400;
+    m.tremulants[40] = t;
+    mp::TremulantPipeMod mod;
+    mod.tremulantId = 40;
+    m.tremulantPipes[130] = mod;  // Principal 8's pipe
+    m.tremulantPipes[140] = mod;  // Flute 4's pipe
+
+    sw(500, "Blower");
+    // A blower modelled as a stop, the way Vasvar does it: not registration.
+    division(7, "NOISES", 9);
+    stop(9, 7, "Stop: Noises: Blower", 19);
+    sw(600, "General 1", 101);
+    sw(700, "Set", 12);
+    mp::Combination g;
+    g.combinationId = 60;
+    g.type = 101;
+    m.combinations[60] = g;
+    return m;
+  }
+
+  static bool has(const std::vector<mp::PlayerCombinations::Change>& out,
+                  mp::PlayerCombinations::ElementKind kind, mp::Id id, bool engage) {
+    for (const auto& c : out)
+      if (c.kind == kind && c.id == id) return c.engage == engage;
+    return false;
   }
 
   void run() override {
-    mp::OrganModel m;
-    // Deliberately out of id order, to prove the order comes from the piston
-    // number and not from whatever the map iterates first.
-    addCombo(m, 9003, 103, "General 03");
-    addCombo(m, 9001, 101, "General 01");
-    addCombo(m, 9002, 102, "General 02");
-    addCombo(m, 9100, 100, "General cancel");   // a cancel: never stepped onto
-    addCombo(m, 9200, 201, "Pedal divisional"); // a divisional: not a general
-    addCombo(m, 9004, 104, "General 04", /*withElements*/ false); // empty
+    using PC = mp::PlayerCombinations;
+    using K = PC::ElementKind;
+    const mp::OrganModel m = organ();
+    auto elements = PC::collect(m, nullptr);
+    auto divisionOf = [&](K kind, mp::Id id) -> mp::Id {
+      for (const auto& e : elements)
+        if (e.kind == kind && e.id == id) return e.divisionId;
+      return -1;
+    };
+    MP_CHECK(elements.size() == 6,
+             "four stops, the coupler and the tremulant: not the blower -- "
+             "neither its switch nor its noise stop -- the organ's piston or "
+             "its setter");
+    MP_CHECK(divisionOf(K::Stop, 1) == 1 && divisionOf(K::Stop, 3) == 2,
+             "a stop belongs to its own division");
+    MP_CHECK(divisionOf(K::Switch, 300) == 2,
+             "a coupler belongs to the manual it is played from");
+    MP_CHECK(divisionOf(K::Switch, 400) == 2,
+             "a tremulant belongs to the division whose pipes it shakes");
+    MP_CHECK(divisionOf(K::Switch, 101) == -1,
+             "a stop's own switch is not registered twice");
 
-    mp::Stepper st;
-    st.reset(m);
+    const auto divisions = PC::divisionsOf(m, elements);
+    MP_CHECK(divisions.size() == 2 && divisions[0].divisionId == 1 &&
+                 divisions[1].name == "Great",
+             "divisionals for the pedal first, then the manuals");
 
-    MP_CHECK(st.frameCount() == 3,
-             "the sequencer walks the generals only - not the cancel, not a "
-             "divisional, and not a general with nothing in it");
-    MP_CHECK(st.frame() == 0, "and starts before the first frame");
-    MP_CHECK(st.current() == 0, "with nothing selected");
+    PC pc;
+    pc.reset(elements, divisions);
+    std::set<std::pair<int, mp::Id>> drawn;
+    auto read = [&](const PC::Element& e) {
+      return drawn.count({static_cast<int>(e.kind), e.id}) != 0;
+    };
+    auto draw = [&](K k, mp::Id id) { drawn.insert({static_cast<int>(k), id}); };
+    std::vector<PC::Change> out;
 
-    MP_CHECK(st.next() == 9001, "stepping forward reaches General 01");
-    MP_CHECK(st.frame() == 1, "which organists count as frame one");
-    MP_CHECK(st.next() == 9002 && st.next() == 9003,
-             "and then 02 and 03, in piston order rather than id order");
+    pc.recallGeneral(1, out);
+    MP_CHECK(out.empty() && !pc.generalSet(1),
+             "a general nobody has set does nothing, rather than clearing the organ");
 
-    // Not wrapping is the point. A sequencer that rolls round to the first
-    // frame will do it in performance, at the loudest possible moment.
-    MP_CHECK(st.next() == 0, "stepping past the last frame does nothing");
-    MP_CHECK(st.frame() == 3, "and stays where it was");
+    draw(K::Stop, 1);
+    draw(K::Stop, 3);
+    draw(K::Switch, 400);
+    MP_CHECK(pc.captureGeneral(1, read) && pc.generalSet(1), "a general captures");
+    MP_CHECK(pc.litGeneral() == 1, "and lights, since it describes what is drawn");
+    MP_CHECK(!pc.captureGeneral(11, read), "only the generals the player keeps exist");
 
-    MP_CHECK(st.prev() == 9002 && st.prev() == 9001, "stepping back retraces");
-    MP_CHECK(st.prev() == 0 && st.frame() == 1,
-             "and stops at the first frame rather than falling off the front");
+    out.clear();
+    pc.recallGeneral(1, out);
+    MP_CHECK(out.size() == 6, "a general sets the whole registration");
+    MP_CHECK(has(out, K::Stop, 1, true) && has(out, K::Stop, 2, false) &&
+                 has(out, K::Switch, 400, true) && has(out, K::Switch, 300, false),
+             "drawing what it holds and pushing in the rest");
 
-    MP_CHECK(st.gotoFrame(3) == 9003, "a console that sends a number can jump");
-    MP_CHECK(st.gotoFrame(0) == 0 && st.gotoFrame(4) == 0,
-             "to a frame that exists, and no other");
-    MP_CHECK(st.frame() == 3, "a refused jump leaves it where it was");
+    drawn.clear();
+    draw(K::Stop, 4);
+    draw(K::Switch, 300);
+    draw(K::Stop, 2);  // the pedal's: outside a Great divisional
+    MP_CHECK(pc.captureDivisional(2, 1, read), "a divisional captures");
+    out.clear();
+    pc.recallDivisional(2, 1, out);
+    MP_CHECK(out.size() == 4 && has(out, K::Stop, 4, true) &&
+                 has(out, K::Stop, 3, false) && has(out, K::Switch, 300, true),
+             "a Great divisional moves the Great's stops, its coupler and its tremulant");
+    MP_CHECK(!has(out, K::Stop, 2, true) && !has(out, K::Stop, 1, false),
+             "and leaves the pedal exactly as it is");
+    MP_CHECK(!pc.captureDivisional(99, 1, read), "no divisional for a division the organ lacks");
 
-    st.rewind();
-    MP_CHECK(st.frame() == 0 && st.current() == 0, "and it can be rewound");
+    out.clear();
+    pc.divisionalCancel(1, out);
+    MP_CHECK(out.size() == 2 && has(out, K::Stop, 1, false) && has(out, K::Stop, 2, false),
+             "a divisional cancel pushes in one division");
+    out.clear();
+    pc.generalCancel(out);
+    MP_CHECK(out.size() == 6, "a general cancel, the whole registration -- never the blower");
 
-    // An organ with no generals at all must say so rather than pretending.
-    mp::OrganModel bare;
-    mp::Stepper none;
-    none.reset(bare);
-    MP_CHECK(none.empty() && none.next() == 0 && none.prev() == 0,
-             "an organ with no generals has no sequencer, and stepping it is "
-             "harmless");
+    // The stepper: frames of its own, held at both ends.
+    out.clear();
+    MP_CHECK(!pc.stepNext(false, read, out), "an empty sequence cannot be stepped");
+    drawn.clear();
+    draw(K::Stop, 1);
+    MP_CHECK(pc.stepNext(true, read, out) && pc.frame() == 1, "with Set on, stepping captures");
+    draw(K::Stop, 3);
+    MP_CHECK(pc.stepNext(true, read, out) && pc.frame() == 2 && pc.lastUsedFrame() == 2,
+             "and stepping on is how the sequence grows");
+    MP_CHECK(pc.stepPrev(false, read, out) && pc.frame() == 1, "stepping back recalls");
+    out.clear();
+    MP_CHECK(pc.stepNext(false, read, out) && has(out, K::Stop, 3, true),
+             "stepping forward recalls the next frame");
+    MP_CHECK(!pc.stepNext(false, read, out) && pc.frame() == 2,
+             "and does not run on past the last frame that holds anything");
+
+    MP_CHECK(pc.insertFrame() && pc.frame() == 2 && !pc.frameSet(2) && pc.frameSet(3),
+             "inserting opens an empty frame and moves the later ones up");
+    MP_CHECK(pc.deleteFrame() && pc.frameSet(2) && !pc.frameSet(3) && pc.lastUsedFrame() == 2,
+             "deleting closes the gap again");
+
+    // Persistence: by key, so an organ update that adds stops keeps it.
+    pc.setGeneralCount(20);
+    const std::string text = pc.toText();
+    PC back;
+    back.reset(elements, divisions);
+    MP_CHECK(back.fromText(text), "the file reads back");
+    MP_CHECK(back.generalCount() == 20 && back.generalSet(1) && !back.generalSet(2) &&
+                 back.divisionalSet(2, 1) && back.frameSet(2),
+             "with every piston and frame where it was");
+    out.clear();
+    back.recallGeneral(1, out);
+    MP_CHECK(has(out, K::Stop, 3, true) && has(out, K::Stop, 4, false),
+             "and holding the same registration");
+
+    PC fewer;
+    auto lessElements = elements;
+    lessElements.erase(lessElements.begin() + 2);  // Principal 8 withdrawn
+    fewer.reset(lessElements, divisions);
+    fewer.fromText(text);
+    out.clear();
+    fewer.recallGeneral(1, out);
+    MP_CHECK(out.size() == 5 && has(out, K::Stop, 1, true),
+             "a stop the organ no longer has is dropped, and the rest still recall");
+
+    // MIDI: every piston is a target, saved by name.
+    mp::MidiMap map;
+    mp::MidiBinding b;
+    b.source.kind = mp::MidiSourceKind::Note;
+    b.source.number = 40;
+    b.targetKind = mp::MidiTargetKind::PlayerDivisional;
+    b.targetId = mp::playerDivisionalTarget(2, 3);
+    b.trigger = mp::MidiTrigger::Momentary;
+    map.bind(b);
+    b.source.number = 41;
+    b.targetKind = mp::MidiTargetKind::Setter;
+    b.targetId = mp::kSetterTarget;
+    map.bind(b);
+    mp::MidiMap again;
+    again.fromText(map.toText());
+    mp::MidiSource press;
+    press.kind = mp::MidiSourceKind::Note;
+    press.number = 40;
+    const auto a = again.actionFor(press, 100);
+    MP_CHECK(a.kind == mp::MidiTargetKind::PlayerDivisional &&
+                 mp::playerDivisionalDivision(a.targetId) == 2 &&
+                 mp::playerDivisionalPiston(a.targetId) == 3,
+             "a divisional piston maps to MIDI and survives a save");
+    MP_CHECK(!again.actionFor(press, 0).valid(), "and fires on the press, not the release");
+    press.number = 41;
+    MP_CHECK(again.actionFor(press, 100).engage && !again.actionFor(press, 0).engage,
+             "the setter can be held from a console piston");
   }
 };
 
@@ -8339,7 +8512,7 @@ static VoiceEnginePitchTest g_voicePitch;
 static TuningTableTest g_tuningTable;
 static KeyboardLayoutTest g_keyboardLayout;
 static WindSolverTest g_windSolver;
-static StepperTest g_stepper;
+static PlayerCombinationsTest g_playerCombinations;
 static DoubleLinkageTest g_doubleLinkage;
 static StageSwitchTest g_stageSwitches;
 static CombinationTest g_combinationPistons;
@@ -8903,6 +9076,79 @@ public:
 };
 static DrawnKeyChannelTest g_drawnKeyChannels;
 #endif
+
+#ifdef MP_TEST_HAS_AUDIO
+// The player's own pistons through the processor, as the window and a console
+// piston reach them: Set held and a general pressed stores what is drawn, the
+// cancel pushes it in, the general brings it back -- and all of it is still
+// there after the organ is loaded again.
+class PlayerPistonsProcessorTest final : public mp::test::Test {
+public:
+  PlayerPistonsProcessorTest()
+      : Test("functional.control.player-pistons-saved", Category::Functional) {}
+
+  struct Keep {
+    juce::File file;
+    bool existed = false;
+    juce::String content;
+    explicit Keep(juce::File f) : file(std::move(f)) {
+      existed = file.existsAsFile();
+      if (existed) content = file.loadFileAsString();
+    }
+    ~Keep() {
+      if (existed) file.replaceWithText(content);
+      else file.deleteFile();
+    }
+  };
+
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    Keep keepSettings(proc.settingsFileFor(odf));
+    Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+    MP_CHECK(pc.divisions().size() == 1 && pc.divisions()[0].divisionId == 801,
+             "its one division gets divisionals");
+
+    proc.pressGeneral(1);
+    MP_CHECK(!proc.stopEngaged(901), "a general never set does nothing");
+
+    proc.setStopEngaged(901, true);
+    proc.setCaptureMode(true);
+    proc.pressGeneral(1);
+    proc.pressDivisional(801, 2);
+    proc.setCaptureMode(false);
+    MP_CHECK(pc.generalSet(1) && pc.divisionalSet(801, 2), "Set and a piston store");
+
+    proc.pressGeneralCancel();
+    MP_CHECK(!proc.stopEngaged(901), "the general cancel pushes the stop in");
+    proc.pressGeneral(1);
+    MP_CHECK(proc.stopEngaged(901) && pc.litGeneral() == 1,
+             "the general draws it again, and lights");
+    proc.setStopEngaged(901, false);
+    MP_CHECK(pc.litGeneral() == 0, "a stop moved by hand puts the light out");
+    proc.pressDivisional(801, 2);
+    MP_CHECK(proc.stopEngaged(901) && pc.litDivisional(801) == 2, "so does the divisional");
+
+    MP_CHECK(proc.combinationsNeedSaving() && proc.saveCombinationsIfDirty(),
+             "a capture is saved from the message thread");
+    MP_CHECK(proc.combinationFileFor(odf).loadFileAsString().contains("player general 1 s901"),
+             "into the organ's combination file, beside its own pistons");
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads again");
+    MP_CHECK(proc.playerCombinations().generalSet(1) &&
+                 proc.playerCombinations().divisionalSet(801, 2),
+             "and the pistons are still set");
+    proc.pressGeneralCancel();
+    proc.pressGeneral(1);
+    MP_CHECK(proc.stopEngaged(901), "holding the same registration");
+  }
+};
+static PlayerPistonsProcessorTest g_playerPistonsProcessor;
+#endif // MP_TEST_HAS_AUDIO
 
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
