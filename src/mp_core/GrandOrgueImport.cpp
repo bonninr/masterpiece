@@ -264,6 +264,8 @@ constexpr int kEnclosureControlBase = 700;
 constexpr int kUnisonOffSwitchBase = 7000;
 constexpr int kGoSwitchBase = 8000;    // GrandOrgue's own [SwitchNNN]
 constexpr int kGateBase = 9000;        // switches that compute a Function
+constexpr int kGeneralBase = 10000;    // general pistons
+constexpr int kDivisionalBase = 11000; // divisional pistons: + manual * 100
 
 struct PipeRef {
   int pipeId = 0;
@@ -849,8 +851,106 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
   }
 
-  if (ini.num("Organ", "NumberOfGenerals", 0) > 0)
-    note("generals and divisionals are not imported yet");
+  // ---- combinations ---------------------------------------------------------
+  // A general or a divisional is a piston that sets some drawstops on (a
+  // positive number) and some off (a negative one) and leaves the rest as
+  // they are -- exactly a combination whose elements are the ones it names.
+  // Stops, couplers and switches are counted per manual; tremulants in a
+  // general are the organ's, in a divisional the manual's.
+  auto manualStopSwitch = [&](int m, int k) {
+    const int sNo = ini.num("Manual" + n3(m), "Stop" + n3(k), 0);
+    return sNo > 0 ? controlFor("Stop" + n3(sNo), kStopSwitchBase + sNo) : 0;
+  };
+  auto manualCouplerSwitch = [&](int m, int k) {
+    const int cNo = ini.num("Manual" + n3(m), "Coupler" + n3(k), 0);
+    const std::string sec = "Coupler" + n3(cNo);
+    return cNo > 0 ? controlFor(sec, ini.yes(sec, "UnisonOff", false) ? kUnisonOffSwitchBase + cNo
+                                                                       : kCouplerSwitchBase + cNo)
+                   : 0;
+  };
+  auto tremulantSwitch = [&](int t) {
+    return t >= 1 && t <= tremCount ? controlFor("Tremulant" + n3(t), kTremulantSwitchBase + t) : 0;
+  };
+  auto manualSwitch = [&](int m, int k) {
+    const int n = ini.num("Manual" + n3(m), "Switch" + n3(k), 0);
+    return n > 0 ? kGoSwitchBase + n : 0;
+  };
+  int nextCombination = 1;
+  auto combination = [&](const std::string& sec, int piston, const std::string& name,
+                         const std::vector<std::pair<int, bool>>& elements) {
+    emitSwitch(piston, name, false);
+    Emitter::yn(switchRows[piston], "Latching", false);
+    const int id = nextCombination++;
+    auto c = out.row("Combination");
+    Emitter::set(c, "CombinationID", id);
+    Emitter::set(c, "Name", name);
+    Emitter::set(c, "CombinationTypeCode", 1);
+    Emitter::set(c, "ActivatingSwitchID", piston);
+    Emitter::yn(c, "CanEngageControlledSwitches", true);
+    Emitter::yn(c, "CanDisengageControlledSwitches", true);
+    Emitter::yn(c, "AllowsCapture", !ini.yes(sec, "Protected", false));
+    for (const auto& [sw, on] : elements) {
+      if (sw == 0) continue;
+      auto e = out.row("CombinationElement");
+      Emitter::set(e, "CombinationID", id);
+      Emitter::set(e, "ControlledSwitchID", sw);
+      Emitter::yn(e, "InitialStoredStateIsEngaged", on);
+    }
+  };
+  const int generalCount = ini.num("Organ", "NumberOfGenerals", 0);
+  for (int g = 1; g <= generalCount; ++g) {
+    const std::string sec = "General" + n3(g);
+    std::vector<std::pair<int, bool>> el;
+    for (int i = 1; i <= ini.num(sec, "NumberOfStops", 0); ++i) {
+      const int v = ini.num(sec, "StopNumber" + n3(i), 0);
+      el.emplace_back(manualStopSwitch(ini.num(sec, "StopManual" + n3(i), 1), std::abs(v)), v > 0);
+    }
+    for (int i = 1; i <= ini.num(sec, "NumberOfCouplers", 0); ++i) {
+      const int v = ini.num(sec, "CouplerNumber" + n3(i), 0);
+      el.emplace_back(manualCouplerSwitch(ini.num(sec, "CouplerManual" + n3(i), 1), std::abs(v)), v > 0);
+    }
+    for (int i = 1; i <= ini.num(sec, "NumberOfTremulants", 0); ++i) {
+      const int v = ini.num(sec, "TremulantNumber" + n3(i), 0);
+      el.emplace_back(tremulantSwitch(std::abs(v)), v > 0);
+    }
+    for (int i = 1; i <= ini.num(sec, "NumberOfSwitches", 0); ++i) {
+      const int v = ini.num(sec, "SwitchNumber" + n3(i), 0);
+      const int m = ini.num(sec, "SwitchManual" + n3(i), -1);
+      el.emplace_back(m >= 0 ? manualSwitch(m, std::abs(v)) : kGoSwitchBase + std::abs(v), v > 0);
+    }
+    if (ini.num(sec, "NumberOfDivisionalCouplers", 0) > 0)
+      note("divisional couplers inside generals are left out");
+    combination(sec, kGeneralBase + g, ini.str(sec, "Name", "General " + std::to_string(g)), el);
+  }
+  for (int m = hasPedals ? 0 : 1; m <= manualCount; ++m) {
+    const std::string msec = "Manual" + n3(m);
+    for (int d = 1; d <= ini.num(msec, "NumberOfDivisionals", 0); ++d) {
+      const std::string sec = "Divisional" + n3(ini.num(msec, "Divisional" + n3(d), 0));
+      std::vector<std::pair<int, bool>> el;
+      for (int i = 1; i <= ini.num(sec, "NumberOfStops", 0); ++i) {
+        const int v = ini.num(sec, "Stop" + n3(i), 0);
+        el.emplace_back(manualStopSwitch(m, std::abs(v)), v > 0);
+      }
+      for (int i = 1; i <= ini.num(sec, "NumberOfCouplers", 0); ++i) {
+        const int v = ini.num(sec, "Coupler" + n3(i), 0);
+        el.emplace_back(manualCouplerSwitch(m, std::abs(v)), v > 0);
+      }
+      for (int i = 1; i <= ini.num(sec, "NumberOfTremulants", 0); ++i) {
+        const int v = ini.num(sec, "Tremulant" + n3(i), 0);
+        el.emplace_back(tremulantSwitch(ini.num(msec, "Tremulant" + n3(std::abs(v)), 0)), v > 0);
+      }
+      for (int i = 1; i <= ini.num(sec, "NumberOfSwitches", 0); ++i) {
+        const int v = ini.num(sec, "Switch" + n3(i), 0);
+        el.emplace_back(manualSwitch(m, std::abs(v)), v > 0);
+      }
+      combination(sec, kDivisionalBase + m * 100 + d,
+                  ini.str(sec, "Name", ini.str(msec, "Name", msec) + " " + std::to_string(d)), el);
+    }
+  }
+  if (ini.num("Organ", "NumberOfReversiblePistons", 0) > 0)
+    note("reversible pistons are not imported yet");
+  if (ini.num("Organ", "NumberOfDivisionalCouplers", 0) > 0)
+    note("divisional couplers are not imported yet");
 
   // ---- the console --------------------------------------------------------
   // Each GrandOrgue panel is a display page. What is placed explicitly -- an
