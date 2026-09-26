@@ -33,6 +33,7 @@
 
 #include <array>
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -376,6 +377,11 @@ public:
   void beginKeyboardLearn(Id keyboardId);
   void cancelKeyboardLearn() { keyboardLearn_ = 0; }
   Id keyboardLearning() const { return keyboardLearn_; }
+  // The lowest key has arrived and the highest is awaited, so the prompt can
+  // say which of the two presses it wants next.
+  bool keyboardLearnHasLowKey() const {
+    return keyboardLearn_ != 0 && keyboardLearnLow_ >= 0;
+  }
 
   Id keyboardForChannel(int channel, int deviceId = 0) const;
   // The keyboard the fallback piano plays, and the one an unassigned channel
@@ -392,6 +398,19 @@ public:
   // rig one keyboard at a time means this manual, not both. A channel chosen
   // by hand shares it, which is how one keyboard is made to play two
   // divisions at once.
+  // The player's own console, for every organ: which channel the pedal and
+  // each manual come in on, by role -- 0 the pedal, 1 the first manual and
+  // so on, as each organ numbers its keyboards. An organ with no channels
+  // saved for it starts from this; one with its own keeps them. Empty means
+  // each organ uses its own default channels.
+  const std::map<int, int>& defaultConsole() const { return defaultConsole_; }
+  // Takes the loaded organ's current assignment as the default, and saves it.
+  void useChannelsAsDefaultConsole();
+  void clearDefaultConsole();
+  // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
+  // -1 none.
+  int consoleRoleOf(Id keyboardId) const;
+
   void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0,
                              bool exclusive = true) {
     midiMap_.removeKeyboardBindingsFor(keyboardId);
@@ -412,6 +431,14 @@ public:
   // The channel that reaches a given keyboard, for the console's own drawn
   // manuals: clicking a drawn key has to arrive as if played there.
   int channelForKeyboard(Id keyboardId) const;
+  // What a DRAWN manual shows and sends, which is stricter than the above.
+  // The organ's default channel for a keyboard no longer reaches it once the
+  // player gives that channel to another keyboard -- a pedal left on its
+  // default 1 after Manual I was mapped to 1 -- and a drawn key must then
+  // neither light for notes that play the other manual nor send its clicks
+  // to it. 0 means no channel reaches this keyboard.
+  int litChannelForKeyboard(Id keyboardId) const;
+  int clickChannelForKeyboard(Id keyboardId) const;
   // True when the organ declared no key flow, so every division sounds on
   // every key and couplers do nothing. Worth telling the player.
   bool keyFlowMissing() const { return couplers_.usingFallback(); }
@@ -957,6 +984,8 @@ private:
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
   std::unordered_map<Id, Id> stopBySwitch_;
+  std::map<int, int> defaultConsole_;  // role -> channel
+  void applyDefaultConsole();
   // Switches that swap a stop's rank for its alternate and re-sound held
   // notes when they do, with the stops concerned; and the switch state just
   // before the latest change, which says what was sounding.

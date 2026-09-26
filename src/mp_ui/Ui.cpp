@@ -750,6 +750,13 @@ void MasterpieceEditor::timerCallback() {
   // A drawstop clicked on the console changes the jamb too, and vice versa.
   if (showingConsole_) console_.repaint();
 
+  // The on-screen keyboard plays the chosen manual on that manual's channel,
+  // which the player can move in Settings while the organ is loaded.
+  if (manual_.getSelectedId() > 0) {
+    const int channel = proc_.channelForKeyboard(static_cast<Id>(manual_.getSelectedId()));
+    if (channel != keyboard_.getMidiChannel()) keyboard_.setMidiChannel(channel);
+  }
+
   // A console piston pressed on a physical manual. Collected here because a
   // component may only be touched from the message thread.
   switch (proc_.takeConsoleAction()) {

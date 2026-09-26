@@ -224,6 +224,12 @@ private:
   // it by accident would otherwise hear two divisions and not know why.
   juce::Label sharedNote_;
   void showSharedChannels();
+  // The player's own console: these channels for every organ that has none
+  // saved for it.
+  juce::TextButton useAsDefault_{"Use as default for all organs"};
+  juce::TextButton clearDefault_{"Clear default"};
+  juce::Label defaultNote_;
+  void showDefaultConsole();
   juce::ComboBox output_;
   juce::ToggleButton feedback_{"Send stop changes back to the console"};
   juce::TextButton saveMap_{"Save mapping"};

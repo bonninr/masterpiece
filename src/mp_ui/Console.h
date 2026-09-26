@@ -91,8 +91,14 @@ private:
     int midiNote = 0;
     // Which MIDI channel this key speaks on, so a click on a drawn manual
     // arrives exactly as it would from the console wired to that manual —
-    // couplers and all.
+    // couplers and all. Refreshed from the keyboard's current assignment on
+    // every tick, so a change in Settings shows at once.
     int channel = 1;
+    // Which channel's notes light it: 0 when no channel reaches its keyboard,
+    // so a pedal whose default channel went to a manual stays still while
+    // that manual is played.
+    int litChannel = 1;
+    Id keyboardId = 0;
     Id imageSetId = 0;
     int engagedIndex = 1;
     int disengagedIndex = 2;

@@ -164,7 +164,9 @@ void ConsoleView::rebuild() {
       if (kk != model.keyboardKeys.end()) {
         KeyItem key;
         key.midiNote = kk->second.midiNote;
-        key.channel = proc_.channelForKeyboard(kk->second.keyboardId);
+        key.keyboardId = kk->second.keyboardId;
+        key.channel = proc_.clickChannelForKeyboard(key.keyboardId);
+        key.litChannel = proc_.litChannelForKeyboard(key.keyboardId);
         key.imageSetId = inst.imageSetFor(layout_);
         key.engagedIndex = sit->second->dispIndexEngaged;
         key.disengagedIndex = sit->second->dispIndexDisengaged;
@@ -451,7 +453,8 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
     const KeyImageSet& ks = ksIt->second;
     // A drawn manual belongs to one of the organ's keyboards, so its keys must
     // arrive on that keyboard's channel rather than on a fixed one.
-    const int channel = proc_.channelForKeyboard(kb.keyboardId);
+    const int channel = proc_.clickChannelForKeyboard(kb.keyboardId);
+    const int litChannel = proc_.litChannelForKeyboard(kb.keyboardId);
 
     int x = kb.dispLeftFor(layout_);
     const int keyTop = kb.dispTopFor(layout_);
@@ -466,6 +469,8 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
           KeyItem item;
           item.midiNote = note;
           item.channel = channel;
+          item.litChannel = litChannel;
+          item.keyboardId = kb.keyboardId;
           item.imageSetId = shape;
           item.engagedIndex = ks.indexEngaged;
           item.disengagedIndex = ks.indexDisengaged;
@@ -534,6 +539,8 @@ int ConsoleView::keyAt(juce::Point<int> p, int* outChannel) const {
   // Back to front: the sharps are last in the list and sit on top.
   for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
     if (it->bounds.contains(p)) {
+      // A manual no channel reaches cannot be played from its picture either.
+      if (it->channel <= 0) return -1;
       if (outChannel != nullptr) *outChannel = it->channel;
       return it->midiNote;
     }
@@ -552,8 +559,21 @@ void ConsoleView::timerCallback() {
   // player's own console.
   uint64_t hash = 1469598103934665603ull;
   auto& state = proc_.keyboardState();
+  // The player may have moved a manual to another channel in Settings since
+  // the console was built; the drawn keys follow without a reload.
+  bool channelsMoved = false;
+  for (auto& k : keys_) {
+    const int now = proc_.clickChannelForKeyboard(k.keyboardId);
+    const int lit = proc_.litChannelForKeyboard(k.keyboardId);
+    if (now != k.channel || lit != k.litChannel) {
+      k.channel = now;
+      k.litChannel = lit;
+      channelsMoved = true;
+    }
+  }
+  if (channelsMoved) hash ^= 0x9e3779b97f4a7c15ull;
   for (const auto& k : keys_) {
-    hash ^= state.isNoteOn(k.channel, k.midiNote) ? 1u : 0u;
+    hash ^= k.litChannel > 0 && state.isNoteOn(k.litChannel, k.midiNote) ? 1u : 0u;
     hash *= 1099511628211ull;
   }
 
@@ -793,7 +813,7 @@ void ConsoleView::paint(juce::Graphics& g) {
   // thing on the page whose picture changes while the player is playing.
   auto& keyState = proc_.keyboardState();
   for (const auto& k : keys_) {
-    const bool down = keyState.isNoteOn(k.channel, k.midiNote);
+    const bool down = k.litChannel > 0 && keyState.isNoteOn(k.litChannel, k.midiNote);
     const int frame = down ? k.engagedIndex : k.disengagedIndex;
     if (k.synthetic) {
       // Ivory and ebony, with the pressed key shaded rather than moved: the

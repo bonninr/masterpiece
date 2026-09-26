@@ -865,6 +865,19 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   styleLabel(outputsLabel_, "MIDI output");
   addAndMakeVisible(sharedNote_);
   sharedNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(useAsDefault_);
+  useAsDefault_.onClick = [this] {
+    proc_.useChannelsAsDefaultConsole();
+    showDefaultConsole();
+  };
+  addAndMakeVisible(clearDefault_);
+  clearDefault_.onClick = [this] {
+    proc_.clearDefaultConsole();
+    showDefaultConsole();
+  };
+  addAndMakeVisible(defaultNote_);
+  defaultNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  showDefaultConsole();
   addAndMakeVisible(keyboardsLabel_);
   styleLabel(keyboardsLabel_, "Keyboards");
 
@@ -953,6 +966,20 @@ MidiPanel::~MidiPanel() {
 // Manuals that answer the same channel, named. Sharing one is a way of
 // playing two divisions from one keyboard; doing it unawares is how a manual
 // ends up sounding the wrong division, which is what this line prevents.
+void MidiPanel::showDefaultConsole() {
+  const auto& def = proc_.defaultConsole();
+  if (def.empty()) {
+    defaultNote_.setText("No default: each organ starts from its own channels",
+                         juce::dontSendNotification);
+    return;
+  }
+  juce::String text = "Default for organs with no channels saved:";
+  for (const auto& [role, channel] : def)
+    text << (role == 0 ? juce::String(" Pedal ") : " Manual " + juce::String(role) + " ")
+         << channel << ";";
+  defaultNote_.setText(text.dropLastCharacters(1), juce::dontSendNotification);
+}
+
 void MidiPanel::showSharedChannels() {
   std::map<int, juce::StringArray> byChannel;
   for (const auto& b : proc_.channelAssignments()) {
@@ -1097,6 +1124,14 @@ void MidiPanel::resized() {
   }
 
   sharedNote_.setBounds(r.removeFromTop(kRow).reduced(12, 0));
+  {
+    auto defRow = r.removeFromTop(kRow).reduced(12, 0);
+    useAsDefault_.setBounds(defRow.removeFromLeft(220).reduced(0, 1));
+    defRow.removeFromLeft(6);
+    clearDefault_.setBounds(defRow.removeFromLeft(110).reduced(0, 1));
+    defRow.removeFromLeft(10);
+    defaultNote_.setBounds(defRow);
+  }
 
   r.removeFromTop(kGap);
   auto row = r.removeFromTop(kRow);
