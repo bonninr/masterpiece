@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <set>
 #include <sstream>
@@ -137,10 +138,15 @@ std::string n3(int n) {
 // organ, the windchest group, the rank and the pipe; they multiply.
 double levelDb(const Ini& ini, const std::string& section, const std::string& prefix = "") {
   double db = ini.real(section, prefix + "Gain", 0.0);
-  double pct = ini.real(section, prefix + "AmplitudeLevel", -1.0);
-  if (pct < 0.0) pct = ini.real(section, prefix + "Amplitude", 100.0);
+  const double pct = ini.real(section, prefix + "AmplitudeLevel", 100.0);
   if (pct > 0.0) db += 20.0 * std::log10(pct / 100.0);
   return db;
+}
+
+// Pitch in cents at one level: the tuning and the correction add.
+double centsAt(const Ini& ini, const std::string& section, const std::string& prefix = "") {
+  return ini.real(section, prefix + "PitchTuning", 0.0) +
+         ini.real(section, prefix + "PitchCorrection", 0.0);
 }
 
 // The organ id, from the file itself: GrandOrgue declares none. FNV-1a over
@@ -204,6 +210,8 @@ constexpr int kTremulantSwitchBase = 6000;
 constexpr int kEnclosureBase = 200;
 constexpr int kEnclosureControlBase = 700;
 constexpr int kUnisonOffSwitchBase = 7000;
+constexpr int kGoSwitchBase = 8000;    // GrandOrgue's own [SwitchNNN]
+constexpr int kGateBase = 9000;        // switches that compute a Function
 
 struct PipeRef {
   int pipeId = 0;
@@ -249,7 +257,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     Emitter::set(g, "AudioEngine_BasePitchHz", 440);
   }
   const double organDb = levelDb(ini, "Organ");
-  const double organCents = ini.real("Organ", "PitchTuning", 0.0);
+  const double organCents = centsAt(ini, "Organ");
 
   // ---- windchest groups: which enclosures and tremulants reach a pipe ------
   const int windchests = ini.num("Organ", "NumberOfWindchestGroups", 0);
@@ -262,7 +270,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     for (int t = 1; t <= ini.num(sec, "NumberOfTremulants", 0); ++t)
       chestTremulants[w].push_back(ini.num(sec, "Tremulant" + n3(t), 0));
     chestDb[w] = levelDb(ini, sec);
-    chestCents[w] = ini.real(sec, "PitchTuning", 0.0);
+    chestCents[w] = centsAt(ini, sec);
   }
 
   // ---- samples, pipes, ranks ------------------------------------------------
@@ -272,17 +280,28 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
   std::map<int, std::vector<int>> rankPipeIds;
   std::map<int, int> rankFirstMidi;
 
-  auto sampleFor = [&](const std::string& file) {
+  // GrandOrgue plays a sample at the pitch it was recorded at, moved only by
+  // the definition's PitchTuning; the engine here retunes every sample to its
+  // pipe. So each sample is declared to BE its pipe's untuned pitch, which
+  // makes the engine's ratio exactly the definition's tuning -- the same
+  // playback GrandOrgue gives. A file shared by pipes of different pitch is
+  // a sample per pitch.
+  auto sampleFor = [&](const std::string& file, double pitchHz) {
     std::string rel = file;
     std::replace(rel.begin(), rel.end(), '\\', '/');
-    const auto it = sampleIds.find(rel);
+    char tag[32];
+    std::snprintf(tag, sizeof tag, "@%.4f", pitchHz);
+    const std::string key = rel + tag;
+    const auto it = sampleIds.find(key);
     if (it != sampleIds.end()) return it->second;
     const int id = static_cast<int>(sampleIds.size()) + 1;
-    sampleIds[rel] = id;
+    sampleIds[key] = id;
     auto s = out.row("Sample");
     Emitter::set(s, "SampleID", id);
     Emitter::set(s, "InstallationPackageID", 0);
     Emitter::set(s, "SampleFilename", rel);
+    Emitter::set(s, "Pitch_SpecificationMethodCode", 4);
+    Emitter::set(s, "Pitch_ExactSamplePitch", pitchHz);
     return id;
   };
 
@@ -327,7 +346,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
   };
 
   // One rank: a [RankNNN], or a stop that carries its pipes itself.
-  auto buildRank = [&](const std::string& rankSec, int rankId) {
+  auto buildRank = [&](const std::string& rankSec, int rankId, int palletSwitch = 0) {
     auto r = out.row("Rank");
     Emitter::set(r, "RankID", rankId);
     Emitter::set(r, "Name", ini.str(rankSec, "Name", rankSec));
@@ -351,14 +370,17 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       const double rankDb = levelDb(ini, sec);
       const bool rankPercussive = ini.yes(sec, "Percussive", false);
       pipeOfRankPipe[rankId * 1000 + p] = {pipeId, chest};
-      const double cents = organCents + chestCents[chest] + ini.real(sec, "PitchTuning", 0.0) +
-                           ini.real(sec, key + "PitchTuning", 0.0);
+      const double cents = organCents + chestCents[chest] + centsAt(ini, sec) + centsAt(ini, sec, key);
       auto pipe = out.row("Pipe_SoundEngine01");
       Emitter::set(pipe, "PipeID", pipeId);
       Emitter::set(pipe, "RankID", rankId);
       Emitter::set(pipe, "NormalMIDINoteNumber", midi);
       Emitter::set(pipe, "Pitch_Tempered_RankBasePitch64ftHarmonicNum", harmonic);
+      // An effect stop's pipe sounds while its switch is engaged, not by key.
+      if (palletSwitch) Emitter::set(pipe, "ControllingPalletSwitchID", palletSwitch);
       if (cents != 0.0) Emitter::set(pipe, "Pitch_Tempered_BaseTuningDeviation", cents);
+      const double nominalHz =
+          440.0 * std::pow(2.0, (midi - 69.0) / 12.0) * (harmonic > 0 ? harmonic / 8.0 : 1.0);
 
       auto layer = out.row("Pipe_SoundEngine01_Layer");
       Emitter::set(layer, "LayerID", pipeId);
@@ -399,7 +421,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       std::stable_sort(attacks.begin(), attacks.end(),
                        [](const Attack& a, const Attack& b) { return a.minVelocity < b.minVelocity; });
       for (size_t i = 0; i < attacks.size(); ++i) {
-        const int sampleId = sampleFor(attacks[i].file);
+        const int sampleId = sampleFor(attacks[i].file, nominalHz);
         const int highest = (i + 1 < attacks.size()) ? std::max(0, attacks[i + 1].minVelocity - 1) : 127;
         auto at = out.row("Pipe_SoundEngine01_AttackSample");
         const int attackUid = nextUniqueId++;
@@ -432,43 +454,109 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
         auto rel = out.row("Pipe_SoundEngine01_ReleaseSample");
         Emitter::set(rel, "UniqueID", nextUniqueId++);
         Emitter::set(rel, "LayerID", pipeId);
-        Emitter::set(rel, "SampleID", sampleFor(f));
+        Emitter::set(rel, "SampleID", sampleFor(f, nominalHz));
         const int maxMs = ini.num(sec, pre + "MaxKeyPressTime", -1);
         if (maxMs >= 0) Emitter::set(rel, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", maxMs);
       }
-      // An exact recorded pitch declared in the definition beats the file.
-      const int keyNumber = ini.num(sec, key + "MIDIKeyNumber", -1);
-      if (keyNumber >= 0) {
-        const double fraction = ini.real(sec, key + "MIDIPitchFraction", 0.0);
-        const double hz = 440.0 * std::pow(2.0, (keyNumber + fraction / 100.0 - 69.0) / 12.0);
-        // Every sample of this pipe is at that pitch; the attack's row is
-        // the last one written, so it is found by id and annotated.
-        for (const auto& a : attacks) {
-          std::string rel = a.file;
-          std::replace(rel.begin(), rel.end(), '\\', '/');
-          const int sid = sampleIds[rel];
-          for (auto s : out.lists["Sample"].children("Sample"))
-            if (s.child("SampleID").text().as_int() == sid && !s.child("Pitch_ExactSamplePitch")) {
-              Emitter::set(s, "Pitch_SpecificationMethodCode", 4);
-              Emitter::set(s, "Pitch_ExactSamplePitch", hz);
-            }
-        }
-      }
+      if (ini.num(sec, key + "MIDIKeyNumber", -1) >= 0)
+        note("MIDIKeyNumber only matters to retuned temperaments; pipes play as recorded plus their tuning");
     }
   };
 
   const int rankCount = ini.num("Organ", "NumberOfRanks", 0);
   for (int r = 1; r <= rankCount; ++r) buildRank("Rank" + n3(r), kRankBase + r);
 
+  // ---- switches -------------------------------------------------------------
+  // GrandOrgue drives a stop, coupler or tremulant either from its own
+  // drawstop or from a Function (And, Or, Not...) of [SwitchNNN] objects. A
+  // function becomes a gate: a switch set by linkages, which re-evaluate when
+  // any of their inputs moves. Several linkages into one switch are an Or.
+  auto emitSwitch = [&](int id, const std::string& name, bool engaged) {
+    auto sw = out.row("Switch");
+    Emitter::set(sw, "SwitchID", id);
+    Emitter::set(sw, "Name", name);
+    Emitter::yn(sw, "DefaultToEngaged", engaged);
+  };
+  auto link = [&](int source, int dest, int condition, bool sourceEngaged) {
+    auto l = out.row("SwitchLinkage");
+    Emitter::set(l, "SourceSwitchID", source);
+    Emitter::set(l, "DestSwitchID", dest);
+    if (condition) {
+      Emitter::set(l, "ConditionSwitchID", condition);
+      Emitter::yn(l, "ConditionSwitchLinkIfEngaged", true);
+    }
+    Emitter::yn(l, "SourceSwitchLinkIfEngaged", sourceEngaged);
+    Emitter::set(l, "EngageLinkActionCode", 1);
+    Emitter::set(l, "DisengageLinkActionCode", 2);
+  };
+  int gates = 0;
+  std::map<std::string, int> gateMemo;
+  std::function<int(const std::string&, const std::vector<int>&)> gate =
+      [&](const std::string& fn, const std::vector<int>& in) -> int {
+    std::string key = fn;
+    for (int i : in) key += ":" + std::to_string(i);
+    const auto hit = gateMemo.find(key);
+    if (hit != gateMemo.end()) return hit->second;
+    auto fresh = [&] {
+      const int id = kGateBase + ++gates;
+      emitSwitch(id, "logic " + key, false);
+      return id;
+    };
+    int g = 0;
+    if ((fn == "and" || fn == "or") && in.size() == 1) {
+      g = in[0];
+    } else if (fn == "and") {
+      g = in[0];
+      for (size_t i = 1; i < in.size(); ++i) {
+        const int next = fresh();
+        link(g, next, in[i], true);
+        g = next;
+      }
+    } else if (fn == "not" || fn == "nand" || fn == "nor") {
+      const int inner = in.size() == 1 ? in[0] : gate(fn == "nor" ? "or" : "and", in);
+      g = fresh();
+      link(inner, g, 0, false);
+    } else {
+      if (fn != "or") note("switch function '" + fn + "' is treated as Or");
+      g = fresh();
+      for (int i : in) link(i, g, 0, true);
+    }
+    gateMemo[key] = g;
+    return g;
+  };
+  auto functionOf = [&](const std::string& sec, std::vector<int>& in) {
+    const int n = ini.num(sec, "SwitchCount", 0);
+    for (int i = 1; i <= n; ++i) in.push_back(kGoSwitchBase + ini.num(sec, "Switch" + n3(i), 0));
+    return lower(ini.str(sec, "Function", "And"));
+  };
+  const int switchCount = ini.num("Organ", "NumberOfSwitches", 0);
+  for (int n = 1; n <= switchCount; ++n) {
+    const std::string sec = "Switch" + n3(n);
+    emitSwitch(kGoSwitchBase + n, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
+    std::vector<int> in;
+    const std::string fn = functionOf(sec, in);
+    if (!in.empty()) link(gate(fn, in), kGoSwitchBase + n, 0, true);
+  }
+  // The switch that controls an object: its own, or its function's gate.
+  std::map<std::string, int> controlMemo;
+  auto controlFor = [&](const std::string& sec, int ownId) {
+    const auto hit = controlMemo.find(lower(sec));
+    if (hit != controlMemo.end()) return hit->second;
+    std::vector<int> in;
+    const std::string fn = functionOf(sec, in);
+    int id = ownId;
+    if (in.empty()) emitSwitch(ownId, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
+    else id = gate(fn, in);
+    controlMemo[lower(sec)] = id;
+    return id;
+  };
+  auto hasOwnSwitch = [&](const std::string& sec) { return ini.num(sec, "SwitchCount", 0) == 0; };
+
   // ---- tremulants, enclosures --------------------------------------------
   const int tremCount = ini.num("Organ", "NumberOfTremulants", 0);
   for (int t = 1; t <= tremCount; ++t) {
     const std::string sec = "Tremulant" + n3(t);
-    const int sw = kTremulantSwitchBase + t;
-    auto s = out.row("Switch");
-    Emitter::set(s, "SwitchID", sw);
-    Emitter::set(s, "Name", ini.str(sec, "Name", sec));
-    Emitter::yn(s, "DefaultToEngaged", ini.yes(sec, "DefaultToEngaged", false));
+    const int sw = controlFor(sec, kTremulantSwitchBase + t);
     auto tr = out.row("Tremulant");
     Emitter::set(tr, "TremulantID", kTremulantBase + t);
     Emitter::set(tr, "Name", ini.str(sec, "Name", sec));
@@ -562,8 +650,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     // it is drawn, so the manual's own key action is conditional on it.
     int unisonOffSwitch = 0;
     for (int c = 1; c <= ini.num(sec, "NumberOfCouplers", 0); ++c) {
-      const std::string csec = "Coupler" + n3(ini.num(sec, "Coupler" + n3(c), 0));
-      if (ini.yes(csec, "UnisonOff", false)) unisonOffSwitch = kUnisonOffSwitchBase + ini.num(sec, "Coupler" + n3(c), 0);
+      const int cNo = ini.num(sec, "Coupler" + n3(c), 0);
+      const std::string csec = "Coupler" + n3(cNo);
+      if (ini.yes(csec, "UnisonOff", false)) unisonOffSwitch = controlFor(csec, kUnisonOffSwitchBase + cNo);
     }
     auto own = out.row("KeyAction");
     Emitter::set(own, "SourceKeyboardID", info.kb);
@@ -585,20 +674,31 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       const std::string ssec = "Stop" + n3(stopNo);
       if (!ini.has(ssec)) continue;
       const int stopId = kStopBase + stopNo;
-      const int sw = kStopSwitchBase + stopNo;
-      auto swr = out.row("Switch");
-      Emitter::set(swr, "SwitchID", sw);
-      Emitter::set(swr, "Name", ini.str(ssec, "Name", ssec));
-      Emitter::yn(swr, "DefaultToEngaged", ini.yes(ssec, "DefaultToEngaged", false));
+      const int sw = controlFor(ssec, kStopSwitchBase + stopNo);
+      const int firstKey = ini.num(ssec, "FirstAccessiblePipeLogicalKeyNumber", 1);
+      const int firstPipe = ini.num(ssec, "FirstAccessiblePipeLogicalPipeNumber", 1);
+      const int accessible = ini.num(ssec, "NumberOfAccessiblePipes", info.keys);
+      const int ranksInStop = ini.num(ssec, "NumberOfRanks", 0);
+
+      // A stop of a single pipe is an effect in GrandOrgue: not played from
+      // the keys, it sounds while the stop is on -- a blower, a stop action,
+      // a coupler's clack. Its pipe opens with the switch, like a pallet.
+      if (ranksInStop == 0 && accessible == 1 && ini.num(ssec, "NumberOfLogicalPipes", 0) == 1) {
+        const int rankId = kStopRankBase + stopNo;
+        if (!rankPipeIds.count(rankId)) {
+          buildRank(ssec, rankId, sw);
+          for (const auto& [k, p] : pipeOfRankPipe)
+            if (k / 1000 == rankId) wirePipe(p);
+        }
+        continue;
+      }
+
       auto st = out.row("Stop");
       Emitter::set(st, "StopID", stopId);
       Emitter::set(st, "Name", ini.str(ssec, "Name", ssec));
       Emitter::set(st, "DivisionID", info.kb);
       Emitter::set(st, "ControllingSwitchID", sw);
 
-      const int firstKey = ini.num(ssec, "FirstAccessiblePipeLogicalKeyNumber", 1);
-      const int firstPipe = ini.num(ssec, "FirstAccessiblePipeLogicalPipeNumber", 1);
-      const int accessible = ini.num(ssec, "NumberOfAccessiblePipes", info.keys);
       auto mapRank = [&](int rankId, int keyStart, int pipeStart, int count) {
         auto sr = out.row("StopRank");
         Emitter::set(sr, "StopID", stopId);
@@ -609,7 +709,6 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
         Emitter::set(sr, "NumberOfMappedDivisionInputNodes", count);
         Emitter::set(sr, "MIDINoteNumIncrementFromDivisionToRank", pipeMidi - keyMidi);
       };
-      const int ranksInStop = ini.num(ssec, "NumberOfRanks", 0);
       if (ranksInStop == 0) {
         // The stop carries its pipes itself: it is its own rank.
         const int rankId = kStopRankBase + stopNo;
@@ -644,18 +743,17 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       const std::string csec = "Coupler" + n3(cNo);
       if (!ini.has(csec)) continue;
       const bool unisonOff = ini.yes(csec, "UnisonOff", false);
-      const int sw = unisonOff ? kUnisonOffSwitchBase + cNo : kCouplerSwitchBase + cNo;
-      auto swr = out.row("Switch");
-      Emitter::set(swr, "SwitchID", sw);
-      Emitter::set(swr, "Name", ini.str(csec, "Name", csec));
-      Emitter::yn(swr, "DefaultToEngaged", ini.yes(csec, "DefaultToEngaged", false));
-      // A stop row makes the coupler a drawable, listed control like the
-      // rest; it sounds nothing itself.
-      auto st = out.row("Stop");
-      Emitter::set(st, "StopID", kStopBase + 500 + cNo);
-      Emitter::set(st, "Name", ini.str(csec, "Name", csec));
-      Emitter::set(st, "DivisionID", info.kb);
-      Emitter::set(st, "ControllingSwitchID", sw);
+      const int sw = controlFor(csec, unisonOff ? kUnisonOffSwitchBase + cNo : kCouplerSwitchBase + cNo);
+      // A stop row makes a coupler with its own drawstop a listed control
+      // like the rest; it sounds nothing itself. One driven by switches is
+      // drawn as those switches.
+      if (hasOwnSwitch(csec)) {
+        auto st = out.row("Stop");
+        Emitter::set(st, "StopID", kStopBase + 500 + cNo);
+        Emitter::set(st, "Name", ini.str(csec, "Name", csec));
+        Emitter::set(st, "DivisionID", info.kb);
+        Emitter::set(st, "ControllingSwitchID", sw);
+      }
       if (unisonOff) continue;
       const int dest = ini.num(csec, "DestinationManual", m);
       const auto dIt = manualInfo.find(dest);
@@ -679,7 +777,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     // Tremulants drawn on this manual are listed with its stops.
     for (int t = 1; t <= ini.num(sec, "NumberOfTremulants", 0); ++t) {
       const int tNo = ini.num(sec, "Tremulant" + n3(t), 0);
-      if (tNo < 1 || tNo > tremCount) continue;
+      if (tNo < 1 || tNo > tremCount || !hasOwnSwitch("Tremulant" + n3(tNo))) continue;
       auto st = out.row("Stop");
       Emitter::set(st, "StopID", kStopBase + 800 + tNo);
       Emitter::set(st, "Name", ini.str("Tremulant" + n3(tNo), "Name", "Tremulant"));
@@ -688,8 +786,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     }
   }
 
-  if (ini.num("Organ", "NumberOfGenerals", 0) > 0 || ini.num("Organ", "NumberOfSwitches", 0) > 0)
-    note("generals, divisionals and logical switches are not imported yet");
+  if (ini.num("Organ", "NumberOfGenerals", 0) > 0)
+    note("generals and divisionals are not imported yet");
   if (ini.has("Panel000") || ini.num("Organ", "NumberOfPanels", 0) > 0)
     note("the console panels are not drawn yet; the stops are on the plain jamb");
 
