@@ -331,8 +331,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   };
 
   addAndMakeVisible(setter_);
-  setter_.setTooltip("Hold to store the registration into the frame you step "
-                     "onto, instead of recalling it");
+  setter_.setTooltip("While on, a piston or a step stores what is drawn "
+                     "instead of recalling it");
   setter_.onClick = [this] { proc_.setCaptureMode(setter_.getToggleState()); };
 
   addAndMakeVisible(stepPrev_);
@@ -353,6 +353,12 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   panicButton_.setTooltip("Release every key on every manual and the pedal");
   panicButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe0a0a0));
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
+
+  combinations_ = std::make_unique<CombinationsWindow>(proc_);
+  addAndMakeVisible(combinationsButton_);
+  combinationsButton_.setTooltip("Generals, divisionals, the stepper and the "
+                                 "combination set, in a window of their own");
+  combinationsButton_.onClick = [this] { toggleCombinations(); };
 
   addAndMakeVisible(swellButton_);
   swellButton_.onClick = [this] {
@@ -403,6 +409,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 }
 
 MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
+
+void MasterpieceEditor::toggleCombinations() {
+  if (combinations_ == nullptr) return;
+  combinations_->showOrHide(!combinations_->isVisible());
+}
 
 void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;  // one load at a time; the dialog is the interlock
@@ -522,6 +533,12 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   jamb_.rebuild();
   expression_.rebuild();
   console_.rebuild();
+  if (combinations_ != nullptr) {
+    combinations_->panel().rebuild();
+    // An organ with pistons of its own has somewhere to register already;
+    // one without gets the window the first time, so it is found.
+    combinations_->place(getScreenBounds(), proc_.organModel().combinations.empty());
+  }
   juce::Logger::writeToLog(
       "load: artwork       " +
       juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
@@ -642,6 +659,7 @@ void MasterpieceEditor::resized() {
   if (swellButton_.isVisible())
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
+  combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
   stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
@@ -758,6 +776,9 @@ void MasterpieceEditor::timerCallback() {
     case MidiTargetKind::ConsoleToggleKeyboard:
       keysButton_.triggerClick();
       break;
+    case MidiTargetKind::ConsoleToggleCombinations:
+      toggleCombinations();
+      break;
     default:
       break;
   }
@@ -773,21 +794,26 @@ void MasterpieceEditor::timerCallback() {
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
 
-  // The sequencer's frame, and whether it has anything to walk. An organ with
-  // no generals says so rather than showing a dash that could mean anything.
-  const auto& seq = proc_.stepper();
-  if (seq.empty()) {
-    stepFrame_.setText("no seq.", juce::dontSendNotification);
-    stepPrev_.setEnabled(false);
-    stepNext_.setEnabled(false);
-  } else {
-    stepFrame_.setText(juce::String(seq.frame()) + " / " +
-                           juce::String(static_cast<int>(seq.frameCount())),
-                       juce::dontSendNotification);
-    stepPrev_.setEnabled(seq.frame() > 1);
-    stepNext_.setEnabled(seq.frame() < static_cast<int>(seq.frameCount()));
+  // The sequencer's frame, out of the frames holding anything. With Set on
+  // the next step is always open: stepping on is how a sequence grows.
+  const auto& seq = proc_.playerCombinations();
+  const int last = seq.lastUsedFrame();
+  const bool capturing = proc_.captureMode();
+  stepFrame_.setText(last == 0 && seq.frame() == 0
+                         ? juce::String("empty")
+                         : juce::String(seq.frame()) + " / " +
+                               juce::String(juce::jmax(last, seq.frame())),
+                     juce::dontSendNotification);
+  stepPrev_.setEnabled(seq.frame() > 1);
+  stepNext_.setEnabled(capturing || seq.frame() < last);
+  setter_.setToggleState(capturing, juce::dontSendNotification);
+
+  // Above the console while this program is in front, and not above anyone
+  // else's windows when it is not.
+  if (combinations_ != nullptr && combinations_->isVisible()) {
+    const bool front = juce::Process::isForegroundProcess();
+    if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
-  setter_.setToggleState(proc_.captureMode(), juce::dontSendNotification);
 
   // Voice count is the honest health readout: it says whether drawing a stop
   // and pressing a key actually produced sound.

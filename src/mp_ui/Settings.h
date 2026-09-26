@@ -242,6 +242,7 @@ private:
   juce::TextButton learnLayout_{"Learn console size"};
   juce::TextButton learnStopList_{"Learn stop list"};
   juce::TextButton learnKeyboard_{"Learn keyboard"};
+  juce::TextButton learnCombinations_{"Learn combinations"};
   juce::Label mapStatus_;
   juce::Label note_;
   std::unique_ptr<juce::MidiOutput> openedOutput_;

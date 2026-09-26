@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -611,6 +612,22 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::StepperPrev:
           stepperPrev();
           continue;
+        case MidiTargetKind::PlayerGeneral:
+          pressGeneral(static_cast<int>(action.targetId));
+          continue;
+        case MidiTargetKind::PlayerGeneralCancel:
+          pressGeneralCancel();
+          continue;
+        case MidiTargetKind::PlayerDivisional:
+          pressDivisional(playerDivisionalDivision(action.targetId),
+                          playerDivisionalPiston(action.targetId));
+          continue;
+        case MidiTargetKind::PlayerDivisionalCancel:
+          pressDivisionalCancel(action.targetId);
+          continue;
+        case MidiTargetKind::Setter:
+          setCaptureMode(action.engage);
+          continue;
         // The console belongs to the editor, and this is the audio thread, so
         // the action is left in a slot for the editor to collect. One slot is
         // enough: these are thumb pistons, pressed at human speed, and
@@ -621,6 +638,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::ConsoleNextLayout:
         case MidiTargetKind::ConsoleToggleStopList:
         case MidiTargetKind::ConsoleToggleKeyboard:
+        case MidiTargetKind::ConsoleToggleCombinations:
           pendingConsoleAction_.store(static_cast<int>(action.kind),
                                       std::memory_order_release);
           continue;
@@ -1113,6 +1131,10 @@ bool MasterpieceProcessor::saveSettings() const {
     // ones is a nasty surprise to meet mid-piece.
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
+    if (combWindow_.w > 0)
+      text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
+           << combWindow_.w << " " << combWindow_.h << " "
+           << (combWindow_.open ? 1 : 0) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1128,6 +1150,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.b.clear();
   voicing_.usingB = false;
   combinationSet_.clear();
+  combWindow_ = {};
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -1167,6 +1190,19 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "combset") {
       combinationSet_ = val.trim().toStdString();
+      continue;
+    }
+    if (key == "combwindow") {
+      // "combwindow <x> <y> <w> <h> <open>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() >= 5) {
+        combWindow_.x = tok[0].getIntValue();
+        combWindow_.y = tok[1].getIntValue();
+        combWindow_.w = tok[2].getIntValue();
+        combWindow_.h = tok[3].getIntValue();
+        combWindow_.open = tok[4].getIntValue() != 0;
+      }
       continue;
     }
     if (key == "voicingslot") {
@@ -1984,6 +2020,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
 }
 
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
+  if (!applyingPistons_) player_.registrationMoved();
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
   stopsChanged_.store(true, std::memory_order_release);
@@ -2007,29 +2044,146 @@ bool MasterpieceProcessor::switchEngaged(Id switchId) const {
   return engagedSwitches_.count(switchId) != 0;
 }
 
-namespace {
-// Firing a frame is the same act whichever direction the sequencer moved.
-} // namespace
+// ------------------------------------------------ the player's own pistons
+
+bool MasterpieceProcessor::playerElementEngaged(
+    const PlayerCombinations::Element& e) const {
+  return e.kind == PlayerCombinations::ElementKind::Stop ? stopEngaged(e.id)
+                                                          : switchEngaged(e.id);
+}
+
+void MasterpieceProcessor::applyPlayerChanges() {
+  applyingPistons_ = true;
+  for (const auto& c : playerScratch_) {
+    if (c.kind == PlayerCombinations::ElementKind::Stop) setStopEngaged(c.id, c.engage);
+    else setSwitchEngaged(c.id, c.engage);
+  }
+  applyingPistons_ = false;
+  playerScratch_.clear();
+}
+
+void MasterpieceProcessor::pressGeneral(int n) {
+  const auto read = [this](const PlayerCombinations::Element& e) {
+    return playerElementEngaged(e);
+  };
+  if (captureMode()) {
+    if (player_.captureGeneral(n, read))
+      combinationsDirty_.store(true, std::memory_order_release);
+    return;
+  }
+  if (!player_.generalSet(n)) return;  // never captured: does nothing
+  playerScratch_.clear();
+  player_.recallGeneral(n, playerScratch_);
+  applyPlayerChanges();
+  player_.lightGeneral(n);
+}
+
+void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
+  const auto read = [this](const PlayerCombinations::Element& e) {
+    return playerElementEngaged(e);
+  };
+  if (captureMode()) {
+    if (player_.captureDivisional(divisionId, n, read))
+      combinationsDirty_.store(true, std::memory_order_release);
+    return;
+  }
+  if (!player_.divisionalSet(divisionId, n)) return;
+  playerScratch_.clear();
+  player_.recallDivisional(divisionId, n, playerScratch_);
+  applyPlayerChanges();
+  player_.lightDivisional(divisionId, n);
+}
+
+// A cancel has nothing to store, so the setter does not change it.
+void MasterpieceProcessor::pressGeneralCancel() {
+  playerScratch_.clear();
+  player_.generalCancel(playerScratch_);
+  applyPlayerChanges();
+  player_.registrationMoved();
+}
+
+void MasterpieceProcessor::pressDivisionalCancel(Id divisionId) {
+  playerScratch_.clear();
+  player_.divisionalCancel(divisionId, playerScratch_);
+  applyPlayerChanges();
+  player_.lightDivisional(divisionId, 0);
+}
+
+void MasterpieceProcessor::setPlayerPistonCounts(int generals, int divisionals) {
+  player_.setGeneralCount(generals);
+  player_.setDivisionalCount(divisionals);
+  combinationsDirty_.store(true, std::memory_order_release);
+}
 
 bool MasterpieceProcessor::stepperNext() {
-  const Id combo = stepper_.next();
-  if (combo == 0) return false;
-  fireCombination(combo);
+  const bool capturing = captureMode();
+  playerScratch_.clear();
+  const bool moved = player_.stepNext(
+      capturing, [this](const auto& e) { return playerElementEngaged(e); },
+      playerScratch_);
+  if (!moved) return false;
+  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
+  else applyPlayerChanges();
   return true;
 }
 
 bool MasterpieceProcessor::stepperPrev() {
-  const Id combo = stepper_.prev();
-  if (combo == 0) return false;
-  fireCombination(combo);
+  const bool capturing = captureMode();
+  playerScratch_.clear();
+  const bool moved = player_.stepPrev(
+      capturing, [this](const auto& e) { return playerElementEngaged(e); },
+      playerScratch_);
+  if (!moved) return false;
+  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
+  else applyPlayerChanges();
   return true;
 }
 
 bool MasterpieceProcessor::stepperGoto(int frame) {
-  const Id combo = stepper_.gotoFrame(frame);
-  if (combo == 0) return false;
-  fireCombination(combo);
+  const bool capturing = captureMode();
+  playerScratch_.clear();
+  const bool moved = player_.gotoFrame(
+      frame, capturing, [this](const auto& e) { return playerElementEngaged(e); },
+      playerScratch_);
+  if (!moved) return false;
+  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
+  else applyPlayerChanges();
   return true;
+}
+
+bool MasterpieceProcessor::stepperInsertFrame() {
+  if (!player_.insertFrame()) return false;
+  combinationsDirty_.store(true, std::memory_order_release);
+  return true;
+}
+
+bool MasterpieceProcessor::stepperDeleteFrame() {
+  if (!player_.deleteFrame()) return false;
+  combinationsDirty_.store(true, std::memory_order_release);
+  return true;
+}
+
+// What the organ offers a player to register, worked out once the console's
+// wiring is known: which switch a player moves is what gets captured.
+void MasterpieceProcessor::resetPlayerCombinations() {
+  auto elements = PlayerCombinations::collect(
+      model_, [this](Id sw) { return playerSwitchFor(sw); });
+  auto divisions = PlayerCombinations::divisionsOf(model_, elements);
+  registrationSwitches_.clear();
+  for (const auto& e : elements) {
+    if (e.kind == PlayerCombinations::ElementKind::Switch) {
+      registrationSwitches_.insert(e.id);
+      continue;
+    }
+    const auto it = model_.stops.find(e.id);
+    if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
+      registrationSwitches_.insert(playerSwitchFor(it->second.controllingSwitchId));
+    const auto knob = stopKnob_.find(e.id);
+    if (knob != stopKnob_.end()) registrationSwitches_.insert(knob->second);
+  }
+  playerScratch_.clear();
+  playerScratch_.reserve(elements.size() + 16);
+  player_.reset(std::move(elements), std::move(divisions));
 }
 
 void MasterpieceProcessor::fireCombination(Id comboId) {
@@ -2129,6 +2283,8 @@ bool MasterpieceProcessor::firePiston(Id switchId) {
 
 void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
+  if (!applyingPistons_ && registrationSwitches_.count(switchId) != 0)
+    player_.registrationMoved();
 
   // The organ's own setter. Holding it turns every piston press into a
   // capture, which is how a console works and how a player expects it to.
@@ -2283,6 +2439,7 @@ bool MasterpieceProcessor::switchCombinationSet(const std::string& name) {
   // Back to what the ORGAN declares before reading the new set, so a set that
   // defines fewer combinations than the last one leaves no stragglers from it.
   combinations_.reset(model_);
+  player_.clearAll();
   return loadCombinations();
 }
 
@@ -2292,7 +2449,7 @@ bool MasterpieceProcessor::copyCombinationSetTo(const std::string& name) const {
   const auto f = organFileForSaving("combinations", setExtension(clean));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(combinations_.toText()));
+  return f.replaceWithText(juce::String(combinationFileText()));
 }
 
 bool MasterpieceProcessor::deleteCombinationSet(const std::string& name) const {
@@ -2304,11 +2461,25 @@ bool MasterpieceProcessor::deleteCombinationSet(const std::string& name) const {
   return !f.getFullPathName().isEmpty() && f.existsAsFile() && f.deleteFile();
 }
 
+// One file per set holds both kinds of piston: the organ's own, in
+// CombinationSystem's form, and the player's, each line prefixed "player ".
+// Files written before the player's pistons existed have no such lines and
+// read exactly as they did.
+std::string MasterpieceProcessor::combinationFileText() const {
+  std::string text = combinations_.toText();
+  text += "# The player's own pistons\n";
+  std::istringstream in(player_.toText());
+  std::string line;
+  while (std::getline(in, line))
+    if (!line.empty()) text += "player " + line + "\n";
+  return text;
+}
+
 bool MasterpieceProcessor::saveCombinations() const {
   const auto f = organFileForSaving("combinations", setExtension(combinationSet_));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(combinations_.toText()));
+  return f.replaceWithText(juce::String(combinationFileText()));
 }
 
 bool MasterpieceProcessor::saveCombinationsIfDirty() {
@@ -2320,7 +2491,19 @@ bool MasterpieceProcessor::saveCombinationsIfDirty() {
 bool MasterpieceProcessor::loadCombinations() {
   const auto f = combinationFileFor(loadedOdf_);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
-  return combinations_.fromText(f.loadFileAsString().toStdString());
+  std::istringstream in(f.loadFileAsString().toStdString());
+  std::string organ, player, line;
+  const std::string prefix = "player ";
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.compare(0, prefix.size(), prefix) == 0)
+      player += line.substr(prefix.size()) + "\n";
+    else
+      organ += line + "\n";
+  }
+  const bool organOk = combinations_.fromText(organ);
+  const bool playerOk = player_.fromText(player);
+  return organOk && playerOk;
 }
 
 void MasterpieceProcessor::buildPalletIndex() {
@@ -2809,7 +2992,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // "reading the organ definition", which was finished long before.
   loadProgress_.beginPhase(LoadProgress::Phase::BuildingWind);
   combinations_.reset(model_);
-  stepper_.reset(model_);
 
   // The wind system. Indices are assigned once, in a stable order, so a voice
   // started in one block still points at the right chest in the next.
@@ -3169,6 +3351,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
   loadMidiMap();
+  resetPlayerCombinations();
   loadCombinations();
 
   phases.mark("prepare");

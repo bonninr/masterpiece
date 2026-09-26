@@ -10,6 +10,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "CombinationsWindow.h"
 #include "Console.h"
 
 #include <memory>
@@ -159,6 +160,11 @@ private:
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};
   juce::TextButton swellButton_{"Swell"};
+  // Opens and closes the combinations window: the player's own pistons, on
+  // every organ, floating beside the console rather than drawn over it.
+  juce::TextButton combinationsButton_{"Combinations"};
+  std::unique_ptr<CombinationsWindow> combinations_;
+  void toggleCombinations();
   // Releases every key. An organ pipe does not decay, so one stuck note goes
   // on sounding until something stops it -- and the usual causes (a coupler
   // changed mid-chord, a MIDI note-off lost on the cable) leave the player

@@ -80,6 +80,12 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::ConsoleNextLayout: return "console-next-layout";
     case MidiTargetKind::ConsoleToggleStopList: return "console-stop-list";
     case MidiTargetKind::ConsoleToggleKeyboard: return "console-keyboard";
+    case MidiTargetKind::ConsoleToggleCombinations: return "console-combinations";
+    case MidiTargetKind::PlayerGeneral: return "general";
+    case MidiTargetKind::PlayerGeneralCancel: return "general-cancel";
+    case MidiTargetKind::PlayerDivisional: return "divisional";
+    case MidiTargetKind::PlayerDivisionalCancel: return "divisional-cancel";
+    case MidiTargetKind::Setter: return "setter";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -96,6 +102,12 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "console-next-layout") return MidiTargetKind::ConsoleNextLayout;
   if (s == "console-stop-list") return MidiTargetKind::ConsoleToggleStopList;
   if (s == "console-keyboard") return MidiTargetKind::ConsoleToggleKeyboard;
+  if (s == "console-combinations") return MidiTargetKind::ConsoleToggleCombinations;
+  if (s == "general") return MidiTargetKind::PlayerGeneral;
+  if (s == "general-cancel") return MidiTargetKind::PlayerGeneralCancel;
+  if (s == "divisional") return MidiTargetKind::PlayerDivisional;
+  if (s == "divisional-cancel") return MidiTargetKind::PlayerDivisionalCancel;
+  if (s == "setter") return MidiTargetKind::Setter;
   return MidiTargetKind::None;
 }
 
@@ -181,6 +193,9 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
   action.targetId = b.targetId;
 
   switch (b.targetKind) {
+    // The setter is held or toggled exactly like a drawstop. Its latch is
+    // kept under an id no switch can have.
+    case MidiTargetKind::Setter:
     case MidiTargetKind::Switch: {
       // A console that sends 64 for a press, or whose button only travels part
       // of the range, still has to register.
@@ -233,6 +248,11 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::ConsoleNextLayout:
     case MidiTargetKind::ConsoleToggleStopList:
     case MidiTargetKind::ConsoleToggleKeyboard:
+    case MidiTargetKind::ConsoleToggleCombinations:
+    case MidiTargetKind::PlayerGeneral:
+    case MidiTargetKind::PlayerGeneralCancel:
+    case MidiTargetKind::PlayerDivisional:
+    case MidiTargetKind::PlayerDivisionalCancel:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
