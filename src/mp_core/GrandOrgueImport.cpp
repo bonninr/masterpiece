@@ -686,6 +686,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     Emitter::set(tr, "ControllingSwitchID", sw);
     const double period = std::max(20.0, ini.real(sec, "Period", 250.0));
     Emitter::set(tr, "FrequencyWhenEngagedHz", 1000.0 / period);
+    // How quickly it builds up when drawn and dies away when put in.
+    if (ini.hasKey(sec, "StartRate")) Emitter::set(tr, "StartRatePercent", ini.num(sec, "StartRate", 50));
+    if (ini.hasKey(sec, "StopRate")) Emitter::set(tr, "StopRatePercent", ini.num(sec, "StopRate", 50));
     auto wf = out.row("TremulantWaveform");
     Emitter::set(wf, "TremulantWaveformID", kTremulantBase + t);
     Emitter::set(wf, "TremulantID", kTremulantBase + t);
