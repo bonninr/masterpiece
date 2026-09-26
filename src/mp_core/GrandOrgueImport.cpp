@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <map>
 #include <set>
@@ -285,37 +286,72 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     return id;
   };
 
+  // A stop that carries its own pipes has no FirstMidiNoteNumber of its own:
+  // GrandOrgue places its first accessible pipe under the stop's first key.
+  const int manualCount = ini.num("Organ", "NumberOfManuals", 0);
+  const bool hasPedals = ini.yes("Organ", "HasPedals", false);
+  std::map<std::string, int> implicitFirstMidi;  // lower-case stop section
+  for (int m = hasPedals ? 0 : 1; m <= manualCount; ++m) {
+    const std::string msec = "Manual" + n3(m);
+    const int manualFirst = ini.num(msec, "FirstAccessibleKeyMIDINoteNumber", 36) -
+                            ini.num(msec, "FirstAccessibleKeyLogicalKeyNumber", 1) + 1;
+    for (int st = 1; st <= ini.num(msec, "NumberOfStops", 0); ++st) {
+      const std::string ssec = "Stop" + n3(ini.num(msec, "Stop" + n3(st), 0));
+      if (ini.num(ssec, "NumberOfRanks", 0) == 0)
+        implicitFirstMidi[lower(ssec)] =
+            manualFirst - ini.num(ssec, "FirstAccessiblePipeLogicalPipeNumber", 1) +
+            ini.num(ssec, "FirstAccessiblePipeLogicalKeyNumber", 1);
+    }
+  }
+  auto firstMidiOf = [&](const std::string& sec) {
+    const auto it = implicitFirstMidi.find(lower(sec));
+    return ini.num(sec, "FirstMidiNoteNumber", it == implicitFirstMidi.end() ? 36 : it->second);
+  };
+
+  // Where a pipe's sound is defined. Usually its own line; a REF:MMM:SSS:PPP
+  // pipe is pipe PPP of the first rank of stop SSS on manual MMM, and plays
+  // that pipe as it is -- its samples, level, tuning and windchest.
+  auto pipeSource = [&](std::string sec, std::string key, int& index) {
+    for (int depth = 0; depth < 8; ++depth) {
+      const std::string v = lower(ini.str(sec, key));
+      if (v.rfind("ref:", 0) != 0) return std::make_pair(sec, key);
+      int manual = -1, stop = 0, pipe = 0;
+      if (std::sscanf(v.c_str() + 4, "%d:%d:%d", &manual, &stop, &pipe) != 3)
+        return std::make_pair(std::string(), std::string());
+      const std::string ssec = "Stop" + n3(ini.num("Manual" + n3(manual), "Stop" + n3(stop), 0));
+      sec = ini.num(ssec, "NumberOfRanks", 0) > 0 ? "Rank" + n3(ini.num(ssec, "Rank001", 0)) : ssec;
+      key = "Pipe" + n3(pipe);
+      index = pipe;
+    }
+    return std::make_pair(std::string(), std::string());
+  };
+
   // One rank: a [RankNNN], or a stop that carries its pipes itself.
-  auto buildRank = [&](const std::string& sec, int rankId) {
-    const std::string name = ini.str(sec, "Name", sec);
+  auto buildRank = [&](const std::string& rankSec, int rankId) {
     auto r = out.row("Rank");
     Emitter::set(r, "RankID", rankId);
-    Emitter::set(r, "Name", name);
-    const int firstMidi = ini.num(sec, "FirstMidiNoteNumber", 36);
-    rankFirstMidi[rankId] = firstMidi;
-    const int count = ini.num(sec, "NumberOfLogicalPipes", 0);
-    const int rankHarmonic = ini.num(sec, "HarmonicNumber", 8);
-    const int rankChest = ini.num(sec, "WindchestGroup", 1);
-    const double rankDb = levelDb(ini, sec);
-    const double rankCents = ini.real(sec, "PitchTuning", 0.0);
-    const bool rankPercussive = ini.yes(sec, "Percussive", false);
+    Emitter::set(r, "Name", ini.str(rankSec, "Name", rankSec));
+    rankFirstMidi[rankId] = firstMidiOf(rankSec);
+    const int count = ini.num(rankSec, "NumberOfLogicalPipes", 0);
     auto& ids = rankPipeIds[rankId];
     for (int p = 1; p <= count; ++p) {
-      const std::string key = "Pipe" + n3(p);
-      const std::string file = ini.str(sec, key);
       ids.push_back(0);
+      int index = p;
+      const auto source = pipeSource(rankSec, "Pipe" + n3(p), index);
+      const std::string sec = source.first, key = source.second;
+      const std::string file = sec.empty() ? std::string() : ini.str(sec, key);
+      if (sec.empty()) note("a REF: pipe that points nowhere is silent");
       if (file.empty() || lower(file) == "dummy") continue;
-      if (lower(file).rfind("ref:", 0) == 0) {
-        note("pipes that borrow another rank's (REF:) are not yet shared; they are silent");
-        continue;
-      }
+      if (sec != rankSec) note("REF: pipes play the pipe they name as a pipe of their own");
       const int pipeId = nextPipeId++;
       ids.back() = pipeId;
-      const int midi = firstMidi + p - 1;
-      const int harmonic = ini.num(sec, key + "HarmonicNumber", rankHarmonic);
-      const int chest = ini.num(sec, key + "WindchestGroup", rankChest);
+      const int midi = firstMidiOf(sec) + index - 1;
+      const int harmonic = ini.num(sec, key + "HarmonicNumber", ini.num(sec, "HarmonicNumber", 8));
+      const int chest = ini.num(sec, key + "WindchestGroup", ini.num(sec, "WindchestGroup", 1));
+      const double rankDb = levelDb(ini, sec);
+      const bool rankPercussive = ini.yes(sec, "Percussive", false);
       pipeOfRankPipe[rankId * 1000 + p] = {pipeId, chest};
-      const double cents = organCents + chestCents[chest] + rankCents +
+      const double cents = organCents + chestCents[chest] + ini.real(sec, "PitchTuning", 0.0) +
                            ini.real(sec, key + "PitchTuning", 0.0);
       auto pipe = out.row("Pipe_SoundEngine01");
       Emitter::set(pipe, "PipeID", pipeId);
@@ -485,8 +521,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
   for (const auto& [key, p] : pipeOfRankPipe) wirePipe(p);
 
   // ---- manuals, stops, couplers -------------------------------------------
-  const int manuals = ini.num("Organ", "NumberOfManuals", 0);
-  const bool pedals = ini.yes("Organ", "HasPedals", false);
+  const int manuals = manualCount;
+  const bool pedals = hasPedals;
   struct ManualInfo {
     int kb = 0;
     int firstMidi = 36;  // MIDI note of logical key 1
@@ -511,9 +547,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     auto kb = out.row("Keyboard");
     Emitter::set(kb, "KeyboardID", info.kb);
     Emitter::set(kb, "Name", name);
-    // Hauptwerk's channel convention, which is also GrandOrgue's order:
-    // the pedal on 1, the first manual on 2.
-    Emitter::set(kb, "DefaultInputOutputKeyboardAsgnCode", pedals ? m + 1 : m + 1);
+    // The usual channel convention: the pedal on 1, the first manual on 2,
+    // whether or not the organ has a pedal.
+    Emitter::set(kb, "DefaultInputOutputKeyboardAsgnCode", m + 1);
     Emitter::set(kb, "Hint_PrimaryAssociatedDivisionID", info.kb);
     Emitter::set(kb, "KeyGen_NumberOfKeys", ini.num(sec, "NumberOfAccessibleKeys", info.keys));
     Emitter::set(kb, "KeyGen_MIDINoteNumberOfFirstKey", firstAccessibleMidi);
@@ -578,9 +614,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
         // The stop carries its pipes itself: it is its own rank.
         const int rankId = kStopRankBase + stopNo;
         if (!rankPipeIds.count(rankId)) {
-          const size_t before = pipeOfRankPipe.size();
           buildRank(ssec, rankId);
-          (void)before;
           for (const auto& [k, p] : pipeOfRankPipe)
             if (k / 1000 == rankId) wirePipe(p);
         }
@@ -591,9 +625,14 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
           const int rankNo = ini.num(ssec, rk, 0);
           const int rankId = kRankBase + rankNo;
           if (!rankPipeIds.count(rankId)) continue;
-          const int keyStart = firstKey + ini.num(ssec, rk + "FirstAccessibleKeyNumber", 1) - 1;
-          const int pipeStart = ini.num(ssec, rk + "FirstPipeNumber", firstPipe);
-          const int count = ini.num(ssec, rk + "PipeCount", accessible);
+          // GrandOrgue's defaults: the rank from its first pipe, as far as it
+          // goes, starting under the stop's first key.
+          const int rankKey = ini.num(ssec, rk + "FirstAccessibleKeyNumber", 1);
+          const int keyStart = firstKey + rankKey - 1;
+          const int pipeStart = ini.num(ssec, rk + "FirstPipeNumber", 1);
+          const int rankPipes = static_cast<int>(rankPipeIds[rankId].size());
+          const int count = std::min(ini.num(ssec, rk + "PipeCount", rankPipes - pipeStart + 1),
+                                     accessible - rankKey + 1);
           mapRank(rankId, keyStart, pipeStart, count);
         }
       }
