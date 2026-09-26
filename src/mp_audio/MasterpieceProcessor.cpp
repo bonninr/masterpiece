@@ -2456,6 +2456,11 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   handleMidi(midi);
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
+  // A pallet switch that was engaged before the organ went live never moved
+  // while pallets listened, so its pipes are opened here, once.
+  if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
+    for (const auto& [switchId, pipes] : palletPipes_)
+      if (switches_.engaged(switchId)) palletMoved(switchId, true);
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -2584,6 +2589,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // those can open pallets. No pallet may start a voice before the new
   // organ's audio is in place.
   palletsLive_.store(false, std::memory_order_release);
+  palletsOpenEngaged_.store(false, std::memory_order_release);
 
   // Whoever starts a load clears the cancel flag, so a Cancel that arrived
   // after the previous load already finished cannot kill this one.
@@ -3119,6 +3125,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // the audio thread's own stage check must not move them at the same time.
   stagesReady_.store(true, std::memory_order_release);
   palletsLive_.store(true, std::memory_order_release);
+  palletsOpenEngaged_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
   result.ok = true;

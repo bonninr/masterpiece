@@ -255,8 +255,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
     Emitter::set(g, "OrganInfo_BuildDate", ini.str("Organ", "OrganBuildDate"));
     Emitter::set(g, "OrganInfo_Comments", ini.str("Organ", "OrganComments"));
     Emitter::set(g, "AudioEngine_BasePitchHz", 440);
+    // The organ's own level is its output trim, as a producer's calibration
+    // is elsewhere, not a gain on every pipe.
+    const double trim = levelDb(ini, "Organ");
+    if (trim != 0.0) Emitter::set(g, "AudioOut_AmplitudeLevelAdjustDecibels", trim);
   }
-  const double organDb = levelDb(ini, "Organ");
   const double organCents = centsAt(ini, "Organ");
 
   // ---- windchest groups: which enclosures and tremulants reach a pipe ------
@@ -385,7 +388,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       auto layer = out.row("Pipe_SoundEngine01_Layer");
       Emitter::set(layer, "LayerID", pipeId);
       Emitter::set(layer, "PipeID", pipeId);
-      const double db = organDb + chestDb[chest] + rankDb + levelDb(ini, sec, key);
+      const double db = chestDb[chest] + rankDb + levelDb(ini, sec, key);
       if (db != 0.0) Emitter::set(layer, "AmpLvl_LevelAdjustDecibels", db);
 
       const bool percussive = ini.yes(sec, key + "Percussive", rankPercussive);
