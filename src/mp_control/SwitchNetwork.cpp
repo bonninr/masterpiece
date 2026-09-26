@@ -35,6 +35,11 @@ void SwitchNetwork::reset(const OrganModel& model) {
   // asserts what its engage action says. Wires that are not firing assert
   // nothing, which is also what leaves an organ's off-state alone.
   for (const SwitchLinkage& l : links_) {
+    // A toggle acts on a press, and loading the organ is not one.
+    if (l.engageAction == kToggle) {
+      fired_[static_cast<size_t>(&l - links_.data())] = fires(l) ? 1 : 0;
+      continue;
+    }
     // An inverting wire (7/4) that is not firing holds its destination ON:
     // a unison-off coupler with its knob in is the usual case. It has to be
     // given its say here, or the organ comes up in a state its own wiring
@@ -137,6 +142,14 @@ void SwitchNetwork::reevaluate(const SwitchLinkage& l) {
   const bool now = fires(l);
   if (now == (fired_[index] != 0)) return;
   fired_[index] = now ? 1 : 0;
+
+  // A reversible piston: each press flips what it controls, and letting
+  // go does nothing -- a toggle has no state of its own to undo. Every
+  // reversible in the sets at hand is wired 3/7 from a momentary piston.
+  if (l.engageAction == kToggle) {
+    if (now) work_.emplace_back(l.destSwitchId, engaged_.count(l.destSwitchId) == 0);
+    return;
+  }
 
   const int action = now ? l.engageAction : l.disengageAction;
   if (actionEngages(action)) {

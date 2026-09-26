@@ -345,7 +345,15 @@ public:
   // Advance the block counter once per audio block. render() does this itself
   // when called for all voices; a caller rendering bus by bus must call it
   // exactly once instead, or voice ages drift by the number of buses.
-  void beginBlock() { ++blockCounter_; }
+  void beginBlock(int numFrames = 0) {
+    ++blockCounter_;
+    framesRendered_ += numFrames;
+  }
+
+  // Milliseconds since a pipe last let go -- its voice went into release --
+  // or INT64_MAX if it has not sounded. An attack can be chosen by it: a
+  // quick repetition of a note speaks differently from one after a rest.
+  int64_t msSincePipeClosed(Id pipeId) const;
 
   // What the wind is doing to each windchest this block. Indices match
   // Voice::windIndex; anything a voice points past is treated as steady, so a
@@ -460,6 +468,10 @@ private:
   double sampleRate_ = 48000.0;
   int numChannels_ = 2;
   uint64_t blockCounter_ = 0;
+  // Frames rendered so far, the clock for msSincePipeClosed; and when each
+  // pipe last let go, in those frames.
+  int64_t framesRendered_ = 0;
+  std::unordered_map<Id, int64_t> pipeClosedAt_;
   // Borrowed, not owned: the caller keeps the table alive across the block.
   const WindMod* windMods_ = nullptr;
   int windCount_ = 0;

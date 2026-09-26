@@ -909,6 +909,11 @@ private:
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
   std::unordered_map<Id, Id> stopBySwitch_;
+  // Switches that swap a stop's rank for its alternate and re-sound held
+  // notes when they do, with the stops concerned; and the switch state just
+  // before the latest change, which says what was sounding.
+  std::unordered_map<Id, std::vector<Id>> alternateStopsBySwitch_;
+  std::unordered_set<Id> previousSwitches_;
   MidiMap midiMap_;
   Metronome metronome_;
   MidiRecorder recorder_;
