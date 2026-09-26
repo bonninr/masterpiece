@@ -240,6 +240,16 @@ void ManualDialog::timerCallback() {
       &lowVel_,   &highVel_,   &ignoreVel_,   &shortOctave_, &debounce_,
       &remove_};
   for (juce::Component* c : editable) c->setEnabled(has);
+
+  // Before the early return: a learn started with no row selected -- the
+  // usual case, since learning is how a first row gets made -- still has to
+  // say which key it wants next. It used to stay on "lowest" after the first
+  // press, so players pressed the lowest key twice and got a one-key range.
+  const juce::String prompt =
+      proc_.keyboardLearning() != keyboardId_ ? "Learn from a key"
+      : proc_.keyboardLearnHasLowKey()        ? "Now press the highest key..."
+                                              : "Press the lowest key...";
+  if (learn_.getButtonText() != prompt) learn_.setButtonText(prompt);
   if (!has) return;
 
   // Filling the controls must not read straight back as an edit.
@@ -255,10 +265,6 @@ void ManualDialog::timerCallback() {
   ignoreVel_.setToggleState(b.ignoreVelocity, juce::dontSendNotification);
   shortOctave_.setToggleState(b.shortOctave, juce::dontSendNotification);
   debounce_.setValue(b.debounceMs, juce::dontSendNotification);
-
-  learn_.setButtonText(proc_.keyboardLearning() == keyboardId_
-                           ? "Press the lowest key..."
-                           : "Learn from a key");
 }
 
 void ManualDialog::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff1b1e24)); }
