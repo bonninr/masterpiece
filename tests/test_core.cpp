@@ -3630,6 +3630,13 @@ public:
     MP_CHECK(divisionOf(K::Switch, 101) == -1,
              "a stop's own switch is not registered twice");
 
+    // On a drawn console only what has a drawstop counts: here the Octave 8
+    // stands for an always-on internal stop such as a key-action noise.
+    const auto reachable = PC::collect(m, nullptr, [](const PC::Element& e) {
+      return !(e.kind == K::Stop && e.id == 2);
+    });
+    MP_CHECK(reachable.size() == 5, "a stop the player cannot reach is never registration");
+
     const auto divisions = PC::divisionsOf(m, elements);
     MP_CHECK(divisions.size() == 2 && divisions[0].divisionId == 1 &&
                  divisions[1].name == "Great",
