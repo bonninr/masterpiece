@@ -104,6 +104,10 @@ private:
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it
+  // Whether the player has the window open, which is not the same as whether
+  // it is visible: shutting the app down hides it, and reading that back as
+  // "closed" meant a window left open never came back.
+  bool open_ = false;
 };
 
 } // namespace mp::ui

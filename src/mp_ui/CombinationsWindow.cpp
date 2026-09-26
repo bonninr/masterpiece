@@ -462,6 +462,7 @@ void CombinationsWindow::moved() {
 void CombinationsWindow::closeButtonPressed() { showOrHide(false); }
 
 void CombinationsWindow::showOrHide(bool show) {
+  open_ = show;
   setVisible(show);
   if (show) toFront(true);
   remember();
@@ -490,7 +491,8 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
     setBounds(besideThis.getRight() - getWidth() - 20,
               besideThis.getBottom() - getHeight() - 20, getWidth(), getHeight());
   }
-  setVisible(saved.w > 0 ? saved.open : openFirstTime);
+  open_ = saved.w > 0 ? saved.open : openFirstTime;
+  setVisible(open_);
   placing_ = false;
   remember();
 }
@@ -503,7 +505,7 @@ void CombinationsWindow::remember() {
   p.y = b.getY();
   p.w = b.getWidth();
   p.h = b.getHeight();
-  p.open = isVisible();
+  p.open = open_;
   const auto& old = proc_.combinationsWindowPlace();
   if (old.x == p.x && old.y == p.y && old.w == p.w && old.h == p.h && old.open == p.open)
     return;

@@ -72,7 +72,8 @@ std::string PlayerCombinations::keyOf(const Element& e) {
 }
 
 std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
-    const OrganModel& model, const std::function<Id(Id)>& playerSwitch) {
+    const OrganModel& model, const std::function<Id(Id)>& playerSwitch,
+    const std::function<bool(const Element&)>& onConsole) {
   auto player = [&](Id sw) { return playerSwitch ? playerSwitch(sw) : sw; };
   std::vector<Element> out;
 
@@ -169,6 +170,10 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   for (const auto& [sid, sw] : model.switches)
     if (sw.isCoupler && notRegistration.count(sid) == 0) addSwitch(sid, 0);
   for (const auto& [sw, vote] : tremulants) addSwitch(sw, vote.result());
+  if (onConsole)
+    out.erase(std::remove_if(out.begin(), out.end(),
+                             [&](const Element& e) { return !onConsole(e); }),
+              out.end());
   return out;
 }
 

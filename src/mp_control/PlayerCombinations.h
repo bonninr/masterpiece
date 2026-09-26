@@ -70,8 +70,16 @@ public:
 
   // What the organ offers to register. `playerSwitch` maps an internal switch
   // to the one a player moves (identity when there is none).
+  //
+  // `onConsole` says whether a player can reach an element. On a drawn
+  // console only what has a drawstop is registration: sets keep machinery in
+  // stops and switches nobody draws -- Vasvar sounds its key action through
+  // five stops called DivisionKeyAction_01..05, always on -- and a general
+  // cancel must not reach them. Null takes everything, which is right for an
+  // organ with no console artwork, where the stop list is the console.
   static std::vector<Element> collect(const OrganModel& model,
-                                      const std::function<Id(Id)>& playerSwitch);
+                                      const std::function<Id(Id)>& playerSwitch,
+                                      const std::function<bool(const Element&)>& onConsole = nullptr);
   // The divisions that get divisionals: those holding at least one element,
   // in the organ's order (pedal first, then by manual number).
   static std::vector<Division> divisionsOf(const OrganModel& model,

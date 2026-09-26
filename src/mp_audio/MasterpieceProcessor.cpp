@@ -2166,8 +2166,30 @@ bool MasterpieceProcessor::stepperDeleteFrame() {
 // What the organ offers a player to register, worked out once the console's
 // wiring is known: which switch a player moves is what gets captured.
 void MasterpieceProcessor::resetPlayerCombinations() {
+  auto drawn = [this](Id sw) {
+    const auto it = model_.switches.find(sw);
+    return it != model_.switches.end() && it->second.dispInstanceId != 0 &&
+           it->second.clickable;
+  };
+  bool drawnConsole = false;
+  for (const auto& [id, sw] : model_.switches)
+    if (drawn(id)) {
+      drawnConsole = true;
+      break;
+    }
+  // On a drawn console, what the player can reach is what has a knob: the
+  // one the wiring leads to, or the one matched by name (stopKnob_).
+  std::function<bool(const PlayerCombinations::Element&)> onConsole;
+  if (drawnConsole)
+    onConsole = [this, drawn](const PlayerCombinations::Element& e) {
+      if (e.kind == PlayerCombinations::ElementKind::Switch) return drawn(e.id);
+      if (stopKnob_.count(e.id) != 0) return true;
+      const auto it = model_.stops.find(e.id);
+      return it != model_.stops.end() && it->second.controllingSwitchId != 0 &&
+             drawn(playerSwitchFor(it->second.controllingSwitchId));
+    };
   auto elements = PlayerCombinations::collect(
-      model_, [this](Id sw) { return playerSwitchFor(sw); });
+      model_, [this](Id sw) { return playerSwitchFor(sw); }, onConsole);
   auto divisions = PlayerCombinations::divisionsOf(model_, elements);
   registrationSwitches_.clear();
   for (const auto& e : elements) {
