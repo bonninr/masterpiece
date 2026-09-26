@@ -45,7 +45,10 @@ struct GrandOrgueImportReport {
 // the file's own folder, which the loader is given as the organ's root.
 GrandOrgueImportReport convertGrandOrgue(const std::string& path);
 
-// The same, from the file's text, for tests.
-GrandOrgueImportReport convertGrandOrgueText(const std::string& text);
+// The same, from the file's text. `organRoot` is the folder its paths are
+// relative to; the console layout needs it to measure the set's bitmaps, and
+// without it only what the text states is drawn.
+GrandOrgueImportReport convertGrandOrgueText(const std::string& text,
+                                             const std::string& organRoot = "");
 
 }  // namespace mp

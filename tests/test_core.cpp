@@ -8496,6 +8496,61 @@ public:
 };
 static GrandOrgueImportTest g_grandOrgueImport;
 
+// GrandOrgue switch logic, through the real switch network: a stop that is
+// the And of its drawstop and the blower sounds only while both are on, an
+// effect stop's pipe opens with its switch, and a drawn panel becomes a page
+// whose drawstop picture is bound to the switch.
+class GrandOrgueSwitchesTest final : public mp::test::Test {
+public:
+  GrandOrgueSwitchesTest()
+    : Test("functional.odf.grandorgue-switches", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfSwitches=2\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=W\n"
+        "[Switch001]\nName=Blower\nDefaultToEngaged=Y\nDisplayed=N\n"
+        "[Switch002]\nName=Principal\nDisplayed=Y\nPositionX=10\nPositionY=20\n"
+        "ImageOn=on.png\nImageOff=off.png\nDispLabelText=\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "[Stop001]\nName=Principal\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=And\nSwitchCount=2\nSwitch001=002\nSwitch002=001\n"
+        "[Stop002]\nName=Blower noise\nNumberOfLogicalPipes=1\nNumberOfAccessiblePipes=1\n"
+        "Pipe001=blower.wav\nFunction=And\nSwitchCount=1\nSwitch001=001\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.stops.count(2001), "the stop is there");
+    const mp::Id gate = m.stops.at(2001).controllingSwitchId;
+    mp::SwitchNetwork net;
+    net.reset(m);
+    MP_CHECK(net.engaged(8001), "the blower comes up running");
+    MP_CHECK(!net.engaged(gate), "an undrawn stop is off");
+    net.set(8002, true);
+    MP_CHECK(net.engaged(gate), "drawing it with the blower on engages the stop");
+    net.set(8001, false);
+    MP_CHECK(!net.engaged(gate), "stopping the blower silences it");
+    net.set(8001, true);
+    MP_CHECK(net.engaged(gate), "and starting it again brings it back");
+    MP_CHECK(!m.stops.count(2002), "an effect stop is not a stop on the jamb");
+    bool pallet = false;
+    for (const auto& [id, rank] : m.ranks)
+      for (const auto& p : rank.pipes)
+        if (p.palletSwitchId == 8001) pallet = true;
+    MP_CHECK(pallet, "the blower noise opens with the blower switch");
+    MP_CHECK(m.displayPages.size() == 1, "the main panel is a page");
+    MP_CHECK(m.switches.count(8002) && m.switches.at(8002).dispInstanceId != 0,
+             "the drawstop picture is bound to its switch");
+  }
+};
+static GrandOrgueSwitchesTest g_grandOrgueSwitches;
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

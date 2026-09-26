@@ -143,6 +143,58 @@ double levelDb(const Ini& ini, const std::string& section, const std::string& pr
   return db;
 }
 
+// The pixel size of an image, from its header: PNG, BMP, GIF or JPEG. Zero
+// when the file is missing or unreadable. GrandOrgue sizes and spaces keys by
+// their bitmaps, so the layout cannot be worked out without them.
+std::pair<int, int> imageSize(const std::string& path) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f) return {0, 0};
+  unsigned char h[32] = {};
+  f.read(reinterpret_cast<char*>(h), sizeof h);
+  auto be32 = [&](int i) { return (h[i] << 24) | (h[i + 1] << 16) | (h[i + 2] << 8) | h[i + 3]; };
+  auto le32 = [&](int i) { return h[i] | (h[i + 1] << 8) | (h[i + 2] << 16) | (h[i + 3] << 24); };
+  if (h[0] == 0x89 && h[1] == 'P' && h[2] == 'N' && h[3] == 'G') return {be32(16), be32(20)};
+  if (h[0] == 'B' && h[1] == 'M') return {le32(18), std::abs(le32(22))};
+  if (h[0] == 'G' && h[1] == 'I' && h[2] == 'F') return {h[6] | (h[7] << 8), h[8] | (h[9] << 8)};
+  if (h[0] == 0xFF && h[1] == 0xD8) {
+    // JPEG: walk the segments to the frame header.
+    f.clear();
+    f.seekg(2);
+    unsigned char m[9];
+    while (f.read(reinterpret_cast<char*>(m), 4)) {
+      if (m[0] != 0xFF) break;
+      const int len = (m[2] << 8) | m[3];
+      if (m[1] >= 0xC0 && m[1] <= 0xCF && m[1] != 0xC4 && m[1] != 0xC8 && m[1] != 0xCC) {
+        if (!f.read(reinterpret_cast<char*>(m), 5)) break;
+        return {(m[3] << 8) | m[4], (m[1] << 8) | m[2]};
+      }
+      f.seekg(len - 2, std::ios::cur);
+    }
+  }
+  return {0, 0};
+}
+
+// GrandOrgue's colour names, or #RRGGBB.
+bool parseColour(const std::string& text, int& r, int& g, int& b) {
+  static const std::map<std::string, int> named = {
+      {"black", 0x000000},      {"dark blue", 0x000080},    {"dark green", 0x008000},
+      {"dark cyan", 0x008080},  {"dark red", 0x800000},     {"dark magenta", 0x800080},
+      {"brown", 0x808000},      {"light grey", 0xC0C0C0},   {"dark grey", 0x808080},
+      {"blue", 0x0000FF},       {"green", 0x00FF00},        {"cyan", 0x00FFFF},
+      {"red", 0xFF0000},        {"magenta", 0xFF00FF},      {"yellow", 0xFFFF00},
+      {"white", 0xFFFFFF}};
+  int v = -1;
+  const std::string t = lower(trim(text));
+  const auto it = named.find(t);
+  if (it != named.end()) v = it->second;
+  else if (t.size() == 7 && t[0] == '#') v = static_cast<int>(std::strtol(t.c_str() + 1, nullptr, 16));
+  if (v < 0) return false;
+  r = (v >> 16) & 0xFF;
+  g = (v >> 8) & 0xFF;
+  b = v & 0xFF;
+  return true;
+}
+
 // Pitch in cents at one level: the tuning and the correction add.
 double centsAt(const Ini& ini, const std::string& section, const std::string& prefix = "") {
   return ini.real(section, prefix + "PitchTuning", 0.0) +
@@ -225,7 +277,7 @@ bool isGrandOrgueDefinition(const std::string& path) {
   return dot != std::string::npos && lower(path.substr(dot)) == ".organ";
 }
 
-GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
+GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const std::string& organRoot) {
   GrandOrgueImportReport rep;
   std::string text = rawText;
   if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
@@ -474,8 +526,10 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
   // drawstop or from a Function (And, Or, Not...) of [SwitchNNN] objects. A
   // function becomes a gate: a switch set by linkages, which re-evaluate when
   // any of their inputs moves. Several linkages into one switch are an Or.
+  std::map<int, pugi::xml_node> switchRows;
   auto emitSwitch = [&](int id, const std::string& name, bool engaged) {
     auto sw = out.row("Switch");
+    switchRows[id] = sw;
     Emitter::set(sw, "SwitchID", id);
     Emitter::set(sw, "Name", name);
     Emitter::yn(sw, "DefaultToEngaged", engaged);
@@ -573,9 +627,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
       note("recorded (wave) tremulants are played as synthesised ones");
   }
   const int encCount = ini.num("Organ", "NumberOfEnclosures", 0);
+  std::map<int, pugi::xml_node> enclosureControls;
   for (int e = 1; e <= encCount; ++e) {
     const std::string sec = "Enclosure" + n3(e);
     auto cc = out.row("ContinuousControl");
+    enclosureControls[e] = cc;
     Emitter::set(cc, "ControlID", kEnclosureControlBase + e);
     Emitter::set(cc, "Name", ini.str(sec, "Name", sec));
     Emitter::set(cc, "DefaultValue", 127);
@@ -791,8 +847,354 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText) {
 
   if (ini.num("Organ", "NumberOfGenerals", 0) > 0)
     note("generals and divisionals are not imported yet");
-  if (ini.has("Panel000") || ini.num("Organ", "NumberOfPanels", 0) > 0)
-    note("the console panels are not drawn yet; the stops are on the plain jamb");
+
+  // ---- the console --------------------------------------------------------
+  // Each GrandOrgue panel is a display page. What is placed explicitly -- an
+  // image, a drawstop with its pictures, a manual drawn key by key, a swell
+  // shoe -- is drawn where the set puts it. GrandOrgue's automatic layout,
+  // built from its own stock bitmaps, has no pictures to draw here, so a set
+  // that relies on it keeps the plain jamb.
+  if (ini.num("Panel000", "NumberOfGUIElements", -1) >= 0) {
+    note("this set uses GrandOrgue's newer panel format, which is not drawn yet; the stops are on the plain jamb");
+  } else {
+    const std::string& root = organRoot;
+    std::map<std::string, std::pair<int, int>> sizes;
+    auto sizeOf = [&](const std::string& file) {
+      const auto it = sizes.find(file);
+      if (it != sizes.end()) return it->second;
+      std::pair<int, int> wh{0, 0};
+      if (!root.empty()) {
+        std::string rel = file;
+        std::replace(rel.begin(), rel.end(), '\\', '/');
+        wh = imageSize(root + "/" + rel);
+      }
+      return sizes[file] = wh;
+    };
+    auto rel = [](std::string f) {
+      std::replace(f.begin(), f.end(), '\\', '/');
+      return f;
+    };
+
+    int nextSet = 1, nextInstance = 1, nextText = 1, nextStyle = 1, nextMirror = 1;
+    std::map<std::string, int> setMemo, styleMemo;
+    auto imageSet = [&](const std::vector<std::string>& files, int clickL, int clickT, int clickW, int clickH) {
+      std::string key;
+      for (const auto& f : files) key += rel(f) + "|";
+      key += std::to_string(clickL) + "," + std::to_string(clickT) + "," + std::to_string(clickW) + "," + std::to_string(clickH);
+      const auto hit = setMemo.find(key);
+      if (hit != setMemo.end()) return hit->second;
+      const int id = nextSet++;
+      auto set = out.row("ImageSet");
+      Emitter::set(set, "ImageSetID", id);
+      Emitter::set(set, "Name", rel(files.front()));
+      Emitter::set(set, "InstallationPackageID", 0);
+      const auto wh = sizeOf(files.front());
+      if (wh.first > 0) {
+        Emitter::set(set, "ImageWidthPixels", wh.first);
+        Emitter::set(set, "ImageHeightPixels", wh.second);
+      }
+      if (clickW > 0 && clickH > 0) {
+        Emitter::set(set, "ClickableAreaLeftRelativeXPosPixels", clickL);
+        Emitter::set(set, "ClickableAreaRightRelativeXPosPixels", clickL + clickW);
+        Emitter::set(set, "ClickableAreaTopRelativeYPosPixels", clickT);
+        Emitter::set(set, "ClickableAreaBottomRelativeYPosPixels", clickT + clickH);
+      }
+      for (size_t i = 0; i < files.size(); ++i) {
+        auto el = out.row("ImageSetElement");
+        Emitter::set(el, "ImageSetID", id);
+        Emitter::set(el, "ImageIndexWithinSet", static_cast<int>(i) + 1);
+        Emitter::set(el, "BitmapFilename", rel(files[i]));
+      }
+      return setMemo[key] = id;
+    };
+    auto instance = [&](int page, int set, int x, int y, int layer, int tileRight = 0, int tileBottom = 0) {
+      const int id = nextInstance++;
+      auto in = out.row("ImageSetInstance");
+      Emitter::set(in, "ImageSetInstanceID", id);
+      Emitter::set(in, "DisplayPageID", page);
+      Emitter::set(in, "ImageSetID", set);
+      Emitter::set(in, "DefaultImageIndexWithinSet", 1);
+      Emitter::set(in, "ScreenLayerNumber", layer);
+      Emitter::set(in, "LeftXPosPixels", x);
+      Emitter::set(in, "TopYPosPixels", y);
+      if (tileRight > 0) {
+        Emitter::set(in, "RightXPosPixelsIfTiling", tileRight);
+        Emitter::set(in, "BottomYPosPixelsIfTiling", tileBottom);
+      }
+      return id;
+    };
+    // A switch has one drawn instance. A second appearance -- the same stop
+    // on the console and on a jamb -- is a mirror switch wired both ways.
+    std::set<int> drawnSwitches;
+    auto attach = [&](int switchId, int inst) {
+      int id = switchId;
+      if (!drawnSwitches.insert(switchId).second) {
+        id = 30000 + nextMirror++;
+        const auto src = switchRows.find(switchId);
+        const bool on = src != switchRows.end() &&
+                        std::string(src->second.child("DefaultToEngaged").text().get()) == "Y";
+        emitSwitch(id, "mirror of " + std::to_string(switchId), on);
+        link(switchId, id, 0, true);
+        link(id, switchId, 0, true);
+      }
+      auto row = switchRows[id];
+      if (!row) return;
+      Emitter::set(row, "Disp_ImageSetInstanceID", inst);
+      Emitter::set(row, "Disp_ImageSetIndexEngaged", 2);
+      Emitter::set(row, "Disp_ImageSetIndexDisengaged", 1);
+      Emitter::yn(row, "Clickable", true);
+    };
+    auto label = [&](int page, int inst, const std::string& sec, const std::string& fallback, int w, int h) {
+      const std::string text = ini.hasKey(sec, "DispLabelText") ? ini.str(sec, "DispLabelText") : fallback;
+      if (text.empty() || w <= 0 || h <= 0) return;
+      int r = 0x80, g = 0, b = 0;
+      parseColour(ini.str(sec, "DispLabelColour", "Dark Red"), r, g, b);
+      const std::string sizeText = lower(ini.str(sec, "DispLabelFontSize", "normal"));
+      int px = sizeText == "small" ? 7 : sizeText == "large" ? 12 : sizeText == "normal" ? 9 : std::atoi(sizeText.c_str());
+      if (px <= 0) px = 9;
+      const std::string face = ini.str(sec, "DispLabelFontName", "Arial");
+      const std::string key = face + "/" + std::to_string(px) + "/" + std::to_string((r << 16) | (g << 8) | b);
+      int style = 0;
+      const auto hit = styleMemo.find(key);
+      if (hit != styleMemo.end()) {
+        style = hit->second;
+      } else {
+        style = styleMemo[key] = nextStyle++;
+        auto st = out.row("TextStyle");
+        Emitter::set(st, "StyleID", style);
+        Emitter::set(st, "Name", key);
+        Emitter::set(st, "Face_WindowsName", face);
+        Emitter::set(st, "Font_SizePixels", px);
+        Emitter::set(st, "Colour_Red", r);
+        Emitter::set(st, "Colour_Green", g);
+        Emitter::set(st, "Colour_Blue", b);
+        Emitter::set(st, "HorizontalAlignmentCode", 0);
+        Emitter::set(st, "VerticalAlignmentCode", 0);
+      }
+      auto t = out.row("TextInstance");
+      Emitter::set(t, "TextInstanceID", nextText++);
+      Emitter::set(t, "DisplayPageID", page);
+      Emitter::set(t, "Text", text);
+      Emitter::set(t, "TextStyleID", style);
+      Emitter::set(t, "XPosPixels", 0);
+      Emitter::set(t, "YPosPixels", 0);
+      Emitter::set(t, "BoundingBoxWidthPixelsIfWordWrap", w);
+      Emitter::set(t, "BoundingBoxHeightPixelsIfWordWrap", h);
+      Emitter::yn(t, "AttachedToAnImageSetInstance", true);
+      Emitter::set(t, "AttachedToImageSetInstanceID", inst);
+      Emitter::yn(t, "PosRelativeToTopLeftOfImageSetInstance", true);
+    };
+
+    int drawn = 0;
+    // An image, tiled when the set asks for more room than the bitmap has.
+    auto drawImage = [&](int page, const std::string& sec) {
+      const std::string file = ini.str(sec, "Image");
+      if (file.empty()) return;
+      const int x = ini.num(sec, "PositionX", 0), y = ini.num(sec, "PositionY", 0);
+      const auto wh = sizeOf(file);
+      const int w = ini.num(sec, "Width", wh.first), h = ini.num(sec, "Height", wh.second);
+      const int set = imageSet({file}, 0, 0, 0, 0);
+      const bool tile = wh.first > 0 && (w > wh.first || h > wh.second);
+      instance(page, set, x, y, 0, tile ? x + w : 0, tile ? y + h : 0);
+      ++drawn;
+    };
+    // A drawstop, piston or tab: its own pictures at its own place.
+    auto drawButton = [&](int page, const std::string& sec, int switchId, const std::string& name) {
+      if (!ini.hasKey(sec, "PositionX") || !ini.hasKey(sec, "ImageOn")) return;
+      const std::string on = ini.str(sec, "ImageOn"), off = ini.str(sec, "ImageOff", on);
+      const auto wh = sizeOf(off);
+      const int w = ini.num(sec, "Width", wh.first), h = ini.num(sec, "Height", wh.second);
+      const int ml = ini.num(sec, "MouseRectLeft", 0), mt = ini.num(sec, "MouseRectTop", 0);
+      const int mw = ini.num(sec, "MouseRectWidth", w - ml), mh = ini.num(sec, "MouseRectHeight", h - mt);
+      const int set = imageSet({off, on}, ml, mt, mw, mh);
+      const int inst = instance(page, set, ini.num(sec, "PositionX", 0), ini.num(sec, "PositionY", 0), 2);
+      attach(switchId, inst);
+      label(page, inst, sec, name, w, h);
+      ++drawn;
+    };
+    // A swell shoe: its frames, closed to open, on the enclosure's control.
+    auto drawEnclosure = [&](int page, const std::string& sec, int e) {
+      const int n = ini.num(sec, "BitmapCount", 0);
+      if (n < 1 || !ini.hasKey(sec, "PositionX") || !enclosureControls.count(e)) return;
+      std::vector<std::string> frames;
+      for (int i = 1; i <= n; ++i) frames.push_back(ini.str(sec, "Bitmap" + n3(i)));
+      const auto wh = sizeOf(frames.front());
+      const int ml = ini.num(sec, "MouseRectLeft", 0), mt = ini.num(sec, "MouseRectTop", 0);
+      const int set = imageSet(frames, ml, mt, ini.num(sec, "MouseRectWidth", wh.first - ml),
+                               ini.num(sec, "MouseRectHeight", wh.second - mt));
+      const int inst = instance(page, set, ini.num(sec, "PositionX", 0), ini.num(sec, "PositionY", 0), 2);
+      auto cc = enclosureControls[e];
+      if (!cc.child("ImageSetInstanceID")) {
+        Emitter::set(cc, "ImageSetInstanceID", inst);
+        Emitter::yn(cc, "Clickable", true);
+        Emitter::yn(cc, "ClickingHigherIncreasesValue", true);
+        for (int i = 1; i <= n; ++i) {
+          auto st = out.row("ContinuousControlImageSetStage");
+          Emitter::set(st, "ImageSetID", set);
+          Emitter::set(st, "HighestContinuousControlValue", (i * 128) / n - 1);
+          Emitter::set(st, "ImageSetIndex", i);
+        }
+      }
+      ++drawn;
+    };
+    // A manual, key by key, laid out as GrandOrgue lays it out: each key at
+    // the running position plus its offset, the position advancing by the
+    // key's width -- a natural's bitmap, nothing for a sharp, which sits
+    // centred on the join.
+    int nextKeySwitch = 20000;
+    auto drawManual = [&](int page, const std::string& sec, int m) {
+      const auto mi = manualInfo.find(m);
+      if (mi == manualInfo.end() || !ini.hasKey(sec, "PositionX")) return;
+      static const char* names[12] = {"C", "Cis", "D", "Dis", "E", "F", "Fis", "G", "Gis", "A", "Ais", "B"};
+      const std::string msec = "Manual" + n3(m);
+      const int firstNote = ini.num(sec, "DisplayFirstNote", ini.num(msec, "FirstAccessibleKeyMIDINoteNumber", 36));
+      const int count = ini.num(sec, "DisplayKeys", ini.num(msec, "NumberOfAccessibleKeys", 61));
+      std::vector<int> midi(count), shown(count);
+      std::vector<bool> sharp(count);
+      for (int i = 0; i < count; ++i) {
+        midi[i] = ini.num(sec, "DisplayKey" + n3(i + 1), firstNote + i);
+        shown[i] = ini.num(sec, "DisplayKey" + n3(i + 1) + "Note", firstNote + i);
+        const int k = shown[i];
+        sharp[i] = !(((k % 12) < 5 && !(k & 1)) || ((k % 12) >= 5 && (k & 1)));
+      }
+      struct Key { std::string on, off; int x, y, ml, mt, mw, mh; };
+      std::vector<Key> keys;
+      int x = 0;
+      for (int i = 0; i < count; ++i) {
+        std::string base = names[shown[i] % 12];
+        if (i == 0) base = "First" + base;
+        else if (i + 1 == count) base = "Last" + base;
+        std::string on = ini.str(sec, "ImageOn_" + base), off = ini.str(sec, "ImageOff_" + base);
+        on = ini.str(sec, "Key" + n3(i + 1) + "ImageOn", on);
+        off = ini.str(sec, "Key" + n3(i + 1) + "ImageOff", off);
+        if (on.empty() || off.empty()) {
+          note("a manual drawn with GrandOrgue's own key bitmaps is not drawn; it plays from the keyboard");
+          return;
+        }
+        const auto wh = sizeOf(off);
+        int width = wh.first, offset = 0, yoffset = 0;
+        const bool nextSharp = i + 1 < count && sharp[i + 1];
+        if (sharp[i] && m != 0) {
+          width = 0;
+          offset = -wh.first / 2;
+        } else if (m == 0 && !nextSharp && !sharp[i]) {
+          width *= 2;
+        }
+        width = ini.num(sec, "Width_" + base, width);
+        offset = ini.num(sec, "Offset_" + base, offset);
+        yoffset = ini.num(sec, "YOffset_" + base, yoffset);
+        width = ini.num(sec, "Key" + n3(i + 1) + "Width", width);
+        offset = ini.num(sec, "Key" + n3(i + 1) + "Offset", offset);
+        yoffset = ini.num(sec, "Key" + n3(i + 1) + "YOffset", yoffset);
+        if (wh.first <= 0 && !ini.hasKey(sec, "Key" + n3(i + 1) + "Width")) {
+          note("key bitmaps could not be measured, so a manual is not drawn; it plays from the keyboard");
+          return;
+        }
+        const std::string kp = "Key" + n3(i + 1) + "MouseRect";
+        const int ml = ini.num(sec, kp + "Left", 0), mt = ini.num(sec, kp + "Top", 0);
+        keys.push_back({on, off, x + offset, yoffset, ml, mt,
+                        ini.num(sec, kp + "Width", wh.first - ml), ini.num(sec, kp + "Height", wh.second - mt)});
+        x += width;
+      }
+      const int left = ini.num(sec, "PositionX", 0), top = ini.num(sec, "PositionY", 0);
+      for (int i = 0; i < count; ++i) {
+        const Key& k = keys[i];
+        const int sw = nextKeySwitch++;
+        emitSwitch(sw, ini.str(msec, "Name", msec) + " key " + std::to_string(midi[i]), false);
+        auto kk = out.row("KeyboardKey");
+        Emitter::set(kk, "KeyboardID", mi->second.kb);
+        Emitter::set(kk, "SwitchID", sw);
+        Emitter::set(kk, "NormalMIDINoteNumber", midi[i]);
+        const int set = imageSet({k.off, k.on}, k.ml, k.mt, k.mw, k.mh);
+        // Sharps are painted over the naturals they overlap.
+        const int inst = instance(page, set, left + k.x, top + k.y, sharp[i] ? 4 : 3);
+        auto row = switchRows[sw];
+        Emitter::set(row, "Disp_ImageSetInstanceID", inst);
+        Emitter::set(row, "Disp_ImageSetIndexEngaged", 2);
+        Emitter::set(row, "Disp_ImageSetIndexDisengaged", 1);
+      }
+      ++drawn;
+    };
+    auto page = [&](int id, const std::string& name) {
+      auto pg = out.row("DisplayPage");
+      Emitter::set(pg, "PageID", id);
+      Emitter::set(pg, "Name", name);
+    };
+
+    // The main panel: the organ's own sections, where they are displayed.
+    const int before = drawn;
+    for (int i = 1; i <= ini.num("Organ", "NumberOfImages", 0); ++i) drawImage(1, "Image" + n3(i));
+    for (int e = 1; e <= encCount; ++e)
+      if (ini.yes("Enclosure" + n3(e), "Displayed", false)) drawEnclosure(1, "Enclosure" + n3(e), e);
+    for (int t = 1; t <= tremCount; ++t) {
+      const std::string sec = "Tremulant" + n3(t);
+      if (ini.yes(sec, "Displayed", false)) drawButton(1, sec, controlFor(sec, kTremulantSwitchBase + t), ini.str(sec, "Name"));
+    }
+    for (int n = 1; n <= switchCount; ++n) {
+      const std::string sec = "Switch" + n3(n);
+      if (ini.yes(sec, "Displayed", false)) drawButton(1, sec, kGoSwitchBase + n, ini.str(sec, "Name"));
+    }
+    for (const auto& [m, info] : manualInfo) {
+      const std::string msec = "Manual" + n3(m);
+      if (ini.yes(msec, "Displayed", false)) drawManual(1, msec, m);
+      for (int c = 1; c <= ini.num(msec, "NumberOfCouplers", 0); ++c) {
+        const int cNo = ini.num(msec, "Coupler" + n3(c), 0);
+        const std::string sec = "Coupler" + n3(cNo);
+        if (ini.yes(sec, "Displayed", false))
+          drawButton(1, sec, controlFor(sec, kCouplerSwitchBase + cNo), ini.str(sec, "Name"));
+      }
+      for (int st = 1; st <= ini.num(msec, "NumberOfStops", 0); ++st) {
+        const int sNo = ini.num(msec, "Stop" + n3(st), 0);
+        const std::string sec = "Stop" + n3(sNo);
+        if (ini.yes(sec, "Displayed", false))
+          drawButton(1, sec, controlFor(sec, kStopSwitchBase + sNo), ini.str(sec, "Name"));
+      }
+    }
+    const bool mainDrawn = drawn > before;
+    if (mainDrawn) page(1, ini.str("Organ", "ChurchName", "Console"));
+
+    // The other panels list what they show; each element's picture and
+    // place are in a section of the panel's own.
+    for (int pn = 1; pn <= ini.num("Organ", "NumberOfPanels", 0); ++pn) {
+      const std::string ps = "Panel" + n3(pn);
+      const int id = pn + 1;
+      const int start = drawn;
+      for (int i = 1; i <= ini.num(ps, "NumberOfImages", 0); ++i) drawImage(id, ps + "Image" + n3(i));
+      for (int i = 1; i <= ini.num(ps, "NumberOfEnclosures", 0); ++i) {
+        const int e = ini.num(ps, "Enclosure" + n3(i), 0);
+        drawEnclosure(id, ps + "Enclosure" + n3(e), e);
+      }
+      for (int i = 1; i <= ini.num(ps, "NumberOfTremulants", 0); ++i) {
+        const int t = ini.num(ps, "Tremulant" + n3(i), 0);
+        const std::string tsec = "Tremulant" + n3(t);
+        drawButton(id, ps + tsec, controlFor(tsec, kTremulantSwitchBase + t), ini.str(tsec, "Name"));
+      }
+      for (int i = 1; i <= ini.num(ps, "NumberOfSwitches", 0); ++i) {
+        const int n = ini.num(ps, "Switch" + n3(i), 0);
+        drawButton(id, ps + "Switch" + n3(n), kGoSwitchBase + n, ini.str("Switch" + n3(n), "Name"));
+      }
+      const bool pedalsHere = ini.yes(ps, "HasPedals", false);
+      for (int i = pedalsHere ? 0 : 1; i <= ini.num(ps, "NumberOfManuals", 0); ++i) {
+        const int m = ini.num(ps, "Manual" + n3(i), i);
+        drawManual(id, ps + "Manual" + n3(m), m);
+      }
+      for (int i = 1; i <= ini.num(ps, "NumberOfCouplers", 0); ++i) {
+        const int m = ini.num(ps, "Coupler" + n3(i) + "Manual", 1);
+        const int cNo = ini.num("Manual" + n3(m), "Coupler" + n3(ini.num(ps, "Coupler" + n3(i), 1)), 0);
+        const std::string csec = "Coupler" + n3(cNo);
+        drawButton(id, ps + "Coupler" + n3(i), controlFor(csec, kCouplerSwitchBase + cNo), ini.str(csec, "Name"));
+      }
+      for (int i = 1; i <= ini.num(ps, "NumberOfStops", 0); ++i) {
+        const int m = ini.num(ps, "Stop" + n3(i) + "Manual", 1);
+        const int sNo = ini.num("Manual" + n3(m), "Stop" + n3(ini.num(ps, "Stop" + n3(i), 1)), 0);
+        const std::string ssec = "Stop" + n3(sNo);
+        drawButton(id, ps + "Stop" + n3(i), controlFor(ssec, kStopSwitchBase + sNo), ini.str(ssec, "Name"));
+      }
+      if (drawn > start) page(id, ini.str(ps, "Name", ps));
+    }
+    if (drawn == 0 && (ini.num("Organ", "NumberOfPanels", 0) > 0 || ini.num("Organ", "NumberOfImages", 0) > 0))
+      note("the console places its controls automatically, which is not drawn yet; the stops are on the plain jamb");
+  }
 
   std::ostringstream xml;
   out.doc.save(xml, "  ", pugi::format_indent, pugi::encoding_utf8);
@@ -810,7 +1212,8 @@ GrandOrgueImportReport convertGrandOrgue(const std::string& path) {
   }
   std::ostringstream ss;
   ss << f.rdbuf();
-  return convertGrandOrgueText(ss.str());
+  const auto slash = path.find_last_of("/\\");
+  return convertGrandOrgueText(ss.str(), slash == std::string::npos ? "." : path.substr(0, slash));
 }
 
 }  // namespace mp
