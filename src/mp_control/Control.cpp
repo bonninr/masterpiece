@@ -13,6 +13,7 @@ void CouplerMatrix::reset(const OrganModel& m) {
   inputKeyboards_.clear();
   primaryDivision_.clear();
   assignmentCode_.clear();
+  inputFor_.clear();
   divisionOfKeyboard_.clear();
   needsFallback_.clear();
 
@@ -136,6 +137,61 @@ void CouplerMatrix::reset(const OrganModel& m) {
       at = nextKb;
     }
   }
+
+  // Which playable keyboard each keyboard stands for, over plain unison key
+  // flow in either direction: a drawn manual may feed the playable keyboard
+  // or be fed by it, depending on how the console was built.
+  auto unisonFrom = [this](Id at) {
+    std::vector<Id> next;
+    const auto e = edges_.find(at);
+    if (e != edges_.end())
+      for (const KeyAction* a : e->second)
+        if (a->destIsKeyboard && a->destKeyboard != 0 && a->conditionSwitchId == 0 &&
+            a->midiIncrement == 0)
+          next.push_back(static_cast<Id>(a->destKeyboard));
+    return next;
+  };
+  const std::unordered_set<Id> playable(inputKeyboards_.begin(), inputKeyboards_.end());
+  for (Id kb : inputKeyboards_) inputFor_[kb] = kb;
+  // Forward from each keyboard until a playable one.
+  for (const auto& [id, unusedRow] : m.keyboards) {
+    (void)unusedRow;
+    if (inputFor_.count(id)) continue;
+    std::vector<Id> frontier{id};
+    std::unordered_set<Id> seen{id};
+    for (int hop = 0; hop < 8 && !frontier.empty() && !inputFor_.count(id); ++hop) {
+      std::vector<Id> next;
+      for (Id at : frontier)
+        for (Id n : unisonFrom(at)) {
+          if (playable.count(n)) {
+            inputFor_[id] = n;
+            break;
+          }
+          if (seen.insert(n).second) next.push_back(n);
+        }
+      frontier = std::move(next);
+    }
+  }
+  // And forward from each playable keyboard, for what it feeds.
+  for (Id kb : inputKeyboards_) {
+    std::vector<Id> frontier{kb};
+    std::unordered_set<Id> seen{kb};
+    for (int hop = 0; hop < 8 && !frontier.empty(); ++hop) {
+      std::vector<Id> next;
+      for (Id at : frontier)
+        for (Id n : unisonFrom(at))
+          if (seen.insert(n).second) {
+            if (!inputFor_.count(n)) inputFor_[n] = kb;
+            next.push_back(n);
+          }
+      frontier = std::move(next);
+    }
+  }
+}
+
+Id CouplerMatrix::inputKeyboardFor(Id keyboardId) const {
+  const auto it = inputFor_.find(keyboardId);
+  return it == inputFor_.end() ? 0 : it->second;
 }
 
 int CouplerMatrix::assignmentCodeFor(Id keyboardId) const {

@@ -70,6 +70,15 @@ public:
     // Report every MIDI message and what became of it. The one question a
     // player with a silent console cannot answer from outside.
     const bool logMidi = args.contains("--log-midi");
+    // Record everything played, from start to quit, as a MIDI file:
+    //   --record-midi performance.mid
+    // For a fault that cannot be reproduced on demand: play until it happens,
+    // quit, and the moment is in the last seconds of the file, which replays
+    // it exactly.
+    for (int i = 0; i + 1 < args.size(); ++i)
+      if (args[i] == "--record-midi")
+        recordMidiTo_ = juce::File::getCurrentWorkingDirectory().getChildFile(
+            args[i + 1].unquoted());
     // Which console page to show once the organ is up, counting from 1. A set
     // that puts its jambs on their own pages needs this to be photographed,
     // and clicking the tab from a script is not reliable across display
@@ -528,6 +537,12 @@ public:
       };
     }
 
+    if (recordMidiTo_ != juce::File()) {
+      proc_->recorder().startRecording();
+      juce::Logger::writeToLog("midi: recording to " + recordMidiTo_.getFullPathName() +
+                               ", saved on quit");
+    }
+
     if (logMidi) {
       proc_->setMidiLogging(true);
       juce::Logger::writeToLog(
@@ -614,6 +629,11 @@ public:
       routes_.clear();
     }
     if (player_) player_->setProcessor(nullptr);
+    // Audio has stopped, so the recording is complete and safe to write.
+    if (proc_ && recordMidiTo_ != juce::File()) {
+      proc_->recorder().stopRecording();
+      proc_->recorder().saveToFile(recordMidiTo_);
+    }
     // A clean exit: the organ that was loaded did not crash anything.
     if (proc_) proc_->clearRunningOrgan();
     win_.reset();
@@ -734,6 +754,8 @@ private:
   std::vector<Routed> routes_;
 
   std::unique_ptr<juce::AudioProcessorPlayer> player_;
+  // Where --record-midi saves the session on quit; empty when not asked.
+  juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
   // Our own published port, where the platform allows one. The input holds a

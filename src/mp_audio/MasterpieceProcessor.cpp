@@ -535,6 +535,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   for (const auto meta : midi)
     midiScratch_.emplace_back(MidiDeviceMap::kAnyDevice, meta.getMessage());
   drainTaggedMidi(midiScratch_);
+  // Console input reaches the recorder here: it is not in the host's buffer,
+  // which is all the recorder saw.
+  if (recorder_.isRecording())
+    for (const auto& [deviceId, msg] : midiScratch_)
+      if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg);
 
   for (const auto& [deviceId, msg] : midiScratch_) {
 
@@ -1651,9 +1656,18 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
 }
 
 int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {
+  // A drawn manual answers to the channel of the keyboard it stands for: the
+  // player assigns channels to the keyboards they play, not to the pictures
+  // of them. Asked of the drawn one directly, a console whose Manual I was
+  // moved to channel 1 lit its pedalboard, which kept the organ's default 1.
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == played && b.channel > 0) return b.channel;
   for (const auto& b : midiMap_.keyboardBindings())
     if (b.keyboardId == keyboardId && b.channel > 0) return b.channel;
-  const int code = couplers_.assignmentCodeFor(keyboardId);
+  int code = couplers_.assignmentCodeFor(played);
+  if (code < 1) code = couplers_.assignmentCodeFor(keyboardId);
   if (code >= 1 && code <= 16) return code;
   return 1;
 }

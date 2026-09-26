@@ -277,6 +277,31 @@ void ConsoleView::rebuild() {
   }
   if (layout_ >= layoutCount_) layout_ = 0;
 
+  // Whatever lies wholly outside the console screen the set was drawn for is
+  // not part of the console. Template sets park their unused labels there --
+  // Vasvar keeps five at x=1230 on a 1016-wide page -- and widening the
+  // canvas to take them in showed them floating beside the organ. Only what
+  // misses the screen entirely goes: a piece that overlaps its edge stays.
+  const int screenW = model.consoleWidthPx[layout_];
+  const int screenH = model.consoleHeightPx[layout_];
+  if (screenW > 0 && screenH > 0) {
+    const juce::Rectangle<int> screen(0, 0, screenW, screenH);
+    auto off = [&screen](const juce::Rectangle<int>& b) { return !b.intersects(screen); };
+    items_.erase(std::remove_if(items_.begin(), items_.end(),
+                                [&](const Item& i) { return off(i.bounds); }),
+                 items_.end());
+    texts_.erase(std::remove_if(texts_.begin(), texts_.end(),
+                                [&](const TextItem& t) { return off(t.bounds); }),
+                 texts_.end());
+    keys_.erase(std::remove_if(keys_.begin(), keys_.end(),
+                               [&](const KeyItem& k) { return off(k.bounds); }),
+                keys_.end());
+    extent_ = {};
+    for (const auto& i : items_) extent_ = extent_.getUnion(i.bounds);
+    for (const auto& t : texts_) extent_ = extent_.getUnion(t.bounds);
+    for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
+  }
+
   hasArtwork_ = !items_.empty() || !keys_.empty() || !texts_.empty();
   setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
 

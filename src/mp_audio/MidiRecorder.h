@@ -39,6 +39,12 @@ public:
   // recorded events for this block are merged INTO `midi`, so playback drives
   // exactly the same path a live console does.
   void process(juce::MidiBuffer& midi, int numSamples);
+  // A message from a hardware console. Those do not come in the host's buffer
+  // but through the processor's own device queue, read after process(), so
+  // they are handed over here -- or recording a real console captured nothing
+  // but the on-screen keys. They arrived between blocks, so they are placed
+  // at the start of the block they were read in.
+  void captureLive(const juce::MidiMessage& message);
 
   bool saveToFile(const juce::File& file) const;
   bool loadFromFile(const juce::File& file);
@@ -53,6 +59,7 @@ private:
   State state_ = State::Idle;
   double sampleRate_ = 48000.0;
   int64_t writePos_ = 0;   // recording head
+  int64_t blockStart_ = 0; // where the block being recorded began
   int64_t playPos_ = 0;    // playback head
   size_t playIndex_ = 0;   // next event to emit
 };

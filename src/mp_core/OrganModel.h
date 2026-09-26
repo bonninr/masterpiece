@@ -793,6 +793,10 @@ struct OrganModel {
   // output trim, applied to everything the organ makes so sets recorded at
   // different levels play at a comparable loudness.
   double audioOutputTrimDb = 0.0;
+  // The console screen each layout is drawn for, in pixels; 0 when not
+  // declared. Index 0 is the primary layout, 1..3 the alternates.
+  int consoleWidthPx[4] = {0, 0, 0, 0};
+  int consoleHeightPx[4] = {0, 0, 0, 0};
 
   std::unordered_map<Id, Rank> ranks;
   std::unordered_map<Id, Stop> stops;

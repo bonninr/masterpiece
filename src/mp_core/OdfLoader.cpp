@@ -308,6 +308,23 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       // leaves a 6 dB step between sets that the producer meant to remove.
       outModel.audioOutputTrimDb =
           fieldDouble(row, "AudioOut_AmplitudeLevelAdjustDecibels", nullptr, 0.0);
+      // The console screen each layout was drawn for. Sets built from the
+      // custom-organ template park unused pieces beyond it, where the host's
+      // window never shows them.
+      outModel.consoleWidthPx[0] = fieldInt(row, "Display_ConsoleScreenWidthPixels", "l", 0);
+      outModel.consoleHeightPx[0] = fieldInt(row, "Display_ConsoleScreenHeightPixels", "m", 0);
+      outModel.consoleWidthPx[1] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout1_WidthPixels", "n", 0);
+      outModel.consoleHeightPx[1] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout1_HeightPixels", "p", 0);
+      outModel.consoleWidthPx[2] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout2_WidthPixels", "q", 0);
+      outModel.consoleHeightPx[2] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout2_HeightPixels", "r", 0);
+      outModel.consoleWidthPx[3] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout3_WidthPixels", "s", 0);
+      outModel.consoleHeightPx[3] =
+          fieldInt(row, "Display_AlternateConsoleScreenLayout3_HeightPixels", "t", 0);
     });
     if (!found)
       outDiag.errors.emplace_back("missing required table: _General");
