@@ -33,6 +33,7 @@
 
 #include <array>
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -376,6 +377,19 @@ public:
   // rig one keyboard at a time means this manual, not both. A channel chosen
   // by hand shares it, which is how one keyboard is made to play two
   // divisions at once.
+  // The player's own console, for every organ: which channel the pedal and
+  // each manual come in on, by role -- 0 the pedal, 1 the first manual and
+  // so on, as each organ numbers its keyboards. An organ with no channels
+  // saved for it starts from this; one with its own keeps them. Empty means
+  // each organ uses its own default channels.
+  const std::map<int, int>& defaultConsole() const { return defaultConsole_; }
+  // Takes the loaded organ's current assignment as the default, and saves it.
+  void useChannelsAsDefaultConsole();
+  void clearDefaultConsole();
+  // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
+  // -1 none.
+  int consoleRoleOf(Id keyboardId) const;
+
   void setKeyboardForChannel(int channel, Id keyboardId, int deviceId = 0,
                              bool exclusive = true) {
     midiMap_.removeKeyboardBindingsFor(keyboardId);
@@ -915,6 +929,8 @@ private:
   // merely animate the picture. Built at load so the audio thread never
   // searches for it.
   std::unordered_map<Id, Id> stopBySwitch_;
+  std::map<int, int> defaultConsole_;  // role -> channel
+  void applyDefaultConsole();
   // Switches that swap a stop's rank for its alternate and re-sound held
   // notes when they do, with the stops concerned; and the switch state just
   // before the latest change, which says what was sounding.
