@@ -419,7 +419,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       if (sec != rankSec) note("REF: pipes play the pipe they name as a pipe of their own");
       const int pipeId = nextPipeId++;
       ids.back() = pipeId;
-      const int midi = firstMidiOf(sec) + index - 1;
+      // The pipe's place is in THIS rank, whatever it borrows: a REF pipe
+      // takes the slot it is written in and only sounds like the pipe it
+      // names. Its pitch is unaffected -- the sample is declared at this
+      // same nominal pitch below, so it plays as recorded plus its tuning.
+      const int midi = firstMidiOf(rankSec) + p - 1;
       const int harmonic = ini.num(sec, key + "HarmonicNumber", ini.num(sec, "HarmonicNumber", 8));
       const int chest = ini.num(sec, key + "WindchestGroup", ini.num(sec, "WindchestGroup", 1));
       const double rankDb = levelDb(ini, sec);

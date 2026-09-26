@@ -8448,13 +8448,15 @@ public:
         "[Rank001]\r\nName=Principal 8\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=3\r\n"
         "WindchestGroup=1\r\nPipe001=P8\036.wav\r\nPipe002=DUMMY\r\nPipe003=P8\038.wav\r\n"
         "[Manual000]\r\nName=Pedal\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
-        "NumberOfAccessibleKeys=3\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "NumberOfAccessibleKeys=3\r\nNumberOfStops=2\r\nStop001=1\r\nStop002=3\r\n"
         "[Manual001]\r\nname=Great\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
         "NumberOfAccessibleKeys=3\r\nNumberOfStops=1\r\nStop001=2\r\n"
         "NumberOfCouplers=1\r\nCoupler001=1\r\n"
         "[Stop001]\r\nName=Subbass 16\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
         "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\nHarmonicNumber=4\r\n"
         "Pipe001=S16\036.wav\r\nPipe002=S16\037.wav\r\n"
+        "[Stop003]\r\nName=Borrowed\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nPipe001=REF:001:001:002\r\nPipe002=REF:001:001:003\r\n"
         "[Stop002]\r\nName=Principal 8\r\nNumberOfRanks=1\r\nRank001=1\r\n"
         "FirstAccessiblePipeLogicalKeyNumber=1\r\nNumberOfAccessiblePipes=3\r\n"
         "[Coupler001]\r\nName=Great to Pedal\r\nDestinationManual=0\r\n";
@@ -8473,6 +8475,12 @@ public:
              "the explicit rank has two pipes; the DUMMY one is skipped");
     MP_CHECK(m.ranks.count(5001) && m.ranks.at(5001).pipes.size() == 2,
              "a stop with its own pipes becomes a rank");
+    // A borrowed pipe takes its own slot: pedal key 36 plays the rank's
+    // pipe 2, but it is the borrowing stop's first pipe. (The rank's pipe 2
+    // is DUMMY, so only the second borrowed pipe exists.)
+    MP_CHECK(m.ranks.count(5003) && m.ranks.at(5003).pipes.size() == 1 &&
+                 m.ranks.at(5003).pipes[0].midiNote == 37,
+             "a REF pipe sits in the slot it is written in");
     MP_CHECK(m.stops.count(2002) && m.stops.at(2002).ranks.size() == 1 &&
                  m.stops.at(2002).ranks[0].rankId == 1001,
              "the Great stop draws the rank");
@@ -8480,8 +8488,8 @@ public:
     for (const auto& ka : m.keyActions)
       if (ka.conditionSwitchId == 4001 && ka.destDivision == 1) coupled = true;
     MP_CHECK(coupled, "the coupler keys the pedal division under its switch");
-    MP_CHECK(m.pipeEnclosure.size() == 4, "every pipe on the chest is enclosed");
-    MP_CHECK(m.tremulantPipes.size() == 4, "every pipe on the chest is tremulated");
+    MP_CHECK(m.pipeEnclosure.size() == 5, "every pipe on the chest is enclosed, borrowed ones too");
+    MP_CHECK(m.tremulantPipes.size() == 5, "every pipe on the chest is tremulated, borrowed ones too");
     MP_CHECK(m.tremulants.count(101) &&
                  std::abs(m.tremulants.at(101).engagedHz - 5.0) < 1e-9,
              "a 200 ms period is 5 Hz");
