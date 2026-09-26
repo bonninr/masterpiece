@@ -1713,6 +1713,57 @@ int MasterpieceProcessor::channelForKeyboard(Id keyboardId) const {
   return 1;
 }
 
+namespace {
+// A drawn manual that leads to none of the keyboards a player can reach -- an
+// organ whose wiring we could not follow -- keeps the plain channel lookup.
+// Stricter rules would leave it dead to the mouse and never lit.
+bool reachable(const CouplerMatrix& couplers, Id keyboardId) {
+  if (couplers.inputKeyboardFor(keyboardId) != 0) return true;
+  const auto& inputs = couplers.inputKeyboards();
+  return std::find(inputs.begin(), inputs.end(), keyboardId) != inputs.end();
+}
+} // namespace
+
+int MasterpieceProcessor::litChannelForKeyboard(Id keyboardId) const {
+  if (!reachable(couplers_, keyboardId)) return channelForKeyboard(keyboardId);
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  const int channel = channelForKeyboard(keyboardId);
+  // Mapped to it by the player: its notes are this keyboard's, from whichever
+  // console the binding names.
+  bool claimed = false;
+  for (const auto& b : midiMap_.keyboardBindings()) {
+    if (b.channel != 0 && b.channel != channel) continue;
+    if (b.keyboardId == played || b.keyboardId == keyboardId) return channel;
+    claimed = true;
+  }
+  // The organ's own default, unless the player has given the channel away.
+  // A mapped channel plays only what is mapped to it (keyboardForChannel), so
+  // a keyboard sitting on it by default hears none of its notes.
+  if (claimed) return 0;
+  const Id reached = keyboardForChannel(channel, MidiDeviceMap::kAnyDevice);
+  return reached == played || reached == keyboardId ? channel : 0;
+}
+
+int MasterpieceProcessor::clickChannelForKeyboard(Id keyboardId) const {
+  if (!reachable(couplers_, keyboardId)) return channelForKeyboard(keyboardId);
+  // A click arrives with no console attached, so it is routed the way
+  // keyboardForChannel routes a message from no particular device.
+  const Id input = couplers_.inputKeyboardFor(keyboardId);
+  const Id played = input != 0 ? input : keyboardId;
+  auto reaches = [&](int channel) {
+    const Id k = keyboardForChannel(channel, MidiDeviceMap::kAnyDevice);
+    return k == played || k == keyboardId;
+  };
+  const int preferred = channelForKeyboard(keyboardId);
+  if (reaches(preferred)) return preferred;
+  // A keyboard mapped only for one console, or left without a channel of its
+  // own: any channel that does reach it, so its drawn keys still play it.
+  for (int channel = 1; channel <= 16; ++channel)
+    if (reaches(channel)) return channel;
+  return 0;
+}
+
 void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
   startNoteOnKeyboard(keyboardForChannel(channel, noteDeviceId_),
                       noteKey(channel, midiNote), midiNote, velocity);

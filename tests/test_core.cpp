@@ -8850,6 +8850,58 @@ public:
   }
 };
 static DefaultConsoleTest g_defaultConsole;
+
+// Issue #44: a pedal left on its default channel 1 after the player mapped a
+// manual to channel 1 lit its drawn keys whenever the manual was played --
+// the sound went to the manual, the picture to both. A drawn keyboard lights,
+// and sends its clicks, only on a channel that actually reaches it.
+//
+// Issue #45: learning a manual's range is two presses, and the prompt has to
+// be able to tell which one it is waiting for.
+class DrawnKeyChannelTest final : public mp::test::Test {
+public:
+  DrawnKeyChannelTest() : Test("functional.midi.drawn-key-channels", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-drawn-key-channels");
+    dir.createDirectory();
+    const juce::File odf = DefaultConsoleTest::organ(dir, "DrawnKeys", 918273651);
+    mp::MasterpieceProcessor proc;
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+
+    // Pedal is keyboard 1 (default channel 1), the Great keyboard 2 (2).
+    MP_CHECK(proc.litChannelForKeyboard(1) == 1 && proc.litChannelForKeyboard(2) == 2,
+             "unmapped, each keyboard lights on its own default channel");
+
+    proc.setKeyboardForChannel(1, 2);
+    MP_CHECK(proc.litChannelForKeyboard(2) == 1, "the Great now lights on channel 1");
+    MP_CHECK(proc.litChannelForKeyboard(1) == 0,
+             "and the pedal no longer does: channel 1 plays the Great only");
+    MP_CHECK(proc.clickChannelForKeyboard(1) == 0,
+             "nor can a click on the pedal play the Great by the same channel");
+
+    proc.setKeyboardForChannel(5, 1);
+    MP_CHECK(proc.litChannelForKeyboard(1) == 5 && proc.clickChannelForKeyboard(1) == 5,
+             "once the pedal has a channel of its own, it lights and plays on it");
+
+    proc.beginKeyboardLearn(2);
+    MP_CHECK(!proc.keyboardLearnHasLowKey(), "a learn starts by asking for the lowest key");
+    juce::AudioBuffer<float> audio(2, 64);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    proc.prepareToPlay(48000.0, 64);
+    proc.processBlock(audio, midi);
+    MP_CHECK(proc.keyboardLearnHasLowKey(), "and after one press, for the highest");
+    proc.cancelKeyboardLearn();
+    MP_CHECK(!proc.keyboardLearnHasLowKey(), "and cancelling leaves nothing half-learned");
+    proc.releaseResources();
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static DrawnKeyChannelTest g_drawnKeyChannels;
 #endif
 
 int main(int argc, char** argv) {
