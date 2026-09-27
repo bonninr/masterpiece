@@ -944,6 +944,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
       {&learnLayout_, MidiTargetKind::ConsoleNextLayout},
       {&learnStopList_, MidiTargetKind::ConsoleToggleStopList},
       {&learnKeyboard_, MidiTargetKind::ConsoleToggleKeyboard},
+      {&learnCombinations_, MidiTargetKind::ConsoleToggleCombinations},
   };
   for (auto& e : consoleLearn) {
     addAndMakeVisible(*e.b);
@@ -1157,7 +1158,7 @@ void MidiPanel::resized() {
   r.removeFromTop(4);
   row = r.removeFromTop(kRow);
   row.removeFromLeft(120);
-  for (auto* b : {&learnStopList_, &learnKeyboard_}) {
+  for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
     b->setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
   }

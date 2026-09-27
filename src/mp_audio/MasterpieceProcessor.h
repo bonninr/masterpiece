@@ -10,7 +10,7 @@
 #include "../mp_control/MidiMap.h"
 #include "../mp_control/Combinations.h"
 #include "../mp_control/StageSwitches.h"
-#include "../mp_control/Stepper.h"
+#include "../mp_control/PlayerCombinations.h"
 #include "../mp_control/LcdPanel.h"
 #include "../mp_control/WindSolver.h"
 #include "../mp_control/SwitchNetwork.h"
@@ -314,10 +314,23 @@ public:
   void setWindDepth(double d) { windDepth_ = d < 0.0 ? 0.0 : d; }
   double windDepth() const { return windDepth_; }
 
+  // --- the player's own pistons ----------------------------------------
+  // Generals, divisionals, cancels and a stepper on every organ, whatever its
+  // file declares (see PlayerCombinations). The organ's own pistons keep
+  // working beside them. Both answer the same setter: hold it, press a piston,
+  // and the piston stores what is drawn.
+  const PlayerCombinations& playerCombinations() const { return player_; }
+  void pressGeneral(int n);
+  void pressGeneralCancel();
+  void pressDivisional(Id divisionId, int n);
+  void pressDivisionalCancel(Id divisionId);
+  // How many generals, and divisionals per division, the window shows.
+  // Saved with the combination set.
+  void setPlayerPistonCounts(int generals, int divisionals);
+
   // --- the registration sequencer ---------------------------------------
-  // One thumb piston that walks the organ's generals in order. Not wired in
-  // the organ file — Hauptwerk provides it and the player maps it — so it is
-  // driven from here and from MIDI, never from a drawstop.
+  // A long list of frames of its own -- a recital's worth -- walked by two
+  // thumb pistons. Not in the organ file; the player maps it.
   //
   // With the setter held, stepping CAPTURES into the frame it lands on, which
   // is how a registration is built for a piece: hold the setter and walk
@@ -325,8 +338,11 @@ public:
   bool stepperNext();
   bool stepperPrev();
   bool stepperGoto(int frame);
-  const Stepper& stepper() const { return stepper_; }
-  void stepperRewind() { stepper_.rewind(); }
+  // Open a frame before the current one, or take the current one out; the
+  // frames after it move along.
+  bool stepperInsertFrame();
+  bool stepperDeleteFrame();
+  void stepperRewind() { player_.rewind(); }
   int continuousControlValue(Id controlId) const {
     return controls_.value(controlId);
   }
@@ -564,6 +580,19 @@ public:
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
+  // Where the player keeps the combinations window on this organ, and whether
+  // it was open. Per organ, because a console with its own pistons drawn
+  // wants it closed and one with none wants it open. w 0 means never placed.
+  // Message thread only.
+  struct WindowPlace {
+    int x = 0, y = 0, w = 0, h = 0;
+    bool open = false;
+  };
+  const WindowPlace& combinationsWindowPlace() const { return combWindow_; }
+  void setCombinationsWindowPlace(const WindowPlace& p) {
+    combWindow_ = p;
+    markSettingsDirty();
+  }
   bool saveSettingsIfDirty();
   // The fader alone, raised from the UI on every drag and flushed on the same
   // timer as the rest. Deliberately its own flag and its own writer rather
@@ -860,7 +889,20 @@ private:
   std::atomic<bool> masterGainDirty_{false};
   // Shoe positions that move switches: the crescendo, the blower, enclosure
   // noises. Needs the previous position, because each row is a crossing.
-  Stepper stepper_;
+  PlayerCombinations player_;
+  // Sized at load, like recallScratch_: a piston pressed on the audio thread
+  // must not allocate.
+  std::vector<PlayerCombinations::Change> playerScratch_;
+  // The switches a player's registration is made of. Moving one by hand
+  // means no piston describes what is drawn any more, so it unlights them.
+  std::unordered_set<Id> registrationSwitches_;
+  // True while a piston applies its registration, so the switches it moves do
+  // not count as the player moving them.
+  bool applyingPistons_ = false;
+  void resetPlayerCombinations();
+  void applyPlayerChanges();
+  bool playerElementEngaged(const PlayerCombinations::Element& e) const;
+  std::string combinationFileText() const;
   // The wind system. Advanced once per block on the audio thread, so its
   // tables are sized at load and it never allocates here.
   WindSolver wind_;
@@ -970,6 +1012,7 @@ private:
   Favourites favourites_;
   // Empty means the organ's default set.
   std::string combinationSet_;
+  WindowPlace combWindow_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

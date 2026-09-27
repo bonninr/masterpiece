@@ -22,6 +22,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Settings.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Settings.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Wizard.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/LoadingDialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ManualDialog.h

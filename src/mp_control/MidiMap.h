@@ -41,7 +41,32 @@ enum class MidiTargetKind {
   ConsoleNextLayout,
   ConsoleToggleStopList,
   ConsoleToggleKeyboard,
+  ConsoleToggleCombinations,
+
+  // The player's own pistons (PlayerCombinations): the same on every organ,
+  // so they are targets of their own rather than switches in the file.
+  //   PlayerGeneral            id = piston number, 1-based
+  //   PlayerDivisional         id = division * 100 + piston number
+  //   PlayerDivisionalCancel   id = division
+  //   Setter                   held or toggled like a switch: while it is on,
+  //                            every piston stores instead of recalling
+  PlayerGeneral,
+  PlayerGeneralCancel,
+  PlayerDivisional,
+  PlayerDivisionalCancel,
+  Setter,
 };
+
+// The setter's id: one no switch can have, so its latch never shares a slot
+// with a drawstop's.
+constexpr Id kSetterTarget = -1;
+
+// PlayerDivisional's id, both ways.
+inline Id playerDivisionalTarget(Id divisionId, int piston) {
+  return divisionId * 100 + piston;
+}
+inline Id playerDivisionalDivision(Id target) { return target / 100; }
+inline int playerDivisionalPiston(Id target) { return static_cast<int>(target % 100); }
 
 // The kind of message, reduced to what a mapping needs to match on.
 enum class MidiSourceKind { None, Note, ControlChange, ProgramChange };
