@@ -12,12 +12,12 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
 **[Watch "New tested instruments"](https://bonninr.github.io/masterpiece/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://bonninr.github.io/masterpiece/attribution-2.html)
 
-[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-windows-setup.exe)
-[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-macos-arm64.zip)
-[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-macos-x86_64.zip)
-[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-linux-amd64.deb)
-[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-linux-arm64.deb)
-[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.0/masterpiece-0.6.0-linux-armhf.deb)
+[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-windows-setup.exe)
+[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-macos-arm64.zip)
+[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-macos-x86_64.zip)
+[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-linux-amd64.deb)
+[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-linux-arm64.deb)
+[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.6.1/masterpiece-0.6.1-linux-armhf.deb)
 
 Portable archives for every platform, and the plugins on their own, are on the
 [releases page](https://github.com/bonninr/masterpiece/releases/latest).
@@ -166,7 +166,19 @@ on-screen keyboard instead.
 
 ## Using it
 
-**Loading.** A large library is tens of gigabytes and takes minutes off a slow
+**Loading.** **Open** takes a Hauptwerk-format definition, a GrandOrgue
+`.organ` file, or a set still in its packages: RAR archives (numbered parts and
+multi-volume sets included) or a GrandOrgue `.orgue` package. A package is not
+unpacked. Only its definitions and artwork are extracted, into a folder of
+Masterpiece's own, and the samples are read from the archives; after the first
+load the sample cache makes reopening as fast as an installed set. WavPack
+samples decode, back to WavPack 1.
+
+The first time an organ is loaded, Settings opens on its Engine page before
+the load starts, because those settings decide how much memory the organ will
+take.
+
+A large library is tens of gigabytes and takes minutes off a slow
 disk, so it loads on its own thread: the window stays live, the progress is
 real, and the estimate is built from the rate the load actually achieves.
 Cancel takes effect at the next file and throws
@@ -175,10 +187,13 @@ away what it had read. A cancelled load leaves no partial organ behind.
 ![Loading an organ](screenshots/ui-loading.jpg)
 
 **Playing.** Drawstops, pistons and expression shoes are where the builder put
-them. A key pressed with the mouse takes the same path as that note arriving
-over MIDI, so anything done from the console works from a real one. The meter
-shows what reaches the audio device — after the room, the organ's own level
-and the master fader.
+them, and they work the way the builder wired them: generals and divisionals,
+general cancel, reversible pistons that flip a coupler, crescendo steps, stops
+that swap to an alternate rank. A key pressed with the mouse takes the same
+path as that note arriving over MIDI, so anything done from the console works
+from a real one. The drawn keys move for the notes that actually reach their
+manual. The meter shows what reaches the audio device — after the room, the
+organ's own level and the master fader.
 
 ![The console, playing](screenshots/ui-console.jpg)
 
@@ -187,6 +202,43 @@ picture, or stops spread across several jambs: the same registration,
 grouped by division.
 
 ![The stop list](screenshots/ui-stoplist.jpg)
+
+**Combinations.** Every organ gets its own set of pistons, whatever its
+definition declares, in a **Combinations** window beside the console. It never
+covers the artwork or changes the stop list, and closes when it is not needed.
+
+- **Set** and **GC**. With Set on, pressing any piston stores what is drawn
+  instead of recalling it. The organ's own setter does the same.
+- **Generals**, in rows of ten, up to a hundred.
+- **Divisionals** for every manual and the pedal, each with its own cancel. A
+  divisional holds that division's stops, the couplers played from that manual
+  and the tremulant that shakes it, and leaves the rest of the organ alone.
+- **The stepper**, with up to 999 frames of its own. Stepping with Set on
+  stores each frame as you pass it, which is how a sequence is built for a
+  piece; frames can be inserted and deleted.
+- **The combination set** in use, and a new one saved from it.
+
+A piston that was never set does nothing. Only the registration is captured
+and cancelled: stops, couplers and tremulants, never the blower or a noise.
+The organ's own pistons keep working beside these. Everything is saved per
+organ in your own data, and the window comes back where you left it. It opens
+by itself the first time on an organ that draws no pistons of its own.
+Right-click any piston to map it to a button on your console.
+
+![Combinations](screenshots/ui-combinations.jpg)
+
+**Tuning.** The **Tuning** button in the top bar says what is in force and
+opens the three things a player changes between pieces. The temperament is the
+organ's own, one of the historical temperaments (Werckmeister III, Kirnberger
+III, Vallotti, Young II, quarter-comma meantone, Pythagorean, Silbermann's
+sixth-comma, or equal), or a Scala `.scl` file of twelve notes. The pitch is A
+in Hz, with the organ's own, 415, 440 and 442 a click away, so an organ
+recorded at a historical pitch can play with other instruments. The transposer
+moves the keys an octave either way, not the samples. Each change applies to
+the notes played after it, is saved for the organ, and appears on the
+console's jamb displays.
+
+![Tuning](screenshots/ui-tuning.jpg)
 
 **The engine.** What costs CPU and what costs memory, in one place. *Simple WAV
 only* bypasses every refinement at once for a machine that cannot afford them.
@@ -219,14 +271,27 @@ DSP switched off.
 **Getting back to an organ.** Favourites point at numbered slots, which thumb
 pistons trigger. Combination sets hold whole registration books —
 one for a recital, another for a service — and changing set saves the one you
-are leaving first.
+are leaving first. The Combinations window switches sets too.
 
 ![Favourites and combination sets](screenshots/ui-favourites.jpg)
 
 **Your console.** Which manual a key plays is decided by its MIDI channel, and
-each console is wired differently. Right-click a drawstop and
-move the real one to learn it; the sequencer pistons and the page-turn actions
-get their own learn buttons, with nothing on screen to right-click.
+each console is wired differently. A change of channel applies at once, to the
+sound and to the drawn keys, with no restart. Set up your console once and
+press *Use as default for all organs*: every organ without channels of its own
+then starts from it, the pedal on its channel and manual 1, 2, 3... on theirs,
+skipping manuals an organ does not have.
+
+*Range, transpose...* opens a manual's assignment: which console it comes from,
+the key range, a transposition, a velocity window, short bass octaves and
+contact debounce. Two assignments can split one keyboard between two manuals.
+*Learn from a key* takes the range from two presses, lowest then highest.
+
+Right-click a drawstop and move the real one to learn it, as a toggle, held,
+or as separate draw and cancel messages. Every piston in the Combinations
+window learns the same way. The sequencer, the page turns, the stop list, the
+keyboard, the Combinations window, the transposer and the temperament have
+their own learn buttons, with nothing on screen to right-click.
 
 ![MIDI](screenshots/ui-midi.jpg)
 
@@ -238,7 +303,9 @@ so you type them in, and only lines whose text actually changed are sent.
 
 **Practising and recording.** A MIDI recording is the performance and can be
 replayed through a different registration; the audio capture is what it sounded
-like. Record both at once.
+like. Record both at once. The recorder takes what a hardware console plays as
+well as the on-screen keys. A metronome comes out of the same audio as the
+organ, so it never drifts against it.
 
 ![Recorder](screenshots/ui-recorder.jpg)
 
@@ -309,18 +376,18 @@ tag `v0.4.2` and the release workflow builds and publishes everything.
 
 ## Installing
 
-**Windows.** Run `masterpiece-0.6.0-windows-setup.exe`. It installs
+**Windows.** Run `masterpiece-0.6.1-windows-setup.exe`. It installs
 Masterpiece with a Start menu entry, and removes it again from
-*Settings → Apps*. The portable `masterpiece-0.6.0-windows.zip` needs no
+*Settings → Apps*. The portable `masterpiece-0.6.1-windows.zip` needs no
 installation and carries the VST3 plugin.
 
 **Debian, Ubuntu, Raspberry Pi OS.** Install the package with `apt`, which
 fetches anything it needs:
 
 ```
-sudo apt install ./masterpiece-0.6.0-linux-amd64.deb     # PC
-sudo apt install ./masterpiece-0.6.0-linux-arm64.deb     # Raspberry Pi OS, 64-bit
-sudo apt install ./masterpiece-0.6.0-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+sudo apt install ./masterpiece-0.6.1-linux-amd64.deb     # PC
+sudo apt install ./masterpiece-0.6.1-linux-arm64.deb     # Raspberry Pi OS, 64-bit
+sudo apt install ./masterpiece-0.6.1-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
 Masterpiece then appears in the applications menu and runs as `masterpiece`.
@@ -340,17 +407,24 @@ xattr -cr /Applications/Masterpiece.app
 
 ## Running
 
-Launch the app, then **Load organ…** and choose the set's XML definition.
+Launch the app, then **Open** and choose the set's definition, a GrandOrgue
+`.organ` file, or its RAR or `.orgue` package.
 
-Two flags are useful for skipping a multi-gigabyte load:
+A few flags help with testing and reporting problems:
 
 ```
 Masterpiece --odf "<path to the definition>" --gui-only
 ```
 
-`--gui-only` builds the entire console and reads no audio at all: the organ is
-silent and appears in a second or two. `--log <file>` writes the load timings,
-if you want to know where the time went.
+| Flag | What it does |
+|---|---|
+| `--odf <file>` | Load this organ at startup: a definition or a package. |
+| `--gui-only` | Build the whole console and read no audio: the organ is silent and appears in a second or two. |
+| `--log <file>` | Write a log, including the load timings. |
+| `--log-midi` | Log every MIDI message and what it did: which manual it reached, and why nothing sounded if nothing did. |
+| `--record-midi <file>` | Record everything played in the session and save it on quit, to attach to a report such as a stuck note. |
+| `--play-midi <file>` | Play a MIDI file through the organ, for example a recording from `--record-midi`. |
+| `--virtual-midi [name]` | macOS and Linux: publish a MIDI input of Masterpiece's own, so other programs can play it. On Windows a loopback port such as loopMIDI does the same. |
 
 **Audio driver, on Windows.** The settings page lists Windows Audio (shared),
 Windows Audio (exclusive), DirectSound and — when a driver for your interface
@@ -386,13 +460,15 @@ one:
 ```
 mp_core      the XML loader, the validator, the temperament solver
 mp_sampler   the voice engine and the streaming backend
-mp_control   key flow, couplers, the switch network, pistons, crescendo, wind
+mp_control   key flow, couplers, the switch network, pistons, the player's
+             combinations and stepper, crescendo, wind
+mp_archive   organ packages: RAR and GrandOrgue .orgue, read without unpacking
 mp_dsp       enclosure filters and tremulant modulation
 mp_audio     the audio processor, sample storage, routing
 mp_ui        the console, the panels, MIDI learn
 ```
 
-`mp_core`, `mp_sampler` and `mp_control` carry no JUCE at all, which is what
+`mp_core`, `mp_sampler`, `mp_control` and `mp_archive` carry no JUCE at all, which is what
 lets the whole musical path be exercised against a synthesised tone instead of
 a 40 GB library.
 
