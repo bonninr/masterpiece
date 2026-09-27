@@ -3774,6 +3774,50 @@ int MasterpieceProcessor::engageAllStops() {
   return static_cast<int>(engagedStops_.size());
 }
 
+namespace {
+// The folder Masterpiece unpacked a package into, if this definition came
+// from one: the nearest folder up that carries the archive marker.
+juce::File packageFolderOf(const juce::File& odf) {
+  juce::File dir = odf.getParentDirectory();
+  for (int up = 0; up < 3 && dir.isDirectory(); ++up) {
+    if (!readArchiveMarker(dir.getFullPathName().toStdString()).empty()) return dir;
+    dir = dir.getParentDirectory();
+  }
+  return {};
+}
+constexpr const char* kChosenDefinition = "chosen-definition.txt";
+constexpr const char* kDefinitionPatterns =
+    "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ";
+}  // namespace
+
+juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& odf) {
+  juce::Array<juce::File> out;
+  if (!odf.existsAsFile()) return out;
+  const juce::File package = packageFolderOf(odf);
+  if (package != juce::File())
+    package.findChildFiles(out, juce::File::findFiles, true, kDefinitionPatterns);
+  else
+    odf.getParentDirectory().findChildFiles(out, juce::File::findFiles, false, kDefinitionPatterns);
+  out.sort();
+  return out;
+}
+
+void MasterpieceProcessor::rememberDefinition(const juce::File& odf) {
+  const juce::File package = packageFolderOf(odf);
+  if (package == juce::File()) return;
+  package.getChildFile(kChosenDefinition).replaceWithText(odf.getRelativePathFrom(package));
+}
+
+juce::File MasterpieceProcessor::rememberedDefinition(const juce::Array<juce::File>& definitions) {
+  if (definitions.isEmpty()) return {};
+  const juce::File package = packageFolderOf(definitions.getFirst());
+  if (package == juce::File()) return {};
+  const juce::File marker = package.getChildFile(kChosenDefinition);
+  if (!marker.existsAsFile()) return {};
+  const juce::File chosen = package.getChildFile(marker.loadFileAsString().trim());
+  return definitions.contains(chosen) ? chosen : juce::File();
+}
+
 juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File& archiveFile,
                                                                juce::String& error) {
   OrganArchive archive;

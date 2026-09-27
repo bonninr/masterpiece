@@ -151,6 +151,9 @@ public:
   std::function<void()> onOrganSettings;
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
+  // Several organs in one set of packages -- a perspective each, or full and
+  // light: ask which, by name, the one opened last at the top.
+  void chooseDefinition(const juce::Array<juce::File>& definitions, bool graphicsOnly);
   // Asked before an organ's first load, with the load to run afterwards.
   // Unset, the load simply starts.
   std::function<void(std::function<void()>)> onBeforeFirstLoad;

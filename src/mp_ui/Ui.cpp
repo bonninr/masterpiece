@@ -330,10 +330,23 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     juce::PopupMenu menu;
     menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
     menu.addItem(2, "General settings...");
+    // The same organ as another definition: a perspective, or full and light.
+    const juce::File loaded = proc_.loadedOrganFile();
+    const auto versions = MasterpieceProcessor::organVersions(loaded);
+    if (versions.size() > 1) {
+      juce::PopupMenu other;
+      for (int i = 0; i < versions.size(); ++i)
+        other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
+                      versions[i] == loaded);
+      menu.addSeparator();
+      menu.addSubMenu("Other versions of this organ", other);
+    }
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
-                       [this](int choice) {
+                       [this, versions](int choice) {
                          if (choice == 1 && onOrganSettings) onOrganSettings();
                          if (choice == 2 && onSettings) onSettings();
+                         if (choice >= 100 && choice - 100 < versions.size())
+                           loadOrgan(versions[choice - 100]);
                        });
   };
 
@@ -464,8 +477,7 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
         if (definitions.size() == 1) {
           loadOrgan(definitions.getFirst(), graphicsOnly);
         } else if (definitions.size() > 1) {
-          top_.setStatus("These packages hold several organs: choose one");
-          chooseAndLoadOrgan(definitions.getFirst().getParentDirectory());
+          chooseDefinition(definitions, graphicsOnly);
         } else {
           status_ = "Failed to open " + odf.getFileName() + ": " + error;
           top_.setStatus(status_);
@@ -535,6 +547,32 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
 
 // The message-thread half of a load: close the dialog, then either report the
 // failure or build the console from the model that is now in place.
+void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definitions,
+                                         bool graphicsOnly) {
+  top_.setStatus("These packages hold several organs: choose one");
+  const juce::File last = MasterpieceProcessor::rememberedDefinition(definitions);
+  juce::Array<juce::File> order;
+  if (last != juce::File()) order.add(last);
+  for (const auto& d : definitions)
+    if (d != last) order.add(d);
+
+  juce::PopupMenu menu;
+  menu.addSectionHeader("Which organ?");
+  for (int i = 0; i < order.size(); ++i)
+    menu.addItem(i + 1, order[i].getFileNameWithoutExtension() +
+                            (order[i] == last ? juce::String("  (last opened)") : juce::String()));
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&top_),
+                     [self, order, graphicsOnly](int choice) {
+                       if (self == nullptr) return;
+                       if (choice < 1 || choice > order.size()) {
+                         self->top_.setStatus("No organ opened");
+                         return;
+                       }
+                       self->loadOrgan(order[choice - 1], graphicsOnly);
+                     });
+}
+
 void MasterpieceEditor::reloadOrgan() {
   const juce::File odf = proc_.loadedOrganFile();
   if (odf.existsAsFile()) loadOrgan(odf);
@@ -680,6 +718,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     onOrganLoaded(m.organName.empty()
                       ? odf.getFileNameWithoutExtension()
                       : juce::String(m.organName));
+  if (!graphicsOnly) MasterpieceProcessor::rememberDefinition(odf);
   if (then) then();
 }
 
