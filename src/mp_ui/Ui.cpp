@@ -265,13 +265,21 @@ void TopBar::resized() {
   r.removeFromLeft(6);
   simple_.setBounds(r.removeFromLeft(88));
   r.removeFromLeft(10);
-  volume_.setBounds(r.removeFromLeft(130));
+  // When the console's buttons leave too little room, things give way in
+  // order of how much they are missed: the status line first, then the
+  // meter, and the fader last -- never below a width a hand can still use.
+  const int room = r.getWidth();
+  const int volumeW = juce::jlimit(90, 130, room);
+  const int meterW = juce::jlimit(0, 112, room - volumeW - 8);
+  volume_.setBounds(r.removeFromLeft(volumeW));
   r.removeFromLeft(8);
   // Beside the fader it answers for: the two are read together.
-  meter_.setBounds(r.removeFromLeft(112).reduced(0, 5));
+  meter_.setVisible(meterW >= 40);
+  meter_.setBounds(r.removeFromLeft(meterW).reduced(0, 5));
   r.removeFromLeft(10);
   // Whatever is left. The status line is the one thing here that can be
   // shortened without losing a control, so it takes the squeeze.
+  status_.setVisible(r.getWidth() >= 60);
   status_.setBounds(r);
 }
 
@@ -360,6 +368,13 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                                  "combination set, in a window of their own");
   combinationsButton_.onClick = [this] { toggleCombinations(); };
 
+  addAndMakeVisible(tuningButton_);
+  tuningButton_.setTooltip("Temperament, pitch and transposer for this organ");
+  tuningButton_.onClick = [this] {
+    juce::CallOutBox::launchAsynchronously(std::make_unique<TuningPanel>(proc_),
+                                           tuningButton_.getScreenBounds(), nullptr);
+  };
+
   addAndMakeVisible(swellButton_);
   swellButton_.onClick = [this] {
     showingSwell_ = !showingSwell_;
@@ -402,7 +417,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   keyboard_.setAvailableRange(24, 108);
   keyboard_.setOctaveForMiddleC(4);
 
-  setSize(1180, 760);
+  setSize(1280, 760);
   setResizable(true, true);
   top_.setStatus("No organ loaded.");
   startTimerHz(4);
@@ -660,6 +675,7 @@ void MasterpieceEditor::resized() {
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
   combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
+  tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
   stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
@@ -786,6 +802,18 @@ void MasterpieceEditor::timerCallback() {
     case MidiTargetKind::ConsoleToggleCombinations:
       toggleCombinations();
       break;
+    case MidiTargetKind::TransposeUp:
+      proc_.setTranspose(proc_.transpose() + 1);
+      break;
+    case MidiTargetKind::TransposeDown:
+      proc_.setTranspose(proc_.transpose() - 1);
+      break;
+    case MidiTargetKind::TemperamentNext:
+      proc_.stepTemperament(1);
+      break;
+    case MidiTargetKind::TemperamentPrev:
+      proc_.stepTemperament(-1);
+      break;
     default:
       break;
   }
@@ -814,6 +842,10 @@ void MasterpieceEditor::timerCallback() {
   stepPrev_.setEnabled(seq.frame() > 1);
   stepNext_.setEnabled(capturing || seq.frame() < last);
   setter_.setToggleState(capturing, juce::dontSendNotification);
+  {
+    const auto tuning = TuningPanel::summary(proc_);
+    if (tuningButton_.getButtonText() != tuning) tuningButton_.setButtonText(tuning);
+  }
 
   // Above the console while this program is in front, and not above anyone
   // else's windows when it is not.

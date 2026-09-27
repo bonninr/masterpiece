@@ -42,6 +42,12 @@ enum class MidiTargetKind {
   ConsoleToggleStopList,
   ConsoleToggleKeyboard,
   ConsoleToggleCombinations,
+  // Tuning: the transposer a semitone either way, and the temperament to the
+  // next or previous in the list.
+  TransposeUp,
+  TransposeDown,
+  TemperamentNext,
+  TemperamentPrev,
 
   // The player's own pistons (PlayerCombinations): the same on every organ,
   // so they are targets of their own rather than switches in the file.
