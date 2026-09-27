@@ -1168,9 +1168,9 @@ struct Fixture {
 
 // The vector runs (SimdRun) against the per-frame path: the same notes, held
 // and released, in every storage format, mono and stereo, rendered both ways.
-// On x86 the answer is the same to the last bit; on ARM the compiler may fuse
-// a multiply and an add in the per-frame reader, so it is the same to within
-// rounding.
+// The answer is the same to the last bit: the engine's files are built
+// without fused multiply-adds (mp_sampler/CMakeLists.txt), which is what lets
+// ARM match too.
 class VoiceSimdRunTest final : public mp::test::Test {
 public:
   VoiceSimdRunTest() : Test("functional.voice.simd-runs", Category::Functional) {}
@@ -1253,8 +1253,7 @@ public:
                  what + ": held and released notes go to the vector code (" +
                      std::to_string(fast.simdFrames()) + " frames)");
         MP_CHECK(level > 0.05, what + ": the notes sound");
-        const double allowed = isa == mp::simd::Isa::Avx2 ? 0.0 : 1e-6;
-        MP_CHECK(worst <= allowed,
+        MP_CHECK(worst == 0.0,
                  what + ": the same output either way (worst difference " + std::to_string(worst) + ")");
       }
   }
