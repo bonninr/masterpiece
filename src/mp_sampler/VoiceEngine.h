@@ -16,6 +16,7 @@
 #pragma once
 #include "../mp_core/OrganModel.h"
 #include "StreamingEngine.h" // NoteStrike / NoteRelease + the selection matrices
+#include "SimdRun.h"
 
 #include <array>
 #include <atomic>
@@ -323,6 +324,15 @@ public:
   // (no free voice and nothing stealable, or the audio is not resident).
   int startVoice(const VoiceStart& start, uint64_t noteId);
 
+  // The vector unit the straight runs use, found when the engine is prepared
+  // (see SimdRun.h). Off renders every frame on the per-frame path, which is
+  // what a comparison or a suspicion of the vector code wants.
+  void setSimd(bool on) { isa_ = on ? simd::detect() : simd::Isa::None; }
+  simd::Isa simd() const { return isa_; }
+  // Voice-frames rendered by the vector code since prepare(). Counted once
+  // per run, not per frame, so it costs nothing to keep.
+  uint64_t simdFrames() const { return simdFrames_.load(std::memory_order_relaxed); }
+
   // Move every voice of this key press into release. `strike` carries the
   // key-off context the release matrix selects on.
   void noteOff(uint64_t noteId, const NoteRelease& release);
@@ -332,6 +342,8 @@ public:
   void noteOffPipe(uint64_t noteId, Id pipeId, const NoteRelease& release);
 
 private:
+  simd::Isa isa_ = simd::Isa::None;
+  std::atomic<uint64_t> simdFrames_{0};
   // The body of both: one pipe of a note, or all of them.
   void releaseVoices(uint64_t noteId, Id pipeId, const NoteRelease& release);
 public:
