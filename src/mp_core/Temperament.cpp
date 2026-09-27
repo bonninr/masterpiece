@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 namespace mp {
 
@@ -79,6 +80,80 @@ const Temperament* findTemperament(const std::string& name) {
     }
   }
   return nullptr;
+}
+
+bool parseScala(const std::string& text, Temperament& out, std::string& error) {
+  std::vector<std::string> lines;
+  {
+    std::string line;
+    for (size_t i = 0; i <= text.size(); ++i) {
+      if (i == text.size() || text[i] == '\n') {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] != '!') lines.push_back(line);
+        line.clear();
+      } else {
+        line += text[i];
+      }
+    }
+  }
+  // Blank lines count as content only for the description, which may be empty.
+  if (lines.empty()) {
+    error = "the file is empty";
+    return false;
+  }
+  auto trim = [](std::string s) {
+    const auto b = s.find_first_not_of(" \t");
+    if (b == std::string::npos) return std::string();
+    const auto e = s.find_last_not_of(" \t");
+    return s.substr(b, e - b + 1);
+  };
+  const std::string description = trim(lines[0]);
+  std::vector<std::string> rest;
+  for (size_t i = 1; i < lines.size(); ++i)
+    if (!trim(lines[i]).empty()) rest.push_back(trim(lines[i]));
+  if (rest.empty()) {
+    error = "no note count";
+    return false;
+  }
+  const int count = std::atoi(rest[0].c_str());
+  if (count != 12) {
+    error = "a keyboard temperament has 12 notes; this scale has " + rest[0];
+    return false;
+  }
+  if (static_cast<int>(rest.size()) < 1 + count) {
+    error = "the scale lists fewer than 12 notes";
+    return false;
+  }
+  std::vector<double> cents;
+  for (int i = 1; i <= count; ++i) {
+    // Only the first token counts: anything after it is a comment.
+    std::string tok = rest[static_cast<size_t>(i)];
+    const auto space = tok.find_first_of(" \t");
+    if (space != std::string::npos) tok = tok.substr(0, space);
+    double c = 0.0;
+    if (tok.find('.') != std::string::npos) {
+      c = std::atof(tok.c_str());
+    } else {
+      const auto slash = tok.find('/');
+      const double num = std::atof(tok.substr(0, slash).c_str());
+      const double den = slash == std::string::npos ? 1.0 : std::atof(tok.substr(slash + 1).c_str());
+      if (num <= 0.0 || den <= 0.0) {
+        error = "cannot read the note \"" + tok + "\"";
+        return false;
+      }
+      c = 1200.0 * std::log2(num / den);
+    }
+    cents.push_back(c);
+  }
+  if (std::abs(cents.back() - 1200.0) > 0.5) {
+    error = "the scale does not repeat at the octave";
+    return false;
+  }
+  out.name = description.empty() ? "Scala" : description;
+  out.centsOffset12.assign(12, 0.0);
+  for (int i = 1; i < 12; ++i)
+    out.centsOffset12[static_cast<size_t>(i)] = cents[static_cast<size_t>(i - 1)] - 100.0 * i;
+  return true;
 }
 
 double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double basePitchHz,

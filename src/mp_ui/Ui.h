@@ -11,6 +11,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_audio/MasterpieceProcessor.h"
 #include "CombinationsWindow.h"
+#include "TuningPanel.h"
 #include "Console.h"
 
 #include <memory>
@@ -165,6 +166,9 @@ private:
   juce::TextButton combinationsButton_{"Combinations"};
   std::unique_ptr<CombinationsWindow> combinations_;
   void toggleCombinations();
+  // Temperament, pitch and transposer. Labelled with what is in force, so the
+  // panel behind it only has to open to change something.
+  juce::TextButton tuningButton_;
   // Releases every key. An organ pipe does not decay, so one stuck note goes
   // on sounding until something stops it -- and the usual causes (a coupler
   // changed mid-chord, a MIDI note-off lost on the cable) leave the player

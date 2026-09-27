@@ -249,6 +249,10 @@ private:
   juce::TextButton learnStopList_{"Learn stop list"};
   juce::TextButton learnKeyboard_{"Learn keyboard"};
   juce::TextButton learnCombinations_{"Learn combinations"};
+  juce::TextButton learnTransposeDown_{"Learn transpose -"};
+  juce::TextButton learnTransposeUp_{"Learn transpose +"};
+  juce::TextButton learnTemperamentPrev_{"Learn temperament -"};
+  juce::TextButton learnTemperamentNext_{"Learn temperament +"};
   juce::Label mapStatus_;
   juce::Label note_;
   std::unique_ptr<juce::MidiOutput> openedOutput_;

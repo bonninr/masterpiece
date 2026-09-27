@@ -81,6 +81,10 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::ConsoleToggleStopList: return "console-stop-list";
     case MidiTargetKind::ConsoleToggleKeyboard: return "console-keyboard";
     case MidiTargetKind::ConsoleToggleCombinations: return "console-combinations";
+    case MidiTargetKind::TransposeUp: return "transpose-up";
+    case MidiTargetKind::TransposeDown: return "transpose-down";
+    case MidiTargetKind::TemperamentNext: return "temperament-next";
+    case MidiTargetKind::TemperamentPrev: return "temperament-prev";
     case MidiTargetKind::PlayerGeneral: return "general";
     case MidiTargetKind::PlayerGeneralCancel: return "general-cancel";
     case MidiTargetKind::PlayerDivisional: return "divisional";
@@ -103,6 +107,10 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "console-stop-list") return MidiTargetKind::ConsoleToggleStopList;
   if (s == "console-keyboard") return MidiTargetKind::ConsoleToggleKeyboard;
   if (s == "console-combinations") return MidiTargetKind::ConsoleToggleCombinations;
+  if (s == "transpose-up") return MidiTargetKind::TransposeUp;
+  if (s == "transpose-down") return MidiTargetKind::TransposeDown;
+  if (s == "temperament-next") return MidiTargetKind::TemperamentNext;
+  if (s == "temperament-prev") return MidiTargetKind::TemperamentPrev;
   if (s == "general") return MidiTargetKind::PlayerGeneral;
   if (s == "general-cancel") return MidiTargetKind::PlayerGeneralCancel;
   if (s == "divisional") return MidiTargetKind::PlayerDivisional;
@@ -249,6 +257,10 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::ConsoleToggleStopList:
     case MidiTargetKind::ConsoleToggleKeyboard:
     case MidiTargetKind::ConsoleToggleCombinations:
+    case MidiTargetKind::TransposeUp:
+    case MidiTargetKind::TransposeDown:
+    case MidiTargetKind::TemperamentNext:
+    case MidiTargetKind::TemperamentPrev:
     case MidiTargetKind::PlayerGeneral:
     case MidiTargetKind::PlayerGeneralCancel:
     case MidiTargetKind::PlayerDivisional:

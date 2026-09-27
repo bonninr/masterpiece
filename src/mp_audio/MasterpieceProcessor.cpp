@@ -102,6 +102,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     organTuning_.name = tIt->second.name;
     organTuning_.centsOffset12 = tIt->second.centsOffset12;
   }
+  setTemperament(temperamentChoice_, nullptr, /*remember=*/false);
 
   // The producer's output trim, resolved once here rather than per block.
   // Clamped because this multiplies everything the organ makes and a corrupt
@@ -639,6 +640,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::ConsoleToggleStopList:
         case MidiTargetKind::ConsoleToggleKeyboard:
         case MidiTargetKind::ConsoleToggleCombinations:
+        case MidiTargetKind::TransposeUp:
+        case MidiTargetKind::TransposeDown:
+        case MidiTargetKind::TemperamentNext:
+        case MidiTargetKind::TemperamentPrev:
           pendingConsoleAction_.store(static_cast<int>(action.kind),
                                       std::memory_order_release);
           continue;
@@ -691,7 +696,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         // its own.
         const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
         if (hit.on && msg.isNoteOn())
-          startNoteOnKeyboard(hit.keyboardId, key, hit.midiNote, hit.velocity);
+          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity);
         else
           stopNoteByKey(key, hit.velocity);
       }
@@ -1135,6 +1140,11 @@ bool MasterpieceProcessor::saveSettings() const {
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
            << (combWindow_.open ? 1 : 0) << "\n";
+    if (!temperamentChoice_.empty())
+      text << "temperament " << juce::String(temperamentChoice_) << "\n";
+    if (masterPitchSetting() > 0.0)
+      text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
+    if (transpose() != 0) text << "transpose " << transpose() << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1151,6 +1161,11 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.usingB = false;
   combinationSet_.clear();
   combWindow_ = {};
+  // Tuning belongs to the organ it was chosen for.
+  temperamentChoice_.clear();
+  playerTuning_.store(nullptr, std::memory_order_release);
+  masterPitchHz_.store(0.0, std::memory_order_relaxed);
+  transpose_.store(0, std::memory_order_relaxed);
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -1190,6 +1205,20 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "combset") {
       combinationSet_ = val.trim().toStdString();
+      continue;
+    }
+    if (key == "temperament") {
+      // Resolved against the organ's own once the organ is prepared.
+      temperamentChoice_ = val.trim().toStdString();
+      continue;
+    }
+    if (key == "pitchhz") {
+      // Read back as written; the setter's limits applied when it was set.
+      masterPitchHz_.store(juce::jmax(0.0, val.getDoubleValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "transpose") {
+      transpose_.store(juce::jlimit(-12, 12, val.getIntValue()), std::memory_order_relaxed);
       continue;
     }
     if (key == "combwindow") {
@@ -1680,8 +1709,10 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
   } else {
     targetHz = pipeTargetHz(pipe.midiNote, pipe.basePitch64ftHarmonicNum,
                             model_.basePitchHz, pipe.baseTuningDeviationCents,
-                            organTuning_, 0);
+                            activeTuning(), 0);
   }
+  // The player's pitch moves the whole organ, in either mode.
+  targetHz *= pitchFactor();
 
   // Detuning rides on the target, not on the recorded pitch: it is a change
   // to what this pipe should sound, not a claim about what the file holds.
@@ -1801,8 +1832,11 @@ int MasterpieceProcessor::clickChannelForKeyboard(Id keyboardId) const {
 }
 
 void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
+  // Keyed on the key the player pressed, sounded on the transposed one: the
+  // release finds its note by the key, so changing the transposer while a
+  // chord is held cannot leave any of it sounding.
   startNoteOnKeyboard(keyboardForChannel(channel, noteDeviceId_),
-                      noteKey(channel, midiNote), midiNote, velocity);
+                      noteKey(channel, midiNote), transposed(midiNote), velocity);
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
@@ -2136,6 +2170,77 @@ bool MasterpieceProcessor::switchEngaged(Id switchId) const {
   return engagedSwitches_.count(switchId) != 0;
 }
 
+// ------------------------------------------------------------ tuning
+
+bool MasterpieceProcessor::setTemperament(const std::string& choice,
+                                          std::string* error, bool remember) {
+  const Temperament* t = nullptr;
+  std::string why;
+  if (choice.rfind("scala:", 0) == 0) {
+    const juce::File file(juce::String(choice.substr(6)));
+    Temperament scala;
+    if (!file.existsAsFile()) why = "the Scala file is missing";
+    else if (parseScala(file.loadFileAsString().toStdString(), scala, why)) {
+      // Reuse a copy already held, so switching back and forth does not grow
+      // the list for the life of the organ.
+      for (const auto& held : scalaTunings_)
+        if (held.name == scala.name && held.centsOffset12 == scala.centsOffset12) t = &held;
+      if (t == nullptr) {
+        scalaTunings_.push_back(std::move(scala));
+        t = &scalaTunings_.back();
+      }
+    }
+  } else if (!choice.empty()) {
+    t = findTemperament(choice);
+    if (t == nullptr) why = "no temperament called " + choice;
+  }
+  if (!why.empty()) {
+    if (error != nullptr) *error = why;
+    juce::Logger::writeToLog("tuning: " + juce::String(why) + "; keeping the organ's own");
+    return false;
+  }
+  temperamentChoice_ = choice;
+  playerTuning_.store(t, std::memory_order_release);
+  if (remember) markSettingsDirty();
+  return true;
+}
+
+std::string MasterpieceProcessor::temperamentName() const {
+  const Temperament& t = activeTuning();
+  if (!t.name.empty()) return t.name;
+  return "Equal";
+}
+
+void MasterpieceProcessor::stepTemperament(int direction) {
+  // The organ's own first, then the library, and round again: a thumb
+  // piston cycling temperaments has no end to stop at.
+  std::vector<std::string> order{""};
+  for (const auto& t : temperamentLibrary()) order.push_back(t.name);
+  int at = 0;
+  for (size_t i = 0; i < order.size(); ++i)
+    if (order[i] == temperamentChoice_) at = static_cast<int>(i);
+  const int n = static_cast<int>(order.size());
+  setTemperament(order[static_cast<size_t>(((at + direction) % n + n) % n)]);
+}
+
+void MasterpieceProcessor::setMasterPitchHz(double hz) {
+  // Beyond a fourth either way the samples are being stretched further than
+  // any organ's pitch has ever differed from another's.
+  if (hz > 0.0) hz = juce::jlimit(nativePitchHz() * 0.75, nativePitchHz() * 1.34, hz);
+  masterPitchHz_.store(hz > 0.0 ? hz : 0.0, std::memory_order_relaxed);
+  markSettingsDirty();
+}
+
+double MasterpieceProcessor::masterPitchHz() const {
+  const double hz = masterPitchHz_.load(std::memory_order_relaxed);
+  return hz > 0.0 ? hz : nativePitchHz();
+}
+
+void MasterpieceProcessor::setTranspose(int semitones) {
+  transpose_.store(juce::jlimit(-12, 12, semitones), std::memory_order_relaxed);
+  markSettingsDirty();
+}
+
 // ------------------------------------------------ the player's own pistons
 
 bool MasterpieceProcessor::playerElementEngaged(
@@ -2351,8 +2456,9 @@ void MasterpieceProcessor::fireMovedStages() {
 LcdState MasterpieceProcessor::lcdState() const {
   LcdState s;
   s.organName = model_.organName;
-  s.temperament = organTuning_.name.empty() ? "Equal" : organTuning_.name;
-  s.pitchHz = model_.basePitchHz;
+  s.temperament = temperamentName();
+  s.pitchHz = masterPitchHz();
+  s.transpose = transpose();
   s.stopsDrawn = static_cast<int>(engagedStops_.size());
   if (const Id cres = stages_.crescendoControl())
     s.crescendoStep = static_cast<int>(stages_.currentStep(cres));

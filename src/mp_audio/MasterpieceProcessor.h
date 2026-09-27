@@ -33,6 +33,7 @@
 
 #include <array>
 #include <atomic>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
@@ -295,6 +296,31 @@ public:
   // drives this from the console; this is for one that has not, and for a UI
   // button.
   void setCaptureMode(bool on) { combinations_.setCaptureMode(on); }
+
+  // --- tuning: the player's, over the organ's own -----------------------
+  // Temperament, pitch and transposer, per organ. Each applies to the notes
+  // played after it changes: a held chord keeps the pitch it started with,
+  // as it would on a real organ being retuned under the player's hands.
+  //
+  // The temperament: empty for the organ's own, a name from
+  // temperamentLibrary(), or "scala:<path>" for a Scala file.
+  bool setTemperament(const std::string& choice, std::string* error = nullptr,
+                      bool remember = true);
+  const std::string& temperamentChoice() const { return temperamentChoice_; }
+  // The name of the temperament that sounds, for display.
+  std::string temperamentName() const;
+  // The next or previous in the list: the organ's own, then the library.
+  void stepTemperament(int direction);
+  // A in Hz; 0 is the organ's own pitch.
+  void setMasterPitchHz(double hz);
+  double masterPitchSetting() const { return masterPitchHz_.load(std::memory_order_relaxed); }
+  // What A sounds at now, and what it would be at the organ's own pitch.
+  double masterPitchHz() const;
+  double nativePitchHz() const { return model_.basePitchHz > 0.0 ? model_.basePitchHz : 440.0; }
+  // Keys, not samples: +2 plays the pipes two keys up. Clamped to an octave
+  // either way.
+  void setTranspose(int semitones);
+  int transpose() const { return transpose_.load(std::memory_order_relaxed); }
   bool captureMode() const { return combinations_.captureMode(); }
 
   // --- the crescendo, and everything else a shoe position moves -----------
@@ -962,6 +988,27 @@ private:
   // The organ's tuning, resolved once at load. Held by value so the audio
   // thread never chases a pointer into the model while it is being swapped.
   Temperament organTuning_;
+  // What the player chose instead, resolved: null means the organ's own. The
+  // library's entries live for the program's lifetime and a Scala file is
+  // kept in scalaTunings_, never erased while an organ is loaded, so a note
+  // starting on the audio thread never reads a temperament being replaced.
+  std::atomic<const Temperament*> playerTuning_{nullptr};
+  std::deque<Temperament> scalaTunings_;
+  std::string temperamentChoice_;
+  std::atomic<double> masterPitchHz_{0.0};
+  std::atomic<int> transpose_{0};
+  const Temperament& activeTuning() const {
+    const Temperament* t = playerTuning_.load(std::memory_order_acquire);
+    return t != nullptr ? *t : organTuning_;
+  }
+  double pitchFactor() const {
+    const double hz = masterPitchHz_.load(std::memory_order_relaxed);
+    return hz > 0.0 ? hz / nativePitchHz() : 1.0;
+  }
+  int transposed(int midiNote) const {
+    const int n = midiNote + transpose_.load(std::memory_order_relaxed);
+    return n < 0 ? 0 : (n > 127 ? 127 : n);
+  }
   std::unordered_set<Id> engagedStops_;
   std::atomic<bool> logMidi_{false};
   // How many manual assignments the last load had to discard from a saved

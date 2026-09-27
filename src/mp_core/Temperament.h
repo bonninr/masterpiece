@@ -17,6 +17,14 @@ struct Temperament {
 const std::vector<Temperament>& temperamentLibrary();
 const Temperament* findTemperament(const std::string& name);
 
+// A temperament from a Scala file (.scl), the format tuning libraries are
+// published in. Only twelve-note scales that repeat at the octave describe a
+// keyboard temperament, so anything else is refused with a reason. Degrees
+// are read as cents ("701.955") or ratios ("3/2", "2"); the scale starts on
+// C, as Scala keyboard mappings conventionally do. The name is the file's own
+// description line.
+bool parseScala(const std::string& text, Temperament& out, std::string& error);
+
 // Absolute sounding frequency (Hz) for a pipe.
 // MIDI 69 @ harmonic 8, 440 Hz base, zero deviation, Equal temperament => 440.0 Hz.
 double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double basePitchHz,

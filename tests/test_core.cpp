@@ -9157,6 +9157,112 @@ public:
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
 #endif // MP_TEST_HAS_AUDIO
 
+// A temperament from a Scala file, the format tuning libraries publish.
+class ScalaTemperamentTest final : public mp::test::Test {
+public:
+  ScalaTemperamentTest() : Test("functional.tuning.scala", Category::Functional) {}
+  void run() override {
+    // Werckmeister III as the Scala archive publishes it: cents and ratios
+    // mixed, a comment, and the octave last.
+    const std::string werckmeister =
+        "! werck3.scl\n"
+        "!\n"
+        "Andreas Werckmeister's temperament III (the most famous one, 1681)\n"
+        " 12\n"
+        "!\n"
+        " 256/243\n"
+        " 192.18000\n"
+        " 32/27\n"
+        " 390.22500\n"
+        " 4/3\n"
+        " 1024/729\n"
+        " 696.09000\n"
+        " 128/81\n"
+        " 888.27000\n"
+        " 16/9\n"
+        " 1092.18000\n"
+        " 2/1\n";
+    mp::Temperament t;
+    std::string why;
+    MP_CHECK(mp::parseScala(werckmeister, t, why), "a twelve-note octave scale reads");
+    MP_CHECK(t.name.rfind("Andreas Werckmeister", 0) == 0, "named by its description line");
+    MP_CHECK(t.centsOffset12.size() == 12 && t.centsOffset12[0] == 0.0, "C is the reference");
+    MP_CHECK(std::abs(t.centsOffset12[1] - (1200.0 * std::log2(256.0 / 243.0) - 100.0)) < 1e-9,
+             "a ratio becomes cents from equal temperament");
+    MP_CHECK(std::abs(t.centsOffset12[7] - (696.09 - 700.0)) < 1e-9,
+             "and so does a value written in cents");
+
+    mp::Temperament bad;
+    MP_CHECK(!mp::parseScala("Bohlen-Pierce\n 13\n", bad, why) && why.find("12") != std::string::npos,
+             "a scale of another size is refused, saying why");
+    std::string tritave = "No octave\n 12\n";
+    for (int i = 1; i <= 11; ++i) tritave += " " + std::to_string(100 * i) + ".0\n";
+    tritave += " 3/1\n";
+    MP_CHECK(!mp::parseScala(tritave, bad, why) && why.find("octave") != std::string::npos,
+             "and so is one that does not repeat at the octave");
+    MP_CHECK(!mp::parseScala("", bad, why), "and an empty file");
+  }
+};
+static ScalaTemperamentTest g_scalaTemperament;
+
+#ifdef MP_TEST_HAS_AUDIO
+// Issue #43: temperament, pitch and transposer, chosen by the player over the
+// organ's own, saved for the organ and shown on the console's displays.
+class TuningControlsTest final : public mp::test::Test {
+public:
+  TuningControlsTest() : Test("functional.tuning.player-controls", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    MP_CHECK(proc.temperamentChoice().empty() && proc.transpose() == 0 &&
+                 std::abs(proc.masterPitchHz() - proc.nativePitchHz()) < 1e-9,
+             "an organ starts on its own tuning");
+
+    MP_CHECK(proc.setTemperament("Werckmeister III") && proc.temperamentName() == "Werckmeister III",
+             "a temperament from the library can be chosen");
+    std::string why;
+    MP_CHECK(!proc.setTemperament("No such tuning", &why) && !why.empty() &&
+                 proc.temperamentName() == "Werckmeister III",
+             "an unknown one is refused and changes nothing");
+    proc.setMasterPitchHz(415.0);
+    proc.setTranspose(2);
+    proc.setTranspose(40);
+    MP_CHECK(proc.transpose() == 12, "the transposer stops at an octave");
+    proc.setTranspose(-2);
+
+    const auto lcd = proc.lcdState();
+    MP_CHECK(lcd.temperament == "Werckmeister III" && std::abs(lcd.pitchHz - 415.0) < 1e-9 &&
+                 lcd.transpose == -2,
+             "the console's displays show what is in force");
+
+    MP_CHECK(proc.saveSettings(), "saved for this organ");
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads again");
+    MP_CHECK(proc.temperamentName() == "Werckmeister III" && proc.transpose() == -2 &&
+                 std::abs(proc.masterPitchHz() - 415.0) < 0.01,
+             "and comes back with its tuning");
+
+    proc.setTemperament("");
+    proc.stepTemperament(1);
+    MP_CHECK(proc.temperamentChoice() == mp::temperamentLibrary().front().name,
+             "stepping from the organ's own reaches the first in the library");
+    proc.stepTemperament(-1);
+    proc.stepTemperament(-1);
+    MP_CHECK(proc.temperamentChoice() == mp::temperamentLibrary().back().name,
+             "and stepping back goes round, rather than stopping");
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static TuningControlsTest g_tuningControls;
+#endif // MP_TEST_HAS_AUDIO
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {
