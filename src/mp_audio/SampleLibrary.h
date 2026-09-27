@@ -168,6 +168,35 @@ public:
   // Such samples are always resident -- there is no file to stream a tail
   // from. Null for an ordinary organ.
   void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
+
+  // Memory figures BEFORE a load, from file sizes and WAV headers, without
+  // decoding anything. In three steps so the slow one -- reading thousands of
+  // headers, perhaps off a hard disk -- runs on a worker without touching the
+  // organ model, and the last one follows the engine settings as they change:
+  //
+  //   shapeJobs()     what to look at, from the model (message thread, quick)
+  //   readShape()     one file's channels, bits, length and rate (any thread)
+  //   residentBytes() what that sample holds resident at the current settings
+  //
+  // A file only in a package has no header to read, so it is taken to be
+  // 24-bit stereo; a WavPack file, about 55% of its PCM size.
+  struct ShapeJob {
+    Id sampleId = 0;
+    std::string path;          // on disk, when it is there
+    int64_t packageBytes = 0;  // the entry's size, when it is only in a package
+    bool wavpack = false;
+    bool releaseOnly = false;  // played only as a release: may stream
+  };
+  struct SampleShape {
+    int64_t frames = 0;
+    int channels = 0;
+    double rate = 0.0;
+    bool releaseOnly = false;
+  };
+  std::vector<ShapeJob> shapeJobs(const OrganModel& model, const std::string& organRootDir,
+                                  const OrganArchive* archive) const;
+  static SampleShape readShape(const ShapeJob& job);
+  int64_t residentBytes(const SampleShape& shape) const;
   const std::shared_ptr<const OrganArchive>& archive() const { return archive_; }
 
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and

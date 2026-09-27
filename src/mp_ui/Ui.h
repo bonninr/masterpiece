@@ -131,6 +131,9 @@ private:
   // is how it gets closed when the load ends.
   juce::DialogWindow* loadWindow_ = nullptr;
   bool loading_ = false;
+  // Run once the load in progress has finished: a first load reads the
+  // organ without its audio, then asks for Organ settings, then loads.
+  std::function<void()> afterLoad_;
 
 public:
   // Fired once an organ is on screen, with its name. The host puts it in the
@@ -144,6 +147,10 @@ public:
   // Supplied by the application, which owns the device manager the settings
   // panel needs.
   std::function<void()> onSettings;
+  // The organ's own settings: how it is loaded and which stops.
+  std::function<void()> onOrganSettings;
+  // Load the organ that is loaded now again, with whatever its settings say.
+  void reloadOrgan();
   // Asked before an organ's first load, with the load to run afterwards.
   // Unset, the load simply starts.
   std::function<void(std::function<void()>)> onBeforeFirstLoad;

@@ -52,6 +52,10 @@ void StopJamb::rebuild() {
     e.button->setToggleState(proc_.stopEngaged(s.stopId),
                              juce::dontSendNotification);
     e.button->setEnabled(s.playable);
+    if (s.playable && !proc_.stopLoaded(s.stopId)) {
+      e.button->setAlpha(0.45f);
+      e.button->setTooltip("Not loaded: chosen in Organ settings, Stops");
+    }
     if (!s.playable) {
       // Say WHY rather than just greying it: on a demo set this is the single
       // most confusing thing about the instrument.
@@ -320,7 +324,18 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   addAndMakeVisible(pageTabs_);
   pageTabs_.addChangeListener(this);
   addAndMakeVisible(settingsButton_);
-  settingsButton_.onClick = [this] { if (onSettings) onSettings(); };
+  settingsButton_.onClick = [this] {
+    // Two windows: what belongs to this organ, and what belongs to the
+    // program and the player's console.
+    juce::PopupMenu menu;
+    menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
+    menu.addItem(2, "General settings...");
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
+                       [this](int choice) {
+                         if (choice == 1 && onOrganSettings) onOrganSettings();
+                         if (choice == 2 && onSettings) onSettings();
+                       });
+  };
 
   // The sequencer. Held with "Set", stepping CAPTURES the frame it lands on,
   // which is how a registration is built for a piece.
@@ -464,14 +479,22 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
   // decide how much memory it will take -- 16-bit samples, mono, streamed
   // releases -- and they only act at load time. Closing them starts the load.
   if (!graphicsOnly && onBeforeFirstLoad && !proc_.settingsFileFor(odf).existsAsFile()) {
+    // The organ is read first, without its audio: the console is up in
+    // seconds, and Organ settings can then show this organ's own stops and
+    // what each would cost. Closing them loads the audio.
+    //
     // The window can also close because the application is quitting: then
     // there is nothing to load into, and perhaps no editor left.
     juce::Component::SafePointer<MasterpieceEditor> self(this);
-    onBeforeFirstLoad([self, odf] {
-      if (self == nullptr || juce::MessageManager::getInstance()->hasStopMessageBeenSent())
-        return;
-      self->startLoad(odf, false);
-    });
+    afterLoad_ = [self, odf] {
+      if (self == nullptr || !self->onBeforeFirstLoad) return;
+      self->onBeforeFirstLoad([self, odf] {
+        if (self == nullptr || juce::MessageManager::getInstance()->hasStopMessageBeenSent())
+          return;
+        self->startLoad(odf, false);
+      });
+    };
+    startLoad(odf, true);
     return;
   }
   startLoad(odf, graphicsOnly);
@@ -512,9 +535,17 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
 
 // The message-thread half of a load: close the dialog, then either report the
 // failure or build the console from the model that is now in place.
+void MasterpieceEditor::reloadOrgan() {
+  const juce::File odf = proc_.loadedOrganFile();
+  if (odf.existsAsFile()) loadOrgan(odf);
+}
+
 void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                                    const MasterpieceProcessor::LoadResult& result) {
   loading_ = false;
+  // Taken now so a failed load does not leave it waiting for the next one.
+  auto then = std::move(afterLoad_);
+  afterLoad_ = nullptr;
   if (loadWindow_ != nullptr) {
     delete loadWindow_;
     loadWindow_ = nullptr;
@@ -649,6 +680,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     onOrganLoaded(m.organName.empty()
                       ? odf.getFileNameWithoutExtension()
                       : juce::String(m.organName));
+  if (then) then();
 }
 
 void MasterpieceEditor::paint(juce::Graphics& g) {

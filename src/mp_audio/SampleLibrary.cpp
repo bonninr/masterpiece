@@ -401,6 +401,128 @@ void SampleLibrary::readFileMidiNote(const juce::AudioFormatReader& reader,
   out.fileMidiNote = static_cast<double>(note) + frac;
 }
 
+namespace {
+
+// Channels, bits and the size of the audio, from a WAV file's headers alone:
+// a few small reads per file, no decoding. False when it is not a plain WAV.
+struct WavShape {
+  int channels = 0;
+  int bits = 0;
+  double rate = 0.0;
+  int64_t dataBytes = 0;
+};
+
+bool readWavShape(const std::filesystem::path& path, WavShape& out) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return false;
+  char riff[12];
+  if (!in.read(riff, 12) || std::memcmp(riff, "RIFF", 4) != 0 || std::memcmp(riff + 8, "WAVE", 4) != 0)
+    return false;
+  auto u32 = [](const unsigned char* p) {
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+  };
+  for (int chunk = 0; chunk < 64; ++chunk) {
+    unsigned char head[8];
+    if (!in.read(reinterpret_cast<char*>(head), 8)) return false;
+    const uint32_t size = u32(head + 4);
+    if (std::memcmp(head, "fmt ", 4) == 0) {
+      unsigned char fmt[16];
+      if (size < 16 || !in.read(reinterpret_cast<char*>(fmt), 16)) return false;
+      out.channels = fmt[2] | (fmt[3] << 8);
+      out.rate = static_cast<double>(u32(fmt + 4));
+      out.bits = fmt[14] | (fmt[15] << 8);
+      in.seekg(static_cast<std::streamoff>(size - 16 + (size & 1)), std::ios::cur);
+    } else if (std::memcmp(head, "data", 4) == 0) {
+      out.dataBytes = size;
+      return out.channels > 0 && out.bits > 0;
+    } else {
+      in.seekg(static_cast<std::streamoff>(size + (size & 1)), std::ios::cur);
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
+    const OrganModel& model, const std::string& organRootDir, const OrganArchive* archive) const {
+  // Which samples the pipework plays, and which of them only as releases --
+  // the same two lists loadAll() builds, for the same reasons.
+  std::unordered_set<Id> attacks, releases;
+  for (const auto& [rankId, rank] : model.ranks) {
+    (void)rankId;
+    for (const auto& pipe : rank.pipes)
+      for (const auto& layer : pipe.layers) {
+        for (const auto& a : layer.attacks)
+          if (a.sample.sampleId != 0) attacks.insert(a.sample.sampleId);
+        for (const auto& r : layer.releases)
+          if (r.sample.sampleId != 0) releases.insert(r.sample.sampleId);
+      }
+  }
+  std::vector<ShapeJob> jobs;
+  jobs.reserve(attacks.size() + releases.size());
+  auto add = [&](Id id, bool releaseOnly) {
+    const auto it = model.samples.find(id);
+    if (it == model.samples.end()) return;
+    const SampleRef& ref = it->second;
+    ShapeJob job;
+    job.sampleId = id;
+    job.releaseOnly = releaseOnly;
+    const auto path = resolvePath(organRootDir, ref.fileName, ref.installationPackageId);
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+    job.wavpack = ext == ".wv";
+    job.path = path.string();
+    if (archive != nullptr) {
+      const auto rel = std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
+                           .generic_string();
+      if (const auto* e = archive->find(rel)) job.packageBytes = e->size;
+    }
+    jobs.push_back(std::move(job));
+  };
+  for (Id id : attacks) add(id, false);
+  for (Id id : releases)
+    if (attacks.count(id) == 0) add(id, true);
+  return jobs;
+}
+
+SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
+  SampleShape shape;
+  shape.releaseOnly = job.releaseOnly;
+  WavShape wav;
+  const std::filesystem::path path(job.path);
+  std::error_code ec;
+  int64_t fileBytes = job.packageBytes;
+  if (std::filesystem::exists(path, ec)) {
+    if (!job.wavpack && readWavShape(path, wav)) {
+      shape.channels = wav.channels;
+      shape.rate = wav.rate;
+      shape.frames = wav.dataBytes / std::max(1, wav.channels * wav.bits / 8);
+      return shape;
+    }
+    fileBytes = static_cast<int64_t>(std::filesystem::file_size(path, ec));
+  }
+  if (fileBytes <= 0) return shape;  // missing: nothing will be loaded for it
+  // No header to go on: 24-bit stereo, and a WavPack file about 55% of that.
+  const double pcmBytes = job.wavpack ? static_cast<double>(fileBytes) / 0.55
+                                      : static_cast<double>(fileBytes);
+  shape.channels = 2;
+  shape.frames = static_cast<int64_t>(pcmBytes / 6.0);
+  return shape;
+}
+
+int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
+  if (shape.frames <= 0 || shape.channels <= 0) return 0;
+  const int storeBytes = storage_ == SampleStorage::Int16 ? 2 : storage_ == SampleStorage::Int24 ? 3 : 4;
+  int64_t frames = shape.frames;
+  if (loadRate_ > 0.0 && shape.rate > 0.0)
+    frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
+  if (shape.releaseOnly && streamReleases_) frames = std::min(frames, streamHead_);
+  const int channels = loadMono_ ? 1 : shape.channels;
+  return frames * channels * storeBytes;
+}
+
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                         const std::string& organRootDir,
                                         int64_t maxFramesPerSample,

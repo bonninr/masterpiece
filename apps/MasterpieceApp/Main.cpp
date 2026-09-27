@@ -16,6 +16,7 @@
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_ui/Ui.h"
+#include "../../src/mp_ui/OrganSettings.h"
 #include "../../src/mp_ui/Settings.h"
 #include "../../src/mp_ui/Wizard.h"
 #include "../../src/mp_control/Registration.h"
@@ -655,8 +656,9 @@ private:
       // the device manager and hands the panel down.
       ed->onAudioSettings = [this] { showAudioSettings(); };
       ed->onSettings = [this, &p] { showSettings(p); };
+      ed->onOrganSettings = [this, &p] { showOrganSettings(p); };
       ed->onBeforeFirstLoad = [this, &p](std::function<void()> load) {
-        showSettings(p, std::move(load));
+        showOrganSettings(p, std::move(load));
       };
       // A document window should name its document. It also lets anything
       // driving the app from outside wait for the organ rather than guess at
@@ -690,7 +692,21 @@ private:
       panel->onClosed = std::move(onClosed);
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
-      opts.dialogTitle = "Masterpiece settings";
+      opts.dialogTitle = "General settings";
+      opts.dialogBackgroundColour = juce::Colour(0xff15171c);
+      opts.escapeKeyTriggersCloseButton = true;
+      opts.useNativeTitleBar = true;
+      opts.resizable = true;
+      opts.launchAsync();
+    }
+
+    void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
+      auto panel = std::make_unique<mp::ui::OrganSettingsWindow>(
+          proc, [this] { editor_->reloadOrgan(); });
+      panel->onClosed = std::move(onClosed);
+      juce::DialogWindow::LaunchOptions opts;
+      opts.content.setOwned(panel.release());
+      opts.dialogTitle = "Organ settings";
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;

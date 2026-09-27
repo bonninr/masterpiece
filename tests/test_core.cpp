@@ -9263,6 +9263,89 @@ public:
 static TuningControlsTest g_tuningControls;
 #endif // MP_TEST_HAS_AUDIO
 
+#ifdef MP_TEST_HAS_AUDIO
+// Organ settings, Stops: a stop left out is remembered with the organ and not
+// loaded the next time, and the memory figures shown before a load come from
+// the sample files' headers at the engine's current settings.
+class StopLoadChoiceTest final : public mp::test::Test {
+public:
+  StopLoadChoiceTest() : Test("functional.load.stop-choice", Category::Functional) {}
+
+  static juce::File writeWav(const juce::File& f, int channels, int bits, int frames) {
+    juce::WavAudioFormat wav;
+    f.deleteFile();
+    std::unique_ptr<juce::FileOutputStream> out(f.createOutputStream());
+    std::unique_ptr<juce::AudioFormatWriter> w(
+        wav.createWriterFor(out.get(), 48000.0, static_cast<unsigned>(channels), bits, {}, 0));
+    if (w != nullptr) {
+      out.release();
+      juce::AudioBuffer<float> buf(channels, frames);
+      buf.clear();
+      w->writeFromAudioSampleBuffer(buf, 0, frames);
+    }
+    return f;
+  }
+
+  void run() override {
+    // The choice itself, through a load and back.
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    MP_CHECK(proc.stopLoaded(901) && proc.excludedStops().empty(), "every stop is loaded at first");
+    proc.setExcludedStops({901});
+    MP_CHECK(proc.saveSettings(), "the choice is saved with the organ");
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "and the organ loads again");
+    MP_CHECK(proc.excludedStops().count(901) == 1, "remembering the choice");
+    MP_CHECK(!proc.stopLoaded(901), "so the stop left out was not loaded");
+    proc.setExcludedStops({});
+    proc.saveSettings();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.stopLoaded(901),
+             "and ticking it again brings it back on the next load");
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+
+    // The memory figures, from real headers.
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-stop-choice");
+    dir.createDirectory();
+    const juce::File stereo = writeWav(dir.getChildFile("stereo24.wav"), 2, 24, 48000);
+    const juce::File mono = writeWav(dir.getChildFile("mono16.wav"), 1, 16, 24000);
+
+    mp::SampleLibrary::ShapeJob job;
+    job.path = stereo.getFullPathName().toStdString();
+    const auto s24 = mp::SampleLibrary::readShape(job);
+    MP_CHECK(s24.channels == 2 && s24.frames == 48000, "a stereo file's shape comes from its header");
+    job.path = mono.getFullPathName().toStdString();
+    job.releaseOnly = true;
+    const auto m16 = mp::SampleLibrary::readShape(job);
+    MP_CHECK(m16.channels == 1 && m16.frames == 24000 && m16.releaseOnly, "and a mono one's");
+
+    mp::SampleLibrary lib;
+    lib.setStorage(mp::SampleStorage::Int16);
+    MP_CHECK(lib.residentBytes(s24) == 48000LL * 2 * 2, "16-bit: two bytes a sample");
+    lib.setStorage(mp::SampleStorage::Float32);
+    MP_CHECK(lib.residentBytes(s24) == 48000LL * 2 * 4, "float: four");
+    lib.setLoadMono(true);
+    MP_CHECK(lib.residentBytes(s24) == 48000LL * 1 * 4, "mono halves a stereo sample");
+    lib.setLoadMono(false);
+    lib.setStreamReleases(true);
+    lib.setStreamHeadFrames(8000);
+    MP_CHECK(lib.residentBytes(m16) == 8000LL * 1 * 4, "a streamed release keeps only its head");
+
+    job.path = dir.getChildFile("not-there.wav").getFullPathName().toStdString();
+    MP_CHECK(lib.residentBytes(mp::SampleLibrary::readShape(job)) == 0,
+             "a missing file costs nothing, since nothing will be loaded for it");
+    dir.deleteRecursively();
+  }
+};
+static StopLoadChoiceTest g_stopLoadChoice;
+#endif // MP_TEST_HAS_AUDIO
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {
