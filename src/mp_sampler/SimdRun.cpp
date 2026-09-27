@@ -8,6 +8,9 @@
 #if defined(_M_X64) || defined(__x86_64__)
 #define MP_SIMD_X86 1
 #include <immintrin.h>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
 #define MP_AVX2
@@ -262,6 +265,16 @@ Isa detect() {
   const char* forced = std::getenv("MASTERPIECE_SIMD");
   if (forced != nullptr && forced[0] == '0') return Isa::None;
 #if defined(MP_SIMD_X86)
+#if defined(__APPLE__)
+  // The Intel build on an Apple Silicon Mac runs under Rosetta, which does
+  // not normally report AVX2 -- but has been seen to fault on it when it
+  // does. The per-frame path there, whatever the CPU check says.
+  int translated = 0;
+  size_t size = sizeof(translated);
+  if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 &&
+      translated == 1)
+    return Isa::None;
+#endif
   return avx2Present() ? Isa::Avx2 : Isa::None;
 #elif defined(MP_SIMD_NEON)
   return Isa::Neon;
