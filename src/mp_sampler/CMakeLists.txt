@@ -2,6 +2,7 @@ add_library(mp_sampler STATIC
   StreamingEngine.h StreamingEngine.cpp
   DiskProbe.h DiskProbe.cpp
   VoiceEngine.h VoiceEngine.cpp
+  SimdRun.h SimdRun.cpp
 )
 target_include_directories(mp_sampler PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_sampler PUBLIC cxx_std_20)

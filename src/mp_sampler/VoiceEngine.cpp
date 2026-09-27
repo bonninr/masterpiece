@@ -72,11 +72,17 @@ constexpr double kReleaseFadeSeconds = 0.12;
 // frame still never clicks.
 constexpr int64_t kReleaseEndFadeFrames = 256;
 
+// The shortest straight run worth handing to the vector code: below this the
+// setup costs more than the frames save.
+constexpr int kMinSimdRun = 8;
+
 } // namespace
 
 void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
                           int maxBlockFrames) {
   stopWorkers(); // pool sizes depend on everything below
+  isa_ = simd::detect();
+  simdFrames_.store(0, std::memory_order_relaxed);
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   numChannels_ = numChannels > 0 ? numChannels : 2;
   maxFrames_ = maxBlockFrames > 0 ? maxBlockFrames : 2048;
@@ -522,9 +528,52 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
   const float storeScale = storageScale(buf);
+  // Whether this voice can have straight runs at all this block. A tremulant
+  // moves the pitch every frame, so its voices stay on the per-frame path.
+  const bool runnable = isa_ != simd::Isa::None && v.tremIndex < 0 &&
+                        simd::runSupports(isa_, bufChannels) && windRatio > 0.0;
+  const int64_t runEnd = resident - simd::kRunMargin;
 
   for (int i = 0; i < numFrames; ++i) {
     if (v.phase == VoicePhase::Idle) return;
+
+    // A straight run: nothing but interpolating and mixing until the cursor
+    // reaches the loop end, the end of the resident head, or the fade at the
+    // end of a release. Those frames go to the vector code at once and the
+    // per-frame path picks up from where the run stops -- which is why the
+    // run always ends short of anything that would need it.
+    if (runnable && v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr) {
+      const bool release = v.phase == VoicePhase::Release;
+      if (!release || v.releaseIsSample) {
+        double limit = static_cast<double>(runEnd);
+        if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd));
+        if (release)
+          limit = std::min(limit, static_cast<double>(total - kReleaseEndFadeFrames));
+        if (v.cursor >= 1.0 && v.cursor < limit) {
+          // One frame of slack: the positions are summed a frame at a time
+          // and must not cross the limit on the last of them.
+          const double room = (limit - v.cursor) / windRatio;
+          int n = numFrames - i;
+          if (room < static_cast<double>(n) + 1.0) n = static_cast<int>(room) - 1;
+          if (n >= kMinSimdRun) {
+            if (release) {
+              // What the per-frame path does on every frame of a release
+              // sample that is past its crossfade.
+              v.releaseGain = 1.0f;
+              v.relXfadeLeft = 0;
+            }
+            float envReal = v.gain * wind.ampMul;
+            if (release) envReal *= v.releaseGain;
+            const float env = envReal * storeScale;
+            v.cursor = simd::renderRun(isa_, frames, bufChannels, v.cursor, windRatio, env, out,
+                                       numChannels, i, n);
+            simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+            i += n - 1;
+            continue;
+          }
+        }
+      }
+    }
 
     // Loop handling: wrap inside the sustain loop while the key is held. The
     // loop is the voice's, not the buffer's, so a layer override applies.
