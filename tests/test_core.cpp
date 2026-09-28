@@ -9263,6 +9263,67 @@ public:
 static TuningControlsTest g_tuningControls;
 #endif // MP_TEST_HAS_AUDIO
 
+#ifdef MP_TEST_HAS_AUDIO
+// #53: loading an organ while the audio thread is running. The loader rebuilds
+// the whole engine -- a crash report showed the audio thread in
+// WindSolver::integrate() reading what WindSolver::reset() was freeing -- so
+// the audio thread must stand aside for the length of a load. Here it renders
+// without pause, with notes, while organs load one after another.
+class LoadWhilePlayingTest final : public mp::test::Test {
+public:
+  LoadWhilePlayingTest() : Test("functional.load.while-playing", Category::Functional) {}
+  void run() override {
+    const juce::String dir(MP_TEST_FIXTURES_DIR);
+    const juce::File organs[] = {juce::File(dir + "/minimal.Organ_Hauptwerk_xml"),
+                                 juce::File(dir + "/m24.expression.Organ_Hauptwerk_xml"),
+                                 juce::File(dir + "/m22.tuning.Organ_Hauptwerk_xml")};
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(organs[0], 0, false).ok, "the first organ loads");
+
+    std::atomic<bool> stop{false};
+    std::atomic<int> blocks{0};
+    std::thread audio([&] {
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer midi;
+      int n = 0;
+      while (!stop.load()) {
+        midi.clear();
+        if (n % 8 == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 60 + (n / 8) % 12, 0.8f), 0);
+        if (n % 8 == 4) midi.addEvent(juce::MidiMessage::noteOff(1, 60 + (n / 8) % 12), 0);
+        proc.processBlock(buf, midi);
+        ++n;
+        blocks.fetch_add(1);
+      }
+    });
+    bool allLoaded = true;
+    for (int i = 0; i < 12; ++i) allLoaded = proc.loadOrgan(organs[i % 3], 0, false).ok && allLoaded;
+    stop.store(true);
+    audio.join();
+    MP_CHECK(allLoaded, "every load succeeded with the audio thread running throughout");
+    MP_CHECK(blocks.load() > 0, "and the audio thread rendered meanwhile");
+    // What stops the crash: while a load rebuilds the engine the audio thread
+    // stands aside, answering its blocks with silence. A race cannot be relied
+    // on to show itself on organs this small; that it stood aside can.
+    MP_CHECK(proc.blocksSkippedForLoad() > 0,
+             "blocks that arrived during a load were answered with silence (" +
+                 std::to_string(proc.blocksSkippedForLoad()) + ")");
+
+    // After a load the engine plays again -- and a host that hands over a
+    // bigger block than it prepared for must not make the swell box's
+    // scratch buffer overflow (m24 has an enclosure).
+    MP_CHECK(proc.loadOrgan(organs[1], 0, false).ok, "the organ with a swell box loads");
+    juce::MidiBuffer midi;
+    for (int frames : {256, 1024}) {
+      juce::AudioBuffer<float> buf(2, frames);
+      for (int n = 0; n < 16; ++n) proc.processBlock(buf, midi);
+    }
+    MP_CHECK(true, "blocks after the loads, one bigger than prepared, run normally");
+  }
+};
+static LoadWhilePlayingTest g_loadWhilePlaying;
+#endif // MP_TEST_HAS_AUDIO
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

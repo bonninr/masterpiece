@@ -1285,9 +1285,9 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
             "between two pieces.\n\n"
             "Gaps are kept. Removing slot 1 does not renumber slot 5, because "
             "the numbers are the thing you learned.\n\n"
-            "Loading starts in the background - a large set takes a while, and "
-            "the organ you are playing keeps sounding until the new one is "
-            "ready.\n\n"
+            "Loading happens in the background: the window stays usable while a "
+            "large set takes its time. The organ falls silent while the new one "
+            "loads.\n\n"
             "A combination set is a whole registration book: one for a "
             "recital, another for a service. Changing set saves the one you "
             "are leaving first, so nothing you captured is lost by switching.");

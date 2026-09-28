@@ -615,6 +615,9 @@ public:
     bool open = false;
   };
   const WindowPlace& combinationsWindowPlace() const { return combWindow_; }
+  // Audio blocks answered with silence because an organ was being loaded
+  // (see EngineSuspension). For tests and diagnostics.
+  uint64_t blocksSkippedForLoad() const { return blocksSkippedForLoad_.load(); }
   void setCombinationsWindowPlace(const WindowPlace& p) {
     combWindow_ = p;
     markSettingsDirty();
@@ -1232,6 +1235,25 @@ private:
   void fireMovedStages();
   // False while a load is rebuilding the stage table; see loadOrgan().
   std::atomic<bool> stagesReady_{false};
+  // A load rebuilds the whole engine on the loading thread: the settings and
+  // mixer routing, the model, the wind, the switches, the couplers, the
+  // voices. The audio thread must touch none of it meanwhile -- a crash
+  // report showed WindSolver::integrate() reading what WindSolver::reset()
+  // was freeing. While suspended, processBlock outputs silence and returns at
+  // once; the loader, having set the flag, waits for any block already
+  // running to finish before it changes anything (EngineSuspension).
+  //
+  // Both are sequentially consistent: the audio thread counts itself in
+  // BEFORE reading the flag, the loader sets the flag BEFORE reading the
+  // count, so one of them always sees the other.
+  std::atomic<bool> engineSuspended_{false};
+  std::atomic<int> inAudioCallback_{0};
+  std::atomic<uint64_t> blocksSkippedForLoad_{0};
+  struct EngineSuspension {
+    explicit EngineSuspension(MasterpieceProcessor& p);
+    ~EngineSuspension();
+    MasterpieceProcessor& proc;
+  };
   // False until a load has finished; pallets start no voices before then.
   std::atomic<bool> palletsLive_{false};
   // Set with palletsLive_: the first block after a load opens the pallets of
