@@ -322,28 +322,28 @@ int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
   // A set may ship one recording per pipe -- attack, sustain loop and release
   // together -- and mark where the release begins with a cue point. The organ
   // definition then names that same sample as the pipe's release and says, in
-  // its load-range fields, that it starts at the marker. Without this the
-  // release is the whole file played again from the top: the note sounds on
-  // for several more seconds at full strength, and a piece silts up.
+  // its load-range fields, that it starts at the marker.
   //
-  // JUCE exposes the cue chunk as flat metadata: "NumCuePoints", then
-  // "Cue<N>Offset" per cue (juce_WavAudioFormat.cpp, CueChunk::copyTo).
+  // In these samples the release marker is the last valid cue point in the
+  // file. Earlier cue points may mark sustain-loop starts.
+  juce::ignoreUnused(loopEnd);
+
   const auto& meta = reader.metadataValues;
   const int numCues = meta.getValue("NumCuePoints", "0").getIntValue();
   if (numCues <= 0) return -1;
 
-  // The one that marks the release sits after the sustain loop. Where several
-  // are declared, the earliest past the loop is the release; with no loop to
-  // judge against, the earliest cue inside the file has to serve.
   int64_t best = -1;
   for (int i = 0; i < numCues; ++i) {
     const juce::String key = "Cue" + juce::String(i) + "Offset";
     if (!meta.containsKey(key)) continue;
-    const auto at = static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
+
+    const auto at =
+        static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
+
     if (at <= 0 || at >= totalFrames) continue;
-    if (loopEnd > 0 && at < loopEnd) continue;
-    if (best < 0 || at < best) best = at;
+    if (best < 0 || at > best) best = at;
   }
+
   return best;
 }
 
@@ -864,7 +864,7 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
-constexpr uint32_t kCacheVersion = 3; // 3 adds the file's declared pitch
+constexpr uint32_t kCacheVersion = 4; // 4 fixes release cues; 3 added file pitch
 
 template <typename T>
 void putPod(std::ostream& os, const T& v) {
