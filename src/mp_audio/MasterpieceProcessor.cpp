@@ -407,8 +407,11 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
 #endif
 
   // Without expression there is nothing to separate: render every voice at
-  // once and skip the per-enclosure scratch entirely.
-  if (!enclosuresActive || busEnclosures_.empty()) {
+  // once and skip the per-enclosure scratch entirely. The same for a block
+  // bigger than the host prepared us for, which the scratch cannot hold: the
+  // shades are not applied for that block rather than memory being overrun.
+  if (!enclosuresActive || busEnclosures_.empty() ||
+      numFrames > busScratch_.getNumSamples() || numCh > busScratch_.getNumChannels()) {
     voices_.render(dest.getArrayOfWritePointers(), numCh, numFrames, -1,
                    mixBusFilter);
     return;
@@ -2852,9 +2855,36 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
   }
 }
 
+MasterpieceProcessor::EngineSuspension::EngineSuspension(MasterpieceProcessor& p) : proc(p) {
+  proc.engineSuspended_.store(true);
+  // A block that started before the flag was set is still using the engine.
+  // It is at most a few milliseconds of work; nothing is changed until it
+  // has left.
+  while (proc.inAudioCallback_.load() != 0) std::this_thread::yield();
+}
+
+MasterpieceProcessor::EngineSuspension::~EngineSuspension() {
+  proc.engineSuspended_.store(false);
+}
+
 void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
   buffer.clear();
+
+  // Counted in before looking at the flag, counted out on every way out.
+  inAudioCallback_.fetch_add(1);
+  struct Leave {
+    std::atomic<int>& count;
+    ~Leave() { count.fetch_sub(1); }
+  } leave{inAudioCallback_};
+  // An organ is being loaded: the engine is being rebuilt under us. Silence,
+  // and the notes that arrive meanwhile are dropped -- the organ they were
+  // played on is the one being replaced.
+  if (engineSuspended_.load()) {
+    midi.clear();
+    blocksSkippedForLoad_.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
 
   // The runtime DSP switch is a plain parameter so a slow machine can drop to
   // the simple-WAV path without a rebuild (ADR-005).
@@ -3052,6 +3082,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     result.error = "no such file: " + odfFile.getFullPathName().toStdString();
     return result;
   }
+
+  // From here to the end the engine is being replaced -- the settings and
+  // routing first, then the model and everything built from it -- so the
+  // audio thread stands aside until this returns, however it returns.
+  const EngineSuspension suspended(*this);
 
   // What this organ was last set to. Has to happen before a byte of audio is
   // read: the resident format, streaming and the preload head all decide how
@@ -3565,8 +3600,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
   // Rebuild everything that is derived from the model. prepareToPlay may not
   // have run yet (headless), in which case it will pick this up when it does.
+  //
+  // At the block size it was last prepared for, not getBlockSize(): that is
+  // only what a host has REPORTED, and with none reporting -- the render tool,
+  // a test -- it is 0, which sized the scratch buffers to one frame for the
+  // next 256-frame block to write past.
   if (sampleRate_ > 0.0)
-    prepareToPlay(sampleRate_, juce::jmax(1, getBlockSize()));
+    prepareToPlay(sampleRate_, juce::jmax(1, maxBlock_));
 
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
