@@ -338,13 +338,17 @@ int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
   //
   // JUCE exposes the cue chunk as flat metadata: "NumCuePoints", then
   // "Cue<N>Offset" per cue (juce_WavAudioFormat.cpp, CueChunk::copyTo).
+  //
+  // The release marker is the LAST cue: files with several also mark where
+  // each sustain loop starts, and taking the earliest left notes sounding
+  // after the key was let go (#33, #60). It is still never inside the sustain
+  // loop -- a release that started there would play the loop's tail instead --
+  // so with a loop to judge against, only cues past its end count; without
+  // one, the last cue in the file serves.
   const auto& meta = reader.metadataValues;
   const int numCues = meta.getValue("NumCuePoints", "0").getIntValue();
   if (numCues <= 0) return -1;
 
-  // The one that marks the release sits after the sustain loop. Where several
-  // are declared, the earliest past the loop is the release; with no loop to
-  // judge against, the earliest cue inside the file has to serve.
   int64_t best = -1;
   for (int i = 0; i < numCues; ++i) {
     const juce::String key = "Cue" + juce::String(i) + "Offset";
@@ -352,7 +356,7 @@ int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
     const auto at = static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
     if (at <= 0 || at >= totalFrames) continue;
     if (loopEnd > 0 && at < loopEnd) continue;
-    if (best < 0 || at < best) best = at;
+    if (best < 0 || at > best) best = at;
   }
   return best;
 }
@@ -1102,7 +1106,7 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
-constexpr uint32_t kCacheVersion = 3; // 3 adds the file's declared pitch
+constexpr uint32_t kCacheVersion = 4; // 4 fixes release cues; 3 added file pitch
 
 template <typename T>
 void putPod(std::ostream& os, const T& v) {

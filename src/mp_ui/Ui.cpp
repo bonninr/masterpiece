@@ -610,8 +610,16 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
         } else if (definitions.size() > 1) {
           chooseDefinition(definitions, graphicsOnly);
         } else {
-          status_ = "Failed to open " + odf.getFileName() + ": " + error;
+          status_ = "Failed to open " + odf.getFileName();
           top_.setStatus(status_);
+          // Said where the player is looking, with where the details are:
+          // a status line is easy to miss and says too little to act on.
+          juce::String where;
+          if (auto* file = dynamic_cast<juce::FileLogger*>(juce::Logger::getCurrentLogger()))
+            where = "\n\nThe steps are in the log: " + file->getLogFile().getFullPathName();
+          juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                                 "Could not open " + odf.getFileName(),
+                                                 error + where);
         }
       });
     });
