@@ -9010,6 +9010,232 @@ public:
 };
 static OrganArchiveGroupingTest g_organArchiveGrouping;
 
+// An archive that cannot be read says why, before any of it is decompressed
+// (#53, and a multi-volume set reported as "does not open"): a password, a
+// missing volume, a lone volume, a download still running, and the one kind
+// of solid RAR 4 not read yet -- split into volumes.
+class OrganArchiveFeedbackTest final : public mp::test::Test {
+public:
+  OrganArchiveFeedbackTest() : Test("functional.archive.feedback", Category::Functional) {}
+  static std::string rar4(unsigned mainFlags, unsigned fileFlags) {
+    std::string b("Rar!\x1a\x07\x00", 7);
+    // main header: crc, type 0x73, flags, size 13, six reserved bytes
+    b += std::string("\0\0\x73", 3);
+    b += static_cast<char>(mainFlags & 0xff);
+    b += static_cast<char>(mainFlags >> 8);
+    b += std::string("\x0d\0", 2) + std::string(6, '\0');
+    // the first file header: crc, type 0x74, flags, size
+    b += std::string("\0\0\x74", 3);
+    b += static_cast<char>(fileFlags & 0xff);
+    b += static_cast<char>(fileFlags >> 8);
+    b += std::string("\x20\0", 2) + std::string(64, '\0');
+    return b;
+  }
+  static std::string rar5(unsigned type, unsigned archiveFlags) {
+    std::string b("Rar!\x1a\x07\x01\x00", 8);
+    b += std::string(4, '\0');  // crc
+    b += static_cast<char>(3);  // header size: type, flags, archive flags
+    b += static_cast<char>(type);
+    b += static_cast<char>(0);
+    b += static_cast<char>(archiveFlags);
+    return b + std::string(64, '\0');
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-feedback";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    auto put = [&](const char* name, const std::string& bytes) {
+      std::ofstream(dir / name, std::ios::binary) << bytes;
+      return (dir / name).string();
+    };
+    using F = mp::ArchiveKind::Format;
+
+    // --- what the first header says ---
+    auto k = mp::inspectArchive(put("plain.rar", rar4(0, 0)));
+    MP_CHECK(k.format == F::Rar4 && !k.solid && !k.multiVolume, "a plain RAR 4");
+    k = mp::inspectArchive(put("solid.rar", rar4(0x0008, 0)));
+    MP_CHECK(k.format == F::Rar4 && k.solid, "a solid RAR 4");
+    k = mp::inspectArchive(put("locked.rar", rar4(0, 0x0004)));
+    MP_CHECK(k.encryptedFiles, "a RAR 4 whose files need a password");
+    k = mp::inspectArchive(put("five.rar", rar5(1, 0x4)));
+    MP_CHECK(k.format == F::Rar5 && k.solid, "a solid RAR 5");
+    k = mp::inspectArchive(put("fivelocked.rar", rar5(4, 0)));
+    MP_CHECK(k.format == F::Rar5 && k.encryptedHeaders, "a RAR 5 with its file list locked");
+    k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
+    MP_CHECK(k.format == F::Zip, "a ZIP");
+    k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
+    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
+             "and it can say so in words");
+
+    auto why = [&](const char* name) {
+      mp::OrganArchive a;
+      std::string error;
+      if (!a.discover((dir / name).string(), error)) return error;
+      if (!a.inspect(error)) return error;
+      return std::string("(opened)");
+    };
+    MP_CHECK(why("solid.rar") == "(opened)", "a solid RAR 4 is read now (by unarr)");
+    put("Split.part1.rar", rar4(0x0109, 0));
+    put("Split.part2.rar", rar4(0x0009, 0));
+    MP_CHECK(why("Split.part1.rar").find("split into volumes") != std::string::npos &&
+                 why("Split.part1.rar").find("7-Zip") != std::string::npos,
+             "a solid RAR 4 split into volumes is refused, with what to do instead");
+    MP_CHECK(why("locked.rar").find("password") != std::string::npos, "a password is named");
+    MP_CHECK(why("junk.rar").find("not a RAR") != std::string::npos, "junk is called junk");
+    MP_CHECK(why("plain.rar") == "(opened)", "and a readable one passes");
+
+    // --- volume sets, from their names ---
+    put("Set.part1.rar", rar5(1, 0x1));
+    put("Set.part3.rar", rar5(1, 0x3));
+    MP_CHECK(why("Set.part1.rar").find("part 2") != std::string::npos,
+             "a missing part is named: " + why("Set.part1.rar"));
+    put("Old.rar", rar4(0x0101, 0));
+    put("Old.r01", rar4(0x0001, 0));
+    MP_CHECK(why("Old.rar").find(".r00") != std::string::npos,
+             "and in the old scheme: " + why("Old.rar"));
+    put("Lone.rar", rar4(0x0101, 0));
+    MP_CHECK(why("Lone.rar").find("other volumes are not beside it") != std::string::npos,
+             "a volume without its set says so: " + why("Lone.rar"));
+
+    // --- second downloads ---
+    put("Twice.rar", rar4(0, 0));
+    put("Twice (1).rar", rar4(0, 0));
+    put("Twice.1.rar", rar4(0, 0));
+    {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / "Twice.rar").string(), error) && a.archives().size() == 1,
+               "a browser's and a download manager's second downloads are not read as more packages");
+      size_t ignored = 0;
+      for (const auto& line : a.report())
+        if (line.rfind("ignored ", 0) == 0) ++ignored;
+      MP_CHECK(ignored == 2, "and the log says they were passed over");
+    }
+    put("Casa.CompPkg.Hauptwerk.rar", rar4(0x0101, 0));
+    put("Casa.CompPkg.Hauptwerk (1).r00", rar4(0x0001, 0));
+    put("Casa.CompPkg.Hauptwerk.r01", rar4(0x0001, 0));
+    MP_CHECK(why("Casa.CompPkg.Hauptwerk.rar").find("browser renamed") != std::string::npos,
+             "a volume renamed by the browser is explained: " + why("Casa.CompPkg.Hauptwerk.rar"));
+
+    // --- a download still running ---
+    put("Coming.rar", rar4(0, 0));
+    put("Coming.rar.part", "x");
+    MP_CHECK(why("Coming.rar").find("still downloading") != std::string::npos,
+             "an unfinished download is recognised");
+    fs::remove_all(dir, ec);
+  }
+};
+static OrganArchiveFeedbackTest g_organArchiveFeedback;
+
+// Solid RAR 4 -- how most Hauptwerk sets ship -- is read by unarr, the rest by
+// libarchive, which refuses solid RAR 4 outright. RAR 7 can no longer write
+// RAR 4, so the archives are built here, byte by byte: files stored rather
+// than compressed, but flagged solid exactly as a real set is, which is what
+// decides the reader. The samples come first and the artwork last, so
+// reaching the artwork walks the solid chain through them. Real compressed
+// solid data is checked against the Nancy demo by hand (6.7 GB, 15,577
+// files, 18 GB out, no failures).
+class SolidRar4Test final : public mp::test::Test {
+public:
+  SolidRar4Test() : Test("functional.archive.solid-rar4", Category::Functional) {}
+  static uint32_t crc32(const std::string& d) {
+    uint32_t c = 0xFFFFFFFFu;
+    for (unsigned char b : d) {
+      c ^= b;
+      for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
+    }
+    return ~c;
+  }
+  static std::string le(uint32_t v, int bytes) {
+    std::string out;
+    for (int i = 0; i < bytes; ++i) out += static_cast<char>((v >> (8 * i)) & 0xff);
+    return out;
+  }
+  static std::string header(const std::string& body) {
+    return le(crc32(body) & 0xffff, 2) + body;
+  }
+  static std::string pattern(int k, int n) {
+    std::string out(static_cast<size_t>(n), '\0');
+    for (int i = 0; i < n; ++i) out[static_cast<size_t>(i)] = static_cast<char>((i * 7 + k * 13) % 251);
+    return out;
+  }
+  static std::string rar4(const std::vector<std::pair<std::string, std::string>>& files, bool solid) {
+    std::string b("Rar!\x1a\x07\x00", 7);
+    b += header(std::string("\x73", 1) + le(solid ? 0x0008 : 0, 2) + le(13, 2) + std::string(6, '\0'));
+    for (size_t i = 0; i < files.size(); ++i) {
+      const auto& [name, data] = files[i];
+      const unsigned flags = 0x8000 | (solid && i > 0 ? 0x0010 : 0);
+      b += header(std::string("\x74", 1) + le(flags, 2) + le(32 + static_cast<uint32_t>(name.size()), 2) +
+                  le(static_cast<uint32_t>(data.size()), 4) + le(static_cast<uint32_t>(data.size()), 4) +
+                  std::string("\x02", 1) + le(crc32(data), 4) + le(0x5A2E0000u, 4) +
+                  std::string("\x14\x30", 2) + le(static_cast<uint32_t>(name.size()), 2) + le(0x20, 4) + name);
+      b += data;
+    }
+    return b + header(std::string("\x7b", 1) + le(0x4000, 2) + le(7, 2));
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-solid-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string xml = "<Hauptwerk>tiny</Hauptwerk>\n";
+    const std::vector<std::pair<std::string, std::string>> files = {
+        {"OrganInstallationPackages\\000123\\pipe1.wav", pattern(1, 40000)},
+        {"OrganInstallationPackages\\000123\\pipe2.wav", pattern(2, 30000)},
+        {"OrganInstallationPackages\\000123\\Images\\console.png", pattern(3, 5000)},
+        {"OrganDefinitions\\Tiny.Organ_Hauptwerk_xml", xml}};
+
+    for (const bool solid : {true, false}) {
+      const std::string label = solid ? "solid: " : "plain: ";
+      const fs::path file = dir / (solid ? "tinysolid.rar" : "tinyplain.rar");
+      std::ofstream(file, std::ios::binary) << rar4(files, solid);
+      MP_CHECK(mp::inspectArchive(file.string()).solid == solid, label + "the header says what it is");
+
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(file.string(), error) && a.inspect(error), label + error);
+      bool viaUnarr = false;
+      for (const auto& line : a.report())
+        if (line.find("solid RAR 4 reader") != std::string::npos) viaUnarr = true;
+      MP_CHECK(viaUnarr == solid, label + "the reader is chosen by the solid flag");
+      MP_CHECK(a.index(error), label + "indexed: " + error);
+      MP_CHECK(a.entries().size() == 4 && a.find("OrganInstallationPackages/000123/pipe2.wav") != nullptr &&
+                   a.find("OrganInstallationPackages/000123/pipe2.wav")->size == 30000,
+               label + "every file is listed, with its size");
+
+      const fs::path out = dir / (solid ? "out-solid" : "out-plain");
+      MP_CHECK(a.unpackSmallFiles(out.string(), error), label + "unpacked: " + error);
+      auto slurp = [](const fs::path& f) {
+        std::ifstream in(f, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), {});
+      };
+      MP_CHECK(slurp(out / "OrganDefinitions" / "Tiny.Organ_Hauptwerk_xml") == xml &&
+                   slurp(out / "OrganInstallationPackages" / "000123" / "Images" / "console.png") == pattern(3, 5000),
+               label + "the definition and the artwork come out whole, after the samples");
+      MP_CHECK(!fs::exists(out / "OrganInstallationPackages" / "000123" / "pipe1.wav"),
+               label + "and the samples are not unpacked");
+
+      std::string got;
+      const std::unordered_set<std::string> wanted = {
+          mp::OrganArchive::key("OrganInstallationPackages/000123/pipe2.wav")};
+      MP_CHECK(a.read(0, wanted,
+                      [&got](const std::string&, std::vector<char>&& bytes) {
+                        got.assign(bytes.begin(), bytes.end());
+                        return true;
+                      },
+                      error),
+               label + "read: " + error);
+      MP_CHECK(got == pattern(2, 30000), label + "the second sample arrives intact, past the first");
+    }
+    fs::remove_all(dir, ec);
+  }
+};
+static SolidRar4Test g_solidRar4;
+
 // A GrandOrgue wave tremulant is the pipes recorded with it running: those
 // takes make a twin rank that the tremulant's switch swaps in. And an attack
 // for quick repetition is chosen by the time since the pipe let go.

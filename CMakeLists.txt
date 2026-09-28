@@ -144,6 +144,63 @@ else()
   set(MP_LIBARCHIVE_TARGET LibArchive::LibArchive)
 endif()
 
+# ---- unarr (solid RAR 4, which libarchive refuses) ----
+# Most Hauptwerk packages are RAR 4, and most of those are solid: libarchive
+# stops at the first file of every one of them ("RAR solid archive support
+# unavailable"). unarr reads them. LGPL-3.0, so it can ship inside this GPL-3
+# program, as the RAR project's own unrar source could not.
+#
+# Only its RAR 4 reader is built, from the sources, rather than through its
+# own CMake: that one asks for CMake 3.25 and builds 7z, ZIP and tar besides.
+# Pinned to a commit: the library is small and the RAR code rarely changes.
+option(MP_FETCH_UNARR "Fetch unarr via FetchContent" ON)
+set(MP_UNARR_COMMIT "9c8e898bb3dc2ee9d368b0e945d5bb453e15c187" CACHE STRING "unarr commit")
+if(MP_FETCH_UNARR)
+  include(FetchContent)
+  FetchContent_Declare(
+    unarr
+    GIT_REPOSITORY https://github.com/selmf/unarr.git
+    GIT_TAG ${MP_UNARR_COMMIT}
+    # Fetched, not configured: nothing lives in this subdirectory, so
+    # MakeAvailable adds no project of its own.
+    SOURCE_SUBDIR not-built
+  )
+  FetchContent_MakeAvailable(unarr)
+  set(unarr_VERSION_MAJOR 1)
+  set(unarr_VERSION_MINOR 2)
+  set(unarr_VERSION_PATCH 0)
+  set(unarr_VERSION 1.2.0)
+  configure_file(${unarr_SOURCE_DIR}/unarr.h.in ${CMAKE_BINARY_DIR}/unarr-include/unarr.h @ONLY)
+  add_library(mp_unarr STATIC
+    ${unarr_SOURCE_DIR}/common/conv.c
+    ${unarr_SOURCE_DIR}/common/crc32.c
+    ${unarr_SOURCE_DIR}/common/stream.c
+    ${unarr_SOURCE_DIR}/common/unarr.c
+    ${unarr_SOURCE_DIR}/lzmasdk/CpuArch.c
+    ${unarr_SOURCE_DIR}/lzmasdk/Ppmd7.c
+    ${unarr_SOURCE_DIR}/lzmasdk/Ppmd7Dec.c
+    ${unarr_SOURCE_DIR}/lzmasdk/Ppmd7aDec.c
+    ${unarr_SOURCE_DIR}/rar/filter-rar.c
+    ${unarr_SOURCE_DIR}/rar/huffman-rar.c
+    ${unarr_SOURCE_DIR}/rar/parse-rar.c
+    ${unarr_SOURCE_DIR}/rar/rar.c
+    ${unarr_SOURCE_DIR}/rar/rarvm.c
+    ${unarr_SOURCE_DIR}/rar/uncompress-rar.c)
+  target_include_directories(mp_unarr
+    PUBLIC ${CMAKE_BINARY_DIR}/unarr-include
+    PRIVATE ${unarr_SOURCE_DIR} ${unarr_SOURCE_DIR}/common)
+  target_compile_definitions(mp_unarr PRIVATE UNARR_EXPORT_SYMBOLS _FILE_OFFSET_BITS=64)
+  if(MSVC)
+    target_compile_definitions(mp_unarr PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(mp_unarr PRIVATE /W3)
+  endif()
+  set_target_properties(mp_unarr PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE ON)
+  set(MP_UNARR_TARGET mp_unarr)
+else()
+  find_package(unarr REQUIRED)
+  set(MP_UNARR_TARGET unarr::unarr)
+endif()
+
 # ---- WavPack (GrandOrgue sets ship their samples compressed with it) ----
 # The decoder library only: no programs, plugins or hand-written assembly.
 # BSD-licensed.
