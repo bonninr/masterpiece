@@ -457,23 +457,6 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     juce::PopupMenu menu;
     menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
     menu.addItem(2, "General settings...");
-    // The same organ as another definition: a perspective, or full and light.
-    const juce::File loaded = proc_.loadedOrganFile();
-    const auto versions = MasterpieceProcessor::organVersions(loaded);
-    if (versions.size() > 1) {
-      juce::PopupMenu other;
-      for (int i = 0; i < versions.size(); ++i)
-        other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
-                      versions[i] == loaded);
-      menu.addSeparator();
-      menu.addSubMenu("Other versions of this organ", other);
-    }
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
-                       [this, versions](int choice) {
-                         if (choice == 1 && onOrganSettings) onOrganSettings();
-                         if (choice == 2 && onSettings) onSettings();
-                         if (choice >= 100 && choice - 100 < versions.size())
-                           loadOrgan(versions[choice - 100]);
                        });
   };
 
