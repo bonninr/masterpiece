@@ -960,6 +960,9 @@ void MasterpieceEditor::timerCallback() {
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
 
+  // The swell strip follows a pedal moved over MIDI.
+  if (expression_.isVisible()) expression_.refresh();
+
   // Voice count is the honest health readout: it says whether drawing a stop
   // and pressing a key actually produced sound.
   const auto& stats = proc_.voiceStats();
