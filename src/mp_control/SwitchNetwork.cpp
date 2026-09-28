@@ -8,6 +8,7 @@ void SwitchNetwork::reset(const OrganModel& model) {
   bySource_.clear();
   byCondition_.clear();
   byDest_.clear();
+  mirrors_.clear();
   engaged_.clear();
   changes_.clear();
   work_.clear();
@@ -19,6 +20,14 @@ void SwitchNetwork::reset(const OrganModel& model) {
     if (l.conditionSwitchId != 0)
       byCondition_[l.conditionSwitchId].push_back(&l);
     byDest_[l.destSwitchId].push_back(&l);
+  }
+  {
+    std::unordered_set<uint64_t> wires;
+    for (const SwitchLinkage& l : links_)
+      if (l.sourceSwitchId != l.destSwitchId) wires.insert(pairKey(l.sourceSwitchId, l.destSwitchId));
+    for (const SwitchLinkage& l : links_)
+      if (wires.count(pairKey(l.destSwitchId, l.sourceSwitchId)) != 0)
+        mirrors_.insert(pairKey(l.destSwitchId, l.sourceSwitchId));
   }
 
   // An organ ships with some switches already made: a blower that is running,
@@ -78,6 +87,8 @@ bool SwitchNetwork::anotherEngagingWire(Id dest,
   if (it == byDest_.end()) return false;
   for (const SwitchLinkage* l : it->second) {
     if (l == except) continue;
+    // An echo of `dest` itself, not a second route into it: see the header.
+    if (mirrors_.count(pairKey(dest, l->sourceSwitchId)) != 0) continue;
     const auto index = static_cast<size_t>(l - links_.data());
     if (index < fired_.size() && fired_[index] != 0 &&
         actionEngages(l->engageAction))

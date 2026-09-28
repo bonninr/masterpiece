@@ -559,6 +559,16 @@ public:
   // global defaults because it belongs to the program, not to any one organ.
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
+  // Keep portable speakers from going to sleep (#55). A battery speaker on a
+  // 3.5 mm cable switches its amplifier off after a few seconds of silence and
+  // takes a second or two to wake on the next note, swallowing it. With this
+  // on, a 20 Hz tone too low and too quiet to hear runs under the organ, so
+  // the line is never silent. The level is the player's: how much signal
+  // wakes an amplifier differs from one model to the next.
+  //
+  // Program-wide, in the global file. 0 means off; otherwise dBFS, -80..-40.
+  void setSpeakerKeepAlive(float levelDb);
+  float speakerKeepAlive() const { return keepAliveDb_.load(std::memory_order_relaxed); }
   void setReopenLastOrgan(bool on);
 
   // Crash guard. While the guard is on, a load writes the organ into the
@@ -648,6 +658,9 @@ public:
     bool open = false;
   };
   const WindowPlace& combinationsWindowPlace() const { return combWindow_; }
+  // Audio blocks answered with silence because an organ was being loaded
+  // (see EngineSuspension). For tests and diagnostics.
+  uint64_t blocksSkippedForLoad() const { return blocksSkippedForLoad_.load(); }
   void setCombinationsWindowPlace(const WindowPlace& p) {
     combWindow_ = p;
     markSettingsDirty();
@@ -663,6 +676,29 @@ public:
   void markMasterGainDirty() { masterGainDirty_.store(true, std::memory_order_release); }
   bool saveMasterGainIfDirty();
   bool saveMasterGain() const;
+  // What the ORGAN asks to keep from one session to the next -- its controls
+  // and switches marked RememberStateFromLastLoad: Nancy's audio-group and
+  // noise levels, its "start blower on load" switch. Moving one used to be
+  // written only if something else saved the file afterwards, so a level set
+  // on the organ's own settings page was back at its default after a restart
+  // (#53).
+  //
+  // Raised on any thread when a control or switch moves; written on the
+  // message thread once the player has stopped for a second, so dragging a
+  // slider is not a file write per frame. Like the gain, it rewrites only its
+  // own lines ("control", "switch"), never the rest of the file from the live
+  // state.
+  void markRememberedStateMoved() {
+    if (hasRememberedState_)
+      // Never 0, which means "nothing waiting"; never ahead of the clock
+      // either, or the wait would wrap round and read as long over.
+      rememberedMovedAtMs_.store(std::max(juce::Time::getMillisecondCounter(), 1u),
+                                 std::memory_order_release);
+  }
+  bool saveRememberedStateIfSettled(uint32_t quietMs = 1000);
+  // Now, whatever the wait: on closing, and before another organ replaces
+  // this one.
+  bool saveRememberedStateIfPending();
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
   bool saveMidiMap() const;
@@ -1127,6 +1163,9 @@ private:
   // Off unless asked for: reopening at start is what turns one crash into a
   // loop of them.
   bool reopenLastOrgan_ = false;
+  std::atomic<float> keepAliveDb_{0.0f};
+  double keepAlivePhase_ = 0.0;  // audio thread only
+  void addKeepAlive(juce::AudioBuffer<float>& buffer);
   bool crashGuard_ = false;
   juce::File runningOrgan_;
   juce::File crashedOrgan_;
@@ -1157,6 +1196,16 @@ private:
   // much further down and would wipe anything set before it — so these wait
   // and are applied on the far side of it.
   std::vector<std::pair<Id, int>> pendingControlValues_;
+  // The same for remembered switches, applied once the switch network exists.
+  std::vector<std::pair<Id, bool>> pendingSwitchStates_;
+  // The "control" and "switch" lines for the organ's remembered state.
+  juce::String rememberedStateLines() const;
+  bool saveRememberedState() const;
+  // Whether this organ remembers anything at all; most do not, and they never
+  // pay for a write.
+  bool hasRememberedState_ = false;
+  // When remembered state last moved, 0 for "nothing waiting".
+  std::atomic<uint32_t> rememberedMovedAtMs_{0};
   // The defaults as they stand on disk, kept verbatim so that writing the
   // file for any other reason cannot rewrite them from whatever is loaded.
   juce::String globalBody_;
@@ -1268,6 +1317,25 @@ private:
   void fireMovedStages();
   // False while a load is rebuilding the stage table; see loadOrgan().
   std::atomic<bool> stagesReady_{false};
+  // A load rebuilds the whole engine on the loading thread: the settings and
+  // mixer routing, the model, the wind, the switches, the couplers, the
+  // voices. The audio thread must touch none of it meanwhile -- a crash
+  // report showed WindSolver::integrate() reading what WindSolver::reset()
+  // was freeing. While suspended, processBlock outputs silence and returns at
+  // once; the loader, having set the flag, waits for any block already
+  // running to finish before it changes anything (EngineSuspension).
+  //
+  // Both are sequentially consistent: the audio thread counts itself in
+  // BEFORE reading the flag, the loader sets the flag BEFORE reading the
+  // count, so one of them always sees the other.
+  std::atomic<bool> engineSuspended_{false};
+  std::atomic<int> inAudioCallback_{0};
+  std::atomic<uint64_t> blocksSkippedForLoad_{0};
+  struct EngineSuspension {
+    explicit EngineSuspension(MasterpieceProcessor& p);
+    ~EngineSuspension();
+    MasterpieceProcessor& proc;
+  };
   // False until a load has finished; pallets start no voices before then.
   std::atomic<bool> palletsLive_{false};
   // Set with palletsLive_: the first block after a load opens the pallets of

@@ -731,9 +731,8 @@ private:
     }
 
     void showAudioSettings() {
-      auto panel = std::make_unique<juce::AudioDeviceSelectorComponent>(
-          devices_, 0, 0, 1, 8, true, true, true, false);
-      panel->setSize(500, 450);
+      auto panel = std::make_unique<mp::ui::AudioSettingsPanel>(
+          devices_, editor_->organProcessor());
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "Audio and MIDI";

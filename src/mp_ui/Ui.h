@@ -26,6 +26,11 @@ class StopJamb : public juce::Component {
 public:
   explicit StopJamb(MasterpieceProcessor& p);
   void rebuild();
+  // Follow the engine: a stop drawn on the console, by a piston or from MIDI
+  // shows here too. Called on the editor's timer.
+  void refresh();
+  // The height the grid needs at a given width: the columns follow the width.
+  int heightFor(int width) const;
   void resized() override;
   void paint(juce::Graphics& g) override;
 
@@ -52,11 +57,41 @@ public:
   // How many enclosures this organ actually has. An unenclosed organ should
   // not be offered a swell control at all, rather than an empty strip.
   int shoeCount() const { return static_cast<int>(shoes_.size()); }
+  // Follow the engine: a pedal moved over MIDI moves its slider too.
+  void refresh();
+
+private:
+  // A slider that offers MIDI learn on a right-click.
+  class Shoe : public juce::Slider {
+  public:
+    Shoe(MasterpieceProcessor& p, Id controlId)
+        : juce::Slider(juce::Slider::LinearVertical, juce::Slider::NoTextBox),
+          proc_(p), controlId_(controlId) {}
+    Id controlId() const { return controlId_; }
+    void mouseDown(const juce::MouseEvent& e) override;
+
+  private:
+    MasterpieceProcessor& proc_;
+    Id controlId_;
+  };
+  MasterpieceProcessor& proc_;
+  std::vector<std::unique_ptr<Shoe>> shoes_;
+  std::vector<std::unique_ptr<juce::Label>> labels_;
+};
+
+// The Audio and MIDI dialog: the device selector, and under it what belongs
+// to the output rather than to any organ -- keeping portable speakers awake.
+class AudioSettingsPanel : public juce::Component {
+public:
+  AudioSettingsPanel(juce::AudioDeviceManager& devices, MasterpieceProcessor& p);
+  void resized() override;
 
 private:
   MasterpieceProcessor& proc_;
-  std::vector<std::unique_ptr<juce::Slider>> shoes_;
-  std::vector<std::unique_ptr<juce::Label>> labels_;
+  juce::AudioDeviceSelectorComponent selector_;
+  juce::ToggleButton keepAwake_{"Keep portable speakers awake"};
+  juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  void apply();
 };
 
 // Organ name, load button, audio settings, and what the load actually found.
@@ -104,6 +139,7 @@ class MasterpieceEditor : public juce::AudioProcessorEditor,
                           private juce::ChangeListener {
 public:
   explicit MasterpieceEditor(MasterpieceProcessor& p);
+  MasterpieceProcessor& organProcessor() { return proc_; }
   ~MasterpieceEditor() override;
 
   void paint(juce::Graphics& g) override;
@@ -168,6 +204,10 @@ private:
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};
   juce::TextButton swellButton_{"Swell"};
+  // What shows the tooltips the controls carry. Without one, none of them ever
+  // appeared. On the desktop rather than in the editor, so the combinations
+  // window's are shown too.
+  juce::TooltipWindow tooltips_{nullptr, 700};
   // Opens and closes the combinations window: the player's own pistons, on
   // every organ, floating beside the console rather than drawn over it.
   juce::TextButton combinationsButton_{"Combinations"};
