@@ -110,6 +110,17 @@ int fieldInt(const pugi::xml_node& row, const char* full, const char* code, int 
   return (end != v.c_str()) ? static_cast<int>(r) : dflt;
 }
 
+// A selection ceiling -- the highest velocity, controller value or hold time
+// an attack or release answers to. -1 is the format's own "no limit", written
+// out by some sets where others write 99999 or leave the field out (OdfEdit
+// treats -1 and 99999 alike). Read literally it is a limit nothing passes: a
+// release that asked for "any hold time" matched no key release at all, and
+// the note ended in a short fade instead of its recorded tail (#59).
+int ceilingField(const pugi::xml_node& row, const char* full, const char* code, int dflt) {
+  const int v = fieldInt(row, full, code, dflt);
+  return v < 0 ? dflt : v;
+}
+
 double fieldDouble(const pugi::xml_node& row, const char* full, const char* code, double dflt) {
   const std::string v = field(row, full, code);
   if (v.empty()) return dflt;
@@ -528,10 +539,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     AttackSample attack;
     attack.id = fieldInt(row, "UniqueID", "a", 0);
     attack.sample = sampleIt->second;
-    attack.velHigh = fieldInt(row, "AttackSelCriteria_HighestVelocity", "h", 127);
+    attack.velHigh = ceilingField(row, "AttackSelCriteria_HighestVelocity", "h", 127);
     attack.minTimeSinceCloseMs =
         fieldInt(row, "AttackSelCriteria_MinTimeSincePrevPipeCloseMs", "i", 0);
-    attack.ctsHigh = fieldInt(row, "AttackSelCriteria_HighestCtsCtrlValue", "j", 127);
+    attack.ctsHigh = ceilingField(row, "AttackSelCriteria_HighestCtsCtrlValue", "j", 127);
     attack.loadStartType = fieldInt(row, "LoadSampleRange_StartPositionTypeCode", "d", 0);
     attack.loadStartValue = fieldInt(row, "LoadSampleRange_StartPositionValue", "e", 0);
     attack.loadEndType = fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", 0);
@@ -560,11 +571,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     release.id = fieldInt(row, "UniqueID", "a", 0);
     release.sample = sampleIt->second;
     release.attackVelHigh =
-        fieldInt(row, "AttackSelCriteria_HighestVelocity", "h", 127);
+        ceilingField(row, "AttackSelCriteria_HighestVelocity", "h", 127);
     release.attackCtsHigh =
-        fieldInt(row, "AttackSelCriteria_HighestCtsCtrlValue", "j", 127);
-    release.velHigh = fieldInt(row, "ReleaseSelCriteria_HighestVelocity", "p", 127);
-    release.ctsHigh = fieldInt(row, "ReleaseSelCriteria_HighestCtsCtrlValue", "r", 127);
+        ceilingField(row, "AttackSelCriteria_HighestCtsCtrlValue", "j", 127);
+    release.velHigh = ceilingField(row, "ReleaseSelCriteria_HighestVelocity", "p", 127);
+    release.ctsHigh = ceilingField(row, "ReleaseSelCriteria_HighestCtsCtrlValue", "r", 127);
     release.scaleAmplitude = fieldBool(row, "ScaleAmplitudeAutomatically", "k", true);
     release.preferLinkedAttackId =
         fieldInt(row, "ReleaseSelCriteria_PreferThisRelForAttackID", "s", 0);
@@ -573,7 +584,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     release.loadEndType = fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", 0);
     release.loadEndValue = fieldInt(row, "LoadSampleRange_EndPositionValue", "g", 0);
     release.holdTimeMsHigh =
-        fieldInt(row, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", "q", INT32_MAX);
+        ceilingField(row, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", "q", INT32_MAX);
     release.releaseCrossfadeMs =
         fieldDouble(row, "ReleaseCrossfadeLengthMs", "n", release.releaseCrossfadeMs);
     release.phaseAlign = fieldBool(row, "PhaseAlignAutomatically", "m", false);

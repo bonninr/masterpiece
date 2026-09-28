@@ -7797,6 +7797,65 @@ public:
   }
 };
 
+// #59: -1 is the format's "no limit" for a selection ceiling (OdfEdit reads
+// -1 and 99999 alike), and some sets write it out. Read literally, a release
+// for "any hold time" matched no key release at all and the recorded tail was
+// replaced by a short fade.
+class ReleaseDefaultLimitTest final : public mp::test::Test {
+public:
+  ReleaseDefaultLimitTest() : Test("functional.matrix.release-default-limit", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Sample\">"
+                 "<Sample><SampleID>1</SampleID><SampleFilename>a.wav</SampleFilename></Sample>"
+                 "<Sample><SampleID>2</SampleID><SampleFilename>short.wav</SampleFilename></Sample>"
+                 "<Sample><SampleID>3</SampleID><SampleFilename>long.wav</SampleFilename></Sample>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>R</Name></Rank></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+                 "<Pipe_SoundEngine01><PipeID>70</PipeID><RankID>7</RankID>"
+                 "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+                 "<Pipe_SoundEngine01_Layer><LayerID>70</LayerID><PipeID>70</PipeID></Pipe_SoundEngine01_Layer>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+                 "<Pipe_SoundEngine01_AttackSample><UniqueID>71</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>1</SampleID><AttackSelCriteria_HighestVelocity>-1</AttackSelCriteria_HighestVelocity>"
+                 "</Pipe_SoundEngine01_AttackSample></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_ReleaseSample\">"
+                 "<Pipe_SoundEngine01_ReleaseSample><UniqueID>72</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>2</SampleID>"
+                 "<ReleaseSelCriteria_LatestKeyReleaseTimeMs>150</ReleaseSelCriteria_LatestKeyReleaseTimeMs>"
+                 "</Pipe_SoundEngine01_ReleaseSample>"
+                 "<Pipe_SoundEngine01_ReleaseSample><UniqueID>73</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>3</SampleID>"
+                 "<ReleaseSelCriteria_LatestKeyReleaseTimeMs>-1</ReleaseSelCriteria_LatestKeyReleaseTimeMs>"
+                 "<ReleaseSelCriteria_HighestVelocity>-1</ReleaseSelCriteria_HighestVelocity>"
+                 "<ReleaseSelCriteria_HighestCtsCtrlValue>-1</ReleaseSelCriteria_HighestCtsCtrlValue>"
+                 "</Pipe_SoundEngine01_ReleaseSample></ObjectList></Hauptwerk>",
+                 "limits.Organ_Hauptwerk_xml", o, m, d),
+             "the organ loads");
+    const mp::PipeLayer& layer = m.ranks.find(7)->second.pipes.front().layers.front();
+    MP_CHECK(layer.attacks.front().velHigh == 127, "an attack's -1 velocity ceiling means any velocity");
+    MP_CHECK(mp::selectAttack(layer, mp::NoteStrike{100, 1000, 64}) == 0, "so a loud key finds it");
+
+    mp::NoteRelease staccato{0, 71, 64, 127, 64, 100, 127};
+    mp::NoteRelease held{0, 71, 64, 127, 64, 4000, 127};
+    MP_CHECK(mp::selectRelease(layer, staccato) == 0, "a short press takes the short release");
+    MP_CHECK(mp::selectRelease(layer, held) == 1,
+             "a held note takes the release written for any hold time (-1), not none at all");
+  }
+};
+static ReleaseDefaultLimitTest g_releaseDefaultLimit;
+
 class MatrixCoverageQueryTest final : public mp::test::Test {
 public:
   MatrixCoverageQueryTest()
