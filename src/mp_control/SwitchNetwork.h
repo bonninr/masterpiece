@@ -47,6 +47,15 @@
 // So a disengage assertion is applied only when no other wire firing into the
 // same destination is asserting engagement. That OR is also what two parallel
 // wires into one stop mean on an organ that reaches a switch by two routes.
+//
+// Except a wire from the destination's own MIRROR -- a switch the destination
+// drives straight back. Consoles draw one stop on several pages and link the
+// copies both ways: Nancy's Simple Jamb knob, Left Jamb image and Console
+// knob all follow one another. Counted in the OR, each copy held the others
+// on: pushing in the Simple Jamb knob tried to disengage the Console knob,
+// the Left Jamb image -- engaged only because the Console knob had engaged
+// it -- counted as another wire holding it, and the stop sounded on (#53). A
+// mirror is an echo of the destination, not a second route into it.
 #pragma once
 #include "../mp_core/OrganModel.h"
 
@@ -116,6 +125,12 @@ private:
   std::unordered_map<Id, std::vector<const SwitchLinkage*>> byCondition_;
   // Wires indexed by destination, for the OR rule above.
   std::unordered_map<Id, std::vector<const SwitchLinkage*>> byDest_;
+  // (a, b) pairs, as a << 32 | b, where a wire runs a -> b and another b -> a:
+  // the copies of one control, which the OR rule does not count.
+  std::unordered_set<uint64_t> mirrors_;
+  static uint64_t pairKey(Id a, Id b) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(a)) << 32) | static_cast<uint32_t>(b);
+  }
   // Whether each wire fired at the last evaluation, parallel to links_. A
   // wire asserts its destination on the edges, not on the level.
   std::vector<uint8_t> fired_;

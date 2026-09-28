@@ -5161,6 +5161,24 @@ public:
     map.cancelLearn();
     MP_CHECK(!map.learning(), "learning can be cancelled");
 
+    // A swell shoe or a level is learned from a controller (#53). A key played
+    // while one is armed is not taken for it: the learn waits for the pedal.
+    {
+      mp::MidiSource key;
+      key.kind = mp::MidiSourceKind::Note;
+      key.channel = 1;
+      key.number = 60;
+      map.beginLearn(mp::MidiTargetKind::ContinuousControl, 12, false);
+      MP_CHECK(!map.learnFrom(key) && map.learning(),
+               "a key does not complete a continuous control's learn");
+      MP_CHECK(map.learnFrom(cc(22)), "a controller does");
+      const auto a = map.actionFor(cc(22), 90);
+      MP_CHECK(a.kind == mp::MidiTargetKind::ContinuousControl && a.targetId == 12 &&
+                   a.value == 90,
+               "and then moves the control to the value it sends");
+      map.unbindTarget(mp::MidiTargetKind::ContinuousControl, 12);
+    }
+
     // One source drives one target: re-using a button reassigns it.
     mp::MidiBinding reuse;
     reuse.source = cc(65);
@@ -7797,6 +7815,65 @@ public:
   }
 };
 
+// #59: -1 is the format's "no limit" for a selection ceiling (OdfEdit reads
+// -1 and 99999 alike), and some sets write it out. Read literally, a release
+// for "any hold time" matched no key release at all and the recorded tail was
+// replaced by a short fade.
+class ReleaseDefaultLimitTest final : public mp::test::Test {
+public:
+  ReleaseDefaultLimitTest() : Test("functional.matrix.release-default-limit", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Sample\">"
+                 "<Sample><SampleID>1</SampleID><SampleFilename>a.wav</SampleFilename></Sample>"
+                 "<Sample><SampleID>2</SampleID><SampleFilename>short.wav</SampleFilename></Sample>"
+                 "<Sample><SampleID>3</SampleID><SampleFilename>long.wav</SampleFilename></Sample>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>R</Name></Rank></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+                 "<Pipe_SoundEngine01><PipeID>70</PipeID><RankID>7</RankID>"
+                 "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+                 "<Pipe_SoundEngine01_Layer><LayerID>70</LayerID><PipeID>70</PipeID></Pipe_SoundEngine01_Layer>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+                 "<Pipe_SoundEngine01_AttackSample><UniqueID>71</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>1</SampleID><AttackSelCriteria_HighestVelocity>-1</AttackSelCriteria_HighestVelocity>"
+                 "</Pipe_SoundEngine01_AttackSample></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_ReleaseSample\">"
+                 "<Pipe_SoundEngine01_ReleaseSample><UniqueID>72</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>2</SampleID>"
+                 "<ReleaseSelCriteria_LatestKeyReleaseTimeMs>150</ReleaseSelCriteria_LatestKeyReleaseTimeMs>"
+                 "</Pipe_SoundEngine01_ReleaseSample>"
+                 "<Pipe_SoundEngine01_ReleaseSample><UniqueID>73</UniqueID><LayerID>70</LayerID>"
+                 "<SampleID>3</SampleID>"
+                 "<ReleaseSelCriteria_LatestKeyReleaseTimeMs>-1</ReleaseSelCriteria_LatestKeyReleaseTimeMs>"
+                 "<ReleaseSelCriteria_HighestVelocity>-1</ReleaseSelCriteria_HighestVelocity>"
+                 "<ReleaseSelCriteria_HighestCtsCtrlValue>-1</ReleaseSelCriteria_HighestCtsCtrlValue>"
+                 "</Pipe_SoundEngine01_ReleaseSample></ObjectList></Hauptwerk>",
+                 "limits.Organ_Hauptwerk_xml", o, m, d),
+             "the organ loads");
+    const mp::PipeLayer& layer = m.ranks.find(7)->second.pipes.front().layers.front();
+    MP_CHECK(layer.attacks.front().velHigh == 127, "an attack's -1 velocity ceiling means any velocity");
+    MP_CHECK(mp::selectAttack(layer, mp::NoteStrike{100, 1000, 64}) == 0, "so a loud key finds it");
+
+    mp::NoteRelease staccato{0, 71, 64, 127, 64, 100, 127};
+    mp::NoteRelease held{0, 71, 64, 127, 64, 4000, 127};
+    MP_CHECK(mp::selectRelease(layer, staccato) == 0, "a short press takes the short release");
+    MP_CHECK(mp::selectRelease(layer, held) == 1,
+             "a held note takes the release written for any hold time (-1), not none at all");
+  }
+};
+static ReleaseDefaultLimitTest g_releaseDefaultLimit;
+
 class MatrixCoverageQueryTest final : public mp::test::Test {
 public:
   MatrixCoverageQueryTest()
@@ -8619,11 +8696,85 @@ public:
              "three resident formats, in the order the tests assume");
   }
 };
+// A streamed release tail opened its file the first time it played and kept it
+// for the life of the organ. macOS allows a program 256 open files by default:
+// a few minutes of playing a large set used them all, and after that every
+// file the program opened failed -- further release tails went silent and the
+// console's bitmaps vanished from the page (#53). The open tails are now a
+// bounded pool: past the limit the one read longest ago is closed, and it
+// opens again the next time it plays.
+class OpenTailPoolTest final : public mp::test::Test {
+public:
+  OpenTailPoolTest() : Test("functional.samples.open-tail-pool", Category::Functional) {}
+  void run() override {
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("mp_open_tail_pool_test");
+    root.deleteRecursively();
+    root.createDirectory();
+
+    constexpr int kPipes = 12;
+    mp::OrganModel model;
+    mp::Rank rank;
+    rank.rankId = 1;
+    for (int i = 0; i < kPipes; ++i) {
+      const mp::Id attackId = 100 + i, releaseId = 200 + i;
+      SampleLibraryTest::writeWav(root.getChildFile("a" + juce::String(i) + ".wav"), 2000, 1, 48000.0, 400, 1600);
+      SampleLibraryTest::writeWav(root.getChildFile("r" + juce::String(i) + ".wav"), 20000, 1, 48000.0);
+      mp::SampleRef a, r;
+      a.sampleId = attackId;
+      a.fileName = ("a" + juce::String(i) + ".wav").toStdString();
+      r.sampleId = releaseId;
+      r.fileName = ("r" + juce::String(i) + ".wav").toStdString();
+      model.samples[attackId] = a;
+      model.samples[releaseId] = r;
+      mp::Pipe pipe;
+      pipe.pipeId = 1000 + i;
+      pipe.midiNote = 36 + i;
+      mp::PipeLayer layer;
+      mp::AttackSample as;
+      as.sample = a;
+      mp::ReleaseSample rs;
+      rs.sample = r;
+      layer.attacks.push_back(as);
+      layer.releases.push_back(rs);
+      pipe.layers.push_back(layer);
+      rank.pipes.push_back(pipe);
+    }
+    model.ranks[1] = rank;
+
+    mp::SampleLibrary::setOpenTailLimitForTesting(4);
+    {
+      mp::SampleLibrary lib;
+      lib.setStreamReleases(true);
+      lib.setStreamHeadFrames(4096);
+      lib.loadAll(model, root.getFullPathName().toStdString());
+      auto provider = lib.provider();
+      MP_CHECK(mp::SampleLibrary::openTailFiles() == 0, "loading opens no tail");
+
+      std::vector<float> dest(256);
+      auto readTail = [&](int i) -> int64_t {
+        const mp::SampleBuffer* b = provider(200 + i);
+        if (b == nullptr || !b->streams()) return -1;
+        return b->tail->read(b->numFrames, 256, dest.data(), 1);
+      };
+      for (int i = 0; i < kPipes; ++i)
+        MP_CHECK(readTail(i) == 256, "every release tail streams");
+      MP_CHECK(mp::SampleLibrary::openTailFiles() <= 4,
+               "no more tails hold a file open than the pool allows");
+      MP_CHECK(readTail(0) == 256, "a tail closed to make room opens again when played");
+      MP_CHECK(mp::SampleLibrary::openTailFiles() <= 4, "and the pool stays within its limit");
+    }
+    MP_CHECK(mp::SampleLibrary::openTailFiles() == 0, "an organ that is gone holds no file open");
+    mp::SampleLibrary::raiseOpenFileLimit();  // back to what the program uses
+    root.deleteRecursively();
+  }
+};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
 static MemoryDefaultsTest g_memoryDefaults;
+static OpenTailPoolTest g_openTailPool;
 #endif
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;
@@ -8909,6 +9060,62 @@ public:
   }
 };
 static GrandOrgueTakesTest g_grandOrgueTakes;
+
+// #53: one stop drawn on several pages, the copies linked both ways -- Nancy's
+// Bourdon 8' has its Console knob (17), a Left Jamb image (2017) and a Simple
+// Jamb knob (344848), each following the others, and only the Console knob
+// drives the stop (17 -> 20117 -> 20017). Pushing in the Simple Jamb copy has
+// to push the stop in; it used to leave it sounding, the other copies holding
+// the Console knob on. Two independent routes into one switch still OR.
+class SwitchMirrorTest final : public mp::test::Test {
+public:
+  SwitchMirrorTest() : Test("functional.switches.mirrored-copies", Category::Functional) {}
+  static void wire(mp::OrganModel& m, mp::Id from, mp::Id to) {
+    mp::SwitchLinkage l;
+    l.sourceSwitchId = from;
+    l.destSwitchId = to;
+    m.switchLinkages.push_back(l);
+  }
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {17, 2017, 344848, 20117, 20017, 1, 2, 3}) {
+      mp::Switch sw;
+      sw.switchId = id;
+      m.switches[id] = sw;
+    }
+    wire(m, 344848, 17);
+    wire(m, 17, 344848);
+    wire(m, 2017, 17);
+    wire(m, 17, 2017);
+    wire(m, 17, 20117);
+    wire(m, 20117, 20017);
+    // A pallet reached by two keys: not copies of each other.
+    wire(m, 1, 3);
+    wire(m, 2, 3);
+
+    mp::SwitchNetwork net;
+    net.reset(m);
+    net.set(344848, true);
+    MP_CHECK(net.engaged(17) && net.engaged(2017) && net.engaged(20017),
+             "drawing the Simple Jamb copy draws the Console knob, the other copy and the stop");
+    net.set(344848, false);
+    MP_CHECK(!net.engaged(17) && !net.engaged(2017) && !net.engaged(20017),
+             "and pushing it in pushes them all in -- the other copy does not hold the stop on");
+    net.set(17, true);
+    net.set(2017, false);
+    MP_CHECK(!net.engaged(17) && !net.engaged(344848) && !net.engaged(20017),
+             "the same from the Left Jamb copy");
+
+    net.set(1, true);
+    net.set(2, true);
+    net.set(1, false);
+    MP_CHECK(net.engaged(3), "a switch reached by two independent routes stays on while either holds it");
+    net.set(2, false);
+    MP_CHECK(!net.engaged(3), "and goes off when neither does");
+  }
+};
+static SwitchMirrorTest g_switchMirror;
+
 
 // A reversible piston flips its drawstop on each press and does nothing when
 // let go: a 3/7 linkage, as the reversibles of Friesach, Giubiasco and
@@ -9205,6 +9412,51 @@ public:
 };
 static ScalaTemperamentTest g_scalaTemperament;
 
+// #55: a battery speaker sleeps after a few seconds of silence and swallows
+// the first notes while it wakes. With the option on, a 20 Hz tone at the
+// chosen level runs under everything, so the line is never silent; off, the
+// output is untouched.
+class SpeakerKeepAliveTest final : public mp::test::Test {
+public:
+  SpeakerKeepAliveTest() : Test("functional.audio.speaker-keep-alive", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor p;
+    const auto global = p.globalSettingsFile();
+    const bool existed = global.existsAsFile();
+    const auto before = existed ? global.loadFileAsString() : juce::String();
+    global.getParentDirectory().createDirectory();
+
+    p.prepareToPlay(48000.0, 512);
+    auto rmsDb = [&p]() {
+      juce::AudioBuffer<float> buf(2, 4800);  // five cycles of 20 Hz
+      juce::MidiBuffer midi;
+      p.processBlock(buf, midi);
+      return juce::Decibels::gainToDecibels(buf.getRMSLevel(0, 0, buf.getNumSamples()), -200.0f);
+    };
+
+    MP_CHECK(p.speakerKeepAlive() == 0.0f, "off unless asked for");
+    MP_CHECK(rmsDb() < -150.0f, "and then silence stays silence");
+
+    p.setSpeakerKeepAlive(-60.0f);
+    const float on = rmsDb();
+    // A sine's RMS sits 3 dB under its peak.
+    MP_CHECK(std::fabs(on - (-63.0f)) < 0.5f, "on, the tone is there at the level chosen");
+    MP_CHECK(global.loadFileAsString().contains("speakerkeepalive -60"),
+             "and the choice is kept for next time");
+
+    p.setSpeakerKeepAlive(-20.0f);
+    MP_CHECK(p.speakerKeepAlive() == -40.0f, "never louder than -40 dB, whatever is asked");
+
+    p.setSpeakerKeepAlive(0.0f);
+    MP_CHECK(rmsDb() < -150.0f, "and off again, nothing is added");
+    p.releaseResources();
+
+    if (existed) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static SpeakerKeepAliveTest g_speakerKeepAlive;
+
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the
 // organ's own, saved for the organ and shown on the console's displays.
@@ -9261,6 +9513,137 @@ public:
   }
 };
 static TuningControlsTest g_tuningControls;
+
+// #53: a level set on the organ's own settings page was back at its default
+// after a restart. Moving a control the organ marks RememberStateFromLastLoad
+// wrote nothing unless something else saved the file later, and remembered
+// switches were never written at all. Now a move is written once the player
+// stops, touching only its own lines, and both come back on the next load.
+class RememberedStateTest final : public mp::test::Test {
+public:
+  RememberedStateTest() : Test("functional.settings.remembered-state", Category::Functional) {}
+  void run() override {
+    // The expression fixture, with its blower switch and one control marked
+    // as remembered, as Nancy marks its levels and its blower-on-load switch.
+    auto xml = juce::File(juce::String(MP_TEST_FIXTURES_DIR) + "/m24.expression.Organ_Hauptwerk_xml")
+                   .loadFileAsString()
+                   .replace("\r\n", "\n")
+                   .replace("<Switch><SwitchID>3</SwitchID><Name>Blower</Name></Switch>",
+                            "<Switch><SwitchID>3</SwitchID><Name>Blower</Name><Latching>Y</Latching>"
+                            "<RememberStateFromLastLoad>Y</RememberStateFromLastLoad></Switch>")
+                   .replace("<ControlID>3</ControlID>\n      <Name>Unknown Control</Name>",
+                            "<ControlID>3</ControlID>\n      <Name>Unknown Control</Name>\n"
+                            "      <RememberStateFromLastLoad>Y</RememberStateFromLastLoad>");
+    MP_CHECK(xml.contains("<Latching>Y</Latching><RememberState") &&
+                 xml.contains("Unknown Control</Name>\n      <RememberState"),
+             "the fixture was marked");
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-remembered-state");
+    dir.createDirectory();
+    const auto odf = dir.getChildFile("remembered.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+
+    // The file is named after the organ as loaded -- one with no unique id is
+    // keyed by its path -- so ask a processor that has it open. A temporary
+    // organ, so there is nothing of the player's here to keep.
+    juce::File settings;
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      settings = p.settingsFileFor(odf);
+    }
+    settings.getParentDirectory().createDirectory();
+    // A line the player kept on purpose, which this writer must not touch.
+    settings.replaceWithText("# Masterpiece per-organ settings\nstream 1\n");
+
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      MP_CHECK(!p.saveRememberedStateIfPending(), "loading the organ is not the player moving anything");
+      p.setControlValue(3, 77);
+      p.setSwitchEngaged(3, true);
+      p.setSwitchEngaged(1, true);  // not remembered
+      MP_CHECK(!p.saveRememberedStateIfSettled(60000), "nothing is written while the player is still moving");
+      MP_CHECK(p.saveRememberedStateIfPending(), "and it is written once they stop");
+    }
+    const auto text = settings.loadFileAsString();
+    MP_CHECK(text.contains("stream 1"), "the rest of the file is left as it was");
+    MP_CHECK(text.contains("control 3 77") && text.contains("switch 3 1"),
+             "the remembered control and switch are written");
+    MP_CHECK(!text.contains("switch 1 "), "a switch the organ does not remember is not");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      MP_CHECK(p.continuousControlValue(3) == 77, "the level comes back after a restart");
+      MP_CHECK(p.switchEngaged(3), "and so does the remembered switch");
+      MP_CHECK(!p.switchEngaged(1), "the other one starts where the organ puts it");
+    }
+    settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static RememberedStateTest g_rememberedState;
+#endif // MP_TEST_HAS_AUDIO
+
+#ifdef MP_TEST_HAS_AUDIO
+// #53: loading an organ while the audio thread is running. The loader rebuilds
+// the whole engine -- a crash report showed the audio thread in
+// WindSolver::integrate() reading what WindSolver::reset() was freeing -- so
+// the audio thread must stand aside for the length of a load. Here it renders
+// without pause, with notes, while organs load one after another.
+class LoadWhilePlayingTest final : public mp::test::Test {
+public:
+  LoadWhilePlayingTest() : Test("functional.load.while-playing", Category::Functional) {}
+  void run() override {
+    const juce::String dir(MP_TEST_FIXTURES_DIR);
+    const juce::File organs[] = {juce::File(dir + "/minimal.Organ_Hauptwerk_xml"),
+                                 juce::File(dir + "/m24.expression.Organ_Hauptwerk_xml"),
+                                 juce::File(dir + "/m22.tuning.Organ_Hauptwerk_xml")};
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(organs[0], 0, false).ok, "the first organ loads");
+
+    std::atomic<bool> stop{false};
+    std::atomic<int> blocks{0};
+    std::thread audio([&] {
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer midi;
+      int n = 0;
+      while (!stop.load()) {
+        midi.clear();
+        if (n % 8 == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 60 + (n / 8) % 12, 0.8f), 0);
+        if (n % 8 == 4) midi.addEvent(juce::MidiMessage::noteOff(1, 60 + (n / 8) % 12), 0);
+        proc.processBlock(buf, midi);
+        ++n;
+        blocks.fetch_add(1);
+      }
+    });
+    bool allLoaded = true;
+    for (int i = 0; i < 12; ++i) allLoaded = proc.loadOrgan(organs[i % 3], 0, false).ok && allLoaded;
+    stop.store(true);
+    audio.join();
+    MP_CHECK(allLoaded, "every load succeeded with the audio thread running throughout");
+    MP_CHECK(blocks.load() > 0, "and the audio thread rendered meanwhile");
+    // What stops the crash: while a load rebuilds the engine the audio thread
+    // stands aside, answering its blocks with silence. A race cannot be relied
+    // on to show itself on organs this small; that it stood aside can.
+    MP_CHECK(proc.blocksSkippedForLoad() > 0,
+             "blocks that arrived during a load were answered with silence (" +
+                 std::to_string(proc.blocksSkippedForLoad()) + ")");
+
+    // After a load the engine plays again -- and a host that hands over a
+    // bigger block than it prepared for must not make the swell box's
+    // scratch buffer overflow (m24 has an enclosure).
+    MP_CHECK(proc.loadOrgan(organs[1], 0, false).ok, "the organ with a swell box loads");
+    juce::MidiBuffer midi;
+    for (int frames : {256, 1024}) {
+      juce::AudioBuffer<float> buf(2, frames);
+      for (int n = 0; n < 16; ++n) proc.processBlock(buf, midi);
+    }
+    MP_CHECK(true, "blocks after the loads, one bigger than prepared, run normally");
+  }
+};
+static LoadWhilePlayingTest g_loadWhilePlaying;
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_AUDIO
