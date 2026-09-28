@@ -26,6 +26,11 @@ class StopJamb : public juce::Component {
 public:
   explicit StopJamb(MasterpieceProcessor& p);
   void rebuild();
+  // Follow the engine: a stop drawn on the console, by a piston or from MIDI
+  // shows here too. Called on the editor's timer.
+  void refresh();
+  // The height the grid needs at a given width: the columns follow the width.
+  int heightFor(int width) const;
   void resized() override;
   void paint(juce::Graphics& g) override;
 

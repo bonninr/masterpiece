@@ -8969,6 +8969,62 @@ public:
 };
 static GrandOrgueTakesTest g_grandOrgueTakes;
 
+// #53: one stop drawn on several pages, the copies linked both ways -- Nancy's
+// Bourdon 8' has its Console knob (17), a Left Jamb image (2017) and a Simple
+// Jamb knob (344848), each following the others, and only the Console knob
+// drives the stop (17 -> 20117 -> 20017). Pushing in the Simple Jamb copy has
+// to push the stop in; it used to leave it sounding, the other copies holding
+// the Console knob on. Two independent routes into one switch still OR.
+class SwitchMirrorTest final : public mp::test::Test {
+public:
+  SwitchMirrorTest() : Test("functional.switches.mirrored-copies", Category::Functional) {}
+  static void wire(mp::OrganModel& m, mp::Id from, mp::Id to) {
+    mp::SwitchLinkage l;
+    l.sourceSwitchId = from;
+    l.destSwitchId = to;
+    m.switchLinkages.push_back(l);
+  }
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {17, 2017, 344848, 20117, 20017, 1, 2, 3}) {
+      mp::Switch sw;
+      sw.switchId = id;
+      m.switches[id] = sw;
+    }
+    wire(m, 344848, 17);
+    wire(m, 17, 344848);
+    wire(m, 2017, 17);
+    wire(m, 17, 2017);
+    wire(m, 17, 20117);
+    wire(m, 20117, 20017);
+    // A pallet reached by two keys: not copies of each other.
+    wire(m, 1, 3);
+    wire(m, 2, 3);
+
+    mp::SwitchNetwork net;
+    net.reset(m);
+    net.set(344848, true);
+    MP_CHECK(net.engaged(17) && net.engaged(2017) && net.engaged(20017),
+             "drawing the Simple Jamb copy draws the Console knob, the other copy and the stop");
+    net.set(344848, false);
+    MP_CHECK(!net.engaged(17) && !net.engaged(2017) && !net.engaged(20017),
+             "and pushing it in pushes them all in -- the other copy does not hold the stop on");
+    net.set(17, true);
+    net.set(2017, false);
+    MP_CHECK(!net.engaged(17) && !net.engaged(344848) && !net.engaged(20017),
+             "the same from the Left Jamb copy");
+
+    net.set(1, true);
+    net.set(2, true);
+    net.set(1, false);
+    MP_CHECK(net.engaged(3), "a switch reached by two independent routes stays on while either holds it");
+    net.set(2, false);
+    MP_CHECK(!net.engaged(3), "and goes off when neither does");
+  }
+};
+static SwitchMirrorTest g_switchMirror;
+
+
 // A reversible piston flips its drawstop on each press and does nothing when
 // let go: a 3/7 linkage, as the reversibles of Friesach, Giubiasco and
 // Alessandria are wired, and as a GrandOrgue reversible piston is imported.

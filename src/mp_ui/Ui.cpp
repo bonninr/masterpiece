@@ -16,9 +16,15 @@ juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
   return "Division " + juce::String(divisionId);
 }
 
-constexpr int kStopHeight = 26;
-constexpr int kHeaderHeight = 22;
+constexpr int kStopHeight = 30;
+constexpr int kHeaderHeight = 24;
 constexpr int kJambWidth = 320;
+// A grid of stop tiles rather than bars the width of the window: as many
+// columns as fit at this width.
+constexpr int kTileWidth = 190;
+constexpr int kGap = 4;
+
+int columnsFor(int width) { return juce::jmax(1, (width - 8 + kGap) / (kTileWidth + kGap)); }
 
 } // namespace
 
@@ -51,6 +57,12 @@ void StopJamb::rebuild() {
     e.button->setClickingTogglesState(true);
     e.button->setToggleState(proc_.stopEngaged(s.stopId),
                              juce::dontSendNotification);
+    // Drawn reads as drawn at a glance: ivory with dark lettering, like a
+    // stop face, against the dark of one pushed in.
+    e.button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f3a));
+    e.button->setColour(juce::TextButton::textColourOffId, juce::Colour(0xffb9c2d0));
+    e.button->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffeee3c6));
+    e.button->setColour(juce::TextButton::textColourOnId, juce::Colour(0xff1b1e24));
     e.button->setEnabled(s.playable);
     if (!s.playable) {
       // Say WHY rather than just greying it: on a demo set this is the single
@@ -67,22 +79,52 @@ void StopJamb::rebuild() {
   }
 
   // Height is content-driven; the Viewport scrolls it.
-  const int rows = static_cast<int>(entries_.size());
-  const int heads = static_cast<int>(headers_.size());
-  setSize(kJambWidth, rows * kStopHeight + heads * kHeaderHeight + 8);
+  const int width = getWidth() > 0 ? getWidth() : kJambWidth;
+  setSize(width, heightFor(width));
   resized();
 }
 
-void StopJamb::resized() {
-  auto r = getLocalBounds().reduced(4, 4);
-  size_t headerIndex = 0;
-  Id lastDivision = -1;
+void StopJamb::refresh() {
   for (auto& e : entries_) {
-    if (e.divisionId != lastDivision && headerIndex < headers_.size()) {
-      headers_[headerIndex++]->setBounds(r.removeFromTop(kHeaderHeight));
-      lastDivision = e.divisionId;
+    const bool on = proc_.stopEngaged(e.stopId);
+    if (e.button->getToggleState() != on) e.button->setToggleState(on, juce::dontSendNotification);
+  }
+}
+
+int StopJamb::heightFor(int width) const {
+  const int columns = columnsFor(width);
+  int height = 8;
+  size_t i = 0;
+  while (i < entries_.size()) {
+    const Id division = entries_[i].divisionId;
+    size_t n = 0;
+    while (i + n < entries_.size() && entries_[i + n].divisionId == division) ++n;
+    height += kHeaderHeight + static_cast<int>((n + columns - 1) / columns) * (kStopHeight + kGap);
+    i += n;
+  }
+  return height;
+}
+
+void StopJamb::resized() {
+  const int columns = columnsFor(getWidth());
+  const int tile = juce::jmax(80, (getWidth() - 8 - (columns - 1) * kGap) / columns);
+  int y = 4;
+  size_t headerIndex = 0;
+  size_t i = 0;
+  while (i < entries_.size()) {
+    const Id division = entries_[i].divisionId;
+    if (headerIndex < headers_.size())
+      headers_[headerIndex++]->setBounds(4, y, getWidth() - 8, kHeaderHeight);
+    y += kHeaderHeight;
+    int column = 0;
+    for (; i < entries_.size() && entries_[i].divisionId == division; ++i) {
+      entries_[i].button->setBounds(4 + column * (tile + kGap), y, tile, kStopHeight);
+      if (++column == columns) {
+        column = 0;
+        y += kStopHeight + kGap;
+      }
     }
-    e.button->setBounds(r.removeFromTop(kStopHeight).reduced(1));
+    if (column != 0) y += kStopHeight + kGap;
   }
 }
 
@@ -748,7 +790,8 @@ void MasterpieceEditor::resized() {
     }
   } else {
     jambView_.setBounds(r);
-    jamb_.setSize(jambView_.getWidth() - 12, jamb_.getHeight());
+    const int jambWidth = jambView_.getWidth() - 12;
+    jamb_.setSize(jambWidth, jamb_.heightFor(jambWidth));
   }
 }
 
@@ -765,6 +808,9 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // A drawstop clicked on the console changes the jamb too, and vice versa.
   if (showingConsole_) console_.repaint();
+  // And the stop list follows the console, pistons and MIDI the same way
+  // (#56): it used to show only what was clicked in it.
+  jamb_.refresh();
 
   // The on-screen keyboard plays the chosen manual on that manual's channel,
   // which the player can move in Settings while the organ is loaded.
