@@ -175,6 +175,7 @@ private:
   // Where the drag began, and the value it began from: the gesture is
   // relative, so both are needed for its whole duration.
   int heldControlStartY_ = 0;
+  int heldControlStartX_ = 0;
   int heldControlStartValue_ = 0;
   // Last seen sounding set, to repaint only when it actually changed.
   uint64_t keyStateHash_ = 0;

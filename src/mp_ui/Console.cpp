@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <tuple>
@@ -894,6 +895,7 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       heldControlBounds_ = it->hitBounds;
       heldControlHigherIsMore_ = it->controlHigherIsMore;
       heldControlStartY_ = e.getPosition().getY();
+      heldControlStartX_ = e.getPosition().getX();
       heldControlStartValue_ = proc_.continuousControlValue(it->controlId);
       return;
     }
@@ -995,10 +997,23 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
   // and across a 61-pixel image with 101 frames it would move two steps per
   // pixel. Starting from the value in hand is both what the organ describes
   // and what can actually be aimed.
+  //
+  // Along whichever axis the hand is moving, though. A slider drawn lying
+  // down -- Green Positiv's noise levels, "Original" to "Silent" -- is dragged
+  // sideways, and reading only the vertical left it all but immovable (#54).
+  // Sideways, right is more, scaled to the drawn width so the handle keeps
+  // up with the hand across its length; up and down stay exactly as above.
   const int dy = heldControlStartY_ - p.getY(); // up is positive
-  const double perPixel = heldControlHigherIsMore_ ? 0.5 : -0.5;
-  const int v = juce::jlimit(
-      0, 127, heldControlStartValue_ + juce::roundToInt(dy * perPixel));
+  const int dx = p.getX() - heldControlStartX_; // right is positive
+  double delta = 0.0;
+  if (std::abs(dx) > std::abs(dy)) {
+    const double width = juce::jmax(40, heldControlBounds_.getWidth());
+    delta = dx * juce::jlimit(0.3, 1.0, 127.0 / width);
+  } else {
+    delta = dy * 0.5;
+  }
+  if (!heldControlHigherIsMore_) delta = -delta;
+  const int v = juce::jlimit(0, 127, heldControlStartValue_ + juce::roundToInt(delta));
 
   if (v == proc_.continuousControlValue(heldControl_)) return;
   proc_.setContinuousControl(heldControl_, v);
