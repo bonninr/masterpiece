@@ -205,7 +205,10 @@ void ExpressionBar::Shoe::mouseDown(const juce::MouseEvent& e) {
     juce::Slider::mouseDown(e);
     return;
   }
-  showControlMidiMenu(proc_, controlId_, getScreenBounds(), nullptr);
+  // At the pointer, not beside the slider: the strip runs the height of the
+  // window, and a menu placed against all of it can open far from the click.
+  showControlMidiMenu(proc_, controlId_,
+                      {e.getScreenX(), e.getScreenY(), 1, 1}, nullptr);
 }
 
 void ExpressionBar::refresh() {
