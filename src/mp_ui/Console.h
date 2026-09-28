@@ -170,6 +170,9 @@ private:
   // kept here so a drag that wanders outside the image still moves the right
   // thing along the right axis.
   Id heldControl_ = 0;
+  // A momentary button held down with the mouse: released with it.
+  Id heldButton_ = 0;
+  juce::Rectangle<int> heldButtonBounds_;
   juce::Rectangle<int> heldControlBounds_;
   bool heldControlHigherIsMore_ = true;
   // Where the drag began, and the value it began from: the gesture is

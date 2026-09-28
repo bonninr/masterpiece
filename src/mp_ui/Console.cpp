@@ -900,7 +900,20 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       return;
     }
 
-    proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+    // A button the organ marks momentary -- Load, Save, Reset, a piston --
+    // is pressed while the mouse is down and let go with it (#53). It used to
+    // toggle like a drawstop and stay in, looking pressed until clicked again.
+    // A piston lets itself out as soon as it has fired, so its release is
+    // already done by the time the mouse comes up.
+    const auto sw = proc_.organModel().switches.find(it->switchId);
+    const bool momentary = sw != proc_.organModel().switches.end() && !sw->second.latching;
+    if (momentary) {
+      heldButton_ = it->switchId;
+      heldButtonBounds_ = it->bounds;
+      proc_.setSwitchEngaged(it->switchId, true);
+    } else {
+      proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+    }
     repaint(it->bounds);
     return;
   }
@@ -1044,6 +1057,11 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
 
 void ConsoleView::mouseUp(const juce::MouseEvent&) {
   heldControl_ = 0;
+  if (heldButton_ != 0) {
+    proc_.setSwitchEngaged(heldButton_, false);
+    repaint(heldButtonBounds_);
+    heldButton_ = 0;
+  }
   if (heldKey_ < 0) return;
   proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
   heldKey_ = -1;
