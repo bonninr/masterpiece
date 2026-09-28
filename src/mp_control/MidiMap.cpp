@@ -307,6 +307,12 @@ void MidiMap::cancelLearn() {
 bool MidiMap::learnFrom(const MidiSource& source) {
   if (learnKind_ == MidiTargetKind::None) return false;
   if (source.kind == MidiSourceKind::None) return false;
+  // A shoe or a level is moved by a controller. A key pressed while one is
+  // armed is the player playing, not teaching: it plays, and the learn waits
+  // for the pedal.
+  if (learnKind_ == MidiTargetKind::ContinuousControl &&
+      source.kind != MidiSourceKind::ControlChange)
+    return false;
 
   // Learning normally replaces whatever that target had: a player re-touching
   // a stop and moving a different control means "use this one instead".

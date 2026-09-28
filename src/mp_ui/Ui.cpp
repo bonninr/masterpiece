@@ -171,8 +171,7 @@ void ExpressionBar::rebuild() {
     addAndMakeVisible(*label);
     labels_.push_back(std::move(label));
 
-    auto slider = std::make_unique<juce::Slider>(
-        juce::Slider::LinearVertical, juce::Slider::NoTextBox);
+    auto slider = std::make_unique<Shoe>(proc_, controlId);
     slider->setRange(0.0, 127.0, 1.0);
     // The organ's own name for the control, which is the long one: "01.
     // Enclosure Recit expressif".
@@ -199,6 +198,26 @@ void ExpressionBar::rebuild() {
     shoes_.push_back(std::move(slider));
   }
   resized();
+}
+
+void ExpressionBar::Shoe::mouseDown(const juce::MouseEvent& e) {
+  if (!e.mods.isPopupMenu()) {
+    juce::Slider::mouseDown(e);
+    return;
+  }
+  // At the pointer, not beside the slider: the strip runs the height of the
+  // window, and a menu placed against all of it can open far from the click.
+  showControlMidiMenu(proc_, controlId_,
+                      {e.getScreenX(), e.getScreenY(), 1, 1}, nullptr);
+}
+
+void ExpressionBar::refresh() {
+  for (auto& s : shoes_) {
+    if (s->isMouseButtonDown()) continue;  // the player has it in hand
+    const int v = proc_.continuousControlValue(s->controlId());
+    if (static_cast<int>(s->getValue()) != v)
+      s->setValue(v, juce::dontSendNotification);
+  }
 }
 
 void ExpressionBar::resized() {
@@ -943,6 +962,9 @@ void MasterpieceEditor::timerCallback() {
     const bool front = juce::Process::isForegroundProcess();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
+
+  // The swell strip follows a pedal moved over MIDI.
+  if (expression_.isVisible()) expression_.refresh();
 
   // Voice count is the honest health readout: it says whether drawing a stop
   // and pressing a key actually produced sound.

@@ -17,11 +17,19 @@
 #include "../mp_audio/MasterpieceProcessor.h"
 
 #include <filesystem>
+#include <functional>
 #include <set>
 #include <unordered_map>
 #include <vector>
 
 namespace mp::ui {
+
+// The right-click menu on a continuous control -- a drawn shoe, slider or
+// knob, or a slider in the swell strip: what drives it now, and learning a
+// pedal or knob for it. `area` is in screen coordinates. `after` runs once a
+// choice is made, for the caller to repaint.
+void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
+                         juce::Rectangle<int> area, std::function<void()> after);
 
 class ConsoleView : public juce::Component, private juce::Timer {
 public:

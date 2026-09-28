@@ -57,10 +57,25 @@ public:
   // How many enclosures this organ actually has. An unenclosed organ should
   // not be offered a swell control at all, rather than an empty strip.
   int shoeCount() const { return static_cast<int>(shoes_.size()); }
+  // Follow the engine: a pedal moved over MIDI moves its slider too.
+  void refresh();
 
 private:
+  // A slider that offers MIDI learn on a right-click.
+  class Shoe : public juce::Slider {
+  public:
+    Shoe(MasterpieceProcessor& p, Id controlId)
+        : juce::Slider(juce::Slider::LinearVertical, juce::Slider::NoTextBox),
+          proc_(p), controlId_(controlId) {}
+    Id controlId() const { return controlId_; }
+    void mouseDown(const juce::MouseEvent& e) override;
+
+  private:
+    MasterpieceProcessor& proc_;
+    Id controlId_;
+  };
   MasterpieceProcessor& proc_;
-  std::vector<std::unique_ptr<juce::Slider>> shoes_;
+  std::vector<std::unique_ptr<Shoe>> shoes_;
   std::vector<std::unique_ptr<juce::Label>> labels_;
 };
 
