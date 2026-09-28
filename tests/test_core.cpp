@@ -9306,7 +9306,6 @@ public:
   }
 };
 static TuningControlsTest g_tuningControls;
-
 #endif // MP_TEST_HAS_AUDIO
 
 int main(int argc, char** argv) {
