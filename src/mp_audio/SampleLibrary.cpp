@@ -332,12 +332,19 @@ int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
   // A set may ship one recording per pipe -- attack, sustain loop and release
   // together -- and mark where the release begins with a cue point. The organ
   // definition then names that same sample as the pipe's release and says, in
-  // its load-range fields, that it starts at the marker.
+  // its load-range fields, that it starts at the marker. Without this the
+  // release is the whole file played again from the top: the note sounds on
+  // for several more seconds at full strength, and a piece silts up.
   //
-  // In these samples the release marker is the last valid cue point in the
-  // file. Earlier cue points may mark sustain-loop starts.
-  juce::ignoreUnused(loopEnd);
-
+  // JUCE exposes the cue chunk as flat metadata: "NumCuePoints", then
+  // "Cue<N>Offset" per cue (juce_WavAudioFormat.cpp, CueChunk::copyTo).
+  //
+  // The release marker is the LAST cue: files with several also mark where
+  // each sustain loop starts, and taking the earliest left notes sounding
+  // after the key was let go (#33, #60). It is still never inside the sustain
+  // loop -- a release that started there would play the loop's tail instead --
+  // so with a loop to judge against, only cues past its end count; without
+  // one, the last cue in the file serves.
   const auto& meta = reader.metadataValues;
   const int numCues = meta.getValue("NumCuePoints", "0").getIntValue();
   if (numCues <= 0) return -1;
@@ -346,14 +353,11 @@ int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,
   for (int i = 0; i < numCues; ++i) {
     const juce::String key = "Cue" + juce::String(i) + "Offset";
     if (!meta.containsKey(key)) continue;
-
-    const auto at =
-        static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
-
+    const auto at = static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
     if (at <= 0 || at >= totalFrames) continue;
+    if (loopEnd > 0 && at < loopEnd) continue;
     if (best < 0 || at > best) best = at;
   }
-
   return best;
 }
 
