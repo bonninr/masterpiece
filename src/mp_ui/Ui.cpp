@@ -244,6 +244,48 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
   };
 }
 
+AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
+                                       MasterpieceProcessor& p)
+    : proc_(p), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
+  addAndMakeVisible(selector_);
+  addAndMakeVisible(keepAwake_);
+  addAndMakeVisible(level_);
+  const float db = proc_.speakerKeepAlive();
+  keepAwake_.setToggleState(db < 0.0f, juce::dontSendNotification);
+  keepAwake_.setTooltip(
+      "For a battery speaker that switches itself off after a few seconds of "
+      "silence and swallows the first notes while it wakes. Plays a 20 Hz tone "
+      "too low and too quiet to hear under the organ, so the line is never "
+      "silent.");
+  level_.setRange(-80.0, -40.0, 1.0);
+  level_.setTextValueSuffix(" dB");
+  level_.setValue(db < 0.0f ? db : -60.0, juce::dontSendNotification);
+  level_.setTooltip("Raise it if the speaker still goes to sleep; lower it if "
+                    "you can hear it.");
+  level_.setEnabled(keepAwake_.getToggleState());
+  keepAwake_.onClick = [this] { apply(); };
+  level_.onDragEnd = [this] { apply(); };
+  level_.onValueChange = [this] {
+    if (!level_.isMouseButtonDown()) apply();
+  };
+  setSize(500, 510);
+}
+
+void AudioSettingsPanel::apply() {
+  level_.setEnabled(keepAwake_.getToggleState());
+  proc_.setSpeakerKeepAlive(keepAwake_.getToggleState()
+                                ? static_cast<float>(level_.getValue())
+                                : 0.0f);
+}
+
+void AudioSettingsPanel::resized() {
+  auto r = getLocalBounds();
+  auto row = r.removeFromBottom(40).reduced(12, 6);
+  keepAwake_.setBounds(row.removeFromLeft(240));
+  level_.setBounds(row);
+  selector_.setBounds(r);
+}
+
 void TopBar::setStatus(const juce::String& text) {
   // Loading an organ restores its own volume, so the slider has to follow the
   // parameter rather than only drive it. Skipped while the player is dragging.

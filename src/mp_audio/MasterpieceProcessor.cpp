@@ -1276,6 +1276,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // A new key: the old one was written on every save, whether or not anyone
   // chose it, so it cannot tell a choice from a default. Only this one counts.
   text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
+    text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
@@ -1333,6 +1335,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // reopen off and turns it on only by choosing to.
     } else if (key == "reopenlastorgan") {
       reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "speakerkeepalive") {
+      const float db = val.getFloatValue();
+      keepAliveDb_.store(db < 0.0f ? juce::jlimit(-80.0f, -40.0f, db) : 0.0f,
+                         std::memory_order_relaxed);
     } else if (key == "memlimit") {
       memoryLimitMB_ = std::max(0, val.getIntValue());
     } else if (key == "running") {
@@ -1440,6 +1446,28 @@ void MasterpieceProcessor::setMemoryLimitMB(int mb) {
 int64_t MasterpieceProcessor::memoryLimitBytes() const {
   const int mb = memoryLimitMB_ > 0 ? memoryLimitMB_ : defaultMemoryLimitMB();
   return static_cast<int64_t>(mb) * 1024 * 1024;
+}
+
+void MasterpieceProcessor::setSpeakerKeepAlive(float levelDb) {
+  const float db = levelDb < 0.0f ? juce::jlimit(-80.0f, -40.0f, levelDb) : 0.0f;
+  if (keepAliveDb_.exchange(db, std::memory_order_relaxed) == db) return;
+  // A preference about the audio hardware, like reopening: written alone.
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::addKeepAlive(juce::AudioBuffer<float>& buffer) {
+  const float db = keepAliveDb_.load(std::memory_order_relaxed);
+  if (db >= 0.0f || sampleRate_ <= 0.0) return;
+  const float amp = juce::Decibels::decibelsToGain(db);
+  const double step = juce::MathConstants<double>::twoPi * 20.0 / sampleRate_;
+  const int n = buffer.getNumSamples();
+  for (int i = 0; i < n; ++i) {
+    const float v = amp * static_cast<float>(std::sin(keepAlivePhase_));
+    keepAlivePhase_ += step;
+    if (keepAlivePhase_ >= juce::MathConstants<double>::twoPi)
+      keepAlivePhase_ -= juce::MathConstants<double>::twoPi;
+    for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.addSample(c, i, v);
+  }
 }
 
 void MasterpieceProcessor::setReopenLastOrgan(bool on) {
@@ -2962,6 +2990,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Load-progress taps, if asked for. Audible, post-recording, beside the
   // metronome: the same kind of thing for the same reason.
   maybeLoadTick(buffer);
+
+  // Under everything and after the recorder, so a recording never carries it.
+  addKeepAlive(buffer);
 
   // Meter last, so it shows what actually leaves. The rise is instant — a
   // meter that eases upward under-reads exactly when it matters — and the
