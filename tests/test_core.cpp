@@ -5742,10 +5742,20 @@ public:
       std::unique_ptr<juce::FileOutputStream> os(multi.createOutputStream());
       MP_CHECK(os != nullptr, "multi-loop wav is writable");
       juce::StringPairArray meta;
+      // Some organ samples use inconsistent loop/cue identifiers, so release
+      // selection must depend on cue position rather than identifier matching.
       meta.set("NumSampleLoops", "3");
+      meta.set("Loop0Identifier", "1");
       meta.set("Loop0Start", "100"); meta.set("Loop0End", "200");  // len 100
+      meta.set("Loop1Identifier", "3");
       meta.set("Loop1Start", "300"); meta.set("Loop1End", "900");  // len 600
+      meta.set("Loop2Identifier", "4");
       meta.set("Loop2Start", "950"); meta.set("Loop2End", "1000"); // len  50
+      meta.set("NumCuePoints", "4");
+      meta.set("Cue0Identifier", "2"); meta.set("Cue0Offset", "100");
+      meta.set("Cue1Identifier", "3"); meta.set("Cue1Offset", "300");
+      meta.set("Cue2Identifier", "4"); meta.set("Cue2Offset", "950");
+      meta.set("Cue3Identifier", "1"); meta.set("Cue3Offset", "1500");
       std::unique_ptr<juce::AudioFormatWriter> w(
           fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
       MP_CHECK(w != nullptr, "multi-loop writer created");
@@ -5778,6 +5788,9 @@ public:
                "Conservative picks the narrowest loop");
       MP_CHECK(bf->loopStart == 100 && bf->loopEnd == 201,
                "First picks the file's own first loop");
+      MP_CHECK(bl->releaseCue == 1500 && bc->releaseCue == 1500 &&
+                   bf->releaseCue == 1500,
+               "release cue is the last valid cue point in the file");
 
       // The preload head is a MINIMUM, not a cap. A head of 500 frames would
       // cut off every loop in this file, and a sample whose loop is missing
