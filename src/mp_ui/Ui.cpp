@@ -104,16 +104,27 @@ void ExpressionBar::rebuild() {
     (void)id;
     if (enc.continuousControlId == 0) continue;
     // The shoe the player moves, which may be upstream of the shutters.
+    // The part of the name that tells two boxes apart. Nancy calls hers
+    // "Enclosure R" and "Enclosure PO", and a column this narrow cut both to
+    // "Enclosur..." -- two sliders that looked like one control twice (#53).
+    juce::String name(enc.name);
+    for (const char* word : {"Enclosure", "enclosure", "Swell box", "Swell"})
+      if (name.startsWith(word) && name.length() > juce::String(word).length())
+        name = name.substring(juce::String(word).length()).trim();
     shoes.emplace_back(proc_.playerControlFor(enc.continuousControlId),
-                       enc.name.empty() ? juce::String("Swell")
-                                        : juce::String(enc.name));
+                       name.isEmpty() ? juce::String("Swell") : name);
   }
   std::sort(shoes.begin(), shoes.end());
+  // Two boxes worked by one shoe are one slider.
+  shoes.erase(std::unique(shoes.begin(), shoes.end(),
+                          [](const auto& a, const auto& b) { return a.first == b.first; }),
+              shoes.end());
 
   for (const auto& [controlId, name] : shoes) {
     auto label = std::make_unique<juce::Label>();
     label->setText(name, juce::dontSendNotification);
     label->setJustificationType(juce::Justification::centred);
+    label->setMinimumHorizontalScale(0.6f);
     label->setColour(juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible(*label);
     labels_.push_back(std::move(label));
@@ -121,6 +132,19 @@ void ExpressionBar::rebuild() {
     auto slider = std::make_unique<juce::Slider>(
         juce::Slider::LinearVertical, juce::Slider::NoTextBox);
     slider->setRange(0.0, 127.0, 1.0);
+    // The organ's own name for the control, which is the long one: "01.
+    // Enclosure Recit expressif".
+    {
+      const auto& controls = proc_.organModel().continuousControls;
+      const auto cit = controls.find(controlId);
+      if (cit != controls.end() && !cit->second.name.empty()) {
+        juce::String full(juce::CharPointer_UTF8(cit->second.name.c_str()));
+        if (full.initialSectionContainingOnly("0123456789").isNotEmpty() && full.contains(". "))
+          full = full.fromFirstOccurrenceOf(". ", false, false);
+        slider->setTooltip(full);
+        labels_.back()->setTooltip(full);
+      }
+    }
     // Shoes start open: a console that boots with every box shut sounds broken.
     slider->setValue(127.0, juce::dontSendNotification);
     const Id id = controlId;
@@ -663,14 +687,29 @@ void MasterpieceEditor::resized() {
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
   auto bar = r.removeFromTop(36);
-  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
   layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
+  swellButton_.setVisible(expression_.shoeCount() > 0);
+  // On a narrow window -- a monitor stood on end is 1080 wide -- the buttons
+  // on the right left the bar on the left too little room, and the volume
+  // fader went with it (#53). Below that, the buttons take a row of their own.
+  bool stacked = false;
+  {
+    constexpr int kFaderRowMin = 350;  // Open, Audio, No DSP and the fader
+    const int buttons = 90 + 70 + 64 + 110 + 110 + 140 + 30 + 64 + 30 + 56 +
+                        (layout_.isVisible() ? 130 : 0) +
+                        (swellButton_.isVisible() ? 70 : 0);
+    if (bar.getWidth() - buttons < kFaderRowMin) {
+      top_.setBounds(bar);
+      bar = r.removeFromTop(36);
+      stacked = true;
+    }
+  }
+  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
   // No swell button on an organ with nothing to enclose.
   panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
-  swellButton_.setVisible(expression_.shoeCount() > 0);
   if (swellButton_.isVisible())
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
@@ -681,7 +720,7 @@ void MasterpieceEditor::resized() {
   stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
   stepPrev_.setBounds(bar.removeFromRight(30).reduced(2));
   setter_.setBounds(bar.removeFromRight(56).reduced(2));
-  top_.setBounds(bar);
+  if (!stacked) top_.setBounds(bar);
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
