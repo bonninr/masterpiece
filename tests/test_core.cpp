@@ -9412,6 +9412,51 @@ public:
 };
 static ScalaTemperamentTest g_scalaTemperament;
 
+// #55: a battery speaker sleeps after a few seconds of silence and swallows
+// the first notes while it wakes. With the option on, a 20 Hz tone at the
+// chosen level runs under everything, so the line is never silent; off, the
+// output is untouched.
+class SpeakerKeepAliveTest final : public mp::test::Test {
+public:
+  SpeakerKeepAliveTest() : Test("functional.audio.speaker-keep-alive", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor p;
+    const auto global = p.globalSettingsFile();
+    const bool existed = global.existsAsFile();
+    const auto before = existed ? global.loadFileAsString() : juce::String();
+    global.getParentDirectory().createDirectory();
+
+    p.prepareToPlay(48000.0, 512);
+    auto rmsDb = [&p]() {
+      juce::AudioBuffer<float> buf(2, 4800);  // five cycles of 20 Hz
+      juce::MidiBuffer midi;
+      p.processBlock(buf, midi);
+      return juce::Decibels::gainToDecibels(buf.getRMSLevel(0, 0, buf.getNumSamples()), -200.0f);
+    };
+
+    MP_CHECK(p.speakerKeepAlive() == 0.0f, "off unless asked for");
+    MP_CHECK(rmsDb() < -150.0f, "and then silence stays silence");
+
+    p.setSpeakerKeepAlive(-60.0f);
+    const float on = rmsDb();
+    // A sine's RMS sits 3 dB under its peak.
+    MP_CHECK(std::fabs(on - (-63.0f)) < 0.5f, "on, the tone is there at the level chosen");
+    MP_CHECK(global.loadFileAsString().contains("speakerkeepalive -60"),
+             "and the choice is kept for next time");
+
+    p.setSpeakerKeepAlive(-20.0f);
+    MP_CHECK(p.speakerKeepAlive() == -40.0f, "never louder than -40 dB, whatever is asked");
+
+    p.setSpeakerKeepAlive(0.0f);
+    MP_CHECK(rmsDb() < -150.0f, "and off again, nothing is added");
+    p.releaseResources();
+
+    if (existed) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static SpeakerKeepAliveTest g_speakerKeepAlive;
+
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the
 // organ's own, saved for the organ and shown on the console's displays.

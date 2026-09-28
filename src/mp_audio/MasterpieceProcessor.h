@@ -558,6 +558,16 @@ public:
   // global defaults because it belongs to the program, not to any one organ.
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
+  // Keep portable speakers from going to sleep (#55). A battery speaker on a
+  // 3.5 mm cable switches its amplifier off after a few seconds of silence and
+  // takes a second or two to wake on the next note, swallowing it. With this
+  // on, a 20 Hz tone too low and too quiet to hear runs under the organ, so
+  // the line is never silent. The level is the player's: how much signal
+  // wakes an amplifier differs from one model to the next.
+  //
+  // Program-wide, in the global file. 0 means off; otherwise dBFS, -80..-40.
+  void setSpeakerKeepAlive(float levelDb);
+  float speakerKeepAlive() const { return keepAliveDb_.load(std::memory_order_relaxed); }
   void setReopenLastOrgan(bool on);
 
   // Crash guard. While the guard is on, a load writes the organ into the
@@ -1117,6 +1127,9 @@ private:
   // Off unless asked for: reopening at start is what turns one crash into a
   // loop of them.
   bool reopenLastOrgan_ = false;
+  std::atomic<float> keepAliveDb_{0.0f};
+  double keepAlivePhase_ = 0.0;  // audio thread only
+  void addKeepAlive(juce::AudioBuffer<float>& buffer);
   bool crashGuard_ = false;
   juce::File runningOrgan_;
   juce::File crashedOrgan_;

@@ -79,6 +79,21 @@ private:
   std::vector<std::unique_ptr<juce::Label>> labels_;
 };
 
+// The Audio and MIDI dialog: the device selector, and under it what belongs
+// to the output rather than to any organ -- keeping portable speakers awake.
+class AudioSettingsPanel : public juce::Component {
+public:
+  AudioSettingsPanel(juce::AudioDeviceManager& devices, MasterpieceProcessor& p);
+  void resized() override;
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::AudioDeviceSelectorComponent selector_;
+  juce::ToggleButton keepAwake_{"Keep portable speakers awake"};
+  juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  void apply();
+};
+
 // Organ name, load button, audio settings, and what the load actually found.
 // A row of lamps per channel, lit up to the current level. Discrete segments
 // rather than a continuous bar because the eye reads a count at a glance and
@@ -124,6 +139,7 @@ class MasterpieceEditor : public juce::AudioProcessorEditor,
                           private juce::ChangeListener {
 public:
   explicit MasterpieceEditor(MasterpieceProcessor& p);
+  MasterpieceProcessor& organProcessor() { return proc_; }
   ~MasterpieceEditor() override;
 
   void paint(juce::Graphics& g) override;
