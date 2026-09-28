@@ -36,6 +36,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <utility>
 #include <unordered_map>
@@ -616,6 +617,38 @@ public:
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
+
+  // --- which stops to load (Organ settings, Stops) -----------------------
+  // The stops a player has chosen to leave out of this organ, saved with it.
+  // Takes effect on the next load: everything is loaded except the ranks
+  // that ONLY left-out stops use, so a rank a loaded stop shares, noises and
+  // pallet-wired ranks always come.
+  const std::set<Id>& excludedStops() const { return excludedStops_; }
+  void setExcludedStops(std::set<Id> stops) {
+    excludedStops_ = std::move(stops);
+    markSettingsDirty();
+  }
+  // Whether a stop's audio came with the last load. A left-out stop still
+  // draws and records in pistons -- it simply makes no sound -- and the
+  // console dims it so it is not taken for a broken one.
+  bool stopLoaded(Id stopId) const { return unloadedStops_.count(stopId) == 0; }
+  const std::unordered_set<Id>& unloadedSwitches() const { return unloadedSwitches_; }
+  // Memory figures before a load (SampleLibrary::shapeJobs and friends):
+  // the jobs from the model on the message thread, readShape() on a worker,
+  // and the bytes at whatever the engine settings are now.
+  std::vector<SampleLibrary::ShapeJob> sampleShapeJobs() const;
+  int64_t residentBytesFor(const SampleLibrary::SampleShape& shape) const {
+    return samples_.residentBytes(shape);
+  }
+  // The organ file loaded now, for loading it again.
+  const juce::File& loadedOrganFile() const { return loadedOdf_; }
+  // Whether a player can reach this stop: it has a drawstop on the console,
+  // or the organ draws no console at all and the stop list is the console.
+  // Sets keep machinery in stops nobody draws -- key-action noises, coupler
+  // and tremulant effects -- which Organ settings lists apart.
+  bool stopDrawn(Id stopId) const;
+  // The samples a stop's ranks play, for adding the estimate up per stop.
+  std::vector<Id> samplesOfStop(Id stopId) const;
   // Where the player keeps the combinations window on this organ, and whether
   // it was open. Per organ, because a console with its own pistons drawn
   // wants it closed and one with none wants it open. w 0 means never placed.
@@ -1096,6 +1129,9 @@ private:
   // Empty means the organ's default set.
   std::string combinationSet_;
   WindowPlace combWindow_;
+  std::set<Id> excludedStops_;
+  std::unordered_set<Id> unloadedStops_;
+  std::unordered_set<Id> unloadedSwitches_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

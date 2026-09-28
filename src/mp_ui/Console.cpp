@@ -795,6 +795,12 @@ void ConsoleView::paint(juce::Graphics& g) {
     } else {
       g.drawImageAt(*img, item.bounds.getX(), item.bounds.getY(), false);
     }
+    // A stop left out of the load still draws and moves, and makes no sound:
+    // veiled, so it is not taken for a broken one.
+    if (item.switchId != 0 && proc_.unloadedSwitches().count(item.switchId) != 0) {
+      g.setColour(juce::Colours::black.withAlpha(0.55f));
+      g.fillRect(item.bounds);
+    }
     ++drawn;
   }
 

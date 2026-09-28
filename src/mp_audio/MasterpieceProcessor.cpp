@@ -1204,6 +1204,7 @@ bool MasterpieceProcessor::saveSettings() const {
     // ones is a nasty surprise to meet mid-piece.
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
+    for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
@@ -1230,6 +1231,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.usingB = false;
   combinationSet_.clear();
   combWindow_ = {};
+  excludedStops_.clear();
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
   playerTuning_.store(nullptr, std::memory_order_release);
@@ -1295,6 +1297,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "transpose") {
       transpose_.store(juce::jlimit(-12, 12, val.getIntValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "skipstop") {
+      excludedStops_.insert(static_cast<Id>(val.getLargeIntValue()));
       continue;
     }
     if (key == "combwindow") {
@@ -2272,6 +2278,80 @@ void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
 
 bool MasterpieceProcessor::switchEngaged(Id switchId) const {
   return engagedSwitches_.count(switchId) != 0;
+}
+
+// ------------------------------------------------------ load estimates
+
+std::vector<SampleLibrary::ShapeJob> MasterpieceProcessor::sampleShapeJobs() const {
+  // A packaged organ's samples are in its archives; their saved index is
+  // enough to know each file's size.
+  std::unique_ptr<OrganArchive> archive;
+  const std::string archivePath = readArchiveMarker(organRootDir_);
+  if (!archivePath.empty()) {
+    archive = std::make_unique<OrganArchive>();
+    const std::string index = juce::File(juce::String::fromUTF8(organRootDir_.c_str()))
+                                  .getChildFile("archive-index.txt")
+                                  .getFullPathName()
+                                  .toStdString();
+    if (!archive->loadIndex(index)) archive.reset();
+  }
+  return samples_.shapeJobs(model_, organRootDir_, archive.get());
+}
+
+bool MasterpieceProcessor::stopDrawn(Id stopId) const {
+  auto drawn = [this](Id sw) {
+    const auto it = model_.switches.find(sw);
+    return it != model_.switches.end() && it->second.dispInstanceId != 0 && it->second.clickable;
+  };
+  bool anyDrawn = false;
+  for (const auto& [id, sw] : model_.switches) {
+    (void)sw;
+    if (drawn(id)) {
+      anyDrawn = true;
+      break;
+    }
+  }
+  if (!anyDrawn) return true;
+  if (stopKnob_.count(stopId) != 0) return true;
+  const auto it = model_.stops.find(stopId);
+  if (it == model_.stops.end() || it->second.controllingSwitchId == 0) return false;
+  const Id knob = playerSwitchFor(it->second.controllingSwitchId);
+  if (!drawn(knob)) return false;
+  // A stop sounding from a coupler's or a tremulant's own knob is that
+  // knob's noise -- Jak's CouplerEffect_1002 and TremulantEffect_1710 --
+  // not a stop of its own.
+  for (const auto& ka : model_.keyActions)
+    if (ka.conditionSwitchId != 0 && playerSwitchFor(ka.conditionSwitchId) == knob) return false;
+  for (const auto& [id, div] : model_.divisions) {
+    (void)id;
+    for (const auto& ka : div.keyActions)
+      if (ka.conditionSwitchId != 0 && playerSwitchFor(ka.conditionSwitchId) == knob) return false;
+  }
+  for (const auto& [id, t] : model_.tremulants) {
+    (void)id;
+    if (t.controllingSwitchId != 0 && playerSwitchFor(t.controllingSwitchId) == knob) return false;
+  }
+  return true;
+}
+
+std::vector<Id> MasterpieceProcessor::samplesOfStop(Id stopId) const {
+  std::vector<Id> out;
+  const auto it = model_.stops.find(stopId);
+  if (it == model_.stops.end()) return out;
+  for (const auto& e : it->second.ranks) {
+    const auto rit = model_.ranks.find(e.rankId);
+    if (rit == model_.ranks.end()) continue;
+    for (const auto& pipe : rit->second.pipes)
+      for (const auto& layer : pipe.layers) {
+        for (const auto& a : layer.attacks)
+          if (a.sample.sampleId != 0) out.push_back(a.sample.sampleId);
+        for (const auto& r : layer.releases)
+          if (r.sample.sampleId != 0) out.push_back(r.sample.sampleId);
+      }
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
 }
 
 // ------------------------------------------------------------ tuning
@@ -3594,6 +3674,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // then finds no audio for a pipe and stays silent, which is the same path a
   // set with a missing sample already takes.
   phases.mark("model");
+  unloadedStops_.clear();
 
   if (graphicsOnly) {
     // Not merely "skip the load": the library may still hold the PREVIOUS
@@ -3623,6 +3704,26 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
     if (!preloadRanks_.empty())
       onlyRanks = std::unordered_set<Id>(preloadRanks_.begin(), preloadRanks_.end());
+    // The player's own choice, when no test flag has made one: every rank
+    // except those that only left-out stops use.
+    if (onlyRanks.empty() && !excludedStops_.empty()) {
+      std::unordered_set<Id> wanted;
+      for (const auto& [stopId, stop] : model_.stops)
+        if (excludedStops_.count(stopId) == 0)
+          for (const auto& e : stop.ranks) wanted.insert(e.rankId);
+      std::unordered_set<Id> leftOut;
+      for (Id stopId : excludedStops_) {
+        const auto it = model_.stops.find(stopId);
+        if (it == model_.stops.end()) continue;
+        unloadedStops_.insert(stopId);
+        for (const auto& e : it->second.ranks)
+          if (wanted.count(e.rankId) == 0) leftOut.insert(e.rankId);
+      }
+      for (const auto& [rankId, rank] : model_.ranks) {
+        (void)rank;
+        if (leftOut.count(rankId) == 0) onlyRanks.insert(rankId);
+      }
+    }
     if (!onlyRanks.empty())
       juce::Logger::writeToLog("load: PARTIAL -- " +
                                juce::String((int)onlyRanks.size()) +
@@ -3734,6 +3835,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
   loadMidiMap();
+  unloadedSwitches_.clear();
+  for (Id stopId : unloadedStops_) {
+    const auto it = model_.stops.find(stopId);
+    if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
+      unloadedSwitches_.insert(playerSwitchFor(it->second.controllingSwitchId));
+    const auto knob = stopKnob_.find(stopId);
+    if (knob != stopKnob_.end()) unloadedSwitches_.insert(knob->second);
+  }
   resetPlayerCombinations();
   loadCombinations();
 

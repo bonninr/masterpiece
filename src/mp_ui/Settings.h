@@ -404,10 +404,9 @@ public:
   void paint(juce::Graphics& g) override;
 
 private:
+  // General settings: the program and the player's console. What belongs to
+  // the organ -- how it is loaded, which stops -- is OrganSettingsWindow.
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
-  EnginePanel engine_;
-  // Tall enough for every row of the Engine tab; see ScrollHost.
-  ScrollHost engineScroll_{engine_, 720};
   ReverbPanel reverb_;
   MetronomePanel metronome_;
   RecorderPanel recorder_;
