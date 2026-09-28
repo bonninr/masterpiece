@@ -3945,10 +3945,25 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   OrganArchive archive;
   std::string why;
   const std::string archivePath = archiveFile.getFullPathName().toStdString();
-  if (!archive.discover(archivePath, why)) {
-    error = why;
-    return {};
-  }
+  // Every step is written down, and every failure with the file it was in:
+  // "it does not open" is all a player can say otherwise, and a report
+  // from someone else's machine is only as good as its log (#53).
+  const auto started = juce::Time::getMillisecondCounterHiRes();
+  const auto seconds = [started] {
+    return juce::String((juce::Time::getMillisecondCounterHiRes() - started) / 1000.0, 1) + " s";
+  };
+  const auto fail = [&](const std::string& message) {
+    error = message;
+    juce::Logger::writeToLog("archive: FAILED after " + seconds() + ": " + juce::String(message));
+    return juce::Array<juce::File>();
+  };
+  juce::Logger::writeToLog("archive: opening " + archiveFile.getFullPathName());
+  if (!archive.discover(archivePath, why)) return fail(why);
+  const bool inspected = archive.inspect(why);
+  juce::Logger::writeToLog("archive: " + juce::String(static_cast<int>(archive.archives().size())) +
+                           " archive(s) for this organ:");
+  for (const auto& line : archive.report()) juce::Logger::writeToLog("archive:   " + juce::String(line));
+  if (!inspected) return fail(why);
   // Named by the archives themselves, so the same packages open the same
   // folder -- and the organ keeps its settings -- however they were reached.
   const juce::File dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
@@ -3958,14 +3973,25 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
   const bool ready = !readArchiveMarker(dir.getFullPathName().toStdString()).empty() &&
                      archive.loadIndex(index);
-  if (!ready) {
+  if (ready) {
+    juce::Logger::writeToLog("archive: already unpacked in " + dir.getFullPathName());
+  } else {
     dir.deleteRecursively();
     dir.createDirectory();
-    if (!archive.index(why) ||
-        !archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why)) {
-      error = why;
+    juce::Logger::writeToLog("archive: reading the file lists (a solid archive is decompressed "
+                             "to do this, so it can take minutes)");
+    if (!archive.index(why)) {
       dir.deleteRecursively();
-      return {};
+      return fail(why);
+    }
+    for (const auto& line : archive.report())
+      if (line.find(" files") != std::string::npos)
+        juce::Logger::writeToLog("archive:   " + juce::String(line));
+    juce::Logger::writeToLog("archive: " + juce::String(static_cast<int>(archive.entries().size())) +
+                             " files indexed after " + seconds() + "; unpacking the definitions and artwork");
+    if (!archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why)) {
+      dir.deleteRecursively();
+      return fail(why);
     }
     archive.saveIndex(index);
     // Written last: a folder without it is an unpack that did not finish.
@@ -3975,7 +4001,15 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   dir.findChildFiles(definitions, juce::File::findFiles, true,
                      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
   definitions.sort();
-  if (definitions.isEmpty()) error = "no organ definition in " + archiveFile.getFileName();
+  if (definitions.isEmpty()) {
+    error = "there is no organ definition file (.Organ_Hauptwerk_xml) in \"" +
+            archiveFile.getFileName() + "\" or the packages beside it.";
+    juce::Logger::writeToLog("archive: FAILED after " + seconds() + ": " + error);
+    return definitions;
+  }
+  juce::Logger::writeToLog("archive: ready after " + seconds() + ", " +
+                           juce::String(definitions.size()) + " organ definition(s):");
+  for (const auto& d : definitions) juce::Logger::writeToLog("archive:   " + d.getFileName());
   return definitions;
 }
 

@@ -98,6 +98,18 @@ public:
             "Masterpiece load log");
         juce::Logger::setCurrentLogger(logger_.get());
       }
+    // Without --log, a log anyway: when an organ will not open on someone
+    // else's machine, this file is what they can send. This session's, and
+    // the one before it, so a crash does not lose the run that crashed.
+    if (logger_ == nullptr) {
+      const auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                           .getChildFile("Masterpiece");
+      dir.createDirectory();
+      const auto current = dir.getChildFile("masterpiece.log");
+      if (current.existsAsFile()) current.moveFileTo(dir.getChildFile("masterpiece.previous.log"));
+      logger_ = std::make_unique<juce::FileLogger>(current, "Masterpiece " MP_VERSION " log");
+      juce::Logger::setCurrentLogger(logger_.get());
+    }
 
     // Audio first: the device's real rate and block size are what the engine
     // must be prepared for, and asking for them before the organ loads means
