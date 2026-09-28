@@ -171,8 +171,7 @@ void ExpressionBar::rebuild() {
     addAndMakeVisible(*label);
     labels_.push_back(std::move(label));
 
-    auto slider = std::make_unique<juce::Slider>(
-        juce::Slider::LinearVertical, juce::Slider::NoTextBox);
+    auto slider = std::make_unique<Shoe>(proc_, controlId);
     slider->setRange(0.0, 127.0, 1.0);
     // The organ's own name for the control, which is the long one: "01.
     // Enclosure Recit expressif".
@@ -199,6 +198,23 @@ void ExpressionBar::rebuild() {
     shoes_.push_back(std::move(slider));
   }
   resized();
+}
+
+void ExpressionBar::Shoe::mouseDown(const juce::MouseEvent& e) {
+  if (!e.mods.isPopupMenu()) {
+    juce::Slider::mouseDown(e);
+    return;
+  }
+  showControlMidiMenu(proc_, controlId_, getScreenBounds(), nullptr);
+}
+
+void ExpressionBar::refresh() {
+  for (auto& s : shoes_) {
+    if (s->isMouseButtonDown()) continue;  // the player has it in hand
+    const int v = proc_.continuousControlValue(s->controlId());
+    if (static_cast<int>(s->getValue()) != v)
+      s->setValue(v, juce::dontSendNotification);
+  }
 }
 
 void ExpressionBar::resized() {

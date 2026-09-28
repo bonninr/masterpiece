@@ -841,8 +841,11 @@ void ConsoleView::paint(juce::Graphics& g) {
 
   // While learning, say which control is armed: an invisible mode is a trap.
   if (proc_.midiMap().learning()) {
+    const bool control =
+        proc_.midiMap().learningKind() == MidiTargetKind::ContinuousControl;
     for (const auto& item : items_) {
-      if (item.switchId != proc_.midiMap().learningTarget()) continue;
+      if ((control ? item.controlId : item.switchId) != proc_.midiMap().learningTarget())
+        continue;
       g.setColour(juce::Colours::orange);
       g.drawRect(item.bounds, 3);
       break;
@@ -882,7 +885,13 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     if (!it->hitBounds.contains(e.getPosition())) continue;
 
     if (e.mods.isPopupMenu()) {
-      if (it->switchId != 0) showMidiMenu(it->switchId, it->bounds);
+      if (it->switchId != 0) {
+        showMidiMenu(it->switchId, it->bounds);
+      } else {
+        const auto bounds = it->bounds;
+        showControlMidiMenu(proc_, it->controlId, localAreaToGlobal(bounds),
+                            [this, bounds] { repaint(bounds); });
+      }
       return;
     }
 
@@ -1069,5 +1078,39 @@ void ConsoleView::mouseUp(const juce::MouseEvent&) {
 }
 
 void ConsoleView::resized() {}
+
+void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
+                         juce::Rectangle<int> area, std::function<void()> after) {
+  auto& map = proc.midiMap();
+  juce::PopupMenu menu;
+  const auto existing = map.bindingsFor(MidiTargetKind::ContinuousControl, controlId);
+  if (existing.empty()) {
+    menu.addSectionHeader("Not mapped");
+  } else {
+    for (const MidiBinding* b : existing) {
+      juce::String what = "CC " + juce::String(b->source.number);
+      if (b->source.channel > 0) what << " ch " << b->source.channel;
+      menu.addSectionHeader(what);
+    }
+  }
+  menu.addSeparator();
+  // One way to teach it: move the pedal, knob or fader. A controller carries
+  // its position in every message, so there is no behaviour to choose.
+  menu.addItem(1, "Learn: move a pedal, knob or fader");
+  menu.addItem(2, "Clear mapping", !existing.empty());
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
+                     [&proc, controlId, after = std::move(after)](int choice) {
+                       auto& m = proc.midiMap();
+                       if (choice == 1) {
+                         m.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
+                       } else if (choice == 2) {
+                         m.unbindTarget(MidiTargetKind::ContinuousControl, controlId);
+                         proc.saveMidiMap();
+                       } else {
+                         return;
+                       }
+                       if (after) after();
+                     });
+}
 
 } // namespace mp::ui

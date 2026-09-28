@@ -5161,6 +5161,24 @@ public:
     map.cancelLearn();
     MP_CHECK(!map.learning(), "learning can be cancelled");
 
+    // A swell shoe or a level is learned from a controller (#53). A key played
+    // while one is armed is not taken for it: the learn waits for the pedal.
+    {
+      mp::MidiSource key;
+      key.kind = mp::MidiSourceKind::Note;
+      key.channel = 1;
+      key.number = 60;
+      map.beginLearn(mp::MidiTargetKind::ContinuousControl, 12, false);
+      MP_CHECK(!map.learnFrom(key) && map.learning(),
+               "a key does not complete a continuous control's learn");
+      MP_CHECK(map.learnFrom(cc(22)), "a controller does");
+      const auto a = map.actionFor(cc(22), 90);
+      MP_CHECK(a.kind == mp::MidiTargetKind::ContinuousControl && a.targetId == 12 &&
+                   a.value == 90,
+               "and then moves the control to the value it sends");
+      map.unbindTarget(mp::MidiTargetKind::ContinuousControl, 12);
+    }
+
     // One source drives one target: re-using a button reassigns it.
     mp::MidiBinding reuse;
     reuse.source = cc(65);
