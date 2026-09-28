@@ -32,6 +32,22 @@ namespace mp {
 // GrandOrgue .orgue (any case).
 bool isOrganArchive(const std::string& path);
 
+// What an archive is, from its first headers alone: enough to say why it
+// cannot be read before trying, and to write down what was found.
+struct ArchiveKind {
+  enum class Format { Unknown, Rar4, Rar5, Zip };
+  Format format = Format::Unknown;
+  bool solid = false;
+  bool multiVolume = false;      // one volume of a set
+  bool firstVolume = false;      // ...and the first one (RAR 4 says so)
+  bool encryptedHeaders = false; // even the file names are locked
+  bool encryptedFiles = false;   // the first file is password-protected
+  int64_t bytes = 0;
+  // "RAR 4, solid, 6.70 GB"
+  std::string describe() const;
+};
+ArchiveKind inspectArchive(const std::string& path);
+
 class OrganArchive {
 public:
   struct Entry {
@@ -50,6 +66,15 @@ public:
   // archive means decompressing all of it.
   bool discover(const std::string& path, std::string& error);
   bool index(std::string& error);
+  // Between the two: each archive's first header, which is where most
+  // reasons it cannot be read are -- a solid RAR 4, a password, a volume
+  // without its set. Cheap: a few kilobytes of each.
+  bool inspect(std::string& error);
+
+  // What discover() and index() found, a line each, for the log: the
+  // archives, their kind and size, how many files. A player's report is only
+  // as good as this.
+  const std::vector<std::string>& report() const { return report_; }
 
   // The index, kept beside the unpacked files so a solid archive is walked
   // once, not on every load. loadIndex() refuses an index whose archives
@@ -89,6 +114,7 @@ public:
   std::string identity() const;
 
 private:
+  std::vector<std::string> report_;
   std::vector<std::vector<std::string>> archives_;
   std::vector<Entry> entries_;
   std::unordered_map<std::string, size_t> byKey_;
