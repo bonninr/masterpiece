@@ -38,7 +38,12 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
 MasterpieceProcessor::MasterpieceProcessor()
   : juce::AudioProcessor(juce::AudioProcessor::BusesProperties()
       .withOutput("Out", juce::AudioChannelSet::stereo(), true)),
-    apvts_(*this, nullptr, "MP", makeLayout()) {}
+    apvts_(*this, nullptr, "MP", makeLayout()) {
+  // Before any organ is opened: a streamed set keeps many files open, and the
+  // default allowance on macOS is 256.
+  static const size_t tails = SampleLibrary::raiseOpenFileLimit();
+  (void)tails;
+}
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;

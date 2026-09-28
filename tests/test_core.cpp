@@ -8619,11 +8619,85 @@ public:
              "three resident formats, in the order the tests assume");
   }
 };
+// A streamed release tail opened its file the first time it played and kept it
+// for the life of the organ. macOS allows a program 256 open files by default:
+// a few minutes of playing a large set used them all, and after that every
+// file the program opened failed -- further release tails went silent and the
+// console's bitmaps vanished from the page (#53). The open tails are now a
+// bounded pool: past the limit the one read longest ago is closed, and it
+// opens again the next time it plays.
+class OpenTailPoolTest final : public mp::test::Test {
+public:
+  OpenTailPoolTest() : Test("functional.samples.open-tail-pool", Category::Functional) {}
+  void run() override {
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("mp_open_tail_pool_test");
+    root.deleteRecursively();
+    root.createDirectory();
+
+    constexpr int kPipes = 12;
+    mp::OrganModel model;
+    mp::Rank rank;
+    rank.rankId = 1;
+    for (int i = 0; i < kPipes; ++i) {
+      const mp::Id attackId = 100 + i, releaseId = 200 + i;
+      SampleLibraryTest::writeWav(root.getChildFile("a" + juce::String(i) + ".wav"), 2000, 1, 48000.0, 400, 1600);
+      SampleLibraryTest::writeWav(root.getChildFile("r" + juce::String(i) + ".wav"), 20000, 1, 48000.0);
+      mp::SampleRef a, r;
+      a.sampleId = attackId;
+      a.fileName = ("a" + juce::String(i) + ".wav").toStdString();
+      r.sampleId = releaseId;
+      r.fileName = ("r" + juce::String(i) + ".wav").toStdString();
+      model.samples[attackId] = a;
+      model.samples[releaseId] = r;
+      mp::Pipe pipe;
+      pipe.pipeId = 1000 + i;
+      pipe.midiNote = 36 + i;
+      mp::PipeLayer layer;
+      mp::AttackSample as;
+      as.sample = a;
+      mp::ReleaseSample rs;
+      rs.sample = r;
+      layer.attacks.push_back(as);
+      layer.releases.push_back(rs);
+      pipe.layers.push_back(layer);
+      rank.pipes.push_back(pipe);
+    }
+    model.ranks[1] = rank;
+
+    mp::SampleLibrary::setOpenTailLimitForTesting(4);
+    {
+      mp::SampleLibrary lib;
+      lib.setStreamReleases(true);
+      lib.setStreamHeadFrames(4096);
+      lib.loadAll(model, root.getFullPathName().toStdString());
+      auto provider = lib.provider();
+      MP_CHECK(mp::SampleLibrary::openTailFiles() == 0, "loading opens no tail");
+
+      std::vector<float> dest(256);
+      auto readTail = [&](int i) -> int64_t {
+        const mp::SampleBuffer* b = provider(200 + i);
+        if (b == nullptr || !b->streams()) return -1;
+        return b->tail->read(b->numFrames, 256, dest.data(), 1);
+      };
+      for (int i = 0; i < kPipes; ++i)
+        MP_CHECK(readTail(i) == 256, "every release tail streams");
+      MP_CHECK(mp::SampleLibrary::openTailFiles() <= 4,
+               "no more tails hold a file open than the pool allows");
+      MP_CHECK(readTail(0) == 256, "a tail closed to make room opens again when played");
+      MP_CHECK(mp::SampleLibrary::openTailFiles() <= 4, "and the pool stays within its limit");
+    }
+    MP_CHECK(mp::SampleLibrary::openTailFiles() == 0, "an organ that is gone holds no file open");
+    mp::SampleLibrary::raiseOpenFileLimit();  // back to what the program uses
+    root.deleteRecursively();
+  }
+};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
 static MemoryDefaultsTest g_memoryDefaults;
+static OpenTailPoolTest g_openTailPool;
 #endif
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;
