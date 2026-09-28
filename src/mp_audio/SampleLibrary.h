@@ -55,6 +55,14 @@ struct SampleLoadReport {
 
 class SampleLibrary {
 public:
+  // Raise the process's limit on open files as far as the system allows, and
+  // size the pool of streamed tails that may stay open to it. Once, at start.
+  // Returns how many tails may be open at a time.
+  static size_t raiseOpenFileLimit();
+  // How many streamed tails hold their file open right now.
+  static size_t openTailFiles();
+  static void setOpenTailLimitForTesting(size_t limit);
+
   SampleLibrary();
   ~SampleLibrary();
 

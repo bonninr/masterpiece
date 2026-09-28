@@ -16,9 +16,15 @@ juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
   return "Division " + juce::String(divisionId);
 }
 
-constexpr int kStopHeight = 26;
-constexpr int kHeaderHeight = 22;
+constexpr int kStopHeight = 30;
+constexpr int kHeaderHeight = 24;
 constexpr int kJambWidth = 320;
+// A grid of stop tiles rather than bars the width of the window: as many
+// columns as fit at this width.
+constexpr int kTileWidth = 190;
+constexpr int kGap = 4;
+
+int columnsFor(int width) { return juce::jmax(1, (width - 8 + kGap) / (kTileWidth + kGap)); }
 
 } // namespace
 
@@ -51,6 +57,12 @@ void StopJamb::rebuild() {
     e.button->setClickingTogglesState(true);
     e.button->setToggleState(proc_.stopEngaged(s.stopId),
                              juce::dontSendNotification);
+    // Drawn reads as drawn at a glance: ivory with dark lettering, like a
+    // stop face, against the dark of one pushed in.
+    e.button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f3a));
+    e.button->setColour(juce::TextButton::textColourOffId, juce::Colour(0xffb9c2d0));
+    e.button->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffeee3c6));
+    e.button->setColour(juce::TextButton::textColourOnId, juce::Colour(0xff1b1e24));
     e.button->setEnabled(s.playable);
     if (!s.playable) {
       // Say WHY rather than just greying it: on a demo set this is the single
@@ -67,22 +79,52 @@ void StopJamb::rebuild() {
   }
 
   // Height is content-driven; the Viewport scrolls it.
-  const int rows = static_cast<int>(entries_.size());
-  const int heads = static_cast<int>(headers_.size());
-  setSize(kJambWidth, rows * kStopHeight + heads * kHeaderHeight + 8);
+  const int width = getWidth() > 0 ? getWidth() : kJambWidth;
+  setSize(width, heightFor(width));
   resized();
 }
 
-void StopJamb::resized() {
-  auto r = getLocalBounds().reduced(4, 4);
-  size_t headerIndex = 0;
-  Id lastDivision = -1;
+void StopJamb::refresh() {
   for (auto& e : entries_) {
-    if (e.divisionId != lastDivision && headerIndex < headers_.size()) {
-      headers_[headerIndex++]->setBounds(r.removeFromTop(kHeaderHeight));
-      lastDivision = e.divisionId;
+    const bool on = proc_.stopEngaged(e.stopId);
+    if (e.button->getToggleState() != on) e.button->setToggleState(on, juce::dontSendNotification);
+  }
+}
+
+int StopJamb::heightFor(int width) const {
+  const int columns = columnsFor(width);
+  int height = 8;
+  size_t i = 0;
+  while (i < entries_.size()) {
+    const Id division = entries_[i].divisionId;
+    size_t n = 0;
+    while (i + n < entries_.size() && entries_[i + n].divisionId == division) ++n;
+    height += kHeaderHeight + static_cast<int>((n + columns - 1) / columns) * (kStopHeight + kGap);
+    i += n;
+  }
+  return height;
+}
+
+void StopJamb::resized() {
+  const int columns = columnsFor(getWidth());
+  const int tile = juce::jmax(80, (getWidth() - 8 - (columns - 1) * kGap) / columns);
+  int y = 4;
+  size_t headerIndex = 0;
+  size_t i = 0;
+  while (i < entries_.size()) {
+    const Id division = entries_[i].divisionId;
+    if (headerIndex < headers_.size())
+      headers_[headerIndex++]->setBounds(4, y, getWidth() - 8, kHeaderHeight);
+    y += kHeaderHeight;
+    int column = 0;
+    for (; i < entries_.size() && entries_[i].divisionId == division; ++i) {
+      entries_[i].button->setBounds(4 + column * (tile + kGap), y, tile, kStopHeight);
+      if (++column == columns) {
+        column = 0;
+        y += kStopHeight + kGap;
+      }
     }
-    e.button->setBounds(r.removeFromTop(kStopHeight).reduced(1));
+    if (column != 0) y += kStopHeight + kGap;
   }
 }
 
@@ -104,23 +146,46 @@ void ExpressionBar::rebuild() {
     (void)id;
     if (enc.continuousControlId == 0) continue;
     // The shoe the player moves, which may be upstream of the shutters.
+    // The part of the name that tells two boxes apart. Nancy calls hers
+    // "Enclosure R" and "Enclosure PO", and a column this narrow cut both to
+    // "Enclosur..." -- two sliders that looked like one control twice (#53).
+    juce::String name(enc.name);
+    for (const char* word : {"Enclosure", "enclosure", "Swell box", "Swell"})
+      if (name.startsWith(word) && name.length() > juce::String(word).length())
+        name = name.substring(juce::String(word).length()).trim();
     shoes.emplace_back(proc_.playerControlFor(enc.continuousControlId),
-                       enc.name.empty() ? juce::String("Swell")
-                                        : juce::String(enc.name));
+                       name.isEmpty() ? juce::String("Swell") : name);
   }
   std::sort(shoes.begin(), shoes.end());
+  // Two boxes worked by one shoe are one slider.
+  shoes.erase(std::unique(shoes.begin(), shoes.end(),
+                          [](const auto& a, const auto& b) { return a.first == b.first; }),
+              shoes.end());
 
   for (const auto& [controlId, name] : shoes) {
     auto label = std::make_unique<juce::Label>();
     label->setText(name, juce::dontSendNotification);
     label->setJustificationType(juce::Justification::centred);
+    label->setMinimumHorizontalScale(0.6f);
     label->setColour(juce::Label::textColourId, juce::Colours::lightgrey);
     addAndMakeVisible(*label);
     labels_.push_back(std::move(label));
 
-    auto slider = std::make_unique<juce::Slider>(
-        juce::Slider::LinearVertical, juce::Slider::NoTextBox);
+    auto slider = std::make_unique<Shoe>(proc_, controlId);
     slider->setRange(0.0, 127.0, 1.0);
+    // The organ's own name for the control, which is the long one: "01.
+    // Enclosure Recit expressif".
+    {
+      const auto& controls = proc_.organModel().continuousControls;
+      const auto cit = controls.find(controlId);
+      if (cit != controls.end() && !cit->second.name.empty()) {
+        juce::String full(juce::CharPointer_UTF8(cit->second.name.c_str()));
+        if (full.initialSectionContainingOnly("0123456789").isNotEmpty() && full.contains(". "))
+          full = full.fromFirstOccurrenceOf(". ", false, false);
+        slider->setTooltip(full);
+        labels_.back()->setTooltip(full);
+      }
+    }
     // Shoes start open: a console that boots with every box shut sounds broken.
     slider->setValue(127.0, juce::dontSendNotification);
     const Id id = controlId;
@@ -133,6 +198,26 @@ void ExpressionBar::rebuild() {
     shoes_.push_back(std::move(slider));
   }
   resized();
+}
+
+void ExpressionBar::Shoe::mouseDown(const juce::MouseEvent& e) {
+  if (!e.mods.isPopupMenu()) {
+    juce::Slider::mouseDown(e);
+    return;
+  }
+  // At the pointer, not beside the slider: the strip runs the height of the
+  // window, and a menu placed against all of it can open far from the click.
+  showControlMidiMenu(proc_, controlId_,
+                      {e.getScreenX(), e.getScreenY(), 1, 1}, nullptr);
+}
+
+void ExpressionBar::refresh() {
+  for (auto& s : shoes_) {
+    if (s->isMouseButtonDown()) continue;  // the player has it in hand
+    const int v = proc_.continuousControlValue(s->controlId());
+    if (static_cast<int>(s->getValue()) != v)
+      s->setValue(v, juce::dontSendNotification);
+  }
 }
 
 void ExpressionBar::resized() {
@@ -242,6 +327,48 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
     sw.simpleWavOnly = simple_.getToggleState();
     proc_.setEngineSwitch(sw);
   };
+}
+
+AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
+                                       MasterpieceProcessor& p)
+    : proc_(p), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
+  addAndMakeVisible(selector_);
+  addAndMakeVisible(keepAwake_);
+  addAndMakeVisible(level_);
+  const float db = proc_.speakerKeepAlive();
+  keepAwake_.setToggleState(db < 0.0f, juce::dontSendNotification);
+  keepAwake_.setTooltip(
+      "For a battery speaker that switches itself off after a few seconds of "
+      "silence and swallows the first notes while it wakes. Plays a 20 Hz tone "
+      "too low and too quiet to hear under the organ, so the line is never "
+      "silent.");
+  level_.setRange(-80.0, -40.0, 1.0);
+  level_.setTextValueSuffix(" dB");
+  level_.setValue(db < 0.0f ? db : -60.0, juce::dontSendNotification);
+  level_.setTooltip("Raise it if the speaker still goes to sleep; lower it if "
+                    "you can hear it.");
+  level_.setEnabled(keepAwake_.getToggleState());
+  keepAwake_.onClick = [this] { apply(); };
+  level_.onDragEnd = [this] { apply(); };
+  level_.onValueChange = [this] {
+    if (!level_.isMouseButtonDown()) apply();
+  };
+  setSize(500, 510);
+}
+
+void AudioSettingsPanel::apply() {
+  level_.setEnabled(keepAwake_.getToggleState());
+  proc_.setSpeakerKeepAlive(keepAwake_.getToggleState()
+                                ? static_cast<float>(level_.getValue())
+                                : 0.0f);
+}
+
+void AudioSettingsPanel::resized() {
+  auto r = getLocalBounds();
+  auto row = r.removeFromBottom(40).reduced(12, 6);
+  keepAwake_.setBounds(row.removeFromLeft(240));
+  level_.setBounds(row);
+  selector_.setBounds(r);
 }
 
 void TopBar::setStatus(const juce::String& text) {
@@ -423,7 +550,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   startTimerHz(4);
 }
 
-MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
+MasterpieceEditor::~MasterpieceEditor() {
+  stopTimer();
+  // A level moved in the last second before quitting.
+  proc_.saveRememberedStateIfPending();
+}
 
 void MasterpieceEditor::toggleCombinations() {
   if (combinations_ == nullptr) return;
@@ -663,14 +794,29 @@ void MasterpieceEditor::resized() {
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
   auto bar = r.removeFromTop(36);
-  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
   layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
+  swellButton_.setVisible(expression_.shoeCount() > 0);
+  // On a narrow window -- a monitor stood on end is 1080 wide -- the buttons
+  // on the right left the bar on the left too little room, and the volume
+  // fader went with it (#53). Below that, the buttons take a row of their own.
+  bool stacked = false;
+  {
+    constexpr int kFaderRowMin = 350;  // Open, Audio, No DSP and the fader
+    const int buttons = 90 + 70 + 64 + 110 + 110 + 140 + 30 + 64 + 30 + 56 +
+                        (layout_.isVisible() ? 130 : 0) +
+                        (swellButton_.isVisible() ? 70 : 0);
+    if (bar.getWidth() - buttons < kFaderRowMin) {
+      top_.setBounds(bar);
+      bar = r.removeFromTop(36);
+      stacked = true;
+    }
+  }
+  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
   // No swell button on an organ with nothing to enclose.
   panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
-  swellButton_.setVisible(expression_.shoeCount() > 0);
   if (swellButton_.isVisible())
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
@@ -681,7 +827,7 @@ void MasterpieceEditor::resized() {
   stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
   stepPrev_.setBounds(bar.removeFromRight(30).reduced(2));
   setter_.setBounds(bar.removeFromRight(56).reduced(2));
-  top_.setBounds(bar);
+  if (!stacked) top_.setBounds(bar);
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
@@ -748,7 +894,8 @@ void MasterpieceEditor::resized() {
     }
   } else {
     jambView_.setBounds(r);
-    jamb_.setSize(jambView_.getWidth() - 12, jamb_.getHeight());
+    const int jambWidth = jambView_.getWidth() - 12;
+    jamb_.setSize(jambWidth, jamb_.heightFor(jambWidth));
   }
 }
 
@@ -765,6 +912,9 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // A drawstop clicked on the console changes the jamb too, and vice versa.
   if (showingConsole_) console_.repaint();
+  // And the stop list follows the console, pistons and MIDI the same way
+  // (#56): it used to show only what was clicked in it.
+  jamb_.refresh();
 
   // The on-screen keyboard plays the chosen manual on that manual's channel,
   // which the player can move in Settings while the organ is loaded.
@@ -828,6 +978,7 @@ void MasterpieceEditor::timerCallback() {
   proc_.saveSettingsIfDirty();
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
+  proc_.saveRememberedStateIfSettled();
 
   // The sequencer's frame, out of the frames holding anything. With Set on
   // the next step is always open: stepping on is how a sequence grows.
@@ -853,6 +1004,9 @@ void MasterpieceEditor::timerCallback() {
     const bool front = juce::Process::isForegroundProcess();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
+
+  // The swell strip follows a pedal moved over MIDI.
+  if (expression_.isVisible()) expression_.refresh();
 
   // Voice count is the honest health readout: it says whether drawing a stop
   // and pressing a key actually produced sound.

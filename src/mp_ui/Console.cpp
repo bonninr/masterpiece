@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <tuple>
@@ -840,8 +841,11 @@ void ConsoleView::paint(juce::Graphics& g) {
 
   // While learning, say which control is armed: an invisible mode is a trap.
   if (proc_.midiMap().learning()) {
+    const bool control =
+        proc_.midiMap().learningKind() == MidiTargetKind::ContinuousControl;
     for (const auto& item : items_) {
-      if (item.switchId != proc_.midiMap().learningTarget()) continue;
+      if ((control ? item.controlId : item.switchId) != proc_.midiMap().learningTarget())
+        continue;
       g.setColour(juce::Colours::orange);
       g.drawRect(item.bounds, 3);
       break;
@@ -881,7 +885,13 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     if (!it->hitBounds.contains(e.getPosition())) continue;
 
     if (e.mods.isPopupMenu()) {
-      if (it->switchId != 0) showMidiMenu(it->switchId, it->bounds);
+      if (it->switchId != 0) {
+        showMidiMenu(it->switchId, it->bounds);
+      } else {
+        const auto bounds = it->bounds;
+        showControlMidiMenu(proc_, it->controlId, localAreaToGlobal(bounds),
+                            [this, bounds] { repaint(bounds); });
+      }
       return;
     }
 
@@ -894,11 +904,25 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       heldControlBounds_ = it->hitBounds;
       heldControlHigherIsMore_ = it->controlHigherIsMore;
       heldControlStartY_ = e.getPosition().getY();
+      heldControlStartX_ = e.getPosition().getX();
       heldControlStartValue_ = proc_.continuousControlValue(it->controlId);
       return;
     }
 
-    proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+    // A button the organ marks momentary -- Load, Save, Reset, a piston --
+    // is pressed while the mouse is down and let go with it (#53). It used to
+    // toggle like a drawstop and stay in, looking pressed until clicked again.
+    // A piston lets itself out as soon as it has fired, so its release is
+    // already done by the time the mouse comes up.
+    const auto sw = proc_.organModel().switches.find(it->switchId);
+    const bool momentary = sw != proc_.organModel().switches.end() && !sw->second.latching;
+    if (momentary) {
+      heldButton_ = it->switchId;
+      heldButtonBounds_ = it->bounds;
+      proc_.setSwitchEngaged(it->switchId, true);
+    } else {
+      proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+    }
     repaint(it->bounds);
     return;
   }
@@ -995,10 +1019,23 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
   // and across a 61-pixel image with 101 frames it would move two steps per
   // pixel. Starting from the value in hand is both what the organ describes
   // and what can actually be aimed.
+  //
+  // Along whichever axis the hand is moving, though. A slider drawn lying
+  // down -- Green Positiv's noise levels, "Original" to "Silent" -- is dragged
+  // sideways, and reading only the vertical left it all but immovable (#54).
+  // Sideways, right is more, scaled to the drawn width so the handle keeps
+  // up with the hand across its length; up and down stay exactly as above.
   const int dy = heldControlStartY_ - p.getY(); // up is positive
-  const double perPixel = heldControlHigherIsMore_ ? 0.5 : -0.5;
-  const int v = juce::jlimit(
-      0, 127, heldControlStartValue_ + juce::roundToInt(dy * perPixel));
+  const int dx = p.getX() - heldControlStartX_; // right is positive
+  double delta = 0.0;
+  if (std::abs(dx) > std::abs(dy)) {
+    const double width = juce::jmax(40, heldControlBounds_.getWidth());
+    delta = dx * juce::jlimit(0.3, 1.0, 127.0 / width);
+  } else {
+    delta = dy * 0.5;
+  }
+  if (!heldControlHigherIsMore_) delta = -delta;
+  const int v = juce::jlimit(0, 127, heldControlStartValue_ + juce::roundToInt(delta));
 
   if (v == proc_.continuousControlValue(heldControl_)) return;
   proc_.setContinuousControl(heldControl_, v);
@@ -1029,6 +1066,11 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
 
 void ConsoleView::mouseUp(const juce::MouseEvent&) {
   heldControl_ = 0;
+  if (heldButton_ != 0) {
+    proc_.setSwitchEngaged(heldButton_, false);
+    repaint(heldButtonBounds_);
+    heldButton_ = 0;
+  }
   if (heldKey_ < 0) return;
   proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
   heldKey_ = -1;
@@ -1036,5 +1078,39 @@ void ConsoleView::mouseUp(const juce::MouseEvent&) {
 }
 
 void ConsoleView::resized() {}
+
+void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
+                         juce::Rectangle<int> area, std::function<void()> after) {
+  auto& map = proc.midiMap();
+  juce::PopupMenu menu;
+  const auto existing = map.bindingsFor(MidiTargetKind::ContinuousControl, controlId);
+  if (existing.empty()) {
+    menu.addSectionHeader("Not mapped");
+  } else {
+    for (const MidiBinding* b : existing) {
+      juce::String what = "CC " + juce::String(b->source.number);
+      if (b->source.channel > 0) what << " ch " << b->source.channel;
+      menu.addSectionHeader(what);
+    }
+  }
+  menu.addSeparator();
+  // One way to teach it: move the pedal, knob or fader. A controller carries
+  // its position in every message, so there is no behaviour to choose.
+  menu.addItem(1, "Learn: move a pedal, knob or fader");
+  menu.addItem(2, "Clear mapping", !existing.empty());
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
+                     [&proc, controlId, after = std::move(after)](int choice) {
+                       auto& m = proc.midiMap();
+                       if (choice == 1) {
+                         m.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
+                       } else if (choice == 2) {
+                         m.unbindTarget(MidiTargetKind::ContinuousControl, controlId);
+                         proc.saveMidiMap();
+                       } else {
+                         return;
+                       }
+                       if (after) after();
+                     });
+}
 
 } // namespace mp::ui
