@@ -9376,6 +9376,76 @@ public:
   }
 };
 static TuningControlsTest g_tuningControls;
+
+// #53: a level set on the organ's own settings page was back at its default
+// after a restart. Moving a control the organ marks RememberStateFromLastLoad
+// wrote nothing unless something else saved the file later, and remembered
+// switches were never written at all. Now a move is written once the player
+// stops, touching only its own lines, and both come back on the next load.
+class RememberedStateTest final : public mp::test::Test {
+public:
+  RememberedStateTest() : Test("functional.settings.remembered-state", Category::Functional) {}
+  void run() override {
+    // The expression fixture, with its blower switch and one control marked
+    // as remembered, as Nancy marks its levels and its blower-on-load switch.
+    auto xml = juce::File(juce::String(MP_TEST_FIXTURES_DIR) + "/m24.expression.Organ_Hauptwerk_xml")
+                   .loadFileAsString()
+                   .replace("\r\n", "\n")
+                   .replace("<Switch><SwitchID>3</SwitchID><Name>Blower</Name></Switch>",
+                            "<Switch><SwitchID>3</SwitchID><Name>Blower</Name><Latching>Y</Latching>"
+                            "<RememberStateFromLastLoad>Y</RememberStateFromLastLoad></Switch>")
+                   .replace("<ControlID>3</ControlID>\n      <Name>Unknown Control</Name>",
+                            "<ControlID>3</ControlID>\n      <Name>Unknown Control</Name>\n"
+                            "      <RememberStateFromLastLoad>Y</RememberStateFromLastLoad>");
+    MP_CHECK(xml.contains("<Latching>Y</Latching><RememberState") &&
+                 xml.contains("Unknown Control</Name>\n      <RememberState"),
+             "the fixture was marked");
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-remembered-state");
+    dir.createDirectory();
+    const auto odf = dir.getChildFile("remembered.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+
+    // The file is named after the organ as loaded -- one with no unique id is
+    // keyed by its path -- so ask a processor that has it open. A temporary
+    // organ, so there is nothing of the player's here to keep.
+    juce::File settings;
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      settings = p.settingsFileFor(odf);
+    }
+    settings.getParentDirectory().createDirectory();
+    // A line the player kept on purpose, which this writer must not touch.
+    settings.replaceWithText("# Masterpiece per-organ settings\nstream 1\n");
+
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      MP_CHECK(!p.saveRememberedStateIfPending(), "loading the organ is not the player moving anything");
+      p.setControlValue(3, 77);
+      p.setSwitchEngaged(3, true);
+      p.setSwitchEngaged(1, true);  // not remembered
+      MP_CHECK(!p.saveRememberedStateIfSettled(60000), "nothing is written while the player is still moving");
+      MP_CHECK(p.saveRememberedStateIfPending(), "and it is written once they stop");
+    }
+    const auto text = settings.loadFileAsString();
+    MP_CHECK(text.contains("stream 1"), "the rest of the file is left as it was");
+    MP_CHECK(text.contains("control 3 77") && text.contains("switch 3 1"),
+             "the remembered control and switch are written");
+    MP_CHECK(!text.contains("switch 1 "), "a switch the organ does not remember is not");
+    {
+      mp::MasterpieceProcessor p;
+      p.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      MP_CHECK(p.continuousControlValue(3) == 77, "the level comes back after a restart");
+      MP_CHECK(p.switchEngaged(3), "and so does the remembered switch");
+      MP_CHECK(!p.switchEngaged(1), "the other one starts where the organ puts it");
+    }
+    settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static RememberedStateTest g_rememberedState;
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_AUDIO

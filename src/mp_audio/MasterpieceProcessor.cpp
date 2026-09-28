@@ -765,7 +765,12 @@ std::string MasterpieceProcessor::organKey() const {
   if (model_.uniqueOrganId != 0)
     return sanitise(model_.organName) + "-" +
            std::to_string(model_.uniqueOrganId);
-  return sanitise(model_.organName) + "-" + pathHash(loadedOdf_);
+  // The same fallback name as organKeyFor, or an organ that declares no name
+  // is written under one file and read from another.
+  return sanitise(model_.organName.empty()
+                      ? loadedOdf_.getFileNameWithoutExtension().toStdString()
+                      : model_.organName) +
+         "-" + pathHash(loadedOdf_);
 }
 
 std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
@@ -1057,14 +1062,8 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   }
 }
 
-bool MasterpieceProcessor::saveSettings() const {
-  const auto f = organFileForSaving("organs", ".mporgan");
-  if (f.getFullPathName().isEmpty()) return false;
-  f.getParentDirectory().createDirectory();
-
-  juce::String text = "# Masterpiece per-organ settings\n";
-  text << settingsBody();
-
+juce::String MasterpieceProcessor::rememberedStateLines() const {
+  juce::String text;
   // Where the player left the organ's own controls: noise levels, audio-group
   // balance, detuning. Only the ones the ORGAN says to remember — a swell shoe
   // and a crescendo are marked otherwise and must start where the organ puts
@@ -1091,6 +1090,67 @@ bool MasterpieceProcessor::saveSettings() const {
     if (v == c.defaultValue) continue;  // nothing to say
     text << "control " << juce::String(id) << " " << juce::String(v) << "\n";
   }
+
+  // And its switches, the few it marks the same way: Nancy's "start blower on
+  // organ load" and "enable anches on load". Only latching ones -- a button
+  // that springs back has no state to keep -- and only where they differ from
+  // what the organ starts with.
+  std::vector<Id> kept;
+  for (const auto& [id, s] : model_.switches)
+    if (s.rememberState && s.latching && switches_.engaged(id) != s.defaultEngaged)
+      kept.push_back(id);
+  std::sort(kept.begin(), kept.end());
+  for (Id id : kept)
+    text << "switch " << juce::String(id) << " " << (switches_.engaged(id) ? 1 : 0) << "\n";
+  return text;
+}
+
+bool MasterpieceProcessor::saveRememberedState() const {
+  const auto f = organFileForSaving("organs", ".mporgan");
+  if (f.getFullPathName().isEmpty()) return false;
+  // Every line but these, exactly as it was; see markRememberedStateMoved.
+  const juce::String before = f.existsAsFile() ? f.loadFileAsString() : juce::String();
+  juce::StringArray lines;
+  for (const auto& line : juce::StringArray::fromLines(before)) {
+    const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
+    if (key == "control" || key == "switch") continue;
+    lines.add(line);
+  }
+  while (!lines.isEmpty() && lines[lines.size() - 1].trim().isEmpty())
+    lines.remove(lines.size() - 1);
+  if (lines.isEmpty()) lines.add("# Masterpiece per-organ settings");
+  const juce::String text = lines.joinIntoString("\n") + "\n" + rememberedStateLines();
+  // A stop drawn and put back: nothing to write. What is on disk has the
+  // CRLF endings replaceWithText writes on Windows.
+  if (text == before.replace("\r\n", "\n")) return true;
+  f.getParentDirectory().createDirectory();
+  return f.replaceWithText(text);
+}
+
+bool MasterpieceProcessor::saveRememberedStateIfSettled(uint32_t quietMs) {
+  const uint32_t at = rememberedMovedAtMs_.load(std::memory_order_acquire);
+  if (at == 0 || juce::Time::getMillisecondCounter() - at < quietMs) return false;
+  // A move that lands between the load and the exchange is kept for the next
+  // tick rather than lost.
+  uint32_t expected = at;
+  if (!rememberedMovedAtMs_.compare_exchange_strong(expected, 0u, std::memory_order_acq_rel))
+    return false;
+  return saveRememberedState();
+}
+
+bool MasterpieceProcessor::saveRememberedStateIfPending() {
+  if (rememberedMovedAtMs_.exchange(0u, std::memory_order_acq_rel) == 0) return false;
+  return saveRememberedState();
+}
+
+bool MasterpieceProcessor::saveSettings() const {
+  const auto f = organFileForSaving("organs", ".mporgan");
+  if (f.getFullPathName().isEmpty()) return false;
+  f.getParentDirectory().createDirectory();
+
+  juce::String text = "# Masterpiece per-organ settings\n";
+  text << settingsBody();
+  text << rememberedStateLines();
 
   // Where each rank speaks. Per organ because a rank id means nothing
   // elsewhere, and only the ranks the player actually routed: the rest fall
@@ -1155,6 +1215,7 @@ bool MasterpieceProcessor::saveSettings() const {
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pendingControlValues_.clear();
+  pendingSwitchStates_.clear();
   // Routes and voicing belong to the organ being left, not the one arriving.
   // Keeping either would point this organ's rank ids at the previous organ's
   // mix, or worse, at its tuning.
@@ -1183,6 +1244,13 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingControlValues_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue());
+      continue;
+    }
+    if (key == "switch") {
+      // "switch <id> <0|1>", held for the same reason as the controls.
+      pendingSwitchStates_.emplace_back(
+          static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
+          val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue() != 0);
       continue;
     }
     if (key == "voicingadj") {
@@ -2423,6 +2491,7 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 }
 
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
+  markRememberedStateMoved();
   controls_.setValue(controlId, value);
   controls_.propagate(controlId, &engagedSwitches_);
   fireMovedStages();
@@ -2518,6 +2587,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // means. On a wired console the two are different switches: Lemmer's "Pedaal
   // koppel" is 1006 and every key action that reads it looks at 10101.
   switches_.set(switchId, engaged);
+  markRememberedStateMoved();
   const bool swapsRanks = !alternateStopsBySwitch_.empty();
   if (swapsRanks) previousSwitches_ = engagedSwitches_;
   engagedSwitches_ = switches_.engagedSwitches();
@@ -3061,6 +3131,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
   LoadResult result;
   LoadPhases phases;
+  // The organ being left keeps what the player just set on it: the file is
+  // named after the organ that is loaded, which is about to change.
+  saveRememberedStateIfPending();
   // The audio thread keeps running through a load; keep it off the stage
   // table until it has been rebuilt for the new organ.
   stagesReady_.store(false, std::memory_order_release);
@@ -3209,6 +3282,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // them about.
   phases.mark("model: stop map");
   switches_.reset(model_);
+  // Where the player left the switches the organ remembers, set as the player
+  // would so their wiring follows: Nancy's "start blower on organ load" is
+  // read by the controls that start the blower further down.
+  hasRememberedState_ = false;
+  for (const auto& [id, s] : model_.switches)
+    if (s.rememberState) hasRememberedState_ = true;
+  for (const auto& [id, c] : model_.continuousControls)
+    if (c.rememberState) hasRememberedState_ = true;
+  for (const auto& [id, on] : pendingSwitchStates_) {
+    const auto it = model_.switches.find(id);
+    if (it == model_.switches.end() || !it->second.rememberState || !it->second.latching)
+      continue;
+    switches_.set(id, on);
+  }
   engagedSwitches_ = switches_.engagedSwitches();
   buildPalletIndex();
 
@@ -3663,6 +3750,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   palletsOpenEngaged_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
+  // Starting the organ moved its controls and switches, and that is the
+  // organ's doing, not the player's: nothing to write.
+  rememberedMovedAtMs_.store(0, std::memory_order_release);
   result.ok = true;
   return result;
 }

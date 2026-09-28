@@ -465,7 +465,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   startTimerHz(4);
 }
 
-MasterpieceEditor::~MasterpieceEditor() { stopTimer(); }
+MasterpieceEditor::~MasterpieceEditor() {
+  stopTimer();
+  // A level moved in the last second before quitting.
+  proc_.saveRememberedStateIfPending();
+}
 
 void MasterpieceEditor::toggleCombinations() {
   if (combinations_ == nullptr) return;
@@ -874,6 +878,7 @@ void MasterpieceEditor::timerCallback() {
   proc_.saveSettingsIfDirty();
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
+  proc_.saveRememberedStateIfSettled();
 
   // The sequencer's frame, out of the frames holding anything. With Set on
   // the next step is always open: stepping on is how a sequence grows.

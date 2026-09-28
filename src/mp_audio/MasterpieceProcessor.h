@@ -633,6 +633,29 @@ public:
   void markMasterGainDirty() { masterGainDirty_.store(true, std::memory_order_release); }
   bool saveMasterGainIfDirty();
   bool saveMasterGain() const;
+  // What the ORGAN asks to keep from one session to the next -- its controls
+  // and switches marked RememberStateFromLastLoad: Nancy's audio-group and
+  // noise levels, its "start blower on load" switch. Moving one used to be
+  // written only if something else saved the file afterwards, so a level set
+  // on the organ's own settings page was back at its default after a restart
+  // (#53).
+  //
+  // Raised on any thread when a control or switch moves; written on the
+  // message thread once the player has stopped for a second, so dragging a
+  // slider is not a file write per frame. Like the gain, it rewrites only its
+  // own lines ("control", "switch"), never the rest of the file from the live
+  // state.
+  void markRememberedStateMoved() {
+    if (hasRememberedState_)
+      // Never 0, which means "nothing waiting"; never ahead of the clock
+      // either, or the wait would wrap round and read as long over.
+      rememberedMovedAtMs_.store(std::max(juce::Time::getMillisecondCounter(), 1u),
+                                 std::memory_order_release);
+  }
+  bool saveRememberedStateIfSettled(uint32_t quietMs = 1000);
+  // Now, whatever the wait: on closing, and before another organ replaces
+  // this one.
+  bool saveRememberedStateIfPending();
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
   bool saveMidiMap() const;
@@ -1124,6 +1147,16 @@ private:
   // much further down and would wipe anything set before it — so these wait
   // and are applied on the far side of it.
   std::vector<std::pair<Id, int>> pendingControlValues_;
+  // The same for remembered switches, applied once the switch network exists.
+  std::vector<std::pair<Id, bool>> pendingSwitchStates_;
+  // The "control" and "switch" lines for the organ's remembered state.
+  juce::String rememberedStateLines() const;
+  bool saveRememberedState() const;
+  // Whether this organ remembers anything at all; most do not, and they never
+  // pay for a write.
+  bool hasRememberedState_ = false;
+  // When remembered state last moved, 0 for "nothing waiting".
+  std::atomic<uint32_t> rememberedMovedAtMs_{0};
   // The defaults as they stand on disk, kept verbatim so that writing the
   // file for any other reason cannot rewrite them from whatever is loaded.
   juce::String globalBody_;
