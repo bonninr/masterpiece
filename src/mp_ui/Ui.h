@@ -166,6 +166,10 @@ private:
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};
   juce::TextButton swellButton_{"Swell"};
+  // What shows the tooltips the controls carry. Without one, none of them ever
+  // appeared. On the desktop rather than in the editor, so the combinations
+  // window's are shown too.
+  juce::TooltipWindow tooltips_{nullptr, 700};
   // Opens and closes the combinations window: the player's own pistons, on
   // every organ, floating beside the console rather than drawn over it.
   juce::TextButton combinationsButton_{"Combinations"};
