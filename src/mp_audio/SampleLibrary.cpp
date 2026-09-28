@@ -13,6 +13,16 @@
 #include <thread>
 #include <unordered_set>
 #include <vector>
+#include <functional>
+#include <list>
+#include <mutex>
+
+#if !defined(_WIN32)
+#include <sys/resource.h>
+#if defined(__APPLE__)
+#include <sys/syslimits.h>
+#endif
+#endif
 
 namespace mp {
 namespace {
@@ -717,6 +727,70 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   return report;
 }
 
+namespace {
+
+// The streamed tails whose files are open, least recently read first.
+//
+// A tail opens its file the first time it is played and used to keep it for
+// the life of the organ. Every distinct release played held one more file
+// handle, and a large set has tens of thousands. macOS gives a program 256 by
+// default: a few minutes' playing used them all up, and from then on every
+// file the program opened failed -- the next release tails, which went silent,
+// and the console's own bitmaps, which vanished from the page (#53). So the
+// open ones are counted, and past a limit the one read longest ago is closed;
+// it opens again the next time it is needed.
+struct OpenTails {
+  std::mutex mutex;
+  std::list<std::function<bool()>> closers;  // each returns false if busy
+  size_t limit = 0;
+};
+
+OpenTails& openTails() {
+  static OpenTails t;
+  return t;
+}
+
+} // namespace
+
+size_t SampleLibrary::raiseOpenFileLimit() {
+  size_t allowed = 16384;  // Windows has no small per-process cap to raise
+#if !defined(_WIN32)
+  rlimit lim{};
+  if (getrlimit(RLIMIT_NOFILE, &lim) == 0) {
+    rlim_t want = lim.rlim_max;
+#if defined(__APPLE__)
+    // macOS reports an unlimited hard limit and then refuses anything above
+    // OPEN_MAX for the soft one.
+    if (want == RLIM_INFINITY || want > static_cast<rlim_t>(OPEN_MAX))
+      want = static_cast<rlim_t>(OPEN_MAX);
+#endif
+    if (want > lim.rlim_cur) {
+      rlimit raised = lim;
+      raised.rlim_cur = want;
+      if (setrlimit(RLIMIT_NOFILE, &raised) == 0) lim.rlim_cur = want;
+    }
+    allowed = lim.rlim_cur == RLIM_INFINITY ? 16384 : static_cast<size_t>(lim.rlim_cur);
+  }
+#endif
+  // Half for the tails, the rest for everything else the program opens:
+  // images, archives, settings, the audio device. Never so few that the
+  // releases sounding at one moment keep closing each other.
+  const size_t tails = std::clamp<size_t>(allowed / 2, 96, 4096);
+  std::lock_guard<std::mutex> lock(openTails().mutex);
+  openTails().limit = tails;
+  return tails;
+}
+
+size_t SampleLibrary::openTailFiles() {
+  std::lock_guard<std::mutex> lock(openTails().mutex);
+  return openTails().closers.size();
+}
+
+void SampleLibrary::setOpenTailLimitForTesting(size_t limit) {
+  std::lock_guard<std::mutex> lock(openTails().mutex);
+  openTails().limit = limit;
+}
+
 void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
                                int64_t totalFrames, double srcRate,
                                double dstRate) const {
@@ -746,6 +820,15 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
     std::unique_ptr<juce::AudioFormatReader> reader;
     std::string path;
     bool tried = false;
+    // Its place in openTails() while the file is open.
+    bool listed = false;
+    std::list<std::function<bool()>>::iterator place;
+    // `listed` and `place` are only touched with the list locked: a tail
+    // closed to make room is taken off the list by whoever closed it.
+    ~Shared() {
+      std::lock_guard<std::mutex> lock(openTails().mutex);
+      if (listed) openTails().closers.erase(place);
+    }
   };
   auto shared = std::make_shared<Shared>();
   shared->path = path;
@@ -758,12 +841,45 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
     std::lock_guard<std::mutex> lock(shared->mutex);
     if (shared->reader == nullptr) {
       if (shared->tried) return 0; // already failed once; do not retry per block
+      // Room first, so this open is not the one that finds none.
+      {
+        auto& open = openTails();
+        std::lock_guard<std::mutex> olock(open.mutex);
+        const size_t limit = open.limit > 0 ? open.limit : 256;
+        // Oldest first; one that is being read right now is passed over.
+        for (auto it = open.closers.begin();
+             open.closers.size() >= limit && it != open.closers.end();)
+          it = (*it)() ? open.closers.erase(it) : std::next(it);
+      }
       shared->tried = true;
       shared->formats = std::make_unique<juce::AudioFormatManager>();
       registerSampleFormats(*shared->formats);
       shared->reader.reset(
           shared->formats->createReaderFor(juce::File(shared->path)));
       if (shared->reader == nullptr) return 0;
+      // A plain pointer, not a shared one, so the list never keeps a tail
+      // alive: ~Shared takes it off the list first.
+      Shared* self = shared.get();
+      auto& open = openTails();
+      std::lock_guard<std::mutex> olock(open.mutex);
+      shared->place = open.closers.insert(open.closers.end(), [self]() -> bool {
+        // Called with the list locked. The tail's own lock is taken only if
+        // free: the thread holding it may be waiting for the list.
+        std::unique_lock<std::mutex> own(self->mutex, std::try_to_lock);
+        if (!own.owns_lock()) return false;
+        self->reader.reset();
+        self->formats.reset();
+        self->tried = false;  // open again when next played
+        self->listed = false;
+        return true;
+      });
+      shared->listed = true;
+    } else {
+      // Read now, so it is the last to be closed.
+      auto& open = openTails();
+      std::lock_guard<std::mutex> olock(open.mutex);
+      if (shared->listed)
+        open.closers.splice(open.closers.end(), open.closers, shared->place);
     }
 
     // ---- converted tail -------------------------------------------------
