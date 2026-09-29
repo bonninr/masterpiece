@@ -631,6 +631,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // Samples not on disk that the organ's archives hold: key -> sample ids.
   std::unordered_map<std::string, std::vector<Id>> fromArchive;
 
+  report.wanted = static_cast<int>(wanted.size());
   if (progress != nullptr)
     progress->beginPhase(LoadProgress::Phase::LoadingSamples,
                          static_cast<int>(wanted.size()));
@@ -846,7 +847,11 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // Keep the result, so the next load of this organ at these settings is a
   // read. Written after publish: the organ is playable either way, and a
   // cache that fails to write is not a failed load.
-  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0)
+  // Never a load that stopped short -- at the memory limit, or cancelled: the
+  // cache is keyed to the whole organ, and the next load would take the part
+  // for the whole.
+  const bool stoppedShort = progress != nullptr && progress->isCancelled();
+  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 && !stoppedShort)
     writeCache(*next, fingerprint);
 
   publish(std::move(next));

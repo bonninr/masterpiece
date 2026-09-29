@@ -8782,10 +8782,71 @@ public:
     root.deleteRecursively();
   }
 };
+// At the memory limit the samples read so far are kept and played -- the
+// organ says it is incomplete -- rather than thrown away with the rest. And a
+// load that stopped short never writes the sample cache: the cache is keyed
+// to the whole organ, and the next load would take the part for the whole.
+class PartialLoadTest final : public mp::test::Test {
+public:
+  PartialLoadTest() : Test("functional.samples.partial-at-limit", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_partial_load");
+    root.deleteRecursively();
+    root.createDirectory();
+    const auto cacheDir = root.getChildFile("cache");
+    cacheDir.createDirectory();
+    mp::OrganModel model;
+    for (int i = 1; i <= 8; ++i) {
+      const auto name = "s" + std::to_string(i) + ".wav";
+      SampleLibraryTest::writeWav(root.getChildFile(name), 48000, 1, 48000.0);
+      mp::SampleRef ref;
+      ref.sampleId = i;
+      ref.fileName = name;
+      model.samples[i] = ref;
+    }
+    auto cacheFiles = [&cacheDir] { return cacheDir.getNumberOfChildFiles(juce::File::findFiles); };
+
+    {
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("partial", "stamp");
+      mp::LoadProgress progress;
+      progress.resetBudget(300 * 1024);  // two or so of the eight
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      MP_CHECK(progress.overBudget.load() && report.wanted == 8 && report.loaded > 0 && report.loaded < 8,
+               "the load stops at the limit with part of the organ read (" +
+                   std::to_string(report.loaded) + " of " + std::to_string(report.wanted) + ")");
+      int present = 0;
+      auto provider = lib.provider();
+      for (int i = 1; i <= 8; ++i)
+        if (provider(i) != nullptr) ++present;
+      MP_CHECK(present == report.loaded, "what was read is there to play");
+      MP_CHECK(cacheFiles() == 0, "and no cache is written for a load that stopped short");
+    }
+    {
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("partial", "stamp");
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      MP_CHECK(report.loaded == 8 && cacheFiles() == 1, "a whole load still writes it");
+    }
+    root.deleteRecursively();
+  }
+};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
+static PartialLoadTest g_partialLoad;
 static MemoryDefaultsTest g_memoryDefaults;
 static OpenTailPoolTest g_openTailPool;
 #endif
