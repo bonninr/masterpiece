@@ -167,12 +167,19 @@ on-screen keyboard instead.
 ## Using it
 
 **Loading.** **Open** takes a Hauptwerk-format definition, a GrandOrgue
-`.organ` file, or a set still in its packages: RAR archives (numbered parts and
-multi-volume sets included) or a GrandOrgue `.orgue` package. A package is not
-unpacked. Only its definitions and artwork are extracted, into a folder of
-Masterpiece's own, and the samples are read from the archives; after the first
-load the sample cache makes reopening as fast as an installed set. WavPack
-samples decode, back to WavPack 1.
+`.organ` file, or a set still in its packages: RAR archives (RAR 4 and RAR 5,
+solid or not, numbered parts and multi-volume sets included) or a GrandOrgue
+`.orgue` package. A package is not unpacked. Only its definitions and artwork
+are extracted, into a folder of Masterpiece's own, and the samples are read from
+the archives; after the first load the sample cache makes reopening as fast as
+an installed set. The first open of a large solid package takes a few minutes,
+since its files can only be decompressed in order. WavPack samples decode, back
+to WavPack 1.
+
+When a package cannot be opened, Masterpiece says why: a missing volume, a
+password, a second copy saved by a browser, a download not finished. Every
+session writes `masterpiece.log` in the Masterpiece settings folder, with the
+previous session's beside it; it is the file to attach to a bug report.
 
 The first time an organ is loaded, Settings opens on its Engine page before
 the load starts, because those settings decide how much memory the organ will
