@@ -55,10 +55,11 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
   addAndMakeVisible(note_);
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
-  note_.setText("A stop left out costs no memory and makes no sound. It keeps its "
-                "drawstop, dimmed, and its place in pistons. The choice is saved for "
-                "this organ and takes effect when it is loaded again. Figures are "
-                "estimates from the sample files, at the settings on the Loading tab.",
+  note_.setText("A perspective left out takes every rank recorded from that position; the "
+                "stops still play from the others. A stop left out costs no memory and makes "
+                "no sound, and keeps its drawstop, dimmed. Both are saved for this organ and "
+                "take effect when it is loaded again. Figures are estimates from the sample "
+                "files, at the settings on the Loading tab.",
                 juce::dontSendNotification);
 
   build();
@@ -74,7 +75,47 @@ StopsLoadPanel::~StopsLoadPanel() {
 void StopsLoadPanel::build() {
   rows_.clear();
   headings_.clear();
+  perspectives_.clear();
+  perspectivesHeading_.reset();
   list_.removeAllChildren();
+
+  // Perspectives first, when the set has them: on a set recorded from three
+  // or four places they are what decides whether it fits.
+  const auto groups = proc_.perspectives();
+  if (!groups.empty()) {
+    perspectivesHeading_ = std::make_unique<juce::Label>();
+    perspectivesHeading_->setText("Perspectives", juce::dontSendNotification);
+    perspectivesHeading_->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
+    perspectivesHeading_->setColour(juce::Label::textColourId, juce::Colours::orange);
+    list_.addAndMakeVisible(*perspectivesHeading_);
+    for (const auto& [name, ranks] : groups) {
+      PerspectiveRow row;
+      row.name = name;
+      juce::String label(juce::CharPointer_UTF8(name.c_str()));
+      label = label.substring(0, 1).toUpperCase() + label.substring(1) + "  (" +
+              juce::String(static_cast<int>(ranks.size())) + " ranks)";
+      row.toggle = std::make_unique<juce::ToggleButton>(label);
+      row.toggle->setToggleState(proc_.excludedPerspectives().count(name) == 0,
+                                 juce::dontSendNotification);
+      row.toggle->setTooltip("Every rank recorded from this position. Left out, it costs "
+                             "no memory; the stops still play from the other positions.");
+      row.toggle->onClick = [this, clicked = row.toggle.get()] {
+        // At least one position stays: without any, the organ is silent.
+        if (perspectivesOut().size() == perspectives_.size())
+          clicked->setToggleState(true, juce::dontSendNotification);
+        proc_.setExcludedPerspectives(perspectivesOut());
+        refreshFigures();
+      };
+      row.size = std::make_unique<juce::Label>();
+      row.size->setJustificationType(juce::Justification::centredRight);
+      row.size->setColour(juce::Label::textColourId, kTextDim);
+      row.samples = proc_.samplesOfRanks(ranks);
+      list_.addAndMakeVisible(*row.toggle);
+      list_.addAndMakeVisible(*row.size);
+      perspectives_.push_back(std::move(row));
+    }
+  }
+
   const auto& excluded = proc_.excludedStops();
   const auto& divisions = proc_.organModel().divisions;
   auto heading = [&](const juce::String& text) {
@@ -136,6 +177,13 @@ void StopsLoadPanel::build() {
   refreshFigures();
 }
 
+std::set<std::string> StopsLoadPanel::perspectivesOut() const {
+  std::set<std::string> out;
+  for (const auto& p : perspectives_)
+    if (!p.toggle->getToggleState()) out.insert(p.name);
+  return out;
+}
+
 void StopsLoadPanel::choose(std::set<Id> excluded) {
   for (auto& r : rows_)
     r.toggle->setToggleState(excluded.count(r.stopId) == 0, juce::dontSendNotification);
@@ -170,7 +218,8 @@ void StopsLoadPanel::refreshFigures() {
   std::set<Id> loaded;  // what the last load left out
   for (const auto& r : rows_)
     if (!proc_.stopLoaded(r.stopId)) loaded.insert(r.stopId);
-  reloadNow_.setEnabled(loaded != proc_.excludedStops() && !proc_.loadedOrganFile().getFullPathName().isEmpty());
+  reloadNow_.setEnabled((loaded != proc_.excludedStops() || perspectivesOut() != proc_.perspectivesLeftOut()) &&
+                        !proc_.loadedOrganFile().getFullPathName().isEmpty());
 
   if (!ready_) {
     total_.setText("Estimating the memory each stop takes...", juce::dontSendNotification);
@@ -185,12 +234,19 @@ void StopsLoadPanel::refreshFigures() {
     (void)shape;
     all += bytesOf(id);
   }
-  // Everything, less what only left-out stops use: a sample shared with a
-  // stop that stays is loaded anyway, and so is anything no stop owns.
+  // Everything, less the perspectives left out, less what only left-out stops
+  // use: a sample shared with a stop that stays is loaded anyway, and so is
+  // anything no stop owns.
+  std::unordered_set<Id> dropped;
+  for (const auto& p : perspectives_) {
+    int64_t mine = 0;
+    for (Id id : p.samples) mine += bytesOf(id);
+    p.size->setText(megabytes(mine), juce::dontSendNotification);
+    if (!p.toggle->getToggleState()) dropped.insert(p.samples.begin(), p.samples.end());
+  }
   std::unordered_set<Id> kept;
   for (const auto& r : rows_)
     if (r.toggle->getToggleState()) kept.insert(r.samples.begin(), r.samples.end());
-  std::unordered_set<Id> dropped;
   for (const auto& r : rows_) {
     int64_t mine = 0;
     for (Id id : r.samples) mine += bytesOf(id);
@@ -222,7 +278,7 @@ void StopsLoadPanel::resized() {
   drawn_.setBounds(top.removeFromLeft(180).reduced(0, 2));
   r.removeFromTop(8);
 
-  note_.setBounds(r.removeFromBottom(52));
+  note_.setBounds(r.removeFromBottom(68));
   r.removeFromBottom(6);
   auto footer = r.removeFromBottom(28);
   reloadNow_.setBounds(footer.removeFromRight(180).reduced(0, 2));
@@ -232,6 +288,16 @@ void StopsLoadPanel::resized() {
 
   const int width = juce::jmax(200, r.getWidth() - viewport_.getScrollBarThickness());
   int y = 0;
+  if (perspectivesHeading_ != nullptr) {
+    perspectivesHeading_->setBounds(0, y, width, kRowH);
+    y += kRowH;
+    for (auto& p : perspectives_) {
+      p.toggle->setBounds(8, y, width - 100, kRowH);
+      p.size->setBounds(width - 92, y, 88, kRowH);
+      y += kRowH;
+    }
+    y += 6;
+  }
   size_t h = 0;
   for (size_t i = 0; i < rows_.size(); ++i) {
     while (h < headings_.size() && headings_[h].beforeRow == static_cast<int>(i)) {
@@ -251,7 +317,7 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
     : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }) {
   addAndMakeVisible(tabs_);
   tabs_.addTab("Loading", kBackground, &engineScroll_, false);
-  tabs_.addTab("Stops", kBackground, &stops_, false);
+  tabs_.addTab("Stops and perspectives", kBackground, &stops_, false);
   setSize(660, 560);
 }
 

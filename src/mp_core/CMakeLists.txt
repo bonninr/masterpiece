@@ -4,6 +4,7 @@ add_library(mp_core STATIC
   GrandOrgueImport.h GrandOrgueImport.cpp
   CodmCompiler.h CodmCompiler.cpp
   Temperament.h Temperament.cpp
+  Perspectives.h Perspectives.cpp
 )
 target_include_directories(mp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_core PUBLIC cxx_std_20)

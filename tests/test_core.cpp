@@ -8,6 +8,7 @@
 #include "../src/mp_core/CodmCompiler.h"
 #include "../src/mp_core/GrandOrgueImport.h"
 #include "../src/mp_archive/OrganArchive.h"
+#include "../src/mp_core/Perspectives.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -9022,6 +9023,54 @@ public:
   }
 };
 static OrganArchiveGroupingTest g_organArchiveGrouping;
+
+// A set recorded from several microphone positions carries the organ once per
+// position, told apart only by the rank names. Leaving positions out is what
+// makes a large set fit, so they have to be found reliably -- and a bracket
+// that names something else must not become one.
+class PerspectivesTest final : public mp::test::Test {
+public:
+  PerspectivesTest() : Test("functional.odf.perspectives", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::perspectiveOf("001. P  Sousbasse 32 (close)") == "close", "a bracketed position");
+    MP_CHECK(mp::perspectiveOf("Principal 8 (Diffuse) ") == "diffuse", "in any case, trimmed");
+    MP_CHECK(mp::perspectiveOf("HW Principal 8' - Rear") == "rear", "a position as the last word");
+    MP_CHECK(mp::perspectiveOf("Octave 4 Echo").empty(), "a word that could be a stop's own is not one");
+    MP_CHECK(mp::perspectiveOf("Cornet (5 rgs)") == "5 rgs", "any bracket is read...");
+
+    mp::OrganModel m;
+    mp::Id id = 1;
+    for (const char* where : {"close", "front", "rear"})
+      for (int i = 0; i < 10; ++i) {
+        mp::Rank r;
+        r.rankId = id;
+        r.name = "Rank " + std::to_string(i) + " (" + where + ")";
+        m.ranks[id++] = r;
+      }
+    mp::Rank cornet;
+    cornet.rankId = id;
+    cornet.name = "Cornet (5 rgs)";
+    m.ranks[id++] = cornet;
+    mp::Rank trem;
+    trem.rankId = id;
+    trem.name = "Tremulant noise";
+    m.ranks[id++] = trem;
+    const auto groups = mp::perspectivesOf(m);
+    MP_CHECK(groups.size() == 3 && groups.count("close") && groups.count("front") && groups.count("rear"),
+             "...but only the positions that carry a share of the organ are perspectives");
+    MP_CHECK(groups.at("rear").size() == 10, "each with its ranks");
+
+    mp::OrganModel one;
+    for (int i = 0; i < 10; ++i) {
+      mp::Rank r;
+      r.rankId = i + 1;
+      r.name = "Rank " + std::to_string(i) + " (close)";
+      one.ranks[i + 1] = r;
+    }
+    MP_CHECK(mp::perspectivesOf(one).empty(), "an organ recorded from one place has none to choose");
+  }
+};
+static PerspectivesTest g_perspectives;
 
 // An archive that cannot be read says why, before any of it is decompressed
 // (#53, and a multi-volume set reported as "does not open"): a password, a
