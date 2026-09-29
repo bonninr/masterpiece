@@ -1152,10 +1152,10 @@ private:
   VoicingAB voicing_;
   Favourites favourites_;
   // Empty means the organ's default set.
+  std::vector<PagePlace> pageWindows_;
   std::string combinationSet_;
   WindowPlace combWindow_;
   std::set<Id> excludedStops_;
-  std::vector<PagePlace> pageWindows_;
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
