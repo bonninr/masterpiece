@@ -89,8 +89,117 @@ int volumeNumber(const std::string& fileName, std::string& setName) {
   return -1;
 }
 
+uint32_t crc32Of(const unsigned char* p, size_t n) {
+  uint32_t c = 0xFFFFFFFFu;
+  for (size_t i = 0; i < n; ++i) {
+    c ^= p[i];
+    for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
+  }
+  return ~c;
+}
+
+// Where a RAR 4 volume's archive really ends: just past its end-of-archive
+// block. A volume can be padded to its full size after that block -- St.
+// Maximin's first volume has 18 zero bytes there -- and libarchive, taking
+// the volumes as one stream, then meets the padding where the next volume's
+// marker should be and stops with "Bad RAR file". The block is found from the
+// end and trusted only if its header's CRC is right; otherwise the whole file
+// is used, as before.
+int64_t rarVolumeEnd(const std::string& path) {
+  std::error_code ec;
+  const auto size = static_cast<int64_t>(fs::file_size(fs::u8path(path), ec));
+  if (ec || size < 64) return size;
+  const int64_t tail = std::min<int64_t>(size, 64 * 1024);
+  std::ifstream in(fs::u8path(path), std::ios::binary);
+  in.seekg(size - tail);
+  std::vector<unsigned char> b(static_cast<size_t>(tail));
+  in.read(reinterpret_cast<char*>(b.data()), tail);
+  if (in.gcount() != tail) return size;
+  size_t zeros = b.size();
+  while (zeros > 0 && b[zeros - 1] == 0) --zeros;
+  if (zeros == b.size()) return size;  // no padding: nothing to cut
+  // The block may end in zeros of its own (a volume number of 0, reserved
+  // space), so its end lies at or past where the padding appears to begin.
+  const size_t lowest = zeros > 256 ? zeros - 256 : 0;
+  for (size_t i = zeros; i-- > lowest;) {
+    if (i + 7 > b.size() || b[i + 2] != 0x7b) continue;
+    const size_t hsize = b[i + 5] | (b[i + 6] << 8);
+    const size_t end = i + hsize;
+    if (hsize < 7 || end < zeros || end > b.size()) continue;
+    const uint32_t crc = crc32Of(&b[i + 2], hsize - 2) & 0xffff;
+    if (crc != static_cast<uint32_t>(b[i] | (b[i + 1] << 8))) continue;
+    return size - tail + static_cast<int64_t>(end);
+  }
+  return size;
+}
+
+// The volumes of a set, one after another, each only as far as its
+// end-of-archive block: what libarchive expects when it reads a set as one
+// stream.
+struct VolumeStream {
+  std::vector<std::string> paths;
+  std::vector<int64_t> ends;
+  size_t index = 0;
+  FILE* file = nullptr;
+  int64_t pos = 0;
+  std::vector<char> buffer = std::vector<char>(1 << 20);
+
+  bool openCurrent() {
+    if (file != nullptr) std::fclose(file);
+    file = nullptr;
+    pos = 0;
+    if (index >= paths.size()) return false;
+#ifdef _WIN32
+    file = _wfopen(fs::u8path(paths[index]).wstring().c_str(), L"rb");
+#else
+    file = std::fopen(paths[index].c_str(), "rb");
+#endif
+    return file != nullptr;
+  }
+  static la_ssize_t read(archive*, void* data, const void** out) {
+    auto* s = static_cast<VolumeStream*>(data);
+    for (;;) {
+      if (s->file == nullptr && !s->openCurrent()) return 0;
+      const int64_t left = s->ends[s->index] - s->pos;
+      if (left <= 0) {
+        std::fclose(s->file);
+        s->file = nullptr;
+        ++s->index;
+        continue;
+      }
+      const size_t want = static_cast<size_t>(std::min<int64_t>(left, static_cast<int64_t>(s->buffer.size())));
+      const size_t got = std::fread(s->buffer.data(), 1, want, s->file);
+      if (got == 0) return -1;
+      s->pos += static_cast<int64_t>(got);
+      *out = s->buffer.data();
+      return static_cast<la_ssize_t>(got);
+    }
+  }
+  // Forward only, within the current volume; libarchive reads the rest.
+  static la_int64_t skip(archive*, void* data, la_int64_t request) {
+    auto* s = static_cast<VolumeStream*>(data);
+    if (s->file == nullptr && !s->openCurrent()) return 0;
+    const int64_t n = std::min<int64_t>(request, s->ends[s->index] - s->pos);
+    if (n <= 0) return 0;
+#ifdef _WIN32
+    if (_fseeki64(s->file, n, SEEK_CUR) != 0) return 0;
+#else
+    if (fseeko(s->file, static_cast<off_t>(n), SEEK_CUR) != 0) return 0;
+#endif
+    s->pos += n;
+    return n;
+  }
+  static int close(archive*, void* data) {
+    auto* s = static_cast<VolumeStream*>(data);
+    if (s->file != nullptr) std::fclose(s->file);
+    s->file = nullptr;
+    return ARCHIVE_OK;
+  }
+};
+
 struct Reader {
   archive* a = archive_read_new();
+  std::unique_ptr<VolumeStream> volumes_;
   Reader() {
     archive_read_support_format_rar(a);
     archive_read_support_format_rar5(a);
@@ -100,6 +209,16 @@ struct Reader {
   }
   ~Reader() { archive_read_free(a); }
   bool open(const std::vector<std::string>& volumes) {
+    if (volumes.size() > 1) {
+      volumes_ = std::make_unique<VolumeStream>();
+      volumes_->paths = volumes;
+      for (const auto& v : volumes) volumes_->ends.push_back(rarVolumeEnd(v));
+      archive_read_set_read_callback(a, &VolumeStream::read);
+      archive_read_set_skip_callback(a, &VolumeStream::skip);
+      archive_read_set_close_callback(a, &VolumeStream::close);
+      archive_read_set_callback_data(a, volumes_.get());
+      return archive_read_open1(a) == ARCHIVE_OK;
+    }
     std::vector<const char*> names;
     for (const auto& v : volumes) names.push_back(v.c_str());
     names.push_back(nullptr);

@@ -9249,6 +9249,76 @@ public:
 };
 static SolidRar4Test g_solidRar4;
 
+// A RAR 4 volume can be padded after its end-of-archive block -- St.
+// Maximin's first volume has 18 zero bytes there. Read as one stream with the
+// next volume, the padding sat where that volume's marker belongs, and
+// libarchive stopped at the first file split across the boundary: "Bad RAR
+// file", and the set never opened. Each volume is now read only as far as its
+// end block. Built here byte by byte, a file split across the two volumes.
+class PaddedVolumeTest final : public mp::test::Test {
+public:
+  PaddedVolumeTest() : Test("functional.archive.padded-volumes", Category::Functional) {}
+  using T = SolidRar4Test;
+  static std::string file(const std::string& name, const std::string& data, uint32_t total,
+                          uint32_t crc, unsigned flags) {
+    return T::header(std::string("\x74", 1) + T::le(0x8000 | flags, 2) +
+                     T::le(32 + static_cast<uint32_t>(name.size()), 2) +
+                     T::le(static_cast<uint32_t>(data.size()), 4) + T::le(total, 4) +
+                     std::string("\x02", 1) + T::le(crc, 4) + T::le(0x5A2E0000u, 4) +
+                     std::string("\x14\x30", 2) + T::le(static_cast<uint32_t>(name.size()), 2) +
+                     T::le(0x20, 4) + name) +
+           data;
+  }
+  static std::string volume(unsigned mainFlags, const std::string& files, unsigned endFlags) {
+    return std::string("Rar!\x1a\x07\x00", 7) +
+           T::header(std::string("\x73", 1) + T::le(mainFlags, 2) + T::le(13, 2) + std::string(6, '\0')) +
+           files + T::header(std::string("\x7b", 1) + T::le(endFlags, 2) + T::le(7, 2));
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-padded-volumes";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string a = T::pattern(4, 3000), b = T::pattern(5, 9000);
+    const std::string b1 = b.substr(0, 4000), b2 = b.substr(4000);
+    const std::string bName = "OrganInstallationPackages\\000123\\split.wav";
+    const uint32_t total = static_cast<uint32_t>(b.size());
+    const std::string crcOf1 = b1;  // a part's own CRC; the last part carries the whole file's
+    std::ofstream(dir / "Pad.rar", std::ios::binary)
+        << volume(0x0101,
+                  file("OrganDefinitions\\Pad.Organ_Hauptwerk_xml", a, static_cast<uint32_t>(a.size()),
+                       T::crc32(a), 0) +
+                      file(bName, b1, total, T::crc32(crcOf1), 0x0002),
+                  0x0001)
+        << std::string(18, '\0');
+    std::ofstream(dir / "Pad.r00", std::ios::binary)
+        << volume(0x0001, file(bName, b2, total, T::crc32(b), 0x0001), 0x0000);
+
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Pad.rar").string(), error) && arc.archives().size() == 1 &&
+                 arc.archives()[0].size() == 2,
+             "the two volumes are one set: " + error);
+    MP_CHECK(arc.inspect(error), "the set passes inspection: " + error);
+    MP_CHECK(arc.index(error), "the padding after the first volume's end is not read as the "
+                               "second volume: " + error);
+    MP_CHECK(arc.entries().size() == 2, "both files are listed");
+    std::string got;
+    const std::unordered_set<std::string> wanted = {mp::OrganArchive::key("OrganInstallationPackages/000123/split.wav")};
+    MP_CHECK(arc.read(0, wanted,
+                      [&got](const std::string&, std::vector<char>&& bytes) {
+                        got.assign(bytes.begin(), bytes.end());
+                        return true;
+                      },
+                      error),
+             "read: " + error);
+    MP_CHECK(got == b, "the file split across the volumes comes out whole");
+    fs::remove_all(dir, ec);
+  }
+};
+static PaddedVolumeTest g_paddedVolumes;
+
 // A GrandOrgue wave tremulant is the pipes recorded with it running: those
 // takes make a twin rank that the tremulant's switch swaps in. And an attack
 // for quick repetition is chosen by the time since the pipe let go.
