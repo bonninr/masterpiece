@@ -226,6 +226,9 @@ private:
   void closePageWindowsForLoad();
   void restorePageWindows();
   bool pagesCanFloat() const;
+  // The pop-out icon on each tab: filled while its page has a window.
+  void addPopOutIcons();
+  void refreshPopOutIcons();
   juce::TextButton toggleView_{"Stop list"};
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};

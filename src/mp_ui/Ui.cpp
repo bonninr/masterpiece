@@ -742,6 +742,70 @@ void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definiti
                      });
 }
 
+namespace {
+
+// A small square with an arrow out of its corner, on every page tab: the
+// page can go to a window of its own. A right-click on the tab does the
+// same, but nobody finds a right-click; the icon is there to be seen.
+class PopOutIcon : public juce::Button {
+public:
+  PopOutIcon() : juce::Button("pop out") {
+    setSize(16, 16);
+    setTooltip("Open this page in its own window, to move to another screen");
+  }
+  void setOut(bool out) {
+    if (out_ == out) return;
+    out_ = out;
+    setTooltip(out ? "Close this page's window and bring it back here"
+                   : "Open this page in its own window, to move to another screen");
+    repaint();
+  }
+  void paintButton(juce::Graphics& g, bool over, bool) override {
+    // A square in the middle, whatever height the tab gives the button.
+    const float side = static_cast<float>(juce::jmin(getWidth(), getHeight()));
+    const auto r = getLocalBounds().toFloat().withSizeKeepingCentre(side, side).reduced(3.0f);
+    const auto colour = out_ ? juce::Colour(0xffe6cf7a)
+                             : (over ? juce::Colours::white : juce::Colour(0xff9aa3b2));
+    g.setColour(colour);
+    const auto box = r.withTrimmedTop(3.0f).withTrimmedRight(3.0f);
+    if (out_) g.fillRoundedRectangle(box, 1.5f);
+    else g.drawRoundedRectangle(box, 1.5f, 1.2f);
+    juce::Path arrow;
+    arrow.startNewSubPath(box.getCentreX(), box.getCentreY());
+    arrow.lineTo(r.getRight(), r.getY());
+    g.strokePath(arrow, juce::PathStrokeType(1.4f));
+    juce::Path head;
+    head.addTriangle(r.getRight(), r.getY(), r.getRight() - 4.5f, r.getY(), r.getRight(), r.getY() + 4.5f);
+    g.fillPath(head);
+  }
+
+private:
+  bool out_ = false;
+};
+
+}  // namespace
+
+void MasterpieceEditor::addPopOutIcons() {
+  if (!pagesCanFloat()) return;
+  for (int i = 0; i < pageTabs_.getNumTabs(); ++i) {
+    auto* icon = new PopOutIcon();
+    icon->onClick = [this, i] {
+      if (auto* w = pageWindowFor(i)) closePageWindow(w);
+      else openPageWindow(i);
+    };
+    // Owned by the tab from here.
+    pageTabs_.getTabButton(i)->setExtraComponent(icon, juce::TabBarButton::afterText);
+  }
+  refreshPopOutIcons();
+}
+
+void MasterpieceEditor::refreshPopOutIcons() {
+  for (int i = 0; i < pageTabs_.getNumTabs(); ++i)
+    if (auto* button = pageTabs_.getTabButton(i))
+      if (auto* icon = dynamic_cast<PopOutIcon*>(button->getExtraComponent()))
+        icon->setOut(pageWindowFor(i) != nullptr);
+}
+
 PageWindow* MasterpieceEditor::pageWindowFor(int page) const {
   for (const auto& w : pageWindows_)
     if (w->page() == page) return w.get();
@@ -790,15 +854,22 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds) {
   window->setVisible(true);
   pageWindows_.push_back(std::move(window));
   rememberPageWindows();
+  refreshPopOutIcons();
 }
 
 void MasterpieceEditor::closePageWindow(PageWindow* window) {
+  int page = -1;
   for (auto it = pageWindows_.begin(); it != pageWindows_.end(); ++it)
     if (it->get() == window) {
+      page = (*it)->page();
       pageWindows_.erase(it);
       break;
     }
   rememberPageWindows();
+  refreshPopOutIcons();
+  // The page goes back where it came from: its tab, shown, in this window.
+  if (page >= 0 && page < pageTabs_.getNumTabs() && showingConsole_)
+    pageTabs_.setCurrentTabIndex(page, true);
 }
 
 void MasterpieceEditor::rememberPageWindows() {
@@ -895,6 +966,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   for (int i = 0; i < console_.pageCount(); ++i)
     pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
   if (console_.pageCount() > 0) pageTabs_.setCurrentTabIndex(0, false);
+  addPopOutIcons();
   restorePageWindows();
 
   // A set with no console artwork opens on the stop list rather than on an
