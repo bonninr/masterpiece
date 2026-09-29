@@ -9968,6 +9968,62 @@ public:
 static StopLoadChoiceTest g_stopLoadChoice;
 #endif // MP_TEST_HAS_AUDIO
 
+#ifdef MP_TEST_HAS_AUDIO
+// One organ shipped as several definitions -- a perspective each, or full and
+// light -- in a package or in an installed folder. The versions are the
+// definitions beside the one loaded; a package remembers which it last
+// opened, in Masterpiece's own folder and never in an installed set.
+class OrganVersionsTest final : public mp::test::Test {
+public:
+  OrganVersionsTest() : Test("functional.load.organ-versions", Category::Functional) {}
+  void run() override {
+    const juce::File base = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-organ-versions");
+    base.deleteRecursively();
+
+    // Unpacked from packages: the marker says so.
+    const juce::File package = base.getChildFile("Packaged");
+    package.getChildFile("OrganDefinitions").createDirectory();
+    MP_CHECK(mp::writeArchiveMarker(package.getFullPathName().toStdString(), "C:/organs/x.rar"),
+             "a package folder is marked");
+    const juce::File near = package.getChildFile("OrganDefinitions/Lemmer near.Organ_Hauptwerk_xml");
+    const juce::File far = package.getChildFile("OrganDefinitions/Lemmer far.Organ_Hauptwerk_xml");
+    near.replaceWithText("<Hauptwerk/>");
+    far.replaceWithText("<Hauptwerk/>");
+
+    const auto versions = mp::MasterpieceProcessor::organVersions(near);
+    MP_CHECK(versions.size() == 2 && versions.contains(far), "both definitions are versions of one another");
+    MP_CHECK(mp::MasterpieceProcessor::rememberedDefinition(versions) == juce::File(),
+             "a package opened for the first time remembers nothing");
+    mp::MasterpieceProcessor::rememberDefinition(far);
+    MP_CHECK(mp::MasterpieceProcessor::rememberedDefinition(versions) == far,
+             "and afterwards remembers the one opened last");
+
+    // An installed set: versions still, but nothing written into it.
+    const juce::File installed = base.getChildFile("Lemmer/OrganDefinitions");
+    installed.createDirectory();
+    const juce::File a = installed.getChildFile("Lemmer near.Organ_Hauptwerk_xml");
+    const juce::File b = installed.getChildFile("Lemmer surround.Organ_Hauptwerk_xml");
+    a.replaceWithText("<Hauptwerk/>");
+    b.replaceWithText("<Hauptwerk/>");
+    MP_CHECK(mp::MasterpieceProcessor::organVersions(a).size() == 2,
+             "an installed folder's definitions are versions too");
+    mp::MasterpieceProcessor::rememberDefinition(a);
+    juce::Array<juce::File> written;
+    base.getChildFile("Lemmer").findChildFiles(written, juce::File::findFiles, true, "*.txt");
+    MP_CHECK(written.isEmpty(), "and nothing is written into a sample set that is not ours");
+
+    const juce::File alone = base.getChildFile("Alone/One.Organ_Hauptwerk_xml");
+    alone.getParentDirectory().createDirectory();
+    alone.replaceWithText("<Hauptwerk/>");
+    MP_CHECK(mp::MasterpieceProcessor::organVersions(alone).size() == 1,
+             "an organ with one definition has no other versions");
+    base.deleteRecursively();
+  }
+};
+static OrganVersionsTest g_organVersions;
+#endif // MP_TEST_HAS_AUDIO
+
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
   for (int i = 1; i < argc; ++i) {

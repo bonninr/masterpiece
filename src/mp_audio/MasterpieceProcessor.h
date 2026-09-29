@@ -106,6 +106,17 @@ public:
   // files -- definitions, artwork -- into a folder of its own, once; later
   // calls reuse it. Returns the organ definitions found there. Loading one of
   // them is an ordinary load whose samples come out of the archives.
+  // --- versions of one organ -------------------------------------------
+  // Producers ship one organ as several definitions: a perspective each
+  // (Lemmer near, far, surround), or full and light. These are the
+  // definitions beside this one -- in its package, or in its folder.
+  static juce::Array<juce::File> organVersions(const juce::File& odf);
+  // A package remembers which of its definitions was opened last, in the
+  // folder Masterpiece unpacked it into -- never in an installed sample set,
+  // which is not ours to write to. None: an empty File.
+  static void rememberDefinition(const juce::File& odf);
+  static juce::File rememberedDefinition(const juce::Array<juce::File>& definitions);
+
   juce::Array<juce::File> openPackagedOrgan(const juce::File& archive, juce::String& error);
 
   // Load only the ranks these stops need, on the NEXT load.
