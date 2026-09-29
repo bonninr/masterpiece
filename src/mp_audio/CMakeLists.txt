@@ -20,6 +20,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/PageWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/PageWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Settings.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Settings.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/OrganSettings.h

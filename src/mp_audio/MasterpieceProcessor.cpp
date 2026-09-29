@@ -1205,6 +1205,8 @@ bool MasterpieceProcessor::saveSettings() const {
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
+    for (const auto& p : pageWindows_)
+      text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << "\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
@@ -1231,6 +1233,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.usingB = false;
   combinationSet_.clear();
   combWindow_ = {};
+  pageWindows_.clear();
   excludedStops_.clear();
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
@@ -1301,6 +1304,15 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "skipstop") {
       excludedStops_.insert(static_cast<Id>(val.getLargeIntValue()));
+      continue;
+    }
+    if (key == "pagewindow") {
+      // "pagewindow <page> <x> <y> <w> <h>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() >= 5 && tok[3].getIntValue() > 0 && tok[4].getIntValue() > 0)
+        pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
+                                tok[3].getIntValue(), tok[4].getIntValue()});
       continue;
     }
     if (key == "combwindow") {

@@ -450,6 +450,17 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   consoleView_.setViewedComponent(&console_, false);
   addAndMakeVisible(pageTabs_);
   pageTabs_.addChangeListener(this);
+  pageTabs_.onPopup = [this](int page) {
+    if (!pagesCanFloat()) return;
+    juce::PopupMenu menu;
+    const bool open = pageWindowFor(page) != nullptr;
+    menu.addItem(1, open ? "Bring its window to the front" : "Open in its own window");
+    if (open) menu.addItem(2, "Close its window");
+    menu.showMenuAsync(juce::PopupMenu::Options(), [this, page](int choice) {
+      if (choice == 1) openPageWindow(page);
+      if (choice == 2) closePageWindow(pageWindowFor(page));
+    });
+  };
   addAndMakeVisible(settingsButton_);
   settingsButton_.onClick = [this] {
     // Two windows: what belongs to this organ, and what belongs to the
@@ -457,6 +468,15 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     juce::PopupMenu menu;
     menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
     menu.addItem(2, "General settings...");
+    // Pages in windows of their own, for a second screen: the same as a
+    // right-click on a page's tab, here where it can be found.
+    if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
+      juce::PopupMenu pages;
+      for (int i = 0; i < console_.pageCount(); ++i)
+        pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
+      menu.addSeparator();
+      menu.addSubMenu("Open a page in its own window", pages);
+    }
     // The same organ as another definition: a perspective, or full and light.
     const juce::File loaded = proc_.loadedOrganFile();
     const auto versions = MasterpieceProcessor::organVersions(loaded);
@@ -474,6 +494,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                          if (choice == 2 && onSettings) onSettings();
                          if (choice >= 100 && choice - 100 < versions.size())
                            loadOrgan(versions[choice - 100]);
+                         if (choice >= 300 && choice - 300 < console_.pageCount()) {
+                           if (auto* w = pageWindowFor(choice - 300)) closePageWindow(w);
+                           else openPageWindow(choice - 300);
+                         }
                        });
   };
 
@@ -580,6 +604,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
 MasterpieceEditor::~MasterpieceEditor() {
   stopTimer();
+  // Where the page windows are, for the next time; then they go, before the
+  // console they share a processor with.
+  rememberPageWindows();
+  proc_.saveSettingsIfDirty();
+  pageWindows_.clear();
   // A level moved in the last second before quitting.
   proc_.saveRememberedStateIfPending();
 }
@@ -654,6 +683,7 @@ void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
 void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;
   loading_ = true;
+  closePageWindowsForLoad();
   top_.setStatus("Loading " + odf.getFileName() + "...");
 
   // The load runs on its own thread and the message loop keeps running, so
@@ -710,6 +740,100 @@ void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definiti
                        }
                        self->loadOrgan(order[choice - 1], graphicsOnly);
                      });
+}
+
+PageWindow* MasterpieceEditor::pageWindowFor(int page) const {
+  for (const auto& w : pageWindows_)
+    if (w->page() == page) return w.get();
+  return nullptr;
+}
+
+void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds) {
+  if (auto* open = pageWindowFor(page)) {
+    open->toFront(true);
+    return;
+  }
+  const auto& m = proc_.organModel();
+  auto window = std::make_unique<PageWindow>(proc_, page, console_.layout(),
+                                             m.organName.empty() ? juce::String("Masterpiece")
+                                                                 : juce::String(m.organName));
+  const auto& displays = juce::Desktop::getInstance().getDisplays();
+  if (!bounds.isEmpty() && displays.getDisplayForRect(bounds) != nullptr &&
+      displays.getTotalBounds(true).intersects(bounds)) {
+    window->setBounds(bounds);
+  } else {
+    // A screen other than this window's, if there is one: that is what the
+    // window is for. Otherwise beside this one, a little down and across.
+    const auto* here = displays.getDisplayForRect(getScreenBounds());
+    const juce::Displays::Display* other = nullptr;
+    for (const auto& d : displays.displays)
+      if (here == nullptr || d.userArea != here->userArea) {
+        other = &d;
+        break;
+      }
+    const auto area = (other != nullptr ? other->userArea : (here != nullptr ? here->userArea
+                                                                            : getScreenBounds()))
+                          .reduced(40);
+    const int w = juce::jmin(window->getWidth(), area.getWidth());
+    const int h = juce::jmin(window->getHeight(), area.getHeight());
+    const int offset = other != nullptr ? 0 : 40 * static_cast<int>(pageWindows_.size() + 1);
+    window->setBounds(area.getX() + offset, area.getY() + offset, w, h);
+  }
+  window->onClosed = [this](PageWindow* w) {
+    // Not from inside the window's own callback.
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    juce::MessageManager::callAsync([self, w] {
+      if (self != nullptr) self->closePageWindow(w);
+    });
+  };
+  window->onPlaced = [this] { rememberPageWindows(); };
+  window->setVisible(true);
+  pageWindows_.push_back(std::move(window));
+  rememberPageWindows();
+}
+
+void MasterpieceEditor::closePageWindow(PageWindow* window) {
+  for (auto it = pageWindows_.begin(); it != pageWindows_.end(); ++it)
+    if (it->get() == window) {
+      pageWindows_.erase(it);
+      break;
+    }
+  rememberPageWindows();
+}
+
+void MasterpieceEditor::rememberPageWindows() {
+  std::vector<MasterpieceProcessor::PagePlace> places;
+  for (const auto& w : pageWindows_) {
+    const auto b = w->getBounds();
+    places.push_back({w->page(), b.getX(), b.getY(), b.getWidth(), b.getHeight()});
+  }
+  proc_.setPageWindowPlaces(std::move(places));
+}
+
+void MasterpieceEditor::closePageWindowsForLoad() {
+  if (pageWindows_.empty()) return;
+  // Written to the organ being left, now, before the load changes which
+  // organ the settings file is.
+  rememberPageWindows();
+  proc_.saveSettingsIfDirty();
+  pageWindows_.clear();
+}
+
+// Only in the program itself. A plugin that opens windows of its own fights
+// the host, which arranges the plugin's window and expects it to be the only
+// one; there the pages stay tabs.
+bool MasterpieceEditor::pagesCanFloat() const {
+  return proc_.wrapperType == juce::AudioProcessor::wrapperType_Undefined ||
+         proc_.wrapperType == juce::AudioProcessor::wrapperType_Standalone;
+}
+
+void MasterpieceEditor::restorePageWindows() {
+  if (!pagesCanFloat()) return;
+  // A copy: each window opened writes the list again.
+  const auto places = proc_.pageWindowPlaces();
+  for (const auto& p : places)
+    if (p.page >= 0 && p.page < console_.pageCount())
+      openPageWindow(p.page, {p.x, p.y, p.w, p.h});
 }
 
 void MasterpieceEditor::reloadOrgan() {
@@ -771,6 +895,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   for (int i = 0; i < console_.pageCount(); ++i)
     pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
   if (console_.pageCount() > 0) pageTabs_.setCurrentTabIndex(0, false);
+  restorePageWindows();
 
   // A set with no console artwork opens on the stop list rather than on an
   // empty picture.
