@@ -143,6 +143,23 @@ public:
       if (audioError.isNotEmpty())
         juce::Logger::writeToLog("audio device: " + audioError);
     }
+    // A device can open at a rate no organ survives: some default to 8 kHz
+    // (a virtual "Steam Streaming" output did), where nothing above 4 kHz can
+    // sound and every top octave comes out wrong (#90). Nobody chooses that
+    // for an organ, so a rate below 44.1 kHz moves to 48 kHz, or 44.1 kHz,
+    // when the device offers either.
+    if (auto* dev = devices_->getCurrentAudioDevice())
+      if (dev->getCurrentSampleRate() < 44100.0) {
+        const auto rates = dev->getAvailableSampleRates();
+        const double better = rates.contains(48000.0) ? 48000.0 : rates.contains(44100.0) ? 44100.0 : 0.0;
+        if (better > 0.0) {
+          auto setup = devices_->getAudioDeviceSetup();
+          juce::Logger::writeToLog("audio device: " + juce::String(dev->getCurrentSampleRate(), 0) +
+                                   " Hz is too low for an organ; using " + juce::String(better, 0) + " Hz");
+          setup.sampleRate = better;
+          devices_->setAudioDeviceSetup(setup, true);
+        }
+      }
     if (auto* dev = devices_->getCurrentAudioDevice())
       juce::Logger::writeToLog(
           "audio device: " + dev->getName() + ", " +
