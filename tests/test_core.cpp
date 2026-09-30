@@ -8654,6 +8654,36 @@ static CodmDefaultsTest g_codmDefaults;
 static VoiceEngineRenderTest g_voiceRender;
 static VoiceStopWhileHeldTest g_voiceStopWhileHeld;
 static VoiceEngineLifecycleTest g_voiceLifecycle;
+
+// A release is its own recording: played at the attack's speed, one recorded
+// (or measured) at another pitch or rate sounded off by the difference (#90).
+class ReleasePitchTest final : public mp::test::Test {
+public:
+  ReleasePitchTest() : Test("functional.voice.release-pitch", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    fx.pipe.layers[0].attacks[0].sample.resolvedPitchHz = 440.0;
+    fx.pipe.layers[0].releases[0].sample.resolvedPitchHz = 445.5;
+    fx.release.sampleRate = 44100.0;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 16, 1);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart start;
+    start.pipe = &fx.pipe;
+    start.layer = &fx.pipe.layers[0];
+    start.velocity = 90;
+    start.ratio = 1.01;
+    const int slot = eng.startVoice(start, 7);
+    const double before = eng.voice(slot).ratio;
+    eng.noteOff(7, mp::NoteRelease{});
+    const double expected = before * (440.0 / 445.5) * (44100.0 / 48000.0);
+    MP_CHECK(std::abs(eng.voice(slot).ratio - expected) < 1e-9,
+             "the release plays at its own recorded pitch and rate");
+    MP_CHECK(std::abs(eng.voice(slot).xfadeRatioScale * eng.voice(slot).ratio - before) < 1e-9,
+             "and the attack fading out under it keeps its own speed");
+  }
+};
+static ReleasePitchTest g_releasePitch;
 static VoiceReleaseTailTest g_voiceReleaseTail;
 static VoiceReleaseCrossfadeTest g_voiceReleaseCrossfade;
 static VoiceEngineStealingTest g_voiceStealing;

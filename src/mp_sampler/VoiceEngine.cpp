@@ -443,6 +443,26 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
       // A real release sample: swap the backing store and play from its head.
       // The playback ratio carries over unchanged — the release is the same
       // pipe at the same pitch, so it must be resampled identically.
+      // At its own pitch. The ratio so far tunes the ATTACK's recording to the
+      // pipe; a release is its own file, recorded -- or measured -- at a pitch
+      // and a rate of its own, and played at the attack's speed it sounded
+      // off by the difference (#90: the release "at a different pitch" on a
+      // Tromba and a Trumpet). Rescaled by the two recorded pitches and rates;
+      // the attack, fading out under it, keeps its speed.
+      double scale = 1.0;
+      const auto& att = v.layer->attacks;
+      const double attackHz =
+          v.attackIndex >= 0 && static_cast<size_t>(v.attackIndex) < att.size()
+              ? att[static_cast<size_t>(v.attackIndex)].sample.resolvedPitchHz
+              : 0.0;
+      const double releaseHz = v.layer->releases[static_cast<size_t>(chosen)].sample.resolvedPitchHz;
+      if (attackHz > 0.0 && releaseHz > 0.0) scale *= attackHz / releaseHz;
+      if (oldBuf != nullptr && oldBuf->sampleRate > 0.0 && relBuf->sampleRate > 0.0)
+        scale *= relBuf->sampleRate / oldBuf->sampleRate;
+      if (scale > 0.0 && std::isfinite(scale)) {
+        v.ratio *= scale;
+        v.xfadeRatioScale = 1.0 / scale;
+      }
       v.buffer = relBuf;
       v.sampleId = relSampleId;
       // ...unless the set ships attack, loop and release as ONE recording and
@@ -749,7 +769,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
                               rawSample<T>(ob, opos + 2, srcCh), ofrac) *
                       oldEnv;
       }
-      v.xfadeOldCursor += ratio;
+      v.xfadeOldCursor += ratio * v.xfadeRatioScale;
       if (--v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
     }
 
