@@ -1202,6 +1202,7 @@ bool MasterpieceProcessor::saveSettings() const {
     // Which named set this organ was last using. Stored rather than assumed:
     // coming back and finding the recital registrations instead of the service
     // ones is a nasty surprise to meet mid-piece.
+    if (licenceConfirmed_) text << "licenceconfirmed 1\n";
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
@@ -1234,6 +1235,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   excludedStops_.clear();
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
+  licenceConfirmed_ = false;
   playerTuning_.store(nullptr, std::memory_order_release);
   masterPitchHz_.store(0.0, std::memory_order_relaxed);
   transpose_.store(0, std::memory_order_relaxed);
@@ -1258,6 +1260,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingSwitchStates_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue() != 0);
+      continue;
+    }
+    if (key == "licenceconfirmed") {
+      licenceConfirmed_ = val.getIntValue() != 0;
       continue;
     }
     if (key == "voicingadj") {
@@ -3779,6 +3785,18 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         }
       }
       samples_.setArchive(packaged);
+    }
+    samples_.setLicenceConfirmed(licenceConfirmed_);
+    if (model_.hasLicensedSamples) {
+      const std::string who = licencePublisher();
+      juce::Logger::writeToLog(
+          licenceConfirmed_
+              ? "load: the player confirmed a licence" +
+                    juce::String(who.empty() ? "" : " from " + who) +
+                    " to play this set here; its licensed samples load"
+              : "load: this set's samples need a licence" +
+                    juce::String(who.empty() ? "" : " from " + who) +
+                    " that has not been confirmed; they are left out");
     }
 
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,

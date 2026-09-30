@@ -51,6 +51,10 @@ struct SampleRef {
   std::string packageId;   // RequiredInstallationPackage (legacy string form)
   std::string fileName;    // e.g. "036-C.wav"
   bool encrypted = false;  // .hbw/.hbx detected -> report, don't load (v1 legal rule)
+  // The set's publisher licenses its samples: the definition asks for the
+  // publisher's licence before they are used. The files themselves are plain;
+  // they load only once the player confirms that licence (ADR-003).
+  bool licenceRequired = false;
   double pitchHz = 0.0;    // Pitch_ExactSamplePitch (method code 4)
   int midiNote = -1;       // Pitch_NormalMIDINoteNumber (method code 3)
   int rankBasePitch64ftHarmonicNum = 8; // tempered path base
@@ -847,6 +851,8 @@ struct OrganModel {
   std::vector<std::string> unknownTables;
 
   bool hasEncryptedSamples = false;
+
+  bool hasLicensedSamples = false;  // any SampleRef::licenceRequired
   std::vector<std::string> encryptedFiles;
 };
 

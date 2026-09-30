@@ -664,6 +664,13 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         ++report.encrypted;
         continue;
       }
+      if (ref.licenceRequired && !licenceConfirmed_) {
+        // ADR-003: plain files, but the publisher asks for its licence first,
+        // and only the player can say they hold it.
+        std::lock_guard<std::mutex> lock(resultMutex);
+        ++report.licensed;
+        continue;
+      }
 
       const auto path = resolveIgnoringCase(
           resolvePath(organRootDir, ref.fileName, ref.installationPackageId));
@@ -1155,6 +1162,8 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|l" + std::to_string(static_cast<int>(loopSelection));
   s += "|s" + std::to_string(streamReleases_ ? 1 : 0);
   s += "|t" + std::to_string(streamHead_);
+  // Without the licensed samples a cache is not the organ with them.
+  s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
   // A partial load holds a different set of samples from a full one, and the
   // two must never be mistaken for each other: a cache written by
   // --preload-drawn would otherwise come back as a whole organ with most of

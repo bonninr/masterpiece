@@ -8842,10 +8842,73 @@ public:
     root.deleteRecursively();
   }
 };
+// A publisher's licence is not encryption (ADR-003). Sonus Paradisi's sets --
+// Bückeburg, Valvasone, St. Maximin -- ship plain WAV files and mark every
+// sample as needing the publisher's licence; they were refused as
+// "encrypted", and played nothing. Now a plain file with that mark loads once
+// the player confirms the licence, and an encrypted file never loads.
+class PublisherLicenceTest final : public mp::test::Test {
+public:
+  PublisherLicenceTest() : Test("functional.samples.publisher-licence", Category::Functional) {}
+  void run() override {
+    // The definition: a plain file asking for a licence, an encrypted one.
+    auto xml = juce::File(juce::String(MP_TEST_FIXTURES_DIR) + "/edge.encrypted.Organ_Hauptwerk_xml")
+                   .loadFileAsString()
+                   .replace("036-C.hbw", "036-C.wav");
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_publisher_licence");
+    root.deleteRecursively();
+    root.createDirectory();
+    const auto odf = root.getChildFile("licensed.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+    mp::OdfLoader loader;
+    mp::OdfLoader::Options opts;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(loader.load(odf.getFullPathName().toStdString(), opts, m, d), "the definition loads");
+    const mp::SampleRef* wav = nullptr;
+    const mp::SampleRef* hbx = nullptr;
+    for (const auto& [id, ref] : m.samples) {
+      if (ref.fileName == "036-C.wav") wav = &ref;
+      if (ref.fileName == "037-C#.hbx") hbx = &ref;
+    }
+    MP_CHECK(wav != nullptr && hbx != nullptr, "both samples are read");
+    MP_CHECK(wav->licenceRequired && !wav->encrypted, "a plain file with the mark needs a licence, and is not encrypted");
+    MP_CHECK(hbx->encrypted && !hbx->licenceRequired, "an encrypted file is encrypted, whatever it is marked");
+    MP_CHECK(m.hasLicensedSamples, "the organ says it has licensed samples");
+
+    // The library: a licensed sample waits for the confirmation.
+    SampleLibraryTest::writeWav(root.getChildFile("a.wav"), 4800, 1, 48000.0);
+    SampleLibraryTest::writeWav(root.getChildFile("b.wav"), 4800, 1, 48000.0);
+    mp::OrganModel lm;
+    mp::SampleRef open, licensed;
+    open.sampleId = 1;
+    open.fileName = "a.wav";
+    licensed.sampleId = 2;
+    licensed.fileName = "b.wav";
+    licensed.licenceRequired = true;
+    lm.samples[1] = open;
+    lm.samples[2] = licensed;
+    {
+      mp::SampleLibrary lib;
+      const auto report = lib.loadAll(lm, root.getFullPathName().toStdString());
+      MP_CHECK(report.loaded == 1 && report.licensed == 1 && lib.provider()(2) == nullptr,
+               "without the confirmation the licensed sample is left out, and counted");
+    }
+    {
+      mp::SampleLibrary lib;
+      lib.setLicenceConfirmed(true);
+      const auto report = lib.loadAll(lm, root.getFullPathName().toStdString());
+      MP_CHECK(report.loaded == 2 && report.licensed == 0 && lib.provider()(2) != nullptr,
+               "with it, it loads");
+    }
+    root.deleteRecursively();
+  }
+};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
+static PublisherLicenceTest g_publisherLicence;
 static PartialLoadTest g_partialLoad;
 static MemoryDefaultsTest g_memoryDefaults;
 static OpenTailPoolTest g_openTailPool;
