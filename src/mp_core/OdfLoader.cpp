@@ -1584,11 +1584,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     inst.name = field(row, "Name", "b");
     inst.imageSetId = setId;
     inst.defaultImageIndex = fieldInt(row, "DefaultImageIndexWithinSet", "d", 0);
-    // Absent means the default, and the default is not 1 or 2: sets built
-    // on the custom-organ template write 1 for page backgrounds and 2 for the
-    // panels on them, then leave it out for the dial frames, headings and
-    // labels that must show on top of both. 12 is where the controls go.
-    inst.layer = fieldInt(row, "ScreenLayerNumber", "f", 3);
+    // Absent means the default, and the default is 8: the format's own program
+    // writes 8 into every layer a compact definition leaves out when it
+    // rewrites it in full (Nancy). Guessing 3 put Nancy's compact Simple Jamb
+    // tiles under its layer-6 picture, which then showed a fixed state that no
+    // click changed (#53). Sets built on the custom-organ template write 1 for
+    // page backgrounds and 2 for the panels on them and leave it out for the
+    // labels that must show on top, which 8 still does; 12 is for controls.
+    inst.layer = fieldInt(row, "ScreenLayerNumber", "f", 8);
     inst.leftPx = fieldInt(row, "LeftXPosPixels", "g", 0);
     inst.tileRightPx = fieldInt(row, "RightXPosPixelsIfTiling", "i", -1);
     inst.tileBottomPx = fieldInt(row, "BottomYPosPixelsIfTiling", "j", -1);
