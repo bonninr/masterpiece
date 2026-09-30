@@ -1348,7 +1348,8 @@ void FavouritesPanel::refresh() {
       }
       status_.setText("Loading " + f.getFileName() + "...",
                       juce::dontSendNotification);
-      proc_.loadOrganAsync(f);
+      if (onLoad) onLoad(f);
+      else proc_.loadOrganAsync(f);
     };
     rows_.addAndMakeVisible(*load);
     loads_.push_back(std::move(load));

@@ -762,6 +762,7 @@ private:
     void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
       panel->onClosed = std::move(onClosed);
+      panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = "General settings";

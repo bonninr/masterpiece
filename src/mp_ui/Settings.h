@@ -265,6 +265,10 @@ public:
   explicit FavouritesPanel(MasterpieceProcessor& p);
   void resized() override;
   void refresh();
+  // Loads an organ the way Open does: its packages, the progress window, the
+  // questions a load can ask. Without it Load started a bare background load
+  // the window never heard of, and nothing seemed to happen (#90).
+  std::function<void(const juce::File&)> onLoad;
 
 private:
   MasterpieceProcessor& proc_;
@@ -417,6 +421,8 @@ public:
   // Run once the window has closed, on the message thread: an organ's first
   // load waits here for its engine settings.
   std::function<void()> onClosed;
+  // For Favourites: load this organ as Open would.
+  void setOrganLoader(std::function<void(const juce::File&)> load) { favourites_.onLoad = std::move(load); }
   void paint(juce::Graphics& g) override;
 
 private:
