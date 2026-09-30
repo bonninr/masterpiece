@@ -770,7 +770,9 @@ bool OrganArchive::saveIndex(const std::string& file) const {
   return static_cast<bool>(out);
 }
 
-bool OrganArchive::loadIndex(const std::string& file) {
+bool OrganArchive::loadIndex(const std::string& file) { return readIndex(file, true); }
+
+bool OrganArchive::readIndex(const std::string& file, bool checkVolumes) {
   std::ifstream in(fs::u8path(file), std::ios::binary);
   if (!in) return false;
   std::vector<std::vector<std::string>> archives;
@@ -792,7 +794,7 @@ bool OrganArchive::loadIndex(const std::string& file) {
         const auto size = std::stoull(field(p));
         const std::string v = line.substr(p);
         std::error_code ec;
-        if (fs::file_size(fs::u8path(v), ec) != size || ec) return false;
+        if (checkVolumes && (fs::file_size(fs::u8path(v), ec) != size || ec)) return false;
         archives.back().push_back(v);
       } else if (line.rfind("E\t", 0) == 0) {
         size_t p = 2;
@@ -813,6 +815,58 @@ bool OrganArchive::loadIndex(const std::string& file) {
   entries_ = std::move(entries);
   byKey_.clear();
   for (size_t i = 0; i < entries_.size(); ++i) byKey_.emplace(key(entries_[i].path), i);
+  return true;
+}
+
+bool OrganArchive::loadIndexFor(const std::string& file) {
+  const auto found = archives_;
+  if (found.empty()) return loadIndex(file);
+  // Read the index against the volumes found now: a saved volume whose file
+  // name and size match one of them is that volume, wherever it was.
+  std::ifstream in(fs::u8path(file), std::ios::binary);
+  if (!in) return false;
+  std::vector<std::vector<std::string>> archives;
+  std::vector<Entry> entries;
+  std::string line;
+  auto baseName = [](const std::string& path) {
+    const size_t cut = path.find_last_of("/\\");
+    return cut == std::string::npos ? path : path.substr(cut + 1);
+  };
+  auto lower = [](std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+  };
+  try {
+    while (std::getline(in, line)) {
+      if (line == "A") {
+        archives.emplace_back();
+      } else if (line.rfind("V	", 0) == 0 && !archives.empty()) {
+        const size_t tab = line.find('	', 2);
+        if (tab == std::string::npos) return false;
+        const auto size = std::stoull(line.substr(2, tab - 2));
+        const std::string name = lower(baseName(line.substr(tab + 1)));
+        const size_t a = archives.size() - 1, v = archives.back().size();
+        if (a >= found.size() || v >= found[a].size()) return false;
+        const std::string& now = found[a][v];
+        std::error_code ec;
+        if (lower(baseName(now)) != name ||
+            fs::file_size(fs::u8path(now), ec) != size || ec)
+          return false;
+        archives.back().push_back(now);
+      } else if (line.rfind("E	", 0) == 0) {
+        break;  // the entries are read below, as ever
+      }
+    }
+  } catch (...) {
+    return false;
+  }
+  if (archives.size() != found.size()) return false;
+  for (size_t a = 0; a < found.size(); ++a)
+    if (archives[a].size() != found[a].size()) return false;
+  // The entries do not name volumes, so the rest is the plain read, with the
+  // paths put back to the ones found now.
+  if (!readIndex(file, false)) return false;
+  archives_ = std::move(archives);
   return true;
 }
 

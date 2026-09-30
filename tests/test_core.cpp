@@ -9501,6 +9501,52 @@ public:
 };
 static SolidRar4Test g_solidRar4;
 
+// A set opened once from one disk and later from a copy on another is read
+// from the copy: its saved index follows the volumes by name and size, not
+// by the place they were first opened (Buckeburg, copied from D to C, still
+// read its samples from D).
+class ArchiveMovedTest final : public mp::test::Test {
+public:
+  ArchiveMovedTest() : Test("functional.archive.moved", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-archive-moved";
+    fs::remove_all(dir);
+    fs::create_directories(dir / "first");
+    fs::create_directories(dir / "copy");
+    const std::string body = SolidRar4Test::rar4(
+        {{"OrganDefinitions/Tiny.Organ_Hauptwerk_xml", "<Hauptwerk/>"},
+         {"OrganInstallationPackages/000123/pipe.wav", SolidRar4Test::pattern(1, 5000)}},
+        false);
+    std::ofstream(dir / "first" / "Set.rar", std::ios::binary) << body;
+    std::string error;
+    const std::string index = (dir / "index.txt").string();
+    {
+      mp::OrganArchive a;
+      MP_CHECK(a.discover((dir / "first" / "Set.rar").string(), error) && a.index(error) && a.saveIndex(index),
+               "indexed where it was first opened: " + error);
+    }
+    fs::copy_file(dir / "first" / "Set.rar", dir / "copy" / "Set.rar");
+    fs::remove(dir / "first" / "Set.rar");
+    {
+      mp::OrganArchive a;
+      MP_CHECK(a.discover((dir / "copy" / "Set.rar").string(), error), "the copy is found: " + error);
+      MP_CHECK(a.loadIndexFor(index), "the saved index serves the copy, the first place gone");
+      MP_CHECK(!a.archives().empty() && fs::path(a.archives()[0][0]) == dir / "copy" / "Set.rar",
+               "and it is read from the copy");
+      MP_CHECK(a.find("OrganInstallationPackages/000123/pipe.wav") != nullptr, "with every file");
+    }
+    std::ofstream(dir / "copy" / "Set.rar", std::ios::binary | std::ios::app) << "x";
+    {
+      mp::OrganArchive a;
+      MP_CHECK(a.discover((dir / "copy" / "Set.rar").string(), error) && !a.loadIndexFor(index),
+               "a volume of another size is not the same set");
+    }
+    fs::remove_all(dir);
+  }
+};
+static ArchiveMovedTest g_archiveMoved;
+
 // A RAR 4 volume can be padded after its end-of-archive block -- St.
 // Maximin's first volume has 18 zero bytes there. Read as one stream with the
 // next volume, the padding sat where that volume's marker belongs, and

@@ -4170,10 +4170,19 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
                              .getChildFile("Packaged")
                              .getChildFile(archive.identity());
   const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
-  const bool ready = !readArchiveMarker(dir.getFullPathName().toStdString()).empty() &&
-                     archive.loadIndex(index);
+  const std::string marked = readArchiveMarker(dir.getFullPathName().toStdString());
+  const bool ready = !marked.empty() && archive.loadIndexFor(index);
   if (ready) {
     juce::Logger::writeToLog("archive: already unpacked in " + dir.getFullPathName());
+    // The same set opened from somewhere else -- copied to a faster disk, or
+    // moved: its samples are read from here from now on, not from the first
+    // place it was opened, which may be slower or gone.
+    if (marked != archivePath) {
+      archive.saveIndex(index);
+      writeArchiveMarker(dir.getFullPathName().toStdString(), archivePath);
+      juce::Logger::writeToLog("archive: now read from " + juce::String(archivePath) +
+                               " (was " + juce::String(marked) + ")");
+    }
   } else {
     dir.deleteRecursively();
     dir.createDirectory();
