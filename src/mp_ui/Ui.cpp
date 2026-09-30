@@ -467,6 +467,9 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     // program and the player's console.
     juce::PopupMenu menu;
     menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
+    // A licence confirmed for this organ can be taken back here.
+    if (proc_.organModel().hasLicensedSamples)
+      menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
     menu.addItem(2, "General settings...");
     // Pages in windows of their own, for a second screen: the same as a
     // right-click on a page's tab, here where it can be found.
@@ -492,6 +495,15 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                        [this, versions](int choice) {
                          if (choice == 1 && onOrganSettings) onOrganSettings();
                          if (choice == 2 && onSettings) onSettings();
+                         if (choice == 4) {
+                           if (proc_.licenceConfirmed()) {
+                             proc_.setLicenceConfirmed(false);
+                             proc_.saveSettingsIfDirty();
+                             reloadOrgan();
+                           } else {
+                             askForLicence();
+                           }
+                         }
                          if (choice >= 100 && choice - 100 < versions.size())
                            loadOrgan(versions[choice - 100]);
                          if (choice >= 300 && choice - 300 < console_.pageCount()) {
@@ -712,6 +724,45 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
     juce::MessageManager::callAsync(
         [this, odf, graphicsOnly, result] { finishLoad(odf, graphicsOnly, result); });
   });
+}
+
+// The publisher's licence, asked for once per organ (ADR-003). Masterpiece
+// cannot check it: the player says whether they hold one that lets them play
+// the set here. Cancel is the default -- Escape, Enter, closing the box -- and
+// leaves the licensed samples out.
+void MasterpieceEditor::askForLicence() {
+  const auto& m = proc_.organModel();
+  const juce::String organ = m.organName.empty() ? juce::String("This organ") : juce::String(m.organName);
+  const juce::String who(proc_.licencePublisher());
+  const juce::String from = who.isEmpty() ? juce::String("its publisher") : who;
+  // Built by hand: a stock two-button box gives Enter to the first button and
+  // Escape to the second, and neither order makes Cancel answer both. Here
+  // Enter, Escape and closing the box all cancel; only a click on Load loads.
+  auto* box = new juce::AlertWindow(
+      "A licence is needed for these samples",
+      organ + (who.isEmpty() ? juce::String() : ", from " + who) +
+          ", requires a licence from its publisher to use its samples. "
+          "Masterpiece cannot check that licence.\n\n"
+          "Load its samples only if your licence from " + from +
+          " allows you to play this set in this program. Your answer is saved for "
+          "this organ and can be withdrawn from the Settings menu.",
+      juce::MessageBoxIconType::QuestionIcon, this);
+  box->addButton("Load the samples", 1);
+  box->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey),
+                 juce::KeyPress(juce::KeyPress::returnKey));
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  box->enterModalState(true, juce::ModalCallbackFunction::create([self](int result) {
+                         if (self == nullptr) return;
+                         if (result != 1) {
+                           self->top_.setStatus(self->status_ + "  -  licensed samples not loaded");
+                           return;
+                         }
+                         juce::Logger::writeToLog("licence: the player confirmed a licence for this organ");
+                         self->proc_.setLicenceConfirmed(true);
+                         self->proc_.saveSettingsIfDirty();
+                         self->reloadOrgan();
+                       }),
+                       true);  // deleted when dismissed
 }
 
 // The message-thread half of a load: close the dialog, then either report the
@@ -1032,7 +1083,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     if (result.samples.missing > 0)
       status_ += ", " + juce::String(result.samples.missing) + " missing";
     if (result.samples.encrypted > 0)
-      status_ += ", " + juce::String(result.samples.encrypted) + " copy-protected";
+      status_ += ", " + juce::String(result.samples.encrypted) + " encrypted";
+    if (result.samples.licensed > 0)
+      status_ += ", " + juce::String(result.samples.licensed) + " awaiting a licence";
     if (result.incomplete)
       status_ += "  -  INCOMPLETE (memory limit)";
   }
@@ -1049,12 +1102,15 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             "To load all of it: leave out perspectives or stops in Organ settings, load "
             "16-bit samples or stream the release tails on its Loading tab, or raise the "
             "limit in General settings if this computer has the memory to spare.");
+  } else if (!graphicsOnly && result.samples.licensed > 0 && !proc_.licenceConfirmed()) {
+    askForLicence();
   } else if (!graphicsOnly && result.samples.loaded == 0 && result.samples.encrypted > 0) {
     juce::AlertWindow::showMessageBoxAsync(
-        juce::MessageBoxIconType::WarningIcon, "This organ's samples are copy-protected",
+        juce::MessageBoxIconType::WarningIcon, "This organ's samples are encrypted",
         "All " + juce::String(result.samples.encrypted) +
-            " of its samples are encrypted for use in Hauptwerk only, and Masterpiece "
-            "cannot play them. The console loads, but the organ makes no sound.");
+            " of its samples are encrypted (.hbw/.hbx) for the program they were made "
+            "for, and Masterpiece cannot play them. The console loads, but the organ "
+            "makes no sound.");
   }
   // Say it out loud, once. The status line has no room beside the console's
   // buttons, and a mapping that changes without a word costs more trust than

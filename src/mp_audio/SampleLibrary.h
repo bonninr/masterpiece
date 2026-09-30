@@ -49,6 +49,7 @@ struct SampleLoadReport {
   int missing = 0;    // referenced but not on disk
   int encrypted = 0;  // .hbw/.hbx — ADR-003, we do not decode these
   int wanted = 0;     // what the pipework asked for, of which `loaded` arrived
+  int licensed = 0;   // left out: the publisher's licence is not confirmed
   int failed = 0;     // present but unreadable
   std::vector<std::string> missingFiles;
   std::vector<std::string> failedFiles;
@@ -131,6 +132,9 @@ public:
   // Off by default. It changes the audio path, and nobody has listened to it
   // yet; the preloaded path is the one the measurements in docs/ were taken on.
   void setStreamReleases(bool on) { streamReleases_ = on; }
+  // Whether samples whose publisher requires a licence are loaded: only once
+  // the player has confirmed holding it, for this organ.
+  void setLicenceConfirmed(bool on) { licenceConfirmed_ = on; }
   bool streamReleases() const { return streamReleases_; }
   // How much of a streamed release stays resident. It has to cover the time
   // between a note-off and the streamer's first fill, with room to spare.
@@ -291,6 +295,7 @@ private:
   bool loadMono_ = false;
   double loadRate_ = 0.0;   // 0 = keep each file's own rate
   bool streamReleases_ = false;
+  bool licenceConfirmed_ = false;
   int64_t streamHead_ = 48000; // one second
   // Files a streamed buffer may need to reopen. Kept here so a tail outlives
   // the load that created it.

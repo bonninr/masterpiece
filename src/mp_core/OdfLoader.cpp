@@ -349,8 +349,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     s.sampleId = fieldInt(row, "SampleID", "a", 0);
     s.packageId = field(row, "InstallationPackageID", "b");
     s.fileName = field(row, "SampleFilename", "c");
-    s.encrypted = isEncryptedFile(s.fileName) ||
-                  fieldBool(row, "LicenceSerialNumRequiredForSampleFile", "h", false);
+    // Encrypted is the file itself: nothing but the program it was encrypted
+    // for can read it. A licence flag is the publisher asking for its licence
+    // before the plain files are used -- a different thing, and a question
+    // for the player (ADR-003).
+    s.encrypted = isEncryptedFile(s.fileName);
+    s.licenceRequired =
+        !s.encrypted && fieldBool(row, "LicenceSerialNumRequiredForSampleFile", "h", false);
+    if (s.licenceRequired) outModel.hasLicensedSamples = true;
     s.pitchHz = fieldDouble(row, "Pitch_ExactSamplePitch", "g", 0.0);
     s.installationPackageId = fieldInt(row, "InstallationPackageID", "b", 0);
     s.midiNote = fieldInt(row, "Pitch_NormalMIDINoteNumber", "f", -1);

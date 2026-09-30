@@ -745,6 +745,23 @@ public:
   // Now, whatever the wait: on closing, and before another organ replaces
   // this one.
   bool saveRememberedStateIfPending();
+  // The publisher's licence, for a set whose samples ask for one (ADR-003).
+  // Masterpiece cannot check it; the player says whether they hold one that
+  // lets them play the set here, once per organ, and the answer is saved
+  // with it. Takes effect on the next load. Encrypted files are another
+  // matter and are never loaded, whatever this says.
+  bool licenceConfirmed() const { return licenceConfirmed_; }
+  void setLicenceConfirmed(bool on) {
+    if (licenceConfirmed_ == on) return;
+    licenceConfirmed_ = on;
+    markSettingsDirty();
+  }
+  // Who licenses the set, as its packages name them; empty when they do not.
+  std::string licencePublisher() const {
+    for (const auto& [id, pkg] : model_.packages)
+      if (!pkg.supplierName.empty()) return pkg.supplierName;
+    return {};
+  }
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
   bool saveMidiMap() const;
@@ -1254,6 +1271,7 @@ private:
   // Whether this organ remembers anything at all; most do not, and they never
   // pay for a write.
   bool hasRememberedState_ = false;
+  bool licenceConfirmed_ = false;
   // When remembered state last moved, 0 for "nothing waiting".
   std::atomic<uint32_t> rememberedMovedAtMs_{0};
   // The defaults as they stand on disk, kept verbatim so that writing the

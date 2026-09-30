@@ -198,6 +198,8 @@ public:
   std::function<void()> onOrganSettings;
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
+  // Ask whether the player holds the publisher's licence for this organ.
+  void askForLicence();
   // Several organs in one set of packages -- a perspective each, or full and
   // light: ask which, by name, the one opened last at the top.
   void chooseDefinition(const juce::Array<juce::File>& definitions, bool graphicsOnly);
