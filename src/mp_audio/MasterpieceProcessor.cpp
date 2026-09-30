@@ -1901,6 +1901,14 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
   for (Id kb : couplers_.inputKeyboards())
     if (couplers_.assignmentCodeFor(kb) == channel) return kb;
 
+  // A channel nothing claims plays the default manual only while nothing says
+  // what the channels are: an organ that declares no channels, played before
+  // any are set. Once the player has set some, or the organ declares its own,
+  // a channel neither names is silent -- a console's piston buttons sending
+  // notes on a channel of their own played the manual (a Buckeburg report).
+  if (!midiMap_.keyboardBindings().empty()) return 0;
+  for (Id kb : couplers_.inputKeyboards())
+    if (couplers_.assignmentCodeFor(kb) > 0) return 0;
   return fallbackKeyboard_;
 }
 
@@ -1976,8 +1984,14 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
   // Keyed on the key the player pressed, sounded on the transposed one: the
   // release finds its note by the key, so changing the transposer while a
   // chord is held cannot leave any of it sounding.
-  startNoteOnKeyboard(keyboardForChannel(channel, noteDeviceId_),
-                      noteKey(channel, midiNote), transposed(midiNote), velocity);
+  const Id keyboard = keyboardForChannel(channel, noteDeviceId_);
+  if (keyboard == 0) {
+    if (logMidi_.load(std::memory_order_acquire))
+      juce::Logger::writeToLog("midi:     channel " + juce::String(channel) +
+                               " plays no manual: not set in Settings > MIDI, nor by the organ");
+    return;
+  }
+  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity);
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {

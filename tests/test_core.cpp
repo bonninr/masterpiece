@@ -10435,6 +10435,32 @@ public:
   }
 };
 static StopLoadChoiceTest g_stopLoadChoice;
+
+// A channel no manual claims plays the default manual only while nothing says
+// what the channels are; once they are set, it plays nothing -- a console's
+// piston buttons, sending notes on a channel of their own, played the manual.
+class UnclaimedChannelTest final : public mp::test::Test {
+public:
+  UnclaimedChannelTest() : Test("functional.midi.unclaimed-channel", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    proc.clearChannelAssignments();
+    MP_CHECK(proc.keyboardForChannel(9) == 701,
+             "an organ that declares no channels, nothing set: any channel plays the manual");
+    proc.setKeyboardForChannel(1, 701);
+    MP_CHECK(proc.keyboardForChannel(1) == 701, "the channel set plays it");
+    MP_CHECK(proc.keyboardForChannel(9) == 0, "and a channel nothing claims plays nothing");
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static UnclaimedChannelTest g_unclaimedChannel;
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_AUDIO
