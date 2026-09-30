@@ -53,8 +53,22 @@ private:
     std::vector<Id> samples;
   };
 
+  // One rank, the finest choice (#53): what neither a stop nor a perspective
+  // can say, such as the rear ranks of a few stops, or every "tremmed" copy.
+  struct RankRow {
+    Id rankId = 0;
+    std::unique_ptr<juce::ToggleButton> toggle;
+    std::unique_ptr<juce::Label> size;
+    std::vector<Id> samples;
+  };
+
   void build();
   void choose(std::set<Id> excluded);
+  // The filter: rows whose name holds the text stay, the rest are hidden.
+  bool shown(const juce::String& name) const;
+  void applyFilter();
+  void setShownRanks(bool load);
+  std::set<Id> ranksOut() const;
   void refreshFigures();
   void startEstimate();
   // The Loading tab changes the figures (16-bit, mono, streaming) without a
@@ -69,6 +83,10 @@ private:
   std::vector<Heading> headings_;
   std::vector<PerspectiveRow> perspectives_;
   std::unique_ptr<juce::Label> perspectivesHeading_;
+  std::vector<RankRow> ranks_;
+  std::unique_ptr<juce::Label> ranksHeading_;
+  juce::TextEditor filter_;
+  juce::TextButton loadShown_{"Load shown ranks"}, leaveShown_{"Leave out shown ranks"};
   std::set<std::string> perspectivesOut() const;
 
   juce::TextButton all_{"All"}, none_{"None"}, drawn_{"Only those drawn now"};

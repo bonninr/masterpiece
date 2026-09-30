@@ -660,6 +660,17 @@ public:
   }
   // What the last load left out, so a change can be told from what is loaded.
   const std::set<std::string>& perspectivesLeftOut() const { return perspectivesLeftOut_; }
+  // Single ranks to leave out, saved with the organ like the stops (#53): the
+  // finest choice, for what neither a stop nor a perspective can say -- the
+  // rear ranks of a few stops only, or a set's "tremmed" copies. A rank left
+  // out is left out whichever stop plays it.
+  const std::set<Id>& excludedRanks() const { return excludedRanks_; }
+  void setExcludedRanks(std::set<Id> ranks) {
+    excludedRanks_ = std::move(ranks);
+    markSettingsDirty();
+  }
+  // What the last load left out of those, to tell a change from what is loaded.
+  const std::set<Id>& ranksLeftOut() const { return ranksLeftOut_; }
   // Whether a stop's audio came with the last load. A left-out stop still
   // draws and records in pistons -- it simply makes no sound -- and the
   // console dims it so it is not taken for a broken one.
@@ -1206,6 +1217,8 @@ private:
   std::set<Id> excludedStops_;
   std::set<std::string> excludedPerspectives_;
   std::set<std::string> perspectivesLeftOut_;
+  std::set<Id> excludedRanks_;
+  std::set<Id> ranksLeftOut_;
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
