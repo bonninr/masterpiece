@@ -10362,6 +10362,17 @@ public:
     proc.saveSettings();
     MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.stopLoaded(901) && proc.ranksLeftOut().empty(),
              "ticking them again brings them back");
+
+    // The Loading tab, closed without saving (#90): the next load of this
+    // organ keeps the choice instead of reading the old one back.
+    const auto before = proc.sampleStorage();
+    const auto other = before == mp::SampleStorage::Int16 ? mp::SampleStorage::Float32 : mp::SampleStorage::Int16;
+    proc.setSampleStorage(other);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.sampleStorage() == other,
+             "a Loading choice kept for the session survives the next load");
+    proc.setSampleStorage(before);
+    proc.keepLoadingChoiceForSession();
     if (had) settings.replaceWithText(kept);
     else settings.deleteFile();
 

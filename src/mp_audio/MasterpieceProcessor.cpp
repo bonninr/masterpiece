@@ -2458,6 +2458,19 @@ void MasterpieceProcessor::setReleaseLogging(bool on) {
   juce::Logger::writeToLog("release: logging on. Every key release follows.");
 }
 
+void MasterpieceProcessor::keepLoadingChoiceForSession() {
+  if (loadedOdf_ == juce::File()) return;
+  LoadingChoice c;
+  c.organ = loadedOdf_;
+  c.storage = samples_.storage();
+  c.mono = samples_.loadMono();
+  c.stream = samples_.streamReleases();
+  c.streamHead = samples_.streamHeadFrames();
+  c.preload = preloadHead_;
+  c.engine = graph_.engineSwitch;
+  sessionLoading_ = c;
+}
+
 std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
   std::vector<VoiceEngine::ReleaseEvent> events;
   const int64_t dropped = voices_.takeReleaseEvents(events);
@@ -3448,6 +3461,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       mp::deriveOrganRoot(effectiveOdf.getFullPathName().toStdString()));
 
   loadSettingsFor(effectiveOdf);
+  // The Loading tab's choices, kept for this session, win over the file for
+  // the organ they were made for.
+  if (sessionLoading_ && sessionLoading_->organ == effectiveOdf) {
+    const auto& c = *sessionLoading_;
+    samples_.setStorage(c.storage);
+    samples_.setLoadMono(c.mono);
+    samples_.setStreamReleases(c.stream);
+    samples_.setStreamHeadFrames(c.streamHead);
+    preloadHead_ = c.preload;
+    graph_.engineSwitch = c.engine;
+    juce::Logger::writeToLog("load: using the Loading choices kept for this session");
+  } else {
+    sessionLoading_.reset();
+  }
 
   OdfLoader loader;
   OdfLoader::Options opts;

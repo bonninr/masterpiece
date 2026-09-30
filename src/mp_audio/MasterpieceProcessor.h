@@ -36,6 +36,7 @@
 #include <atomic>
 #include <deque>
 #include <map>
+#include <optional>
 #include <mutex>
 #include <set>
 #include <string>
@@ -976,6 +977,13 @@ public:
   }
   const EngineSwitch& engineSwitch() const { return graph_.engineSwitch; }
 
+  // The Loading tab's choices, kept for this session and this organ when the
+  // Organ settings window closes without saving them (#90). Every load reads
+  // the organ's settings file first, so without this the load that follows
+  // the window put the old choices back: "Smallest" chosen, window closed,
+  // and the organ loaded at full size. Loading another organ drops them.
+  void keepLoadingChoiceForSession();
+
 private:
   // Render each enclosure bus, filter it with its own shades, and sum into
   // `buffer`. One filter per enclosure, prepared at prepareToPlay; nothing is
@@ -1354,6 +1362,14 @@ private:
   // Wall clock for the current block, for debouncing chattering contacts.
   double blockTimeMs_ = 0.0;
   juce::File loadedOdf_;
+  struct LoadingChoice {
+    juce::File organ;
+    SampleStorage storage = SampleStorage::Float32;
+    bool mono = false, stream = false;
+    int64_t streamHead = 0, preload = 0;
+    EngineSwitch engine;
+  };
+  std::optional<LoadingChoice> sessionLoading_;
   // Noise ranks keyed by the switch that fires them, built once at
   // prepareToPlay so a switch flip never walks every rank on the audio thread.
   std::unordered_map<Id, std::vector<Id>> noiseRanksBySwitch_;

@@ -300,7 +300,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   startTimerHz(2);
 }
 
-EnginePanel::~EnginePanel() { stopTimer(); }
+EnginePanel::~EnginePanel() {
+  stopTimer();
+  // Whatever the window leaves -- saved, kept, reverted or just closed -- is
+  // what the next load of this organ uses (#90).
+  proc_.keepLoadingChoiceForSession();
+}
 
 void EnginePanel::fillMemLimit() {
   memLimit_.clear(juce::dontSendNotification);
