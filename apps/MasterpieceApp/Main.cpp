@@ -127,6 +127,9 @@ public:
     // and the defaults come back.
     std::unique_ptr<juce::XmlElement> saved(
         juce::XmlDocument::parse(audioSettingsFile()));
+    // Whether the setup is the player's or one Masterpiece picked: only the
+    // second gets the organ-worthy defaults below.
+    bool pickedHere = saved == nullptr;
     auto audioError =
         devices_->initialise(0, 2, saved.get(), /*selectDefaultDeviceOnFailure*/ true);
     if (audioError.isNotEmpty() || !audioOutputAlive(*devices_)) {
@@ -140,8 +143,42 @@ public:
                                  " falling back to defaults");
       devices_->closeAudioDevice();
       audioError = devices_->initialise(0, 2, nullptr, true);
+      pickedHere = true;
       if (audioError.isNotEmpty())
         juce::Logger::writeToLog("audio device: " + audioError);
+    }
+    // A device can open at a rate no organ survives: some default to 8 kHz
+    // (a virtual "Steam Streaming" output did), where nothing above 4 kHz can
+    // sound and every top octave comes out wrong (#90). Nobody chooses that
+    // for an organ, so a rate below 44.1 kHz moves to 48 kHz, or 44.1 kHz,
+    // whatever was saved. And a setup Masterpiece picked itself -- a first
+    // start, or the defaults after a saved one failed -- gets a buffer of
+    // about 10 ms: small enough to play, large enough not to crackle.
+    if (auto* dev = devices_->getCurrentAudioDevice()) {
+      auto setup = devices_->getAudioDeviceSetup();
+      bool change = false;
+      if (dev->getCurrentSampleRate() < 44100.0) {
+        const auto rates = dev->getAvailableSampleRates();
+        const double better = rates.contains(48000.0) ? 48000.0 : rates.contains(44100.0) ? 44100.0 : 0.0;
+        if (better > 0.0) {
+          juce::Logger::writeToLog("audio device: " + juce::String(dev->getCurrentSampleRate(), 0) +
+                                   " Hz is too low for an organ; using " + juce::String(better, 0) + " Hz");
+          setup.sampleRate = better;
+          change = pickedHere = true;
+        }
+      }
+      if (pickedHere) {
+        const double rate = setup.sampleRate > 0.0 ? setup.sampleRate : dev->getCurrentSampleRate();
+        const int wanted = juce::roundToInt(rate * 0.010);
+        int best = 0;
+        for (int size : dev->getAvailableBufferSizes())
+          if (best == 0 || std::abs(size - wanted) < std::abs(best - wanted)) best = size;
+        if (best > 0 && best != dev->getCurrentBufferSizeSamples()) {
+          setup.bufferSize = best;
+          change = true;
+        }
+      }
+      if (change) devices_->setAudioDeviceSetup(setup, true);
     }
     if (auto* dev = devices_->getCurrentAudioDevice())
       juce::Logger::writeToLog(
