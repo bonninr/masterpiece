@@ -9133,6 +9133,33 @@ public:
     MP_CHECK(why("Casa.CompPkg.Hauptwerk.rar").find("browser renamed") != std::string::npos,
              "a volume renamed by the browser is explained: " + why("Casa.CompPkg.Hauptwerk.rar"));
 
+    // --- Bückeburg as it arrived: two volumes missing, and a download manager
+    // saving second copies of the first and last volumes as ".1.rar" and
+    // ".1.r06". The copies are passed over, and the message names the two
+    // volumes that are really missing -- not a phantom set made of copies.
+    {
+      const fs::path set = dir / "buck";
+      fs::create_directories(set);
+      for (const char* v : {".rar", ".r00", ".r01", ".r02", ".r05", ".r06", ".1.rar", ".1.r06"})
+        std::ofstream(set / (std::string("BuckeburgVol1.CompPkg.Hauptwerk") + v), std::ios::binary)
+            << rar4(0x0001, 0);
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(!a.discover((set / "BuckeburgVol1.CompPkg.Hauptwerk.rar").string(), error), "incomplete set refused");
+      MP_CHECK(error.find(".r03") != std::string::npos && error.find(".r04") != std::string::npos &&
+                   error.find(".1") == std::string::npos,
+               "the two missing volumes are named, and nothing about the copies: " + error);
+      // And once they are there, the set opens, the copies passed over.
+      for (const char* v : {".r03", ".r04"})
+        std::ofstream(set / (std::string("BuckeburgVol1.CompPkg.Hauptwerk") + v), std::ios::binary)
+            << rar4(0x0001, 0);
+      mp::OrganArchive whole;
+      error.clear();
+      MP_CHECK(whole.discover((set / "BuckeburgVol1.CompPkg.Hauptwerk.rar").string(), error) &&
+                   whole.archives().size() == 1 && whole.archives()[0].size() == 8,
+               "all eight volumes are one set, and the copies are not a second: " + error);
+    }
+
     // --- a download still running ---
     put("Coming.rar", rar4(0, 0));
     put("Coming.rar.part", "x");

@@ -61,11 +61,13 @@ std::string stemOf(const std::string& fileName) {
 }
 
 // The name a second download was saved beside: a browser's "Name (1).rar",
-// a download manager's "Name.1.rar". Empty for a name that is not one. Only a guess from
-// the name: whether the original is really there is for the caller to check.
+// a download manager's "Name.1.rar" -- and "Name.1.r06" for a volume of a
+// split set, which is how Bückeburg's arrived. Empty for a name that is not
+// one. Only a guess from the name: whether the original is really there is
+// for the caller to check.
 std::string originalOf(const std::string& fileName) {
   static const std::regex browser(R"(^(.*) \(\d+\)(\.[^. ]+)$)");
-  static const std::regex numbered(R"(^(.*)\.\d+(\.rar)$)", std::regex::icase);
+  static const std::regex numbered(R"(^(.*)\.\d+(\.rar|\.r\d\d)$)", std::regex::icase);
   std::smatch m;
   if (std::regex_match(fileName, m, browser)) return m[1].str() + m[2].str();
   if (std::regex_match(fileName, m, numbered)) return m[1].str() + m[2].str();
