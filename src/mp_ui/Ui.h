@@ -13,6 +13,7 @@
 #include "CombinationsWindow.h"
 #include "TuningPanel.h"
 #include "Console.h"
+#include "PageWindow.h"
 
 #include <memory>
 #include <vector>
@@ -134,6 +135,16 @@ private:
   juce::Label status_;
 };
 
+// The page tabs, with a right-click that offers the page a window of its own.
+class PageTabs : public juce::TabbedButtonBar {
+public:
+  PageTabs() : juce::TabbedButtonBar(juce::TabbedButtonBar::TabsAtTop) {}
+  std::function<void(int)> onPopup;
+  void popupMenuClickOnTab(int tabIndex, const juce::String&) override {
+    if (onPopup) onPopup(tabIndex);
+  }
+};
+
 class MasterpieceEditor : public juce::AudioProcessorEditor,
                           private juce::Timer,
                           private juce::ChangeListener {
@@ -202,7 +213,22 @@ private:
   TopBar top_;
   ConsoleView console_;
   juce::Viewport consoleView_;
-  juce::TabbedButtonBar pageTabs_{juce::TabbedButtonBar::TabsAtTop};
+  PageTabs pageTabs_;
+  // Pages in windows of their own, to spread a console over several screens.
+  std::vector<std::unique_ptr<PageWindow>> pageWindows_;
+  void openPageWindow(int page, juce::Rectangle<int> bounds = {});
+  void closePageWindow(PageWindow* window);
+  PageWindow* pageWindowFor(int page) const;
+  // Where they are now, handed to the processor to be saved with the organ.
+  void rememberPageWindows();
+  // A load replaces the model the windows draw from: they close first, and
+  // come back where they were once the organ is in.
+  void closePageWindowsForLoad();
+  void restorePageWindows();
+  bool pagesCanFloat() const;
+  // The pop-out icon on each tab: filled while its page has a window.
+  void addPopOutIcons();
+  void refreshPopOutIcons();
   juce::TextButton toggleView_{"Stop list"};
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};

@@ -690,6 +690,20 @@ public:
     bool open = false;
   };
   const WindowPlace& combinationsWindowPlace() const { return combWindow_; }
+  // The console pages the player keeps in windows of their own, and where:
+  // a second or third screen set up once comes back the same way with the
+  // organ. Per organ, like the combinations window.
+  struct PagePlace {
+    int page = 0;
+    int x = 0, y = 0, w = 0, h = 0;
+    bool operator==(const PagePlace&) const = default;
+  };
+  const std::vector<PagePlace>& pageWindowPlaces() const { return pageWindows_; }
+  void setPageWindowPlaces(std::vector<PagePlace> places) {
+    if (places == pageWindows_) return;
+    pageWindows_ = std::move(places);
+    markSettingsDirty();
+  }
   // Audio blocks answered with silence because an organ was being loaded
   // (see EngineSuspension). For tests and diagnostics.
   uint64_t blocksSkippedForLoad() const { return blocksSkippedForLoad_.load(); }
@@ -1159,6 +1173,7 @@ private:
   VoicingAB voicing_;
   Favourites favourites_;
   // Empty means the organ's default set.
+  std::vector<PagePlace> pageWindows_;
   std::string combinationSet_;
   WindowPlace combWindow_;
   std::set<Id> excludedStops_;

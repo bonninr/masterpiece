@@ -1210,6 +1210,8 @@ bool MasterpieceProcessor::saveSettings() const {
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
            << (combWindow_.open ? 1 : 0) << "\n";
+    for (const auto& p : pageWindows_)
+      text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << "\n";
     if (!temperamentChoice_.empty())
       text << "temperament " << juce::String(temperamentChoice_) << "\n";
     if (masterPitchSetting() > 0.0)
@@ -1230,6 +1232,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.a.clear();
   voicing_.b.clear();
   voicing_.usingB = false;
+  pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
   excludedStops_.clear();
@@ -1295,6 +1298,15 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     if (key == "pitchhz") {
       // Read back as written; the setter's limits applied when it was set.
       masterPitchHz_.store(juce::jmax(0.0, val.getDoubleValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "pagewindow") {
+      // "pagewindow <page> <x> <y> <w> <h>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() >= 5 && tok[3].getIntValue() > 0 && tok[4].getIntValue() > 0)
+        pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
+                                tok[3].getIntValue(), tok[4].getIntValue()});
       continue;
     }
     if (key == "transpose") {
