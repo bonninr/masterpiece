@@ -775,7 +775,7 @@ private:
 
     void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
       auto panel = std::make_unique<mp::ui::OrganSettingsWindow>(
-          proc, [this] { editor_->reloadOrgan(); });
+          proc, [this] { editor_->reloadOrgan(); }, &devices_);
       panel->onClosed = std::move(onClosed);
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());

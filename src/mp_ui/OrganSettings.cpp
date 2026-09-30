@@ -440,11 +440,16 @@ void StopsLoadPanel::resized() {
 
 // -------------------------------------------------------- OrganSettingsWindow
 
-OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload)
+OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload,
+                                         juce::AudioDeviceManager* devices)
     : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }) {
   addAndMakeVisible(tabs_);
   tabs_.addTab("Loading", kBackground, &engineScroll_, false);
   tabs_.addTab("Stops and perspectives", kBackground, &stops_, false);
+  if (devices != nullptr) {
+    midi_ = std::make_unique<MidiPanel>(p, *devices);
+    tabs_.addTab("MIDI", kBackground, midi_.get(), false);
+  }
   setSize(660, 560);
 }
 

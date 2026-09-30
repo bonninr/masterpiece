@@ -104,7 +104,10 @@ private:
 
 class OrganSettingsWindow : public juce::Component {
 public:
-  OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload);
+  // `devices` gives the MIDI tab its inputs; without it (a plugin host owns
+  // the devices) the tab is left out.
+  OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload,
+                      juce::AudioDeviceManager* devices = nullptr);
   ~OrganSettingsWindow() override;
   void resized() override;
   void paint(juce::Graphics& g) override;
@@ -123,6 +126,10 @@ private:
   EnginePanel engine_;
   ScrollHost engineScroll_{engine_, 720};
   StopsLoadPanel stops_;
+  // Which channel plays which of this organ's manuals: the same panel as in
+  // General settings, here too, where a player setting up one organ looks
+  // (#90). Both edit the same mapping.
+  std::unique_ptr<MidiPanel> midi_;
 };
 
 }  // namespace mp::ui
