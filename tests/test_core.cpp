@@ -9,6 +9,7 @@
 #include "../src/mp_core/GrandOrgueImport.h"
 #include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/Perspectives.h"
+#include "../src/mp_core/PathCase.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -9293,6 +9294,29 @@ public:
   }
 };
 static PerspectivesTest g_perspectives;
+
+// A definition that spells a folder in another case than the disk (#90,
+// Burton Berlin: "pipes/go/04-rea_hw" on disk as "pipes/GO/04-Rea_HW") still
+// finds its file, in every part of the path. Only a case-sensitive disk
+// (the Linux runners) puts this to the test; elsewhere it passes as spelled.
+class PathCaseTest final : public mp::test::Test {
+public:
+  PathCaseTest() : Test("functional.files.folder-case", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "mp-folder-case";
+    fs::remove_all(root);
+    fs::create_directories(root / "pipes" / "GO" / "04-Rea_HW");
+    std::ofstream(root / "pipes" / "GO" / "04-Rea_HW" / "055-g.wav") << "x";
+    const fs::path asWritten = root / "pipes" / "go" / "04-rea_hw" / "055-G.wav";
+    const fs::path found = mp::resolvePathIgnoringCase(asWritten);
+    MP_CHECK(fs::exists(found), "a file under folders spelled in another case is found");
+    MP_CHECK(mp::resolvePathIgnoringCase(root / "pipes" / "go" / "absent.wav") == root / "pipes" / "go" / "absent.wav",
+             "a file that is not there is reported as asked for");
+    fs::remove_all(root);
+  }
+};
+static PathCaseTest g_pathCase;
 
 // An archive that cannot be read says why, before any of it is decompressed
 // (#53, and a multi-volume set reported as "does not open"): a password, a
