@@ -271,6 +271,8 @@ private:
   // Sustain loop from the WAV 'smpl' chunk, applied to what is resident.
   // Where the release begins inside a file that also holds the attack, in
   // FILE frames, or -1 when the file marks no such point.
+  // The last cue point in the file, where a release begins; -1 for none.
+  static int64_t lastCueInFile(const juce::AudioFormatReader& reader);
   static int64_t releaseCueInFile(const juce::AudioFormatReader& reader,
                                   int64_t totalFrames, int64_t loopEnd);
   // What the file's own smpl chunk says it sounds at, as a fractional
