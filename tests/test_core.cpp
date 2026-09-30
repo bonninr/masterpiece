@@ -9196,6 +9196,40 @@ public:
       one.ranks[i + 1] = r;
     }
     MP_CHECK(mp::perspectivesOf(one).empty(), "an organ recorded from one place has none to choose");
+
+    // By the level sliders, whatever the ranks are called: each rank's layers
+    // answer to one slider per position, and every stop plays one rank of each.
+    auto levelled = [](bool sameStops) {
+      mp::OrganModel lm;
+      for (int s = 0; s < 6; ++s) {
+        mp::Stop stop;
+        stop.stopId = s + 1;
+        for (int p = 0; p < 2; ++p) {
+          const mp::Id id = 100 + s * 2 + p;
+          mp::Rank r;
+          r.rankId = id;
+          r.name = "Stop " + std::to_string(s) + (p == 0 ? " a" : " b");
+          mp::Pipe pipe;
+          pipe.layers.emplace_back();
+          pipe.layers.back().ampScalingControlId = (sameStops ? p : (s < 3 ? 0 : 1)) == 0 ? 7 : 8;
+          r.pipes.push_back(pipe);
+          lm.ranks[id] = r;
+          mp::StopRankEntry e;
+          e.rankId = id;
+          stop.ranks.push_back(e);
+        }
+        lm.stops[stop.stopId] = stop;
+      }
+      lm.continuousControls[7].name = "Volume Direct chan.";
+      lm.continuousControls[8].name = "Volume Distant chan.";
+      return lm;
+    };
+    const auto byLevel = mp::perspectivesOf(levelled(true));
+    MP_CHECK(byLevel.size() == 2 && byLevel.count("volume direct chan.") &&
+                 byLevel.at("volume distant chan.").size() == 6,
+             "one slider per position makes the perspectives, named after it");
+    MP_CHECK(mp::perspectivesOf(levelled(false)).empty(),
+             "a slider per division is not a perspective: its stops are its own");
   }
 };
 static PerspectivesTest g_perspectives;

@@ -54,15 +54,81 @@ std::string perspectiveOf(const std::string& rankName) {
   return positions().count(last) != 0 ? last : std::string();
 }
 
+namespace {
+
+// The level control every layer of a rank answers to, or 0 when they differ
+// or name none.
+Id levelControlOf(const Rank& rank) {
+  Id found = 0;
+  for (const auto& pipe : rank.pipes)
+    for (const auto& layer : pipe.layers) {
+      if (layer.ampScalingControlId == 0 || (found != 0 && layer.ampScalingControlId != found)) return 0;
+      found = layer.ampScalingControlId;
+    }
+  return found;
+}
+
+// A surround set gives each microphone position a level slider of its own
+// (Buckeburg: "Volume Direct chan.", "Volume Diffuse chan.", "Volume Distant
+// chan."), and every layer of a rank answers to one. That is the organ's own
+// account of its perspectives, whatever the ranks are called. A set can give
+// each division a slider too; perspectives record the SAME stops, divisions
+// different ones, so most stops must draw ranks from two groups or more.
+std::map<std::string, std::vector<Id>> byLevelControl(const OrganModel& model, size_t floor) {
+  std::map<Id, std::vector<Id>> groups;
+  for (const auto& [rankId, rank] : model.ranks)
+    if (const Id c = levelControlOf(rank); c != 0) groups[c].push_back(rankId);
+  for (auto it = groups.begin(); it != groups.end();)
+    it = it->second.size() < floor ? groups.erase(it) : std::next(it);
+  if (groups.size() < 2) return {};
+
+  std::map<Id, Id> groupOfRank;
+  for (const auto& [c, ranks] : groups)
+    for (const Id r : ranks) groupOfRank[r] = c;
+  size_t stops = 0, spanning = 0;
+  for (const auto& [stopId, stop] : model.stops) {
+    std::set<Id> touched;
+    for (const auto& e : stop.ranks)
+      if (const auto it = groupOfRank.find(e.rankId); it != groupOfRank.end()) touched.insert(it->second);
+    if (touched.empty()) continue;
+    ++stops;
+    if (touched.size() >= 2) ++spanning;
+  }
+  if (spanning * 2 <= stops) return {};
+
+  // Named as the rank names put it when they all agree ("rear"), so a choice
+  // saved by name still applies; else by the slider.
+  std::map<std::string, std::vector<Id>> named;
+  for (auto& [c, ranks] : groups) {
+    std::string name = perspectiveOf(model.ranks.at(ranks.front()).name);
+    for (const Id r : ranks)
+      if (perspectiveOf(model.ranks.at(r).name) != name) name.clear();
+    if (name.empty()) {
+      const auto it = model.continuousControls.find(c);
+      name = it != model.continuousControls.end() && !lowerTrim(it->second.name).empty()
+                 ? lowerTrim(it->second.name)
+                 : "level " + std::to_string(c);
+    }
+    if (named.count(name) != 0) name += " (" + std::to_string(c) + ")";
+    std::sort(ranks.begin(), ranks.end());
+    named[name] = std::move(ranks);
+  }
+  return named;
+}
+
+}  // namespace
+
 std::map<std::string, std::vector<Id>> perspectivesOf(const OrganModel& model) {
+  // A perspective is a large share of the organ: a tenth of the ranks at the
+  // least, and never fewer than three.
+  const size_t floor = std::max<size_t>(3, model.ranks.size() / 10);
+  if (auto byLevel = byLevelControl(model, floor); !byLevel.empty()) return byLevel;
+
   std::map<std::string, std::vector<Id>> groups;
   for (const auto& [rankId, rank] : model.ranks) {
     const std::string p = perspectiveOf(rank.name);
     if (!p.empty()) groups[p].push_back(rankId);
   }
-  // A perspective is a large share of the organ: a tenth of the ranks at the
-  // least, and never fewer than three.
-  const size_t floor = std::max<size_t>(3, model.ranks.size() / 10);
   for (auto it = groups.begin(); it != groups.end();)
     it = it->second.size() < floor ? groups.erase(it) : std::next(it);
   if (groups.size() < 2) groups.clear();
