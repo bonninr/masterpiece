@@ -115,6 +115,7 @@ private:
   juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
   juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
   juce::ToggleButton reopen_{"Reopen the last organ when Masterpiece starts"};
+  juce::ToggleButton portable_{"Keep this organ playable without its installation files"};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;
   // Fill the memory-limit choices around the current setting.
