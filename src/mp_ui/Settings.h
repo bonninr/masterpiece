@@ -240,6 +240,8 @@ private:
   juce::Label stepperLabel_;
   juce::TextButton learnNext_{"Learn sequencer +"};
   juce::TextButton learnPrev_{"Learn sequencer -"};
+  // Pistons that switch which manual a keyboard plays (#90).
+  juce::TextButton learnManuals_{"Learn manual buttons..."};
   // Console actions a real console's thumb pistons would do. A player whose
   // hands are on the keys cannot reach for a mouse to turn a page.
   juce::Label consoleHeading_;
