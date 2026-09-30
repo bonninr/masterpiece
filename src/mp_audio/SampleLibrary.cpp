@@ -1,4 +1,5 @@
 #include "SampleLibrary.h"
+#include "PathCase.h"
 #include "WavPackFormat.h"
 
 #include <algorithm>
@@ -68,22 +69,8 @@ std::filesystem::path resolvePath(const std::string& rootDir,
 // does not care what they meant. Fall back to a case-insensitive walk of the
 // parent directory rather than declaring a present file missing.
 std::filesystem::path resolveIgnoringCase(const std::filesystem::path& wanted) {
-  std::error_code ec;
-  if (std::filesystem::exists(wanted, ec)) return wanted;
-
-  const auto dir = wanted.parent_path();
-  if (!std::filesystem::is_directory(dir, ec)) return wanted;
-
-  std::string target = wanted.filename().string();
-  std::transform(target.begin(), target.end(), target.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-    std::string have = entry.path().filename().string();
-    std::transform(have.begin(), have.end(), have.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    if (have == target) return entry.path();
-  }
-  return wanted;
+  // Every folder of the path, not only the file name (#90).
+  return mp::resolvePathIgnoringCase(wanted);
 }
 
 } // namespace
