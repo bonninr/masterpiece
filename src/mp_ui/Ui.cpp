@@ -989,10 +989,15 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
           odf.getFileNameWithoutExtension() +
               " was not loaded: its samples need more than the memory limit (" +
               juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
-              " GB).\n\nIn Organ settings: leave out perspectives or stops, or on the "
-              "Loading tab load 16-bit samples, stream the release tails, load in mono or "
-              "preload less of each sample -- or raise the limit in General settings, if "
-              "this computer has the memory to spare.");
+              " GB).\n\nIts console is shown without sound, so Organ settings can be opened "
+              "from the Settings menu: leave out perspectives or stops, or on the Loading tab "
+              "load 16-bit samples, stream the release tails, load in mono or preload less of "
+              "each sample -- or raise the limit in General settings, if this computer has "
+              "the memory to spare.");
+    // The organ's console, without its audio, so the way out is on screen
+    // (#53: the only way back was deleting the organ's settings file). Once:
+    // a console-only load reads no samples, and never comes back here.
+    if (result.outOfMemory && !graphicsOnly) loadOrgan(odf, true);
     return;
   }
 
