@@ -903,6 +903,10 @@ public:
   // Zero unless the disk could not keep up, in which case a release went
   // silent partway and the player deserves to know.
   int64_t streamUnderruns() const { return voices_.streamUnderruns(); }
+  // --log-releases: record every key release, and describe the ones recorded
+  // since the last call, one line each. Message thread.
+  void setReleaseLogging(bool on) { voices_.setReleaseLogging(on); }
+  std::vector<std::string> takeReleaseLog();
 
   // Where the organ was loaded from — the console needs it to resolve artwork
   // out of the same installation packages the audio comes from.
@@ -1126,6 +1130,7 @@ private:
   }
   std::unordered_set<Id> engagedStops_;
   std::atomic<bool> logMidi_{false};
+  int64_t loggedUnderruns_ = 0;
   // How many manual assignments the last load had to discard from a saved
   // mapping. Shown to the player, because a mapping that changes under them
   // without a word would cost more trust than the fault it fixes.

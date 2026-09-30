@@ -17,6 +17,7 @@
 #include "../mp_core/OrganModel.h"
 #include "StreamingEngine.h" // NoteStrike / NoteRelease + the selection matrices
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -409,6 +410,36 @@ public:
   // fetched yet and played silence. Should be zero; anything else is a disk
   // that cannot keep up, and the player needs to be told rather than left
   // wondering why the releases sound clipped.
+  // What became of each key release, for --log-releases: which of the pipe's
+  // releases was chosen, how long it is, where it starts and how it joins the
+  // attack. Written on the audio thread into a fixed ring and taken on the
+  // message thread; when the reader falls behind, events are dropped and
+  // counted, never waited for.
+  struct ReleaseEvent {
+    Id pipeId = 0;
+    Id attackSampleId = 0;
+    Id releaseSampleId = 0;    // 0: no release sample, the voice just fades
+    int64_t heldMs = 0;
+    int velocity = 64;
+    int releaseCount = 0;      // releases the pipe offers
+    int chosen = -1;           // which of them, -1 for none
+    int64_t attackFrame = 0;   // where the attack was when the key let go
+    double attackRate = 0.0;
+    bool attackLooping = false;
+    int64_t releaseFrames = 0; // the whole release file
+    double releaseRate = 0.0;
+    int64_t startFrame = 0;    // where in it playback starts
+    bool cueWanted = false;    // the organ says to start at the file's marker
+    bool cueFound = false;     // and the file has one
+    double crossfadeMs = 0.0;
+    bool streamed = false;
+    int64_t residentFrames = 0;
+  };
+  void setReleaseLogging(bool on) { logReleases_.store(on, std::memory_order_release); }
+  // Moves the events recorded since the last call into `out`, and returns how
+  // many were dropped meanwhile.
+  int64_t takeReleaseEvents(std::vector<ReleaseEvent>& out);
+
   int64_t streamUnderruns() const {
     return underruns_.load(std::memory_order_relaxed);
   }
@@ -509,6 +540,12 @@ private:
   // not change the engine — but an underrun is exactly the thing a player must
   // be told about, so it is recorded rather than swallowed.
   mutable std::atomic<int64_t> underruns_{0};
+  static constexpr size_t kReleaseRing = 1024;
+  std::array<ReleaseEvent, kReleaseRing> releaseRing_{};
+  std::atomic<size_t> releaseHead_{0}; // written by the audio thread
+  std::atomic<size_t> releaseTail_{0}; // written by the reader
+  std::atomic<int64_t> releaseDropped_{0};
+  std::atomic<bool> logReleases_{false};
   std::atomic<int64_t> streaming_{0};
 
   void startStreamer();

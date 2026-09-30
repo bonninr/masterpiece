@@ -2426,6 +2426,54 @@ bool MasterpieceProcessor::setTemperament(const std::string& choice,
   return true;
 }
 
+std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
+  std::vector<VoiceEngine::ReleaseEvent> events;
+  const int64_t dropped = voices_.takeReleaseEvents(events);
+  std::vector<std::string> lines;
+  auto fileOf = [this](Id id) -> std::string {
+    const auto it = model_.samples.find(id);
+    return it != model_.samples.end() ? it->second.fileName : "sample " + std::to_string(id);
+  };
+  auto seconds = [](int64_t frames, double rate) {
+    char b[32];
+    std::snprintf(b, sizeof b, "%.2f s", rate > 0.0 ? static_cast<double>(frames) / rate : 0.0);
+    return std::string(b);
+  };
+  for (const auto& e : events) {
+    std::string l = "release: pipe " + std::to_string(e.pipeId) + ", held " +
+                    std::to_string(e.heldMs) + " ms, velocity " + std::to_string(e.velocity) +
+                    " | attack " + fileOf(e.attackSampleId) + " at " +
+                    seconds(e.attackFrame, e.attackRate) +
+                    (e.attackLooping ? " (in its loop)" : " (before its loop)") + " | ";
+    if (e.releaseSampleId == 0) {
+      l += e.releaseCount == 0 ? "the pipe has no releases"
+                               : "none of its " + std::to_string(e.releaseCount) + " releases matched";
+      l += e.chosen >= 0 ? " (release sample not loaded)" : "";
+      l += ": the attack fades out";
+    } else {
+      char xf[32];
+      std::snprintf(xf, sizeof xf, "%.1f ms", e.crossfadeMs);
+      l += "release " + std::to_string(e.chosen + 1) + " of " + std::to_string(e.releaseCount) +
+           ": " + fileOf(e.releaseSampleId) + ", " + seconds(e.releaseFrames, e.releaseRate) +
+           " at " + std::to_string(static_cast<int>(e.releaseRate)) + " Hz, from " +
+           seconds(e.startFrame, e.releaseRate);
+      if (e.cueWanted) l += e.cueFound ? " (its release marker)" : " (marker asked for, none in the file)";
+      l += " | crossfade " + std::string(xf);
+      l += e.streamed ? " | streamed, " + seconds(e.residentFrames, e.releaseRate) + " resident"
+                      : " | resident";
+    }
+    lines.push_back(std::move(l));
+  }
+  if (dropped > 0)
+    lines.push_back("release: " + std::to_string(dropped) + " more not recorded (too many at once)");
+  const int64_t underruns = voices_.streamUnderruns();
+  if (underruns > loggedUnderruns_)
+    lines.push_back("release: " + std::to_string(underruns - loggedUnderruns_) +
+                    " stream underrun(s): a streamed tail was not read from disk in time");
+  loggedUnderruns_ = underruns;
+  return lines;
+}
+
 std::string MasterpieceProcessor::temperamentName() const {
   const Temperament& t = activeTuning();
   if (!t.name.empty()) return t.name;

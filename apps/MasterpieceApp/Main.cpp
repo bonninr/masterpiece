@@ -71,6 +71,10 @@ public:
     // Report every MIDI message and what became of it. The one question a
     // player with a silent console cannot answer from outside.
     const bool logMidi = args.contains("--log-midi");
+    // Describe every key release: which of the pipe's releases played, its
+    // length, where it started and how it joined the attack. For a click or
+    // a noise heard when keys let go.
+    const bool logReleases = args.contains("--log-releases");
     // Record everything played, from start to quit, as a MIDI file:
     //   --record-midi performance.mid
     // For a fault that cannot be reproduced on demand: play until it happens,
@@ -556,6 +560,20 @@ public:
                                ", saved on quit");
     }
 
+    if (logReleases) {
+      proc_->setReleaseLogging(true);
+      juce::Logger::writeToLog("release: logging on. Every key release follows.");
+      struct Drain : public juce::Timer {
+        decltype(proc_.get()) proc = nullptr;
+        void timerCallback() override {
+          for (const auto& line : proc->takeReleaseLog()) juce::Logger::writeToLog(line);
+        }
+      };
+      releaseLog_ = std::make_unique<Drain>();
+      static_cast<Drain*>(releaseLog_.get())->proc = proc_.get();
+      releaseLog_->startTimer(250);
+    }
+
     if (logMidi) {
       proc_->setMidiLogging(true);
       juce::Logger::writeToLog(
@@ -652,6 +670,7 @@ public:
     win_.reset();
     player_.reset();
     devices_.reset();
+    releaseLog_.reset(); // reads proc_
     proc_.reset();
   }
 
@@ -785,6 +804,7 @@ private:
   juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
+  std::unique_ptr<juce::Timer> releaseLog_;
   // Our own published port, where the platform allows one. The input holds a
   // pointer to its route, so the route is declared FIRST and therefore
   // destroyed last — the input goes away while its callback is still valid.

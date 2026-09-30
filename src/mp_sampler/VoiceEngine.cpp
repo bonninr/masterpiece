@@ -402,6 +402,20 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
 
     // The attack being left: it keeps sounding through the crossfade, so its
     // buffer, cursor and loop have to survive the swap below.
+    const bool logging = logReleases_.load(std::memory_order_acquire);
+    ReleaseEvent ev;
+    if (logging) {
+      ev.pipeId = v.pipeId;
+      ev.attackSampleId = v.sampleId;
+      ev.heldMs = release.holdTimeMs;
+      ev.velocity = release.velocity;
+      ev.releaseCount = v.layer != nullptr ? static_cast<int>(v.layer->releases.size()) : 0;
+      ev.chosen = chosen;
+      ev.attackFrame = static_cast<int64_t>(v.cursor);
+      ev.attackRate = v.buffer != nullptr ? v.buffer->sampleRate : 0.0;
+      ev.attackLooping = v.loops();
+      ev.crossfadeMs = xfadeMs;
+    }
     const SampleBuffer* oldBuf = v.buffer;
     const double oldCursor = v.cursor;
     const int64_t oldLoopStart = v.loopStart;
@@ -454,7 +468,35 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     }
     // No matching release sample: the voice fades from wherever it is, which
     // is what a rank without releases should do rather than cutting abruptly.
+    if (logging) {
+      if (v.releaseIsSample) {
+        const ReleaseSample& row = v.layer->releases[static_cast<size_t>(chosen)];
+        ev.releaseSampleId = relSampleId;
+        ev.releaseFrames = relBuf->totalFrames();
+        ev.releaseRate = relBuf->sampleRate;
+        ev.startFrame = static_cast<int64_t>(v.cursor);
+        ev.cueWanted = row.loadStartValue > 0 || row.loadStartType > 0;
+        ev.cueFound = relBuf->releaseCue > 0;
+        ev.streamed = relBuf->streams();
+        ev.residentFrames = relBuf->numFrames;
+      }
+      const size_t head = releaseHead_.load(std::memory_order_relaxed);
+      if (head - releaseTail_.load(std::memory_order_acquire) >= kReleaseRing) {
+        releaseDropped_.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        releaseRing_[head % kReleaseRing] = ev;
+        releaseHead_.store(head + 1, std::memory_order_release);
+      }
+    }
   }
+}
+
+int64_t VoiceEngine::takeReleaseEvents(std::vector<ReleaseEvent>& out) {
+  const size_t head = releaseHead_.load(std::memory_order_acquire);
+  size_t tail = releaseTail_.load(std::memory_order_relaxed);
+  for (; tail != head; ++tail) out.push_back(releaseRing_[tail % kReleaseRing]);
+  releaseTail_.store(tail, std::memory_order_release);
+  return releaseDropped_.exchange(0, std::memory_order_relaxed);
 }
 
 // Interior fast path: all four Hermite taps are in range, so the per-tap
