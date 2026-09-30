@@ -48,6 +48,7 @@ struct SampleLoadReport {
   int loaded = 0;
   int missing = 0;    // referenced but not on disk
   int encrypted = 0;  // .hbw/.hbx — ADR-003, we do not decode these
+  int wanted = 0;     // what the pipework asked for, of which `loaded` arrived
   int failed = 0;     // present but unreadable
   std::vector<std::string> missingFiles;
   std::vector<std::string> failedFiles;

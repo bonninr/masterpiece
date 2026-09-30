@@ -743,9 +743,10 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
           odf.getFileNameWithoutExtension() +
               " was not loaded: its samples need more than the memory limit (" +
               juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
-              " GB).\n\nIn Settings, Engine: load 16-bit samples, stream the release "
-              "tails, load in mono or preload less of each sample -- or raise the "
-              "limit, if this computer has the memory to spare.");
+              " GB).\n\nIn Organ settings: leave out perspectives or stops, or on the "
+              "Loading tab load 16-bit samples, stream the release tails, load in mono or "
+              "preload less of each sample -- or raise the limit in General settings, if "
+              "this computer has the memory to spare.");
     return;
   }
 
@@ -833,6 +834,30 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                " MB)";
     if (result.samples.missing > 0)
       status_ += ", " + juce::String(result.samples.missing) + " missing";
+    if (result.samples.encrypted > 0)
+      status_ += ", " + juce::String(result.samples.encrypted) + " copy-protected";
+    if (result.incomplete)
+      status_ += "  -  INCOMPLETE (memory limit)";
+  }
+  if (!graphicsOnly && result.incomplete) {
+    const int percent = result.samples.wanted > 0
+                            ? juce::roundToInt(100.0 * result.samples.loaded / result.samples.wanted)
+                            : 0;
+    juce::AlertWindow::showMessageBoxAsync(
+        juce::MessageBoxIconType::WarningIcon, "Only part of this organ fits",
+        juce::String(result.samples.loaded) + " of " + juce::String(result.samples.wanted) +
+            " samples (" + juce::String(percent) + "%) were loaded before the memory limit (" +
+            juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
+            " GB) was reached. The organ plays, but some stops or notes will be silent.\n\n"
+            "To load all of it: leave out perspectives or stops in Organ settings, load "
+            "16-bit samples or stream the release tails on its Loading tab, or raise the "
+            "limit in General settings if this computer has the memory to spare.");
+  } else if (!graphicsOnly && result.samples.loaded == 0 && result.samples.encrypted > 0) {
+    juce::AlertWindow::showMessageBoxAsync(
+        juce::MessageBoxIconType::WarningIcon, "This organ's samples are copy-protected",
+        "All " + juce::String(result.samples.encrypted) +
+            " of its samples are encrypted for use in Hauptwerk only, and Masterpiece "
+            "cannot play them. The console loads, but the organ makes no sound.");
   }
   // Say it out loud, once. The status line has no room beside the console's
   // buttons, and a mapping that changes without a word costs more trust than

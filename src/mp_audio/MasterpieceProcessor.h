@@ -91,6 +91,9 @@ public:
     int stopsEngaged = 0;
     // Stopped at the memory limit rather than failing on its own.
     bool outOfMemory = false;
+    // Stopped at the memory limit, and kept: what was read plays, the rest
+    // of the organ is silent. samples.loaded of samples.wanted arrived.
+    bool incomplete = false;
   };
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
@@ -600,6 +603,9 @@ public:
   // cleanly and says so, rather than running the machine out of memory.
   int memoryLimitSettingMB() const { return memoryLimitMB_; }
   void setMemoryLimitMB(int mb);
+  // The same ceiling for this session only, saved nowhere: for tools that
+  // must not rewrite the player's settings.
+  void overrideMemoryLimitMB(int mb) { memoryLimitOverrideMB_ = mb > 0 ? mb : 0; }
   static int defaultMemoryLimitMB();
   int64_t memoryLimitBytes() const;
   // Audible load progress: a swift tap at each 10% of a load. Off unless
@@ -1199,6 +1205,7 @@ private:
   juce::File crashedOrgan_;
   bool globalsReadOnce_ = false;
   int memoryLimitMB_ = 0;
+  int memoryLimitOverrideMB_ = 0;  // this session only; never written
   std::atomic<bool> loadTicks_{false};
   juce::File cacheDir_; // empty: the default place
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a

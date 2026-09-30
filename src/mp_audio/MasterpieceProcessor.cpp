@@ -1532,7 +1532,8 @@ void MasterpieceProcessor::setMemoryLimitMB(int mb) {
 }
 
 int64_t MasterpieceProcessor::memoryLimitBytes() const {
-  const int mb = memoryLimitMB_ > 0 ? memoryLimitMB_ : defaultMemoryLimitMB();
+  const int mb = memoryLimitOverrideMB_ > 0 ? memoryLimitOverrideMB_
+                 : memoryLimitMB_ > 0 ? memoryLimitMB_ : defaultMemoryLimitMB();
   return static_cast<int64_t>(mb) * 1024 * 1024;
 }
 
@@ -3856,6 +3857,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // plays some notes and silently drops others is worse than none: the player
   // would be debugging their sample set rather than remembering they pressed
   // Cancel. Drop what was read and say so plainly.
+  // Except at the memory limit: there the player did not ask to stop, and
+  // what fitted is kept and played. An organ that is mostly there is worth
+  // more than none, provided it says it is incomplete -- and the player can
+  // then leave out perspectives or stops until it fits.
+  if (loadProgress_.isCancelled() && loadProgress_.overBudget.load(std::memory_order_acquire) &&
+      result.samples.loaded > 0) {
+    juce::Logger::writeToLog("load: stopped at the memory limit; keeping the " +
+                             juce::String(result.samples.loaded) + " of " +
+                             juce::String(result.samples.wanted) +
+                             " samples read -- the organ is INCOMPLETE");
+    result.incomplete = true;
+    result.outOfMemory = true;
+    loadProgress_.cancelled.store(false, std::memory_order_release);
+  }
   if (loadProgress_.isCancelled()) {
     const bool outOfMemory = loadProgress_.overBudget.load(std::memory_order_acquire);
     juce::Logger::writeToLog(outOfMemory
