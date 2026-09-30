@@ -10342,6 +10342,26 @@ public:
     proc.saveSettings();
     MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.stopLoaded(901),
              "and ticking it again brings it back on the next load");
+
+    // A single rank, the finest choice (#53): left out whichever stop plays
+    // it, and a stop with none of its ranks is counted as not loaded.
+    std::set<mp::Id> ranksOf901;
+    for (const auto& e : proc.organModel().stops.at(901).ranks) ranksOf901.insert(e.rankId);
+    MP_CHECK(!ranksOf901.empty(), "the stop has ranks");
+    proc.setExcludedRanks(ranksOf901);
+    MP_CHECK(proc.saveSettings() && proc.loadOrgan(odf, 0, false).ok, "saved and loaded again");
+    MP_CHECK(proc.excludedRanks() == ranksOf901, "the ranks left out are remembered");
+    if (ranksOf901.size() < proc.organModel().ranks.size()) {
+      MP_CHECK(proc.ranksLeftOut() == ranksOf901, "and left out");
+      MP_CHECK(!proc.stopLoaded(901), "and their stop is counted as not loaded");
+    } else {
+      MP_CHECK(proc.ranksLeftOut().empty() && proc.stopLoaded(901),
+               "but never every rank: an organ with none would be silent");
+    }
+    proc.setExcludedRanks({});
+    proc.saveSettings();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.stopLoaded(901) && proc.ranksLeftOut().empty(),
+             "ticking them again brings them back");
     if (had) settings.replaceWithText(kept);
     else settings.deleteFile();
 

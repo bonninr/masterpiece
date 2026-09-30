@@ -1207,6 +1207,7 @@ bool MasterpieceProcessor::saveSettings() const {
       text << "combset " << juce::String(combinationSet_) << "\n";
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
     for (const auto& p : excludedPerspectives_) text << "skipperspective " << juce::String(p) << "\n";
+    for (Id rank : excludedRanks_) text << "skiprank " << juce::String(rank) << "\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
@@ -1238,6 +1239,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   combWindow_ = {};
   excludedStops_.clear();
   excludedPerspectives_.clear();
+  excludedRanks_.clear();
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
   licenceConfirmed_ = false;
@@ -1321,6 +1323,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "skipstop") {
       excludedStops_.insert(static_cast<Id>(val.getLargeIntValue()));
+      continue;
+    }
+    if (key == "skiprank") {
+      excludedRanks_.insert(static_cast<Id>(val.getLargeIntValue()));
       continue;
     }
     if (key == "skipperspective") {
@@ -3834,6 +3840,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         perspectiveOut.clear();
       }
     }
+    // Single ranks left out go the same way as a perspective's: out, whatever
+    // stop plays them. Only ranks this organ has count, and never all of them.
+    ranksLeftOut_.clear();
+    if (onlyRanks.empty())
+      for (Id rankId : excludedRanks_)
+        if (model_.ranks.count(rankId) != 0) ranksLeftOut_.insert(rankId);
+    if (ranksLeftOut_.size() >= model_.ranks.size()) ranksLeftOut_.clear();
+    perspectiveOut.insert(ranksLeftOut_.begin(), ranksLeftOut_.end());
     if (onlyRanks.empty() && !perspectiveOut.empty() && excludedStops_.empty()) {
       for (const auto& [rankId, rank] : model_.ranks) {
         (void)rank;

@@ -1,5 +1,6 @@
 #include "OrganSettings.h"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace mp::ui {
@@ -42,6 +43,15 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
     choose(std::move(out));
   };
 
+  addAndMakeVisible(filter_);
+  filter_.setTextToShowWhenEmpty("Filter, for example: Rear, tremmed, Pedal", kTextDim);
+  filter_.setTooltip("Shows only the perspectives, stops and ranks whose name holds this text");
+  filter_.onTextChange = [this] { applyFilter(); };
+  for (auto* b : {&loadShown_, &leaveShown_}) addAndMakeVisible(*b);
+  loadShown_.onClick = [this] { setShownRanks(true); };
+  leaveShown_.onClick = [this] { setShownRanks(false); };
+  leaveShown_.setTooltip("Leave out every rank in the list as it is filtered now");
+
   addAndMakeVisible(viewport_);
   viewport_.setViewedComponent(&list_, false);
   viewport_.setScrollBarsShown(true, false);
@@ -77,6 +87,8 @@ void StopsLoadPanel::build() {
   headings_.clear();
   perspectives_.clear();
   perspectivesHeading_.reset();
+  ranks_.clear();
+  ranksHeading_.reset();
   list_.removeAllChildren();
 
   // Perspectives first, when the set has them: on a set recorded from three
@@ -173,8 +185,101 @@ void StopsLoadPanel::build() {
     list_.addAndMakeVisible(*row.size);
     rows_.push_back(std::move(row));
   }
-  resized();
+
+  // Every rank last, by name, each saying which stops play it.
+  const auto& model = proc_.organModel();
+  std::unordered_map<Id, juce::StringArray> stopsOfRank;
+  for (const auto& [stopId, stop] : model.stops)
+    for (const auto& e : stop.ranks) stopsOfRank[e.rankId].addIfNotAlreadyThere(juce::String(stop.name));
+  std::vector<std::pair<juce::String, Id>> byName;
+  for (const auto& [rankId, rank] : model.ranks)
+    byName.push_back({juce::String(juce::CharPointer_UTF8(rank.name.c_str())), rankId});
+  std::sort(byName.begin(), byName.end(), [](const auto& a, const auto& b) {
+    return a.first.compareNatural(b.first) < 0;
+  });
+  if (!byName.empty()) {
+    ranksHeading_ = std::make_unique<juce::Label>();
+    ranksHeading_->setText("Ranks", juce::dontSendNotification);
+    ranksHeading_->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
+    ranksHeading_->setColour(juce::Label::textColourId, juce::Colours::orange);
+    list_.addAndMakeVisible(*ranksHeading_);
+  }
+  const auto& ranksOutNow = proc_.excludedRanks();
+  for (const auto& [name, rankId] : byName) {
+    RankRow row;
+    row.rankId = rankId;
+    row.toggle = std::make_unique<juce::ToggleButton>(name.isEmpty() ? "Rank " + juce::String(rankId) : name);
+    row.toggle->setToggleState(ranksOutNow.count(rankId) == 0, juce::dontSendNotification);
+    const auto users = stopsOfRank.find(rankId);
+    row.toggle->setTooltip(users == stopsOfRank.end()
+                               ? juce::String("Played by no stop: a noise, or wired to a key directly")
+                               : "Played by " + users->second.joinIntoString(", "));
+    row.toggle->onClick = [this] {
+      proc_.setExcludedRanks(ranksOut());
+      refreshFigures();
+    };
+    row.size = std::make_unique<juce::Label>();
+    row.size->setJustificationType(juce::Justification::centredRight);
+    row.size->setColour(juce::Label::textColourId, kTextDim);
+    row.samples = proc_.samplesOfRanks({rankId});
+    list_.addAndMakeVisible(*row.toggle);
+    list_.addAndMakeVisible(*row.size);
+    ranks_.push_back(std::move(row));
+  }
+  applyFilter();
   refreshFigures();
+}
+
+bool StopsLoadPanel::shown(const juce::String& name) const {
+  const auto text = filter_.getText().trim();
+  return text.isEmpty() || name.containsIgnoreCase(text);
+}
+
+void StopsLoadPanel::applyFilter() {
+  const bool filtering = filter_.getText().trim().isNotEmpty();
+  for (auto& p : perspectives_) {
+    const bool on = shown(p.toggle->getButtonText());
+    p.toggle->setVisible(on);
+    p.size->setVisible(on);
+  }
+  for (auto& r : rows_) {
+    const bool on = shown(r.toggle->getButtonText());
+    r.toggle->setVisible(on);
+    r.size->setVisible(on);
+  }
+  bool anyRank = false;
+  for (auto& r : ranks_) {
+    const bool on = shown(r.toggle->getButtonText());
+    r.toggle->setVisible(on);
+    r.size->setVisible(on);
+    anyRank = anyRank || on;
+  }
+  // Division headings mean nothing in a filtered list; the Ranks one still does.
+  for (auto& h : headings_) h.label->setVisible(!filtering);
+  if (perspectivesHeading_ != nullptr) perspectivesHeading_->setVisible(!filtering);
+  if (ranksHeading_ != nullptr) ranksHeading_->setVisible(anyRank);
+  loadShown_.setEnabled(anyRank);
+  leaveShown_.setEnabled(anyRank);
+  resized();
+}
+
+void StopsLoadPanel::setShownRanks(bool load) {
+  std::set<Id> out = ranksOut();
+  for (auto& r : ranks_) {
+    if (!r.toggle->isVisible()) continue;
+    r.toggle->setToggleState(load, juce::dontSendNotification);
+    if (load) out.erase(r.rankId);
+    else out.insert(r.rankId);
+  }
+  proc_.setExcludedRanks(std::move(out));
+  refreshFigures();
+}
+
+std::set<Id> StopsLoadPanel::ranksOut() const {
+  std::set<Id> out;
+  for (const auto& r : ranks_)
+    if (!r.toggle->getToggleState()) out.insert(r.rankId);
+  return out;
 }
 
 std::set<std::string> StopsLoadPanel::perspectivesOut() const {
@@ -218,7 +323,8 @@ void StopsLoadPanel::refreshFigures() {
   std::set<Id> loaded;  // what the last load left out
   for (const auto& r : rows_)
     if (!proc_.stopLoaded(r.stopId)) loaded.insert(r.stopId);
-  reloadNow_.setEnabled((loaded != proc_.excludedStops() || perspectivesOut() != proc_.perspectivesLeftOut()) &&
+  reloadNow_.setEnabled((loaded != proc_.excludedStops() || perspectivesOut() != proc_.perspectivesLeftOut() ||
+                         ranksOut() != proc_.ranksLeftOut()) &&
                         !proc_.loadedOrganFile().getFullPathName().isEmpty());
 
   if (!ready_) {
@@ -255,6 +361,12 @@ void StopsLoadPanel::refreshFigures() {
       for (Id id : r.samples)
         if (kept.count(id) == 0) dropped.insert(id);
   }
+  for (const auto& r : ranks_) {
+    int64_t mine = 0;
+    for (Id id : r.samples) mine += bytesOf(id);
+    r.size->setText(megabytes(mine), juce::dontSendNotification);
+    if (!r.toggle->getToggleState()) dropped.insert(r.samples.begin(), r.samples.end());
+  }
   int64_t total = all;
   for (Id id : dropped) total -= bytesOf(id);
 
@@ -276,6 +388,13 @@ void StopsLoadPanel::resized() {
   none_.setBounds(top.removeFromLeft(60).reduced(0, 2));
   top.removeFromLeft(6);
   drawn_.setBounds(top.removeFromLeft(180).reduced(0, 2));
+  r.removeFromTop(6);
+  auto find = r.removeFromTop(28);
+  leaveShown_.setBounds(find.removeFromRight(170).reduced(0, 2));
+  find.removeFromRight(6);
+  loadShown_.setBounds(find.removeFromRight(140).reduced(0, 2));
+  find.removeFromRight(6);
+  filter_.setBounds(find.reduced(0, 2));
   r.removeFromTop(8);
 
   note_.setBounds(r.removeFromBottom(68));
@@ -288,25 +407,33 @@ void StopsLoadPanel::resized() {
 
   const int width = juce::jmax(200, r.getWidth() - viewport_.getScrollBarThickness());
   int y = 0;
-  if (perspectivesHeading_ != nullptr) {
-    perspectivesHeading_->setBounds(0, y, width, kRowH);
+  // Hidden rows take no room, so a filtered list closes up.
+  auto place = [&](juce::Component& toggle, juce::Component& size) {
+    if (!toggle.isVisible()) return;
+    toggle.setBounds(8, y, width - 100, kRowH);
+    size.setBounds(width - 92, y, 88, kRowH);
     y += kRowH;
-    for (auto& p : perspectives_) {
-      p.toggle->setBounds(8, y, width - 100, kRowH);
-      p.size->setBounds(width - 92, y, 88, kRowH);
-      y += kRowH;
-    }
+  };
+  auto head = [&](juce::Label* label) {
+    if (label == nullptr || !label->isVisible()) return;
+    label->setBounds(0, y, width, kRowH);
+    y += kRowH;
+  };
+  if (perspectivesHeading_ != nullptr) {
+    head(perspectivesHeading_.get());
+    for (auto& p : perspectives_) place(*p.toggle, *p.size);
     y += 6;
   }
   size_t h = 0;
   for (size_t i = 0; i < rows_.size(); ++i) {
-    while (h < headings_.size() && headings_[h].beforeRow == static_cast<int>(i)) {
-      headings_[h++].label->setBounds(0, y, width, kRowH);
-      y += kRowH;
-    }
-    rows_[i].toggle->setBounds(8, y, width - 100, kRowH);
-    rows_[i].size->setBounds(width - 92, y, 88, kRowH);
-    y += kRowH;
+    while (h < headings_.size() && headings_[h].beforeRow == static_cast<int>(i))
+      head(headings_[h++].label.get());
+    place(*rows_[i].toggle, *rows_[i].size);
+  }
+  if (!ranks_.empty()) {
+    y += 6;
+    head(ranksHeading_.get());
+    for (auto& r : ranks_) place(*r.toggle, *r.size);
   }
   list_.setSize(width, y);
 }
