@@ -81,6 +81,11 @@ public:
   // have changed size or gone.
   bool saveIndex(const std::string& file) const;
   bool loadIndex(const std::string& file);
+  // The same index for the volumes discover() found now, which may be a copy
+  // of the set somewhere else: each volume is matched by file name and size,
+  // not by where it was, and takes its new place. The set is the same one --
+  // the folder is named by the archives' identity -- so its index still holds.
+  bool loadIndexFor(const std::string& file);
 
   // Each archive is the list of its volume files, in order.
   const std::vector<std::vector<std::string>>& archives() const { return archives_; }
@@ -114,6 +119,7 @@ public:
   std::string identity() const;
 
 private:
+  bool readIndex(const std::string& file, bool checkVolumes);
   std::vector<std::string> report_;
   std::vector<std::vector<std::string>> archives_;
   std::vector<Entry> entries_;
