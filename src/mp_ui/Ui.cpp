@@ -660,7 +660,16 @@ void MasterpieceEditor::toggleCombinations() {
   combinations_->showOrHide(!combinations_->isVisible());
 }
 
-void MasterpieceEditor::loadOrgan(const juce::File& odf, bool graphicsOnly) {
+void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly) {
+  // The organ's files are not here -- its drive unplugged -- but a copy of its
+  // definition was kept with its cache: open that (#90).
+  juce::File odf = requested;
+  if (!odf.existsAsFile())
+    if (const auto copy = MasterpieceProcessor::portableCopyFor(odf); copy.existsAsFile()) {
+      juce::Logger::writeToLog("load: " + requested.getFullPathName() +
+                               " is not there; opening its kept copy " + copy.getFullPathName());
+      odf = copy;
+    }
   if (loading_) return;  // one load at a time; the dialog is the interlock
 
   // An organ still in its packages is opened first, on its own thread, since

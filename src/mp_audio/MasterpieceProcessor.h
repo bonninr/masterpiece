@@ -665,6 +665,18 @@ public:
   // finest choice, for what neither a stop nor a perspective can say -- the
   // rear ranks of a few stops only, or a set's "tremmed" copies. A rank left
   // out is left out whichever stop plays it.
+  // Keep this organ playable with its installation files unmounted: its own
+  // sample cache, plus a copy of its definition and console pictures, which
+  // the next open uses when the originals are not there (#90). Saved with the
+  // organ.
+  bool keepsPortableCopy() const { return keepPortable_; }
+  void setKeepPortableCopy(bool on) {
+    keepPortable_ = on;
+    markSettingsDirty();
+  }
+  // Where the copy of an organ's definition is, when one was made; an empty
+  // File otherwise.
+  static juce::File portableCopyFor(const juce::File& originalOdf);
   const std::set<Id>& excludedRanks() const { return excludedRanks_; }
   void setExcludedRanks(std::set<Id> ranks) {
     excludedRanks_ = std::move(ranks);
@@ -1244,6 +1256,10 @@ private:
   std::set<std::string> excludedPerspectives_;
   std::set<std::string> perspectivesLeftOut_;
   std::set<Id> excludedRanks_;
+  bool keepPortable_ = false;
+  std::string loadedStamp_;  // what the sample cache is keyed to, for the copy
+  static juce::File portableRoot();
+  void writePortableCopy(const juce::File& odf);
   std::set<Id> ranksLeftOut_;
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;

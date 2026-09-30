@@ -243,6 +243,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       "Off by default. Even when on, an organ that was loaded when Masterpiece "
       "last closed unexpectedly is not reopened.");
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
+  addAndMakeVisible(portable_);
+  portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
+  portable_.setTooltip("Keeps this organ's own sample cache, and a copy of its definition and console "
+                       "pictures, so it opens with the drive holding its installation files unplugged. "
+                       "Made at the next complete load; costs the cache's size on this disk.");
+  portable_.onClick = [this] { proc_.setKeepPortableCopy(portable_.getToggleState()); };
 
   addAndMakeVisible(memLimitLabel_);
   styleLabel(memLimitLabel_, "Memory limit for samples");
@@ -549,6 +555,7 @@ void EnginePanel::resized() {
   loadTicks_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
   reopen_.setBounds(r.removeFromTop(kRow));
+  portable_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(6);
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));
@@ -1387,7 +1394,7 @@ void FavouritesPanel::refresh() {
     const juce::String path(fav.target);
     load->onClick = [this, path] {
       const juce::File f(path);
-      if (!f.existsAsFile()) {
+      if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
         // A moved or unplugged set. Saying so beats a silent no-op, and the
         // favourite is left alone: the drive may come back.
         status_.setText("Not found: " + f.getFullPathName(),

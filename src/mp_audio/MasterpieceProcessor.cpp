@@ -1230,6 +1230,7 @@ bool MasterpieceProcessor::saveSettings() const {
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
     for (const auto& p : excludedPerspectives_) text << "skipperspective " << juce::String(p) << "\n";
     for (Id rank : excludedRanks_) text << "skiprank " << juce::String(rank) << "\n";
+    if (keepPortable_) text << "portable 1\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
@@ -1263,6 +1264,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   excludedStops_.clear();
   excludedPerspectives_.clear();
   excludedRanks_.clear();
+  keepPortable_ = false;
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
   licenceConfirmed_ = false;
@@ -1347,6 +1349,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "skipstop") {
       excludedStops_.insert(static_cast<Id>(val.getLargeIntValue()));
+      continue;
+    }
+    if (key == "portable") {
+      keepPortable_ = val.getIntValue() != 0;
       continue;
     }
     if (key == "skiprank") {
@@ -4062,7 +4068,21 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         mix(std::to_string(id) + "|" + ref->fileName + "|" + std::to_string(ref->pitchHz) + ";");
       odfStamp += "|samples " + std::to_string(h);
     }
+    // Opened from its copy: the cache was written against the original, so
+    // the copy carries the original's stamp and is keyed to it.
+    juce::File bundleRoot = effectiveOdf.getParentDirectory();
+    while (bundleRoot.getParentDirectory() != portableRoot() &&
+           bundleRoot.getParentDirectory() != bundleRoot)
+      bundleRoot = bundleRoot.getParentDirectory();
+    if (bundleRoot.getParentDirectory() == portableRoot()) {
+      const auto kept = bundleRoot.getChildFile("stamp.txt").loadFileAsString().trim();
+      if (kept.isNotEmpty()) odfStamp = kept.toStdString();
+    }
+    // An organ kept playable without its files needs a cache of its own: the
+    // shared one is replaced by the next organ loaded.
+    if (keepPortable_) samples_.setCacheMode(SampleLibrary::CacheMode::PerOrgan);
     samples_.setCacheIdentity(organKey(), odfStamp);
+    loadedStamp_ = odfStamp;
 
     // An organ unpacked from its packages keeps its samples there: the
     // folder says which archives, and its saved index says where in them.
@@ -4231,8 +4251,80 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Starting the organ moved its controls and switches, and that is the
   // organ's doing, not the player's: nothing to write.
   rememberedMovedAtMs_.store(0, std::memory_order_release);
+  if (keepPortable_ && !graphicsOnly && result.samples.loaded > 0 && result.samples.failed == 0 &&
+      result.samples.missing == 0 && !result.incomplete)
+    writePortableCopy(effectiveOdf);
   result.ok = true;
   return result;
+}
+
+juce::File MasterpieceProcessor::portableRoot() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("Portable");
+}
+
+juce::File MasterpieceProcessor::portableCopyFor(const juce::File& originalOdf) {
+  // "<original definition>\t<its copy>", one per line.
+  juce::StringArray lines;
+  lines.addLines(portableRoot().getChildFile("index.txt").loadFileAsString());
+  for (const auto& line : lines) {
+    const auto original = line.upToFirstOccurrenceOf("\t", false, false);
+    if (original == originalOdf.getFullPathName())
+      return juce::File(line.fromFirstOccurrenceOf("\t", false, false));
+  }
+  return {};
+}
+
+void MasterpieceProcessor::writePortableCopy(const juce::File& odf) {
+  const juce::File root = portableRoot();
+  // Already a copy, or opened from its packages: those keep their definition
+  // and pictures unpacked, and need only the cache.
+  if (odf.isAChildOf(root) || !readArchiveMarker(organRootDir_).empty()) return;
+  const juce::File bundle = root.getChildFile(juce::String(organKey()));
+  const juce::File stamp = bundle.getChildFile("stamp.txt");
+  if (stamp.loadFileAsString().trim() == juce::String(loadedStamp_)) return;  // up to date
+
+  const double started = juce::Time::getMillisecondCounterHiRes();
+  bundle.deleteRecursively();
+  // Everything under the organ's root but its audio -- the definition, the
+  // console's pictures, their masks -- in the same places, so the copy is an
+  // organ root of its own for either format.
+  const juce::File organRoot{juce::String(organRootDir_)};
+  const juce::File copy = bundle.getChildFile(odf.getRelativePathFrom(organRoot));
+  if (!odf.isAChildOf(organRoot)) return;
+  int64_t bytes = 0;
+  int files = 0;
+  for (const auto& entry : juce::RangedDirectoryIterator(organRoot, true, "*", juce::File::findFiles)) {
+    const auto ext = entry.getFile().getFileExtension().toLowerCase();
+    if (ext == ".wav" || ext == ".wv" || ext == ".aif" || ext == ".aiff" || ext == ".flac" ||
+        ext == ".hbw" || ext == ".hbx" || ext == ".rar" || ext == ".zip" || ext == ".orgue")
+      continue;
+    const juce::File to = bundle.getChildFile(entry.getFile().getRelativePathFrom(organRoot));
+    to.getParentDirectory().createDirectory();
+    if (entry.getFile().copyFileTo(to)) {
+      bytes += entry.getFileSize();
+      ++files;
+    }
+  }
+  if (!copy.existsAsFile()) {
+    juce::Logger::writeToLog("portable: could not copy the definition to " + copy.getFullPathName());
+    return;
+  }
+  stamp.replaceWithText(juce::String(loadedStamp_));
+
+  // The index: this original now has a copy.
+  juce::StringArray lines;
+  lines.addLines(root.getChildFile("index.txt").loadFileAsString());
+  lines.removeEmptyStrings();
+  for (int i = lines.size(); --i >= 0;)
+    if (lines[i].upToFirstOccurrenceOf("\t", false, false) == odf.getFullPathName()) lines.remove(i);
+  lines.add(odf.getFullPathName() + "\t" + copy.getFullPathName());
+  root.getChildFile("index.txt").replaceWithText(lines.joinIntoString("\n") + "\n");
+  juce::Logger::writeToLog("portable: a copy of the definition and " + juce::String(files - 1) + " other files (" +
+                           juce::String(bytes / (1024.0 * 1024.0), 1) + " MB) in " + bundle.getFullPathName() +
+                           ", after " + juce::String((juce::Time::getMillisecondCounterHiRes() - started) / 1000.0, 1) +
+                           " s; with its cache, the organ opens without its installation files");
 }
 
 std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() const {
