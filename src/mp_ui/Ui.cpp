@@ -424,10 +424,26 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   chooser_ = std::make_unique<juce::FileChooser>(
       "Choose an organ definition file", startIn,
       "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
-  chooser_->launchAsync(juce::FileBrowserComponent::openMode |
-                            juce::FileBrowserComponent::canSelectFiles,
+  auto flags = juce::FileBrowserComponent::openMode |
+               juce::FileBrowserComponent::canSelectFiles;
+ #if JUCE_MAC
+  // Allow tagged folders to be selected in the native panel's search results.
+  // A folder is a navigation destination, never an organ definition.
+  flags |= juce::FileBrowserComponent::canSelectDirectories;
+ #endif
+  chooser_->launchAsync(flags,
                         [this](const juce::FileChooser& fc) {
                           const auto f = fc.getResult();
+                         #if JUCE_MAC
+                          if (f.isDirectory()) {
+                            // Replacing chooser_ must wait until its callback returns.
+                            juce::MessageManager::callAsync(
+                                [safe = juce::Component::SafePointer<MasterpieceEditor>(this), f] {
+                                  if (safe != nullptr) safe->chooseAndLoadOrgan(f);
+                                });
+                            return;
+                          }
+                         #endif
                           if (f.existsAsFile()) loadOrgan(f);
                         });
 }
