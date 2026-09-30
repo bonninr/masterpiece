@@ -709,6 +709,9 @@ public:
   struct PagePlace {
     int page = 0;
     int x = 0, y = 0, w = 0, h = 0;
+    // The console layout the window shows -- a set's portrait jambs on a
+    // portrait screen -- or -1 to follow the main window's.
+    int layout = -1;
     bool operator==(const PagePlace&) const = default;
   };
   const std::vector<PagePlace>& pageWindowPlaces() const { return pageWindows_; }

@@ -33,18 +33,25 @@ void PageView::resized() {
   holder_.setBounds(area.withSizeKeepingCentre(w, h));
 }
 
-PageWindow::PageWindow(MasterpieceProcessor& p, int page, int layout, const juce::String& organName)
-    : juce::DocumentWindow(organName, juce::Colour(0xff15171c), juce::DocumentWindow::allButtons) {
-  auto* view = new PageView(p, page, layout);
+PageWindow::PageWindow(MasterpieceProcessor& p, int page, int layout, const juce::String& organName,
+                       int ownLayout)
+    : juce::DocumentWindow(organName, juce::Colour(0xff15171c), juce::DocumentWindow::allButtons),
+      layout_(ownLayout) {
+  auto* view = new PageView(p, page, ownLayout >= 0 ? ownLayout : layout);
   view_ = view;
   setName(view->pageName() + " - " + organName);
   setUsingNativeTitleBar(true);
   setResizable(true, true);
   setContentOwned(view, false);
-  // The page's own size, as far as the screen allows.
+  // The page's own size and shape, as far as a screen allows: a portrait
+  // jamb opens tall and narrow, not in a landscape window with bars.
   const auto art = view->artworkBounds();
-  setSize(art.getWidth() > 0 ? juce::jmin(art.getRight(), 1600) : 1000,
-          art.getHeight() > 0 ? juce::jmin(art.getBottom(), 1000) : 700);
+  if (art.getRight() > 0 && art.getBottom() > 0) {
+    const double scale = juce::jmin(1.0, 1600.0 / art.getRight(), 1000.0 / art.getBottom());
+    setSize(juce::roundToInt(art.getRight() * scale), juce::roundToInt(art.getBottom() * scale));
+  } else {
+    setSize(1000, 700);
+  }
 }
 
 void PageWindow::closeButtonPressed() {
