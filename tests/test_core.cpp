@@ -1732,6 +1732,8 @@ public:
     // Key off: the voice must switch to the release sample, then decay away.
     mp::NoteRelease rel;
     rel.velocity = 64;
+    rel.holdTimeMs = 1700;
+    eng.setReleaseLogging(true);
     eng.noteOff(7, rel);
     MP_CHECK(eng.voice(slot).phase == mp::VoicePhase::Release,
              "note-off puts the voice into release");
@@ -1739,6 +1741,18 @@ public:
              "the release sample replaces the attack");
     MP_CHECK(eng.voice(slot).cursor == 0.0,
              "the release plays from its head");
+    // --log-releases: the key-off is recorded as it happened.
+    std::vector<mp::VoiceEngine::ReleaseEvent> events;
+    MP_CHECK(eng.takeReleaseEvents(events) == 0 && events.size() == 1,
+             "one release recorded, none dropped");
+    MP_CHECK(events[0].attackSampleId == 1 && events[0].releaseSampleId == 2 &&
+                 events[0].chosen == 0 && events[0].releaseCount == 1 &&
+                 events[0].heldMs == 1700 && events[0].attackLooping &&
+                 events[0].startFrame == 0 && events[0].releaseFrames > 0,
+             "the release log names the attack, the release, its length and start");
+    events.clear();
+    MP_CHECK(eng.takeReleaseEvents(events) == 0 && events.empty(),
+             "an event is taken once");
 
     bool decayed = false;
     for (int i = 0; i < 40 && !decayed; ++i) {
