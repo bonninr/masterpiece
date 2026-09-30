@@ -178,6 +178,17 @@ void MidiMap::bind(const MidiBinding& binding) {
   rebuildOrdered();
 }
 
+void MidiMap::removeBindings(const std::function<bool(const MidiBinding&)>& pick) {
+  for (auto it = bySource_.begin(); it != bySource_.end();)
+    it = pick(it->second) ? bySource_.erase(it) : std::next(it);
+  for (auto it = alsoDrives_.begin(); it != alsoDrives_.end();) {
+    auto& more = it->second;
+    more.erase(std::remove_if(more.begin(), more.end(), pick), more.end());
+    it = more.empty() ? alsoDrives_.erase(it) : std::next(it);
+  }
+  rebuildOrdered();
+}
+
 bool MidiMap::replace(const MidiBinding& binding) {
   const auto it = bySource_.find(binding.source);
   if (it != bySource_.end() && it->second.targetKind == binding.targetKind &&
@@ -382,7 +393,11 @@ bool MidiMap::learnFrom(const MidiSource& source) {
   // erases the first and the stop can only ever move one way.
   const bool directional = learnTrigger_ == MidiTrigger::EngageOnly ||
                            learnTrigger_ == MidiTrigger::DisengageOnly;
-  if (!directional) {
+  // A program button can have several: consoles carry two or more + and -
+  // thumb pistons. Learning one more adds it; Clear removes them all.
+  if (isConsoleTarget(learnKind_)) {
+    // nothing to replace
+  } else if (!directional) {
     unbindTarget(learnKind_, learnTarget_);
   } else {
     for (const MidiBinding* existing : bindingsFor(learnKind_, learnTarget_))

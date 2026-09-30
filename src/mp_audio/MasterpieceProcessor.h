@@ -945,6 +945,10 @@ public:
   // taken, or -1 when the control is not mapped or nothing has arrived yet.
   int setControlPedalEnd(Id controlId, bool open);
   bool resetControlPedalRange(Id controlId);
+  // The player's console mappings, kept for every organ (stepper, generals,
+  // setter, page and tuning buttons).
+  static juce::File consoleMidiFile();
+  void applyConsoleMidi();
   // The value a controller last sent; -1 before it has sent any.
   int lastControllerValue(const MidiSource& source) const;
   std::vector<std::string> takeReleaseLog();
