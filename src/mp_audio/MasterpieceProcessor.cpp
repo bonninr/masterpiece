@@ -2432,6 +2432,26 @@ bool MasterpieceProcessor::setTemperament(const std::string& choice,
   return true;
 }
 
+void MasterpieceProcessor::setReleaseLogging(bool on) {
+  if (on == releaseLogging()) return;
+  voices_.setReleaseLogging(on);
+  if (!on) {
+    releaseLog_.reset();
+    juce::Logger::writeToLog("release: logging off");
+    return;
+  }
+  struct Drain : juce::Timer {
+    explicit Drain(MasterpieceProcessor& p) : proc(p) {}
+    void timerCallback() override {
+      for (const auto& line : proc.takeReleaseLog()) juce::Logger::writeToLog(line);
+    }
+    MasterpieceProcessor& proc;
+  };
+  releaseLog_ = std::make_unique<Drain>(*this);
+  releaseLog_->startTimer(250);
+  juce::Logger::writeToLog("release: logging on. Every key release follows.");
+}
+
 std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
   std::vector<VoiceEngine::ReleaseEvent> events;
   const int64_t dropped = voices_.takeReleaseEvents(events);

@@ -363,6 +363,22 @@ private:
 // that tells the player what the keys cannot. Its own tab rather than a corner
 // of the MIDI page, because the framing bytes belong to the player's hardware
 // and typing them in needs room to see what you are doing.
+// Where the log is, and the two detailed logs a report may ask for, without
+// the command line (#53: starting a program with flags is awkward on macOS).
+// Both last until Masterpiece is closed.
+class LogPanel : public juce::Component {
+public:
+  explicit LogPanel(MasterpieceProcessor& p);
+  void resized() override;
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::Label about_;
+  juce::TextButton open_{"Open the log folder"};
+  juce::ToggleButton midi_{"Log every MIDI message and what became of it"};
+  juce::ToggleButton releases_{"Log every key release: the release played, its length and start"};
+};
+
 class DisplayPanel : public juce::Component, private juce::Timer {
 public:
   explicit DisplayPanel(MasterpieceProcessor& p);
@@ -415,6 +431,7 @@ private:
   VoicingPanel voicing_;
   FavouritesPanel favourites_;
   DisplayPanel display_;
+  LogPanel log_;
 };
 
 } // namespace mp::ui
