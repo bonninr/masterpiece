@@ -696,34 +696,6 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   });
 }
 
-// The message-thread half of a load: close the dialog, then either report the
-// failure or build the console from the model that is now in place.
-void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definitions,
-                                         bool graphicsOnly) {
-  top_.setStatus("These packages hold several organs: choose one");
-  const juce::File last = MasterpieceProcessor::rememberedDefinition(definitions);
-  juce::Array<juce::File> order;
-  if (last != juce::File()) order.add(last);
-  for (const auto& d : definitions)
-    if (d != last) order.add(d);
-
-  juce::PopupMenu menu;
-  menu.addSectionHeader("Which organ?");
-  for (int i = 0; i < order.size(); ++i)
-    menu.addItem(i + 1, order[i].getFileNameWithoutExtension() +
-                            (order[i] == last ? juce::String("  (last opened)") : juce::String()));
-  juce::Component::SafePointer<MasterpieceEditor> self(this);
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&top_),
-                     [self, order, graphicsOnly](int choice) {
-                       if (self == nullptr) return;
-                       if (choice < 1 || choice > order.size()) {
-                         self->top_.setStatus("No organ opened");
-                         return;
-                       }
-                       self->loadOrgan(order[choice - 1], graphicsOnly);
-                     });
-}
-
 // The publisher's licence, asked for once per organ (ADR-003). Masterpiece
 // cannot check it: the player says whether they hold one that lets them play
 // the set here. Cancel is the default -- Escape, Enter, closing the box -- and
@@ -761,6 +733,34 @@ void MasterpieceEditor::askForLicence() {
                          self->reloadOrgan();
                        }),
                        true);  // deleted when dismissed
+}
+
+// The message-thread half of a load: close the dialog, then either report the
+// failure or build the console from the model that is now in place.
+void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definitions,
+                                         bool graphicsOnly) {
+  top_.setStatus("These packages hold several organs: choose one");
+  const juce::File last = MasterpieceProcessor::rememberedDefinition(definitions);
+  juce::Array<juce::File> order;
+  if (last != juce::File()) order.add(last);
+  for (const auto& d : definitions)
+    if (d != last) order.add(d);
+
+  juce::PopupMenu menu;
+  menu.addSectionHeader("Which organ?");
+  for (int i = 0; i < order.size(); ++i)
+    menu.addItem(i + 1, order[i].getFileNameWithoutExtension() +
+                            (order[i] == last ? juce::String("  (last opened)") : juce::String()));
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&top_),
+                     [self, order, graphicsOnly](int choice) {
+                       if (self == nullptr) return;
+                       if (choice < 1 || choice > order.size()) {
+                         self->top_.setStatus("No organ opened");
+                         return;
+                       }
+                       self->loadOrgan(order[choice - 1], graphicsOnly);
+                     });
 }
 
 void MasterpieceEditor::reloadOrgan() {
