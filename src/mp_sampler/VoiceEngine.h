@@ -205,6 +205,9 @@ struct Voice {
   // streaming ring, so one voice and one ring are enough.
   const SampleBuffer* xfadeBuf = nullptr;
   double xfadeOldCursor = 0.0;
+  // The attack's speed relative to the release's, while it fades out under
+  // it: the release plays at its own recorded pitch, the attack at its own.
+  double xfadeRatioScale = 1.0;
   int64_t xfadeOldLoopStart = -1, xfadeOldLoopEnd = -1;
   int relXfadeLeft = 0;
   int relXfadeLength = 0;
