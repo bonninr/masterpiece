@@ -1084,13 +1084,23 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
     for (const MidiBinding* b : existing) {
       juce::String what = "CC " + juce::String(b->source.number);
       if (b->source.channel > 0) what << " ch " << b->source.channel;
+      // The pedal's travel, when it is not the whole 0..127, closed to open.
+      const int lo = std::min(b->lowValue, b->highValue), hi = std::max(b->lowValue, b->highValue);
+      if (lo != 0 || hi != 127 || b->invert)
+        what << "  (closed at " << (b->invert ? hi : lo) << ", open at " << (b->invert ? lo : hi) << ")";
       menu.addSectionHeader(what);
     }
   }
   menu.addSeparator();
   // One way to teach it: move the pedal, knob or fader. A controller carries
-  // its position in every message, so there is no behaviour to choose.
+  // its position in every message, so there is no behaviour to choose. A pedal
+  // already mapped to another control drives both.
   menu.addItem(1, "Learn: move a pedal, knob or fader");
+  // A console's shoe rarely sends the whole 0..127 (#90: 55..127, so the box
+  // only half closed). Put the pedal where it should be, then choose.
+  menu.addItem(3, "Closed position: where the pedal is now", !existing.empty());
+  menu.addItem(4, "Open position: where the pedal is now", !existing.empty());
+  menu.addItem(5, "Use the pedal's whole travel", !existing.empty());
   menu.addItem(2, "Clear mapping", !existing.empty());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
@@ -1100,6 +1110,14 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                        } else if (choice == 2) {
                          m.unbindTarget(MidiTargetKind::ContinuousControl, controlId);
                          proc.saveMidiMap();
+                       } else if (choice == 3 || choice == 4) {
+                         if (proc.setControlPedalEnd(controlId, choice == 4) < 0)
+                           juce::AlertWindow::showMessageBoxAsync(
+                               juce::MessageBoxIconType::InfoIcon, "Move the pedal first",
+                               "Masterpiece has not heard from this pedal yet, or both ends would be "
+                               "the same. Move it to the position you want, then choose this again.");
+                       } else if (choice == 5) {
+                         proc.resetControlPedalRange(controlId);
                        } else {
                          return;
                        }

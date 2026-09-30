@@ -159,6 +159,9 @@ struct MidiAction {
   Id targetId = 0;
   bool engage = false;  // for Switch
   int value = 0;        // for ContinuousControl, 0..127
+  // Further continuous controls the same controller drives -- one pedal for
+  // two swell boxes -- each with its own window. Null when there are none.
+  const std::vector<MidiBinding>* alsoDrives = nullptr;
   bool valid() const { return kind != MidiTargetKind::None; }
 };
 
@@ -176,6 +179,14 @@ public:
   const std::vector<MidiBinding>& bindings() const { return ordered_; }
   size_t size() const { return ordered_.size(); }
   const MidiBinding* bindingFor(MidiTargetKind kind, Id targetId) const;
+  // Replace the binding with this source and target, keeping its place: how a
+  // learned pedal's window is changed afterwards.
+  bool replace(const MidiBinding& binding);
+  // A raw controller value through a binding's window and sense, 0..127.
+  static int controlValue(const MidiBinding& b, int raw) {
+    const int v = b.scale(raw);
+    return b.invert ? 127 - v : v;
+  }
 
   // --- learn -------------------------------------------------------------
   // Arm a target, then feed it the next message that arrives. This is how a
@@ -303,6 +314,9 @@ private:
   // but debouncing is inherently stateful.
   mutable std::unordered_map<int64_t, double> keyLastMs_;
   std::unordered_map<MidiSource, MidiBinding, MidiSourceHash> bySource_;
+  // A controller learned for a second continuous control keeps the first: one
+  // expression pedal commonly works two swell boxes (#90).
+  std::unordered_map<MidiSource, std::vector<MidiBinding>, MidiSourceHash> alsoDrives_;
   std::vector<MidiBinding> ordered_; // stable order for the UI and for saving
   // Latching switches remember their own state: the console sends "button
   // pressed", not "stop is now on".

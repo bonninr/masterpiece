@@ -939,6 +939,14 @@ public:
   // from the command line or from General settings. Message thread.
   void setReleaseLogging(bool on);
   bool releaseLogging() const { return releaseLog_ != nullptr; }
+
+  // A learned pedal's ends, from where it is now: a console whose swell shoe
+  // only sends 55..127 still has to close the box (#90). Returns the value
+  // taken, or -1 when the control is not mapped or nothing has arrived yet.
+  int setControlPedalEnd(Id controlId, bool open);
+  bool resetControlPedalRange(Id controlId);
+  // The value a controller last sent; -1 before it has sent any.
+  int lastControllerValue(const MidiSource& source) const;
   std::vector<std::string> takeReleaseLog();
 
   // Where the organ was loaded from — the console needs it to resolve artwork
@@ -1171,6 +1179,9 @@ private:
   std::unordered_set<Id> engagedStops_;
   std::atomic<bool> logMidi_{false};
   int64_t loggedUnderruns_ = 0;
+  // Each controller's last value plus one; 0 until it sends anything.
+  std::array<std::atomic<int>, 128> lastController_{};
+  std::array<std::atomic<int>, 16 * 128> lastControllerOnChannel_{};
   std::unique_ptr<juce::Timer> releaseLog_;
   // How many manual assignments the last load had to discard from a saved
   // mapping. Shown to the player, because a mapping that changes under them

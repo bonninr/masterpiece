@@ -8711,6 +8711,48 @@ static DefaultKeyboardTest g_defaultKeyboard;
 static KeyboardBindingTest g_keyboardBinding;
 static LcdPanelTest g_lcdPanels;
 static MidiMapTest g_midiMap;
+
+// One expression pedal for two swell boxes, and a shoe that only sends
+// 55..127 still closing its box (#90).
+class PedalRangeTest final : public mp::test::Test {
+public:
+  PedalRangeTest() : Test("functional.midi.pedal-range", Category::Functional) {}
+  void run() override {
+    mp::MidiMap map;
+    mp::MidiBinding b;
+    b.source.kind = mp::MidiSourceKind::ControlChange;
+    b.source.channel = 1;
+    b.source.number = 11;
+    b.targetKind = mp::MidiTargetKind::ContinuousControl;
+    b.targetId = 1;
+    map.bind(b);
+    b.targetId = 2;
+    map.bind(b);
+    auto action = map.actionFor(b.source, 64);
+    MP_CHECK(action.targetId == 1 && action.alsoDrives != nullptr && action.alsoDrives->size() == 1 &&
+                 action.alsoDrives->front().targetId == 2,
+             "a pedal learned for a second swell drives both");
+
+    b.lowValue = 55;
+    b.highValue = 127;
+    MP_CHECK(map.replace(b), "the second mapping's window can be changed");
+    action = map.actionFor(b.source, 55);
+    MP_CHECK(action.value == 55 && mp::MidiMap::controlValue(action.alsoDrives->front(), 55) == 0 &&
+                 mp::MidiMap::controlValue(action.alsoDrives->front(), 127) == 127,
+             "its closed end is where the shoe stops, the first keeps the whole range");
+
+    mp::MidiMap copy;
+    MP_CHECK(copy.fromText(map.toText()), "saved and read back");
+    action = copy.actionFor(b.source, 55);
+    MP_CHECK(action.alsoDrives != nullptr && action.alsoDrives->size() == 1, "both still driven after a restart");
+
+    map.unbindTarget(mp::MidiTargetKind::ContinuousControl, 1);
+    action = map.actionFor(b.source, 127);
+    MP_CHECK(action.targetId == 2 && action.alsoDrives == nullptr && action.value == 127,
+             "clearing one leaves the other driven, with its own window");
+  }
+};
+static PedalRangeTest g_pedalRange;
 static ContinuousControlBankTest g_ccBank;
 static ExpressionTablesTest g_expressionTables;
 static NoiseOptOutTest g_noiseOptOut;

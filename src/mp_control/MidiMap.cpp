@@ -123,6 +123,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
 
 void MidiMap::clear() {
   bySource_.clear();
+  alsoDrives_.clear();
   ordered_.clear();
   latchState_.clear();
   cancelLearn();
@@ -134,6 +135,10 @@ void MidiMap::rebuildOrdered() {
   for (const auto& [src, b] : bySource_) {
     (void)src;
     ordered_.push_back(b);
+  }
+  for (const auto& [src, more] : alsoDrives_) {
+    (void)src;
+    ordered_.insert(ordered_.end(), more.begin(), more.end());
   }
   // Stable presentation: by target, then by what triggers it.
   std::sort(ordered_.begin(), ordered_.end(),
@@ -153,25 +158,78 @@ void MidiMap::bind(const MidiBinding& binding) {
   if (binding.source.kind == MidiSourceKind::None) return;
   if (binding.targetKind == MidiTargetKind::None) return;
   // One source drives one target: re-learning a control moves it rather than
-  // stacking a second meaning onto the same button.
+  // stacking a second meaning onto the same button. Except a controller
+  // learned for another continuous control: it drives both (#90, one pedal
+  // for two swell boxes). Clear mapping on either one to part them.
+  const auto existing = bySource_.find(binding.source);
+  if (binding.targetKind == MidiTargetKind::ContinuousControl && existing != bySource_.end() &&
+      existing->second.targetKind == MidiTargetKind::ContinuousControl &&
+      existing->second.targetId != binding.targetId) {
+    auto& more = alsoDrives_[binding.source];
+    more.erase(std::remove_if(more.begin(), more.end(),
+                              [&](const MidiBinding& b) { return b.targetId == binding.targetId; }),
+               more.end());
+    more.push_back(binding);
+    rebuildOrdered();
+    return;
+  }
+  alsoDrives_.erase(binding.source);
   bySource_[binding.source] = binding;
   rebuildOrdered();
 }
 
+bool MidiMap::replace(const MidiBinding& binding) {
+  const auto it = bySource_.find(binding.source);
+  if (it != bySource_.end() && it->second.targetKind == binding.targetKind &&
+      it->second.targetId == binding.targetId) {
+    it->second = binding;
+    rebuildOrdered();
+    return true;
+  }
+  const auto more = alsoDrives_.find(binding.source);
+  if (more != alsoDrives_.end())
+    for (auto& b : more->second)
+      if (b.targetKind == binding.targetKind && b.targetId == binding.targetId) {
+        b = binding;
+        rebuildOrdered();
+        return true;
+      }
+  return false;
+}
+
 void MidiMap::unbind(const MidiSource& source) {
-  if (bySource_.erase(source) > 0) rebuildOrdered();
+  const bool any = bySource_.erase(source) > 0;
+  if (alsoDrives_.erase(source) > 0 || any) rebuildOrdered();
 }
 
 void MidiMap::unbindTarget(MidiTargetKind kind, Id targetId) {
   bool changed = false;
+  for (auto& [src, more] : alsoDrives_) {
+    (void)src;
+    const auto before = more.size();
+    more.erase(std::remove_if(more.begin(), more.end(),
+                              [&](const MidiBinding& b) { return b.targetKind == kind && b.targetId == targetId; }),
+               more.end());
+    changed = changed || more.size() != before;
+  }
   for (auto it = bySource_.begin(); it != bySource_.end();) {
     if (it->second.targetKind == kind && it->second.targetId == targetId) {
-      it = bySource_.erase(it);
+      // A controller that also drives other controls keeps driving them.
+      const auto more = alsoDrives_.find(it->first);
+      if (more != alsoDrives_.end() && !more->second.empty()) {
+        it->second = more->second.front();
+        more->second.erase(more->second.begin());
+        ++it;
+      } else {
+        it = bySource_.erase(it);
+      }
       changed = true;
     } else {
       ++it;
     }
   }
+  for (auto it = alsoDrives_.begin(); it != alsoDrives_.end();)
+    it = it->second.empty() ? alsoDrives_.erase(it) : std::next(it);
   if (changed) rebuildOrdered();
 }
 
@@ -241,9 +299,9 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::ContinuousControl: {
       // Across the binding's own window, so a shoe that only travels 20..100
       // still reaches both ends of the swell.
-      int v = b.scale(value);
-      if (b.invert) v = 127 - v;
-      action.value = v;
+      action.value = controlValue(b, value);
+      if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
+        action.alsoDrives = &more->second;
       break;
     }
     case MidiTargetKind::Keyboard:

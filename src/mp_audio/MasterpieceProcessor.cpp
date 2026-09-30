@@ -581,6 +581,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     }
     source.channel = msg.getChannel();
     source.deviceId = deviceId;
+    // Where each controller last was, so a learned pedal's ends can be set
+    // from its position (#90).
+    if (source.kind == MidiSourceKind::ControlChange && source.number >= 0 && source.number < 128) {
+      lastController_[static_cast<size_t>(source.number)].store(value + 1, std::memory_order_relaxed);
+      if (source.channel >= 1 && source.channel <= 16)
+        lastControllerOnChannel_[static_cast<size_t>((source.channel - 1) * 128 + source.number)].store(
+            value + 1, std::memory_order_relaxed);
+    }
 
     const bool logging = logMidi_.load(std::memory_order_acquire);
     if (logging && source.kind != MidiSourceKind::None)
@@ -614,6 +622,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         case MidiTargetKind::ContinuousControl:
           setControlValue(action.targetId, action.value);
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              setControlValue(b.targetId, MidiMap::controlValue(b, value));
           continue;
         case MidiTargetKind::StepperNext:
           stepperNext();
@@ -2483,6 +2494,45 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.preload = preloadHead_;
   c.engine = graph_.engineSwitch;
   sessionLoading_ = c;
+}
+
+int MasterpieceProcessor::lastControllerValue(const MidiSource& source) const {
+  if (source.kind != MidiSourceKind::ControlChange || source.number < 0 || source.number >= 128) return -1;
+  if (source.channel >= 1 && source.channel <= 16)
+    return lastControllerOnChannel_[static_cast<size_t>((source.channel - 1) * 128 + source.number)].load(
+               std::memory_order_relaxed) - 1;
+  return lastController_[static_cast<size_t>(source.number)].load(std::memory_order_relaxed) - 1;
+}
+
+int MasterpieceProcessor::setControlPedalEnd(Id controlId, bool open) {
+  const MidiBinding* found = midiMap_.bindingFor(MidiTargetKind::ContinuousControl, controlId);
+  if (found == nullptr) return -1;
+  const int raw = lastControllerValue(found->source);
+  if (raw < 0) return -1;
+  MidiBinding b = *found;
+  const int lo = std::min(b.lowValue, b.highValue), hi = std::max(b.lowValue, b.highValue);
+  int closedAt = b.invert ? hi : lo;
+  int openAt = b.invert ? lo : hi;
+  (open ? openAt : closedAt) = raw;
+  if (closedAt == openAt) return -1;
+  b.lowValue = std::min(closedAt, openAt);
+  b.highValue = std::max(closedAt, openAt);
+  b.invert = closedAt > openAt;
+  if (!midiMap_.replace(b)) return -1;
+  saveMidiMap();
+  return raw;
+}
+
+bool MasterpieceProcessor::resetControlPedalRange(Id controlId) {
+  const MidiBinding* found = midiMap_.bindingFor(MidiTargetKind::ContinuousControl, controlId);
+  if (found == nullptr) return false;
+  MidiBinding b = *found;
+  b.lowValue = 0;
+  b.highValue = 127;
+  b.invert = false;
+  if (!midiMap_.replace(b)) return false;
+  saveMidiMap();
+  return true;
 }
 
 std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
