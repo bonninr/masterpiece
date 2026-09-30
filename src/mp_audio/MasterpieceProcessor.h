@@ -500,6 +500,7 @@ public:
   // the audio thread is not real-time safe, so this is a diagnostic to turn
   // on deliberately (--log-midi), not something left running.
   void setMidiLogging(bool on) { logMidi_.store(on, std::memory_order_release); }
+  bool midiLogging() const { return logMidi_.load(std::memory_order_acquire); }
   int midiMapRepairedOnLoad() const { return midiMapRepaired_; }
   // Register a console and get its id. Message thread, at device setup.
   int registerMidiDevice(const juce::String& name) {
@@ -922,7 +923,10 @@ public:
   int64_t streamUnderruns() const { return voices_.streamUnderruns(); }
   // --log-releases: record every key release, and describe the ones recorded
   // since the last call, one line each. Message thread.
-  void setReleaseLogging(bool on) { voices_.setReleaseLogging(on); }
+  // Also writes the lines to the log, a few times a second, while it is on;
+  // from the command line or from General settings. Message thread.
+  void setReleaseLogging(bool on);
+  bool releaseLogging() const { return releaseLog_ != nullptr; }
   std::vector<std::string> takeReleaseLog();
 
   // Where the organ was loaded from — the console needs it to resolve artwork
@@ -1148,6 +1152,7 @@ private:
   std::unordered_set<Id> engagedStops_;
   std::atomic<bool> logMidi_{false};
   int64_t loggedUnderruns_ = 0;
+  std::unique_ptr<juce::Timer> releaseLog_;
   // How many manual assignments the last load had to discard from a saved
   // mapping. Shown to the player, because a mapping that changes under them
   // without a word would cost more trust than the fault it fixes.

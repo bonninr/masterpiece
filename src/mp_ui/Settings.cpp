@@ -1823,6 +1823,40 @@ void MixerPanel::resized() {
 
 // ------------------------------------------------------- console display
 
+LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
+  juce::File file;
+  if (auto* logger = dynamic_cast<juce::FileLogger*>(juce::Logger::getCurrentLogger()))
+    file = logger->getLogFile();
+  about_.setText("Masterpiece always keeps a log of this session, and the previous one beside "
+                 "it. Attach it to a bug report.\n\n" +
+                     (file == juce::File() ? juce::String("No log is being written.")
+                                           : file.getFullPathName()),
+                 juce::dontSendNotification);
+  about_.setJustificationType(juce::Justification::topLeft);
+  addAndMakeVisible(about_);
+  open_.setEnabled(file != juce::File());
+  open_.onClick = [file] { file.revealToUser(); };
+  addAndMakeVisible(open_);
+  midi_.setToggleState(proc_.midiLogging(), juce::dontSendNotification);
+  midi_.setTooltip("For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed.");
+  midi_.onClick = [this] { proc_.setMidiLogging(midi_.getToggleState()); };
+  addAndMakeVisible(midi_);
+  releases_.setToggleState(proc_.releaseLogging(), juce::dontSendNotification);
+  releases_.setTooltip("For a click, a noise or a note that goes on sounding when keys are let go. "
+                       "Until Masterpiece is closed.");
+  releases_.onClick = [this] { proc_.setReleaseLogging(releases_.getToggleState()); };
+  addAndMakeVisible(releases_);
+}
+
+void LogPanel::resized() {
+  auto r = getLocalBounds().reduced(16);
+  about_.setBounds(r.removeFromTop(80));
+  open_.setBounds(r.removeFromTop(30).removeFromLeft(200));
+  r.removeFromTop(16);
+  midi_.setBounds(r.removeFromTop(28));
+  releases_.setBounds(r.removeFromTop(28));
+}
+
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, "Console display");
@@ -2009,7 +2043,7 @@ SettingsWindow::~SettingsWindow() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p) {
+    : reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Room", bg, &reverb_, false);
@@ -2020,6 +2054,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("Voicing", bg, &voicing_, false);
   tabs_.addTab("Favourites", bg, &favourites_, false);
   tabs_.addTab("Display", bg, &display_, false);
+  tabs_.addTab("Log", bg, &log_, false);
   // The Engine tab is the tallest: six switches, five memory controls, a
   // readout and a footer. Adding a row without adding height pushes the
   // Save buttons off the bottom, where they cannot be pressed at all.
