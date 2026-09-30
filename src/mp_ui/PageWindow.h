@@ -35,11 +35,16 @@ private:
 
 class PageWindow : public juce::DocumentWindow {
 public:
-  PageWindow(MasterpieceProcessor& p, int page, int layout, const juce::String& organName);
+  // `ownLayout` is the layout chosen for this window, or -1 to take `layout`,
+  // the main window's.
+  PageWindow(MasterpieceProcessor& p, int page, int layout, const juce::String& organName,
+             int ownLayout = -1);
   void closeButtonPressed() override;
   void moved() override;
   void resized() override;
   int page() const { return view_->page(); }
+  // The layout it was opened in, or -1 when it follows the main window's.
+  int layout() const { return layout_; }
 
   // Closed by the player: the owner drops the window. Moved or resized: the
   // owner writes down where it is, so it comes back there.
@@ -48,6 +53,7 @@ public:
 
 private:
   PageView* view_ = nullptr;  // owned by the window as its content
+  int layout_ = -1;
 };
 
 }  // namespace mp::ui

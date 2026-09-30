@@ -1224,7 +1224,8 @@ bool MasterpieceProcessor::saveSettings() const {
            << combWindow_.w << " " << combWindow_.h << " "
            << (combWindow_.open ? 1 : 0) << "\n";
     for (const auto& p : pageWindows_)
-      text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << "\n";
+      text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << " "
+           << p.layout << "\n";
     if (!temperamentChoice_.empty())
       text << "temperament " << juce::String(temperamentChoice_) << "\n";
     if (masterPitchSetting() > 0.0)
@@ -1320,12 +1321,13 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       continue;
     }
     if (key == "pagewindow") {
-      // "pagewindow <page> <x> <y> <w> <h>"
+      // "pagewindow <page> <x> <y> <w> <h> [<layout>]"
       auto tok = juce::StringArray::fromTokens(val, " ", "");
       tok.removeEmptyStrings();
       if (tok.size() >= 5 && tok[3].getIntValue() > 0 && tok[4].getIntValue() > 0)
         pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
-                                tok[3].getIntValue(), tok[4].getIntValue()});
+                                tok[3].getIntValue(), tok[4].getIntValue(),
+                                tok.size() >= 6 ? tok[5].getIntValue() : -1});
       continue;
     }
     if (key == "transpose") {

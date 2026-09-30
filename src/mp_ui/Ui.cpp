@@ -478,10 +478,17 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     juce::PopupMenu menu;
     const bool open = pageWindowFor(page) != nullptr;
     menu.addItem(1, open ? "Bring its window to the front" : "Open in its own window");
+    // A set can draw its pages again for another screen shape -- Buckeburg's
+    // jambs in portrait -- and a window of its own can show that one while
+    // the main window keeps its layout.
+    if (!open && console_.layoutCount() > 1)
+      for (int l = 0; l < console_.layoutCount(); ++l)
+        menu.addItem(10 + l, "Open in its own window, " + layoutName(l));
     if (open) menu.addItem(2, "Close its window");
     menu.showMenuAsync(juce::PopupMenu::Options(), [this, page](int choice) {
       if (choice == 1) openPageWindow(page);
       if (choice == 2) closePageWindow(pageWindowFor(page));
+      if (choice >= 10) openPageWindow(page, {}, choice - 10);
     });
   };
   addAndMakeVisible(settingsButton_);
@@ -886,7 +893,16 @@ PageWindow* MasterpieceEditor::pageWindowFor(int page) const {
   return nullptr;
 }
 
-void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds) {
+juce::String MasterpieceEditor::layoutName(int layout) const {
+  const auto& m = proc_.organModel();
+  juce::String name = layout == 0 ? juce::String("main layout") : "alternate layout " + juce::String(layout);
+  if (layout >= 0 && layout < 4 && m.consoleHeightPx[layout] > m.consoleWidthPx[layout] &&
+      m.consoleWidthPx[layout] > 0)
+    name << " (portrait)";
+  return name;
+}
+
+void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, int layout) {
   if (auto* open = pageWindowFor(page)) {
     open->toFront(true);
     return;
@@ -894,7 +910,11 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds) {
   const auto& m = proc_.organModel();
   auto window = std::make_unique<PageWindow>(proc_, page, console_.layout(),
                                              m.organName.empty() ? juce::String("Masterpiece")
-                                                                 : juce::String(m.organName));
+                                                                 : juce::String(m.organName),
+                                             layout);
+  // A portrait layout goes to a portrait screen, when there is one.
+  const int shown = layout >= 0 ? layout : console_.layout();
+  const bool portrait = shown >= 0 && shown < 4 && m.consoleHeightPx[shown] > m.consoleWidthPx[shown];
   const auto& displays = juce::Desktop::getInstance().getDisplays();
   if (!bounds.isEmpty() && displays.getDisplayForRect(bounds) != nullptr &&
       displays.getTotalBounds(true).intersects(bounds)) {
@@ -905,10 +925,16 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds) {
     const auto* here = displays.getDisplayForRect(getScreenBounds());
     const juce::Displays::Display* other = nullptr;
     for (const auto& d : displays.displays)
-      if (here == nullptr || d.userArea != here->userArea) {
+      if (portrait && d.userArea.getHeight() > d.userArea.getWidth()) {
         other = &d;
         break;
       }
+    if (other == nullptr)
+      for (const auto& d : displays.displays)
+        if (here == nullptr || d.userArea != here->userArea) {
+          other = &d;
+          break;
+        }
     const auto area = (other != nullptr ? other->userArea : (here != nullptr ? here->userArea
                                                                             : getScreenBounds()))
                           .reduced(40);
@@ -950,7 +976,7 @@ void MasterpieceEditor::rememberPageWindows() {
   std::vector<MasterpieceProcessor::PagePlace> places;
   for (const auto& w : pageWindows_) {
     const auto b = w->getBounds();
-    places.push_back({w->page(), b.getX(), b.getY(), b.getWidth(), b.getHeight()});
+    places.push_back({w->page(), b.getX(), b.getY(), b.getWidth(), b.getHeight(), w->layout()});
   }
   proc_.setPageWindowPlaces(std::move(places));
 }
@@ -978,7 +1004,7 @@ void MasterpieceEditor::restorePageWindows() {
   const auto places = proc_.pageWindowPlaces();
   for (const auto& p : places)
     if (p.page >= 0 && p.page < console_.pageCount())
-      openPageWindow(p.page, {p.x, p.y, p.w, p.h});
+      openPageWindow(p.page, {p.x, p.y, p.w, p.h}, p.layout);
 }
 
 void MasterpieceEditor::reloadOrgan() {

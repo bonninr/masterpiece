@@ -221,7 +221,10 @@ private:
   PageTabs pageTabs_;
   // Pages in windows of their own, to spread a console over several screens.
   std::vector<std::unique_ptr<PageWindow>> pageWindows_;
-  void openPageWindow(int page, juce::Rectangle<int> bounds = {});
+  // `layout` is the console layout the window shows, -1 for the main window's.
+  void openPageWindow(int page, juce::Rectangle<int> bounds = {}, int layout = -1);
+  // "main layout", "alternate layout 2 (portrait)": how a layout is offered.
+  juce::String layoutName(int layout) const;
   void closePageWindow(PageWindow* window);
   PageWindow* pageWindowFor(int page) const;
   // Where they are now, handed to the processor to be saved with the organ.
