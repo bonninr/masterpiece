@@ -302,6 +302,19 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
   const int declared = md.getValue("NumSampleLoops", "0").getIntValue();
   if (declared <= 0) return;
 
+  // Every loop the file declares, before any is chosen. Two kinds are left
+  // out, both from sets that play in other programs (#53):
+  //  - a loop that ends past the file's LAST cue point. That cue is where the
+  //    release begins; a loop reaching into the tail keeps the note sounding
+  //    after the key is let go.
+  //  - when some loops overlap each other, one that overlaps none. A voice
+  //    that enters it stays there until the key is released, never reaching
+  //    the others. A file whose loops are all apart keeps them all.
+  // Judged on the whole file, so the read that sizes the head and the one
+  // that applies it choose from the same loops.
+  struct Span { int64_t start, end; };
+  std::vector<Span> loops;
+  const int64_t lastCue = lastCueInFile(reader);
   const int cap = juce::jmin(declared, 64);
   for (int i = 0; i < cap; ++i) {
     const juce::String prefix = "Loop" + juce::String(i);
@@ -309,6 +322,23 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
     const int64_t lastSample = md.getValue(prefix + "End", "-1").getLargeIntValue();
     if (s < 0 || lastSample <= s) continue;
     const int64_t e = lastSample + 1; // dwEnd is inclusive; see below
+    if (lastCue > 0 && e > lastCue) continue;
+    loops.push_back({s, e});
+  }
+  if (loops.size() > 1) {
+    std::vector<Span> linked;
+    for (size_t i = 0; i < loops.size(); ++i)
+      for (size_t j = 0; j < loops.size(); ++j)
+        if (i != j && loops[i].start < loops[j].end && loops[j].start < loops[i].end) {
+          linked.push_back(loops[i]);
+          break;
+        }
+    if (!linked.empty()) loops = std::move(linked);
+  }
+
+  for (const Span& loop : loops) {
+    const int64_t s = loop.start;
+    const int64_t e = loop.end;
     if (e > limitFrames) continue;
 
     if (outStart < 0) {
@@ -325,6 +355,19 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
       outEnd = e;
     }
   }
+}
+
+int64_t SampleLibrary::lastCueInFile(const juce::AudioFormatReader& reader) {
+  const auto& meta = reader.metadataValues;
+  const int numCues = meta.getValue("NumCuePoints", "0").getIntValue();
+  int64_t last = -1;
+  for (int i = 0; i < numCues; ++i) {
+    const juce::String key = "Cue" + juce::String(i) + "Offset";
+    if (!meta.containsKey(key)) continue;
+    const auto at = static_cast<int64_t>(meta.getValue(key, "0").getLargeIntValue());
+    if (at > 0 && at < reader.lengthInSamples && at > last) last = at;
+  }
+  return last;
 }
 
 int64_t SampleLibrary::releaseCueInFile(const juce::AudioFormatReader& reader,

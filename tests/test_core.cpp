@@ -5807,6 +5807,52 @@ public:
                    bf->releaseCue == 1500,
                "release cue is the last valid cue point in the file");
 
+      // A malformed file that plays elsewhere (#53, a note that stuck): two
+      // overlapping loops, a third overlapping neither, and a fourth running
+      // past the last cue into the release tail. Only the first two may be
+      // chosen, whatever the selection, and the release still starts at the
+      // last cue.
+      {
+        const auto bad = root.getChildFile("malformed.wav");
+        bad.deleteFile();
+        std::unique_ptr<juce::FileOutputStream> bos(bad.createOutputStream());
+        juce::StringPairArray bm;
+        bm.set("NumSampleLoops", "4");
+        bm.set("Loop0Start", "100"); bm.set("Loop0End", "199");    // len 100
+        bm.set("Loop1Start", "150"); bm.set("Loop1End", "399");    // len 250, overlaps 0
+        bm.set("Loop2Start", "600"); bm.set("Loop2End", "649");    // len 50, alone
+        bm.set("Loop3Start", "1200"); bm.set("Loop3End", "1799");  // past the last cue
+        bm.set("NumCuePoints", "2");
+        bm.set("Cue0Identifier", "1"); bm.set("Cue0Offset", "100");
+        bm.set("Cue1Identifier", "2"); bm.set("Cue1Offset", "1500");
+        std::unique_ptr<juce::AudioFormatWriter> bw(
+            fmt.createWriterFor(bos.release(), 48000.0, 1, 16, bm, 0));
+        juce::AudioBuffer<float> btone(1, 2000);
+        for (int i = 0; i < 2000; ++i)
+          btone.setSample(0, i, static_cast<float>(0.5 * std::sin(0.05 * i)));
+        bw->writeFromAudioSampleBuffer(btone, 0, 2000);
+        bw.reset();
+        mp::SampleRef bref;
+        bref.sampleId = 7;
+        bref.fileName = "malformed.wav";
+        mp::OrganModel bmm;
+        bmm.samples[7] = bref;
+        mp::SampleLibrary blng, bcon, bfst;
+        blng.loadAll(bmm, rootPath, 0, mp::LoopSelection::Longest);
+        bcon.loadAll(bmm, rootPath, 0, mp::LoopSelection::Conservative);
+        bfst.loadAll(bmm, rootPath, 0, mp::LoopSelection::First);
+        const mp::SampleBuffer* xl = blng.provider()(7);
+        const mp::SampleBuffer* xc = bcon.provider()(7);
+        const mp::SampleBuffer* xf = bfst.provider()(7);
+        MP_CHECK(xl && xc && xf, "the malformed file loads");
+        MP_CHECK(xl->loopStart == 150 && xl->loopEnd == 400,
+                 "Longest does not take the loop that runs into the release");
+        MP_CHECK(xc->loopStart == 100 && xc->loopEnd == 200,
+                 "Conservative does not take the loop that overlaps no other");
+        MP_CHECK(xf->loopStart == 100 && xf->releaseCue == 1500 && xl->releaseCue == 1500,
+                 "and the release starts at the last cue");
+      }
+
       // The preload head is a MINIMUM, not a cap. A head of 500 frames would
       // cut off every loop in this file, and a sample whose loop is missing
       // does not sustain — the note simply dies. So the read is extended to
