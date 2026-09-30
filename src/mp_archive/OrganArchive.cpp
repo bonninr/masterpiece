@@ -262,6 +262,8 @@ public:
   // the next one has no state to start from.
   virtual bool discard() = 0;
   virtual bool failed() const = 0;
+  // Which of the pass's volumes it is reading now, for a split set.
+  virtual size_t volume() const { return 0; }
   virtual std::string error() const = 0;
 };
 
@@ -287,6 +289,7 @@ public:
   void skip() override { archive_read_data_skip(r_.a); }
   bool discard() override { return archive_read_data_skip(r_.a) == ARCHIVE_OK; }
   bool failed() const override { return !opened_ || rc_ != ARCHIVE_EOF; }
+  size_t volume() const override { return r_.volumes_ ? r_.volumes_->index : 0; }
   std::string error() const override { return r_.error(); }
 
 private:
@@ -945,33 +948,58 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
     if (e.archive == archiveIndex && wanted.count(key(e.path))) ++remaining;
   if (remaining == 0) return true;
 
-  auto pass = passFor(archives_[archiveIndex]);
+  // A file that does not read is that file lost, not the rest of the archive
+  // (#90's Buckeburg report: a CRC error on a file continued from one volume
+  // into the next stopped the load two divisions in, reported as a single
+  // unreadable sample). After a failure a split set is read on from the
+  // volume the pass had reached: each volume starts with headers of its own,
+  // so only the files across that boundary are lost. Each failure is a line
+  // of `error`.
+  const auto& volumes = archives_[archiveIndex];
+  std::unordered_set<std::string> finished;  // delivered, or failed for good
+  size_t from = 0;
+  auto pass = passFor(volumes);
+  auto restart = [&]() -> bool {
+    if (volumes.size() < 2 || needsUnarr(volumes)) return false;
+    // At least the next volume: libarchive gives up on a compressed file
+    // continued into the next volume while still at the end of the first.
+    const size_t at = from + std::max<size_t>(1, pass->volume());
+    if (at >= volumes.size()) return false;
+    from = at;
+    pass = passFor(std::vector<std::string>(volumes.begin() + static_cast<std::ptrdiff_t>(at), volumes.end()));
+    return true;
+  };
   std::string name;
   int64_t size = 0;
   bool encrypted = false;
   std::vector<char> bytes;
-  while (remaining > 0 && pass->next(name, size, encrypted)) {
-    const std::string k = key(name);
-    if (!wanted.count(k)) {
-      if (!pass->discard()) {
-        error = std::string(name) + ": " + pass->error();
-        return false;
+  for (;;) {
+    while (remaining > 0 && pass->next(name, size, encrypted)) {
+      const std::string k = key(name);
+      if (!wanted.count(k) || finished.count(k)) {
+        if (!pass->discard()) break;
+        continue;
       }
-      continue;
+      if (!pass->readData(bytes)) {
+        error += std::string(name) + ": " + pass->error() + "\n";
+        finished.insert(k);
+        --remaining;
+        bytes = {};
+        continue;
+      }
+      finished.insert(k);
+      --remaining;
+      if (!deliver(k, std::move(bytes))) return error.empty();
+      bytes = {};
     }
-    --remaining;
-    if (!pass->readData(bytes)) {
-      error = std::string(name) + ": " + pass->error();
-      return false;
+    if (remaining == 0 || !pass->failed()) break;
+    if (!restart()) {
+      error += fs::path(volumes.front()).filename().string() + ": " + pass->error() + "\n";
+      break;
     }
-    if (!deliver(k, std::move(bytes))) return true;
-    bytes = {};
   }
-  if (remaining > 0 && pass->failed()) {
-    error = fs::path(archives_[archiveIndex].front()).filename().string() + ": " + pass->error();
-    return false;
-  }
-  return true;
+  if (!error.empty()) error.pop_back();  // the last newline
+  return error.empty();
 }
 
 std::string OrganArchive::identity() const {

@@ -833,9 +833,15 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           return true;
         }, error);
         if (!error.empty()) {
+          // One line per file that did not read.
           std::lock_guard<std::mutex> lock(resultMutex);
-          ++report.failed;
-          if (report.failedFiles.size() < 50) report.failedFiles.push_back(error);
+          size_t from = 0;
+          while (from < error.size()) {
+            const size_t to = std::min(error.find('\n', from), error.size());
+            ++report.failed;
+            if (report.failedFiles.size() < 50) report.failedFiles.push_back(error.substr(from, to - from));
+            from = to + 1;
+          }
         }
         std::lock_guard<std::mutex> lock(queueMutex);
         --producersLeft;
@@ -901,7 +907,10 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // cache is keyed to the whole organ, and the next load would take the part
   // for the whole.
   const bool stoppedShort = progress != nullptr && progress->isCancelled();
-  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 && !stoppedShort)
+  // Nor when files failed to read: a cache of a partial organ is trusted on
+  // every later load, and kept it partial after the cause was fixed.
+  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 && !stoppedShort &&
+      report.failed == 0)
     writeCache(*next, fingerprint);
 
   publish(std::move(next));
@@ -1207,6 +1216,9 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|t" + std::to_string(streamHead_);
   // Without the licensed samples a cache is not the organ with them.
   s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
+  // Caches written before a read failure stopped being fatal may hold only
+  // part of an organ (Buckeburg: 5639 of its samples); this retires them.
+  s += "|r2";
   // A partial load holds a different set of samples from a full one, and the
   // two must never be mistaken for each other: a cache written by
   // --preload-drawn would otherwise come back as a whole organ with most of
