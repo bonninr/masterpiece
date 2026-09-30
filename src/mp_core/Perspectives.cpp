@@ -30,6 +30,20 @@ const std::set<std::string>& positions() {
 
 std::string perspectiveOf(const std::string& rankName) {
   const std::string name = lowerTrim(rankName);
+  // A prefix before a colon, when it names a position: "Rear: Ped Octave 4",
+  // "Front (Diffuse): HW Fagott 16 (tremmed)" (Buckeburg). It comes first,
+  // because the bracket at the end of such a name is the stop's own. A
+  // prefix naming no position ("HW: Principal 8") is a division, not this.
+  const auto colon = name.find(':');
+  if (colon != std::string::npos) {
+    const std::string prefix = lowerTrim(name.substr(0, colon));
+    std::string word;
+    for (const char c : prefix + " ") {
+      if (std::isalpha(static_cast<unsigned char>(c))) { word += c; continue; }
+      if (positions().count(word) != 0) return prefix;
+      word.clear();
+    }
+  }
   if (!name.empty() && name.back() == ')') {
     const auto open = name.rfind('(');
     if (open != std::string::npos) return lowerTrim(name.substr(open + 1, name.size() - open - 2));
