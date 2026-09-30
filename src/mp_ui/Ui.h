@@ -120,6 +120,9 @@ public:
   TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings);
   void resized() override;
   void setStatus(const juce::String& text);
+  // The status line lives along the bottom of the window, where it has the
+  // whole width; the editor places it there.
+  juce::Label& statusLabel() { return status_; }
 
 private:
   MasterpieceProcessor& proc_;
