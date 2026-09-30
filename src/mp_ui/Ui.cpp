@@ -995,9 +995,11 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
               "each sample -- or raise the limit in General settings, if this computer has "
               "the memory to spare.");
     // The organ's console, without its audio, so the way out is on screen
-    // (#53: the only way back was deleting the organ's settings file). Once:
+    // (#53: the only way back was deleting the organ's settings file). The
+    // same after Cancel, which is often a load taking too much (#90). Once:
     // a console-only load reads no samples, and never comes back here.
-    if (result.outOfMemory && !graphicsOnly) loadOrgan(odf, true);
+    const bool cancelled = result.error == "cancelled";
+    if ((result.outOfMemory || cancelled) && !graphicsOnly && odf.existsAsFile()) loadOrgan(odf, true);
     return;
   }
 
@@ -1010,9 +1012,10 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   console_.rebuild();
   if (combinations_ != nullptr) {
     combinations_->panel().rebuild();
-    // An organ with pistons of its own has somewhere to register already;
-    // one without gets the window the first time, so it is found.
-    combinations_->place(getScreenBounds(), proc_.organModel().combinations.empty());
+    // Opened only as the player last left it. It used to open by itself on
+    // any organ without pistons of its own, so it would be found, and popped
+    // up on nearly every Open (#90); the Combinations button finds it.
+    combinations_->place(getScreenBounds(), false);
   }
   juce::Logger::writeToLog(
       "load: artwork       " +
