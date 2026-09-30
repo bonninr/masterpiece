@@ -1,4 +1,5 @@
 #include "GrandOrgueImport.h"
+#include "OrganModel.h"
 #include "GrandOrgueStockImages.h"
 
 #include <pugixml.hpp>
@@ -731,7 +732,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       auto tp = out.row("TremulantWaveformPipe");
       Emitter::set(tp, "PipeID", p.pipeId);
       Emitter::set(tp, "TremulantWaveformID", kTremulantBase + t);
-      Emitter::set(tp, "AmplitudeModDepthAdjustDecibels", 20.0 * std::log10(1.0 + depth / 100.0));
+      // GrandOrgue states the swing itself; the definition states an
+      // adjustment to the waveform's own depth (tremulantAmpSwing).
+      if (depth <= 0.0) continue;
+      Emitter::set(tp, "AmplitudeModDepthAdjustDecibels",
+                   20.0 * std::log10((depth / 100.0) / kTremulantWaveformAmpDepth));
       Emitter::set(tp, "PitchModDepthAdjustPercent", 0);
     }
   };

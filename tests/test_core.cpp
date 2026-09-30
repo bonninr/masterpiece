@@ -5402,11 +5402,24 @@ public:
     MP_CHECK(std::fabs(trem.disengagedHz - 5.0) < 1e-9, "disengaged rate parsed");
     MP_CHECK(std::fabs(trem.startPercent - 60.0) < 1e-9, "engaging ramp parsed");
     MP_CHECK(std::fabs(trem.stopPercent - 40.0) < 1e-9, "disengaging ramp parsed");
-    // Depth is NOT a field on the Tremulant row — Hauptwerk puts modulation
-    // depth on TremulantWaveformPipe, per pipe. We take the strongest as the
-    // tremulant's nominal depth so "drawn but does nothing" stays checkable.
-    MP_CHECK(std::fabs(trem.depthPercent - 3.5) < 1e-9,
+    // Depth is NOT a field on the Tremulant row — Hauptwerk puts an
+    // adjustment to the waveform's own depth on TremulantWaveformPipe, per
+    // pipe. We take the strongest as the tremulant's nominal depth so "drawn
+    // but does nothing" stays checkable: -3.5 dB of the waveform's 15%.
+    MP_CHECK(std::fabs(trem.depthPercent - 100.0 * 0.15 * std::pow(10.0, -3.5 / 20.0)) < 1e-9,
              "depth comes from TremulantWaveformPipe, not the Tremulant row");
+    // The adjustment scales the waveform's depth, calibrated on Friesach: the
+    // GrandOrgue edition's author set 6% and 8% by ear where the Hauptwerk
+    // edition adjusts by -7 and -6 dB. 0 dB, a row that states nothing, is the
+    // waveform's own depth, not no tremulant at all (#90).
+    MP_CHECK(std::fabs(mp::tremulantAmpSwing(-7.0) - 0.067) < 0.001 &&
+                 std::fabs(mp::tremulantAmpSwing(-6.0) - 0.075) < 0.001 &&
+                 std::fabs(mp::tremulantAmpSwing(0.0) - 0.15) < 1e-12,
+             "Friesach's -7 and -6 dB swing by about 7% and 7.5%, and 0 dB by 15%");
+    const double goDepth = 6.0;  // GrandOrgue's AmpModDepth, in percent
+    MP_CHECK(std::fabs(mp::tremulantAmpSwing(20.0 * std::log10((goDepth / 100.0) / mp::kTremulantWaveformAmpDepth)) -
+                       0.06) < 1e-12,
+             "a GrandOrgue depth converted by the importer swings by exactly that depth");
     MP_CHECK(trem.controllingSwitchId == 1, "tremulant bound to its drawstop");
     MP_CHECK(trem.hasWaveform && trem.waveformId == 500,
              "TremulantWaveform links the waveform to its tremulant");
