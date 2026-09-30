@@ -3653,6 +3653,40 @@ public:
     });
     MP_CHECK(reachable.size() == 5, "a stop the player cannot reach is never registration");
 
+    // A coupler worked through a delay, as Friesach's are (#90): knob 45
+    // conditions a ramp whose top stage engages 145, the switch the key action
+    // waits on. The coupler is registered as its knob.
+    {
+      mp::OrganModel d = m;
+      for (const auto& [id, name] : {std::pair<mp::Id, const char*>{45, "I/P"}, {145, "DelayedStop: 45"}}) {
+        mp::Switch s;
+        s.switchId = id;
+        s.name = name;
+        d.switches[id] = s;
+      }
+      mp::KeyAction delayed;
+      delayed.sourceKeyboard = 1;
+      delayed.destKeyboard = 2;
+      delayed.conditionSwitchId = 145;
+      d.keyActions.push_back(delayed);
+      mp::ContinuousControlStageSwitch stage;
+      stage.controlId = 9099;
+      stage.controlledSwitchId = 145;
+      d.controlStageSwitches.push_back(stage);
+      mp::ContinuousControlLinkage ramp;
+      ramp.sourceControlId = 24;
+      ramp.destControlId = 9099;
+      ramp.conditionSwitchId = 45;
+      d.controlLinkages.push_back(ramp);
+      const auto withDelay = PC::collect(d, nullptr);
+      bool knob = false, stageSwitch = false;
+      for (const auto& e : withDelay) {
+        knob = knob || (e.kind == K::Switch && e.id == 45);
+        stageSwitch = stageSwitch || (e.kind == K::Switch && e.id == 145);
+      }
+      MP_CHECK(knob && !stageSwitch, "a coupler behind a delay is registered as its knob");
+    }
+
     const auto divisions = PC::divisionsOf(m, elements);
     MP_CHECK(divisions.size() == 2 && divisions[0].divisionId == 1 &&
                  divisions[1].name == "Great",

@@ -111,11 +111,29 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   // Couplers: whatever switch a key action waits on. A coupler belongs to the
   // manual it is played from -- Swell to Great is part of the Great's
   // registration -- so the vote is the source keyboard's division.
+  //
+  // A coupler can be worked through a delay (Friesach): the knob conditions a
+  // ramp, and the ramp's top stage engages the switch the key action waits
+  // on. No switch linkage leads from there back to the knob, so the coupler
+  // had no knob to capture and general combinations left it out (#90). Its
+  // owner is the switch that conditions the ramp.
+  std::unordered_map<Id, Id> delayedBy;
+  {
+    std::unordered_map<Id, Id> conditionOfControl;
+    for (const auto& l : model.controlLinkages)
+      if (l.conditionSwitchId != 0) conditionOfControl.emplace(l.destControlId, l.conditionSwitchId);
+    for (const auto& st : model.controlStageSwitches) {
+      const auto it = conditionOfControl.find(st.controlId);
+      if (it != conditionOfControl.end()) delayedBy.emplace(st.controlledSwitchId, it->second);
+    }
+  }
   std::map<Id, Vote> couplers;
   auto addActions = [&](const std::vector<KeyAction>& actions, Id fallbackDivision) {
     for (const KeyAction& ka : actions) {
       if (ka.conditionSwitchId == 0) continue;
-      const Id sw = player(ka.conditionSwitchId);
+      Id condition = ka.conditionSwitchId;
+      if (const auto d = delayedBy.find(condition); d != delayedBy.end()) condition = d->second;
+      const Id sw = player(condition);
       if (notRegistration.count(sw) != 0 || notRegistration.count(ka.conditionSwitchId) != 0)
         continue;
       Id div = ka.sourceDivision != 0 ? ka.sourceDivision
