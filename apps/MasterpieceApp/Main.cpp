@@ -626,6 +626,13 @@ public:
   }
 
   // Beside the player's own data, with the organ settings and the MIDI maps.
+  // Where the main window was, and whether maximised, as JUCE writes it.
+  static juce::File windowStateFile() {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("Masterpiece")
+        .getChildFile("window.txt");
+  }
+
   static juce::File audioSettingsFile() {
     return juce::File::getSpecialLocation(
                juce::File::userApplicationDataDirectory)
@@ -643,6 +650,9 @@ public:
         f.getParentDirectory().createDirectory();
         f.replaceWithText(state->toString());
       }
+
+    // The main window's place, for the next start (#53).
+    if (win_) windowStateFile().replaceWithText(win_->getWindowStateAsString());
 
     // Before the logger is destroyed: JUCE asserts on a dangling current
     // logger, and shutdown is the one place that is guaranteed to run.
@@ -707,6 +717,12 @@ private:
       setContentOwned(ed, true);
       setResizable(true, true);
       centreWithSize(getWidth(), getHeight());
+      // Where it was last time (#53), unless no screen shows it any more: a
+      // second monitor unplugged must not leave the window off every screen.
+      const auto saved = windowStateFile().loadFileAsString();
+      if (saved.isNotEmpty() && restoreWindowStateFromString(saved) &&
+          juce::Desktop::getInstance().getDisplays().getDisplayForPoint(getBounds().getCentre()) == nullptr)
+        centreWithSize(getWidth(), getHeight());
     }
 
     void closeButtonPressed() override {
