@@ -9161,6 +9161,10 @@ public:
     MP_CHECK(mp::perspectiveOf("HW Principal 8' - Rear") == "rear", "a position as the last word");
     MP_CHECK(mp::perspectiveOf("Octave 4 Echo").empty(), "a word that could be a stop's own is not one");
     MP_CHECK(mp::perspectiveOf("Cornet (5 rgs)") == "5 rgs", "any bracket is read...");
+    MP_CHECK(mp::perspectiveOf("Rear: Ped Octave 4") == "rear", "a position before a colon");
+    MP_CHECK(mp::perspectiveOf("Front (Diffuse): HW Fagott 16 (tremmed)") == "front (diffuse)",
+             "the prefix wins over the stop's own bracket");
+    MP_CHECK(mp::perspectiveOf("HW: Principal 8").empty(), "a division before a colon is not one");
 
     mp::OrganModel m;
     mp::Id id = 1;
