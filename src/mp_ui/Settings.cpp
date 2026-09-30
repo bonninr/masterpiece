@@ -918,6 +918,34 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   learnPrev_.onClick = [this] {
     proc_.midiMap().beginLearn(MidiTargetKind::StepperPrev, 0, false);
   };
+  // A console with fewer keyboards than the organ has manuals: a piston makes
+  // the keyboard on a channel play another manual (#90). Pick the channel,
+  // then the manual, then press the piston.
+  addAndMakeVisible(learnManuals_);
+  learnManuals_.setTooltip("Pistons that switch which manual a keyboard plays: choose the keyboard's "
+                           "channel and the manual, then press the piston");
+  learnManuals_.onClick = [this] {
+    juce::PopupMenu menu;
+    const auto manuals = proc_.playableKeyboards();
+    for (int channel = 1; channel <= 16; ++channel) {
+      juce::PopupMenu sub;
+      for (Id kb : manuals) {
+        const bool now = proc_.keyboardForChannel(channel) == kb;
+        sub.addItem(static_cast<int>(routeKeyboardTarget(kb, channel)),
+                    juce::String(proc_.keyboardName(kb)), true, now);
+      }
+      const Id playing = proc_.keyboardForChannel(channel);
+      menu.addSubMenu("Keyboard on channel " + juce::String(channel) +
+                          (playing != 0 ? " (plays " + juce::String(proc_.keyboardName(playing)) + ")"
+                                        : juce::String()),
+                      sub);
+    }
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&learnManuals_),
+                       [this](int target) {
+                         if (target <= 0) return;
+                         proc_.midiMap().beginLearn(MidiTargetKind::RouteKeyboard, target, false);
+                       });
+  };
 
   addAndMakeVisible(saveMap_);
   saveMap_.onClick = [this] { proc_.saveMidiMap(); };
@@ -1154,6 +1182,8 @@ void MidiPanel::resized() {
   learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
   row.removeFromLeft(6);
   learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  learnManuals_.setBounds(row.removeFromLeft(190).reduced(2, 0));
 
   // Console actions, on their own row under the same idea: things a physical
   // console's thumb pistons do that the organ file never mentions.

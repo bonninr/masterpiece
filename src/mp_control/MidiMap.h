@@ -62,7 +62,15 @@ enum class MidiTargetKind {
   PlayerDivisional,
   PlayerDivisionalCancel,
   Setter,
+  // A piston that makes one MIDI channel play one manual: how a console with
+  // one or two keyboards plays an organ with three or four (#90, "virtual
+  // keyboards"). id = routeKeyboardTarget(manual, channel).
+  RouteKeyboard,
 };
+
+inline Id routeKeyboardTarget(Id keyboardId, int channel) { return keyboardId * 32 + channel; }
+inline Id routedKeyboard(Id target) { return target / 32; }
+inline int routedChannel(Id target) { return static_cast<int>(target % 32); }
 
 // The setter's id: one no switch can have, so its latch never shares a slot
 // with a drawstop's.

@@ -648,6 +648,17 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::Setter:
           setCaptureMode(action.engage);
           continue;
+        case MidiTargetKind::RouteKeyboard: {
+          // The keyboard on that channel now plays this manual. Whatever it
+          // was holding lets go first, or those pipes would sound on forever.
+          const int channel = routedChannel(action.targetId);
+          const Id manual = routedKeyboard(action.targetId);
+          if (channel >= 1 && channel <= 16 && manual != 0) {
+            releaseChannel(channel, MidiDeviceMap::kAnyDevice);
+            setKeyboardForChannel(channel, manual, 0, true);
+          }
+          continue;
+        }
         // The console belongs to the editor, and this is the audio thread, so
         // the action is left in a slot for the editor to collect. One slot is
         // enough: these are thumb pistons, pressed at human speed, and

@@ -10534,6 +10534,52 @@ public:
 };
 static UnclaimedChannelTest g_unclaimedChannel;
 
+// A piston that makes a keyboard play another manual: one or two keyboards
+// playing an organ with more (#90, "virtual keyboards").
+class ManualButtonTest final : public mp::test::Test {
+public:
+  ManualButtonTest() : Test("functional.midi.manual-buttons", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+    MP_CHECK(proc.keyboardForChannel(5) == 0, "channel 5 plays nothing to begin with");
+
+    mp::MidiBinding piston;
+    piston.source.kind = mp::MidiSourceKind::Note;
+    piston.source.channel = 16;
+    piston.source.number = 60;
+    piston.targetKind = mp::MidiTargetKind::RouteKeyboard;
+    piston.targetId = mp::routeKeyboardTarget(701, 5);
+    proc.midiMap().bind(piston);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer press;
+    press.addEvent(juce::MidiMessage::noteOn(16, 60, 0.8f), 0);
+    proc.processBlock(buf, press);
+    MP_CHECK(proc.keyboardForChannel(5) == 701, "the piston makes channel 5 play the manual");
+    MP_CHECK(proc.keyboardForChannel(1) == 0, "which moves it from channel 1");
+    juce::MidiBuffer release;
+    release.addEvent(juce::MidiMessage::noteOff(16, 60), 0);
+    proc.processBlock(buf, release);
+    MP_CHECK(proc.keyboardForChannel(5) == 701, "letting go of the piston changes nothing");
+
+    mp::MidiMap copy;
+    MP_CHECK(copy.fromText(proc.midiMap().toText()) &&
+                 copy.actionFor(piston.source, 127).kind == mp::MidiTargetKind::RouteKeyboard,
+             "the piston is saved and read back");
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static ManualButtonTest g_manualButtons;
+
 // The player's pistons -- stepper, generals, setter -- are the same on every
 // organ, and a console can have several + and - buttons. An organ's own stop
 // mappings stay with it.

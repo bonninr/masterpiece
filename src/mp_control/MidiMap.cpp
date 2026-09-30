@@ -90,6 +90,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::PlayerDivisional: return "divisional";
     case MidiTargetKind::PlayerDivisionalCancel: return "divisional-cancel";
     case MidiTargetKind::Setter: return "setter";
+    case MidiTargetKind::RouteKeyboard: return "route-keyboard";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -97,6 +98,7 @@ const char* targetName(MidiTargetKind k) {
 
 MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "switch") return MidiTargetKind::Switch;
+  if (s == "route-keyboard") return MidiTargetKind::RouteKeyboard;
   if (s == "control") return MidiTargetKind::ContinuousControl;
   if (s == "keyboard") return MidiTargetKind::Keyboard;
   if (s == "stepper-next") return MidiTargetKind::StepperNext;
@@ -334,6 +336,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::PlayerGeneralCancel:
     case MidiTargetKind::PlayerDivisional:
     case MidiTargetKind::PlayerDivisionalCancel:
+    case MidiTargetKind::RouteKeyboard:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
