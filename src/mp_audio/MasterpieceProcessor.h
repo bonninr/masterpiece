@@ -15,6 +15,7 @@
 #include "../mp_control/WindSolver.h"
 #include "../mp_control/SwitchNetwork.h"
 #include "../mp_core/Temperament.h"
+#include "../mp_core/Perspectives.h"
 #if MP_ENABLE_DSP
 #include "../mp_dsp/Dsp.h"
 #endif
@@ -645,6 +646,19 @@ public:
     excludedStops_ = std::move(stops);
     markSettingsDirty();
   }
+  // The perspectives -- microphone positions -- to leave out of this organ,
+  // saved with it like the stops. A set recorded from three or four places
+  // holds the whole organ that many times over; leaving one out saves its
+  // share of the memory and loses nothing else, where leaving out stops
+  // loses stops.
+  std::map<std::string, std::vector<Id>> perspectives() const { return perspectivesOf(model_); }
+  const std::set<std::string>& excludedPerspectives() const { return excludedPerspectives_; }
+  void setExcludedPerspectives(std::set<std::string> names) {
+    excludedPerspectives_ = std::move(names);
+    markSettingsDirty();
+  }
+  // What the last load left out, so a change can be told from what is loaded.
+  const std::set<std::string>& perspectivesLeftOut() const { return perspectivesLeftOut_; }
   // Whether a stop's audio came with the last load. A left-out stop still
   // draws and records in pistons -- it simply makes no sound -- and the
   // console dims it so it is not taken for a broken one.
@@ -666,6 +680,7 @@ public:
   bool stopDrawn(Id stopId) const;
   // The samples a stop's ranks play, for adding the estimate up per stop.
   std::vector<Id> samplesOfStop(Id stopId) const;
+  std::vector<Id> samplesOfRanks(const std::vector<Id>& rankIds) const;
   // Where the player keeps the combinations window on this organ, and whether
   // it was open. Per organ, because a console with its own pistons drawn
   // wants it closed and one with none wants it open. w 0 means never placed.
@@ -675,6 +690,20 @@ public:
     bool open = false;
   };
   const WindowPlace& combinationsWindowPlace() const { return combWindow_; }
+  // The console pages the player keeps in windows of their own, and where:
+  // a second or third screen set up once comes back the same way with the
+  // organ. Per organ, like the combinations window.
+  struct PagePlace {
+    int page = 0;
+    int x = 0, y = 0, w = 0, h = 0;
+    bool operator==(const PagePlace&) const = default;
+  };
+  const std::vector<PagePlace>& pageWindowPlaces() const { return pageWindows_; }
+  void setPageWindowPlaces(std::vector<PagePlace> places) {
+    if (places == pageWindows_) return;
+    pageWindows_ = std::move(places);
+    markSettingsDirty();
+  }
   // Audio blocks answered with silence because an organ was being loaded
   // (see EngineSuspension). For tests and diagnostics.
   uint64_t blocksSkippedForLoad() const { return blocksSkippedForLoad_.load(); }
@@ -1161,9 +1190,12 @@ private:
   VoicingAB voicing_;
   Favourites favourites_;
   // Empty means the organ's default set.
+  std::vector<PagePlace> pageWindows_;
   std::string combinationSet_;
   WindowPlace combWindow_;
   std::set<Id> excludedStops_;
+  std::set<std::string> excludedPerspectives_;
+  std::set<std::string> perspectivesLeftOut_;
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId

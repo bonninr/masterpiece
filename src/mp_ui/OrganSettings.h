@@ -44,6 +44,14 @@ private:
     int beforeRow = 0;
     std::unique_ptr<juce::Label> label;
   };
+  // A microphone position the set was recorded from, with the ranks that
+  // carry it: leaving one out takes its whole share of the organ.
+  struct PerspectiveRow {
+    std::string name;
+    std::unique_ptr<juce::ToggleButton> toggle;
+    std::unique_ptr<juce::Label> size;
+    std::vector<Id> samples;
+  };
 
   void build();
   void choose(std::set<Id> excluded);
@@ -59,6 +67,9 @@ private:
   juce::Component list_;
   std::vector<Row> rows_;
   std::vector<Heading> headings_;
+  std::vector<PerspectiveRow> perspectives_;
+  std::unique_ptr<juce::Label> perspectivesHeading_;
+  std::set<std::string> perspectivesOut() const;
 
   juce::TextButton all_{"All"}, none_{"None"}, drawn_{"Only those drawn now"};
   juce::TextButton reloadNow_{"Load the organ again"};

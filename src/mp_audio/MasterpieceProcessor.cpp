@@ -1206,10 +1206,13 @@ bool MasterpieceProcessor::saveSettings() const {
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
+    for (const auto& p : excludedPerspectives_) text << "skipperspective " << juce::String(p) << "\n";
     if (combWindow_.w > 0)
       text << "combwindow " << combWindow_.x << " " << combWindow_.y << " "
            << combWindow_.w << " " << combWindow_.h << " "
            << (combWindow_.open ? 1 : 0) << "\n";
+    for (const auto& p : pageWindows_)
+      text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << "\n";
     if (!temperamentChoice_.empty())
       text << "temperament " << juce::String(temperamentChoice_) << "\n";
     if (masterPitchSetting() > 0.0)
@@ -1230,9 +1233,11 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.a.clear();
   voicing_.b.clear();
   voicing_.usingB = false;
+  pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
   excludedStops_.clear();
+  excludedPerspectives_.clear();
   // Tuning belongs to the organ it was chosen for.
   temperamentChoice_.clear();
   licenceConfirmed_ = false;
@@ -1301,12 +1306,25 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       masterPitchHz_.store(juce::jmax(0.0, val.getDoubleValue()), std::memory_order_relaxed);
       continue;
     }
+    if (key == "pagewindow") {
+      // "pagewindow <page> <x> <y> <w> <h>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() >= 5 && tok[3].getIntValue() > 0 && tok[4].getIntValue() > 0)
+        pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
+                                tok[3].getIntValue(), tok[4].getIntValue()});
+      continue;
+    }
     if (key == "transpose") {
       transpose_.store(juce::jlimit(-12, 12, val.getIntValue()), std::memory_order_relaxed);
       continue;
     }
     if (key == "skipstop") {
       excludedStops_.insert(static_cast<Id>(val.getLargeIntValue()));
+      continue;
+    }
+    if (key == "skipperspective") {
+      if (val.isNotEmpty()) excludedPerspectives_.insert(val.toStdString());
       continue;
     }
     if (key == "combwindow") {
@@ -2339,6 +2357,24 @@ bool MasterpieceProcessor::stopDrawn(Id stopId) const {
     if (t.controllingSwitchId != 0 && playerSwitchFor(t.controllingSwitchId) == knob) return false;
   }
   return true;
+}
+
+std::vector<Id> MasterpieceProcessor::samplesOfRanks(const std::vector<Id>& rankIds) const {
+  std::vector<Id> out;
+  for (Id rankId : rankIds) {
+    const auto rit = model_.ranks.find(rankId);
+    if (rit == model_.ranks.end()) continue;
+    for (const auto& pipe : rit->second.pipes)
+      for (const auto& layer : pipe.layers) {
+        for (const auto& a : layer.attacks)
+          if (a.sample.sampleId != 0) out.push_back(a.sample.sampleId);
+        for (const auto& r : layer.releases)
+          if (r.sample.sampleId != 0) out.push_back(r.sample.sampleId);
+      }
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
 }
 
 std::vector<Id> MasterpieceProcessor::samplesOfStop(Id stopId) const {
@@ -3713,6 +3749,29 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       onlyRanks = std::unordered_set<Id>(preloadRanks_.begin(), preloadRanks_.end());
     // The player's own choice, when no test flag has made one: every rank
     // except those that only left-out stops use.
+    // Perspectives left out: their ranks, whatever stop plays them. Only
+    // names this organ has count, so a choice saved for a set that has since
+    // been renamed does not silence it.
+    std::unordered_set<Id> perspectiveOut;
+    perspectivesLeftOut_.clear();
+    if (onlyRanks.empty() && !excludedPerspectives_.empty()) {
+      for (const auto& [name, ranks] : perspectivesOf(model_))
+        if (excludedPerspectives_.count(name) != 0) {
+          perspectivesLeftOut_.insert(name);
+          perspectiveOut.insert(ranks.begin(), ranks.end());
+        }
+      // Leaving out every perspective would leave out the organ.
+      if (perspectivesLeftOut_.size() == perspectivesOf(model_).size()) {
+        perspectivesLeftOut_.clear();
+        perspectiveOut.clear();
+      }
+    }
+    if (onlyRanks.empty() && !perspectiveOut.empty() && excludedStops_.empty()) {
+      for (const auto& [rankId, rank] : model_.ranks) {
+        (void)rank;
+        if (perspectiveOut.count(rankId) == 0) onlyRanks.insert(rankId);
+      }
+    }
     if (onlyRanks.empty() && !excludedStops_.empty()) {
       std::unordered_set<Id> wanted;
       for (const auto& [stopId, stop] : model_.stops)
@@ -3728,8 +3787,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
       for (const auto& [rankId, rank] : model_.ranks) {
         (void)rank;
-        if (leftOut.count(rankId) == 0) onlyRanks.insert(rankId);
+        if (leftOut.count(rankId) == 0 && perspectiveOut.count(rankId) == 0) onlyRanks.insert(rankId);
       }
+    }
+    // A stop none of whose ranks came is as good as left out: the console
+    // dims it rather than leaving a drawstop that makes no sound.
+    if (!perspectiveOut.empty())
+      for (const auto& [stopId, stop] : model_.stops) {
+        bool any = false;
+        for (const auto& e : stop.ranks)
+          if (onlyRanks.count(e.rankId) != 0) any = true;
+        if (!stop.ranks.empty() && !any) unloadedStops_.insert(stopId);
+      }
+    if (!perspectivesLeftOut_.empty()) {
+      juce::String names;
+      for (const auto& p : perspectivesLeftOut_) names << (names.isEmpty() ? "" : ", ") << juce::String(p);
+      juce::Logger::writeToLog("load: perspectives left out: " + names + " (" +
+                               juce::String(static_cast<int>(perspectiveOut.size())) + " ranks)");
     }
     if (!onlyRanks.empty())
       juce::Logger::writeToLog("load: PARTIAL -- " +
