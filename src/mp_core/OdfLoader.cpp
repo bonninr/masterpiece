@@ -1258,7 +1258,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     InstallationPackage pkg;
     pkg.packageId = fieldInt(row, "InstallationPackageID", "a", 0);
     pkg.name = field(row, "Name", "b");
-    pkg.supplierName = field(row, "SupplierName", "d");
+    pkg.supplierName = field(row, "SupplierName", "e");  // "d" is SupplierID
     if (pkg.packageId == 0) return;
     if (!opts.organRootDir.empty()) {
       std::error_code ec;
