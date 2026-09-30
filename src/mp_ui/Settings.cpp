@@ -1330,10 +1330,23 @@ void FavouritesPanel::refresh() {
 
   const auto& bank = proc_.favourites().organs;
   slots_ = bank.used();
+  // Two favourites can share a name -- the same organ as a Hauptwerk and a
+  // GrandOrgue set (#90) -- and then the name alone does not say which.
+  std::map<std::string, int> named;
+  for (int slot : slots_) ++named[bank.at(slot).name];
   for (int slot : slots_) {
     const auto& fav = bank.at(slot);
     auto label = std::make_unique<juce::Label>();
-    styleLabel(*label, juce::String(slot) + ".  " + juce::String(fav.name));
+    juce::String shown(fav.name);
+    if (named[fav.name] > 1) {
+      const juce::File f(fav.target);
+      const auto ext = f.getFileExtension().toLowerCase();
+      const juce::String kind = ext == ".organ" || ext == ".orgue" ? "GrandOrgue"
+                                : ext == ".organ_hauptwerk_xml"     ? "Hauptwerk"
+                                                                    : juce::String();
+      shown << "  (" << (kind.isEmpty() ? juce::String() : kind + ", ") << f.getFileName() << ")";
+    }
+    styleLabel(*label, juce::String(slot) + ".  " + shown);
     // The path as a tooltip: two sets can share a name, and then the only
     // thing that tells them apart is where they live.
     label->setTooltip(juce::String(fav.target));

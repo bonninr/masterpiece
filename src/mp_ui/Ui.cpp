@@ -386,6 +386,8 @@ void TopBar::setStatus(const juce::String& text) {
     }
 
   status_.setText(text, juce::dontSendNotification);
+  // Cut short on a narrow window; whole on hover (#90).
+  status_.setTooltip(text);
 }
 
 void TopBar::resized() {
@@ -400,18 +402,16 @@ void TopBar::resized() {
   // order of how much they are missed: the status line first, then the
   // meter, and the fader last -- never below a width a hand can still use.
   const int room = r.getWidth();
-  const int volumeW = juce::jlimit(90, 130, room);
+  // Wide enough to set a level by hand (#90: too small to use). The status
+  // line has moved to the bottom of the window, so the fader and the meter
+  // share the rest.
+  const int volumeW = juce::jlimit(90, 220, room - 120);
   const int meterW = juce::jlimit(0, 112, room - volumeW - 8);
   volume_.setBounds(r.removeFromLeft(volumeW));
   r.removeFromLeft(8);
   // Beside the fader it answers for: the two are read together.
   meter_.setVisible(meterW >= 40);
   meter_.setBounds(r.removeFromLeft(meterW).reduced(0, 5));
-  r.removeFromLeft(10);
-  // Whatever is left. The status line is the one thing here that can be
-  // shortened without losing a control, so it takes the squeeze.
-  status_.setVisible(r.getWidth() >= 60);
-  status_.setBounds(r);
 }
 
 // ---------------------------------------------------------------- editor
@@ -459,6 +459,13 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       keyboard_(p.keyboardState(),
                 juce::MidiKeyboardComponent::horizontalKeyboard) {
   addAndMakeVisible(top_);
+  // A thin line along the bottom, the whole width of the window, instead of
+  // whatever the top bar's buttons left of it.
+  auto& statusLine = top_.statusLabel();
+  addAndMakeVisible(statusLine);
+  statusLine.setFont(juce::Font(juce::FontOptions(13.0f)));
+  statusLine.setColour(juce::Label::backgroundColourId, juce::Colour(0xff15171c));
+  statusLine.setBorderSize(juce::BorderSize<int>(0, 8, 0, 8));
 
   // The organ's own console when the set ships artwork; the plain jamb
   // otherwise, and on demand. A set without artwork must still be playable.
@@ -1104,8 +1111,17 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                juce::String(
                    proc_.sampleLibrary().residentBytes() / (1024 * 1024)) +
                " MB)";
+    // Which ones, in the log: a count alone says nothing to act on (#90).
+    for (const auto& f : result.samples.missingFiles)
+      juce::Logger::writeToLog("samples: missing " + juce::String(f));
+    if (result.samples.missing > static_cast<int>(result.samples.missingFiles.size()))
+      juce::Logger::writeToLog("samples: and " +
+                               juce::String(result.samples.missing - static_cast<int>(result.samples.missingFiles.size())) +
+                               " more missing");
+    for (const auto& f : result.samples.failedFiles)
+      juce::Logger::writeToLog("samples: unreadable " + juce::String(f));
     if (result.samples.missing > 0)
-      status_ += ", " + juce::String(result.samples.missing) + " missing";
+      status_ += ", " + juce::String(result.samples.missing) + " missing (named in the log)";
     if (result.samples.encrypted > 0)
       status_ += ", " + juce::String(result.samples.encrypted) + " encrypted";
     if (result.samples.licensed > 0)
@@ -1169,6 +1185,7 @@ void MasterpieceEditor::paint(juce::Graphics& g) {
 
 void MasterpieceEditor::resized() {
   auto r = getLocalBounds();
+  top_.statusLabel().setBounds(r.removeFromBottom(20));
 
   // One band for every control. These are the editor's own children rather
   // than the bar's, so they are placed into the right of the same strip and
