@@ -645,23 +645,6 @@ public:
     excludedStops_ = std::move(stops);
     markSettingsDirty();
   }
-  // The publisher's licence, for a set whose samples ask for one (ADR-003).
-  // Masterpiece cannot check it; the player says whether they hold one that
-  // lets them play the set here, once per organ, and the answer is saved
-  // with it. Takes effect on the next load. Encrypted files are another
-  // matter and are never loaded, whatever this says.
-  bool licenceConfirmed() const { return licenceConfirmed_; }
-  void setLicenceConfirmed(bool on) {
-    if (licenceConfirmed_ == on) return;
-    licenceConfirmed_ = on;
-    markSettingsDirty();
-  }
-  // Who licenses the set, as its packages name them; empty when they do not.
-  std::string licencePublisher() const {
-    for (const auto& [id, pkg] : model_.packages)
-      if (!pkg.supplierName.empty()) return pkg.supplierName;
-    return {};
-  }
   // Whether a stop's audio came with the last load. A left-out stop still
   // draws and records in pistons -- it simply makes no sound -- and the
   // console dims it so it is not taken for a broken one.
@@ -733,6 +716,23 @@ public:
   // Now, whatever the wait: on closing, and before another organ replaces
   // this one.
   bool saveRememberedStateIfPending();
+  // The publisher's licence, for a set whose samples ask for one (ADR-003).
+  // Masterpiece cannot check it; the player says whether they hold one that
+  // lets them play the set here, once per organ, and the answer is saved
+  // with it. Takes effect on the next load. Encrypted files are another
+  // matter and are never loaded, whatever this says.
+  bool licenceConfirmed() const { return licenceConfirmed_; }
+  void setLicenceConfirmed(bool on) {
+    if (licenceConfirmed_ == on) return;
+    licenceConfirmed_ = on;
+    markSettingsDirty();
+  }
+  // Who licenses the set, as its packages name them; empty when they do not.
+  std::string licencePublisher() const {
+    for (const auto& [id, pkg] : model_.packages)
+      if (!pkg.supplierName.empty()) return pkg.supplierName;
+    return {};
+  }
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
   bool saveMidiMap() const;
