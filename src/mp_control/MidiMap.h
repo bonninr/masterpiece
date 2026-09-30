@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -182,6 +183,34 @@ public:
   // Replace the binding with this source and target, keeping its place: how a
   // learned pedal's window is changed afterwards.
   bool replace(const MidiBinding& binding);
+  // Drop every binding the predicate picks, the extra targets of a pedal too.
+  void removeBindings(const std::function<bool(const MidiBinding&)>& pick);
+  // Targets that belong to the program, not the organ: the stepper, the
+  // player's generals, the setter, page and tuning buttons. They mean the same
+  // on every organ, so they are kept for all of them, and a console can have
+  // several buttons for each (two + and two - thumb pistons).
+  static bool isConsoleTarget(MidiTargetKind k) {
+    switch (k) {
+      case MidiTargetKind::StepperNext:
+      case MidiTargetKind::StepperPrev:
+      case MidiTargetKind::ConsoleNextPage:
+      case MidiTargetKind::ConsolePrevPage:
+      case MidiTargetKind::ConsoleNextLayout:
+      case MidiTargetKind::ConsoleToggleStopList:
+      case MidiTargetKind::ConsoleToggleKeyboard:
+      case MidiTargetKind::ConsoleToggleCombinations:
+      case MidiTargetKind::TransposeUp:
+      case MidiTargetKind::TransposeDown:
+      case MidiTargetKind::TemperamentNext:
+      case MidiTargetKind::TemperamentPrev:
+      case MidiTargetKind::PlayerGeneral:
+      case MidiTargetKind::PlayerGeneralCancel:
+      case MidiTargetKind::Setter:
+        return true;
+      default:
+        return false;
+    }
+  }
   // A raw controller value through a binding's window and sense, 0..127.
   static int controlValue(const MidiBinding& b, int raw) {
     const int v = b.scale(raw);

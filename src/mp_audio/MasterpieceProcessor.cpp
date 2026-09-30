@@ -1722,11 +1722,46 @@ bool MasterpieceProcessor::saveMasterGainIfDirty() {
   return saveMasterGain();
 }
 
+juce::File MasterpieceProcessor::consoleMidiFile() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("midi")
+      .getChildFile("console.mpmidi");
+}
+
 bool MasterpieceProcessor::saveMidiMap() const {
+  // Two files: what belongs to this organ -- its stops, shoes, manuals,
+  // divisionals -- and what belongs to the player's console on every organ:
+  // the stepper, the generals, the setter (a Buckeburg report asked for the
+  // piston assignments to work for every organ).
+  const std::string all = midiMap_.toText();
+  MidiMap console;
+  console.fromText(all);
+  console.removeBindings([](const MidiBinding& b) { return !MidiMap::isConsoleTarget(b.targetKind); });
+  console.clearKeyboardBindings();
+  const auto cf = consoleMidiFile();
+  cf.getParentDirectory().createDirectory();
+  cf.replaceWithText(juce::String(console.toText()));
+
   const auto f = organFileForSaving("midi", ".mpmidi");
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(midiMap_.toText()));
+  MidiMap organ;
+  organ.fromText(all);
+  organ.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
+  return f.replaceWithText(juce::String(organ.toText()));
+}
+
+void MasterpieceProcessor::applyConsoleMidi() {
+  // Nothing saved for the console yet: whatever the organ's own file carried
+  // stays, and moves to the console file with the next save.
+  const auto cf = consoleMidiFile();
+  if (!cf.existsAsFile()) return;
+  MidiMap console;
+  if (!console.fromText(cf.loadFileAsString().toStdString())) return;
+  midiMap_.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
+  for (const auto& b : console.bindings())
+    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bind(b);
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
@@ -1759,14 +1794,19 @@ void MasterpieceProcessor::clearDefaultConsole() {
 
 bool MasterpieceProcessor::loadMidiMap() {
   midiMapRepaired_ = 0;
+  // The last organ's stops and shoes go: their switch and control numbers
+  // mean other things here. They lingered when this organ had no file.
+  midiMap_.removeBindings([](const MidiBinding&) { return true; });
   const auto f = midiMapFileFor(loadedOdf_);
   // Nothing saved for this organ: the player's own console, when there is one.
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) {
     applyDefaultConsole();
+    applyConsoleMidi();
     return false;
   }
   const auto text = f.loadFileAsString();
   const bool ok = midiMap_.fromText(text.toStdString());
+  applyConsoleMidi();
   // A mapping saved for other things -- pistons, stops -- but no manuals.
   if (midiMap_.keyboardBindings().empty()) applyDefaultConsole();
 

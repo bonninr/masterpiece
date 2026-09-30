@@ -10533,6 +10533,64 @@ public:
   }
 };
 static UnclaimedChannelTest g_unclaimedChannel;
+
+// The player's pistons -- stepper, generals, setter -- are the same on every
+// organ, and a console can have several + and - buttons. An organ's own stop
+// mappings stay with it.
+class ConsolePistonsTest final : public mp::test::Test {
+public:
+  ConsolePistonsTest() : Test("functional.midi.console-everywhere", Category::Functional) {}
+  void run() override {
+    auto note = [](int n) {
+      mp::MidiSource s;
+      s.kind = mp::MidiSourceKind::Note;
+      s.channel = 16;
+      s.number = n;
+      return s;
+    };
+    mp::MidiMap map;
+    map.beginLearn(mp::MidiTargetKind::StepperNext, 0, false);
+    map.learnFrom(note(36));
+    map.beginLearn(mp::MidiTargetKind::StepperNext, 0, false);
+    map.learnFrom(note(37));
+    MP_CHECK(map.bindingsFor(mp::MidiTargetKind::StepperNext, 0).size() == 2,
+             "two + buttons can both be learned");
+
+    const juce::File a(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File b(juce::String(MP_TEST_FIXTURES_DIR) + "/m22.tuning.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    std::vector<std::pair<juce::File, juce::String>> kept;
+    for (const auto& f : {proc.midiMapFileFor(a), proc.midiMapFileFor(b), mp::MasterpieceProcessor::consoleMidiFile()})
+      kept.push_back({f, f.existsAsFile() ? f.loadFileAsString() : juce::String("\\u0001absent")});
+    for (auto& [f, text] : kept) f.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(a, 0, false).ok, "the first organ loads");
+    mp::MidiBinding next;
+    next.source = note(40);
+    next.targetKind = mp::MidiTargetKind::StepperNext;
+    proc.midiMap().bind(next);
+    mp::MidiBinding stop;
+    stop.source = note(41);
+    stop.targetKind = mp::MidiTargetKind::Switch;
+    stop.targetId = 12345;
+    proc.midiMap().bind(stop);
+    MP_CHECK(proc.saveMidiMap(), "saved");
+    MP_CHECK(proc.loadOrgan(b, 0, false).ok, "another organ loads");
+    MP_CHECK(proc.midiMap().actionFor(note(40), 127).kind == mp::MidiTargetKind::StepperNext,
+             "the stepper button still works on the other organ");
+    MP_CHECK(!proc.midiMap().actionFor(note(41), 127).valid(),
+             "and the first organ's stop mapping does not come with it");
+    MP_CHECK(proc.loadOrgan(a, 0, false).ok &&
+                 proc.midiMap().actionFor(note(41), 127).kind == mp::MidiTargetKind::Switch,
+             "it is still there on its own organ");
+
+    for (auto& [f, text] : kept) {
+      if (text == "\\u0001absent") f.deleteFile();
+      else f.replaceWithText(text);
+    }
+  }
+};
+static ConsolePistonsTest g_consolePistons;
 #endif // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_AUDIO
