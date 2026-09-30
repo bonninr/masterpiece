@@ -456,10 +456,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     // program and the player's console.
     juce::PopupMenu menu;
     menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
-    menu.addItem(2, "General settings...");
     // A licence confirmed for this organ can be taken back here.
     if (proc_.organModel().hasLicensedSamples)
       menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
+    menu.addItem(2, "General settings...");
     // The same organ as another definition: a perspective, or full and light.
     const juce::File loaded = proc_.loadedOrganFile();
     const auto versions = MasterpieceProcessor::organVersions(loaded);
