@@ -434,7 +434,6 @@ private:
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   ReverbPanel reverb_;
   MetronomePanel metronome_;
-  RecorderPanel recorder_;
   MidiPanel midi_;
   MixerPanel mixer_;
   VoicingPanel voicing_;

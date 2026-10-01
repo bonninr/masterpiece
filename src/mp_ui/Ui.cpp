@@ -1,4 +1,5 @@
 #include "Ui.h"
+#include "Settings.h"
 #include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
@@ -501,6 +502,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     if (proc_.organModel().hasLicensedSamples)
       menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
     menu.addItem(2, "General settings...");
+    menu.addItem(5, "Recorder...", true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
     // Pages in windows of their own, for a second screen: the same as a
     // right-click on a page's tab, here where it can be found.
     if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -525,6 +527,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                        [this, versions](int choice) {
                          if (choice == 1 && onOrganSettings) onOrganSettings();
                          if (choice == 2 && onSettings) onSettings();
+                         if (choice == 5) toggleRecorder();
                          if (choice == 4) {
                            if (proc_.licenceConfirmed()) {
                              proc_.setLicenceConfirmed(false);
@@ -1016,6 +1019,34 @@ void MasterpieceEditor::restorePageWindows() {
       openPageWindow(p.page, {p.x, p.y, p.w, p.h}, p.layout);
 }
 
+namespace {
+// The recorder's own window: shown and hidden, never modal, so the console
+// stays playable while it records.
+class RecorderWindow : public juce::DocumentWindow {
+public:
+  explicit RecorderWindow(MasterpieceProcessor& p)
+      : juce::DocumentWindow("Recorder", juce::Colour(0xff15171c), juce::DocumentWindow::closeButton) {
+    setUsingNativeTitleBar(true);
+    setContentOwned(new RecorderPanel(p), false);
+    setResizable(false, false);
+    setSize(420, 420);
+  }
+  void closeButtonPressed() override { setVisible(false); }
+};
+}  // namespace
+
+void MasterpieceEditor::toggleRecorder() {
+  if (recorderWindow_ == nullptr) {
+    recorderWindow_ = std::make_unique<RecorderWindow>(proc_);
+    // Beside the main window, at its top right, where it hides the least.
+    const auto b = getScreenBounds();
+    recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
+  }
+  const bool show = !recorderWindow_->isVisible();
+  recorderWindow_->setVisible(show);
+  if (show) recorderWindow_->toFront(true);
+}
+
 void MasterpieceEditor::reloadOrgan() {
   const juce::File odf = proc_.loadedOrganFile();
   if (odf.existsAsFile()) loadOrgan(odf);
@@ -1436,6 +1467,10 @@ void MasterpieceEditor::timerCallback() {
   if (combinations_ != nullptr && combinations_->isVisible()) {
     const bool front = juce::Process::isForegroundProcess();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
+  }
+  if (recorderWindow_ != nullptr && recorderWindow_->isVisible()) {
+    const bool front = juce::Process::isForegroundProcess();
+    if (recorderWindow_->isAlwaysOnTop() != front) recorderWindow_->setAlwaysOnTop(front);
   }
 
   // The swell strip follows a pedal moved over MIDI.

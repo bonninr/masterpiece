@@ -249,6 +249,10 @@ private:
   // every organ, floating beside the console rather than drawn over it.
   juce::TextButton combinationsButton_{"Combinations"};
   std::unique_ptr<CombinationsWindow> combinations_;
+  // The recorder, in a small window of its own above the console (#90): in
+  // a settings dialog it took the console away while it recorded.
+  std::unique_ptr<juce::DocumentWindow> recorderWindow_;
+  void toggleRecorder();
   void toggleCombinations();
   // Temperament, pitch and transposer. Labelled with what is in force, so the
   // panel behind it only has to open to change something.
