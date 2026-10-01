@@ -355,7 +355,10 @@ What to install first, per system:
 
 - **Debian, Ubuntu, Raspberry Pi OS:**
   ```bash
-  sudo apt-get install -y build-essential git cmake ninja-build pkg-config     libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev     libxcomposite-dev libfreetype6-dev libfontconfig1-dev libglu1-mesa-dev     mesa-common-dev libxi-dev libjack-jackd2-dev
+  sudo apt-get install -y build-essential git cmake ninja-build pkg-config \
+    libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+    libxcomposite-dev libfreetype6-dev libfontconfig1-dev libglu1-mesa-dev \
+    mesa-common-dev libxi-dev libjack-jackd2-dev
   ```
 - **macOS:** the Xcode command line tools (`xcode-select --install`), then
   `brew install cmake ninja`.
