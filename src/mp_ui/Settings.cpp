@@ -2099,12 +2099,11 @@ SettingsWindow::~SettingsWindow() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : reverb_(p), metronome_(p), recorder_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), log_(p) {
+    : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.addTab("Room", bg, &reverb_, false);
   tabs_.addTab("Metronome", bg, &metronome_, false);
-  tabs_.addTab("Recorder", bg, &recorder_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
   tabs_.addTab("Mixer", bg, &mixer_, false);
   tabs_.addTab("Voicing", bg, &voicing_, false);
