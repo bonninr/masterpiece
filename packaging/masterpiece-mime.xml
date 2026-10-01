@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Organ definitions and packages, so a file manager offers "Open with
+     Masterpiece" for them (#90). RAR archives already have a type. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-hauptwerk-organ">
+    <comment>Organ definition</comment>
+    <glob pattern="*.Organ_Hauptwerk_xml"/>
+    <glob pattern="*.CustomOrgan_Hauptwerk_xml"/>
+  </mime-type>
+  <mime-type type="application/x-grandorgue-organ">
+    <comment>GrandOrgue organ definition</comment>
+    <glob pattern="*.organ"/>
+  </mime-type>
+  <mime-type type="application/x-grandorgue-package">
+    <comment>GrandOrgue organ package</comment>
+    <glob pattern="*.orgue"/>
+  </mime-type>
+</mime-info>

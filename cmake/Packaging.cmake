@@ -97,6 +97,16 @@ VIAddVersionKey LegalCopyright GPL-3.0-only")
   # inside it split it into a list.
   set(CPACK_NSIS_DELETE_ICONS_EXTRA
       "Delete '$SMPROGRAMS${_bs2}$MUI_TEMP${_bs2}Masterpiece.lnk'")
+  # "Open with Masterpiece" for organ definitions and packages (#90). The
+  # registry commands live in files of their own, included when NSIS compiles
+  # the installer: written inline they would need the quoting described above
+  # several times over.
+  get_filename_component(_mp_ow_in "${_mp_pkg_dir}/openwith-install.nsh" ABSOLUTE)
+  get_filename_component(_mp_ow_un "${_mp_pkg_dir}/openwith-uninstall.nsh" ABSOLUTE)
+  string(REPLACE "/" "${_bs2}" _mp_ow_in "${_mp_ow_in}")
+  string(REPLACE "/" "${_bs2}" _mp_ow_un "${_mp_ow_un}")
+  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "!include '${_mp_ow_in}'")
+  set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "!include '${_mp_ow_un}'")
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   include(GNUInstallDirs)
@@ -107,6 +117,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
           DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
   install(FILES "${_mp_pkg_dir}/masterpiece.png"
           DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+          COMPONENT app)
+  # The organ file types, so a file manager offers to open them here (#90).
+  install(FILES "${_mp_pkg_dir}/masterpiece-mime.xml"
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages RENAME masterpiece.xml
           COMPONENT app)
 
   # The plugins, where this build made them. JUCE lays its artefacts out per

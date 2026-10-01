@@ -351,6 +351,18 @@ Measured on a 44-stop, 17 GB set. Method and full figures:
 Requires a C++20 compiler (MSVC 2022, GCC 12+, or Clang 14+), CMake 3.22+ and
 Ninja. JUCE and pugixml are fetched automatically.
 
+What to install first, per system:
+
+- **Debian, Ubuntu, Raspberry Pi OS:**
+  ```bash
+  sudo apt-get install -y build-essential git cmake ninja-build pkg-config     libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev     libxcomposite-dev libfreetype6-dev libfontconfig1-dev libglu1-mesa-dev     mesa-common-dev libxi-dev libjack-jackd2-dev
+  ```
+- **macOS:** the Xcode command line tools (`xcode-select --install`), then
+  `brew install cmake ninja`.
+- **Windows:** Visual Studio 2022 or its Build Tools, with *Desktop development
+  with C++*, which includes CMake and Ninja. Build from the *x64 Native Tools*
+  prompt.
+
 ```bash
 cmake --preset dev
 cmake --build --preset dev
@@ -416,6 +428,11 @@ xattr -cr /Applications/Masterpiece.app
 
 Launch the app, then **Open** and choose the set's definition, a GrandOrgue
 `.organ` file, or its RAR or `.orgue` package.
+
+An organ can also be opened straight from a file manager: the installer and the
+Linux package offer **Open with Masterpiece** for definitions and packages, and
+`Masterpiece <file>` does the same from a terminal. `Masterpiece --help` lists
+every option.
 
 A few flags help with testing and reporting problems:
 

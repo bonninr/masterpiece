@@ -5,6 +5,8 @@ juce_add_gui_app(MasterpieceApp
   BUNDLE_ID "org.masterpiece.player"
   ICON_BIG "${CMAKE_SOURCE_DIR}/packaging/masterpiece.png"
   ICON_SMALL ""
+  # Finder's "Open With" for organ definitions and packages (#90).
+  DOCUMENT_EXTENSIONS Organ_Hauptwerk_xml CustomOrgan_Hauptwerk_xml organ orgue rar
 )
 
 target_sources(MasterpieceApp PRIVATE Main.cpp)

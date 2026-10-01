@@ -40,6 +40,27 @@ public:
   const juce::String getApplicationVersion() override { return MP_VERSION; }
   bool moreThanOneInstanceAllowed() override { return true; }
 
+  // The first argument that names an organ definition or package that exists.
+  static juce::File organFileIn(const juce::StringArray& args) {
+    for (const auto& a : args) {
+      const auto path = a.unquoted();
+      if (path.startsWithChar('-')) continue;
+      const auto f = juce::File::getCurrentWorkingDirectory().getChildFile(path);
+      const auto ext = f.getFileExtension().toLowerCase();
+      if (f.existsAsFile() && (ext == ".organ_hauptwerk_xml" || ext == ".customorgan_hauptwerk_xml" ||
+                               ext == ".organ" || ext == ".orgue" || ext == ".rar"))
+        return f;
+    }
+    return {};
+  }
+
+  // macOS hands a file chosen in Finder's "Open With" to the running app this
+  // way, and so does a second launch where only one instance runs.
+  void anotherInstanceStarted(const juce::String& commandLine) override {
+    const auto f = organFileIn(juce::StringArray::fromTokens(commandLine, true));
+    if (f != juce::File() && win_ != nullptr) win_->editor().loadOrgan(f, false);
+  }
+
   void initialise(const juce::String& commandLine) override {
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
     // Remember which organ is loaded until a clean exit, so a crash is not
@@ -60,6 +81,44 @@ public:
     const auto args = juce::StringArray::fromTokens(commandLine, true);
     // Say which build this is and stop. The window title carries it too, but
     // a player on a forum needs something they can copy.
+    // What every option above and below does, for a player at a terminal
+    // (#90). Kept beside the parser it describes.
+    if (args.contains("--help") || args.contains("-h") || args.contains("/?")) {
+      std::cout <<
+          "Masterpiece " MP_VERSION " - pipe organ sample player\n"
+          "\n"
+          "Usage: Masterpiece [options] [organ file]\n"
+          "\n"
+          "  <organ file>             an organ definition (.Organ_Hauptwerk_xml, .organ) or\n"
+          "                           package (.rar, .orgue) to open; the same as --odf\n"
+          "  --odf <file>             open this organ\n"
+          "  --gui-only               draw its console without reading any audio\n"
+          "  --console-page <n>       show this console page once the organ is up (from 1)\n"
+          "  --storage <format>       int16, int24 or float32 samples in memory\n"
+          "  --load-mono <on|off>     load samples as mono\n"
+          "  --stream-releases <on|off>  stream release tails from disk\n"
+          "  --preload-head <frames>  minimum head of every sample (0 = whole file)\n"
+          "  --load-rate <Hz>         convert samples to this rate as they load\n"
+          "  --cache <off|single|per-organ>  the sample cache\n"
+          "  --log <file>             write the log to this file\n"
+          "  --log-midi               log every MIDI message and what became of it\n"
+          "  --log-releases           log every key release\n"
+          "  --record-midi <file>     record everything played, saved on quit\n"
+          "  --virtual-midi [name]    publish a MIDI input port of Masterpiece's own\n"
+          "  --play-midi <file>       play a MIDI file through the organ once it is up\n"
+          "  --record-audio <file>    record the output while --play-midi plays\n"
+          "  --draw-stops <all|n|ids> draw these stops for --play-midi\n"
+          "  --registration <name>    draw a registration chosen from the stop names\n"
+          "  --preload-drawn          load only the ranks the drawn stops use\n"
+          "  --draw-only              draw the stops, then hand over the console\n"
+          "  --stay-open              stay open after --play-midi has played\n"
+          "  --version                print the version and quit\n"
+          "  -h, --help               print this and quit\n";
+      std::cout.flush();
+      juce::JUCEApplication::getInstance()->setApplicationReturnValue(0);
+      quit();
+      return;
+    }
     if (args.contains("--version")) {
       std::cout << "Masterpiece " << MP_VERSION << std::endl;
       juce::JUCEApplication::getInstance()->setApplicationReturnValue(0);
@@ -239,6 +298,9 @@ public:
         const auto path = args[++i].unquoted();
         odf = juce::File::getCurrentWorkingDirectory().getChildFile(path);
       }
+    // An organ file on its own, as "Open with Masterpiece" passes it (#90).
+    if (odf == juce::File())
+      odf = organFileIn(args);
 
     // Nothing named on the command line: pick up where the player left off.
     // loadGlobalDefaults is what knows which organ that was, and it answers
