@@ -435,7 +435,8 @@ Launch the app, then **Open** and choose the set's definition, a GrandOrgue
 An organ can also be opened straight from a file manager: the installer and the
 Linux package offer **Open with Masterpiece** for definitions and packages, and
 `Masterpiece <file>` does the same from a terminal. `Masterpiece --help` lists
-every option.
+every option, and [COMMAND-LINE.md](COMMAND-LINE.md) describes each
+of them in detail, with examples.
 
 A few flags help with testing and reporting problems:
 
