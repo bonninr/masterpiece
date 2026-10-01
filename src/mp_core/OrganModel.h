@@ -4,6 +4,8 @@
 // User data (combinations/voicing/MIDI) lives OUTSIDE this model (ValueTree).
 #pragma once
 
+#include <cmath>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -595,9 +597,23 @@ struct Tremulant {
 // on the same wind.
 struct TremulantPipeMod {
   Id tremulantId = 0;
-  double ampDepthDb = 0.0;    // peak amplitude swing
+  // An ADJUSTMENT, in decibels, to the depth of the tremulant's recorded
+  // waveform -- not the depth itself. 0 dB is the waveform's own depth.
+  double ampDepthDb = 0.0;
   double pitchDepthPct = 0.0; // peak pitch swing, in percent of a semitone
 };
+
+// The amplitude a tremulant's recorded waveform swings a pipe by, before a
+// pipe's adjustment. Masterpiece does not play the waveform itself yet, so its
+// natural depth is a constant, calibrated against the GrandOrgue edition of
+// Friesach, whose author set by ear 6% and 8% for the two tremulants the
+// Hauptwerk edition adjusts by -7 and -6 dB (15% x -7 dB = 6.7%, x -6 dB =
+// 7.5%). Reading the adjustment as the swing itself made Friesach's tremulant
+// swing by 55% (#90) and left sets that state no adjustment with none.
+constexpr double kTremulantWaveformAmpDepth = 0.15;
+inline double tremulantAmpSwing(double adjustDb) {
+  return kTremulantWaveformAmpDepth * std::pow(10.0, adjustDb / 20.0);
+}
 
 struct WindCompartment {
   Id compartmentId = 0;

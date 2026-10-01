@@ -1468,7 +1468,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       // The strongest depth any pipe uses is the tremulant's nominal depth,
       // which is what the "enabled but does nothing" check tests against.
       auto& t = outModel.tremulants[mod.tremulantId];
-      t.depthPercent = std::max(t.depthPercent, std::fabs(mod.ampDepthDb));
+      t.depthPercent = std::max(t.depthPercent, 100.0 * tremulantAmpSwing(mod.ampDepthDb));
     });
   }
 
