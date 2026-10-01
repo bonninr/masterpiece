@@ -10,7 +10,12 @@ name: build
 # has to be shaped around a minute allowance; it is still kept from doing
 # obviously wasted work, because a queue is a cost of its own.
 on:
+  # Main only: a branch with a pull request is built for the pull request,
+  # and building it for the push as well doubled every run, its artifacts and
+  # its caches until the account's Actions storage was full. Tags are built by
+  # release.yml.
   push:
+    branches: [main]
     paths-ignore:
       - 'README.md'
       - 'COPYING'
@@ -89,6 +94,9 @@ jobs:
         with:
           key: ${{ matrix.preset }}-${{ matrix.os }}
           max-size: 500M
+          # Saved from main only; pull requests restore main's. Every run
+          # saving its own filled the 10 GB cache allowance in a day.
+          save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Dependencies (Linux)
         if: runner.os == 'Linux' && !matrix.arm
@@ -359,7 +367,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 7
+          retention-days: 3
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
@@ -370,7 +378,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 7
+          retention-days: 3
 
       - uses: actions/upload-artifact@v4
         if: matrix.mac
@@ -381,7 +389,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 7
+          retention-days: 3
 
       - uses: actions/upload-artifact@v4
         if: '!matrix.mac'
@@ -392,4 +400,4 @@ jobs:
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 3
