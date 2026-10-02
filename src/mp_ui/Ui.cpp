@@ -3,6 +3,7 @@
 #include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
+#include "Mobile.h"
 
 namespace mp::ui {
 namespace {
@@ -757,7 +758,8 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   opts.escapeKeyTriggersCloseButton = false;
   opts.useNativeTitleBar = true;
   opts.resizable = false;
-  loadWindow_ = opts.launchAsync();
+  loadWindow_ = launchDialog(opts);
+  if (loadWindow_ != nullptr) loadWindow_->getProperties().set(kStaysOpen, true);
 
   juce::Thread::launch([this, odf, graphicsOnly] {
     const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
@@ -1030,6 +1032,7 @@ public:
     setContentOwned(new RecorderPanel(p), false);
     setResizable(false, false);
     setSize(420, 420);
+    fitToScreen(*this);
   }
   void closeButtonPressed() override { setVisible(false); }
 };
@@ -1040,7 +1043,8 @@ void MasterpieceEditor::toggleRecorder() {
     recorderWindow_ = std::make_unique<RecorderWindow>(proc_);
     // Beside the main window, at its top right, where it hides the least.
     const auto b = getScreenBounds();
-    recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
+    if (!kMobile)
+      recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
   }
   const bool show = !recorderWindow_->isVisible();
   recorderWindow_->setVisible(show);
