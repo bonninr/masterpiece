@@ -102,12 +102,21 @@ std::string field(const pugi::xml_node& row, const char* full, const char* code 
   return e ? trim(e.child_value()) : std::string{};
 }
 
+// A compact definition writes whole numbers in scientific notation: 127 is
+// "1.27e+2" and 30 is "3e+1". Read as an integer that is 1 and 3, which is
+// how Nancy's controls loaded at 1% where they should start full (#53).
 int fieldInt(const pugi::xml_node& row, const char* full, const char* code, int dflt) {
   const std::string v = field(row, full, code);
   if (v.empty()) return dflt;
   char* end = nullptr;
   const long r = std::strtol(v.c_str(), &end, 10);
-  return (end != v.c_str()) ? static_cast<int>(r) : dflt;
+  if (end == v.c_str()) return dflt;
+  if (*end == '.' || *end == 'e' || *end == 'E') {
+    const double d = std::strtod(v.c_str(), nullptr);
+    if (std::isfinite(d) && std::fabs(d) < 2.0e9)
+      return static_cast<int>(std::lround(d));
+  }
+  return static_cast<int>(r);
 }
 
 // A selection ceiling -- the highest velocity, controller value or hold time
@@ -137,6 +146,13 @@ bool fieldBool(const pugi::xml_node& row, const char* full, const char* code, bo
   if (c == 'n' || c == '0' || c == 'f') return false;
   return dflt;
 }
+
+// A compact definition (rows named <o>, fields named by letter) leaves out
+// every field that holds its default, and some of those defaults are not the
+// ones a long-form file would be read with when a field is missing. Each one
+// below was checked against the long form the format's own program writes from
+// the same compact file (Nancy, #53).
+bool isCompact(const pugi::xml_node& row) { return std::string(row.name()) == "o"; }
 
 std::string lower(std::string s) {
   for (auto& c : s)
@@ -551,7 +567,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     attack.ctsHigh = ceilingField(row, "AttackSelCriteria_HighestCtsCtrlValue", "j", 127);
     attack.loadStartType = fieldInt(row, "LoadSampleRange_StartPositionTypeCode", "d", 0);
     attack.loadStartValue = fieldInt(row, "LoadSampleRange_StartPositionValue", "e", 0);
-    attack.loadEndType = fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", 0);
+    attack.loadEndType =
+        fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", isCompact(row) ? 6 : 0);
     attack.loadEndValue = fieldInt(row, "LoadSampleRange_EndPositionValue", "g", 0);
     layerIt->second->attacks.push_back(std::move(attack));
     layerIt->second->loopCrossfadeMs =
@@ -585,15 +602,17 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     release.scaleAmplitude = fieldBool(row, "ScaleAmplitudeAutomatically", "k", true);
     release.preferLinkedAttackId =
         fieldInt(row, "ReleaseSelCriteria_PreferThisRelForAttackID", "s", 0);
-    release.loadStartType = fieldInt(row, "LoadSampleRange_StartPositionTypeCode", "d", 0);
+    release.loadStartType =
+        fieldInt(row, "LoadSampleRange_StartPositionTypeCode", "d", isCompact(row) ? 1 : 0);
     release.loadStartValue = fieldInt(row, "LoadSampleRange_StartPositionValue", "e", 0);
-    release.loadEndType = fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", 0);
+    release.loadEndType =
+        fieldInt(row, "LoadSampleRange_EndPositionTypeCode", "f", isCompact(row) ? 6 : 0);
     release.loadEndValue = fieldInt(row, "LoadSampleRange_EndPositionValue", "g", 0);
     release.holdTimeMsHigh =
         ceilingField(row, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", "q", INT32_MAX);
-    release.releaseCrossfadeMs =
-        fieldDouble(row, "ReleaseCrossfadeLengthMs", "n", release.releaseCrossfadeMs);
-    release.phaseAlign = fieldBool(row, "PhaseAlignAutomatically", "m", false);
+    release.releaseCrossfadeMs = fieldDouble(row, "ReleaseCrossfadeLengthMs", "n",
+                                             isCompact(row) ? 45.0 : release.releaseCrossfadeMs);
+    release.phaseAlign = fieldBool(row, "PhaseAlignAutomatically", "m", isCompact(row));
     layerIt->second->releases.push_back(std::move(release));
   });
 
@@ -714,7 +733,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     KeyboardKeyRef k;
     k.keyboardId = fieldInt(row, "KeyboardID", "a", 0);
     const Id switchId = fieldInt(row, "SwitchID", "b", 0);
-    k.midiNote = fieldInt(row, "NormalMIDINoteNumber", "c", -1);
+    k.midiNote = fieldInt(row, "NormalMIDINoteNumber", "c", isCompact(row) ? 60 : -1);
     if (switchId == 0 || k.keyboardId == 0 || k.midiNote < 0) return;
     outModel.keyboardKeys[switchId] = k;
   });
@@ -771,8 +790,9 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // own first key — every Lemmer edge is written this way. Anchoring it on
     // 0 instead makes the window 0..26 and the whole compass falls outside it,
     // so the keyboard reaches nothing at all.
-    ka.firstSourceNote = fieldInt(row, "MIDINoteNumOfFirstSourceKey", "l", -1);
-    ka.numKeys = fieldInt(row, "NumberOfKeys", "m", 0);
+    ka.firstSourceNote =
+        fieldInt(row, "MIDINoteNumOfFirstSourceKey", "l", isCompact(row) ? 36 : -1);
+    ka.numKeys = fieldInt(row, "NumberOfKeys", "m", isCompact(row) ? 61 : 0);
     if (ka.firstSourceNote < 0) {
       const auto kbIt = outModel.keyboards.find(ka.sourceKeyboard);
       if (kbIt != outModel.keyboards.end() && kbIt->second.numKeys > 0)
@@ -834,7 +854,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     sw.defaultEngaged = fieldBool(row, "DefaultToEngaged", "e", false);
     sw.asgnCode = fieldInt(row, "DefaultInputOutputSwitchAsgnCode", "c", 0);
     sw.rememberState = fieldBool(row, "RememberStateFromLastLoad", "f", false);
-    sw.clickable = fieldBool(row, "Clickable", "i", true);
+    sw.clickable = fieldBool(row, "Clickable", "i", !isCompact(row));
     // [verified against the Nancy ODF] the console binding.
     sw.dispInstanceId = fieldInt(row, "Disp_ImageSetInstanceID", "k", 0);
     sw.dispIndexEngaged = fieldInt(row, "Disp_ImageSetIndexEngaged", "l", 0);
@@ -884,7 +904,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.secondCompartmentId = fieldInt(row, "SecondWindCompartmentID", "b", 0);
     if (l.firstCompartmentId == 0 || l.secondCompartmentId == 0) return;
     l.name = field(row, "Name", "c");
-    l.valveControlTypeCode = fieldInt(row, "ValveControlTypeCode", "d", 0);
+    l.valveControlTypeCode = fieldInt(row, "ValveControlTypeCode", "d", isCompact(row) ? 1 : 0);
     l.valveSwitchId = fieldInt(row, "ValveControllingSwitchID", "e", 0);
     l.valveControlId =
         fieldInt(row, "ValveControllingContinuousControlID", "g", 0);
@@ -908,12 +928,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     st.controlledSwitchId = fieldInt(row, "ControlledSwitchID", "d", 0);
     if (st.controlId == 0 || st.controlledSwitchId == 0) return;
     st.value = fieldInt(row, "ContinuousControlValue", "c", 0);
-    st.engageWhenIncreasing = fieldBool(row, "EngageWhenValueIncreasing", "e", false);
-    st.engageWhenDecreasing = fieldBool(row, "EngageWhenValueDecreasing", "f", false);
+    // A compact row writes these four only when they are N.
+    const bool all = isCompact(row);
+    st.engageWhenIncreasing = fieldBool(row, "EngageWhenValueIncreasing", "e", all);
+    st.engageWhenDecreasing = fieldBool(row, "EngageWhenValueDecreasing", "f", all);
     st.disengageWhenIncreasing =
-        fieldBool(row, "DisengageWhenValueIncreasing", "g", false);
+        fieldBool(row, "DisengageWhenValueIncreasing", "g", all);
     st.disengageWhenDecreasing =
-        fieldBool(row, "DisengageWhenValueDecreasing", "h", false);
+        fieldBool(row, "DisengageWhenValueDecreasing", "h", all);
     if (outModel.switches.count(st.controlledSwitchId) == 0)
       outDiag.danglingIds.push_back(st.controlledSwitchId);
     outModel.controlStageSwitches.push_back(st);
@@ -931,7 +953,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "c", 0);
     l.sourceWhenEngaged = fieldBool(row, "SourceSwitchLinkIfEngaged", "d", true);
     l.conditionWhenEngaged =
-        fieldBool(row, "ConditionSwitchLinkIfEngaged", "e", true);
+        fieldBool(row, "ConditionSwitchLinkIfEngaged", "e", !isCompact(row));
     l.engageAction = fieldInt(row, "EngageLinkActionCode", "f", 1);
     l.disengageAction = fieldInt(row, "DisengageLinkActionCode", "g", 2);
 
@@ -1202,7 +1224,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     d.secondControlId = fieldInt(row, "SecondSourceControl_ID", "f", 0);
     if (d.destControlId == 0 || d.firstControlId == 0 || d.secondControlId == 0)
       return;
-    d.operationCode = fieldInt(row, "BinaryOperationCode", "b", 0);
+    d.operationCode = fieldInt(row, "BinaryOperationCode", "b", isCompact(row) ? 3 : 0);
     d.firstCoefficient = fieldDouble(row, "FirstSourceControl_Coefficient", "e", 1.0);
     d.firstIncrement = fieldDouble(row, "FirstSourceControl_Increment", "d", 0.0);
     d.secondCoefficient = fieldDouble(row, "SecondSourceControl_Coefficient", "h", 1.0);
@@ -1527,9 +1549,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // The clickable sub-rectangle. Note these are NOT the width and height:
     // reading them as such would size a drawstop by its knob and a key by its
     // playable part.
-    set.clickLeftPx = fieldInt(row, "ClickableAreaLeftRelativeXPosPixels", "f", -1);
+    set.clickLeftPx =
+        fieldInt(row, "ClickableAreaLeftRelativeXPosPixels", "f", isCompact(row) ? 0 : -1);
     set.clickRightPx = fieldInt(row, "ClickableAreaRightRelativeXPosPixels", "g", -1);
-    set.clickTopPx = fieldInt(row, "ClickableAreaTopRelativeYPosPixels", "h", -1);
+    set.clickTopPx =
+        fieldInt(row, "ClickableAreaTopRelativeYPosPixels", "h", isCompact(row) ? 0 : -1);
     set.clickBottomPx =
         fieldInt(row, "ClickableAreaBottomRelativeYPosPixels", "i", -1);
     // Unstated left/top with a stated right/bottom means the area starts at
@@ -1730,12 +1754,30 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     Combination c;
     c.combinationId = fieldInt(row, "CombinationID", "a", 0);
     c.name = field(row, "Name", "b");
-    // Two things at once: 1-7 name a kind, 1xx/2xx/... name a specific piston.
-    // Lemmer's ten generals are 101..110 and its general cancel is 100.
-    c.type = fieldInt(row, "CombinationTypeCode", "c", 0);
-    c.activatingSwitchId = fieldInt(row, "ActivatingSwitchID", "d", 0);
-    c.canEngage = fieldBool(row, "CanEngageControlledSwitches", "e", true);
-    c.canDisengage = fieldBool(row, "CanDisengageControlledSwitches", "f", true);
+    // Two things at once: 1-7 name a kind, 1xx/2xx/... name a specific piston
+    // (the piston switches' own assignment codes: a general cancel is 100).
+    //
+    // A compact row letters these differently from the long form's order: c is
+    // the activating switch, f AllowsCapture and g the type, as the format's
+    // own program shows when it rewrites one in full (Nancy, #53). Read in the
+    // long order, c gave the switch number as the type, and the piston was only
+    // found when that switch's assignment code happened to equal its number
+    // (Lemmer's do); Nancy's crescendo steps were wired to nothing. Some
+    // compact files write no type at all (Hajos): for those the switch number
+    // stays the type, which is how they were read before and how their pistons
+    // and cancels were found.
+    const bool compact = isCompact(row);
+    if (compact) {
+      c.activatingSwitchId = fieldInt(row, "ActivatingSwitchID", "c", 0);
+      c.type = fieldInt(row, "CombinationTypeCode", "g", c.activatingSwitchId);
+      c.canEngage = fieldBool(row, "CanEngageControlledSwitches", "d", true);
+      c.canDisengage = fieldBool(row, "CanDisengageControlledSwitches", "e", true);
+    } else {
+      c.type = fieldInt(row, "CombinationTypeCode", "c", 0);
+      c.activatingSwitchId = fieldInt(row, "ActivatingSwitchID", "d", 0);
+      c.canEngage = fieldBool(row, "CanEngageControlledSwitches", "e", true);
+      c.canDisengage = fieldBool(row, "CanDisengageControlledSwitches", "f", true);
+    }
     // A cancel takes its behaviour from its TYPE, not from these flags.
     //
     // The flags are worth distrusting here. Lemmer sets exactly one of them to
@@ -1751,7 +1793,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     }
     // AllowsCapture also carries a kind code (1 template, 2 general, ...) as
     // well as Y/N, so anything that is not an explicit N allows capture.
-    c.allowsCapture = field(row, "AllowsCapture", "g") != "N";
+    c.allowsCapture = field(row, "AllowsCapture", compact ? "f" : "g") != "N";
     if (c.combinationId != 0) outModel.combinations[c.combinationId] = std::move(c);
   });
 
