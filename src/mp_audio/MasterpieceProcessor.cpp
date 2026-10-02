@@ -3353,9 +3353,10 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Timed on every way out too: how long this block took against the time
   // the audio it makes lasts (#120).
   struct Timed {
+    Timed(MasterpieceProcessor& owner, double seconds) : p(owner), budget(seconds) {}
     MasterpieceProcessor& p;
     const juce::int64 start = juce::Time::getHighResolutionTicks();
-    double budget;
+    const double budget;
     ~Timed() {
       if (budget <= 0.0) return;
       const double took = juce::Time::highResolutionTicksToSeconds(
@@ -3368,7 +3369,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
              !p.worstBlockPermille_.compare_exchange_weak(worst, permille,
                                                           std::memory_order_relaxed)) {}
     }
-  } timed{*this, getSampleRate() > 0.0 ? buffer.getNumSamples() / getSampleRate() : 0.0};
+  } timed(*this, getSampleRate() > 0.0 ? buffer.getNumSamples() / getSampleRate() : 0.0);
   // An organ is being loaded: the engine is being rebuilt under us. Silence,
   // and the notes that arrive meanwhile are dropped -- the organ they were
   // played on is the one being replaced.
