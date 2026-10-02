@@ -233,6 +233,8 @@ private:
   void showDefaultConsole();
   juce::ComboBox output_;
   juce::ToggleButton feedback_{"Send stop changes back to the console"};
+  juce::ToggleButton cancelResets_{
+      "General Cancel also puts the keyboards back on their own manuals"};
   juce::TextButton saveMap_{"Save mapping"};
   juce::TextButton clearMap_{"Clear mapping"};
   // The sequencer pistons have nothing on the console to right-click, because
@@ -246,6 +248,7 @@ private:
   // Console actions a real console's thumb pistons would do. A player whose
   // hands are on the keys cannot reach for a mouse to turn a page.
   juce::Label consoleHeading_;
+  juce::Label keyboardsHeading_;
   juce::TextButton learnPageNext_{"Learn page +"};
   juce::TextButton learnPagePrev_{"Learn page -"};
   juce::TextButton learnLayout_{"Learn console size"};

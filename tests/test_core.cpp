@@ -1672,6 +1672,50 @@ public:
     MP_CHECK(proc.voiceStats().activeVoices == 1,
              "a device's All Notes Off leaves the other manual sounding too");
 
+    // #90: one spare tab steps a keyboard through manuals. A Johannus tab
+    // sends one message going on and another going off, and each is a press.
+    // General Cancel puts the keyboard back where it started.
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+    mp::MidiBinding tab;
+    tab.source.kind = mp::MidiSourceKind::Note;
+    tab.source.channel = 16;
+    tab.source.number = 70;
+    tab.targetKind = mp::MidiTargetKind::RouteKeyboard;
+    tab.trigger = mp::MidiTrigger::Toggle;
+    tab.latching = true;
+    tab.targetId = mp::routeKeyboardTarget(701, 1);
+    proc.midiMap().bind(tab);
+    tab.targetId = mp::routeKeyboardTarget(702, 1);
+    proc.midiMap().bind(tab);
+    MP_CHECK(proc.midiMap().bindingsFor(mp::MidiTargetKind::RouteKeyboard, mp::routeKeyboardTarget(701, 1)).size() == 1 &&
+                 proc.midiMap().bindingsFor(mp::MidiTargetKind::RouteKeyboard, mp::routeKeyboardTarget(702, 1)).size() == 1,
+             "the same tab is kept for both manuals");
+    juce::MidiBuffer tabOn, tabOff;
+    tabOn.addEvent(juce::MidiMessage::noteOn(16, 70, 0.8f), 0);
+    tabOff.addEvent(juce::MidiMessage::noteOff(16, 70), 0);
+    block(tabOn);
+    MP_CHECK(proc.keyboardForChannel(1) == 702, "the tab going on moves keyboard 1 to manual II");
+    block(tabOff);
+    MP_CHECK(proc.keyboardForChannel(1) == 701, "and going off moves it on again, back to manual I");
+    block(tabOn);
+    MP_CHECK(proc.keyboardForChannel(1) == 702, "round again");
+    // The switch is the player's, saved with the program's settings: kept
+    // as it was found.
+    const juce::File global = proc.globalSettingsFile();
+    const bool hadGlobal = global.existsAsFile();
+    const juce::String keptGlobal = hadGlobal ? global.loadFileAsString() : juce::String();
+    proc.setCancelResetsKeyboards(false);
+    proc.pressGeneralCancel();
+    MP_CHECK(proc.keyboardForChannel(1) == 702,
+             "by default General Cancel leaves the keyboard where the tab put it");
+    proc.setCancelResetsKeyboards(true);
+    proc.pressGeneralCancel();
+    MP_CHECK(proc.keyboardForChannel(1) == 701,
+             "with the switch on, General Cancel puts it back on manual I");
+    if (hadGlobal) global.replaceWithText(keptGlobal);
+    else global.deleteFile();
+
     proc.releaseResources();
     settings.deleteFile();
     root.deleteRecursively();

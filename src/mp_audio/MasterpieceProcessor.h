@@ -444,6 +444,9 @@ public:
     keyPick_.store(true, std::memory_order_release);
   }
   void cancelKeyPick() { keyPick_.store(false, std::memory_order_release); }
+  // The player has set which keyboard plays what, by hand: that is where the
+  // keyboards start from now, and where General Cancel puts them back.
+  void keepRouting() { pistonRouted_.store(false); }
   bool keyPicking() const { return keyPick_.load(std::memory_order_acquire); }
   // The channel of the key that answered, or 0 while none has.
   int pickedChannel() const { return pickedChannel_.load(std::memory_order_acquire); }
@@ -605,6 +608,14 @@ public:
   // global defaults because it belongs to the program, not to any one organ.
   juce::File lastOrgan() const;
   bool reopenLastOrgan() const { return reopenLastOrgan_; }
+  // Whether General Cancel also puts every keyboard back on the manual it
+  // started on, after pistons moved it (#90). Off by default, as in Hauptwerk
+  // and GrandOrgue, whose General Cancel leaves the master couplers alone.
+  bool cancelResetsKeyboards() const { return cancelResetsKeyboards_.load(); }
+  void setCancelResetsKeyboards(bool on) {
+    cancelResetsKeyboards_.store(on);
+    writeGlobalFile();
+  }
   // Keep portable speakers from going to sleep (#55). A battery speaker on a
   // 3.5 mm cable switches its amplifier off after a few seconds of silence and
   // takes a second or two to wake on the next note, swallowing it. With this
@@ -1433,6 +1444,13 @@ private:
   int noteChannel_ = 0;
   std::atomic<bool> keyPick_{false};
   std::atomic<int> pickedChannel_{0};
+  // Keyboards moved by pistons, and where they were before (#90).
+  std::atomic<bool> pistonRouted_{false};
+  std::atomic<bool> cancelResetsKeyboards_{false};
+  std::vector<MidiMap::KeyboardBinding> routingBeforePistons_;
+  std::vector<Id> routeScratch_;
+  void routeFromControl(const MidiAction& action);
+  void restoreRouting();
   // Where each held key switch came from, as (channel, device): a key can be
   // a switch with no note sounding, on an organ played through its pallets.
   std::unordered_map<int, std::pair<int, int>> heldKeySwitchOrigin_;

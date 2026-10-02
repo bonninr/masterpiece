@@ -92,6 +92,7 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     const auto mine = bl->rows();
     const int row = selected();
     if (row < 0 || row >= static_cast<int>(mine.size())) return;
+    proc_.keepRouting();
     proc_.midiMap().removeKeyboardBindingsFor(keyboardId_);
     for (int i = 0; i < static_cast<int>(mine.size()); ++i)
       if (i != row) proc_.midiMap().addKeyboardBinding(mine[static_cast<size_t>(i)]);
@@ -198,6 +199,7 @@ void ManualDialog::addBinding() {
     b.lowKey = it->second.firstMidiNote;
     b.highKey = it->second.firstMidiNote + it->second.numKeys - 1;
   }
+  proc_.keepRouting();
   proc_.midiMap().addKeyboardBinding(b);
   proc_.saveMidiMap();
   list_.updateContent();
@@ -224,6 +226,7 @@ void ManualDialog::applyEdits() {
   b.shortOctave = shortOctave_.getToggleState();
   b.debounceMs = static_cast<int>(debounce_.getValue());
 
+  proc_.keepRouting();
   proc_.midiMap().removeKeyboardBindingsFor(keyboardId_);
   for (const auto& x : mine) proc_.midiMap().addKeyboardBinding(x);
   proc_.saveMidiMap();
@@ -343,6 +346,10 @@ public:
     cancel_.onClick = [this] { stop(); };
     addAndMakeVisible(remove_);
     remove_.onClick = [this] { removeAll(); };
+    // A spare drawstop or tab sends one message going on and another going
+    // off, and the player means each of them as a press (#90, Johannus).
+    addAndMakeVisible(tab_);
+    tab_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffdfe6f0));
 
     addAndMakeVisible(prompt_);
     prompt_.setColour(juce::Label::textColourId, juce::Colours::orange);
@@ -356,7 +363,10 @@ public:
                       ", so a console with fewer keyboards than the organ has manuals "
                       "can reach all of them. Pressing it lets go of any notes held on "
                       "that keyboard first. Add one for each keyboard that should be able "
-                      "to play this manual. Saved with this organ.",
+                      "to play this manual.\n\nThe same button added on several manuals steps "
+                      "the keyboard through them, one press at a time. Settings, MIDI can make "
+                      "General Cancel put every keyboard back where it started. Saved with "
+                      "this organ.",
                   juce::dontSendNotification);
     refresh();
     startTimerHz(10);
@@ -374,10 +384,12 @@ public:
     buttons.removeFromLeft(8);
     cancel_.setBounds(buttons.removeFromLeft(90));
     remove_.setBounds(buttons.removeFromRight(160));
-    r.removeFromTop(8);
+    r.removeFromTop(6);
+    tab_.setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(4);
     prompt_.setBounds(r.removeFromTop(kRow));
     r.removeFromTop(8);
-    note_.setBounds(r.removeFromBottom(70));
+    note_.setBounds(r.removeFromBottom(110));
     list_.setBounds(r);
   }
 
@@ -412,8 +424,10 @@ private:
       if (channel_ <= 0) {
         step_ = Step::Idle;
       } else {
-        proc_.midiMap().beginLearn(MidiTargetKind::RouteKeyboard,
-                                   routeKeyboardTarget(keyboardId_, channel_), false);
+        proc_.midiMap().beginLearnAs(MidiTargetKind::RouteKeyboard,
+                                     routeKeyboardTarget(keyboardId_, channel_),
+                                     tab_.getToggleState() ? MidiTrigger::Toggle
+                                                           : MidiTrigger::Momentary);
         step_ = Step::Piston;
       }
       refresh();
@@ -455,6 +469,7 @@ private:
   int channel_ = 0;
   juce::Label title_, list_, prompt_, note_;
   juce::TextButton add_{"Add a piston..."}, cancel_{"Cancel"}, remove_{"Remove all pistons"};
+  juce::ToggleButton tab_{"It is a drawstop or tab: going on and going off both count"};
 };
 
 // GrandOrgue's shape: one window per manual, a tab per kind of thing.

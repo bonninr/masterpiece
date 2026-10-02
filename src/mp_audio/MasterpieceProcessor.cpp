@@ -653,17 +653,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::Setter:
           setCaptureMode(action.engage);
           continue;
-        case MidiTargetKind::RouteKeyboard: {
-          // The keyboard on that channel now plays this manual. Whatever it
-          // was holding lets go first, or those pipes would sound on forever.
-          const int channel = routedChannel(action.targetId);
-          const Id manual = routedKeyboard(action.targetId);
-          if (channel >= 1 && channel <= 16 && manual != 0) {
-            releaseChannel(channel, MidiDeviceMap::kAnyDevice);
-            setKeyboardForChannel(channel, manual, 0, true);
-          }
+        case MidiTargetKind::RouteKeyboard:
+          routeFromControl(action);
           continue;
-        }
         // The console belongs to the editor, and this is the audio thread, so
         // the action is left in a slot for the editor to collect. One slot is
         // enough: these are thumb pistons, pressed at human speed, and
@@ -1438,6 +1430,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
+  if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1508,6 +1501,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
+    } else if (key == "cancelresetskeyboards") {
+      cancelResetsKeyboards_.store(val.getIntValue() != 0);
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -1789,6 +1784,14 @@ bool MasterpieceProcessor::saveMidiMap() const {
   f.getParentDirectory().createDirectory();
   MidiMap organ;
   organ.fromText(all);
+  // Keyboards moved by a piston are saved where they were before it.
+  if (pistonRouted_.load()) {
+    const AudioLock lock(const_cast<MasterpieceProcessor&>(*this));
+    if (pistonRouted_.load()) {
+      organ.clearKeyboardBindings();
+      for (const auto& b : routingBeforePistons_) organ.addKeyboardBinding(b);
+    }
+  }
   organ.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
   return f.replaceWithText(juce::String(organ.toText()));
 }
@@ -2764,9 +2767,67 @@ void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
   player_.lightDivisional(divisionId, n);
 }
 
-// A cancel has nothing to store, so the setter does not change it.
+void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
+  // Every keyboard and manual this control was learned for. One manual is a
+  // piston that brings it to the keyboard; several on one keyboard are a
+  // control that steps the keyboard through them, in the organ's own order
+  // (#90). Several keyboards can move at once, from one button.
+  routeScratch_.clear();
+  routeScratch_.push_back(action.targetId);
+  if (action.alsoDrives != nullptr)
+    for (const auto& b : *action.alsoDrives) routeScratch_.push_back(b.targetId);
+  const auto& order = couplers_.inputKeyboards();
+  const auto rank = [&order](Id target) {
+    const auto it = std::find(order.begin(), order.end(), routedKeyboard(target));
+    return static_cast<int>(it - order.begin());
+  };
+  std::sort(routeScratch_.begin(), routeScratch_.end(), [&rank](Id a, Id b) {
+    if (routedChannel(a) != routedChannel(b)) return routedChannel(a) < routedChannel(b);
+    return rank(a) < rank(b);
+  });
+  for (size_t i = 0; i < routeScratch_.size();) {
+    const int channel = routedChannel(routeScratch_[i]);
+    size_t end = i;
+    while (end < routeScratch_.size() && routedChannel(routeScratch_[end]) == channel) ++end;
+    if (channel >= 1 && channel <= 16) {
+      const Id now = keyboardForChannel(channel, MidiDeviceMap::kAnyDevice);
+      Id next = routedKeyboard(routeScratch_[i]);
+      for (size_t k = i; k < end; ++k)
+        if (routedKeyboard(routeScratch_[k]) == now) {
+          next = routedKeyboard(routeScratch_[k + 1 < end ? k + 1 : i]);
+          break;
+        }
+      if (next != 0 && next != now) {
+        // Where the keyboards were before any of this, for General Cancel
+        // and for saving: a piston moves a keyboard for the piece, and the
+        // next load starts from the player's own setup.
+        if (!pistonRouted_.exchange(true)) routingBeforePistons_ = midiMap_.keyboardBindings();
+        // Whatever the keyboard was holding lets go first, or those pipes
+        // would sound on forever.
+        releaseChannel(channel, MidiDeviceMap::kAnyDevice);
+        setKeyboardForChannel(channel, next, 0, true);
+      }
+    }
+    i = end;
+  }
+}
+
+void MasterpieceProcessor::restoreRouting() {
+  if (!pistonRouted_.exchange(false)) return;
+  Id before[17] = {};
+  for (int ch = 1; ch <= 16; ++ch) before[ch] = keyboardForChannel(ch, MidiDeviceMap::kAnyDevice);
+  midiMap_.clearKeyboardBindings();
+  for (const auto& b : routingBeforePistons_) midiMap_.addKeyboardBinding(b);
+  for (int ch = 1; ch <= 16; ++ch)
+    if (keyboardForChannel(ch, MidiDeviceMap::kAnyDevice) != before[ch])
+      releaseChannel(ch, MidiDeviceMap::kAnyDevice);
+}
+
+// A cancel has nothing to store, so the setter does not change it. When the
+// player has asked for it, it puts every keyboard back where it started (#90).
 void MasterpieceProcessor::pressGeneralCancel() {
   const AudioLock audio(*this);
+  if (cancelResetsKeyboards_.load()) restoreRouting();
   playerScratch_.clear();
   player_.generalCancel(playerScratch_);
   applyPlayerChanges();
@@ -2892,6 +2953,10 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
     combinationsDirty_.store(true, std::memory_order_release);
     return;
   }
+  // The organ's own General Cancel (type 100) does the same, when asked.
+  if (const auto c = model_.combinations.find(comboId);
+      c != model_.combinations.end() && c->second.type == 100)
+    if (cancelResetsKeyboards_.load()) restoreRouting();
   recallScratch_.clear();
   combinations_.recall(comboId, recallScratch_);
   for (const auto& change : recallScratch_)
