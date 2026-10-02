@@ -931,11 +931,10 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
 
 void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
   // Right-click a drawstop to map it. One message that flips it is what most
-  // consoles send, but plenty send a separate message to draw and to cancel,
-  // and a piston is held rather than latched — so the behaviour is offered
-  // rather than assumed. The list is GrandOrgue's, which documents these
-  // properly; Hauptwerk detects most of it for you and publishes no
-  // equivalent set to copy.
+  // consoles send, and a piston is held rather than latched, which the organ
+  // itself says -- so Learn follows the organ. Plenty of consoles send a
+  // separate message to draw and to cancel, so every way stays on offer. The
+  // list is GrandOrgue's, which documents these properly.
   auto& map = proc_.midiMap();
   juce::PopupMenu menu;
 
@@ -958,18 +957,29 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
     }
   }
   menu.addSeparator();
-  menu.addItem(1, "Learn: toggle");
-  menu.addItem(2, "Learn: held while pressed");
-  menu.addItem(3, "Learn: draws it only");
-  menu.addItem(4, "Learn: cancels it only");
+  // The organ says whether this switch latches (a drawstop, a coupler) or is
+  // held (a piston, a Set button), so the plain Learn follows it; the four
+  // ways remain for a console that sends something else (#53).
+  const auto sw = proc_.organModel().switches.find(switchId);
+  const bool latching = sw == proc_.organModel().switches.end() || sw->second.latching;
+  menu.addItem(6, latching ? "Learn" : "Learn (held while pressed)");
+  juce::PopupMenu other;
+  other.addItem(1, "Toggle: each press draws or cancels");
+  other.addItem(2, "Held while pressed");
+  other.addItem(3, "Draws it only");
+  other.addItem(4, "Cancels it only");
+  menu.addSubMenu("Learn another way", other);
   menu.addSeparator();
   menu.addItem(5, "Clear mapping", !existing.empty());
 
+  // Not attached to this view: a popup takes its target component's scale,
+  // and the console is drawn scaled down to fit, so the menu came out smaller
+  // than every other one (#53).
   menu.showMenuAsync(
-      juce::PopupMenu::Options().withTargetComponent(this).withTargetScreenArea(
-          localAreaToGlobal(bounds)),
-      [this, switchId, bounds](int choice) {
+      juce::PopupMenu::Options().withTargetScreenArea(localAreaToGlobal(bounds)),
+      [this, switchId, bounds, latching](int choice) {
         auto& m = proc_.midiMap();
+        if (choice == 6) choice = latching ? 1 : 2;
         switch (choice) {
           case 1:
             m.beginLearnAs(MidiTargetKind::Switch, switchId, MidiTrigger::Toggle);
