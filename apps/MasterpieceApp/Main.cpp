@@ -288,6 +288,7 @@ public:
 #endif
 
     mp::ui::installTouchLook();
+    mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
     // A phone or tablet plays full screen, with the system's bars hidden
@@ -314,6 +315,7 @@ public:
     // the last session ended cleanly.
     proc_->loadGlobalDefaults();
     const juce::File crashed = proc_->crashedOrgan();
+    proc_->forgetCrash();
     bool skippedReopen = false;
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
       odf = proc_->lastOrgan();
@@ -779,6 +781,17 @@ public:
   }
 
   void systemRequestedQuit() override { quit(); }
+
+  // A phone or tablet ends a backgrounded app whenever it wants its memory,
+  // without calling shutdown(): to the crash guard that looked like a crash,
+  // and the organ was not reopened. In the background the session counts as
+  // ended cleanly; in front again, as running.
+  void suspended() override {
+    if (mp::ui::kMobile && proc_) proc_->clearRunningOrgan();
+  }
+  void resumed() override {
+    if (mp::ui::kMobile && proc_) proc_->markRunningOrgan();
+  }
 
   // Android's back button closes the panel in front, as Escape does on a
   // desktop. With none open, the system's own back applies.
