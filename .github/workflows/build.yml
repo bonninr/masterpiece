@@ -425,3 +425,37 @@ jobs:
           echo "$APP"
           lipo -info "$APP/Masterpiece"
           plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
+          echo "APP=$APP" >> "$GITHUB_ENV"
+
+      # Run it: an iPad simulator, the app installed and launched, and what
+      # the screen shows saved as pictures. Nobody here has a Mac to look
+      # with, so this is how the iOS build is seen at all.
+      - name: Launch in the simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j |
+            python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if 'iPad' in x['name']))")
+          echo "simulator: $DEVICE"
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          # Dark, as the app itself is; the console sets its own orientation.
+          xcrun simctl ui "$DEVICE" appearance dark || true
+          xcrun simctl install "$DEVICE" "$APP"
+          BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
+          mkdir -p ios-shots
+          xcrun simctl launch "$DEVICE" "$BUNDLE" | tee ios-shots/launch.txt
+          for t in 5 15 30; do
+            sleep $([ $t = 5 ] && echo 5 || echo 10)
+            xcrun simctl io "$DEVICE" screenshot "ios-shots/after-${t}s.png"
+          done
+          # Still running, or did it crash?
+          xcrun simctl spawn "$DEVICE" launchctl list | grep -i "$BUNDLE" | tee ios-shots/running.txt || echo "NOT RUNNING" | tee ios-shots/running.txt
+          xcrun simctl spawn "$DEVICE" log show --last 2m --predicate "process == 'Masterpiece'" --style compact > ios-shots/log.txt 2>&1 || true
+          find ~/Library/Logs/DiagnosticReports -name "Masterpiece*" -newer "$APP" -exec cp {} ios-shots/ \; 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-screenshots
+          path: ios-shots/
+          if-no-files-found: warn
+          retention-days: 3
