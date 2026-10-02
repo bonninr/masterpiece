@@ -9088,6 +9088,8 @@ public:
       progress.resetBudget(0);
       const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
                                       mp::LoopSelection::Longest, &progress);
+      // Written once the organ is live, in the background.
+      lib.finishCacheWrite(false);
       MP_CHECK(report.loaded == 8 && cacheFiles() == 1, "a whole load still writes it");
     }
     root.deleteRecursively();

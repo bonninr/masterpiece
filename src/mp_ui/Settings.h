@@ -41,6 +41,9 @@ class EnginePanel : public juce::Component, private juce::Timer {
 public:
   explicit EnginePanel(MasterpieceProcessor& p);
   ~EnginePanel() override;
+  // Loads the organ again with what this panel now says. Given by a window
+  // that can do that; without it, no button is offered.
+  std::function<void()> onReload;
   void resized() override;
   void paint(juce::Graphics& g) override;
 
@@ -79,6 +82,11 @@ private:
   // onChange handlers do not bounce the profile straight back to Custom.
   bool applyingProfile_ = false;
 
+  // A loading setting changed since the panel opened: none of them reach the
+  // organ already loaded, and nothing said so (#120: streaming switched off,
+  // and the glitches went on until Masterpiece was restarted).
+  bool loadingChanged() const;
+  juce::TextButton reload_{"Load the organ again to apply"};
   juce::TextButton revert_{"Revert changes"};
   juce::TextButton keep_{"Keep changes"};
   juce::TextButton saveOrgan_{"Save for this organ"};

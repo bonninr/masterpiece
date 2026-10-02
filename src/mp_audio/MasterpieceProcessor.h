@@ -952,6 +952,7 @@ public:
   SampleLibrary::CacheMode cacheMode() const { return samples_.cacheMode(); }
   int64_t cacheBytesRead() const { return samples_.cacheBytesRead(); }
   int64_t cacheBytesWritten() const { return samples_.cacheBytesWritten(); }
+  bool cacheWriting() const { return samples_.cacheWriting(); }
 
   // Convert sample data to this rate while loading; 0 keeps each file's own.
   // A 96 kHz set on a 48 kHz device is otherwise held at twice the size and
