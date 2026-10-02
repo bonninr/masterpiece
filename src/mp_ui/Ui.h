@@ -295,6 +295,10 @@ private:
   juce::Viewport jambView_;
   std::unique_ptr<juce::FileChooser> chooser_;
   juce::String status_;
+  // Late audio blocks already written to the log, when, and the slowest since.
+  int64_t lateBlocksLogged_ = 0;
+  juce::uint32 lateLoggedAt_ = 0;
+  double worstBlockSinceLog_ = 0.0;
 };
 
 } // namespace mp::ui

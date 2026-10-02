@@ -141,6 +141,11 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   if (threads <= 0) {
     const int cores = static_cast<int>(std::thread::hardware_concurrency());
     threads = cores > 2 ? cores - 1 : 1;
+    // But not every core of a big machine: a block is shared out only above
+    // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
+    // Pro (#120) wait for over 700 voices before helping, and every worker
+    // woken is one more the audio thread waits on. Eight carry any console.
+    threads = std::min(threads, 8);
   }
   voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
   // Worst case one pipe per rank sounding on a single key.
@@ -2379,6 +2384,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
 }
 
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
+  const AudioLock audio(*this);
   if (!applyingPistons_) player_.registrationMoved();
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
@@ -2499,6 +2505,7 @@ std::vector<Id> MasterpieceProcessor::samplesOfStop(Id stopId) const {
 
 bool MasterpieceProcessor::setTemperament(const std::string& choice,
                                           std::string* error, bool remember) {
+  const AudioLock audio(*this);
   const Temperament* t = nullptr;
   std::string why;
   if (choice.rfind("scala:", 0) == 0) {
@@ -2602,6 +2609,14 @@ bool MasterpieceProcessor::resetControlPedalRange(Id controlId) {
   return true;
 }
 
+MasterpieceProcessor::AudioLoad MasterpieceProcessor::takeAudioLoad() {
+  AudioLoad load;
+  load.blocks = audioBlocks_.load(std::memory_order_relaxed);
+  load.late = lateBlocks_.load(std::memory_order_relaxed);
+  load.worstPercent = worstBlockPermille_.exchange(0, std::memory_order_relaxed) / 10.0;
+  return load;
+}
+
 std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
   std::vector<VoiceEngine::ReleaseEvent> events;
   const int64_t dropped = voices_.takeReleaseEvents(events);
@@ -2657,6 +2672,7 @@ std::string MasterpieceProcessor::temperamentName() const {
 }
 
 void MasterpieceProcessor::stepTemperament(int direction) {
+  const AudioLock audio(*this);
   // The organ's own first, then the library, and round again: a thumb
   // piston cycling temperaments has no end to stop at.
   std::vector<std::string> order{""};
@@ -2669,6 +2685,7 @@ void MasterpieceProcessor::stepTemperament(int direction) {
 }
 
 void MasterpieceProcessor::setMasterPitchHz(double hz) {
+  const AudioLock audio(*this);
   // Beyond a fourth either way the samples are being stretched further than
   // any organ's pitch has ever differed from another's.
   if (hz > 0.0) hz = juce::jlimit(nativePitchHz() * 0.75, nativePitchHz() * 1.34, hz);
@@ -2682,6 +2699,7 @@ double MasterpieceProcessor::masterPitchHz() const {
 }
 
 void MasterpieceProcessor::setTranspose(int semitones) {
+  const AudioLock audio(*this);
   transpose_.store(juce::jlimit(-12, 12, semitones), std::memory_order_relaxed);
   markSettingsDirty();
 }
@@ -2705,6 +2723,7 @@ void MasterpieceProcessor::applyPlayerChanges() {
 }
 
 void MasterpieceProcessor::pressGeneral(int n) {
+  const AudioLock audio(*this);
   const auto read = [this](const PlayerCombinations::Element& e) {
     return playerElementEngaged(e);
   };
@@ -2721,6 +2740,7 @@ void MasterpieceProcessor::pressGeneral(int n) {
 }
 
 void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
+  const AudioLock audio(*this);
   const auto read = [this](const PlayerCombinations::Element& e) {
     return playerElementEngaged(e);
   };
@@ -2738,6 +2758,7 @@ void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
 
 // A cancel has nothing to store, so the setter does not change it.
 void MasterpieceProcessor::pressGeneralCancel() {
+  const AudioLock audio(*this);
   playerScratch_.clear();
   player_.generalCancel(playerScratch_);
   applyPlayerChanges();
@@ -2745,6 +2766,7 @@ void MasterpieceProcessor::pressGeneralCancel() {
 }
 
 void MasterpieceProcessor::pressDivisionalCancel(Id divisionId) {
+  const AudioLock audio(*this);
   playerScratch_.clear();
   player_.divisionalCancel(divisionId, playerScratch_);
   applyPlayerChanges();
@@ -2758,6 +2780,7 @@ void MasterpieceProcessor::setPlayerPistonCounts(int generals, int divisionals) 
 }
 
 bool MasterpieceProcessor::stepperNext() {
+  const AudioLock audio(*this);
   const bool capturing = captureMode();
   playerScratch_.clear();
   const bool moved = player_.stepNext(
@@ -2770,6 +2793,7 @@ bool MasterpieceProcessor::stepperNext() {
 }
 
 bool MasterpieceProcessor::stepperPrev() {
+  const AudioLock audio(*this);
   const bool capturing = captureMode();
   playerScratch_.clear();
   const bool moved = player_.stepPrev(
@@ -2794,12 +2818,14 @@ bool MasterpieceProcessor::stepperGoto(int frame) {
 }
 
 bool MasterpieceProcessor::stepperInsertFrame() {
+  const AudioLock audio(*this);
   if (!player_.insertFrame()) return false;
   combinationsDirty_.store(true, std::memory_order_release);
   return true;
 }
 
 bool MasterpieceProcessor::stepperDeleteFrame() {
+  const AudioLock audio(*this);
   if (!player_.deleteFrame()) return false;
   combinationsDirty_.store(true, std::memory_order_release);
   return true;
@@ -2865,6 +2891,7 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
 }
 
 void MasterpieceProcessor::setControlValue(Id controlId, int value) {
+  const AudioLock audio(*this);
   markRememberedStateMoved();
   controls_.setValue(controlId, value);
   controls_.propagate(controlId, &engagedSwitches_);
@@ -2948,6 +2975,7 @@ bool MasterpieceProcessor::firePiston(Id switchId) {
 }
 
 void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
+  const AudioLock audio(*this);
   if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
   if (!applyingPistons_ && registrationSwitches_.count(switchId) != 0)
     player_.registrationMoved();
@@ -3321,6 +3349,26 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     std::atomic<int>& count;
     ~Leave() { count.fetch_sub(1); }
   } leave{inAudioCallback_};
+
+  // Timed on every way out too: how long this block took against the time
+  // the audio it makes lasts (#120).
+  struct Timed {
+    MasterpieceProcessor& p;
+    const juce::int64 start = juce::Time::getHighResolutionTicks();
+    double budget;
+    ~Timed() {
+      if (budget <= 0.0) return;
+      const double took = juce::Time::highResolutionTicksToSeconds(
+          juce::Time::getHighResolutionTicks() - start);
+      const int permille = static_cast<int>(1000.0 * took / budget);
+      p.audioBlocks_.fetch_add(1, std::memory_order_relaxed);
+      if (permille >= 1000) p.lateBlocks_.fetch_add(1, std::memory_order_relaxed);
+      int worst = p.worstBlockPermille_.load(std::memory_order_relaxed);
+      while (permille > worst &&
+             !p.worstBlockPermille_.compare_exchange_weak(worst, permille,
+                                                          std::memory_order_relaxed)) {}
+    }
+  } timed{*this, getSampleRate() > 0.0 ? buffer.getNumSamples() / getSampleRate() : 0.0};
   // An organ is being loaded: the engine is being rebuilt under us. Silence,
   // and the notes that arrive meanwhile are dropped -- the organ they were
   // played on is the one being replaced.
@@ -4363,6 +4411,7 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
 }
 
 int MasterpieceProcessor::engageAllStops() {
+  const AudioLock audio(*this);
   // Through the console, not around it: drawing every stop by hand is what a
   // player does to hear a tutti, and doing it any other way leaves the switch
   // states disagreeing with the stop list.
