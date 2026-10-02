@@ -9732,7 +9732,9 @@ public:
                label + "every file is listed, with its size");
 
       const fs::path out = dir / (solid ? "out-solid" : "out-plain");
-      MP_CHECK(a.unpackSmallFiles(out.string(), error), label + "unpacked: " + error);
+      std::vector<std::string> damaged;
+      MP_CHECK(a.unpackSmallFiles(out.string(), error, damaged) && damaged.empty(),
+               label + "unpacked: " + error);
       auto slurp = [](const fs::path& f) {
         std::ifstream in(f, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), {});
@@ -9754,6 +9756,61 @@ public:
                       error),
                label + "read: " + error);
       MP_CHECK(got == pattern(2, 30000), label + "the second sample arrives intact, past the first");
+    }
+
+    // A damaged archive -- here one cut short, as a download that stopped
+    // part way is: a file it cannot read is a line naming the archive, not
+    // a path that looks like one missing from disk, and unpacking does not
+    // give up on the organ because of it. What came before the damage is
+    // kept.
+    {
+      const std::string whole = rar4(files, false);
+      auto cutIn = [&](size_t i) {
+        // After the file's own header: the test patterns repeat, and one
+        // file's bytes turn up inside another's.
+        return whole.substr(0, whole.find(files[i].second, whole.find(files[i].first)) + 1000);
+      };
+      auto open = [&](const std::string& name, const std::string& bytes, mp::OrganArchive& a) {
+        const fs::path file = dir / name;
+        std::ofstream(file, std::ios::binary) << bytes;
+        std::string error;
+        return a.discover(file.string(), error) && a.inspect(error);
+      };
+
+      // Cut inside the console image: the image is reported, unpacking goes on.
+      mp::OrganArchive a;
+      MP_CHECK(open("cut-image.rar", cutIn(2), a), "damaged: the cut archive opens");
+      std::string error;
+      a.index(error);  // its list stops short; the files before are listed
+      std::vector<std::string> damaged;
+      MP_CHECK(a.unpackSmallFiles((dir / "out-cut").string(), error, damaged),
+               "damaged: unpacking goes on: " + error);
+      MP_CHECK(!damaged.empty() && damaged[0].find("cut-image.rar") != std::string::npos &&
+                   damaged[0].find("console.png") != std::string::npos,
+               "damaged: the bad image is named, with its archive: " +
+                   (damaged.empty() ? std::string("nothing") : damaged[0]));
+
+      // Cut inside the second sample: it is reported with its archive, and
+      // the first arrives.
+      mp::OrganArchive b;
+      MP_CHECK(open("cut-sample.rar", cutIn(1), b), "damaged: the second cut archive opens");
+      b.index(error);
+      std::set<std::string> got;
+      const std::unordered_set<std::string> wanted = {
+          mp::OrganArchive::key("OrganInstallationPackages/000123/pipe1.wav"),
+          mp::OrganArchive::key("OrganInstallationPackages/000123/pipe2.wav")};
+      error.clear();
+      b.read(0, wanted,
+             [&got](const std::string& k, std::vector<char>&&) {
+               got.insert(k);
+               return true;
+             },
+             error);
+      MP_CHECK(error.find("cut-sample.rar") != std::string::npos &&
+                   error.find("pipe2.wav") != std::string::npos,
+               "damaged: the bad sample is reported with its archive: " + error);
+      MP_CHECK(got.count(mp::OrganArchive::key("OrganInstallationPackages/000123/pipe1.wav")) == 1,
+               "damaged: and the sample before it is kept");
     }
     fs::remove_all(dir, ec);
   }
