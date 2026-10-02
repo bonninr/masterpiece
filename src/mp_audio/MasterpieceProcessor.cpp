@@ -4253,6 +4253,43 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const auto knob = stopKnob_.find(stopId);
     if (knob != stopKnob_.end()) unloadedSwitches_.insert(knob->second);
   }
+  // A stop whose ranks ship no pipes (a demo set's locked stops) sounds no
+  // more than one left out. Its own knob is left alone: a set that ships
+  // locked stops draws them greyed in its own artwork, and a veil on top of
+  // that only darkens it. Its copies on other pages get the veil (below).
+  std::unordered_set<Id> silent;
+  for (const auto& e : stopList()) {
+    if (e.playable) continue;
+    const auto it = model_.stops.find(e.stopId);
+    if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
+      silent.insert(playerSwitchFor(it->second.controllingSwitchId));
+    if (const auto knob = stopKnob_.find(e.stopId); knob != stopKnob_.end())
+      silent.insert(knob->second);
+  }
+  // And every copy of those knobs on other pages: a set that draws a stop on
+  // its console and again on a simple jamb links the two both ways, so each
+  // follows the other (#53: Nancy's Simple Jamb showed demo-locked stops
+  // undimmed). Both ways, unconditionally, is what makes a copy; a piston or
+  // a tutti that drives stops one way is not one, and stays as it is.
+  if (!unloadedSwitches_.empty() || !silent.empty()) {
+    std::set<std::pair<Id, Id>> links;
+    for (const auto& l : model_.switchLinkages)
+      if (l.conditionSwitchId == 0 && l.sourceWhenEngaged && l.engageAction == 1 &&
+          l.disengageAction == 2)
+        links.insert({l.sourceSwitchId, l.destSwitchId});
+    std::unordered_set<Id> seen(unloadedSwitches_.begin(), unloadedSwitches_.end());
+    seen.insert(silent.begin(), silent.end());
+    std::vector<Id> todo(seen.begin(), seen.end());
+    while (!todo.empty()) {
+      const Id at = todo.back();
+      todo.pop_back();
+      for (auto it = links.lower_bound({at, 0}); it != links.end() && it->first == at; ++it)
+        if (links.count({it->second, at}) != 0 && seen.insert(it->second).second) {
+          todo.push_back(it->second);
+          if (silent.count(it->second) == 0) unloadedSwitches_.insert(it->second);
+        }
+    }
+  }
   resetPlayerCombinations();
   loadCombinations();
 

@@ -48,6 +48,7 @@ private:
   // carry it: leaving one out takes its whole share of the organ.
   struct PerspectiveRow {
     std::string name;
+    std::vector<Id> ranks;
     std::unique_ptr<juce::ToggleButton> toggle;
     std::unique_ptr<juce::Label> size;
     std::vector<Id> samples;
@@ -57,12 +58,18 @@ private:
   // can say, such as the rear ranks of a few stops, or every "tremmed" copy.
   struct RankRow {
     Id rankId = 0;
+    // The player's own choice for this rank. What its tick shows can differ:
+    // a rank whose perspective is left out, or whose every stop is, does not
+    // load whatever its own choice, and shows so (#53).
+    bool own = true;
+    std::vector<Id> stops;  // the stops that play it
     std::unique_ptr<juce::ToggleButton> toggle;
     std::unique_ptr<juce::Label> size;
     std::vector<Id> samples;
   };
 
   void build();
+  void showRankStates();
   void choose(std::set<Id> excluded);
   // The filter: rows whose name holds the text stay, the rest are hidden.
   bool shown(const juce::String& name) const;
@@ -89,7 +96,8 @@ private:
   juce::TextButton loadShown_{"Load shown ranks"}, leaveShown_{"Leave out shown ranks"};
   std::set<std::string> perspectivesOut() const;
 
-  juce::TextButton all_{"All"}, none_{"None"}, drawn_{"Only those drawn now"};
+  // About stops only: perspectives and ranks keep their own choices (#53).
+  juce::TextButton all_{"All stops"}, none_{"No stops"}, drawn_{"Only the stops drawn now"};
   juce::TextButton reloadNow_{"Load the organ again"};
   juce::Label total_;
   juce::Label note_;

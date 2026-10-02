@@ -103,6 +103,7 @@ void StopsLoadPanel::build() {
     for (const auto& [name, ranks] : groups) {
       PerspectiveRow row;
       row.name = name;
+      row.ranks.assign(ranks.begin(), ranks.end());
       juce::String label(juce::CharPointer_UTF8(name.c_str()));
       label = label.substring(0, 1).toUpperCase() + label.substring(1) + "  (" +
               juce::String(static_cast<int>(ranks.size())) + " ranks)";
@@ -189,8 +190,12 @@ void StopsLoadPanel::build() {
   // Every rank last, by name, each saying which stops play it.
   const auto& model = proc_.organModel();
   std::unordered_map<Id, juce::StringArray> stopsOfRank;
+  std::unordered_map<Id, std::vector<Id>> stopIdsOfRank;
   for (const auto& [stopId, stop] : model.stops)
-    for (const auto& e : stop.ranks) stopsOfRank[e.rankId].addIfNotAlreadyThere(juce::String(stop.name));
+    for (const auto& e : stop.ranks) {
+      stopsOfRank[e.rankId].addIfNotAlreadyThere(juce::String(stop.name));
+      stopIdsOfRank[e.rankId].push_back(stopId);
+    }
   std::vector<std::pair<juce::String, Id>> byName;
   for (const auto& [rankId, rank] : model.ranks)
     byName.push_back({juce::String(juce::CharPointer_UTF8(rank.name.c_str())), rankId});
@@ -208,13 +213,20 @@ void StopsLoadPanel::build() {
   for (const auto& [name, rankId] : byName) {
     RankRow row;
     row.rankId = rankId;
+    row.own = ranksOutNow.count(rankId) == 0;
+    if (const auto it = stopIdsOfRank.find(rankId); it != stopIdsOfRank.end()) row.stops = it->second;
     row.toggle = std::make_unique<juce::ToggleButton>(name.isEmpty() ? "Rank " + juce::String(rankId) : name);
-    row.toggle->setToggleState(ranksOutNow.count(rankId) == 0, juce::dontSendNotification);
+    row.toggle->setToggleState(row.own, juce::dontSendNotification);
     const auto users = stopsOfRank.find(rankId);
-    row.toggle->setTooltip(users == stopsOfRank.end()
-                               ? juce::String("Played by no stop: a noise, or wired to a key directly")
-                               : "Played by " + users->second.joinIntoString(", "));
-    row.toggle->onClick = [this] {
+    const juce::String playedBy =
+        users == stopsOfRank.end()
+            ? juce::String("Played by no stop: a noise, or wired to a key directly")
+            : "Played by " + users->second.joinIntoString(", ");
+    row.toggle->setTooltip(playedBy);
+    row.toggle->getProperties().set("playedBy", playedBy);
+    row.toggle->onClick = [this, rankId] {
+      for (auto& r : ranks_)
+        if (r.rankId == rankId) r.own = r.toggle->getToggleState();
       proc_.setExcludedRanks(ranksOut());
       refreshFigures();
     };
@@ -267,7 +279,7 @@ void StopsLoadPanel::setShownRanks(bool load) {
   std::set<Id> out = ranksOut();
   for (auto& r : ranks_) {
     if (!r.toggle->isVisible()) continue;
-    r.toggle->setToggleState(load, juce::dontSendNotification);
+    r.own = load;
     if (load) out.erase(r.rankId);
     else out.insert(r.rankId);
   }
@@ -278,7 +290,7 @@ void StopsLoadPanel::setShownRanks(bool load) {
 std::set<Id> StopsLoadPanel::ranksOut() const {
   std::set<Id> out;
   for (const auto& r : ranks_)
-    if (!r.toggle->getToggleState()) out.insert(r.rankId);
+    if (!r.own) out.insert(r.rankId);
   return out;
 }
 
@@ -319,7 +331,35 @@ void StopsLoadPanel::startEstimate() {
   });
 }
 
+// What each rank's tick shows: its own choice, unless something above it
+// already leaves it out -- its perspective, or every stop that plays it. Then
+// it is shown unticked and dimmed, saying why, and its own choice waits.
+void StopsLoadPanel::showRankStates() {
+  std::unordered_map<Id, std::string> byPerspective;
+  for (const auto& p : perspectives_)
+    if (!p.toggle->getToggleState())
+      for (Id rankId : p.ranks) byPerspective[rankId] = p.name;
+  std::unordered_set<Id> stopsOut;
+  for (const auto& r : rows_)
+    if (!r.toggle->getToggleState()) stopsOut.insert(r.stopId);
+  for (auto& r : ranks_) {
+    juce::String why;
+    if (const auto it = byPerspective.find(r.rankId); it != byPerspective.end())
+      why = "Left out with the " + juce::String(juce::CharPointer_UTF8(it->second.c_str())) +
+            " perspective";
+    else if (!r.stops.empty() &&
+             std::all_of(r.stops.begin(), r.stops.end(),
+                         [&](Id s) { return stopsOut.count(s) != 0; }))
+      why = r.stops.size() == 1 ? "Left out with its stop" : "Left out with every stop that plays it";
+    const bool covered = why.isNotEmpty();
+    r.toggle->setEnabled(!covered);
+    r.toggle->setToggleState(covered ? false : r.own, juce::dontSendNotification);
+    r.toggle->setTooltip(covered ? why : r.toggle->getProperties()["playedBy"].toString());
+  }
+}
+
 void StopsLoadPanel::refreshFigures() {
+  showRankStates();
   std::set<Id> loaded;  // what the last load left out
   for (const auto& r : rows_)
     if (!proc_.stopLoaded(r.stopId)) loaded.insert(r.stopId);
@@ -383,11 +423,11 @@ void StopsLoadPanel::paint(juce::Graphics& g) { g.fillAll(kBackground); }
 void StopsLoadPanel::resized() {
   auto r = getLocalBounds().reduced(12);
   auto top = r.removeFromTop(28);
-  all_.setBounds(top.removeFromLeft(60).reduced(0, 2));
+  all_.setBounds(top.removeFromLeft(90).reduced(0, 2));
   top.removeFromLeft(6);
-  none_.setBounds(top.removeFromLeft(60).reduced(0, 2));
+  none_.setBounds(top.removeFromLeft(90).reduced(0, 2));
   top.removeFromLeft(6);
-  drawn_.setBounds(top.removeFromLeft(180).reduced(0, 2));
+  drawn_.setBounds(top.removeFromLeft(210).reduced(0, 2));
   r.removeFromTop(6);
   auto find = r.removeFromTop(28);
   leaveShown_.setBounds(find.removeFromRight(170).reduced(0, 2));
