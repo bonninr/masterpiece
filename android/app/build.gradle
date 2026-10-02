@@ -1,0 +1,154 @@
+apply plugin: 'com.android.application'
+
+// The native half is the repository's own CMake build, the same one every
+// desktop target uses: under the NDK it builds the app as libjuce_jni.so.
+//
+// JUCE is needed twice, and must be the same copy both times: its Java glue is
+// compiled here, and its C++ modules by CMake. Gradle wants the Java folders
+// before CMake has run, so JUCE is prepared here, at the tag the CMake build
+// names.
+//
+// Prepared means installed for THIS machine, not merely checked out. A JUCE
+// build runs a helper, juceaide, while it builds, and under the NDK JUCE would
+// configure that helper with the Android compiler. Installing JUCE once for
+// the host builds juceaide natively, and the Android build then finds the
+// whole package (modules, CMake functions and helper) with find_package.
+def repoRoot = file("${rootDir}/..")
+def juceTag = (file("${repoRoot}/CMakeLists.txt").text =~ /MP_JUCE_TAG "([^"]+)"/)[0][1]
+def juceRoot = file(project.findProperty('juceRoot') ?: "${rootDir}/.juce")
+def juceSrc = file("${juceRoot}/${juceTag}")
+def juceHost = file("${juceRoot}/${juceTag}-host")
+def juceConfigDir = file("${juceHost}/lib/cmake/JUCE-${juceTag}")
+
+// Output goes to a log beside the checkout: a build started from Gradle's
+// daemon has nobody reading its console, and a step that prints enough
+// (installing JUCE prints a line per file) blocks once the pipe is full.
+def run = { List cmd ->
+    juceRoot.mkdirs()
+    def log = file("${juceRoot}/prepare.log")
+    def p = new ProcessBuilder(cmd.collect { it.toString() })
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
+            .start()
+    if (p.waitFor() != 0)
+        throw new GradleException("failed: ${cmd.join(' ')} (see ${log})")
+}
+if (!juceConfigDir.exists()) {
+    if (!file("${juceSrc}/modules").exists()) {
+        run(['git', 'clone', '--depth', '1', '--branch', juceTag,
+             'https://github.com/juce-framework/JUCE.git', juceSrc.path])
+    }
+    // The SDK's own CMake, with the host's default generator: on Windows that
+    // is Visual Studio, which finds its compiler without a developer prompt.
+    def props = new Properties()
+    def lp = file("${rootDir}/local.properties")
+    if (lp.exists()) lp.withInputStream { props.load(it) }
+    def sdkDir = props.getProperty('sdk.dir') ?: System.getenv('ANDROID_HOME')
+    def exe = System.getProperty('os.name').toLowerCase().contains('windows') ? 'cmake.exe' : 'cmake'
+    def cmake = file("${sdkDir}/cmake/3.22.1/bin/${exe}").exists()
+            ? file("${sdkDir}/cmake/3.22.1/bin/${exe}").path : 'cmake'
+    def hostBuild = "${juceSrc}/build-host"
+    run([cmake, '-S', juceSrc.path, '-B', hostBuild, "-DCMAKE_INSTALL_PREFIX=${juceHost.path}"])
+    run([cmake, '--build', hostBuild, '--target', 'install', '--config', 'Release'])
+}
+def juceModules = "${juceHost}/include/JUCE-${juceTag}/modules"
+
+// The project() call in CMakeLists.txt holds the version, for every platform.
+def mpVersion = (file("${repoRoot}/CMakeLists.txt").text =~ /project\(Masterpiece VERSION ([0-9.]+)/)[0][1]
+def versionParts = mpVersion.tokenize('.').collect { it as int }
+
+android {
+    namespace = 'org.masterpiece.player'
+    compileSdk = 35
+    ndkVersion = '27.2.12479018'
+
+    defaultConfig {
+        applicationId = 'org.masterpiece.player'
+        // USB and Bluetooth MIDI need the android.media.midi API (23);
+        // AAudio, which Oboe prefers, arrived in 26.
+        minSdk = 26
+        targetSdk = 35
+        versionName = mpVersion
+        versionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
+        ndk {
+            // Phones and tablets, and the emulator. 32-bit devices cannot hold
+            // a sample set worth playing.
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments '-DMP_FETCH_JUCE=OFF',
+                          "-DJUCE_DIR=${juceConfigDir.path.replace('\\', '/')}",
+                          // The NDK confines package searches to its sysroot.
+                          '-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH',
+                          '-DANDROID_STL=c++_static',
+                          '-DANDROID_CPP_FEATURES=exceptions rtti',
+                          '-DANDROID_ARM_NEON=TRUE',
+                          '-DANDROID_WEAK_API_DEFS=ON'
+                targets 'MasterpieceApp'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("${repoRoot}/CMakeLists.txt")
+            version = '3.22.1'
+        }
+    }
+
+    // The release key: one key for every version, so each installs over the
+    // last and keeps the player's organs and settings. It never enters the
+    // repository. Given as MP_ANDROID_KEYSTORE (a path) and
+    // MP_ANDROID_KEYSTORE_PASSWORD, from the environment, from Gradle
+    // properties outside the checkout (~/.gradle/gradle.properties) or from
+    // the repository's ignored .env; CI
+    // takes them from the repository's secrets. Without them a build is
+    // signed with the debug key: installable, but not an update of a
+    // released version.
+    // A .env at the repository's root counts too; git ignores it.
+    def dotEnv = [:]
+    def envFile = file("${repoRoot}/.env")
+    if (envFile.exists())
+        envFile.eachLine { line ->
+            def m = line =~ /^\s*(MP_ANDROID_KEYSTORE(?:_PASSWORD)?)\s*=\s*(.*?)\s*$/
+            if (m) dotEnv[m[0][1]] = m[0][2]
+        }
+    def setting = { String name -> System.getenv(name) ?: project.findProperty(name) ?: dotEnv[name] }
+    def keystore = setting('MP_ANDROID_KEYSTORE')
+    def keystorePassword = setting('MP_ANDROID_KEYSTORE_PASSWORD')
+    def releaseKey = keystore && keystorePassword && file(keystore).exists()
+    signingConfigs {
+        if (releaseKey) {
+            release {
+                storeFile = file(keystore)
+                storePassword = keystorePassword
+                keyAlias = 'masterpiece'
+                keyPassword = keystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        // The engine cannot keep up with an organ unoptimised, so playing
+        // means a release build.
+        release {
+            signingConfig = releaseKey ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled = false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main.java.srcDirs += [
+            "${juceModules}/juce_core/native/javacore/init",
+            "${juceModules}/juce_core/native/javacore/app",
+            "${juceModules}/juce_audio_devices/native/javaopt/app",
+        ]
+    }
+}

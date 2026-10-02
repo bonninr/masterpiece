@@ -29,6 +29,18 @@ option(MP_ENABLE_STREAMING "Compile disk-streaming sampler (for low-memory machi
 option(MP_BUILD_ASAN "Enable ASan+UBSan (GNU/Clang: Linux/macOS CI jobs)" OFF)
 option(MP_BUILD_COVERAGE "Enable gcov coverage instrumentation (GNU/Clang)" OFF)
 
+# Phones and tablets build the app alone. The plugin formats, the test suite
+# and the developer tools have no form there, and the app is packaged by the
+# platform's own tools rather than by CPack.
+if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(MP_MOBILE ON)
+  set(MP_BUILD_PLUGIN OFF CACHE BOOL "" FORCE)
+  set(MP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MP_BUILD_VALIDATOR OFF CACHE BOOL "" FORCE)
+else()
+  set(MP_MOBILE OFF)
+endif()
+
 if(MP_BUILD_ASAN AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
   add_link_options(-fsanitize=address,undefined)
@@ -287,7 +299,9 @@ if(TARGET juce::juce_core)
   #
   # The device-type dropdown in AudioDeviceSelectorComponent appears by itself
   # once a second type exists, so this needs no UI work.
-  if(UNIX AND NOT APPLE)
+  #
+  # Android is UNIX and not Apple too, and has no JACK.
+  if(UNIX AND NOT APPLE AND NOT ANDROID)
     add_compile_definitions(
       JUCE_JACK=1
       # What a patchbay shows. The default is "JUCEJack", which tells an
@@ -343,7 +357,7 @@ if(MP_BUILD_VALIDATOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/mp-validate-o
 endif()
 # The headless renderer needs the full audio stack, so it follows the same
 # availability rule as the app rather than the JUCE-free validator.
-if(TARGET mp_audio AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/mp-render")
+if(TARGET mp_audio AND NOT MP_MOBILE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/mp-render")
   add_subdirectory(apps/mp-render)
 endif()
 
@@ -354,4 +368,6 @@ if(MP_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 endif()
 
 # Installers (NSIS on Windows, .deb on Linux). See cmake/Packaging.cmake.
-include(cmake/Packaging.cmake)
+if(NOT MP_MOBILE)
+  include(cmake/Packaging.cmake)
+endif()

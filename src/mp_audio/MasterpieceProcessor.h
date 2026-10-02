@@ -597,8 +597,19 @@ public:
   // never exit the way the application does.
   void setCrashGuard(bool on) { crashGuard_ = on; }
   void clearRunningOrgan();
+  // Marks the loaded organ as running again, after clearRunningOrgan: a phone
+  // or tablet clears the mark when the app goes to the background, where the
+  // system may end it without a word, and sets it again on the way back.
+  void markRunningOrgan();
   // The organ the previous session died with, read by loadGlobalDefaults.
   juce::File crashedOrgan() const { return crashedOrgan_; }
+  // Takes the last session's mark out of the settings once it has been read
+  // and acted on. Otherwise a session that loads nothing and does not exit
+  // cleanly either (a phone ending it in the background) left it there, and
+  // every later start warned about the same crash and skipped the organ.
+  void forgetCrash() {
+    if (crashedOrgan_.getFullPathName().isNotEmpty()) writeGlobalFile();
+  }
 
   // The most memory an organ's samples may take, in megabytes. 0 means the
   // default, 80% of this machine's memory. A load that would pass it stops
@@ -1168,6 +1179,7 @@ private:
   std::vector<Id> preloadStops_;
   std::vector<Id> preloadRanks_;
   juce::StringArray overridden_;   // settings the command line has claimed
+  juce::File clearedRunning_;      // the running mark, set aside in the background
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
   std::atomic<bool> releaseAll_{false};

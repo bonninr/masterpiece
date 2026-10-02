@@ -3,6 +3,7 @@
 #include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
+#include "Mobile.h"
 
 namespace mp::ui {
 namespace {
@@ -422,9 +423,13 @@ void TopBar::resized() {
 void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // The extension pattern names the format because that IS the file name on
   // disk; the prompt does not, because the player is choosing an organ.
+  // On a phone or tablet an organ comes as one package: a RAR or a .orgue.
+  // A loose installation is thousands of files, which is slow to bring onto
+  // the device and slow to read there through the system's document layer.
   chooser_ = std::make_unique<juce::FileChooser>(
-      "Choose an organ definition file", startIn,
-      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
+      kMobile ? "Choose an organ package" : "Choose an organ definition file", startIn,
+      kMobile ? "*.rar;*.orgue"
+              : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
   auto flags = juce::FileBrowserComponent::openMode |
                juce::FileBrowserComponent::canSelectFiles;
  #if JUCE_MAC
@@ -445,7 +450,21 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
                             return;
                           }
                          #endif
-                          if (f.existsAsFile()) loadOrgan(f);
+                          if (f.existsAsFile()) {
+                            if (!isMobilePackage(f.getFileName())) return;
+                            loadOrgan(f);
+                            return;
+                          }
+                         #if JUCE_ANDROID
+                          // A document from Android's picker, not a path:
+                          // copied into the app's storage, then opened.
+                          const auto url = fc.getURLResult();
+                          if (url.isEmpty()) return;
+                          importDocument(url, [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](
+                                                  juce::File copy) {
+                            if (safe != nullptr && copy.existsAsFile()) safe->loadOrgan(copy);
+                          });
+                         #endif
                         });
 }
 
@@ -757,7 +776,8 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   opts.escapeKeyTriggersCloseButton = false;
   opts.useNativeTitleBar = true;
   opts.resizable = false;
-  loadWindow_ = opts.launchAsync();
+  loadWindow_ = launchDialog(opts);
+  if (loadWindow_ != nullptr) loadWindow_->getProperties().set(kStaysOpen, true);
 
   juce::Thread::launch([this, odf, graphicsOnly] {
     const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
@@ -1030,6 +1050,7 @@ public:
     setContentOwned(new RecorderPanel(p), false);
     setResizable(false, false);
     setSize(420, 420);
+    fitToScreen(*this);
   }
   void closeButtonPressed() override { setVisible(false); }
 };
@@ -1040,7 +1061,8 @@ void MasterpieceEditor::toggleRecorder() {
     recorderWindow_ = std::make_unique<RecorderWindow>(proc_);
     // Beside the main window, at its top right, where it hides the least.
     const auto b = getScreenBounds();
-    recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
+    if (!kMobile)
+      recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
   }
   const bool show = !recorderWindow_->isVisible();
   recorderWindow_->setVisible(show);

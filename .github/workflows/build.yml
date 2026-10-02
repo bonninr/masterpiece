@@ -401,3 +401,62 @@ jobs:
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
           if-no-files-found: warn
           retention-days: 3
+
+  # Android: the APK for phones, tablets and the emulator. Signed with the
+  # release key from the repository's secrets when they are there (a fork's
+  # pull request cannot read them, and gets the debug key); a release tag
+  # will not publish an APK without it. The first step installs JUCE for the
+  # runner itself (see android/README.md), which is what takes the time.
+  android:
+    runs-on: ubuntu-22.04
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      MP_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: Release key
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$MP_ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "MP_ANDROID_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "signing with the release key"
+          elif [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+            echo "a release needs the release key (secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD)"
+            exit 1
+          else
+            echo "no release key here: signing with the debug key"
+          fi
+
+      - name: Build
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Check output
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "no APK"; exit 1; }
+          ls -la "$APK"
+          unzip -l "$APK" | grep -E "lib/(arm64-v8a|x86_64)/libjuce_jni.so"
+
+      # Named for what it is: the release publishes it as it stands.
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk masterpiece-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masterpiece-android
+          path: masterpiece-android.apk
+          if-no-files-found: error
+          retention-days: 3

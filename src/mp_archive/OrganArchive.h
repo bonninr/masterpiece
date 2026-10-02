@@ -28,6 +28,15 @@
 
 namespace mp {
 
+// A package the system will not let us open by its name: on Android, a file
+// chosen in the system's picker is reached through a descriptor the system
+// opens for us, and its path cannot be opened again. A platform that has such
+// files installs this hook; it returns a fresh descriptor (with its own
+// position) for a path it knows, or -1, and the archive reader opens every
+// package through it. No hook, as on the desktop: every path is opened as is.
+using ArchiveOpenHook = int (*)(const std::string& path);
+void setArchiveOpenHook(ArchiveOpenHook hook);
+
 // True for a name the importer treats as an organ package: a .rar, or a
 // GrandOrgue .orgue (any case).
 bool isOrganArchive(const std::string& path);

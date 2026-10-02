@@ -1,4 +1,5 @@
 #include "CombinationsWindow.h"
+#include "Mobile.h"
 
 #include <algorithm>
 
@@ -444,6 +445,7 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   bar.setColour(juce::ScrollBar::backgroundColourId, kBackground);
   setContentNonOwned(&viewport_, false);
   setSize(660, std::min(panel_->preferredHeight(660), 640));
+  fitToScreen(*this);
   placing_ = false;
 }
 

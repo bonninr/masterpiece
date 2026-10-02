@@ -10,6 +10,11 @@ juce_add_gui_app(MasterpieceApp
 )
 
 target_sources(MasterpieceApp PRIVATE Main.cpp)
+# On Android the app is a shared library that JUCE's Java side loads by this
+# name (System.loadLibrary("juce_jni")).
+if(ANDROID)
+  set_target_properties(MasterpieceApp PROPERTIES OUTPUT_NAME juce_jni)
+endif()
 target_compile_features(MasterpieceApp PRIVATE cxx_std_20)
 # One place holds the version: the project() call. It was written out a second
 # time in Main.cpp, and the two drifted apart at nearly every release.

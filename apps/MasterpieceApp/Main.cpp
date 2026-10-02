@@ -19,6 +19,7 @@
 #include "../../src/mp_ui/OrganSettings.h"
 #include "../../src/mp_ui/Settings.h"
 #include "../../src/mp_ui/Wizard.h"
+#include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
 
 namespace {
@@ -286,8 +287,13 @@ public:
       }
 #endif
 
+    mp::ui::installTouchLook();
+    mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
+    // A phone or tablet plays full screen, with the system's bars hidden
+    // until a swipe from the edge brings them back.
+    if (mp::ui::kMobile) juce::Desktop::getInstance().setKioskModeComponent(win_.get(), false);
 
     juce::File odf;
     for (int i = 0; i < args.size(); ++i)
@@ -309,6 +315,7 @@ public:
     // the last session ended cleanly.
     proc_->loadGlobalDefaults();
     const juce::File crashed = proc_->crashedOrgan();
+    proc_->forgetCrash();
     bool skippedReopen = false;
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
       odf = proc_->lastOrgan();
@@ -401,6 +408,10 @@ public:
     while (takes.size() > 1 && !takes.back().wants()) takes.pop_back();
 
     if (takes.front().wants()) {
+      // A script plays this organ, and nobody is there to press Keep changes:
+      // an organ opened for the first time would otherwise wait in Organ
+      // settings with its samples unloaded, and the piece play in silence.
+      win_->editor().onBeforeFirstLoad = nullptr;
       win_->onLoaded = [this, takes, stayOpen, drawOnly] {
         // Held by the chain of callbacks below rather than by the lambda, so
         // that each take can hand the next one on without copying the list.
@@ -769,9 +780,26 @@ public:
     devices_.reset();
     if (proc_) proc_->setReleaseLogging(false);
     proc_.reset();
+    // Every window is gone by now, so nothing still points at the look.
+    mp::ui::removeTouchLook();
   }
 
   void systemRequestedQuit() override { quit(); }
+
+  // A phone or tablet ends a backgrounded app whenever it wants its memory,
+  // without calling shutdown(): to the crash guard that looked like a crash,
+  // and the organ was not reopened. In the background the session counts as
+  // ended cleanly; in front again, as running.
+  void suspended() override {
+    if (mp::ui::kMobile && proc_) proc_->clearRunningOrgan();
+  }
+  void resumed() override {
+    if (mp::ui::kMobile && proc_) proc_->markRunningOrgan();
+  }
+
+  // Android's back button closes the panel in front, as Escape does on a
+  // desktop. With none open, the system's own back applies.
+  bool backButtonPressed() override { return mp::ui::closeFrontWindow(win_.get()); }
 
 private:
   struct DocWindow : juce::DocumentWindow {
@@ -800,8 +828,17 @@ private:
         if (onLoaded) onLoaded();
       };
       editor_ = ed;
-      setUsingNativeTitleBar(true);
       setContentOwned(ed, true);
+      // A phone or tablet gives the console the whole screen: no title bar,
+      // nothing to resize, and no place to remember.
+      if (mp::ui::kMobile) {
+        setUsingNativeTitleBar(false);
+        setTitleBarHeight(0);
+        setResizable(false, false);
+        setBounds(mp::ui::screenArea());
+        return;
+      }
+      setUsingNativeTitleBar(true);
       setResizable(true, true);
       centreWithSize(getWidth(), getHeight());
       // Where it was last time (#53), unless no screen shows it any more: a
@@ -832,7 +869,7 @@ private:
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
       opts.resizable = true;
-      opts.launchAsync();
+      mp::ui::launchDialog(opts);
     }
 
     void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
@@ -846,7 +883,7 @@ private:
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
       opts.resizable = true;
-      opts.launchAsync();
+      mp::ui::launchDialog(opts);
     }
 
     void showWizard(mp::MasterpieceProcessor& proc) {
@@ -862,7 +899,7 @@ private:
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
       opts.resizable = true;
-      opts.launchAsync();
+      mp::ui::launchDialog(opts);
     }
 
     void showAudioSettings() {
@@ -875,7 +912,7 @@ private:
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
       opts.resizable = true;
-      opts.launchAsync();
+      mp::ui::launchDialog(opts);
     }
 
    private:

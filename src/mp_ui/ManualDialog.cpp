@@ -1,4 +1,5 @@
 #include "ManualDialog.h"
+#include "Mobile.h"
 
 namespace mp::ui {
 namespace {
@@ -325,7 +326,7 @@ void ManualDialog::show(MasterpieceProcessor& p, Id keyboardId) {
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;
   o.resizable = true;
-  o.launchAsync();
+  launchDialog(o);
 }
 
 } // namespace mp::ui
