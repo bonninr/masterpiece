@@ -447,6 +447,32 @@ public:
   // The player has set which keyboard plays what, by hand: that is where the
   // keyboards start from now, and where General Cancel puts them back.
   void keepRouting() { pistonRouted_.store(false); }
+
+  // --- the MIDI window ------------------------------------------------------
+  // Listen: the next press from a console -- a note, a controller, a program
+  // change -- is taken rather than acted on, and kept for the window to fill a
+  // row with. GrandOrgue's "Listen for Event".
+  void beginMidiListen() {
+    heardReady_.store(false, std::memory_order_relaxed);
+    midiListen_.store(true, std::memory_order_release);
+  }
+  void cancelMidiListen() { midiListen_.store(false, std::memory_order_release); }
+  bool midiListening() const { return midiListen_.load(std::memory_order_acquire); }
+  // The message that answered, once. False while none has.
+  bool takeHeardMidi(MidiSource& source, int& value) {
+    if (!heardReady_.exchange(false, std::memory_order_acq_rel)) return false;
+    source = heard_;
+    value = heardValue_;
+    return true;
+  }
+  // Everything one object listens for, sends and answers to on the computer
+  // keyboard, replaced at once and saved. Taken under the audio lock: the
+  // audio thread reads all three every block.
+  void setObjectBindings(MidiTargetKind kind, Id id, const std::vector<MidiBinding>& rows);
+  void setObjectSends(MidiTargetKind kind, Id id, const std::vector<MidiSend>& rows);
+  void setObjectShortcuts(MidiTargetKind kind, Id id, const std::vector<KeyShortcut>& rows);
+  // A computer key pressed on the console. True when a shortcut used it.
+  bool applyKeyShortcut(const std::string& key);
   bool keyPicking() const { return keyPick_.load(std::memory_order_acquire); }
   // The channel of the key that answered, or 0 while none has.
   int pickedChannel() const { return pickedChannel_.load(std::memory_order_acquire); }
@@ -1452,6 +1478,20 @@ private:
   std::vector<Id> routeScratch_;
   void routeFromControl(const MidiAction& action);
   void restoreRouting();
+  // Listen for the MIDI window. heard_ is written by the audio thread before
+  // heardReady_ is released, and read by the window after it is acquired.
+  std::atomic<bool> midiListen_{false};
+  std::atomic<bool> heardReady_{false};
+  MidiSource heard_;
+  int heardValue_ = 0;
+  // The value each send last went out with, by its place in the map's list;
+  // -1 sends the current state on the next block. Cleared when sends change.
+  std::vector<int> sentValues_;
+  // Keys played on a manual that sends them on, by key id, so the note-off
+  // goes out on the note the note-on did.
+  std::unordered_map<int, std::pair<Id, int>> keySends_;
+  void emitSends();
+  void sendKey(Id keyboard, int midiNote, int velocity, bool on);
   // Where each held key switch came from, as (channel, device): a key can be
   // a switch with no note sounding, on an organ played through its pallets.
   std::unordered_map<int, std::pair<int, int>> heldKeySwitchOrigin_;

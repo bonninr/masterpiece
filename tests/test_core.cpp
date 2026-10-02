@@ -10926,3 +10926,118 @@ int main(int argc, char** argv) {
   }
   return mp::test::runAll(filter) == 0 ? 0 : 1;
 }
+
+// The MIDI window's model: several receive events per object, each with its
+// own behaviour (a rocker that draws on one message and cancels on another),
+// send events for lamps and motorised faders, and computer-keyboard shortcuts.
+// GrandOrgue's Receive / Send / Shortcut tabs.
+class ObjectMidiTest final : public mp::test::Test {
+public:
+  ObjectMidiTest() : Test("functional.midi.object-window", Category::Functional) {}
+
+  static mp::MidiSource note(int n, int ch = 0) {
+    mp::MidiSource s;
+    s.kind = mp::MidiSourceKind::Note;
+    s.number = n;
+    s.channel = ch;
+    return s;
+  }
+
+  void run() override {
+    using K = mp::MidiTargetKind;
+    mp::MidiMap m;
+
+    // A rocker: one note draws, another cancels.
+    std::vector<mp::MidiBinding> rows(2);
+    rows[0].source = note(36);
+    rows[0].trigger = mp::MidiTrigger::EngageOnly;
+    rows[1].source = note(37);
+    rows[1].trigger = mp::MidiTrigger::DisengageOnly;
+    m.setBindingsFor(K::Switch, 5, rows);
+    MP_CHECK(m.bindingsFor(K::Switch, 5).size() == 2, "both rows are kept");
+    auto a = m.actionFor(note(36), 100);
+    MP_CHECK(a.kind == K::Switch && a.targetId == 5 && a.engage, "the top of the rocker draws");
+    a = m.actionFor(note(36), 100);
+    MP_CHECK(a.engage, "and pressing it again leaves the stop drawn");
+    a = m.actionFor(note(37), 100);
+    MP_CHECK(a.kind == K::Switch && !a.engage, "the bottom cancels");
+    MP_CHECK(!m.actionFor(note(37), 0).valid(), "and the release does nothing");
+
+    // Editing the rows replaces them, and a row with no event yet is skipped.
+    rows.resize(3);
+    rows[2] = mp::MidiBinding{};
+    rows[0].source = note(40);
+    m.setBindingsFor(K::Switch, 5, rows);
+    MP_CHECK(m.bindingsFor(K::Switch, 5).size() == 2 && !m.actionFor(note(36), 100).valid(),
+             "the edited row moves to its new note and the empty one is left out");
+
+    // Sends: a lamp on note 36 that lights at 127 and goes out at 0, and a
+    // second on a controller.
+    std::vector<mp::MidiSend> sends(2);
+    sends[0].kind = mp::MidiSourceKind::Note;
+    sends[0].channel = 3;
+    sends[0].number = 36;
+    sends[1].kind = mp::MidiSourceKind::ControlChange;
+    sends[1].number = 20;
+    sends[1].low = -1;  // nothing when it goes off
+    m.setSendsFor(K::Switch, 5, sends);
+    MP_CHECK(m.hasSends(K::Switch, 5) && !m.hasSends(K::Switch, 6), "the sends belong to the stop");
+    mp::RawMidi out;
+    MP_CHECK(mp::MidiMap::switchMessage(m.sendsFor(K::Switch, 5)[0], true, out) &&
+                 out.size == 3 && out.bytes[0] == 0x92 && out.bytes[1] == 36 && out.bytes[2] == 127,
+             "drawing it lights the lamp: note on, channel 3, 127");
+    MP_CHECK(mp::MidiMap::switchMessage(m.sendsFor(K::Switch, 5)[0], false, out) &&
+                 out.bytes[2] == 0,
+             "and cancelling puts it out");
+    MP_CHECK(!mp::MidiMap::switchMessage(m.sendsFor(K::Switch, 5)[1], false, out),
+             "a negative off value sends nothing");
+
+    // A motorised fader that wants 0..100.
+    mp::MidiSend fader;
+    fader.kind = mp::MidiSourceKind::ControlChange;
+    fader.number = 7;
+    fader.high = 100;
+    m.setSendsFor(K::ContinuousControl, 9, {fader});
+    MP_CHECK(mp::MidiMap::controlMessage(m.sendsFor(K::ContinuousControl, 9)[0], 127, out) &&
+                 out.bytes[0] == 0xB0 && out.bytes[1] == 7 && out.bytes[2] == 100,
+             "a control is sent across its own range");
+
+    // A manual's keys sent on, an octave up.
+    mp::MidiSend keys;
+    keys.channel = 2;
+    keys.number = 12;
+    MP_CHECK(mp::MidiMap::keyMessage(keys, 60, 90, true, out) && out.bytes[0] == 0x91 &&
+                 out.bytes[1] == 72 && out.bytes[2] == 90,
+             "a key goes on as a note");
+    MP_CHECK(mp::MidiMap::keyMessage(keys, 60, 0, false, out) && out.bytes[0] == 0x81,
+             "and comes off as a note off");
+    MP_CHECK(!mp::MidiMap::keyMessage(keys, 120, 90, true, out), "a key moved past 127 is dropped");
+
+    // Shortcuts.
+    mp::KeyShortcut toggle;
+    toggle.key = "ctrl + Q";
+    m.setShortcutsFor(K::Switch, 5, {toggle});
+    mp::KeyShortcut open, close;
+    open.key = "W";
+    open.step = 8;
+    close.key = "S";
+    close.step = -8;
+    m.setShortcutsFor(K::ContinuousControl, 9, {open, close});
+    MP_CHECK(m.shortcutsForKey("ctrl + Q").size() == 1 &&
+                 m.shortcutsForKey("ctrl + Q")[0].targetId == 5,
+             "a key finds its stop");
+
+    // Everything survives a save.
+    mp::MidiMap again;
+    MP_CHECK(again.fromText(m.toText()), "the saved map reads back cleanly");
+    MP_CHECK(again.sends() == m.sends(), "with its sends");
+    MP_CHECK(again.shortcuts() == m.shortcuts(), "and its shortcuts, spaces and all");
+    MP_CHECK(again.bindingsFor(K::Switch, 5).size() == 2, "and both receive rows");
+
+    // The console-wide file keeps none of an organ's sends or keys.
+    again.keepOnlyConsoleSendsAndShortcuts();
+    MP_CHECK(again.sends().empty() && again.shortcuts().empty(),
+             "an organ's sends and keys stay with the organ");
+  }
+};
+static ObjectMidiTest g_objectMidi;
