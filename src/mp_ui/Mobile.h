@@ -57,4 +57,9 @@ juce::File importedOrgansFolder();
 // reused rather than copied again.
 void importDocument(const juce::URL& document, std::function<void(juce::File)> done);
 
+// Makes again, at startup, the paths of documents read in place in earlier
+// sessions, so the last organ and the favourites reopen. Before any organ is
+// loaded; does nothing on the desktop.
+void restoreLinkedDocuments();
+
 }  // namespace mp::ui

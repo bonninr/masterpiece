@@ -1568,8 +1568,17 @@ juce::File MasterpieceProcessor::lastOrgan() const {
   return lastOrgan_.existsAsFile() ? lastOrgan_ : juce::File();
 }
 
+void MasterpieceProcessor::markRunningOrgan() {
+  // The same file the load marked, which is what the next start compares.
+  if (clearedRunning_.getFullPathName().isEmpty()) return;
+  runningOrgan_ = clearedRunning_;
+  clearedRunning_ = juce::File();
+  writeGlobalFile();
+}
+
 void MasterpieceProcessor::clearRunningOrgan() {
   if (runningOrgan_.getFullPathName().isEmpty()) return;
+  clearedRunning_ = runningOrgan_;
   runningOrgan_ = juce::File();
   writeGlobalFile();
 }

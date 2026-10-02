@@ -201,6 +201,31 @@ std::mutex& linkedDocumentsLock() {
   return m;
 }
 
+// Keeps read access to a picked document across restarts. Read only: that is
+// all a package needs, and the one grant the picker always makes persistable.
+void keepReadAccess(const juce::URL& document) {
+  auto* env = juce::getEnv();
+  if (env == nullptr) return;
+  const auto ctx = juce::getAppContext();
+  jclass ctxClass = env->GetObjectClass(ctx.get());
+  jobject resolver = env->CallObjectMethod(
+      ctx.get(), env->GetMethodID(ctxClass, "getContentResolver", "()Landroid/content/ContentResolver;"));
+  jclass uriClass = env->FindClass("android/net/Uri");
+  jstring text = env->NewStringUTF(document.toString(true).toRawUTF8());
+  jobject uri = env->CallStaticObjectMethod(
+      uriClass, env->GetStaticMethodID(uriClass, "parse", "(Ljava/lang/String;)Landroid/net/Uri;"), text);
+  jclass resolverClass = env->GetObjectClass(resolver);
+  constexpr jint kReadGrant = 1;  // Intent.FLAG_GRANT_READ_URI_PERMISSION
+  env->CallVoidMethod(resolver,
+                      env->GetMethodID(resolverClass, "takePersistableUriPermission",
+                                       "(Landroid/net/Uri;I)V"),
+                      uri, kReadGrant);
+  if (env->ExceptionCheck()) env->ExceptionClear();
+  for (jobject o : {(jobject)ctxClass, resolver, (jobject)uriClass, (jobject)text, uri,
+                    (jobject)resolverClass})
+    if (o != nullptr) env->DeleteLocalRef(o);
+}
+
 int openLinkedDocument(const std::string& path) {
   juce::URL url;
   {
@@ -212,6 +237,16 @@ int openLinkedDocument(const std::string& path) {
   return openDocumentDescriptor(url);
 }
 }  // namespace
+
+juce::File linkedFolder() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("Linked");
+}
+
+// The documents read in place, one per line, so their links can be made again
+// when the app starts: the descriptors behind them close with the process.
+juce::File linkedList() { return linkedFolder().getChildFile("documents.txt"); }
 
 // The document read where it is, through a link named like the package (the
 // loader goes by the extension) that points at a descriptor the system gave
@@ -229,9 +264,7 @@ static juce::File openInPlace(const juce::URL& document) {
     close(fd);
     return {};
   }
-  auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                    .getChildFile("Masterpiece")
-                    .getChildFile("Linked");
+  auto folder = linkedFolder();
   folder.createDirectory();
   const auto link = folder.getChildFile(name);
   auto& fds = openDescriptors();
@@ -254,12 +287,38 @@ static juce::File openInPlace(const juce::URL& document) {
   juce::Logger::writeToLog("organ read in place: " + name);
   return link;
 }
+
+// Picked now: kept for the next start too.
+static juce::File openInPlaceAndRemember(const juce::URL& document) {
+  const auto link = openInPlace(document);
+  if (!link.existsAsFile()) return link;
+  keepReadAccess(document);
+  juce::StringArray lines;
+  lines.addLines(linkedList().loadFileAsString());
+  lines.removeString(document.toString(true));
+  lines.removeEmptyStrings();
+  lines.add(document.toString(true));
+  linkedList().replaceWithText(lines.joinIntoString("\n") + "\n");
+  return link;
+}
 #endif
+
+void restoreLinkedDocuments() {
+ #if JUCE_ANDROID
+  juce::StringArray lines, kept;
+  lines.addLines(linkedList().loadFileAsString());
+  for (const auto& line : lines)
+    if (line.isNotEmpty() && openInPlace(juce::URL(line)).existsAsFile()) kept.add(line);
+  // A document that has gone (deleted, or its access withdrawn) is dropped.
+  if (kept.size() != lines.size())
+    linkedList().replaceWithText(kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
+ #endif
+}
 
 void importDocument(const juce::URL& document, std::function<void(juce::File)> done) {
  #if JUCE_ANDROID
   // In place when the file allows it: nothing copied, no space used.
-  if (const auto direct = openInPlace(document); direct.existsAsFile()) {
+  if (const auto direct = openInPlaceAndRemember(document); direct.existsAsFile()) {
     if (done) done(direct);
     return;
   }

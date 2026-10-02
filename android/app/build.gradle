@@ -98,12 +98,43 @@ android {
         }
     }
 
+    // The release key: one key for every version, so each installs over the
+    // last and keeps the player's organs and settings. It never enters the
+    // repository. Given as MP_ANDROID_KEYSTORE (a path) and
+    // MP_ANDROID_KEYSTORE_PASSWORD, from the environment, from Gradle
+    // properties outside the checkout (~/.gradle/gradle.properties) or from
+    // the repository's ignored .env; CI
+    // takes them from the repository's secrets. Without them a build is
+    // signed with the debug key: installable, but not an update of a
+    // released version.
+    // A .env at the repository's root counts too; git ignores it.
+    def dotEnv = [:]
+    def envFile = file("${repoRoot}/.env")
+    if (envFile.exists())
+        envFile.eachLine { line ->
+            def m = line =~ /^\s*(MP_ANDROID_KEYSTORE(?:_PASSWORD)?)\s*=\s*(.*?)\s*$/
+            if (m) dotEnv[m[0][1]] = m[0][2]
+        }
+    def setting = { String name -> System.getenv(name) ?: project.findProperty(name) ?: dotEnv[name] }
+    def keystore = setting('MP_ANDROID_KEYSTORE')
+    def keystorePassword = setting('MP_ANDROID_KEYSTORE_PASSWORD')
+    def releaseKey = keystore && keystorePassword && file(keystore).exists()
+    signingConfigs {
+        if (releaseKey) {
+            release {
+                storeFile = file(keystore)
+                storePassword = keystorePassword
+                keyAlias = 'masterpiece'
+                keyPassword = keystorePassword
+            }
+        }
+    }
+
     buildTypes {
         // The engine cannot keep up with an organ unoptimised, so playing
-        // means a release build. Both are signed with the debug key until
-        // there is a release key: installable, not publishable.
+        // means a release build.
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig = releaseKey ? signingConfigs.release : signingConfigs.debug
             minifyEnabled = false
         }
     }
