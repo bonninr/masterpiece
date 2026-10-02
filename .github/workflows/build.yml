@@ -457,12 +457,13 @@ jobs:
           BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
           mkdir -p ios-shots
 
-          # The organ, in the app's own Documents folder, where it may read.
+          # The organ, in the app's own Documents folder, where it may read;
+          # played from its package, as a phone or tablet opens organs.
           DATA=$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE" data)
           python3 .github/ios-check/make_organ.py "$DATA/Documents/check"
           ls "$DATA/Documents/check" | head
 
-          xcrun simctl launch "$DEVICE" "$BUNDLE"             --odf "$DATA/Documents/check/check.organ" --draw-stops all             --play-midi "$DATA/Documents/check/check.mid"             --record-audio "$DATA/Documents/check/out.wav"             --log "$DATA/Documents/check/run.log" --stay-open | tee ios-shots/launch.txt
+          xcrun simctl launch "$DEVICE" "$BUNDLE"             --odf "$DATA/Documents/check/check.orgue" --draw-stops all             --play-midi "$DATA/Documents/check/check.mid"             --record-audio "$DATA/Documents/check/out.wav"             --log "$DATA/Documents/check/run.log" --stay-open | tee ios-shots/launch.txt
 
           # The piece lasts about five seconds once the organ is up.
           for i in $(seq 1 60); do
