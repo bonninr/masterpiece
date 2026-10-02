@@ -402,7 +402,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-<<<<<<< HEAD
   # iOS: the app for the simulator, unsigned. No release ships it yet, so a
   # tagged release skips it; on pull requests it keeps the iOS build honest.
   ios:
@@ -485,7 +484,8 @@ jobs:
           name: ios-simulator-screenshots
           path: ios-shots/
           if-no-files-found: warn
-=======
+          retention-days: 3
+
   # Android: the APK for phones, tablets and the emulator. Signed with the
   # release key from the repository's secrets when they are there (a fork's
   # pull request cannot read them, and gets the debug key); a release tag
@@ -543,5 +543,4 @@ jobs:
           name: masterpiece-android
           path: masterpiece-android.apk
           if-no-files-found: error
->>>>>>> origin/feat/android
           retention-days: 3
