@@ -434,6 +434,19 @@ public:
   // go, and the transpose falls out of where the organ's own compass starts —
   // which is the whole of what a player would otherwise type in by hand.
   void beginKeyboardLearn(Id keyboardId);
+
+  // Which of the player's keyboards is meant, found by playing it: the next
+  // key pressed on a console (not on screen) is taken, not played, and its
+  // channel is kept. How a manual piston is told which keyboard it moves
+  // (#90), without a menu of channel numbers.
+  void beginKeyPick() {
+    pickedChannel_.store(0, std::memory_order_relaxed);
+    keyPick_.store(true, std::memory_order_release);
+  }
+  void cancelKeyPick() { keyPick_.store(false, std::memory_order_release); }
+  bool keyPicking() const { return keyPick_.load(std::memory_order_acquire); }
+  // The channel of the key that answered, or 0 while none has.
+  int pickedChannel() const { return pickedChannel_.load(std::memory_order_acquire); }
   void cancelKeyboardLearn() { keyboardLearn_ = 0; }
   Id keyboardLearning() const { return keyboardLearn_; }
   // The lowest key has arrived and the highest is awaited, so the prompt can
@@ -1418,6 +1431,8 @@ private:
   int noteDeviceId_ = 0;
   // The channel of the message being handled, for the same reason.
   int noteChannel_ = 0;
+  std::atomic<bool> keyPick_{false};
+  std::atomic<int> pickedChannel_{0};
   // Where each held key switch came from, as (channel, device): a key can be
   // a switch with no note sounding, on an organ played through its pallets.
   std::unordered_map<int, std::pair<int, int>> heldKeySwitchOrigin_;

@@ -316,12 +316,171 @@ void ManualDialog::resized() {
   note_.setBounds(r);
 }
 
+namespace {
+
+// The pistons that bring this manual to one of the player's keyboards (#106).
+// Set up from the manual, the way GrandOrgue sets up everything about one:
+// say which keyboard by playing a key on it, then press the piston. No
+// channel numbers to look up.
+class ManualPistonsPanel : public juce::Component, private juce::Timer {
+public:
+  ManualPistonsPanel(MasterpieceProcessor& p, Id keyboardId)
+      : proc_(p), keyboardId_(keyboardId),
+        manual_(juce::String(p.keyboardName(keyboardId))) {
+    addAndMakeVisible(title_);
+    title_.setText("Pistons that bring the " + manual_ + " to one of your keyboards",
+                   juce::dontSendNotification);
+    title_.setFont(juce::FontOptions(16.0f));
+    title_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
+
+    addAndMakeVisible(list_);
+    list_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
+    list_.setJustificationType(juce::Justification::topLeft);
+
+    addAndMakeVisible(add_);
+    add_.onClick = [this] { start(); };
+    addAndMakeVisible(cancel_);
+    cancel_.onClick = [this] { stop(); };
+    addAndMakeVisible(remove_);
+    remove_.onClick = [this] { removeAll(); };
+
+    addAndMakeVisible(prompt_);
+    prompt_.setColour(juce::Label::textColourId, juce::Colours::orange);
+    prompt_.setFont(juce::FontOptions(15.0f));
+
+    addAndMakeVisible(note_);
+    note_.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
+    note_.setJustificationType(juce::Justification::topLeft);
+    note_.setFont(juce::FontOptions(12.0f));
+    note_.setText("A piston here makes a keyboard play the " + manual_ +
+                      ", so a console with fewer keyboards than the organ has manuals "
+                      "can reach all of them. Pressing it lets go of any notes held on "
+                      "that keyboard first. Add one for each keyboard that should be able "
+                      "to play this manual. Saved with this organ.",
+                  juce::dontSendNotification);
+    refresh();
+    startTimerHz(10);
+  }
+  ~ManualPistonsPanel() override { stop(); }
+
+  void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xff1b1e24)); }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12);
+    title_.setBounds(r.removeFromTop(24));
+    r.removeFromTop(8);
+    auto buttons = r.removeFromTop(kRow + 4);
+    add_.setBounds(buttons.removeFromLeft(150));
+    buttons.removeFromLeft(8);
+    cancel_.setBounds(buttons.removeFromLeft(90));
+    remove_.setBounds(buttons.removeFromRight(160));
+    r.removeFromTop(8);
+    prompt_.setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(8);
+    note_.setBounds(r.removeFromBottom(70));
+    list_.setBounds(r);
+  }
+
+private:
+  enum class Step { Idle, Keyboard, Piston };
+
+  void start() {
+    proc_.midiMap().cancelLearn();
+    proc_.beginKeyPick();
+    step_ = Step::Keyboard;
+    refresh();
+  }
+
+  void stop() {
+    if (step_ == Step::Keyboard) proc_.cancelKeyPick();
+    if (step_ == Step::Piston) proc_.midiMap().cancelLearn();
+    step_ = Step::Idle;
+    refresh();
+  }
+
+  void removeAll() {
+    for (int ch = 1; ch <= 16; ++ch)
+      proc_.midiMap().unbindTarget(MidiTargetKind::RouteKeyboard,
+                                   routeKeyboardTarget(keyboardId_, ch));
+    proc_.saveMidiMap();
+    refresh();
+  }
+
+  void timerCallback() override {
+    if (step_ == Step::Keyboard && !proc_.keyPicking()) {
+      channel_ = proc_.pickedChannel();
+      if (channel_ <= 0) {
+        step_ = Step::Idle;
+      } else {
+        proc_.midiMap().beginLearn(MidiTargetKind::RouteKeyboard,
+                                   routeKeyboardTarget(keyboardId_, channel_), false);
+        step_ = Step::Piston;
+      }
+      refresh();
+    } else if (step_ == Step::Piston && !proc_.midiMap().learning()) {
+      proc_.saveMidiMap();
+      step_ = Step::Idle;
+      refresh();
+    }
+  }
+
+  void refresh() {
+    juce::String text;
+    int count = 0;
+    for (int ch = 1; ch <= 16; ++ch)
+      for (const MidiBinding* b : proc_.midiMap().bindingsFor(
+               MidiTargetKind::RouteKeyboard, routeKeyboardTarget(keyboardId_, ch))) {
+        text << (b->source.kind == MidiSourceKind::Note ? "Note " : "Controller ")
+             << b->source.number;
+        if (b->source.channel > 0) text << " on channel " << b->source.channel;
+        text << "  brings the " << manual_ << " to the keyboard on channel " << ch << "\n";
+        ++count;
+      }
+    list_.setText(count == 0 ? "No pistons yet." : text, juce::dontSendNotification);
+    remove_.setEnabled(count > 0 && step_ == Step::Idle);
+    add_.setEnabled(step_ == Step::Idle);
+    cancel_.setVisible(step_ != Step::Idle);
+    prompt_.setText(step_ == Step::Keyboard
+                        ? "Play any key on the keyboard that should play the " + manual_ + "..."
+                    : step_ == Step::Piston
+                        ? "Now press the piston (keyboard on channel " + juce::String(channel_) + ")..."
+                        : juce::String(),
+                    juce::dontSendNotification);
+  }
+
+  MasterpieceProcessor& proc_;
+  Id keyboardId_;
+  juce::String manual_;
+  Step step_ = Step::Idle;
+  int channel_ = 0;
+  juce::Label title_, list_, prompt_, note_;
+  juce::TextButton add_{"Add a piston..."}, cancel_{"Cancel"}, remove_{"Remove all pistons"};
+};
+
+// GrandOrgue's shape: one window per manual, a tab per kind of thing.
+class ManualWindowContent : public juce::Component {
+public:
+  ManualWindowContent(MasterpieceProcessor& p, Id keyboardId)
+      : tabs_(juce::TabbedButtonBar::TabsAtTop) {
+    addAndMakeVisible(tabs_);
+    const auto bg = juce::Colour(0xff1b1e24);
+    tabs_.addTab("Keys", bg, new ManualDialog(p, keyboardId), true);
+    tabs_.addTab("Pistons", bg, new ManualPistonsPanel(p, keyboardId), true);
+  }
+  void resized() override { tabs_.setBounds(getLocalBounds()); }
+
+private:
+  juce::TabbedComponent tabs_;
+};
+
+} // namespace
+
 void ManualDialog::show(MasterpieceProcessor& p, Id keyboardId) {
-  auto content = std::make_unique<ManualDialog>(p, keyboardId);
-  content->setSize(560, 560);
+  auto content = std::make_unique<ManualWindowContent>(p, keyboardId);
+  content->setSize(600, 600);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
-  o.dialogTitle = "Manual assignment";
+  o.dialogTitle = juce::String(p.keyboardName(keyboardId)) + " - MIDI";
   o.dialogBackgroundColour = juce::Colour(0xff1b1e24);
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;

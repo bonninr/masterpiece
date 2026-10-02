@@ -694,6 +694,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     noteDeviceId_ = deviceId;
     noteChannel_ = msg.getChannel();
 
+    // Picking a keyboard takes one key press from a console, and that note
+    // does not sound either.
+    if (msg.isNoteOn() && deviceId > 0 && keyPick_.load(std::memory_order_acquire)) {
+      pickedChannel_.store(msg.getChannel(), std::memory_order_release);
+      keyPick_.store(false, std::memory_order_release);
+      continue;
+    }
+
     // Learning a manual consumes the key press: the note being used to teach
     // the range must not also sound.
     if (msg.isNoteOn() && keyboardLearn_ != 0) {
