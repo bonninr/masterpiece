@@ -697,6 +697,73 @@ public:
 // is (value + 126) / 2. Letters past h are not OdfEdit's, and the increment
 // is added before the coefficient multiplies; either mistake sends every one
 // of these out of range.
+// A compact definition leaves out every field that holds its default, and
+// several of those defaults differ from what a missing long-form field is read
+// as. Each value here is what the format's own program writes when it rewrites
+// Nancy's compact definition in full (#53).
+class CompactDefaultsTest final : public mp::test::Test {
+public:
+  CompactDefaultsTest()
+    : Test("functional.odf.compact-defaults", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>1</a><b>hidden</b></o><o><a>2</a><b>drawn</b><i>Y</i></o>"
+        "<o><a>3</a><b>cond</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>1</a><b>2</b><c>3</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"KeyboardKey\"><o><a>1</a><b>1</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<o><a>10</a><b>x</b></o><o><a>11</a><b>y</b></o><o><a>12</a><b>z</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlDoubleLinkage\">"
+        "<o><i>12</i><c>10</c><f>11</f></o></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlStageSwitch\">"
+        "<o><b>10</b><d>1</d><c>6.4e+1</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"ImageSet\"><o><a>1</a><b>knob</b><g>40</g><i>50</i></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Combination\">"
+        "<o><a>1000</a><g>4</g><c>2</c><f>N</f><b>__Crescendo 0</b></o>"
+        "<o><a>1537</a><c>100</c><f>N</f><b>General cancel</b></o>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.switches.count(1) && !m.switches.at(1).clickable &&
+                 m.switches.count(2) && m.switches.at(2).clickable,
+             "a compact switch is clickable only when it says so");
+    MP_CHECK(m.switchLinkages.size() == 1 && m.switchLinkages[0].conditionSwitchId == 3 &&
+                 !m.switchLinkages[0].conditionWhenEngaged,
+             "an absent condition sense is 'while disengaged'");
+    MP_CHECK(m.keyboardKeys.count(1) && m.keyboardKeys.at(1).midiNote == 60,
+             "a key with no note written is middle C, not dropped");
+    MP_CHECK(m.controlDoubleLinkages.size() == 1 &&
+                 m.controlDoubleLinkages[0].operationCode == 3,
+             "a double linkage with no operation written multiplies, not dropped");
+    MP_CHECK(m.controlStageSwitches.size() == 1 &&
+                 m.controlStageSwitches[0].value == 64 &&
+                 m.controlStageSwitches[0].engageWhenIncreasing &&
+                 m.controlStageSwitches[0].engageWhenDecreasing &&
+                 m.controlStageSwitches[0].disengageWhenIncreasing &&
+                 m.controlStageSwitches[0].disengageWhenDecreasing,
+             "a compact stage switch writes its four flags only when they are N");
+    MP_CHECK(m.imageSets.count(1) && m.imageSets.at(1).clickLeftPx == 0 &&
+                 m.imageSets.at(1).clickTopPx == 0 && m.imageSets.at(1).hasClickArea(),
+             "a click area with no left or top edge written starts at 0");
+    MP_CHECK(m.combinations.count(1000) && m.combinations.at(1000).activatingSwitchId == 2 &&
+                 m.combinations.at(1000).type == 4 && !m.combinations.at(1000).allowsCapture,
+             "a compact combination: c fires it, g is its type, f allows capture");
+    MP_CHECK(m.combinations.count(1537) && m.combinations.at(1537).activatingSwitchId == 100 &&
+                 m.combinations.at(1537).isCancel(),
+             "with no type written, the switch number stays the type, so a cancel cancels");
+  }
+};
+static CompactDefaultsTest g_compactDefaults;
+
 class CompactLinkageTest final : public mp::test::Test {
 public:
   CompactLinkageTest()
@@ -797,8 +864,8 @@ public:
         "<ObjectList ObjectType=\"ContinuousControl\">"
         "<o><a>210</a><b>Exp.1</b><f>127</f><h>Y</h></o>"
         "<o><a>541</a><b>shutters</b></o>"
-        "<o><a>542</a><b>shoe in</b><d>Y</d><f>127</f><h>Y</h><i>Y</i><j>183</j></o>"
-        "<o><a>543</a><b>shoe out</b><f>127</f></o>"
+        "<o><a>542</a><b>shoe in</b><d>Y</d><f>1.27e+2</f><h>Y</h><i>Y</i><j>183</j></o>"
+        "<o><a>543</a><b>shoe out</b><f>3e+1</f></o>"
         "</ObjectList>"
         "<ObjectList ObjectType=\"Enclosure\"><o><a>210</a><b>Exp.1</b><c>541</c></o></ObjectList>"
         "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
@@ -818,6 +885,9 @@ public:
              "a compact control reads its default (f), picture (j) and click flags (h, i)");
     MP_CHECK(cc.count(543) && !cc.at(543).clickable,
              "a compact control without h is not clickable");
+    // Compact files write whole numbers in scientific notation (#53).
+    MP_CHECK(cc.at(543).defaultValue == 30,
+             "a default written as 3e+1 is 30, not 3");
     MP_CHECK(proc.playerControlFor(541) == 542,
              "the shutters are moved from the shoe drawn on the console");
     MP_CHECK(proc.playerControlFor(542) == 542, "the shoe is its own player control");
