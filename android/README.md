@@ -32,6 +32,12 @@ file here containing `sdk.dir=<path to the SDK>`.
   build then finds that install with `find_package`, and Gradle compiles
   JUCE's Java glue from the same copy. The output of this step is in
   `.juce/prepare.log`.
-- Release and debug builds are both signed with the debug key for now:
-  installable, not publishable.
+- Signing: a build is signed with the release key when
+  `MP_ANDROID_KEYSTORE` (the keystore's path) and
+  `MP_ANDROID_KEYSTORE_PASSWORD` are set, in the environment or in
+  `~/.gradle/gradle.properties`; the key's alias is `masterpiece`. Without them
+  it is signed with the debug key: installable, but not an update of a
+  released version. CI reads the key from the repository secrets
+  `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`, and a release
+  will not publish an APK without it.
 - Play release builds: the engine cannot keep up with an organ unoptimised.

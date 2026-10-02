@@ -98,12 +98,33 @@ android {
         }
     }
 
+    // The release key: one key for every version, so each installs over the
+    // last and keeps the player's organs and settings. It never enters the
+    // repository. Given as MP_ANDROID_KEYSTORE (a path) and
+    // MP_ANDROID_KEYSTORE_PASSWORD, from the environment or from Gradle
+    // properties outside the checkout (~/.gradle/gradle.properties); CI
+    // takes them from the repository's secrets. Without them a build is
+    // signed with the debug key: installable, but not an update of a
+    // released version.
+    def keystore = System.getenv('MP_ANDROID_KEYSTORE') ?: project.findProperty('MP_ANDROID_KEYSTORE')
+    def keystorePassword = System.getenv('MP_ANDROID_KEYSTORE_PASSWORD') ?: project.findProperty('MP_ANDROID_KEYSTORE_PASSWORD')
+    def releaseKey = keystore && keystorePassword && file(keystore).exists()
+    signingConfigs {
+        if (releaseKey) {
+            release {
+                storeFile = file(keystore)
+                storePassword = keystorePassword
+                keyAlias = 'masterpiece'
+                keyPassword = keystorePassword
+            }
+        }
+    }
+
     buildTypes {
         // The engine cannot keep up with an organ unoptimised, so playing
-        // means a release build. Both are signed with the debug key until
-        // there is a release key: installable, not publishable.
+        // means a release build.
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig = releaseKey ? signingConfigs.release : signingConfigs.debug
             minifyEnabled = false
         }
     }
