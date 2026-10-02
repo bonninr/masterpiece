@@ -1,4 +1,5 @@
 #include "Console.h"
+#include "ManualDialog.h"
 #include "PathCase.h"
 
 #include "BmpImage.h"
@@ -860,6 +861,15 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   // A drawn manual is playable: clicking a key sounds it. The click goes
   // through MidiKeyboardState, which is the same path a physical console
   // takes, so stops and couplers apply to it identically.
+  // Right-click a manual: its MIDI window, the way GrandOrgue opens one --
+  // which keyboard plays it, and the pistons that bring it to a keyboard.
+  if (e.mods.isPopupMenu()) {
+    for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
+      if (it->bounds.contains(e.getPosition()) && it->keyboardId != 0) {
+        ManualDialog::show(proc_, it->keyboardId);
+        return;
+      }
+  }
   if (!e.mods.isPopupMenu()) {
     int channel = 1;
     const int note = keyAt(e.getPosition(), &channel);
