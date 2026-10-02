@@ -433,9 +433,15 @@ jobs:
       # sound and pitch, then the UI tapped through by the names on its
       # buttons. Everything seen is kept in the ios-simulator-screenshots
       # artifact. The checks report; they do not fail the build yet.
+      # idb taps the UI. Without it the organ is still played and checked;
+      # only the tap-through is lost, so this step may fail.
       - name: Tools for the simulator run
+        continue-on-error: true
         run: |
           brew tap facebook/fb
+          # Homebrew installs from a tap only once it is trusted; this one is
+          # Meta's own, the documented way to install idb.
+          brew trust facebook/fb || true
           brew install idb-companion
           pip3 install --break-system-packages fb-idb numpy || pip3 install fb-idb numpy
 
