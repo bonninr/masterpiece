@@ -59,6 +59,19 @@ struct AudioGraphConfig {
 
 class MasterpieceProcessor : public juce::AudioProcessor {
 public:
+  // The playing state -- switches, controls, voices, pistons -- belongs to
+  // the audio thread, which works on it inside processBlock. Everything that
+  // changes it from elsewhere (the window, a MIDI-learn panel, a script)
+  // takes the lock JUCE already holds around every audio block, so the two
+  // never run at once: the window moving a shoe while a note engaged a
+  // switch crashed on a 12-core Mac (#120). Re-entrant, so a method that
+  // holds it may call another that takes it, and the audio thread may call
+  // these from inside its own block. The window waits at most one block.
+  struct AudioLock {
+    explicit AudioLock(juce::AudioProcessor& p) : lock(p.getCallbackLock()) {}
+    const juce::ScopedLock lock;
+  };
+
   MasterpieceProcessor();
   ~MasterpieceProcessor() override = default;
 
@@ -312,7 +325,10 @@ public:
   // of recalling what was stored. An organ that has a setter switch of its own
   // drives this from the console; this is for one that has not, and for a UI
   // button.
-  void setCaptureMode(bool on) { combinations_.setCaptureMode(on); }
+  void setCaptureMode(bool on) {
+    const AudioLock audio(*this);
+    combinations_.setCaptureMode(on);
+  }
 
   // --- tuning: the player's, over the organ's own -----------------------
   // Temperament, pitch and transposer, per organ. Each applies to the notes
@@ -979,6 +995,17 @@ public:
   int lastControllerValue(const MidiSource& source) const;
   std::vector<std::string> takeReleaseLog();
 
+  // How the audio blocks keep time. A block that takes longer than the audio
+  // it produces (its size over the sample rate) is late, and a late block is
+  // a glitch the player hears. Counted on the audio thread, read anywhere;
+  // reading takes the worst block since the last read.
+  struct AudioLoad {
+    int64_t blocks = 0;
+    int64_t late = 0;
+    double worstPercent = 0.0;  // the slowest block, as a share of its time
+  };
+  AudioLoad takeAudioLoad();
+
   // Where the organ was loaded from — the console needs it to resolve artwork
   // out of the same installation packages the audio comes from.
   const std::string& organRootDir() const { return organRootDir_; }
@@ -1011,6 +1038,7 @@ public:
   // Runtime DSP toggles (ADR-005). DSP always ships; this is how a slow
   // machine turns it off without a rebuild.
   void setEngineSwitch(const EngineSwitch& sw) {
+    const AudioLock audio(*this);
     graph_.engineSwitch = sw;
   }
   const EngineSwitch& engineSwitch() const { return graph_.engineSwitch; }
@@ -1180,6 +1208,9 @@ private:
   std::vector<Id> preloadRanks_;
   juce::StringArray overridden_;   // settings the command line has claimed
   juce::File clearedRunning_;      // the running mark, set aside in the background
+  std::atomic<int64_t> audioBlocks_{0};
+  std::atomic<int64_t> lateBlocks_{0};
+  std::atomic<int> worstBlockPermille_{0};
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
   std::atomic<bool> releaseAll_{false};

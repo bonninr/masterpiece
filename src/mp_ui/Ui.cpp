@@ -1508,6 +1508,22 @@ void MasterpieceEditor::timerCallback() {
     live += ", dropped " + juce::String(stats.startsDropped);
   if (stats.samplesMissing > 0)
     live += ", no audio " + juce::String(stats.samplesMissing);
+
+  // Audio that did not keep time: each late block is a glitch the player
+  // heard, and the log says how late, so a report can say why (#120).
+  const auto load = proc_.takeAudioLoad();
+  worstBlockSinceLog_ = juce::jmax(worstBlockSinceLog_, load.worstPercent);
+  if (load.late > 0) live += ", late blocks " + juce::String(load.late);
+  const auto now = juce::Time::getMillisecondCounter();
+  if (load.late > lateBlocksLogged_ && now - lateLoggedAt_ > 5000) {
+    juce::Logger::writeToLog("audio: " + juce::String(load.late - lateBlocksLogged_) +
+                             " late block(s) of " + juce::String(load.blocks) +
+                             "; the slowest took " + juce::String(worstBlockSinceLog_, 0) +
+                             "% of its time");
+    lateBlocksLogged_ = load.late;
+    lateLoggedAt_ = now;
+    worstBlockSinceLog_ = 0.0;
+  }
   top_.setStatus(live);
 }
 
