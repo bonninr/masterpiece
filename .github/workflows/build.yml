@@ -486,6 +486,46 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+  # iOS for real iPhones and iPads: arm64, unsigned, packed as an .ipa for
+  # sideloading. Apple runs nothing it has not signed, so the player signs it
+  # with their own Apple ID through AltStore or Sideloadly; nothing here needs
+  # a developer account. Built on release tags too, and published with them.
+  ios-device:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ios-sim
+
+      - name: Build
+        run: >
+          cmake --build build/ios-sim --config Release --target MasterpieceApp --
+          -sdk iphoneos -arch arm64
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      # An .ipa is a ZIP with the app in a Payload folder.
+      - name: Package
+        run: |
+          # Only the device build happens in this job, so there is one app.
+          APP=$(find build/ios-sim -name Masterpiece.app -type d | head -1)
+          test -n "$APP" || { echo "no Masterpiece.app"; exit 1; }
+          echo "$APP"
+          lipo -info "$APP/Masterpiece"
+          # Platform 2 is iOS on a device; the simulator is 7.
+          otool -l "$APP/Masterpiece" | grep -A4 "LC_BUILD_VERSION" | grep -q "platform 2" || { echo "not an iOS device binary"; exit 1; }
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry masterpiece-ios.ipa Payload
+          ls -la masterpiece-ios.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masterpiece-ios
+          path: masterpiece-ios.ipa
+          if-no-files-found: error
+          retention-days: 3
+
   # Android: the APK for phones, tablets and the emulator. Signed with the
   # release key from the repository's secrets when they are there (a fork's
   # pull request cannot read them, and gets the debug key); a release tag
