@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <supports-screens android:smallScreens="true" android:normalScreens="true" android:largeScreens="true"
+                    android:xlargeScreens="true" android:anyDensity="true"/>
+
+  <!-- A console on USB or Bluetooth. Neither is required: the on-screen
+       console plays too. -->
+  <uses-feature android:name="android.software.midi" android:required="false"/>
+  <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
+  <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
+  <uses-feature android:glEsVersion="0x00030000" android:required="false"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+
+  <!-- Sample sets on shared storage, on the Android versions that still allow
+       reading it by path. -->
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+
+  <application android:label="Masterpiece" android:name="com.rmsl.juce.JuceApp"
+               android:icon="@drawable/icon" android:hardwareAccelerated="false">
+    <!-- The plain Android activity, as JUCE's own exporter writes it when
+         push notifications are off: JUCE drives the window from its
+         Application class, and JuceActivity's native callbacks exist only in
+         builds with notifications. -->
+    <activity android:name="android.app.Activity"
+              android:configChanges="keyboard|keyboardHidden|orientation|screenSize|navigation|smallestScreenSize|screenLayout|uiMode"
+              android:launchMode="singleTask" android:hardwareAccelerated="true" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
