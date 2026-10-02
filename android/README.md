@@ -34,8 +34,9 @@ file here containing `sdk.dir=<path to the SDK>`.
   `.juce/prepare.log`.
 - Signing: a build is signed with the release key when
   `MP_ANDROID_KEYSTORE` (the keystore's path) and
-  `MP_ANDROID_KEYSTORE_PASSWORD` are set, in the environment or in
-  `~/.gradle/gradle.properties`; the key's alias is `masterpiece`. Without them
+  `MP_ANDROID_KEYSTORE_PASSWORD` are set, in the environment, in
+  `~/.gradle/gradle.properties`, or in the repository's `.env` (which git
+  ignores); the key's alias is `masterpiece`. Without them
   it is signed with the debug key: installable, but not an update of a
   released version. CI reads the key from the repository secrets
   `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`, and a release
