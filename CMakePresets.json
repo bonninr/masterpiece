@@ -74,6 +74,19 @@
       }
     },
     {
+      "name": "ios-sim",
+      "displayName": "iOS (Xcode, app only; build with -- -sdk iphonesimulator)",
+      "inherits": "base",
+      "generator": "Xcode",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "MP_BUILD_STANDALONE": "ON",
+        "MP_ENABLE_DSP": "ON",
+        "MP_ENABLE_STREAMING": "ON"
+      }
+    },
+    {
       "name": "ci-linux",
       "displayName": "CI Linux",
       "inherits": "dev",

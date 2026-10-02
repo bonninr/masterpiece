@@ -402,6 +402,130 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+  # iOS: the app for the simulator, unsigned. No release ships it yet, so a
+  # tagged release skips it; on pull requests it keeps the iOS build honest.
+  ios:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ios-sim
+
+      - name: Build
+        run: >
+          cmake --build build/ios-sim --config Release --target MasterpieceApp --
+          -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+
+      - name: Check output
+        run: |
+          APP=$(find build/ios-sim -name Masterpiece.app -type d | head -1)
+          test -n "$APP" || { echo "no Masterpiece.app"; exit 1; }
+          echo "$APP"
+          lipo -info "$APP/Masterpiece"
+          plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
+          echo "APP=$APP" >> "$GITHUB_ENV"
+
+      # Run it, since nobody here has a Mac to look with: an iPad simulator,
+      # an organ made on the spot (one stop of sine-wave pipes) played from a
+      # MIDI file and recorded inside the app, the recording checked for
+      # sound and pitch, then the UI tapped through by the names on its
+      # buttons. Everything seen is kept in the ios-simulator-screenshots
+      # artifact. The checks report; they do not fail the build yet.
+      - name: Tools for the simulator run
+        run: pip3 install --break-system-packages numpy || pip3 install numpy
+
+      - name: Run in the simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j |
+            python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if 'iPad' in x['name']))")
+          echo "simulator: $DEVICE"
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$APP"
+          BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
+          mkdir -p ios-shots
+
+          # The organ, in the app's own Documents folder, where it may read;
+          # played from its package, as a phone or tablet opens organs.
+          DATA=$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE" data)
+          python3 .github/ios-check/make_organ.py "$DATA/Documents/check"
+          ls "$DATA/Documents/check" | head
+
+          xcrun simctl launch "$DEVICE" "$BUNDLE"             --odf "$DATA/Documents/check/check.orgue" --draw-stops all             --play-midi "$DATA/Documents/check/check.mid"             --record-audio "$DATA/Documents/check/out.wav"             --log "$DATA/Documents/check/run.log" --stay-open | tee ios-shots/launch.txt
+
+          # The piece lasts about five seconds once the organ is up.
+          for i in $(seq 1 60); do
+            grep -q "recital finished" "$DATA/Documents/check/run.log" 2>/dev/null && break
+            sleep 2
+          done
+          cp "$DATA/Documents/check/run.log" ios-shots/ 2>/dev/null || echo "no log" > ios-shots/run.log
+          xcrun simctl io "$DEVICE" screenshot ios-shots/00-after-playing.png
+          if [ -f "$DATA/Documents/check/out.wav" ]; then
+            cp "$DATA/Documents/check/out.wav" ios-shots/
+            python3 .github/ios-check/check_audio.py ios-shots/out.wav | tee ios-shots/audio-result.txt || true
+          else
+            echo "FAIL: no recording" | tee ios-shots/audio-result.txt
+          fi
+
+          # The tap-through (drive_ui.py) needs idb, which now asks for macOS 15
+          # and Xcode 26; this runner has neither. Kept for a runner that does.
+
+          # Still running, or did it crash?
+          xcrun simctl spawn "$DEVICE" launchctl list | grep -i "$BUNDLE" | tee ios-shots/running.txt || echo "NOT RUNNING" | tee ios-shots/running.txt
+          xcrun simctl spawn "$DEVICE" log show --last 5m --predicate "process == 'Masterpiece'" --style compact > ios-shots/system-log.txt 2>&1 || true
+          find ~/Library/Logs/DiagnosticReports -name "Masterpiece*" -newer "$APP" -exec cp {} ios-shots/ \; 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-screenshots
+          path: ios-shots/
+          if-no-files-found: warn
+          retention-days: 3
+
+  # iOS for real iPhones and iPads: arm64, unsigned, packed as an .ipa for
+  # sideloading. Apple runs nothing it has not signed, so the player signs it
+  # with their own Apple ID through AltStore or Sideloadly; nothing here needs
+  # a developer account. Built on release tags too, and published with them.
+  ios-device:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ios-sim
+
+      - name: Build
+        run: >
+          cmake --build build/ios-sim --config Release --target MasterpieceApp --
+          -sdk iphoneos -arch arm64
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      # An .ipa is a ZIP with the app in a Payload folder.
+      - name: Package
+        run: |
+          # Only the device build happens in this job, so there is one app.
+          APP=$(find build/ios-sim -name Masterpiece.app -type d | head -1)
+          test -n "$APP" || { echo "no Masterpiece.app"; exit 1; }
+          echo "$APP"
+          lipo -info "$APP/Masterpiece"
+          # Platform 2 is iOS on a device; the simulator is 7.
+          otool -l "$APP/Masterpiece" | grep -A4 "LC_BUILD_VERSION" | grep -q "platform 2" || { echo "not an iOS device binary"; exit 1; }
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry masterpiece-ios.ipa Payload
+          ls -la masterpiece-ios.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masterpiece-ios
+          path: masterpiece-ios.ipa
+          if-no-files-found: error
+          retention-days: 3
+
   # Android: the APK for phones, tablets and the emulator. Signed with the
   # release key from the repository's secrets when they are there (a fork's
   # pull request cannot read them, and gets the debug key); a release tag
