@@ -38,4 +38,23 @@ inline const juce::Identifier kStaysOpen{"mpStaysOpen"};
 void installTouchLook();
 void removeTouchLook();
 
+// Whether a file name is something a phone or tablet opens: a .rar or .orgue
+// package. Always true on a desktop, which opens loose definitions too.
+bool isMobilePackage(const juce::String& fileName);
+
+// Where organs brought onto a phone or tablet are kept: the app's own
+// storage, which the loader can read by path.
+juce::File importedOrgansFolder();
+
+// Android hands a chosen file over as a document, not a path, and the loader
+// reads paths (the archive reader seeks through a package). A document in
+// the device's own storage is read where it is, through a descriptor the
+// system opens for it; `done` receives a path that reads it, and nothing is
+// copied. Otherwise (a cloud drive streams, and cannot seek) the document is
+// copied into importedOrgansFolder() first, with a progress window and a
+// Cancel button, and `done` receives the copy; or nothing, if it was
+// cancelled or failed. A copy already there with the same name and size is
+// reused rather than copied again.
+void importDocument(const juce::URL& document, std::function<void(juce::File)> done);
+
 }  // namespace mp::ui

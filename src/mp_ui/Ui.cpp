@@ -423,9 +423,13 @@ void TopBar::resized() {
 void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // The extension pattern names the format because that IS the file name on
   // disk; the prompt does not, because the player is choosing an organ.
+  // On a phone or tablet an organ comes as one package: a RAR or a .orgue.
+  // A loose installation is thousands of files, which is slow to bring onto
+  // the device and slow to read there through the system's document layer.
   chooser_ = std::make_unique<juce::FileChooser>(
-      "Choose an organ definition file", startIn,
-      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
+      kMobile ? "Choose an organ package" : "Choose an organ definition file", startIn,
+      kMobile ? "*.rar;*.orgue"
+              : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
   auto flags = juce::FileBrowserComponent::openMode |
                juce::FileBrowserComponent::canSelectFiles;
  #if JUCE_MAC
@@ -446,7 +450,21 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
                             return;
                           }
                          #endif
-                          if (f.existsAsFile()) loadOrgan(f);
+                          if (f.existsAsFile()) {
+                            if (!isMobilePackage(f.getFileName())) return;
+                            loadOrgan(f);
+                            return;
+                          }
+                         #if JUCE_ANDROID
+                          // A document from Android's picker, not a path:
+                          // copied into the app's storage, then opened.
+                          const auto url = fc.getURLResult();
+                          if (url.isEmpty()) return;
+                          importDocument(url, [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](
+                                                  juce::File copy) {
+                            if (safe != nullptr && copy.existsAsFile()) safe->loadOrgan(copy);
+                          });
+                         #endif
                         });
 }
 

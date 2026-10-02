@@ -9,6 +9,9 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdio>
+#ifndef _WIN32
+ #include <unistd.h>
+#endif
 #include <map>
 #include <memory>
 #include <regex>
@@ -16,6 +19,49 @@
 
 namespace mp {
 namespace fs = std::filesystem;
+
+namespace {
+ArchiveOpenHook openHook = nullptr;
+
+// A descriptor from the hook, when it has one for this path.
+int hookedDescriptor(const std::string& path) {
+  return openHook != nullptr ? openHook(path) : -1;
+}
+
+// Every package is opened through here, so a hooked path is read through its
+// descriptor and any other the usual way.
+std::FILE* openPackage(const std::string& path) {
+#ifndef _WIN32
+  const int fd = hookedDescriptor(path);
+  if (fd >= 0) {
+    if (std::FILE* f = fdopen(fd, "rb")) return f;
+    ::close(fd);
+    return nullptr;
+  }
+  return std::fopen(path.c_str(), "rb");
+#else
+  return _wfopen(fs::u8path(path).wstring().c_str(), L"rb");
+#endif
+}
+
+bool seekTo(std::FILE* f, int64_t offset, int whence) {
+#ifdef _WIN32
+  return _fseeki64(f, offset, whence) == 0;
+#else
+  return fseeko(f, static_cast<off_t>(offset), whence) == 0;
+#endif
+}
+
+int64_t tellOf(std::FILE* f) {
+#ifdef _WIN32
+  return _ftelli64(f);
+#else
+  return static_cast<int64_t>(ftello(f));
+#endif
+}
+}  // namespace
+
+void setArchiveOpenHook(ArchiveOpenHook hook) { openHook = hook; }
 
 namespace {
 
@@ -112,11 +158,13 @@ int64_t rarVolumeEnd(const std::string& path) {
   const auto size = static_cast<int64_t>(fs::file_size(fs::u8path(path), ec));
   if (ec || size < 64) return size;
   const int64_t tail = std::min<int64_t>(size, 64 * 1024);
-  std::ifstream in(fs::u8path(path), std::ios::binary);
-  in.seekg(size - tail);
+  std::FILE* in = openPackage(path);
+  if (in == nullptr) return size;
   std::vector<unsigned char> b(static_cast<size_t>(tail));
-  in.read(reinterpret_cast<char*>(b.data()), tail);
-  if (in.gcount() != tail) return size;
+  const bool whole = seekTo(in, size - tail, SEEK_SET) &&
+                     std::fread(b.data(), 1, b.size(), in) == b.size();
+  std::fclose(in);
+  if (!whole) return size;
   size_t zeros = b.size();
   while (zeros > 0 && b[zeros - 1] == 0) --zeros;
   if (zeros == b.size()) return size;  // no padding: nothing to cut
@@ -151,11 +199,7 @@ struct VolumeStream {
     file = nullptr;
     pos = 0;
     if (index >= paths.size()) return false;
-#ifdef _WIN32
-    file = _wfopen(fs::u8path(paths[index]).wstring().c_str(), L"rb");
-#else
-    file = std::fopen(paths[index].c_str(), "rb");
-#endif
+    file = openPackage(paths[index]);
     return file != nullptr;
   }
   static la_ssize_t read(archive*, void* data, const void** out) {
@@ -211,7 +255,19 @@ struct Reader {
   }
   ~Reader() { archive_read_free(a); }
   bool open(const std::vector<std::string>& volumes) {
-    if (volumes.size() > 1) {
+    // A package read through the hook goes the same way as a split set:
+    // libarchive's own file opening would ask for it by name.
+    bool hooked = false;
+    for (const auto& v : volumes) {
+      const int fd = hookedDescriptor(v);
+      if (fd >= 0) {
+#ifndef _WIN32
+        ::close(fd);
+#endif
+        hooked = true;
+      }
+    }
+    if (volumes.size() > 1 || hooked) {
       volumes_ = std::make_unique<VolumeStream>();
       volumes_->paths = volumes;
       for (const auto& v : volumes) volumes_->ends.push_back(rarVolumeEnd(v));
@@ -298,13 +354,42 @@ private:
   int rc_ = ARCHIVE_OK;
 };
 
+#ifndef _WIN32
+// unarr's stream over a FILE we opened. ar_open_stream is part of unarr's own
+// sources, which are built here, but not of its public header.
+extern "C" {
+typedef void (*ar_stream_close_fn)(void* data);
+typedef size_t (*ar_stream_read_fn)(void* data, void* buffer, size_t count);
+typedef bool (*ar_stream_seek_fn)(void* data, off64_t offset, int origin);
+typedef off64_t (*ar_stream_tell_fn)(void* data);
+ar_stream* ar_open_stream(void* data, ar_stream_close_fn close, ar_stream_read_fn read,
+                          ar_stream_seek_fn seek, ar_stream_tell_fn tell);
+}
+void unarrClose(void* f) { std::fclose(static_cast<std::FILE*>(f)); }
+size_t unarrRead(void* f, void* buffer, size_t count) {
+  return std::fread(buffer, 1, count, static_cast<std::FILE*>(f));
+}
+bool unarrSeek(void* f, off64_t offset, int origin) {
+  return seekTo(static_cast<std::FILE*>(f), offset, origin);
+}
+off64_t unarrTell(void* f) { return tellOf(static_cast<std::FILE*>(f)); }
+#endif
+
 class UnarrPass final : public Pass {
 public:
   explicit UnarrPass(const std::string& path) {
 #ifdef _WIN32
     stream_ = ar_open_file_w(fs::u8path(path).wstring().c_str());
 #else
-    stream_ = ar_open_file(path.c_str());
+    // Through the hook when it knows the path, with unarr reading our FILE as
+    // its stream; otherwise unarr opens the file itself.
+    if (const int fd = hookedDescriptor(path); fd >= 0) {
+      ::close(fd);
+      if (std::FILE* f = openPackage(path))
+        stream_ = ar_open_stream(f, &unarrClose, &unarrRead, &unarrSeek, &unarrTell);
+    } else {
+      stream_ = ar_open_file(path.c_str());
+    }
 #endif
     if (stream_ != nullptr) ar_ = ar_open_rar_archive(stream_);
     if (ar_ == nullptr) error_ = "the solid RAR 4 reader cannot open it";
@@ -413,10 +498,13 @@ ArchiveKind inspectArchive(const std::string& path) {
   ArchiveKind k;
   std::error_code ec;
   k.bytes = static_cast<int64_t>(fs::file_size(path, ec));
-  std::ifstream in(path, std::ios::binary);
   std::vector<unsigned char> b(1 << 16);
-  in.read(reinterpret_cast<char*>(b.data()), static_cast<std::streamsize>(b.size()));
-  b.resize(static_cast<size_t>(in.gcount()));
+  if (std::FILE* in = openPackage(path)) {
+    b.resize(std::fread(b.data(), 1, b.size(), in));
+    std::fclose(in);
+  } else {
+    b.clear();
+  }
   if (b.size() >= 4 && b[0] == 'P' && b[1] == 'K') {
     k.format = ArchiveKind::Format::Zip;
     return k;
