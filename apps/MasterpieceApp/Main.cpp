@@ -408,6 +408,10 @@ public:
     while (takes.size() > 1 && !takes.back().wants()) takes.pop_back();
 
     if (takes.front().wants()) {
+      // A script plays this organ, and nobody is there to press Keep changes:
+      // an organ opened for the first time would otherwise wait in Organ
+      // settings with its samples unloaded, and the piece play in silence.
+      win_->editor().onBeforeFirstLoad = nullptr;
       win_->onLoaded = [this, takes, stayOpen, drawOnly] {
         // Held by the chain of callbacks below rather than by the lambda, so
         // that each take can hand the next one on without copying the list.
