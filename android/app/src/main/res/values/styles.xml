@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- No action bar: the console draws its own controls. -->
+  <style name="Masterpiece" parent="android:Theme.Material.NoActionBar"/>
+</resources>

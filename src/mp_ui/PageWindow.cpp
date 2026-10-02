@@ -1,4 +1,5 @@
 #include "PageWindow.h"
+#include "Mobile.h"
 
 namespace mp::ui {
 
@@ -52,6 +53,7 @@ PageWindow::PageWindow(MasterpieceProcessor& p, int page, int layout, const juce
   } else {
     setSize(1000, 700);
   }
+  fitToScreen(*this);
 }
 
 void PageWindow::closeButtonPressed() {

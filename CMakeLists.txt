@@ -299,7 +299,9 @@ if(TARGET juce::juce_core)
   #
   # The device-type dropdown in AudioDeviceSelectorComponent appears by itself
   # once a second type exists, so this needs no UI work.
-  if(UNIX AND NOT APPLE)
+  #
+  # Android is UNIX and not Apple too, and has no JACK.
+  if(UNIX AND NOT APPLE AND NOT ANDROID)
     add_compile_definitions(
       JUCE_JACK=1
       # What a patchbay shows. The default is "JUCEJack", which tells an

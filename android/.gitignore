@@ -1,0 +1,5 @@
+.gradle/
+.juce/
+.cxx/
+app/.cxx/
+local.properties
