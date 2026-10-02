@@ -401,3 +401,27 @@ jobs:
             build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
           if-no-files-found: warn
           retention-days: 3
+
+  # iOS: the app for the simulator, unsigned. No release ships it yet, so a
+  # tagged release skips it; on pull requests it keeps the iOS build honest.
+  ios:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ios-sim
+
+      - name: Build
+        run: >
+          cmake --build build/ios-sim --config Release --target MasterpieceApp --
+          -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+
+      - name: Check output
+        run: |
+          APP=$(find build/ios-sim -name Masterpiece.app -type d | head -1)
+          test -n "$APP" || { echo "no Masterpiece.app"; exit 1; }
+          echo "$APP"
+          lipo -info "$APP/Masterpiece"
+          plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
