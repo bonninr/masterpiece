@@ -5,13 +5,17 @@ app reads directly.
 
     python3 make_organ.py <folder>
 
-Writes <folder>/check.organ, <folder>/pipes/*.wav and <folder>/check.mid.
+Writes <folder>/check.organ, <folder>/pipes/*.wav and <folder>/check.mid,
+and the same organ as one package, <folder>/check.orgue: a ZIP with the
+organ, its pipes and the organindex.ini a GrandOrgue package carries. Phones
+and tablets open organs as packages, so the package is what gets played.
 """
 import math
 import os
 import struct
 import sys
 import wave
+import zipfile
 
 RATE = 48000
 SECONDS = 1.5
@@ -89,6 +93,18 @@ def main():
         pipe(os.path.join(folder, "pipes", f"{FIRST + k:03d}.wav"), FIRST + k)
     organ(folder)
     midi(os.path.join(folder, "check.mid"))
+    package(folder)
+
+
+def package(folder):
+    index = ("[General]\nTitle=Check\nOrganCount=1\n\n"
+             "[Organ001]\nFilename=check.organ\nChurchName=Check\nOrganBuilder=CI\n")
+    # Stored, not compressed, as GrandOrgue's own packages are.
+    with zipfile.ZipFile(os.path.join(folder, "check.orgue"), "w", zipfile.ZIP_STORED) as z:
+        z.writestr("organindex.ini", index)
+        z.write(os.path.join(folder, "check.organ"), "check.organ")
+        for name in sorted(os.listdir(os.path.join(folder, "pipes"))):
+            z.write(os.path.join(folder, "pipes", name), "pipes/" + name)
 
 
 if __name__ == "__main__":
