@@ -427,29 +427,56 @@ jobs:
           plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
           echo "APP=$APP" >> "$GITHUB_ENV"
 
-      # Run it: an iPad simulator, the app installed and launched, and what
-      # the screen shows saved as pictures. Nobody here has a Mac to look
-      # with, so this is how the iOS build is seen at all.
-      - name: Launch in the simulator
+      # Run it, since nobody here has a Mac to look with: an iPad simulator,
+      # an organ made on the spot (one stop of sine-wave pipes) played from a
+      # MIDI file and recorded inside the app, the recording checked for
+      # sound and pitch, then the UI tapped through by the names on its
+      # buttons. Everything seen is kept in the ios-simulator-screenshots
+      # artifact. The checks report; they do not fail the build yet.
+      - name: Tools for the simulator run
+        run: |
+          brew tap facebook/fb
+          brew install idb-companion
+          pip3 install --break-system-packages fb-idb numpy || pip3 install fb-idb numpy
+
+      - name: Run in the simulator
         run: |
           DEVICE=$(xcrun simctl list devices available -j |
             python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if 'iPad' in x['name']))")
           echo "simulator: $DEVICE"
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          # Dark, as the app itself is; the console sets its own orientation.
-          xcrun simctl ui "$DEVICE" appearance dark || true
           xcrun simctl install "$DEVICE" "$APP"
           BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
           mkdir -p ios-shots
-          xcrun simctl launch "$DEVICE" "$BUNDLE" | tee ios-shots/launch.txt
-          for t in 5 15 30; do
-            sleep $([ $t = 5 ] && echo 5 || echo 10)
-            xcrun simctl io "$DEVICE" screenshot "ios-shots/after-${t}s.png"
+
+          # The organ, in the app's own Documents folder, where it may read.
+          DATA=$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE" data)
+          python3 .github/ios-check/make_organ.py "$DATA/Documents/check"
+          ls "$DATA/Documents/check" | head
+
+          xcrun simctl launch "$DEVICE" "$BUNDLE"             --odf "$DATA/Documents/check/check.organ" --draw-stops all             --play-midi "$DATA/Documents/check/check.mid"             --record-audio "$DATA/Documents/check/out.wav"             --log "$DATA/Documents/check/run.log" --stay-open | tee ios-shots/launch.txt
+
+          # The piece lasts about five seconds once the organ is up.
+          for i in $(seq 1 60); do
+            grep -q "recital finished" "$DATA/Documents/check/run.log" 2>/dev/null && break
+            sleep 2
           done
+          cp "$DATA/Documents/check/run.log" ios-shots/ 2>/dev/null || echo "no log" > ios-shots/run.log
+          xcrun simctl io "$DEVICE" screenshot ios-shots/00-after-playing.png
+          if [ -f "$DATA/Documents/check/out.wav" ]; then
+            cp "$DATA/Documents/check/out.wav" ios-shots/
+            python3 .github/ios-check/check_audio.py ios-shots/out.wav | tee ios-shots/audio-result.txt || true
+          else
+            echo "FAIL: no recording" | tee ios-shots/audio-result.txt
+          fi
+
+          python3 .github/ios-check/drive_ui.py "$DEVICE" ios-shots/ui || true
+
           # Still running, or did it crash?
           xcrun simctl spawn "$DEVICE" launchctl list | grep -i "$BUNDLE" | tee ios-shots/running.txt || echo "NOT RUNNING" | tee ios-shots/running.txt
-          xcrun simctl spawn "$DEVICE" log show --last 2m --predicate "process == 'Masterpiece'" --style compact > ios-shots/log.txt 2>&1 || true
+          xcrun simctl spawn "$DEVICE" log show --last 5m --predicate "process == 'Masterpiece'" --style compact > ios-shots/system-log.txt 2>&1 || true
           find ~/Library/Logs/DiagnosticReports -name "Masterpiece*" -newer "$APP" -exec cp {} ios-shots/ \; 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
