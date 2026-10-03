@@ -1022,7 +1022,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       total += last;
     }
   auto notify = [&] {
-    if (!progress || progress(total > 0 ? std::min(1.0, static_cast<double>(done) / total) : 1.0))
+    if (!progress || progress(total > 0 ? (std::min)(1.0, static_cast<double>(done) / total) : 1.0))
       return true;
     error = "cancelled";
     return false;
