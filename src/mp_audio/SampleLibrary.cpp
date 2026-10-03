@@ -588,6 +588,8 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   finishCacheWrite(false);
   cacheRead_ = 0;
   cacheWritten_ = 0;
+  cacheTotal_ = 0;
+  cacheDone_ = 0;
 
   // A cache of a previous load of this organ, at these settings, is the whole
   // of the work below already done. Reading it is sequential; doing it again
@@ -1272,6 +1274,19 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
     putStr(os, fingerprint);
     putPod<uint64_t>(os, static_cast<uint64_t>(store.size()));
 
+    // How much there is to write, so the status line can say how far along
+    // it is and how long is left: on a large organ this takes minutes.
+    int64_t total = 0;
+    for (const auto& [id, buf] : store) {
+      (void)id;
+      if (buf == nullptr) continue;
+      total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
+                                    buf->pcm16.size() * sizeof(int16_t) +
+                                    buf->frames.size() * sizeof(float));
+    }
+    cacheTotal_ = total;
+    int64_t done = 0;
+
     for (const auto& [id, buf] : store) {
       if (buf == nullptr) continue;
       if (cacheStop_.load()) break;
@@ -1300,6 +1315,8 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       }
       putPod<uint64_t>(os, bytes);
       if (bytes) os.write(data, static_cast<std::streamsize>(bytes));
+      done += static_cast<int64_t>(bytes);
+      cacheDone_ = done;
 
       // A streamed sample keeps only its head here. What the tail needs to be
       // rebuilt is recorded so the file is not opened until a note asks.

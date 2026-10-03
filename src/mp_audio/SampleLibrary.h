@@ -179,6 +179,11 @@ public:
   // writing it first kept a loaded organ silent for as long as a disk takes
   // to write gigabytes, which looked like a hang (#120). True while it runs.
   bool cacheWriting() const { return cacheWriting_.load(); }
+  // How far the write has got, 0..1, or -1 before it knows its size.
+  double cacheWriteFraction() const {
+    const int64_t total = cacheTotal_.load();
+    return total > 0 ? static_cast<double>(cacheDone_.load()) / static_cast<double>(total) : -1.0;
+  }
   // Waits for a cache write still running, so a load never reads one half
   // written. Asks it to stop first when `abandon` (quitting); the old cache,
   // if any, is then left as it was.
@@ -262,6 +267,9 @@ private:
   CacheMode cacheMode_ = CacheMode::Single;
   mutable int64_t cacheRead_ = 0;
   mutable std::atomic<int64_t> cacheWritten_{0};
+  // Sample bytes the cache write has to do, and has done: its progress.
+  mutable std::atomic<int64_t> cacheTotal_{0};
+  mutable std::atomic<int64_t> cacheDone_{0};
   std::thread cacheThread_;
   std::atomic<bool> cacheWriting_{false};
   mutable std::atomic<bool> cacheStop_{false};

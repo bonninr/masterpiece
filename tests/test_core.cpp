@@ -9135,6 +9135,8 @@ public:
       // Written once the organ is live, in the background.
       lib.finishCacheWrite(false);
       MP_CHECK(report.loaded == 8 && cacheFiles() == 1, "a whole load still writes it");
+      MP_CHECK(lib.cacheWriteFraction() == 1.0,
+               "and its progress reaches the end, for the status line's percentage");
     }
     root.deleteRecursively();
   }
