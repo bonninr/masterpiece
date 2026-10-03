@@ -424,9 +424,17 @@ bool EnginePanel::loadingChanged() const {
 }
 
 void EnginePanel::timerCallback() {
-  const bool offer = onReload != nullptr && loadingChanged() &&
-                     proc_.loadedOrganFile().getFullPathName().isNotEmpty();
+  // Always there while an organ is loaded (#134), and marked when a change
+  // here is waiting for it.
+  const bool offer = onReload != nullptr && proc_.loadedOrganFile().getFullPathName().isNotEmpty();
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
+  const bool pending = offer && loadingChanged();
+  const juce::String reloadText = pending ? "Load the organ again to apply" : "Load the organ again";
+  if (reload_.getButtonText() != reloadText) {
+    reload_.setButtonText(reloadText);
+    reload_.setColour(juce::TextButton::buttonColourId,
+                      pending ? juce::Colour(0xff8a5a12) : juce::Colour(0xff2a2f38));
+  }
 
   const auto bytes = proc_.sampleLibrary().residentBytes();
   const auto fmt = proc_.sampleStorage();
@@ -1445,6 +1453,13 @@ void FavouritesPanel::refresh() {
                       juce::dontSendNotification);
       if (onLoad) onLoad(f);
       else proc_.loadOrganAsync(f);
+      // The settings have done their job: the load's own window takes over
+      // (#135). Posted, since this button is inside what is being closed.
+      juce::Component::SafePointer<juce::DialogWindow> dw(
+          findParentComponentOfClass<juce::DialogWindow>());
+      juce::MessageManager::callAsync([dw] {
+        if (dw != nullptr) dw->closeButtonPressed();
+      });
     };
     rows_.addAndMakeVisible(*load);
     loads_.push_back(std::move(load));

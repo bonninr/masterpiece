@@ -1443,6 +1443,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
+  if (combinationsOnTop_) text << "combinationsontop 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1515,6 +1516,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
+    } else if (key == "combinationsontop") {
+      combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -2370,6 +2373,47 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   }
 }
 
+void MasterpieceProcessor::reflowHeldNotes() {
+  const auto same = [](const ExpandedNote& a, const ExpandedNote& b) {
+    return a.divisionId == b.divisionId && a.midiNote == b.midiNote;
+  };
+  const auto contains = [&same](const std::vector<ExpandedNote>& v, const ExpandedNote& n) {
+    return std::any_of(v.begin(), v.end(), [&](const ExpandedNote& x) { return same(x, n); });
+  };
+  for (const auto& [key, held] : soundingNotes_) {
+    (void)key;
+    const float vel = static_cast<float>(held.velocity) / 127.0f;
+    reflowBefore_.clear();
+    couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, heldFlowBefore_,
+                         keyFlow_, reflowBefore_);
+    reflowAfter_.clear();
+    couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, engagedSwitches_,
+                         keyFlow_, reflowAfter_);
+    // Newly reached: its pipes speak, under the key's own note id so the
+    // note-off still to come releases them with the rest.
+    for (const ExpandedNote& reached : reflowAfter_) {
+      if (contains(reflowBefore_, reached)) continue;
+      for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
+                                         engagedStops_, &engagedSwitches_)) {
+        const auto rankIt = model_.ranks.find(rp.rankId);
+        if (rankIt == model_.ranks.end()) continue;
+        for (const auto& pipe : rankIt->second.pipes)
+          if (pipe.pipeId == rp.pipeId) {
+            startPipeLayers(pipe, rp.rankId, reached.midiNote, held.velocity, held.id);
+            break;
+          }
+      }
+    }
+    // No longer reached: those pipes let go; the key is still down.
+    for (const ExpandedNote& reached : reflowBefore_) {
+      if (contains(reflowAfter_, reached)) continue;
+      for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
+                                         engagedStops_, &heldFlowBefore_))
+        voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
+    }
+  }
+}
+
 // A stop moved while keys are down. On a real organ the slider admits wind to
 // a rank that is already being asked for, so the pipe speaks at once and stops
 // at once when it is pushed in -- without the key moving. Reported by a player:
@@ -3094,7 +3138,13 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   markRememberedStateMoved();
   const bool swapsRanks = !alternateStopsBySwitch_.empty();
   if (swapsRanks) previousSwitches_ = engagedSwitches_;
+  const bool keysHeld = !soundingNotes_.empty();
+  if (keysHeld) heldFlowBefore_ = engagedSwitches_;
   engagedSwitches_ = switches_.engagedSwitches();
+  // A coupler drawn or pushed in while keys are down reaches, or stops
+  // reaching, the divisions it couples at once, as on a console with
+  // electric action (#131). Only what the switch changed moves.
+  if (keysHeld) reflowHeldNotes();
   // A switch that swaps a stop's rank for its alternate -- a tremulant whose
   // pipes were also recorded with it running -- re-sounds the notes held on
   // those stops, when the organ asks for that: what was sounding lets go and

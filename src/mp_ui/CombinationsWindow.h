@@ -101,6 +101,14 @@ public:
 private:
   void remember();
   MasterpieceProcessor& proc_;
+  // The checkbox above the pistons, then the pistons.
+  struct Content : juce::Component {
+    std::function<void()> layout;
+    void resized() override {
+      if (layout) layout();
+    }
+  } content_;
+  juce::ToggleButton onTop_{"Always on top"};
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it

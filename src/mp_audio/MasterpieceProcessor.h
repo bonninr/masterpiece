@@ -644,6 +644,13 @@ public:
   // started on, after pistons moved it (#90). Off by default, as in Hauptwerk
   // and GrandOrgue, whose General Cancel leaves the master couplers alone.
   bool cancelResetsKeyboards() const { return cancelResetsKeyboards_.load(); }
+  // Whether the combinations window stays above every other program's
+  // windows, not only above the console (#130). The program's, not an organ's.
+  bool combinationsOnTop() const { return combinationsOnTop_; }
+  void setCombinationsOnTop(bool on) {
+    combinationsOnTop_ = on;
+    writeGlobalFile();
+  }
   void setCancelResetsKeyboards(bool on) {
     cancelResetsKeyboards_.store(on);
     writeGlobalFile();
@@ -1329,6 +1336,11 @@ private:
   // before the latest change, which says what was sounding.
   std::unordered_map<Id, std::vector<Id>> alternateStopsBySwitch_;
   std::unordered_set<Id> previousSwitches_;
+  // The switches as they were before this change, and where each held key
+  // reached under them and under the new ones: what a coupler moved (#131).
+  std::unordered_set<Id> heldFlowBefore_;
+  std::vector<ExpandedNote> reflowBefore_, reflowAfter_;
+  void reflowHeldNotes();
   MidiMap midiMap_;
   Metronome metronome_;
   MidiRecorder recorder_;
@@ -1480,6 +1492,7 @@ private:
   // Keyboards moved by pistons, and where they were before (#90).
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
+  bool combinationsOnTop_ = false;
   std::vector<MidiMap::KeyboardBinding> routingBeforePistons_;
   std::vector<Id> routeScratch_;
   void routeFromControl(const MidiAction& action);
