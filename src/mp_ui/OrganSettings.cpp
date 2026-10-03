@@ -363,9 +363,14 @@ void StopsLoadPanel::refreshFigures() {
   std::set<Id> loaded;  // what the last load left out
   for (const auto& r : rows_)
     if (!proc_.stopLoaded(r.stopId)) loaded.insert(r.stopId);
-  reloadNow_.setEnabled((loaded != proc_.excludedStops() || perspectivesOut() != proc_.perspectivesLeftOut() ||
-                         ranksOut() != proc_.ranksLeftOut()) &&
-                        !proc_.loadedOrganFile().getFullPathName().isEmpty());
+  // Always available while an organ is loaded (#134), and marked when the
+  // choice here differs from what is loaded.
+  const bool pending = loaded != proc_.excludedStops() ||
+                       perspectivesOut() != proc_.perspectivesLeftOut() ||
+                       ranksOut() != proc_.ranksLeftOut();
+  reloadNow_.setEnabled(!proc_.loadedOrganFile().getFullPathName().isEmpty());
+  reloadNow_.setColour(juce::TextButton::buttonColourId,
+                       pending ? juce::Colour(0xff8a5a12) : juce::Colour(0xff2a2f38));
 
   if (!ready_) {
     total_.setText("Estimating the memory each stop takes...", juce::dontSendNotification);

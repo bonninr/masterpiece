@@ -1559,7 +1559,7 @@ void MasterpieceEditor::timerCallback() {
   // Above the console while this program is in front, and not above anyone
   // else's windows when it is not.
   if (combinations_ != nullptr && combinations_->isVisible()) {
-    const bool front = juce::Process::isForegroundProcess();
+    const bool front = proc_.combinationsOnTop() || juce::Process::isForegroundProcess();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
   if (recorderWindow_ != nullptr && recorderWindow_->isVisible()) {

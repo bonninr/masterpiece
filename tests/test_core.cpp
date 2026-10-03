@@ -1622,6 +1622,10 @@ public:
         "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
         "<KeyAction><SourceKeyboardID>702</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
         "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        // II to I: manual I also plays division S while switch 1103 is drawn.
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys>"
+        "<ConditionSwitchID>1103</ConditionSwitchID></KeyAction>"
         "</ObjectList><ObjectList ObjectType=\"Stop\">"
         "<Stop><StopID>901</StopID><Name>A</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
         "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
@@ -1633,6 +1637,7 @@ public:
         "</ObjectList><ObjectList ObjectType=\"Switch\">"
         "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
         "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1103</SwitchID><Name>II to I</Name><Latching>Y</Latching></Switch>"
         "</ObjectList></Hauptwerk>");
 
     mp::MasterpieceProcessor proc;
@@ -1715,6 +1720,32 @@ public:
              "with the switch on, General Cancel puts it back on manual I");
     if (hadGlobal) global.replaceWithText(keptGlobal);
     else global.deleteFile();
+
+    // #131: a coupler drawn while a key is held reaches the coupled division
+    // at once, and pushed in lets it go, without the key moving.
+    for (int i = 0; i < 400; ++i) block({});  // past every release above
+    // General Cancel above pushed every stop in.
+    proc.setStopEngaged(901, true);
+    proc.setStopEngaged(902, true);
+    block({});
+    const int idle = proc.voiceStats().activeVoices;
+    juce::MidiBuffer hold;
+    hold.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    block(hold);
+    for (int i = 0; i < 4; ++i) block({});
+    const int one = proc.voiceStats().activeVoices;
+    MP_CHECK(one == idle + 1, "a key on manual I sounds its own division, got " +
+                                  std::to_string(one - idle));
+    proc.setSwitchEngaged(1103, true);
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(proc.voiceStats().activeVoices == one + 1,
+             "drawing II to I while the key is held sounds division S at once, got " +
+                 std::to_string(proc.voiceStats().activeVoices - idle));
+    proc.setSwitchEngaged(1103, false);
+    for (int i = 0; i < 400; ++i) block({});
+    MP_CHECK(proc.voiceStats().activeVoices == one,
+             "pushing it in lets division S go while the key stays down, got " +
+                 std::to_string(proc.voiceStats().activeVoices - idle));
 
     proc.releaseResources();
     settings.deleteFile();
