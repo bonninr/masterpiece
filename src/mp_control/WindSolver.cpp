@@ -69,8 +69,34 @@ void WindSolver::reset(const OrganModel& model) {
         pipeCompartment_[pipe.pipeId] = pipe.windSourceCompartmentId;
   }
 
+  resolveLinks();
   chooseStep();
   settle();
+}
+
+void WindSolver::resolveLinks() {
+  // A compartment that is not modelled sits at whatever it declares: that is
+  // what makes it a boundary condition. The blower's intake and the open air
+  // are both this.
+  const auto fixedPressure = [this](Id id) {
+    if (model_ != nullptr) {
+      const auto it = model_->wind.find(id);
+      if (it != model_->wind.end()) return it->second.defaultPressureInches;
+    }
+    return 0.0;
+  };
+  resolved_.clear();
+  resolved_.reserve(links_.size());
+  for (size_t i = 0; i < links_.size(); ++i) {
+    const WindCompartmentLink& link = links_[i];
+    ResolvedLink r;
+    r.link = i;
+    r.a = indexOf(link.firstCompartmentId);
+    r.b = indexOf(link.secondCompartmentId);
+    if (r.a < 0) r.fixedA = fixedPressure(link.firstCompartmentId);
+    if (r.b < 0) r.fixedB = fixedPressure(link.secondCompartmentId);
+    resolved_.push_back(r);
+  }
 }
 
 void WindSolver::chooseStep() {
@@ -248,19 +274,6 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
 
 void WindSolver::integrate(double dt,
                            const std::unordered_set<Id>* engagedSwitches) {
-  const auto pressureOf = [this](Id id) {
-    const int i = indexOf(id);
-    if (i >= 0) return order_[static_cast<size_t>(i)].pressure;
-    // Not modelled: an infinite compartment sits at whatever it declares, and
-    // that is exactly what makes it a boundary condition. The blower's intake
-    // and the open air are both this.
-    if (model_ != nullptr) {
-      const auto it = model_->wind.find(id);
-      if (it != model_->wind.end()) return it->second.defaultPressureInches;
-    }
-    return 0.0;
-  };
-
   // Out through the pipes standing on each chest. A chest that has already
   // sagged feeds its pipes less, which is the feedback that keeps this stable.
   for (State& st : order_) {
@@ -275,7 +288,8 @@ void WindSolver::integrate(double dt,
   // In through the links from other compartments. A null switch set means
   // "every valve open", which is how the system is settled at load: the
   // working pressure is the organ RUNNING, not the organ switched off.
-  for (const WindCompartmentLink& link : links_) {
+  for (const ResolvedLink& r : resolved_) {
+    const WindCompartmentLink& link = links_[r.link];
     if (engagedSwitches != nullptr && link.valveSwitchId != 0) {
       const bool on = engagedSwitches->count(link.valveSwitchId) != 0;
       if (on != link.valveOpenWhenEngaged) continue; // valve shut
@@ -287,12 +301,12 @@ void WindSolver::integrate(double dt,
     // is. Open is the answer that leaves the organ winded; shut would make it
     // silent, and inventing a position would invent the regulation with it.
     // See the header on what is and is not modelled.
-    const double pa = pressureOf(link.firstCompartmentId);
-    const double pb = pressureOf(link.secondCompartmentId);
+    const int ia = r.a;
+    const int ib = r.b;
+    const double pa = ia >= 0 ? order_[static_cast<size_t>(ia)].pressure : r.fixedA;
+    const double pb = ib >= 0 ? order_[static_cast<size_t>(ib)].pressure : r.fixedB;
     const double flow =
         orificeFlow(link.massFlowKgPerSec, link.refPressureInches, pa - pb);
-    const int ia = indexOf(link.firstCompartmentId);
-    const int ib = indexOf(link.secondCompartmentId);
     if (ia >= 0) {
       State& a = order_[static_cast<size_t>(ia)];
       a.pressure -= kInchesPerKgPerM3 * flow * dt / a.volumeM3;

@@ -128,6 +128,17 @@ private:
   std::unordered_map<Id, int> index_;
   std::unordered_map<Id, Id> pipeCompartment_; // pipe id -> source compartment
   std::vector<WindCompartmentLink> links_;
+  // Each link with its two ends resolved once, at reset: a position in
+  // order_, or -1 and the fixed pressure of a compartment that is not
+  // modelled. Looking them up by id on every step was most of a large
+  // organ's load time -- the settle runs millions of steps (#133).
+  struct ResolvedLink {
+    size_t link = 0;  // index in links_, which survives a copy
+    int a = -1, b = -1;
+    double fixedA = 0.0, fixedB = 0.0;
+  };
+  std::vector<ResolvedLink> resolved_;
+  void resolveLinks();
   // The largest step this system can be integrated at without ringing.
   // Derived from the organ's own numbers — a small chest fed by a fat pipe has
   // a time constant of milliseconds — rather than picked and hoped for.
