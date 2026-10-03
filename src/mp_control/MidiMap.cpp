@@ -163,9 +163,15 @@ void MidiMap::bind(const MidiBinding& binding) {
   // stacking a second meaning onto the same button. Except a controller
   // learned for another continuous control: it drives both (#90, one pedal
   // for two swell boxes). Clear mapping on either one to part them.
+  //
+  // And a control learned for a second manual on a keyboard: one spare stop
+  // that steps the keyboard through several manuals (#90, a Johannus whose
+  // spare tab moves the lower keyboard between Great and Choir).
   const auto existing = bySource_.find(binding.source);
-  if (binding.targetKind == MidiTargetKind::ContinuousControl && existing != bySource_.end() &&
-      existing->second.targetKind == MidiTargetKind::ContinuousControl &&
+  const bool shares = binding.targetKind == MidiTargetKind::ContinuousControl ||
+                      binding.targetKind == MidiTargetKind::RouteKeyboard;
+  if (shares && existing != bySource_.end() &&
+      existing->second.targetKind == binding.targetKind &&
       existing->second.targetId != binding.targetId) {
     auto& more = alsoDrives_[binding.source];
     more.erase(std::remove_if(more.begin(), more.end(),
@@ -320,6 +326,14 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::Keyboard:
       action.value = value;
       break;
+    case MidiTargetKind::RouteKeyboard:
+      // Every manual this control is learned for, to step through.
+      if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
+        action.alsoDrives = &more->second;
+      // A piston fires on the press. A drawstop or tab used for this sends
+      // one message going on and another going off, and each is a press.
+      if (b.trigger != MidiTrigger::Toggle && value <= 0) action.kind = MidiTargetKind::None;
+      break;
     case MidiTargetKind::StepperNext:
     case MidiTargetKind::StepperPrev:
     case MidiTargetKind::ConsoleNextPage:
@@ -336,7 +350,6 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::PlayerGeneralCancel:
     case MidiTargetKind::PlayerDivisional:
     case MidiTargetKind::PlayerDivisionalCancel:
-    case MidiTargetKind::RouteKeyboard:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.

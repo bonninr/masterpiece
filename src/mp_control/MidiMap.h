@@ -169,7 +169,8 @@ struct MidiAction {
   bool engage = false;  // for Switch
   int value = 0;        // for ContinuousControl, 0..127
   // Further continuous controls the same controller drives -- one pedal for
-  // two swell boxes -- each with its own window. Null when there are none.
+  // two swell boxes -- each with its own window; or further manuals one
+  // control steps a keyboard through. Null when there are none.
   const std::vector<MidiBinding>* alsoDrives = nullptr;
   bool valid() const { return kind != MidiTargetKind::None; }
 };

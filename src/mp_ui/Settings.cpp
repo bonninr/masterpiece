@@ -937,6 +937,11 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   feedback_.onClick = [this] {
     proc_.setMidiFeedbackEnabled(feedback_.getToggleState());
   };
+  addAndMakeVisible(cancelResets_);
+  cancelResets_.setToggleState(proc_.cancelResetsKeyboards(), juce::dontSendNotification);
+  cancelResets_.onClick = [this] {
+    proc_.setCancelResetsKeyboards(cancelResets_.getToggleState());
+  };
 
   addAndMakeVisible(stepperLabel_);
   styleLabel(stepperLabel_, "Sequencer");
@@ -953,6 +958,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   // A console with fewer keyboards than the organ has manuals: a piston makes
   // the keyboard on a channel play another manual (#90). Pick the channel,
   // then the manual, then press the piston.
+  addAndMakeVisible(keyboardsHeading_);
+  styleLabel(keyboardsHeading_, "Manual buttons");
   addAndMakeVisible(learnManuals_);
   learnManuals_.setTooltip("Pistons that switch which manual a keyboard plays: choose the keyboard's "
                            "channel and the manual, then press the piston");
@@ -1114,6 +1121,7 @@ void MidiPanel::refresh() {
       // can build for themselves. The line under the row says who else is on
       // it, so nothing is hidden.
       if (raw->getSelectedId() > 1)
+        proc_.keepRouting();
         proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
       proc_.saveMidiMap();
       showSharedChannels();
@@ -1138,6 +1146,7 @@ void MidiPanel::refresh() {
       const int channel = rawBox->getSelectedId() > 1
                               ? rawBox->getSelectedId() - 1
                               : proc_.channelForKeyboard(kb);
+      proc_.keepRouting();
       proc_.setKeyboardForChannel(channel, kb, rawDev->getSelectedId() - 1);
       proc_.saveMidiMap();
     };
@@ -1208,13 +1217,19 @@ void MidiPanel::resized() {
   output_.setBounds(row.removeFromLeft(300));
   r.removeFromTop(4);
   feedback_.setBounds(r.removeFromTop(kRow));
+  cancelResets_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
   stepperLabel_.setBounds(row.removeFromLeft(120));
   learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
   row.removeFromLeft(6);
   learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
+
+  // The manual buttons on a row of their own: beside the sequencer they read
+  // as part of it, and a dialog at its default size cut them off (#90).
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  keyboardsHeading_.setBounds(row.removeFromLeft(120));
   learnManuals_.setBounds(row.removeFromLeft(190).reduced(2, 0));
 
   // Console actions, on their own row under the same idea: things a physical
