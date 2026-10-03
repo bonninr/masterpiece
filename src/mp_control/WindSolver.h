@@ -120,14 +120,44 @@ private:
   // Find each compartment's working pressure by running the system empty. A
   // windchest does not declare one — see the .cpp.
   void settle(const std::unordered_set<Id>* engagedSwitches = nullptr);
+  // The working pressures solved for directly: where every compartment's
+  // inflow equals its outflow. Milliseconds, against seconds for integrating
+  // up to the same point. False when it does not converge, and settle() then
+  // integrates as before.
+  bool solveSteady(const std::unordered_set<Id>* engagedSwitches);
   // Work out how finely this particular organ has to be integrated.
   void chooseStep();
+
+public:
+  // How the last settle went, for the load log: sweeps of the direct solve,
+  // or integration steps when it fell back to those.
+  int lastSettleSweeps() const { return lastSweeps_; }
+  long long lastSettleSteps() const { return lastSteps_; }
+  // Integrate to the working pressures instead of solving for them: the way
+  // every version before 0.7.2 did it, kept for comparison.
+  void setDirectSettle(bool on) { directSettle_ = on; }
+
+private:
+  int lastSweeps_ = 0;
+  long long lastSteps_ = 0;
+  bool directSettle_ = true;
 
   const OrganModel* model_ = nullptr;
   std::vector<State> order_;
   std::unordered_map<Id, int> index_;
   std::unordered_map<Id, Id> pipeCompartment_; // pipe id -> source compartment
   std::vector<WindCompartmentLink> links_;
+  // Each link with its two ends resolved once, at reset: a position in
+  // order_, or -1 and the fixed pressure of a compartment that is not
+  // modelled. Looking them up by id on every step was most of a large
+  // organ's load time -- the settle runs millions of steps (#133).
+  struct ResolvedLink {
+    size_t link = 0;  // index in links_, which survives a copy
+    int a = -1, b = -1;
+    double fixedA = 0.0, fixedB = 0.0;
+  };
+  std::vector<ResolvedLink> resolved_;
+  void resolveLinks();
   // The largest step this system can be integrated at without ringing.
   // Derived from the organ's own numbers — a small chest fed by a fat pipe has
   // a time constant of milliseconds — rather than picked and hoped for.
