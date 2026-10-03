@@ -11,6 +11,17 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 
 The full licence text is in LICENCE, and at <https://www.gnu.org/licenses/>.
 
+Additional permission under GNU GPL version 3 section 7
+
+If you modify this Program, or any covered work, by linking or combining it
+with the JUCE framework (or a modified version of it) used under a JUCE licence
+other than the GNU GPL or AGPL, or with the UnRAR library by RARLAB (or a
+modified version of it), containing parts covered by the terms of those
+libraries' own licences, the licensors of this Program grant you additional
+permission to convey the resulting work. Corresponding Source for a non-source
+form of such a combination shall include the source code for the parts of JUCE
+and UnRAR used, as well as that of the covered work.
+
 
 THIRD-PARTY COMPONENTS
 ----------------------

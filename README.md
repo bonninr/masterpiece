@@ -528,7 +528,9 @@ Sample libraries and MIDI sequences are credited in
 
 Hauptwerk is a trademark of its owner. Masterpiece is an independent project.
 
-GPL-3.0-only. See [`LICENCE`](LICENCE) and [`COPYING`](COPYING).
+GPL-3.0-only, with an additional permission for combining it with JUCE and
+UnRAR under their own licences. See [`LICENCE`](LICENCE) and
+[`COPYING`](COPYING). To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 The Windows build includes ASIO support. The Steinberg ASIO SDK is offered
 under either the Steinberg ASIO License or the GPL version 3; Masterpiece uses
