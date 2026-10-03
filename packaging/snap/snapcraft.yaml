@@ -1,0 +1,78 @@
+# Snap recipe, for the Snap Store. Kept here rather than in snap/ at the top
+# of the repository so that nothing builds it by accident; see
+# packaging/STORES.md for how it is built and published.
+name: masterpiece
+title: Masterpiece
+base: core24
+version: '0.7.2'
+summary: Play sampled pipe organs
+description: |
+  Masterpiece is an open-source player for sampled pipe organs. It opens
+  sample sets in the Hauptwerk and GrandOrgue formats, shows the organ's
+  console, and plays it from a MIDI keyboard or console, with the stops,
+  couplers, swell boxes, tremulants and wind of the real instrument.
+license: GPL-3.0-only
+website: https://bonninr.github.io/masterpiece/
+source-code: https://github.com/bonninr/masterpiece
+issues: https://github.com/bonninr/masterpiece/issues
+icon: packaging/masterpiece.png
+grade: stable
+confinement: strict
+
+apps:
+  masterpiece:
+    command: usr/bin/masterpiece
+    desktop: usr/share/applications/masterpiece.desktop
+    extensions: [gnome]
+    plugs:
+      - audio-playback
+      - alsa            # MIDI through ALSA's sequencer; connected by hand or on request
+      - jack1
+      - home
+      - removable-media # organs kept on a second or external drive
+      - opengl
+      - x11
+      - desktop
+
+parts:
+  masterpiece:
+    plugin: cmake
+    source: https://github.com/bonninr/masterpiece.git
+    source-tag: v0.7.2
+    cmake-generator: Ninja
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DMP_BUILD_STANDALONE=ON
+      - -DMP_BUILD_PLUGIN=OFF
+      - -DMP_BUILD_VALIDATOR=OFF
+      - -DMP_BUILD_TESTS=OFF
+      - -DMP_ENABLE_DSP=ON
+      - -DMP_ENABLE_STREAMING=ON
+    build-packages:
+      - g++
+      - ninja-build
+      - pkg-config
+      - libasound2-dev
+      - libx11-dev
+      - libxrandr-dev
+      - libxinerama-dev
+      - libxcursor-dev
+      - libxcomposite-dev
+      - libfreetype-dev
+      - libfontconfig1-dev
+      - libglu1-mesa-dev
+      - mesa-common-dev
+      - libxi-dev
+      - libjack-jackd2-dev
+    stage-packages:
+      - libasound2t64
+      - libfreetype6
+      - libfontconfig1
+      - libx11-6
+      - libxrandr2
+      - libxinerama1
+      - libxcursor1
+      - libxcomposite1
+      - libxi6
+      - libgl1

@@ -1,0 +1,99 @@
+# Flatpak manifest, for Flathub. Built from a tagged release, offline: every
+# library CMake would otherwise download is listed here at a fixed commit and
+# handed to it with FETCHCONTENT_SOURCE_DIR_*. See packaging/STORES.md.
+#
+# Updating for a new release: change the tag and commit of the first source.
+# The dependencies change only when CMakeLists.txt changes their versions.
+id: io.github.bonninr.Masterpiece
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: masterpiece
+rename-desktop-file: masterpiece.desktop
+rename-icon: masterpiece
+rename-mime-file: masterpiece.xml
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  # Sound goes out through PipeWire or PulseAudio; JUCE's ALSA output reaches
+  # them through the runtime's ALSA plugin.
+  - --socket=pulseaudio
+  # MIDI keyboards and consoles: ALSA's sequencer (/dev/snd/seq) and USB MIDI.
+  - --device=all
+  # Organ sample sets are tens of gigabytes and live wherever the player put
+  # them: the home folder, a second disk, an external drive. Opening them one
+  # file at a time through a portal is not workable for a library of
+  # thousands of files.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  # JACK, when the player chooses it: PipeWire's JACK service.
+  - --filesystem=xdg-run/pipewire-0
+
+modules:
+  # JUCE's JACK backend needs <jack/jack.h> to compile, and loads the library
+  # itself at run time, so only the headers are needed, and only to build.
+  - name: jack-headers
+    buildsystem: simple
+    build-commands:
+      - install -d /app/include/jack
+      - install -m644 common/jack/*.h /app/include/jack/
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://github.com/jackaudio/jack2.git
+        tag: v1.9.22
+        commit: 4f58969432339a250ce87fe855fb962c67d00ddb
+
+  - name: masterpiece
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DMP_BUILD_STANDALONE=ON
+      - -DMP_BUILD_PLUGIN=OFF
+      - -DMP_BUILD_VALIDATOR=OFF
+      - -DMP_BUILD_TESTS=OFF
+      - -DMP_ENABLE_DSP=ON
+      - -DMP_ENABLE_STREAMING=ON
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_JUCE=/run/build/masterpiece/deps/juce
+      - -DFETCHCONTENT_SOURCE_DIR_PUGIXML=/run/build/masterpiece/deps/pugixml
+      - -DFETCHCONTENT_SOURCE_DIR_LIBARCHIVE=/run/build/masterpiece/deps/libarchive
+      - -DFETCHCONTENT_SOURCE_DIR_UNARR=/run/build/masterpiece/deps/unarr
+      - -DFETCHCONTENT_SOURCE_DIR_WAVPACK=/run/build/masterpiece/deps/wavpack
+    post-install:
+      - install -Dm644 packaging/io.github.bonninr.Masterpiece.metainfo.xml
+        /app/share/metainfo/io.github.bonninr.Masterpiece.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/bonninr/masterpiece.git
+        tag: v0.7.2
+        commit: 3b4d7d77a007eb6df6c6c66b16247b87c556d2d8
+      - type: git
+        url: https://github.com/juce-framework/JUCE.git
+        tag: 9.0.1
+        commit: e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8
+        dest: deps/juce
+      - type: git
+        url: https://github.com/zeux/pugixml.git
+        tag: v1.14
+        commit: db78afc2b7d8f043b4bc6b185635d949ea2ed2a8
+        dest: deps/pugixml
+      - type: git
+        url: https://github.com/libarchive/libarchive.git
+        tag: v3.8.1
+        commit: 9525f90ca4bd14c7b335e2f8c84a4607b0af6bdf
+        dest: deps/libarchive
+      - type: git
+        url: https://github.com/selmf/unarr.git
+        commit: 9c8e898bb3dc2ee9d368b0e945d5bb453e15c187
+        dest: deps/unarr
+      - type: git
+        url: https://github.com/dbry/WavPack.git
+        tag: 5.8.1
+        commit: 4827b9889665b937b6ed71b9c6c0123152cd7a02
+        dest: deps/wavpack

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what Flathub, GNOME Software, KDE Discover and the
+     Snap Store show about Masterpiece. See packaging/STORES.md. -->
+<component type="desktop-application">
+  <id>io.github.bonninr.Masterpiece</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Masterpiece</name>
+  <summary>Play sampled pipe organs</summary>
+  <developer id="io.github.bonninr">
+    <name>Bonni</name>
+  </developer>
+  <description>
+    <p>
+      Masterpiece is an open-source player for sampled pipe organs. It opens
+      sample sets in the Hauptwerk and GrandOrgue formats, shows the organ's
+      console, and plays it from a MIDI keyboard or console, with the stops,
+      couplers, swell boxes, tremulants and wind of the real instrument.
+    </p>
+    <ul>
+      <li>Opens organs in the Hauptwerk and GrandOrgue formats, from their folders or straight from their archives</li>
+      <li>Draws the organ's own console, with every stop, piston and swell shoe working</li>
+      <li>Maps any MIDI console: several messages per stop, lamps and motorised faders, keyboard shortcuts</li>
+      <li>Combinations, a registration sequencer and a recorder</li>
+      <li>Loads large organs within a memory limit you set, and streams release tails from disk</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.bonninr.Masterpiece.desktop</launchable>
+  <url type="homepage">https://bonninr.github.io/masterpiece/</url>
+  <url type="bugtracker">https://github.com/bonninr/masterpiece/issues</url>
+  <url type="vcs-browser">https://github.com/bonninr/masterpiece</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The console of an organ, ready to play</caption>
+      <image>https://bonninr.github.io/masterpiece/screenshots/Friesach.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Another organ's console</caption>
+      <image>https://bonninr.github.io/masterpiece/screenshots/Alessandria.jpg</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Music</category>
+  </categories>
+  <keywords>
+    <keyword>organ</keyword>
+    <keyword>pipe organ</keyword>
+    <keyword>sampler</keyword>
+    <keyword>MIDI</keyword>
+    <keyword>Hauptwerk</keyword>
+    <keyword>GrandOrgue</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="0.7.2" date="2026-10-03">
+      <url type="details">https://github.com/bonninr/masterpiece/releases/tag/v0.7.2</url>
+      <description>
+        <p>An experimental vectorized audio engine, off by default; large organs load much faster; large solid RAR archives load completely.</p>
+      </description>
+    </release>
+  </releases>
+</component>

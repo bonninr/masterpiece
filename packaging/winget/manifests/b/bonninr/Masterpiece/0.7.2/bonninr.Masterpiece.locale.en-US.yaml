@@ -1,0 +1,19 @@
+PackageIdentifier: bonninr.Masterpiece
+PackageVersion: 0.7.2
+PackageLocale: en-US
+Publisher: Bonni
+PublisherUrl: https://github.com/bonninr
+PackageName: Masterpiece
+PackageUrl: https://bonninr.github.io/masterpiece/
+License: GPL-3.0-only
+LicenseUrl: https://github.com/bonninr/masterpiece/blob/main/LICENCE
+ShortDescription: Open-source player for sampled pipe organs.
+Description: Masterpiece plays sampled pipe organs in the Hauptwerk and GrandOrgue formats, from a MIDI keyboard or console, with the organ's own console on screen.
+Tags:
+  - organ
+  - midi
+  - sampler
+  - music
+ReleaseNotesUrl: https://github.com/bonninr/masterpiece/releases/tag/v0.7.2
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

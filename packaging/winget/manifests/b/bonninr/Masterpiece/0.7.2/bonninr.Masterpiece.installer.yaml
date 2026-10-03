@@ -1,0 +1,13 @@
+PackageIdentifier: bonninr.Masterpiece
+PackageVersion: 0.7.2
+InstallerType: nullsoft
+Scope: machine
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /S
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/bonninr/masterpiece/releases/download/v0.7.2/masterpiece-0.7.2-windows-setup.exe
+    InstallerSha256: 6B133C1DF96A053EE83F861CF6EA99A797163F4E922BE08F0BC3989557B46E55
+ManifestType: installer
+ManifestVersion: 1.6.0
