@@ -140,6 +140,81 @@ MP_AVX2 double runAvx2(const T* data, int channels, double cursor, double ratio,
   return rest;
 }
 
+// ---------------------------------------------------------------- SSE2
+// Every x86-64 processor has it, so this is the vector path for those
+// without AVX2: budget Celeron and Pentium Silver mini PCs, older Core
+// chips, and the Intel build under Rosetta. Four frames at a time, built the
+// way the NEON path builds them: a frame's taps are contiguous, so each is
+// one load, then a transpose puts frames across and taps down.
+
+inline __m128 hermite4(__m128 xm1, __m128 x0, __m128 x1, __m128 x2, __m128 t) {
+  const __m128 half = _mm_set1_ps(0.5f);
+  const __m128 c = _mm_mul_ps(_mm_sub_ps(x1, xm1), half);
+  const __m128 v = _mm_sub_ps(x0, x1);
+  const __m128 w = _mm_add_ps(c, v);
+  const __m128 a = _mm_add_ps(_mm_add_ps(w, v), _mm_mul_ps(_mm_sub_ps(x2, x0), half));
+  const __m128 b = _mm_add_ps(w, a);
+  __m128 r = _mm_sub_ps(_mm_mul_ps(a, t), b);
+  r = _mm_add_ps(_mm_mul_ps(r, t), c);
+  return _mm_add_ps(_mm_mul_ps(r, t), x0);
+}
+
+// One frame's four taps for up to two channels.
+inline void tapsSse(const float* data, int channels, int64_t k, __m128* ch) {
+  if (channels == 1) {
+    ch[0] = _mm_loadu_ps(data + (k - 1));
+  } else {
+    const __m128 lo = _mm_loadu_ps(data + (k - 1) * 2);      // L0 R0 L1 R1
+    const __m128 hi = _mm_loadu_ps(data + (k - 1) * 2 + 4);  // L2 R2 L3 R3
+    ch[0] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(2, 0, 2, 0));
+    ch[1] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(3, 1, 3, 1));
+  }
+}
+template <typename T>
+inline void tapsSse(const T* data, int channels, int64_t k, __m128* ch) {
+  // The integer formats are widened one value at a time; the arithmetic
+  // still runs four frames wide.
+  for (int c = 0; c < channels; ++c) {
+    alignas(16) float f[4];
+    for (int m = 0; m < 4; ++m) f[m] = static_cast<float>(data[(k - 1 + m) * channels + c]);
+    ch[c] = _mm_load_ps(f);
+  }
+}
+
+template <typename T>
+double runSse2(const T* data, int channels, double cursor, double ratio, float env,
+               float* const* out, int numChannels, int start, int frames) {
+  const __m128 envv = _mm_set1_ps(env);
+  double p = cursor;
+  int j = 0;
+  for (; j + 4 <= frames; j += 4) {
+    __m128 rows[4][2];
+    alignas(16) float frac[4];
+    for (int l = 0; l < 4; ++l) {
+      const auto k = static_cast<int64_t>(p);
+      frac[l] = static_cast<float>(p - static_cast<double>(k));
+      tapsSse(data, channels, k, rows[l]);
+      p += ratio;
+    }
+    const __m128 t = _mm_load_ps(frac);
+    const int sources = channels == 1 ? 1 : numChannels;
+    for (int s = 0; s < sources; ++s) {
+      const int c = s < channels ? s : channels - 1;
+      // Frames across, taps down.
+      __m128 xm1 = rows[0][c], x0 = rows[1][c], x1 = rows[2][c], x2 = rows[3][c];
+      _MM_TRANSPOSE4_PS(xm1, x0, x1, x2);
+      const __m128 y = _mm_mul_ps(hermite4(xm1, x0, x1, x2, t), envv);
+      const int from = channels == 1 ? 0 : s;
+      const int to = channels == 1 ? numChannels : s + 1;
+      for (int ch = from; ch < to; ++ch) {
+        float* o = out[ch] + start + j;
+        _mm_storeu_ps(o, _mm_add_ps(_mm_loadu_ps(o), y));
+      }
+    }
+  }
+  return runScalar(data, channels, p, ratio, env, out, numChannels, start + j, frames - j);
+}
+
 bool avx2Present() {
 #if defined(_MSC_VER) && !defined(__clang__)
   int r[4];
@@ -250,6 +325,8 @@ double run(Isa isa, const T* data, int channels, double cursor, double ratio, fl
 #if defined(MP_SIMD_X86)
   if (isa == Isa::Avx2)
     return runAvx2(data, channels, cursor, ratio, env, out, numChannels, start, frames);
+  if (isa == Isa::Sse2)
+    return runSse2(data, channels, cursor, ratio, env, out, numChannels, start, frames);
 #endif
 #if defined(MP_SIMD_NEON)
   if (isa == Isa::Neon)
@@ -268,14 +345,14 @@ Isa detect() {
 #if defined(__APPLE__)
   // The Intel build on an Apple Silicon Mac runs under Rosetta, which does
   // not normally report AVX2 -- but has been seen to fault on it when it
-  // does. The per-frame path there, whatever the CPU check says.
+  // does. SSE2 there, whatever the CPU check says: Rosetta translates SSE.
   int translated = 0;
   size_t size = sizeof(translated);
   if (sysctlbyname("sysctl.proc_translated", &translated, &size, nullptr, 0) == 0 &&
       translated == 1)
-    return Isa::None;
+    return Isa::Sse2;
 #endif
-  return avx2Present() ? Isa::Avx2 : Isa::None;
+  return avx2Present() ? Isa::Avx2 : Isa::Sse2;
 #elif defined(MP_SIMD_NEON)
   return Isa::Neon;
 #else
@@ -283,9 +360,21 @@ Isa detect() {
 #endif
 }
 
+std::vector<Isa> available() {
+  std::vector<Isa> out;
+#if defined(MP_SIMD_X86)
+  out.push_back(Isa::Sse2);
+  if (avx2Present()) out.push_back(Isa::Avx2);
+#elif defined(MP_SIMD_NEON)
+  out.push_back(Isa::Neon);
+#endif
+  return out;
+}
+
 const char* isaName(Isa isa) {
   switch (isa) {
     case Isa::Avx2: return "AVX2";
+    case Isa::Sse2: return "SSE2";
     case Isa::Neon: return "NEON";
     case Isa::None: break;
   }
@@ -295,6 +384,7 @@ const char* isaName(Isa isa) {
 bool runSupports(Isa isa, int bufChannels) {
   if (bufChannels < 1) return false;
   if (isa == Isa::Avx2) return true;
+  if (isa == Isa::Sse2) return bufChannels <= 2;
   if (isa == Isa::Neon) return bufChannels <= 2;
   return false;
 }

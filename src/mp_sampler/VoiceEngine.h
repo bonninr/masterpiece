@@ -333,6 +333,12 @@ public:
     simdWanted_ = on;
     isa_ = on ? simd::detect() : simd::Isa::None;
   }
+  // A particular unit, for the equivalence test: it must be one this
+  // machine can run (simd::available()).
+  void setSimdIsa(simd::Isa isa) {
+    simdWanted_ = isa != simd::Isa::None;
+    isa_ = isa;
+  }
   simd::Isa simd() const { return isa_; }
   // Voice-frames rendered by the vector code since prepare(). Counted once
   // per run, not per frame, so it costs nothing to keep.

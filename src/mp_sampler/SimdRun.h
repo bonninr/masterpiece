@@ -15,6 +15,8 @@
 //
 // JUCE-free, like the rest of mp_sampler.
 #pragma once
+
+#include <vector>
 #include <cstdint>
 
 namespace mp {
@@ -25,6 +27,7 @@ namespace simd {
 
 enum class Isa {
   None,  // the per-frame path only
+  Sse2,  // every x86-64 processor: four frames at a time, for those without AVX2
   Avx2,  // x86-64 with AVX2, checked when the program starts
   Neon,  // ARM: always present on 64-bit, and required by the 32-bit build
 };
@@ -33,6 +36,9 @@ enum class Isa {
 // environment, which forces the per-frame path for comparison.
 Isa detect();
 const char* isaName(Isa isa);
+// Every unit this machine can run, whatever detect() would choose: what the
+// equivalence test compares against the per-frame path.
+std::vector<Isa> available();
 
 // The frames the vector code needs on either side of a tap: a run may use
 // the positions from 1 to resident - kRunMargin.
