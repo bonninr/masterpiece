@@ -1577,7 +1577,32 @@ void MasterpieceEditor::timerCallback() {
   if (live.isNotEmpty()) live += "  |  ";
   live += "voices " + juce::String(stats.activeVoices);
   // The organ plays while its samples are saved for next time (#120).
-  if (proc_.cacheWriting()) live += "  |  saving the samples for the next load...";
+  // How far along, and how long is left once a few seconds give a rate to
+  // go by: on a large organ this is minutes, and a bare "saving..." for that
+  // long reads as stuck.
+  if (proc_.cacheWriting()) {
+    const double f = proc_.cacheWriteFraction();
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (cacheSaveStartMs_ <= 0.0 && f >= 0.0) {
+      cacheSaveStartMs_ = now;
+      cacheSaveStartFraction_ = f;
+    }
+    live += "  |  saving the samples for the next load";
+    if (f >= 0.0) {
+      live += ": " + juce::String(juce::roundToInt(f * 100.0)) + "%";
+      const double elapsed = (now - cacheSaveStartMs_) / 1000.0;
+      const double moved = f - cacheSaveStartFraction_;
+      if (elapsed > 3.0 && moved > 0.01) {
+        const int left = juce::roundToInt(elapsed / moved * (1.0 - f));
+        live += left >= 90 ? ", about " + juce::String((left + 30) / 60) + " min left"
+                           : ", about " + juce::String(juce::jmax(1, left)) + " s left";
+      }
+    } else {
+      live += "...";
+    }
+  } else {
+    cacheSaveStartMs_ = 0.0;
+  }
   if (stats.startsDropped > 0)
     live += ", dropped " + juce::String(stats.startsDropped);
   if (stats.samplesMissing > 0)

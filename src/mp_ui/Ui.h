@@ -215,6 +215,10 @@ public:
 private:
   void timerCallback() override;
   void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+  // When the background cache save was first seen, and how far along it was:
+  // the rate its time-left estimate is taken from.
+  double cacheSaveStartMs_ = 0.0;
+  double cacheSaveStartFraction_ = 0.0;
   // The computer-keyboard shortcuts set in an object's MIDI window. Listened
   // for on the top-level window, so a key reaches them whatever has focus,
   // unless that thing uses the key itself.
