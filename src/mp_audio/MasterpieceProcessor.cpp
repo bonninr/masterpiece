@@ -4519,6 +4519,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
                                                                juce::String& error) {
   OrganArchive archive;
   std::string why;
+  std::vector<std::string> damaged;
   const std::string archivePath = archiveFile.getFullPathName().toStdString();
   // Every step is written down, and every failure with the file it was in:
   // "it does not open" is all a player can say otherwise, and a report
@@ -4573,27 +4574,46 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
         juce::Logger::writeToLog("archive:   " + juce::String(line));
     juce::Logger::writeToLog("archive: " + juce::String(static_cast<int>(archive.entries().size())) +
                              " files indexed after " + seconds() + "; unpacking the definitions and artwork");
-    if (!archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why)) {
+    if (!archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why, damaged)) {
       dir.deleteRecursively();
       return fail(why);
     }
+    for (const auto& line : damaged) juce::Logger::writeToLog("archive: " + juce::String(line));
     archive.saveIndex(index);
-    // Written last: a folder without it is an unpack that did not finish.
-    writeArchiveMarker(dir.getFullPathName().toStdString(), archivePath);
+    // Written last: a folder without it is an unpack that did not finish. Not
+    // written at all when something was damaged, so the same packages
+    // downloaded again -- same names, same sizes, same folder -- are unpacked
+    // afresh rather than left with the holes.
+    if (damaged.empty()) writeArchiveMarker(dir.getFullPathName().toStdString(), archivePath);
   }
   juce::Array<juce::File> definitions;
   dir.findChildFiles(definitions, juce::File::findFiles, true,
                      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
   definitions.sort();
+  // A damaged archive is said in so many words, with what to do about it:
+  // the path inside the archive alone reads like a file missing from disk.
+  juce::String damage;
+  if (!damaged.empty()) {
+    for (size_t i = 0; i < damaged.size() && i < 3; ++i) damage << juce::String(damaged[i]) << "\n";
+    if (damaged.size() > 3) damage << "and " << static_cast<int>(damaged.size() - 3) << " more\n";
+    damage << "\nThe archive is damaged, usually by a download that was cut short or "
+              "corrupted. Test it in 7-Zip or WinRAR, and download it again.";
+  }
   if (definitions.isEmpty()) {
-    error = "there is no organ definition file (.Organ_Hauptwerk_xml) in \"" +
-            archiveFile.getFileName() + "\" or the packages beside it.";
+    error = damage.isNotEmpty()
+                ? "the organ definition could not be read.\n\n" + damage
+                : "there is no organ definition file (.Organ_Hauptwerk_xml) in \"" +
+                      archiveFile.getFileName() + "\" or the packages beside it.";
     juce::Logger::writeToLog("archive: FAILED after " + seconds() + ": " + error);
     return definitions;
   }
   juce::Logger::writeToLog("archive: ready after " + seconds() + ", " +
                            juce::String(definitions.size()) + " organ definition(s):");
   for (const auto& d : definitions) juce::Logger::writeToLog("archive:   " + d.getFileName());
+  // The organ opens, and the player is told what is missing from it.
+  if (damage.isNotEmpty())
+    error = "Some of its files could not be read, so parts of the console may be missing.\n\n" +
+            damage;
   return definitions;
 }
 

@@ -28,6 +28,29 @@ constexpr int kGap = 4;
 
 int columnsFor(int width) { return juce::jmax(1, (width - 8 + kGap) / (kTileWidth + kGap)); }
 
+// A warning that the log explains further, with a button that opens the
+// log's folder. A path alone was taken for one that does not exist: the
+// folder is hidden on Windows (AppData) and on a Mac (Library), and after a
+// restart the run in question has moved to masterpiece.previous.log.
+void showWithLog(const juce::String& title, const juce::String& message) {
+  juce::File log;
+  if (auto* file = dynamic_cast<juce::FileLogger*>(juce::Logger::getCurrentLogger()))
+    log = file->getLogFile();
+  if (log == juce::File() || kMobile) {
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, title, message);
+    return;
+  }
+  juce::AlertWindow::showOkCancelBox(
+      juce::MessageBoxIconType::WarningIcon, title,
+      message + "\n\nThe details are in the log, " + log.getFileName() +
+          ". If Masterpiece has been started again since, they are in "
+          "masterpiece.previous.log beside it.",
+      "Show the log", "OK", nullptr,
+      juce::ModalCallbackFunction::create([log](int choice) {
+        if (choice == 1) log.revealToUser();
+      }));
+}
+
 } // namespace
 
 // ------------------------------------------------------------------ jamb
@@ -707,6 +730,9 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
       const auto definitions = proc_.openPackagedOrgan(odf, error);
       juce::MessageManager::callAsync([this, odf, graphicsOnly, definitions, error] {
         loading_ = false;
+        // Opened, but with files that did not read: said, and the load goes on.
+        if (!definitions.isEmpty() && error.isNotEmpty())
+          showWithLog(odf.getFileName() + " is damaged", error);
         if (definitions.size() == 1) {
           loadOrgan(definitions.getFirst(), graphicsOnly);
         } else if (definitions.size() > 1) {
@@ -716,12 +742,7 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
           top_.setStatus(status_);
           // Said where the player is looking, with where the details are:
           // a status line is easy to miss and says too little to act on.
-          juce::String where;
-          if (auto* file = dynamic_cast<juce::FileLogger*>(juce::Logger::getCurrentLogger()))
-            where = "\n\nThe steps are in the log: " + file->getLogFile().getFullPathName();
-          juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
-                                                 "Could not open " + odf.getFileName(),
-                                                 error + where);
+          showWithLog("Could not open " + odf.getFileName(), error);
         }
       });
     });
@@ -1210,6 +1231,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
       juce::Logger::writeToLog("samples: unreadable " + juce::String(f));
     if (result.samples.missing > 0)
       status_ += ", " + juce::String(result.samples.missing) + " missing (named in the log)";
+    if (result.samples.failed > 0)
+      status_ += ", " + juce::String(result.samples.failed) + " unreadable (named in the log)";
     if (result.samples.encrypted > 0)
       status_ += ", " + juce::String(result.samples.encrypted) + " encrypted";
     if (result.samples.licensed > 0)
@@ -1239,6 +1262,23 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             " of its samples are encrypted (.hbw/.hbx) for the program they were made "
             "for, and Masterpiece cannot play them. The console loads, but the organ "
             "makes no sound.");
+  } else if (!graphicsOnly && result.samples.failed > 0) {
+    // The organ plays, with holes in it. Without this the only sign was a
+    // line in the log and pipes that stay silent for no visible reason.
+    juce::String which;
+    for (size_t i = 0; i < result.samples.failedFiles.size() && i < 3; ++i)
+      which << juce::String(result.samples.failedFiles[i]) << "\n";
+    juce::String fix =
+        which.contains(" is damaged") || which.contains(": damaged")
+            ? "The archive they come from is damaged, usually by a download that was cut "
+              "short or corrupted. Test it in 7-Zip or WinRAR, and download it again."
+            : "The files are damaged or not sample files Masterpiece can read. Installing "
+              "the organ again usually puts them right.";
+    showWithLog("Some samples could not be read",
+                juce::String(result.samples.failed) + " sample file" +
+                    (result.samples.failed == 1 ? " was" : "s were") +
+                    " unreadable, so the pipes they belong to are silent. The organ plays "
+                    "without them.\n\n" + which + "\n" + fix);
   }
   // Say it out loud, once. The status line has no room beside the console's
   // buttons, and a mapping that changes without a word costs more trust than

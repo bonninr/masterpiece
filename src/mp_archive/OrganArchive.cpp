@@ -974,7 +974,14 @@ const OrganArchive::Entry* OrganArchive::find(const std::string& relativePath) c
   return it == byKey_.end() ? nullptr : &entries_[it->second];
 }
 
-bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error) const {
+std::string OrganArchive::archiveName(size_t index) const {
+  return index < archives_.size() && !archives_[index].empty()
+             ? fs::path(archives_[index].front()).filename().string()
+             : std::string("the archive");
+}
+
+bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
+                                    std::vector<std::string>& damaged) const {
   for (size_t i = 0; i < archives_.size(); ++i) {
     // Nothing to take from an archive that is all audio.
     bool any = false;
@@ -997,9 +1004,11 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error) 
       std::replace(rel.begin(), rel.end(), '\\', '/');
       if (isAudio(rel) || encrypted) {
         if (!pass->discard()) {
-          error = "\"" + fs::path(archives_[i].front()).filename().string() +
-                  "\" could not be read at \"" + rel + "\": " + pass->error();
-          return false;
+          // Past here the archive cannot be followed, so what is left of its
+          // small files is lost; the other archives are still read.
+          damaged.push_back(archiveName(i) + ": damaged at " + rel + " (" + pass->error() +
+                            "); nothing after it could be read");
+          break;
         }
         continue;
       }
@@ -1013,9 +1022,9 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error) 
       std::error_code ec;
       fs::create_directories(target.parent_path(), ec);
       if (!pass->readData(bytes)) {
-        error = "\"" + fs::path(archives_[i].front()).filename().string() +
-                "\" could not be read at \"" + rel + "\": " + pass->error();
-        return false;
+        damaged.push_back(archiveName(i) + ": " + rel + " is damaged (" + pass->error() + ")");
+        bytes = {};
+        continue;
       }
       std::ofstream out(target, std::ios::binary | std::ios::trunc);
       out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -1069,7 +1078,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
         continue;
       }
       if (!pass->readData(bytes)) {
-        error += std::string(name) + ": " + pass->error() + "\n";
+        error += archiveName(archiveIndex) + ": " + name + " is damaged (" + pass->error() + ")\n";
         finished.insert(k);
         --remaining;
         bytes = {};
@@ -1082,7 +1091,8 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
     }
     if (remaining == 0 || !pass->failed()) break;
     if (!restart()) {
-      error += fs::path(volumes.front()).filename().string() + ": " + pass->error() + "\n";
+      error += archiveName(archiveIndex) + ": damaged (" + pass->error() +
+               "); the samples after this point could not be read\n";
       break;
     }
   }

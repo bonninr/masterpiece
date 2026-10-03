@@ -110,7 +110,16 @@ public:
   // Unpack everything that is not audio into `dir`, keeping the archive's
   // own layout. A Hauptwerk definition stored at the top level is placed in
   // OrganDefinitions/, where the loader looks for its root.
-  bool unpackSmallFiles(const std::string& dir, std::string& error) const;
+  //
+  // A file that does not read -- a CRC error, a download cut short -- is a
+  // line in `damaged` and the rest are still unpacked: one bad console image
+  // is not a reason to refuse the organ. Whether the organ can open is then
+  // the caller's question: it can if its definition came out. False only for
+  // a file that cannot be written.
+  bool unpackSmallFiles(const std::string& dir, std::string& error,
+                        std::vector<std::string>& damaged) const;
+  // The file name of an archive's first volume, for messages.
+  std::string archiveName(size_t index) const;
 
   // Read the entries at `wanted` (lower-case, '/'-separated paths) of one
   // archive, in its own order, calling `deliver` with each file's bytes.
