@@ -130,9 +130,16 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   }
 
   // Voice pool is allocated once, here: render() must never allocate.
+  voices_.setSimd(fasterEngine_.load());
   voices_.prepare(sampleRate_, graph_.maxVoices,
                   juce::jmax(1, getTotalNumOutputChannels()),
                   juce::jmax(1, samplesPerBlock));
+  // Which path renders, for any report about the sound: the new engine is
+  // the first thing to rule in or out.
+  juce::Logger::writeToLog(juce::String("audio engine: ") +
+                           (voices_.simd() == simd::Isa::None
+                                ? "per-frame"
+                                : juce::String("faster (") + simd::isaName(voices_.simd()) + ")"));
 
   // Worker pool (ADR-012). Auto means cores - 1, leaving one for the rest of
   // the system; the audio thread renders a share itself, so the total doing
@@ -1444,6 +1451,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
+  if (fasterEngine_.load()) text << "fasterengine 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1518,6 +1526,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
+    } else if (key == "fasterengine") {
+      fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&

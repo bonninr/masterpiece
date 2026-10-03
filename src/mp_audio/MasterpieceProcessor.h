@@ -651,6 +651,28 @@ public:
     combinationsOnTop_ = on;
     writeGlobalFile();
   }
+  // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
+  // the processor has them. Off by default while it is experimental; the
+  // per-frame path is the one every earlier version used. Takes effect at
+  // once. MASTERPIECE_SIMD=0 in the environment still forces it off.
+  bool fasterEngine() const { return fasterEngine_.load(); }
+  void setFasterEngine(bool on) {
+    fasterEngine_.store(on);
+    {
+      const AudioLock lock(*this);
+      voices_.setSimd(on);
+    }
+    juce::Logger::writeToLog(juce::String("audio engine: ") +
+                             (voices_.simd() == simd::Isa::None
+                                  ? "per-frame"
+                                  : juce::String("faster (") + simd::isaName(voices_.simd()) + ")"));
+    writeGlobalFile();
+  }
+  // What it found on this machine: "AVX2", "NEON", or empty when the faster
+  // engine cannot run here (or is off).
+  juce::String fasterEngineUnit() const {
+    return voices_.simd() == simd::Isa::None ? juce::String() : juce::String(simd::isaName(voices_.simd()));
+  }
   void setCancelResetsKeyboards(bool on) {
     cancelResetsKeyboards_.store(on);
     writeGlobalFile();
@@ -1494,6 +1516,7 @@ private:
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
+  std::atomic<bool> fasterEngine_{false};
   std::vector<MidiMap::KeyboardBinding> routingBeforePistons_;
   std::vector<Id> routeScratch_;
   void routeFromControl(const MidiAction& action);

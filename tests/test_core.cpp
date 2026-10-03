@@ -1238,6 +1238,121 @@ struct Fixture {
 
 } // namespace voicetest
 
+// The vector runs (SimdRun) against the per-frame path: the same notes, held
+// and released, in every storage format, mono and stereo, rendered both ways.
+// The answer is the same to the last bit: the engine's files are built
+// without fused multiply-adds (mp_sampler/CMakeLists.txt), which is what lets
+// ARM match too.
+class VoiceSimdRunTest final : public mp::test::Test {
+public:
+  VoiceSimdRunTest() : Test("functional.voice.simd-runs", Category::Functional) {}
+
+  static void toInt16(mp::SampleBuffer& b) {
+    b.pcm16.resize(b.frames.size());
+    for (size_t i = 0; i < b.frames.size(); ++i)
+      b.pcm16[i] = static_cast<int16_t>(std::lround(b.frames[i] * 32767.0f));
+    b.pcmScale = 1.0f / 32767.0f;
+    b.frames.clear();
+  }
+  static void toInt24(mp::SampleBuffer& b) {
+    b.pcm24.resize(b.frames.size());
+    for (size_t i = 0; i < b.frames.size(); ++i) {
+      const int v = static_cast<int>(std::lround(b.frames[i] * 8388607.0f));
+      b.pcm24[i].b[0] = static_cast<unsigned char>(v & 0xff);
+      b.pcm24[i].b[1] = static_cast<unsigned char>((v >> 8) & 0xff);
+      b.pcm24[i].b[2] = static_cast<unsigned char>((v >> 16) & 0xff);
+    }
+    b.pcmScale = 1.0f / 8388607.0f;
+    b.frames.clear();
+  }
+
+  // Each channel at its own level, so a run that mixed them up would show.
+  static void spreadChannels(mp::SampleBuffer& b) {
+    for (int64_t i = 0; i < b.numFrames; ++i)
+      for (int c = 1; c < b.numChannels; ++c)
+        b.frames[static_cast<size_t>(i * b.numChannels + c)] *= 1.0f - 0.2f * static_cast<float>(c);
+  }
+
+  // Eight notes held, then released, rendered to stereo. The ratios run from
+  // an octave down to an octave up, and the tone is short beside the render,
+  // so every note goes round its loop many times.
+  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa) {
+    eng.prepare(48000.0, 32, 2);
+    eng.setSimdIsa(isa);
+    eng.setSampleProvider(fx.provider());
+    const double ratios[8] = {0.5, 0.75, 0.97, 1.0, 1.003, 1.26, 1.5, 2.0};
+    for (int n = 0; n < 8; ++n) {
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.velocity = 80;
+      st.ratio = ratios[n];
+      st.gain = 0.1f;
+      eng.startVoice(st, static_cast<uint64_t>(n + 1));
+    }
+    std::vector<float> all, l(256), r(256);
+    float* out[2] = {l.data(), r.data()};
+    for (int b = 0; b < 240; ++b) {
+      if (b == 180)
+        for (int n = 0; n < 8; ++n) eng.noteOff(static_cast<uint64_t>(n + 1), mp::NoteRelease{});
+      std::fill(l.begin(), l.end(), 0.0f);
+      std::fill(r.begin(), r.end(), 0.0f);
+      eng.render(out, 2, 256);
+      all.insert(all.end(), l.begin(), l.end());
+      all.insert(all.end(), r.begin(), r.end());
+    }
+    return all;
+  }
+
+  void run() override {
+    const auto units = mp::simd::available();
+    for (const auto isa : units) std::printf("        vector unit: %s\n", mp::simd::isaName(isa));
+    if (units.empty()) return;  // nothing to compare against
+
+    const char* formats[] = {"float", "16-bit", "24-bit"};
+    for (const auto isa : units)
+      for (int format = 0; format < 3; ++format)
+        for (int channels = 1; channels <= 4; ++channels) {
+          voicetest::Fixture fx;
+          fx.attack = voicetest::makeTone(440.0, 48000.0, 6000, channels);
+          fx.release = voicetest::makeTone(220.0, 48000.0, 12000, channels, false);
+          spreadChannels(fx.attack);
+          spreadChannels(fx.release);
+          if (format == 1) { toInt16(fx.attack); toInt16(fx.release); }
+          if (format == 2) { toInt24(fx.attack); toInt24(fx.release); }
+
+          mp::VoiceEngine plain, fast;
+          const std::vector<float> a = render(plain, fx, mp::simd::Isa::None);
+          const std::vector<float> b = render(fast, fx, isa);
+
+          double worst = 0.0, level = 0.0;
+          for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
+            worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
+            level = std::max(level, static_cast<double>(std::abs(a[i])));
+          }
+          const std::string what = std::string(mp::simd::isaName(isa)) + " " + formats[format] +
+                                   " " + std::to_string(channels) + "ch";
+          MP_CHECK(plain.simdFrames() == 0, what + ": switched off, the vector code never runs");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fast.simdFrames() > 100000,
+                     what + ": held and released notes go to the vector code (" +
+                         std::to_string(fast.simdFrames()) + " frames)");
+          else
+            MP_CHECK(fast.simdFrames() == 0, what + ": a layout this unit does not take stays per frame");
+          MP_CHECK(level > 0.05, what + ": the notes sound");
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          // GCC may fuse a multiply-add in the per-frame reader on ARM.
+          MP_CHECK(worst < 1e-6, what + ": the same output within rounding (worst " +
+                                     std::to_string(worst) + ")");
+#else
+          MP_CHECK(worst == 0.0,
+                   what + ": the same output either way (worst difference " + std::to_string(worst) + ")");
+#endif
+        }
+  }
+};
+static VoiceSimdRunTest g_voiceSimdRuns;
+
 // A stop drawn, or pushed in, while the key is still down.
 //
 // On a real organ the slider admits wind to a rank the key is already asking
@@ -6852,6 +6967,68 @@ public:
   }
 };
 
+// The whole engine with and without the vector runs: 512 looping voices, as
+// perf.voice.polyphony, in two storage formats. The ratio is what an
+// optimised build buys in polyphony on this machine.
+class VoiceSimdPerfTest final : public mp::test::Test {
+public:
+  VoiceSimdPerfTest() : Test("perf.voice.polyphony-simd", Category::Perf) {}
+
+  static double realtime(mp::simd::Isa isa, voicetest::Fixture& fx, int voices) {
+    constexpr double kRate = 48000.0;
+    constexpr int kBlock = 256, kBlocks = 400;
+    mp::VoiceEngine eng;
+    eng.prepare(kRate, voices, 2);
+    eng.setSimdIsa(isa);
+    eng.setSampleProvider(fx.provider());
+    for (int i = 0; i < voices; ++i) {
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.velocity = 64 + (i % 60);
+      st.ratio = 1.0 + 0.0005 * (i % 97);
+      st.gain = 0.02f;
+      eng.startVoice(st, static_cast<uint64_t>(i + 1));
+    }
+    std::vector<float> l(kBlock), r(kBlock);
+    float* out[2] = {l.data(), r.data()};
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int b = 0; b < kBlocks; ++b) {
+      std::fill(l.begin(), l.end(), 0.0f);
+      std::fill(r.begin(), r.end(), 0.0f);
+      eng.render(out, 2, kBlock);
+    }
+    const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    return (kBlocks * kBlock / kRate) / s;
+  }
+
+  void run() override {
+    // Every unit this machine has, each against the per-frame path.
+    const auto units = mp::simd::available();
+    for (int format = 0; format < 2; ++format) {
+      voicetest::Fixture fx;
+      if (format == 1) {
+        // Stereo, 16-bit, a second long: a typical resident attack.
+        fx.attack = voicetest::makeTone(440.0, 48000.0, 48000, 2);
+        fx.attack.pcm16.resize(fx.attack.frames.size());
+        for (size_t i = 0; i < fx.attack.frames.size(); ++i)
+          fx.attack.pcm16[i] = static_cast<int16_t>(std::lround(fx.attack.frames[i] * 32767.0f));
+        fx.attack.pcmScale = 1.0f / 32767.0f;
+        fx.attack.frames.clear();
+      }
+      const double off = realtime(mp::simd::Isa::None, fx, 512);
+      for (const auto isa : units) {
+        const double on = realtime(isa, fx, 512);
+        std::printf("        512 voices, %s: per-frame %.1fx realtime, %s runs %.1fx realtime (%.2fx)\n",
+                    format == 0 ? "mono float  " : "stereo 16-bit", off, mp::simd::isaName(isa), on,
+                    on / off);
+        MP_CHECK(off > 0.0 && on > 0.0, "both ways rendered");
+      }
+    }
+  }
+};
+static VoiceSimdPerfTest g_voiceSimdPerf;
+
 class TemperamentThroughputTest final : public mp::test::Test {
 public:
   TemperamentThroughputTest()
@@ -11198,3 +11375,30 @@ public:
   }
 };
 static WindSteadyTest g_windSteady;
+
+// The faster engine is the player's to turn on (0.7.2): off by default, on at
+// once when asked, and saved with the program's settings.
+class FasterEngineSwitchTest final : public mp::test::Test {
+public:
+  FasterEngineSwitchTest() : Test("functional.engine.faster-switch", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const juce::File global = proc.globalSettingsFile();
+    const bool had = global.existsAsFile();
+    const juce::String kept = had ? global.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    if (!proc.fasterEngine())
+      MP_CHECK(proc.fasterEngineUnit().isEmpty(), "off by default: every voice renders per frame");
+    proc.setFasterEngine(true);
+    const auto found = mp::simd::detect();
+    MP_CHECK(proc.fasterEngineUnit() ==
+                 (found == mp::simd::Isa::None ? juce::String() : juce::String(mp::simd::isaName(found))),
+             "on, it uses what this processor has: " + proc.fasterEngineUnit().toStdString());
+    MP_CHECK(global.loadFileAsString().contains("fasterengine 1"), "and the choice is saved");
+    proc.setFasterEngine(false);
+    MP_CHECK(proc.fasterEngineUnit().isEmpty(), "off again at once");
+    if (had) global.replaceWithText(kept);
+    else global.deleteFile();
+  }
+};
+static FasterEngineSwitchTest g_fasterEngineSwitch;
