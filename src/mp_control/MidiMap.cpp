@@ -128,6 +128,8 @@ void MidiMap::clear() {
   alsoDrives_.clear();
   ordered_.clear();
   latchState_.clear();
+  sends_.clear();
+  shortcuts_.clear();
   cancelLearn();
 }
 
@@ -436,6 +438,142 @@ bool MidiMap::learnFrom(const MidiSource& source) {
   return true;
 }
 
+// ------------------------------------------------------- the MIDI window
+
+void MidiMap::setBindingsFor(MidiTargetKind kind, Id targetId,
+                             const std::vector<MidiBinding>& bindings) {
+  unbindTarget(kind, targetId);
+  for (MidiBinding b : bindings) {
+    if (b.source.kind == MidiSourceKind::None) continue;
+    b.targetKind = kind;
+    b.targetId = targetId;
+    b.latching = b.trigger == MidiTrigger::Toggle;
+    bind(b);
+  }
+}
+
+std::vector<MidiSend> MidiMap::sendsFor(MidiTargetKind kind, Id targetId) const {
+  std::vector<MidiSend> out;
+  for (const auto& s : sends_)
+    if (s.targetKind == kind && s.targetId == targetId) out.push_back(s);
+  return out;
+}
+
+bool MidiMap::hasSends(MidiTargetKind kind, Id targetId) const {
+  for (const auto& s : sends_)
+    if (s.targetKind == kind && s.targetId == targetId) return true;
+  return false;
+}
+
+void MidiMap::setSendsFor(MidiTargetKind kind, Id targetId,
+                          const std::vector<MidiSend>& sends) {
+  sends_.erase(std::remove_if(sends_.begin(), sends_.end(),
+                              [&](const MidiSend& s) {
+                                return s.targetKind == kind && s.targetId == targetId;
+                              }),
+               sends_.end());
+  for (MidiSend s : sends) {
+    if (s.kind == MidiSourceKind::None) continue;
+    s.targetKind = kind;
+    s.targetId = targetId;
+    sends_.push_back(s);
+  }
+}
+
+namespace {
+
+uint8_t clamp7(int v) { return static_cast<uint8_t>(v < 0 ? 0 : (v > 127 ? 127 : v)); }
+uint8_t channelBits(int channel) {
+  return static_cast<uint8_t>((channel < 1 ? 1 : (channel > 16 ? 16 : channel)) - 1);
+}
+
+bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& out) {
+  const uint8_t ch = channelBits(channel);
+  switch (kind) {
+    case MidiSourceKind::Note:
+      // A note-on at velocity 0 is the usual "lamp off": consoles that use
+      // the velocity for a colour or a brightness read it the same way.
+      out = {{static_cast<uint8_t>(0x90 | ch), clamp7(number), clamp7(value)}, 3};
+      return true;
+    case MidiSourceKind::ControlChange:
+      out = {{static_cast<uint8_t>(0xB0 | ch), clamp7(number), clamp7(value)}, 3};
+      return true;
+    case MidiSourceKind::ProgramChange:
+      out = {{static_cast<uint8_t>(0xC0 | ch), clamp7(value), 0}, 2};
+      return true;
+    case MidiSourceKind::None:
+      break;
+  }
+  return false;
+}
+
+} // namespace
+
+bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
+  // A program change has no "off": it is a button that says which program.
+  if (s.kind == MidiSourceKind::ProgramChange)
+    return on && message(s.kind, s.channel, 0, s.number, out);
+  const int value = on ? s.high : s.low;
+  if (value < 0) return false;
+  return message(s.kind, s.channel, s.number, value, out);
+}
+
+bool MidiMap::controlMessage(const MidiSend& s, int value, RawMidi& out) {
+  const int v = clamp7(value);
+  const int scaled = s.low + ((s.high - s.low) * v) / 127;
+  if (s.kind == MidiSourceKind::ProgramChange)
+    return message(s.kind, s.channel, 0, scaled, out);
+  return message(s.kind, s.channel, s.number, scaled, out);
+}
+
+bool MidiMap::keyMessage(const MidiSend& s, int note, int velocity, bool on, RawMidi& out) {
+  const int n = note + s.number;
+  if (n < 0 || n > 127) return false;
+  if (on) return message(MidiSourceKind::Note, s.channel, n, velocity < 1 ? 1 : velocity, out);
+  out = {{static_cast<uint8_t>(0x80 | channelBits(s.channel)), clamp7(n), 0}, 3};
+  return true;
+}
+
+std::vector<KeyShortcut> MidiMap::shortcutsFor(MidiTargetKind kind, Id targetId) const {
+  std::vector<KeyShortcut> out;
+  for (const auto& k : shortcuts_)
+    if (k.targetKind == kind && k.targetId == targetId) out.push_back(k);
+  return out;
+}
+
+void MidiMap::setShortcutsFor(MidiTargetKind kind, Id targetId,
+                              const std::vector<KeyShortcut>& shortcuts) {
+  shortcuts_.erase(std::remove_if(shortcuts_.begin(), shortcuts_.end(),
+                                  [&](const KeyShortcut& k) {
+                                    return k.targetKind == kind && k.targetId == targetId;
+                                  }),
+                   shortcuts_.end());
+  for (KeyShortcut k : shortcuts) {
+    if (k.key.empty()) continue;
+    k.targetKind = kind;
+    k.targetId = targetId;
+    shortcuts_.push_back(k);
+  }
+}
+
+std::vector<KeyShortcut> MidiMap::shortcutsForKey(const std::string& key) const {
+  std::vector<KeyShortcut> out;
+  for (const auto& k : shortcuts_)
+    if (k.key == key) out.push_back(k);
+  return out;
+}
+
+void MidiMap::keepOnlyConsoleSendsAndShortcuts() {
+  sends_.erase(std::remove_if(sends_.begin(), sends_.end(),
+                              [](const MidiSend& s) { return !isConsoleTarget(s.targetKind); }),
+               sends_.end());
+  shortcuts_.erase(std::remove_if(shortcuts_.begin(), shortcuts_.end(),
+                                  [](const KeyShortcut& k) {
+                                    return !isConsoleTarget(k.targetKind);
+                                  }),
+                   shortcuts_.end());
+}
+
 // ------------------------------------------------------------ persistence
 
 std::string MidiMap::toText() const {
@@ -467,6 +605,14 @@ std::string MidiMap::toText() const {
                 ? std::string("any")
                 : encodeName(devices_.nameFor(b.deviceId)))
         << '\n';
+  // What the console is sent, and the computer keys. Last for the same reason.
+  for (const auto& s : sends_)
+    out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
+        << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
+        << ' ' << s.high << '\n';
+  for (const auto& k : shortcuts_)
+    out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
+        << ' ' << encodeName(k.key) << '\n';
   return out.str();
 }
 
@@ -629,6 +775,41 @@ bool MidiMap::fromText(const std::string& text) {
       } else {
         anyBad = true;
       }
+      continue;
+    }
+
+    if (line.rfind("send ", 0) == 0) {
+      std::istringstream sl(line);
+      std::string tag, tgt, kind;
+      long long id = 0;
+      MidiSend snd;
+      if (sl >> tag >> tgt >> id >> kind >> snd.channel >> snd.number >> snd.low >> snd.high) {
+        snd.targetKind = targetKindFrom(tgt);
+        snd.targetId = static_cast<Id>(id);
+        snd.kind = sourceKindFrom(kind);
+        if (snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
+          sends_.push_back(snd);
+          continue;
+        }
+      }
+      anyBad = true;
+      continue;
+    }
+    if (line.rfind("shortcut ", 0) == 0) {
+      std::istringstream sl(line);
+      std::string tag, tgt, key;
+      long long id = 0;
+      KeyShortcut k;
+      if (sl >> tag >> tgt >> id >> k.step >> key) {
+        k.targetKind = targetKindFrom(tgt);
+        k.targetId = static_cast<Id>(id);
+        k.key = decodeName(key);
+        if (k.targetKind != MidiTargetKind::None && !k.key.empty()) {
+          shortcuts_.push_back(k);
+          continue;
+        }
+      }
+      anyBad = true;
       continue;
     }
 

@@ -603,6 +603,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           (msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
           "=" + juce::String(source.number) + " val=" + juce::String(value));
 
+    // Listening for the MIDI window takes the press and keeps it; the
+    // release that follows is swallowed too, while still listening.
+    if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
+      if (value > 0) {
+        heard_ = source;
+        heardValue_ = value;
+        midiListen_.store(false, std::memory_order_release);
+        heardReady_.store(true, std::memory_order_release);
+      }
+      continue;
+    }
+
     // Learning consumes the message: a control being mapped must not also
     // fire whatever it used to do.
     if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
@@ -1775,6 +1787,7 @@ bool MasterpieceProcessor::saveMidiMap() const {
   console.fromText(all);
   console.removeBindings([](const MidiBinding& b) { return !MidiMap::isConsoleTarget(b.targetKind); });
   console.clearKeyboardBindings();
+  console.keepOnlyConsoleSendsAndShortcuts();
   const auto cf = consoleMidiFile();
   cf.getParentDirectory().createDirectory();
   cf.replaceWithText(juce::String(console.toText()));
@@ -2108,6 +2121,10 @@ void MasterpieceProcessor::releaseChannel(int channel, int deviceId) {
 }
 
 void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  if (const auto sent = keySends_.find(key); sent != keySends_.end()) {
+    sendKey(sent->second.first, sent->second.second, velocity, false);
+    keySends_.erase(sent);
+  }
   heldKeySwitchOrigin_.erase(key);
   if (const auto ks = heldKeySwitches_.find(key); ks != heldKeySwitches_.end()) {
     const Id switchId = ks->second;
@@ -2267,6 +2284,14 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
 
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity) {
+  // A manual that sends its keys on: before anything else, so a key played
+  // with no stop drawn still reaches the module it drives.
+  if (midiOut_ != nullptr && midiMap_.hasSends(MidiTargetKind::Keyboard, keyboard)) {
+    if (const auto held = keySends_.find(noteKeyId); held != keySends_.end())
+      sendKey(held->second.first, held->second.second, 0, false);
+    sendKey(keyboard, midiNote, velocity, true);
+    keySends_[noteKeyId] = {keyboard, midiNote};
+  }
   // The key is a switch, too, when the organ says so. Engaging it lets the
   // wiring open whatever pallets it reaches -- which is how an organ with no
   // StopRank plays at all, and how every organ's key action sounds. This comes
@@ -3119,7 +3144,9 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
       }
 
     // Reflect the change on the physical console, if the player wants that.
-    if (midiFeedback_ && midiOut_ != nullptr) {
+    // A switch with sends of its own is lit by those, every block.
+    if (midiFeedback_ && midiOut_ != nullptr &&
+        !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
       if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId)) {
         const int ch = b->source.channel > 0 ? b->source.channel : 1;
         if (b->source.kind == MidiSourceKind::Note) {
@@ -3510,6 +3537,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
     for (const auto& [switchId, pipes] : palletPipes_)
       if (switches_.engaged(switchId)) palletMoved(switchId, true);
+  emitSends();
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -4687,6 +4715,90 @@ void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {
   // unaffected either way: it only ever reads the sample store through an
   // atomic pointer, and an unfinished load simply has no audio for a pipe yet.
   juce::Thread::launch([this, odfFile] { loadOrgan(odfFile); });
+}
+
+// ------------------------------------------------------- the MIDI window
+
+void MasterpieceProcessor::sendKey(Id keyboard, int midiNote, int velocity, bool on) {
+  RawMidi raw;
+  for (const auto& s : midiMap_.sends())
+    if (s.targetKind == MidiTargetKind::Keyboard && s.targetId == keyboard &&
+        MidiMap::keyMessage(s, midiNote, velocity, on, raw))
+      outgoing_.addEvent(raw.bytes, raw.size, 0);
+}
+
+void MasterpieceProcessor::emitSends() {
+  const auto& sends = midiMap_.sends();
+  if (midiOut_ == nullptr || sends.empty()) return;
+  // Sized to the list; a list that changed shape starts over, which sends
+  // every lamp's current state -- what a console needs when it is set up.
+  if (sentValues_.size() != sends.size()) sentValues_.assign(sends.size(), -1);
+  RawMidi raw;
+  for (size_t i = 0; i < sends.size(); ++i) {
+    const MidiSend& s = sends[i];
+    int now;
+    if (s.targetKind == MidiTargetKind::Switch)
+      now = switches_.engaged(s.targetId) ? 1 : 0;
+    else if (s.targetKind == MidiTargetKind::ContinuousControl)
+      now = controls_.value(s.targetId);
+    else
+      continue;
+    if (now == sentValues_[i]) continue;
+    sentValues_[i] = now;
+    const bool made = s.targetKind == MidiTargetKind::Switch
+                          ? MidiMap::switchMessage(s, now != 0, raw)
+                          : MidiMap::controlMessage(s, now, raw);
+    if (made) outgoing_.addEvent(raw.bytes, raw.size, 0);
+  }
+}
+
+void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
+                                             const std::vector<MidiBinding>& rows) {
+  {
+    const AudioLock lock(*this);
+    midiMap_.setBindingsFor(kind, id, rows);
+  }
+  saveMidiMap();
+}
+
+void MasterpieceProcessor::setObjectSends(MidiTargetKind kind, Id id,
+                                          const std::vector<MidiSend>& rows) {
+  {
+    const AudioLock lock(*this);
+    midiMap_.setSendsFor(kind, id, rows);
+    sentValues_.clear();
+  }
+  saveMidiMap();
+}
+
+void MasterpieceProcessor::setObjectShortcuts(MidiTargetKind kind, Id id,
+                                              const std::vector<KeyShortcut>& rows) {
+  {
+    const AudioLock lock(*this);
+    midiMap_.setShortcutsFor(kind, id, rows);
+  }
+  saveMidiMap();
+}
+
+bool MasterpieceProcessor::applyKeyShortcut(const std::string& key) {
+  const auto hits = midiMap_.shortcutsForKey(key);
+  for (const auto& k : hits) {
+    if (k.targetKind == MidiTargetKind::Switch) {
+      const auto sw = model_.switches.find(k.targetId);
+      const bool latching = sw == model_.switches.end() || sw->second.latching;
+      if (latching) {
+        setSwitchEngaged(k.targetId, !switchEngaged(k.targetId));
+      } else {
+        // A piston: pressed and let go, as one click of it would be.
+        setSwitchEngaged(k.targetId, true);
+        setSwitchEngaged(k.targetId, false);
+      }
+    } else if (k.targetKind == MidiTargetKind::ContinuousControl) {
+      setContinuousControl(k.targetId,
+                           juce::jlimit(0, 127, continuousControlValue(k.targetId) + k.step));
+    }
+  }
+  return !hits.empty();
 }
 
 } // namespace mp

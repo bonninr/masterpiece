@@ -691,6 +691,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
 MasterpieceEditor::~MasterpieceEditor() {
   stopTimer();
+  if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
   // Where the page windows are, for the next time; then they go, before the
   // console they share a processor with.
   rememberPageWindows();
@@ -698,6 +699,22 @@ MasterpieceEditor::~MasterpieceEditor() {
   pageWindows_.clear();
   // A level moved in the last second before quitting.
   proc_.saveRememberedStateIfPending();
+}
+
+void MasterpieceEditor::parentHierarchyChanged() {
+  auto* top = getTopLevelComponent();
+  if (top == keyWindow_.getComponent()) return;
+  if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
+  keyWindow_ = top;
+  if (top != nullptr && top != this) top->addKeyListener(this);
+  else if (top == this) addKeyListener(this);
+}
+
+bool MasterpieceEditor::keyPressed(const juce::KeyPress& key, juce::Component*) {
+  if (!proc_.applyKeyShortcut(key.getTextDescription().toStdString())) return false;
+  console_.repaint();
+  for (const auto& w : pageWindows_) w->repaint();
+  return true;
 }
 
 void MasterpieceEditor::toggleCombinations() {
@@ -1004,6 +1021,8 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
     });
   };
   window->onPlaced = [this] { rememberPageWindows(); };
+  // Shortcuts work from a page on another screen as well.
+  window->addKeyListener(this);
   window->setVisible(true);
   pageWindows_.push_back(std::move(window));
   rememberPageWindows();

@@ -175,6 +175,50 @@ struct MidiAction {
   bool valid() const { return kind != MidiTargetKind::None; }
 };
 
+// A message sent when something on the console changes: the lamp in a
+// drawstop, the LED by a piston, a motorised fader following its swell box.
+// GrandOrgue's Send tab. Kept apart from the bindings, because a console very
+// often listens on one number and lights its lamp on another.
+struct MidiSend {
+  MidiTargetKind targetKind = MidiTargetKind::None;
+  Id targetId = 0;
+  MidiSourceKind kind = MidiSourceKind::Note;
+  int channel = 1;  // 1..16
+  // The note, controller or program. For a manual, how far the keys played
+  // on it are moved before they are sent: they go out as notes.
+  int number = 0;
+  // A switch sends `high` when it comes on and `low` when it goes off; a
+  // negative `low` sends nothing when it goes off. A control is sent across
+  // low..high, so a fader that wants 0..100 gets 0..100.
+  int low = 0;
+  int high = 127;
+
+  bool operator==(const MidiSend& o) const {
+    return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
+           channel == o.channel && number == o.number && low == o.low && high == o.high;
+  }
+};
+
+// One MIDI message of up to three bytes, built without JUCE.
+struct RawMidi {
+  uint8_t bytes[3] = {0, 0, 0};
+  int size = 0;
+};
+
+// A key on the computer's keyboard. A switch toggles with it; a control moves
+// by `step` each press, so a swell box has one key to open and one to close.
+struct KeyShortcut {
+  MidiTargetKind targetKind = MidiTargetKind::None;
+  Id targetId = 0;
+  std::string key;  // the key as the UI describes it, "ctrl + Q"
+  int step = 0;
+
+  bool operator==(const KeyShortcut& o) const {
+    return targetKind == o.targetKind && targetId == o.targetId && key == o.key &&
+           step == o.step;
+  }
+};
+
 class MidiMap {
 public:
   void clear();
@@ -237,6 +281,37 @@ public:
   // is currently mapped to. A stop can have two: one to draw it, one to cancel.
   std::vector<const MidiBinding*> bindingsFor(MidiTargetKind kind,
                                               Id targetId) const;
+  // Every binding a target has, replaced at once: what the MIDI window does
+  // when a row is edited. A row whose source is not set yet is skipped.
+  void setBindingsFor(MidiTargetKind kind, Id targetId,
+                      const std::vector<MidiBinding>& bindings);
+
+  // --- send ----------------------------------------------------------------
+  const std::vector<MidiSend>& sends() const { return sends_; }
+  std::vector<MidiSend> sendsFor(MidiTargetKind kind, Id targetId) const;
+  void setSendsFor(MidiTargetKind kind, Id targetId, const std::vector<MidiSend>& sends);
+  bool hasSends(MidiTargetKind kind, Id targetId) const;
+  // The message a switch's send makes when it comes on or goes off. False
+  // when there is nothing to send: a program change going off, or a negative
+  // off value.
+  static bool switchMessage(const MidiSend& s, bool on, RawMidi& out);
+  // The message a control's send makes for a value 0..127.
+  static bool controlMessage(const MidiSend& s, int value, RawMidi& out);
+  // A key played on a manual, sent on as a note.
+  static bool keyMessage(const MidiSend& s, int note, int velocity, bool on, RawMidi& out);
+
+  // --- computer keyboard ----------------------------------------------------
+  const std::vector<KeyShortcut>& shortcuts() const { return shortcuts_; }
+  std::vector<KeyShortcut> shortcutsFor(MidiTargetKind kind, Id targetId) const;
+  void setShortcutsFor(MidiTargetKind kind, Id targetId,
+                       const std::vector<KeyShortcut>& shortcuts);
+  // Every shortcut on this key. One key can work several things -- a key that
+  // draws a whole chorus is a GrandOrgue habit.
+  std::vector<KeyShortcut> shortcutsForKey(const std::string& key) const;
+  // Drop what belongs to an organ, keeping only the program's own targets:
+  // how the console-wide file is cut from the whole map.
+  void keepOnlyConsoleSendsAndShortcuts();
+
   void cancelLearn();
   bool learning() const { return learnKind_ != MidiTargetKind::None; }
   MidiTargetKind learningKind() const { return learnKind_; }
@@ -356,6 +431,8 @@ private:
   // expression pedal commonly works two swell boxes (#90).
   std::unordered_map<MidiSource, std::vector<MidiBinding>, MidiSourceHash> alsoDrives_;
   std::vector<MidiBinding> ordered_; // stable order for the UI and for saving
+  std::vector<MidiSend> sends_;
+  std::vector<KeyShortcut> shortcuts_;
   // Latching switches remember their own state: the console sends "button
   // pressed", not "stop is now on".
   mutable std::unordered_map<Id, bool> latchState_;

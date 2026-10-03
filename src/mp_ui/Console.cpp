@@ -1,5 +1,6 @@
 #include "Console.h"
 #include "ManualDialog.h"
+#include "MidiEventDialog.h"
 #include "PathCase.h"
 
 #include "BmpImage.h"
@@ -967,6 +968,9 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
     }
   }
   menu.addSeparator();
+  // Everything at once: several messages, what the console is sent, a key.
+  menu.addItem(7, "MIDI window...");
+  menu.addSeparator();
   // The organ says whether this switch latches (a drawstop, a coupler) or is
   // held (a piston, a Set button), so the plain Learn follows it; the four
   // ways remain for a console that sends something else (#53).
@@ -990,6 +994,10 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
       [this, switchId, bounds, latching](int choice) {
         auto& m = proc_.midiMap();
         if (choice == 6) choice = latching ? 1 : 2;
+        if (choice == 7) {
+          MidiEventDialog::show(proc_, MidiTargetKind::Switch, switchId);
+          return;
+        }
         switch (choice) {
           case 1:
             m.beginLearnAs(MidiTargetKind::Switch, switchId, MidiTrigger::Toggle);
@@ -1112,6 +1120,8 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
     }
   }
   menu.addSeparator();
+  menu.addItem(6, "MIDI window...");
+  menu.addSeparator();
   // One way to teach it: move the pedal, knob or fader. A controller carries
   // its position in every message, so there is no behaviour to choose. A pedal
   // already mapped to another control drives both.
@@ -1125,6 +1135,11 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
                        auto& m = proc.midiMap();
+                       if (choice == 6) {
+                         MidiEventDialog::show(proc, MidiTargetKind::ContinuousControl,
+                                               controlId);
+                         return;
+                       }
                        if (choice == 1) {
                          m.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
                        } else if (choice == 2) {

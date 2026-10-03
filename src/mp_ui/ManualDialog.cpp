@@ -1,4 +1,5 @@
 #include "ManualDialog.h"
+#include "MidiEventDialog.h"
 #include "Mobile.h"
 
 namespace mp::ui {
@@ -481,6 +482,9 @@ public:
     const auto bg = juce::Colour(0xff1b1e24);
     tabs_.addTab("Keys", bg, new ManualDialog(p, keyboardId), true);
     tabs_.addTab("Pistons", bg, new ManualPistonsPanel(p, keyboardId), true);
+    tabs_.addTab("Send", bg,
+                 MidiEventDialog::makeSendPanel(p, MidiTargetKind::Keyboard, keyboardId).release(),
+                 true);
   }
   void resized() override { tabs_.setBounds(getLocalBounds()); }
 

@@ -150,7 +150,8 @@ public:
 
 class MasterpieceEditor : public juce::AudioProcessorEditor,
                           private juce::Timer,
-                          private juce::ChangeListener {
+                          private juce::ChangeListener,
+                          private juce::KeyListener {
 public:
   explicit MasterpieceEditor(MasterpieceProcessor& p);
   MasterpieceProcessor& organProcessor() { return proc_; }
@@ -213,6 +214,12 @@ public:
 private:
   void timerCallback() override;
   void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+  // The computer-keyboard shortcuts set in an object's MIDI window. Listened
+  // for on the top-level window, so a key reaches them whatever has focus,
+  // unless that thing uses the key itself.
+  bool keyPressed(const juce::KeyPress& key, juce::Component* origin) override;
+  void parentHierarchyChanged() override;
+  juce::Component::SafePointer<juce::Component> keyWindow_;
 
   MasterpieceProcessor& proc_;
   TopBar top_;

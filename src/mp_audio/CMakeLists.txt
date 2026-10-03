@@ -34,6 +34,7 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/LoadingDialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ManualDialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ManualDialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/MidiEventDialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.cpp
 )
