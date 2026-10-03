@@ -155,6 +155,17 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
     st.nominalInches = 0.0;
   }
 
+  lastSweeps_ = 0;
+  lastSteps_ = 0;
+  if (directSettle_ && solveSteady(engagedSwitches)) {
+    for (State& st : order_) {
+      st.nominalInches = st.pressure;
+      st.velocity = 0.0;
+    }
+    debtSeconds_ = 0.0;
+    return;
+  }
+
   // Long enough for the largest reservoir to fill through the narrowest valve,
   // and it stops as soon as it stops moving.
   constexpr double kSettleSeconds = 120.0;
@@ -178,6 +189,7 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
       }
     }
     integrate(maxStep_, engagedSwitches);
+    ++lastSteps_;
     if (phase == kWindow - 1) {
       double swing = 0.0;
       for (size_t j = 0; j < order_.size(); ++j)
@@ -193,6 +205,82 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
     st.velocity = 0.0;
   }
   debtSeconds_ = 0.0;
+}
+
+bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
+  // At the working pressure nothing flows on balance: what a compartment takes
+  // in through its links equals what it lets out. The flow through a link
+  // only ever grows with the pressure difference across it, so a
+  // compartment's net inflow only ever falls as its own pressure rises, and
+  // its balance point is unique and lies between the lowest and highest of
+  // its neighbours. Found one compartment at a time, by bisection -- which
+  // cannot overshoot -- and swept until nothing moves. A Newton step would be
+  // faster per compartment, but the square-root flow law has an infinite
+  // slope at zero difference, which is exactly where a settled leak-free
+  // chest sits.
+  struct End {
+    int other = -1;       // position in order_, or -1 for a fixed pressure
+    double fixed = 0.0;
+    double flowAtRef = 0.0, refDiff = 0.0;
+  };
+  std::vector<std::vector<End>> ends(order_.size());
+  for (const ResolvedLink& r : resolved_) {
+    const WindCompartmentLink& link = links_[r.link];
+    if (engagedSwitches != nullptr && link.valveSwitchId != 0) {
+      const bool on = engagedSwitches->count(link.valveSwitchId) != 0;
+      if (on != link.valveOpenWhenEngaged) continue;  // valve shut
+    }
+    if (link.massFlowKgPerSec <= 0.0 || link.refPressureInches <= 0.0) continue;
+    if (r.a >= 0)
+      ends[static_cast<size_t>(r.a)].push_back({r.b, r.fixedB, link.massFlowKgPerSec, link.refPressureInches});
+    if (r.b >= 0)
+      ends[static_cast<size_t>(r.b)].push_back({r.a, r.fixedA, link.massFlowKgPerSec, link.refPressureInches});
+  }
+
+  std::vector<double> start(order_.size());
+  for (size_t j = 0; j < order_.size(); ++j) start[j] = order_[j].pressure;
+  const auto pressureAt = [this](const End& e) {
+    return e.other >= 0 ? order_[static_cast<size_t>(e.other)].pressure : e.fixed;
+  };
+
+  constexpr int kMaxSweeps = 20000;
+  constexpr double kStill = 1.0e-7;  // inches: far below anything the model resolves
+  for (int sweep = 1; sweep <= kMaxSweeps; ++sweep) {
+    double moved = 0.0;
+    for (size_t j = 0; j < order_.size(); ++j) {
+      const auto& mine = ends[j];
+      if (mine.empty()) continue;  // nothing reaches it: it stays as it is
+      double lo = pressureAt(mine.front()), hi = lo;
+      for (const End& e : mine) {
+        lo = std::min(lo, pressureAt(e));
+        hi = std::max(hi, pressureAt(e));
+      }
+      double p = lo;
+      if (hi - lo > 1.0e-12) {
+        const auto inflow = [&](double at) {
+          double sum = 0.0;
+          for (const End& e : mine) sum += orificeFlow(e.flowAtRef, e.refDiff, pressureAt(e) - at);
+          return sum;
+        };
+        for (int it = 0; it < 64 && hi - lo > 1.0e-12; ++it) {
+          const double mid = 0.5 * (lo + hi);
+          if (inflow(mid) > 0.0) lo = mid;  // still filling: the balance is higher
+          else hi = mid;
+        }
+        p = 0.5 * (lo + hi);
+      }
+      moved = std::max(moved, std::abs(p - order_[j].pressure));
+      order_[j].pressure = p;
+    }
+    if (!std::isfinite(moved)) break;
+    if (moved < kStill) {
+      lastSweeps_ = sweep;
+      return true;
+    }
+  }
+  // Did not settle: put everything back and let the integration do it.
+  for (size_t j = 0; j < order_.size(); ++j) order_[j].pressure = start[j];
+  return false;
 }
 
 int WindSolver::indexOf(Id compartmentId) const {

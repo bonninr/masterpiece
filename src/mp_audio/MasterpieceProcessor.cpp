@@ -4005,6 +4005,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   phases.mark("model: stages");
   loadProgress_.beginPhase(LoadProgress::Phase::WiringConsole);
   wind_.settleWith(engagedSwitches_);
+  if (wind_.active())
+    juce::Logger::writeToLog(
+        wind_.lastSettleSteps() > 0
+            ? "load: wind settled by integration, " + juce::String(wind_.lastSettleSteps()) + " steps"
+            : "load: wind solved in " + juce::String(wind_.lastSettleSweeps()) + " sweeps");
   setterSwitchId_ = 0;
   for (const auto& [id, sw] : model_.switches)
     if (sw.asgnCode == 12) {

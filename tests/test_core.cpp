@@ -11090,3 +11090,111 @@ public:
   }
 };
 static ObjectMidiTest g_objectMidi;
+
+// The wind's working pressures solved for directly (0.7.2) rather than
+// integrated up to: the same answer, in milliseconds instead of seconds.
+class WindSteadyTest final : public mp::test::Test {
+public:
+  WindSteadyTest() : Test("functional.control.wind-steady", Category::Functional) {}
+
+  static mp::WindCompartment box(mp::Id id, bool infinite, double inches, double volume = 0.3) {
+    mp::WindCompartment c;
+    c.compartmentId = id;
+    c.infiniteVolume = infinite;
+    c.defaultPressureInches = inches;
+    c.volumeM3 = volume;
+    return c;
+  }
+  static mp::WindCompartmentLink pipe(mp::Id a, mp::Id b, double kgPerSec, mp::Id valve = 0) {
+    mp::WindCompartmentLink l;
+    l.firstCompartmentId = a;
+    l.secondCompartmentId = b;
+    l.massFlowKgPerSec = kgPerSec;
+    l.refPressureInches = 3.0;
+    l.valveSwitchId = valve;
+    l.valveOpenWhenEngaged = true;
+    return l;
+  }
+
+  void run() override {
+    // One chest between a blower and a leak has a closed form: the supply's
+    // flow equals the leak's, 0.05 sqrt((5 - p)/3) = 0.002 sqrt(p/3).
+    {
+      mp::OrganModel m;
+      m.wind[1] = box(1, true, 0.0);
+      m.wind[2] = box(2, true, 5.0);
+      m.wind[3] = box(3, false, 0.0);
+      m.windLinks = {pipe(2, 3, 0.05), pipe(3, 1, 0.002)};
+      mp::WindSolver wind;
+      wind.reset(m);
+      const double exact = 5.0 * 625.0 / 626.0;
+      MP_CHECK(std::abs(wind.nominalFor(3) - exact) < 1e-6,
+               "a single chest settles where its leak balances its supply: " +
+                   std::to_string(wind.nominalFor(3)) + " for " + std::to_string(exact));
+      MP_CHECK(wind.lastSettleSweeps() > 0 && wind.lastSettleSteps() == 0, "solved, not integrated");
+    }
+
+    // A network like a real organ's: a reservoir, three chests, a valve, a
+    // chest fed through another, and every chest leaking to the air. Solved
+    // directly and integrated, the pressures agree to within the
+    // integration's own stopping point.
+    mp::OrganModel m;
+    m.wind[1] = box(1, true, 0.0);
+    m.wind[2] = box(2, true, 6.0);
+    m.wind[10] = box(10, false, 0.0, 1.5);   // reservoir
+    m.wind[11] = box(11, false, 0.0, 0.2);   // chest
+    m.wind[12] = box(12, false, 0.0, 0.03);  // small chest, behind a valve
+    m.wind[13] = box(13, false, 0.0, 0.1);   // fed from chest 11
+    m.windLinks = {pipe(2, 10, 0.2),  pipe(10, 11, 0.08), pipe(10, 12, 0.03, 900),
+                   pipe(11, 13, 0.02), pipe(12, 13, 0.01), pipe(10, 1, 0.003),
+                   pipe(11, 1, 0.004), pipe(12, 1, 0.002), pipe(13, 1, 0.003)};
+    // What flows into each compartment at the solved pressures, by the flow
+    // law itself: at the working pressure it has to come to nothing.
+    const auto imbalance = [&m](const mp::WindSolver& w, bool valveOpen) {
+      const auto at = [&](mp::Id id) {
+        return m.wind.at(id).infiniteVolume ? m.wind.at(id).defaultPressureInches : w.nominalFor(id);
+      };
+      double worst = 0.0;
+      for (mp::Id id : {10, 11, 12, 13}) {
+        double net = 0.0;
+        for (const auto& l : m.windLinks) {
+          if (l.valveSwitchId != 0 && !valveOpen) continue;
+          const double d = at(l.firstCompartmentId) - at(l.secondCompartmentId);
+          const double f = l.massFlowKgPerSec * std::sqrt(std::abs(d) / l.refPressureInches) * (d < 0 ? -1 : 1);
+          if (l.secondCompartmentId == id) net += f;
+          if (l.firstCompartmentId == id) net -= f;
+        }
+        worst = std::max(worst, std::abs(net));
+      }
+      return worst;
+    };
+    mp::WindSolver direct, stepped;
+    stepped.setDirectSettle(false);
+    direct.reset(m);
+    stepped.reset(m);
+    MP_CHECK(stepped.lastSettleSteps() > 0, "the comparison is integrated");
+    MP_CHECK(imbalance(direct, true) < 1e-7,
+             "solved, every compartment balances: worst " + std::to_string(imbalance(direct, true)) + " kg/s");
+    // The integration stops when the pressures stop moving much over a short
+    // window, which a slow drift passes: close, but short of the balance.
+    MP_CHECK(imbalance(direct, true) <= imbalance(stepped, true),
+             "and closer to the balance than integrating gets");
+    for (mp::Id id : {10, 11, 12, 13})
+      MP_CHECK(std::abs(direct.nominalFor(id) - stepped.nominalFor(id)) < 0.06,
+               "compartment " + std::to_string(id) + ": " + std::to_string(direct.nominalFor(id)) +
+                   " solved, " + std::to_string(stepped.nominalFor(id)) + " integrated");
+    // With the valve shut, the small chest is fed only backwards, from 13.
+    const std::unordered_set<mp::Id> shut;  // switch 900 not engaged
+    direct.settleWith(shut);
+    stepped.settleWith(shut);
+    MP_CHECK(imbalance(direct, false) < 1e-7,
+             "valve shut, solved, every compartment balances: worst " +
+                 std::to_string(imbalance(direct, false)) + " kg/s");
+    for (mp::Id id : {10, 11, 12, 13})
+      MP_CHECK(std::abs(direct.nominalFor(id) - stepped.nominalFor(id)) < 0.06,
+               "valve shut, compartment " + std::to_string(id) + ": " +
+                   std::to_string(direct.nominalFor(id)) + " solved, " +
+                   std::to_string(stepped.nominalFor(id)) + " integrated");
+  }
+};
+static WindSteadyTest g_windSteady;

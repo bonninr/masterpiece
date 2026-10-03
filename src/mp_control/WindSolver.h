@@ -120,8 +120,27 @@ private:
   // Find each compartment's working pressure by running the system empty. A
   // windchest does not declare one — see the .cpp.
   void settle(const std::unordered_set<Id>* engagedSwitches = nullptr);
+  // The working pressures solved for directly: where every compartment's
+  // inflow equals its outflow. Milliseconds, against seconds for integrating
+  // up to the same point. False when it does not converge, and settle() then
+  // integrates as before.
+  bool solveSteady(const std::unordered_set<Id>* engagedSwitches);
   // Work out how finely this particular organ has to be integrated.
   void chooseStep();
+
+public:
+  // How the last settle went, for the load log: sweeps of the direct solve,
+  // or integration steps when it fell back to those.
+  int lastSettleSweeps() const { return lastSweeps_; }
+  long long lastSettleSteps() const { return lastSteps_; }
+  // Integrate to the working pressures instead of solving for them: the way
+  // every version before 0.7.2 did it, kept for comparison.
+  void setDirectSettle(bool on) { directSettle_ = on; }
+
+private:
+  int lastSweeps_ = 0;
+  long long lastSteps_ = 0;
+  bool directSettle_ = true;
 
   const OrganModel* model_ = nullptr;
   std::vector<State> order_;
