@@ -443,8 +443,21 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   bar.setColour(juce::ScrollBar::thumbColourId, juce::Colour(0xff4c5464));
   bar.setColour(juce::ScrollBar::trackColourId, kBackground);
   bar.setColour(juce::ScrollBar::backgroundColourId, kBackground);
-  setContentNonOwned(&viewport_, false);
-  setSize(660, std::min(panel_->preferredHeight(660), 640));
+  // Above every other window, for a player who works the pistons with the
+  // mouse while another program is in front (#130). Off, it stays above the
+  // console only while Masterpiece is in front.
+  onTop_.setToggleState(p.combinationsOnTop(), juce::dontSendNotification);
+  onTop_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
+  onTop_.onClick = [this] { proc_.setCombinationsOnTop(onTop_.getToggleState()); };
+  content_.addAndMakeVisible(onTop_);
+  content_.addAndMakeVisible(viewport_);
+  content_.layout = [this] {
+    auto r = content_.getLocalBounds();
+    onTop_.setBounds(r.removeFromTop(26).reduced(8, 2).removeFromRight(150));
+    viewport_.setBounds(r);
+  };
+  setContentNonOwned(&content_, false);
+  setSize(660, std::min(panel_->preferredHeight(660) + 26, 640));
   fitToScreen(*this);
   placing_ = false;
 }
