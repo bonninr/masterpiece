@@ -59,6 +59,9 @@ ArchiveKind inspectArchive(const std::string& path);
 
 class OrganArchive {
 public:
+  // Called by the archive worker, with a fraction in 0..1, or -1 if the
+  // amount of work is unknown. Return false to stop at a file boundary.
+  using Progress = std::function<bool(double)>;
   struct Entry {
     size_t archive = 0;   // which of archives()
     std::string path;     // as stored, '/'-separated
@@ -74,7 +77,7 @@ public:
   // enough for identity(); index() reads every header, which for a solid
   // archive means decompressing all of it.
   bool discover(const std::string& path, std::string& error);
-  bool index(std::string& error);
+  bool index(std::string& error, const Progress& progress = {});
   // Between the two: each archive's first header, which is where most
   // reasons it cannot be read are -- a solid RAR 4, a password, a volume
   // without its set. Cheap: a few kilobytes of each.
@@ -117,7 +120,7 @@ public:
   // the caller's question: it can if its definition came out. False only for
   // a file that cannot be written.
   bool unpackSmallFiles(const std::string& dir, std::string& error,
-                        std::vector<std::string>& damaged) const;
+                        std::vector<std::string>& damaged, const Progress& progress = {}) const;
   // The file name of an archive's first volume, for messages.
   std::string archiveName(size_t index) const;
 

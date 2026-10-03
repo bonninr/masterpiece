@@ -202,6 +202,14 @@ if(MP_FETCH_UNARR)
     PUBLIC ${CMAKE_BINARY_DIR}/unarr-include
     PRIVATE ${unarr_SOURCE_DIR} ${unarr_SOURCE_DIR}/common)
   target_compile_definitions(mp_unarr PRIVATE UNARR_EXPORT_SYMBOLS _FILE_OFFSET_BITS=64)
+  if(UNIX)
+    # unarr gates fseeko/ftello on this feature macro. Without it, its FILE
+    # stream rejects offsets above INT32_MAX, even on 64-bit macOS.
+    # Limit it to stream.c: CpuArch.c needs Darwin's non-POSIX sysctl types.
+    set_property(SOURCE ${unarr_SOURCE_DIR}/common/stream.c APPEND PROPERTY
+      COMPILE_DEFINITIONS _POSIX_C_SOURCE=200809L)
+  endif()
+
   if(MSVC)
     target_compile_definitions(mp_unarr PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(mp_unarr PRIVATE /W3)

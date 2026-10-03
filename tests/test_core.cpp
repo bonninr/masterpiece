@@ -9772,15 +9772,31 @@ public:
       for (const auto& line : a.report())
         if (line.find("solid RAR 4 reader") != std::string::npos) viaUnarr = true;
       MP_CHECK(viaUnarr == solid, label + "the reader is chosen by the solid flag");
-      MP_CHECK(a.index(error), label + "indexed: " + error);
+      std::vector<double> progress;
+      auto track = [&](double fraction) { progress.push_back(fraction); return true; };
+      MP_CHECK(!a.index(error, [](double) { return false; }) && error == "cancelled" &&
+                   a.entries().empty(), label + "indexing can be cancelled before reading files");
+      error.clear();
+      MP_CHECK(a.index(error, track), label + "indexed: " + error);
+      MP_CHECK(progress.size() > 2 && progress.front() == 0.0 && progress.back() == 1.0 &&
+                   std::is_sorted(progress.begin(), progress.end()) &&
+                   std::all_of(progress.begin(), progress.end(), [](double f) { return f >= 0.0 && f <= 1.0; }),
+               label + "index progress covers the whole archive without moving backwards");
       MP_CHECK(a.entries().size() == 4 && a.find("OrganInstallationPackages/000123/pipe2.wav") != nullptr &&
                    a.find("OrganInstallationPackages/000123/pipe2.wav")->size == 30000,
                label + "every file is listed, with its size");
 
       const fs::path out = dir / (solid ? "out-solid" : "out-plain");
       std::vector<std::string> damaged;
-      MP_CHECK(a.unpackSmallFiles(out.string(), error, damaged) && damaged.empty(),
+      MP_CHECK(!a.unpackSmallFiles(out.string(), error, damaged, [](double) { return false; }) &&
+                   error == "cancelled" && !fs::exists(out), label + "cancel creates no unpacked files");
+      error.clear();
+      progress.clear();
+      MP_CHECK(a.unpackSmallFiles(out.string(), error, damaged, track) && damaged.empty(),
                label + "unpacked: " + error);
+      MP_CHECK(progress.size() > 2 && progress.front() == 0.0 && progress.back() == 1.0 &&
+                   std::is_sorted(progress.begin(), progress.end()),
+               label + "extraction reports progress while passing the preceding samples");
       auto slurp = [](const fs::path& f) {
         std::ifstream in(f, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), {});

@@ -4623,6 +4623,8 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   };
   const auto fail = [&](const std::string& message) {
     error = message;
+    loadProgress_.beginPhase(message == "cancelled" ? LoadProgress::Phase::Cancelled
+                                                    : LoadProgress::Phase::Failed);
     juce::Logger::writeToLog("archive: FAILED after " + seconds() + ": " + juce::String(message));
     return juce::Array<juce::File>();
   };
@@ -4642,6 +4644,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();
   const std::string marked = readArchiveMarker(dir.getFullPathName().toStdString());
   const bool ready = !marked.empty() && archive.loadIndexFor(index);
+  if (loadProgress_.isCancelled()) return fail("cancelled");
   if (ready) {
     juce::Logger::writeToLog("archive: already unpacked in " + dir.getFullPathName());
     // The same set opened from somewhere else -- copied to a faster disk, or
@@ -4656,9 +4659,13 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   } else {
     dir.deleteRecursively();
     dir.createDirectory();
-    juce::Logger::writeToLog("archive: reading the file lists (a solid archive is decompressed "
-                             "to do this, so it can take minutes)");
-    if (!archive.index(why)) {
+    juce::Logger::writeToLog("archive: reading the file lists");
+    const auto progress = [this](double fraction) {
+      loadProgress_.archiveFraction.store(fraction, std::memory_order_relaxed);
+      return !loadProgress_.isCancelled();
+    };
+    loadProgress_.beginPhase(LoadProgress::Phase::ReadingArchive);
+    if (!archive.index(why, progress)) {
       dir.deleteRecursively();
       return fail(why);
     }
@@ -4667,7 +4674,8 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
         juce::Logger::writeToLog("archive:   " + juce::String(line));
     juce::Logger::writeToLog("archive: " + juce::String(static_cast<int>(archive.entries().size())) +
                              " files indexed after " + seconds() + "; unpacking the definitions and artwork");
-    if (!archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why, damaged)) {
+    loadProgress_.beginPhase(LoadProgress::Phase::ExtractingArchive);
+    if (!archive.unpackSmallFiles(dir.getFullPathName().toStdString(), why, damaged, progress)) {
       dir.deleteRecursively();
       return fail(why);
     }
@@ -4683,6 +4691,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   dir.findChildFiles(definitions, juce::File::findFiles, true,
                      "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
   definitions.sort();
+  if (loadProgress_.isCancelled()) return fail("cancelled");
   // A damaged archive is said in so many words, with what to do about it:
   // the path inside the archive alone reads like a file missing from disk.
   juce::String damage;
@@ -4698,11 +4707,13 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
                 : "there is no organ definition file (.Organ_Hauptwerk_xml) in \"" +
                       archiveFile.getFileName() + "\" or the packages beside it.";
     juce::Logger::writeToLog("archive: FAILED after " + seconds() + ": " + error);
+    loadProgress_.beginPhase(LoadProgress::Phase::Failed);
     return definitions;
   }
   juce::Logger::writeToLog("archive: ready after " + seconds() + ", " +
                            juce::String(definitions.size()) + " organ definition(s):");
   for (const auto& d : definitions) juce::Logger::writeToLog("archive:   " + d.getFileName());
+  loadProgress_.beginPhase(LoadProgress::Phase::Done);
   // The organ opens, and the player is told what is missing from it.
   if (damage.isNotEmpty())
     error = "Some of its files could not be read, so parts of the console may be missing.\n\n" +

@@ -175,6 +175,7 @@ public:
   void showConsolePage(int oneBased);
 
 private:
+  void showLoadingDialog(const juce::File& file);
   // The message-thread half of a load, run once the loader thread is done.
   void finishLoad(const juce::File& odf, bool graphicsOnly,
                   const MasterpieceProcessor::LoadResult& result);
