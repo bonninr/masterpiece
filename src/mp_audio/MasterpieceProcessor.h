@@ -136,6 +136,12 @@ public:
   static juce::File rememberedDefinition(const juce::Array<juce::File>& definitions);
 
   juce::Array<juce::File> openPackagedOrgan(const juce::File& archive, juce::String& error);
+  // Called on the message thread before showing the archive dialog, so a
+  // Cancel click cannot be cleared later by the worker starting up.
+  void beginPackageLoad() {
+    loadProgress_.cancelled.store(false, std::memory_order_release);
+    loadProgress_.beginPhase(LoadProgress::Phase::OpeningArchive);
+  }
 
   // Load only the ranks these stops need, on the NEXT load.
   //

@@ -36,6 +36,7 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
     if (onCancel) onCancel();
   };
 
+  timerCallback();
   startTimerHz(10);
 }
 
@@ -100,6 +101,13 @@ void LoadingDialog::timerCallback() {
       if (eta.isNotEmpty()) text += "   -   " + eta + " left";
       detail_.setText(text, juce::dontSendNotification);
     }
+  } else if (!cancelling_ && (phase == LoadProgress::Phase::ReadingArchive ||
+                              phase == LoadProgress::Phase::ExtractingArchive)) {
+    const juce::String operation = phase == LoadProgress::Phase::ReadingArchive
+                                      ? " of archive scanned" : " of files processed";
+    detail_.setText(f >= 0.0 ? juce::String(static_cast<int>(f * 100.0)) + "%" + operation
+                            : juce::String("This may take a few minutes"),
+                    juce::dontSendNotification);
   } else if (!cancelling_) {
     // Every other phase counts nothing, and inventing a number would be a lie
     // the next phase immediately contradicts. The phase line carries the

@@ -320,6 +320,7 @@ public:
   virtual bool failed() const = 0;
   // Which of the pass's volumes it is reading now, for a split set.
   virtual size_t volume() const { return 0; }
+  virtual int64_t position() const = 0;
   virtual std::string error() const = 0;
 };
 
@@ -346,6 +347,7 @@ public:
   bool discard() override { return archive_read_data_skip(r_.a) == ARCHIVE_OK; }
   bool failed() const override { return !opened_ || rc_ != ARCHIVE_EOF; }
   size_t volume() const override { return r_.volumes_ ? r_.volumes_->index : 0; }
+  int64_t position() const override { return archive_filter_bytes(r_.a, -1); }
   std::string error() const override { return r_.error(); }
 
 private:
@@ -434,6 +436,7 @@ public:
     return true;
   }
   bool failed() const override { return ar_ == nullptr || !end_; }
+  int64_t position() const override { return stream_ != nullptr ? ar_tell(stream_) : 0; }
   std::string error() const override { return error_; }
 
 private:
@@ -800,9 +803,28 @@ bool OrganArchive::inspect(std::string& error) {
   return true;
 }
 
-bool OrganArchive::index(std::string& error) {
+bool OrganArchive::index(std::string& error, const Progress& progress) {
   entries_.clear();
   byKey_.clear();
+
+  std::vector<double> bytes(archives_.size(), 0.0);
+  double totalBytes = 0.0, completedBytes = 0.0;
+  if (progress)
+    for (size_t i = 0; i < archives_.size(); ++i)
+      for (const auto& volume : archives_[i]) {
+        std::error_code ec;
+        const auto size = fs::file_size(fs::u8path(volume), ec);
+        if (!ec) bytes[i] += static_cast<double>(size);
+        else { error = "cannot read the size of " + volume; return false; }
+      }
+  for (const auto size : bytes) totalBytes += size;
+  auto notify = [&](double scanned) {
+    if (!progress || progress(totalBytes > 0.0 ? std::clamp(scanned / totalBytes, 0.0, 1.0) : -1.0))
+      return true;
+    error = "cancelled";
+    return false;
+  };
+  if (!notify(0.0)) return false;
 
   // Headers only. libarchive skips a non-solid file by seeking, and has to
   // decompress what it skips in a solid RAR 5; unarr lists a solid RAR 4
@@ -814,6 +836,8 @@ bool OrganArchive::index(std::string& error) {
     bool encrypted = false;
     size_t count = 0, locked = 0;
     while (pass->next(name, size, encrypted)) {
+      if (!notify(completedBytes + std::clamp(static_cast<double>(pass->position()), 0.0, bytes[i])))
+        return false;
       last = name;
       ++count;
       if (encrypted) ++locked;
@@ -842,6 +866,8 @@ bool OrganArchive::index(std::string& error) {
     }
     report_.push_back(file + " -- " + std::to_string(count) + " files" +
                       (locked ? ", " + std::to_string(locked) + " password-protected" : ""));
+    completedBytes += bytes[i];
+    if (!notify(completedBytes)) return false;
   }
   return true;
 }
@@ -981,7 +1007,27 @@ std::string OrganArchive::archiveName(size_t index) const {
 }
 
 bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
-                                    std::vector<std::string>& damaged) const {
+                                    std::vector<std::string>& damaged, const Progress& progress) const {
+  // Count only the files we must walk to reach the last definition/artwork
+  // in each archive; samples after it need not be decompressed here.
+  size_t total = 0, done = 0;
+  if (progress)
+    for (size_t i = 0; i < archives_.size(); ++i) {
+      size_t count = 0, last = 0;
+      for (const auto& e : entries_)
+        if (e.archive == i) {
+          ++count;
+          if (!isAudio(e.path) && !e.encrypted) last = count;
+        }
+      total += last;
+    }
+  auto notify = [&] {
+    if (!progress || progress(total > 0 ? std::min(1.0, static_cast<double>(done) / total) : 1.0))
+      return true;
+    error = "cancelled";
+    return false;
+  };
+  if (!notify()) return false;
   for (size_t i = 0; i < archives_.size(); ++i) {
     // Nothing to take from an archive that is all audio.
     bool any = false;
@@ -1000,6 +1046,8 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
     bool encrypted = false;
     std::vector<char> bytes;
     while (remaining > 0 && pass->next(name, size, encrypted)) {
+      if (!notify()) return false;
+      ++done;
       std::string rel = name;
       std::replace(rel.begin(), rel.end(), '\\', '/');
       if (isAudio(rel) || encrypted) {
@@ -1034,7 +1082,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       }
     }
   }
-  return true;
+  return notify();
 }
 
 bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::string>& wanted,

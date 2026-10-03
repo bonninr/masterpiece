@@ -16,6 +16,9 @@ namespace mp {
 struct LoadProgress {
   enum class Phase {
     Idle,
+    OpeningArchive,
+    ReadingArchive,
+    ExtractingArchive,
     ReadingDefinition,  // parsing the ODF; no useful item count yet
     // Between the definition and the samples the instrument is built, and on
     // a large set that is ten seconds during which the old label said
@@ -35,12 +38,16 @@ struct LoadProgress {
   std::atomic<Phase> phase{Phase::Idle};
   std::atomic<int> done{0};
   std::atomic<int> total{0};
+  // Archive indexing counts compressed bytes; extraction counts the files
+  // up to the last definition/artwork. Both publish a per-phase fraction.
+  std::atomic<double> archiveFraction{-1.0};
   // Set by the UI, read by the loader's workers. Never cleared by the loader:
   // whoever starts a load clears it, so a cancel arriving late cannot leak
   // into the next attempt.
   std::atomic<bool> cancelled{false};
 
   void beginPhase(Phase p, int itemTotal = 0) {
+    archiveFraction.store(-1.0, std::memory_order_relaxed);
     done.store(0, std::memory_order_relaxed);
     total.store(itemTotal, std::memory_order_relaxed);
     phase.store(p, std::memory_order_release);
@@ -77,6 +84,10 @@ struct LoadProgress {
   // 0..1, or -1 when this phase has no countable items. The caller decides
   // whether that means a spinner or a bar; both are honest, a fake bar is not.
   double fraction() const {
+    const auto current = phase.load(std::memory_order_acquire);
+    if (current == Phase::OpeningArchive) return -1.0;
+    if (current == Phase::ReadingArchive || current == Phase::ExtractingArchive)
+      return archiveFraction.load(std::memory_order_relaxed);
     const int t = total.load(std::memory_order_relaxed);
     if (t <= 0) return -1.0;
     const int d = done.load(std::memory_order_relaxed);
@@ -86,6 +97,9 @@ struct LoadProgress {
 
   static const char* phaseName(Phase p) {
     switch (p) {
+      case Phase::OpeningArchive:    return "Opening the archive";
+      case Phase::ReadingArchive:    return "Reading the archive";
+      case Phase::ExtractingArchive: return "Extracting definitions and artwork";
       case Phase::ReadingDefinition: return "Reading the organ definition";
       case Phase::BuildingWind:      return "Building the wind model";
       case Phase::WiringConsole:     return "Wiring the console";

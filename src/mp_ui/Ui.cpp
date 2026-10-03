@@ -734,31 +734,39 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
     }
   if (loading_) return;  // one load at a time; the dialog is the interlock
 
-  // An organ still in its packages is opened first, on its own thread, since
-  // indexing a solid archive means decompressing it. What comes out is an
-  // ordinary organ definition, loaded like any other. Packages that hold
-  // several, as demo sets often do, leave the choice to the player in the
-  // same file chooser, opened where they were unpacked.
+  // Reading the file list and extracting the definition/artwork can both
+  // take time. Show the same dialog used later for loading its samples.
   if (mp::isOrganArchive(odf.getFullPathName().toStdString())) {
     loading_ = true;
+    proc_.beginPackageLoad();
     top_.setStatus("Opening " + odf.getFileName() + "...");
-    juce::Thread::launch([this, odf, graphicsOnly] {
+    showLoadingDialog(odf);
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    auto* processor = &proc_;
+    juce::Thread::launch([self, processor, odf, graphicsOnly] {
       juce::String error;
-      const auto definitions = proc_.openPackagedOrgan(odf, error);
-      juce::MessageManager::callAsync([this, odf, graphicsOnly, definitions, error] {
-        loading_ = false;
+      const auto definitions = processor->openPackagedOrgan(odf, error);
+      juce::MessageManager::callAsync([self, odf, graphicsOnly, definitions, error] {
+        if (self == nullptr) return;
+        if (self->loadWindow_ != nullptr) {
+          delete self->loadWindow_;
+          self->loadWindow_ = nullptr;
+        }
+        self->loading_ = false;
+        if (error == "cancelled") {
+          self->top_.setStatus("Archive opening cancelled");
+          return;
+        }
         // Opened, but with files that did not read: said, and the load goes on.
         if (!definitions.isEmpty() && error.isNotEmpty())
           showWithLog(odf.getFileName() + " is damaged", error);
         if (definitions.size() == 1) {
-          loadOrgan(definitions.getFirst(), graphicsOnly);
+          self->loadOrgan(definitions.getFirst(), graphicsOnly);
         } else if (definitions.size() > 1) {
-          chooseDefinition(definitions, graphicsOnly);
+          self->chooseDefinition(definitions, graphicsOnly);
         } else {
-          status_ = "Failed to open " + odf.getFileName();
-          top_.setStatus(status_);
-          // Said where the player is looking, with where the details are:
-          // a status line is easy to miss and says too little to act on.
+          self->status_ = "Failed to open " + odf.getFileName();
+          self->top_.setStatus(self->status_);
           showWithLog("Could not open " + odf.getFileName(), error);
         }
       });
@@ -791,17 +799,12 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
   startLoad(odf, graphicsOnly);
 }
 
-void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
-  if (loading_) return;
-  loading_ = true;
-  closePageWindowsForLoad();
-  top_.setStatus("Loading " + odf.getFileName() + "...");
-
+void MasterpieceEditor::showLoadingDialog(const juce::File& file) {
   // The load runs on its own thread and the message loop keeps running, so
   // the window paints and the Cancel button answers. Doing this work on the
   // message thread is what used to whiten the window for minutes and let
   // Windows offer to kill the program.
-  auto dialog = std::make_unique<LoadingDialog>(proc_, odf.getFileNameWithoutExtension());
+  auto dialog = std::make_unique<LoadingDialog>(proc_, file.getFileName());
   dialog->onCancel = [this] { proc_.cancelLoad(); };
   dialog->setSize(460, 190);
 
@@ -816,6 +819,16 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   opts.resizable = false;
   loadWindow_ = launchDialog(opts);
   if (loadWindow_ != nullptr) loadWindow_->getProperties().set(kStaysOpen, true);
+
+}
+
+void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
+  if (loading_) return;
+  loading_ = true;
+  closePageWindowsForLoad();
+  top_.setStatus("Loading " + odf.getFileName() + "...");
+
+  showLoadingDialog(odf);
 
   juce::Thread::launch([this, odf, graphicsOnly] {
     const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
