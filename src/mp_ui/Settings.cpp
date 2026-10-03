@@ -406,7 +406,7 @@ void EnginePanel::revert() {
 
 // Says what the faster engine found on this machine, so a report can say it.
 void EnginePanel::showFasterUnit() {
-  const juce::String base = "Faster audio engine (being tested)";
+  const juce::String base = "Faster audio engine (experimental)";
   const juce::String unit = proc_.fasterEngineUnit();
   faster_.setButtonText(!proc_.fasterEngine() ? base
                         : unit.isNotEmpty()   ? base + ": using " + unit
