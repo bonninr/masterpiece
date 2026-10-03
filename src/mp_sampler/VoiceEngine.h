@@ -327,7 +327,12 @@ public:
   // The vector unit the straight runs use, found when the engine is prepared
   // (see SimdRun.h). Off renders every frame on the per-frame path, which is
   // what a comparison or a suspicion of the vector code wants.
-  void setSimd(bool on) { isa_ = on ? simd::detect() : simd::Isa::None; }
+  // Off unless asked for: the vector path is new, and the player turns it on
+  // (Settings, "Faster audio engine") until it has proved itself.
+  void setSimd(bool on) {
+    simdWanted_ = on;
+    isa_ = on ? simd::detect() : simd::Isa::None;
+  }
   simd::Isa simd() const { return isa_; }
   // Voice-frames rendered by the vector code since prepare(). Counted once
   // per run, not per frame, so it costs nothing to keep.
@@ -343,6 +348,7 @@ public:
 
 private:
   simd::Isa isa_ = simd::Isa::None;
+  bool simdWanted_ = false;
   std::atomic<uint64_t> simdFrames_{0};
   // The body of both: one pipe of a note, or all of them.
   void releaseVoices(uint64_t noteId, Id pipeId, const NoteRelease& release);

@@ -11353,3 +11353,30 @@ public:
   }
 };
 static WindSteadyTest g_windSteady;
+
+// The faster engine is the player's to turn on (0.7.2): off by default, on at
+// once when asked, and saved with the program's settings.
+class FasterEngineSwitchTest final : public mp::test::Test {
+public:
+  FasterEngineSwitchTest() : Test("functional.engine.faster-switch", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const juce::File global = proc.globalSettingsFile();
+    const bool had = global.existsAsFile();
+    const juce::String kept = had ? global.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    if (!proc.fasterEngine())
+      MP_CHECK(proc.fasterEngineUnit().isEmpty(), "off by default: every voice renders per frame");
+    proc.setFasterEngine(true);
+    const auto found = mp::simd::detect();
+    MP_CHECK(proc.fasterEngineUnit() ==
+                 (found == mp::simd::Isa::None ? juce::String() : juce::String(mp::simd::isaName(found))),
+             "on, it uses what this processor has: " + proc.fasterEngineUnit().toStdString());
+    MP_CHECK(global.loadFileAsString().contains("fasterengine 1"), "and the choice is saved");
+    proc.setFasterEngine(false);
+    MP_CHECK(proc.fasterEngineUnit().isEmpty(), "off again at once");
+    if (had) global.replaceWithText(kept);
+    else global.deleteFile();
+  }
+};
+static FasterEngineSwitchTest g_fasterEngineSwitch;

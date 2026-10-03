@@ -81,7 +81,7 @@ constexpr int kMinSimdRun = 8;
 void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
                           int maxBlockFrames) {
   stopWorkers(); // pool sizes depend on everything below
-  isa_ = simd::detect();
+  isa_ = simdWanted_ ? simd::detect() : simd::Isa::None;
   simdFrames_.store(0, std::memory_order_relaxed);
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   numChannels_ = numChannels > 0 ? numChannels : 2;

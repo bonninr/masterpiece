@@ -37,6 +37,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openCache_ = proc_.cacheMode();
   openLoadTicks_ = proc_.loadTicks();
   openReopen_ = proc_.reopenLastOrgan();
+  openFaster_ = proc_.fasterEngine();
   openMemLimit_ = proc_.memoryLimitSettingMB();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
@@ -243,6 +244,18 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       "Off by default. Even when on, an organ that was loaded when Masterpiece "
       "last closed unexpectedly is not reopened.");
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
+  // The vector engine, off until it has proved itself in players' hands. It
+  // changes at once, so the same chord can be heard both ways.
+  addAndMakeVisible(faster_);
+  faster_.setToggleState(proc_.fasterEngine(), juce::dontSendNotification);
+  faster_.setTooltip("Renders several samples at a time with the processor's vector unit (AVX2 on "
+                     "a PC, NEON on ARM): the same sound, with more polyphony to spare. New, so off "
+                     "by default. If anything sounds wrong with it on, turn it off and please report it.");
+  faster_.onClick = [this] {
+    proc_.setFasterEngine(faster_.getToggleState());
+    showFasterUnit();
+  };
+  showFasterUnit();
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
   portable_.setTooltip("Keeps this organ's own sample cache, and a copy of its definition and console "
@@ -348,6 +361,9 @@ void EnginePanel::revert() {
   loadTicks_.setToggleState(openLoadTicks_, juce::dontSendNotification);
   proc_.setReopenLastOrgan(openReopen_);
   reopen_.setToggleState(openReopen_, juce::dontSendNotification);
+  if (proc_.fasterEngine() != openFaster_) proc_.setFasterEngine(openFaster_);
+  faster_.setToggleState(openFaster_, juce::dontSendNotification);
+  showFasterUnit();
   proc_.setMemoryLimitMB(openMemLimit_);
   fillMemLimit();
   proc_.setLoadSampleRate(openRate_);
@@ -386,6 +402,15 @@ void EnginePanel::revert() {
   const bool detailed = !openSwitch_.simpleWavOnly;
   for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
     b->setEnabled(detailed);
+}
+
+// Says what the faster engine found on this machine, so a report can say it.
+void EnginePanel::showFasterUnit() {
+  const juce::String base = "Faster audio engine (being tested)";
+  const juce::String unit = proc_.fasterEngineUnit();
+  faster_.setButtonText(!proc_.fasterEngine() ? base
+                        : unit.isNotEmpty()   ? base + ": using " + unit
+                                              : base + ": not available on this processor");
 }
 
 void EnginePanel::closeDialog() {
@@ -587,6 +612,7 @@ void EnginePanel::resized() {
   r.removeFromTop(2);
   reopen_.setBounds(r.removeFromTop(kRow));
   portable_.setBounds(r.removeFromTop(kRow));
+  faster_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(6);
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));
