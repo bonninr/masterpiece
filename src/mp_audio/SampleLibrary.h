@@ -26,6 +26,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -173,7 +174,15 @@ public:
   // Bytes read from a cache on the last load, and written to one. Zero for
   // both means the load did it the long way.
   int64_t cacheBytesRead() const { return cacheRead_; }
-  int64_t cacheBytesWritten() const { return cacheWritten_; }
+  int64_t cacheBytesWritten() const { return cacheWritten_.load(); }
+  // The cache is written after the organ goes live, on a thread of its own:
+  // writing it first kept a loaded organ silent for as long as a disk takes
+  // to write gigabytes, which looked like a hang (#120). True while it runs.
+  bool cacheWriting() const { return cacheWriting_.load(); }
+  // Waits for a cache write still running, so a load never reads one half
+  // written. Asks it to stop first when `abandon` (quitting); the old cache,
+  // if any, is then left as it was.
+  void finishCacheWrite(bool abandon);
 
   // The archives an organ is played from, when it is not unpacked. A sample
   // that is not on disk under the organ's root is read from them instead:
@@ -241,7 +250,8 @@ private:
                                int64_t maxFramesPerSample,
                                LoopSelection loopSelection) const;
   std::string cachePath() const;
-  bool writeCache(const Store& store, const std::string& fingerprint) const;
+  bool writeCache(const Store& store, const std::string& fingerprint,
+                  const std::string& path) const;
   bool readCache(Store& out, const std::string& fingerprint,
                  LoadProgress* progress = nullptr) const;
 
@@ -251,7 +261,10 @@ private:
   std::string cacheOdfStamp_;
   CacheMode cacheMode_ = CacheMode::Single;
   mutable int64_t cacheRead_ = 0;
-  mutable int64_t cacheWritten_ = 0;
+  mutable std::atomic<int64_t> cacheWritten_{0};
+  std::thread cacheThread_;
+  std::atomic<bool> cacheWriting_{false};
+  mutable std::atomic<bool> cacheStop_{false};
 
 
   // Static, so everything it depends on arrives as an argument: `loadMono`

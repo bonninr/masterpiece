@@ -1504,6 +1504,8 @@ void MasterpieceEditor::timerCallback() {
   juce::String live = status_;
   if (live.isNotEmpty()) live += "  |  ";
   live += "voices " + juce::String(stats.activeVoices);
+  // The organ plays while its samples are saved for next time (#120).
+  if (proc_.cacheWriting()) live += "  |  saving the samples for the next load...";
   if (stats.startsDropped > 0)
     live += ", dropped " + juce::String(stats.startsDropped);
   if (stats.samplesMissing > 0)

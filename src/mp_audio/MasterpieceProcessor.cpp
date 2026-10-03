@@ -2278,14 +2278,6 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
     }
   }
 
-  if (engagedStops_.empty()) {
-    // nothing drawn: the organ is silent
-    if (logMidi_.load(std::memory_order_acquire))
-      juce::Logger::writeToLog(
-          "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
-    return;
-  }
-
   // A key that is already down is being struck again. Let go of it first.
   //
   // soundingNotes_ holds ONE note id per key, and the last line of this
@@ -2309,11 +2301,23 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   const uint64_t noteId = nextNoteId_++;
 
   const bool anyStarted =
+      !engagedStops_.empty() &&
       startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_);
 
-  if (anyStarted)
-    soundingNotes_[noteKeyId] =
-        HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
+  // Held whether or not anything sounds yet. A key pressed before its stop is
+  // drawn speaks the moment the stop is drawn, as on a real organ; recorded
+  // only when a pipe had started, such a key was unknown to the code that
+  // follows stops for held notes, so drawing the stop did nothing (#120: "it
+  // isn't always possible to change stops while holding a note").
+  soundingNotes_[noteKeyId] =
+      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
+
+  if (engagedStops_.empty()) {
+    if (logMidi_.load(std::memory_order_acquire))
+      juce::Logger::writeToLog(
+          "midi:     NOTHING PLAYS: no stop is drawn, so no pipe can sound");
+    return;
+  }
 
   if (logMidi_.load(std::memory_order_acquire)) {
     // Which divisions, and what is drawn on them: "no pipe answered" is either
@@ -4318,9 +4322,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     if (samples_.cacheBytesRead() > 0)
       juce::Logger::writeToLog("cache: read " + mb(samples_.cacheBytesRead()) +
                                " MB, samples not decoded");
-    else if (samples_.cacheBytesWritten() > 0)
-      juce::Logger::writeToLog("cache: wrote " + mb(samples_.cacheBytesWritten()) +
-                               " MB for the next load");
+    else if (samples_.cacheWriting())
+      juce::Logger::writeToLog("cache: saving the samples for the next load, in the background");
     juce::Logger::writeToLog(
         "memory: resident " + mb(samples_.residentBytes()) + " MB" +
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +

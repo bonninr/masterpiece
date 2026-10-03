@@ -273,6 +273,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     addAndMakeVisible(*b);
   revert_.onClick = [this] { revert(); };
   keep_.onClick = [this] { closeDialog(); };
+  addChildComponent(reload_);
+  reload_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff8a5a12));
+  reload_.setTooltip("These settings take effect when the organ is loaded; this loads it again now");
+  reload_.onClick = [this] {
+    if (onReload) onReload();
+  };
   saveOrgan_.onClick = [this] {
     proc_.saveSettings();
     closeDialog();
@@ -404,7 +410,24 @@ void EnginePanel::pushSwitches() {
     b->setEnabled(detailed);
 }
 
+bool EnginePanel::loadingChanged() const {
+  const auto sw = proc_.engineSwitch();
+  return proc_.sampleStorage() != openStorage_ || proc_.streamReleases() != openStream_ ||
+         proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
+         proc_.preloadHeadFrames() != openPreload_ ||
+         sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
+         sw.enableWindModel != openSwitch_.enableWindModel ||
+         sw.enableTremulant != openSwitch_.enableTremulant ||
+         sw.enableEnclosure != openSwitch_.enableEnclosure ||
+         sw.enableVoicing != openSwitch_.enableVoicing ||
+         sw.playAtOriginalOrganPitch != openSwitch_.playAtOriginalOrganPitch;
+}
+
 void EnginePanel::timerCallback() {
+  const bool offer = onReload != nullptr && loadingChanged() &&
+                     proc_.loadedOrganFile().getFullPathName().isNotEmpty();
+  if (reload_.isVisible() != offer) reload_.setVisible(offer);
+
   const auto bytes = proc_.sampleLibrary().residentBytes();
   const auto fmt = proc_.sampleStorage();
   juce::String text = "Resident samples: " +
@@ -571,6 +594,8 @@ void EnginePanel::resized() {
   revert_.setBounds(footer.removeFromLeft(130).reduced(0, 2));
   footer.removeFromLeft(kGap);
   keep_.setBounds(footer.removeFromLeft(120).reduced(0, 2));
+  footer.removeFromLeft(kGap);
+  reload_.setBounds(footer.removeFromLeft(230).reduced(0, 2));
   saveGlobal_.setBounds(footer.removeFromRight(150).reduced(0, 2));
   footer.removeFromRight(kGap);
   saveOrgan_.setBounds(footer.removeFromRight(160).reduced(0, 2));

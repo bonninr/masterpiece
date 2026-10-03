@@ -484,6 +484,7 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
                                          juce::AudioDeviceManager* devices)
     : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }) {
   addAndMakeVisible(tabs_);
+  engine_.onReload = [this] { reloadOnClose(); };
   tabs_.addTab("Loading", kBackground, &engineScroll_, false);
   tabs_.addTab("Stops and perspectives", kBackground, &stops_, false);
   if (devices != nullptr) {

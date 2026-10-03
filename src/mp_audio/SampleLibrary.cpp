@@ -82,7 +82,13 @@ SampleLibrary::SampleLibrary() {
   publish(std::make_shared<const Store>()); // start with an empty generation
 }
 
-SampleLibrary::~SampleLibrary() = default;
+SampleLibrary::~SampleLibrary() { finishCacheWrite(true); }
+
+void SampleLibrary::finishCacheWrite(bool abandon) {
+  if (abandon) cacheStop_.store(true);
+  if (cacheThread_.joinable()) cacheThread_.join();
+  cacheStop_.store(false);
+}
 
 void SampleLibrary::publish(std::shared_ptr<const Store> next) {
   const Store* raw = next.get();
@@ -577,7 +583,11 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     return onlyRanks == nullptr || onlyRanks->count(rankId) != 0;
   };
   SampleLoadReport report;
-  cacheRead_ = cacheWritten_ = 0;
+  // The previous load's cache, if it is still being written, is finished
+  // first: this load may be about to read it.
+  finishCacheWrite(false);
+  cacheRead_ = 0;
+  cacheWritten_ = 0;
 
   // A cache of a previous load of this organ, at these settings, is the whole
   // of the work below already done. Reading it is sequential; doing it again
@@ -896,11 +906,20 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   const bool stoppedShort = progress != nullptr && progress->isCancelled();
   // Nor when files failed to read: a cache of a partial organ is trusted on
   // every later load, and kept it partial after the cause was fixed.
-  if (cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 && !stoppedShort &&
-      report.failed == 0)
-    writeCache(*next, fingerprint);
-
+  const bool keep = cacheMode_ != CacheMode::Off && !cacheDir_.empty() && report.loaded > 0 &&
+                    !stoppedShort && report.failed == 0;
+  std::shared_ptr<const Store> written = next;
   publish(std::move(next));
+  if (keep) {
+    // After publishing, on a thread of its own: the organ plays while the
+    // disk works. The buffers are shared and no longer change, so reading
+    // them here while notes play is safe.
+    cacheWriting_.store(true);
+    cacheThread_ = std::thread([this, written, fingerprint, path = cachePath()] {
+      writeCache(*written, fingerprint, path);
+      cacheWriting_.store(false);
+    });
+  }
   return report;
 }
 
@@ -1235,8 +1254,8 @@ std::string SampleLibrary::cachePath() const {
   return (dir / name).string();
 }
 
-bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprint) const {
-  const std::string path = cachePath();
+bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprint,
+                               const std::string& path) const {
   if (path.empty()) return false;
 
   std::error_code ec;
@@ -1255,6 +1274,7 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
 
     for (const auto& [id, buf] : store) {
       if (buf == nullptr) continue;
+      if (cacheStop_.load()) break;
       putPod<uint32_t>(os, static_cast<uint32_t>(id));
       putPod<int64_t>(os, buf->numFrames);
       putPod<int32_t>(os, buf->numChannels);
@@ -1292,6 +1312,11 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
         putPod<double>(os, buf->tailDstRate);
       }
       if (!os) return false;
+    }
+    if (cacheStop_.load()) {
+      os.close();
+      std::filesystem::remove(tmp, ec);
+      return false;
     }
     cacheWritten_ = static_cast<int64_t>(os.tellp());
   }

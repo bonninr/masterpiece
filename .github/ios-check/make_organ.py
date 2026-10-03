@@ -35,6 +35,20 @@ def pipe(path, note):
         w.setsampwidth(2)
         w.setframerate(RATE)
         w.writeframes(bytes(data))
+    # A sustain loop, as an organ's pipes have, so a held key sounds until it
+    # is let go and letting go ends it: a whole number of cycles from half a
+    # second in, in a standard smpl chunk.
+    cycles = max(1, round(0.5 * freq))
+    start = int(0.5 * RATE)
+    end = start + round(cycles * RATE / freq) - 1
+    smpl = struct.pack("<9I", 0, 0, int(1e9 / RATE), note, 0, 0, 0, 1, 0)
+    smpl += struct.pack("<6I", 0, 0, start, end, 0, 0)
+    with open(path, "r+b") as f:
+        f.seek(0, 2)
+        f.write(b"smpl" + struct.pack("<I", len(smpl)) + smpl)
+        size = f.tell()
+        f.seek(4)
+        f.write(struct.pack("<I", size - 8))
 
 
 def organ(folder):
