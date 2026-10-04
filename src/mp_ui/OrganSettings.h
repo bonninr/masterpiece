@@ -132,7 +132,10 @@ private:
   bool reloadOnClose_ = false;
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   EnginePanel engine_;
-  ScrollHost engineScroll_{engine_, 720};
+  // Tall enough for every row, the buttons and the whole note above them
+  // (about 740 without the note, which runs to six paragraphs); a smaller
+  // window scrolls.
+  ScrollHost engineScroll_{engine_, 1060};
   StopsLoadPanel stops_;
   // Which channel plays which of this organ's manuals: the same panel as in
   // General settings, here too, where a player setting up one organ looks
