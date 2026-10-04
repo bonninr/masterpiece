@@ -1105,7 +1105,10 @@ public:
     setSize(420, 420);
     fitToScreen(*this);
   }
-  void closeButtonPressed() override { setVisible(false); }
+  void closeButtonPressed() override {
+    setAlwaysOnTop(false); // set again when shown, as the combinations window
+    setVisible(false);
+  }
 };
 }  // namespace
 
@@ -1118,6 +1121,7 @@ void MasterpieceEditor::toggleRecorder() {
       recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
   }
   const bool show = !recorderWindow_->isVisible();
+  if (!show) recorderWindow_->setAlwaysOnTop(false);
   recorderWindow_->setVisible(show);
   if (show) recorderWindow_->toFront(true);
 }

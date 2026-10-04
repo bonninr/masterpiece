@@ -478,6 +478,10 @@ void CombinationsWindow::closeButtonPressed() { showOrHide(false); }
 
 void CombinationsWindow::showOrHide(bool show) {
   open_ = show;
+  // A window manager can forget "above" while a window is hidden (Cinnamon:
+  // on top the first time, not after closing and reopening, #140). Dropped
+  // before hiding, the editor's timer sets it again on the shown window.
+  if (!show) setAlwaysOnTop(false);
   setVisible(show);
   if (show) toFront(true);
   remember();
