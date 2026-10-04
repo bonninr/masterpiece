@@ -98,7 +98,8 @@ struct NoteRelease {
 
 // Release choice: candidates must match velocity/hold/cts ceilings AND the
 // attack context; releases naming this attackId via
-// ReleaseSelCriteria_PreferThisRelForAttackID win, else file order.
+// ReleaseSelCriteria_PreferThisRelForAttackID win; among the rest, the
+// tightest hold-time ceiling that fits (ties: file order).
 int selectRelease(const PipeLayer& layer, const NoteRelease& rel);
 
 } // namespace mp

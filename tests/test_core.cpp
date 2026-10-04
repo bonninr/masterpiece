@@ -8314,6 +8314,19 @@ public:
     MP_CHECK(mp::selectRelease(layer, staccato) == 0, "a short press takes the short release");
     MP_CHECK(mp::selectRelease(layer, held) == 1,
              "a held note takes the release written for any hold time (-1), not none at all");
+
+    // Nancy's order: medium (602 ms), short (284 ms), long. Each note takes
+    // the release written for its length, not the first that would do.
+    mp::PipeLayer nancy;
+    for (int64_t ceiling : {int64_t(602), int64_t(284), int64_t(99999)}) {
+      mp::ReleaseSample r;
+      r.holdTimeMsHigh = ceiling;
+      nancy.releases.push_back(r);
+    }
+    auto heldFor = [](int64_t ms) { return mp::NoteRelease{0, 71, 64, 127, 64, ms, 127}; };
+    MP_CHECK(mp::selectRelease(nancy, heldFor(150)) == 1, "a 150 ms note takes the short release");
+    MP_CHECK(mp::selectRelease(nancy, heldFor(400)) == 0, "a 400 ms note takes the medium one");
+    MP_CHECK(mp::selectRelease(nancy, heldFor(3000)) == 2, "a held note takes the long one");
   }
 };
 static ReleaseDefaultLimitTest g_releaseDefaultLimit;
