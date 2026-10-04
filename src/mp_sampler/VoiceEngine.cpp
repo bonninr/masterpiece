@@ -337,6 +337,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremAmpDepth = start.tremAmpDepth;
   v.tremPitchDepth = start.tremPitchDepth;
   v.startedAtBlock = blockCounter_;
+  v.startedAtFrame = framesRendered_;
   // If only this sample's head is resident, tell the streamer to start
   // fetching the rest. It has from now until the voice reaches the end of the
   // head — seconds — which is why a two second ring is ample.
@@ -387,9 +388,19 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
 
     // Pick the release sample that matches the attack this voice actually
     // played — that pairing is what makes a release sound like the same pipe.
+    // How long the key was held, from when this voice started. Nothing
+    // measured it before, so every release was chosen as if the key had been
+    // held for no time at all: Nancy's held notes took the release written
+    // for short ones, whose tail is shorter (#120). A caller that knows the
+    // hold time better passes it.
+    int64_t heldMs = release.holdTimeMs;
+    if (heldMs <= 0 && sampleRate_ > 0.0)
+      heldMs = static_cast<int64_t>(
+          static_cast<double>(framesRendered_ - v.startedAtFrame) * 1000.0 / sampleRate_);
     int chosen = -1;
     if (v.layer != nullptr) {
       NoteRelease rel = release;
+      rel.holdTimeMs = heldMs;
       rel.attackIndex = v.attackIndex;
       rel.attackId = v.attackId;
       rel.attackVelocity = v.attackVelocity;
@@ -413,7 +424,7 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     if (logging) {
       ev.pipeId = v.pipeId;
       ev.attackSampleId = v.sampleId;
-      ev.heldMs = release.holdTimeMs;
+      ev.heldMs = heldMs;
       ev.velocity = release.velocity;
       ev.releaseCount = v.layer != nullptr ? static_cast<int>(v.layer->releases.size()) : 0;
       ev.chosen = chosen;
