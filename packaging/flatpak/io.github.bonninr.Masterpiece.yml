@@ -66,8 +66,21 @@ modules:
       - -DFETCHCONTENT_SOURCE_DIR_UNARR=/run/build/masterpiece/deps/unarr
       - -DFETCHCONTENT_SOURCE_DIR_WAVPACK=/run/build/masterpiece/deps/wavpack
     post-install:
-      - install -Dm644 packaging/io.github.bonninr.Masterpiece.metainfo.xml
+      - install -Dm644 io.github.bonninr.Masterpiece.metainfo.xml
         /app/share/metainfo/io.github.bonninr.Masterpiece.metainfo.xml
+    # What the dependencies install for building, not for running.
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - '*.a'
+      - /bin/juceaide
+      - /bin/wavpack
+      - /bin/wvunpack
+      - /bin/wvgain
+      - /bin/wvtag
+      - /share/doc
+      - /share/man
     sources:
       - type: git
         url: https://github.com/bonninr/masterpiece.git
@@ -97,3 +110,7 @@ modules:
         tag: 5.8.1
         commit: 4827b9889665b937b6ed71b9c6c0123152cd7a02
         dest: deps/wavpack
+      # Shipped beside this manifest rather than taken from the tag, so a
+      # description can be corrected without a release.
+      - type: file
+        path: ../io.github.bonninr.Masterpiece.metainfo.xml
