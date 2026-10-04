@@ -1,9 +1,14 @@
 name: packaging
 
-# Builds the store packages in packaging/ to check they still build. Run by
-# hand from the Actions tab; nothing here publishes anything.
+# Builds the store packages in packaging/ to check they still build: by hand
+# from the Actions tab, and on any pull request that changes them. Nothing
+# here publishes anything.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/packaging.yml'
 
 jobs:
   flatpak:
