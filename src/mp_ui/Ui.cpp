@@ -1105,7 +1105,7 @@ public:
     setSize(420, 420);
     fitToScreen(*this);
   }
-  void closeButtonPressed() override { setVisible(false); }
+  void closeButtonPressed() override { showFloating(*this, false, false); }
 };
 }  // namespace
 
@@ -1117,9 +1117,8 @@ void MasterpieceEditor::toggleRecorder() {
     if (!kMobile)
       recorderWindow_->setTopLeftPosition(b.getRight() - recorderWindow_->getWidth() - 20, b.getY() + 80);
   }
-  const bool show = !recorderWindow_->isVisible();
-  recorderWindow_->setVisible(show);
-  if (show) recorderWindow_->toFront(true);
+  showFloating(*recorderWindow_, !recorderWindow_->isVisible(),
+               juce::Process::isForegroundProcess());
 }
 
 void MasterpieceEditor::reloadOrgan() {
@@ -1557,12 +1556,13 @@ void MasterpieceEditor::timerCallback() {
   }
 
   // Above the console while this program is in front, and not above anyone
-  // else's windows when it is not.
-  if (combinations_ != nullptr && combinations_->isVisible()) {
-    const bool front = proc_.combinationsOnTop() || juce::Process::isForegroundProcess();
+  // else's windows when it is not. Not on Linux, where each change remakes
+  // the window: there it is settled when the window opens (showFloating).
+  if (kLiveOnTop && combinations_ != nullptr && combinations_->isVisible()) {
+    const bool front = combinations_->onTopNow();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
   }
-  if (recorderWindow_ != nullptr && recorderWindow_->isVisible()) {
+  if (kLiveOnTop && recorderWindow_ != nullptr && recorderWindow_->isVisible()) {
     const bool front = juce::Process::isForegroundProcess();
     if (recorderWindow_->isAlwaysOnTop() != front) recorderWindow_->setAlwaysOnTop(front);
   }

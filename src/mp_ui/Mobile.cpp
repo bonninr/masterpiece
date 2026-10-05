@@ -347,6 +347,20 @@ void fitToScreen(juce::DocumentWindow& window) {
   window.setBounds(screenArea());
 }
 
+void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
+  if (!kLiveOnTop) {
+    window.setVisible(false);
+    window.removeFromDesktop();
+    if (!show) return;
+    window.setAlwaysOnTop(onTop);  // off the desktop: a flag, no window remade
+    window.addToDesktop();
+  } else {
+    window.setAlwaysOnTop(onTop);
+  }
+  window.setVisible(show);
+  if (show) window.toFront(true);
+}
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
     options.useNativeTitleBar = false;

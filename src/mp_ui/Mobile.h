@@ -21,6 +21,23 @@ juce::Rectangle<int> screenArea();
 // tall enough to touch and its close button in reach. Does nothing elsewhere.
 void fitToScreen(juce::DocumentWindow& window);
 
+// Shows or hides a window that floats over the console (combinations,
+// recorder), above every other window while `onTop`. On Linux the window is
+// made afresh each time it opens, with `onTop` fixed until it closes: X11
+// takes "above" only when a window is created, so JUCE changes it on an open
+// window by destroying and remaking it, and a window manager forgets it while
+// the window is hidden (#140: on top the first time, not after reopening, and
+// a window remade on every change of focus caught clicks where it had been).
+void showFloating(juce::DocumentWindow& window, bool show, bool onTop);
+
+// Whether a shown window's "above" may follow the program in and out of the
+// front. Not on Linux; see showFloating.
+#if JUCE_LINUX
+constexpr bool kLiveOnTop = false;
+#else
+constexpr bool kLiveOnTop = true;
+#endif
+
 // DialogWindow::LaunchOptions::launchAsync, with the dialog fitted to the
 // screen on a phone or tablet. Every dialog opens through here.
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
