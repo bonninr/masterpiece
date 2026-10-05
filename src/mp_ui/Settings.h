@@ -93,6 +93,10 @@ private:
   juce::TextButton keep_{"Keep changes"};
   juce::TextButton saveOrgan_{"Save for this organ"};
   juce::TextButton saveGlobal_{"Save as default"};
+  // A save leaves the panel open, so the organ can be loaded again with what
+  // was saved (#120). The button says it was saved, for a moment.
+  void showSaved(juce::TextButton& button);
+  juce::uint32 savedUntilMs_ = 0;
   juce::ToggleButton simpleWav_{"Simple WAV only (bypass all DSP)"};
   juce::ToggleButton wind_{"Wind model"};
   juce::ToggleButton tremulant_{"Tremulants"};

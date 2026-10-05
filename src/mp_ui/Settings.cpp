@@ -296,11 +296,11 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   };
   saveOrgan_.onClick = [this] {
     proc_.saveSettings();
-    closeDialog();
+    showSaved(saveOrgan_);
   };
   saveGlobal_.onClick = [this] {
     proc_.saveGlobalDefaults();
-    closeDialog();
+    showSaved(saveGlobal_);
   };
 
   addAndMakeVisible(memory_);
@@ -456,7 +456,19 @@ bool EnginePanel::loadingChanged() const {
          sw.playAtOriginalOrganPitch != openSwitch_.playAtOriginalOrganPitch;
 }
 
+void EnginePanel::showSaved(juce::TextButton& button) {
+  saveOrgan_.setButtonText("Save for this organ");
+  saveGlobal_.setButtonText("Save as default");
+  button.setButtonText("Saved");
+  savedUntilMs_ = juce::Time::getMillisecondCounter() + 2000;
+}
+
 void EnginePanel::timerCallback() {
+  if (savedUntilMs_ != 0 && juce::Time::getMillisecondCounter() >= savedUntilMs_) {
+    savedUntilMs_ = 0;
+    saveOrgan_.setButtonText("Save for this organ");
+    saveGlobal_.setButtonText("Save as default");
+  }
   // Always there while an organ is loaded (#134), and marked when a change
   // here is waiting for it.
   const bool offer = onReload != nullptr && proc_.loadedOrganFile().getFullPathName().isNotEmpty();
