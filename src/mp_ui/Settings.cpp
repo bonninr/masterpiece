@@ -32,6 +32,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openPreload_ = proc_.preloadHeadFrames();
   openStorage_ = proc_.sampleStorage();
   openStream_ = proc_.streamReleases();
+  openStreamPercent_ = proc_.streamHeadPercent();
   openMono_ = proc_.loadMono();
   openRate_ = proc_.loadSampleRate();
   openCache_ = proc_.cacheMode();
@@ -218,7 +219,21 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
     proc_.setStreamReleases(stream_.getToggleState());
+    streamHead_.setEnabled(stream_.getToggleState());
     syncProfile();
+  };
+  // How much of each release stays in memory while streaming. More gives a
+  // slow disk longer to catch up before a release goes quiet (#120).
+  addAndMakeVisible(streamHead_);
+  streamHead_.addItem("Hold the first second", 1);
+  streamHead_.addItem("Hold 25% of each release", 2);
+  streamHead_.addItem("Hold 50% of each release", 3);
+  streamHead_.addItem("Hold 75% of each release", 4);
+  showStreamPercent(proc_.streamHeadPercent());
+  streamHead_.setEnabled(proc_.streamReleases());
+  streamHead_.onChange = [this] {
+    const int id = streamHead_.getSelectedId();
+    proc_.setStreamHeadPercent(id == 2 ? 25 : id == 3 ? 50 : id == 4 ? 75 : 0);
   };
 
   addAndMakeVisible(mono_);
@@ -316,8 +331,9 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
             "the memory and is what most players load by default; each sample "
             "is scaled by its own peak first, so a quiet stop keeps the full "
             "sixteen bits instead of only the top few.\n\n"
-            "Streaming holds only the first second of each release and fetches "
-            "the rest from disk while it plays. Releases are the only samples "
+            "Streaming holds only the start of each release - the first second, "
+            "or the share chosen beside it - and fetches the rest from disk while "
+            "it plays. A larger share gives a slow disk longer to catch up. Releases are the only samples "
             "in an organ worth streaming - several seconds each, played once, "
             "straight through, never looped - and an attack cannot be treated "
             "the same way because its sustain loop has to be resident. On the "
@@ -363,6 +379,7 @@ void EnginePanel::revert() {
   proc_.setPreloadHeadFrames(openPreload_);
   proc_.setSampleStorage(openStorage_);
   proc_.setStreamReleases(openStream_);
+  proc_.setStreamHeadPercent(openStreamPercent_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setLoadTicks(openLoadTicks_);
@@ -396,6 +413,8 @@ void EnginePanel::revert() {
   storage_.setSelectedId(openStorage_ == SampleStorage::Int16 ? 2 : 1,
                          juce::dontSendNotification);
   stream_.setToggleState(openStream_, juce::dontSendNotification);
+  showStreamPercent(openStreamPercent_);
+  streamHead_.setEnabled(openStream_);
   // The preload combo is a coarse choice over a frame count, so it is matched
   // back rather than stored twice.
   const int64_t rate = 48000;
@@ -446,6 +465,7 @@ void EnginePanel::pushSwitches() {
 bool EnginePanel::loadingChanged() const {
   const auto sw = proc_.engineSwitch();
   return proc_.sampleStorage() != openStorage_ || proc_.streamReleases() != openStream_ ||
+         proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
          sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
@@ -537,6 +557,7 @@ void EnginePanel::applyProfile(int id) {
                          juce::dontSendNotification);
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
+  streamHead_.setEnabled(p.stream);
   preload_.setSelectedId(1, juce::dontSendNotification);
   applyingProfile_ = false;
 }
@@ -578,6 +599,11 @@ void EnginePanel::showOrganRoot() {
                               ? "From the definition (" + juce::String(proc_.organRootDir()) + ")"
                               : chosen.getFullPathName() + "  -- loads next time",
                           juce::dontSendNotification);
+}
+
+void EnginePanel::showStreamPercent(int percent) {
+  streamHead_.setSelectedId(percent >= 75 ? 4 : percent >= 50 ? 3 : percent >= 25 ? 2 : 1,
+                             juce::dontSendNotification);
 }
 
 void EnginePanel::layoutFooter(juce::Rectangle<int> footer) {
@@ -647,7 +673,11 @@ void EnginePanel::resized() {
   organRootRow.removeFromRight(8);
   organRootValue_.setBounds(organRootRow);
   r.removeFromTop(6);
-  stream_.setBounds(r.removeFromTop(kRow));
+  {
+    auto streamRow = r.removeFromTop(kRow);
+    streamHead_.setBounds(streamRow.removeFromRight(230).reduced(0, 2));
+    stream_.setBounds(streamRow);
+  }
   r.removeFromTop(2);
   mono_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);

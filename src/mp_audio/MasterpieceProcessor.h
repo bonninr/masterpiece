@@ -1058,6 +1058,12 @@ public:
   void setStreamHeadFrames(int64_t f) {
     samples_.setStreamHeadFrames(f);
   }
+  // Or that share of each release, in percent; 0 is the fixed head alone.
+  void setStreamHeadPercent(int percent) {
+    samples_.setStreamHeadPercent(percent);
+    markSettingsDirty();
+  }
+  int streamHeadPercent() const { return samples_.streamHeadPercent(); }
   void setStreamSeconds(double s) { voices_.setStreamSeconds(s); }
   // Zero unless the disk could not keep up, in which case a release went
   // silent partway and the player deserves to know.
@@ -1561,6 +1567,7 @@ private:
     SampleStorage storage = SampleStorage::Float32;
     bool mono = false, stream = false;
     int64_t streamHead = 0, preload = 0;
+    int streamHeadPercent = 0;
     EngineSwitch engine;
   };
   std::optional<LoadingChoice> sessionLoading_;

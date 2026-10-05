@@ -141,6 +141,14 @@ public:
   // between a note-off and the streamer's first fill, with room to spare.
   void setStreamHeadFrames(int64_t frames) { streamHead_ = std::max<int64_t>(4096, frames); }
   int64_t streamHeadFrames() const { return streamHead_; }
+  // Or a share of each release, in percent of its length (#120: a disk that
+  // cannot keep up is given more of every release before it has to). The
+  // fixed head is the floor either way; 0 holds only that.
+  void setStreamHeadPercent(int percent) { streamHeadPercent_ = std::clamp(percent, 0, 99); }
+  int streamHeadPercent() const { return streamHeadPercent_; }
+  int64_t streamHeadFor(int64_t frames) const {
+    return std::max(streamHead_, frames * streamHeadPercent_ / 100);
+  }
   // How many samples are held only in part, and how many frames that saved.
   size_t streamedCount() const;
   int64_t streamedBytesSaved() const;
@@ -320,6 +328,7 @@ private:
   bool streamReleases_ = false;
   bool licenceConfirmed_ = false;
   int64_t streamHead_ = 48000; // one second
+  int streamHeadPercent_ = 0;
   // Files a streamed buffer may need to reopen. Kept here so a tail outlives
   // the load that created it.
   mutable std::mutex readerMutex_;

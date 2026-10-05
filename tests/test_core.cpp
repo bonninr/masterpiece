@@ -11007,6 +11007,12 @@ public:
     lib.setStreamReleases(true);
     lib.setStreamHeadFrames(8000);
     MP_CHECK(lib.residentBytes(m16) == 8000LL * 1 * 4, "a streamed release keeps only its head");
+    // Or a share of it, never less than the head (#120).
+    lib.setStreamHeadPercent(50);
+    MP_CHECK(lib.residentBytes(m16) == 12000LL * 1 * 4, "half of a 24000-frame release");
+    lib.setStreamHeadPercent(25);
+    MP_CHECK(lib.residentBytes(m16) == 8000LL * 1 * 4, "a quarter is less than the head, so the head");
+    lib.setStreamHeadPercent(0);
 
     job.path = dir.getChildFile("not-there.wav").getFullPathName().toStdString();
     MP_CHECK(lib.residentBytes(mp::SampleLibrary::readShape(job)) == 0,
