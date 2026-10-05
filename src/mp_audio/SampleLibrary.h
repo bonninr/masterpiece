@@ -241,6 +241,11 @@ public:
   // audio stopped: sounding voices hold raw pointers into retired generations.
   void retireOldGenerations();
   void clear();
+  // How many generations are held, the live one included. One after a load.
+  size_t generationsHeld() const {
+    std::lock_guard<std::mutex> lock(publishMutex_);
+    return generations_.size();
+  }
 
 private:
   // One immutable generation of the sample set. Swapping the pointer is how a

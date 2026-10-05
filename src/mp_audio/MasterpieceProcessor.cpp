@@ -4170,11 +4170,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   phases.mark("model");
   unloadedStops_.clear();
 
-  if (graphicsOnly) {
-    // Not merely "skip the load": the library may still hold the PREVIOUS
-    // organ's audio, and pipe indices from this model would read into it.
-    samples_.clear();
-  } else {
+  // The library still holds the PREVIOUS organ's audio, and nothing else ever
+  // let it go: every generation was kept for the voices that might be reading
+  // it, so each reload added a whole organ -- 34 GB for a 20 GB one (#163).
+  // The engine is suspended and the model those voices belonged to is gone, so
+  // they are stopped, and the old audio freed before the new is read.
+  // Graphics-only, it must go too: pipe indices from this model would read
+  // into it.
+  voices_.reset();
+  samples_.clear();
+  if (!graphicsOnly) {
     const int64_t head =
         maxFramesPerSample > 0 ? maxFramesPerSample : preloadHead_;
     // The ranks the caller asked for, if it asked for any.
@@ -4394,6 +4399,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                        : "cancelled";
     return result;
   }
+  // Still suspended, with no voice sounding: nothing else needs keeping.
+  samples_.retireOldGenerations();
   voices_.setSampleProvider(samples_.provider());
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
 
