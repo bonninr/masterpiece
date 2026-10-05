@@ -6190,6 +6190,35 @@ public:
     MP_CHECK(capped != nullptr && capped->numFrames == 500,
              "maxFramesPerSample caps the resident head");
 
+    // ...but never a release that lives in a file of its own and is not
+    // streamed. It has no loop to extend the read to and no marker inside an
+    // attack, so the head used to cut it off, and the release stopped dead
+    // after the preloaded length: Nancy's R1/R2/RT0 files with "Loop + 1 s"
+    // (#120). Without streaming, a release is read whole.
+    {
+      mp::OrganModel piped = model;
+      mp::Rank rank;
+      rank.rankId = 40;
+      mp::Pipe pipe;
+      pipe.pipeId = 41;
+      mp::PipeLayer layer;
+      mp::AttackSample atk;
+      atk.sample.sampleId = 5;  // looped.wav, 2000 frames, loop 400..1600
+      layer.attacks.push_back(atk);
+      mp::ReleaseSample rel;
+      rel.sample.sampleId = 1;  // a.wav, 2400 frames, a release of its own
+      layer.releases.push_back(rel);
+      pipe.layers.push_back(layer);
+      rank.pipes.push_back(pipe);
+      piped.ranks[40] = rank;
+      mp::SampleLibrary short_;
+      short_.loadAll(piped, root.getFullPathName().toStdString(), 500);
+      const mp::SampleBuffer* release = short_.provider()(1);
+      MP_CHECK(release != nullptr && release->numFrames == 2400,
+               "a release in its own file is read whole, whatever the preload head (" +
+                   std::to_string(release ? release->numFrames : 0) + " of 2400 frames)");
+    }
+
     // Reloading publishes a new generation; the old provider keeps working,
     // which is what lets a sounding voice survive a reload.
     const mp::SampleBuffer* before = provider(1);

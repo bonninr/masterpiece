@@ -740,8 +740,16 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // A streamed release keeps only its head resident. The head has to cover
       // the gap between the note-off and the streamer's first fill, which is
       // milliseconds — a second of it is a very large margin.
-      const bool stream = streamReleases_ && releaseIds.count(refIt->first) != 0;
-      const int64_t head = stream ? streamHead_ : maxFramesPerSample;
+      //
+      // A release that is NOT streamed is read whole, whatever the preload
+      // head. The head is for attacks, whose read is extended to their loop;
+      // a release in a file of its own has no loop and no marker, so the head
+      // simply cut it off, and it stopped dead after the preloaded length
+      // (#120: Nancy's separate release files, with "Loop + 1 s"). Streaming
+      // is the way to hold less of a release.
+      const bool releaseOnly = releaseIds.count(refIt->first) != 0;
+      const bool stream = streamReleases_ && releaseOnly;
+      const int64_t head = stream ? streamHead_ : releaseOnly ? 0 : maxFramesPerSample;
       const bool ok =
           reader != nullptr &&
           readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_,
