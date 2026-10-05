@@ -568,7 +568,7 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)
     frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
-  if (shape.releaseOnly && streamReleases_) frames = std::min(frames, streamHead_);
+  if (shape.releaseOnly && streamReleases_) frames = std::min(frames, streamHeadFor(frames));
   const int channels = loadMono_ ? 1 : shape.channels;
   return frames * channels * storeBytes;
 }
@@ -749,7 +749,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // is the way to hold less of a release.
       const bool releaseOnly = releaseIds.count(refIt->first) != 0;
       const bool stream = streamReleases_ && releaseOnly;
-      const int64_t head = stream ? streamHead_ : releaseOnly ? 0 : maxFramesPerSample;
+      const int64_t head = stream ? streamHeadFor(reader != nullptr ? static_cast<int64_t>(reader->lengthInSamples) : 0) : releaseOnly ? 0 : maxFramesPerSample;
       const bool ok =
           reader != nullptr &&
           readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_,
@@ -1230,6 +1230,7 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|l" + std::to_string(static_cast<int>(loopSelection));
   s += "|s" + std::to_string(streamReleases_ ? 1 : 0);
   s += "|t" + std::to_string(streamHead_);
+  s += "|tp" + std::to_string(streamHeadPercent_);
   // Without the licensed samples a cache is not the organ with them.
   s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
   // Caches written before a read failure stopped being fatal may hold only

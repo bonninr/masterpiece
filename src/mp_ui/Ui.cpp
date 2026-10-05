@@ -1613,6 +1613,13 @@ void MasterpieceEditor::timerCallback() {
   const auto load = proc_.takeAudioLoad();
   worstBlockSinceLog_ = juce::jmax(worstBlockSinceLog_, load.worstPercent);
   if (load.late > 0) live += ", late blocks " + juce::String(load.late);
+  // A streamed release the disk did not deliver in time goes quiet partway.
+  // Said here, with what to do about it: the Loading tab's count is out of
+  // sight, and whether a machine can stream is only known by playing (#120).
+  if (proc_.streamReleases())
+    if (const auto under = proc_.streamUnderruns(); under > 0)
+      live += ", streamed releases fell behind " + juce::String(under) +
+              "x: turn off \"Stream release tails\" in Organ settings";
   const auto now = juce::Time::getMillisecondCounter();
   if (load.late > lateBlocksLogged_ && now - lateLoggedAt_ > 5000) {
     juce::Logger::writeToLog("audio: " + juce::String(load.late - lateBlocksLogged_) +

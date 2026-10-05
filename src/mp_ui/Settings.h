@@ -60,6 +60,7 @@ private:
   void revert();
   void closeDialog();
   void showFasterUnit();
+  void layoutFooter(juce::Rectangle<int> footer);
 
   MasterpieceProcessor& proc_;
 
@@ -70,6 +71,7 @@ private:
   int64_t openPreload_ = 0;
   SampleStorage openStorage_ = SampleStorage::Float32;
   bool openStream_ = false;
+  int openStreamPercent_ = 0;
   bool openMono_ = false;
   double openRate_ = 0.0;
   SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
@@ -126,6 +128,8 @@ private:
   juce::Label profileLabel_;
   juce::ComboBox profile_;
   juce::ToggleButton stream_{"Stream release tails from disk"};
+  juce::ComboBox streamHead_;
+  void showStreamPercent(int percent);
   juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
   juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
   juce::ToggleButton reopen_{"Reopen the last organ when Masterpiece starts"};

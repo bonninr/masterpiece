@@ -978,6 +978,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "cache " << static_cast<int>(samples_.cacheMode()) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
+  text << "streamheadpct " << samples_.streamHeadPercent() << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
   if (organRootOverride_.getFullPathName().isNotEmpty())
     text << "root " << organRootOverride_.getFullPathName() << "\n";
@@ -1054,6 +1055,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   }
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
+  else if (key == "streamheadpct") samples_.setStreamHeadPercent(val.getIntValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
   // Where this organ's OrganInstallationPackages actually is, for a layout
   // the definition's path cannot reveal. Taken whole: a path may have spaces.
@@ -2659,6 +2661,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.mono = samples_.loadMono();
   c.stream = samples_.streamReleases();
   c.streamHead = samples_.streamHeadFrames();
+  c.streamHeadPercent = samples_.streamHeadPercent();
   c.preload = preloadHead_;
   c.engine = graph_.engineSwitch;
   sessionLoading_ = c;
@@ -3814,6 +3817,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setLoadMono(c.mono);
     samples_.setStreamReleases(c.stream);
     samples_.setStreamHeadFrames(c.streamHead);
+    samples_.setStreamHeadPercent(c.streamHeadPercent);
     preloadHead_ = c.preload;
     graph_.engineSwitch = c.engine;
     juce::Logger::writeToLog("load: using the Loading choices kept for this session");
