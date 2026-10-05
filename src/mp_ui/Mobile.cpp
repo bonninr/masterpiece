@@ -361,13 +361,81 @@ void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
   if (show) window.toFront(true);
 }
 
+namespace {
+// The size each kind of dialog was last left at (#153), one "kind=w h" line
+// each, beside the main window's own place.
+juce::File dialogSizesFile() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("dialogs.txt");
+}
+
+// A kind of dialog, from its title. The MIDI dialogs are titled by what they
+// set up ("Swell - MIDI"), and share one size.
+juce::String dialogKind(const juce::String& title) {
+  return title.contains(" - ") ? title.fromLastOccurrenceOf(" - ", false, false) : title;
+}
+
+juce::Rectangle<int> savedDialogSize(const juce::String& kind) {
+  juce::StringArray lines;
+  lines.addLines(dialogSizesFile().loadFileAsString());
+  for (const auto& line : lines)
+    if (line.upToFirstOccurrenceOf("=", false, false) == kind) {
+      const auto wh = juce::StringArray::fromTokens(line.fromFirstOccurrenceOf("=", false, false), " ", "");
+      if (wh.size() == 2) return {wh[0].getIntValue(), wh[1].getIntValue()};
+    }
+  return {};
+}
+
+void saveDialogSize(const juce::String& kind, int w, int h) {
+  juce::StringArray lines;
+  lines.addLines(dialogSizesFile().loadFileAsString());
+  lines.removeEmptyStrings();
+  for (int i = lines.size(); --i >= 0;)
+    if (lines[i].upToFirstOccurrenceOf("=", false, false) == kind) lines.remove(i);
+  lines.add(kind + "=" + juce::String(w) + " " + juce::String(h));
+  dialogSizesFile().getParentDirectory().createDirectory();
+  dialogSizesFile().replaceWithText(lines.joinIntoString("\n") + "\n");
+}
+
+// Writes the dialog's size down as it closes. Owned by nobody but itself: it
+// goes with the dialog.
+class SizeKeeper : public juce::ComponentListener {
+public:
+  explicit SizeKeeper(juce::String kind) : kind_(std::move(kind)) {}
+  void componentBeingDeleted(juce::Component& c) override {
+    if (c.getWidth() > 0 && c.getHeight() > 0) saveDialogSize(kind_, c.getWidth(), c.getHeight());
+    c.removeComponentListener(this);
+    delete this;
+  }
+
+private:
+  juce::String kind_;
+};
+}  // namespace
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
     options.useNativeTitleBar = false;
     options.resizable = false;
   }
   auto* dialog = options.launchAsync();
-  if (dialog != nullptr) fitToScreen(*dialog);
+  if (dialog == nullptr) return dialog;
+  fitToScreen(*dialog);
+  // A dialog the player can resize opens at the size they last left it,
+  // as far as the screen it opens on allows.
+  if (options.resizable && !kMobile) {
+    const auto kind = dialogKind(options.dialogTitle);
+    const auto saved = savedDialogSize(kind);
+    if (!saved.isEmpty()) {
+      const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(dialog->getScreenBounds());
+      const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>(saved.getWidth(), saved.getHeight());
+      dialog->centreAroundComponent(options.componentToCentreAround,
+                                    juce::jmin(saved.getWidth(), area.getWidth()),
+                                    juce::jmin(saved.getHeight(), area.getHeight()));
+    }
+    dialog->addComponentListener(new SizeKeeper(kind));
+  }
   return dialog;
 }
 
