@@ -130,6 +130,7 @@ private:
   juce::ToggleButton stream_{"Stream release tails from disk"};
   juce::ComboBox streamHead_;
   void showStreamPercent(int percent);
+  void showPreload(int64_t frames);
   juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
   juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
   juce::ToggleButton reopen_{"Reopen the last organ when Masterpiece starts"};
