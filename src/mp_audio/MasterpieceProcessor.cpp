@@ -1451,6 +1451,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
+  if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (fasterEngine_.load()) text << "fasterengine 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
@@ -1526,6 +1527,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
+    } else if (key == "setoffafterstore") {
+      setOffAfterStore_ = val.getIntValue() != 0;
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "library") {

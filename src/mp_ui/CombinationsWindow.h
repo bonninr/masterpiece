@@ -42,6 +42,8 @@ public:
 
 private:
   void timerCallback() override;
+  // After a piston click: Set lets go if it stored and the player asked for that.
+  void afterPiston(bool stored);
   void refreshSets();
   void refreshState();
   // Right-click: what a piston is mapped to, and how to map it.
@@ -115,6 +117,7 @@ private:
     }
   } content_;
   juce::ToggleButton onTop_{"Always on top"};
+  juce::ToggleButton setOff_{"Set turns off after storing"};
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it

@@ -197,7 +197,11 @@ void CombinationsPanel::rebuild() {
   for (int n = 1; n <= pc.generalCount(); ++n) {
     auto b = std::make_unique<PistonButton>(juce::String(n));
     auto* raw = b.get();
-    b->onClick = [this, n] { proc_.pressGeneral(n); };
+    b->onClick = [this, n] {
+      const bool storing = proc_.captureMode();
+      proc_.pressGeneral(n);
+      afterPiston(storing);
+    };
     b->onRightClick = [this, raw, n] {
       showMidiMenu(*raw, MidiTargetKind::PlayerGeneral, n, false);
     };
@@ -217,7 +221,11 @@ void CombinationsPanel::rebuild() {
     for (int n = 1; n <= pc.divisionalCount(); ++n) {
       auto b = std::make_unique<PistonButton>(juce::String(n));
       auto* raw = b.get();
-      b->onClick = [this, div, n] { proc_.pressDivisional(div, n); };
+      b->onClick = [this, div, n] {
+        const bool storing = proc_.captureMode();
+        proc_.pressDivisional(div, n);
+        afterPiston(storing);
+      };
       b->onRightClick = [this, raw, div, n] {
         showMidiMenu(*raw, MidiTargetKind::PlayerDivisional,
                      playerDivisionalTarget(div, n), false);
@@ -318,6 +326,13 @@ void CombinationsPanel::resized() {
 void CombinationsPanel::paint(juce::Graphics& g) { g.fillAll(kBackground); }
 
 void CombinationsPanel::timerCallback() { refreshState(); }
+
+void CombinationsPanel::afterPiston(bool stored) {
+  // Only a store made from here, with the mouse: a console's own Set button
+  // stays down until it is pressed again, and stepping with Set held is how
+  // a sequence is built (#130).
+  if (stored && proc_.setOffAfterStore()) proc_.setCaptureMode(false);
+}
 
 void CombinationsPanel::refreshState() {
   const auto& pc = proc_.playerCombinations();
@@ -453,10 +468,18 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
     if (isVisible()) showFloating(*this, true, onTopNow());
   };
   content_.addAndMakeVisible(onTop_);
+  setOff_.setToggleState(p.setOffAfterStore(), juce::dontSendNotification);
+  setOff_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
+  setOff_.setTooltip("After a piston clicked here has stored a combination, Set turns off, "
+                     "so the next click recalls it instead of overwriting it");
+  setOff_.onClick = [this] { proc_.setSetOffAfterStore(setOff_.getToggleState()); };
+  content_.addAndMakeVisible(setOff_);
   content_.addAndMakeVisible(viewport_);
   content_.layout = [this] {
     auto r = content_.getLocalBounds();
-    onTop_.setBounds(r.removeFromTop(26).reduced(8, 2).removeFromRight(150));
+    auto row = r.removeFromTop(26).reduced(8, 2);
+    onTop_.setBounds(row.removeFromRight(150));
+    setOff_.setBounds(row.removeFromRight(260));
     viewport_.setBounds(r);
   };
   setContentNonOwned(&content_, false);

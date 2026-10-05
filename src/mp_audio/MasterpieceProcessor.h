@@ -651,6 +651,15 @@ public:
     combinationsOnTop_ = on;
     writeGlobalFile();
   }
+  // Whether Set lets go once a piston clicked in the combinations window
+  // has stored, so the next click recalls instead of overwriting a
+  // combination by mistake (#130). Off by default: a console's own Set
+  // button stays down until it is pressed again.
+  bool setOffAfterStore() const { return setOffAfterStore_; }
+  void setSetOffAfterStore(bool on) {
+    setOffAfterStore_ = on;
+    writeGlobalFile();
+  }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
   // the processor has them. Off by default while it is experimental; the
   // per-frame path is the one every earlier version used. Takes effect at
@@ -1516,6 +1525,7 @@ private:
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
+  bool setOffAfterStore_ = false;
   std::atomic<bool> fasterEngine_{false};
   std::vector<MidiMap::KeyboardBinding> routingBeforePistons_;
   std::vector<Id> routeScratch_;
