@@ -214,6 +214,10 @@ struct Voice {
   int relXfadeLength = 0;
 
   uint64_t startedAtBlock = 0; // for stealing (oldest first)
+  // The frame the key went down, for how long it was held at the release:
+  // the release a set recorded after a short note is not the one it recorded
+  // after a held one.
+  int64_t startedAtFrame = 0;
   const PipeLayer* layer = nullptr;
   // Which ENCLOSURE this voice sits behind. One bus per enclosure plus one for
   // unenclosed pipework, so the shades act only on what they actually cover.

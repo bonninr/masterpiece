@@ -55,9 +55,18 @@ int selectAttack(const PipeLayer& layer, const NoteStrike& strike) {
 }
 
 int selectRelease(const PipeLayer& layer, const NoteRelease& rel) {
-  // Two passes: prefer-linked first, then file order. Both passes apply the
-  // full ceiling match (velocity, hold time, cts, attack context).
+  // Two passes: prefer-linked first, then the rest. Both apply the full
+  // ceiling match (velocity, hold time, cts, attack context).
+  //
+  // Of the releases that match, the one with the TIGHTEST hold-time ceiling:
+  // a set lists its releases in any order, and a short note matches the
+  // medium and the long release as well as the short one written for it.
+  // Nancy lists hers medium (602 ms), short (284 ms), long, and taking the
+  // first match gave every note under 602 ms the medium release, so the
+  // short one was never heard. GrandOrgue sorts them the same way. Ties keep
+  // file order.
   for (int pass = 0; pass < 2; ++pass) {
+    int best = -1;
     for (size_t i = 0; i < layer.releases.size(); ++i) {
       const ReleaseSample& r = layer.releases[i];
       const bool linked =
@@ -68,8 +77,10 @@ int selectRelease(const PipeLayer& layer, const NoteRelease& rel) {
       if (rel.ctsValue > r.ctsHigh) continue;
       if (rel.attackVelocity > r.attackVelHigh) continue;
       if (rel.attackCts > r.attackCtsHigh) continue;
-      return static_cast<int>(i);
+      if (best < 0 || r.holdTimeMsHigh < layer.releases[static_cast<size_t>(best)].holdTimeMsHigh)
+        best = static_cast<int>(i);
     }
+    if (best >= 0) return best;
   }
   return -1;
 }

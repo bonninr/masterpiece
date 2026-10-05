@@ -8314,6 +8314,19 @@ public:
     MP_CHECK(mp::selectRelease(layer, staccato) == 0, "a short press takes the short release");
     MP_CHECK(mp::selectRelease(layer, held) == 1,
              "a held note takes the release written for any hold time (-1), not none at all");
+
+    // Nancy's order: medium (602 ms), short (284 ms), long. Each note takes
+    // the release written for its length, not the first that would do.
+    mp::PipeLayer nancy;
+    for (int64_t ceiling : {int64_t(602), int64_t(284), int64_t(99999)}) {
+      mp::ReleaseSample r;
+      r.holdTimeMsHigh = ceiling;
+      nancy.releases.push_back(r);
+    }
+    auto heldFor = [](int64_t ms) { return mp::NoteRelease{0, 71, 64, 127, 64, ms, 127}; };
+    MP_CHECK(mp::selectRelease(nancy, heldFor(150)) == 1, "a 150 ms note takes the short release");
+    MP_CHECK(mp::selectRelease(nancy, heldFor(400)) == 0, "a 400 ms note takes the medium one");
+    MP_CHECK(mp::selectRelease(nancy, heldFor(3000)) == 2, "a held note takes the long one");
   }
 };
 static ReleaseDefaultLimitTest g_releaseDefaultLimit;
@@ -11402,3 +11415,55 @@ public:
   }
 };
 static FasterEngineSwitchTest g_fasterEngineSwitch;
+
+// How long a key was held decides which release a set's pipe plays: Nancy
+// records a release after short, medium and held notes (#120). Nothing
+// measured the hold time, so every release was chosen as if the key had been
+// held for no time at all.
+class ReleaseHoldTimeTest final : public mp::test::Test {
+public:
+  ReleaseHoldTimeTest() : Test("functional.voice.release-hold-time", Category::Functional) {}
+
+  static int chosenAfter(double seconds) {
+    voicetest::Fixture fx;
+    // Nancy's order and ceilings: medium, short, held; one sample serves all.
+    auto& layer = fx.pipe.layers.front();
+    layer.releases.clear();
+    for (int64_t ceiling : {int64_t(602), int64_t(284), int64_t(99999)}) {
+      mp::ReleaseSample r;
+      r.sample.sampleId = 2;
+      r.holdTimeMsHigh = ceiling;
+      layer.releases.push_back(r);
+    }
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 8, 2);
+    eng.setSampleProvider(fx.provider());
+    eng.setReleaseLogging(true);
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &layer;
+    st.velocity = 80;
+    st.ratio = 1.0;
+    st.gain = 0.1f;
+    eng.startVoice(st, 1);
+    std::vector<float> l(256), r(256);
+    float* out[2] = {l.data(), r.data()};
+    const int blocks = static_cast<int>(seconds * 48000.0 / 256.0);
+    for (int b = 0; b < blocks; ++b) eng.render(out, 2, 256);
+    eng.noteOff(1, mp::NoteRelease{});  // no hold time given: the engine measures it
+    eng.render(out, 2, 256);
+    std::vector<mp::VoiceEngine::ReleaseEvent> events;
+    eng.takeReleaseEvents(events);
+    if (events.empty()) return -2;
+    std::printf("        held %.2f s: %lld ms measured, release %d\n", seconds,
+                static_cast<long long>(events.front().heldMs), events.front().chosen);
+    return events.front().chosen;
+  }
+
+  void run() override {
+    MP_CHECK(chosenAfter(0.15) == 1, "a 150 ms note takes the short release");
+    MP_CHECK(chosenAfter(0.45) == 0, "a 450 ms note takes the medium one");
+    MP_CHECK(chosenAfter(2.0) == 2, "a held note takes the release recorded after a held note");
+  }
+};
+static ReleaseHoldTimeTest g_releaseHoldTime;
