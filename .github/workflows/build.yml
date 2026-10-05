@@ -369,46 +369,6 @@ jobs:
           # fills the account's storage on its own.
           retention-days: 3
 
-      # One file that runs on most Linux distributions, for players who are
-      # not on Debian or Ubuntu. Made from the .deb's own files, so the two
-      # cannot drift apart; linuxdeploy adds the libraries a distribution
-      # might not have and leaves out the ones it must supply (glibc, ALSA).
-      # Pinned to a release, never "continuous".
-      - name: Package (Linux AppImage)
-        if: runner.os == 'Linux' && !matrix.arm
-        run: |
-          appdir=$(mktemp -d)/AppDir
-          mkdir -p "$appdir"
-          dpkg-deb -x dist/masterpiece-linux-*.deb "$appdir"
-          tag=1-alpha-20251107-1
-          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/${tag}/linuxdeploy-x86_64.AppImage"
-          chmod +x linuxdeploy-x86_64.AppImage
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          OUTPUT=masterpiece-linux-x86_64.AppImage ./linuxdeploy-x86_64.AppImage \
-            --appdir "$appdir" \
-            --executable "$appdir/usr/bin/masterpiece" \
-            --desktop-file "$appdir/usr/share/applications/masterpiece.desktop" \
-            --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/masterpiece.png" \
-            --output appimage
-          mv masterpiece-linux-x86_64.AppImage dist/
-          chmod +x dist/masterpiece-linux-x86_64.AppImage
-          ls -lh dist/masterpiece-linux-x86_64.AppImage
-          # It has to start, as the plain binary does above.
-          set +e
-          timeout --signal=TERM 20s xvfb-run -a -s "-screen 0 1280x800x24" \
-            dist/masterpiece-linux-x86_64.AppImage --appimage-extract-and-run
-          code=$?
-          set -e
-          test "$code" -eq 124
-
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux' && !matrix.arm
-        with:
-          name: ${{ matrix.artifact }}-appimage
-          path: dist/masterpiece-linux-x86_64.AppImage
-          if-no-files-found: error
-          retention-days: 3
-
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
