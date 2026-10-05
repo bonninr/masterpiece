@@ -78,21 +78,18 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(preloadLabel_);
   styleLabel(preloadLabel_, "Preloaded per sample");
   addAndMakeVisible(preload_);
-  // The head is a minimum: it is always extended to cover the sustain loop,
-  // so these are "how much MORE than the loop", not a hard cap.
+  // Two real choices. An attack's head is always extended to the end of its
+  // sustain loop, and in an organ sample the loop runs nearly to the end of
+  // the file, so a second or two past it, or a share of the file, came to
+  // the same thing as the loop alone. The seconds an earlier version
+  // offered are still shown while they are in force.
   preload_.addItem("Whole samples (most memory)", 1);
-  preload_.addItem("Loop + 2 s", 2);
-  preload_.addItem("Loop + 1 s", 3);
-  preload_.addItem("Loop only (least memory)", 4);
-  preload_.setSelectedId(1, juce::dontSendNotification);
+  preload_.addItem("Up to the loop (less memory)", 4);
+  showPreload(proc_.preloadHeadFrames());
   preload_.onChange = [this] {
-    const int64_t rate = 48000;
-    switch (preload_.getSelectedId()) {
-      case 2: proc_.setPreloadHeadFrames(2 * rate); break;
-      case 3: proc_.setPreloadHeadFrames(rate); break;
-      case 4: proc_.setPreloadHeadFrames(1); break;
-      default: proc_.setPreloadHeadFrames(0); break;
-    }
+    const int id = preload_.getSelectedId();
+    if (id == 2 || id == 3) return;  // an earlier version's choice, left as it is
+    proc_.setPreloadHeadFrames(id == 4 ? 1 : 0);
     syncProfile();
   };
 
@@ -323,10 +320,9 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(note_);
   styleNote(note_,
             "These settings take effect on the next organ load.\n\n"
-            "The preload head is a minimum, never a cap: it is always extended "
-            "to cover the sustain loop, because a sample whose loop is missing "
-            "does not sustain - the note simply stops when the audio runs "
-            "out.\n\n"
+            "\"Up to the loop\" keeps each attack from its start to the end of "
+            "its sustain loop, which is all a held note plays; a sample whose "
+            "release is in the same file is always kept whole.\n\n"
             "The resident format decides what a held frame costs. 16-bit halves "
             "the memory and is what most players load by default; each sample "
             "is scaled by its own peak first, so a quiet stop keeps the full "
@@ -415,14 +411,7 @@ void EnginePanel::revert() {
   stream_.setToggleState(openStream_, juce::dontSendNotification);
   showStreamPercent(openStreamPercent_);
   streamHead_.setEnabled(openStream_);
-  // The preload combo is a coarse choice over a frame count, so it is matched
-  // back rather than stored twice.
-  const int64_t rate = 48000;
-  preload_.setSelectedId(openPreload_ == 0          ? 1
-                         : openPreload_ == 2 * rate ? 2
-                         : openPreload_ == rate     ? 3
-                                                    : 4,
-                         juce::dontSendNotification);
+  showPreload(openPreload_);
 
   // simpleWavOnly greys the rest out; restoring the states has to restore
   // that too, or the panel lies about what is reachable.
@@ -599,6 +588,14 @@ void EnginePanel::showOrganRoot() {
                               ? "From the definition (" + juce::String(proc_.organRootDir()) + ")"
                               : chosen.getFullPathName() + "  -- loads next time",
                           juce::dontSendNotification);
+}
+
+void EnginePanel::showPreload(int64_t frames) {
+  const int64_t rate = 48000;
+  const int id = frames == 0 ? 1 : frames == 1 ? 4 : frames >= 2 * rate ? 2 : 3;
+  if ((id == 2 || id == 3) && preload_.indexOfItemId(id) < 0)
+    preload_.addItem(id == 2 ? "Loop + 2 s (earlier choice)" : "Loop + 1 s (earlier choice)", id);
+  preload_.setSelectedId(id, juce::dontSendNotification);
 }
 
 void EnginePanel::showStreamPercent(int percent) {
