@@ -4191,7 +4191,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     for (Id stopId : preloadStops_) {
       const auto it = model_.stops.find(stopId);
       if (it == model_.stops.end()) continue;
-      for (const auto& e : it->second.ranks) onlyRanks.insert(e.rankId);
+      for (const auto& e : it->second.ranks) {
+        onlyRanks.insert(e.rankId);
+        if (e.alternateRankId != 0) onlyRanks.insert(e.alternateRankId);
+      }
     }
     // Pallet-wired ranks belong to no stop the loader can name without
     // walking the wiring, so a partial load keeps all of them. On an organ
@@ -4241,17 +4244,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
     }
     if (onlyRanks.empty() && !excludedStops_.empty()) {
+      // A stop's rank and the alternate its tremulant swaps in go together:
+      // the tremulant's recordings are as much that stop's as the rank
+      // itself, and a stop left out kept loading them (#165).
       std::unordered_set<Id> wanted;
       for (const auto& [stopId, stop] : model_.stops)
         if (excludedStops_.count(stopId) == 0)
-          for (const auto& e : stop.ranks) wanted.insert(e.rankId);
+          for (const auto& e : stop.ranks) {
+            wanted.insert(e.rankId);
+            if (e.alternateRankId != 0) wanted.insert(e.alternateRankId);
+          }
       std::unordered_set<Id> leftOut;
       for (Id stopId : excludedStops_) {
         const auto it = model_.stops.find(stopId);
         if (it == model_.stops.end()) continue;
         unloadedStops_.insert(stopId);
         for (const auto& e : it->second.ranks)
-          if (wanted.count(e.rankId) == 0) leftOut.insert(e.rankId);
+          for (const Id rankId : {e.rankId, e.alternateRankId})
+            if (rankId != 0 && wanted.count(rankId) == 0) leftOut.insert(rankId);
       }
       for (const auto& [rankId, rank] : model_.ranks) {
         (void)rank;
