@@ -4381,6 +4381,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                                  : "load: cancelled, discarding partial organ");
     samples_.clear();
     model_ = OrganModel{};
+    // The organ is not loaded, so nothing may name its files after it: with
+    // loadedOdf_ still set, organFile() took the name from this empty model,
+    // the next load read its settings from a file that does not exist, and
+    // the next save wrote that over the real one -- the stops left out came
+    // back after a cancelled load (#129).
+    loadedOdf_ = juce::File();
     voices_.setSampleProvider(samples_.provider());
     loadProgress_.phase.store(outOfMemory ? LoadProgress::Phase::Failed
                                           : LoadProgress::Phase::Cancelled,
