@@ -580,6 +580,23 @@ void EnginePanel::showOrganRoot() {
                           juce::dontSendNotification);
 }
 
+void EnginePanel::layoutFooter(juce::Rectangle<int> footer) {
+  // Widths in proportion to the labels as they first read.
+  const std::pair<juce::TextButton*, int> buttons[] = {
+      {&revert_, 130}, {&keep_, 120}, {&reload_, 230}, {&saveOrgan_, 160}, {&saveGlobal_, 150}};
+  int wanted = 0;
+  for (const auto& b : buttons) wanted += b.second;
+  const int count = static_cast<int>(std::size(buttons));
+  const int room = footer.getWidth() - kGap * (count - 1);
+  int x = footer.getX();
+  for (int i = 0; i < count; ++i) {
+    // The last takes what rounding left, so the row ends flush.
+    const int w = i == count - 1 ? footer.getRight() - x : room * buttons[i].second / wanted;
+    buttons[i].first->setBounds(juce::Rectangle<int>(x, footer.getY(), w, footer.getHeight()).reduced(0, 2));
+    x += w + kGap;
+  }
+}
+
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
   // The buttons first, at their full height, whatever the rows above need:
@@ -649,15 +666,12 @@ void EnginePanel::resized() {
 
   // The footer, taken above. Read left to right it goes from discarding to
   // committing hardest, so the consequence grows with the distance from "put
-  // it back".
-  revert_.setBounds(footer.removeFromLeft(130).reduced(0, 2));
-  footer.removeFromLeft(kGap);
-  keep_.setBounds(footer.removeFromLeft(120).reduced(0, 2));
-  footer.removeFromLeft(kGap);
-  reload_.setBounds(footer.removeFromLeft(230).reduced(0, 2));
-  saveGlobal_.setBounds(footer.removeFromRight(150).reduced(0, 2));
-  footer.removeFromRight(kGap);
-  saveOrgan_.setBounds(footer.removeFromRight(160).reduced(0, 2));
+  // it back". The buttons share the whole width, each in proportion to its
+  // label, with the same gap between every pair: two groups pushed to either
+  // side left a hole in the middle as wide as the panel was spare (#120).
+  // "Load the organ again" is laid out even while it is hidden, so the others
+  // do not jump when it appears.
+  layoutFooter(footer);
 
   note_.setBounds(r);
 }
