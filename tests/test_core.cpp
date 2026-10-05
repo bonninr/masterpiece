@@ -10940,6 +10940,9 @@ public:
     proc.setExcludedStops({901});
     MP_CHECK(proc.saveSettings(), "the choice is saved with the organ");
     MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "and the organ loads again");
+    // The organ before is let go, not kept beside the new one (#163).
+    MP_CHECK(proc.sampleLibrary().generationsHeld() == 1,
+             "a reload holds one organ's samples, not two");
     MP_CHECK(proc.excludedStops().count(901) == 1, "remembering the choice");
     MP_CHECK(!proc.stopLoaded(901), "so the stop left out was not loaded");
     proc.setExcludedStops({});
