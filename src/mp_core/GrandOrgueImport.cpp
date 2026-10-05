@@ -1265,6 +1265,12 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       const int pt = v == "small" ? 6 : v == "normal" ? 7 : v == "large" ? 10 : std::atoi(v.c_str());
       return std::max(6, (pt > 0 ? pt : 7) * 4 / 3);
     };
+    // TextBreakWidth=0 means no text at all: the way a set hides the name a
+    // switch or label would otherwise print over its own artwork, as OdfEdit
+    // writes it (#157). The width it gives, the text is drawn in.
+    auto textWidth = [&](const std::string& sec, int width) {
+      return ini.hasKey(sec, "TextBreakWidth") && ini.num(sec, "TextBreakWidth", 1) == 0 ? 0 : width;
+    };
     auto text = [&](int page, int inst, const std::string& words, int r, int g, int b, int px,
                     const std::string& face, int x, int y, int w, int h) {
       if (words.empty() || w <= 0 || h <= 0) return;
@@ -1807,7 +1813,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           const int tl = ini.num(sec, "TextRectLeft", 1), tt = ini.num(sec, "TextRectTop", 1);
           text(page, inst, ini.hasKey(sec, "DispLabelText") ? ini.str(sec, "DispLabelText") : e.name, r, g, b,
                fontPx(sec, "DispLabelFontSize", "normal"), ini.str(sec, "DispLabelFontName", m.controlFont),
-               tl, tt, ini.num(sec, "TextRectWidth", w - tl), ini.num(sec, "TextRectHeight", h - tt));
+               tl, tt, textWidth(sec, ini.num(sec, "TextRectWidth", w - tl)), ini.num(sec, "TextRectHeight", h - tt));
           ++drawn;
         } else if (e.kind == Kind::Enclosure) {
           if (!enclosureControls.count(e.enclosure)) continue;
@@ -1845,7 +1851,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           text(page, inst, ini.str(sec, "DispLabelText", ini.str(esec, "Name")), r, g, b,
                fontPx(sec, "DispLabelFontSize", "normal"), ini.str(sec, "DispLabelFontName", m.controlFont),
                ini.num(sec, "TextRectLeft", 0), ini.num(sec, "TextRectTop", 0),
-               ini.num(sec, "TextRectWidth", w), ini.num(sec, "TextRectHeight", h));
+               textWidth(sec, ini.num(sec, "TextRectWidth", w)), ini.num(sec, "TextRectHeight", h));
           ++drawn;
         } else if (e.kind == Kind::Manual) {
           const auto mi = manualInfo.find(e.manual);
@@ -1959,7 +1965,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           const int tl = ini.num(sec, "TextRectLeft", 1), tt = ini.num(sec, "TextRectTop", 1);
           text(page, inst, ini.str(sec, "Name"), r, g, b, fontPx(sec, "DispLabelFontSize", "normal"),
                ini.str(sec, "DispLabelFontName", m.controlFont), inst ? tl : x + tl, inst ? tt : y + tt,
-               ini.num(sec, "TextRectWidth", w - tl), ini.num(sec, "TextRectHeight", h - tt));
+               textWidth(sec, ini.num(sec, "TextRectWidth", w - tl)), ini.num(sec, "TextRectHeight", h - tt));
           ++drawn;
         }
       }
