@@ -40,6 +40,9 @@ jobs:
           mkdir -p dist
           for d in artifacts/*/; do
             name=$(basename "$d")
+            # The Play bundle is uploaded to Google Play by hand, never
+            # published here: a phone cannot install it.
+            case "$name" in play-bundle) continue ;; esac
             # Already a finished package, published under its own name: the
             # macOS zips (packed on the Mac, since a .app loses its executable
             # bit as loose files), the Windows setup program and the .debs.

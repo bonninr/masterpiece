@@ -614,6 +614,22 @@ jobs:
           ls -la "$APK"
           unzip -l "$APK" | grep -E "lib/(arm64-v8a|x86_64)/libjuce_jni.so"
 
+      # The App Bundle Google Play takes, signed with the same key. Kept as a
+      # CI download for uploading to Play, not published on the release: a
+      # phone cannot install a bundle directly.
+      - name: Play bundle
+        working-directory: android
+        run: |
+          ./gradlew bundleRelease --no-daemon
+          ls -la app/build/outputs/bundle/release/app-release.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: play-bundle
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
       # Named for what it is: the release publishes it as it stands.
       - name: Name the APK
         run: cp android/app/build/outputs/apk/release/app-release.apk masterpiece-android.apk
