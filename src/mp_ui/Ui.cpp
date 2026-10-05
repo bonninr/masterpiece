@@ -5,6 +5,8 @@
 #include "LoadingDialog.h"
 #include "Mobile.h"
 
+#include <future>
+
 namespace mp::ui {
 namespace {
 
@@ -501,6 +503,28 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       expression_(p),
       keyboard_(p.keyboardState(),
                 juce::MidiKeyboardComponent::horizontalKeyboard) {
+  // The licence question, asked from the loading thread before a sample is
+  // read (#164). The box belongs to the message thread, so it is shown there
+  // and the load waits for the answer. A window gone, or a question never
+  // answered because the program is closing, is a no.
+  proc_.licenceAsker = [this](const std::string& organ, const std::string& who) {
+    auto answer = std::make_shared<std::promise<bool>>();
+    auto future = answer->get_future();
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    juce::MessageManager::callAsync([self, answer, organ, who] {
+      if (self == nullptr) {
+        answer->set_value(false);
+        return;
+      }
+      self->askLicenceQuestion(juce::String(organ), juce::String(who),
+                               [answer](bool yes) { answer->set_value(yes); });
+    });
+    try {
+      return future.get();
+    } catch (const std::future_error&) {
+      return false;
+    }
+  };
   addAndMakeVisible(top_);
   // A thin line along the bottom, the whole width of the window, instead of
   // whatever the top bar's buttons left of it.
@@ -691,6 +715,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
 MasterpieceEditor::~MasterpieceEditor() {
   stopTimer();
+  proc_.licenceAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
   // Where the page windows are, for the next time; then they go, before the
   // console they share a processor with.
@@ -844,9 +869,27 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
 // the set here. Cancel is the default -- Escape, Enter, closing the box -- and
 // leaves the licensed samples out.
 void MasterpieceEditor::askForLicence() {
-  const auto& m = proc_.organModel();
-  const juce::String organ = m.organName.empty() ? juce::String("This organ") : juce::String(m.organName);
-  const juce::String who(proc_.licencePublisher());
+  // Asked after a load that left the licensed samples out: a yes loads the
+  // organ again, with them. A load asks before reading any (licenceAsker), so
+  // this is for a load that could not, and for the Settings menu.
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  askLicenceQuestion(juce::String(proc_.organModel().organName), juce::String(proc_.licencePublisher()),
+                     [self](bool yes) {
+                       if (self == nullptr) return;
+                       if (!yes) {
+                         self->top_.setStatus(self->status_ + "  -  licensed samples not loaded");
+                         return;
+                       }
+                       juce::Logger::writeToLog("licence: the player confirmed a licence for this organ");
+                       self->proc_.setLicenceConfirmed(true);
+                       self->proc_.saveSettingsIfDirty();
+                       self->reloadOrgan();
+                     });
+}
+
+void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const juce::String& who,
+                                           std::function<void(bool)> answered) {
+  const juce::String organ = organName.isEmpty() ? juce::String("This organ") : organName;
   const juce::String from = who.isEmpty() ? juce::String("its publisher") : who;
   // Built by hand: a stock two-button box gives Enter to the first button and
   // Escape to the second, and neither order makes Cancel answer both. Here
@@ -863,17 +906,8 @@ void MasterpieceEditor::askForLicence() {
   box->addButton("Load the samples", 1);
   box->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey),
                  juce::KeyPress(juce::KeyPress::returnKey));
-  juce::Component::SafePointer<MasterpieceEditor> self(this);
-  box->enterModalState(true, juce::ModalCallbackFunction::create([self](int result) {
-                         if (self == nullptr) return;
-                         if (result != 1) {
-                           self->top_.setStatus(self->status_ + "  -  licensed samples not loaded");
-                           return;
-                         }
-                         juce::Logger::writeToLog("licence: the player confirmed a licence for this organ");
-                         self->proc_.setLicenceConfirmed(true);
-                         self->proc_.saveSettingsIfDirty();
-                         self->reloadOrgan();
+  box->enterModalState(true, juce::ModalCallbackFunction::create([answered](int result) {
+                         answered(result == 1);
                        }),
                        true);  // deleted when dismissed
 }
@@ -1165,6 +1199,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     if ((result.outOfMemory || cancelled) && !graphicsOnly && odf.existsAsFile()) loadOrgan(odf, true);
     return;
   }
+  // A licence confirmed during this load is the organ's from now on: saved
+  // once the organ is in place, so the next load does not ask again.
+  if (result.licenceAsked) proc_.saveSettingsIfDirty();
 
   // Timed separately from the model: this is where the console artwork is
   // actually decoded, and on a set with a thousand bitmaps it can dominate a
@@ -1285,7 +1322,10 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             "16-bit samples or stream the release tails on its Loading tab, or raise the "
             "limit in General settings if this computer has the memory to spare.");
   } else if (!graphicsOnly && result.samples.licensed > 0 && !proc_.licenceConfirmed()) {
-    askForLicence();
+    // Asked already, before any sample was read, and answered no: said, not
+    // asked again. Only a load that could not ask is asked now.
+    if (result.licenceAsked) top_.setStatus(status_ + "  -  licensed samples not loaded");
+    else askForLicence();
   } else if (!graphicsOnly && result.samples.loaded == 0 && result.samples.encrypted > 0) {
     juce::AlertWindow::showMessageBoxAsync(
         juce::MessageBoxIconType::WarningIcon, "This organ's samples are encrypted",

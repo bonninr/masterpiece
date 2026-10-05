@@ -4333,6 +4333,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
       samples_.setArchive(packaged);
     }
+    if (model_.hasLicensedSamples && !licenceConfirmed_ && licenceAsker) {
+      result.licenceAsked = true;
+      if (licenceAsker(model_.organName, licencePublisher())) {
+        licenceConfirmed_ = true;
+        markSettingsDirty();
+        juce::Logger::writeToLog("licence: the player confirmed a licence for this organ");
+      }
+    }
     samples_.setLicenceConfirmed(licenceConfirmed_);
     if (model_.hasLicensedSamples) {
       const std::string who = licencePublisher();

@@ -205,6 +205,9 @@ public:
   void reloadOrgan();
   // Ask whether the player holds the publisher's licence for this organ.
   void askForLicence();
+  // The question itself; `answered` gets the player's answer.
+  void askLicenceQuestion(const juce::String& organ, const juce::String& who,
+                          std::function<void(bool)> answered);
   // Several organs in one set of packages -- a perspective each, or full and
   // light: ask which, by name, the one opened last at the top.
   void chooseDefinition(const juce::Array<juce::File>& definitions, bool graphicsOnly);
