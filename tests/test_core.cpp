@@ -9450,6 +9450,26 @@ public:
       MP_CHECK(report.loaded == 2 && report.licensed == 0 && lib.provider()(2) != nullptr,
                "with it, it loads");
     }
+    {
+      // Asked during the load, before any sample is read, so the organ loads
+      // once (#164); a no is not asked again by the caller, a yes is kept.
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(odf);
+      settings.deleteFile();
+      int asked = 0;
+      proc.licenceAsker = [&asked](const std::string&, const std::string&) { ++asked; return false; };
+      auto r = proc.loadOrgan(odf, 0, false);
+      MP_CHECK(r.ok && r.licenceAsked && asked == 1 && !proc.licenceConfirmed(),
+               "the load asks once, and a no leaves the licence unconfirmed");
+      proc.licenceAsker = [&asked](const std::string&, const std::string&) { ++asked; return true; };
+      r = proc.loadOrgan(odf, 0, false);
+      MP_CHECK(r.ok && asked == 2 && proc.licenceConfirmed(), "a yes confirms it, in the same load");
+      proc.saveSettingsIfDirty();
+      r = proc.loadOrgan(odf, 0, false);
+      MP_CHECK(r.ok && asked == 2 && !r.licenceAsked && proc.licenceConfirmed(),
+               "and the next load, a reload included, does not ask again");
+      settings.deleteFile();
+    }
     root.deleteRecursively();
   }
 };

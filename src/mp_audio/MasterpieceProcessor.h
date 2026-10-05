@@ -3,6 +3,7 @@
 // ODF parse (background) -> immutable OrganModel -> AudioGraph (bus list, rank->bus, IR sends).
 // User data (combinations/voicing/MIDI/favourites) as ValueTree + separate files per organ + global.
 #pragma once
+#include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_core/OrganModel.h"
@@ -108,7 +109,16 @@ public:
     // Stopped at the memory limit, and kept: what was read plays, the rest
     // of the organ is silent. samples.loaded of samples.wanted arrived.
     bool incomplete = false;
+    // The licence was asked about during this load (licenceAsker), so the
+    // caller need not ask again whatever the answer was.
+    bool licenceAsked = false;
   };
+  // Asked on the loading thread once the definition is read and before a
+  // sample is, when the set needs a licence not yet confirmed: whether the
+  // player holds it. Blocks until answered. Unset -- the renderer, the tests
+  // -- the licensed samples are left out, as before (#164: asking after the
+  // load and then loading again read the organ twice).
+  std::function<bool(const std::string& organ, const std::string& publisher)> licenceAsker;
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
   // all come from the ODF, and only `loadAll` touches the sample tree. It is
