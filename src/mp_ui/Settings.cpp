@@ -258,9 +258,11 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   showFasterUnit();
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
-  portable_.setTooltip("Keeps this organ's own sample cache, and a copy of its definition and console "
-                       "pictures, so it opens with the drive holding its installation files unplugged. "
-                       "Made at the next complete load; costs the cache's size on this disk.");
+  portable_.setTooltip("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
+                       "and a copy of its definition and console pictures, so it opens with the drive "
+                       "holding its installation files unplugged. Made at the next complete load; costs "
+                       "the cache's size on this disk. Streamed release tails still come from the "
+                       "installation files: turn streaming off for an organ that must play without them.");
   portable_.onClick = [this] { proc_.setKeepPortableCopy(portable_.getToggleState()); };
 
   addAndMakeVisible(memLimitLabel_);
@@ -321,7 +323,13 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
             "the same way because its sustain loop has to be resident. On the "
             "Nancy demo this is 12.2 GB down to 5.6 GB, with the rendered "
             "audio identical sample for sample. Needs a disk that keeps up; "
-            "the Engine readout says if it did not.");
+            "the Engine readout says if it did not.\n\n"
+            "\"Keep this organ playable without its installation files\" gives "
+            "the organ a sample cache of its own, whatever the Sample cache "
+            "setting says, and keeps a copy of its definition and console "
+            "pictures beside it. It is made at the next complete load. Released "
+            "notes streamed from disk still need the installation files, so "
+            "turn streaming off for an organ that has to play without them.");
   startTimerHz(2);
 }
 
@@ -562,6 +570,12 @@ void EnginePanel::showOrganRoot() {
 
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
+  // The buttons first, at their full height, whatever the rows above need:
+  // when a row was added in 0.7.2 the rows ran past the panel's height and
+  // the footer took the shortfall, which left the buttons too short to tap
+  // (#149). The note between them takes what is left instead.
+  auto footer = r.removeFromBottom(kRow + 4);
+  r.removeFromBottom(kGap);
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
     b->setBounds(r.removeFromTop(kRow));
@@ -621,10 +635,9 @@ void EnginePanel::resized() {
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
 
-  // Footer, taken from the bottom before the note gets what is left. Read
-  // left to right it goes from discarding to committing hardest, so the
-  // consequence grows with the distance from "put it back".
-  auto footer = r.removeFromBottom(kRow + 4);
+  // The footer, taken above. Read left to right it goes from discarding to
+  // committing hardest, so the consequence grows with the distance from "put
+  // it back".
   revert_.setBounds(footer.removeFromLeft(130).reduced(0, 2));
   footer.removeFromLeft(kGap);
   keep_.setBounds(footer.removeFromLeft(120).reduced(0, 2));
@@ -633,7 +646,6 @@ void EnginePanel::resized() {
   saveGlobal_.setBounds(footer.removeFromRight(150).reduced(0, 2));
   footer.removeFromRight(kGap);
   saveOrgan_.setBounds(footer.removeFromRight(160).reduced(0, 2));
-  r.removeFromBottom(kGap);
 
   note_.setBounds(r);
 }
