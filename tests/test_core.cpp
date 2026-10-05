@@ -9644,6 +9644,26 @@ public:
     MP_CHECK(m.displayPages.size() == 1, "the main panel is a page");
     MP_CHECK(m.switches.count(8002) && m.switches.at(8002).dispInstanceId != 0,
              "the drawstop picture is bound to its switch");
+
+    // The drawstop's name printed over it: by default, but not with
+    // TextBreakWidth=0, which is how a set hides it (#157).
+    auto labelled = [&](const std::string& lines) {
+      std::string text = organ;
+      // The pictures are not on disk, so the text box is given outright.
+      text.replace(text.find("DispLabelText=\n"), 15, "TextRectWidth=60\nTextRectHeight=20\n" + lines);
+      mp::OdfLoader ll;
+      mp::OrganModel mm;
+      mp::OdfDiagnostics dd;
+      if (!ll.loadFromXmlString(mp::convertGrandOrgueText(text).xml, "t.organ", o, mm, dd)) return false;
+      for (const auto& [id, page] : mm.displayPages)
+        for (const auto& t : page.texts)
+          if (t.text == "Principal") return true;
+      return false;
+    };
+    MP_CHECK(!labelled("DispLabelText=\n"), "an empty label prints nothing");
+    MP_CHECK(labelled(""), "with no label given, the switch's name is printed");
+    MP_CHECK(!labelled("TextBreakWidth=0\n"), "TextBreakWidth=0 prints nothing");
+    MP_CHECK(labelled("TextBreakWidth=60\n"), "any other width still prints it");
   }
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;
