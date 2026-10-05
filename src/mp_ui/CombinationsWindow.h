@@ -98,6 +98,12 @@ public:
   // main window, and open only when the organ has no pistons of its own.
   void place(juce::Rectangle<int> besideThis, bool openFirstTime);
 
+  // Above every window: always when the player asks, otherwise while this
+  // program is in front.
+  bool onTopNow() const {
+    return proc_.combinationsOnTop() || juce::Process::isForegroundProcess();
+  }
+
 private:
   void remember();
   MasterpieceProcessor& proc_;

@@ -448,7 +448,10 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   // console only while Masterpiece is in front.
   onTop_.setToggleState(p.combinationsOnTop(), juce::dontSendNotification);
   onTop_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
-  onTop_.onClick = [this] { proc_.setCombinationsOnTop(onTop_.getToggleState()); };
+  onTop_.onClick = [this] {
+    proc_.setCombinationsOnTop(onTop_.getToggleState());
+    if (isVisible()) showFloating(*this, true, onTopNow());
+  };
   content_.addAndMakeVisible(onTop_);
   content_.addAndMakeVisible(viewport_);
   content_.layout = [this] {
@@ -478,12 +481,7 @@ void CombinationsWindow::closeButtonPressed() { showOrHide(false); }
 
 void CombinationsWindow::showOrHide(bool show) {
   open_ = show;
-  // A window manager can forget "above" while a window is hidden (Cinnamon:
-  // on top the first time, not after closing and reopening, #140). Dropped
-  // before hiding, the editor's timer sets it again on the shown window.
-  if (!show) setAlwaysOnTop(false);
-  setVisible(show);
-  if (show) toFront(true);
+  showFloating(*this, show, onTopNow());
   remember();
 }
 
@@ -511,7 +509,9 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
               besideThis.getBottom() - getHeight() - 20, getWidth(), getHeight());
   }
   open_ = saved.w > 0 ? saved.open : openFirstTime;
-  setVisible(open_);
+  // Opened with the organ, while the program is still coming to the front:
+  // where "above" cannot change later (Linux), it opens above.
+  if (open_ != isVisible()) showFloating(*this, open_, onTopNow() || !kLiveOnTop);
   placing_ = false;
   remember();
 }
