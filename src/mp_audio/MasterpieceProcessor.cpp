@@ -590,8 +590,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       source.kind = MidiSourceKind::ProgramChange;
       source.number = msg.getProgramChangeNumber();
       value = 127;
+    } else if (msg.isSysEx()) {
+      // A press each time it arrives: a console piston sent as system
+      // exclusive has no release (#138).
+      source.kind = MidiSourceKind::SysEx;
+      source.number = sysExId(msg.getSysExData(), msg.getSysExDataSize());
+      value = 127;
     }
-    source.channel = msg.getChannel();
+    source.channel = source.kind == MidiSourceKind::SysEx ? 0 : msg.getChannel();
     source.deviceId = deviceId;
     // Where each controller last was, so a learned pedal's ends can be set
     // from its position (#90).
@@ -607,8 +613,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       juce::Logger::writeToLog(
           "midi: in  dev=" + juce::String(deviceId) + " ch=" +
           juce::String(source.channel) + " " +
-          (msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
-          "=" + juce::String(source.number) + " val=" + juce::String(value));
+          (source.kind == MidiSourceKind::SysEx
+               ? "sysex=" + juce::String::toHexString(msg.getRawData(), msg.getRawDataSize()).toUpperCase() +
+                     " id=" + juce::String(source.number)
+               : juce::String(msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
+                     "=" + juce::String(source.number) + " val=" + juce::String(value)));
 
     // Listening for the MIDI window takes the press and keeps it; the
     // release that follows is swallowed too, while still listening.

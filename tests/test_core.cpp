@@ -5471,6 +5471,28 @@ public:
     map.cancelLearn();
     MP_CHECK(!map.learning(), "learning can be cancelled");
 
+    // Pistons sent as system exclusive, one message per piston (#138: a
+    // Johannus console's General Cancel and pp, F0 00 4A 4F 48 41 53 00 10 nn F7).
+    {
+      auto sysex = [](uint8_t piston) {
+        const uint8_t bytes[] = {0x00, 0x4A, 0x4F, 0x48, 0x41, 0x53, 0x00, 0x10, piston};
+        mp::MidiSource s;
+        s.kind = mp::MidiSourceKind::SysEx;
+        s.number = mp::sysExId(bytes, static_cast<int>(sizeof bytes));
+        return s;
+      };
+      MP_CHECK(sysex(0x06).number != sysex(0x00).number && sysex(0x06).number >= 0,
+               "two pistons' messages are two sources");
+      map.beginLearn(mp::MidiTargetKind::Switch, 90, true);
+      MP_CHECK(map.learnFrom(sysex(0x06)), "a system exclusive message is learned");
+      MP_CHECK(map.actionFor(sysex(0x06), 127).targetId == 90,
+               "and from then on presses its target");
+      MP_CHECK(!map.actionFor(sysex(0x00), 127).valid(), "another piston's message does not");
+      mp::MidiMap reread;
+      MP_CHECK(reread.fromText(map.toText()) && reread.actionFor(sysex(0x06), 127).targetId == 90,
+               "the mapping survives saving");
+    }
+
     // A swell shoe or a level is learned from a controller (#53). A key played
     // while one is armed is not taken for it: the learn waits for the pedal.
     {
