@@ -1,8 +1,8 @@
 <p align="center">
-  <img width="500" alt="Masterpiece, virtual pipe organ" src="https://github.com/user-attachments/assets/9362280d-1438-4f67-a5ab-be8045857ad5" />
+  <img width="500" alt="Masterpiece, virtual pipe organ" src="screenshots/logo.png" />
 </p>
 
-### A cross-platform, high-performance pipe organ sample player compatible with Hauptwerk sample sets.
+### Pipe organ sample player for Hauptwerk-format and GrandOrgue sample sets.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/openpipesorg)
 
@@ -33,62 +33,111 @@ Portable archives for every platform, and the plugins on their own, are on the
 
 ---
 
-## What it is
+Masterpiece plays sampled pipe organs. It reads Hauptwerk-format sample sets
+and GrandOrgue organs, draws each instrument's own console, and plays it from
+the mouse, a MIDI keyboard or a full console. It is an independent
+implementation in C++20 and JUCE, licensed GPL-3.0-only.
 
-A pipe organ is not one instrument but thousands. Every pipe sounds exactly
-one note in one colour, so a single stop -- a Principal 8', say -- is a row of
-56 separate pipes, one per key. The organist draws stops to choose which rows
-speak, couples keyboards together, and plays on several manuals and a
-pedalboard. Wind from the bellows reaches the pipes through the chests, and
-the building itself is half the sound.
+- Standalone application, VST3 and LV2 plugins, and an Audio Unit on macOS
+- Windows, macOS (Apple silicon and Intel), Linux, Raspberry Pi (64- and 32-bit),
+  Android and iPhone/iPad
+- Tested on 37 published sample sets, from a 9-register Flentrop to Nancy's
+  65 stops on four manuals
 
-A virtual pipe organ (VPO) recreates a specific instrument from recordings. A
-producer records every pipe of a real organ, one at a time, in its own church:
-the start of the note, a stretch of steady tone that can be looped for as long
-as a key is held, and the release with the room's reverberation dying away --
-often several releases, because a note held for a beat decays differently
-from one held for a bar. Key action, stop and blower noises are recorded too.
-The result is a sample set of tens of thousands of files and many gigabytes,
-shipped with a definition of the instrument: which pipes each stop owns, what
-the couplers and pistons do, how the console looks, how the wind and the swell
-box behave.
+## Features
 
-The player software turns that library back into an organ. It draws the
-console, so stops can be drawn with the mouse or from MIDI hardware, and for
-every key pressed it works out which pipes should speak -- through the stops,
-couplers and switch network, wired exactly as on the original console. For
-each pipe it plays the right recording, loops the sustain without a seam,
-chooses the release that matches how long the note was held, tunes it to the
-chosen temperament, and applies what the definition asks of the instrument:
-tremulants, swell shades, the wind sagging under a full chord. All of it is
-mixed in real time, with latency low enough to play from a keyboard. Connect a
-MIDI keyboard or a whole console, load a set, and you have that organ at home.
+**Sample sets**
+- Hauptwerk-format definitions, full and compact, read directly
+- GrandOrgue `.organ` definitions, converted as they load, console included
+- Sets played straight from their packages: RAR 4 and 5 (solid, multi-part,
+  multi-volume) and GrandOrgue `.orgue`
+- WAV and WavPack samples, any rate; optional conversion to the device rate on load
+- Sets that require a publisher's licence load once you confirm you hold it
 
-Masterpiece is such a player. It reads unencrypted Hauptwerk-format sets
-directly, so existing libraries transfer without conversion; copy-protected
-(.hbw/.hbx) sets are reported, not played, and remain locked to the program
-they were encrypted for. GrandOrgue sets (`.organ`) load too: each is
-translated as it loads into the same kind of definition, console included. A
-set can also be played straight from the packages it is distributed in, RAR
-archives or GrandOrgue `.orgue` packages, without unpacking it. Masterpiece is an
-independent GPL-3.0-only implementation. It runs as a standalone application
-and as a VST3 or LV2 plugin — the same engine either way. On macOS it is also
-built as an Audio Unit, for Apple silicon and Intel. Platforms are Windows,
-macOS, Linux, and Raspberry Pi.
+**Console**
+- The set's own artwork: drawstops, keys, pedals, shoes, jamb pages, several
+  console sizes where a set ships them
+- Couplers, sub- and super-octaves, unison off, reversible pistons, crescendo
+  and alternate ranks, all through the set's own switch network
+- A stop list grouped by division, for sets drawn across many jambs or shipped as text only
+- Any page in its own window, remembered per organ
 
-The differentiator is resource use. The sampler streams release tails from
-disk into per-voice ring buffers while attacks and sustain loops stay
-resident, with 24-bit bit-exact, 16-bit, and mono-folding options plus a
-decoded sample cache. Measured on Friesach (44 stops, 17 GB, 12148 files):
-21.6 GB as 32-bit float resident becomes 16.2 GB at 24-bit, 4.7 GB streamed
-stereo 16-bit, 2.3 GB streamed mono 16-bit; open time 77 s to 26 s. Streaming
-assumes SSD-class storage. Method and full figures: [PERFORMANCE.md](PERFORMANCE.md).
+**Sound**
+- Attack, crossfaded sustain loop, and a release chosen by how long the key was
+  held, with a crossfade into it
+- Wind model: chests, bellows and valves solved as a system; a full registration
+  lowers the pressure, and pitch and level follow it
+- Tremulants per pipe and per chest; enclosures with level and filter per box
+- Hermite interpolation; 1536 voices, stealing releases first
+- Optional vectorized engine, AVX2, SSE2 or NEON, 3 to 5 times faster on 512
+  voices (experimental, off by default)
 
----
+**Memory and loading**
+- 24-bit resident (bit-identical to the files) or 16-bit; stereo can be folded
+  to mono
+- Release tails streamed from disk through per-voice ring buffers; keep the
+  first second or 25, 50 or 75% of each release in memory
+- Leave out stops, perspectives or single ranks; left-out stops take their
+  tremulant ranks with them
+- Decoded sample cache: a second load reads one cache file
+- A memory limit, 80% of RAM by default; a load that reaches it stops and says what to change
+- Optionally keep an organ playable after its installation files are removed
 
-## The console
+**Combinations and registration**
+- Player's own generals (up to 100), divisionals per manual, general cancel,
+  and a 999-frame stepper, on any organ, beside the organ's own pistons
+- Named combination sets, saved per organ
+- Optional: Set turns off after storing a piston with the mouse
 
-The same program, reading different libraries.
+**Tuning**
+- The organ's temperament, equal, or Werckmeister III, Kirnberger III,
+  Vallotti, Young II, quarter-comma meantone, Pythagorean, Silbermann
+  sixth-comma; Scala `.scl` files
+- Pitch in Hz (415, 440, 442 one click away); transposer ±12 semitones
+- Voicing: level and tuning per rank and per pipe, with A/B sets to compare
+
+**MIDI and consoles**
+- All inputs at once, each mapped to a manual by channel; key range, transpose,
+  velocity window, short octaves, debounce, split keyboards
+- MIDI learn for drawstops, pistons, shoes, pages, stepper and transposer;
+  MIDI out lights a console's drawstops
+- Jamb text displays over system exclusive
+- A virtual MIDI input on macOS and Linux
+
+**Recording and practice**
+- MIDI recording of notes, stops and shoes, replayable through another registration
+- Audio recording alongside; metronome in the organ's own audio stream
+- Convolution reverb for sets recorded dry
+
+## Limitations
+
+- Encrypted samples (`.hbw`, `.hbx`) are skipped and listed in the load report
+- GrandOrgue divisional couplers are skipped on import
+
+## Measured
+
+Friesach, 44 stops, 17 GB, 12,148 files ([method and full figures](PERFORMANCE.md)):
+
+| Resident format | Memory |
+|---|---|
+| 32-bit float | 21.6 GB |
+| 24-bit | 16.2 GB |
+| 16-bit, releases streamed | 4.65 GB |
+| 16-bit mono, releases streamed | 2.33 GB |
+
+Opening: 77.1 s at 32-bit float, 25.9 s at 16-bit mono streamed, 18.9 s from the
+sample cache.
+Streaming assumes SSD-class storage; the status line says when a disk falls behind.
+
+## Tested organs
+
+Each set below is a separate, freely published library: 23 by
+[Piotr Grabowski](https://piotrgrabowski.pl/), 14 by
+[Augustine's Virtual Organs](https://hauptwerk-augustine.info/). Full credits
+in [ATTRIBUTION.md](ATTRIBUTION.md).
+
+<details>
+<summary>Screenshots of all 37</summary>
 
 | | |
 |:--:|:--:|
@@ -150,208 +199,58 @@ The same program, reading different libraries.
 | ![Budapest, Church of the Holy Spirit](screenshots/HolySpiritBudapest.jpg) |  |
 | demonstration set · [sample set by Augustine's Virtual Organs](https://hauptwerk-augustine.info/Holy_Spirit.php) |  |
 
-Each organ above is a freely published sample library, separate from this
-repository. Twenty-three of the thirty-seven are produced by [Piotr
-Grabowski](https://piotrgrabowski.pl/); the other fourteen by [Augustine's
-Virtual Organs](https://hauptwerk-augustine.info/). Most of the newer ones are
-demonstration sets, which include only some of each organ's stops. Full
-credits: [ATTRIBUTION.md](ATTRIBUTION.md).
+</details>
 
-Sets that ship several console sizes offer them all; the chooser only appears
-when there is a choice to make. Drawn keys and drawstops are clickable, and a
-set whose manuals are part of a photographed backdrop falls back to an
-on-screen keyboard instead.
+## Installing
 
----
+**Windows.** `masterpiece-<version>-windows-setup.exe` installs with a Start
+menu entry; the portable `.zip` runs from any folder and includes the VST3 plugin.
 
-## Using it
+**Debian, Ubuntu, Raspberry Pi OS.**
 
-**Loading.** **Open** takes a Hauptwerk-format definition, a GrandOrgue
-`.organ` file, or a set still in its packages: RAR archives (RAR 4 and RAR 5,
-solid or not, numbered parts and multi-volume sets included) or a GrandOrgue
-`.orgue` package. A package is not unpacked. Only its definitions and artwork
-are extracted, into a folder of Masterpiece's own, and the samples are read from
-the archives; after the first load the sample cache makes reopening as fast as
-an installed set. The first open of a large solid package takes a few minutes,
-since its files can only be decompressed in order. WavPack samples decode, back
-to WavPack 1.
+```
+sudo apt install ./masterpiece-0.7.4-linux-amd64.deb     # PC
+sudo apt install ./masterpiece-0.7.4-linux-arm64.deb     # Raspberry Pi OS, 64-bit
+sudo apt install ./masterpiece-0.7.4-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+```
 
-When a package cannot be opened, Masterpiece says why: a missing volume, a
-password, a second copy saved by a browser, a download not finished. Every
-session writes `masterpiece.log` in the Masterpiece settings folder, with the
-previous session's beside it; it is the file to attach to a bug report.
+Runs as `masterpiece`; the PC package also installs the plugins to
+`/usr/lib/vst3` and `/usr/lib/lv2`. Other distributions: the `.tar.gz` archives.
 
-The first time an organ is loaded, Settings opens on its Engine page before
-the load starts, because those settings decide how much memory the organ will
-take.
+**macOS.** Move `Masterpiece.app` to Applications. The build is unsigned; if
+Gatekeeper reports it as damaged, run
+`xattr -cr /Applications/Masterpiece.app` and open it with right-click, Open.
 
-A large library is tens of gigabytes and takes minutes off a slow
-disk, so it loads on its own thread: the window stays live, the progress is
-real, and the estimate is built from the rate the load actually achieves.
-Cancel takes effect at the next file and throws
-away what it had read. A cancelled load leaves no partial organ behind.
+**Android, iPhone and iPad.** The `.apk` and `.ipa` on the releases page are
+installed directly; see the [0.7.0 release notes](https://github.com/bonninr/masterpiece/releases/tag/v0.7.0).
 
-![Loading an organ](screenshots/ui-loading.jpg)
+## Running
 
-**Playing.** Drawstops, pistons and expression shoes are where the builder put
-them, and they work the way the builder wired them: generals and divisionals,
-general cancel, reversible pistons that flip a coupler, crescendo steps, stops
-that swap to an alternate rank. A key pressed with the mouse takes the same
-path as that note arriving over MIDI, so anything done from the console works
-from a real one. The drawn keys move for the notes that actually reach their
-manual. The meter shows what reaches the audio device — after the room, the
-organ's own level and the master fader.
+**Open** takes a definition, a GrandOrgue `.organ` file, or a RAR or `.orgue`
+package. File managers offer *Open with Masterpiece*; `Masterpiece <file>`
+does the same from a terminal.
 
-![The console, playing](screenshots/ui-console.jpg)
+| Option | |
+|---|---|
+| `--odf <file>` | Load this organ at startup |
+| `--gui-only` | Draw the console only, silent, in a second or two |
+| `--log <file>` | Write a log, with load timings |
+| `--log-midi` | Log every MIDI message and where it went |
+| `--record-midi <file>` | Record the session, saved on quit |
+| `--play-midi <file>` | Play a MIDI file through the organ |
+| `--virtual-midi [name]` | Publish a MIDI input (macOS, Linux) |
 
-**Registering without artwork.** The stop list covers sets with no console
-picture, or stops spread across several jambs: the same registration,
-grouped by division.
+All options: `Masterpiece --help` and [COMMAND-LINE.md](COMMAND-LINE.md).
+Each session writes `masterpiece.log` in the settings folder; attach it to bug reports.
 
-![The stop list](screenshots/ui-stoplist.jpg)
-
-**Combinations.** Every organ gets its own set of pistons, whatever its
-definition declares, in a **Combinations** window beside the console. It never
-covers the artwork or changes the stop list, and closes when it is not needed.
-
-- **Set** and **GC**. With Set on, pressing any piston stores what is drawn
-  instead of recalling it. The organ's own setter does the same.
-- **Generals**, in rows of ten, up to a hundred.
-- **Divisionals** for every manual and the pedal, each with its own cancel. A
-  divisional holds that division's stops, the couplers played from that manual
-  and the tremulant that shakes it, and leaves the rest of the organ alone.
-- **The stepper**, with up to 999 frames of its own. Stepping with Set on
-  stores each frame as you pass it, which is how a sequence is built for a
-  piece; frames can be inserted and deleted.
-- **The combination set** in use, and a new one saved from it.
-
-A piston that was never set does nothing. Only the registration is captured
-and cancelled: stops, couplers and tremulants, never the blower or a noise.
-The organ's own pistons keep working beside these. Everything is saved per
-organ in your own data, and the window comes back where you left it. It opens
-by itself the first time on an organ that draws no pistons of its own.
-Right-click any piston to map it to a button on your console.
-
-![Combinations](screenshots/ui-combinations.jpg)
-
-**Tuning.** The **Tuning** button in the top bar says what is in force and
-opens the three things a player changes between pieces. The temperament is the
-organ's own, one of the historical temperaments (Werckmeister III, Kirnberger
-III, Vallotti, Young II, quarter-comma meantone, Pythagorean, Silbermann's
-sixth-comma, or equal), or a Scala `.scl` file of twelve notes. The pitch is A
-in Hz, with the organ's own, 415, 440 and 442 a click away, so an organ
-recorded at a historical pitch can play with other instruments. The transposer
-moves the keys an octave either way, not the samples. Each change applies to
-the notes played after it, is saved for the organ, and appears on the
-console's jamb displays.
-
-![Tuning](screenshots/ui-tuning.jpg)
-
-**The engine.** What costs CPU and what costs memory, in one place. *Simple WAV
-only* bypasses every refinement at once for a machine that cannot afford them.
-Preload and resident format decide how much of a library has to fit in RAM;
-streaming holds only the head of each release tail and fetches the rest while
-it plays. Disk writes happen only on request — changes apply immediately,
-and you choose afterwards whether to forget them, keep them for this organ, or
-make them the default for every organ.
-
-![Engine settings](screenshots/ui-engine.jpg)
-
-**Routing.** Sample libraries describe no audio routing. Output pairs and
-their device channels carry across organs; which rank goes where is saved
-per organ, because a rank
-number means nothing in a different instrument. An unrouted rank plays
-through the first pair, so an organ is audible before you open this page. In
-stereo the pairs are summed, so every rank stays audible when you split them up.
-
-![Mixer](screenshots/ui-mixer.jpg)
-
-**Voicing.** Rank and per-pipe level and tuning adjustments add, so correcting
-one pipe keeps the rank trim.
-A and B are two complete sets for direct comparison of a change against
-what was there before. Level and tuning are a multiply and a ratio taken
-once when a note starts, so they cost nothing while it sounds and work with the
-DSP switched off.
-
-![Voicing](screenshots/ui-voicing.jpg)
-
-**Getting back to an organ.** Favourites point at numbered slots, which thumb
-pistons trigger. Combination sets hold whole registration books —
-one for a recital, another for a service — and changing set saves the one you
-are leaving first. The Combinations window switches sets too.
-
-![Favourites and combination sets](screenshots/ui-favourites.jpg)
-
-**Your console.** Which manual a key plays is decided by its MIDI channel, and
-each console is wired differently. A change of channel applies at once, to the
-sound and to the drawn keys, with no restart. Set up your console once and
-press *Use as default for all organs*: every organ without channels of its own
-then starts from it, the pedal on its channel and manual 1, 2, 3... on theirs,
-skipping manuals an organ does not have.
-
-*Range, transpose...* opens a manual's assignment: which console it comes from,
-the key range, a transposition, a velocity window, short bass octaves and
-contact debounce. Two assignments can split one keyboard between two manuals.
-*Learn from a key* takes the range from two presses, lowest then highest.
-
-Right-click a drawstop and move the real one to learn it, as a toggle, held,
-or as separate draw and cancel messages. Every piston in the Combinations
-window learns the same way. The sequencer, the page turns, the stop list, the
-keyboard, the Combinations window, the transposer and the temperament have
-their own learn buttons, with nothing on screen to right-click.
-
-![MIDI](screenshots/ui-midi.jpg)
-
-**Jamb displays.** The little text panel on a wired console, driven by system
-exclusive. The bytes that introduce the message belong to the display hardware,
-so you type them in, and only lines whose text actually changed are sent.
-
-![Console display](screenshots/ui-display.jpg)
-
-**Practising and recording.** A MIDI recording is the performance and can be
-replayed through a different registration; the audio capture is what it sounded
-like. Record both at once. The recorder takes what a hardware console plays as
-well as the on-screen keys. A metronome comes out of the same audio as the
-organ, so it never drifts against it.
-
-![Recorder](screenshots/ui-recorder.jpg)
-
-**The room.** Convolution reverb for libraries recorded dry. A library recorded
-in its own building already carries that acoustic in the samples; a second
-room on top muddies it.
-
-![Room](screenshots/ui-room.jpg)
-
----
-
-## Performance
-
-Measured on a 44-stop, 17 GB set. Method and full figures:
-[PERFORMANCE.md](PERFORMANCE.md).
-
-- **Memory:** up to **9.3x less** than holding every sample as 32-bit float.
-  Samples are held at 24-bit, bit-for-bit identical to the files (1.3x
-  less), or at 16-bit; a stereo set can be folded to mono as it loads.
-  Release tails stream from disk into per-voice ring buffers refilled by a
-  background thread, leaving 56% of the sample data on disk. 21.6 GB at
-  32-bit float becomes 16.2 GB at 24-bit, 4.65 GB at 16-bit with releases
-  streamed, 2.33 GB folded to mono. Sample data can be converted to the
-  device's rate as it loads, for libraries recorded at 96 kHz.
-- **Loading:** the organ opens up to **3x faster**. Decoded samples are kept
-  as one cache file, so the next load of the same organ is one read instead
-  of 12,148 decodes: up to **5x faster** sample loading. The cache is keyed
-  to the definition and every setting that changes the bytes, so a changed
-  setting rebuilds it instead of reading a stale one. One file by default,
-  replaced as organs change; one per organ, or off.
-
----
+**Audio on Windows:** WASAPI exclusive or ASIO for low latency; shared mode adds
+noticeable delay. **On Linux:** ALSA and JACK (including PipeWire's JACK);
+JACK is listed when a JACK library is installed.
 
 ## Building
 
-Requires a C++20 compiler (MSVC 2022, GCC 12+, or Clang 14+), CMake 3.22+ and
-Ninja. JUCE and pugixml are fetched automatically.
-
-What to install first, per system:
+C++20 (MSVC 2022, GCC 12+, Clang 14+), CMake 3.22+, Ninja. JUCE, pugixml and
+the archive libraries are fetched by CMake.
 
 - **Debian, Ubuntu, Raspberry Pi OS:**
   ```bash
@@ -360,180 +259,59 @@ What to install first, per system:
     libxcomposite-dev libfreetype6-dev libfontconfig1-dev libglu1-mesa-dev \
     mesa-common-dev libxi-dev libjack-jackd2-dev
   ```
-- **macOS:** the Xcode command line tools (`xcode-select --install`), then
-  `brew install cmake ninja`.
-- **Windows:** Visual Studio 2022 or its Build Tools, with *Desktop development
-  with C++*, which includes CMake and Ninja. Build from the *x64 Native Tools*
-  prompt.
+- **macOS:** `xcode-select --install`, then `brew install cmake ninja`.
+- **Windows:** Visual Studio 2022 Build Tools with *Desktop development with
+  C++*; build from the *x64 Native Tools* prompt.
 
 ```bash
 cmake --preset dev
 cmake --build --preset dev
 ```
 
-Presets are also provided for each CI target: `ci-linux`, `ci-macos`,
-`ci-windows`, and `ci-linux-arm`, which cross-builds for 32-bit Raspberry Pi.
+CI presets: `ci-linux`, `ci-macos`, `ci-windows`, `ci-linux-arm` (32-bit
+Raspberry Pi cross-build).
 
----
-
-**Tests.** The suite needs no sample library and runs in about a second:
+**Tests** run on the small organs in `tests/fixtures`, in seconds:
 
 ```
 cmake --build --preset dev --target mp_tests
-build/dev/tests/mp_tests --no-perf      # --perf-only for the timing ones
+build/dev/tests/mp_tests --no-perf
 ```
 
-It covers the loader, the switch network and key flow, the voice engine, MIDI
-mapping and the DSP, against hand-written organ definitions in
-`tests/fixtures`. CI runs it on every target that can execute its own build.
+**Releasing:** `cmake/set-version.sh <version>`, merge, then tag `v<version>`;
+the release workflow builds and publishes every platform.
 
----
-
-**Releasing.** Every published file carries its version in the name, and the
-download links above point at a tagged file, so the version lives in two
-places. `cmake/set-version.sh 0.4.2` sets both; commit that, merge it, then
-tag `v0.4.2` and the release workflow builds and publishes everything.
-
----
-
-## Installing
-
-**Windows.** Run `masterpiece-0.7.4-windows-setup.exe`. It installs
-Masterpiece with a Start menu entry, and removes it again from
-*Settings → Apps*. The portable `masterpiece-0.7.4-windows.zip` needs no
-installation and carries the VST3 plugin.
-
-**Debian, Ubuntu, Raspberry Pi OS.** Install the package with `apt`, which
-fetches anything it needs:
+## Layout
 
 ```
-sudo apt install ./masterpiece-0.7.4-linux-amd64.deb     # PC
-sudo apt install ./masterpiece-0.7.4-linux-arm64.deb     # Raspberry Pi OS, 64-bit
-sudo apt install ./masterpiece-0.7.4-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+mp_core      definition loader, GrandOrgue import, validator, temperaments
+mp_sampler   voice engine, release streaming
+mp_control   key flow, couplers, switch network, pistons, stepper, crescendo, wind
+mp_archive   RAR and .orgue packages, read in place
+mp_dsp       enclosure filters, tremulant modulation
+mp_audio     audio processor, sample storage, cache, routing
+mp_ui        console, settings, MIDI learn
 ```
 
-Masterpiece then appears in the applications menu and runs as `masterpiece`.
-The PC package also installs the plugins, to `/usr/lib/vst3` and
-`/usr/lib/lv2`. Remove it with `sudo apt remove masterpiece`. The `.tar.gz`
-archives remain for other distributions.
-
-**macOS.** Unzip and move `Masterpiece.app` to Applications. The download is
-not yet signed by Apple, so Gatekeeper may call it "damaged"; clear the
-quarantine flag, then right-click the application and choose Open:
-
-```
-xattr -cr /Applications/Masterpiece.app
-```
-
----
-
-## Running
-
-Launch the app, then **Open** and choose the set's definition, a GrandOrgue
-`.organ` file, or its RAR or `.orgue` package.
-
-An organ can also be opened straight from a file manager: the installer and the
-Linux package offer **Open with Masterpiece** for definitions and packages, and
-`Masterpiece <file>` does the same from a terminal. `Masterpiece --help` lists
-every option, and [COMMAND-LINE.md](COMMAND-LINE.md) describes each
-of them in detail, with examples.
-
-A few flags help with testing and reporting problems:
-
-```
-Masterpiece --odf "<path to the definition>" --gui-only
-```
-
-| Flag | What it does |
-|---|---|
-| `--odf <file>` | Load this organ at startup: a definition or a package. |
-| `--gui-only` | Build the whole console and read no audio: the organ is silent and appears in a second or two. |
-| `--log <file>` | Write a log, including the load timings. |
-| `--log-midi` | Log every MIDI message and what it did: which manual it reached, and why nothing sounded if nothing did. |
-| `--record-midi <file>` | Record everything played in the session and save it on quit, to attach to a report such as a stuck note. |
-| `--play-midi <file>` | Play a MIDI file through the organ, for example a recording from `--record-midi`. |
-| `--virtual-midi [name]` | macOS and Linux: publish a MIDI input of Masterpiece's own, so other programs can play it. On Windows a loopback port such as loopMIDI does the same. |
-
-**Audio driver, on Windows.** The settings page lists Windows Audio (shared),
-Windows Audio (exclusive), DirectSound and — when a driver for your interface
-is installed — ASIO. Exclusive mode and ASIO are the two worth trying: a
-shared-mode device adds enough delay between key and pipe to be felt at the
-keyboard. ASIO appears only if an ASIO driver is present, which normally means
-the one that came with your audio interface.
-
-**Audio driver, on Linux.** The audio panel offers two device types, ALSA and
-JACK, and it is worth trying both. On a current distribution JACK is usually
-PipeWire answering in JACK's place, and on a machine where one route is silent
-the other often is not. Masterpiece appears in a patchbay under its own name.
-The JACK type is listed only when a JACK library is installed — on Fedora that
-is the `pipewire-jack-audio-connection-kit` package, on Debian and Ubuntu
-`pipewire-jack` or `libjack-jackd2-0`.
-
----
-
-## How it is built
-
-| | |
-|---|---|
-| Language | C++20 |
-| Audio and GUI | JUCE 9 |
-| XML | pugixml |
-| Build | CMake + Ninja, command line only |
-| Platforms | Windows, macOS (Apple silicon and Intel), Linux; Raspberry Pi via cross-build |
-| Formats | Standalone, VST3, LV2, AU on macOS |
-
-The engine is split so the parts with no user interface can be tested without
-one:
-
-```
-mp_core      the XML loader, the validator, the temperament solver
-mp_sampler   the voice engine and the streaming backend
-mp_control   key flow, couplers, the switch network, pistons, the player's
-             combinations and stepper, crescendo, wind
-mp_archive   organ packages: RAR and GrandOrgue .orgue, read without unpacking
-mp_dsp       enclosure filters and tremulant modulation
-mp_audio     the audio processor, sample storage, routing
-mp_ui        the console, the panels, MIDI learn
-```
-
-`mp_core`, `mp_sampler`, `mp_control` and `mp_archive` carry no JUCE at all, which is what
-lets the whole musical path be exercised against a synthesised tone instead of
-a 40 GB library.
-
----
+`mp_core`, `mp_sampler`, `mp_control` and `mp_archive` are plain C++20 and
+pugixml, so the musical path is tested against synthesised tones.
 
 ## Credits
 
-Masterpiece owes a real debt to four open-source projects. Their authors
-worked out, and generously published, much of what anyone building a player
-like this has to understand, and their work was a constant reference:
-
-- **[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue)** — for showing
-  what a mature pipe organ player has to get right, above all a release that
-  does not click
-- **[OdfEdit](https://github.com/GrandOrgue/OdfEdit)** — for the clearest
-  public explanation of the organ-definition format: which objects exist, how
-  they connect, and where a conversion has to give way
-- **[rusty-pipes](https://github.com/dividebysandwich/rusty-pipes)** — for its
-  generous sharing of hard-won knowledge about samples, loops and file formats
-- **[HISE](https://github.com/christophhart/HISE)** — for the idea of streaming
-  samples from disk through small per-voice buffers refilled in the background
-
-Sample libraries and MIDI sequences are credited in
-**[ATTRIBUTION.md](ATTRIBUTION.md)**.
-
----
+Written with four projects as references:
+[GrandOrgue](https://github.com/GrandOrgue/GrandOrgue) (voice engine, release
+crossfades), [OdfEdit](https://github.com/GrandOrgue/OdfEdit) (the definition
+format), [rusty-pipes](https://github.com/dividebysandwich/rusty-pipes) (samples,
+loops, file formats) and [HISE](https://github.com/christophhart/HISE)
+(streaming through per-voice buffers). Sample sets and MIDI sequences:
+[ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Licence
 
-Hauptwerk is a trademark of its owner. Masterpiece is an independent project.
-
 GPL-3.0-only, with an additional permission for combining it with JUCE and
-UnRAR under their own licences. See [`LICENCE`](LICENCE) and
-[`COPYING`](COPYING). To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+UnRAR under their own licences: [`LICENCE`](LICENCE), [`COPYING`](COPYING).
+Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-The Windows build includes ASIO support. The Steinberg ASIO SDK is offered
-under either the Steinberg ASIO License or the GPL version 3; Masterpiece uses
-it under the GPL arm, which is what makes it distributable here at all. The
-headers ship with JUCE, in `modules/juce_audio_devices/native/asio/`. ASIO is a
-trademark and software of Steinberg Media Technologies GmbH.
+The Windows build includes ASIO support, used under the GPL option of the
+Steinberg ASIO SDK. ASIO is a trademark of Steinberg Media Technologies GmbH.
+Hauptwerk is a trademark of its owner. Masterpiece is an independent project.
