@@ -531,14 +531,20 @@ void ContinuousControlBank::propagate(Id pinned,
           continue;
         }
       }
-      // A linkage carries a change, as in Hauptwerk: it fires once at load,
-      // when its condition comes on, and when its source moves, and otherwise
-      // leaves the destination where the player put it. Hill feeds its swell
-      // shoe from three drawn twins and from whichever user pedal the
+      // A linkage into a control the player moves carries a change: it fires
+      // once at load, when its condition comes on, and when its source moves,
+      // and otherwise leaves the control where the player put it. Hill feeds
+      // its swell shoe from three drawn twins and from whichever user pedal the
       // expression matrix selects; reasserting every unmoved feeder on every
       // block let the last one written win, and the swell would not close.
-      if (seen == sit->second) continue;
-      seen = sit->second;
+      //
+      // Any other control has no position of its own and is recomputed every
+      // pass. Azzio feeds its tremulant crossfade from constants and from a
+      // delay ramp at once, and relies on the constants holding it at rest.
+      if (dit->second.imageSetInstanceId != 0 || dit->second.clickable) {
+        if (seen == sit->second) continue;
+        seen = sit->second;
+      }
       if (l.destControlId == pinned) continue; // the player's own move stands
 
       const double scaled = l.apply(sit->second);

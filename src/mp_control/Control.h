@@ -194,9 +194,10 @@ public:
   // reads 1.0 when it is open, like every other shoe.
   double normalised(Id controlId) const;
 
-  // Carry every control that moved along its linkages. Called after
-  // setValue()s, once per control block — never per sample. A linkage whose
-  // source has not moved since it last fired leaves its destination alone.
+  // Carry controls along their linkages. Called after setValue()s, once per
+  // control block — never per sample. A linkage whose source has not moved
+  // since it last fired leaves a drawn or clickable destination alone; any
+  // other is recomputed.
   //
   // `pinned` is the control the player just moved, and nothing may overwrite
   // it. Consoles wire a shoe and its internal twin to follow EACH OTHER, so
