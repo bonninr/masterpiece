@@ -138,6 +138,9 @@ void StopsLoadPanel::build() {
     h.label->setText(text, juce::dontSendNotification);
     h.label->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     h.label->setColour(juce::Label::textColourId, juce::Colours::orange);
+    h.label->setTooltip("Click to select or clear every stop in this division");
+    h.label->setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    h.label->addMouseListener(this, false);
     list_.addAndMakeVisible(*h.label);
     headings_.push_back(std::move(h));
   };
@@ -171,12 +174,11 @@ void StopsLoadPanel::build() {
     row.toggle->setToggleState(excluded.count(s.stopId) == 0, juce::dontSendNotification);
     row.toggle->setEnabled(s.playable);
     if (!s.playable) row.toggle->setTooltip("This stop's ranks ship no pipes in this sample set");
-    row.toggle->onClick = [this] {
-      std::set<Id> out;
-      for (const auto& r : rows_)
-        if (!r.toggle->getToggleState()) out.insert(r.stopId);
-      proc_.setExcludedStops(std::move(out));
-      refreshFigures();
+    row.toggle->addMouseListener(this, false);
+    row.toggle->onClick = [this, clicked = row.toggle.get()] {
+      // Released over the stop the drag began on: the drag decided.
+      if (dragging_) clicked->setToggleState(dragState_, juce::dontSendNotification);
+      applyStopTicks();
     };
     row.size = std::make_unique<juce::Label>();
     row.size->setJustificationType(juce::Justification::centredRight);
@@ -299,6 +301,55 @@ std::set<std::string> StopsLoadPanel::perspectivesOut() const {
   for (const auto& p : perspectives_)
     if (!p.toggle->getToggleState()) out.insert(p.name);
   return out;
+}
+
+void StopsLoadPanel::applyStopTicks() {
+  std::set<Id> out;
+  for (const auto& r : rows_)
+    if (!r.toggle->getToggleState()) out.insert(r.stopId);
+  proc_.setExcludedStops(std::move(out));
+  refreshFigures();
+}
+
+void StopsLoadPanel::mouseDown(const juce::MouseEvent& e) {
+  dragging_ = false;
+  for (const auto& r : rows_)
+    if (e.eventComponent == r.toggle.get()) dragState_ = !r.toggle->getToggleState();
+}
+
+void StopsLoadPanel::mouseDrag(const juce::MouseEvent& e) {
+  juce::ToggleButton* source = nullptr;
+  for (auto& r : rows_)
+    if (e.eventComponent == r.toggle.get()) source = r.toggle.get();
+  if (source == nullptr) return;
+  // A press that has moved a few pixels is a drag; the stop it began on takes
+  // the new state with the rest.
+  if (!dragging_) {
+    if (e.getDistanceFromDragStart() < 4) return;
+    dragging_ = true;
+    source->setToggleState(dragState_, juce::dontSendNotification);
+  }
+  const auto at = e.getEventRelativeTo(&list_).getPosition();
+  for (auto& r : rows_)
+    if (r.toggle->isEnabled() && r.toggle->isVisible() && r.toggle->getBounds().contains(at))
+      r.toggle->setToggleState(dragState_, juce::dontSendNotification);
+  applyStopTicks();
+}
+
+void StopsLoadPanel::mouseUp(const juce::MouseEvent& e) {
+  for (size_t h = 0; h < headings_.size(); ++h) {
+    if (e.eventComponent != headings_[h].label.get()) continue;
+    const size_t from = static_cast<size_t>(headings_[h].beforeRow);
+    const size_t to = h + 1 < headings_.size() ? static_cast<size_t>(headings_[h + 1].beforeRow) : rows_.size();
+    // Any stop of the division in: all out. None in: all in.
+    bool anyIn = false;
+    for (size_t i = from; i < to && i < rows_.size(); ++i)
+      if (rows_[i].toggle->isEnabled() && rows_[i].toggle->getToggleState()) anyIn = true;
+    for (size_t i = from; i < to && i < rows_.size(); ++i)
+      if (rows_[i].toggle->isEnabled()) rows_[i].toggle->setToggleState(!anyIn, juce::dontSendNotification);
+    applyStopTicks();
+    return;
+  }
 }
 
 void StopsLoadPanel::choose(std::set<Id> excluded) {
