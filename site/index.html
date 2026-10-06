@@ -150,7 +150,7 @@
 
   <section id="memory">
     <h3>Memory</h3>
-    <p class="lead">Samples are held at 24 or 16 bits, optionally in mono. Release tails stream from disk. Stops, perspectives and ranks can be left out of a load.</p>
+    <p class="lead">Samples are held at 24 or 16 bits, optionally folded to mono, with release tails streamed from disk. Stops, perspectives and individual ranks can be excluded from a load.</p>
     <p>Friesach, 44 stops, 17&nbsp;GB: 21.6&nbsp;GB as 32-bit float, 16.2&nbsp;GB at 24-bit, 4.65&nbsp;GB at 16-bit streamed, 2.33&nbsp;GB in mono. Opens in 77&nbsp;s at full size, 25.9&nbsp;s streamed, 18.9&nbsp;s from the sample cache.</p>
   </section>
 
@@ -166,7 +166,7 @@
       <div class="shot-img"><img src="screenshots/ui-console.jpg" alt="The console being played"></div>
       <div>
         <h4>Wiring</h4>
-        <p>Couplers, octave couplers, reversibles, crescendo and alternate ranks run through the set's own switch network.</p>
+        <p>Couplers, octave couplers, reversibles, crescendo and alternate ranks are resolved through each set's own switch network.</p>
       </div>
     </div>
 
@@ -174,7 +174,7 @@
       <div class="shot-img"><img src="screenshots/ui-midi.jpg" alt="MIDI settings: keyboards, channels and learning"></div>
       <div>
         <h4>Your keyboards</h4>
-        <p>One MIDI channel per manual, with key range, transposition, velocity window, short octaves and debounce. MIDI learn for drawstops, pistons and shoes. One setup serves every organ.</p>
+        <p>Manuals are mapped by MIDI channel, with per-manual key range, transposition, velocity window, short octaves and debounce. Drawstops, pistons and shoes are assigned by MIDI learn, and a console mapping can serve as the default for every organ.</p>
       </div>
     </div>
 
@@ -182,7 +182,7 @@
       <div class="shot-img"><img src="screenshots/ui-favourites.jpg" alt="Favourites and combination sets"></div>
       <div>
         <h4>Combinations</h4>
-        <p>Up to 100 generals, divisionals per manual and a 999-frame stepper on every organ. Named combination sets. Favourites on thumb pistons.</p>
+        <p>Every organ gains up to 100 generals, divisionals per manual and a 999-frame stepper, with named combination sets and organ favourites assignable to thumb pistons.</p>
       </div>
     </div>
 
@@ -190,7 +190,7 @@
       <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
       <div>
         <h4>Voicing</h4>
-        <p>Level and tuning per rank and per pipe. A and B voicings for comparison.</p>
+        <p>Level and tuning adjustments per rank and per pipe, with two voicing sets for A/B comparison.</p>
       </div>
     </div>
 
@@ -198,7 +198,7 @@
       <div class="shot-img"><img src="screenshots/ui-engine.jpg" alt="Engine settings: DSP switches, preload and streaming"></div>
       <div>
         <h4>Loading</h4>
-        <p>Resident format, mono, sample rate, release streaming, sample cache and memory limit, per organ or for all.</p>
+        <p>Resident format, mono folding, sample rate, release streaming, sample cache and memory limit, saved per organ or as defaults.</p>
       </div>
     </div>
 
@@ -206,58 +206,44 @@
       <div class="shot-img"><img src="screenshots/ui-mixer.jpg" alt="Mixer: routing ranks to output pairs"></div>
       <div>
         <h4>Routing</h4>
-        <p>Each rank to one of up to eight output pairs.</p>
+        <p>Ranks are routed per organ to up to eight stereo output pairs.</p>
       </div>
     </div>
   </section>
 
   <section id="features">
     <h3>Engine</h3>
-    <div class="features">
-      <div class="feature">
-        <h4>Releases</h4>
-        <p>Chosen by how long the key was held, crossfaded from the sustain.</p>
-      </div>
-      <div class="feature">
-        <h4>Wind</h4>
-        <p>Chests, bellows and valves solved as one system. Pressure drops under load; pitch and level follow.</p>
-      </div>
-      <div class="feature">
-        <h4>Swell and tremulant</h4>
-        <p>Filtering per swell box. Tremulant per chest.</p>
-      </div>
-      <div class="feature">
-        <h4>Temperaments</h4>
-        <p>The organ's own, equal, seven historical, or any Scala file. Pitch in Hz, transposer ±12.</p>
-      </div>
-      <div class="feature">
-        <h4>Polyphony</h4>
-        <p>1536 voices. Experimental AVX2, SSE2 and NEON paths, three to five times faster.</p>
-      </div>
-      <div class="feature">
-        <h4>Practice</h4>
-        <p>MIDI and audio recording. Metronome.</p>
-      </div>
-      <div class="feature">
-        <h4>GrandOrgue</h4>
-        <p><code>.organ</code> files load with their panels and mix levels.</p>
-      </div>
-      <div class="feature">
-        <h4>Hardware</h4>
-        <p>MIDI out to drawstop lamps. Jamb displays over SysEx. Virtual MIDI input on macOS and Linux.</p>
-      </div>
-      <div class="feature">
-        <h4>Plugins</h4>
-        <p>VST3, LV2, and AU on macOS.</p>
-      </div>
-    </div>
+    <table class="credits">
+      <tr><td class="who">Release selection</td><td>By key hold time, crossfaded from the sustain loop</td></tr>
+      <tr><td class="who">Wind model</td><td>Chests, bellows and valves solved as a coupled system; pitch and level track pressure</td></tr>
+      <tr><td class="who">Enclosures</td><td>Per-box level and low-pass filtering</td></tr>
+      <tr><td class="who">Tremulants</td><td>Amplitude and pitch modulation per chest and per pipe</td></tr>
+      <tr><td class="who">Interpolation</td><td>Hermite (Catmull-Rom)</td></tr>
+      <tr><td class="who">Polyphony</td><td>1536 voices; release-first voice stealing</td></tr>
+      <tr><td class="who">SIMD</td><td>AVX2, SSE2, NEON (experimental, 3–5× at 512 voices)</td></tr>
+      <tr><td class="who">Temperaments</td><td>Organ's own, equal, Werckmeister III, Kirnberger III, Vallotti, Young II, ¼-comma meantone, Pythagorean, Silbermann; Scala <code>.scl</code></td></tr>
+      <tr><td class="who">Sample formats</td><td>WAV, WavPack; 16/24-bit resident, mono folding, rate conversion on load</td></tr>
+      <tr><td class="who">Definitions</td><td>Hauptwerk-format XML (full and compact), GrandOrgue <code>.organ</code></td></tr>
+      <tr><td class="who">Packages</td><td>RAR 4/5 (solid, multi-volume), GrandOrgue <code>.orgue</code></td></tr>
+      <tr><td class="who">MIDI</td><td>Multiple inputs, learn, drawstop lamp output, SysEx jamb displays, virtual input (macOS, Linux)</td></tr>
+      <tr><td class="who">Recording</td><td>MIDI with stop and shoe events; audio; metronome</td></tr>
+    </table>
   </section>
 
   <section id="building">
     <h3>Source</h3>
+    <table class="credits">
+      <tr><td class="who">Language</td><td>C++20</td></tr>
+      <tr><td class="who">Framework</td><td>JUCE 9</td></tr>
+      <tr><td class="who">Build system</td><td>CMake 3.22+, Ninja; dependencies fetched at configure time</td></tr>
+      <tr><td class="who">Compilers</td><td>MSVC 2022, GCC 12+, Clang 14+</td></tr>
+      <tr><td class="who">Targets</td><td>Windows x64; macOS arm64, x86_64; Linux x86_64, arm64, armhf; Android; iOS</td></tr>
+      <tr><td class="who">Formats</td><td>Standalone, VST3, LV2, AU</td></tr>
+      <tr><td class="who">Licence</td><td>GPL-3.0-only</td></tr>
+    </table>
 <pre><code>cmake --preset dev
 cmake --build --preset dev</code></pre>
-    <p class="note">C++20 and JUCE. CMake fetches the libraries. CI builds Windows, macOS, Linux, Raspberry&nbsp;Pi, Android and iOS. Per-system packages in the <a href="https://github.com/bonninr/masterpiece#building">README</a>.</p>
+    <p class="note">Platform dependencies: <a href="https://github.com/bonninr/masterpiece#building">README</a>.</p>
   </section>
 
   <section id="credits">
