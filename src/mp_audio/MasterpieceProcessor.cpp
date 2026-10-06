@@ -2917,9 +2917,16 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
         // next load starts from the player's own setup.
         if (!pistonRouted_.exchange(true)) routingBeforePistons_ = midiMap_.keyboardBindings();
         // Whatever the keyboard was holding lets go first, or those pipes
-        // would sound on forever.
+        // would sound on forever; then the keys still down speak on the
+        // manual they now play, at once, as a coupler reaches held keys
+        // (#190). Same key ids, so their note-offs still find them.
+        rerouteScratch_.clear();
+        for (const auto& [key, held] : soundingNotes_)
+          if (held.channel == channel) rerouteScratch_.emplace_back(key, held);
         releaseChannel(channel, MidiDeviceMap::kAnyDevice);
         setKeyboardForChannel(channel, next, 0, true);
+        for (const auto& [key, held] : rerouteScratch_)
+          startNoteOnKeyboard(next, key, held.midiNote, held.velocity);
       }
     }
     i = end;
@@ -3056,6 +3063,7 @@ void MasterpieceProcessor::resetPlayerCombinations() {
   }
   playerScratch_.clear();
   playerScratch_.reserve(elements.size() + 16);
+  rerouteScratch_.reserve(128);
   player_.reset(std::move(elements), std::move(divisions));
 }
 

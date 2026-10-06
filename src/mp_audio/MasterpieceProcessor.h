@@ -1613,6 +1613,9 @@ private:
     int device = 0;
   };
   std::unordered_map<int, HeldNote> soundingNotes_;
+  // The keys held on a channel whose manual a piston is switching, to strike
+  // again on the new one. Reserved at prepare, so the switch does not allocate.
+  std::vector<std::pair<int, HeldNote>> rerouteScratch_;
   // The registration the sounding notes were started with, owned by the audio
   // thread, so a change can be told from what is already playing.
   std::unordered_set<Id> appliedStops_;
