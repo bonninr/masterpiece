@@ -245,6 +245,8 @@ void ConsoleView::rebuild() {
   // layer keep their file order, which is how overlapping artwork is authored.
   std::stable_sort(items_.begin(), items_.end(),
                    [](const Item& a, const Item& b) { return a.layer < b.layer; });
+  for (auto& item : items_)
+    if (item.switchId != 0) item.loadedIndex = frameIndexFor(item);
 
   // Keys that came from drawn switches go in front of the assembled ones, and
   // the sharps in front of those, so a click lands on the narrowest thing
@@ -751,7 +753,17 @@ void ConsoleView::paint(juce::Graphics& g) {
   }
 
   int drawn = 0, missing = 0;
+  // Two passes. GrandOrgue repaints a control only when its state changes,
+  // over whatever was painted last, so a control that has moved since the
+  // organ came up shows above the artwork laid over it: Aubigny covers its
+  // drawstops and six full-page switches with one console picture, and a stop
+  // drawn, or a page called up, appears on top of it (#155). Controls still as
+  // they were at load keep their place in the order.
+  for (int pass = 0; pass < 2; ++pass)
   for (const auto& item : items_) {
+    const bool moved = item.switchId != 0 && item.loadedIndex >= 0 &&
+                       frameIndexFor(item) != item.loadedIndex;
+    if (moved != (pass == 1)) continue;
     const juce::Image* img = imageFor(item.imageSetId, frameIndexFor(item));
     if (img == nullptr) {
       ++missing;
