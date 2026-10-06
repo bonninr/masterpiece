@@ -283,9 +283,14 @@ SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
   // frequency -- a set that says "the pitch is in the file" is not talking
   // about this field at all.
   auto useExactHz = [&]() -> SamplePitchResult {
+    // A pipe of that very pitch declares it honestly: the GrandOrgue demo's
+    // A4 Bourdon is a G recording declared at 440 Hz and retuned up a tone,
+    // and taking that for a placeholder played it as G (#154).
+    const bool pipeAtIt = in.pipeNominalHz > 0.0 && in.exactHz > 0.0 &&
+                          std::abs(std::log2(in.exactHz / in.pipeNominalHz)) < 1.0 / 12.0;
     const bool placeholder =
         std::abs(in.exactHz - 100.0) < 1e-9 ||
-        (organBasePitchHz > 0.0 &&
+        (organBasePitchHz > 0.0 && !pipeAtIt &&
          std::abs(in.exactHz - organBasePitchHz) < 1e-9);
     if (placeholder) return {0.0, PitchRoute::NoisePlaceholder};
     return {in.exactHz, PitchRoute::ExactHz};
