@@ -11184,6 +11184,40 @@ public:
 };
 static ManualButtonTest g_manualButtons;
 
+// Universal Master Volume (F0 7F dev 04 01 lsb msb F7), as a SubZero
+// ControlPad's volume knob sends it (#138): it sets the master fader.
+class MasterVolumeSysExTest final : public mp::test::Test {
+public:
+  MasterVolumeSysExTest() : Test("functional.midi.master-volume", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    auto gain = [&] { return proc.apvts().getRawParameterValue("masterGain")->load(); };
+    auto send = [&](uint8_t lsb, uint8_t msb) {
+      const uint8_t m[] = {0xF0, 0x7F, 0x7F, 0x04, 0x01, lsb, msb, 0xF7};
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage(m, static_cast<int>(sizeof m)), 0);
+      juce::AudioBuffer<float> buf(2, 256);
+      proc.processBlock(buf, midi);
+    };
+    send(0x7F, 0x7F);
+    MP_CHECK(std::abs(gain() - 1.0f) < 0.01f, "full scale is 0 dB");
+    send(0x00, 0x60);
+    MP_CHECK(std::abs(juce::Decibels::gainToDecibels(gain()) - (-9.8f)) < 0.2f,
+             "0x60 of 0x7F is about -9.8 dB");
+    send(0x00, 0x00);
+    MP_CHECK(gain() == 0.0f, "zero is silence");
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static MasterVolumeSysExTest g_masterVolumeSysEx;
+
 // The player's pistons -- stepper, generals, setter -- are the same on every
 // organ, and a console can have several + and - buttons. An organ's own stop
 // mappings stay with it.

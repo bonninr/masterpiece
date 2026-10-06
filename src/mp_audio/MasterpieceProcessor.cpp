@@ -591,6 +591,25 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       source.number = msg.getProgramChangeNumber();
       value = 127;
     } else if (msg.isSysEx()) {
+      // Universal Master Volume, F0 7F device 04 01 lsb msb F7: the volume
+      // knob of a control surface such as the SubZero ControlPad (#138). Sets
+      // the master fader: full scale is 0 dB, zero is silence, and the steps
+      // between are even in dB over the fader's lower 40.
+      const uint8_t* d = msg.getSysExData();
+      if (msg.getSysExDataSize() == 6 && d[0] == 0x7F && d[2] == 0x04 && d[3] == 0x01) {
+        const int v = (d[5] & 0x7F) << 7 | (d[4] & 0x7F);
+        const float db = -40.0f * (1.0f - static_cast<float>(v) / 16383.0f);
+        const float gain = v == 0 ? 0.0f : juce::Decibels::decibelsToGain(db);
+        if (auto* p = apvts_.getParameter("masterGain")) {
+          p->setValueNotifyingHost(p->convertTo0to1(gain));
+          markMasterGainDirty();
+        }
+        if (logMidi_.load(std::memory_order_acquire))
+          juce::Logger::writeToLog("midi: in  dev=" + juce::String(deviceId) + " master volume " +
+                                   juce::String(v) + " -> " +
+                                   (v == 0 ? juce::String("silence") : juce::String(db, 1) + " dB"));
+        continue;
+      }
       // A press each time it arrives: a console piston sent as system
       // exclusive has no release (#138).
       source.kind = MidiSourceKind::SysEx;
