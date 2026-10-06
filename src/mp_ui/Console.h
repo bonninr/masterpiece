@@ -91,6 +91,9 @@ private:
     // When set, the image repeats to fill `bounds` rather than being drawn
     // once at its own size. Backdrops are authored this way.
     bool tiled = false;
+    // The frame shown when the organ came up. A control showing another one
+    // is painted over everything else (see paint()); -1 before it is known.
+    int loadedIndex = -1;
   };
 
   // One drawn key of a drawn manual. Assembled from the KeyImageSet's
