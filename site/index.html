@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Masterpiece — pipe organ sample player</title>
-<meta name="description" content="Masterpiece plays Hauptwerk-format and GrandOrgue pipe organ sample sets from each organ's own console, on Windows, macOS, Linux, Raspberry Pi, Android and iOS. Open source, GPLv3.">
+<title>Masterpiece: play sampled pipe organs on any computer</title>
+<meta name="description" content="Masterpiece is a free, open-source player for Hauptwerk-format and GrandOrgue pipe organ sample sets. It draws each organ's own console and runs on Windows, macOS, Linux, Raspberry Pi, Android and iPad.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,22 +12,25 @@
 <header>
   <div class="wrap masthead">
     <h1>Masterpiece</h1>
-    <p class="tagline">Pipe organ sample player for Hauptwerk-format and GrandOrgue
-      sample sets. It draws each organ's own console and plays it from the mouse,
-      a MIDI keyboard or a full console.</p>
+    <p class="tagline">Play your sampled pipe organs on any computer you own.
+      Masterpiece opens Hauptwerk-format and GrandOrgue sample sets, draws each
+      organ's own console, and answers your MIDI keyboards as the builder wired
+      the instrument.</p>
+    <a class="cta" href="https://github.com/bonninr/masterpiece/releases/latest">Download Masterpiece</a>
+    <span class="cta-sub">Free and open source · Windows, macOS, Linux, Raspberry&nbsp;Pi, Android and iPad</span>
     <div class="badges">
       <span class="badge">Standalone · VST3 · LV2 · AU</span>
-      <span class="badge">Windows · macOS · Linux · Raspberry&nbsp;Pi · Android · iOS</span>
       <span class="badge">C++20 · JUCE&nbsp;9</span>
       <span class="badge">GPLv3</span>
     </div>
     <p class="kofi"><a href="https://ko-fi.com/openpipesorg"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="36"></a></p>
     <nav class="topnav">
       <a href="https://github.com/bonninr/masterpiece">Source</a>
-      <a href="https://github.com/bonninr/masterpiece/releases/latest">Download</a>
       <a href="https://github.com/bonninr/masterpiece/releases">Releases</a>
       <a href="#hear">Recital</a>
       <a href="#hear-2">New instruments</a>
+      <a href="#consoles">Consoles</a>
+      <a href="#features">Features</a>
       <a href="attribution.html">Attribution</a>
     </nav>
   </div>
@@ -36,52 +39,44 @@
 <div class="wrap">
 
   <section id="hear">
-    <h2>Demonstration recording</h2>
-    <h3>Thirty-three works on nine organs, 17 minutes</h3>
-    <p class="lead">Recorded from the application's own audio output. The
-      consoles move with the MIDI performance, drawstops and keys included.</p>
+    <h2>Hear it first</h2>
+    <h3>Thirty-three works on nine organs, in seventeen minutes</h3>
+    <p class="lead">Every note in this recital comes straight from Masterpiece's
+      audio output. Watch the drawstops and keys: the console moves with the
+      performance because each MIDI note travels the same path a real console
+      would send it down.</p>
     <video class="recital" controls preload="metadata"
            controlsList="nodownload" disablepictureinpicture
            poster="screenshots/recital-poster.jpg"
            src="recital.mp4">
       <p>Your browser cannot play this video.</p>
     </video>
-    <p class="note">Programme, sequencers and sample set producers:
-      <a href="attribution.html">attribution page</a>.</p>
+    <p class="note">The programme, the sequencers and the producers of each
+      sample set are listed on the <a href="attribution.html">attribution page</a>.</p>
   </section>
 
   <section id="hear-2">
-    <h2>New tested instruments</h2>
-    <h3>Thirty works on fifteen organs, 12 minutes</h3>
-    <p class="lead">The sample sets tested for release 0.5, two works each,
-      filmed from the running console with the application's own audio.</p>
+    <h2>Fifteen more organs</h2>
+    <h3>Thirty works in twelve minutes, two on each instrument</h3>
+    <p class="lead">These are the sample sets tested for release 0.5, each
+      played in repertoire chosen for its character and filmed from the running
+      console.</p>
     <video class="recital" controls preload="metadata"
            controlsList="nodownload" disablepictureinpicture
            poster="screenshots/recital-2-poster.jpg"
            src="recital-2.mp4">
       <p>Your browser cannot play this video.</p>
     </video>
-    <p class="note">Programme, sequencers and sample set producers:
-      <a href="attribution-2.html">attribution page</a>.</p>
-  </section>
-
-  <section id="what">
-    <h2>What it is</h2>
-    <h3>A player for sampled pipe organs</h3>
-    <p class="lead">A sample set is a recording of every pipe of an organ plus a
-      definition of the instrument: its console, stops, couplers, pistons, wind
-      and swell boxes. Masterpiece reads that definition, draws the console, and
-      plays the pipes through the organ's own wiring.</p>
-    <p>It opens Hauptwerk-format definitions and GrandOrgue <code>.organ</code>
-      files, and plays sets straight from their RAR or <code>.orgue</code>
-      packages. It runs as a standalone application, as VST3 and LV2 plugins, and
-      as an Audio Unit on macOS, on Windows, macOS, Linux, Raspberry&nbsp;Pi,
-      Android and iOS.</p>
+    <p class="note">Programme and credits for this recording are on
+      <a href="attribution-2.html">its own attribution page</a>.</p>
   </section>
 
   <section id="consoles">
-    <h2>Consoles</h2>
-    <h3>Nineteen of the thirty-seven tested sample sets</h3>
+    <h2>Every organ keeps its own console</h2>
+    <h3>Thirty-seven sample sets tested, from a nine-register Flentrop to Nancy's four manuals</h3>
+    <p class="lead">Masterpiece builds the console from the artwork the producer
+      shipped: the drawstops, the keyboards, the shoes and the jamb pages, each in
+      its place. You register the organ the way its builder laid it out.</p>
     <div class="grid">
       <figure>
         <img src="screenshots/Lipiny.jpg" alt="Lipiny console">
@@ -160,207 +155,199 @@
         <figcaption>Budapest, Church of the Holy Spirit<br><span class="credit">demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Holy_Spirit.php">Augustine’s Virtual Organs</a></span></figcaption>
       </figure>
     </div>
-    <p class="note" style="margin-top:26px">Each organ above is a separately
-      published sample set: five by <a href="https://piotrgrabowski.pl/">Piotr
-      Grabowski</a>, fourteen by <a href="https://hauptwerk-augustine.info/">Augustine’s
-      Virtual Organs</a>. Credits on the <a href="attribution.html">attribution page</a>.</p>
-    <p class="note">Sets that ship several console sizes offer a choice of size.
-      Sets whose keyboards are part of a photographed backdrop get an on-screen
-      keyboard.</p>
+    <p class="note" style="margin-top:26px">Each of these is a separately
+      published sample set, five by <a href="https://piotrgrabowski.pl/">Piotr
+      Grabowski</a> and fourteen by <a href="https://hauptwerk-augustine.info/">Augustine’s
+      Virtual Organs</a>. Full credits are on the
+      <a href="attribution.html">attribution page</a>.</p>
+  </section>
+
+  <section id="memory">
+    <h2>A 17&nbsp;GB organ in 2.3&nbsp;GB of memory</h2>
+    <h3>Large sample sets on ordinary hardware</h3>
+    <p class="lead">A cathedral organ can ask for more memory than your computer
+      has. Masterpiece keeps each sample at the resolution it was recorded in,
+      reads the long release tails from disk while they play, and lets you leave
+      out the stops and microphone perspectives you never use.</p>
+    <p>Measured on Friesach, a 44-stop set of 17&nbsp;GB, the same organ needs
+      21.6&nbsp;GB as 32-bit float, 16.2&nbsp;GB at 24-bit, 4.65&nbsp;GB at 16-bit
+      with its releases streamed, and 2.33&nbsp;GB in mono. Opening it takes 77
+      seconds at full size, 25.9 streamed in mono, and 18.9 once its sample cache exists.
+      You decide how much of each release stays in memory, from the first second
+      up to three quarters of it, and the status line tells you if your disk ever
+      falls behind.</p>
+  </section>
+
+  <section id="packages">
+    <h2>Play a sample set straight from its download</h2>
+    <h3>RAR and .orgue packages open in place</h3>
+    <p class="lead">Point Masterpiece at the RAR archives a producer sent you, or
+      at a GrandOrgue <code>.orgue</code> package, and it plays the organ from
+      there. Solid and multi-volume archives, RAR 4 and RAR 5, all open directly,
+      and after the first load the sample cache makes the next one as fast as an
+      installed set.</p>
   </section>
 
   <section id="using">
-    <h2>Screens</h2>
-    <h3>Loading, playing and setting up</h3>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-loading.jpg" alt="Loading an organ, with progress and a cancel button"></div>
-      <div>
-        <h4>Loading</h4>
-        <p>Loads run on their own thread with live progress and a time estimate
-          from the measured rate. Cancel discards the partial organ and keeps the
-          console. A licensed set asks for confirmation once, before its samples
-          load.</p>
-      </div>
-    </div>
+    <h2>Everything a console player needs</h2>
+    <h3>Your keyboards, your registrations, your tuning</h3>
 
     <div class="shot">
       <div class="shot-img"><img src="screenshots/ui-console.jpg" alt="The console being played"></div>
       <div>
-        <h4>Playing</h4>
-        <p>Drawstops, pistons, couplers and shoes work as the builder wired them.
-          A mouse click on a key follows the same path as a MIDI note. The meter
-          reads the final output, after the room and the master level.</p>
-      </div>
-    </div>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-stoplist.jpg" alt="The stop list, grouped by division"></div>
-      <div>
-        <h4>Stop list</h4>
-        <p>Every stop grouped by division, for sets spread across many jambs or
-          shipped as text only.</p>
-      </div>
-    </div>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-mixer.jpg" alt="Mixer: routing ranks to output pairs"></div>
-      <div>
-        <h4>Routing</h4>
-        <p>Up to eight output pairs. Ranks are assigned per organ; unassigned
-          ranks play through the first pair, and all pairs sum in stereo.</p>
-      </div>
-    </div>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
-      <div>
-        <h4>Voicing</h4>
-        <p>Level and tuning per rank and per pipe; the two add. A and B hold two
-          complete voicings for comparison. Applied once at note start, so the
-          cost while a note sounds is zero.</p>
+        <h4>The organ as its builder wired it</h4>
+        <p>Couplers, sub- and super-octaves, reversible pistons, crescendo and
+          alternate ranks all run through the set's own switch network. A key you
+          click with the mouse takes the same route as a note from your MIDI
+          keyboard.</p>
       </div>
     </div>
 
     <div class="shot">
       <div class="shot-img"><img src="screenshots/ui-midi.jpg" alt="MIDI settings: keyboards, channels and learning"></div>
       <div>
-        <h4>Your console</h4>
-        <p>Each MIDI channel plays a manual. Per manual: key range, transpose,
-          velocity window, short octaves, debounce, split keyboards. Learn for
-          drawstops, pistons, shoes, pages and the stepper. One console setup can
-          be the default for every organ.</p>
+        <h4>Set up your console once</h4>
+        <p>Each MIDI channel plays a manual, with its own key range, transposition,
+          velocity window, short octaves and contact debounce. Teach Masterpiece a
+          drawstop, piston or shoe by moving the real one, then make the whole
+          setup the starting point for every organ you load.</p>
       </div>
     </div>
 
     <div class="shot">
       <div class="shot-img"><img src="screenshots/ui-favourites.jpg" alt="Favourites and combination sets"></div>
       <div>
-        <h4>Favourites and combination sets</h4>
-        <p>Numbered favourites for thumb pistons to open organs. Named
-          combination sets per organ, one per service or recital.</p>
+        <h4>Registrations for every service</h4>
+        <p>Every organ gets up to a hundred generals, divisionals for each manual
+          and a 999-frame stepper of its own, alongside the pistons it already
+          has. Keep a combination set for Sunday and another for a recital, and
+          open your favourite organs from thumb pistons.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
+      <div>
+        <h4>Voice it to your room</h4>
+        <p>Adjust level and tuning for a whole rank or a single pipe; the two
+          corrections add together. Two complete voicings, A and B, let you hear
+          a change against the original with one click.</p>
       </div>
     </div>
 
     <div class="shot">
       <div class="shot-img"><img src="screenshots/ui-engine.jpg" alt="Engine settings: DSP switches, preload and streaming"></div>
       <div>
-        <h4>Loading options</h4>
-        <p>Resident format, mono folding, sample rate, release streaming with
-          the share of each release kept in memory, sample cache, memory limit,
-          and which stops, perspectives and ranks to load. Changes apply at once;
-          Save keeps them for this organ or for every organ.</p>
+        <h4>Choose what each organ costs</h4>
+        <p>Resident format, mono folding, sample rate, release streaming, the
+          sample cache and a memory limit sit on one page, together with the
+          stops, perspectives and ranks to load. Changes take effect at once, and
+          you can save them for one organ or for all of them.</p>
+      </div>
+    </div>
+
+    <div class="shot">
+      <div class="shot-img"><img src="screenshots/ui-mixer.jpg" alt="Mixer: routing ranks to output pairs"></div>
+      <div>
+        <h4>Route ranks to your speakers</h4>
+        <p>Send each rank to one of up to eight output pairs, so the Pedal can
+          come from its own cabinet. Every rank starts on the first pair, and the
+          pairs sum together when you listen in stereo.</p>
       </div>
     </div>
   </section>
 
-  <section id="does">
-    <h2>Features</h2>
-    <h3>What the engine does</h3>
+  <section id="features">
+    <h2>Under the console</h2>
+    <h3>The details organists ask about</h3>
     <div class="features">
       <div class="feature">
-        <h4>Sample sets</h4>
-        <p>Hauptwerk-format definitions, full and compact. GrandOrgue
-          <code>.organ</code> files, converted on load with their panels. RAR 4
-          and 5, solid and multi-volume, and <code>.orgue</code> packages read in
-          place. WAV and WavPack samples.</p>
+        <h4>Releases that fit the note</h4>
+        <p>Masterpiece measures how long each key was held and plays the release
+          recorded for that length, crossfaded from the sustain.</p>
       </div>
       <div class="feature">
-        <h4>Sound</h4>
-        <p>Attack, crossfaded sustain loop, and a release chosen by how long the
-          key was held. Hermite interpolation. 1536 voices; releases are stolen
-          first.</p>
+        <h4>Wind that responds</h4>
+        <p>Chests, bellows and valves are solved as one system, so a full chord
+          on a heavy registration lowers the pressure and the pipes follow it in
+          pitch and level.</p>
       </div>
       <div class="feature">
-        <h4>Wind</h4>
-        <p>Chests, bellows and valves solved as one system. A full registration
-          lowers the pressure, and pitch and level follow it.</p>
+        <h4>Swell boxes and tremulants</h4>
+        <p>Each enclosure filters its own pipes as the shades move, and each
+          tremulant modulates the pipes on its chest.</p>
       </div>
       <div class="feature">
-        <h4>Expression</h4>
-        <p>Enclosures filter per box as the shades move. Tremulants modulate
-          level and pitch per pipe.</p>
+        <h4>Historical temperaments</h4>
+        <p>Play in the organ's own temperament, in equal temperament, in one of
+          seven historical ones from Werckmeister&nbsp;III to quarter-comma
+          meantone, or from any Scala file, at the pitch you set.</p>
       </div>
       <div class="feature">
-        <h4>Memory</h4>
-        <p>24-bit, bit-identical to the files, or 16-bit; optional mono. A 44-stop,
-          17&nbsp;GB set: 21.6&nbsp;GB as 32-bit float, 16.2&nbsp;GB at 24-bit,
-          4.65&nbsp;GB at 16-bit with releases streamed, 2.33&nbsp;GB in mono.</p>
+        <h4>1,536 voices, and a faster path</h4>
+        <p>The engine holds 1536 voices. An experimental vector path, using AVX2,
+          SSE2 or NEON, renders 512 of them three to five times faster.</p>
       </div>
       <div class="feature">
-        <h4>Streaming</h4>
-        <p>Release tails stream from disk through per-voice ring buffers. Each
-          release keeps its first second, or 25, 50 or 75% of its length, in
-          memory. The status line reports when the disk falls behind.</p>
+        <h4>Recording and practice</h4>
+        <p>Record MIDI with every stop and shoe movement and play it back through
+          another registration, record the audio alongside, and keep time with a
+          metronome mixed into the organ's own output.</p>
       </div>
       <div class="feature">
-        <h4>Loading</h4>
-        <p>A decoded sample cache makes the second load one file read: 77&nbsp;s at
-          32-bit float, 25.9&nbsp;s streamed in mono, 18.9&nbsp;s from the cache.
-          Stops, perspectives and single ranks can be left out.</p>
+        <h4>GrandOrgue organs included</h4>
+        <p>GrandOrgue <code>.organ</code> files load with their panels, mix
+          levels and labels, converted to the same model as a Hauptwerk-format
+          set.</p>
       </div>
       <div class="feature">
-        <h4>Vector engine</h4>
-        <p>AVX2, SSE2 or NEON, chosen per processor: 3 to 5 times faster on 512
-          voices. Experimental, switched on in Organ settings.</p>
+        <h4>Your console, extended</h4>
+        <p>MIDI out lights the drawstops of a physical console, jamb displays run
+          over system exclusive, and Masterpiece can publish a MIDI input of its
+          own on macOS and Linux.</p>
       </div>
       <div class="feature">
-        <h4>Registration</h4>
-        <p>Couplers, sub- and super-octaves and unison off through the set's own
-          switch network. Up to 100 generals, divisionals per manual, general
-          cancel, crescendo, and a 999-frame stepper.</p>
-      </div>
-      <div class="feature">
-        <h4>Tuning</h4>
-        <p>The organ's temperament, equal, seven historical temperaments, or a
-          Scala file. Pitch in Hz, transposer ±12 semitones.</p>
-      </div>
-      <div class="feature">
-        <h4>MIDI</h4>
-        <p>All inputs at once. MIDI out lights a console's drawstops; jamb
-          displays run over system exclusive. A virtual MIDI input on macOS and
-          Linux.</p>
-      </div>
-      <div class="feature">
-        <h4>Recording</h4>
-        <p>MIDI with stops and shoes, replayable through another registration,
-          and audio alongside. A metronome in the organ's own audio stream.
-          Convolution reverb for dry sets.</p>
+        <h4>Plugins from the same engine</h4>
+        <p>Load the organ as a VST3 or LV2 plugin, or an Audio Unit on macOS, to
+          sequence it, render it, or record it with other instruments.</p>
       </div>
     </div>
   </section>
 
   <section id="building">
-    <h2>Building</h2>
-    <h3>CMake and Ninja</h3>
+    <h2>Build it yourself</h2>
+    <h3>Two commands with CMake and Ninja</h3>
 <pre><code>cmake --preset dev
 cmake --build --preset dev</code></pre>
-    <p class="note">C++20, CMake 3.22+, Ninja; JUCE and the other libraries are
-      fetched by CMake. CI builds Windows, macOS (Apple silicon and Intel), Linux,
-      Raspberry&nbsp;Pi, Android and iOS. Details in the
-      <a href="https://github.com/bonninr/masterpiece#building">README</a>.</p>
+    <p class="note">Masterpiece is written in C++20 with JUCE, and CMake fetches
+      every library it needs. Continuous integration builds it for Windows,
+      macOS on Apple silicon and Intel, Linux, Raspberry&nbsp;Pi, Android and iOS.
+      The <a href="https://github.com/bonninr/masterpiece#building">README</a>
+      lists the packages for each system.</p>
   </section>
 
   <section id="credits">
     <h2>Credits</h2>
-    <h3>Four projects used as references</h3>
+    <h3>Four open-source projects shaped this one</h3>
     <div class="features">
       <div class="feature">
         <h4><a href="https://github.com/GrandOrgue/GrandOrgue">GrandOrgue</a></h4>
-        <p>The voice engine's structure and the release crossfade.</p>
+        <p>Showed how a mature organ player structures its voice engine and
+          crossfades into a release.</p>
       </div>
       <div class="feature">
         <h4><a href="https://github.com/GrandOrgue/OdfEdit">OdfEdit</a></h4>
-        <p>The organ definition format: its objects and how they link.</p>
+        <p>Documents the organ definition format more clearly than anything
+          else published: its objects and how they connect.</p>
       </div>
       <div class="feature">
         <h4><a href="https://github.com/dividebysandwich/rusty-pipes">rusty-pipes</a></h4>
-        <p>Samples, loops and file formats.</p>
+        <p>Shared hard-won knowledge of samples, loops and file formats.</p>
       </div>
       <div class="feature">
         <h4><a href="https://github.com/christophhart/HISE">HISE</a></h4>
-        <p>Streaming through per-voice buffers refilled on a background
-          thread.</p>
+        <p>Inspired the streaming design, with per-voice buffers refilled on a
+          background thread.</p>
       </div>
     </div>
   </section>
@@ -369,9 +356,9 @@ cmake --build --preset dev</code></pre>
 
 <footer>
   <div class="wrap">
-    <p>Masterpiece is licensed under the GPLv3. It is an independent project.
-      Sample sets are the property of their producers. Hauptwerk is a trademark
-      of its owner.</p>
+    <p>Masterpiece is free software under the GPLv3 and an independent project.
+      Each sample set belongs to its producer. Hauptwerk is a trademark of its
+      owner.</p>
     <p><a href="https://github.com/bonninr/masterpiece">Source</a> ·
        <a href="https://github.com/bonninr/masterpiece/releases">Releases</a> ·
        <a href="attribution.html">Attribution</a> ·
