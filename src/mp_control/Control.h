@@ -6,6 +6,7 @@
 #include "../mp_core/OdfLoader.h"
 #include "../mp_core/OrganModel.h"
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
@@ -193,8 +194,9 @@ public:
   // reads 1.0 when it is open, like every other shoe.
   double normalised(Id controlId) const;
 
-  // Recompute every control fed by a linkage. Called after setValue()s, once
-  // per control block — never per sample.
+  // Carry every control that moved along its linkages. Called after
+  // setValue()s, once per control block — never per sample. A linkage whose
+  // source has not moved since it last fired leaves its destination alone.
   //
   // `pinned` is the control the player just moved, and nothing may overwrite
   // it. Consoles wire a shoe and its internal twin to follow EACH OTHER, so
@@ -225,6 +227,10 @@ public:
 private:
   const OrganModel* model_ = nullptr;
   std::unordered_map<Id, int> values_;
+  // Per single linkage, the source value it last carried, or kNotLive before
+  // the first one and while its condition is not met: it fires on a change.
+  static constexpr int kNotLive = std::numeric_limits<int>::min();
+  std::vector<int> linkSeen_;
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };

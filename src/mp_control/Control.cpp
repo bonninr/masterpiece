@@ -454,6 +454,7 @@ void ContinuousControlBank::reset(const OrganModel& model) {
   values_.reserve(model.continuousControls.size());
   for (const auto& [id, c] : model.continuousControls)
     values_[id] = clampToRange(c, c.defaultValue);
+  linkSeen_.assign(model.controlLinkages.size(), kNotLive);
   propagate();
 }
 
@@ -506,11 +507,13 @@ void ContinuousControlBank::propagate(Id pinned,
   const size_t maxPasses = std::min<size_t>(linkCount, 64);
   for (size_t pass = 0; pass < maxPasses; ++pass) {
     bool changed = false;
-    for (const auto& l : model_->controlLinkages) {
+    for (size_t li = 0; li < model_->controlLinkages.size(); ++li) {
+      const auto& l = model_->controlLinkages[li];
       if (l.sourceControlId == 0 || l.destControlId == 0) continue;
       const auto dit = model_->continuousControls.find(l.destControlId);
       if (dit == model_->continuousControls.end()) continue;
-      if (l.destControlId == pinned) continue; // the player's own move stands
+      const auto sit = values_.find(l.sourceControlId);
+      if (sit == values_.end()) continue;
       // A conditional linkage is a button, not a wire. Nancy hangs her preset
       // Load buttons and her "reset all settings to defaults" off these, and
       // running them whenever they are looked at pins every control they
@@ -519,13 +522,24 @@ void ContinuousControlBank::propagate(Id pinned,
       // The condition has a sense. Reading every one as "while engaged" made
       // both halves of a tremulant pair live at once, and two linkages then
       // overwrote the same control on every pass without ever settling.
+      int& seen = linkSeen_[li];
       if (l.conditionSwitchId != 0) {
         const bool on = engagedSwitches != nullptr &&
                         engagedSwitches->count(l.conditionSwitchId) != 0;
-        if (on != l.conditionWhenEngaged) continue;
+        if (on != l.conditionWhenEngaged) {
+          seen = kNotLive;
+          continue;
+        }
       }
-      const auto sit = values_.find(l.sourceControlId);
-      if (sit == values_.end()) continue;
+      // A linkage carries a change, as in Hauptwerk: it fires once at load,
+      // when its condition comes on, and when its source moves, and otherwise
+      // leaves the destination where the player put it. Hill feeds its swell
+      // shoe from three drawn twins and from whichever user pedal the
+      // expression matrix selects; reasserting every unmoved feeder on every
+      // block let the last one written win, and the swell would not close.
+      if (seen == sit->second) continue;
+      seen = sit->second;
+      if (l.destControlId == pinned) continue; // the player's own move stands
 
       const double scaled = l.apply(sit->second);
       const int next = clampToRange(
