@@ -1553,6 +1553,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     };
 
     int drawn = 0;
+    // The enclosures the main console draws: its swell shoes. See below.
+    std::set<int> onMain;
     auto buildPanel = [&](int page, const std::string& group, const std::string& prefix,
                           bool isMain, const std::string& pageName) {
       std::vector<Element> els;
@@ -1834,6 +1836,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           const int set = imageSet(frames, ml, mt, ini.num(sec, "MouseRectWidth", w - ml),
                                    ini.num(sec, "MouseRectHeight", h - mt));
           const int inst = instance(page, set, x, y, 2);
+          if (isMain) onMain.insert(e.enclosure);
           auto cc = enclosureControls[e.enclosure];
           if (!cc.child("ImageSetInstanceID")) {
             Emitter::set(cc, "ImageSetInstanceID", inst);
@@ -1981,6 +1984,17 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       const std::string ps = "Panel" + n3(pn);
       buildPanel(pn + 1, ps, ps, false, ini.str(ps, "Name", ps));
     }
+
+    // GrandOrgue has one kind of enclosure, and sets use it for two things:
+    // the swell shoes on the console, and levels -- audio groups, noises --
+    // on a settings panel of their own (Saint-Jean-de-Luz: two shoes, fifteen
+    // levels on "Sample set settings"). A Hauptwerk set tells them apart by
+    // remembering a level and not a shoe, and that is what is written here
+    // for a box drawn only off the main console: its level comes back next
+    // time, and the swell pedals are the ones the console shows (#137).
+    for (auto& [e, cc] : enclosureControls)
+      if (onMain.count(e) == 0 && cc.child("ImageSetInstanceID"))
+        Emitter::yn(cc, "RememberStateFromLastLoad", true);
   }
 
   std::ostringstream xml;
