@@ -176,6 +176,14 @@ void ExpressionBar::rebuild() {
   for (const auto& [id, enc] : model.enclosures) {
     (void)id;
     if (enc.continuousControlId == 0) continue;
+    // A level, not a swell: the organ remembers it from one session to the
+    // next, which it never does for a shoe, and draws it on a page of its own
+    // where it is set (#137: fifteen audio-group and noise levels pushed
+    // Saint-Jean-de-Luz's two swell pedals out of this strip).
+    if (const auto c = model.continuousControls.find(enc.continuousControlId);
+        c != model.continuousControls.end() && c->second.rememberState &&
+        c->second.imageSetInstanceId != 0)
+      continue;
     // The shoe the player moves, which may be upstream of the shutters.
     // The part of the name that tells two boxes apart. Nancy calls hers
     // "Enclosure R" and "Enclosure PO", and a column this narrow cut both to

@@ -9687,6 +9687,40 @@ public:
   }
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;
+
+// GrandOrgue's one kind of enclosure, used two ways: a swell shoe on the
+// console, and a level on a settings panel (#137). The level is remembered,
+// as a Hauptwerk set marks one; the shoe is not.
+class GrandOrgueLevelsTest final : public mp::test::Test {
+public:
+  GrandOrgueLevelsTest() : Test("functional.odf.grandorgue-levels", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=0\nNumberOfEnclosures=2\n"
+        "NumberOfWindchestGroups=1\nNumberOfPanels=1\n"
+        "[WindchestGroup001]\nName=W\nNumberOfEnclosures=2\nEnclosure001=001\nEnclosure002=002\n"
+        "[Enclosure001]\nName=Swell\nDisplayed=Y\nAmpMinimumLevel=40\n"
+        "[Enclosure002]\nName=AudioGroup: 0\nDisplayed=N\nAmpMinimumLevel=1\n"
+        "[Panel001]\nName=Sample set settings\nHasPedals=N\nNumberOfManuals=0\n"
+        "NumberOfEnclosures=1\nEnclosure001=002\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    const auto shoe = m.continuousControls.find(701);
+    const auto level = m.continuousControls.find(702);
+    MP_CHECK(shoe != m.continuousControls.end() && level != m.continuousControls.end(),
+             "both enclosures have a control");
+    MP_CHECK(shoe->second.imageSetInstanceId != 0 && level->second.imageSetInstanceId != 0,
+             "both are drawn, one on the console and one on its own page");
+    MP_CHECK(!shoe->second.rememberState, "the swell shoe on the console is not remembered");
+    MP_CHECK(level->second.rememberState, "the level on the settings panel is remembered");
+  }
+};
+static GrandOrgueLevelsTest g_grandOrgueLevels;
 // Which archives belong to one organ, from their names alone: the numbered
 // packages, the parts and a multi-volume set are one organ each, and a
 // different organ in the same folder is not pulled in.
