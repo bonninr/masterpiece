@@ -1217,6 +1217,14 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       }
       return setMemo[key] = id;
     };
+    // GrandOrgue paints a panel in the order it creates its objects: background,
+    // images, every object marked Displayed, then the panel's own elements, each
+    // over the last. Images, labels and controls therefore share one layer and
+    // keep that order; only the wood behind (0) and the keys in front (3, 4)
+    // stand apart. Aubigny relies on it: its last element is the whole console
+    // picture, laid over six full-page switches that would otherwise cover it
+    // (#155).
+    constexpr int kPanelLayer = 2;
     auto instance = [&](int page, int set, int x, int y, int layer, int tileRight = 0, int tileBottom = 0) {
       const int id = nextInstance++;
       auto in = out.row("ImageSetInstance");
@@ -1780,7 +1788,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           const auto wh = sizeOf(file);
           const int w = ini.num(sec, "Width", wh.first), h = ini.num(sec, "Height", wh.second);
           const bool tile = wh.first > 0 && (w > wh.first || h > wh.second);
-          instance(page, imageSet({file}, 0, 0, 0, 0), x, y, 1, tile ? x + w : 0, tile ? y + h : 0);
+          instance(page, imageSet({file}, 0, 0, 0, 0), x, y, kPanelLayer, tile ? x + w : 0, tile ? y + h : 0);
           ++drawn;
         } else if (e.kind == Kind::Button) {
           if (e.switchId == 0) continue;
@@ -1959,7 +1967,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           const int w = ini.num(sec, "Width", wh.first > 0 ? wh.first : 80);
           const int h = ini.num(sec, "Height", wh.second > 0 ? wh.second : 25);
           int inst = 0;
-          if (!image.empty()) inst = instance(page, imageSet({image}, 0, 0, 0, 0), x, y, 1);
+          if (!image.empty()) inst = instance(page, imageSet({image}, 0, 0, 0, 0), x, y, kPanelLayer);
           int r = 0, g = 0, b = 0;
           parseColour(ini.str(sec, "DispLabelColour", "BLACK"), r, g, b);
           const int tl = ini.num(sec, "TextRectLeft", 1), tt = ini.num(sec, "TextRectTop", 1);
