@@ -7605,6 +7605,17 @@ public:
       const auto r = mp::resolveSamplePitch(in, a4, 465.0);
       MP_CHECK(r.route == mp::PitchRoute::NoisePlaceholder,
                "the base pitch is the other stand-in");
+      // ...unless the pipe that plays it is keyed at that pitch: the
+      // GrandOrgue demo's A4 Bourdon, a G recording declared at 440 Hz (#154).
+      mp::SamplePitchInputs pipe = in;
+      pipe.exactHz = 440.0;
+      pipe.pipeNominalHz = 440.0;
+      const auto rp = mp::resolveSamplePitch(pipe, a4, 440.0);
+      MP_CHECK(rp.route == mp::PitchRoute::ExactHz && rp.hz == 440.0,
+               "a pipe at the base pitch declares a real pitch");
+      pipe.pipeNominalHz = 130.81;  // a key-action noise keyed an octave and more away
+      MP_CHECK(mp::resolveSamplePitch(pipe, a4, 440.0).route == mp::PitchRoute::NoisePlaceholder,
+               "a sample far from its pipe's pitch is still a placeholder");
     }
     {
       // ...but a real pipe that happens to sit near it is still a pipe: the

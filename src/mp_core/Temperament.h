@@ -75,6 +75,11 @@ struct SamplePitchInputs {
   // 2 to 9 cents across the rank -- and rounding it away throws that out.
   double fileMidiNote = -1.0;
   std::string fileName;        // for the last-resort route only
+  // The nominal pitch of the pipe this sample sounds for, when known; 0 when
+  // it is not. A declaration equal to the base pitch is a real pitch when the
+  // pipe itself sits within a semitone of it (an A4 sample at 440 Hz), and
+  // a noise placeholder otherwise (#154).
+  double pipeNominalHz = 0.0;
 };
 
 struct SamplePitchResult {

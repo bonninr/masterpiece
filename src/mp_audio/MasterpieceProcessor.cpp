@@ -1924,10 +1924,13 @@ void MasterpieceProcessor::resolveSamplePitches() {
   const auto provider = samples_.provider();
   std::unordered_map<Id, std::pair<double, double>> resolved; // id -> {fileNote, hz}
   std::array<int, 8> tally{};
+  // Samples decided to be noise placeholders without a pipe to judge by: a
+  // pipe that plays one looks again with its own pitch in hand (#154).
+  std::unordered_set<Id> placeholders;
 
-  auto resolveOne = [&](SampleRef& ref) {
+  auto resolveOne = [&](SampleRef& ref, double pipeHz = 0.0) {
     const auto it = resolved.find(ref.sampleId);
-    if (it != resolved.end()) {
+    if (it != resolved.end() && !(pipeHz > 0.0 && placeholders.count(ref.sampleId) != 0)) {
       ref.fileMidiNote = it->second.first;
       ref.resolvedPitchHz = it->second.second;
       return;
@@ -1938,6 +1941,7 @@ void MasterpieceProcessor::resolveSamplePitches() {
     in.normalMidiNote = ref.midiNote;
     in.rankBasePitch64ftHarmonicNum = ref.rankBasePitch64ftHarmonicNum;
     in.fileName = ref.fileName;
+    in.pipeNominalHz = pipeHz;
     if (const SampleBuffer* buf = provider(ref.sampleId))
       in.fileMidiNote = buf->fileMidiNote;
 
@@ -1945,19 +1949,31 @@ void MasterpieceProcessor::resolveSamplePitches() {
         resolveSamplePitch(in, 440.0, model_.basePitchHz);
     ref.fileMidiNote = in.fileMidiNote;
     ref.resolvedPitchHz = r.hz;
+    // A pipe's own judgement stays with that pipe; the shared answer is the
+    // one made without one.
+    if (pipeHz > 0.0 && it != resolved.end()) return;
     resolved.emplace(ref.sampleId,
                      std::make_pair(in.fileMidiNote, r.hz));
+    if (r.route == PitchRoute::NoisePlaceholder) placeholders.insert(ref.sampleId);
     const auto slot = static_cast<size_t>(r.route);
     if (slot < tally.size()) ++tally[slot];
   };
 
   for (auto& [id, ref] : model_.samples) resolveOne(ref);
   for (auto& [rankId, rank] : model_.ranks)
-    for (auto& pipe : rank.pipes)
+    for (auto& pipe : rank.pipes) {
+      // The pitch the pipe is keyed to, untempered: enough to tell a real
+      // declaration of the base pitch from a placeholder.
+      const double base = model_.basePitchHz > 0.0 ? model_.basePitchHz : 440.0;
+      const int harm = pipe.basePitch64ftHarmonicNum > 0 ? pipe.basePitch64ftHarmonicNum : 8;
+      const double pipeHz = rank.isNoise || pipe.midiNote < 0
+                                ? 0.0
+                                : base * std::pow(2.0, (pipe.midiNote - 69) / 12.0) * harm / 8.0;
       for (auto& layer : pipe.layers) {
-        for (auto& a : layer.attacks) resolveOne(a.sample);
-        for (auto& rel : layer.releases) resolveOne(rel.sample);
+        for (auto& a : layer.attacks) resolveOne(a.sample, pipeHz);
+        for (auto& rel : layer.releases) resolveOne(rel.sample, pipeHz);
       }
+    }
 
   // Said out loud, because a set resolving entirely by file name or not at
   // all is a set whose pitch nobody has checked -- and it sounds plausible
