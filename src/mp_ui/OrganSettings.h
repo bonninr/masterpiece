@@ -70,6 +70,15 @@ private:
 
   void build();
   void showRankStates();
+  // The stop ticks, as the processor's choice of stops to leave out.
+  void applyStopTicks();
+  // Bulk selection (#136): a division heading clicked selects or clears its
+  // stops; a press on a stop dragged across others gives them its new state.
+  void mouseDown(const juce::MouseEvent& e) override;
+  void mouseDrag(const juce::MouseEvent& e) override;
+  void mouseUp(const juce::MouseEvent& e) override;
+  bool dragging_ = false;
+  bool dragState_ = true;
   void choose(std::set<Id> excluded);
   // The filter: rows whose name holds the text stay, the rest are hidden.
   bool shown(const juce::String& name) const;
