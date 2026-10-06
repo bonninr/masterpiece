@@ -2924,7 +2924,17 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
         for (const auto& [key, held] : soundingNotes_)
           if (held.channel == channel) rerouteScratch_.emplace_back(key, held);
         releaseChannel(channel, MidiDeviceMap::kAnyDevice);
-        setKeyboardForChannel(channel, next, 0, true);
+        // Only this channel changes manual. Another keyboard already on the
+        // manual keeps it: two keyboards both switched to the Solo play it
+        // together (#190).
+        midiMap_.releaseChannel(channel, 0, next);
+        if (keyboardForChannel(channel, MidiDeviceMap::kAnyDevice) != next) {
+          MidiMap::KeyboardBinding b;
+          b.channel = channel;
+          b.keyboardId = next;
+          midiMap_.addKeyboardBinding(b);
+        }
+        midiMapDirty_.store(true, std::memory_order_release);
         for (const auto& [key, held] : rerouteScratch_)
           startNoteOnKeyboard(next, key, held.midiNote, held.velocity);
       }

@@ -11168,7 +11168,8 @@ public:
     press.addEvent(juce::MidiMessage::noteOn(16, 60, 0.8f), 0);
     proc.processBlock(buf, press);
     MP_CHECK(proc.keyboardForChannel(5) == 701, "the piston makes channel 5 play the manual");
-    MP_CHECK(proc.keyboardForChannel(1) == 0, "which moves it from channel 1");
+    MP_CHECK(proc.keyboardForChannel(1) == 701,
+             "channel 1 keeps it: two keyboards can play one manual (#190)");
     juce::MidiBuffer release;
     release.addEvent(juce::MidiMessage::noteOff(16, 60), 0);
     proc.processBlock(buf, release);
