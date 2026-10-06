@@ -50,19 +50,31 @@ void fillEvents(juce::ComboBox& box) {
   box.addItem("Note", 1);
   box.addItem("Controller", 2);
   box.addItem("Program change", 3);
+  box.addItem("System exclusive", 4);
 }
 int eventItem(MidiSourceKind k) {
-  return k == MidiSourceKind::ControlChange ? 2 : k == MidiSourceKind::ProgramChange ? 3 : 1;
+  return k == MidiSourceKind::ControlChange   ? 2
+         : k == MidiSourceKind::ProgramChange ? 3
+         : k == MidiSourceKind::SysEx         ? 4
+                                              : 1;
 }
 MidiSourceKind eventKind(int item) {
   return item == 2 ? MidiSourceKind::ControlChange
-                   : item == 3 ? MidiSourceKind::ProgramChange : MidiSourceKind::Note;
+                   : item == 3 ? MidiSourceKind::ProgramChange
+                   : item == 4 ? MidiSourceKind::SysEx
+                               : MidiSourceKind::Note;
 }
 
 // 128 numbers, named the way the event names them: a note by its pitch, a
 // program counted from 1 as every console's manual does.
 void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected) {
   box.clear(juce::dontSendNotification);
+  // A system exclusive message is identified by its bytes, taken by Listen.
+  if (kind == MidiSourceKind::SysEx) {
+    box.addItem("Learned message", 1);
+    box.setSelectedId(1, juce::dontSendNotification);
+    return;
+  }
   for (int n = 0; n < 128; ++n)
     box.addItem(kind == MidiSourceKind::Note            ? noteName(n)
                 : kind == MidiSourceKind::ProgramChange ? juce::String(n + 1)
@@ -237,7 +249,9 @@ public:
     b.source.channel = juce::jmax(0, channel_.getSelectedId() - 1);
     if (event_.getSelectedId() > 0) {
       b.source.kind = eventKind(event_.getSelectedId());
-      b.source.number = juce::jmax(0, number_.getSelectedId() - 1);
+      b.source.number = b.source.kind == MidiSourceKind::SysEx
+                            ? binding_.source.number
+                            : juce::jmax(0, number_.getSelectedId() - 1);
     }
     if (kind_ == MidiTargetKind::Switch) {
       const int a = action_.getSelectedId();

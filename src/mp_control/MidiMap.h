@@ -84,7 +84,20 @@ inline Id playerDivisionalDivision(Id target) { return target / 100; }
 inline int playerDivisionalPiston(Id target) { return static_cast<int>(target % 100); }
 
 // The kind of message, reduced to what a mapping needs to match on.
-enum class MidiSourceKind { None, Note, ControlChange, ProgramChange };
+enum class MidiSourceKind { None, Note, ControlChange, ProgramChange, SysEx };
+
+// A system exclusive message, identified by all of its bytes. Consoles send
+// their pistons this way (Johannus: F0 00 4A 4F 48 41 53 00 10 nn F7, #138);
+// each distinct message is one button. FNV-1a over the bytes, kept positive
+// so it travels as a MidiSource number.
+inline int sysExId(const uint8_t* data, int size) {
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < size; ++i) {
+    h ^= data[i];
+    h *= 16777619u;
+  }
+  return static_cast<int>(h & 0x7fffffffu);
+}
 
 struct MidiSource {
   MidiSourceKind kind = MidiSourceKind::None;

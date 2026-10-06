@@ -56,6 +56,7 @@ const char* kindName(MidiSourceKind k) {
     case MidiSourceKind::Note: return "note";
     case MidiSourceKind::ControlChange: return "cc";
     case MidiSourceKind::ProgramChange: return "pgm";
+    case MidiSourceKind::SysEx: return "sysex";
     case MidiSourceKind::None: break;
   }
   return "none";
@@ -65,6 +66,7 @@ MidiSourceKind sourceKindFrom(const std::string& s) {
   if (s == "note") return MidiSourceKind::Note;
   if (s == "cc") return MidiSourceKind::ControlChange;
   if (s == "pgm") return MidiSourceKind::ProgramChange;
+  if (s == "sysex") return MidiSourceKind::SysEx;
   return MidiSourceKind::None;
 }
 
@@ -501,6 +503,7 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
     case MidiSourceKind::ProgramChange:
       out = {{static_cast<uint8_t>(0xC0 | ch), clamp7(value), 0}, 2};
       return true;
+    case MidiSourceKind::SysEx:  // received only; nothing is sent this way
     case MidiSourceKind::None:
       break;
   }

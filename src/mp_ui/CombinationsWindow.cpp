@@ -42,6 +42,7 @@ void paintPiston(juce::TextButton& b, bool set, bool lit) {
 juce::String describe(const MidiBinding& b) {
   juce::String what = b.source.kind == MidiSourceKind::Note          ? "Note "
                       : b.source.kind == MidiSourceKind::ProgramChange ? "Program "
+                      : b.source.kind == MidiSourceKind::SysEx         ? "SysEx #"
                                                                        : "CC ";
   what << b.source.number;
   if (b.source.channel > 0) what << " ch " << b.source.channel;
