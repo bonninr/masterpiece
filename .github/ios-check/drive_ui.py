@@ -67,6 +67,12 @@ def tap(name, contains=False):
 def main():
     os.makedirs(OUT, exist_ok=True)
     shot("start")
+    # The run before this one was ended by the simulator, which the app takes
+    # for a crash and says so at the next start: the notice covers the
+    # console until it is dismissed.
+    if any("closed unexpectedly" in label(e) for e in elements()):
+        tap("OK")
+        shot("notice-dismissed")
     # The first-run wizard, when it is up.
     tap("Skip setup")
     shot("console")

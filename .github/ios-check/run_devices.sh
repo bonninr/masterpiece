@@ -43,10 +43,20 @@ play() {  # device, organ folder name, output folder
     --play-midi "$data/Documents/$organ/check.mid" \
     --record-audio "$data/Documents/$organ/out.wav" \
     --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1
-  for _ in $(seq 1 120); do
-    grep -q "recital finished" "$data/Documents/$organ/run.log" 2>/dev/null && break
+  local finished=""
+  for _ in $(seq 1 60); do
+    grep -q "recital finished" "$data/Documents/$organ/run.log" 2>/dev/null && { finished=1; break; }
     sleep 2
   done
+  # A recital that never ends: where every thread of the app is, for the
+  # artifact. A simulator app is a process of this Mac, so sample reads it.
+  if [ -z "$finished" ]; then
+    local pid
+    pid=$(grep -oE "[0-9]+$" "$out/$organ-launch.txt" | tail -1)
+    echo "recital did not finish; sampling pid $pid" | tee "$out/$organ-stalled.txt"
+    [ -n "$pid" ] && sample "$pid" 3 -file "$out/$organ-threads.txt" >/dev/null 2>&1
+    ps -o pid,stat,%cpu,rss,command -p "$pid" >> "$out/$organ-stalled.txt" 2>&1
+  fi
   sleep 3
   cp "$data/Documents/$organ/run.log" "$out/$organ-run.log" 2>/dev/null || echo "no log" > "$out/$organ-run.log"
   xcrun simctl io "$dev" screenshot "$out/$organ-playing.png" >/dev/null 2>&1
