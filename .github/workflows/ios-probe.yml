@@ -1,0 +1,70 @@
+name: ios-probe
+
+# The window placement probe (tools/ios-probe): a small JUCE app built for the
+# iOS simulator and run once per placement variant on an iPad and an iPhone,
+# upright and turned. Minutes per round, where the full app takes forty.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/ios-probe']
+    paths: ['tools/ios-probe/**', '.github/workflows/ios-probe.yml']
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
+      - name: Build
+        run: |
+          cmake -S tools/ios-probe -B build/probe -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+          cmake --build build/probe --config Release --target IosProbe -- -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO -quiet
+          APP=$(find build/probe -name Probe.app -type d | head -1)
+          test -n "$APP" && echo "APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Tools
+        run: |
+          pip3 install --break-system-packages fb-idb || pip3 install fb-idb
+          brew tap facebook/fb && (brew trust facebook/fb || true) && brew install idb-companion
+
+      - name: Run
+        run: |
+          VARIANTS="kiosk-display display scene scene-safe kiosk-scene"
+          for want in "iPad Pro 13" "iPhone 17 Pro"; do
+            DEV=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          for rt, ds in json.load(sys.stdin)['devices'].items():
+              for d in ds:
+                  if d['name'].startswith(sys.argv[1]): print(d['udid']); sys.exit()
+          " "$want")
+            [ -z "$DEV" ] && { echo "no $want"; continue; }
+            NAME=$(echo "$want" | tr ' ' '_')
+            case "$want" in iPhone*) SCALE=3 ;; *) SCALE=2 ;; esac
+            xcrun simctl boot "$DEV" 2>/dev/null; xcrun simctl bootstatus "$DEV" -b >/dev/null
+            xcrun simctl install "$DEV" "$APP"
+            idb connect "$DEV" >/dev/null 2>&1 || true
+            open -a Simulator --args -CurrentDeviceUDID "$DEV"; sleep 6
+            echo "######## $want upright"
+            python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probe $SCALE "shots/$NAME/upright" $VARIANTS || true
+            osascript -e 'tell application "Simulator" to activate' -e 'delay 1' \
+              -e 'tell application "System Events" to tell process "Simulator" to click menu item "Rotate Left" of menu "Device" of menu bar 1' || echo "could not rotate"
+            sleep 4
+            echo "######## $want turned"
+            python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probe $SCALE "shots/$NAME/turned" $VARIANTS || true
+            osascript -e 'tell application "Simulator" to quit' || true
+            xcrun simctl shutdown "$DEV" || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-probe
+          path: shots/
+          retention-days: 3
