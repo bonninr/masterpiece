@@ -1398,11 +1398,15 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       };
       Enclosure& e = encIt->second;
       const double closedMax = quantile(1, 0.75), closedMin = quantile(2, 0.75);
-      const double openMax = quantile(4, 0.75), openMin = quantile(5, 0.75);
       if (closedMax > 0.0) e.closedFilterHz = closedMax;
       else if (closedMin > 0.0) e.closedFilterHz = closedMin;
-      if (openMax > 0.0) e.openFilterHz = openMax;
-      else if (openMin > 0.0) e.openFilterHz = openMin;
+      // A box fully open filters nothing: Hauptwerk's attenuation there is
+      // always zero, and its "when open" frequencies are only the limits the
+      // filter moves towards as the shades open, so the sweep has no jump at
+      // the end. Read as the open cutoff they shut a swell that was wide open
+      // to its lowest figure: Klais Szikszó's open boxes sat at 100 Hz, and
+      // the shoe moved the sound between 100 and 200 Hz (#205).
+      e.openFilterHz = kOpenEnclosureHz;
       // Closed attenuation is the insertion loss plus the extra at the bottom
       // of the band; an open box takes the insertion loss off entirely.
       auto meanPositive = [&rows](size_t i) {
