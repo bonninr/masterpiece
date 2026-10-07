@@ -74,9 +74,29 @@ play() {  # device, organ folder name, output folder
   cat "$out/$organ-audio.txt"
 }
 
+# Turns a booted simulator to landscape through the Simulator window's own
+# menu, Device > Rotate Left; the window has to be open for that. The app runs
+# in landscape only: with the simulator upright, iOS draws it turned or scaled
+# into a band, and a tap at a position idb reads lands somewhere else.
+landscape() {
+  open -a Simulator --args -CurrentDeviceUDID "$1"
+  sleep 5
+  osascript <<'OSA'
+tell application "Simulator" to activate
+delay 1
+tell application "System Events" to tell process "Simulator"
+  set frontmost to true
+  click menu item "Rotate Left" of menu "Device" of menu bar 1
+end tell
+OSA
+  sleep 3
+}
+
 for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   read -r DEV NAME < <(udid_for "$want")
   if [ -z "${DEV:-}" ]; then echo "no simulator like '$want'"; continue; fi
+  # Each device starts upright and on its own window.
+  osascript -e 'tell application "Simulator" to quit' >/dev/null 2>&1 || true
   OUT="ios-shots/$NAME"
   mkdir -p "$OUT"
   echo "== $NAME ($DEV)"
@@ -96,6 +116,7 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   else
     echo "no Files storage on this simulator" > "$OUT/picker-note.txt"
   fi
+  landscape "$DEV" > "$OUT/rotate.txt" 2>&1 || echo "could not rotate" >> "$OUT/rotate.txt"
   data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data)
   xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" \
     > "$OUT/ui-launch.txt" 2>&1
