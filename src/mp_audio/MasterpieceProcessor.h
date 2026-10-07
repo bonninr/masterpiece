@@ -1526,7 +1526,10 @@ private:
     std::atomic<uint32_t> ready{0};
   };
   static constexpr int kMidiQueueSize = 2048;
-  std::array<TaggedMidi, kMidiQueueSize> midiQueue_{};
+  // Half a megabyte, so on the heap: a processor built on a thread's stack
+  // (a 1 MB stack on Windows) would not have room for it.
+  std::unique_ptr<TaggedMidi[]> midiQueue_ =
+      std::make_unique<TaggedMidi[]>(kMidiQueueSize);
   std::atomic<uint32_t> midiWrite_{0};
   uint32_t midiRead_ = 0;
   // Drain the tagged queue into `midi` before it is handled, so device-aware
