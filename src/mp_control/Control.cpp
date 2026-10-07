@@ -450,23 +450,66 @@ std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
 
 void ContinuousControlBank::reset(const OrganModel& model) {
   model_ = &model;
-  values_.clear();
-  values_.reserve(model.continuousControls.size());
-  for (const auto& [id, c] : model.continuousControls)
-    values_[id] = clampToRange(c, c.defaultValue);
-  linkSeen_.assign(model.controlLinkages.size(), kNotLive);
+
+  // Every control gets a slot in a plain array, and every linkage is compiled
+  // against those slots once, here. The propagation runs on the audio thread
+  // on every block: looking each control up by id, several times per linkage,
+  // cost Ashton's 7,606 linkages half a millisecond per pass.
+  index_.clear();
+  index_.reserve(model.continuousControls.size());
+  vals_.clear();
+  lo_.clear();
+  hi_.clear();
+  for (const auto& [id, c] : model.continuousControls) {
+    index_[id] = static_cast<int32_t>(vals_.size());
+    lo_.push_back(std::min(c.minValue, c.maxValue));
+    hi_.push_back(std::max(c.minValue, c.maxValue));
+    vals_.push_back(clampToRange(c, c.defaultValue));
+  }
+  auto slot = [this](Id id) {
+    const auto it = index_.find(id);
+    return it == index_.end() ? -1 : it->second;
+  };
+
   // A linkage with an unconditional return linkage (A to B and B to A) joins
   // twins: the same shoe drawn on several pages, or a shoe and the hidden
   // pedal it shares with its copies.
   std::set<std::pair<Id, Id>> wires;
   for (const auto& l : model.controlLinkages)
     if (l.conditionSwitchId == 0) wires.insert({l.sourceControlId, l.destControlId});
-  linkIsTwin_.assign(model.controlLinkages.size(), 0);
-  for (size_t i = 0; i < model.controlLinkages.size(); ++i) {
-    const auto& l = model.controlLinkages[i];
-    linkIsTwin_[i] = l.conditionSwitchId == 0 &&
-                     wires.count({l.destControlId, l.sourceControlId}) != 0;
+
+  links_.clear();
+  links_.reserve(model.controlLinkages.size());
+  for (const auto& l : model.controlLinkages) {
+    if (l.sourceControlId == 0 || l.destControlId == 0) continue;
+    Link k;
+    k.src = slot(l.sourceControlId);
+    k.dst = slot(l.destControlId);
+    if (k.src < 0 || k.dst < 0) continue;
+    k.dstId = l.destControlId;
+    k.condition = l.conditionSwitchId;
+    k.whenEngaged = l.conditionWhenEngaged;
+    const ContinuousControl& dest = model.continuousControls.at(l.destControlId);
+    const bool twin = l.conditionSwitchId == 0 &&
+                      wires.count({l.destControlId, l.sourceControlId}) != 0;
+    k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin;
+    k.link = &l;
+    links_.push_back(k);
   }
+  doubles_.clear();
+  doubles_.reserve(model.controlDoubleLinkages.size());
+  for (const auto& d : model.controlDoubleLinkages) {
+    DoubleLink k;
+    k.a = slot(d.firstControlId);
+    k.b = slot(d.secondControlId);
+    k.dst = slot(d.destControlId);
+    if (k.a < 0 || k.b < 0 || k.dst < 0) continue;
+    k.link = &d;
+    doubles_.push_back(k);
+  }
+  linkSeen_.assign(links_.size(), kNotLive);
+  lastSwitches_.clear();
+  dirty_ = true;
   propagate();
 }
 
@@ -479,15 +522,19 @@ int ContinuousControlBank::clampToRange(const ContinuousControl& c, int v) const
 }
 
 void ContinuousControlBank::setValue(Id controlId, int value) {
-  if (model_ == nullptr) return;
-  const auto it = model_->continuousControls.find(controlId);
-  if (it == model_->continuousControls.end()) return;
-  values_[controlId] = clampToRange(it->second, value);
+  const auto it = index_.find(controlId);
+  if (it == index_.end()) return;
+  const int i = it->second;
+  const int v = value < lo_[i] ? lo_[i] : (value > hi_[i] ? hi_[i] : value);
+  if (vals_[i] != v) {
+    vals_[i] = v;
+    dirty_ = true;
+  }
 }
 
 int ContinuousControlBank::value(Id controlId) const {
-  const auto it = values_.find(controlId);
-  return it == values_.end() ? 0 : it->second;
+  const auto it = index_.find(controlId);
+  return it == index_.end() ? 0 : vals_[it->second];
 }
 
 double ContinuousControlBank::normalised(Id controlId) const {
@@ -508,9 +555,25 @@ void ContinuousControlBank::propagate(Id pinned,
   if (model_ == nullptr) return;
   // Either kind alone is enough to have work to do. Testing only the single
   // linkages skipped every set that combines controls without chaining them.
-  const size_t linkCount =
-      model_->controlLinkages.size() + model_->controlDoubleLinkages.size();
+  const size_t linkCount = links_.size() + doubles_.size();
   if (linkCount == 0) return;
+
+  // Nothing moved and no switch changed: the graph settled last time and
+  // would settle to the same values again. This is every block at rest.
+  static const std::unordered_set<Id> kNone;
+  const std::unordered_set<Id>& switches = engagedSwitches != nullptr ? *engagedSwitches : kNone;
+  if (!dirty_ && switches == lastSwitches_) return;
+  if (switches != lastSwitches_) lastSwitches_ = switches;
+  dirty_ = false;
+
+  int pinnedSlot = -1;
+  if (pinned != 0)
+    if (const auto it = index_.find(pinned); it != index_.end()) pinnedSlot = it->second;
+
+  auto clampSlot = [this](int i, double scaled) {
+    const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
+    return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
+  };
 
   // One pass per linkage is enough to carry a value along the longest possible
   // acyclic chain; stop early once a pass changes nothing.
@@ -519,13 +582,9 @@ void ContinuousControlBank::propagate(Id pinned,
   const size_t maxPasses = std::min<size_t>(linkCount, 64);
   for (size_t pass = 0; pass < maxPasses; ++pass) {
     bool changed = false;
-    for (size_t li = 0; li < model_->controlLinkages.size(); ++li) {
-      const auto& l = model_->controlLinkages[li];
-      if (l.sourceControlId == 0 || l.destControlId == 0) continue;
-      const auto dit = model_->continuousControls.find(l.destControlId);
-      if (dit == model_->continuousControls.end()) continue;
-      const auto sit = values_.find(l.sourceControlId);
-      if (sit == values_.end()) continue;
+    for (size_t li = 0; li < links_.size(); ++li) {
+      const Link& k = links_[li];
+      const int source = vals_[k.src];
       // A conditional linkage is a button, not a wire. Nancy hangs her preset
       // Load buttons and her "reset all settings to defaults" off these, and
       // running them whenever they are looked at pins every control they
@@ -535,10 +594,9 @@ void ContinuousControlBank::propagate(Id pinned,
       // both halves of a tremulant pair live at once, and two linkages then
       // overwrote the same control on every pass without ever settling.
       int& seen = linkSeen_[li];
-      if (l.conditionSwitchId != 0) {
-        const bool on = engagedSwitches != nullptr &&
-                        engagedSwitches->count(l.conditionSwitchId) != 0;
-        if (on != l.conditionWhenEngaged) {
+      if (k.condition != 0) {
+        const bool on = switches.count(k.condition) != 0;
+        if (on != k.whenEngaged) {
           seen = kNotLive;
           continue;
         }
@@ -559,16 +617,14 @@ void ContinuousControlBank::propagate(Id pinned,
       // Any other control has no position of its own and is recomputed every
       // pass. Azzio feeds its tremulant crossfade from constants and from a
       // delay ramp at once, and relies on the constants holding it at rest.
-      if (dit->second.imageSetInstanceId != 0 || dit->second.clickable || linkIsTwin_[li]) {
-        if (seen == sit->second) continue;
-        seen = sit->second;
+      if (k.carriesChange) {
+        if (seen == source) continue;
+        seen = source;
       }
-      if (l.destControlId == pinned) continue; // the player's own move stands
+      if (k.dst == pinnedSlot) continue; // the player's own move stands
 
-      const double scaled = l.apply(sit->second);
-      const int next = clampToRange(
-          dit->second, static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5));
-      int& slot = values_[l.destControlId];
+      const int next = clampSlot(k.dst, k.link->apply(source));
+      int& slot = vals_[k.dst];
       if (slot != next) {
         slot = next;
         changed = true;
@@ -578,16 +634,11 @@ void ContinuousControlBank::propagate(Id pinned,
     // Two-source linkages settle in the same loop, because a chain routinely
     // runs through both kinds: a slider feeds a single linkage, that feeds a
     // double one, and its answer is what a pipe layer actually reads.
-    for (const auto& d : model_->controlDoubleLinkages) {
-      const auto dit = model_->continuousControls.find(d.destControlId);
-      if (dit == model_->continuousControls.end()) continue;
-      if (d.destControlId == pinned) continue;
-      const auto a = values_.find(d.firstControlId);
-      const auto b = values_.find(d.secondControlId);
-      if (a == values_.end() || b == values_.end()) continue;
-
-      const double x = a->second * d.firstCoefficient + d.firstIncrement;
-      const double y = b->second * d.secondCoefficient + d.secondIncrement;
+    for (const DoubleLink& k : doubles_) {
+      if (k.dst == pinnedSlot) continue;
+      const ContinuousControlDoubleLinkage& d = *k.link;
+      const double x = vals_[k.a] * d.firstCoefficient + d.firstIncrement;
+      const double y = vals_[k.b] * d.secondCoefficient + d.secondIncrement;
       double combined = 0.0;
       switch (d.operationCode) {
         case 1: combined = x + y; break;
@@ -595,11 +646,8 @@ void ContinuousControlBank::propagate(Id pinned,
         case 3: combined = x * y; break;
         default: continue;  // the loader rejected anything else
       }
-      const double scaled = combined * d.destCoefficient + d.destIncrement;
-      const int next = clampToRange(
-          dit->second,
-          static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5));
-      int& slot = values_[d.destControlId];
+      const int next = clampSlot(k.dst, combined * d.destCoefficient + d.destIncrement);
+      int& slot = vals_[k.dst];
       if (slot != next) {
         slot = next;
         changed = true;

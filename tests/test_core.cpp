@@ -11250,6 +11250,94 @@ public:
   }
 };
 static MasterVolumeSysExTest g_masterVolumeSysEx;
+// TEMPORARY PROBE (#137): move each Hill swell shoe and read the shutters.
+class HillShoeProbe final : public mp::test::Test {
+public:
+  HillShoeProbe() : Test("probe.hill-shoes", Category::Functional) {}
+  void run() override {
+    const char* path = std::getenv("HILL_ODF");
+    if (path == nullptr) return;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    if (!proc.loadOrgan(juce::File(path), 0, true).ok) { std::printf("hill: load failed\n"); return; }
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    auto show = [&](const char* what) {
+      proc.processBlock(buf, none);
+      std::printf("hill: %-28s 978=%3d 980=%3d 981=%3d 982=%3d 998=%3d | 984=%3d 988=%3d 997=%3d\n", what,
+                  proc.continuousControlValue(978), proc.continuousControlValue(980), proc.continuousControlValue(981),
+                  proc.continuousControlValue(982), proc.continuousControlValue(998), proc.continuousControlValue(984),
+                  proc.continuousControlValue(988), proc.continuousControlValue(997));
+    };
+    show("at load");
+    for (const auto& [id, sw] : proc.organModel().switches)
+      if (id >= 19070 && id <= 19090)
+        std::printf("hill: sw %lld '%s' default=%d engaged=%d\n", (long long)id, sw.name.c_str(),
+                    sw.defaultEngaged, proc.switchEngaged(id));
+    for (const mp::Id c : {1, 2, 3})
+      std::printf("hill: user pedal %lld = %d\n", (long long)c, proc.continuousControlValue(c));
+    std::printf("hill: strip moves %lld for 998, %lld for 997\n", (long long)proc.playerControlFor(998),
+                (long long)proc.playerControlFor(997));
+    for (const mp::Id shoe : {978, 980, 981, 982}) {
+      proc.setControlValue(shoe, 10);
+      show(("swell shoe " + std::to_string(shoe) + " to 10").c_str());
+      proc.setControlValue(shoe, 120);
+      show(("swell shoe " + std::to_string(shoe) + " to 120").c_str());
+    }
+  }
+};
+static HillShoeProbe g_hillShoeProbe;
+
+// TEMPORARY PROBE (#192): every control's value after toggling each linkage
+// condition switch and sweeping each drawn control, for a before/after diff.
+class LinkageStateProbe final : public mp::test::Test {
+public:
+  LinkageStateProbe() : Test("probe.linkage-state", Category::Functional) {}
+  void run() override {
+    const char* path = std::getenv("PROBE_ODF");
+    const char* out = std::getenv("PROBE_OUT");
+    if (path == nullptr || out == nullptr) return;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    if (!proc.loadOrgan(juce::File(path), 0, true).ok) { std::printf("probe: load failed\n"); return; }
+    std::FILE* f = std::fopen(out, "w");
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    const auto& m = proc.organModel();
+    std::vector<mp::Id> ids;
+    for (const auto& [id, c] : m.continuousControls) ids.push_back(id);
+    std::sort(ids.begin(), ids.end());
+    auto dump = [&](const std::string& step) {
+      proc.processBlock(buf, none);
+      proc.processBlock(buf, none);
+      std::fprintf(f, "%s:", step.c_str());
+      for (mp::Id id : ids) std::fprintf(f, " %lld=%d", (long long)id, proc.continuousControlValue(id));
+      std::fprintf(f, "\n");
+    };
+    dump("load");
+    std::set<mp::Id> conditions;
+    for (const auto& l : m.controlLinkages) if (l.conditionSwitchId) conditions.insert(l.conditionSwitchId);
+    for (mp::Id sw : conditions) {
+      const bool was = proc.switchEngaged(sw);
+      proc.setSwitchEngaged(sw, !was);
+      dump("switch " + std::to_string(sw) + " " + (was ? "off" : "on"));
+      proc.setSwitchEngaged(sw, was);
+      dump("switch " + std::to_string(sw) + " back");
+    }
+    for (mp::Id id : ids) {
+      const auto& c = m.continuousControls.at(id);
+      if (c.imageSetInstanceId == 0) continue;
+      const int start = proc.continuousControlValue(id);
+      for (int v : {c.minValue, (c.minValue + c.maxValue) / 2, c.maxValue, start}) {
+        proc.setControlValue(id, v);
+        dump("control " + std::to_string(id) + " " + std::to_string(v));
+      }
+    }
+    std::fclose(f);
+    std::printf("probe: %zu controls, %zu condition switches\n", ids.size(), conditions.size());
+  }
+};
+static LinkageStateProbe g_linkageStateProbe;
 
 // The player's pistons -- stepper, generals, setter -- are the same on every
 // organ, and a console can have several + and - buttons. An organ's own stop

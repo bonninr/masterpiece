@@ -223,17 +223,38 @@ public:
   // unexpressive one.
   double shutterFor(const Enclosure& e) const;
 
-  size_t size() const { return values_.size(); }
+  size_t size() const { return vals_.size(); }
 
 private:
   const OrganModel* model_ = nullptr;
-  std::unordered_map<Id, int> values_;
+  // Each control's slot, its value and range, in plain arrays.
+  std::unordered_map<Id, int32_t> index_;
+  std::vector<int> vals_, lo_, hi_;
+  // The linkages compiled against those slots at reset.
+  struct Link {
+    int32_t src = -1, dst = -1;
+    Id dstId = 0;
+    Id condition = 0;
+    bool whenEngaged = true;
+    // Into a drawn or clickable control, or between twins: fires only when
+    // its source moves (see propagate).
+    bool carriesChange = false;
+    const ContinuousControlLinkage* link = nullptr;
+  };
+  struct DoubleLink {
+    int32_t a = -1, b = -1, dst = -1;
+    const ContinuousControlDoubleLinkage* link = nullptr;
+  };
+  std::vector<Link> links_;
+  std::vector<DoubleLink> doubles_;
   // Per single linkage, the source value it last carried, or kNotLive before
   // the first one and while its condition is not met: it fires on a change.
   static constexpr int kNotLive = std::numeric_limits<int>::min();
   std::vector<int> linkSeen_;
-  // Per single linkage, whether it has an unconditional return linkage.
-  std::vector<char> linkIsTwin_;
+  // Whether a value has changed since the last propagate, and the switches it
+  // ran with: with neither changed, the settled graph is left as it is.
+  bool dirty_ = true;
+  std::unordered_set<Id> lastSwitches_;
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };
