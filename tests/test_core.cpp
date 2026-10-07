@@ -394,8 +394,8 @@ public:
       // of what is heard, and an "open" box would sound permanently closed.
       MP_CHECK(e != m.enclosures.end() && e->second.closedFilterHz == 1200.0,
                "the closed cutoff is the upper quartile of the pipes' maxima");
-      MP_CHECK(e != m.enclosures.end() && e->second.openFilterHz == 12000.0,
-               "the open cutoff is the upper quartile too");
+      MP_CHECK(e != m.enclosures.end() && e->second.openFilterHz == mp::kOpenEnclosureHz,
+               "an open box filters nothing, whatever its when-open figures (#205)");
       MP_CHECK(e != m.enclosures.end() && e->second.closedAttnDb == -10.0,
                "the closed attenuation is insertion loss plus the extra at min");
       MP_CHECK(e != m.enclosures.end() && e->second.openAttnDb == 0.0,
@@ -5713,8 +5713,8 @@ public:
     MP_CHECK(swell.continuousControlId == 1, "enclosure bound to its shoe");
     MP_CHECK(std::fabs(swell.closedFilterHz - 700.0) < 1e-9,
              "closed shade cutoff parsed");
-    MP_CHECK(std::fabs(swell.openFilterHz - 14000.0) < 1e-9,
-             "open shade cutoff parsed");
+    MP_CHECK(swell.openFilterHz == mp::kOpenEnclosureHz,
+             "an open box filters nothing (#205)");
     MP_CHECK(std::fabs(swell.closedAttnDb + 20.0) < 1e-9,
              "closed attenuation parsed");
     MP_CHECK(swell.numShades == 2, "EnclosurePipe rows counted");

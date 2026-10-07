@@ -449,6 +449,10 @@ struct Combination {
   }
 };
 
+// A fully open enclosure filters nothing: its cutoff sits above hearing, and
+// the engine clamps it below Nyquist (#205).
+constexpr double kOpenEnclosureHz = 20000.0;
+
 struct Enclosure {
   Id enclosureId = 0;
   std::string name;
@@ -460,7 +464,7 @@ struct Enclosure {
   // load, which is the representative figure for a bus-level filter. Set from
   // the pipes when the set declares any; the numbers below are only the
   // fallback for a box that ships none.
-  double closedFilterHz = 800.0, openFilterHz = 12000.0;
+  double closedFilterHz = 800.0, openFilterHz = kOpenEnclosureHz;
   double closedAttnDb = -24.0, openAttnDb = 0.0;
   bool filterParamsFromPipes = false;
   // Shade positions the ODF actually declares (EnclosurePipe rows). An
