@@ -421,6 +421,14 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     auto r = out.row("Rank");
     Emitter::set(r, "RankID", rankId);
     Emitter::set(r, "Name", ini.str(rankSec, "Name", rankSec));
+    // Its windchest group, by name, in a table of Masterpiece's own (#136).
+    {
+      const int chest = ini.num(rankSec, "WindchestGroup", 1);
+      const std::string chestSec = "WindchestGroup" + n3(chest);
+      auto g = out.row("MasterpieceRankWindchest");
+      Emitter::set(g, "RankID", rankId);
+      Emitter::set(g, "Name", ini.str(chestSec, "Name", chestSec));
+    }
     rankFirstMidi[rankId] = firstMidiOf(rankSec);
     const int count = ini.num(rankSec, "NumberOfLogicalPipes", 0);
     auto& ids = rankPipeIds[rankId];

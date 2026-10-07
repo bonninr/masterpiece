@@ -9735,6 +9735,55 @@ public:
 };
 static GrandOrgueImportTest g_grandOrgueImport;
 
+// A GrandOrgue set has no perspectives; its windchest groups stand in for
+// them in the stop list, by their own names (#136).
+class GrandOrgueWindchestsTest final : public mp::test::Test {
+public:
+  GrandOrgueWindchestsTest() : Test("functional.odf.grandorgue-windchests", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\r\nChurchName=Test\r\nHasPedals=Y\r\nNumberOfManuals=1\r\n"
+        "NumberOfWindchestGroups=2\r\nNumberOfRanks=1\r\n"
+        "[WindchestGroup001]\r\nName=Great chest\r\n"
+        "[WindchestGroup002]\r\nName=Pedal chest\r\n"
+        "[Rank001]\r\nName=Principal 8\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=2\r\n"
+        "WindchestGroup=1\r\nPipe001=P8\\036.wav\r\nPipe002=P8\\037.wav\r\n"
+        "[Manual000]\r\nName=Pedal\r\nNumberOfLogicalKeys=2\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=2\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "[Manual001]\r\nName=Great\r\nNumberOfLogicalKeys=2\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=2\r\nNumberOfStops=1\r\nStop001=2\r\n"
+        "[Stop001]\r\nName=Subbass 16\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=2\r\n"
+        "Pipe001=S16\\036.wav\r\nPipe002=S16\\037.wav\r\n"
+        "[Stop002]\r\nName=Principal 8\r\nNumberOfRanks=1\r\nRank001=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nNumberOfAccessiblePipes=2\r\n";
+    const mp::GrandOrgueImportReport rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, "conversion failed: " + rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "test.organ", o, m, d), "the converted definition loads");
+    MP_CHECK(std::none_of(d.warnings.begin(), d.warnings.end(),
+                          [](const std::string& w) { return w.find("MasterpieceRankWindchest") != std::string::npos; }),
+             "the windchest table is one the loader knows");
+    const auto groups = mp::perspectivesOf(m);
+    MP_CHECK(groups.size() == 2 && groups.count("Great chest") && groups.count("Pedal chest"),
+             "the two windchest groups stand in for perspectives");
+    MP_CHECK(groups.at("Pedal chest") == std::vector<mp::Id>{5001} &&
+                 groups.at("Great chest") == std::vector<mp::Id>{1001},
+             "each holds the ranks on it, a stop's own pipes included");
+    MP_CHECK(mp::groupedByWindchest(m), "and the stop list names them windchest groups");
+
+    // One windchest group is no choice at all.
+    mp::OrganModel one = m;
+    for (auto& [rankId, name] : one.rankWindchests) name = "Main";
+    MP_CHECK(mp::perspectivesOf(one).empty() && !mp::groupedByWindchest(one),
+             "a set on a single windchest group offers none");
+  }
+};
+static GrandOrgueWindchestsTest g_grandOrgueWindchests;
+
 // GrandOrgue switch logic, through the real switch network: a stop that is
 // the And of its drawstop and the blower sounds only while both are on, an
 // effect stop's pipe opens with its switch, and a drawn panel becomes a page

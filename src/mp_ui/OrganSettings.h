@@ -24,7 +24,7 @@
 
 namespace mp::ui {
 
-class StopsLoadPanel : public juce::Component, private juce::Timer {
+class StopsLoadPanel : public juce::Component, private juce::Timer, private juce::KeyListener {
 public:
   // `reload` loads the organ again with the choice made here.
   StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> reload);
@@ -78,6 +78,11 @@ private:
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
   bool dragging_ = false;
+  // The keyboard (#136): space ticks the focused stop, the arrows move to the
+  // next or previous one shown, and with shift they carry the focused stop's
+  // state onto each stop they reach.
+  bool keyPressed(const juce::KeyPress& key, juce::Component* origin) override;
+  using juce::Component::keyPressed;
   bool dragState_ = true;
   void choose(std::set<Id> excluded);
   // The filter: rows whose name holds the text stay, the rest are hidden.

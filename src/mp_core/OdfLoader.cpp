@@ -57,6 +57,8 @@ const std::unordered_set<std::string>& knownTables() {
     // display
     "DisplayPage", "ImageSet", "ImageSetElement", "ImageSetInstance",
     "TextInstance", "TextStyle",
+    // Masterpiece's own, written by the GrandOrgue import
+    "MasterpieceRankWindchest",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -424,6 +426,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     r.rankId = fieldInt(row, "RankID", "a", 0);
     r.name = field(row, "Name", "b");
     if (r.rankId != 0) outModel.ranks[r.rankId] = std::move(r);
+  });
+  // A GrandOrgue set's windchest groups, carried through its conversion (#136).
+  forEachRow(odfRoot, "MasterpieceRankWindchest", [&](pugi::xml_node row) {
+    const Id rankId = fieldInt(row, "RankID", "a", 0);
+    const std::string name = field(row, "Name", "b");
+    if (rankId != 0 && !name.empty()) outModel.rankWindchests[rankId] = name;
   });
 
   // ---- M1.2: Pipe table (linked into ranks) ----
