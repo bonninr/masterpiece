@@ -4123,6 +4123,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     if (l.sourceSwitchId != l.destSwitchId && l.sourceWhenEngaged)
       feeders[l.destSwitchId].push_back(l.sourceSwitchId);
 
+  // A switch wired straight into the nodes of several stops is a registration
+  // aid -- a Tutti, a reversible, a general -- and the knob of none of them.
+  // Coral Pipes' sets wire their Tutti into every stop node beside the stop's
+  // own switch, one level closer than the stop's knob: taken for that knob,
+  // drawing any stop pulled the Tutti (#211).
+  std::unordered_map<Id, int> controlsOf;
+  for (const auto& [sid, stop] : model_.stops)
+    if (stop.controllingSwitchId != 0) ++controlsOf[stop.controllingSwitchId];
+  std::unordered_map<Id, int> stopsFed;
+  for (const auto& l : model_.switchLinkages)
+    if (l.sourceSwitchId != l.destSwitchId && controlsOf.count(l.destSwitchId) != 0)
+      stopsFed[l.sourceSwitchId] += controlsOf[l.destSwitchId];
+  auto isAid = [&stopsFed](Id id) {
+    const auto it = stopsFed.find(id);
+    return it != stopsFed.end() && it->second > 1;
+  };
+
   auto isKnob = [this](Id id) {
     const auto it = model_.switches.find(id);
     return it != model_.switches.end() && it->second.dispInstanceId != 0 &&
@@ -4158,6 +4175,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       bool done = false;
       for (Id up : fit->second) {
         if (!seen.insert(up).second) continue;
+        if (isAid(up)) continue;
         if (isKnob(up)) { found = up; done = true; break; }
         queue.push_back(up);
       }

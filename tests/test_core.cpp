@@ -11366,6 +11366,92 @@ public:
 };
 static DeviceSysExTest g_deviceSysEx;
 
+// A Tutti wired straight into every stop's node, beside the stop's own switch,
+// as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
+// is one level further up. Drawing a stop from the stop list or a combination
+// has to move that knob: taking the Tutti for it drew every stop at once.
+class TuttiBesideStopTest final : public mp::test::Test {
+public:
+  TuttiBesideStopTest() : Test("functional.control.tutti-beside-stop", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool latching, bool clickable, int image) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name +
+             "</Name><Latching>" + (latching ? "Y" : "N") + "</Latching><Clickable>" +
+             (clickable ? "Y" : "N") + "</Clickable>" +
+             (image ? "<Disp_ImageSetInstanceID>" + std::to_string(image) +
+                          "</Disp_ImageSetInstanceID>"
+                    : std::string()) +
+             "</Switch>";
+    };
+    auto link = [](int from, int to) {
+      return "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) +
+             "</SourceSwitchID><DestSwitchID>" + std::to_string(to) +
+             "</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+             "<EngageLinkActionCode>1</EngageLinkActionCode>"
+             "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>";
+    };
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>211</Identification_UniqueOrganID>"
+        "<Identification_Name>Tutti beside stops</Identification_Name>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID>"
+        "<Name>Pedal</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(130, "Tutti", true, true, 1) +
+        sw(2201, "Stop 1", true, false, 0) + sw(10068, "StopNode 1", false, false, 0) +
+        sw(10069, "Knob 1", true, true, 2) +
+        sw(2202, "Stop 2", true, false, 0) + sw(10071, "StopNode 2", false, false, 0) +
+        sw(10072, "Knob 2", true, true, 3) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" +
+        link(2201, 10068) + link(130, 10068) + link(10069, 2201) + link(2201, 10069) +
+        link(2202, 10071) + link(130, 10071) + link(10072, 2202) + link(2202, 10072) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Principal 16</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>10068</ControllingSwitchID></Stop>"
+        "<Stop><StopID>2</StopID><Name>Bourdon 16</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>10071</ControllingSwitchID></Stop>"
+        "</ObjectList></Hauptwerk>";
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-tutti-beside-stop");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("tutti.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+
+      proc.setStopEngaged(1, true);
+      proc.processBlock(buf, none);
+      MP_CHECK(proc.stopEngaged(1), "the stop drawn is on");
+      MP_CHECK(!proc.stopEngaged(2), "drawing one stop leaves the other in");
+      MP_CHECK(!proc.switchEngaged(130), "the Tutti stays off");
+      MP_CHECK(proc.switchEngaged(10069), "the stop's own knob moves");
+
+      proc.setStopEngaged(1, false);
+      proc.processBlock(buf, none);
+      MP_CHECK(!proc.stopEngaged(1) && !proc.switchEngaged(10069),
+               "pushing the stop in takes its knob with it");
+
+      proc.setSwitchEngaged(130, true);
+      proc.processBlock(buf, none);
+      MP_CHECK(proc.stopEngaged(1) && proc.stopEngaged(2), "the Tutti still draws both");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static TuttiBesideStopTest g_tuttiBesideStop;
+
 // A swell written into a sequencer's part as note velocities (#199): every
 // note on the channel sets it, its note-off leaves it, and a mapping for one
 // note still beats the one for every note.
