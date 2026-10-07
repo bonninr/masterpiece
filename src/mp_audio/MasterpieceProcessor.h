@@ -1510,9 +1510,13 @@ private:
   // is not guaranteed (several devices push), so the write index is atomic and
   // the whole thing is sized to make an overflow implausible rather than
   // impossible — a dropped message beats a blocked MIDI thread.
+  // Long enough for the system exclusive messages consoles send for their
+  // pistons (Johannus: 11 bytes) and registrations (a Rodgers bitfield: about
+  // 44), and fixed, so a MIDI thread never allocates to hand one over (#210).
+  static constexpr int kTaggedMidiBytes = 256;
   struct TaggedMidi {
     int deviceId = 0;
-    uint8_t bytes[3] = {0, 0, 0};
+    uint8_t bytes[kTaggedMidiBytes] = {};
     int size = 0;
     // Which write this slot holds, plus one, stored after the bytes: the
     // reader takes a slot only once this says it is complete. Several
@@ -1522,7 +1526,10 @@ private:
     std::atomic<uint32_t> ready{0};
   };
   static constexpr int kMidiQueueSize = 2048;
-  std::array<TaggedMidi, kMidiQueueSize> midiQueue_{};
+  // Half a megabyte, so on the heap: a processor built on a thread's stack
+  // (a 1 MB stack on Windows) would not have room for it.
+  std::unique_ptr<TaggedMidi[]> midiQueue_ =
+      std::make_unique<TaggedMidi[]>(kMidiQueueSize);
   std::atomic<uint32_t> midiWrite_{0};
   uint32_t midiRead_ = 0;
   // Drain the tagged queue into `midi` before it is handled, so device-aware

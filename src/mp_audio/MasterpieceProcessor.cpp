@@ -953,11 +953,12 @@ bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
 }
 
 void MasterpieceProcessor::pushMidi(int deviceId, const juce::MidiMessage& msg) {
-  // Short messages only. Sysex is not something an organ console sends for a
-  // stop or a key, and copying an unbounded blob here would mean allocating on
-  // a real-time callback.
+  // Up to the slot's fixed size, system exclusive included: consoles send
+  // their pistons that way, and dropping it here left every SysEx mapping deaf
+  // to a real console (#210). A longer message is no piston, and copying an
+  // unbounded one would mean allocating on a MIDI thread.
   const int size = msg.getRawDataSize();
-  if (size <= 0 || size > 3) return;
+  if (size <= 0 || size > kTaggedMidiBytes) return;
 
   const uint32_t index = midiWrite_.fetch_add(1, std::memory_order_acq_rel);
   TaggedMidi& t = midiQueue_[index % kMidiQueueSize];

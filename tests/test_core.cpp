@@ -11323,6 +11323,49 @@ public:
 };
 static ManualButtonTest g_manualButtons;
 
+// A piston sent as system exclusive by a console plugged in as a MIDI device
+// (#210): the device queue held three bytes a message and dropped the rest,
+// so a SysEx mapping never heard a real console.
+class DeviceSysExTest final : public mp::test::Test {
+public:
+  DeviceSysExTest() : Test("functional.midi.device-sysex", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    MP_CHECK(!proc.organModel().switches.empty(), "the fixture has a switch");
+    if (proc.organModel().switches.empty()) return;
+    const mp::Id sw = proc.organModel().switches.begin()->first;
+
+    // Johannus General Cancel: F0 00 4A 4F 48 41 53 00 10 06 F7.
+    const uint8_t body[] = {0x00, 0x4A, 0x4F, 0x48, 0x41, 0x53, 0x00, 0x10, 0x06};
+    mp::MidiBinding b;
+    b.source.kind = mp::MidiSourceKind::SysEx;
+    b.source.number = mp::sysExId(body, static_cast<int>(sizeof body));
+    b.targetKind = mp::MidiTargetKind::Switch;
+    b.targetId = sw;
+    b.trigger = mp::MidiTrigger::Toggle;
+    b.latching = true;
+    proc.midiMap().bind(b);
+
+    const bool before = proc.switchEngaged(sw);
+    const int device = proc.registerMidiDevice("Johannus");
+    proc.pushMidi(device, juce::MidiMessage::createSysExMessage(body, static_cast<int>(sizeof body)));
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    proc.processBlock(buf, none);
+    MP_CHECK(proc.switchEngaged(sw) != before, "the console's SysEx piston reaches its mapping");
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static DeviceSysExTest g_deviceSysEx;
+
 // A swell written into a sequencer's part as note velocities (#199): every
 // note on the channel sets it, its note-off leaves it, and a mapping for one
 // note still beats the one for every note.
