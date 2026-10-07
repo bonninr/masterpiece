@@ -857,6 +857,18 @@ private:
       juce::JUCEApplication::getInstance()->systemRequestedQuit();
     }
 
+   #if JUCE_IOS
+    // Kiosk mode gives the window the whole display, and sizes it again when
+    // the iPad turns or its window changes. The console sits inside the
+    // display's safe area, clear of the window controls, the rounded corners
+    // and the home indicator, where every tap lands (#197).
+    void resized() override {
+      juce::DocumentWindow::resized();
+      if (auto* content = getContentComponent())
+        content->setBounds(getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds()));
+    }
+   #endif
+
     mp::ui::MasterpieceEditor& editor() { return *editor_; }
     // Run once the organ is up. Used to start a demonstration performance
     // without a human having to click through a file dialog first.

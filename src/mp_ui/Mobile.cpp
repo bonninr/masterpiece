@@ -304,6 +304,9 @@ static juce::File openInPlaceAndRemember(const juce::URL& document) {
 #endif
 
 void restoreLinkedDocuments() {
+ #if JUCE_IOS
+  restoreHeldAccess();
+ #endif
  #if JUCE_ANDROID
   juce::StringArray lines, kept;
   lines.addLines(linkedList().loadFileAsString());
@@ -333,8 +336,19 @@ juce::Rectangle<int> screenArea() {
   // with the system's bars hidden (see the app's main window). Each panel is
   // a window of its own there, so leaving room for the bars would mean
   // finding them for every one; hiding them gives every panel the screen.
-  if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+  //
+  // An iPad keeps what kiosk mode cannot hide: since iPadOS 26 every app runs
+  // in a window, with the window's controls drawn over its top-left corner,
+  // and the screen's rounded corners and home indicator cut into the edges.
+  // Those are the display's safe-area insets, and drawing under them put the
+  // menu where no tap reaches it (#197).
+  if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
+   #if JUCE_IOS
+    return d->safeAreaInsets.subtractedFrom(d->totalArea);
+   #else
     return kMobile ? d->totalArea : d->userArea;
+   #endif
+  }
   return {0, 0, 1280, 800};
 }
 

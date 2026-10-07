@@ -406,9 +406,19 @@ jobs:
   # tagged release skips it; on pull requests it keeps the iOS build honest.
   ios:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: macos-14
+    runs-on: macos-15
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
+      # The newest Xcode on the runner: its simulators carry the newest iOS,
+      # and the tap-through's idb needs a recent one.
+      - name: Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -i ios
 
       - name: Configure
         run: cmake --preset ios-sim
@@ -427,56 +437,25 @@ jobs:
           plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
           echo "APP=$APP" >> "$GITHUB_ENV"
 
-      # Run it, since nobody here has a Mac to look with: an iPad simulator,
-      # an organ made on the spot (one stop of sine-wave pipes) played from a
-      # MIDI file and recorded inside the app, the recording checked for
-      # sound and pitch, then the UI tapped through by the names on its
-      # buttons. Everything seen is kept in the ios-simulator-screenshots
-      # artifact. The checks report; they do not fail the build yet.
+      # Run it, since nobody here has a Mac to look with. Organs made from
+      # numbers (pure sine pipes, exponential releases), played from a MIDI
+      # file and recorded inside the app, each recording checked against the
+      # numbers; then the UI tapped through by the names on its buttons and a
+      # package opened through the system's document picker. On a large iPad,
+      # an iPad mini and an iPhone. See .github/ios-check/.
       - name: Tools for the simulator run
-        run: pip3 install --break-system-packages numpy || pip3 install numpy
-
-      - name: Run in the simulator
         run: |
-          DEVICE=$(xcrun simctl list devices available -j |
-            python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if 'iPad' in x['name']))")
-          echo "simulator: $DEVICE"
-          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
-          xcrun simctl boot "$DEVICE"
-          xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl install "$DEVICE" "$APP"
-          BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
-          mkdir -p ios-shots
+          pip3 install --break-system-packages numpy fb-idb || pip3 install numpy fb-idb
+          brew tap facebook/fb && brew install idb-companion || echo "idb-companion not available"
 
-          # The organ, in the app's own Documents folder, where it may read;
-          # played from its package, as a phone or tablet opens organs.
-          DATA=$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE" data)
-          python3 .github/ios-check/make_organ.py "$DATA/Documents/check"
-          ls "$DATA/Documents/check" | head
+      - name: Test organs
+        run: |
+          python3 .github/ios-check/make_organ.py organs/check
+          python3 .github/ios-check/make_organ.py organs/heavy --heavy
+          du -sh organs/*/check.orgue
 
-          xcrun simctl launch "$DEVICE" "$BUNDLE"             --odf "$DATA/Documents/check/check.orgue" --draw-stops all             --play-midi "$DATA/Documents/check/check.mid"             --record-audio "$DATA/Documents/check/out.wav"             --log "$DATA/Documents/check/run.log" --stay-open | tee ios-shots/launch.txt
-
-          # The piece lasts about five seconds once the organ is up.
-          for i in $(seq 1 60); do
-            grep -q "recital finished" "$DATA/Documents/check/run.log" 2>/dev/null && break
-            sleep 2
-          done
-          cp "$DATA/Documents/check/run.log" ios-shots/ 2>/dev/null || echo "no log" > ios-shots/run.log
-          xcrun simctl io "$DEVICE" screenshot ios-shots/00-after-playing.png
-          if [ -f "$DATA/Documents/check/out.wav" ]; then
-            cp "$DATA/Documents/check/out.wav" ios-shots/
-            python3 .github/ios-check/check_audio.py ios-shots/out.wav | tee ios-shots/audio-result.txt || true
-          else
-            echo "FAIL: no recording" | tee ios-shots/audio-result.txt
-          fi
-
-          # The tap-through (drive_ui.py) needs idb, which now asks for macOS 15
-          # and Xcode 26; this runner has neither. Kept for a runner that does.
-
-          # Still running, or did it crash?
-          xcrun simctl spawn "$DEVICE" launchctl list | grep -i "$BUNDLE" | tee ios-shots/running.txt || echo "NOT RUNNING" | tee ios-shots/running.txt
-          xcrun simctl spawn "$DEVICE" log show --last 5m --predicate "process == 'Masterpiece'" --style compact > ios-shots/system-log.txt 2>&1 || true
-          find ~/Library/Logs/DiagnosticReports -name "Masterpiece*" -newer "$APP" -exec cp {} ios-shots/ \; 2>/dev/null || true
+      - name: Run on each device
+        run: bash .github/ios-check/run_devices.sh "$APP" organs
 
       - uses: actions/upload-artifact@v4
         if: always()

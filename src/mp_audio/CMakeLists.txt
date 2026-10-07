@@ -38,6 +38,10 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.cpp
 )
+# iPhone and iPad: picked documents read in place (#197).
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  target_sources(mp_audio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/IosAccess.mm)
+endif()
 target_include_directories(mp_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_audio PUBLIC cxx_std_20)
 # Wood, dials, needles, shoes and list items for console pages built from a

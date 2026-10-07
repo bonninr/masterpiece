@@ -742,6 +742,12 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     for (const auto& [n, file] : vols) v.push_back(file);
     archives_.push_back(v);
   }
+  // A folder that may not be listed: on an iPhone or iPad a picked document
+  // is lent on its own, and its folder stays closed (#197). The package then
+  // stands alone; one that turns out to be a volume of a set says so below.
+  if (archives_.empty() && isOrganArchive(chosen.filename().string()) &&
+      fs::is_regular_file(chosen, ec))
+    archives_.push_back({path});
   if (archives_.empty()) {
     error = "no archive found at " + path;
     return false;

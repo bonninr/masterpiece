@@ -1,0 +1,109 @@
+#!/bin/bash
+# Runs the app on several simulators, one after another, and keeps what each
+# showed and played in ios-shots/<device>/.
+#
+#   bash run_devices.sh <Masterpiece.app> <organs folder>
+#
+# On every device: the test organ played from a MIDI file and recorded inside
+# the app, the recording checked against the numbers it was made from
+# (check_audio.py), then the UI tapped through by the names on its buttons
+# (drive_ui.py), ending with the organ package opened through the system's
+# document picker from "On My iPad", outside the app's own folder (#197). On
+# the large iPad the heavy organ is played as well.
+#
+# Exits 1 if any recording failed its checks. The tap-through reports only:
+# the picker is the system's, and its labels change between iOS versions.
+set -u
+APP=$1
+ORGANS=$2
+BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
+mkdir -p ios-shots
+failed=0
+
+udid_for() {  # the newest runtime's device whose name contains $1
+  xcrun simctl list devices available -j | python3 -c "
+import json, sys
+d = json.load(sys.stdin)['devices']
+for k in sorted(d, reverse=True):
+    if 'iOS' not in k: continue
+    for x in d[k]:
+        if sys.argv[1] in x['name']:
+            print(x['udid'], x['name'].replace(' ', '_')); sys.exit()
+" "$1"
+}
+
+play() {  # device, organ folder name, output folder
+  local dev=$1 organ=$2 out=$3
+  local data
+  data=$(xcrun simctl get_app_container "$dev" "$BUNDLE" data)
+  rm -rf "$data/Documents/$organ"
+  cp -R "$ORGANS/$organ" "$data/Documents/$organ"
+  xcrun simctl launch --terminate-running-process "$dev" "$BUNDLE" \
+    --odf "$data/Documents/$organ/check.orgue" --draw-stops all \
+    --play-midi "$data/Documents/$organ/check.mid" \
+    --record-audio "$data/Documents/$organ/out.wav" \
+    --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1
+  for _ in $(seq 1 120); do
+    grep -q "recital finished" "$data/Documents/$organ/run.log" 2>/dev/null && break
+    sleep 2
+  done
+  sleep 3
+  cp "$data/Documents/$organ/run.log" "$out/$organ-run.log" 2>/dev/null || echo "no log" > "$out/$organ-run.log"
+  xcrun simctl io "$dev" screenshot "$out/$organ-playing.png" >/dev/null 2>&1
+  grep -ciE "late block|late-block|underrun" "$out/$organ-run.log" > "$out/$organ-late-blocks.txt" || true
+  if [ -f "$data/Documents/$organ/out.wav" ]; then
+    cp "$data/Documents/$organ/out.wav" "$out/$organ.wav"
+    if ! python3 .github/ios-check/check_audio.py "$out/$organ.wav" "$ORGANS/$organ/check.json" \
+         > "$out/$organ-audio.txt" 2>&1; then
+      failed=1
+    fi
+  else
+    echo "FAIL: no recording" > "$out/$organ-audio.txt"
+    failed=1
+  fi
+  cat "$out/$organ-audio.txt"
+}
+
+for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
+  read -r DEV NAME < <(udid_for "$want")
+  if [ -z "${DEV:-}" ]; then echo "no simulator like '$want'"; continue; fi
+  OUT="ios-shots/$NAME"
+  mkdir -p "$OUT"
+  echo "== $NAME ($DEV)"
+  xcrun simctl boot "$DEV" 2>/dev/null
+  xcrun simctl bootstatus "$DEV" -b >/dev/null
+  xcrun simctl install "$DEV" "$APP"
+
+  play "$DEV" check "$OUT"
+  case "$want" in "iPad Pro"*) play "$DEV" heavy "$OUT" ;; esac
+
+  # The package where the Files app keeps "On My iPad", for the picker.
+  GROUP=$(xcrun simctl get_app_container "$DEV" com.apple.DocumentsApp groups 2>/dev/null |
+          awk '/LocalStorage/ {print $2}')
+  if [ -n "$GROUP" ]; then
+    mkdir -p "$GROUP/File Provider Storage/check"
+    cp "$ORGANS/check/check.orgue" "$GROUP/File Provider Storage/check/"
+  else
+    echo "no Files storage on this simulator" > "$OUT/picker-note.txt"
+  fi
+  data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data)
+  xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" \
+    > "$OUT/ui-launch.txt" 2>&1
+  sleep 8
+  if command -v idb >/dev/null; then
+    idb connect "$DEV" >/dev/null 2>&1
+    PICK_PACKAGE=check.orgue python3 .github/ios-check/drive_ui.py "$DEV" "$OUT/ui" || true
+  else
+    echo "idb is not installed: no tap-through" > "$OUT/ui-note.txt"
+    xcrun simctl io "$DEV" screenshot "$OUT/console.png" >/dev/null 2>&1
+  fi
+  cp "$data/Documents/ui.log" "$OUT/ui.log" 2>/dev/null || true
+
+  # Still running, or did it crash?
+  xcrun simctl spawn "$DEV" launchctl list | grep -i "$BUNDLE" > "$OUT/running.txt" || echo "NOT RUNNING" > "$OUT/running.txt"
+  xcrun simctl spawn "$DEV" log show --last 10m --predicate "process == 'Masterpiece'" --style compact \
+    > "$OUT/system-log.txt" 2>&1 || true
+  xcrun simctl shutdown "$DEV"
+done
+find ~/Library/Logs/DiagnosticReports -name "Masterpiece*" -newer "$APP" -exec cp {} ios-shots/ \; 2>/dev/null || true
+exit $failed

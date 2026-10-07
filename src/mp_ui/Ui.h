@@ -169,6 +169,11 @@ public:
   // Ask for an organ file and load it. Shared with the first-run wizard.
   // `startIn` is where the chooser opens; empty is wherever it last was.
   void chooseAndLoadOrgan(const juce::File& startIn = {});
+#if JUCE_IOS
+  // A package that is one volume of a set: asks for the folder holding the
+  // set, holds it, and opens the package again.
+  void askForFolderOf(const juce::File& package, bool graphicsOnly);
+#endif
   // Show one of the organ's console pages, counting from 1. A set with jambs
   // on their own pages cannot be photographed from a script otherwise, and
   // this is also what --console-page drives.
