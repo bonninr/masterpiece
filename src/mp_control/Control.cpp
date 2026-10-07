@@ -455,6 +455,18 @@ void ContinuousControlBank::reset(const OrganModel& model) {
   for (const auto& [id, c] : model.continuousControls)
     values_[id] = clampToRange(c, c.defaultValue);
   linkSeen_.assign(model.controlLinkages.size(), kNotLive);
+  // A linkage with an unconditional return linkage (A to B and B to A) joins
+  // twins: the same shoe drawn on several pages, or a shoe and the hidden
+  // pedal it shares with its copies.
+  std::set<std::pair<Id, Id>> wires;
+  for (const auto& l : model.controlLinkages)
+    if (l.conditionSwitchId == 0) wires.insert({l.sourceControlId, l.destControlId});
+  linkIsTwin_.assign(model.controlLinkages.size(), 0);
+  for (size_t i = 0; i < model.controlLinkages.size(); ++i) {
+    const auto& l = model.controlLinkages[i];
+    linkIsTwin_[i] = l.conditionSwitchId == 0 &&
+                     wires.count({l.destControlId, l.sourceControlId}) != 0;
+  }
   propagate();
 }
 
@@ -538,10 +550,16 @@ void ContinuousControlBank::propagate(Id pinned,
       // expression matrix selects; reasserting every unmoved feeder on every
       // block let the last one written win, and the swell would not close.
       //
+      // So does a linkage between twins. Ashton joins five drawn copies of its
+      // swell shoe both ways to one hidden pedal; recomputing that pedal from
+      // all five on every pass set it to the moved shoe and back to an
+      // unmoved copy in turn, the passes never settled, and each swell step
+      // cost 30 ms of the audio thread (#166).
+      //
       // Any other control has no position of its own and is recomputed every
       // pass. Azzio feeds its tremulant crossfade from constants and from a
       // delay ramp at once, and relies on the constants holding it at rest.
-      if (dit->second.imageSetInstanceId != 0 || dit->second.clickable) {
+      if (dit->second.imageSetInstanceId != 0 || dit->second.clickable || linkIsTwin_[li]) {
         if (seen == sit->second) continue;
         seen = sit->second;
       }

@@ -232,6 +232,8 @@ private:
   // the first one and while its condition is not met: it fires on a change.
   static constexpr int kNotLive = std::numeric_limits<int>::min();
   std::vector<int> linkSeen_;
+  // Per single linkage, whether it has an unconditional return linkage.
+  std::vector<char> linkIsTwin_;
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };
