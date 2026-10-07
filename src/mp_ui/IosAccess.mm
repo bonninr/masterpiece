@@ -64,7 +64,9 @@ void remember(NSURL* url) {
   if (data == nil) return;
   const juce::String path = fileOf(url).getFullPathName();
   NSString* encoded = [data base64EncodedStringWithOptions:0];
-  const juce::String mark(juce::CharPointer_UTF8([encoded UTF8String]));
+  // Assigned: "String mark(CharPointer_UTF8([...]))" parses as a function
+  // declaration with an array parameter.
+  const juce::String mark = juce::String::fromUTF8([encoded UTF8String]);
   juce::StringArray lines, kept;
   lines.addLines(heldList().loadFileAsString());
   for (const auto& line : lines)
