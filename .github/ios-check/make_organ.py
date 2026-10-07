@@ -40,6 +40,7 @@ STOPS = [("Sine 8'", 1, 0.20), ("Sine 4'", 2, 0.10), ("Sine 2'", 4, 0.05)]
 RELEASE_TAU = 0.15     # seconds for the release to fall by 1/e
 RELEASE_LEN = 1.2      # seconds; ends below -60 dB of its start
 LOAD_RANKS = 12        # --heavy
+HEAVY_SCALE = 0.1      # --heavy: every amplitude, so ten keys on fifteen ranks do not clip
 LOAD_CENTS = [-9, -7, -5, -4, -3, -2, 2, 3, 4, 5, 7, 9]
 
 HEAVY = "--heavy" in sys.argv
@@ -92,10 +93,13 @@ def release(freq, amp):
 
 def ranks():
     """(name, folder, factor, cents, amplitude, seconds) for every rank."""
-    out = [(name, f"r{i + 1}", factor, 0.0, amp, 1.5) for i, (name, factor, amp) in enumerate(STOPS)]
+    # The heavy organ plays fifteen ranks under ten keys at once: everything is
+    # scaled down so that sum stays clear of full scale.
+    scale = HEAVY_SCALE if HEAVY else 1.0
+    out = [(name, f"r{i + 1}", factor, 0.0, amp * scale, 1.5) for i, (name, factor, amp) in enumerate(STOPS)]
     if HEAVY:
         for i, cents in enumerate(LOAD_CENTS):
-            out.append((f"Load {i + 1:02d}", f"l{i + 1}", 1, cents, 0.02, 6.0))
+            out.append((f"Load {i + 1:02d}", f"l{i + 1}", 1, cents, 0.02 * scale, 6.0))
     return out
 
 

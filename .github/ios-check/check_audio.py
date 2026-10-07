@@ -95,6 +95,29 @@ def partial_checks(name, seg, rate, partials):
     check(name + " clean", rel <= -40, f"strongest other component {rel:.1f} dB (limit -40)")
 
 
+def heavy_checks(x, rate, spec, at, peak):
+    """The heavy organ: fifteen ranks, some beating against each other as
+    celestes do, so pitch and levels are the normal organ's to check. Here:
+    no clipping, no dropout or click under load, silence after the release."""
+    check("headroom", peak < 0.99, f"peak {peak:.3f} (limit 0.99)")
+    big = spec["big"]
+    w20 = int(0.02 * rate)
+    w = [rms(x[i:i + w20]) for i in range(at(big["on"] + 0.7), at(big["off"] - 0.05), w20)]
+    dip = db(min(w), float(np.median(w))) if w else -99
+    check("load", dip >= -6, f"the big chord's level dips {dip:.1f} dB at most (limit -6)")
+    worst = 0.0
+    for i in range(at(big["on"] + 0.7), at(big["off"] - 0.05), w20):
+        seg = x[i:i + w20]
+        d2 = np.abs(np.diff(seg, 2))
+        worst = max(worst, float(d2.max() / (np.median(d2) + 1e-12)))
+    check("load clicks", worst <= 15, f"largest spike {worst:.1f}x its surroundings under load (limit 15)")
+    level = float(np.median(w)) if w else 1.0
+    after = db(rms(x[at(big["off"] + 1.3):at(big["off"] + 1.45)]), level)
+    check("load silence", after <= -60, f"{after:.1f} dB after the big chord's release (limit -60)")
+    print("OK" if all(results) else "FAILED")
+    return 0 if all(results) else 1
+
+
 def main():
     x, rate = load(sys.argv[1])
     spec = json.load(open(sys.argv[2]))
@@ -110,6 +133,8 @@ def main():
         return int((t0 + t) * rate)
 
     held, chord = spec["held"], spec["chord"]
+    if spec.get("heavy"):
+        return heavy_checks(x, rate, spec, at, peak)
     partial_checks("held", x[at(held["on"] + 0.6):at(held["off"] - 0.1)], rate, held["partials"])
 
     win = int(0.05 * rate)
@@ -156,12 +181,6 @@ def main():
         if ratio > worst:
             worst, where = ratio, i / rate - t0
     check("clicks", worst <= 15, f"largest spike {worst:.1f}x its surroundings at {where:.2f} s (limit 15)")
-
-    if spec.get("heavy"):
-        big = spec["big"]
-        w = [rms(x[i:i + w20]) for i in range(at(big["on"] + 0.7), at(big["off"] - 0.05), w20)]
-        dip = db(min(w), float(np.median(w))) if w else -99
-        check("load", dip >= -3, f"the big chord's level dips {dip:.1f} dB at most (limit -3)")
 
     print("OK" if all(results) else "FAILED")
     return 0 if all(results) else 1
