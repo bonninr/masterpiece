@@ -19,6 +19,7 @@
 #include "../../src/mp_ui/OrganSettings.h"
 #include "../../src/mp_ui/Settings.h"
 #include "../../src/mp_ui/Wizard.h"
+#include "JackMidi.h"
 #include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
 
@@ -264,6 +265,8 @@ public:
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());
       routes_.push_back({in.identifier, std::move(route)});
     }
+    // And JACK's MIDI, which the inputs above do not include (#198).
+    jackMidi_ = JackMidiInput::open(*proc_);
 
     // A port of our own, so anything that can send MIDI can play this organ
     // without a console plugged in. macOS and Linux let a process publish one;
@@ -760,6 +763,7 @@ public:
     if (virtualInput_) virtualInput_->stop();
     virtualInput_.reset();
     virtualRoute_.reset();
+    jackMidi_.reset();  // its process thread hands messages to the processor
 
     if (devices_ && player_) {
       devices_->removeAudioCallback(player_.get());
@@ -950,6 +954,8 @@ private:
   // destroyed last — the input goes away while its callback is still valid.
   std::unique_ptr<DeviceRoute> virtualRoute_;
   std::unique_ptr<juce::MidiInput> virtualInput_;
+  // Linux: a JACK MIDI port, when a JACK server is running (#198).
+  std::unique_ptr<JackMidiInput> jackMidi_;
 };
 
 START_JUCE_APPLICATION(MasterpieceApp)
