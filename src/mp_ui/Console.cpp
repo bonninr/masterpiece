@@ -1122,7 +1122,9 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
     menu.addSectionHeader("Not mapped");
   } else {
     for (const MidiBinding* b : existing) {
-      juce::String what = "CC " + juce::String(b->source.number);
+      juce::String what = b->source.kind != MidiSourceKind::Note ? "CC " + juce::String(b->source.number)
+                          : b->source.number == kAnyNote        ? juce::String("Velocity of any note")
+                                                                : "Velocity of note " + juce::String(b->source.number);
       if (b->source.channel > 0) what << " ch " << b->source.channel;
       // The pedal's travel, when it is not the whole 0..127, closed to open.
       const int lo = std::min(b->lowValue, b->highValue), hi = std::max(b->lowValue, b->highValue);

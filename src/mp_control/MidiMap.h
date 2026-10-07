@@ -99,6 +99,10 @@ inline int sysExId(const uint8_t* data, int size) {
   return static_cast<int>(h & 0x7fffffffu);
 }
 
+// A note source's number that matches every note on its channel (#199): a
+// swell set from the velocity of whatever note a sequencer plays there.
+constexpr int kAnyNote = -1;
+
 struct MidiSource {
   MidiSourceKind kind = MidiSourceKind::None;
   int channel = 0;  // 1..16; 0 = any channel, which is what most rigs want
