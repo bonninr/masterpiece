@@ -21,7 +21,7 @@ juce_add_gui_app(MasterpieceApp
   IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
 )
 
-target_sources(MasterpieceApp PRIVATE Main.cpp)
+target_sources(MasterpieceApp PRIVATE Main.cpp JackMidi.cpp)
 # On Android the app is a shared library that JUCE's Java side loads by this
 # name (System.loadLibrary("juce_jni")).
 if(ANDROID)
