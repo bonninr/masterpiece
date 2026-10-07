@@ -6183,6 +6183,38 @@ public:
                  "and the release starts at the last cue");
       }
 
+      // St David's rear samples (#189): one loop ending on the file's last
+      // frame, and a single cue on the loop's start. That cue marks no
+      // release inside the loop, so the loop stays and there is no release.
+      {
+        const auto f = root.getChildFile("cue-at-loop.wav");
+        f.deleteFile();
+        std::unique_ptr<juce::FileOutputStream> os(f.createOutputStream());
+        juce::StringPairArray m;
+        m.set("NumSampleLoops", "1");
+        m.set("Loop0Start", "500"); m.set("Loop0End", "1999");
+        m.set("NumCuePoints", "1");
+        m.set("Cue0Identifier", "1"); m.set("Cue0Offset", "500");
+        std::unique_ptr<juce::AudioFormatWriter> w(
+            fmt.createWriterFor(os.release(), 48000.0, 1, 16, m, 0));
+        juce::AudioBuffer<float> tone(1, 2000);
+        for (int i = 0; i < 2000; ++i)
+          tone.setSample(0, i, static_cast<float>(0.5 * std::sin(0.05 * i)));
+        w->writeFromAudioSampleBuffer(tone, 0, 2000);
+        w.reset();
+        mp::SampleRef r;
+        r.sampleId = 8;
+        r.fileName = "cue-at-loop.wav";
+        mp::OrganModel om;
+        om.samples[8] = r;
+        mp::SampleLibrary lib;
+        lib.loadAll(om, rootPath, 0, mp::LoopSelection::Longest);
+        const mp::SampleBuffer* b = lib.provider()(8);
+        MP_CHECK(b && b->loopStart == 500 && b->loopEnd == 2000,
+                 "a cue on the loop start keeps the loop that ends on the last frame");
+        MP_CHECK(b && b->releaseCue < 0, "and marks no release");
+      }
+
       // The preload head is a MINIMUM, not a cap. A head of 500 frames would
       // cut off every loop in this file, and a sample whose loop is missing
       // does not sustain — the note simply dies. So the read is extended to
