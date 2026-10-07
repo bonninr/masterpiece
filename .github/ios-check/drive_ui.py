@@ -67,6 +67,12 @@ def tap(name, contains=False):
 def main():
     os.makedirs(OUT, exist_ok=True)
     shot("start")
+    # The run before this one was ended by the simulator, which the app takes
+    # for a crash and says so at the next start: the notice covers the
+    # console until it is dismissed.
+    if any("closed unexpectedly" in label(e) for e in elements()):
+        tap("OK")
+        shot("notice-dismissed")
     # The first-run wizard, when it is up.
     tap("Skip setup")
     shot("console")
@@ -85,6 +91,23 @@ def main():
     if tap("Audio"):
         shot("audio")
         tap("Close") or tap("close", contains=True)
+    # An organ package opened as a player opens one: Open, then the system's
+    # document picker, then the package in "On My iPad" / "On My iPhone",
+    # where the run put it beforehand (#197: a package outside the app's own
+    # folder, lent by the Files app).
+    package = os.environ.get("PICK_PACKAGE")
+    if package and tap("Open"):
+        shot("picker")
+        tap("Browse")
+        tap("On My", contains=True)
+        shot("picker-on-my-device")
+        tap(os.environ.get("PICK_FOLDER", "check"))
+        if tap(os.path.splitext(package)[0], contains=True):
+            time.sleep(20)
+            shot("package-opened")
+        else:
+            shot("picker-no-package")
+            tap("Cancel")
     shot("end")
     with open(os.path.join(OUT, "ui-result.txt"), "w") as f:
         f.write("\n".join(failures) if failures else "every step found its control\n")

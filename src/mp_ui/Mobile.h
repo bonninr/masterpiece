@@ -79,4 +79,15 @@ void importDocument(const juce::URL& document, std::function<void(juce::File)> d
 // loaded; does nothing on the desktop.
 void restoreLinkedDocuments();
 
+#if JUCE_IOS
+// iPhone and iPad lend a picked document or folder through a security-scoped
+// URL (#197). Starts that access from the bookmark the file chooser keeps in
+// `picked`, holds it until the program ends, and remembers it for the next
+// start; returns the path to read it by, or nothing when the loan failed.
+// Nothing is copied: a package is read where it is. See IosAccess.mm.
+juce::File holdPickedAccess(const juce::URL& picked);
+// Lends again, at startup, what was picked in earlier sessions.
+void restoreHeldAccess();
+#endif
+
 }  // namespace mp::ui

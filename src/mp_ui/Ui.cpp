@@ -453,6 +453,37 @@ void TopBar::resized() {
 
 // The organ file dialog. Its own method rather than a lambda in the member
 // list, because the first-run wizard needs the same door.
+#if JUCE_IOS
+void MasterpieceEditor::askForFolderOf(const juce::File& package, bool graphicsOnly) {
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  juce::AlertWindow::showOkCancelBox(
+      juce::MessageBoxIconType::QuestionIcon, "The rest of " + package.getFileName(),
+      package.getFileName() + " is one part of a set of several files. Choose the folder that holds "
+      "all of them, and Masterpiece reads the set from there.",
+      "Choose the folder", "Cancel", nullptr,
+      juce::ModalCallbackFunction::create([self, package, graphicsOnly](int ok) {
+        if (self == nullptr || ok == 0) return;
+        self->chooser_ = std::make_unique<juce::FileChooser>("Choose the folder that holds the set",
+                                                             package.getParentDirectory());
+        self->chooser_->launchAsync(
+            juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [self, package, graphicsOnly](const juce::FileChooser& fc) {
+              if (self == nullptr) return;
+              const auto picked = fc.getURLResult();
+              if (picked.isEmpty()) return;
+              const auto folder = holdPickedAccess(picked);
+              // The package by the same name in the folder now lent, which is
+              // the one picked when the folder is the one that holds it.
+              const auto inFolder = folder.getChildFile(package.getFileName());
+              const auto target = inFolder.existsAsFile() ? inFolder : package;
+              juce::MessageManager::callAsync([self, target, graphicsOnly] {
+                if (self != nullptr) self->loadOrgan(target, graphicsOnly);
+              });
+            });
+      }));
+}
+#endif
+
 void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // The extension pattern names the format because that IS the file name on
   // disk; the prompt does not, because the player is choosing an organ.
@@ -472,7 +503,19 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
  #endif
   chooser_->launchAsync(flags,
                         [this](const juce::FileChooser& fc) {
+                         #if JUCE_IOS
+                          // Lent by the Files app: held and read where it is.
+                          const auto picked = fc.getURLResult();
+                          if (picked.isEmpty()) return;
+                          const auto f = holdPickedAccess(picked);
+                          if (!f.existsAsFile()) {
+                            showWithLog("Could not open the organ",
+                                        "The Files app did not lend this document to Masterpiece.");
+                            return;
+                          }
+                         #else
                           const auto f = fc.getResult();
+                         #endif
                          #if JUCE_MAC
                           if (f.isDirectory()) {
                             // Replacing chooser_ must wait until its callback returns.
@@ -800,6 +843,14 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
         } else {
           self->status_ = "Failed to open " + odf.getFileName();
           self->top_.setStatus(self->status_);
+         #if JUCE_IOS
+          // One volume of a set, lent on its own: the others are beside it but
+          // out of reach until the folder holding them is lent too (#197).
+          if (error.contains("multi-volume")) {
+            self->askForFolderOf(odf, graphicsOnly);
+            return;
+          }
+         #endif
           showWithLog("Could not open " + odf.getFileName(), error);
         }
       });
