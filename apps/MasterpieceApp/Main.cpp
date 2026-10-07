@@ -295,8 +295,12 @@ public:
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
     // A phone or tablet plays full screen, with the system's bars hidden
-    // until a swipe from the edge brings them back.
+    // until a swipe from the edge brings them back. Not on iOS: kiosk mode
+    // sizes the window to JUCE's display, which stays upright on a turned
+    // iPad, and there the window follows the scene instead (DocWindow).
+   #if !JUCE_IOS
     if (mp::ui::kMobile) juce::Desktop::getInstance().setKioskModeComponent(win_.get(), false);
+   #endif
 
     juce::File odf;
     for (int i = 0; i < args.size(); ++i)
@@ -866,7 +870,7 @@ private:
     }
 
    #if JUCE_IOS
-    // Kiosk mode gives the window the whole display, and sizes it again when
+    // The window covers the whole scene, and is sized again when
     // the iPad turns or its window changes. The console sits inside the
     // display's safe area, clear of the window controls, the rounded corners
     // and the home indicator, where every tap lands (#197).
@@ -884,6 +888,12 @@ private:
         const auto whole = mp::ui::screenBounds();
         const auto safe = mp::ui::screenArea();
         if (whole == window.getBounds() && safe == area) return;
+        // Written down at every change: what the scene, the window and JUCE's
+        // display say is the record a report from an iPad needs.
+        const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+        juce::Logger::writeToLog("screen: scene " + whole.toString() + ", safe " + safe.toString() +
+                                 ", window " + window.getBounds().toString() + ", display " +
+                                 (d != nullptr ? d->totalArea.toString() : juce::String("none")));
         area = safe;
         if (whole != window.getBounds()) window.setBounds(whole);
         else if (auto* c = window.getContentComponent())
