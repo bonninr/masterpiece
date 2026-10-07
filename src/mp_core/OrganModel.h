@@ -819,6 +819,10 @@ struct OrganModel {
   int consoleHeightPx[4] = {0, 0, 0, 0};
 
   std::unordered_map<Id, Rank> ranks;
+  // A GrandOrgue set's windchest group, by name, for each rank: the grouping
+  // its own stop tree uses, offered in place of perspectives, which such a set
+  // does not have (#136). Empty for a set from anywhere else.
+  std::unordered_map<Id, std::string> rankWindchests;
   std::unordered_map<Id, Stop> stops;
   std::unordered_map<Id, Switch> switches;
   // Ordered, because solving the network applies them in order and the answer

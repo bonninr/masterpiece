@@ -96,7 +96,9 @@ void StopsLoadPanel::build() {
   const auto groups = proc_.perspectives();
   if (!groups.empty()) {
     perspectivesHeading_ = std::make_unique<juce::Label>();
-    perspectivesHeading_->setText("Perspectives", juce::dontSendNotification);
+    // A GrandOrgue set's windchest groups stand in for perspectives (#136).
+    const bool chests = groupedByWindchest(proc_.organModel());
+    perspectivesHeading_->setText(chests ? "Windchest groups" : "Perspectives", juce::dontSendNotification);
     perspectivesHeading_->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     perspectivesHeading_->setColour(juce::Label::textColourId, juce::Colours::orange);
     list_.addAndMakeVisible(*perspectivesHeading_);
@@ -175,6 +177,7 @@ void StopsLoadPanel::build() {
     row.toggle->setEnabled(s.playable);
     if (!s.playable) row.toggle->setTooltip("This stop's ranks ship no pipes in this sample set");
     row.toggle->addMouseListener(this, false);
+    row.toggle->addKeyListener(this);
     row.toggle->onClick = [this, clicked = row.toggle.get()] {
       // Released over the stop the drag began on: the drag decided.
       if (dragging_) clicked->setToggleState(dragState_, juce::dontSendNotification);
@@ -336,6 +339,43 @@ void StopsLoadPanel::mouseDrag(const juce::MouseEvent& e) {
   applyStopTicks();
 }
 
+bool StopsLoadPanel::keyPressed(const juce::KeyPress& key, juce::Component* origin) {
+  int at = -1;
+  for (size_t i = 0; i < rows_.size(); ++i)
+    if (rows_[i].toggle.get() == origin) at = static_cast<int>(i);
+  if (at < 0) return false;
+  auto& here = *rows_[static_cast<size_t>(at)].toggle;
+  if (key.isKeyCode(juce::KeyPress::spaceKey)) {
+    if (here.isEnabled()) here.setToggleState(!here.getToggleState(), juce::dontSendNotification);
+    applyStopTicks();
+    return true;
+  }
+  const bool up = key.isKeyCode(juce::KeyPress::upKey);
+  if (!up && !key.isKeyCode(juce::KeyPress::downKey)) return false;
+  // The next stop shown that can be chosen, that way.
+  int next = at;
+  do {
+    next += up ? -1 : 1;
+  } while (next >= 0 && next < static_cast<int>(rows_.size()) &&
+           !(rows_[static_cast<size_t>(next)].toggle->isVisible() &&
+             rows_[static_cast<size_t>(next)].toggle->isEnabled()));
+  if (next < 0 || next >= static_cast<int>(rows_.size())) return true;
+  auto& there = *rows_[static_cast<size_t>(next)].toggle;
+  if (key.getModifiers().isShiftDown()) {
+    there.setToggleState(here.getToggleState(), juce::dontSendNotification);
+    applyStopTicks();
+  }
+  there.grabKeyboardFocus();
+  // Kept in view, a row's height of room above and below.
+  const auto r = there.getBounds();
+  const int top = viewport_.getViewPositionY(), height = viewport_.getViewHeight();
+  if (r.getY() - r.getHeight() < top)
+    viewport_.setViewPosition(0, std::max(0, r.getY() - r.getHeight()));
+  else if (r.getBottom() + r.getHeight() > top + height)
+    viewport_.setViewPosition(0, r.getBottom() + r.getHeight() - height);
+  return true;
+}
+
 void StopsLoadPanel::mouseUp(const juce::MouseEvent& e) {
   for (size_t h = 0; h < headings_.size(); ++h) {
     if (e.eventComponent != headings_[h].label.get()) continue;
@@ -397,7 +437,7 @@ void StopsLoadPanel::showRankStates() {
     juce::String why;
     if (const auto it = byPerspective.find(r.rankId); it != byPerspective.end())
       why = "Left out with the " + juce::String(juce::CharPointer_UTF8(it->second.c_str())) +
-            " perspective";
+            (groupedByWindchest(proc_.organModel()) ? " windchest group" : " perspective");
     else if (!r.stops.empty() &&
              std::all_of(r.stops.begin(), r.stops.end(),
                          [&](Id s) { return stopsOut.count(s) != 0; }))

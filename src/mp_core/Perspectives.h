@@ -26,6 +26,17 @@ std::string perspectiveOf(const std::string& rankName);
 // two, each holding a fair share of the ranks. A bracket that says something
 // else ("Cornet (5 rgs)") names a handful of ranks at most, and does not
 // make a perspective of them. Empty for an organ recorded from one place.
+//
+// A GrandOrgue set has no perspectives; its windchest groups stand in for
+// them, the grouping its own stop tree uses (#136).
 std::map<std::string, std::vector<Id>> perspectivesOf(const OrganModel& model);
+
+// A GrandOrgue set's windchest groups and their ranks; empty with fewer than
+// two, or for a set from anywhere else.
+std::map<std::string, std::vector<Id>> windchestsOf(const OrganModel& model);
+
+// Whether perspectivesOf() answered with windchest groups, which the stop
+// list then names as such.
+bool groupedByWindchest(const OrganModel& model);
 
 }  // namespace mp

@@ -133,7 +133,23 @@ std::map<std::string, std::vector<Id>> perspectivesOf(const OrganModel& model) {
     it = it->second.size() < floor ? groups.erase(it) : std::next(it);
   if (groups.size() < 2) groups.clear();
   for (auto& [name, ids] : groups) std::sort(ids.begin(), ids.end());
+  if (!groups.empty()) return groups;
+  return windchestsOf(model);
+}
+
+std::map<std::string, std::vector<Id>> windchestsOf(const OrganModel& model) {
+  std::map<std::string, std::vector<Id>> groups;
+  for (const auto& [rankId, name] : model.rankWindchests)
+    if (model.ranks.count(rankId) != 0) groups[name].push_back(rankId);
+  if (groups.size() < 2) groups.clear();
+  for (auto& [name, ids] : groups) std::sort(ids.begin(), ids.end());
   return groups;
+}
+
+bool groupedByWindchest(const OrganModel& model) {
+  if (model.rankWindchests.empty()) return false;
+  const auto groups = perspectivesOf(model);
+  return !groups.empty() && groups == windchestsOf(model);
 }
 
 }  // namespace mp
