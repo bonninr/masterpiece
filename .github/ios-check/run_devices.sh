@@ -38,11 +38,16 @@ play() {  # device, organ folder name, output folder
   data=$(xcrun simctl get_app_container "$dev" "$BUNDLE" data)
   rm -rf "$data/Documents/$organ"
   cp -R "$ORGANS/$organ" "$data/Documents/$organ"
-  xcrun simctl launch --terminate-running-process "$dev" "$BUNDLE" \
-    --odf "$data/Documents/$organ/check.orgue" --draw-stops all \
-    --play-midi "$data/Documents/$organ/check.mid" \
-    --record-audio "$data/Documents/$organ/out.wav" \
-    --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1
+  # Straight after an install the system may not know the app yet ("unknown
+  # to FrontBoard"): a few tries, a few seconds apart.
+  for _ in 1 2 3 4 5; do
+    xcrun simctl launch --terminate-running-process "$dev" "$BUNDLE" \
+      --odf "$data/Documents/$organ/check.orgue" --draw-stops all \
+      --play-midi "$data/Documents/$organ/check.mid" \
+      --record-audio "$data/Documents/$organ/out.wav" \
+      --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1 && break
+    sleep 5
+  done
   local finished=""
   for _ in $(seq 1 60); do
     grep -q "recital finished" "$data/Documents/$organ/run.log" 2>/dev/null && { finished=1; break; }
@@ -123,7 +128,8 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   sleep 8
   if command -v idb >/dev/null; then
     idb connect "$DEV" >/dev/null 2>&1
-    PICK_PACKAGE=check.orgue python3 .github/ios-check/drive_ui.py "$DEV" "$OUT/ui" || true
+    case "$NAME" in iPhone*) SCALE=3 ;; *) SCALE=2 ;; esac
+    SCREEN_SCALE=$SCALE PICK_PACKAGE=check.orgue python3 .github/ios-check/drive_ui.py "$DEV" "$OUT/ui" || true
   else
     echo "idb is not installed: no tap-through" > "$OUT/ui-note.txt"
     xcrun simctl io "$DEV" screenshot "$OUT/console.png" >/dev/null 2>&1

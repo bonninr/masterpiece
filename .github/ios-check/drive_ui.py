@@ -12,6 +12,7 @@ missing button shows up in the results rather than ending the run. Exits 1
 if any step failed.
 """
 import json
+import struct
 import os
 import subprocess
 import sys
@@ -51,12 +52,33 @@ def shot(name):
             f.write(f"{label(e)!r} {e.get('type', '')} {fr}\n")
 
 
+def portrait_width():
+    """The screen's upright width in points, from a screenshot's pixels."""
+    path = os.path.join(OUT, ".probe.png")
+    run("xcrun", "simctl", "io", UDID, "screenshot", path)
+    with open(path, "rb") as f:
+        pixels = struct.unpack(">I", f.read(24)[16:20])[0]
+    os.remove(path)
+    return pixels / float(os.environ.get("SCREEN_SCALE", "2"))
+
+
+def to_touch(es, x, y):
+    """idb reads positions in the app's landscape points and taps in the
+    screen's upright ones. Turned to the left, the app's top edge lies along
+    the screen's right edge and its left edge along the top."""
+    app = next((e.get("frame") for e in es if e.get("type") == "Application"), None)
+    if not app or app["width"] <= app["height"]:
+        return x, y
+    return portrait_width() - y, x
+
+
 def tap(name, contains=False):
-    for e in elements():
+    es = elements()
+    for e in es:
         text = label(e)
         if text == name or (contains and name.lower() in text.lower()):
             fr = e["frame"]
-            x, y = fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2
+            x, y = to_touch(es, fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2)
             run("idb", "ui", "tap", "--udid", UDID, str(int(x)), str(int(y)))
             time.sleep(2)
             return True
