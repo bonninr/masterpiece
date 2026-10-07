@@ -299,7 +299,10 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
   // out, both from sets that play in other programs (#53):
   //  - a loop that ends past the file's LAST cue point. That cue is where the
   //    release begins; a loop reaching into the tail keeps the note sounding
-  //    after the key is let go.
+  //    after the key is let go. A cue at or before the loop's start marks no
+  //    release inside it: St David's rear samples put their only cue on the
+  //    loop start, and dropping the loop for it made every one stop at the
+  //    end of its attack, about 3.5 s in (#189).
   //  - when some loops overlap each other, one that overlaps none. A voice
   //    that enters it stays there until the key is released, never reaching
   //    the others. A file whose loops are all apart keeps them all.
@@ -315,7 +318,7 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
     const int64_t lastSample = md.getValue(prefix + "End", "-1").getLargeIntValue();
     if (s < 0 || lastSample <= s) continue;
     const int64_t e = lastSample + 1; // dwEnd is inclusive; see below
-    if (lastCue > 0 && e > lastCue) continue;
+    if (lastCue > s && e > lastCue) continue;
     loops.push_back({s, e});
   }
   if (loops.size() > 1) {
