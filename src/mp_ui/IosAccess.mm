@@ -40,7 +40,10 @@ juce::File heldList() {
 }
 
 juce::File fileOf(NSURL* url) {
-  return juce::File(juce::String(juce::CharPointer_UTF8([[url path] UTF8String])));
+  // Each message on its own line: "([[" inside a call reads as a C++
+  // attribute in Objective-C++.
+  NSString* path = [url path];
+  return juce::File(juce::String(juce::CharPointer_UTF8([path UTF8String])));
 }
 
 // Starts access and keeps the URL. A path inside the app's own container
@@ -60,7 +63,8 @@ void remember(NSURL* url) {
                                         error:&error];
   if (data == nil) return;
   const juce::String path = fileOf(url).getFullPathName();
-  const juce::String mark(juce::CharPointer_UTF8([[data base64EncodedStringWithOptions:0] UTF8String]));
+  NSString* encoded = [data base64EncodedStringWithOptions:0];
+  const juce::String mark(juce::CharPointer_UTF8([encoded UTF8String]));
   juce::StringArray lines, kept;
   lines.addLines(heldList().loadFileAsString());
   for (const auto& line : lines)
