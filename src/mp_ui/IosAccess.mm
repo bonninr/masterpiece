@@ -141,21 +141,19 @@ UIWindowScene* activeScene() {
   return any;
 }
 
-// A window over the whole scene, clear and deaf to touches, kept behind the
-// app's own: UIKit resizes it with the scene and gives it the safe area.
-UIWindow* probeWindow(UIWindowScene* scene) {
-  static UIWindow* probe = nil;
-  if (probe == nil || probe.windowScene != scene) {
-    probe = [[UIWindow alloc] initWithWindowScene:scene];
-    probe.rootViewController = [[UIViewController alloc] init];
-    probe.backgroundColor = UIColor.clearColor;
-    probe.userInteractionEnabled = NO;
-    probe.windowLevel = UIWindowLevelNormal - 1;
-    probe.hidden = NO;
+// The safe area of the scene's largest visible window, which is the app's
+// main window: once that covers the scene (the main window is sized to it),
+// its insets are the scene's. A window of our own for this covered the
+// console and left the screen black.
+UIEdgeInsets sceneInsets(UIWindowScene* scene) {
+  UIWindow* largest = nil;
+  CGFloat area = 0;
+  for (UIWindow* w in scene.windows) {
+    if (w.hidden) continue;
+    const CGFloat a = w.frame.size.width * w.frame.size.height;
+    if (a > area) { area = a; largest = w; }
   }
-  probe.frame = scene.coordinateSpace.bounds;
-  [probe layoutIfNeeded];
-  return probe;
+  return largest != nil ? largest.safeAreaInsets : UIEdgeInsetsZero;
 }
 
 }  // namespace
@@ -165,7 +163,7 @@ bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe) {
   if (scene == nil) return false;
   const CGRect b = scene.coordinateSpace.bounds;
   if (b.size.width <= 0 || b.size.height <= 0) return false;
-  const UIEdgeInsets in = probeWindow(scene).safeAreaInsets;
+  const UIEdgeInsets in = sceneInsets(scene);
   whole = {0, 0, (int)b.size.width, (int)b.size.height};
   safe = whole.withTrimmedLeft((int)std::ceil(in.left))
              .withTrimmedTop((int)std::ceil(in.top))
