@@ -72,6 +72,7 @@ int selectRelease(const PipeLayer& layer, const NoteRelease& rel) {
       const bool linked =
           r.preferLinkedAttackId != 0 && r.preferLinkedAttackId == rel.attackId;
       if ((pass == 0) != linked) continue;
+      if (r.empty) continue;
       if (rel.velocity > r.velHigh) continue;
       if (rel.holdTimeMs > r.holdTimeMsHigh) continue;
       if (rel.ctsValue > r.ctsHigh) continue;
