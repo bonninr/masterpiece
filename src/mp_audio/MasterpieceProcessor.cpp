@@ -2954,8 +2954,22 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
           midiMap_.addKeyboardBinding(b);
         }
         midiMapDirty_.store(true, std::memory_order_release);
-        for (const auto& [key, held] : rerouteScratch_)
-          startNoteOnKeyboard(next, key, held.midiNote, held.velocity);
+        // Each key struck again as the key that holds it, on its own channel
+        // and device, filed where its note-off will look. A bound channel
+        // files a note under its manual and note, so the key now plays `next`
+        // and is filed there; filed under the old manual, its note-off found
+        // nothing and it sounded on (#206). Under the button's own channel,
+        // the next switch passed it by.
+        const int savedChannel = noteChannel_, savedDevice = noteDeviceId_;
+        for (const auto& [key, held] : rerouteScratch_) {
+          noteChannel_ = held.channel;
+          noteDeviceId_ = held.device;
+          const bool byManual = midiMap_.hasChannelBinding(held.device, held.channel);
+          const int newKey = byManual ? noteKey(static_cast<int>(next), key & 0xff) : key;
+          startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity);
+        }
+        noteChannel_ = savedChannel;
+        noteDeviceId_ = savedDevice;
       }
     }
     i = end;

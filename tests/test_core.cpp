@@ -11319,6 +11319,111 @@ public:
 };
 static AnyNoteVelocityTest g_anyNoteVelocity;
 
+// Keys held while a manual button switches their keyboard sound on the new
+// manual, and let go of there they stop (#206): the struck-again notes were
+// filed under the button's channel, so their release and the next switch
+// both missed them.
+class ManualSwitchReleaseTest final : public mp::test::Test {
+public:
+  ManualSwitchReleaseTest() : Test("functional.midi.manual-switch-release", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-switch-release");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    // One looped sine per key, held as long as the key is.
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "4800");
+      meta.set("Loop0End", "9599");
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(wav.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 9600);
+      for (int i = 0; i < 9600; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 9600);
+    }
+    juce::String organ = "[Organ]\nChurchName=Switch\nHasPedals=N\nNumberOfManuals=2\nNumberOfWindchestGroups=1\n"
+                         "[WindchestGroup001]\nName=Main\n";
+    for (int m = 1; m <= 2; ++m) {
+      organ << "[Manual00" << m << "]\nName=Manual " << m
+            << "\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\nFirstAccessibleKeyMIDINoteNumber=36\n"
+               "NumberOfStops=1\nStop001=" << m << "\n";
+      organ << "[Stop00" << m << "]\nName=Sine " << m
+            << "\nNumberOfLogicalPipes=3\nNumberOfAccessiblePipes=3\nFirstAccessiblePipeLogicalKeyNumber=1\n"
+               "WindchestGroup=1\nPipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    }
+    const auto odf = dir.getChildFile("switch.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the two-manual organ loads");
+    proc.engageAllStops();
+    const auto& kbs = proc.organModel().keyboards;
+    std::vector<mp::Id> ids;
+    for (const auto& [id, kb] : kbs) ids.push_back(id);
+    std::sort(ids.begin(), ids.end());
+    MP_CHECK(ids.size() == 2, "two keyboards");
+    if (ids.size() != 2) return;
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, ids[0]);
+    proc.setKeyboardForChannel(2, ids[1]);
+    for (int target = 0; target < 2; ++target) {
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::Note;
+      b.source.channel = 16;
+      b.source.number = 60 + target;
+      b.targetKind = mp::MidiTargetKind::RouteKeyboard;
+      b.targetId = mp::routeKeyboardTarget(ids[static_cast<size_t>(1 - target)], 1);
+      proc.midiMap().bind(b);
+    }
+
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](std::initializer_list<juce::MidiMessage> msgs) {
+      juce::MidiBuffer midi;
+      for (const auto& m : msgs) midi.addEvent(m, 0);
+      proc.processBlock(buf, midi);
+      return buf.getRMSLevel(0, 0, 256);
+    };
+    auto quietAfter = [&](double seconds) {
+      float last = 0.0f;
+      for (int i = 0; i < static_cast<int>(seconds * 48000 / 256); ++i) last = block({});
+      return last;
+    };
+
+    // Held on manual 1, switched to manual 2, let go there.
+    block({juce::MidiMessage::noteOn(1, 36, 0.8f), juce::MidiMessage::noteOn(1, 38, 0.8f)});
+    for (int i = 0; i < 20; ++i) block({});
+    block({juce::MidiMessage::noteOn(16, 60, 0.8f)});
+    block({juce::MidiMessage::noteOff(16, 60)});
+    MP_CHECK(proc.keyboardForChannel(1) == ids[1], "the button moved channel 1 to manual 2");
+    MP_CHECK(block({}) > 0.01f, "the held keys sound on manual 2");
+    block({juce::MidiMessage::noteOff(1, 36), juce::MidiMessage::noteOff(1, 38)});
+    MP_CHECK(quietAfter(1.0) < 1e-4f, "let go on manual 2, they stop");
+
+    // Held, switched to manual 2 and back to manual 1, then let go.
+    block({juce::MidiMessage::noteOn(16, 61, 0.8f)});
+    block({juce::MidiMessage::noteOff(16, 61)});
+    MP_CHECK(proc.keyboardForChannel(1) == ids[0], "the other button moved it back");
+    block({juce::MidiMessage::noteOn(1, 37, 0.8f)});
+    block({juce::MidiMessage::noteOn(16, 60, 0.8f)});
+    block({juce::MidiMessage::noteOff(16, 60)});
+    block({juce::MidiMessage::noteOn(16, 61, 0.8f)});
+    block({juce::MidiMessage::noteOff(16, 61)});
+    MP_CHECK(block({}) > 0.01f, "the held key sounds after switching away and back");
+    block({juce::MidiMessage::noteOff(1, 37)});
+    MP_CHECK(quietAfter(1.0) < 1e-4f, "and stops when let go");
+
+    settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static ManualSwitchReleaseTest g_manualSwitchRelease;
+
 // Universal Master Volume (F0 7F dev 04 01 lsb msb F7), as a SubZero
 // ControlPad's volume knob sends it (#138): it sets the master fader.
 class MasterVolumeSysExTest final : public mp::test::Test {
