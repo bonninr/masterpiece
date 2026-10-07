@@ -11274,6 +11274,51 @@ public:
 };
 static ManualButtonTest g_manualButtons;
 
+// A swell written into a sequencer's part as note velocities (#199): every
+// note on the channel sets it, its note-off leaves it, and a mapping for one
+// note still beats the one for every note.
+class AnyNoteVelocityTest final : public mp::test::Test {
+public:
+  AnyNoteVelocityTest() : Test("functional.midi.any-note-velocity", Category::Functional) {}
+  void run() override {
+    mp::MidiMap map;
+    mp::MidiBinding swell;
+    swell.source.kind = mp::MidiSourceKind::Note;
+    swell.source.channel = 16;
+    swell.source.number = mp::kAnyNote;
+    swell.targetKind = mp::MidiTargetKind::ContinuousControl;
+    swell.targetId = 998;
+    map.bind(swell);
+    auto note = [](int n) {
+      mp::MidiSource s;
+      s.kind = mp::MidiSourceKind::Note;
+      s.channel = 16;
+      s.number = n;
+      return s;
+    };
+    auto a = map.actionFor(note(60), 40);
+    MP_CHECK(a.kind == mp::MidiTargetKind::ContinuousControl && a.targetId == 998 && a.value == 40,
+             "any note sets the control from its velocity");
+    MP_CHECK(map.actionFor(note(72), 100).value == 100, "and so does another note");
+    MP_CHECK(!map.actionFor(note(72), 0).valid(), "a note-off leaves the control where it is");
+    mp::MidiSource other = note(60);
+    other.channel = 1;
+    MP_CHECK(!map.actionFor(other, 80).valid(), "a note on another channel plays");
+
+    mp::MidiBinding one = swell;
+    one.source.number = 36;
+    one.targetId = 997;
+    map.bind(one);
+    MP_CHECK(map.actionFor(note(36), 90).targetId == 997, "a mapping for one note beats any note");
+    MP_CHECK(map.actionFor(note(37), 90).targetId == 998, "the rest still go to any note");
+
+    mp::MidiMap reread;
+    MP_CHECK(reread.fromText(map.toText()) && reread.actionFor(note(50), 70).targetId == 998,
+             "any note is saved and read back");
+  }
+};
+static AnyNoteVelocityTest g_anyNoteVelocity;
+
 // Universal Master Volume (F0 7F dev 04 01 lsb msb F7), as a SubZero
 // ControlPad's volume knob sends it (#138): it sets the master fader.
 class MasterVolumeSysExTest final : public mp::test::Test {

@@ -67,8 +67,20 @@ MidiSourceKind eventKind(int item) {
 
 // 128 numbers, named the way the event names them: a note by its pitch, a
 // program counted from 1 as every console's manual does.
-void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected) {
+// "Any note" sits under its own id, past the 128 numbers.
+constexpr int kAnyNoteItem = 1000;
+
+void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool offerAnyNote = false) {
   box.clear(juce::dontSendNotification);
+  // A control set by a note's velocity can take it from every note (#199).
+  if (kind == MidiSourceKind::Note && offerAnyNote) {
+    box.addItem("Any note", kAnyNoteItem);
+    if (selected == kAnyNote || selected == kAnyNoteItem - 1) {
+      for (int n = 0; n < 128; ++n) box.addItem(noteName(n), n + 1);
+      box.setSelectedId(kAnyNoteItem, juce::dontSendNotification);
+      return;
+    }
+  }
   // A system exclusive message is identified by its bytes, taken by Listen.
   if (kind == MidiSourceKind::SysEx) {
     box.addItem("Learned message", 1);
@@ -161,7 +173,8 @@ public:
     fillEvents(event_);
     const bool set = b.source.kind != MidiSourceKind::None;
     if (set) event_.setSelectedId(eventItem(b.source.kind), juce::dontSendNotification);
-    fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number);
+    fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number,
+                kind_ == MidiTargetKind::ContinuousControl);
     if (!set) {
       event_.setTextWhenNothingSelected("Listen...");
       event_.setSelectedId(0, juce::dontSendNotification);
@@ -173,7 +186,8 @@ public:
       c->onChange = [this] { changed(); };
     }
     event_.onChange = [this] {
-      fillNumbers(number_, eventKind(event_.getSelectedId()), number_.getSelectedId() - 1);
+      fillNumbers(number_, eventKind(event_.getSelectedId()), number_.getSelectedId() - 1,
+                  kind_ == MidiTargetKind::ContinuousControl);
       changed();
     };
 
@@ -249,9 +263,9 @@ public:
     b.source.channel = juce::jmax(0, channel_.getSelectedId() - 1);
     if (event_.getSelectedId() > 0) {
       b.source.kind = eventKind(event_.getSelectedId());
-      b.source.number = b.source.kind == MidiSourceKind::SysEx
-                            ? binding_.source.number
-                            : juce::jmax(0, number_.getSelectedId() - 1);
+      b.source.number = b.source.kind == MidiSourceKind::SysEx ? binding_.source.number
+                        : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
+                                                                      : juce::jmax(0, number_.getSelectedId() - 1);
     }
     if (kind_ == MidiTargetKind::Switch) {
       const int a = action_.getSelectedId();

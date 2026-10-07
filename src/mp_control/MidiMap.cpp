@@ -274,6 +274,15 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
     it = bySource_.find(probe);
   }
+  // Then any note, last: a mapping for one note beats one for every note.
+  if (it == bySource_.end() && source.kind == MidiSourceKind::Note)
+    for (int step = 0; step < 4 && it == bySource_.end(); ++step) {
+      MidiSource probe = source;
+      probe.number = kAnyNote;
+      if (step & 1) probe.channel = 0;
+      if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
+      it = bySource_.find(probe);
+    }
   if (it == bySource_.end()) return {};
   const MidiBinding& b = it->second;
 
@@ -320,6 +329,14 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
       break;
     }
     case MidiTargetKind::ContinuousControl: {
+      // A note sets a control by its velocity as it is struck (#199: the
+      // swell written into a sequencer's part as note velocities). Its
+      // note-off carries velocity 0 and would shut the swell after every
+      // note, so it does nothing.
+      if (b.source.kind == MidiSourceKind::Note && value <= 0) {
+        action.kind = MidiTargetKind::None;
+        return action;
+      }
       // Across the binding's own window, so a shoe that only travels 20..100
       // still reaches both ends of the swell.
       action.value = controlValue(b, value);
