@@ -23,7 +23,22 @@ juce_add_gui_app(IosProbe
   IPHONE_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
   IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight)
 
-target_sources(IosProbe PRIVATE Main.cpp Scene.mm)
-target_compile_features(IosProbe PRIVATE cxx_std_20)
-target_compile_definitions(IosProbe PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(IosProbe PRIVATE juce::juce_gui_basics)
+# The same app allowed every orientation: whether a console can be played
+# upright as well.
+juce_add_gui_app(IosProbeAll
+  PRODUCT_NAME "ProbeAll"
+  COMPANY_NAME "Masterpiece"
+  BUNDLE_ID "org.masterpiece.probeall"
+  FILE_SHARING_ENABLED TRUE
+  REQUIRES_FULL_SCREEN TRUE
+  STATUS_BAR_HIDDEN TRUE
+  TARGETED_DEVICE_FAMILY "1,2"
+  IPHONE_SCREEN_ORIENTATIONS UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+  IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight)
+
+foreach(t IosProbe IosProbeAll)
+  target_sources(${t} PRIVATE Main.cpp Scene.mm)
+  target_compile_features(${t} PRIVATE cxx_std_20)
+  target_compile_definitions(${t} PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(${t} PRIVATE juce::juce_gui_basics)
+endforeach()

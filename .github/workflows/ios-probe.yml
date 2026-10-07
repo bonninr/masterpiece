@@ -25,9 +25,12 @@ jobs:
       - name: Build
         run: |
           cmake -S tools/ios-probe -B build/probe -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
-          cmake --build build/probe --config Release --target IosProbe -- -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO -quiet
+          for t in IosProbe IosProbeAll; do
+            cmake --build build/probe --config Release --target $t -- -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO -quiet
+          done
           APP=$(find build/probe -name Probe.app -type d | head -1)
-          test -n "$APP" && echo "APP=$APP" >> "$GITHUB_ENV"
+          APPALL=$(find build/probe -name ProbeAll.app -type d | head -1)
+          test -n "$APP" && test -n "$APPALL" && { echo "APP=$APP"; echo "APPALL=$APPALL"; } >> "$GITHUB_ENV"
 
       - name: Tools
         run: |
@@ -49,15 +52,18 @@ jobs:
             case "$want" in iPhone*) SCALE=3 ;; *) SCALE=2 ;; esac
             xcrun simctl boot "$DEV" 2>/dev/null; xcrun simctl bootstatus "$DEV" -b >/dev/null
             xcrun simctl install "$DEV" "$APP"
+            xcrun simctl install "$DEV" "$APPALL"
             idb connect "$DEV" >/dev/null 2>&1 || true
             open -a Simulator --args -CurrentDeviceUDID "$DEV"; sleep 6
             echo "######## $want upright"
             python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probe $SCALE "shots/$NAME/upright" $VARIANTS || true
+            python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probeall $SCALE "shots/$NAME/upright-all" $VARIANTS || true
             osascript -e 'tell application "Simulator" to activate' -e 'delay 1' \
               -e 'tell application "System Events" to tell process "Simulator" to click menu item "Rotate Left" of menu "Device" of menu bar 1' || echo "could not rotate"
             sleep 4
             echo "######## $want turned"
             python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probe $SCALE "shots/$NAME/turned" $VARIANTS || true
+            python3 tools/ios-probe/drive.py "$DEV" org.masterpiece.probeall $SCALE "shots/$NAME/turned-all" $VARIANTS || true
             osascript -e 'tell application "Simulator" to quit' || true
             xcrun simctl shutdown "$DEV" || true
           done
