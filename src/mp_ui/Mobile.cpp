@@ -342,6 +342,13 @@ juce::Rectangle<int> screenArea() {
   // and the screen's rounded corners and home indicator cut into the edges.
   // Those are the display's safe-area insets, and drawing under them put the
   // menu where no tap reaches it (#197).
+  //
+  // On iOS the scene's own figures: JUCE's display stays upright on a turned
+  // iPad (see IosAccess.mm).
+ #if JUCE_IOS
+  juce::Rectangle<int> whole, safe;
+  if (sceneBounds(whole, safe)) return safe;
+ #endif
   if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
    #if JUCE_IOS
     return d->safeAreaInsets.subtractedFrom(d->totalArea);
@@ -349,6 +356,16 @@ juce::Rectangle<int> screenArea() {
     return kMobile ? d->totalArea : d->userArea;
    #endif
   }
+  return {0, 0, 1280, 800};
+}
+
+juce::Rectangle<int> screenBounds() {
+ #if JUCE_IOS
+  juce::Rectangle<int> whole, safe;
+  if (sceneBounds(whole, safe)) return whole;
+ #endif
+  if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+    return d->totalArea;
   return {0, 0, 1280, 800};
 }
 

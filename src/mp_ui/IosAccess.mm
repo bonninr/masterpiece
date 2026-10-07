@@ -18,6 +18,8 @@
 
 #if JUCE_IOS
  #import <Foundation/Foundation.h>
+ #import <UIKit/UIKit.h>
+ #include <cmath>
 
 namespace juce {
 // Defined in juce_URL.cpp: the bookmark the file chooser keeps in a URL.
@@ -117,6 +119,59 @@ void restoreHeldAccess() {
   }
   if (kept.size() != lines.size())
     heldList().replaceWithText(kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
+}
+
+// ------------------------------------------------------------ the scene
+
+// The screen as the app has it now. JUCE reads UIScreen's bounds and the
+// insets of its own first window; under iPadOS's scenes the first stays
+// upright on a turned iPad, and the second follows a window that was sized
+// from it, so the console filled the upright width of a landscape screen with
+// the clock over its first buttons. The scene knows its own size, and a
+// window covering all of it knows the safe area.
+namespace {
+
+UIWindowScene* activeScene() {
+  UIWindowScene* any = nil;
+  for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+    if (![s isKindOfClass:UIWindowScene.class]) continue;
+    if (s.activationState == UISceneActivationStateForegroundActive) return (UIWindowScene*)s;
+    if (any == nil) any = (UIWindowScene*)s;
+  }
+  return any;
+}
+
+// A window over the whole scene, clear and deaf to touches, kept behind the
+// app's own: UIKit resizes it with the scene and gives it the safe area.
+UIWindow* probeWindow(UIWindowScene* scene) {
+  static UIWindow* probe = nil;
+  if (probe == nil || probe.windowScene != scene) {
+    probe = [[UIWindow alloc] initWithWindowScene:scene];
+    probe.rootViewController = [[UIViewController alloc] init];
+    probe.backgroundColor = UIColor.clearColor;
+    probe.userInteractionEnabled = NO;
+    probe.windowLevel = UIWindowLevelNormal - 1;
+    probe.hidden = NO;
+  }
+  probe.frame = scene.coordinateSpace.bounds;
+  [probe layoutIfNeeded];
+  return probe;
+}
+
+}  // namespace
+
+bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe) {
+  UIWindowScene* scene = activeScene();
+  if (scene == nil) return false;
+  const CGRect b = scene.coordinateSpace.bounds;
+  if (b.size.width <= 0 || b.size.height <= 0) return false;
+  const UIEdgeInsets in = probeWindow(scene).safeAreaInsets;
+  whole = {0, 0, (int)b.size.width, (int)b.size.height};
+  safe = whole.withTrimmedLeft((int)std::ceil(in.left))
+             .withTrimmedTop((int)std::ceil(in.top))
+             .withTrimmedRight((int)std::ceil(in.right))
+             .withTrimmedBottom((int)std::ceil(in.bottom));
+  return true;
 }
 
 }  // namespace mp::ui

@@ -839,7 +839,15 @@ private:
         setUsingNativeTitleBar(false);
         setTitleBarHeight(0);
         setResizable(false, false);
+       #if JUCE_IOS
+        // The whole scene, the console placed inside its safe area by
+        // resized(), and the scene watched: JUCE resizes nothing when an
+        // iPad turns or its window is resized.
+        setBounds(mp::ui::screenBounds());
+        sceneWatch_.startTimer(500);
+       #else
         setBounds(mp::ui::screenArea());
+       #endif
         return;
       }
       setUsingNativeTitleBar(true);
@@ -867,6 +875,22 @@ private:
       if (auto* content = getContentComponent())
         content->setBounds(getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds()));
     }
+
+    struct SceneWatch final : juce::Timer {
+      juce::DocumentWindow& window;
+      juce::Rectangle<int> area;
+      explicit SceneWatch(juce::DocumentWindow& w) : window(w) {}
+      void timerCallback() override {
+        const auto whole = mp::ui::screenBounds();
+        const auto safe = mp::ui::screenArea();
+        if (whole == window.getBounds() && safe == area) return;
+        area = safe;
+        if (whole != window.getBounds()) window.setBounds(whole);
+        else if (auto* c = window.getContentComponent())
+          c->setBounds(window.getLocalArea(nullptr, safe).getIntersection(window.getLocalBounds()));
+      }
+    };
+    SceneWatch sceneWatch_{*this};
    #endif
 
     mp::ui::MasterpieceEditor& editor() { return *editor_; }
