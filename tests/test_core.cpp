@@ -1238,6 +1238,63 @@ struct Fixture {
 
 } // namespace voicetest
 
+// A file that ends on its loop's last frame, played a little off its own
+// pitch, as most pipes are: the interpolation at each wrap reached past the
+// end and read silence, and every wrap clicked (St David's rear samples, and
+// the CI's test organ). And the engine's clock: blocks counted by the caller
+// were counted again by render(), so every hold and rest time read double.
+class LoopSeamAndClockTest final : public mp::test::Test {
+public:
+  LoopSeamAndClockTest() : Test("functional.voice.loop-seam-and-clock", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    // 480 Hz at 48 kHz: 100 frames a cycle, so a loop of 24 cycles from the
+    // middle to the last frame is seamless in the file itself.
+    fx.attack = voicetest::makeTone(480.0, 48000.0, 4800);
+    MP_CHECK(fx.attack.loopEnd == fx.attack.numFrames, "the loop ends on the file's last frame");
+
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 256, 1);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart s;
+    s.pipe = &fx.pipe;
+    s.layer = &fx.pipe.layers[0];
+    s.attackIndex = 0;
+    s.velocity = 100;
+    s.ratio = 1.0123;  // a fractional cursor at every wrap
+    s.gain = 1.0f;
+    MP_CHECK(eng.startVoice(s, 1) >= 0, "the pipe sounds");
+
+    // A second and a half: about fifteen wraps after the first pass.
+    std::vector<float> all;
+    std::vector<float> buf(256, 0.0f);
+    float* out[1] = {buf.data()};
+    for (int b = 0; b < 48000 * 3 / 2 / 256; ++b) {
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.beginBlock(256);
+      eng.render(out, 1, 256);
+      all.insert(all.end(), buf.begin(), buf.end());
+    }
+    // A sine's second difference is bounded by (2 pi f / sr)^2 times its
+    // level; a wrap that reads silence jumps by the whole level.
+    const double bound = std::pow(2.0 * 3.141592653589793 * 480.0 * 1.0123 / 48000.0, 2);
+    double worst = 0.0;
+    for (size_t i = 2400; i + 2 < all.size(); ++i)
+      worst = std::max(worst, std::abs(static_cast<double>(all[i + 2]) - 2.0 * all[i + 1] + all[i]));
+    MP_CHECK(worst < 3.0 * bound, "no wrap reads past the loop's end");
+
+    // One second after the key, counted by beginBlock alone.
+    eng.noteOff(1, mp::NoteRelease{});
+    for (int b = 0; b < 48000 / 256; ++b) {
+      eng.beginBlock(256);
+      eng.render(out, 1, 256);
+    }
+    const int64_t ms = eng.msSincePipeClosed(fx.pipe.pipeId);
+    MP_CHECK(ms >= 990 && ms <= 1010, "a second of blocks is a second on the engine's clock");
+  }
+};
+static LoopSeamAndClockTest g_loopSeamAndClock;
+
 // The vector runs (SimdRun) against the per-frame path: the same notes, held
 // and released, in every storage format, mono and stereo, rendered both ways.
 // The answer is the same to the last bit: the engine's files are built

@@ -104,6 +104,9 @@ struct ReleaseSample {
   int loadEndType = 0, loadEndValue = 0; // raw; type semantics unverified (see AttackSample)
   double releaseCrossfadeMs = 10.0;
   bool phaseAlign = false;
+  // Set at load: a release read from its file's marker, in a file that has
+  // no marker and nothing after its loop, holds no release. Never chosen.
+  bool empty = false;
 };
 
 struct PipeLayer {

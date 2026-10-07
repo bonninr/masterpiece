@@ -377,7 +377,12 @@ public:
   // Advance the block counter once per audio block. render() does this itself
   // when called for all voices; a caller rendering bus by bus must call it
   // exactly once instead, or voice ages drift by the number of buses.
+  // A caller that counts blocks this way owns the count from then on: render()
+  // stops counting its own whole-block calls. Both counting doubled the clock
+  // on every organ rendered without enclosures, and every key's hold time
+  // with it: a note held 2 s chose the release written for 4 s.
   void beginBlock(int numFrames = 0) {
+    callerCountsBlocks_ = true;
     ++blockCounter_;
     framesRendered_ += numFrames;
   }
@@ -533,6 +538,7 @@ private:
   // Frames rendered so far, the clock for msSincePipeClosed; and when each
   // pipe last let go, in those frames.
   int64_t framesRendered_ = 0;
+  bool callerCountsBlocks_ = false;  // set by beginBlock(); see there
   std::unordered_map<Id, int64_t> pipeClosedAt_;
   // Borrowed, not owned: the caller keeps the table alive across the block.
   const WindMod* windMods_ = nullptr;

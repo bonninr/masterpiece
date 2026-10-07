@@ -491,8 +491,13 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
       // the file says where, with a cue point.
       const ReleaseSample& row = v.layer->releases[static_cast<size_t>(chosen)];
       const bool fromMarker = row.loadStartValue > 0 || row.loadStartType > 0;
-      v.cursor = (fromMarker && relBuf->releaseCue > 0)
-                     ? static_cast<double>(relBuf->releaseCue)
+      // With no marker, the release is what follows the loop, as GrandOrgue
+      // reads a pipe's own file; a file with nothing there was left out of
+      // the choice at load (ReleaseSample::empty).
+      v.cursor = !fromMarker ? 0.0
+                 : relBuf->releaseCue > 0 ? static_cast<double>(relBuf->releaseCue)
+                 : relBuf->loopEnd > 0 && relBuf->loopEnd < relBuf->totalFrames()
+                     ? static_cast<double>(relBuf->loopEnd)
                      : 0.0;
       // A release is a one-shot: it must not inherit the attack's loop.
       v.loopStart = -1;
@@ -620,7 +625,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       const bool release = v.phase == VoicePhase::Release;
       if (!release || v.releaseIsSample) {
         double limit = static_cast<double>(runEnd);
-        if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd));
+        // Short of the loop's seam, which the per-frame path reads (atSeam).
+        if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd - 3));
         if (release)
           limit = std::min(limit, static_cast<double>(total - kReleaseEndFadeFrames));
         if (v.cursor >= 1.0 && v.cursor < limit) {
@@ -741,7 +747,26 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     // after a wrap and playing straight the rest of the time, so the ordinary
     // path must not pay for it. (Folding the interior test into the channel
     // loop cost ~30% of the engine when it was written that way.)
-    if (v.xfadeRemaining <= 0 || v.xfadeLength <= 0) {
+    // At the loop's seam the interpolation reaches past the loop end. What
+    // follows the end, as the voice plays, is the loop's start: read from
+    // there. Reading on into the file worked only where the file went on;
+    // one that ends on its loop's last frame (St David's rear samples, and
+    // many more) read silence there, and every wrap clicked.
+    const bool atSeam = v.phase != VoicePhase::Release && v.loops() &&
+                        pos + 2 >= v.loopEnd && pos >= v.loopStart + 1 &&
+                        v.loopEnd - v.loopStart > 4 && v.loopEnd <= resident;
+    if ((v.xfadeRemaining <= 0 || v.xfadeLength <= 0) && atSeam) {
+      const int64_t loopLen = v.loopEnd - v.loopStart;
+      const auto tap = [&](int64_t f, int srcCh) {
+        return rawSample<T>(buf, f >= v.loopEnd ? f - loopLen : f, srcCh) * storeScale;
+      };
+      for (int ch = 0; ch < numChannels; ++ch) {
+        const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
+        out[ch][i] += hermite(tap(pos - 1, srcCh), tap(pos, srcCh), tap(pos + 1, srcCh),
+                              tap(pos + 2, srcCh), frac) *
+                      envReal;
+      }
+    } else if (v.xfadeRemaining <= 0 || v.xfadeLength <= 0) {
       if (pos >= 1 && pos + 2 < resident) {
         for (int ch = 0; ch < numChannels; ++ch) {
           const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
@@ -822,12 +847,17 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           static_cast<float>(v.xfadeOldCursor - static_cast<double>(opos));
       const SampleBuffer& ob = *v.xfadeBuf;
       const float oldEnv = xfadeEnv * storeScale * xfadeOld;
+      // Past the loop end comes the loop start, as on the attack's own path
+      // (atSeam): a key let go just after a wrap clicked otherwise.
+      const int64_t oldLoopLen = v.xfadeOldLoopEnd - v.xfadeOldLoopStart;
+      const bool oldWraps = v.xfadeOldLoopStart >= 0 && oldLoopLen > 4;
+      const auto otap = [&](int64_t f, int srcCh) {
+        return rawSample<T>(ob, oldWraps && f >= v.xfadeOldLoopEnd ? f - oldLoopLen : f, srcCh);
+      };
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < ob.numChannels ? ch : ob.numChannels - 1;
-        out[ch][i] += hermite(rawSample<T>(ob, opos - 1, srcCh),
-                              rawSample<T>(ob, opos, srcCh),
-                              rawSample<T>(ob, opos + 1, srcCh),
-                              rawSample<T>(ob, opos + 2, srcCh), ofrac) *
+        out[ch][i] += hermite(otap(opos - 1, srcCh), otap(opos, srcCh), otap(opos + 1, srcCh),
+                              otap(opos + 2, srcCh), ofrac) *
                       oldEnv;
       }
       v.xfadeOldCursor += ratio * v.xfadeRatioScale;
@@ -928,7 +958,7 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
                          int busIndex, int mixBus) {
   // Rendering everything is one block by definition. Per-bus rendering makes
   // several calls per block, so the caller owns the counter via beginBlock().
-  if (busIndex < 0 && mixBus < 0) {
+  if (busIndex < 0 && mixBus < 0 && !callerCountsBlocks_) {
     ++blockCounter_;
     framesRendered_ += numFrames;
   }

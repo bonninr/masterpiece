@@ -4495,6 +4495,28 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Still suspended, with no voice sounding: nothing else needs keeping.
   samples_.retireOldGenerations();
   voices_.setSampleProvider(samples_.provider());
+  // A release to be read from its file's marker, in a file with no marker
+  // and nothing after its loop, holds nothing to play. A GrandOrgue pipe
+  // offers its own file's release beside any separate ones; started at the
+  // file's head, it replayed the whole attack at full level as the "release"
+  // and every note sounded on for the length of its recording.
+  {
+    const auto provide = samples_.provider();
+    int empties = 0;
+    for (auto& [rankId, rank] : model_.ranks)
+      for (auto& pipe : rank.pipes)
+        for (auto& layer : pipe.layers)
+          for (auto& rel : layer.releases) {
+            if (rel.loadStartValue <= 0 && rel.loadStartType <= 0) continue;
+            const SampleBuffer* buf = provide ? provide(rel.sample.sampleId) : nullptr;
+            if (buf == nullptr || buf->releaseCue > 0) continue;
+            rel.empty = !(buf->loopEnd > 0 && buf->loopEnd < buf->totalFrames());
+            empties += rel.empty ? 1 : 0;
+          }
+    if (empties > 0)
+      juce::Logger::writeToLog("load: " + juce::String(empties) +
+                               " release(s) named in their attack files, which hold none, left out");
+  }
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
 
   // Nearly six seconds on a large set, after the sample counter has reached
