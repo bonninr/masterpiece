@@ -23,7 +23,14 @@ failed=0
 adb wait-for-device
 adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1 || { cat "$OUT/install.txt"; exit 1; }
-adb shell mkdir -p "$DATA"
+# Full screen without Android's one-time "Viewing full screen" notice, which
+# covers the app and hides it from the accessibility listing.
+adb shell settings put secure immersive_mode_confirmations confirmed
+# The app's folder appears when the app first asks for it: one plain start.
+adb shell am start -W -n $PKG/$ACT > /dev/null 2>&1
+sleep 5
+adb shell am force-stop $PKG
+adb shell ls "$DATA" > /dev/null 2>&1 || echo "the app's folder was not created" | tee "$OUT/folder.txt"
 adb shell wm size > "$OUT/screen.txt"
 adb shell wm density >> "$OUT/screen.txt"
 

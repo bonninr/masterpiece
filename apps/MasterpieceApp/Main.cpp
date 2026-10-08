@@ -77,6 +77,16 @@ public:
     const auto activity = juce::getMainActivity();
     if (env == nullptr || activity == nullptr) return {};
     jclass activityClass = env->GetObjectClass(activity.get());
+    // The app's own folder on shared storage exists only once the app has
+    // asked for it, and is where a test run places its organs (adb may write
+    // in it but not create it).
+    if (jobject dir = env->CallObjectMethod(
+            activity.get(),
+            env->GetMethodID(activityClass, "getExternalFilesDir", "(Ljava/lang/String;)Ljava/io/File;"),
+            nullptr)) {
+      env->DeleteLocalRef(dir);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
     jobject intent = env->CallObjectMethod(
         activity.get(), env->GetMethodID(activityClass, "getIntent", "()Landroid/content/Intent;"));
     juce::String text;
