@@ -11452,6 +11452,36 @@ public:
 };
 static TuttiBesideStopTest g_tuttiBesideStop;
 
+// Which releases read from a file's marker hold nothing to play (#218). Only
+// a file whose loop runs to its last frame and that has no marker: 0.7.6 also
+// counted a file with no loop at all, which is what a separate release
+// recording is, and left out 3847 of Friesach's releases.
+class ReleaseHoldsNothingTest final : public mp::test::Test {
+public:
+  ReleaseHoldsNothingTest() : Test("functional.voice.release-holds-nothing", Category::Functional) {}
+  void run() override {
+    mp::SampleBuffer recorded;
+    recorded.numFrames = 48000;
+    MP_CHECK(!recorded.releaseHoldsNothing(), "a release recording with no loop holds all of itself");
+
+    mp::SampleBuffer attack;
+    attack.numFrames = 48000;
+    attack.loopStart = 24000;
+    attack.loopEnd = 48000;
+    MP_CHECK(attack.releaseHoldsNothing(),
+             "an attack file whose loop runs to its end, without a marker, holds no release");
+
+    mp::SampleBuffer tail = attack;
+    tail.numFrames = 72000;
+    MP_CHECK(!tail.releaseHoldsNothing(), "a file with audio after its loop holds that as its release");
+
+    mp::SampleBuffer marked = attack;
+    marked.releaseCue = 30000;
+    MP_CHECK(!marked.releaseHoldsNothing(), "a file with a release marker holds its release");
+  }
+};
+static ReleaseHoldsNothingTest g_releaseHoldsNothing;
+
 // A swell written into a sequencer's part as note velocities (#199): every
 // note on the channel sets it, its note-off leaves it, and a mapping for one
 // note still beats the one for every note.
