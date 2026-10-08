@@ -487,6 +487,10 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   setSize(660, std::min(panel_->preferredHeight(660) + 26, 640));
   fitToScreen(*this);
   placing_ = false;
+ #if JUCE_IOS
+  // Off the screen until shown (showFloating): see there.
+  removeFromDesktop();
+ #endif
 }
 
 void CombinationsWindow::resized() {

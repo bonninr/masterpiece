@@ -188,6 +188,13 @@ public:
       juce::Logger::setCurrentLogger(logger_.get());
     }
 
+    // --log-touches: every press written down with the component that took
+    // it, for finding what a tap that does nothing landed on (#197).
+    if (args.contains("--log-touches")) {
+      touchLog_ = std::make_unique<TouchLog>();
+      juce::Desktop::getInstance().addGlobalMouseListener(touchLog_.get());
+    }
+
     // Audio first: the device's real rate and block size are what the engine
     // must be prepared for, and asking for them before the organ loads means
     // the voice pool and DSP are sized once rather than twice.
@@ -307,8 +314,12 @@ public:
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);
     // A phone or tablet plays full screen, with the system's bars hidden
-    // until a swipe from the edge brings them back.
+    // until a swipe from the edge brings them back. Not on iOS: kiosk mode
+    // sizes the window to JUCE's display, which stays upright on a turned
+    // iPad, and there the window follows the scene instead (DocWindow).
+   #if !JUCE_IOS
     if (mp::ui::kMobile) juce::Desktop::getInstance().setKioskModeComponent(win_.get(), false);
+   #endif
 
     juce::File odf;
     for (int i = 0; i < args.size(); ++i)
@@ -754,6 +765,7 @@ public:
   }
 
   void shutdown() override {
+    if (touchLog_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(touchLog_.get());
     // The device state is written on the way out rather than on every change:
     // a player dragging a buffer-size slider would otherwise rewrite the file
     // once per pixel.
@@ -844,14 +856,26 @@ private:
         if (onLoaded) onLoaded();
       };
       editor_ = ed;
-      setContentOwned(ed, true);
+      // On a desktop the window takes the console's size. On a phone or
+      // tablet the screen gives the size, and the console sits inside the
+      // safe area: a window that also followed its content shrank to fit it
+      // and was placed smaller again, down to 2 by 2 pixels, a black screen.
+      setContentOwned(ed, !mp::ui::kMobile);
       // A phone or tablet gives the console the whole screen: no title bar,
       // nothing to resize, and no place to remember.
       if (mp::ui::kMobile) {
         setUsingNativeTitleBar(false);
         setTitleBarHeight(0);
         setResizable(false, false);
+       #if JUCE_IOS
+        // The whole scene, the console placed inside its safe area by
+        // resized(), and the scene watched: JUCE resizes nothing when an
+        // iPad turns or its window is resized.
+        setBounds(mp::ui::screenBounds());
+        sceneWatch_.startTimer(500);
+       #else
         setBounds(mp::ui::screenArea());
+       #endif
         return;
       }
       setUsingNativeTitleBar(true);
@@ -870,7 +894,7 @@ private:
     }
 
    #if JUCE_IOS
-    // Kiosk mode gives the window the whole display, and sizes it again when
+    // The window covers the whole scene, and is sized again when
     // the iPad turns or its window changes. The console sits inside the
     // display's safe area, clear of the window controls, the rounded corners
     // and the home indicator, where every tap lands (#197).
@@ -879,6 +903,35 @@ private:
       if (auto* content = getContentComponent())
         content->setBounds(getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds()));
     }
+
+    struct SceneWatch final : juce::Timer {
+      juce::DocumentWindow& window;
+      juce::Rectangle<int> area;
+      explicit SceneWatch(juce::DocumentWindow& w) : window(w) {}
+      void timerCallback() override {
+        // A modal window behind the console takes every touch while nobody
+        // can see it or close it (#197): it is kept in front.
+        if (auto* m = juce::ModalComponentManager::getInstance()->getModalComponent(0))
+          if (m->isOnDesktop() && m != &window && !m->isAlwaysOnTop()) {
+            auto& desktop = juce::Desktop::getInstance();
+            if (desktop.getComponent(desktop.getNumComponents() - 1) != m) m->toFront(true);
+          }
+        const auto whole = mp::ui::screenBounds();
+        const auto safe = mp::ui::screenArea();
+        if (whole == window.getBounds() && safe == area) return;
+        // Written down at every change: what the scene, the window and JUCE's
+        // display say is the record a report from an iPad needs.
+        const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+        juce::Logger::writeToLog("screen: scene " + whole.toString() + ", safe " + safe.toString() +
+                                 ", window " + window.getBounds().toString() + ", display " +
+                                 (d != nullptr ? d->totalArea.toString() : juce::String("none")));
+        area = safe;
+        if (whole != window.getBounds()) window.setBounds(whole);
+        else if (auto* c = window.getContentComponent())
+          c->setBounds(window.getLocalArea(nullptr, safe).getIntersection(window.getLocalBounds()));
+      }
+    };
+    SceneWatch sceneWatch_{*this};
    #endif
 
     mp::ui::MasterpieceEditor& editor() { return *editor_; }
@@ -973,6 +1026,54 @@ private:
   juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
+  // Also writes down the modal component whenever it changes: a modal window
+  // the player cannot see takes every touch, and no listener hears them.
+  struct TouchLog final : juce::MouseListener, juce::Timer {
+    TouchLog() { startTimer(500); }
+    juce::String lastModal, lastWindows, lastDesktop;
+    void timerCallback() override {
+      auto* mcm = juce::ModalComponentManager::getInstance();
+      juce::String now = juce::String(mcm->getNumModalComponents()) + " modal";
+      if (auto* m = mcm->getModalComponent(0))
+        now << ": '" << m->getName() << "' " << typeid(*m).name() << " at "
+            << m->getScreenBounds().toString() << (m->isShowing() ? " showing" : " NOT showing")
+            << (m->isOnDesktop() ? "" : " off the desktop");
+      // JUCE's own windows, back to front, named: which one a UIKit window
+      // in the list below is.
+      juce::String desk;
+      auto& desktop = juce::Desktop::getInstance();
+      for (int i = 0; i < desktop.getNumComponents(); ++i)
+        if (auto* c = desktop.getComponent(i)) {
+          bool self = true, children = true;
+          c->getInterceptsMouseClicks(self, children);
+          desk << "\n  '" << c->getName() << "' " << typeid(*c).name() << " "
+               << c->getScreenBounds().toString() << (c->isVisible() ? " visible" : " hidden")
+               << (self ? "" : " clicks-through") << (children ? "" : " children-deaf");
+        }
+      if (desk != lastDesktop) {
+        lastDesktop = desk;
+        juce::Logger::writeToLog("desktop:" + desk);
+      }
+     #if JUCE_IOS
+      const auto windows = mp::ui::describeWindows();
+      if (windows != lastWindows) {
+        lastWindows = windows;
+        juce::Logger::writeToLog("windows: " + windows);
+      }
+     #endif
+      if (now == lastModal) return;
+      lastModal = now;
+      juce::Logger::writeToLog("modal: " + now);
+    }
+    void mouseDown(const juce::MouseEvent& e) override {
+      juce::String chain;
+      for (auto* c = e.eventComponent; c != nullptr; c = c->getParentComponent())
+        chain << (chain.isEmpty() ? "" : " < ") << "'" << c->getName() << "' "
+              << typeid(*c).name();
+      juce::Logger::writeToLog("touch: at " + e.getScreenPosition().toString() + " on " + chain);
+    }
+  };
+  std::unique_ptr<TouchLog> touchLog_;
   // Our own published port, where the platform allows one. The input holds a
   // pointer to its route, so the route is declared FIRST and therefore
   // destroyed last — the input goes away while its callback is still valid.
