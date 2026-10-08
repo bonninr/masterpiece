@@ -241,6 +241,10 @@ class MidiMap {
 public:
   void clear();
   void bind(const MidiBinding& binding);
+  // A binding from another map, its device named again in this map's own
+  // numbering: each map numbers its devices itself, and a binding copied with
+  // the other map's number names whichever device this map gave it (#217).
+  void bindFrom(const MidiMap& other, MidiBinding binding);
   void unbind(const MidiSource& source);
   void unbindTarget(MidiTargetKind kind, Id targetId);
 

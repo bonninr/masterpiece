@@ -1893,7 +1893,7 @@ void MasterpieceProcessor::applyConsoleMidi() {
   if (!console.fromText(cf.loadFileAsString().toStdString())) return;
   midiMap_.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
   for (const auto& b : console.bindings())
-    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bind(b);
+    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bindFrom(console, b);
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {

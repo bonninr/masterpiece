@@ -11466,6 +11466,38 @@ public:
   }
 };
 static MidiDeviceMatchTest g_midiDeviceMatch;
+
+// The console's own mappings (generals, cancel, stepper) come from a file of
+// their own, read into a map of its own and copied over (#217). The copy kept
+// that map's device numbers, which name other devices in the organ's map, so
+// after a restart a General learned from a console never fired again.
+class ConsoleMapDeviceTest final : public mp::test::Test {
+public:
+  ConsoleMapDeviceTest() : Test("functional.midi.console-map-device", Category::Functional) {}
+  void run() override {
+    mp::MidiMap organ;
+    organ.devices().claim("Midi Through Port-0");
+    const int usb = organ.devices().claim("USB MIDI Interface MIDI 1");
+
+    mp::MidiMap console;
+    MP_CHECK(console.fromText("sysex 0 1374303242 general-cancel 0 0 0 momentary 0 127 "
+                              "USB_MIDI_Interface_MIDI_1\n"),
+             "the console's file reads");
+    MP_CHECK(console.bindings().size() == 1, "with its one mapping");
+    if (console.bindings().empty()) return;
+    organ.bindFrom(console, console.bindings().front());
+
+    mp::MidiSource s;
+    s.kind = mp::MidiSourceKind::SysEx;
+    s.number = 1374303242;
+    s.deviceId = usb;
+    MP_CHECK(organ.actionFor(s, 127).kind == mp::MidiTargetKind::PlayerGeneralCancel,
+             "General Cancel fires from the console it was learned from");
+    s.deviceId = organ.devices().lookup("Midi Through Port-0");
+    MP_CHECK(!organ.actionFor(s, 127).valid(), "and from no other device");
+  }
+};
+static ConsoleMapDeviceTest g_consoleMapDevice;
 // An input the app opens itself, such as its JACK MIDI port, can be switched
 // off like the system's inputs (#225).
 class OwnMidiInputTest final : public mp::test::Test {
