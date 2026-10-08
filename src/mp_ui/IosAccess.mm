@@ -158,6 +158,32 @@ UIEdgeInsets sceneInsets(UIWindowScene* scene) {
 
 }  // namespace
 
+// Every window of every scene, front to back as UIKit stacks them, with what
+// decides whether it takes a touch: for finding what lies over the console
+// when taps reach nothing in it (#197).
+juce::String describeWindows() {
+  juce::String out;
+  for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+    if (![s isKindOfClass:UIWindowScene.class]) continue;
+    UIWindowScene* scene = (UIWindowScene*)s;
+    out << "scene state " << (int)scene.activationState << ":";
+    for (UIWindow* w in scene.windows) {
+      const CGRect f = w.frame;
+      out << "\n  " << juce::String::fromUTF8(NSStringFromClass(w.class).UTF8String)
+          << " level " << (double)w.windowLevel << " frame " << (int)f.origin.x << "," << (int)f.origin.y
+          << " " << (int)f.size.width << "x" << (int)f.size.height
+          << (w.hidden ? " hidden" : "") << (w.isKeyWindow ? " key" : "")
+          << (w.userInteractionEnabled ? "" : " no-touch") << " alpha " << (double)w.alpha
+          << " root " << (w.rootViewController != nil
+                              ? juce::String::fromUTF8(NSStringFromClass(w.rootViewController.class).UTF8String)
+                              : juce::String("none"));
+      if (UIViewController* shown = w.rootViewController.presentedViewController)
+        out << " presenting " << juce::String::fromUTF8(NSStringFromClass(shown.class).UTF8String);
+    }
+  }
+  return out;
+}
+
 bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe) {
   UIWindowScene* scene = activeScene();
   if (scene == nil) return false;

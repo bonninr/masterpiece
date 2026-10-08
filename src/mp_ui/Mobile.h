@@ -25,6 +25,8 @@ juce::Rectangle<int> screenBounds();
 // The window scene's bounds now and its safe part, from UIKit (IosAccess.mm).
 // False before the app has a scene.
 bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe);
+// The scenes' windows, one per line, for the log (IosAccess.mm).
+juce::String describeWindows();
 #endif
 
 // On a phone or tablet, makes a window fill the screen, with a title bar

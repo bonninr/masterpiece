@@ -1018,7 +1018,7 @@ private:
   // the player cannot see takes every touch, and no listener hears them.
   struct TouchLog final : juce::MouseListener, juce::Timer {
     TouchLog() { startTimer(500); }
-    juce::String lastModal;
+    juce::String lastModal, lastWindows;
     void timerCallback() override {
       auto* mcm = juce::ModalComponentManager::getInstance();
       juce::String now = juce::String(mcm->getNumModalComponents()) + " modal";
@@ -1026,6 +1026,13 @@ private:
         now << ": '" << m->getName() << "' " << typeid(*m).name() << " at "
             << m->getScreenBounds().toString() << (m->isShowing() ? " showing" : " NOT showing")
             << (m->isOnDesktop() ? "" : " off the desktop");
+     #if JUCE_IOS
+      const auto windows = mp::ui::describeWindows();
+      if (windows != lastWindows) {
+        lastWindows = windows;
+        juce::Logger::writeToLog("windows: " + windows);
+      }
+     #endif
       if (now == lastModal) return;
       lastModal = now;
       juce::Logger::writeToLog("modal: " + now);
