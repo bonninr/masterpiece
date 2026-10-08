@@ -39,7 +39,7 @@ jobs:
 
       - name: Run
         run: |
-          VARIANTS="kiosk-display display scene scene-safe kiosk-scene"
+          VARIANTS="scene alert alert-front"
           for want in "iPad Pro 13" "iPhone 17 Pro"; do
             DEV=$(xcrun simctl list devices available -j | python3 -c "
           import json, sys

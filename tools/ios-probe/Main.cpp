@@ -27,14 +27,14 @@ juce::Rectangle<int> displayArea(bool insets) {
   return {0, 0, 1024, 768};
 }
 
-bool usesScene() { return variant.contains("scene"); }
+bool usesScene() { return variant.contains("scene") || variant.startsWith("alert"); }
 
 // Where a window goes and where its content goes, in screen coordinates.
 void placement(juce::Rectangle<int>& window, juce::Rectangle<int>& content) {
   juce::Rectangle<int> whole, safe;
   juce::String about;
   const bool scene = probeScene(whole, safe, about);
-  if (variant == "scene" || variant == "kiosk-scene") {
+  if (variant == "scene" || variant == "kiosk-scene" || variant.startsWith("alert")) {
     window = scene ? whole : displayArea(false);
     content = scene ? safe : displayArea(true);
   } else if (variant == "scene-safe") {
@@ -197,6 +197,22 @@ public:
     }
     if (variant == "kiosk-scene") win_->place();
     win_->startTimer(500);
+    // Masterpiece opens with a notice after a run the system ended: whether
+    // the console still takes touches once it is dismissed, and whether
+    // bringing the console back to the front afterwards is what it needs.
+    if (variant.startsWith("alert")) {
+      juce::AlertWindow::showMessageBoxAsync(
+          juce::MessageBoxIconType::WarningIcon, "Notice", "A notice like the one after a crash.",
+          "OK", nullptr,
+          juce::ModalCallbackFunction::create([this](int) {
+            log("alert closed");
+            logGeometry("after alert", win_.get());
+            if (variant == "alert-front") {
+              win_->toFront(true);
+              log("console brought to front");
+            }
+          }));
+    }
     juce::Timer::callAfterDelay(3000, [this] { logGeometry("after 3 s", win_.get()); });
   }
   void shutdown() override {

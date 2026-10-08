@@ -55,8 +55,21 @@ def shot(folder, name, notes):
     return es
 
 
-def tap(name, notes):
+def settled():
+    """The listing once the app's frame reads the same twice in a row."""
+    frame = lambda l: next((e.get("frame") for e in l if e.get("type") == "Application"), None)
     es = elements()
+    for _ in range(8):
+        time.sleep(0.7)
+        again = elements()
+        if frame(again) == frame(es):
+            return again
+        es = again
+    return es
+
+
+def tap(name, notes):
+    es = settled()
     app = next((e.get("frame") for e in es if e.get("type") == "Application"), None)
     for e in es:
         if label(e) == name:
@@ -82,6 +95,9 @@ def main():
         notes.append("launch: " + (r.stdout + r.stderr).strip())
         time.sleep(5)
         shot(folder, "1-start", notes)
+        if v.startswith("alert"):
+            tap("OK", notes)
+            shot(folder, "1b-after-ok", notes)
         tap("Alpha", notes)
         if tap("Menu", notes):
             shot(folder, "2-menu", notes)
