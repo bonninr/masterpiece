@@ -21,9 +21,31 @@ namespace {
 // logical pixels, the size both platforms recommend for a touch target.
 constexpr int kTouchTitleBar = 48;
 
+juce::Component::SafePointer<juce::Component>& hostPointer() {
+  static juce::Component::SafePointer<juce::Component> host;
+  return host;
+}
+
 // JUCE's default look, kept, with what a finger needs instead of a mouse.
 class TouchLook : public juce::LookAndFeel_V4 {
 public:
+  // Menus and alerts open inside the main window (setPanelHost).
+  juce::Component* getParentComponentForMenuOptions(const juce::PopupMenu::Options& options) override {
+    if (auto* parent = juce::LookAndFeel_V4::getParentComponentForMenuOptions(options)) return parent;
+    return hostPointer().getComponent();
+  }
+  juce::AlertWindow* createAlertWindow(const juce::String& title, const juce::String& message,
+                                       const juce::String& button1, const juce::String& button2,
+                                       const juce::String& button3, juce::MessageBoxIconType iconType,
+                                       int numButtons, juce::Component* associatedComponent) override {
+    auto* alert = juce::LookAndFeel_V4::createAlertWindow(title, message, button1, button2, button3,
+                                                          iconType, numButtons, associatedComponent);
+    if (auto* host = hostPointer().getComponent(); alert != nullptr && host != nullptr) {
+      host->addAndMakeVisible(alert);
+      alert->setCentrePosition(host->getLocalBounds().getCentre());
+    }
+    return alert;
+  }
   void getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
                                  int standardMenuItemHeight, int& idealWidth,
                                  int& idealHeight) override {
@@ -375,10 +397,36 @@ void fitToScreen(juce::DocumentWindow& window) {
   window.setUsingNativeTitleBar(false);
   window.setTitleBarHeight(kTouchTitleBar);
   window.setResizable(false, false);
-  window.setBounds(screenArea());
+  // Inside the main window it fills the layer it is in (setPanelHost).
+  if (auto* parent = window.getParentComponent()) window.setBounds(parent->getLocalBounds());
+  else window.setBounds(screenArea());
 }
 
+void setPanelHost(juce::Component* host) { hostPointer() = host; }
+juce::Component* panelHost() { return hostPointer().getComponent(); }
+
+namespace {
+// Into the main window's layer, from the desktop or nowhere: a component
+// added as a child leaves the desktop.
+void hostIn(juce::Component& host, juce::DocumentWindow& window) {
+  if (window.getParentComponent() != &host) host.addChildComponent(window);
+  fitToScreen(window);
+}
+}  // namespace
+
 void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
+  if (auto* host = panelHost(); kMobile && host != nullptr) {
+    juce::ignoreUnused(onTop);
+    if (!show) {
+      window.setVisible(false);
+      host->removeChildComponent(&window);
+      return;
+    }
+    hostIn(*host, window);
+    window.setVisible(true);
+    window.toFront(true);
+    return;
+  }
  #if JUCE_IOS
   // On iOS a hidden JUCE window hides its view and keeps its UIKit window,
   // which still covers the screen and takes every touch. The Combinations
@@ -469,6 +517,11 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   }
   auto* dialog = options.launchAsync();
   if (dialog == nullptr) return dialog;
+  if (auto* host = panelHost(); kMobile && host != nullptr) {
+    hostIn(*host, *dialog);
+    dialog->setVisible(true);
+    dialog->toFront(true);
+  }
   fitToScreen(*dialog);
   // A dialog the player can resize opens at the size they last left it,
   // as far as the screen it opens on allows.
