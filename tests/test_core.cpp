@@ -11596,6 +11596,20 @@ public:
     block({juce::MidiMessage::noteOff(1, 37)});
     MP_CHECK(quietAfter(1.0) < 1e-4f, "and stops when let go");
 
+    // A swell set from the velocity of any note on the channel the manual
+    // plays from, as a sequencer writes it (#220): the notes still sound.
+    mp::MidiBinding swell;
+    swell.source.kind = mp::MidiSourceKind::Note;
+    swell.source.channel = 1;
+    swell.source.number = mp::kAnyNote;
+    swell.targetKind = mp::MidiTargetKind::ContinuousControl;
+    swell.targetId = 998;
+    proc.midiMap().bind(swell);
+    block({juce::MidiMessage::noteOn(1, 36, 0.8f)});
+    MP_CHECK(block({}) > 0.01f, "a note that also sets the swell sounds");
+    block({juce::MidiMessage::noteOff(1, 36)});
+    MP_CHECK(quietAfter(1.0) < 1e-4f, "and stops when let go");
+
     settings.deleteFile();
     dir.deleteRecursively();
   }

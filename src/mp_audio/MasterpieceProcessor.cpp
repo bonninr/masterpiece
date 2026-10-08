@@ -677,6 +677,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
               setControlValue(b.targetId, MidiMap::controlValue(b, value));
+          // A note that sets a swell from its velocity is still a note: a
+          // sequencer writes the expression into the notes it plays, and the
+          // manual sounds them (#220).
+          if (source.kind == MidiSourceKind::Note) break;
           continue;
         case MidiTargetKind::StepperNext:
           stepperNext();
