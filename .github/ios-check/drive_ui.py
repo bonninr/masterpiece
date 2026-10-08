@@ -72,8 +72,23 @@ def to_touch(es, x, y):
     return portrait_width() - y, x
 
 
-def tap(name, contains=False):
+def settled():
+    """The listing once the app's frame reads the same twice: for a while
+    after a launch idb reports it upright and turned by turns, and a tap
+    converted with the wrong one lands elsewhere."""
     es = elements()
+    for _ in range(8):
+        time.sleep(0.7)
+        again = elements()
+        frame = lambda l: next((e.get("frame") for e in l if e.get("type") == "Application"), None)
+        if frame(again) == frame(es):
+            return again
+        es = again
+    return es
+
+
+def tap(name, contains=False):
+    es = settled()
     for e in es:
         text = label(e)
         if text == name or (contains and name.lower() in text.lower()):
