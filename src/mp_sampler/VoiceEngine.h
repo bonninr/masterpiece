@@ -159,6 +159,14 @@ struct SampleBuffer {
   bool loops() const {
     return loopStart >= 0 && loopEnd > loopStart && loopEnd <= numFrames;
   }
+  // As a release read from its file's marker: nothing to play when the file
+  // has no marker and its loop runs to its last frame (a GrandOrgue attack
+  // file offered as its own release). A file with no loop at all is a
+  // recorded release and holds all of it: Sonus Paradisi's separate release
+  // files are that, and 0.7.6 left all 3847 of Friesach's out (#218).
+  bool releaseHoldsNothing() const {
+    return releaseCue <= 0 && loopEnd > 0 && loopEnd >= totalFrames();
+  }
   float sample(int64_t frame, int channel) const {
     if (frame < 0 || frame >= numFrames) return 0.0f;
     const int ch = channel < numChannels ? channel : numChannels - 1;

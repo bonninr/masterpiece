@@ -4542,8 +4542,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
           for (auto& rel : layer.releases) {
             if (rel.loadStartValue <= 0 && rel.loadStartType <= 0) continue;
             const SampleBuffer* buf = provide ? provide(rel.sample.sampleId) : nullptr;
-            if (buf == nullptr || buf->releaseCue > 0) continue;
-            rel.empty = !(buf->loopEnd > 0 && buf->loopEnd < buf->totalFrames());
+            if (buf == nullptr) continue;
+            rel.empty = buf->releaseHoldsNothing();
             empties += rel.empty ? 1 : 0;
           }
     if (empties > 0)
