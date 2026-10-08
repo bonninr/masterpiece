@@ -181,6 +181,41 @@ public:
   }
 };
 
+// A field the loader never asks for is a feature some organ uses and this
+// player ignores. Asked for, the loader lists each one with the values it
+// holds; a field it reads, and an empty one, are left out.
+class LoaderUnreadFieldsTest final : public mp::test::Test {
+public:
+  LoaderUnreadFieldsTest()
+    : Test("functional.odf.unread-fields", Category::Functional) {}
+  void run() override {
+    const std::string xml =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "<Identification_Name>Test</Identification_Name>"
+        "<Future_Feature>7</Future_Feature><Future_Empty></Future_Empty>"
+        "</_General></ObjectList></Hauptwerk>";
+    auto load = [&xml](bool report, mp::OdfDiagnostics& d) {
+      mp::OdfLoader l;
+      mp::OdfLoader::Options o;
+      o.reportUnreadFields = report;
+      mp::OrganModel m;
+      return l.loadFromXmlString(xml, "a.Organ_Hauptwerk_xml", o, m, d);
+    };
+    mp::OdfDiagnostics quiet;
+    MP_CHECK(load(false, quiet) && quiet.unreadFields.empty(),
+             "an ordinary load does not walk the definition for unread fields");
+    mp::OdfDiagnostics d;
+    MP_CHECK(load(true, d), "the definition loads");
+    MP_CHECK(d.unreadFields.size() == 1,
+             "exactly one field holds a value nothing read");
+    MP_CHECK(!d.unreadFields.empty() &&
+                 d.unreadFields.front() == "_General.Future_Feature (1 row(s): 7)",
+             "it is named with its table, its row count and its value");
+  }
+};
+
 // An organ can declare no StopRank at all and reach every pipe through its
 // switch wiring: the key is a switch, it is wired through the stop's switch to
 // a pallet switch, and each pipe names its pallet. Alessandria, Erfurt and
@@ -9163,6 +9198,7 @@ static DetectTypeTest g_detect;
 static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
 static LoaderEmptyTableTest g_emptyTable;
+static LoaderUnreadFieldsTest g_unreadFields;
 static PalletSwitchTest g_palletSwitch;
 static TremulantWaveformsTest g_tremulantWaveforms;
 static ReleaseIgnoresWindTest g_releaseIgnoresWind;

@@ -342,6 +342,13 @@ juce::Rectangle<int> screenArea() {
   // and the screen's rounded corners and home indicator cut into the edges.
   // Those are the display's safe-area insets, and drawing under them put the
   // menu where no tap reaches it (#197).
+  //
+  // On iOS the scene's own figures: JUCE's display stays upright on a turned
+  // iPad (see IosAccess.mm).
+ #if JUCE_IOS
+  juce::Rectangle<int> whole, safe;
+  if (sceneBounds(whole, safe)) return safe;
+ #endif
   if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) {
    #if JUCE_IOS
     return d->safeAreaInsets.subtractedFrom(d->totalArea);
@@ -349,6 +356,16 @@ juce::Rectangle<int> screenArea() {
     return kMobile ? d->totalArea : d->userArea;
    #endif
   }
+  return {0, 0, 1280, 800};
+}
+
+juce::Rectangle<int> screenBounds() {
+ #if JUCE_IOS
+  juce::Rectangle<int> whole, safe;
+  if (sceneBounds(whole, safe)) return whole;
+ #endif
+  if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+    return d->totalArea;
   return {0, 0, 1280, 800};
 }
 
@@ -362,6 +379,23 @@ void fitToScreen(juce::DocumentWindow& window) {
 }
 
 void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
+ #if JUCE_IOS
+  // On iOS a hidden JUCE window hides its view and keeps its UIKit window,
+  // which still covers the screen and takes every touch. The Combinations
+  // window, built hidden at startup, became the key window once the first
+  // dialog closed, and no tap reached the console again (#197). A hidden
+  // window leaves the screen; shown, it comes back.
+  juce::ignoreUnused(onTop);
+  if (!show) {
+    window.setVisible(false);
+    window.removeFromDesktop();
+    return;
+  }
+  if (!window.isOnDesktop()) window.addToDesktop();
+  window.setVisible(true);
+  window.toFront(true);
+  return;
+ #endif
   if (!kLiveOnTop) {
     window.setVisible(false);
     window.removeFromDesktop();

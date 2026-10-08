@@ -12,6 +12,7 @@ missing button shows up in the results rather than ending the run. Exits 1
 if any step failed.
 """
 import json
+import struct
 import os
 import subprocess
 import sys
@@ -51,16 +52,133 @@ def shot(name):
             f.write(f"{label(e)!r} {e.get('type', '')} {fr}\n")
 
 
-def tap(name, contains=False):
-    for e in elements():
+def portrait_width():
+    """The screen's upright width in points, from a screenshot's pixels."""
+    path = os.path.join(OUT, ".probe.png")
+    run("xcrun", "simctl", "io", UDID, "screenshot", path)
+    with open(path, "rb") as f:
+        pixels = struct.unpack(">I", f.read(24)[16:20])[0]
+    os.remove(path)
+    return pixels / float(os.environ.get("SCREEN_SCALE", "2"))
+
+
+def to_touch(es, x, y):
+    """idb reads positions in the app's landscape points and taps in the
+    screen's upright ones. Turned to the left, the app's top edge lies along
+    the screen's right edge and its left edge along the top."""
+    app = next((e.get("frame") for e in es if e.get("type") == "Application"), None)
+    if not app or app["width"] <= app["height"]:
+        return x, y
+    return portrait_width() - y, x
+
+
+def settled():
+    """The listing once the app's frame reads the same twice: for a while
+    after a launch idb reports it upright and turned by turns, and a tap
+    converted with the wrong one lands elsewhere."""
+    es = elements()
+    for _ in range(8):
+        time.sleep(0.7)
+        again = elements()
+        frame = lambda l: next((e.get("frame") for e in l if e.get("type") == "Application"), None)
+        if frame(again) == frame(es):
+            return again
+        es = again
+    return es
+
+
+def tap(name, contains=False, required=True):
+    es = settled()
+    for e in es:
         text = label(e)
         if text == name or (contains and name.lower() in text.lower()):
             fr = e["frame"]
-            x, y = fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2
+            x, y = to_touch(es, fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2)
             run("idb", "ui", "tap", "--udid", UDID, str(int(x)), str(int(y)))
             time.sleep(2)
             return True
-    failures.append(f"no '{name}' on screen")
+    if required:
+        failures.append(f"no '{name}' on screen")
+    return False
+
+
+def read_text(img):
+    """Lines of text in an image, each with its centre in the image's pixels.
+    Apple's Vision first (the Live Text engine, built into macOS, and the
+    best at interface text); Tesseract, word by word, where Vision is
+    missing."""
+    try:
+        from ocrmac import ocrmac
+        found = []
+        # (text, confidence, [x, y, w, h]) normalised, origin bottom left.
+        for text, _conf, (x, y, w, h) in ocrmac.OCR(img, recognition_level="accurate").recognize():
+            found.append((text, (x + w / 2) * img.width, (1 - y - h / 2) * img.height))
+        return found
+    except ImportError:
+        pass
+    import pytesseract
+    d = pytesseract.image_to_data(img, config="--psm 11", output_type=pytesseract.Output.DICT)
+    return [(t, d["left"][i] + d["width"][i] / 2, d["top"][i] + d["height"][i] / 2)
+            for i, t in enumerate(d["text"]) if t.strip()]
+
+
+def tap_text(words, seconds=25, required=True):
+    """Taps text found in a screenshot: for the system's document picker,
+    which draws in another process and so is not in the app's accessibility
+    listing. The screenshot is the screen upright; with the app turned it is
+    read turned too, and a match is taken back to upright points, the ones
+    idb taps in."""
+    try:
+        from PIL import Image
+    except ImportError:
+        failures.append(f"no OCR to find '{words}'")
+        return False
+    scale = float(os.environ.get("SCREEN_SCALE", "2"))
+    want = words.lower()
+    end = time.time() + seconds
+    while time.time() < end:
+        path = os.path.join(OUT, ".ocr.png")
+        run("xcrun", "simctl", "io", UDID, "screenshot", path)
+        upright = Image.open(path)
+        app = next((e.get("frame") for e in elements() if e.get("type") == "Application"), None)
+        turned = bool(app and app["width"] > app["height"])
+        img = upright.rotate(90, expand=True) if turned else upright
+        lines = read_text(img)
+        # A whole line that starts with the words first, then any line or
+        # run of words that holds them.
+        hit = next((l for l in lines if l[0].lower().strip().startswith(want)), None)
+        if hit is None:
+            hit = next((l for l in lines if want in l[0].lower()), None)
+        if hit is None and len(want.split()) > 1:
+            first = want.split()[0]
+            hit = next((l for l in lines if l[0].lower().strip() == first), None)
+        if hit is not None:
+            _, x, y = hit
+            if turned:  # back from the image turned a quarter to the left
+                x, y = upright.width - 1 - y, x
+            run("idb", "ui", "tap", "--udid", UDID, str(int(x / scale)), str(int(y / scale)))
+            time.sleep(2)
+            return True
+        time.sleep(2)
+    if required:
+        failures.append(f"no '{words}' read on screen")
+    return False
+
+
+def close_panel():
+    """A window's close button, by either of the names it is listed under."""
+    if not (tap("Close", required=False) or tap("close", contains=True, required=False)):
+        failures.append("no close button on screen")
+
+
+def wait_for(name, seconds=25):
+    """The system's document picker draws its contents from another process,
+    which can take seconds on a simulator: its labels are waited for."""
+    end = time.time() + seconds
+    while time.time() < end:
+        if any(name.lower() in label(e).lower() for e in elements()):
+            return True
+        time.sleep(1.5)
     return False
 
 
@@ -74,7 +192,7 @@ def main():
         tap("OK")
         shot("notice-dismissed")
     # The first-run wizard, when it is up.
-    tap("Skip setup")
+    tap("Skip setup", required=False)
     shot("console")
     if tap("Settings"):
         shot("settings-menu")
@@ -83,31 +201,34 @@ def main():
             for tab in ("MIDI", "Mixer", "Log"):
                 if tap(tab):
                     shot("general-" + tab.lower())
-            tap("Close") or tap("close", contains=True)
+            close_panel()
             shot("after-close")
+    # On a phone or tablet the stop list takes the console's place, and its
+    # button becomes "Console", which brings the console back.
     if tap("Stop list"):
         shot("stop-list")
-        tap("Close") or tap("close", contains=True)
+        tap("Console")
     if tap("Audio"):
         shot("audio")
-        tap("Close") or tap("close", contains=True)
+        close_panel()
     # An organ package opened as a player opens one: Open, then the system's
     # document picker, then the package in "On My iPad" / "On My iPhone",
     # where the run put it beforehand (#197: a package outside the app's own
     # folder, lent by the Files app).
     package = os.environ.get("PICK_PACKAGE")
     if package and tap("Open"):
+        # The picker is another process's: found by its text on screen.
         shot("picker")
-        tap("Browse")
-        tap("On My", contains=True)
-        shot("picker-on-my-device")
-        tap(os.environ.get("PICK_FOLDER", "check"))
-        if tap(os.path.splitext(package)[0], contains=True):
-            time.sleep(20)
-            shot("package-opened")
-        else:
-            shot("picker-no-package")
-            tap("Cancel")
+        # On a phone the locations are behind the Browse tab.
+        if not tap_text("On My", 12, required=False):
+            tap_text("Browse", 10, required=False)
+        if tap_text("On My"):
+            shot("picker-on-my-device")
+            tap_text(os.environ.get("PICK_FOLDER", "check"))
+            shot("picker-folder")
+            if tap_text(os.path.splitext(package)[0]):
+                time.sleep(20)
+                shot("package-opened")
     shot("end")
     with open(os.path.join(OUT, "ui-result.txt"), "w") as f:
         f.write("\n".join(failures) if failures else "every step found its control\n")
