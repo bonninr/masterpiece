@@ -1031,10 +1031,13 @@ private:
       juce::String desk;
       auto& desktop = juce::Desktop::getInstance();
       for (int i = 0; i < desktop.getNumComponents(); ++i)
-        if (auto* c = desktop.getComponent(i))
+        if (auto* c = desktop.getComponent(i)) {
+          bool self = true, children = true;
+          c->getInterceptsMouseClicks(self, children);
           desk << "\n  '" << c->getName() << "' " << typeid(*c).name() << " "
                << c->getScreenBounds().toString() << (c->isVisible() ? " visible" : " hidden")
-               << (c->getInterceptsMouseClicks() ? "" : " clicks-through");
+               << (self ? "" : " clicks-through") << (children ? "" : " children-deaf");
+        }
       if (desk != lastDesktop) {
         lastDesktop = desk;
         juce::Logger::writeToLog("desktop:" + desk);
