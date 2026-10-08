@@ -87,7 +87,7 @@ def settled():
     return es
 
 
-def tap(name, contains=False):
+def tap(name, contains=False, required=True):
     es = settled()
     for e in es:
         text = label(e)
@@ -97,7 +97,25 @@ def tap(name, contains=False):
             run("idb", "ui", "tap", "--udid", UDID, str(int(x)), str(int(y)))
             time.sleep(2)
             return True
-    failures.append(f"no '{name}' on screen")
+    if required:
+        failures.append(f"no '{name}' on screen")
+    return False
+
+
+def close_panel():
+    """A window's close button, by either of the names it is listed under."""
+    if not (tap("Close", required=False) or tap("close", contains=True, required=False)):
+        failures.append("no close button on screen")
+
+
+def wait_for(name, seconds=25):
+    """The system's document picker draws its contents from another process,
+    which can take seconds on a simulator: its labels are waited for."""
+    end = time.time() + seconds
+    while time.time() < end:
+        if any(name.lower() in label(e).lower() for e in elements()):
+            return True
+        time.sleep(1.5)
     return False
 
 
@@ -111,7 +129,7 @@ def main():
         tap("OK")
         shot("notice-dismissed")
     # The first-run wizard, when it is up.
-    tap("Skip setup")
+    tap("Skip setup", required=False)
     shot("console")
     if tap("Settings"):
         shot("settings-menu")
@@ -120,20 +138,24 @@ def main():
             for tab in ("MIDI", "Mixer", "Log"):
                 if tap(tab):
                     shot("general-" + tab.lower())
-            tap("Close") or tap("close", contains=True)
+            close_panel()
             shot("after-close")
+    # On a phone or tablet the stop list takes the console's place, and its
+    # button becomes "Console", which brings the console back.
     if tap("Stop list"):
         shot("stop-list")
-        tap("Close") or tap("close", contains=True)
+        tap("Console")
     if tap("Audio"):
         shot("audio")
-        tap("Close") or tap("close", contains=True)
+        close_panel()
     # An organ package opened as a player opens one: Open, then the system's
     # document picker, then the package in "On My iPad" / "On My iPhone",
     # where the run put it beforehand (#197: a package outside the app's own
     # folder, lent by the Files app).
     package = os.environ.get("PICK_PACKAGE")
     if package and tap("Open"):
+        if not wait_for("Browse"):
+            wait_for("Recents", 5)
         shot("picker")
         tap("Browse")
         tap("On My", contains=True)
