@@ -102,6 +102,26 @@ def tap(name, contains=False, required=True):
     return False
 
 
+def read_text(img):
+    """Lines of text in an image, each with its centre in the image's pixels.
+    Apple's Vision first (the Live Text engine, built into macOS, and the
+    best at interface text); Tesseract, word by word, where Vision is
+    missing."""
+    try:
+        from ocrmac import ocrmac
+        found = []
+        # (text, confidence, [x, y, w, h]) normalised, origin bottom left.
+        for text, _conf, (x, y, w, h) in ocrmac.OCR(img, recognition_level="accurate").recognize():
+            found.append((text, (x + w / 2) * img.width, (1 - y - h / 2) * img.height))
+        return found
+    except ImportError:
+        pass
+    import pytesseract
+    d = pytesseract.image_to_data(img, config="--psm 11", output_type=pytesseract.Output.DICT)
+    return [(t, d["left"][i] + d["width"][i] / 2, d["top"][i] + d["height"][i] / 2)
+            for i, t in enumerate(d["text"]) if t.strip()]
+
+
 def tap_text(words, seconds=25, required=True):
     """Taps text found in a screenshot: for the system's document picker,
     which draws in another process and so is not in the app's accessibility
@@ -109,13 +129,12 @@ def tap_text(words, seconds=25, required=True):
     read turned too, and a match is taken back to upright points, the ones
     idb taps in."""
     try:
-        import pytesseract
         from PIL import Image
     except ImportError:
         failures.append(f"no OCR to find '{words}'")
         return False
     scale = float(os.environ.get("SCREEN_SCALE", "2"))
-    want = words.lower().split()
+    want = words.lower()
     end = time.time() + seconds
     while time.time() < end:
         path = os.path.join(OUT, ".ocr.png")
@@ -124,20 +143,22 @@ def tap_text(words, seconds=25, required=True):
         app = next((e.get("frame") for e in elements() if e.get("type") == "Application"), None)
         turned = bool(app and app["width"] > app["height"])
         img = upright.rotate(90, expand=True) if turned else upright
-        # Sparse text: a picker is labels scattered over the screen.
-        d = pytesseract.image_to_data(img, config="--psm 11",
-                                      output_type=pytesseract.Output.DICT)
-        text = [t.lower().strip() for t in d["text"]]
-        for i in range(len(text) - len(want) + 1):
-            if all(text[i + k].startswith(want[k]) for k in range(len(want))):
-                last = i + len(want) - 1
-                x = (d["left"][i] + d["left"][last] + d["width"][last]) / 2
-                y = d["top"][i] + d["height"][i] / 2
-                if turned:  # back from the image turned a quarter to the left
-                    x, y = upright.width - 1 - y, x
-                run("idb", "ui", "tap", "--udid", UDID, str(int(x / scale)), str(int(y / scale)))
-                time.sleep(2)
-                return True
+        lines = read_text(img)
+        # A whole line that starts with the words first, then any line or
+        # run of words that holds them.
+        hit = next((l for l in lines if l[0].lower().strip().startswith(want)), None)
+        if hit is None:
+            hit = next((l for l in lines if want in l[0].lower()), None)
+        if hit is None and len(want.split()) > 1:
+            first = want.split()[0]
+            hit = next((l for l in lines if l[0].lower().strip() == first), None)
+        if hit is not None:
+            _, x, y = hit
+            if turned:  # back from the image turned a quarter to the left
+                x, y = upright.width - 1 - y, x
+            run("idb", "ui", "tap", "--udid", UDID, str(int(x / scale)), str(int(y / scale)))
+            time.sleep(2)
+            return True
         time.sleep(2)
     if required:
         failures.append(f"no '{words}' read on screen")
