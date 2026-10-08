@@ -579,3 +579,55 @@ jobs:
           path: masterpiece-android.apk
           if-no-files-found: error
           retention-days: 3
+
+  # Android on emulators, as the ios job runs the simulators: the sine-wave
+  # test organs played and recorded inside the app and checked against their
+  # numbers, then the console tapped through by its buttons' names, upright
+  # and turned. A phone and a tablet. See .github/android-check/.
+  android-check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [pixel_7, pixel_tablet]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: masterpiece-android
+
+      # The runner's KVM, so the x86_64 emulator runs at native speed.
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test organs
+        run: |
+          pip3 install --break-system-packages numpy || pip3 install numpy
+          python3 .github/ios-check/make_organ.py organs/check
+          python3 .github/ios-check/make_organ.py organs/heavy --heavy
+
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim
+          script: bash .github/android-check/run.sh masterpiece-android.apk organs android-shots/${{ matrix.profile }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator-${{ matrix.profile }}
+          path: android-shots/
+          retention-days: 3

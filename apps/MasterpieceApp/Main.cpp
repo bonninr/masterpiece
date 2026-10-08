@@ -6,6 +6,11 @@
 // one engine and three front ends rather than three engines.
 #include <iostream>
 
+// JUCE's JNI helpers, for the launching intent on Android. Defined before any
+// JUCE header so juce_core includes them.
+#if defined(__ANDROID__)
+ #define JUCE_CORE_INCLUDE_JNI_HELPERS 1
+#endif
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -63,6 +68,40 @@ public:
     if (f != juce::File() && win_ != nullptr) win_->editor().loadOrgan(f, false);
   }
 
+  // An Android app is started with no command line. The same options come
+  // in as one intent extra, which is how a test run (adb shell am start
+  // --es mp.args "...") drives it. Empty everywhere else.
+  static juce::String launchArguments() {
+   #if JUCE_ANDROID
+    auto* env = juce::getEnv();
+    const auto activity = juce::getMainActivity();
+    if (env == nullptr || activity == nullptr) return {};
+    jclass activityClass = env->GetObjectClass(activity.get());
+    jobject intent = env->CallObjectMethod(
+        activity.get(), env->GetMethodID(activityClass, "getIntent", "()Landroid/content/Intent;"));
+    juce::String text;
+    if (intent != nullptr) {
+      jclass intentClass = env->GetObjectClass(intent);
+      jstring key = env->NewStringUTF("mp.args");
+      auto value = (jstring)env->CallObjectMethod(
+          intent, env->GetMethodID(intentClass, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;"),
+          key);
+      if (env->ExceptionCheck()) env->ExceptionClear();
+      if (value != nullptr) {
+        text = juce::juceString(env, value);
+        env->DeleteLocalRef(value);
+      }
+      env->DeleteLocalRef(key);
+      env->DeleteLocalRef(intentClass);
+      env->DeleteLocalRef(intent);
+    }
+    env->DeleteLocalRef(activityClass);
+    return text;
+   #else
+    return {};
+   #endif
+  }
+
   void initialise(const juce::String& commandLine) override {
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
     // Remember which organ is loaded until a clean exit, so a crash is not
@@ -80,7 +119,8 @@ public:
     // fromTokens(..., true) PRESERVES the quotes it split on, so every value
     // taken from here is unquoted before use. Organ paths almost always
     // contain spaces.
-    const auto args = juce::StringArray::fromTokens(commandLine, true);
+    const auto args = juce::StringArray::fromTokens(
+        commandLine.isNotEmpty() ? commandLine : launchArguments(), true);
     // Say which build this is and stop. The window title carries it too, but
     // a player on a forum needs something they can copy.
     // What every option above and below does, for a player at a terminal
