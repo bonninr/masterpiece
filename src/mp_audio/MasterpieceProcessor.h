@@ -581,7 +581,14 @@ public:
   // The identifier is the one the system gives the device (MidiDeviceInfo),
   // passed only where it lasts across runs (MidiDevices.h).
   int registerMidiDevice(const juce::String& name, const juce::String& identifier = {}) {
-    return midiMap_.devices().claim(name.toStdString(), identifier.toStdString());
+    const int id = midiMap_.devices().claim(name.toStdString(), identifier.toStdString());
+    // The number the MIDI log calls it by ("midi: in dev=3"), next to its name
+    // and the name its mappings know it by (#217).
+    juce::Logger::writeToLog("midi: device " + juce::String(id) + " = " + name +
+                             (juce::String(midiMap_.devices().nameFor(id)) != name
+                                  ? " (mapped as " + juce::String(midiMap_.devices().nameFor(id)) + ")"
+                                  : juce::String()));
+    return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
 
@@ -592,8 +599,16 @@ public:
   // settings (#225). Message thread.
   int registerOwnMidiInput(const juce::String& name);
   juce::StringArray ownMidiInputs() const { return ownInputs_; }
-  bool ownMidiInputEnabled(const juce::String& name) const { return !ownInputsOff_.contains(name); }
-  void setOwnMidiInputEnabled(const juce::String& name, bool on);
+  // Whether an input plays, by name: any input, the system's included. The
+  // system's are opened by the audio device manager, whose saved state lists
+  // only the inputs that are on, so a switched-off one could not be told from
+  // a new one and every input came back on at the next start (#230). The
+  // inputs switched off are kept here, with the general settings.
+  bool midiInputEnabled(const juce::String& name) const { return !inputsOff_.contains(name); }
+  void setMidiInputEnabled(const juce::String& name, bool on);
+  // Only the inputs switched off, from the general settings: wanted before the
+  // inputs are opened, which comes before the rest of those settings is read.
+  void readMidiInputSwitches();
 
   MidiMap& midiMap() { return midiMap_; }
   const MidiMap& midiMap() const { return midiMap_; }
@@ -1566,7 +1581,7 @@ private:
   bool combinationsOnTop_ = false;
   bool setOffAfterStore_ = false;
   std::atomic<bool> fasterEngine_{false};
-  juce::StringArray ownInputs_, ownInputsOff_;
+  juce::StringArray ownInputs_, inputsOff_;
   // Per device id, whether its messages are dropped: read on MIDI threads.
   static constexpr int kMaxMutedDevices = 64;
   std::array<std::atomic<bool>, kMaxMutedDevices> deviceMuted_{};
