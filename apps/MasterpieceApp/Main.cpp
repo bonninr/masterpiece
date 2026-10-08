@@ -836,7 +836,11 @@ private:
         if (onLoaded) onLoaded();
       };
       editor_ = ed;
-      setContentOwned(ed, true);
+      // On a desktop the window takes the console's size. On a phone or
+      // tablet the screen gives the size, and the console sits inside the
+      // safe area: a window that also followed its content shrank to fit it
+      // and was placed smaller again, down to 2 by 2 pixels, a black screen.
+      setContentOwned(ed, !mp::ui::kMobile);
       // A phone or tablet gives the console the whole screen: no title bar,
       // nothing to resize, and no place to remember.
       if (mp::ui::kMobile) {
