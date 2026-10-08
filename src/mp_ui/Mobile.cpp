@@ -379,6 +379,23 @@ void fitToScreen(juce::DocumentWindow& window) {
 }
 
 void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
+ #if JUCE_IOS
+  // On iOS a hidden JUCE window hides its view and keeps its UIKit window,
+  // which still covers the screen and takes every touch. The Combinations
+  // window, built hidden at startup, became the key window once the first
+  // dialog closed, and no tap reached the console again (#197). A hidden
+  // window leaves the screen; shown, it comes back.
+  juce::ignoreUnused(onTop);
+  if (!show) {
+    window.setVisible(false);
+    window.removeFromDesktop();
+    return;
+  }
+  if (!window.isOnDesktop()) window.addToDesktop();
+  window.setVisible(true);
+  window.toFront(true);
+  return;
+ #endif
   if (!kLiveOnTop) {
     window.setVisible(false);
     window.removeFromDesktop();
