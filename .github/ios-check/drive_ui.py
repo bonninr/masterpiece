@@ -102,7 +102,7 @@ def tap(name, contains=False, required=True):
     return False
 
 
-def tap_text(words, seconds=25):
+def tap_text(words, seconds=25, required=True):
     """Taps text found in a screenshot: for the system's document picker,
     which draws in another process and so is not in the app's accessibility
     listing. The screenshot is the screen upright; with the app turned it is
@@ -124,7 +124,9 @@ def tap_text(words, seconds=25):
         app = next((e.get("frame") for e in elements() if e.get("type") == "Application"), None)
         turned = bool(app and app["width"] > app["height"])
         img = upright.rotate(90, expand=True) if turned else upright
-        d = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        # Sparse text: a picker is labels scattered over the screen.
+        d = pytesseract.image_to_data(img, config="--psm 11",
+                                      output_type=pytesseract.Output.DICT)
         text = [t.lower().strip() for t in d["text"]]
         for i in range(len(text) - len(want) + 1):
             if all(text[i + k].startswith(want[k]) for k in range(len(want))):
@@ -137,7 +139,8 @@ def tap_text(words, seconds=25):
                 time.sleep(2)
                 return True
         time.sleep(2)
-    failures.append(f"no '{words}' read on screen")
+    if required:
+        failures.append(f"no '{words}' read on screen")
     return False
 
 
@@ -195,6 +198,9 @@ def main():
     if package and tap("Open"):
         # The picker is another process's: found by its text on screen.
         shot("picker")
+        # On a phone the locations are behind the Browse tab.
+        if not tap_text("On My", 12, required=False):
+            tap_text("Browse", 10, required=False)
         if tap_text("On My"):
             shot("picker-on-my-device")
             tap_text(os.environ.get("PICK_FOLDER", "check"))
