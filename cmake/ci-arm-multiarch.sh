@@ -55,9 +55,12 @@ sudo apt-get install -y cmake ninja-build pkg-config \
 # libjack.so.0 at runtime, so nothing links against it and the .deb gains
 # no dependency. It still has to be present to BUILD, on the target
 # architecture and on the host, like everything else here.
+# No GLU: Masterpiece does not use JUCE's OpenGL module, and GLU pulls in
+# Mesa's LLVM, whose libxml2 dependency breaks the install whenever the ports
+# mirror lags the main archive by one libxml2 update.
 DEV_LIBS="libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
   libxcursor-dev libxcomposite-dev libfreetype6-dev libfontconfig1-dev \
-  libglu1-mesa-dev libxi-dev libjack-jackd2-dev"
+  libxi-dev libjack-jackd2-dev"
 
 # shellcheck disable=SC2086
 sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done)
