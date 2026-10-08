@@ -17,6 +17,18 @@ inline constexpr bool kMobile = false;
 // system's own bars.
 juce::Rectangle<int> screenArea();
 
+// The whole screen the app has, the bars included: where a full-screen
+// window goes, with its content placed in screenArea().
+juce::Rectangle<int> screenBounds();
+
+#if JUCE_IOS
+// The window scene's bounds now and its safe part, from UIKit (IosAccess.mm).
+// False before the app has a scene.
+bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe);
+// The scenes' windows, one per line, for the log (IosAccess.mm).
+juce::String describeWindows();
+#endif
+
 // On a phone or tablet, makes a window fill the screen, with a title bar
 // tall enough to touch and its close button in reach. Does nothing elsewhere.
 void fitToScreen(juce::DocumentWindow& window);

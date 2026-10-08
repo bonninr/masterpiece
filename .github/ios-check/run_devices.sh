@@ -20,6 +20,23 @@ BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist"
 mkdir -p ios-shots
 failed=0
 
+# A recital whose audio stops partway is played once more. On the runners
+# the simulator's audio is now and then interrupted for good (the host's
+# audio route changes as Simulator.app opens and quits), which leaves the
+# recording empty with the app idle; the first attempt's files are kept,
+# named "-first", and a second stall fails the run as before.
+play_twice() {  # device, organ folder name, output folder
+  local before=$failed
+  play "$@"
+  local organ=$2 out=$3
+  [ -f "$out/$organ-stalled.txt" ] || return 0
+  for f in "$out/$organ"-*; do mv "$f" "${f/$organ-/$organ-first-}"; done
+  [ -f "$out/$organ.wav" ] && mv "$out/$organ.wav" "$out/$organ-first.wav"
+  echo "the $organ recital stalled; playing it once more"
+  failed=$before
+  play "$@"
+}
+
 udid_for() {  # the newest runtime's device whose name contains $1
   xcrun simctl list devices available -j | python3 -c "
 import json, sys
@@ -38,11 +55,16 @@ play() {  # device, organ folder name, output folder
   data=$(xcrun simctl get_app_container "$dev" "$BUNDLE" data)
   rm -rf "$data/Documents/$organ"
   cp -R "$ORGANS/$organ" "$data/Documents/$organ"
-  xcrun simctl launch --terminate-running-process "$dev" "$BUNDLE" \
-    --odf "$data/Documents/$organ/check.orgue" --draw-stops all \
-    --play-midi "$data/Documents/$organ/check.mid" \
-    --record-audio "$data/Documents/$organ/out.wav" \
-    --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1
+  # Straight after an install the system may not know the app yet ("unknown
+  # to FrontBoard"): a few tries, a few seconds apart.
+  for _ in 1 2 3 4 5; do
+    xcrun simctl launch --terminate-running-process "$dev" "$BUNDLE" \
+      --odf "$data/Documents/$organ/check.orgue" --draw-stops all \
+      --play-midi "$data/Documents/$organ/check.mid" \
+      --record-audio "$data/Documents/$organ/out.wav" \
+      --log "$data/Documents/$organ/run.log" --stay-open > "$out/$organ-launch.txt" 2>&1 && break
+    sleep 5
+  done
   local finished=""
   for _ in $(seq 1 60); do
     grep -q "recital finished" "$data/Documents/$organ/run.log" 2>/dev/null && { finished=1; break; }
@@ -74,9 +96,29 @@ play() {  # device, organ folder name, output folder
   cat "$out/$organ-audio.txt"
 }
 
+# Turns a booted simulator to landscape through the Simulator window's own
+# menu, Device > Rotate Left; the window has to be open for that. The app runs
+# in landscape only: with the simulator upright, iOS draws it turned or scaled
+# into a band, and a tap at a position idb reads lands somewhere else.
+landscape() {
+  open -a Simulator --args -CurrentDeviceUDID "$1"
+  sleep 5
+  osascript <<'OSA'
+tell application "Simulator" to activate
+delay 1
+tell application "System Events" to tell process "Simulator"
+  set frontmost to true
+  click menu item "Rotate Left" of menu "Device" of menu bar 1
+end tell
+OSA
+  sleep 3
+}
+
 for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   read -r DEV NAME < <(udid_for "$want")
   if [ -z "${DEV:-}" ]; then echo "no simulator like '$want'"; continue; fi
+  # Each device starts upright and on its own window.
+  osascript -e 'tell application "Simulator" to quit' >/dev/null 2>&1 || true
   OUT="ios-shots/$NAME"
   mkdir -p "$OUT"
   echo "== $NAME ($DEV)"
@@ -84,8 +126,8 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   xcrun simctl bootstatus "$DEV" -b >/dev/null
   xcrun simctl install "$DEV" "$APP"
 
-  play "$DEV" check "$OUT"
-  case "$want" in "iPad Pro"*) play "$DEV" heavy "$OUT" ;; esac
+  play_twice "$DEV" check "$OUT"
+  case "$want" in "iPad Pro"*) play_twice "$DEV" heavy "$OUT" ;; esac
 
   # The package where the Files app keeps "On My iPad", for the picker.
   GROUP=$(xcrun simctl get_app_container "$DEV" com.apple.DocumentsApp groups 2>/dev/null |
@@ -96,13 +138,15 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   else
     echo "no Files storage on this simulator" > "$OUT/picker-note.txt"
   fi
+  landscape "$DEV" > "$OUT/rotate.txt" 2>&1 || echo "could not rotate" >> "$OUT/rotate.txt"
   data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data)
-  xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" \
+  xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" --log-touches \
     > "$OUT/ui-launch.txt" 2>&1
   sleep 8
   if command -v idb >/dev/null; then
     idb connect "$DEV" >/dev/null 2>&1
-    PICK_PACKAGE=check.orgue python3 .github/ios-check/drive_ui.py "$DEV" "$OUT/ui" || true
+    case "$NAME" in iPhone*) SCALE=3 ;; *) SCALE=2 ;; esac
+    SCREEN_SCALE=$SCALE PICK_PACKAGE=check.orgue python3 .github/ios-check/drive_ui.py "$DEV" "$OUT/ui" || true
   else
     echo "idb is not installed: no tap-through" > "$OUT/ui-note.txt"
     xcrun simctl io "$DEV" screenshot "$OUT/console.png" >/dev/null 2>&1

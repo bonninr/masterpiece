@@ -445,7 +445,8 @@ jobs:
       # an iPad mini and an iPhone. See .github/ios-check/.
       - name: Tools for the simulator run
         run: |
-          pip3 install --break-system-packages numpy fb-idb || pip3 install numpy fb-idb
+          pip3 install --break-system-packages numpy fb-idb pytesseract pillow ocrmac || pip3 install numpy fb-idb pytesseract pillow ocrmac
+          brew install tesseract
           brew tap facebook/fb && (brew trust facebook/fb || true) && brew install idb-companion || echo "idb-companion not available"
 
       - name: Test organs

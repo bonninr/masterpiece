@@ -18,6 +18,8 @@
 
 #if JUCE_IOS
  #import <Foundation/Foundation.h>
+ #import <UIKit/UIKit.h>
+ #include <cmath>
 
 namespace juce {
 // Defined in juce_URL.cpp: the bookmark the file chooser keeps in a URL.
@@ -117,6 +119,83 @@ void restoreHeldAccess() {
   }
   if (kept.size() != lines.size())
     heldList().replaceWithText(kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
+}
+
+// ------------------------------------------------------------ the scene
+
+// The screen as the app has it now. JUCE reads UIScreen's bounds and the
+// insets of its own first window; under iPadOS's scenes the first stays
+// upright on a turned iPad, and the second follows a window that was sized
+// from it, so the console filled the upright width of a landscape screen with
+// the clock over its first buttons. The scene knows its own size, and a
+// window covering all of it knows the safe area.
+namespace {
+
+UIWindowScene* activeScene() {
+  UIWindowScene* any = nil;
+  for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+    if (![s isKindOfClass:UIWindowScene.class]) continue;
+    if (s.activationState == UISceneActivationStateForegroundActive) return (UIWindowScene*)s;
+    if (any == nil) any = (UIWindowScene*)s;
+  }
+  return any;
+}
+
+// The safe area of the scene's largest visible window, which is the app's
+// main window: once that covers the scene (the main window is sized to it),
+// its insets are the scene's. A window of our own for this covered the
+// console and left the screen black.
+UIEdgeInsets sceneInsets(UIWindowScene* scene) {
+  UIWindow* largest = nil;
+  CGFloat area = 0;
+  for (UIWindow* w in scene.windows) {
+    if (w.hidden) continue;
+    const CGFloat a = w.frame.size.width * w.frame.size.height;
+    if (a > area) { area = a; largest = w; }
+  }
+  return largest != nil ? largest.safeAreaInsets : UIEdgeInsetsZero;
+}
+
+}  // namespace
+
+// Every window of every scene, front to back as UIKit stacks them, with what
+// decides whether it takes a touch: for finding what lies over the console
+// when taps reach nothing in it (#197).
+juce::String describeWindows() {
+  juce::String out;
+  for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+    if (![s isKindOfClass:UIWindowScene.class]) continue;
+    UIWindowScene* scene = (UIWindowScene*)s;
+    out << "scene state " << (int)scene.activationState << ":";
+    for (UIWindow* w in scene.windows) {
+      const CGRect f = w.frame;
+      out << "\n  " << juce::String::fromUTF8(NSStringFromClass(w.class).UTF8String)
+          << " level " << (double)w.windowLevel << " frame " << (int)f.origin.x << "," << (int)f.origin.y
+          << " " << (int)f.size.width << "x" << (int)f.size.height
+          << (w.hidden ? " hidden" : "") << (w.isKeyWindow ? " key" : "")
+          << (w.userInteractionEnabled ? "" : " no-touch") << " alpha " << (double)w.alpha
+          << " root " << (w.rootViewController != nil
+                              ? juce::String::fromUTF8(NSStringFromClass(w.rootViewController.class).UTF8String)
+                              : juce::String("none"));
+      if (UIViewController* shown = w.rootViewController.presentedViewController)
+        out << " presenting " << juce::String::fromUTF8(NSStringFromClass(shown.class).UTF8String);
+    }
+  }
+  return out;
+}
+
+bool sceneBounds(juce::Rectangle<int>& whole, juce::Rectangle<int>& safe) {
+  UIWindowScene* scene = activeScene();
+  if (scene == nil) return false;
+  const CGRect b = scene.coordinateSpace.bounds;
+  if (b.size.width <= 0 || b.size.height <= 0) return false;
+  const UIEdgeInsets in = sceneInsets(scene);
+  whole = {0, 0, (int)b.size.width, (int)b.size.height};
+  safe = whole.withTrimmedLeft((int)std::ceil(in.left))
+             .withTrimmedTop((int)std::ceil(in.top))
+             .withTrimmedRight((int)std::ceil(in.right))
+             .withTrimmedBottom((int)std::ceil(in.bottom));
+  return true;
 }
 
 }  // namespace mp::ui
