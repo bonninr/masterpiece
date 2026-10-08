@@ -1018,7 +1018,7 @@ private:
   // the player cannot see takes every touch, and no listener hears them.
   struct TouchLog final : juce::MouseListener, juce::Timer {
     TouchLog() { startTimer(500); }
-    juce::String lastModal, lastWindows;
+    juce::String lastModal, lastWindows, lastDesktop;
     void timerCallback() override {
       auto* mcm = juce::ModalComponentManager::getInstance();
       juce::String now = juce::String(mcm->getNumModalComponents()) + " modal";
@@ -1026,6 +1026,19 @@ private:
         now << ": '" << m->getName() << "' " << typeid(*m).name() << " at "
             << m->getScreenBounds().toString() << (m->isShowing() ? " showing" : " NOT showing")
             << (m->isOnDesktop() ? "" : " off the desktop");
+      // JUCE's own windows, back to front, named: which one a UIKit window
+      // in the list below is.
+      juce::String desk;
+      auto& desktop = juce::Desktop::getInstance();
+      for (int i = 0; i < desktop.getNumComponents(); ++i)
+        if (auto* c = desktop.getComponent(i))
+          desk << "\n  '" << c->getName() << "' " << typeid(*c).name() << " "
+               << c->getScreenBounds().toString() << (c->isVisible() ? " visible" : " hidden")
+               << (c->getInterceptsMouseClicks() ? "" : " clicks-through");
+      if (desk != lastDesktop) {
+        lastDesktop = desk;
+        juce::Logger::writeToLog("desktop:" + desk);
+      }
      #if JUCE_IOS
       const auto windows = mp::ui::describeWindows();
       if (windows != lastWindows) {
