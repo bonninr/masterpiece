@@ -11493,7 +11493,7 @@ public:
 
     const int jack = proc.registerOwnMidiInput("JACK MIDI");
     MP_CHECK(proc.ownMidiInputs().contains("JACK MIDI"), "the JACK port is listed with the inputs");
-    const bool wasOn = proc.ownMidiInputEnabled("JACK MIDI");
+    const bool wasOn = proc.midiInputEnabled("JACK MIDI");
     juce::AudioBuffer<float> buf(2, 256);
     juce::MidiBuffer none;
     auto press = [&] {
@@ -11502,20 +11502,42 @@ public:
       proc.pushMidi(jack, juce::MidiMessage::controllerEvent(1, 80, 0));
       proc.processBlock(buf, none);
     };
-    proc.setOwnMidiInputEnabled("JACK MIDI", false);
+    proc.setMidiInputEnabled("JACK MIDI", false);
     const bool before = proc.switchEngaged(sw);
     press();
     MP_CHECK(proc.switchEngaged(sw) == before, "a switched-off input is not heard");
-    proc.setOwnMidiInputEnabled("JACK MIDI", true);
+    proc.setMidiInputEnabled("JACK MIDI", true);
     press();
     MP_CHECK(proc.switchEngaged(sw) != before, "switched on again, it is");
-    proc.setOwnMidiInputEnabled("JACK MIDI", wasOn);
+    proc.setMidiInputEnabled("JACK MIDI", wasOn);
 
     if (had) settings.replaceWithText(kept);
     else settings.deleteFile();
   }
 };
 static OwnMidiInputTest g_ownMidiInput;
+
+// An input the player switched off stays off at the next start (#230).
+class MidiInputKeptOffTest final : public mp::test::Test {
+public:
+  MidiInputKeptOffTest() : Test("functional.midi.input-kept-off", Category::Functional) {}
+  void run() override {
+    const juce::String name = "Masterpiece test console 230";
+    {
+      mp::MasterpieceProcessor first;
+      first.setMidiInputEnabled(name, false);
+    }
+    mp::MasterpieceProcessor second;
+    second.readMidiInputSwitches();
+    MP_CHECK(!second.midiInputEnabled(name), "the input is still off at the next start");
+    MP_CHECK(second.midiInputEnabled("Some other console"), "an input never switched off plays");
+    second.setMidiInputEnabled(name, true);
+    mp::MasterpieceProcessor third;
+    third.readMidiInputSwitches();
+    MP_CHECK(third.midiInputEnabled(name), "switched on again, it stays on");
+  }
+};
+static MidiInputKeptOffTest g_midiInputKeptOff;
 
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob

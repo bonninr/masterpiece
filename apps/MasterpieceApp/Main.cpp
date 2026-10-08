@@ -270,8 +270,11 @@ public:
     // and a rig with two manuals plugged in sends the same note on the same
     // channel from both. Telling them apart is the whole point of "this
     // keyboard plays the Great and that one plays the Swell".
+    // Every one except those the player switched off (#230): a console
+    // plugged in for the first time plays at once.
+    proc_->readMidiInputSwitches();
     for (const auto& in : juce::MidiInput::getAvailableDevices()) {
-      devices_->setMidiInputDeviceEnabled(in.identifier, true);
+      devices_->setMidiInputDeviceEnabled(in.identifier, proc_->midiInputEnabled(in.name));
       auto route = std::make_unique<DeviceRoute>(
           *proc_, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());

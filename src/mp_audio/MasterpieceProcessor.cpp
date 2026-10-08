@@ -960,14 +960,24 @@ int MasterpieceProcessor::registerOwnMidiInput(const juce::String& name) {
   const int id = registerMidiDevice(name);
   ownInputs_.addIfNotAlreadyThere(name);
   if (id > 0 && id < kMaxMutedDevices)
-    deviceMuted_[static_cast<size_t>(id)].store(ownInputsOff_.contains(name), std::memory_order_release);
+    deviceMuted_[static_cast<size_t>(id)].store(inputsOff_.contains(name), std::memory_order_release);
   return id;
 }
 
-void MasterpieceProcessor::setOwnMidiInputEnabled(const juce::String& name, bool on) {
-  if (ownMidiInputEnabled(name) == on) return;
-  if (on) ownInputsOff_.removeString(name);
-  else ownInputsOff_.add(name);
+void MasterpieceProcessor::readMidiInputSwitches() {
+  const auto f = globalSettingsFile();
+  if (!f.existsAsFile()) return;
+  for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString()))
+    if (line.startsWith("midiinputoff ")) {
+      const auto name = line.fromFirstOccurrenceOf(" ", false, false).trim();
+      if (name.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(name);
+    }
+}
+
+void MasterpieceProcessor::setMidiInputEnabled(const juce::String& name, bool on) {
+  if (midiInputEnabled(name) == on) return;
+  if (on) inputsOff_.removeString(name);
+  else inputsOff_.add(name);
   const int id = midiMap_.devices().lookup(name.toStdString());
   if (id > 0 && id < kMaxMutedDevices)
     deviceMuted_[static_cast<size_t>(id)].store(!on, std::memory_order_release);
@@ -1509,7 +1519,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (fasterEngine_.load()) text << "fasterengine 1\n";
-  for (const auto& name : ownInputsOff_) text << "midiinputoff " << name << "\n";
+  for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1589,7 +1599,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "midiinputoff") {
-      if (val.isNotEmpty()) ownInputsOff_.addIfNotAlreadyThere(val);
+      if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
