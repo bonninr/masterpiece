@@ -897,6 +897,13 @@ private:
       juce::Rectangle<int> area;
       explicit SceneWatch(juce::DocumentWindow& w) : window(w) {}
       void timerCallback() override {
+        // A modal window behind the console takes every touch while nobody
+        // can see it or close it (#197): it is kept in front.
+        if (auto* m = juce::ModalComponentManager::getInstance()->getModalComponent(0))
+          if (m->isOnDesktop() && m != &window && !m->isAlwaysOnTop()) {
+            auto& desktop = juce::Desktop::getInstance();
+            if (desktop.getComponent(desktop.getNumComponents() - 1) != m) m->toFront(true);
+          }
         const auto whole = mp::ui::screenBounds();
         const auto safe = mp::ui::screenArea();
         if (whole == window.getBounds() && safe == area) return;
@@ -1007,7 +1014,22 @@ private:
   juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
-  struct TouchLog final : juce::MouseListener {
+  // Also writes down the modal component whenever it changes: a modal window
+  // the player cannot see takes every touch, and no listener hears them.
+  struct TouchLog final : juce::MouseListener, juce::Timer {
+    TouchLog() { startTimer(500); }
+    juce::String lastModal;
+    void timerCallback() override {
+      auto* mcm = juce::ModalComponentManager::getInstance();
+      juce::String now = juce::String(mcm->getNumModalComponents()) + " modal";
+      if (auto* m = mcm->getModalComponent(0))
+        now << ": '" << m->getName() << "' " << typeid(*m).name() << " at "
+            << m->getScreenBounds().toString() << (m->isShowing() ? " showing" : " NOT showing")
+            << (m->isOnDesktop() ? "" : " off the desktop");
+      if (now == lastModal) return;
+      lastModal = now;
+      juce::Logger::writeToLog("modal: " + now);
+    }
     void mouseDown(const juce::MouseEvent& e) override {
       juce::String chain;
       for (auto* c = e.eventComponent; c != nullptr; c = c->getParentComponent())
