@@ -42,11 +42,13 @@ void fitToScreen(juce::DocumentWindow& window);
 // a window remade on every change of focus caught clicks where it had been).
 void showFloating(juce::DocumentWindow& window, bool show, bool onTop);
 
-// On a phone or tablet every panel, dialog, menu and alert is shown inside the
-// main window, in this layer over the console: one window for the system to
-// place, turn and give touches to. Separate windows each needed their own
-// size, safe area and place in front, and a hidden one still took every touch
-// on iOS (#197). Set by the main window on a phone or tablet; null elsewhere.
+// On a phone or tablet every panel and dialog is shown inside the main window,
+// in this layer over the console: one window for the system to place, turn
+// and give touches to. Separate windows each needed their own size, safe area
+// and place in front, and a hidden one still took every touch on iOS (#197).
+// Menus and alerts keep windows of their own: they are made and destroyed,
+// never left hidden, and a menu inside the main window lost its items from
+// the accessibility tree. Set by the main window on a phone or tablet.
 void setPanelHost(juce::Component* host);
 juce::Component* panelHost();
 

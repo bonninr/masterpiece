@@ -29,23 +29,6 @@ juce::Component::SafePointer<juce::Component>& hostPointer() {
 // JUCE's default look, kept, with what a finger needs instead of a mouse.
 class TouchLook : public juce::LookAndFeel_V4 {
 public:
-  // Menus and alerts open inside the main window (setPanelHost).
-  juce::Component* getParentComponentForMenuOptions(const juce::PopupMenu::Options& options) override {
-    if (auto* parent = juce::LookAndFeel_V4::getParentComponentForMenuOptions(options)) return parent;
-    return hostPointer().getComponent();
-  }
-  juce::AlertWindow* createAlertWindow(const juce::String& title, const juce::String& message,
-                                       const juce::String& button1, const juce::String& button2,
-                                       const juce::String& button3, juce::MessageBoxIconType iconType,
-                                       int numButtons, juce::Component* associatedComponent) override {
-    auto* alert = juce::LookAndFeel_V4::createAlertWindow(title, message, button1, button2, button3,
-                                                          iconType, numButtons, associatedComponent);
-    if (auto* host = hostPointer().getComponent(); alert != nullptr && host != nullptr) {
-      host->addAndMakeVisible(alert);
-      alert->setCentrePosition(host->getLocalBounds().getCentre());
-    }
-    return alert;
-  }
   void getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
                                  int standardMenuItemHeight, int& idealWidth,
                                  int& idealHeight) override {
