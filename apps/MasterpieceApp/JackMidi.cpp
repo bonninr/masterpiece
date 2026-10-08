@@ -83,7 +83,7 @@ std::unique_ptr<JackMidiInput> JackMidiInput::open(mp::MasterpieceProcessor& pro
   impl->port = portRegister(impl->client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
   if (impl->port == nullptr) return nullptr;
   impl->proc = &proc;
-  impl->deviceId = proc.registerMidiDevice("JACK MIDI");
+  impl->deviceId = proc.registerOwnMidiInput("JACK MIDI");
   if (setProcess(impl->client, &Impl::process, impl.get()) != 0 || activate(impl->client) != 0)
     return nullptr;
   juce::Logger::writeToLog("JACK MIDI input: " +
