@@ -956,7 +956,28 @@ bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
   return true;
 }
 
+int MasterpieceProcessor::registerOwnMidiInput(const juce::String& name) {
+  const int id = registerMidiDevice(name);
+  ownInputs_.addIfNotAlreadyThere(name);
+  if (id > 0 && id < kMaxMutedDevices)
+    deviceMuted_[static_cast<size_t>(id)].store(ownInputsOff_.contains(name), std::memory_order_release);
+  return id;
+}
+
+void MasterpieceProcessor::setOwnMidiInputEnabled(const juce::String& name, bool on) {
+  if (ownMidiInputEnabled(name) == on) return;
+  if (on) ownInputsOff_.removeString(name);
+  else ownInputsOff_.add(name);
+  const int id = midiMap_.devices().lookup(name.toStdString());
+  if (id > 0 && id < kMaxMutedDevices)
+    deviceMuted_[static_cast<size_t>(id)].store(!on, std::memory_order_release);
+  writeGlobalFile();
+}
+
 void MasterpieceProcessor::pushMidi(int deviceId, const juce::MidiMessage& msg) {
+  if (deviceId > 0 && deviceId < kMaxMutedDevices &&
+      deviceMuted_[static_cast<size_t>(deviceId)].load(std::memory_order_acquire))
+    return;
   // Up to the slot's fixed size, system exclusive included: consoles send
   // their pistons that way, and dropping it here left every SysEx mapping deaf
   // to a real console (#210). A longer message is no piston, and copying an
@@ -1488,6 +1509,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (fasterEngine_.load()) text << "fasterengine 1\n";
+  for (const auto& name : ownInputsOff_) text << "midiinputoff " << name << "\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1566,6 +1588,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       setOffAfterStore_ = val.getIntValue() != 0;
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
+    } else if (key == "midiinputoff") {
+      if (val.isNotEmpty()) ownInputsOff_.addIfNotAlreadyThere(val);
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&

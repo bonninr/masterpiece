@@ -585,6 +585,16 @@ public:
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
 
+  // An input the app opens itself, beside the system's own: its JACK MIDI
+  // port and a virtual port. The system's inputs are switched on and off in
+  // the MIDI settings through the audio device manager, which knows nothing
+  // of these, so they are switched here, and remembered with the general
+  // settings (#225). Message thread.
+  int registerOwnMidiInput(const juce::String& name);
+  juce::StringArray ownMidiInputs() const { return ownInputs_; }
+  bool ownMidiInputEnabled(const juce::String& name) const { return !ownInputsOff_.contains(name); }
+  void setOwnMidiInputEnabled(const juce::String& name, bool on);
+
   MidiMap& midiMap() { return midiMap_; }
   const MidiMap& midiMap() const { return midiMap_; }
   // Persisted next to the organ definition, per organ: a player's console
@@ -1552,6 +1562,10 @@ private:
   bool combinationsOnTop_ = false;
   bool setOffAfterStore_ = false;
   std::atomic<bool> fasterEngine_{false};
+  juce::StringArray ownInputs_, ownInputsOff_;
+  // Per device id, whether its messages are dropped: read on MIDI threads.
+  static constexpr int kMaxMutedDevices = 64;
+  std::array<std::atomic<bool>, kMaxMutedDevices> deviceMuted_{};
   std::vector<MidiMap::KeyboardBinding> routingBeforePistons_;
   std::vector<Id> routeScratch_;
   void routeFromControl(const MidiAction& action);

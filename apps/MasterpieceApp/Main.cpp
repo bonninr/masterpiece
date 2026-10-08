@@ -291,7 +291,7 @@ public:
                               ? args[i + 1].unquoted()
                               : juce::String("Masterpiece");
         virtualRoute_ = std::make_unique<DeviceRoute>(
-            *proc_, proc_->registerMidiDevice(name.toStdString()));
+            *proc_, proc_->registerOwnMidiInput(name));
         virtualInput_ = juce::MidiInput::createNewDevice(name, virtualRoute_.get());
         if (virtualInput_ != nullptr) {
           virtualInput_->start();

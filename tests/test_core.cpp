@@ -11466,6 +11466,56 @@ public:
   }
 };
 static MidiDeviceMatchTest g_midiDeviceMatch;
+// An input the app opens itself, such as its JACK MIDI port, can be switched
+// off like the system's inputs (#225).
+class OwnMidiInputTest final : public mp::test::Test {
+public:
+  OwnMidiInputTest() : Test("functional.midi.own-input-switch", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    if (proc.organModel().switches.empty()) return;
+    const mp::Id sw = proc.organModel().switches.begin()->first;
+    mp::MidiBinding b;
+    b.source.kind = mp::MidiSourceKind::ControlChange;
+    b.source.channel = 1;
+    b.source.number = 80;
+    b.targetKind = mp::MidiTargetKind::Switch;
+    b.targetId = sw;
+    b.trigger = mp::MidiTrigger::Toggle;
+    b.latching = true;
+    proc.midiMap().bind(b);
+
+    const int jack = proc.registerOwnMidiInput("JACK MIDI");
+    MP_CHECK(proc.ownMidiInputs().contains("JACK MIDI"), "the JACK port is listed with the inputs");
+    const bool wasOn = proc.ownMidiInputEnabled("JACK MIDI");
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    auto press = [&] {
+      proc.pushMidi(jack, juce::MidiMessage::controllerEvent(1, 80, 127));
+      proc.processBlock(buf, none);
+      proc.pushMidi(jack, juce::MidiMessage::controllerEvent(1, 80, 0));
+      proc.processBlock(buf, none);
+    };
+    proc.setOwnMidiInputEnabled("JACK MIDI", false);
+    const bool before = proc.switchEngaged(sw);
+    press();
+    MP_CHECK(proc.switchEngaged(sw) == before, "a switched-off input is not heard");
+    proc.setOwnMidiInputEnabled("JACK MIDI", true);
+    press();
+    MP_CHECK(proc.switchEngaged(sw) != before, "switched on again, it is");
+    proc.setOwnMidiInputEnabled("JACK MIDI", wasOn);
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static OwnMidiInputTest g_ownMidiInput;
 
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
