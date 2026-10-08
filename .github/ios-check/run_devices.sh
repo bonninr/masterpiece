@@ -123,7 +123,7 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   fi
   landscape "$DEV" > "$OUT/rotate.txt" 2>&1 || echo "could not rotate" >> "$OUT/rotate.txt"
   data=$(xcrun simctl get_app_container "$DEV" "$BUNDLE" data)
-  xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" \
+  xcrun simctl launch --terminate-running-process "$DEV" "$BUNDLE" --log "$data/Documents/ui.log" --log-touches \
     > "$OUT/ui-launch.txt" 2>&1
   sleep 8
   if command -v idb >/dev/null; then

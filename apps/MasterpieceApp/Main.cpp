@@ -176,6 +176,13 @@ public:
       juce::Logger::setCurrentLogger(logger_.get());
     }
 
+    // --log-touches: every press written down with the component that took
+    // it, for finding what a tap that does nothing landed on (#197).
+    if (args.contains("--log-touches")) {
+      touchLog_ = std::make_unique<TouchLog>();
+      juce::Desktop::getInstance().addGlobalMouseListener(touchLog_.get());
+    }
+
     // Audio first: the device's real rate and block size are what the engine
     // must be prepared for, and asking for them before the organ loads means
     // the voice pool and DSP are sized once rather than twice.
@@ -746,6 +753,7 @@ public:
   }
 
   void shutdown() override {
+    if (touchLog_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(touchLog_.get());
     // The device state is written on the way out rather than on every change:
     // a player dragging a buffer-size slider would otherwise rewrite the file
     // once per pixel.
@@ -999,6 +1007,16 @@ private:
   juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;
   std::unique_ptr<juce::FileLogger> logger_;
+  struct TouchLog final : juce::MouseListener {
+    void mouseDown(const juce::MouseEvent& e) override {
+      juce::String chain;
+      for (auto* c = e.eventComponent; c != nullptr; c = c->getParentComponent())
+        chain << (chain.isEmpty() ? "" : " < ") << "'" << c->getName() << "' "
+              << typeid(*c).name();
+      juce::Logger::writeToLog("touch: at " + e.getScreenPosition().toString() + " on " + chain);
+    }
+  };
+  std::unique_ptr<TouchLog> touchLog_;
   // Our own published port, where the platform allows one. The input holds a
   // pointer to its route, so the route is declared FIRST and therefore
   // destroyed last — the input goes away while its callback is still valid.
