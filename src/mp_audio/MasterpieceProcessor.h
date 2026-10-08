@@ -1150,6 +1150,9 @@ public:
   const std::vector<juce::File>& sampleLibraries() const { return libraries_; }
   void rememberSampleLibrary(const juce::File& root);
   void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
+  // The next loads list the definition's fields nothing read, in
+  // LoadResult::diagnostics.unreadFields. For mp-render --check.
+  void setReportUnreadFields(bool on) { reportUnreadFields_ = on; }
 
   // Where the engine gets sample audio. Injected rather than owned, so the
   // preloaded and streaming backing stores share one voice path (ADR-004) and
@@ -1381,6 +1384,7 @@ private:
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
   juce::File organRootOverride_;
+  bool reportUnreadFields_ = false;
   std::vector<juce::File> libraries_;
   // The root that holds the packages this model names, or an empty file.
   juce::File libraryHolding(const OrganModel& model) const;

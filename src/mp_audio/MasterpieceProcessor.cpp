@@ -3936,6 +3936,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   OdfLoader loader;
   OdfLoader::Options opts;
   opts.organRootDir = root.getFullPathName().toStdString();
+  opts.reportUnreadFields = reportUnreadFields_;
   // A folder the player named for this organ wins over anything derived from
   // the definition's own path. Some layouts cannot be worked out from the
   // path at all: a link followed on the way in can leave the definition in a

@@ -35,6 +35,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 
 namespace mp {
@@ -96,9 +97,19 @@ std::string trim(std::string s) {
   return s;
 }
 
+// The fields asked for during one load, as "Table.Field", when the caller
+// wants to know which fields of the definition nothing read
+// (Options::reportUnreadFields). Null otherwise, which costs one test a read.
+thread_local std::unordered_set<std::string>* fieldsAskedFor = nullptr;
+
 // Field with full-name-first, compact-code fallback (OdfEdit dict).
 // Reads <Field>value</Field> child text (trimmed for pretty-printed files).
 std::string field(const pugi::xml_node& row, const char* full, const char* code = nullptr) {
+  if (fieldsAskedFor != nullptr) {
+    const std::string table = row.parent().attribute("ObjectType").value();
+    fieldsAskedFor->insert(table + "." + full);
+    if (code != nullptr) fieldsAskedFor->insert(table + "." + code);
+  }
   auto e = row.child(full);
   if (!e && code != nullptr) e = row.child(code);
   return e ? trim(e.child_value()) : std::string{};
@@ -287,6 +298,9 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // CODM files take the ObjectList compiler, never the full-ODF tables.
   if (outModel.odfType == OdfType::Codm)
     return parseCodm(odfRoot, opts, outModel, outDiag);
+
+  std::unordered_set<std::string> asked;
+  if (opts.reportUnreadFields) fieldsAskedFor = &asked;
 
   // Unknown tables: warn + record, never fail (ADR-002).
   {
@@ -1834,6 +1848,42 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       outDiag.danglingIds.push_back(el.capturedSwitchId);
     comboIt->second.elements.push_back(el);
   });
+
+  // Every field of a known table that holds a value and that no part of the
+  // loader asked for. A field the format has and this player ignores is a
+  // feature some organ uses and nobody has implemented yet.
+  if (opts.reportUnreadFields) {
+    fieldsAskedFor = nullptr;
+    struct Unread { size_t rows = 0; std::vector<std::string> values; bool more = false; };
+    std::map<std::string, Unread> unread;
+    for (pugi::xml_node list : odfRoot.children()) {
+      if (list.type() != pugi::node_element || lower(list.name()) != "objectlist")
+        continue;
+      const std::string table = list.attribute("ObjectType").value();
+      if (knownTables().count(table) == 0) continue;
+      for (pugi::xml_node row : list.children()) {
+        if (row.type() != pugi::node_element) continue;
+        for (pugi::xml_node f : row.children()) {
+          if (f.type() != pugi::node_element) continue;
+          const std::string key = table + "." + f.name();
+          const std::string value = trim(f.child_value());
+          if (asked.count(key) != 0 || value.empty()) continue;
+          auto& u = unread[key];
+          ++u.rows;
+          if (std::find(u.values.begin(), u.values.end(), value) != u.values.end()) continue;
+          if (u.values.size() < 3) u.values.push_back(value.substr(0, 24));
+          else u.more = true;
+        }
+      }
+    }
+    // With the values it holds: a field that says the same thing in every
+    // row is usually the format's default, which ignoring changes nothing.
+    for (const auto& [key, u] : unread) {
+      std::string line = key + " (" + std::to_string(u.rows) + " row(s): ";
+      for (size_t i = 0; i < u.values.size(); ++i) line += (i ? ", " : "") + u.values[i];
+      outDiag.unreadFields.push_back(line + (u.more ? ", ...)" : ")"));
+    }
+  }
 
   return outDiag.ok();
 }
