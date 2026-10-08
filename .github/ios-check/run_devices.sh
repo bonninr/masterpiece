@@ -20,6 +20,23 @@ BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist"
 mkdir -p ios-shots
 failed=0
 
+# A recital whose audio stops partway is played once more. On the runners
+# the simulator's audio is now and then interrupted for good (the host's
+# audio route changes as Simulator.app opens and quits), which leaves the
+# recording empty with the app idle; the first attempt's files are kept,
+# named "-first", and a second stall fails the run as before.
+play_twice() {  # device, organ folder name, output folder
+  local before=$failed
+  play "$@"
+  local organ=$2 out=$3
+  [ -f "$out/$organ-stalled.txt" ] || return 0
+  for f in "$out/$organ"-*; do mv "$f" "${f/$organ-/$organ-first-}"; done
+  [ -f "$out/$organ.wav" ] && mv "$out/$organ.wav" "$out/$organ-first.wav"
+  echo "the $organ recital stalled; playing it once more"
+  failed=$before
+  play "$@"
+}
+
 udid_for() {  # the newest runtime's device whose name contains $1
   xcrun simctl list devices available -j | python3 -c "
 import json, sys
@@ -84,8 +101,8 @@ for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
   xcrun simctl bootstatus "$DEV" -b >/dev/null
   xcrun simctl install "$DEV" "$APP"
 
-  play "$DEV" check "$OUT"
-  case "$want" in "iPad Pro"*) play "$DEV" heavy "$OUT" ;; esac
+  play_twice "$DEV" check "$OUT"
+  case "$want" in "iPad Pro"*) play_twice "$DEV" heavy "$OUT" ;; esac
 
   # The package where the Files app keeps "On My iPad", for the picker.
   GROUP=$(xcrun simctl get_app_container "$DEV" com.apple.DocumentsApp groups 2>/dev/null |
