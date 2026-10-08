@@ -68,20 +68,23 @@ jobs:
             arm: true
             debarch: armhf
             triple: arm-linux-gnueabihf
-          # Both Macs, each built on its own architecture. The Intel build
-          # names the oldest macOS it must run on; the Apple-silicon one
-          # cannot predate the hardware, so it takes the toolchain default.
+          # Both Macs, each built on its own architecture, each naming the
+          # oldest macOS it runs on. Left to the toolchain, the Apple-silicon
+          # build took the build machine's own macOS (14) and would not open
+          # on an M1 still on Big Sur, Monterey or Ventura. 11.0 is the first
+          # macOS on Apple silicon; 10.15 is the first with std::filesystem.
           - os: macos-14
             preset: ci-macos
             artifact: masterpiece-macos-arm64
             mac: true
             macarch: arm64
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           - os: macos-15-intel
             preset: ci-macos
             artifact: masterpiece-macos-x86_64
             mac: true
             macarch: x86_64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=12.1
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -202,6 +205,12 @@ jobs:
           test -x "$BIN" || { echo "no binary was produced"; exit 1; }
           file "$BIN"
           file "$BIN" | grep -q "${{ matrix.macarch }}"
+          # The oldest macOS the app opens on, as the binary says it: it must
+          # be the one the job names, never the build machine's own.
+          want=$(echo "${{ matrix.cmake_extra }}" | sed -n 's/.*DEPLOYMENT_TARGET=\([0-9.]*\).*/\1/p')
+          got=$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')
+          echo "oldest macOS: $got (wanted $want)"
+          [ -z "$want" ] || [ "$got" = "$want" ] || { echo "the binary asks for macOS $got"; exit 1; }
           "$BIN" &
           pid=$!
           sleep 15
