@@ -63,6 +63,18 @@ public:
     if (f != juce::File() && win_ != nullptr) win_->editor().loadOrgan(f, false);
   }
 
+  // A MIDI input's identifier where it names the same device in the next run:
+  // Windows' interface path (which includes the USB socket) and macOS's
+  // CoreMIDI id. Linux and Android number their devices afresh each time.
+  static juce::String lastingIdentifier(const juce::MidiDeviceInfo& in) {
+   #if JUCE_WINDOWS || JUCE_MAC || JUCE_IOS
+    return in.identifier;
+   #else
+    juce::ignoreUnused(in);
+    return {};
+   #endif
+  }
+
   void initialise(const juce::String& commandLine) override {
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
     // Remember which organ is loaded until a clean exit, so a crash is not
@@ -261,7 +273,7 @@ public:
     for (const auto& in : juce::MidiInput::getAvailableDevices()) {
       devices_->setMidiInputDeviceEnabled(in.identifier, true);
       auto route = std::make_unique<DeviceRoute>(
-          *proc_, proc_->registerMidiDevice(in.name));
+          *proc_, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());
       routes_.push_back({in.identifier, std::move(route)});
     }

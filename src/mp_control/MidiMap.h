@@ -9,6 +9,7 @@
 // Deliberately JUCE-free so the fast loop tests it: this is lookup and state,
 // not audio.
 #pragma once
+#include <istream>
 #include "../mp_core/OrganModel.h"
 #include "MidiDevices.h"
 
@@ -341,6 +342,9 @@ public:
   // the mapping belongs to the player's hardware, and must never be written
   // back into a licensed sample set.
   std::string toText() const;
+  // A saved line's device: its name, and the identifier after it if any.
+  std::string deviceIdentifierField(int deviceId) const;
+  int readDevice(const std::string& name, std::istream& rest);
   bool fromText(const std::string& text);
 
   // Which keyboard each MIDI channel plays. Not a binding — a binding turns one
