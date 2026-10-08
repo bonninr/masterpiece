@@ -102,6 +102,45 @@ def tap(name, contains=False, required=True):
     return False
 
 
+def tap_text(words, seconds=25):
+    """Taps text found in a screenshot: for the system's document picker,
+    which draws in another process and so is not in the app's accessibility
+    listing. The screenshot is the screen upright; with the app turned it is
+    read turned too, and a match is taken back to upright points, the ones
+    idb taps in."""
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        failures.append(f"no OCR to find '{words}'")
+        return False
+    scale = float(os.environ.get("SCREEN_SCALE", "2"))
+    want = words.lower().split()
+    end = time.time() + seconds
+    while time.time() < end:
+        path = os.path.join(OUT, ".ocr.png")
+        run("xcrun", "simctl", "io", UDID, "screenshot", path)
+        upright = Image.open(path)
+        app = next((e.get("frame") for e in elements() if e.get("type") == "Application"), None)
+        turned = bool(app and app["width"] > app["height"])
+        img = upright.rotate(90, expand=True) if turned else upright
+        d = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        text = [t.lower().strip() for t in d["text"]]
+        for i in range(len(text) - len(want) + 1):
+            if all(text[i + k].startswith(want[k]) for k in range(len(want))):
+                last = i + len(want) - 1
+                x = (d["left"][i] + d["left"][last] + d["width"][last]) / 2
+                y = d["top"][i] + d["height"][i] / 2
+                if turned:  # back from the image turned a quarter to the left
+                    x, y = upright.width - 1 - y, x
+                run("idb", "ui", "tap", "--udid", UDID, str(int(x / scale)), str(int(y / scale)))
+                time.sleep(2)
+                return True
+        time.sleep(2)
+    failures.append(f"no '{words}' read on screen")
+    return False
+
+
 def close_panel():
     """A window's close button, by either of the names it is listed under."""
     if not (tap("Close", required=False) or tap("close", contains=True, required=False)):
@@ -154,19 +193,15 @@ def main():
     # folder, lent by the Files app).
     package = os.environ.get("PICK_PACKAGE")
     if package and tap("Open"):
-        if not wait_for("Browse"):
-            wait_for("Recents", 5)
+        # The picker is another process's: found by its text on screen.
         shot("picker")
-        tap("Browse")
-        tap("On My", contains=True)
-        shot("picker-on-my-device")
-        tap(os.environ.get("PICK_FOLDER", "check"))
-        if tap(os.path.splitext(package)[0], contains=True):
-            time.sleep(20)
-            shot("package-opened")
-        else:
-            shot("picker-no-package")
-            tap("Cancel")
+        if tap_text("On My"):
+            shot("picker-on-my-device")
+            tap_text(os.environ.get("PICK_FOLDER", "check"))
+            shot("picker-folder")
+            if tap_text(os.path.splitext(package)[0]):
+                time.sleep(20)
+                shot("package-opened")
     shot("end")
     with open(os.path.join(OUT, "ui-result.txt"), "w") as f:
         f.write("\n".join(failures) if failures else "every step found its control\n")
