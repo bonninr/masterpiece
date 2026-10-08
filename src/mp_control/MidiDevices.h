@@ -5,19 +5,24 @@
 // and "this keyboard plays the Great and that one plays the Swell" is
 // unexpressible — which is the whole reason a rig has more than one input.
 //
-// Devices are identified by their NAME, not by their position in the list.
-// Unplug a keyboard and plug it back into a different port and the operating
-// system renumbers everything; the name is what survives, so that is what a
-// saved mapping stores. Ids are small integers assigned in first-seen order
-// and are meaningful only within one run — the same approach GrandOrgue takes,
-// and for the same reason.
+// A device is known by its NAME, and where the system gives one that lasts,
+// by its IDENTIFIER: on Windows the device's interface path, which names the
+// USB socket, and on macOS CoreMIDI's persistent id. Linux gives only the
+// ALSA client and port numbers, which change between boots, so there the name
+// alone is kept. Ids are small integers meaningful only within one run.
+//
+// Matching follows GrandOrgue (GOMidiDeviceConfigList): a device that opens
+// takes the saved one with its identifier, else the one with its exact name,
+// else one whose name differs only by the numbering the system adds ("2- " in
+// front, "-2" after), and each saved device is taken by one device at most.
+// Two identical consoles therefore stay two: the second is named "<name>-2",
+// as GrandOrgue names it, and keeps that name in the saved mappings.
 //
 // Id 0 is reserved and means ANY device, which is what an unqualified mapping
 // wants: a player with one keyboard should not have to care.
 #pragma once
-#include <algorithm>
+#include <cctype>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace mp {
@@ -26,39 +31,113 @@ class MidiDeviceMap {
 public:
   static constexpr int kAnyDevice = 0;
 
-  // The id for this device, assigning one if it is new. Names are matched
-  // exactly; a device that has never been seen gets the next id.
-  int idFor(const std::string& name) {
+  // A device opening now, as the system names it. Returns the id its saved
+  // mappings use, taking the saved device it matches, or a new id.
+  int claim(const std::string& name, const std::string& identifier = {}) {
     if (name.empty()) return kAnyDevice;
-    const auto it = byName_.find(name);
-    if (it != byName_.end()) return it->second;
-    names_.push_back(name);
-    const int id = static_cast<int>(names_.size()); // 1-based; 0 is "any"
-    byName_[name] = id;
-    return id;
+    // The same device opened again in this run.
+    if (!identifier.empty())
+      for (size_t i = 0; i < devices_.size(); ++i)
+        if (devices_[i].present && devices_[i].identifier == identifier) return idOf(i);
+    int found = 0;
+    if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, false);
+    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, false);
+    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, false);
+    if (found != 0) {
+      auto& d = devices_[static_cast<size_t>(found) - 1];
+      d.present = true;
+      if (!identifier.empty()) d.identifier = identifier;
+      return found;
+    }
+    std::string unique = name;
+    for (int n = 2; find([&](const Device& d) { return d.name == unique; }, true) != 0; ++n)
+      unique = name + "-" + std::to_string(n);
+    devices_.push_back({unique, identifier, true});
+    names_.push_back(unique);
+    return idOf(devices_.size() - 1);
   }
 
-  // The id for a device already seen, or 0. Does not assign.
+  // A device a saved mapping names: matched as claim() matches, without
+  // taking it. A device not seen in this run gets an id of its own, ready for
+  // when it opens.
+  int idFor(const std::string& name, const std::string& identifier = {}) {
+    if (name.empty()) return kAnyDevice;
+    int found = 0;
+    if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, true);
+    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, true);
+    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, true);
+    if (found != 0) return found;
+    devices_.push_back({name, identifier, false});
+    names_.push_back(name);
+    return idOf(devices_.size() - 1);
+  }
+
+  // The id for a device already known by this name, or 0. Does not assign.
   int lookup(const std::string& name) const {
-    const auto it = byName_.find(name);
-    return it == byName_.end() ? kAnyDevice : it->second;
+    for (size_t i = 0; i < devices_.size(); ++i)
+      if (devices_[i].name == name) return idOf(i);
+    return kAnyDevice;
   }
 
   std::string nameFor(int id) const {
-    if (id <= 0 || id > static_cast<int>(names_.size())) return {};
-    return names_[static_cast<size_t>(id) - 1];
+    return valid(id) ? devices_[static_cast<size_t>(id) - 1].name : std::string();
+  }
+  std::string identifierFor(int id) const {
+    return valid(id) ? devices_[static_cast<size_t>(id) - 1].identifier : std::string();
   }
 
   const std::vector<std::string>& names() const { return names_; }
-  size_t size() const { return names_.size(); }
+  size_t size() const { return devices_.size(); }
   void clear() {
+    devices_.clear();
     names_.clear();
-    byName_.clear();
+  }
+
+  // Two names for one console: the same, or one of them with the numbering a
+  // system adds to tell duplicates apart ("2- Name" on Windows, "Name-2" from
+  // JUCE). "Roland A-49" and "Roland A-88" are not taken for one another:
+  // only a name that loses its numbering to become the other matches.
+  static bool sameConsole(const std::string& a, const std::string& b) {
+    return a == b || unnumbered(a) == b || unnumbered(b) == a;
+  }
+  static std::string unnumbered(const std::string& name) {
+    std::string s = name;
+    // "2- Name": Windows' prefix for a second device of the same name.
+    size_t i = 0;
+    while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i]))) ++i;
+    if (i > 0 && i + 1 < s.size() && s[i] == '-' && s[i + 1] == ' ') s.erase(0, i + 2);
+    // "Name-2": JUCE's suffix for the same.
+    size_t j = s.size();
+    while (j > 0 && std::isdigit(static_cast<unsigned char>(s[j - 1]))) --j;
+    if (j < s.size() && j > 1 && s[j - 1] == '-') s.erase(j - 1);
+    return s;
   }
 
 private:
+  struct Device {
+    std::string name;
+    std::string identifier;
+    bool present = false;  // opened in this run
+  };
+
+  // A name may stand in for an identifier only where the two do not
+  // disagree: two saved consoles with their own identifiers are two, however
+  // alike their names.
+  static bool fits(const Device& d, const std::string& identifier) {
+    return identifier.empty() || d.identifier.empty() || d.identifier == identifier;
+  }
+
+  template <typename Pred>
+  int find(Pred pred, bool includePresent) const {
+    for (size_t i = 0; i < devices_.size(); ++i)
+      if ((includePresent || !devices_[i].present) && pred(devices_[i])) return idOf(i);
+    return 0;
+  }
+  static int idOf(size_t index) { return static_cast<int>(index) + 1; }  // 0 is "any"
+  bool valid(int id) const { return id > 0 && id <= static_cast<int>(devices_.size()); }
+
+  std::vector<Device> devices_;
   std::vector<std::string> names_;
-  std::unordered_map<std::string, int> byName_;
 };
 
 } // namespace mp

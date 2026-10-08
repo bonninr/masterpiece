@@ -11366,6 +11366,107 @@ public:
 };
 static DeviceSysExTest g_deviceSysEx;
 
+// A SysEx piston learned from a console, saved, and read back by a later run
+// whose devices come up in another order (#217): the mapping still fires from
+// that console.
+class DeviceSysExReloadTest final : public mp::test::Test {
+public:
+  DeviceSysExReloadTest() : Test("functional.midi.device-sysex-reload", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const uint8_t body[] = {0x00, 0x4A, 0x4F, 0x48, 0x41, 0x53, 0x00, 0x10, 0x06};
+    const auto message = juce::MidiMessage::createSysExMessage(body, static_cast<int>(sizeof body));
+    juce::String saved;
+    mp::Id sw = 0;
+    {
+      mp::MasterpieceProcessor first;
+      first.prepareToPlay(48000.0, 256);
+      MP_CHECK(first.loadOrgan(odf, 0, true).ok, "the fixture loads");
+      if (first.organModel().switches.empty()) return;
+      sw = first.organModel().switches.begin()->first;
+      const int johannus = first.registerMidiDevice("Johannus_Opus 2");
+      first.midiMap().beginLearn(mp::MidiTargetKind::Switch, sw, true);
+      first.pushMidi(johannus, message);
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer none;
+      first.processBlock(buf, none);
+      MP_CHECK(!first.midiMap().learning(), "the piston is learned from the console");
+      saved = first.midiMap().toText();
+    }
+    MP_CHECK(saved.contains("sysex"), "the map holds the SysEx mapping");
+
+    mp::MasterpieceProcessor second;
+    second.prepareToPlay(48000.0, 256);
+    MP_CHECK(second.loadOrgan(odf, 0, true).ok, "the fixture loads again");
+    const int other = second.registerMidiDevice("Keyboard");
+    const int johannus = second.registerMidiDevice("Johannus_Opus 2");
+    MP_CHECK(other != johannus, "the console has another id this time");
+    MP_CHECK(second.midiMap().fromText(saved.toStdString()), "the saved map reads back");
+    const bool before = second.switchEngaged(sw);
+    second.pushMidi(johannus, message);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    second.processBlock(buf, none);
+    MP_CHECK(second.switchEngaged(sw) != before, "after a restart the console's piston still fires");
+  }
+};
+static DeviceSysExReloadTest g_deviceSysExReload;
+
+// Telling consoles apart across runs, as GrandOrgue does (MidiDevices.h).
+class MidiDeviceMatchTest final : public mp::test::Test {
+public:
+  MidiDeviceMatchTest() : Test("functional.midi.device-matching", Category::Functional) {}
+  void run() override {
+    {
+      mp::MidiDeviceMap m;
+      const int a = m.claim("Johannus MIDI 1");
+      const int b = m.claim("Johannus MIDI 1");
+      MP_CHECK(a != b, "two identical consoles stay two devices");
+      MP_CHECK(m.nameFor(b) == "Johannus MIDI 1-2", "the second is named <name>-2");
+    }
+    {
+      // Saved with their identifiers, then plugged into each other's sockets.
+      mp::MidiDeviceMap m;
+      const int great = m.idFor("Johannus", "usb-port-1");
+      const int swell = m.idFor("Johannus-2", "usb-port-2");
+      MP_CHECK(m.claim("Johannus", "usb-port-2") == swell, "the identifier finds the right console");
+      MP_CHECK(m.claim("Johannus-2", "usb-port-1") == great, "and the other one");
+      MP_CHECK(m.claim("Johannus", "usb-port-2") == swell, "a device opened twice keeps its id");
+    }
+    {
+      mp::MidiDeviceMap m;
+      const int saved = m.idFor("Johannus");
+      MP_CHECK(m.claim("2- Johannus") == saved, "Windows' numbering in front is ignored");
+      mp::MidiDeviceMap n;
+      const int savedToo = n.idFor("Viscount");
+      MP_CHECK(n.claim("Viscount-3") == savedToo, "JUCE's numbering after is ignored");
+    }
+    {
+      mp::MidiDeviceMap m;
+      const int a49 = m.claim("Roland A-49");
+      MP_CHECK(m.claim("Roland A-88") != a49, "two models with numbers in their names stay apart");
+    }
+    {
+      mp::MidiMap map;
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::ControlChange;
+      b.source.channel = 1;
+      b.source.number = 7;
+      b.source.deviceId = map.devices().claim("Console A", "\\\\?\\USB#VID_1234 PID_1");
+      b.targetKind = mp::MidiTargetKind::ContinuousControl;
+      b.targetId = 5;
+      map.bind(b);
+      mp::MidiMap reread;
+      const int later = reread.devices().claim("Console A", "\\\\?\\USB#VID_1234 PID_1");
+      MP_CHECK(reread.fromText(map.toText()), "a map with an identifier reads back");
+      mp::MidiSource s = b.source;
+      s.deviceId = later;
+      MP_CHECK(reread.actionFor(s, 64).targetId == 5, "and its mapping fires from that console");
+    }
+  }
+};
+static MidiDeviceMatchTest g_midiDeviceMatch;
+
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
 // is one level further up. Drawing a stop from the stop list or a combination

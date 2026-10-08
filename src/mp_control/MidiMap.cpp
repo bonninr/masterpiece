@@ -596,6 +596,19 @@ void MidiMap::keepOnlyConsoleSendsAndShortcuts() {
 
 // ------------------------------------------------------------ persistence
 
+// The device's identifier as a last field, when the system gave one that lasts
+// (MidiDevices.h). A reader from before it stops at the name.
+std::string MidiMap::deviceIdentifierField(int deviceId) const {
+  const std::string id = devices_.identifierFor(deviceId);
+  return id.empty() ? std::string() : " " + encodeName(id);
+}
+
+int MidiMap::readDevice(const std::string& name, std::istream& rest) {
+  std::string identifier;
+  rest >> identifier;
+  return devices_.idFor(decodeName(name), identifier.empty() ? std::string() : decodeName(identifier));
+}
+
 std::string MidiMap::toText() const {
   std::ostringstream out;
   out << "# Masterpiece MIDI map\n";
@@ -612,7 +625,7 @@ std::string MidiMap::toText() const {
         << (b.source.deviceId == MidiDeviceMap::kAnyDevice
                 ? std::string("any")
                 : encodeName(devices_.nameFor(b.source.deviceId)))
-        << '\n';
+        << deviceIdentifierField(b.source.deviceId) << '\n';
   }
   // Channel assignments last, so an older reader that does not know the line
   // still gets every binding before it hits one it skips.
@@ -624,7 +637,7 @@ std::string MidiMap::toText() const {
         << (b.deviceId == MidiDeviceMap::kAnyDevice
                 ? std::string("any")
                 : encodeName(devices_.nameFor(b.deviceId)))
-        << '\n';
+        << deviceIdentifierField(b.deviceId) << '\n';
   // What the console is sent, and the computer keys. Last for the same reason.
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
@@ -790,7 +803,7 @@ bool MidiMap::fromText(const std::string& text) {
         b.keyboardId = static_cast<Id>(keyboardId);
         b.ignoreVelocity = ignoreVel != 0;
         b.shortOctave = shortOct != 0;
-        if ((kl >> dev) && dev != "any") b.deviceId = devices_.idFor(decodeName(dev));
+        if ((kl >> dev) && dev != "any") b.deviceId = readDevice(dev, kl);
         addKeyboardBinding(b);
       } else {
         anyBad = true;
@@ -844,7 +857,7 @@ bool MidiMap::fromText(const std::string& text) {
         KeyboardBinding b;
         b.channel = channel;
         b.keyboardId = static_cast<Id>(keyboardId);
-        if ((kl >> dev) && dev != "any") b.deviceId = devices_.idFor(decodeName(dev));
+        if ((kl >> dev) && dev != "any") b.deviceId = readDevice(dev, kl);
         addKeyboardBinding(b);
       } else {
         anyBad = true;
@@ -882,7 +895,7 @@ bool MidiMap::fromText(const std::string& text) {
     }
     std::string dev;
     if ((ls >> dev) && dev != "any")
-      b.source.deviceId = devices_.idFor(decodeName(dev));
+      b.source.deviceId = readDevice(dev, ls);
     if (b.source.kind == MidiSourceKind::None ||
         b.targetKind == MidiTargetKind::None) {
       anyBad = true;

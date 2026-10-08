@@ -578,8 +578,10 @@ public:
   bool midiLogging() const { return logMidi_.load(std::memory_order_acquire); }
   int midiMapRepairedOnLoad() const { return midiMapRepaired_; }
   // Register a console and get its id. Message thread, at device setup.
-  int registerMidiDevice(const juce::String& name) {
-    return midiMap_.devices().idFor(name.toStdString());
+  // The identifier is the one the system gives the device (MidiDeviceInfo),
+  // passed only where it lasts across runs (MidiDevices.h).
+  int registerMidiDevice(const juce::String& name, const juce::String& identifier = {}) {
+    return midiMap_.devices().claim(name.toStdString(), identifier.toStdString());
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
 
