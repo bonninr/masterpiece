@@ -94,10 +94,23 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   for (const auto& [sid, sw] : model.switches)
     if (sw.asgnCode > 0 && pistonCodes.count(sw.asgnCode) != 0) notRegistration.insert(sid);
 
+  // A stop worked from a blower switch is that division's wind (#256):
+  // Clarendon's Antiphonal Trumpet stands on "Blower: Antiphonal Wind",
+  // which the organ's own combinations never store, and cancelling it left
+  // every drawstop that couples the trumpet silent with no knob to restore it.
+  auto onBlower = [&](const Stop& stop) {
+    if (stop.controllingSwitchId == 0) return false;
+    for (Id sw : {stop.controllingSwitchId, player(stop.controllingSwitchId)}) {
+      const auto it = model.switches.find(sw);
+      if (it != model.switches.end() && mentions(it->second.name, "blower")) return true;
+    }
+    return false;
+  };
+
   // Stops, in the stop list's order.
   std::vector<std::pair<Id, Id>> stops;  // (division, stop)
   for (const auto& [id, stop] : model.stops)
-    if (!isEffect(model, stop)) stops.emplace_back(stop.divisionId, id);
+    if (!isEffect(model, stop) && !onBlower(stop)) stops.emplace_back(stop.divisionId, id);
   std::sort(stops.begin(), stops.end());
   for (const auto& [div, id] : stops) {
     Element e;

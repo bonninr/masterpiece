@@ -10,6 +10,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <csignal>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -34,6 +35,13 @@ bool audioOutputAlive(juce::AudioDeviceManager& dm) {
   return dev != nullptr &&
          dev->getActiveOutputChannels().countNumberOfSetBits() > 0;
 }
+// Set from a signal handler: SIGTERM or SIGHUP, as a system shutdown, a
+// logout or a service manager stopping the program sends them. Only a flag
+// may be touched there; the message thread acts on it (QuitWatch).
+volatile std::sig_atomic_t quitSignalled = 0;
+#if JUCE_LINUX || JUCE_MAC
+extern "C" void onQuitSignal(int) { quitSignalled = 1; }
+#endif
 } // namespace
 
 class MasterpieceApp : public juce::JUCEApplication {
@@ -76,6 +84,17 @@ public:
   }
 
   void initialise(const juce::String& commandLine) override {
+    // A shutdown or reboot ends the program with SIGTERM. Left to its default
+    // the signal ends it at once, without shutdown(), and at the next start
+    // that looked like a crash. Handled, it is an ordinary quit.
+   #if JUCE_LINUX || JUCE_MAC
+    struct sigaction quitAction {};
+    quitAction.sa_handler = onQuitSignal;
+    sigemptyset(&quitAction.sa_mask);
+    sigaction(SIGTERM, &quitAction, nullptr);
+    sigaction(SIGHUP, &quitAction, nullptr);
+   #endif
+    quitWatch_ = std::make_unique<QuitWatch>();
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
     // Remember which organ is loaded until a clean exit, so a crash is not
     // repeated by reopening the organ it happened with.
@@ -345,15 +364,12 @@ public:
     proc_->loadGlobalDefaults();
     const juce::File crashed = proc_->crashedOrgan();
     proc_->forgetCrash();
-    bool skippedReopen = false;
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
       odf = proc_->lastOrgan();
-      // Never reopen the organ the last session died with: whatever took it
-      // down would take it down again before the player could intervene.
-      if (odf != juce::File() && odf == crashed) {
-        odf = juce::File();
-        skippedReopen = true;
-      }
+      // Reopened after an unclean end too. That is usually a power cut or a
+      // killed process, and a console with no screen has nobody to open the
+      // organ by hand. The program is started once per login, so an organ
+      // that did crash it is not reopened in a loop.
     }
 
     // Play MIDI through the organ as soon as it is up, with the stops drawn.
@@ -732,15 +748,12 @@ public:
 
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
 
-    // Say what happened last time, once, and what can be done about it.
-    if (!guiOnly && crashed != juce::File())
-      juce::AlertWindow::showMessageBoxAsync(
-          juce::MessageBoxIconType::WarningIcon, "Masterpiece closed unexpectedly",
-          "The last session ended while " + crashed.getFileNameWithoutExtension() +
-              " was loaded" +
-              (skippedReopen ? ", so it was not reopened this time." : ".") +
-              "\n\nIf it happens again, a lower memory limit or 16-bit samples "
-              "(Settings, Engine) let a large organ fit in less memory.");
+    // An unclean end is written to the log. Nothing waits for a click: on a
+    // console that starts by itself there is nobody to give one.
+    if (crashed != juce::File())
+      juce::Logger::writeToLog("start: the last session did not end cleanly while " +
+                               crashed.getFileName() + " was loaded" +
+                               (odf == crashed ? "; reopened" : ""));
 
     // A fresh installation has no audio device chosen, no MIDI input enabled
     // and no organ. Offering the three in order beats three separate ways of
@@ -833,6 +846,17 @@ public:
   bool backButtonPressed() override { return mp::ui::closeFrontWindow(win_.get()); }
 
 private:
+  // Turns a quit signal into the same quit a closed window makes.
+  struct QuitWatch : juce::Timer {
+    QuitWatch() { startTimer(200); }
+    void timerCallback() override {
+      if (quitSignalled == 0) return;
+      stopTimer();
+      juce::Logger::writeToLog("quit: asked by the system (signal)");
+      if (auto* app = juce::JUCEApplication::getInstance()) app->systemRequestedQuit();
+    }
+  };
+  std::unique_ptr<QuitWatch> quitWatch_;
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
         : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
@@ -890,6 +914,7 @@ private:
       if (saved.isNotEmpty() && restoreWindowStateFromString(saved) &&
           juce::Desktop::getInstance().getDisplays().getDisplayForPoint(getBounds().getCentre()) == nullptr)
         centreWithSize(getWidth(), getHeight());
+      if (!isFullScreen()) mp::ui::keepOnScreen(*this);
     }
 
     void closeButtonPressed() override {

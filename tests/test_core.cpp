@@ -2926,7 +2926,7 @@ public:
 
   // Render one voice of `buf` for `frames` output samples.
   static std::vector<float> render(const mp::SampleBuffer& buf, int frames,
-                                   double settleMs) {
+                                   double settleMs, int64_t* underruns = nullptr) {
     voicetest::Fixture fx;
     fx.attack = buf;
     mp::VoiceEngine eng;
@@ -2947,6 +2947,7 @@ public:
     std::vector<float> out(static_cast<size_t>(frames), 0.0f);
     float* ptr[1] = {out.data()};
     eng.render(ptr, 1, frames);
+    if (underruns != nullptr) *underruns = eng.streamUnderruns();
     return out;
   }
 
@@ -2972,6 +2973,14 @@ public:
     const auto viaDisk = render(streamed, kFrames - 8, 120.0);
 
     MP_CHECK(disk->reads.load() > 0, "the streamer actually read something");
+
+    // Played to its end and beyond, with the streamer well ahead: no
+    // shortfall. The interpolation's last taps reach past the final frame,
+    // and those were counted as underruns, once per frame and tap.
+    int64_t underruns = -1;
+    render(streamed, kFrames + 400, 120.0, &underruns);
+    MP_CHECK(underruns == 0, "a release streamed in time and played out reports no "
+                             "underrun, got " + std::to_string(underruns));
 
     // The whole point: identical, not merely similar.
     double worst = 0.0;
@@ -4004,6 +4013,32 @@ public:
       return !(e.kind == K::Stop && e.id == 2);
     });
     MP_CHECK(reachable.size() == 5, "a stop the player cannot reach is never registration");
+
+    // A stop held on by a division's blower switch, as Clarendon's Antiphonal
+    // Trumpet is (#256): the switch is the division's wind, and a general
+    // cancel that pushed it in silenced every coupler that plays the trumpet.
+    {
+      mp::OrganModel w = m;
+      mp::Switch blower;
+      blower.switchId = 2401;
+      blower.name = "Blower: Antiphonal Wind";
+      w.switches[2401] = blower;
+      mp::Switch node;
+      node.switchId = 10244;
+      node.name = "StopNode_2401";
+      w.switches[10244] = node;
+      mp::Stop trumpet;
+      trumpet.stopId = 2401;
+      trumpet.divisionId = 2;
+      trumpet.name = "Stop: Ant: Antiphonal Trumpet 8";
+      trumpet.controllingSwitchId = 10244;
+      w.stops[2401] = trumpet;
+      const auto withWind = PC::collect(w, [](mp::Id sw) { return sw == 10244 ? mp::Id{2401} : sw; });
+      bool held = false;
+      for (const auto& e : withWind) held = held || (e.kind == K::Stop && e.id == 2401);
+      MP_CHECK(!held && withWind.size() == elements.size(),
+               "a stop worked from a blower switch is never registration");
+    }
 
     // A coupler worked through a delay, as Friesach's are (#90): knob 45
     // conditions a ramp whose top stage engages 145, the switch the key action
@@ -9546,6 +9581,28 @@ public:
       MP_CHECK(lib.cacheWriteFraction() == 1.0,
                "and its progress reaches the end, for the status line's percentage");
     }
+    {
+      // One flipped bit in a sample's audio, as a failing disk leaves it: the
+      // cache is refused and the organ read from its samples, every one.
+      const auto cache = cacheDir.findChildFiles(juce::File::findFiles, false).getFirst();
+      juce::MemoryBlock bytes;
+      cache.loadFileAsData(bytes);
+      auto* raw = static_cast<unsigned char*>(bytes.getData());
+      raw[bytes.getSize() / 2] ^= 0x10;
+      cache.replaceWithData(bytes.getData(), bytes.getSize());
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("partial", "stamp");
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      lib.finishCacheWrite(false);
+      MP_CHECK(lib.cacheBytesRead() == 0 && report.loaded == 8,
+               "a damaged cache is not used, and every sample is read from its file");
+    }
     root.deleteRecursively();
   }
 };
@@ -10880,6 +10937,99 @@ public:
   }
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
+
+// A GrandOrgue organ's own Set and GC are the player's (#248): Set in the
+// Combinations window lights the console's Set, and the console's GC is the
+// window's General Cancel.
+class GrandOrgueSetterLinkTest final : public mp::test::Test {
+public:
+  GrandOrgueSetterLinkTest() : Test("functional.control.grandorgue-set-gc", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-go-setter");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          wav.createWriterFor(os.release(), 48000.0, 1, 16, juce::StringPairArray(), 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    const juce::String organ =
+        "[Organ]\nChurchName=Setter\nHasPedals=N\nNumberOfManuals=1\nNumberOfWindchestGroups=1\n"
+        "NumberOfSetterElements=2\n"
+        "[SetterElement001]\nType=Set\n[SetterElement002]\nType=GC\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Manual001]\nName=Manual\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=1\n"
+        "[Stop001]\nName=Sine\nDisplayed=Y\nNumberOfLogicalPipes=3\nNumberOfAccessiblePipes=3\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nWindchestGroup=1\n"
+        "Pipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    const auto odf = dir.getChildFile("setter.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    const auto set = static_cast<mp::Id>(mp::kGrandOrgueSetterSwitch);
+    const auto gc = static_cast<mp::Id>(mp::kGrandOrgueGeneralCancelSwitch);
+    MP_CHECK(proc.organModel().switches.count(set) == 1 && proc.organModel().switches.count(gc) == 1,
+             "its Set and GC are switches");
+
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.switchEngaged(set) && proc.captureMode(), "the window's Set lights the console's");
+    proc.setCaptureMode(false);
+    MP_CHECK(!proc.switchEngaged(set) && !proc.captureMode(), "and puts it out");
+    proc.setSwitchEngaged(set, true);
+    MP_CHECK(proc.captureMode(), "the console's Set still sets");
+    proc.setSwitchEngaged(set, false);
+
+    proc.engageAllStops();
+    mp::Id stop = 0;
+    for (const auto& [id, st] : proc.organModel().stops) stop = id;
+    MP_CHECK(stop != 0 && proc.stopEngaged(stop), "the stop is drawn");
+    proc.setSwitchEngaged(gc, true);
+    MP_CHECK(!proc.switchEngaged(gc), "the GC lets itself out");
+    MP_CHECK(!proc.stopEngaged(stop), "the console's GC cancels it");
+
+    // The same from a console's controllers, as the MIDI window maps them: a
+    // CC that draws the stop and a CC held on the GC.
+    const mp::Id stopSwitch = proc.organModel().stops.at(stop).controllingSwitchId;
+    auto bindCc = [&](int cc, mp::Id sw, mp::MidiTrigger trigger) {
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::ControlChange;
+      b.source.channel = 1;
+      b.source.number = cc;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = sw;
+      b.trigger = trigger;
+      proc.midiMap().bind(b);
+    };
+    bindCc(20, stopSwitch, mp::MidiTrigger::Toggle);
+    bindCc(21, gc, mp::MidiTrigger::Momentary);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto send = [&](int cc, int value) {
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage::controllerEvent(1, cc, value), 0);
+      proc.processBlock(buf, midi);
+    };
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(proc.stopEngaged(stop), "a CC draws the stop");
+    send(21, 127);
+    send(21, 0);
+    MP_CHECK(!proc.stopEngaged(stop), "a CC on the GC cancels it");
+    proc.releaseResources();
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static GrandOrgueSetterLinkTest g_grandOrgueSetterLink;
 #endif // MP_TEST_HAS_AUDIO
 
 // A temperament from a Scala file, the format tuning libraries publish.
@@ -12491,3 +12641,122 @@ public:
   }
 };
 static VoicingEqTest g_voicingEq;
+#ifdef MP_TEST_HAS_AUDIO
+#include "../src/mp_ui/Panels.h"
+
+// Panels (#237): the organ as sections, a footage on its own line, and a
+// layout that reads back as it was saved.
+class PanelsTest final : public mp::test::Test {
+public:
+  PanelsTest() : Test("functional.ui.panels", Category::Functional) {}
+  void run() override {
+    using mp::ui::splitFootage;
+    std::string name, foot;
+    splitFootage("Trompete harm. 8'", name, foot);
+    MP_CHECK(name == "Trompete harm." && foot == "8'", "a footage with a prime: " + name + " / " + foot);
+    splitFootage("Nazard 2 2/3'", name, foot);
+    MP_CHECK(name == "Nazard" && foot == "2 2/3'", "a fractional footage: " + name + " / " + foot);
+    splitFootage("Mixtur IV", name, foot);
+    MP_CHECK(name == "Mixtur" && foot == "IV", "a mixture's ranks: " + name + " / " + foot);
+    splitFootage("Tremolo", name, foot);
+    MP_CHECK(name == "Tremolo" && foot.empty(), "a name with no footage stays whole");
+
+    mp::ui::PanelLayout l;
+    l.sectionsOff = {"d802", "controls"};
+    l.hidden = {"s901", "p55"};
+    l.detached = true;
+    l.x = 10; l.y = 20; l.w = 1024; l.h = 600;
+    l.scheme = 2;
+    mp::ui::PanelLayout back;
+    back.fromText(l.toText());
+    MP_CHECK(back == l, "a panel's layout reads back as it was saved");
+
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-panels");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const auto odf = defs.getChildFile("two.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Two manuals</Identification_Name>"
+        "<Identification_UniqueOrganID>33</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>A</Name></Rank><Rank><RankID>202</RankID><Name>B</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>401</LayerID><PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "<Keyboard><KeyboardID>702</KeyboardID><Name>II</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division>"
+        "<Division><DivisionID>802</DivisionID><Name>S</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        "<KeyAction><SourceKeyboardID>702</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        // II to I: manual I also plays division S while switch 1103 is drawn.
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys>"
+        "<ConditionSwitchID>1103</ConditionSwitchID></KeyAction>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>901</StopID><Name>A</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>901</StopID><RankID>201</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>902</StopID><RankID>202</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1103</SwitchID><Name>II to I</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList></Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the two-manual organ loads");
+    const auto sections = mp::ui::panelSections(proc);
+    MP_CHECK(sections.size() >= 2, "a section per division, got " + std::to_string(sections.size()));
+    if (sections.size() >= 2) {
+      MP_CHECK(sections[0].title == "G" && sections[1].title == "S",
+               "in the organ's order, named as the organ names them");
+      MP_CHECK(sections[0].elements.size() == 1 && sections[0].elements[0].id == 901,
+               "each division holds its own stop");
+      MP_CHECK(sections[1].elements.size() == 1 && sections[1].elements[0].id == 902,
+               "and the other division its own");
+    }
+    proc.releaseResources();
+    root.deleteRecursively();
+  }
+};
+static PanelsTest g_panels;
+#endif  // MP_TEST_HAS_AUDIO

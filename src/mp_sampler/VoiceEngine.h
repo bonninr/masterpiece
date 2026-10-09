@@ -574,6 +574,10 @@ private:
     // Bumped every time the slot is re-armed, so a fill that was in flight for
     // the previous voice cannot publish frames into the new one's ring.
     std::atomic<uint64_t> generation{0};
+    // Whether the last read found the ring short, so one shortfall counts
+    // once however many frames and taps it lasts. Set from the const read
+    // path, hence mutable.
+    mutable std::atomic<bool> starved{false};
   };
   std::vector<std::unique_ptr<VoiceStream>> streams_;
   std::thread streamer_;

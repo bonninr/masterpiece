@@ -343,6 +343,12 @@ public:
   // drives this from the console; this is for one that has not, and for a UI
   // button.
   void setCaptureMode(bool on) {
+    // The organ's own Set follows the player's (#248): its switch puts the
+    // combinations into capture, so the console lights as the window does.
+    if (setterSwitchId_ != 0 && switchEngaged(setterSwitchId_) != on) {
+      setSwitchEngaged(setterSwitchId_, on);
+      return;
+    }
     const AudioLock audio(*this);
     combinations_.setCaptureMode(on);
   }
@@ -793,6 +799,10 @@ public:
   // settings to everyone's defaults, so this rewrites the file around the
   // defaults already in it rather than around the live state.
   void setLastOrgan(const juce::File& odf);
+  // The folder the last organ was chosen from in Open, where the next Open
+  // starts (#251). Empty, or a folder that is gone: the system's default.
+  juce::File openFolder() const { return openFolder_.isDirectory() ? openFolder_ : juce::File(); }
+  void setOpenFolder(const juce::File& folder);
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
@@ -1519,6 +1529,7 @@ private:
   // threshold in a few blocks; without this it machine-guns ten taps.
   double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
+  juce::File openFolder_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
   juce::String settingsBody() const;
