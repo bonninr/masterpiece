@@ -4005,6 +4005,32 @@ public:
     });
     MP_CHECK(reachable.size() == 5, "a stop the player cannot reach is never registration");
 
+    // A stop held on by a division's blower switch, as Clarendon's Antiphonal
+    // Trumpet is (#256): the switch is the division's wind, and a general
+    // cancel that pushed it in silenced every coupler that plays the trumpet.
+    {
+      mp::OrganModel w = m;
+      mp::Switch blower;
+      blower.switchId = 2401;
+      blower.name = "Blower: Antiphonal Wind";
+      w.switches[2401] = blower;
+      mp::Switch node;
+      node.switchId = 10244;
+      node.name = "StopNode_2401";
+      w.switches[10244] = node;
+      mp::Stop trumpet;
+      trumpet.stopId = 2401;
+      trumpet.divisionId = 2;
+      trumpet.name = "Stop: Ant: Antiphonal Trumpet 8";
+      trumpet.controllingSwitchId = 10244;
+      w.stops[2401] = trumpet;
+      const auto withWind = PC::collect(w, [](mp::Id sw) { return sw == 10244 ? mp::Id{2401} : sw; });
+      bool held = false;
+      for (const auto& e : withWind) held = held || (e.kind == K::Stop && e.id == 2401);
+      MP_CHECK(!held && withWind.size() == elements.size(),
+               "a stop worked from a blower switch is never registration");
+    }
+
     // A coupler worked through a delay, as Friesach's are (#90): knob 45
     // conditions a ramp whose top stage engages 145, the switch the key action
     // waits on. The coupler is registered as its knob.
