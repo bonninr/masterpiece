@@ -11002,6 +11002,35 @@ public:
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
 
+// A block larger than the engine was prepared for (#267): around a change of
+// buffer size the device can hand over a block of the other size. Played in
+// pieces that fit, with every note on time; written whole, it ran past the
+// scratch buffers and corrupted the heap.
+class OversizedBlockTest final : public mp::test::Test {
+public:
+  OversizedBlockTest() : Test("functional.audio.oversized-block", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 128);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.engageAllStops();
+    juce::AudioBuffer<float> big(2, 1000);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 700);
+    for (int i = 0; i < 20; ++i) {
+      proc.processBlock(big, midi);
+      midi.clear();
+    }
+    const auto load = proc.takeAudioLoad();
+    MP_CHECK(load.oversized == 1000 && load.prepared == 128,
+             "the oversized block is counted, got " + std::to_string(load.oversized));
+    MP_CHECK(proc.takeAudioLoad().oversized == 0, "the count is taken once");
+    proc.settingsFileFor(odf).deleteFile();
+  }
+};
+static OversizedBlockTest g_oversizedBlock;
+
 // A celeste's fixed detune, PitchLvl_DetuningPercentSemitones on the layer
 // (#261): read in both forms of the format, and heard. Without it every
 // celeste played at unison with its partner rank.

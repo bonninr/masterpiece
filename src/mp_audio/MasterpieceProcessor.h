@@ -1168,6 +1168,10 @@ public:
     int64_t blocks = 0;
     int64_t late = 0;
     double worstPercent = 0.0;  // the slowest block, as a share of its time
+    // The largest block the device sent past the size the engine was prepared
+    // for, and that size; 0 when every block fitted (#267).
+    int oversized = 0;
+    int prepared = 0;
   };
   AudioLoad takeAudioLoad();
 
@@ -1381,6 +1385,9 @@ private:
   std::atomic<int64_t> audioBlocks_{0};
   std::atomic<int64_t> lateBlocks_{0};
   std::atomic<int> worstBlockPermille_{0};
+  std::atomic<int> oversizedBlock_{0};
+  // The MIDI of one piece of an oversized block, sized in prepareToPlay.
+  juce::MidiBuffer midiPiece_;
   juce::MidiKeyboardState keyboardState_;
   // Raised by releaseAllKeys(), consumed at the top of the next block.
   std::atomic<bool> releaseAll_{false};

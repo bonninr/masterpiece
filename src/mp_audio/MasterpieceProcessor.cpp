@@ -48,6 +48,7 @@ MasterpieceProcessor::MasterpieceProcessor()
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   maxBlock_ = juce::jmax(1, samplesPerBlock);
+  midiPiece_.ensureSize(4096);
 #if MP_ENABLE_DSP
   // One filter per enclosure and one LFO per tremulant, built here so the
   // audio thread never allocates. getTotalNumOutputChannels() is the widest
@@ -2838,6 +2839,8 @@ MasterpieceProcessor::AudioLoad MasterpieceProcessor::takeAudioLoad() {
   load.blocks = audioBlocks_.load(std::memory_order_relaxed);
   load.late = lateBlocks_.load(std::memory_order_relaxed);
   load.worstPercent = worstBlockPermille_.exchange(0, std::memory_order_relaxed) / 10.0;
+  load.oversized = oversizedBlock_.exchange(0, std::memory_order_relaxed);
+  load.prepared = maxBlock_;
   return load;
 }
 
@@ -3695,6 +3698,28 @@ MasterpieceProcessor::EngineSuspension::~EngineSuspension() {
 
 void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
+
+  // A block larger than the engine was prepared for is played in pieces that
+  // fit. Every scratch buffer is sized in prepareToPlay, and around a change of
+  // buffer size the device can hand over a block of the other size: written
+  // whole, it ran past them and corrupted the heap (#267, on PipeWire's ALSA).
+  if (const int n = buffer.getNumSamples(); maxBlock_ > 0 && n > maxBlock_) {
+    int seen = oversizedBlock_.load(std::memory_order_relaxed);
+    while (n > seen &&
+           !oversizedBlock_.compare_exchange_weak(seen, n, std::memory_order_relaxed)) {}
+    for (int start = 0; start < n; start += maxBlock_) {
+      const int length = std::min(maxBlock_, n - start);
+      juce::AudioBuffer<float> piece(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
+                                     start, length);
+      midiPiece_.clear();
+      for (const auto event : midi)
+        if (event.samplePosition >= start && event.samplePosition < start + length)
+          midiPiece_.addEvent(event.data, event.numBytes, event.samplePosition - start);
+      processBlock(piece, midiPiece_);
+    }
+    return;
+  }
+
   buffer.clear();
 
   // Counted in before looking at the flag, counted out on every way out.

@@ -1907,6 +1907,11 @@ void MasterpieceEditor::timerCallback() {
   // heard, and the log says how late, so a report can say why (#120).
   const auto load = proc_.takeAudioLoad();
   worstBlockSinceLog_ = juce::jmax(worstBlockSinceLog_, load.worstPercent);
+  // A block larger than the engine was prepared for, played in pieces (#267).
+  if (load.oversized > 0)
+    juce::Logger::writeToLog("audio: the device sent a block of " + juce::String(load.oversized) +
+                             " frames to an engine prepared for " + juce::String(load.prepared) +
+                             "; played in pieces");
   if (load.late > 0) live += ", late blocks " + juce::String(load.late);
   // A streamed release the disk did not deliver in time goes quiet partway.
   // Said here, with what to do about it: the Loading tab's count is out of
