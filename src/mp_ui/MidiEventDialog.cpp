@@ -164,7 +164,8 @@ public:
     device_.addItem("Any console", 1);
     const auto& names = p.midiMap().devices().names();
     for (size_t i = 0; i < names.size(); ++i)
-      device_.addItem(juce::String(names[i]), static_cast<int>(i) + 2);
+      device_.addItem(juce::String(p.midiMap().devices().displayName(static_cast<int>(i) + 1)),
+                      static_cast<int>(i) + 2);
     device_.setSelectedId(b.source.deviceId + 1, juce::dontSendNotification);
     if (device_.getSelectedId() == 0) device_.setSelectedId(1, juce::dontSendNotification);
 
