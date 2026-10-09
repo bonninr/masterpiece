@@ -1,6 +1,7 @@
 #include "Panels.h"
 
 #include "MidiEventDialog.h"
+#include "Mobile.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,11 +19,16 @@ std::string PanelElement::key() const {
   return k + std::to_string(static_cast<long long>(id));
 }
 
-void splitFootage(const std::string& label, std::string& name, std::string& footage) {
+void splitFootage(const std::string& raw, std::string& name, std::string& footage) {
+  // A curly apostrophe or a prime for the foot mark reads as a plain one.
+  std::string label = raw;
+  for (const char* mark : {"\xE2\x80\x99", "\xE2\x80\xB2"})
+    for (size_t at; (at = label.find(mark)) != std::string::npos;)
+      label.replace(at, 3, "'");
   // A footage at the end: 8', 2 2/3', 1 1/3, 16; a mixture's ranks: IV, III-IV,
   // 4f, 3-5f.
   static const std::regex tail(
-      R"(^(.*?)[\s,]+((?:\d+\s+)?\d+(?:/\d+)?\s*(?:'|\x{2019}|\x{2032}|ft\.?)?|[IVX]+(?:\s*-\s*[IVX]+)?|\d+(?:\s*-\s*\d+)?\s*(?:f|fach|rangs?|rks?)\.?)\s*$)",
+      R"(^(.*?)[\s,]+((?:\d+\s+)?\d+(?:/\d+)?\s*(?:'|ft\.?)?|[IVX]+(?:\s*-\s*[IVX]+)?|\d+(?:\s*-\s*\d+)?\s*(?:f|fach|rangs?|rks?)\.?)\s*$)",
       std::regex::icase);
   std::smatch m;
   if (std::regex_match(label, m, tail) && !m[1].str().empty()) {
