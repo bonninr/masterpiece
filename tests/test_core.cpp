@@ -4066,6 +4066,44 @@ public:
                "a stop worked from a blower switch is never registration");
     }
 
+    // Two drawn knobs wired into one coupler node, as Ashton does it (#258):
+    // "Coup.. swell to great" (47) and "Coup.. Swell to great norm" (48) both
+    // drive 147, the switch the key action waits on, and the knob standing
+    // for 147 is 48. Both are the coupler.
+    {
+      mp::OrganModel a = m;
+      for (const auto& [id, name] : {std::pair<mp::Id, const char*>{47, "Coup.. swell to great"},
+                                     {48, "Coup.. Swell to great norm"}, {147, "Slider swell to great"}}) {
+        mp::Switch s;
+        s.switchId = id;
+        s.name = name;
+        if (id != 147) {
+          s.dispInstanceId = id;
+          s.clickable = true;
+        }
+        a.switches[id] = s;
+      }
+      for (mp::Id from : {48, 47}) {
+        mp::SwitchLinkage l;
+        l.sourceSwitchId = from;
+        l.destSwitchId = 147;
+        a.switchLinkages.push_back(l);
+      }
+      mp::KeyAction coupled;
+      coupled.sourceKeyboard = 2;
+      coupled.destKeyboard = 1;
+      coupled.conditionSwitchId = 147;
+      a.keyActions.push_back(coupled);
+      const auto both = PC::collect(a, [](mp::Id sw) { return sw == 147 ? mp::Id{48} : sw; });
+      bool first = false, second = false, node = false;
+      for (const auto& e : both) {
+        first = first || (e.kind == K::Switch && e.id == 47);
+        second = second || (e.kind == K::Switch && e.id == 48);
+        node = node || (e.kind == K::Switch && e.id == 147);
+      }
+      MP_CHECK(first && second && !node, "every knob wired into a coupler's node is the coupler");
+    }
+
     // A coupler worked through a delay, as Friesach's are (#90): knob 45
     // conditions a ramp whose top stage engages 145, the switch the key action
     // waits on. The coupler is registered as its knob.

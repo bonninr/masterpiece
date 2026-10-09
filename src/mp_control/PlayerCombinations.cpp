@@ -140,6 +140,19 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
       if (it != conditionOfControl.end()) delayedBy.emplace(st.controlledSwitchId, it->second);
     }
   }
+  // The drawn knobs wired straight into each switch. Ashton wires two into
+  // every coupler's node, "Coup.. swell to great" and "Coup.. Swell to great
+  // norm", and the knob standing for the node is the first one found: the
+  // one players draw was left out of every capture and cancel (#258). Each
+  // of them is the coupler.
+  std::unordered_map<Id, std::vector<Id>> knobsInto;
+  for (const auto& l : model.switchLinkages) {
+    if (l.sourceSwitchId == l.destSwitchId || !l.sourceWhenEngaged) continue;
+    const auto it = model.switches.find(l.sourceSwitchId);
+    if (it != model.switches.end() && it->second.dispInstanceId != 0 && it->second.clickable)
+      knobsInto[l.destSwitchId].push_back(l.sourceSwitchId);
+  }
+
   std::map<Id, Vote> couplers;
   auto addActions = [&](const std::vector<KeyAction>& actions, Id fallbackDivision) {
     for (const KeyAction& ka : actions) {
@@ -153,6 +166,9 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
                                       : divisionOfKeyboard(model, ka.sourceKeyboard);
       if (div == 0) div = fallbackDivision;
       couplers[sw].add(div);
+      if (const auto k = knobsInto.find(condition); k != knobsInto.end())
+        for (Id knob : k->second)
+          if (knob != sw && notRegistration.count(knob) == 0) couplers[knob].add(div);
     }
   };
   addActions(model.keyActions, 0);
