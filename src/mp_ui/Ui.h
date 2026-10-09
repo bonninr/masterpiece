@@ -169,6 +169,9 @@ public:
   // Ask for an organ file and load it. Shared with the first-run wizard.
   // `startIn` is where the chooser opens; empty is wherever it last was.
   void chooseAndLoadOrgan(const juce::File& startIn = {});
+  // Open: the favourite organs first, then the file dialog (#250). With no
+  // favourites it goes straight to the dialog.
+  void showOpenMenu();
 #if JUCE_IOS
   // A package that is one volume of a set: asks for the folder holding the
   // set, holds it, and opens the package again.

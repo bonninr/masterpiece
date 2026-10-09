@@ -1,4 +1,6 @@
 #include "Ui.h"
+
+#include <map>
 #include "Settings.h"
 #include "../mp_archive/OrganArchive.h"
 
@@ -484,6 +486,45 @@ void MasterpieceEditor::askForFolderOf(const juce::File& package, bool graphicsO
 }
 #endif
 
+void MasterpieceEditor::showOpenMenu() {
+  const auto& bank = proc_.favourites().organs;
+  const auto slots = bank.used();
+  if (slots.empty()) {
+    chooseAndLoadOrgan();
+    return;
+  }
+  // Two favourites can share a name -- one organ as a Hauptwerk and a
+  // GrandOrgue set -- and then the file tells them apart, as in Settings.
+  std::map<std::string, int> named;
+  for (int slot : slots) ++named[bank.at(slot).name];
+  juce::PopupMenu menu;
+  menu.addSectionHeader("Favourites");
+  for (int slot : slots) {
+    const auto& fav = bank.at(slot);
+    juce::String shown = juce::String::fromUTF8(fav.name.c_str());
+    if (named[fav.name] > 1) shown << "  (" << juce::File(juce::String(fav.target)).getFileName() << ")";
+    menu.addItem(slot, shown);
+  }
+  menu.addSeparator();
+  menu.addItem(-1, "Open another organ...");
+  menu.showMenuAsync(
+      juce::PopupMenu::Options().withMousePosition(),
+      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int chosen) {
+        if (safe == nullptr || chosen == 0) return;
+        if (chosen == -1) {
+          safe->chooseAndLoadOrgan();
+          return;
+        }
+        const juce::File f(juce::String(safe->proc_.favourites().organs.at(chosen).target));
+        if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
+          // A set on a drive not plugged in: said, and the favourite kept.
+          safe->top_.setStatus("Not found: " + f.getFullPathName());
+          return;
+        }
+        safe->loadOrgan(f);
+      });
+}
+
 void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // The extension pattern names the format because that IS the file name on
   // disk; the prompt does not, because the player is choosing an organ.
@@ -553,7 +594,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
 MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     : juce::AudioProcessorEditor(p),
       proc_(p),
-      top_(p, [this] { chooseAndLoadOrgan(); },
+      top_(p, [this] { showOpenMenu(); },
            [this] { if (onAudioSettings) onAudioSettings(); }),
       console_(p),
       jamb_(p),
