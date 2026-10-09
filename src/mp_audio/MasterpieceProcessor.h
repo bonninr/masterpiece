@@ -28,6 +28,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "VoicingEq.h"
 #include "Favourites.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
@@ -1007,6 +1008,13 @@ public:
   // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
   int addCurrentOrganToFavourites(int slot = 0);
 
+  // The organ's voicing EQ (Organ settings, Voicing EQ): off unless the
+  // player turns it on for this organ. Applied at once; saved with the organ.
+  const VoicingEqSettings& voicingEq() const { return voicingEqSettings_; }
+  void setVoicingEq(const VoicingEqSettings& s) {
+    voicingEqSettings_ = s;
+    voicingEq_.configure(s, sampleRate_);
+  }
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -1448,6 +1456,8 @@ private:
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
+  VoicingEqSettings voicingEqSettings_;
+  VoicingEq voicingEq_;
   Favourites favourites_;
   // Empty means the organ's default set.
   std::vector<PagePlace> pageWindows_;

@@ -12588,6 +12588,59 @@ public:
 };
 static ReleaseHoldTimeTest g_releaseHoldTime;
 
+#include "../src/mp_audio/VoicingEq.h"
+
+// The organ's voicing EQ: off and flat change nothing; a band lifts its own
+// octave and leaves the others; the settings line reads back.
+class VoicingEqTest final : public mp::test::Test {
+public:
+  VoicingEqTest() : Test("functional.audio.voicing-eq", Category::Functional) {}
+  void run() override {
+    constexpr double kRate = 48000.0;
+    // The level of a steady sine through the EQ, in dB, after it settles.
+    auto levelDb = [&](const mp::VoicingEqSettings& s, double hz) {
+      mp::VoicingEq eq;
+      eq.configure(s, kRate);
+      std::vector<float> x(48000);
+      for (size_t i = 0; i < x.size(); ++i)
+        x[i] = static_cast<float>(0.25 * std::sin(2.0 * 3.14159265358979323846 * hz * static_cast<double>(i) / kRate));
+      float* ch[1] = {x.data()};
+      eq.process(ch, 1, static_cast<int>(x.size()));
+      double peak = 0.0;
+      for (size_t i = x.size() / 2; i < x.size(); ++i) peak = std::max(peak, std::fabs(static_cast<double>(x[i])));
+      return 20.0 * std::log10(peak / 0.25);
+    };
+    mp::VoicingEqSettings flat;
+    flat.on = true;
+    MP_CHECK(std::fabs(levelDb(flat, 1000.0)) < 0.01, "on and flat leaves a tone as it was");
+
+    mp::VoicingEqSettings lift;
+    lift.on = true;
+    lift.bandsDb[5] = 12.0;  // 1 kHz
+    const double at1k = levelDb(lift, 1000.0), at125 = levelDb(lift, 125.0);
+    MP_CHECK(std::fabs(at1k - 12.0) < 0.5, "+12 dB at 1 kHz lifts a 1 kHz tone by 12 dB, got " + std::to_string(at1k));
+    MP_CHECK(std::fabs(at125) < 0.5, "and leaves 125 Hz alone, got " + std::to_string(at125));
+    MP_CHECK(std::fabs(mp::VoicingEq::responseDb(lift, 1000.0) - 12.0) < 0.5, "the drawn curve agrees");
+
+    mp::VoicingEqSettings off = lift;
+    off.on = false;
+    MP_CHECK(std::fabs(levelDb(off, 1000.0)) < 0.01, "off, the bands do nothing");
+
+    mp::VoicingEqSettings gain;
+    gain.on = true;
+    gain.gainDb = -6.0;
+    MP_CHECK(std::fabs(levelDb(gain, 440.0) + 6.0) < 0.1, "the output gain applies");
+
+    mp::VoicingEqSettings saved = lift;
+    saved.gainDb = -3.5;
+    saved.bandsDb[0] = -4.0;
+    mp::VoicingEqSettings back;
+    MP_CHECK(back.fromLine(saved.toLine()) && back.on && back.gainDb == -3.5 &&
+                 back.bandsDb[0] == -4.0 && back.bandsDb[5] == 12.0,
+             "the settings line reads back");
+  }
+};
+static VoicingEqTest g_voicingEq;
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/Panels.h"
 
