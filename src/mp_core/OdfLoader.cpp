@@ -550,6 +550,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         fieldInt(row, "PitchLvl_IncrementingContinuousControlID", "a1", 0);
     layer.pitchSensitivityHzPerUnit = fieldDouble(
         row, "PitchLvl_IncrementingCtsCtrlSensitivityHzPerCtrlUnit", "b1", 0.0);
+    layer.detuneCents = fieldDouble(row, "PitchLvl_DetuningPercentSemitones", "t", 0.0);
     // How hard the key is struck reaches the pipe's level, and how far this
     // layer trims the chest's tremulant depth. All four are stated per layer
     // and two thirds of the corpus fills them; unread they made every note

@@ -2087,6 +2087,8 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
   }
   // The player's pitch moves the whole organ, in either mode.
   targetHz *= pitchFactor();
+  // The layer's own detune, a celeste's beat (#261).
+  if (layer.detuneCents != 0.0) targetHz *= std::pow(2.0, layer.detuneCents / 1200.0);
 
   // Detuning rides on the target, not on the recorded pitch: it is a change
   // to what this pipe should sound, not a claim about what the file holds.
