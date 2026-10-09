@@ -487,10 +487,13 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   setSize(660, std::min(panel_->preferredHeight(660) + 26, 640));
   fitToScreen(*this);
   placing_ = false;
- #if JUCE_IOS
-  // Off the screen until shown (showFloating): see there.
+  // Off the screen until shown (showFloating). Built hidden, it is still a
+  // desktop window: on Linux, setUsingNativeTitleBar and setResizable above
+  // recreate it, and recreating brings it to the front, which maps the X11
+  // window however hidden the component is -- the window came up by itself
+  // at every start. On iOS a hidden window keeps a UIKit window that takes
+  // every touch. A window that is not on the desktop is neither.
   removeFromDesktop();
- #endif
 }
 
 void CombinationsWindow::resized() {
