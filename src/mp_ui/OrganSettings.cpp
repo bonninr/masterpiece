@@ -1,6 +1,7 @@
 #include "OrganSettings.h"
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_set>
 
 namespace mp::ui {
@@ -574,15 +575,130 @@ void StopsLoadPanel::resized() {
   list_.setSize(width, y);
 }
 
+// ------------------------------------------------------------ VoicingEqPanel
+
+VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(on_);
+  on_.onClick = [this] { apply(); };
+  addAndMakeVisible(flat_);
+  flat_.setTooltip("Every band and the gain back to 0 dB");
+  flat_.onClick = [this] {
+    for (auto& b : bands_) b.setValue(0.0, juce::dontSendNotification);
+    gain_.setValue(0.0, juce::dontSendNotification);
+    apply();
+  };
+  addAndMakeVisible(save_);
+  save_.setTooltip("Keep this EQ with this organ for the next time it is loaded");
+  save_.onClick = [this] {
+    save_.setButtonText(proc_.saveSettings() ? "Saved" : "Could not save");
+  };
+  addAndMakeVisible(note_);
+  note_.setText("A correction for the room and the speakers, on the whole organ. "
+                "Off unless turned on here; the organ as recorded is the reference.",
+                juce::dontSendNotification);
+  note_.setColour(juce::Label::textColourId, juce::Colour(0xff9aa3b2));
+  note_.setFont(juce::Font(juce::FontOptions(13.0f)));
+  auto style = [this](juce::Slider& sl, juce::Label& name, const juce::String& text) {
+    sl.setSliderStyle(juce::Slider::LinearVertical);
+    sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 46, 18);
+    sl.setRange(-VoicingEqSettings::kMaxDb, VoicingEqSettings::kMaxDb, 0.5);
+    sl.setDoubleClickReturnValue(true, 0.0);
+    sl.setTextValueSuffix(" dB");
+    sl.onValueChange = [this] { apply(); };
+    addAndMakeVisible(sl);
+    name.setText(text, juce::dontSendNotification);
+    name.setJustificationType(juce::Justification::centred);
+    name.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+    addAndMakeVisible(name);
+  };
+  for (int i = 0; i < VoicingEqSettings::kBands; ++i) {
+    const double f = VoicingEqSettings::kFrequencies[static_cast<size_t>(i)];
+    style(bands_[static_cast<size_t>(i)], bandNames_[static_cast<size_t>(i)],
+          f >= 1000.0 ? juce::String(f / 1000.0, 0) + "k" : juce::String(f, f < 40 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false));
+  }
+  style(gain_, gainName_, "Gain");
+  showValues();
+}
+
+void VoicingEqPanel::showValues() {
+  const auto& eq = proc_.voicingEq();
+  on_.setToggleState(eq.on, juce::dontSendNotification);
+  for (size_t i = 0; i < bands_.size(); ++i)
+    bands_[i].setValue(eq.bandsDb[i], juce::dontSendNotification);
+  gain_.setValue(eq.gainDb, juce::dontSendNotification);
+}
+
+void VoicingEqPanel::apply() {
+  VoicingEqSettings eq;
+  eq.on = on_.getToggleState();
+  for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
+  eq.gainDb = gain_.getValue();
+  proc_.setVoicingEq(eq);
+  save_.setButtonText("Save for this organ");
+  repaint(curveArea_);
+}
+
+void VoicingEqPanel::resized() {
+  auto r = getLocalBounds().reduced(12);
+  auto top = r.removeFromTop(28);
+  on_.setBounds(top.removeFromLeft(70));
+  save_.setBounds(top.removeFromRight(150).reduced(2, 0));
+  flat_.setBounds(top.removeFromRight(70).reduced(2, 0));
+  note_.setBounds(r.removeFromTop(36));
+  curveArea_ = r.removeFromTop(130).reduced(0, 4);
+  r.removeFromTop(6);
+  const int columns = VoicingEqSettings::kBands + 1;
+  const int w = r.getWidth() / columns;
+  auto names = r.removeFromTop(20);
+  for (int i = 0; i < columns; ++i) {
+    auto col = r.withX(r.getX() + i * w).withWidth(w);
+    auto name = names.withX(names.getX() + i * w).withWidth(w);
+    if (i < VoicingEqSettings::kBands) {
+      bandNames_[static_cast<size_t>(i)].setBounds(name);
+      bands_[static_cast<size_t>(i)].setBounds(col.reduced(2, 0));
+    } else {
+      gainName_.setBounds(name);
+      gain_.setBounds(col.reduced(2, 0));
+    }
+  }
+}
+
+void VoicingEqPanel::paint(juce::Graphics& g) {
+  g.fillAll(juce::Colour(0xff15171c));
+  // The resulting curve, 20 Hz to 20 kHz on a log scale, +-12 dB.
+  const auto a = curveArea_.toFloat();
+  g.setColour(juce::Colour(0xff1f232b));
+  g.fillRoundedRectangle(a, 4.0f);
+  g.setColour(juce::Colour(0xff3a4150));
+  g.drawHorizontalLine(juce::roundToInt(a.getCentreY()), a.getX(), a.getRight());
+  VoicingEqSettings eq;
+  eq.on = true;
+  for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
+  eq.gainDb = gain_.getValue();
+  juce::Path curve;
+  const int n = 160;
+  for (int i = 0; i <= n; ++i) {
+    const double hz = 20.0 * std::pow(1000.0, static_cast<double>(i) / n);
+    const double db = juce::jlimit(-18.0, 18.0, VoicingEq::responseDb(eq, hz));
+    const float x = a.getX() + a.getWidth() * static_cast<float>(i) / n;
+    const float y = a.getCentreY() - static_cast<float>(db / 18.0) * a.getHeight() * 0.5f;
+    if (i == 0) curve.startNewSubPath(x, y);
+    else curve.lineTo(x, y);
+  }
+  g.setColour(on_.getToggleState() ? juce::Colour(0xffe0a050) : juce::Colour(0xff6a7180));
+  g.strokePath(curve, juce::PathStrokeType(2.0f));
+}
+
 // -------------------------------------------------------- OrganSettingsWindow
 
 OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload,
                                          juce::AudioDeviceManager* devices)
-    : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }) {
+    : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }), eq_(p) {
   addAndMakeVisible(tabs_);
   engine_.onReload = [this] { reloadOnClose(); };
   tabs_.addTab("Loading", kBackground, &engineScroll_, false);
   tabs_.addTab("Stops and perspectives", kBackground, &stops_, false);
+  tabs_.addTab("Voicing EQ", kBackground, &eq_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices);
     tabs_.addTab("MIDI", kBackground, midi_.get(), false);

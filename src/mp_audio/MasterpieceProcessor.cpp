@@ -96,6 +96,8 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
   wind_.reset(model_);
   convolver_.prepare(spec);
+  voicingEq_.configure(voicingEqSettings_, sampleRate);
+  voicingEq_.reset();
 #else
   (void)samplesPerBlock;
 #endif
@@ -1333,6 +1335,8 @@ bool MasterpieceProcessor::saveSettings() const {
     if (masterPitchSetting() > 0.0)
       text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
+    if (voicingEqSettings_.on || !voicingEqSettings_.flat())
+      text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1351,6 +1355,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
+  voicingEqSettings_ = {};
+  voicingEq_.configure(voicingEqSettings_, sampleRate_);
   excludedStops_.clear();
   excludedPerspectives_.clear();
   excludedRanks_.clear();
@@ -1431,6 +1437,14 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
         pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
                                 tok[3].getIntValue(), tok[4].getIntValue(),
                                 tok.size() >= 6 ? tok[5].getIntValue() : -1});
+      continue;
+    }
+    if (key == "eq") {
+      VoicingEqSettings eq;
+      if (eq.fromLine(val.toStdString())) {
+        voicingEqSettings_ = eq;
+        voicingEq_.configure(eq, sampleRate_);
+      }
       continue;
     }
     if (key == "transpose") {
@@ -3741,6 +3755,12 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Each enclosure renders its own voices and filters only those, so an
   // unenclosed Great stays unenclosed while the Swell shades move.
   renderBuses(buffer);
+
+  // The player's voicing EQ for this organ, on the organ itself: before the
+  // room and the master fader. Off, or under "no DSP", it does nothing.
+  if (!graph_.engineSwitch.simpleWavOnly)
+    voicingEq_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
+                       buffer.getNumSamples());
 
   // Room before level: the convolver is part of the instrument's sound, and
   // the master fader is the last thing in the chain.
