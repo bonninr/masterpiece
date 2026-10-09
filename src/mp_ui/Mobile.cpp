@@ -404,6 +404,8 @@ void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
     window.addToDesktop();
   } else {
     window.setAlwaysOnTop(onTop);
+    // A window built hidden is kept off the desktop (CombinationsWindow).
+    if (show && !window.isOnDesktop()) window.addToDesktop();
   }
   window.setVisible(show);
   if (show) window.toFront(true);
