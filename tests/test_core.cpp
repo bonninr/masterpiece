@@ -4704,6 +4704,30 @@ public:
       MP_CHECK(net.lastChanges().size() == 1, "one switch moved");
     }
 
+    // --- a 1/7 link gated by a pulse at load (Oloron, #263) -------------
+    // "Enable Appels d'anches on load" (142) reaches the reed ventil (30)
+    // while the load pulse (108) is on. The pulse ending leaves the ventil
+    // drawn; the source letting go still takes it back.
+    {
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{142}, mp::Id{108}, mp::Id{30}}) addSwitch(m, id);
+      auto gated = wire(142, 30, 108);
+      gated.engageAction = 1;
+      gated.disengageAction = 7;
+      m.switchLinkages.push_back(gated);
+      mp::SwitchNetwork net;
+      net.reset(m);
+      net.set(142, true);
+      MP_CHECK(!net.engaged(30), "the option alone draws nothing until the organ loads");
+      net.set(108, true);
+      MP_CHECK(net.engaged(30), "the load pulse draws the ventil");
+      net.set(108, false);
+      MP_CHECK(net.engaged(30), "and the ventil stays drawn when the pulse ends");
+      net.set(108, true);
+      net.set(142, false);
+      MP_CHECK(!net.engaged(30), "a 7 still disengages when its own source lets go");
+    }
+
     // --- the shape Lemmer actually uses --------------------------------
     // The drawn drawstop and the logical switch drive EACH OTHER, so that
     // moving either moves both; the logical one then drives the node the key
