@@ -10938,6 +10938,87 @@ public:
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
 
+// A setter and pistons drawn on the console and wired to the organ's own, as
+// Klais Szikszo does it (#248): its drawn Set (10068) and the Set the
+// combinations answer to (12) follow each other, and its drawn GC (10069)
+// drives the General cancel piston (100). Pressing the drawn ones has to work
+// as pressing the real ones.
+class WiredSetterTest final : public mp::test::Test {
+public:
+  WiredSetterTest() : Test("functional.control.wired-setter", Category::Functional) {}
+
+  static void sw(juce::String& x, int id, const char* name, bool latching, int code) {
+    x << "<Switch><SwitchID>" << id << "</SwitchID><Name>" << name << "</Name><Latching>"
+      << (latching ? "Y" : "N") << "</Latching><Clickable>Y</Clickable>";
+    if (code != 0) x << "<DefaultInputOutputSwitchAsgnCode>" << code << "</DefaultInputOutputSwitchAsgnCode>";
+    x << "</Switch>";
+  }
+  static void link(juce::String& x, int from, int to) {
+    x << "<SwitchLinkage><SourceSwitchID>" << from << "</SourceSwitchID><DestSwitchID>" << to
+      << "</DestSwitchID><EngageLinkActionCode>1</EngageLinkActionCode>"
+         "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>";
+  }
+
+  void run() override {
+    const juce::File fixture(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    juce::String xml = fixture.loadFileAsString();
+    juce::String extra;
+    sw(extra, 12, "Comb: Capture mode", true, 12);
+    sw(extra, 10068, "CustPg1_Setter", true, 0);
+    sw(extra, 100, "Comb piston: General cancel", false, 100);
+    sw(extra, 10069, "CustPg1_GC", false, 0);
+    xml = xml.replaceFirstOccurrenceOf("<ObjectList ObjectType=\"Switch\">",
+                                       "<ObjectList ObjectType=\"Switch\">" + extra);
+    juce::String links = "<ObjectList ObjectType=\"SwitchLinkage\">";
+    link(links, 10068, 12);
+    link(links, 12, 10068);
+    link(links, 10069, 100);
+    links << "</ObjectList>";
+    juce::String cancel =
+        "<Combination><CombinationID>1202</CombinationID><Name>General cancel</Name>"
+        "<CombinationTypeCode>6</CombinationTypeCode><ActivatingSwitchID>100</ActivatingSwitchID>"
+        "<CanEngageControlledSwitches>N</CanEngageControlledSwitches>"
+        "<AllowsCapture>N</AllowsCapture></Combination>";
+    xml = xml.replaceFirstOccurrenceOf("<ObjectList ObjectType=\"Combination\">",
+                                       links + "<ObjectList ObjectType=\"Combination\">" + cancel);
+    xml = xml.replaceFirstOccurrenceOf(
+        "<ObjectList ObjectType=\"CombinationElement\">",
+        "<ObjectList ObjectType=\"CombinationElement\"><CombinationElement>"
+        "<CombinationElementID>1302</CombinationElementID><CombinationID>1202</CombinationID>"
+        "<ControlledSwitchID>1101</ControlledSwitchID><InitialStoredStateIsEngaged>N</InitialStoredStateIsEngaged>"
+        "</CombinationElement>");
+
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-wired-setter");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto odf = dir.getChildFile("wired.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+
+    mp::MasterpieceProcessor proc;
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the wired organ loads");
+    MP_CHECK(proc.organModel().switchLinkages.size() == 3, "with its three links");
+
+    proc.setSwitchEngaged(10068, true);
+    MP_CHECK(proc.switchEngaged(12) && proc.captureMode(), "the drawn Set puts the combinations into capture");
+    proc.setSwitchEngaged(10068, false);
+    MP_CHECK(!proc.captureMode(), "and lets them out");
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.switchEngaged(10068), "the window's Set lights the drawn one");
+    proc.setCaptureMode(false);
+
+    proc.setSwitchEngaged(1101, true);
+    MP_CHECK(proc.switchEngaged(1101), "the stop is drawn");
+    proc.setSwitchEngaged(10069, true);
+    proc.setSwitchEngaged(10069, false);
+    MP_CHECK(!proc.switchEngaged(1101), "the drawn GC cancels it through the General cancel piston");
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.combinationFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static WiredSetterTest g_wiredSetter;
+
 // A GrandOrgue organ's own Set and GC are the player's (#248): Set in the
 // Combinations window lights the console's Set, and the console's GC is the
 // window's General Cancel.
