@@ -44,6 +44,12 @@ public:
     if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, false);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, false);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, false);
+    // Plugged into a socket no saved device names: the keyboards were moved,
+    // to other ports or another controller, and the name decides (#240).
+    if (found == 0 && !identifier.empty() && !named(identifier)) {
+      found = find([&](const Device& d) { return d.name == name; }, false);
+      if (found == 0) found = find([&](const Device& d) { return sameConsole(d.name, name); }, false);
+    }
     if (found != 0) {
       auto& d = devices_[static_cast<size_t>(found) - 1];
       d.present = true;
@@ -70,6 +76,13 @@ public:
     // this run. Two saved devices are two, "X" and "X-1" as much as any: read
     // from one map, they would otherwise become one.
     if (found == 0) found = find([&](const Device& d) { return d.present && fits(d, identifier) && sameConsole(d.name, name); }, true);
+    // A saved socket no open device is plugged into: the keyboards were
+    // moved, and an open device of that name takes the mapping (#240).
+    if (found == 0 && !identifier.empty() && !openAt(identifier)) {
+      found = find([&](const Device& d) { return d.present && d.name == name; }, true);
+      if (found == 0)
+        found = find([&](const Device& d) { return d.present && sameConsole(d.name, name); }, true);
+    }
     if (found != 0) return found;
     devices_.push_back({name, identifier, false});
     names_.push_back(name);
@@ -154,6 +167,19 @@ private:
   // alike their names.
   static bool fits(const Device& d, const std::string& identifier) {
     return identifier.empty() || d.identifier.empty() || d.identifier == identifier;
+  }
+
+  // Whether a saved device, open or not, names this identifier.
+  bool named(const std::string& identifier) const {
+    for (const auto& d : devices_)
+      if (d.identifier == identifier) return true;
+    return false;
+  }
+  // Whether a device open in this run is plugged in there.
+  bool openAt(const std::string& identifier) const {
+    for (const auto& d : devices_)
+      if (d.present && d.identifier == identifier) return true;
+    return false;
   }
 
   template <typename Pred>

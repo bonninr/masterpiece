@@ -11503,6 +11503,34 @@ public:
                "and so is the other");
     }
     {
+      // The same two keyboards moved to another USB controller (the box,
+      // 2026-10-09: 1d.0 to 1a.0): no saved socket is in use, so the names
+      // decide, whether the map is read before the devices open or after.
+      mp::MidiDeviceMap saved;
+      const int left = saved.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0");
+      const int right = saved.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.2/0");
+      mp::MidiDeviceMap before;
+      const int l1 = before.idFor(saved.nameFor(left), saved.identifierFor(left));
+      const int r1 = before.idFor(saved.nameFor(right), saved.identifierFor(right));
+      MP_CHECK(before.claim("GarageKey MIDI 1", "usb-0000:00:1a.0-1.1.1/0") == l1 &&
+                   before.claim("GarageKey MIDI 1", "usb-0000:00:1a.0-1.1.2/0") == r1,
+               "moved keyboards keep their mappings when the map is read first");
+      mp::MidiDeviceMap after;
+      const int l2 = after.claim("GarageKey MIDI 1", "usb-0000:00:1a.0-1.1.1/0");
+      const int r2 = after.claim("GarageKey MIDI 1", "usb-0000:00:1a.0-1.1.2/0");
+      MP_CHECK(after.idFor(saved.nameFor(left), saved.identifierFor(left)) == l2 &&
+                   after.idFor(saved.nameFor(right), saved.identifierFor(right)) == r2,
+               "and when the devices open first");
+      // One keyboard still in its saved socket keeps it; the name never
+      // takes a device whose socket a saved mapping names.
+      mp::MidiDeviceMap partial;
+      const int l3 = partial.idFor(saved.nameFor(left), saved.identifierFor(left));
+      const int r3 = partial.idFor(saved.nameFor(right), saved.identifierFor(right));
+      MP_CHECK(partial.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.2/0") == r3 &&
+                   partial.claim("GarageKey MIDI 1", "usb-0000:00:1a.0-1.1.5/0") == l3,
+               "a keyboard in its saved socket keeps it, the moved one takes the other");
+    }
+    {
       // What a person reads: twins by their USB socket, or numbered.
       mp::MidiDeviceMap m;
       const int a = m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0");
