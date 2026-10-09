@@ -490,8 +490,11 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // On a phone or tablet an organ comes as one package: a RAR or a .orgue.
   // A loose installation is thousands of files, which is slow to bring onto
   // the device and slow to read there through the system's document layer.
+  // Where the last organ was chosen from, unless the caller names a folder:
+  // the next organ is usually beside the last one (#251).
+  const juce::File start = startIn != juce::File() ? startIn : proc_.openFolder();
   chooser_ = std::make_unique<juce::FileChooser>(
-      kMobile ? "Choose an organ package" : "Choose an organ definition file", startIn,
+      kMobile ? "Choose an organ package" : "Choose an organ definition file", start,
       kMobile ? "*.rar;*.orgue"
               : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
   auto flags = juce::FileBrowserComponent::openMode |
@@ -528,6 +531,9 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
                          #endif
                           if (f.existsAsFile()) {
                             if (!isMobilePackage(f.getFileName())) return;
+                           #if !JUCE_IOS && !JUCE_ANDROID
+                            proc_.setOpenFolder(f.getParentDirectory());
+                           #endif
                             loadOrgan(f);
                             return;
                           }
