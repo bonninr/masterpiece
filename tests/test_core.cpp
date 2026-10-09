@@ -12437,3 +12437,123 @@ public:
   }
 };
 static ReleaseHoldTimeTest g_releaseHoldTime;
+
+#ifdef MP_TEST_HAS_AUDIO
+#include "../src/mp_ui/Panels.h"
+
+// Panels (#237): the organ as sections, a footage on its own line, and a
+// layout that reads back as it was saved.
+class PanelsTest final : public mp::test::Test {
+public:
+  PanelsTest() : Test("functional.ui.panels", Category::Functional) {}
+  void run() override {
+    using mp::ui::splitFootage;
+    std::string name, foot;
+    splitFootage("Trompete harm. 8'", name, foot);
+    MP_CHECK(name == "Trompete harm." && foot == "8'", "a footage with a prime: " + name + " / " + foot);
+    splitFootage("Nazard 2 2/3'", name, foot);
+    MP_CHECK(name == "Nazard" && foot == "2 2/3'", "a fractional footage: " + name + " / " + foot);
+    splitFootage("Mixtur IV", name, foot);
+    MP_CHECK(name == "Mixtur" && foot == "IV", "a mixture's ranks: " + name + " / " + foot);
+    splitFootage("Tremolo", name, foot);
+    MP_CHECK(name == "Tremolo" && foot.empty(), "a name with no footage stays whole");
+
+    mp::ui::PanelLayout l;
+    l.sectionsOff = {"d802", "controls"};
+    l.hidden = {"s901", "p55"};
+    l.detached = true;
+    l.x = 10; l.y = 20; l.w = 1024; l.h = 600;
+    l.scheme = 2;
+    mp::ui::PanelLayout back;
+    back.fromText(l.toText());
+    MP_CHECK(back == l, "a panel's layout reads back as it was saved");
+
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-panels");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const auto odf = defs.getChildFile("two.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Two manuals</Identification_Name>"
+        "<Identification_UniqueOrganID>33</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>A</Name></Rank><Rank><RankID>202</RankID><Name>B</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>401</LayerID><PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "<Keyboard><KeyboardID>702</KeyboardID><Name>II</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division>"
+        "<Division><DivisionID>802</DivisionID><Name>S</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        "<KeyAction><SourceKeyboardID>702</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        // II to I: manual I also plays division S while switch 1103 is drawn.
+        "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>802</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys>"
+        "<ConditionSwitchID>1103</ConditionSwitchID></KeyAction>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>901</StopID><Name>A</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>901</StopID><RankID>201</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>902</StopID><RankID>202</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1103</SwitchID><Name>II to I</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList></Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the two-manual organ loads");
+    const auto sections = mp::ui::panelSections(proc);
+    MP_CHECK(sections.size() >= 2, "a section per division, got " + std::to_string(sections.size()));
+    if (sections.size() >= 2) {
+      MP_CHECK(sections[0].title == "G" && sections[1].title == "S",
+               "in the organ's order, named as the organ names them");
+      MP_CHECK(sections[0].elements.size() == 1 && sections[0].elements[0].id == 901,
+               "each division holds its own stop");
+      MP_CHECK(sections[1].elements.size() == 1 && sections[1].elements[0].id == 902,
+               "and the other division its own");
+    }
+    proc.releaseResources();
+    root.deleteRecursively();
+  }
+};
+static PanelsTest g_panels;
+#endif  // MP_TEST_HAS_AUDIO
