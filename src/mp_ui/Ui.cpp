@@ -639,6 +639,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   addAndMakeVisible(pageTabs_);
   pageTabs_.addChangeListener(this);
   pageTabs_.onPopup = [this](int page) {
+    if (page >= console_.pageCount()) return;  // a panel's tab
     if (!pagesCanFloat()) return;
     juce::PopupMenu menu;
     const bool open = pageWindowFor(page) != nullptr;
@@ -755,6 +756,9 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   combinationsButton_.setTooltip("Generals, divisionals, the stepper and the "
                                  "combination set, in a window of their own");
   combinationsButton_.onClick = [this] { toggleCombinations(); };
+  addAndMakeVisible(panelsButton_);
+  panelsButton_.setTooltip("Big-button panels of this organ, for touchscreens: add, delete");
+  panelsButton_.onClick = [this] { showPanelsMenu(); };
 
   addAndMakeVisible(tuningButton_);
   tuningButton_.setTooltip("Temperament, pitch and transposer for this organ");
@@ -1091,7 +1095,7 @@ private:
 
 void MasterpieceEditor::addPopOutIcons() {
   if (!pagesCanFloat()) return;
-  for (int i = 0; i < pageTabs_.getNumTabs(); ++i) {
+  for (int i = 0; i < console_.pageCount() && i < pageTabs_.getNumTabs(); ++i) {
     auto* icon = new PopOutIcon();
     icon->onClick = [this, i] {
       if (auto* w = pageWindowFor(i)) closePageWindow(w);
@@ -1329,10 +1333,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
       juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
       " ms");
 
-  pageTabs_.clearTabs();
-  for (int i = 0; i < console_.pageCount(); ++i)
-    pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
-  if (console_.pageCount() > 0) pageTabs_.setCurrentTabIndex(0, false);
+  loadPanels();
+  rebuildPageTabs();
+  if (pageTabs_.getNumTabs() > 0) pageTabs_.setCurrentTabIndex(0, false);
   addPopOutIcons();
   restorePageWindows();
 
@@ -1525,6 +1528,7 @@ void MasterpieceEditor::resized() {
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
   toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
   combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
+  panelsButton_.setBounds(bar.removeFromRight(76).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
@@ -1535,7 +1539,7 @@ void MasterpieceEditor::resized() {
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
-  pageTabs_.setVisible(showingConsole_ && console_.pageCount() > 1);
+  pageTabs_.setVisible(showingConsole_ && (console_.pageCount() > 1 || !panelTabs_.empty()));
   if (pageTabs_.isVisible()) pageTabs_.setBounds(r.removeFromTop(28));
 
   manual_.setVisible(showingKeyboard_ && manual_.getNumItems() > 1);
@@ -1557,6 +1561,18 @@ void MasterpieceEditor::resized() {
   expression_.setVisible(swellVisible);
   if (swellVisible) expression_.setBounds(r.removeFromRight(120));
 
+  for (size_t i = 0; i < panels_.size(); ++i)
+    if (panelWindows_[i] == nullptr) panels_[i]->setVisible(false);
+  if (showingConsole_ && showingPanel_ >= 0 &&
+      showingPanel_ < static_cast<int>(panels_.size()) &&
+      panelWindows_[static_cast<size_t>(showingPanel_)] == nullptr) {
+    consoleView_.setVisible(false);
+    jambView_.setVisible(false);
+    auto& panel = *panels_[static_cast<size_t>(showingPanel_)];
+    panel.setBounds(r);
+    panel.setVisible(true);
+    return;
+  }
   consoleView_.setVisible(showingConsole_);
   jambView_.setVisible(!showingConsole_);
   if (showingConsole_) {
@@ -1603,6 +1619,130 @@ void MasterpieceEditor::resized() {
   }
 }
 
+// ---- panels (#237) ---------------------------------------------------------
+
+void MasterpieceEditor::loadPanels() {
+  for (auto& w : panelWindows_) w.reset();
+  for (auto& p : panels_) removeChildComponent(p.get());
+  panels_.clear();
+  panelWindows_.clear();
+  showingPanel_ = -1;
+  const auto layouts = loadPanelLayouts(proc_);
+  for (size_t i = 0; i < layouts.size(); ++i) {
+    panels_.push_back(std::make_unique<PanelView>(proc_, static_cast<int>(i), layouts[i]));
+    panelWindows_.emplace_back();
+    auto* view = panels_.back().get();
+    const int index = static_cast<int>(i);
+    view->onSave = [this] { savePanels(); };
+    view->onDetachToggle = [this, index] {
+      setPanelDetached(index, panelWindows_[static_cast<size_t>(index)] == nullptr);
+    };
+    addChildComponent(*view);
+    if (layouts[i].detached && !kMobile) setPanelDetached(index, true);
+  }
+}
+
+void MasterpieceEditor::rebuildPageTabs() {
+  pageTabs_.clearTabs();
+  for (int i = 0; i < console_.pageCount(); ++i)
+    pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
+  panelTabs_.clear();
+  for (size_t i = 0; i < panels_.size(); ++i)
+    if (panelWindows_[i] == nullptr) {
+      panelTabs_.push_back(static_cast<int>(i));
+      pageTabs_.addTab("Panel " + juce::String(static_cast<int>(i) + 1),
+                       juce::Colour(0xff3a3326), pageTabs_.getNumTabs());
+    }
+  if (showingPanel_ >= 0 &&
+      std::find(panelTabs_.begin(), panelTabs_.end(), showingPanel_) == panelTabs_.end())
+    showingPanel_ = -1;
+  // The tabs were made again: their pop-out icons with them.
+  addPopOutIcons();
+  resized();
+}
+
+void MasterpieceEditor::savePanels() {
+  std::vector<PanelLayout> layouts;
+  for (size_t i = 0; i < panels_.size(); ++i) {
+    if (auto& w = panelWindows_[i]; w != nullptr) panels_[i]->setWindowBounds(w->getBounds());
+    layouts.push_back(panels_[i]->layout());
+  }
+  if (savePanelLayouts(proc_, layouts))
+    for (auto& p : panels_) p->markSaved();
+}
+
+void MasterpieceEditor::addPanel() {
+  if (static_cast<int>(panels_.size()) >= kMaxPanels) return;
+  const int index = static_cast<int>(panels_.size());
+  panels_.push_back(std::make_unique<PanelView>(proc_, index, PanelLayout{}));
+  panelWindows_.emplace_back();
+  auto* view = panels_.back().get();
+  view->onSave = [this] { savePanels(); };
+  view->onDetachToggle = [this, index] {
+    setPanelDetached(index, panelWindows_[static_cast<size_t>(index)] == nullptr);
+  };
+  addChildComponent(*view);
+  savePanels();
+  rebuildPageTabs();
+  // Straight to the new panel's tab.
+  for (int t = 0; t < pageTabs_.getNumTabs(); ++t)
+    if (t >= console_.pageCount() && panelTabs_[static_cast<size_t>(t - console_.pageCount())] == index)
+      pageTabs_.setCurrentTabIndex(t, true);
+}
+
+void MasterpieceEditor::deletePanel(int index) {
+  if (index < 0 || index >= static_cast<int>(panels_.size())) return;
+  panelWindows_[static_cast<size_t>(index)].reset();
+  removeChildComponent(panels_[static_cast<size_t>(index)].get());
+  panels_.erase(panels_.begin() + index);
+  panelWindows_.erase(panelWindows_.begin() + index);
+  showingPanel_ = -1;
+  // The remaining panel is renumbered; its callbacks name its new place.
+  for (size_t i = 0; i < panels_.size(); ++i) {
+    const int at = static_cast<int>(i);
+    panels_[i]->onDetachToggle = [this, at] {
+      setPanelDetached(at, panelWindows_[static_cast<size_t>(at)] == nullptr);
+    };
+  }
+  savePanels();
+  rebuildPageTabs();
+}
+
+void MasterpieceEditor::setPanelDetached(int index, bool detached) {
+  if (index < 0 || index >= static_cast<int>(panels_.size()) || kMobile) return;
+  auto& view = *panels_[static_cast<size_t>(index)];
+  auto& window = panelWindows_[static_cast<size_t>(index)];
+  if (detached && window == nullptr) {
+    removeChildComponent(&view);
+    view.setDetached(true);
+    window = std::make_unique<PanelWindow>(
+        juce::String(proc_.organModel().organName) + " - Panel " + juce::String(index + 1), view);
+    window->onClose = [this, index] { setPanelDetached(index, false); };
+    view.setVisible(true);
+    window->setVisible(true);
+  } else if (!detached && window != nullptr) {
+    view.setWindowBounds(window->getBounds());
+    window->clearContentComponent();
+    window.reset();
+    view.setDetached(false);
+    addChildComponent(view);
+  }
+  rebuildPageTabs();
+}
+
+void MasterpieceEditor::showPanelsMenu() {
+  juce::PopupMenu menu;
+  menu.addItem(1, "Add a panel", static_cast<int>(panels_.size()) < kMaxPanels);
+  for (size_t i = 0; i < panels_.size(); ++i)
+    menu.addItem(100 + static_cast<int>(i), "Delete panel " + juce::String(static_cast<int>(i) + 1));
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&panelsButton_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int r) {
+                       if (safe == nullptr || r == 0) return;
+                       if (r == 1) safe->addPanel();
+                       else safe->deletePanel(r - 100);
+                     });
+}
+
 void MasterpieceEditor::showConsolePage(int oneBased) {
   const int index = oneBased - 1;
   if (index < 0 || index >= console_.pageCount()) return;
@@ -1610,7 +1750,15 @@ void MasterpieceEditor::showConsolePage(int oneBased) {
 }
 
 void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
-  if (src == &pageTabs_) console_.setPage(pageTabs_.getCurrentTabIndex());
+  if (src == &pageTabs_) {
+    const int tab = pageTabs_.getCurrentTabIndex();
+    const int pages = console_.pageCount();
+    showingPanel_ = tab >= pages && tab - pages < static_cast<int>(panelTabs_.size())
+                        ? panelTabs_[static_cast<size_t>(tab - pages)]
+                        : -1;
+    if (showingPanel_ < 0) console_.setPage(tab);
+    resized();
+  }
 }
 
 void MasterpieceEditor::timerCallback() {
