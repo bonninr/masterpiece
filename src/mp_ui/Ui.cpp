@@ -1608,6 +1608,8 @@ void MasterpieceEditor::rebuildPageTabs() {
   if (showingPanel_ >= 0 &&
       std::find(panelTabs_.begin(), panelTabs_.end(), showingPanel_) == panelTabs_.end())
     showingPanel_ = -1;
+  // The tabs were made again: their pop-out icons with them.
+  addPopOutIcons();
   resized();
 }
 

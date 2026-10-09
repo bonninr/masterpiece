@@ -20,8 +20,10 @@ std::string PanelElement::key() const {
 }
 
 void splitFootage(const std::string& raw, std::string& name, std::string& footage) {
-  // A curly apostrophe or a prime for the foot mark reads as a plain one.
-  std::string label = raw;
+  // A curly apostrophe or a prime for the foot mark reads as a plain one, and
+  // a jamb number in front ("51. Tremulant") is the console's, not the name's.
+  static const std::regex number(R"(^\s*\d+[a-z]?\.\s+)", std::regex::icase);
+  std::string label = std::regex_replace(raw, number, "");
   for (const char* mark : {"\xE2\x80\x99", "\xE2\x80\xB2"})
     for (size_t at; (at = label.find(mark)) != std::string::npos;)
       label.replace(at, 3, "'");
@@ -47,6 +49,50 @@ std::string lower(std::string s) {
   return s;
 }
 
+// The division a keyboard plays: its own hint, the division that lists it, or
+// the division its unconditional key action reaches.
+Id keyboardDivision(const OrganModel& m, Id keyboard) {
+  if (const auto kb = m.keyboards.find(keyboard);
+      kb != m.keyboards.end() && kb->second.primaryDivisionHint != 0)
+    return kb->second.primaryDivisionHint;
+  for (const auto& [id, d] : m.divisions)
+    if (std::find(d.keyboardIds.begin(), d.keyboardIds.end(), keyboard) != d.keyboardIds.end())
+      return id;
+  for (const auto& a : m.keyActions)
+    if (a.conditionSwitchId == 0 && static_cast<Id>(a.sourceKeyboard) == keyboard &&
+        !a.destIsKeyboard && a.destDivision != 0)
+      return static_cast<Id>(a.destDivision);
+  return 0;
+}
+
+// The division of manual `n` (0 the pedal): the keyboard with that default
+// assignment, or a division numbered so.
+Id manualDivision(const OrganModel& m, int n) {
+  for (const auto& [id, kb] : m.keyboards)
+    if (kb.assignmentCode == n + 1)
+      if (const Id d = keyboardDivision(m, id); d != 0) return d;
+  for (const auto& [id, d] : m.divisions)
+    if (d.manualNumber == n && n > 0) return id;
+  return 0;
+}
+
+// A coupler named for what it joins: "I/P", "II/I", "III / II". The part
+// after the slash is the keyboard it couples onto. -1 when the name is not
+// one.
+int couplerTarget(const std::string& name) {
+  static const std::regex coupler(R"(^\s*(I{1,3}|IV|V|VI)\s*/\s*(I{1,3}|IV|V|VI|P|Ped\.?|Pedal)\s*$)",
+                                  std::regex::icase);
+  std::smatch c;
+  if (!std::regex_match(name, c, coupler)) return -1;
+  const std::string to = c[2].str();
+  if (std::tolower(static_cast<unsigned char>(to[0])) == 'p') return 0;
+  std::string r = to;
+  for (auto& ch : r) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  static const std::map<std::string, int> roman{{"i", 1}, {"ii", 2}, {"iii", 3}, {"iv", 4}, {"v", 5}, {"vi", 6}};
+  const auto it = roman.find(r);
+  return it == roman.end() ? -1 : it->second;
+}
+
 // The division a coupler feeds: the key action it enables, followed through
 // up to a few switch linkages, because the drawn knob is often upstream of the
 // switch the key action names.
@@ -57,10 +103,8 @@ Id couplerDivision(const OrganModel& m, Id switchId) {
     for (Id sw : frontier)
       for (const auto& a : m.keyActions) {
         if (a.conditionSwitchId != sw) continue;
-        if (!a.destIsKeyboard && a.destDivision != 0) return static_cast<Id>(a.destDivision);
-        const auto kb = m.keyboards.find(static_cast<Id>(a.destKeyboard));
-        if (kb != m.keyboards.end() && kb->second.primaryDivisionHint != 0)
-          return kb->second.primaryDivisionHint;
+        // On the jamb of the keyboard it couples onto: the key action's source.
+        if (const Id d = keyboardDivision(m, static_cast<Id>(a.sourceKeyboard)); d != 0) return d;
       }
     std::vector<Id> next;
     for (Id sw : frontier)
@@ -70,6 +114,24 @@ Id couplerDivision(const OrganModel& m, Id switchId) {
     frontier.swap(next);
   }
   return 0;
+}
+
+// Whether a switch, or a switch its linkages drive (a few hops on), is one of
+// `targets`. The knob a player draws is often upstream of the switch that
+// does the work.
+bool reaches(const OrganModel& m, Id switchId, const std::set<Id>& targets) {
+  std::vector<Id> frontier{switchId};
+  std::set<Id> seen{switchId};
+  for (int hop = 0; hop < 5 && !frontier.empty(); ++hop) {
+    std::vector<Id> next;
+    for (Id sw : frontier) {
+      if (targets.count(sw) != 0) return true;
+      for (const auto& l : m.switchLinkages)
+        if (l.sourceSwitchId == sw && seen.insert(l.destSwitchId).second) next.push_back(l.destSwitchId);
+    }
+    frontier.swap(next);
+  }
+  return false;
 }
 
 int romanValue(const std::string& s) {
@@ -87,10 +149,15 @@ Id tremulantDivision(const OrganModel& m, const std::string& name) {
   std::istringstream words(name);
   std::string w, last;
   while (words >> w) last = w;
-  if (const int v = romanValue(last); v > 0)
-    for (const auto& [id, d] : m.divisions)
-      if (d.manualNumber == v) return id;
-  return 0;
+  int manual = romanValue(last);
+  // "2Man", "Man 3", "Man. II": a manual number beside the word.
+  static const std::regex man(R"((\d)\s*man|man\.?\s*(\d|[ivx]+))", std::regex::icase);
+  std::smatch mm;
+  if (manual == 0 && std::regex_search(name, mm, man))
+    manual = mm[1].matched ? std::stoi(mm[1].str())
+             : std::isdigit(static_cast<unsigned char>(mm[2].str()[0])) ? std::stoi(mm[2].str())
+                                                                         : romanValue(mm[2].str());
+  return manual > 0 ? manualDivision(m, manual) : 0;
 }
 
 }  // namespace
@@ -115,13 +182,16 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   };
 
   // Stops, in the order of the stop list: by division, then as the organ
-  // numbers them. A stop whose ranks ship no pipes would be a rectangle that
-  // does nothing, and is left out.
+  // numbers them.
   std::set<Id> stopSwitches;
   for (const auto& st : p.stopList()) {
     if (const auto s = m.stops.find(st.stopId); s != m.stops.end())
       stopSwitches.insert(s->second.controllingSwitchId);
-    if (!st.playable) continue;
+    // A stop whose ranks ship no pipes would be a rectangle that does nothing;
+    // a stop with no ranks at all is a coupler or a tremulant, and is kept.
+    const auto model = m.stops.find(st.stopId);
+    const bool control = model != m.stops.end() && model->second.ranks.empty();
+    if (!st.playable && !control) continue;
     PanelElement e;
     e.kind = PanelElement::Kind::Stop;
     e.id = st.stopId;
@@ -137,17 +207,29 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   other.kind = PanelSection::Kind::Other;
   other.key = "other";
   other.title = "Other";
+  // A coupler or tremulant is a drawn, latching knob, flagged as one (custom
+  // organs) or wired to a key action or a tremulant (full definitions).
+  std::set<Id> tremulantSwitches;
+  for (const auto& [id, t] : m.tremulants)
+    if (t.controllingSwitchId != 0) tremulantSwitches.insert(t.controllingSwitchId);
   for (const bool tremulants : {false, true})
     for (Id id : switchIds) {
       const auto& sw = m.switches.at(id);
-      if ((tremulants ? !sw.isTremulant : !sw.isCoupler) || !sw.clickable ||
-          stopSwitches.count(id) != 0)
-        continue;
+      if (!sw.clickable || !sw.latching || stopSwitches.count(id) != 0) continue;
+      const bool drawn = sw.dispInstanceId != 0 || sw.isCoupler || sw.isTremulant;
+      // A leading underscore marks a switch the organ keeps to itself.
+      if (!drawn || sw.name.empty() || sw.name[0] == '_') continue;
       PanelElement e;
       e.kind = PanelElement::Kind::Switch;
       e.id = id;
       splitFootage(sw.name, e.name, e.footage);
-      const Id div = tremulants ? tremulantDivision(m, sw.name) : couplerDivision(m, id);
+      const bool isTrem = sw.isTremulant || reaches(m, id, tremulantSwitches);
+      Id coupled = isTrem ? 0 : couplerDivision(m, id);
+      if (!isTrem && coupled == 0)
+        if (const int onto = couplerTarget(e.name); onto >= 0) coupled = manualDivision(m, onto);
+      const bool isCoupler = sw.isCoupler || coupled != 0;
+      if (tremulants ? !isTrem : !isCoupler) continue;
+      const Id div = tremulants ? tremulantDivision(m, sw.name) : coupled;
       if (div != 0 && m.divisions.count(div) != 0)
         sectionFor(div).elements.push_back(std::move(e));
       else
@@ -211,6 +293,30 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       crescendo = id;
     }
   if (steps >= 3) addControl(crescendo, "Crescendo");
+
+  // A division's own prefix, repeated on its stops ("HW Principal", "SW
+  // Viola"), says nothing inside that division's column. The short capitalised
+  // first word that most of the column's elements share is dropped from those
+  // that carry it; a coupler named "III / I" keeps its name.
+  for (auto& sec : divisions) {
+    std::map<std::string, size_t> firsts;
+    auto firstWord = [](const std::string& n) {
+      const auto space = n.find(' ');
+      if (space == std::string::npos || space == 0 || space > 3) return std::string();
+      const std::string w = n.substr(0, space);
+      return std::all_of(w.begin(), w.end(), [](char ch) { return std::isupper(static_cast<unsigned char>(ch)) != 0; })
+                 ? w : std::string();
+    };
+    for (const auto& e : sec.elements)
+      if (const auto w = firstWord(e.name); !w.empty()) ++firsts[w];
+    std::string prefix;
+    size_t most = 0;
+    for (const auto& [w, n] : firsts)
+      if (n > most) { most = n; prefix = w; }
+    if (prefix.empty() || most < 2 || most * 2 < sec.elements.size()) continue;
+    for (auto& e : sec.elements)
+      if (firstWord(e.name) == prefix) e.name = e.name.substr(prefix.size() + 1);
+  }
 
   std::vector<PanelSection> out = std::move(divisions);
   if (!other.elements.empty()) out.push_back(std::move(other));
