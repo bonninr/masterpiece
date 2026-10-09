@@ -10964,6 +10964,94 @@ public:
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
 
+// A celeste's fixed detune, PitchLvl_DetuningPercentSemitones on the layer
+// (#261): read in both forms of the format, and heard. Without it every
+// celeste played at unison with its partner rank.
+class CelesteDetuneTest final : public mp::test::Test {
+public:
+  CelesteDetuneTest() : Test("functional.audio.celeste-detune", Category::Functional) {}
+
+  static double hzOf(const juce::File& root, double cents) {
+    const juce::File fixture(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    juce::String xml = fixture.loadFileAsString().replaceFirstOccurrenceOf(
+        "<AmpLvl_LevelAdjustDecibels>0</AmpLvl_LevelAdjustDecibels>",
+        "<AmpLvl_LevelAdjustDecibels>0</AmpLvl_LevelAdjustDecibels><PitchLvl_DetuningPercentSemitones>" +
+            juce::String(cents) + "</PitchLvl_DetuningPercentSemitones>");
+    const auto odf = root.getChildFile("OrganDefinitions").getChildFile(
+        "celeste" + juce::String(static_cast<int>(cents)) + ".Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    if (!proc.loadOrgan(odf, 0, false).ok) return 0.0;
+    proc.engageAllStops();
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    proc.processBlock(buf, on);
+    int crossings = 0, blocks = 0;
+    float last = 0.0f;
+    for (int b = 0; b < 120; ++b) {
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+      if (b < 40) continue;  // past the attack
+      ++blocks;
+      for (int i = 0; i < 256; ++i) {
+        const float v = buf.getSample(0, i);
+        if ((last < 0.0f) != (v < 0.0f)) ++crossings;
+        last = v;
+      }
+    }
+    proc.releaseResources();
+    proc.settingsFileFor(odf).deleteFile();
+    return crossings / 2.0 / (blocks * 256.0 / 48000.0);
+  }
+
+  void run() override {
+    {
+      mp::OdfLoader l;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      mp::OdfLoader::Options o;
+      const std::string compact =
+          "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+          "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+          "<ObjectList ObjectType=\"Rank\"><o><a>1</a><b>Vox Coelestis</b></o></ObjectList>"
+          "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>10</a><b>1</b><c>60</c></o></ObjectList>"
+          "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>20</a><b>10</b><t>1.3e+1</t></o>"
+          "</ObjectList></Hauptwerk>";
+      MP_CHECK(l.loadFromXmlString(compact, "c.Organ_Hauptwerk_xml", o, m, d), "the compact rows load");
+      const auto& pipes = m.ranks[1].pipes;
+      MP_CHECK(!pipes.empty() && !pipes[0].layers.empty() && pipes[0].layers[0].detuneCents == 13.0,
+               "the compact form's detune is read, as Klais Szikszo writes its Vox Coelestis");
+    }
+
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-celeste");
+    root.deleteRecursively();
+    root.getChildFile("OrganDefinitions").createDirectory();
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    pkg.createDirectory();
+    juce::WavAudioFormat wav;
+    for (const char* name : {"001-C.wav", "001-C_Trem.wav"}) {
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "0");
+      meta.set("Loop0End", "47999");
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile(name).createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(wav.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, 0.3f * static_cast<float>(std::sin(2.0 * 3.141592653589793 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const double plain = hzOf(root, 0.0);
+    const double octave = hzOf(root, 1200.0);
+    MP_CHECK(plain > 10.0, "the plain pipe sounds, at " + std::to_string(plain) + " Hz");
+    MP_CHECK(std::abs(octave / plain - 2.0) < 0.05,
+             "a 1200-cent detune sounds an octave up, got " + std::to_string(octave) + " Hz");
+    root.deleteRecursively();
+  }
+};
+static CelesteDetuneTest g_celesteDetune;
 // A setter and pistons drawn on the console and wired to the organ's own, as
 // Klais Szikszo does it (#248): its drawn Set (10068) and the Set the
 // combinations answer to (12) follow each other, and its drawn GC (10069)
