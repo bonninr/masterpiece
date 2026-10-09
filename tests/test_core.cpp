@@ -2776,6 +2776,7 @@ public:
     std::vector<float> out(static_cast<size_t>(frames), 0.0f);
     float* ptr[1] = {out.data()};
     eng.render(ptr, 1, frames);
+    if (underruns != nullptr) *underruns = eng.streamUnderruns();
     return out;
   }
 
@@ -2926,7 +2927,7 @@ public:
 
   // Render one voice of `buf` for `frames` output samples.
   static std::vector<float> render(const mp::SampleBuffer& buf, int frames,
-                                   double settleMs) {
+                                   double settleMs, int64_t* underruns = nullptr) {
     voicetest::Fixture fx;
     fx.attack = buf;
     mp::VoiceEngine eng;
@@ -2972,6 +2973,14 @@ public:
     const auto viaDisk = render(streamed, kFrames - 8, 120.0);
 
     MP_CHECK(disk->reads.load() > 0, "the streamer actually read something");
+
+    // Played to its end and beyond, with the streamer well ahead: no
+    // shortfall. The interpolation's last taps reach past the final frame,
+    // and those were counted as underruns, once per frame and tap.
+    int64_t underruns = -1;
+    render(streamed, kFrames + 400, 120.0, &underruns);
+    MP_CHECK(underruns == 0, "a release streamed in time and played out reports no "
+                             "underrun, got " + std::to_string(underruns));
 
     // The whole point: identical, not merely similar.
     double worst = 0.0;
@@ -9545,6 +9554,28 @@ public:
       MP_CHECK(report.loaded == 8 && cacheFiles() == 1, "a whole load still writes it");
       MP_CHECK(lib.cacheWriteFraction() == 1.0,
                "and its progress reaches the end, for the status line's percentage");
+    }
+    {
+      // One flipped bit in a sample's audio, as a failing disk leaves it: the
+      // cache is refused and the organ read from its samples, every one.
+      const auto cache = cacheDir.findChildFiles(juce::File::findFiles, false).getFirst();
+      juce::MemoryBlock bytes;
+      cache.loadFileAsData(bytes);
+      auto* raw = static_cast<unsigned char*>(bytes.getData());
+      raw[bytes.getSize() / 2] ^= 0x10;
+      cache.replaceWithData(bytes.getData(), bytes.getSize());
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("partial", "stamp");
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      lib.finishCacheWrite(false);
+      MP_CHECK(lib.cacheBytesRead() == 0 && report.loaded == 8,
+               "a damaged cache is not used, and every sample is read from its file");
     }
     root.deleteRecursively();
   }
