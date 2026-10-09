@@ -4205,6 +4205,22 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (cit->second.imageSetInstanceId != 0) continue;
       setControlValue(id, std::max(cit->second.maxValue, cit->second.minValue));
     }
+    // The organ's own start signal. Sets built on one template (Nancy,
+    // Friesach, Oloron) declare a hidden pair, "Hidden OffToOn" at 0 and
+    // "Hidden OnToOff" at 127, that moves once when the organ loads; every
+    // start-up delay follows them, and at the top of its ramp fires what has
+    // to happen then: Oloron's "Start blower on organ load" and "Enable
+    // Appels d'anches on load" act through that pulse (#263). Moved at once:
+    // the delays they feed are not timed here. Put at rest first: the delays
+    // can come out of the settle already at the top, and a step fires only on
+    // a move past it.
+    for (const bool start : {false, true})
+      for (const auto& [id, c] : model_.continuousControls) {
+        if (c.imageSetInstanceId != 0) continue;
+        const int low = std::min(c.maxValue, c.minValue), high = std::max(c.maxValue, c.minValue);
+        if (c.name.rfind("Hidden OffToOn", 0) == 0) setControlValue(id, start ? high : low);
+        else if (c.name.rfind("Hidden OnToOff", 0) == 0) setControlValue(id, start ? low : high);
+      }
   }
 
   // Now that the blower is on and every valve is where the organ puts it, work
