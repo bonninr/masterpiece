@@ -2776,7 +2776,6 @@ public:
     std::vector<float> out(static_cast<size_t>(frames), 0.0f);
     float* ptr[1] = {out.data()};
     eng.render(ptr, 1, frames);
-    if (underruns != nullptr) *underruns = eng.streamUnderruns();
     return out;
   }
 
@@ -2948,6 +2947,7 @@ public:
     std::vector<float> out(static_cast<size_t>(frames), 0.0f);
     float* ptr[1] = {out.data()};
     eng.render(ptr, 1, frames);
+    if (underruns != nullptr) *underruns = eng.streamUnderruns();
     return out;
   }
 
