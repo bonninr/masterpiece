@@ -342,6 +342,12 @@ public:
   // drives this from the console; this is for one that has not, and for a UI
   // button.
   void setCaptureMode(bool on) {
+    // The organ's own Set follows the player's (#248): its switch puts the
+    // combinations into capture, so the console lights as the window does.
+    if (setterSwitchId_ != 0 && switchEngaged(setterSwitchId_) != on) {
+      setSwitchEngaged(setterSwitchId_, on);
+      return;
+    }
     const AudioLock audio(*this);
     combinations_.setCaptureMode(on);
   }

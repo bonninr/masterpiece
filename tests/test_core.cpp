@@ -10880,6 +10880,99 @@ public:
   }
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
+
+// A GrandOrgue organ's own Set and GC are the player's (#248): Set in the
+// Combinations window lights the console's Set, and the console's GC is the
+// window's General Cancel.
+class GrandOrgueSetterLinkTest final : public mp::test::Test {
+public:
+  GrandOrgueSetterLinkTest() : Test("functional.control.grandorgue-set-gc", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-go-setter");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          wav.createWriterFor(os.release(), 48000.0, 1, 16, juce::StringPairArray(), 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    const juce::String organ =
+        "[Organ]\nChurchName=Setter\nHasPedals=N\nNumberOfManuals=1\nNumberOfWindchestGroups=1\n"
+        "NumberOfSetterElements=2\n"
+        "[SetterElement001]\nType=Set\n[SetterElement002]\nType=GC\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Manual001]\nName=Manual\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=1\n"
+        "[Stop001]\nName=Sine\nDisplayed=Y\nNumberOfLogicalPipes=3\nNumberOfAccessiblePipes=3\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nWindchestGroup=1\n"
+        "Pipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    const auto odf = dir.getChildFile("setter.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    const auto set = static_cast<mp::Id>(mp::kGrandOrgueSetterSwitch);
+    const auto gc = static_cast<mp::Id>(mp::kGrandOrgueGeneralCancelSwitch);
+    MP_CHECK(proc.organModel().switches.count(set) == 1 && proc.organModel().switches.count(gc) == 1,
+             "its Set and GC are switches");
+
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.switchEngaged(set) && proc.captureMode(), "the window's Set lights the console's");
+    proc.setCaptureMode(false);
+    MP_CHECK(!proc.switchEngaged(set) && !proc.captureMode(), "and puts it out");
+    proc.setSwitchEngaged(set, true);
+    MP_CHECK(proc.captureMode(), "the console's Set still sets");
+    proc.setSwitchEngaged(set, false);
+
+    proc.engageAllStops();
+    mp::Id stop = 0;
+    for (const auto& [id, st] : proc.organModel().stops) stop = id;
+    MP_CHECK(stop != 0 && proc.stopEngaged(stop), "the stop is drawn");
+    proc.setSwitchEngaged(gc, true);
+    MP_CHECK(!proc.switchEngaged(gc), "the GC lets itself out");
+    MP_CHECK(!proc.stopEngaged(stop), "the console's GC cancels it");
+
+    // The same from a console's controllers, as the MIDI window maps them: a
+    // CC that draws the stop and a CC held on the GC.
+    const mp::Id stopSwitch = proc.organModel().stops.at(stop).controllingSwitchId;
+    auto bindCc = [&](int cc, mp::Id sw, mp::MidiTrigger trigger) {
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::ControlChange;
+      b.source.channel = 1;
+      b.source.number = cc;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = sw;
+      b.trigger = trigger;
+      proc.midiMap().bind(b);
+    };
+    bindCc(20, stopSwitch, mp::MidiTrigger::Toggle);
+    bindCc(21, gc, mp::MidiTrigger::Momentary);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto send = [&](int cc, int value) {
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage::controllerEvent(1, cc, value), 0);
+      proc.processBlock(buf, midi);
+    };
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(proc.stopEngaged(stop), "a CC draws the stop");
+    send(21, 127);
+    send(21, 0);
+    MP_CHECK(!proc.stopEngaged(stop), "a CC on the GC cancels it");
+    proc.releaseResources();
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static GrandOrgueSetterLinkTest g_grandOrgueSetterLink;
 #endif // MP_TEST_HAS_AUDIO
 
 // A temperament from a Scala file, the format tuning libraries publish.
