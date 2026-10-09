@@ -784,7 +784,8 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         // its own.
         const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
         if (hit.on && msg.isNoteOn())
-          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity);
+          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity,
+                              hit.midiNote);
         else
           stopNoteByKey(key, hit.velocity);
       }
@@ -2224,7 +2225,8 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
                                " plays no manual: not set in Settings > MIDI, nor by the organ");
     return;
   }
-  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity);
+  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
+                      midiNote);
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
@@ -2262,6 +2264,7 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   NoteRelease rel;
   rel.velocity = velocity;
   voices_.noteOff(it->second.id, rel);
+  setKeyDown(it->second.keyboard, it->second.playedNote, false);
   soundingNotes_.erase(it);
 }
 
@@ -2407,8 +2410,18 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
   return anyStarted;
 }
 
+void MasterpieceProcessor::setKeyDown(Id keyboard, int note, bool down) {
+  if (note < 0 || note > 127) return;
+  auto& word = keysDown_[(static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6)];
+  const uint64_t bit = uint64_t{1} << (note & 63);
+  if (down) word.fetch_or(bit, std::memory_order_relaxed);
+  else word.fetch_and(~bit, std::memory_order_relaxed);
+}
+
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
-                                               int midiNote, int velocity) {
+                                               int midiNote, int velocity,
+                                               int playedNote) {
+  if (playedNote < 0) playedNote = midiNote;
   // A manual that sends its keys on: before anything else, so a key played
   // with no stop drawn still reaches the module it drives.
   if (midiOut_ != nullptr && midiMap_.hasSends(MidiTargetKind::Keyboard, keyboard)) {
@@ -2448,6 +2461,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   const auto already = soundingNotes_.find(noteKeyId);
   if (already != soundingNotes_.end()) {
     voices_.noteOff(already->second.id, NoteRelease{});
+    setKeyDown(already->second.keyboard, already->second.playedNote, false);
     soundingNotes_.erase(already);
   }
 
@@ -2463,7 +2477,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // follows stops for held notes, so drawing the stop did nothing (#120: "it
   // isn't always possible to change stops while holding a note").
   soundingNotes_[noteKeyId] =
-      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
+      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_, playedNote};
+  setKeyDown(keyboard, playedNote, true);
 
   if (engagedStops_.empty()) {
     if (logMidi_.load(std::memory_order_acquire))
@@ -3029,7 +3044,7 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
           noteDeviceId_ = held.device;
           const bool byManual = midiMap_.hasChannelBinding(held.device, held.channel);
           const int newKey = byManual ? noteKey(static_cast<int>(next), key & 0xff) : key;
-          startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity);
+          startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity, held.playedNote);
         }
         noteChannel_ = savedChannel;
         noteDeviceId_ = savedDevice;

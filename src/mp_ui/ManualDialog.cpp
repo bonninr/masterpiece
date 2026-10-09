@@ -44,7 +44,7 @@ public:
     const auto& b = list[static_cast<size_t>(row)];
     juce::String text;
     text << (b.deviceId == 0 ? juce::String("Any device")
-                             : juce::String(proc_.midiDevices().nameFor(b.deviceId)));
+                             : juce::String(proc_.midiDevices().displayName(b.deviceId)));
     text << "  ch " << (b.channel == 0 ? juce::String("any")
                                        : juce::String(b.channel));
     text << "  keys " << noteName(b.lowKey) << " to " << noteName(b.highKey);
@@ -115,7 +115,7 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   addAndMakeVisible(device_);
   device_.addItem("Any device", 1);
   for (size_t i = 0; i < proc_.midiDevices().names().size(); ++i)
-    device_.addItem(juce::String(proc_.midiDevices().names()[i]),
+    device_.addItem(juce::String(proc_.midiDevices().displayName(static_cast<int>(i) + 1)),
                     static_cast<int>(i) + 2);
   device_.onChange = [this] { applyEdits(); };
 

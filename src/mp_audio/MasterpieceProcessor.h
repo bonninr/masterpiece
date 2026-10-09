@@ -186,6 +186,13 @@ public:
   // re-injected), so the drawn manuals and the piano strip light up for an
   // external console too.
   juce::MidiKeyboardState& keyboardState() { return keyboardState_; }
+  // Whether this key of this manual is down: played on it by a keyboard bound
+  // to it, by its channel, or on the screen. Any thread.
+  bool keyDownOnKeyboard(Id keyboard, int note) const {
+    if (note < 0 || note > 127) return false;
+    const auto slot = (static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6);
+    return (keysDown_[slot].load(std::memory_order_relaxed) >> (note & 63)) & 1u;
+  }
 
   // Let go of every key on every channel, the way a console's cancel does.
   //
@@ -594,7 +601,8 @@ public:
     juce::Logger::writeToLog("midi: device " + juce::String(id) + " = " + name +
                              (juce::String(midiMap_.devices().nameFor(id)) != name
                                   ? " (mapped as " + juce::String(midiMap_.devices().nameFor(id)) + ")"
-                                  : juce::String()));
+                                  : juce::String()) +
+                             (identifier.isNotEmpty() ? " [" + identifier + "]" : juce::String()));
     return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
@@ -1265,8 +1273,10 @@ private:
   void stopNote(int channel, int midiNote, int velocity);
   // The same, with the manual already decided. A mapped rig names it outright;
   // an unmapped one derives it from the channel.
+  // `playedNote` is the key as played on that manual, before transposition;
+  // -1 when it is `midiNote` itself. It is what the drawn manual lights.
   void startNoteOnKeyboard(Id keyboard, int noteKeyId, int midiNote,
-                           int velocity);
+                           int velocity, int playedNote = -1);
   void stopNoteByKey(int noteKeyId, int velocity);
   // Notes are held per (channel, key): two manuals playing the same key are
   // two separate presses and one release must not silence both.
@@ -1674,8 +1684,15 @@ private:
     // notes that are that channel's and leave every other manual alone.
     int channel = 0;
     int device = 0;
+    int playedNote = 60;  // the key as played, for the drawn manual
   };
   std::unordered_map<int, HeldNote> soundingNotes_;
+  // Which keys are down on which manual, by manual id (low six bits) and key.
+  // Written on the audio thread where a note starts or stops on a manual,
+  // read by the drawn manuals, so a key lights on the manual it reached
+  // whatever device or channel brought it (#240).
+  std::array<std::atomic<uint64_t>, 64 * 2> keysDown_{};
+  void setKeyDown(Id keyboard, int note, bool down);
   // The keys held on a channel whose manual a piston is switching, to strike
   // again on the new one. Reserved at prepare, so the switch does not allocate.
   std::vector<std::pair<int, HeldNote>> rerouteScratch_;

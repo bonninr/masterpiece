@@ -7,15 +7,16 @@
 //
 // A device is known by its NAME, and where the system gives one that lasts,
 // by its IDENTIFIER: on Windows the device's interface path, which names the
-// USB socket, and on macOS CoreMIDI's persistent id. Linux gives only the
-// ALSA client and port numbers, which change between boots, so there the name
-// alone is kept. Ids are small integers meaningful only within one run.
+// USB socket, on macOS CoreMIDI's persistent id, and on Linux the USB socket
+// of the card behind the ALSA port (the ALSA client and port numbers follow
+// the order the devices appear in). Ids are small integers meaningful only
+// within one run.
 //
 // Matching follows GrandOrgue (GOMidiDeviceConfigList): a device that opens
 // takes the saved one with its identifier, else the one with its exact name,
 // else one whose name differs only by the numbering the system adds ("2- " in
 // front, "-2" after), and each saved device is taken by one device at most.
-// Two identical consoles therefore stay two: the second is named "<name>-2",
+// Two identical consoles therefore stay two: the second is named "<name>-1",
 // as GrandOrgue names it, and keeps that name in the saved mappings.
 //
 // Id 0 is reserved and means ANY device, which is what an unqualified mapping
@@ -43,6 +44,12 @@ public:
     if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, false);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, false);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, false);
+    // Plugged into a socket no saved device names: the keyboards were moved,
+    // to other ports or another controller, and the name decides (#240).
+    if (found == 0 && !identifier.empty() && !named(identifier)) {
+      found = find([&](const Device& d) { return d.name == name; }, false);
+      if (found == 0) found = find([&](const Device& d) { return sameConsole(d.name, name); }, false);
+    }
     if (found != 0) {
       auto& d = devices_[static_cast<size_t>(found) - 1];
       d.present = true;
@@ -50,7 +57,7 @@ public:
       return found;
     }
     std::string unique = name;
-    for (int n = 2; find([&](const Device& d) { return d.name == unique; }, true) != 0; ++n)
+    for (int n = 1; find([&](const Device& d) { return d.name == unique; }, true) != 0; ++n)
       unique = name + "-" + std::to_string(n);
     devices_.push_back({unique, identifier, true});
     names_.push_back(unique);
@@ -65,7 +72,17 @@ public:
     int found = 0;
     if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, true);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, true);
-    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, true);
+    // The numbering a system adds is matched only against a device open in
+    // this run. Two saved devices are two, "X" and "X-1" as much as any: read
+    // from one map, they would otherwise become one.
+    if (found == 0) found = find([&](const Device& d) { return d.present && fits(d, identifier) && sameConsole(d.name, name); }, true);
+    // A saved socket no open device is plugged into: the keyboards were
+    // moved, and an open device of that name takes the mapping (#240).
+    if (found == 0 && !identifier.empty() && !openAt(identifier)) {
+      found = find([&](const Device& d) { return d.present && d.name == name; }, true);
+      if (found == 0)
+        found = find([&](const Device& d) { return d.present && sameConsole(d.name, name); }, true);
+    }
     if (found != 0) return found;
     devices_.push_back({name, identifier, false});
     names_.push_back(name);
@@ -84,6 +101,31 @@ public:
   }
   std::string identifierFor(int id) const {
     return valid(id) ? devices_[static_cast<size_t>(id) - 1].identifier : std::string();
+  }
+
+  // The name a person reads. The saved name of a second device of one model,
+  // "GarageKey MIDI 1-1", reads like a version number when the model's own
+  // name ends in a digit. Where devices share a name, each is shown with the
+  // USB socket it is plugged into, "GarageKey MIDI 1 (USB 1.1.2)", or
+  // numbered "#2" where the system gives no socket.
+  std::string displayName(int id) const {
+    if (!valid(id)) return {};
+    const Device& d = devices_[static_cast<size_t>(id) - 1];
+    const std::string base = unnumbered(d.name);
+    int twins = 0, position = 0;
+    for (size_t i = 0; i < devices_.size(); ++i)
+      if (unnumbered(devices_[i].name) == base) {
+        ++twins;
+        if (static_cast<int>(i) + 1 == id) position = twins;
+      }
+    if (twins < 2) return d.name;
+    if (d.identifier.rfind("usb-", 0) == 0) {
+      const std::string path = d.identifier.substr(4, d.identifier.find('/') - 4);
+      const size_t dash = path.rfind('-');
+      if (dash != std::string::npos && dash + 1 < path.size())
+        return base + " (USB " + path.substr(dash + 1) + ")";
+    }
+    return base + " #" + std::to_string(position);
   }
 
   const std::vector<std::string>& names() const { return names_; }
@@ -125,6 +167,19 @@ private:
   // alike their names.
   static bool fits(const Device& d, const std::string& identifier) {
     return identifier.empty() || d.identifier.empty() || d.identifier == identifier;
+  }
+
+  // Whether a saved device, open or not, names this identifier.
+  bool named(const std::string& identifier) const {
+    for (const auto& d : devices_)
+      if (d.identifier == identifier) return true;
+    return false;
+  }
+  // Whether a device open in this run is plugged in there.
+  bool openAt(const std::string& identifier) const {
+    for (const auto& d : devices_)
+      if (d.present && d.identifier == identifier) return true;
+    return false;
   }
 
   template <typename Pred>

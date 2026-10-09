@@ -1246,7 +1246,7 @@ void MidiPanel::refresh() {
     dev->addItem("Any device", 1);
     const auto& known = proc_.midiDevices();
     for (size_t i = 0; i < known.names().size(); ++i)
-      dev->addItem(juce::String(known.names()[i]), static_cast<int>(i) + 2);
+      dev->addItem(juce::String(known.displayName(static_cast<int>(i) + 1)), static_cast<int>(i) + 2);
     int selectedDev = 1;
     for (const auto& b : proc_.channelAssignments())
       if (b.keyboardId == kb && b.deviceId != 0) selectedDev = b.deviceId + 1;
