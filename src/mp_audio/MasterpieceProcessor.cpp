@@ -3315,6 +3315,22 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // koppel" is 1006 and every key action that reads it looks at 10101.
   switches_.set(switchId, engaged);
   markRememberedStateMoved();
+  // The setter and the pistons the wiring moved. Klais Szikszo draws its own
+  // Set, GC and cancels, each linked to the organ's real switch (Set 12, GC
+  // 100, the cancels 200-500): pressing the drawn one moves the real one
+  // through the network, and only the switch pressed was ever looked at, so
+  // they did nothing (#248). Collected now, fired below: firing changes
+  // switches, and the list is the network's own.
+  std::array<Id, 8> wiredPistons{};
+  size_t wiredCount = 0;
+  for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+    if (movedId == switchId) continue;
+    if (movedId == setterSwitchId_ && setterSwitchId_ != 0)
+      combinations_.setCaptureMode(nowEngaged);
+    else if (nowEngaged && wiredCount < wiredPistons.size() &&
+             combinations_.combinationForSwitch(movedId) != 0)
+      wiredPistons[wiredCount++] = movedId;
+  }
   const bool swapsRanks = !alternateStopsBySwitch_.empty();
   if (swapsRanks) previousSwitches_ = engagedSwitches_;
   const bool keysHeld = !soundingNotes_.empty();
@@ -3404,6 +3420,9 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     const bool momentary = sw == model_.switches.end() || !sw->second.latching;
     if (momentary) setSwitchEngaged(switchId, false);
   }
+  // A piston reached through the wiring fires as if pressed; the button that
+  // drives it lets it out again when released.
+  for (size_t i = 0; i < wiredCount; ++i) firePiston(wiredPistons[i]);
 }
 
 namespace {
