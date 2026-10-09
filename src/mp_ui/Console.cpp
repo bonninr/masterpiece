@@ -547,11 +547,10 @@ juce::Rectangle<int> ConsoleView::keysBounds() const {
 }
 
 void ConsoleView::timerCallback() {
-  // MidiKeyboardState is what the engine already updates from the MIDI stream
-  // every block, so a key lights up whether it was pressed on screen or on the
-  // player's own console.
+  // The engine marks each key down on the manual it played, every block, so a
+  // key lights up whether it was pressed on screen or on the player's own
+  // console, and only on the manual it reached.
   uint64_t hash = 1469598103934665603ull;
-  auto& state = proc_.keyboardState();
   // The player may have moved a manual to another channel in Settings since
   // the console was built; the drawn keys follow without a reload.
   bool channelsMoved = false;
@@ -566,7 +565,7 @@ void ConsoleView::timerCallback() {
   }
   if (channelsMoved) hash ^= 0x9e3779b97f4a7c15ull;
   for (const auto& k : keys_) {
-    hash ^= k.litChannel > 0 && state.isNoteOn(k.litChannel, k.midiNote) ? 1u : 0u;
+    hash ^= proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote) ? 1u : 0u;
     hash *= 1099511628211ull;
   }
 
@@ -820,9 +819,11 @@ void ConsoleView::paint(juce::Graphics& g) {
 
   // The manuals go on top of the console furniture: a drawn manual is the one
   // thing on the page whose picture changes while the player is playing.
-  auto& keyState = proc_.keyboardState();
   for (const auto& k : keys_) {
-    const bool down = k.litChannel > 0 && keyState.isNoteOn(k.litChannel, k.midiNote);
+    // Lit from the manual's own keys, which the engine sets where it plays
+    // a note on this manual: a key lights on the manual it reached, and a
+    // key from another device on the same channel does not light this one.
+    const bool down = proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
     const int frame = down ? k.engagedIndex : k.disengagedIndex;
     if (k.synthetic) {
       // Ivory and ebony, with the pressed key shaded rather than moved: the

@@ -1954,6 +1954,32 @@ public:
              "pushing it in lets division S go while the key stays down, got " +
                  std::to_string(proc.voiceStats().activeVoices - idle));
 
+    // #240: two consoles on one channel, each bound to its own manual. A key
+    // lights on the drawn manual it reached, and only there; lit by channel,
+    // as before, either console lit both manuals.
+    proc.clearChannelAssignments();
+    proc.midiMap().clearKeyboardBindings();
+    for (const auto& [device, manual] : {std::pair{5, mp::Id{701}}, std::pair{6, mp::Id{702}}}) {
+      mp::MidiMap::KeyboardBinding kb;
+      kb.deviceId = device;
+      kb.channel = 1;
+      kb.keyboardId = manual;
+      proc.midiMap().addKeyboardBinding(kb);
+    }
+    proc.pushMidi(6, juce::MidiMessage::noteOn(1, 40, 0.8f));
+    block({});
+    MP_CHECK(proc.keyDownOnKeyboard(702, 40) && !proc.keyDownOnKeyboard(701, 40),
+             "a key from the console bound to manual II lights manual II only");
+    proc.pushMidi(6, juce::MidiMessage::noteOff(1, 40));
+    block({});
+    MP_CHECK(!proc.keyDownOnKeyboard(702, 40), "and goes dark when let go");
+    proc.pushMidi(5, juce::MidiMessage::noteOn(1, 41, 0.8f));
+    block({});
+    MP_CHECK(proc.keyDownOnKeyboard(701, 41) && !proc.keyDownOnKeyboard(702, 41),
+             "the other console lights manual I only");
+    proc.pushMidi(5, juce::MidiMessage::noteOff(1, 41));
+    block({});
+
     proc.releaseResources();
     settings.deleteFile();
     root.deleteRecursively();
@@ -11475,6 +11501,22 @@ public:
                "the keyboard plugged in first is found by its socket");
       MP_CHECK(m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0") == left,
                "and so is the other");
+    }
+    {
+      // What a person reads: twins by their USB socket, or numbered.
+      mp::MidiDeviceMap m;
+      const int a = m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0");
+      const int b = m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.2/0");
+      const int c = m.claim("SE49 MIDI1", "usb-0000:00:1d.0-1.1.3/0");
+      MP_CHECK(m.displayName(a) == "GarageKey MIDI 1 (USB 1.1.1)" &&
+                   m.displayName(b) == "GarageKey MIDI 1 (USB 1.1.2)",
+               "two keyboards of one model are shown with their sockets, got " +
+                   m.displayName(a) + " / " + m.displayName(b));
+      MP_CHECK(m.displayName(c) == "SE49 MIDI1", "a device with a name of its own keeps it");
+      mp::MidiDeviceMap n;
+      n.claim("Viscount");
+      const int second = n.claim("Viscount");
+      MP_CHECK(n.displayName(second) == "Viscount #2", "without a socket the twin is numbered");
     }
     {
       // A second console saved as "<name>-2" by 0.7.7 still finds it.

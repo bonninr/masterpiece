@@ -90,6 +90,31 @@ public:
     return valid(id) ? devices_[static_cast<size_t>(id) - 1].identifier : std::string();
   }
 
+  // The name a person reads. The saved name of a second device of one model,
+  // "GarageKey MIDI 1-1", reads like a version number when the model's own
+  // name ends in a digit. Where devices share a name, each is shown with the
+  // USB socket it is plugged into, "GarageKey MIDI 1 (USB 1.1.2)", or
+  // numbered "#2" where the system gives no socket.
+  std::string displayName(int id) const {
+    if (!valid(id)) return {};
+    const Device& d = devices_[static_cast<size_t>(id) - 1];
+    const std::string base = unnumbered(d.name);
+    int twins = 0, position = 0;
+    for (size_t i = 0; i < devices_.size(); ++i)
+      if (unnumbered(devices_[i].name) == base) {
+        ++twins;
+        if (static_cast<int>(i) + 1 == id) position = twins;
+      }
+    if (twins < 2) return d.name;
+    if (d.identifier.rfind("usb-", 0) == 0) {
+      const std::string path = d.identifier.substr(4, d.identifier.find('/') - 4);
+      const size_t dash = path.rfind('-');
+      if (dash != std::string::npos && dash + 1 < path.size())
+        return base + " (USB " + path.substr(dash + 1) + ")";
+    }
+    return base + " #" + std::to_string(position);
+  }
+
   const std::vector<std::string>& names() const { return names_; }
   size_t size() const { return devices_.size(); }
   void clear() {
