@@ -11458,7 +11458,31 @@ public:
       const int a = m.claim("Johannus MIDI 1");
       const int b = m.claim("Johannus MIDI 1");
       MP_CHECK(a != b, "two identical consoles stay two devices");
-      MP_CHECK(m.nameFor(b) == "Johannus MIDI 1-2", "the second is named <name>-2");
+      MP_CHECK(m.nameFor(b) == "Johannus MIDI 1-1", "the second is named <name>-1, as GrandOrgue names it");
+    }
+    {
+      // Two keyboards of one model on Linux: same name, same serial number,
+      // known by their USB sockets. Plugged in again in the other order, ALSA
+      // numbers them the other way round, and each keeps its own mappings.
+      mp::MidiDeviceMap saved;
+      const int left = saved.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0");
+      const int right = saved.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.2/0");
+      mp::MidiDeviceMap m;
+      MP_CHECK(m.idFor(saved.nameFor(left), saved.identifierFor(left)) == left &&
+                   m.idFor(saved.nameFor(right), saved.identifierFor(right)) == right,
+               "the saved keyboards read back in their order");
+      MP_CHECK(m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.2/0") == right,
+               "the keyboard plugged in first is found by its socket");
+      MP_CHECK(m.claim("GarageKey MIDI 1", "usb-0000:00:1d.0-1.1.1/0") == left,
+               "and so is the other");
+    }
+    {
+      // A second console saved as "<name>-2" by 0.7.7 still finds it.
+      mp::MidiDeviceMap m;
+      const int first = m.idFor("Johannus MIDI 1");
+      const int second = m.idFor("Johannus MIDI 1-2");
+      MP_CHECK(m.claim("Johannus MIDI 1") == first && m.claim("Johannus MIDI 1") == second,
+               "a map saved with the older numbering keeps both consoles");
     }
     {
       // Saved with their identifiers, then plugged into each other's sockets.

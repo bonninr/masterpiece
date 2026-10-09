@@ -587,7 +587,8 @@ public:
     juce::Logger::writeToLog("midi: device " + juce::String(id) + " = " + name +
                              (juce::String(midiMap_.devices().nameFor(id)) != name
                                   ? " (mapped as " + juce::String(midiMap_.devices().nameFor(id)) + ")"
-                                  : juce::String()));
+                                  : juce::String()) +
+                             (identifier.isNotEmpty() ? " [" + identifier + "]" : juce::String()));
     return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }

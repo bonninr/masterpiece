@@ -7,15 +7,16 @@
 //
 // A device is known by its NAME, and where the system gives one that lasts,
 // by its IDENTIFIER: on Windows the device's interface path, which names the
-// USB socket, and on macOS CoreMIDI's persistent id. Linux gives only the
-// ALSA client and port numbers, which change between boots, so there the name
-// alone is kept. Ids are small integers meaningful only within one run.
+// USB socket, on macOS CoreMIDI's persistent id, and on Linux the USB socket
+// of the card behind the ALSA port (the ALSA client and port numbers follow
+// the order the devices appear in). Ids are small integers meaningful only
+// within one run.
 //
 // Matching follows GrandOrgue (GOMidiDeviceConfigList): a device that opens
 // takes the saved one with its identifier, else the one with its exact name,
 // else one whose name differs only by the numbering the system adds ("2- " in
 // front, "-2" after), and each saved device is taken by one device at most.
-// Two identical consoles therefore stay two: the second is named "<name>-2",
+// Two identical consoles therefore stay two: the second is named "<name>-1",
 // as GrandOrgue names it, and keeps that name in the saved mappings.
 //
 // Id 0 is reserved and means ANY device, which is what an unqualified mapping
@@ -50,7 +51,7 @@ public:
       return found;
     }
     std::string unique = name;
-    for (int n = 2; find([&](const Device& d) { return d.name == unique; }, true) != 0; ++n)
+    for (int n = 1; find([&](const Device& d) { return d.name == unique; }, true) != 0; ++n)
       unique = name + "-" + std::to_string(n);
     devices_.push_back({unique, identifier, true});
     names_.push_back(unique);
@@ -65,7 +66,10 @@ public:
     int found = 0;
     if (!identifier.empty()) found = find([&](const Device& d) { return d.identifier == identifier; }, true);
     if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && d.name == name; }, true);
-    if (found == 0) found = find([&](const Device& d) { return fits(d, identifier) && sameConsole(d.name, name); }, true);
+    // The numbering a system adds is matched only against a device open in
+    // this run. Two saved devices are two, "X" and "X-1" as much as any: read
+    // from one map, they would otherwise become one.
+    if (found == 0) found = find([&](const Device& d) { return d.present && fits(d, identifier) && sameConsole(d.name, name); }, true);
     if (found != 0) return found;
     devices_.push_back({name, identifier, false});
     names_.push_back(name);
