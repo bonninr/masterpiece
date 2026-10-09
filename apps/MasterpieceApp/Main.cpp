@@ -890,6 +890,7 @@ private:
       if (saved.isNotEmpty() && restoreWindowStateFromString(saved) &&
           juce::Desktop::getInstance().getDisplays().getDisplayForPoint(getBounds().getCentre()) == nullptr)
         centreWithSize(getWidth(), getHeight());
+      if (!isFullScreen()) mp::ui::keepOnScreen(*this);
     }
 
     void closeButtonPressed() override {

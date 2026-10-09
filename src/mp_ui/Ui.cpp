@@ -1095,6 +1095,7 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
   if (!bounds.isEmpty() && displays.getDisplayForRect(bounds) != nullptr &&
       displays.getTotalBounds(true).intersects(bounds)) {
     window->setBounds(bounds);
+    keepOnScreen(*window);
   } else {
     // A screen other than this window's, if there is one: that is what the
     // window is for. Otherwise beside this one, a little down and across.

@@ -5,6 +5,8 @@
 #endif
 #include "Mobile.h"
 
+#include <algorithm>
+
 #include "../mp_archive/OrganArchive.h"
 
 #if JUCE_ANDROID
@@ -367,6 +369,18 @@ juce::Rectangle<int> screenBounds() {
   if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
     return d->totalArea;
   return {0, 0, 1280, 800};
+}
+
+void keepOnScreen(juce::Component& window) {
+  const auto& displays = juce::Desktop::getInstance().getDisplays();
+  auto b = window.getBounds();
+  const auto* d = displays.getDisplayForRect(b);
+  if (d == nullptr) d = displays.getPrimaryDisplay();
+  if (d == nullptr) return;
+  const auto area = d->userArea;
+  b.setSize(std::min(b.getWidth(), area.getWidth()), std::min(b.getHeight(), area.getHeight()));
+  b = b.constrainedWithin(area);
+  if (b != window.getBounds()) window.setBounds(b);
 }
 
 void fitToScreen(juce::DocumentWindow& window) {
