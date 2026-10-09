@@ -271,8 +271,8 @@ constexpr int kGateBase = 9000;        // switches that compute a Function
 constexpr int kGeneralBase = 10000;    // general pistons
 constexpr int kDivisionalBase = 11000; // divisional pistons: + manual * 100
 constexpr int kSetterGeneralBase = 12000;  // GrandOrgue's own programmable generals
-constexpr int kSetterSwitch = 12900;       // its Set button
-constexpr int kGeneralCancel = 12950;      // its GC button
+constexpr int kSetterSwitch = kGrandOrgueSetterSwitch;
+constexpr int kGeneralCancel = kGrandOrgueGeneralCancelSwitch;
 constexpr int kReversibleBase = 12500;     // reversible pistons
 
 struct PipeRef {

@@ -3244,6 +3244,15 @@ Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
 bool MasterpieceProcessor::firePiston(Id switchId) {
   const Id comboId = combinations_.combinationForSwitch(switchId);
   if (comboId == 0) return false;
+  // GrandOrgue's own General Cancel is its setter's, the same control as the
+  // Combinations window's GC (#248): the same cancel, the keyboards put back
+  // when that option is on. An organ that defines its own GC keeps it.
+  if (switchId == static_cast<Id>(kGrandOrgueGeneralCancelSwitch))
+    if (const auto c = model_.combinations.find(comboId);
+        c != model_.combinations.end() && c->second.name == "General cancel") {
+      pressGeneralCancel();
+      return true;
+    }
   // Capture reads the RESOLVED state, because that is what the player can see
   // and hear; the base state would miss a stop pulled by a coupler or by
   // another piston.
