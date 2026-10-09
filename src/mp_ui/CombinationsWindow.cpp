@@ -529,6 +529,7 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
       setBounds(r);
     else
       centreWithSize(saved.w, saved.h);
+    keepOnScreen(*this);
   } else if (!besideThis.isEmpty()) {
     // Tall enough for this organ's divisions, as far as the screen allows,
     // and along the bottom right of the main window, where it covers the
