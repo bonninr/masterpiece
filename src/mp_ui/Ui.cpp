@@ -11,6 +11,10 @@
 #include <future>
 
 namespace mp::ui {
+
+// A toolbar icon's button: square, and on a phone or tablet the size of a
+// fingertip.
+constexpr int kIconW = kMobile ? 46 : 38;
 namespace {
 
 // Divisions are numbered from the pedal upward in Hauptwerk; show that order
@@ -327,10 +331,9 @@ void LevelMeter::paint(juce::Graphics& g) {
   }
 }
 
-TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings)
+TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad)
     : proc_(p), meter_(p) {
   addAndMakeVisible(load_);
-  addAndMakeVisible(audio_);
   addAndMakeVisible(simple_);
   addAndMakeVisible(meter_);
   addAndMakeVisible(volume_);
@@ -363,7 +366,6 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
   addAndMakeVisible(status_);
   status_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   load_.onClick = std::move(onLoad);
-  audio_.onClick = std::move(onAudioSettings);
   simple_.onClick = [this] {
     auto sw = proc_.engineSwitch();
     sw.simpleWavOnly = simple_.getToggleState();
@@ -430,9 +432,7 @@ void TopBar::setStatus(const juce::String& text) {
 
 void TopBar::resized() {
   auto r = getLocalBounds().reduced(4);
-  load_.setBounds(r.removeFromLeft(64));
-  r.removeFromLeft(6);
-  audio_.setBounds(r.removeFromLeft(64));
+  load_.setBounds(r.removeFromLeft(kIconW));
   r.removeFromLeft(6);
   simple_.setBounds(r.removeFromLeft(88));
   r.removeFromLeft(10);
@@ -572,8 +572,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
 MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     : juce::AudioProcessorEditor(p),
       proc_(p),
-      top_(p, [this] { showOpenMenu(); },
-           [this] { if (onAudioSettings) onAudioSettings(); }),
+      top_(p, [this] { showOpenMenu(); }),
       console_(p),
       jamb_(p),
       expression_(p),
@@ -657,6 +656,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     if (proc_.organModel().hasLicensedSamples)
       menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
     menu.addItem(2, "General settings...");
+    // Set up once and seldom changed: in the menu, off the toolbar (#276).
+    if (onAudioSettings) menu.addItem(6, "Audio and MIDI...");
     menu.addItem(5, "Recorder...", true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
     // Pages in windows of their own, for a second screen: the same as a
     // right-click on a page's tab, here where it can be found.
@@ -682,6 +683,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                        [this, versions](int choice) {
                          if (choice == 1 && onOrganSettings) onOrganSettings();
                          if (choice == 2 && onSettings) onSettings();
+                         if (choice == 6 && onAudioSettings) onAudioSettings();
                          if (choice == 5) toggleRecorder();
                          if (choice == 4) {
                            if (proc_.licenceConfirmed()) {
@@ -737,17 +739,12 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   };
 
   addAndMakeVisible(panicButton_);
-  panicButton_.setTooltip("Release every key on every manual and the pedal");
-  panicButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe0a0a0));
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
 
   combinations_ = std::make_unique<CombinationsWindow>(proc_);
   addAndMakeVisible(combinationsButton_);
-  combinationsButton_.setTooltip("Generals, divisionals, the stepper and the "
-                                 "combination set, in a window of their own");
   combinationsButton_.onClick = [this] { toggleCombinations(); };
   addAndMakeVisible(panelsButton_);
-  panelsButton_.setTooltip("The organ's stops as big buttons, arranged and named as you like");
   panelsButton_.onClick = [this] { showPanelsMenu(); };
 
   addAndMakeVisible(tuningButton_);
@@ -1502,25 +1499,25 @@ void MasterpieceEditor::resized() {
   bool stacked = false;
   {
     constexpr int kFaderRowMin = 350;  // Open, Audio, No DSP and the fader
-    const int buttons = 90 + 70 + 64 + 110 + 140 + 30 + 64 + 30 + 56 +
+    const int buttons = 6 * kIconW + 140 + 30 + 64 + 30 + 56 +
                         (layout_.isVisible() ? 130 : 0) +
-                        (swellButton_.isVisible() ? 70 : 0);
+                        (swellButton_.isVisible() ? kIconW : 0);
     if (bar.getWidth() - buttons < kFaderRowMin) {
       top_.setBounds(bar);
       bar = r.removeFromTop(36);
       stacked = true;
     }
   }
-  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
+  settingsButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
-  keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
+  keysButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
   // No swell button on an organ with nothing to enclose.
-  panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
+  panicButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
   if (swellButton_.isVisible())
-    swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
-  combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
-  panelsButton_.setBounds(bar.removeFromRight(76).reduced(2));
+    swellButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
+  combinationsButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
+  panelsButton_.setBounds(bar.removeFromRight(kIconW).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   stepNext_.setBounds(bar.removeFromRight(30).reduced(2));

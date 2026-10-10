@@ -15,6 +15,7 @@
 #include "Console.h"
 #include "PageWindow.h"
 #include "Panels.h"
+#include "Icons.h"
 
 #include <memory>
 #include <vector>
@@ -118,7 +119,7 @@ private:
 class TopBar : public juce::Component {
 public:
   using Callback = std::function<void()>;
-  TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings);
+  TopBar(MasterpieceProcessor& p, Callback onLoad);
   void resized() override;
   void setStatus(const juce::String& text);
   // The status line lives along the bottom of the window, where it has the
@@ -129,8 +130,7 @@ private:
   MasterpieceProcessor& proc_;
   // Terse on purpose: everything the console offers has to share one row, and
   // a slider that reads out in dB does not also need a label saying "Volume".
-  juce::TextButton load_{"Open"};
-  juce::TextButton audio_{"Audio"};
+  IconButton load_{Icon::Open, "Open", "Open: your favourite organs, or any other"};
   juce::ToggleButton simple_{"No DSP"};
   LevelMeter meter_;
   // In decibels, because that is the only scale a volume control feels linear
@@ -261,16 +261,19 @@ private:
   // The pop-out icon on each tab: filled while its page has a window.
   void addPopOutIcons();
   void refreshPopOutIcons();
-  juce::TextButton settingsButton_{"Settings"};
-  juce::TextButton keysButton_{"Keys"};
-  juce::TextButton swellButton_{"Swell"};
+  IconButton settingsButton_{Icon::Settings, "Settings",
+                             "Settings: this organ, the program, audio and MIDI, the recorder"};
+  IconButton keysButton_{Icon::Keys, "Keys", "Keys: a keyboard to play with the mouse"};
+  IconButton swellButton_{Icon::Swell, "Swell", "Swell: the expression shoes as faders"};
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
   // window's are shown too.
   juce::TooltipWindow tooltips_{nullptr, 700};
   // Opens and closes the combinations window: the player's own pistons, on
   // every organ, floating beside the console rather than drawn over it.
-  juce::TextButton combinationsButton_{"Combinations"};
+  IconButton combinationsButton_{Icon::Combinations, "Combinations",
+                                 "Combinations: generals, divisionals, the stepper and the "
+                                 "combination set, in a window of their own"};
   std::unique_ptr<CombinationsWindow> combinations_;
   // Panels (#237): up to two per organ, each a tab after the console pages or
   // a window of its own. panelWindows_ runs beside panels_, null while that
@@ -279,7 +282,8 @@ private:
   std::vector<std::unique_ptr<PanelWindow>> panelWindows_;
   std::vector<int> panelTabs_;
   int showingPanel_ = -1;
-  juce::TextButton panelsButton_{"Panels"};
+  IconButton panelsButton_{Icon::Panels, "Panels",
+                           "Panels: the organ's stops as big buttons, arranged and named as you like"};
   void loadPanels();
   void savePanels();
   void addPanel();
@@ -305,7 +309,8 @@ private:
   // on sounding until something stops it -- and the usual causes (a coupler
   // changed mid-chord, a MIDI note-off lost on the cable) leave the player
   // with no key to lift.
-  juce::TextButton panicButton_{"Panic"};
+  IconButton panicButton_{Icon::Panic, "Panic", "Panic: silence every note still sounding",
+                          juce::Colour(0xffe8a09a)};
   // The registration sequencer. Two thumb pistons and a frame number, which is
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —
@@ -319,8 +324,8 @@ private:
   // because her manuals are part of the backdrop photo and have no drawn keys
   // to click.
   juce::ComboBox manual_;
-  juce::TextButton stepPrev_{"<"};
-  juce::TextButton stepNext_{">"};
+  IconButton stepPrev_{Icon::Previous, "Previous step", "The sequencer's previous step"};
+  IconButton stepNext_{Icon::Next, "Next step", "The sequencer's next step"};
   juce::ToggleButton setter_{"Set"};
   juce::Label stepFrame_;
   // The console already shows the organ's own manuals; a second giant

@@ -244,7 +244,9 @@ def main():
         shot("panel")
         if tap("Panels"):
             tap("Show the console", required=False)
-    if tap("Audio"):
+    # Audio and MIDI: a tab of General settings, reached from the Settings
+    # menu (#276).
+    if tap("Settings") and tap("Audio and MIDI", contains=True):
         shot("audio")
         close_panel()
     # An organ package opened as a player opens one: Open, then the system's
