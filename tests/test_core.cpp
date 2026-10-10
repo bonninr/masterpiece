@@ -10049,6 +10049,64 @@ public:
 };
 static GrandOrgueWindchestsTest g_grandOrgueWindchests;
 
+// A GrandOrgue definition shipped at the top of a Hauptwerk package names its
+// samples from inside OrganInstallationPackages ("./001629/..."), where its
+// author meant it to sit (Dutch Harmonium, Kezdimartonfalva): read from where
+// it is, they are found there.
+class GrandOrgueInPackageTest final : public mp::test::Test {
+public:
+  GrandOrgueInPackageTest() : Test("functional.odf.grandorgue-in-package", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "mp-go-in-package";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(root / "OrganInstallationPackages" / "001629" / "Ped", ec);
+    { std::ofstream(root / "OrganInstallationPackages" / "001629" / "Ped" / "036-c.wav") << "x"; }
+    const std::string organ = R"([Organ]
+ChurchName=T
+HasPedals=N
+NumberOfManuals=1
+NumberOfRanks=1
+NumberOfWindchestGroups=1
+[WindchestGroup001]
+Name=W
+[Rank001]
+Name=P
+FirstMidiNoteNumber=36
+NumberOfLogicalPipes=1
+Pipe001=.\001629\Ped\036-c.wav
+[Manual001]
+Name=I
+NumberOfLogicalKeys=1
+NumberOfAccessibleKeys=1
+FirstAccessibleKeyMIDINoteNumber=36
+NumberOfStops=1
+Stop001=1
+[Stop001]
+Name=Principal
+NumberOfRanks=1
+Rank001=1
+NumberOfAccessiblePipes=1
+)";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    o.organRootDir = root.string();
+    MP_CHECK(l.loadFromXmlString(rep.xml, (root / "t.organ").string(), o, m, d), "it loads");
+    MP_CHECK(!m.samples.empty() &&
+                 m.samples.begin()->second.fileName == "OrganInstallationPackages/001629/Ped/036-c.wav",
+             "the sample is found under the packages: " +
+                 (m.samples.empty() ? std::string("none") : m.samples.begin()->second.fileName));
+    MP_CHECK(d.missingSampleFiles.empty(), "and none is reported missing");
+    fs::remove_all(root, ec);
+  }
+};
+static GrandOrgueInPackageTest g_grandOrgueInPackage;
+
 // GrandOrgue switch logic, through the real switch network: a stop that is
 // the And of its drawstop and the blower sounds only while both are on, an
 // effect stop's pipe opens with its switch, and a drawn panel becomes a page

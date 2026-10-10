@@ -4947,8 +4947,10 @@ juce::File packageFolderOf(const juce::File& odf) {
   return {};
 }
 constexpr const char* kChosenDefinition = "chosen-definition.txt";
+// The spellings a package carries: matching is case-sensitive on Linux, and
+// GrandOrgue sets inside Hauptwerk packages are often "Name.Organ".
 constexpr const char* kDefinitionPatterns =
-    "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ";
+    "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.Organ;*.ORGAN";
 }  // namespace
 
 juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& odf) {
@@ -5060,7 +5062,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   }
   juce::Array<juce::File> definitions;
   dir.findChildFiles(definitions, juce::File::findFiles, true,
-                     "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ");
+                     kDefinitionPatterns);
   definitions.sort();
   if (loadProgress_.isCancelled()) return fail("cancelled");
   // A damaged archive is said in so many words, with what to do about it:
