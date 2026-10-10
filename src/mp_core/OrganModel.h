@@ -377,15 +377,21 @@ struct Keyboard {
   Id altKeyImageSetId[3] = {0, 0, 0};
   int altLeftPx[3] = {0, 0, 0}, altTopPx[3] = {0, 0, 0};
 
+  // A layout the keyboard declares nothing for draws it where the primary
+  // layout does, as an image instance without an alternate does: Arrabona's
+  // alternate layout redraws the console around the same manuals, and they
+  // vanished from it.
+  bool hasAltLayout(int layout) const {
+    return layout > 0 && layout <= 3 && altKeyImageSetId[layout - 1] != 0;
+  }
   Id keyImageSetFor(int layout) const {
-    if (layout <= 0 || layout > 3) return keyImageSetId;
-    return altKeyImageSetId[layout - 1];
+    return hasAltLayout(layout) ? altKeyImageSetId[layout - 1] : keyImageSetId;
   }
   int dispLeftFor(int layout) const {
-    return (layout <= 0 || layout > 3) ? dispLeftPx : altLeftPx[layout - 1];
+    return hasAltLayout(layout) ? altLeftPx[layout - 1] : dispLeftPx;
   }
   int dispTopFor(int layout) const {
-    return (layout <= 0 || layout > 3) ? dispTopPx : altTopPx[layout - 1];
+    return hasAltLayout(layout) ? altTopPx[layout - 1] : dispTopPx;
   }
 };
 
