@@ -943,6 +943,9 @@ private:
         // iPad turns or its window is resized.
         setBounds(mp::ui::screenBounds());
         sceneWatch_.startTimer(500);
+        // Every panel, dialog, menu and alert in a layer over the console.
+        addAndMakeVisible(panelHost_);
+        mp::ui::setPanelHost(&panelHost_);
        #else
         setBounds(mp::ui::screenArea());
        #endif
@@ -971,9 +974,28 @@ private:
     // and the home indicator, where every tap lands (#197).
     void resized() override {
       juce::DocumentWindow::resized();
-      if (auto* content = getContentComponent())
-        content->setBounds(getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds()));
+      if (auto* content = getContentComponent()) {
+        const auto safe = getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds());
+        content->setBounds(safe);
+        // The layer the panels open in, inside the safe area itself: a
+        // dialog's title bar under the status bar takes no taps, and its
+        // close button with it (#233).
+        panelHost_.setBounds(safe);
+        panelHost_.toFront(false);
+      }
     }
+
+    // The layer the panels open in: clear, and passing touches through where
+    // it holds nothing; a panel in it fills it.
+    struct PanelHost final : juce::Component {
+      PanelHost() { setInterceptsMouseClicks(false, true); }
+      void resized() override {
+        for (auto* c : getChildren())
+          if (auto* w = dynamic_cast<juce::ResizableWindow*>(c)) w->setBounds(getLocalBounds());
+          else if (auto* a = dynamic_cast<juce::AlertWindow*>(c)) a->setCentrePosition(getLocalBounds().getCentre());
+      }
+    };
+    PanelHost panelHost_;
 
     struct SceneWatch final : juce::Timer {
       juce::DocumentWindow& window;
@@ -997,9 +1019,11 @@ private:
                                  ", window " + window.getBounds().toString() + ", display " +
                                  (d != nullptr ? d->totalArea.toString() : juce::String("none")));
         area = safe;
+        // The whole layout again, the panel layer with the content: placing
+        // the content alone left the layer the size of the first, unsafe
+        // area, and a dialog's close button under the status bar (#233).
         if (whole != window.getBounds()) window.setBounds(whole);
-        else if (auto* c = window.getContentComponent())
-          c->setBounds(window.getLocalArea(nullptr, safe).getIntersection(window.getLocalBounds()));
+        else window.resized();
       }
     };
     SceneWatch sceneWatch_{*this};
