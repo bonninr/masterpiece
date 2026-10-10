@@ -85,7 +85,16 @@ void CouplerMatrix::reset(const OrganModel& m) {
   // the bare walk with nothing engaged — never per note. A key in the middle of
   // the compass is the fair question to ask, since an edge may carry only part
   // of it.
+  //
+  // And again with every condition switch engaged: a keyboard that reaches
+  // pipework only through couplers is explained by them. Oloron's coupling
+  // manual sounds the Grand Orgue and the Recit through GO/I and R/I and has
+  // no division of its own; taken for one the key flow does not explain, it
+  // played every division whatever was drawn (#264).
   const std::unordered_set<Id> nothingEngaged;
+  std::unordered_set<Id> everyCondition;
+  for (const KeyAction& a : m.keyActions)
+    if (a.conditionSwitchId != 0) everyCondition.insert(static_cast<Id>(a.conditionSwitchId));
   {
     KeyFlowScratch probe;
     std::vector<ExpandedNote> reached;
@@ -93,6 +102,8 @@ void CouplerMatrix::reset(const OrganModel& m) {
       (void)kbRow;
       reached.clear();
       walk(static_cast<int>(id), 60, 1.0f, nothingEngaged, probe, reached);
+      if (reached.empty() && !everyCondition.empty())
+        walk(static_cast<int>(id), 60, 1.0f, everyCondition, probe, reached);
       if (reached.empty()) needsFallback_.insert(id);
     }
   }
