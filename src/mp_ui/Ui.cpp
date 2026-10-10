@@ -676,8 +676,6 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   stepFrame_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
 
   addAndMakeVisible(panicButton_);
-  panicButton_.setTooltip("Silence every note still sounding");
-  panicButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe8a09a));
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
 
   combinations_ = std::make_unique<CombinationsWindow>(proc_);
@@ -1446,7 +1444,7 @@ void MasterpieceEditor::resized() {
     viewMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
     settingsButton_.setBounds(bar.removeFromLeft(menuW + 14).reduced(2));
   }
-  panicButton_.setBounds(bar.removeFromRight(70).reduced(2));
+  panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
@@ -1733,8 +1731,9 @@ void MasterpieceEditor::toggleSwell() {
 
 void MasterpieceEditor::showFileMenu() {
   juce::PopupMenu menu;
+  // One door (#276): the favourites, with the file dialog a button away in
+  // the same window; with no favourite yet, the file dialog itself.
   menu.addItem(1, "Open...");
-  menu.addItem(2, "Open another organ...");
   // The same organ as another definition: a perspective, or full and light.
   const juce::File loaded = proc_.loadedOrganFile();
   const auto versions = MasterpieceProcessor::organVersions(loaded);
@@ -1751,7 +1750,6 @@ void MasterpieceEditor::showFileMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
-                       if (c == 2) safe->chooseAndLoadOrgan();
                        if (c == 5) safe->toggleRecorder();
                        if (c >= 100 && c - 100 < versions.size()) safe->loadOrgan(versions[c - 100]);
                      });

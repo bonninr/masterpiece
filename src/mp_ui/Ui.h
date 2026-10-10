@@ -15,6 +15,7 @@
 #include "Console.h"
 #include "PageWindow.h"
 #include "Panels.h"
+#include "Icons.h"
 
 #include <memory>
 #include <vector>
@@ -314,7 +315,8 @@ private:
   // on sounding until something stops it -- and the usual causes (a coupler
   // changed mid-chord, a MIDI note-off lost on the cable) leave the player
   // with no key to lift.
-  juce::TextButton panicButton_{"Panic"};
+  IconButton panicButton_{Icon::Panic, "Panic", "Panic: silence every note still sounding",
+                          juce::Colour(0xffe8a09a)};
   // The registration sequencer. Two thumb pistons and a frame number, which is
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —

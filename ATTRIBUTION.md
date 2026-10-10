@@ -153,6 +153,8 @@ It is built on [JUCE](https://juce.com/), [pugixml](https://pugixml.org/),
 [libarchive](https://www.libarchive.org/), which reads organs straight from their
 packages, and [WavPack](https://www.wavpack.com/), which decodes compressed samples
 (both BSD licence).
+The Panic icon is from [Lucide](https://lucide.dev/) (ISC licence; the
+portions from Feather are MIT). The licence text is in `src/mp_ui/Icons.cpp`.
 
 Masterpiece is not affiliated with, nor endorsed by, any sample library
 producer or any other organ software.
