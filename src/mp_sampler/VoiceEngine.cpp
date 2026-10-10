@@ -238,6 +238,12 @@ VoiceEngine::~VoiceEngine() {
   stopStreamer();
 }
 
+void VoiceEngine::quiesce() {
+  stopWorkers();
+  stopStreamer();
+  reset();
+}
+
 void VoiceEngine::reset() {
   for (size_t i = 0; i < voices_.size(); ++i) disarmStream(i);
   for (auto& v : voices_) v = Voice{};
@@ -924,6 +930,18 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   const int extra = numThreads > 1 ? numThreads - 1 : 0;
   if (extra <= 0 || maxFrames_ <= 0) return;
 
+  // The generation the new workers start from. jobGeneration_ outlives the
+  // pool: a worker starting from 0 took the last job of the previous pool for
+  // a new one and rendered it at once, at the old block size, into scratch
+  // sized for the new one -- past its end whenever the buffer got smaller
+  // (#267, found with AddressSanitizer).
+  uint64_t startGeneration = 0;
+  {
+    std::lock_guard<std::mutex> lock(jobMutex_);
+    startGeneration = jobGeneration_;
+    jobsOutstanding_ = 0;
+  }
+  const int scratchFrames = maxFrames_;
   workers_.resize(static_cast<size_t>(extra));
   for (size_t w = 0; w < workers_.size(); ++w) {
     auto& worker = workers_[w];
@@ -934,8 +952,8 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
       worker.planes[static_cast<size_t>(c)] =
           worker.scratch.data() + static_cast<size_t>(c) * static_cast<size_t>(maxFrames_);
 
-    worker.thread = std::thread([this, w]() {
-      uint64_t seen = 0;
+    worker.thread = std::thread([this, w, startGeneration, scratchFrames]() {
+      uint64_t seen = startGeneration;
       for (;;) {
         std::unique_lock<std::mutex> lock(jobMutex_);
         jobCv_.wait(lock, [&] { return jobGeneration_ != seen || shuttingDown_; });
@@ -943,8 +961,9 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
         seen = jobGeneration_;
         const auto begin = workers_[w].begin;
         const auto end = workers_[w].end;
-        const int channels = jobChannels_;
-        const int frames = jobFrames_;
+        // Never more than the scratch holds, whatever the job says.
+        const int channels = std::min(jobChannels_, numChannels_);
+        const int frames = std::min(jobFrames_, scratchFrames);
         const int bus = jobBus_;
         const int mixBus = jobMixBus_;
         auto* planes = workers_[w].planes.data();

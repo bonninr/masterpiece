@@ -179,6 +179,12 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   outgoing_.ensureSize(1024);
 }
 
+void MasterpieceProcessor::releaseResources() {
+  const AudioLock audio(*this);
+  voices_.quiesce();
+  soundingNotes_.clear();
+}
+
 void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
   if (!loadTicks_.load(std::memory_order_acquire)) {
     loadTickLeft_ = 0;

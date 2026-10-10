@@ -12338,6 +12338,81 @@ public:
 };
 static ManualSwitchReleaseTest g_manualSwitchRelease;
 
+// The device stopping, as it does to change its buffer size (#267): the engine
+// comes to rest, silent, with nothing left half way through, and plays again
+// once prepared at the new size.
+class ReleaseResourcesTest final : public mp::test::Test {
+public:
+  ReleaseResourcesTest() : Test("functional.audio.release-resources", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-release-resources");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "4800");
+      meta.set("Loop0End", "9599");
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(wav.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 9600);
+      for (int i = 0; i < 9600; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 9600);
+    }
+    juce::String organ = "[Organ]\nChurchName=Release\nHasPedals=N\nNumberOfManuals=2\nNumberOfWindchestGroups=1\n"
+                         "[WindchestGroup001]\nName=Main\n";
+    for (int m = 1; m <= 2; ++m) {
+      organ << "[Manual00" << m << "]\nName=Manual " << m
+            << "\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\nFirstAccessibleKeyMIDINoteNumber=36\n"
+               "NumberOfStops=1\nStop001=" << m << "\n";
+      organ << "[Stop00" << m << "]\nName=Sine " << m
+            << "\nNumberOfLogicalPipes=3\nNumberOfAccessiblePipes=3\nFirstAccessiblePipeLogicalKeyNumber=1\n"
+               "WindchestGroup=1\nPipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    }
+    const auto odf = dir.getChildFile("release.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 480);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.engageAllStops();
+    std::vector<mp::Id> ids;
+    for (const auto& [id, kb] : proc.organModel().keyboards) ids.push_back(id);
+    std::sort(ids.begin(), ids.end());
+    MP_CHECK(!ids.empty(), "it has keyboards");
+    if (ids.empty()) return;
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, ids[0]);
+    auto play = [&](int size, bool strike) {
+      juce::AudioBuffer<float> buf(2, size);
+      juce::MidiBuffer midi;
+      if (strike) midi.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+      float peak = 0.0f;
+      for (int i = 0; i < 20; ++i) {
+        proc.processBlock(buf, midi);
+        midi.clear();
+        peak = std::max(peak, buf.getRMSLevel(0, 0, size));
+      }
+      return peak;
+    };
+    MP_CHECK(play(480, true) > 0.01f, "a held key sounds");
+    proc.releaseResources();
+    proc.prepareToPlay(48000.0, 1024);
+    MP_CHECK(play(1024, false) < 1e-6f, "after the device stopped nothing is left sounding");
+    MP_CHECK(play(1024, true) > 0.01f, "and prepared at the new size the organ plays again");
+    proc.releaseResources();
+    proc.releaseResources();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(play(256, true) > 0.01f, "stopping twice in a row is harmless");
+    proc.releaseResources();
+    proc.settingsFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static ReleaseResourcesTest g_releaseResources;
+
 // Universal Master Volume (F0 7F dev 04 01 lsb msb F7), as a SubZero
 // ControlPad's volume knob sends it (#138): it sets the master fader.
 class MasterVolumeSysExTest final : public mp::test::Test {
