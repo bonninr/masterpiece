@@ -10456,6 +10456,26 @@ public:
         if (line.rfind("ignored ", 0) == 0) ++ignored;
       MP_CHECK(ignored == 2, "and the log says they were passed over");
     }
+    // --- a set published as parts under their own names ---
+    put("01_Eule_dry_demo.rar", rar4(0, 0));
+    put("02_Eule_wet_demo.rar", rar4(0, 0));
+    put("03_Eule_surround_demo.rar", rar4(0, 0));
+    {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / "03_Eule_surround_demo.rar").string(), error) && a.archives().size() == 3,
+               "numbered parts of one organ open together: " + std::to_string(a.archives().size()));
+    }
+    // Two organs with the same first word number their parts from 1 each:
+    // they are told apart by package, and these carry none.
+    put("01_Angster_Hajos_demo.rar", rar4(0, 0));
+    put("01_Angster_Nagyrakos_demo.rar", rar4(0, 0));
+    {
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover((dir / "01_Angster_Hajos_demo.rar").string(), error) && a.archives().size() == 1,
+               "two organs that share a word stay apart: " + std::to_string(a.archives().size()));
+    }
     put("Casa.CompPkg.Hauptwerk.rar", rar4(0x0101, 0));
     put("Casa.CompPkg.Hauptwerk (1).r00", rar4(0x0001, 0));
     put("Casa.CompPkg.Hauptwerk.r01", rar4(0x0001, 0));
