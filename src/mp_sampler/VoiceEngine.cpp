@@ -394,14 +394,6 @@ void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
   releaseVoices(noteId, 0, release);
 }
 
-void VoiceEngine::releaseAll() {
-  for (size_t i = 0; i < voices_.size(); ++i) {
-    const Voice& v = voices_[i];
-    if (!v.active() || v.phase == VoicePhase::Release) continue;
-    releaseVoices(v.noteId, 0, NoteRelease{});
-  }
-}
-
 // pipeId 0 means every pipe of the note; otherwise only that one.
 void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
                                 const NoteRelease& release) {

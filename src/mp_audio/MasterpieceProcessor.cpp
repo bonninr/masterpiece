@@ -3791,8 +3791,14 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // with: a note stuck because its note-off was lost, or arrived where the
   // keyboard state did not have it, is in no keyboard state to release, and
   // Panic did nothing for it (#276).
+  // A note a drawn switch holds -- a motor or blower noise -- is not stuck,
+  // and sounds on.
   if (panic) {
-    voices_.releaseAll();
+    voices_.releaseAll([this](uint64_t noteId) {
+      for (const auto& [sw, id] : palletNotes_)
+        if (id == noteId) return true;
+      return false;
+    });
     soundingNotes_.clear();
   }
   controls_.propagate(0, &engagedSwitches_);

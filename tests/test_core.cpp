@@ -1348,6 +1348,8 @@ public:
     s.ratio = 1.0;
     s.gain = 1.0f;
     MP_CHECK(eng.startVoice(s, 7) >= 0 && eng.startVoice(s, 8) >= 0, "two notes sound");
+    // Note 9 is held by a drawn switch, as a motor noise is.
+    MP_CHECK(eng.startVoice(s, 9) >= 0, "and a note a switch holds");
     std::vector<float> buf(256, 0.0f);
     float* out[1] = {buf.data()};
     auto level = [&]() {
@@ -1360,10 +1362,13 @@ public:
     };
     for (int b = 0; b < 20; ++b) level();
     MP_CHECK(level() > 0.01f, "held, they sound");
+    eng.releaseAll([](uint64_t id) { return id == 9; });
+    for (int b = 0; b < 48000 * 2 / 256; ++b) level();
+    MP_CHECK(eng.activeVoiceCount() == 1, "released, the two keys fall silent; the switch's note sounds on");
     eng.releaseAll();
     float last = 1.0f;
     for (int b = 0; b < 48000 * 2 / 256; ++b) last = level();
-    MP_CHECK(last < 1e-4f, "released, both fall silent with no note-off for either");
+    MP_CHECK(last < 1e-4f, "with nothing kept, everything falls silent");
     MP_CHECK(eng.activeVoiceCount() == 0, "and no voice is left");
   }
 };
