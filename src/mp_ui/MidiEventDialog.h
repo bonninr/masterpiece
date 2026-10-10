@@ -24,8 +24,11 @@ namespace mp::ui {
 
 class MidiEventDialog {
 public:
-  // `kind` is Switch or ContinuousControl.
-  static void show(MasterpieceProcessor& p, MidiTargetKind kind, Id id);
+  // `kind` is Switch, ContinuousControl, or one of the program's own buttons
+  // (a player general, a cancel, the setter, the stepper: #226), which the
+  // dialog treats like a switch and titles with `name`.
+  static void show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
+                   const juce::String& name = {});
 
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,
