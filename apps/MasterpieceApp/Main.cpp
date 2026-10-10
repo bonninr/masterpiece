@@ -1023,9 +1023,11 @@ private:
                                  ", window " + window.getBounds().toString() + ", display " +
                                  (d != nullptr ? d->totalArea.toString() : juce::String("none")));
         area = safe;
+        // The whole layout again, the panel layer with the content: placing
+        // the content alone left the layer the size of the first, unsafe
+        // area, and a dialog's close button under the status bar (#233).
         if (whole != window.getBounds()) window.setBounds(whole);
-        else if (auto* c = window.getContentComponent())
-          c->setBounds(window.getLocalArea(nullptr, safe).getIntersection(window.getLocalBounds()));
+        else window.resized();
       }
     };
     SceneWatch sceneWatch_{*this};
