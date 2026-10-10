@@ -663,9 +663,21 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   };
 
   addAndMakeVisible(setter_);
-  setter_.setTooltip("While on, a piston or a step stores what is drawn "
-                     "instead of recalling it");
-  setter_.onClick = [this] { proc_.setCaptureMode(setter_.getToggleState()); };
+  setter_.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffb0402c));
+  setter_.onClick = [this] {
+    if (proc_.captureMode()) {
+      proc_.setCaptureMode(false);
+      top_.setStatus("Set is off: pistons recall again");
+      return;
+    }
+    const auto where = proc_.storeTargetName();
+    if (!proc_.storeIntoTarget()) {
+      top_.setStatus("Choose a piston or a step first; then Set stores what is drawn into it");
+      return;
+    }
+    proc_.saveCombinationsIfDirty();
+    top_.setStatus("Stored in " + juce::String(where));
+  };
 
   addAndMakeVisible(stepPrev_);
   stepPrev_.onClick = [this] { proc_.stepperPrev(); };
@@ -1919,6 +1931,16 @@ void MasterpieceEditor::timerCallback() {
   stepPrev_.setEnabled(seq.frame() > 1);
   stepNext_.setEnabled(capturing || seq.frame() < last);
   setter_.setToggleState(capturing, juce::dontSendNotification);
+  {
+    const auto where = proc_.storeTargetName();
+    const juce::String tip =
+        capturing ? juce::String("Set is on from the console or the combinations window: "
+                                 "pistons store. Press to let it go.")
+        : where.empty() ? juce::String("Set: choose a piston or a step, draw the stops, "
+                                       "then press Set to store them there")
+                        : "Set: store what is drawn into " + juce::String(where);
+    if (setter_.getTooltip() != tip) setter_.setTooltip(tip);
+  }
   {
     const auto tuning = TuningPanel::summary(proc_);
     if (tuningButton_.getButtonText() != tuning) tuningButton_.setButtonText(tuning);

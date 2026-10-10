@@ -3027,16 +3027,66 @@ void MasterpieceProcessor::pressGeneral(int n) {
   const auto read = [this](const PlayerCombinations::Element& e) {
     return playerElementEngaged(e);
   };
+  storeTarget_ = {StoreTarget::Kind::General, 0, n};
   if (captureMode()) {
     if (player_.captureGeneral(n, read))
       combinationsDirty_.store(true, std::memory_order_release);
     return;
   }
-  if (!player_.generalSet(n)) return;  // never captured: does nothing
+  // Never captured: nothing to recall, but it is chosen, for Set to fill.
+  if (!player_.generalSet(n)) return;
   playerScratch_.clear();
   player_.recallGeneral(n, playerScratch_);
   applyPlayerChanges();
   player_.lightGeneral(n);
+}
+
+MasterpieceProcessor::StoreTarget MasterpieceProcessor::storeTarget() const {
+  const AudioLock audio(const_cast<MasterpieceProcessor&>(*this));
+  return storeTarget_;
+}
+
+std::string MasterpieceProcessor::storeTargetName() const {
+  const StoreTarget t = storeTarget();
+  switch (t.kind) {
+    case StoreTarget::Kind::General: return "General " + std::to_string(t.n);
+    case StoreTarget::Kind::Step: return "Step " + std::to_string(t.n);
+    case StoreTarget::Kind::Divisional: {
+      const auto d = model_.divisions.find(t.divisionId);
+      const std::string div = d != model_.divisions.end() && !d->second.name.empty()
+                                  ? d->second.name
+                                  : "Division " + std::to_string(t.divisionId);
+      return div + " divisional " + std::to_string(t.n);
+    }
+    case StoreTarget::Kind::None: break;
+  }
+  return {};
+}
+
+bool MasterpieceProcessor::storeIntoTarget() {
+  const AudioLock audio(*this);
+  const auto read = [this](const PlayerCombinations::Element& e) {
+    return playerElementEngaged(e);
+  };
+  bool stored = false;
+  switch (storeTarget_.kind) {
+    case StoreTarget::Kind::General:
+      stored = player_.captureGeneral(storeTarget_.n, read);
+      if (stored) player_.lightGeneral(storeTarget_.n);
+      break;
+    case StoreTarget::Kind::Divisional:
+      stored = player_.captureDivisional(storeTarget_.divisionId, storeTarget_.n, read);
+      if (stored) player_.lightDivisional(storeTarget_.divisionId, storeTarget_.n);
+      break;
+    case StoreTarget::Kind::Step:
+      // Into the step the sequencer is on; the frames after it stay as they are.
+      playerScratch_.clear();
+      stored = player_.gotoFrame(storeTarget_.n, true, read, playerScratch_);
+      break;
+    case StoreTarget::Kind::None: break;
+  }
+  if (stored) combinationsDirty_.store(true, std::memory_order_release);
+  return stored;
 }
 
 void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
@@ -3044,6 +3094,7 @@ void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
   const auto read = [this](const PlayerCombinations::Element& e) {
     return playerElementEngaged(e);
   };
+  storeTarget_ = {StoreTarget::Kind::Divisional, divisionId, n};
   if (captureMode()) {
     if (player_.captureDivisional(divisionId, n, read))
       combinationsDirty_.store(true, std::memory_order_release);
@@ -3176,6 +3227,7 @@ bool MasterpieceProcessor::stepperNext() {
       capturing, [this](const auto& e) { return playerElementEngaged(e); },
       playerScratch_);
   if (!moved) return false;
+  storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
   if (capturing) combinationsDirty_.store(true, std::memory_order_release);
   else applyPlayerChanges();
   return true;
@@ -3189,6 +3241,7 @@ bool MasterpieceProcessor::stepperPrev() {
       capturing, [this](const auto& e) { return playerElementEngaged(e); },
       playerScratch_);
   if (!moved) return false;
+  storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
   if (capturing) combinationsDirty_.store(true, std::memory_order_release);
   else applyPlayerChanges();
   return true;
@@ -3201,6 +3254,7 @@ bool MasterpieceProcessor::stepperGoto(int frame) {
       frame, capturing, [this](const auto& e) { return playerElementEngaged(e); },
       playerScratch_);
   if (!moved) return false;
+  storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
   if (capturing) combinationsDirty_.store(true, std::memory_order_release);
   else applyPlayerChanges();
   return true;

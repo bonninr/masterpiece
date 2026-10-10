@@ -413,6 +413,20 @@ public:
   // working beside them. Both answer the same setter: hold it, press a piston,
   // and the piston stores what is drawn.
   const PlayerCombinations& playerCombinations() const { return player_; }
+  // The piston or sequencer step the player chose last, whatever has been
+  // drawn since: where a momentary Set stores (#276). Choose General 3, draw
+  // the registration, press Set.
+  struct StoreTarget {
+    enum class Kind { None, General, Divisional, Step };
+    Kind kind = Kind::None;
+    Id divisionId = 0;
+    int n = 0;
+  };
+  StoreTarget storeTarget() const;
+  // "General 3", "Pedal divisional 2", "Step 12"; empty when none is chosen.
+  std::string storeTargetName() const;
+  // Store what is drawn into it. False when nothing has been chosen yet.
+  bool storeIntoTarget();
   void pressGeneral(int n);
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
@@ -1621,6 +1635,9 @@ private:
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
   bool setOffAfterStore_ = false;
+  // See storeTarget(). Written where a piston or step is chosen, under the
+  // audio lock or on the audio thread; read under the lock.
+  StoreTarget storeTarget_;
   std::atomic<bool> fasterEngine_{false};
   juce::StringArray ownInputs_, inputsOff_;
   // Per device id, whether its messages are dropped: read on MIDI threads.

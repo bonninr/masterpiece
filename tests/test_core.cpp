@@ -11305,6 +11305,42 @@ public:
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
 
+// A momentary Set (#276): the piston or step chosen last is where Set
+// stores, whatever is drawn after choosing it -- an empty general included.
+class MomentarySetTest final : public mp::test::Test {
+public:
+  MomentarySetTest() : Test("functional.control.momentary-set", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+
+    MP_CHECK(!proc.storeIntoTarget() && proc.storeTargetName().empty(),
+             "with nothing chosen, Set stores nothing");
+    proc.pressGeneral(3);
+    MP_CHECK(proc.storeTargetName() == "General 3", "an empty general is chosen: " + proc.storeTargetName());
+    proc.setStopEngaged(901, true);
+    MP_CHECK(proc.storeIntoTarget() && pc.generalSet(3) && pc.litGeneral() == 3,
+             "drawn after choosing, stored by Set, and lit");
+    proc.pressGeneralCancel();
+    proc.pressGeneral(3);
+    MP_CHECK(proc.stopEngaged(901), "the general brings it back");
+
+    // An empty sequencer does not step on (a recital never runs into empty
+    // steps); a step is chosen by going to it.
+    proc.stepperGoto(1);
+    MP_CHECK(proc.storeTargetName() == "Step 1", "a step is chosen by going to it: " + proc.storeTargetName());
+    proc.setStopEngaged(901, false);
+    MP_CHECK(proc.storeIntoTarget() && pc.frameSet(1), "Set stores into the step");
+    MP_CHECK(!proc.captureMode(), "and leaves capture as it was");
+  }
+};
+static MomentarySetTest g_momentarySet;
+
 // The organ's own start signal (#263). Sets built on one template (Nancy,
 // Friesach, Oloron) start themselves with a hidden pair: "Hidden OffToOn"
 // moves 0 to 127 at load, a delay follows it, and the delay's top step
