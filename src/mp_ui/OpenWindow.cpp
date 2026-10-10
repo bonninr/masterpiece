@@ -133,7 +133,7 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
     refresh();
   };
   addAndMakeVisible(another_);
-  another_.setTooltip("Choose an organ file that is not in the list");
+  another_.setTooltip("Any organ on this computer, in the file dialog");
   another_.onClick = [this] {
     auto browse = browse_;
     close();

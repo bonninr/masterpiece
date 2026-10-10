@@ -49,7 +49,7 @@ private:
   juce::Label empty_;
   juce::Label status_;
   juce::TextButton addCurrent_{"Add the organ now loaded"};
-  juce::TextButton another_{"Open another organ..."};
+  juce::TextButton another_{"Open an organ file..."};
 };
 
 }  // namespace mp::ui
