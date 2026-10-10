@@ -626,6 +626,51 @@ bool OrganArchive::open(const std::string& path, std::string& error) {
   return discover(path, error) && inspect(error) && index(error);
 }
 
+// The installation package an archive belongs to: the first
+// OrganInstallationPackages/<six digits>/ folder in its headers. Read until
+// it is found, which is seldom past the first few files; empty when there is
+// none (a definitions-only archive, or another kind of file).
+static std::string firstPackageId(const std::vector<std::string>& volumes) {
+  auto pass = passFor(volumes);
+  std::string name;
+  int64_t size = 0;
+  bool encrypted = false;
+  for (int n = 0; n < 4000 && pass->next(name, size, encrypted); ++n) {
+    std::string k = lower(name);
+    std::replace(k.begin(), k.end(), '\\', '/');
+    const std::string folder = "organinstallationpackages/";
+    const auto at = k.find(folder);
+    if (at != std::string::npos && k.size() >= at + folder.size() + 6) {
+      const std::string id = k.substr(at + folder.size(), 6);
+      if (std::all_of(id.begin(), id.end(), [](unsigned char c) { return std::isdigit(c); }))
+        return id;
+    }
+    pass->skip();
+  }
+  return {};
+}
+
+// A part's number in front of its name: 2 for "02_Ada(dry)demo...", 0 for none.
+static int partNumber(const std::string& fileName) {
+  size_t i = 0;
+  while (i < fileName.size() && i < 3 && std::isdigit(static_cast<unsigned char>(fileName[i]))) ++i;
+  if (i == 0 || i >= fileName.size() || fileName[i] != '_') return 0;
+  return std::stoi(fileName.substr(0, i));
+}
+
+// The organ's own word in a part's file name: "01_Ada(wet)demo..." and
+// "03_Ada(sur)demo..." are both "ada", "02_Rieger_szhely_dry_demo" is
+// "rieger". A part's number in front is not part of it.
+static std::string organWord(const std::string& fileName) {
+  std::string n = lower(fileName);
+  size_t i = 0;
+  while (i < n.size() && std::isdigit(static_cast<unsigned char>(n[i]))) ++i;
+  if (i > 0 && i < n.size() && (n[i] == '_' || n[i] == '-' || n[i] == ' ')) n.erase(0, i + 1);
+  size_t e = 0;
+  while (e < n.size() && std::isalnum(static_cast<unsigned char>(n[e]))) ++e;
+  return n.substr(0, e);
+}
+
 bool OrganArchive::discover(const std::string& path, std::string& error) {
   archives_.clear();
   entries_.clear();
@@ -751,6 +796,62 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   if (archives_.empty()) {
     error = "no archive found at " + path;
     return false;
+  }
+
+  // Parts of one set published as archives of their own names: Augustine's
+  // demos come as 01_Ada(wet), 02_Ada(dry) and 03_Ada(sur), each holding part
+  // of package 002374, and the surround definition plays samples from all
+  // three. An archive in the same folder belongs with the chosen one when its
+  // name starts with the same organ word and it carries the same package;
+  // two organs that share a word do not share a package.
+  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(chosen.filename().string())) {
+    const std::string word = organWord(chosen.filename().string());
+    std::string packageId;
+    bool looked = false;
+    std::vector<std::string> parts;
+    std::vector<std::string> candidates;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+      if (!e.is_regular_file(ec)) continue;
+      const std::string name = e.path().filename().string();
+      if (!isOrganArchive(name) || word.size() < 3 || organWord(name) != word) continue;
+      if (!originalOf(name).empty()) continue;  // a second download
+      std::string setName;
+      if (volumeNumber(name, setName) >= 0) continue;  // a volume of another set
+      bool already = false;
+      for (const auto& group : archives_)
+        for (const auto& file : group)
+          if (fs::equivalent(fs::path(file), e.path(), ec)) already = true;
+      if (!already) candidates.push_back(e.path().string());
+    }
+    // Numbered parts, "01_", "02_", "03_", each number once among them and
+    // the chosen archive: one set, whatever packages its parts carry (Eule
+    // Szombathely gives each perspective a package of its own, and the
+    // surround definition plays all three). Two organs with the same word
+    // number their parts from 1 each, and are told apart by package below.
+    std::set<int> numbers;
+    bool numbered = partNumber(chosen.filename().string()) > 0;
+    if (numbered) numbers.insert(partNumber(chosen.filename().string()));
+    for (const auto& c : candidates) {
+      const int n = partNumber(fs::path(c).filename().string());
+      if (n <= 0 || !numbers.insert(n).second) numbered = false;
+    }
+    for (const auto& c : candidates) {
+      if (numbered) {
+        parts.push_back(c);
+        continue;
+      }
+      if (!looked) {
+        packageId = firstPackageId(archives_.front());
+        looked = true;
+      }
+      if (packageId.empty()) break;
+      if (firstPackageId({c}) == packageId) parts.push_back(c);
+    }
+    std::sort(parts.begin(), parts.end());
+    for (const auto& part : parts) {
+      archives_.push_back({part});
+      report_.push_back("with " + fs::path(part).filename().string() + ": another part of the set");
+    }
   }
 
   // A download still in progress has the downloader's own file beside it.
