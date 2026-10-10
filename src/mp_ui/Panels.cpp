@@ -334,6 +334,14 @@ std::string PanelLayout::toText() const {
   o << "detached " << (detached ? 1 : 0) << "\n";
   o << "window " << x << " " << y << " " << w << " " << h << "\n";
   o << "scheme " << scheme << "\n";
+  // A name runs to the end of its line; a line break in it would end it.
+  auto oneLine = [](std::string v) {
+    for (char& ch : v)
+      if (ch == '\n' || ch == '\r') ch = ' ';
+    return v;
+  };
+  for (const auto& [key, name] : names) o << "name " << key << " " << oneLine(name) << "\n";
+  if (!title.empty()) o << "title " << oneLine(title) << "\n";
   return o.str();
 }
 
@@ -350,13 +358,21 @@ bool PanelLayout::fromText(const std::string& text) {
     else if (key == "detached") { int v = 0; l >> v; detached = v != 0; }
     else if (key == "window") { l >> x >> y >> w >> h; }
     else if (key == "scheme") { l >> scheme; scheme = std::clamp(scheme, 0, 3); }
+    else if (key == "name") {
+      std::string k, v;
+      if (l >> k && std::getline(l >> std::ws, v) && !v.empty()) names[k] = v;
+    } else if (key == "title") {
+      std::string v;
+      if (std::getline(l >> std::ws, v)) title = v;
+    }
   }
   return true;
 }
 
 bool PanelLayout::operator==(const PanelLayout& o) const {
   return sectionsOff == o.sectionsOff && hidden == o.hidden && detached == o.detached &&
-         x == o.x && y == o.y && w == o.w && h == o.h && scheme == o.scheme;
+         x == o.x && y == o.y && w == o.w && h == o.h && scheme == o.scheme &&
+         names == o.names && title == o.title;
 }
 
 namespace {
@@ -444,6 +460,7 @@ class PanelView::Cell : public juce::Component {
 public:
   Cell(PanelView& owner, PanelElement e, size_t sectionIndex)
       : owner_(owner), e_(std::move(e)), section_(sectionIndex) {}
+  static constexpr float kTick = kMobile ? 34.0f : 26.0f;
 
   bool engaged() const {
     auto& p = owner_.proc_;
@@ -475,19 +492,20 @@ public:
     g.drawRoundedRectangle(r, 5.0f, 1.2f);
     g.setColour(on ? c.textOn : c.textOff);
     // The name, shrinking to fit; the footage on a line of its own.
+    const PanelElement e = owner_.shown(e_);
     auto text = r.reduced(6.0f, 4.0f);
-    const float h = std::min(20.0f, text.getHeight() * (e_.footage.empty() ? 0.42f : 0.34f));
+    const float h = std::min(20.0f, text.getHeight() * (e.footage.empty() ? 0.42f : 0.34f));
     g.setFont(juce::Font(juce::FontOptions(h, juce::Font::bold)));
-    if (!e_.footage.empty()) {
+    if (!e.footage.empty()) {
       auto foot = text.removeFromBottom(text.getHeight() * 0.36f);
-      g.drawFittedText(juce::String::fromUTF8(e_.footage.c_str()), foot.toNearestInt(),
+      g.drawFittedText(juce::String::fromUTF8(e.footage.c_str()), foot.toNearestInt(),
                        juce::Justification::centredTop, 1, 0.7f);
     }
-    g.drawFittedText(juce::String::fromUTF8(e_.name.c_str()), text.toNearestInt(),
+    g.drawFittedText(juce::String::fromUTF8(e.name.c_str()), text.toNearestInt(),
                      juce::Justification::centred, 2, 0.6f);
     if (owner_.editing_) {
       // The tick: shown, or hidden from the panel.
-      auto box = getLocalBounds().toFloat().removeFromTop(22.0f).removeFromRight(22.0f).reduced(4.0f);
+      auto box = tickArea().withSizeKeepingCentre(16.0f, 16.0f);
       g.setColour(juce::Colours::white);
       g.drawRect(box, 1.5f);
       if (!hidden) {
@@ -504,13 +522,24 @@ public:
     }
   }
 
+  // The tick box in edit mode, large enough for a finger.
+  juce::Rectangle<float> tickArea() const {
+    return getLocalBounds().toFloat().removeFromTop(kTick).removeFromRight(kTick);
+  }
+
   void mouseDown(const juce::MouseEvent& ev) override {
     auto& p = owner_.proc_;
     if (owner_.editing_) {
-      auto& hidden = owner_.layout_.hidden;
-      if (!hidden.erase(e_.key())) hidden.insert(e_.key());
-      repaint();
-      owner_.changed();
+      // The tick shows or hides it; anywhere else on it, or a right-click,
+      // names it.
+      if (!ev.mods.isPopupMenu() && tickArea().contains(ev.position)) {
+        auto& hidden = owner_.layout_.hidden;
+        if (!hidden.erase(e_.key())) hidden.insert(e_.key());
+        repaint();
+        owner_.changed();
+      } else {
+        owner_.askForName(e_);
+      }
       return;
     }
     if (ev.mods.isPopupMenu()) {
@@ -578,7 +607,7 @@ public:
     g.fillRoundedRectangle(track.withTop(track.getBottom() - track.getHeight() * frac), 4.0f);
     g.setColour(c.textOff);
     g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
-    g.drawFittedText(juce::String::fromUTF8(e_.name.c_str()), title.toNearestInt(),
+    g.drawFittedText(juce::String::fromUTF8(owner_.shown(e_).name.c_str()), title.toNearestInt(),
                      juce::Justification::centred, 1, 0.6f);
     if (owner_.editing_ && owner_.layout_.hidden.count(e_.key()) != 0) {
       g.setColour(juce::Colours::black.withAlpha(0.55f));
@@ -587,6 +616,11 @@ public:
   }
   void mouseDown(const juce::MouseEvent& ev) override {
     if (owner_.editing_) {
+      // The title names it; the rest shows or hides it.
+      if (ev.mods.isPopupMenu() || ev.position.y < 26.0f) {
+        owner_.askForName(e_);
+        return;
+      }
       auto& hidden = owner_.layout_.hidden;
       if (!hidden.erase(e_.key())) hidden.insert(e_.key());
       repaint();
@@ -620,7 +654,10 @@ PanelView::PanelView(MasterpieceProcessor& p, int index, PanelLayout layout)
     : proc_(p), index_(index), layout_(std::move(layout)), saved_(layout_) {
   addAndMakeVisible(edit_);
   edit_.setClickingTogglesState(true);
-  edit_.setTooltip("Tick the elements this panel shows");
+  edit_.setTooltip("Tick the elements this panel shows; touch a name to change it");
+  addAndMakeVisible(rename_);
+  rename_.setTooltip("Give this panel a name of its own");
+  rename_.onClick = [this] { askForTitle(); };
   edit_.onClick = [this] { setEditing(edit_.getToggleState()); };
   addAndMakeVisible(save_);
   save_.setTooltip("Keep the sections, hidden elements, window and colours");
@@ -673,6 +710,74 @@ void PanelView::rebuild() {
   resized();
 }
 
+PanelElement PanelView::shown(const PanelElement& e) const {
+  const auto it = layout_.names.find(e.key());
+  if (it == layout_.names.end()) return e;
+  PanelElement out = e;
+  // The player's name, footage and all: "Trumpet 8'" reads as the organ's
+  // own names do.
+  if (e.kind == PanelElement::Kind::Control) {
+    out.name = it->second;
+    out.footage.clear();
+  } else {
+    splitFootage(it->second, out.name, out.footage);
+  }
+  return out;
+}
+
+namespace {
+// A name asked for in a small window: the current name to edit, and a button
+// that gives back the organ's own.
+void askText(const juce::String& title, const juce::String& prompt, const juce::String& current,
+             const juce::String& original, std::function<void(juce::String)> done) {
+  auto* w = new juce::AlertWindow(title, prompt, juce::MessageBoxIconType::NoIcon);
+  w->addTextEditor("name", current);
+  w->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+  if (original.isNotEmpty()) w->addButton("Organ's name", 2);
+  w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  if (auto* ed = w->getTextEditor("name")) ed->selectAll();
+  w->enterModalState(true, juce::ModalCallbackFunction::create([w, done](int r) {
+                       if (r == 1) done(w->getTextEditorContents("name").trim());
+                       else if (r == 2) done({});
+                     }),
+                     true);
+}
+}  // namespace
+
+void PanelView::askForName(const PanelElement& e) {
+  const auto now = shown(e);
+  const juce::String current = juce::String::fromUTF8(now.name.c_str()) +
+                               (now.footage.empty() ? "" : " " + juce::String::fromUTF8(now.footage.c_str()));
+  const juce::String original = juce::String::fromUTF8(e.name.c_str()) +
+                                (e.footage.empty() ? "" : " " + juce::String::fromUTF8(e.footage.c_str()));
+  juce::Component::SafePointer<PanelView> self(this);
+  const std::string key = e.key();
+  askText("Name", "The name this panel shows for " + original + ".", current, original,
+          [self, key, original](juce::String name) {
+            if (self == nullptr) return;
+            if (name.isEmpty() || name == original) self->layout_.names.erase(key);
+            else self->layout_.names[key] = name.toStdString();
+            self->changed();
+            self->layoutSections();
+          });
+}
+
+juce::String PanelView::title() const {
+  return layout_.title.empty() ? "Panel " + juce::String(index_ + 1)
+                               : juce::String::fromUTF8(layout_.title.c_str());
+}
+
+void PanelView::askForTitle() {
+  juce::Component::SafePointer<PanelView> self(this);
+  askText("Panel name", "The name on this panel's tab and window.", title(), {},
+          [self](juce::String name) {
+            if (self == nullptr) return;
+            self->layout_.title = name.toStdString();
+            self->changed();
+            if (self->onRenamed) self->onRenamed();
+          });
+}
+
 void PanelView::setEditing(bool editing) {
   editing_ = editing;
   layoutSections();
@@ -687,6 +792,7 @@ void PanelView::resized() {
   auto bar = r.removeFromTop(kMobile ? 44 : 34).reduced(2);
   save_.setBounds(bar.removeFromRight(70).reduced(2));
   edit_.setBounds(bar.removeFromRight(60).reduced(2));
+  rename_.setBounds(bar.removeFromRight(76).reduced(2));
   if (detach_.isVisible()) detach_.setBounds(bar.removeFromRight(76).reduced(2));
   scheme_.setBounds(bar.removeFromRight(130).reduced(2));
   // The section toggles share what is left.
