@@ -1,4 +1,5 @@
 #include "CombinationsWindow.h"
+#include "MidiEventDialog.h"
 #include "Mobile.h"
 
 #include <algorithm>
@@ -418,13 +419,20 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
     menu.addItem(1, "Learn");
   }
   menu.addSeparator();
+  // Every message, its channel and device, and a key of the computer
+  // keyboard, as the console's switches have (#226).
+  menu.addItem(4, "MIDI window...");
   menu.addItem(3, "Clear mapping", !existing.empty());
 
+  const juce::String name = b.getButtonText();
   menu.showMenuAsync(
       juce::PopupMenu::Options().withTargetComponent(&b),
-      [this, kind, targetId](int choice) {
+      [this, kind, targetId, name](int choice) {
         auto& m = proc_.midiMap();
         switch (choice) {
+          case 4:
+            MidiEventDialog::show(proc_, kind, targetId, name);
+            break;
           case 1:
             m.beginLearnAs(kind, targetId, MidiTrigger::Momentary);
             break;
