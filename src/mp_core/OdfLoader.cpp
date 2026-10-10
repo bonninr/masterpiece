@@ -1257,7 +1257,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     d.destCoefficient = fieldDouble(row, "DestControl_Coefficient", "k", 1.0);
     d.destIncrement = fieldDouble(row, "DestControl_Increment", "j", 0.0);
 
-    if (d.operationCode < 1 || d.operationCode > 3) {
+    if ((d.operationCode < 1 || d.operationCode > 3) && d.operationCode != 7) {
       outDiag.warnings.emplace_back(
           "ContinuousControlDoubleLinkage into control " +
           std::to_string(d.destControlId) + ": unknown operation code " +

@@ -503,7 +503,13 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     const ContinuousControl& dest = model.continuousControls.at(l.destControlId);
     const bool twin = l.conditionSwitchId == 0 &&
                       wires.count({l.destControlId, l.sourceControlId}) != 0;
-    k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin;
+    // A conditional linkage carries a change too: it fires when its condition
+    // comes on and when its source moves, and otherwise leaves the control to
+    // the linkages that moved it last. Azzio feeds its Sesquialtera's level
+    // from a delay ramp and, under other conditions, from constants: holding
+    // the constant on every pass pinned the first rank at nothing (#285).
+    k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin ||
+                      l.conditionSwitchId != 0;
     k.link = &l;
     links_.push_back(k);
   }
@@ -655,6 +661,13 @@ void ContinuousControlBank::propagate(Id pinned,
         case 1: combined = x + y; break;
         case 2: combined = x - y; break;
         case 3: combined = x * y; break;
+        // A product kept in the controls' own range. The sets renormalise a
+        // plain product (3) by giving it a destination coefficient of 1/127;
+        // 7 comes with a coefficient of 1 and two 0..127 sources, so it has
+        // to land in range by itself. Azzio's Sesquialtera is the one use
+        // known: a perspective level times the knob's position, which is a
+        // level that opens one rank as the other closes (#285).
+        case 7: combined = x * y / 127.0; break;
         default: continue;  // the loader rejected anything else
       }
       const int next = clampSlot(k.dst, combined * d.destCoefficient + d.destIncrement);
