@@ -12,12 +12,12 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 **[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
 **[Watch "New tested instruments"](https://bonninr.github.io/masterpiece/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://bonninr.github.io/masterpiece/attribution-2.html)
 
-[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-windows-setup.exe)
-[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-macos-arm64.zip)
-[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-macos-x86_64.zip)
-[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-linux-amd64.deb)
-[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-linux-arm64.deb)
-[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.6/masterpiece-0.7.6-linux-armhf.deb)
+[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-windows-setup.exe)
+[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-macos-arm64.zip)
+[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-macos-x86_64.zip)
+[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-linux-amd64.deb)
+[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-linux-arm64.deb)
+[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.7.8/masterpiece-0.7.8-linux-armhf.deb)
 
 Portable archives for every platform, and the plugins on their own, are on the
 [releases page](https://github.com/bonninr/masterpiece/releases/latest).
@@ -209,9 +209,9 @@ menu entry; the portable `.zip` runs from any folder and includes the VST3 plugi
 **Debian, Ubuntu, Raspberry Pi OS.**
 
 ```
-sudo apt install ./masterpiece-0.7.6-linux-amd64.deb     # PC
-sudo apt install ./masterpiece-0.7.6-linux-arm64.deb     # Raspberry Pi OS, 64-bit
-sudo apt install ./masterpiece-0.7.6-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+sudo apt install ./masterpiece-0.7.8-linux-amd64.deb     # PC
+sudo apt install ./masterpiece-0.7.8-linux-arm64.deb     # Raspberry Pi OS, 64-bit
+sudo apt install ./masterpiece-0.7.8-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
 Runs as `masterpiece`; the PC package also installs the plugins to

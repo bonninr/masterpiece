@@ -14,6 +14,7 @@
 #include "TuningPanel.h"
 #include "Console.h"
 #include "PageWindow.h"
+#include "Panels.h"
 
 #include <memory>
 #include <vector>
@@ -169,6 +170,9 @@ public:
   // Ask for an organ file and load it. Shared with the first-run wizard.
   // `startIn` is where the chooser opens; empty is wherever it last was.
   void chooseAndLoadOrgan(const juce::File& startIn = {});
+  // Open: the favourite organs first, then the file dialog (#250). With no
+  // favourites it goes straight to the dialog.
+  void showOpenMenu();
 #if JUCE_IOS
   // A package that is one volume of a set: asks for the folder holding the
   // set, holds it, and opens the package again.
@@ -269,6 +273,21 @@ private:
   // every organ, floating beside the console rather than drawn over it.
   juce::TextButton combinationsButton_{"Combinations"};
   std::unique_ptr<CombinationsWindow> combinations_;
+  // Panels (#237): up to two per organ, each a tab after the console pages or
+  // a window of its own. panelWindows_ runs beside panels_, null while that
+  // panel is a tab; panelTabs_ maps the tabs after the pages to panels.
+  std::vector<std::unique_ptr<PanelView>> panels_;
+  std::vector<std::unique_ptr<PanelWindow>> panelWindows_;
+  std::vector<int> panelTabs_;
+  int showingPanel_ = -1;
+  juce::TextButton panelsButton_{"Panels"};
+  void loadPanels();
+  void savePanels();
+  void addPanel();
+  void deletePanel(int index);
+  void setPanelDetached(int index, bool detached);
+  void rebuildPageTabs();
+  void showPanelsMenu();
   // The recorder, in a small window of its own above the console (#90): in
   // a settings dialog it took the console away while it recorded.
   std::unique_ptr<juce::DocumentWindow> recorderWindow_;

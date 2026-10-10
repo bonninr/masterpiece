@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <deque>
 #include <cstring>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <ostream>
@@ -18,6 +19,10 @@
 #include <list>
 #include <mutex>
 
+#if defined(__linux__)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 #if !defined(_WIN32)
 #include <sys/resource.h>
 #if defined(__APPLE__)
@@ -27,6 +32,23 @@
 
 namespace mp {
 namespace {
+
+// A file decoded into the organ's own memory has no further use for its pages
+// in the system's file cache. Left there, a load fills that cache with
+// gigabytes of samples and the kernel evicts what it holds of everything else
+// to make room, the program's own code included: on a machine running from an
+// SD card, the window then stopped painting through every cold load while
+// that code was read back. Linux and Android only; elsewhere a no-op.
+void dropFromFileCache(const std::string& path) {
+#if defined(__linux__)
+  const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return;
+  ::posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+  ::close(fd);
+#else
+  (void)path;
+#endif
+}
 
 bool hasSuffixInsensitive(const std::string& s, const char* suffix) {
   const std::string suf(suffix);
@@ -465,6 +487,33 @@ struct WavShape {
   int64_t dataBytes = 0;
 };
 
+// A WavPack file's own account of its length, channels and rate, from the
+// first block header. Recognised by its signature: the GrandOrgue demo names
+// WavPack files ".wav", so the extension says nothing, and a guessed ratio
+// put the demo at a sixth of what it loads (#219).
+bool readWavPackShape(const std::filesystem::path& path, WavShape& out) {
+  std::ifstream in(path, std::ios::binary);
+  unsigned char h[32];
+  if (!in || !in.read(reinterpret_cast<char*>(h), 32) || std::memcmp(h, "wvpk", 4) != 0)
+    return false;
+  auto u32 = [](const unsigned char* p) {
+    return static_cast<uint32_t>(p[0]) | static_cast<uint32_t>(p[1]) << 8 |
+           static_cast<uint32_t>(p[2]) << 16 | static_cast<uint32_t>(p[3]) << 24;
+  };
+  const uint32_t total = u32(h + 12);
+  if (total == 0xFFFFFFFFu) return false;  // length not stated
+  const int64_t frames = static_cast<int64_t>(total) | (static_cast<int64_t>(h[11]) << 32);
+  const uint32_t flags = u32(h + 24);
+  static const double rates[] = {6000,  8000,  9600,  11025, 12000, 16000,  22050, 24000,
+                                 32000, 44100, 48000, 64000, 88200, 96000, 192000};
+  const uint32_t rateIndex = (flags >> 23) & 0xF;
+  out.channels = (flags & 4u) != 0 ? 1 : 2;  // MONO_FLAG
+  out.bits = static_cast<int>((flags & 3u) + 1) * 8;
+  out.rate = rateIndex < 15 ? rates[rateIndex] : 0.0;
+  out.dataBytes = frames * out.channels * (out.bits / 8);
+  return frames > 0;
+}
+
 bool readWavShape(const std::filesystem::path& path, WavShape& out) {
   std::ifstream in(path, std::ios::binary);
   if (!in) return false;
@@ -548,7 +597,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   std::error_code ec;
   int64_t fileBytes = job.packageBytes;
   if (std::filesystem::exists(path, ec)) {
-    if (!job.wavpack && readWavShape(path, wav)) {
+    if (readWavPackShape(path, wav) || (!job.wavpack && readWavShape(path, wav))) {
       shape.channels = wav.channels;
       shape.rate = wav.rate;
       shape.frames = wav.dataBytes / std::max(1, wav.channels * wav.bits / 8);
@@ -772,6 +821,13 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           attachTail(*buffer, path.string(), totalResident, srcRate, dstRate);
       }
 
+      // Read whole: its file's cached pages go (see dropFromFileCache). A
+      // streamed release keeps them; its tail is read from the file again.
+      if (ok && !stream) {
+        reader.reset();
+        dropFromFileCache(path.string());
+      }
+
       // Against the memory ceiling, before it is kept: the sample that would
       // take the load past it is not added, and the load stops here.
       if (ok && progress != nullptr && !progress->charge(buffer->residentBytes()))
@@ -929,7 +985,24 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     // them here while notes play is safe.
     cacheWriting_.store(true);
     cacheThread_ = std::thread([this, written, fingerprint, path = cachePath()] {
-      writeCache(*written, fingerprint, path);
+      const auto started = std::chrono::steady_clock::now();
+      const bool saved = writeCache(*written, fingerprint, path);
+      const double seconds =
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+      // Said when it ends: whether the next load reads the cache depends on
+      // it, and a write cut short by quitting is otherwise invisible.
+      std::error_code sizeError;
+      const auto bytes = std::filesystem::file_size(path, sizeError);
+      if (saved)
+        juce::Logger::writeToLog("cache: saved " +
+                                 juce::String(sizeError ? 0.0 : bytes / 1048576.0, 1) +
+                                 " MB in " + juce::String(seconds, 1) + " s");
+      else if (cacheStop_.load())
+        juce::Logger::writeToLog("cache: write stopped at quit after " +
+                                 juce::String(seconds, 1) +
+                                 " s; the next load reads the samples again");
+      else
+        juce::Logger::writeToLog("cache: could not be written to " + juce::String(path));
       cacheWriting_.store(false);
     });
   }
@@ -1189,7 +1262,24 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
-constexpr uint32_t kCacheVersion = 4; // 4 fixes release cues; 3 added file pitch
+constexpr uint32_t kCacheVersion = 5; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
+
+// A checksum of one sample's audio in the cache, so audio damaged on the
+// disk is found as it is read back: a flipped bit there plays as a click or
+// a burst of noise, and nothing else would notice. Eight bytes at a time,
+// well ahead of any disk.
+uint64_t cacheChecksum(const char* data, uint64_t bytes) {
+  uint64_t h = 0x9E3779B97F4A7C15ull ^ bytes;
+  uint64_t i = 0;
+  for (; i + 8 <= bytes; i += 8) {
+    uint64_t w;
+    std::memcpy(&w, data + i, 8);
+    h = (h ^ w) * 0xFF51AFD7ED558CCDull;
+    h ^= h >> 29;
+  }
+  for (; i < bytes; ++i) h = (h ^ static_cast<unsigned char>(data[i])) * 0x100000001B3ull;
+  return h ^ (h >> 32);
+}
 
 template <typename T>
 void putPod(std::ostream& os, const T& v) {
@@ -1327,6 +1417,7 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       }
       putPod<uint64_t>(os, bytes);
       if (bytes) os.write(data, static_cast<std::streamsize>(bytes));
+      putPod<uint64_t>(os, cacheChecksum(data, bytes));
       done += static_cast<int64_t>(bytes);
       cacheDone_ = done;
 
@@ -1416,6 +1507,19 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
                          static_cast<std::streamsize>(bytes));
     }
     if (!is) return false;
+    {
+      const char* got = !buf->pcm24.empty()   ? reinterpret_cast<const char*>(buf->pcm24.data())
+                        : !buf->pcm16.empty() ? reinterpret_cast<const char*>(buf->pcm16.data())
+                                              : reinterpret_cast<const char*>(buf->frames.data());
+      uint64_t stored = 0;
+      if (!getPod(is, stored)) return false;
+      if (stored != cacheChecksum(got, bytes)) {
+        juce::Logger::writeToLog("cache: sample " + juce::String(static_cast<int>(id)) +
+                                 " is damaged on the disk; the samples are read instead "
+                                 "and the cache written again");
+        return false;
+      }
+    }
 
     if (!getPod(is, streams)) return false;
     if (streams) {
@@ -1433,6 +1537,8 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   }
   cacheRead_ = static_cast<int64_t>(is.tellg());
   out = std::move(loaded);
+  is.close();
+  dropFromFileCache(path);
   return true;
 }
 

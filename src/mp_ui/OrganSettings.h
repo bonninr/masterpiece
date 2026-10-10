@@ -124,6 +124,28 @@ private:
   std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
+// The organ's voicing EQ: ten octave bands and an output gain, off by
+// default, applied as the sliders move and saved with the organ.
+class VoicingEqPanel : public juce::Component {
+public:
+  explicit VoicingEqPanel(MasterpieceProcessor& p);
+  void resized() override;
+  void paint(juce::Graphics& g) override;
+
+private:
+  void apply();
+  void showValues();
+  MasterpieceProcessor& proc_;
+  juce::ToggleButton on_{"On"};
+  juce::TextButton flat_{"Flat"}, save_{"Save for this organ"};
+  juce::Label note_;
+  std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
+  std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;
+  juce::Slider gain_;
+  juce::Label gainName_;
+  juce::Rectangle<int> curveArea_;
+};
+
 class OrganSettingsWindow : public juce::Component {
 public:
   // `devices` gives the MIDI tab its inputs; without it (a plugin host owns
@@ -155,6 +177,7 @@ private:
   // General settings, here too, where a player setting up one organ looks
   // (#90). Both edit the same mapping.
   std::unique_ptr<MidiPanel> midi_;
+  VoicingEqPanel eq_;
 };
 
 }  // namespace mp::ui

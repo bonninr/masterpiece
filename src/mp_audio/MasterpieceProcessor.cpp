@@ -96,6 +96,8 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
   wind_.reset(model_);
   convolver_.prepare(spec);
+  voicingEq_.configure(voicingEqSettings_, sampleRate);
+  voicingEq_.reset();
 #else
   (void)samplesPerBlock;
 #endif
@@ -175,6 +177,12 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                    : 0.5f;
   recorder_.prepare(sampleRate_);
   outgoing_.ensureSize(1024);
+}
+
+void MasterpieceProcessor::releaseResources() {
+  const AudioLock audio(*this);
+  voices_.quiesce();
+  soundingNotes_.clear();
 }
 
 void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
@@ -782,7 +790,8 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         // its own.
         const int key = noteKey(static_cast<int>(hit.keyboardId), hit.midiNote);
         if (hit.on && msg.isNoteOn())
-          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity);
+          startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity,
+                              hit.midiNote);
         else
           stopNoteByKey(key, hit.velocity);
       }
@@ -960,14 +969,24 @@ int MasterpieceProcessor::registerOwnMidiInput(const juce::String& name) {
   const int id = registerMidiDevice(name);
   ownInputs_.addIfNotAlreadyThere(name);
   if (id > 0 && id < kMaxMutedDevices)
-    deviceMuted_[static_cast<size_t>(id)].store(ownInputsOff_.contains(name), std::memory_order_release);
+    deviceMuted_[static_cast<size_t>(id)].store(inputsOff_.contains(name), std::memory_order_release);
   return id;
 }
 
-void MasterpieceProcessor::setOwnMidiInputEnabled(const juce::String& name, bool on) {
-  if (ownMidiInputEnabled(name) == on) return;
-  if (on) ownInputsOff_.removeString(name);
-  else ownInputsOff_.add(name);
+void MasterpieceProcessor::readMidiInputSwitches() {
+  const auto f = globalSettingsFile();
+  if (!f.existsAsFile()) return;
+  for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString()))
+    if (line.startsWith("midiinputoff ")) {
+      const auto name = line.fromFirstOccurrenceOf(" ", false, false).trim();
+      if (name.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(name);
+    }
+}
+
+void MasterpieceProcessor::setMidiInputEnabled(const juce::String& name, bool on) {
+  if (midiInputEnabled(name) == on) return;
+  if (on) inputsOff_.removeString(name);
+  else inputsOff_.add(name);
   const int id = midiMap_.devices().lookup(name.toStdString());
   if (id > 0 && id < kMaxMutedDevices)
     deviceMuted_[static_cast<size_t>(id)].store(!on, std::memory_order_release);
@@ -1323,6 +1342,8 @@ bool MasterpieceProcessor::saveSettings() const {
     if (masterPitchSetting() > 0.0)
       text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
+    if (voicingEqSettings_.on || !voicingEqSettings_.flat())
+      text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1341,6 +1362,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
+  voicingEqSettings_ = {};
+  voicingEq_.configure(voicingEqSettings_, sampleRate_);
   excludedStops_.clear();
   excludedPerspectives_.clear();
   excludedRanks_.clear();
@@ -1421,6 +1444,14 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
         pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
                                 tok[3].getIntValue(), tok[4].getIntValue(),
                                 tok.size() >= 6 ? tok[5].getIntValue() : -1});
+      continue;
+    }
+    if (key == "eq") {
+      VoicingEqSettings eq;
+      if (eq.fromLine(val.toStdString())) {
+        voicingEqSettings_ = eq;
+        voicingEq_.configure(eq, sampleRate_);
+      }
       continue;
     }
     if (key == "transpose") {
@@ -1509,7 +1540,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (fasterEngine_.load()) text << "fasterengine 1\n";
-  for (const auto& name : ownInputsOff_) text << "midiinputoff " << name << "\n";
+  for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1518,6 +1549,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (lastOrgan_.getFullPathName().isNotEmpty())
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
+  if (openFolder_.getFullPathName().isNotEmpty())
+    text << "openfolder " << openFolder_.getFullPathName() << "\n";
 
   // Favourites are global by nature: the point of one is to get to a
   // DIFFERENT organ, so storing them inside the organ being left would be
@@ -1589,7 +1622,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "midiinputoff") {
-      if (val.isNotEmpty()) ownInputsOff_.addIfNotAlreadyThere(val);
+      if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -1602,6 +1635,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "openfolder") {
+      openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "favourite") {
       // "favourite <kind> <slot> <name> | <target>". The bar separates them
       // because both halves are free text and the target can contain spaces;
@@ -1649,6 +1684,12 @@ int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
   favourites_.organs.set(use, std::move(fav));
   writeGlobalFile();
   return use;
+}
+
+void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
+  if (openFolder_ == folder) return;
+  openFolder_ = folder;
+  writeGlobalFile();
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -1893,7 +1934,7 @@ void MasterpieceProcessor::applyConsoleMidi() {
   if (!console.fromText(cf.loadFileAsString().toStdString())) return;
   midiMap_.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
   for (const auto& b : console.bindings())
-    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bind(b);
+    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bindFrom(console, b);
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
@@ -2053,6 +2094,8 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
   }
   // The player's pitch moves the whole organ, in either mode.
   targetHz *= pitchFactor();
+  // The layer's own detune, a celeste's beat (#261).
+  if (layer.detuneCents != 0.0) targetHz *= std::pow(2.0, layer.detuneCents / 1200.0);
 
   // Detuning rides on the target, not on the recorded pitch: it is a change
   // to what this pipe should sound, not a claim about what the file holds.
@@ -2190,7 +2233,8 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
                                " plays no manual: not set in Settings > MIDI, nor by the organ");
     return;
   }
-  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity);
+  startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
+                      midiNote);
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
@@ -2228,6 +2272,7 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   NoteRelease rel;
   rel.velocity = velocity;
   voices_.noteOff(it->second.id, rel);
+  setKeyDown(it->second.keyboard, it->second.playedNote, false);
   soundingNotes_.erase(it);
 }
 
@@ -2373,8 +2418,18 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
   return anyStarted;
 }
 
+void MasterpieceProcessor::setKeyDown(Id keyboard, int note, bool down) {
+  if (note < 0 || note > 127) return;
+  auto& word = keysDown_[(static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6)];
+  const uint64_t bit = uint64_t{1} << (note & 63);
+  if (down) word.fetch_or(bit, std::memory_order_relaxed);
+  else word.fetch_and(~bit, std::memory_order_relaxed);
+}
+
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
-                                               int midiNote, int velocity) {
+                                               int midiNote, int velocity,
+                                               int playedNote) {
+  if (playedNote < 0) playedNote = midiNote;
   // A manual that sends its keys on: before anything else, so a key played
   // with no stop drawn still reaches the module it drives.
   if (midiOut_ != nullptr && midiMap_.hasSends(MidiTargetKind::Keyboard, keyboard)) {
@@ -2414,6 +2469,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   const auto already = soundingNotes_.find(noteKeyId);
   if (already != soundingNotes_.end()) {
     voices_.noteOff(already->second.id, NoteRelease{});
+    setKeyDown(already->second.keyboard, already->second.playedNote, false);
     soundingNotes_.erase(already);
   }
 
@@ -2429,7 +2485,8 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // follows stops for held notes, so drawing the stop did nothing (#120: "it
   // isn't always possible to change stops while holding a note").
   soundingNotes_[noteKeyId] =
-      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_};
+      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_, playedNote};
+  setKeyDown(keyboard, playedNote, true);
 
   if (engagedStops_.empty()) {
     if (logMidi_.load(std::memory_order_acquire))
@@ -2995,7 +3052,7 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
           noteDeviceId_ = held.device;
           const bool byManual = midiMap_.hasChannelBinding(held.device, held.channel);
           const int newKey = byManual ? noteKey(static_cast<int>(next), key & 0xff) : key;
-          startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity);
+          startNoteOnKeyboard(next, newKey, held.midiNote, held.velocity, held.playedNote);
         }
         noteChannel_ = savedChannel;
         noteDeviceId_ = savedDevice;
@@ -3234,6 +3291,15 @@ Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
 bool MasterpieceProcessor::firePiston(Id switchId) {
   const Id comboId = combinations_.combinationForSwitch(switchId);
   if (comboId == 0) return false;
+  // GrandOrgue's own General Cancel is its setter's, the same control as the
+  // Combinations window's GC (#248): the same cancel, the keyboards put back
+  // when that option is on. An organ that defines its own GC keeps it.
+  if (switchId == static_cast<Id>(kGrandOrgueGeneralCancelSwitch))
+    if (const auto c = model_.combinations.find(comboId);
+        c != model_.combinations.end() && c->second.name == "General cancel") {
+      pressGeneralCancel();
+      return true;
+    }
   // Capture reads the RESOLVED state, because that is what the player can see
   // and hear; the base state would miss a stop pulled by a coupler or by
   // another piston.
@@ -3257,6 +3323,22 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // koppel" is 1006 and every key action that reads it looks at 10101.
   switches_.set(switchId, engaged);
   markRememberedStateMoved();
+  // The setter and the pistons the wiring moved. Klais Szikszo draws its own
+  // Set, GC and cancels, each linked to the organ's real switch (Set 12, GC
+  // 100, the cancels 200-500): pressing the drawn one moves the real one
+  // through the network, and only the switch pressed was ever looked at, so
+  // they did nothing (#248). Collected now, fired below: firing changes
+  // switches, and the list is the network's own.
+  std::array<Id, 8> wiredPistons{};
+  size_t wiredCount = 0;
+  for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
+    if (movedId == switchId) continue;
+    if (movedId == setterSwitchId_ && setterSwitchId_ != 0)
+      combinations_.setCaptureMode(nowEngaged);
+    else if (nowEngaged && wiredCount < wiredPistons.size() &&
+             combinations_.combinationForSwitch(movedId) != 0)
+      wiredPistons[wiredCount++] = movedId;
+  }
   const bool swapsRanks = !alternateStopsBySwitch_.empty();
   if (swapsRanks) previousSwitches_ = engagedSwitches_;
   const bool keysHeld = !soundingNotes_.empty();
@@ -3346,6 +3428,9 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     const bool momentary = sw == model_.switches.end() || !sw->second.latching;
     if (momentary) setSwitchEngaged(switchId, false);
   }
+  // A piston reached through the wiring fires as if pressed; the button that
+  // drives it lets it out again when released.
+  for (size_t i = 0; i < wiredCount; ++i) firePiston(wiredPistons[i]);
 }
 
 namespace {
@@ -3732,6 +3817,12 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // unenclosed Great stays unenclosed while the Swell shades move.
   renderBuses(buffer);
 
+  // The player's voicing EQ for this organ, on the organ itself: before the
+  // room and the master fader. Off, or under "no DSP", it does nothing.
+  if (!graph_.engineSwitch.simpleWavOnly)
+    voicingEq_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
+                       buffer.getNumSamples());
+
   // Room before level: the convolver is part of the instrument's sound, and
   // the master fader is the last thing in the chain.
   //
@@ -3936,6 +4027,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   OdfLoader loader;
   OdfLoader::Options opts;
   opts.organRootDir = root.getFullPathName().toStdString();
+  opts.reportUnreadFields = reportUnreadFields_;
   // A folder the player named for this organ wins over anything derived from
   // the definition's own path. Some layouts cannot be worked out from the
   // path at all: a link followed on the way in can leave the definition in a
@@ -4119,6 +4211,22 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       if (cit->second.imageSetInstanceId != 0) continue;
       setControlValue(id, std::max(cit->second.maxValue, cit->second.minValue));
     }
+    // The organ's own start signal. Sets built on one template (Nancy,
+    // Friesach, Oloron) declare a hidden pair, "Hidden OffToOn" at 0 and
+    // "Hidden OnToOff" at 127, that moves once when the organ loads; every
+    // start-up delay follows them, and at the top of its ramp fires what has
+    // to happen then: Oloron's "Start blower on organ load" and "Enable
+    // Appels d'anches on load" act through that pulse (#263). Moved at once:
+    // the delays they feed are not timed here. Put at rest first: the delays
+    // can come out of the settle already at the top, and a step fires only on
+    // a move past it.
+    for (const bool start : {false, true})
+      for (const auto& [id, c] : model_.continuousControls) {
+        if (c.imageSetInstanceId != 0) continue;
+        const int low = std::min(c.maxValue, c.minValue), high = std::max(c.maxValue, c.minValue);
+        if (c.name.rfind("Hidden OffToOn", 0) == 0) setControlValue(id, start ? high : low);
+        else if (c.name.rfind("Hidden OnToOff", 0) == 0) setControlValue(id, start ? low : high);
+      }
   }
 
   // Now that the blower is on and every valve is where the organ puts it, work

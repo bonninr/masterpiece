@@ -135,24 +135,35 @@ void SwitchNetwork::drain() {
     // Everything this switch can swing: the wires it drives, and the wires it
     // gates. Each is re-evaluated from its own source and condition, and
     // asserts only if its firing state just changed.
-    const auto reeval = [&](const std::vector<const SwitchLinkage*>& list) {
-      for (const SwitchLinkage* l : list) reevaluate(*l);
+    const auto reeval = [&](const std::vector<const SwitchLinkage*>& list, bool conditionMoved) {
+      for (const SwitchLinkage* l : list) reevaluate(*l, conditionMoved);
     };
     const auto srcIt = bySource_.find(id);
-    if (srcIt != bySource_.end()) reeval(srcIt->second);
+    if (srcIt != bySource_.end()) reeval(srcIt->second, false);
     const auto condIt = byCondition_.find(id);
-    if (condIt != byCondition_.end()) reeval(condIt->second);
+    if (condIt != byCondition_.end()) reeval(condIt->second, true);
   }
 }
 
 // Asserts on the wire's firing EDGE, not on its level; a
 // wire that is not firing says nothing. See the header for why, and the pallet
 // chain in the Alessandria ODF for the case that forced this.
-void SwitchNetwork::reevaluate(const SwitchLinkage& l) {
+void SwitchNetwork::reevaluate(const SwitchLinkage& l, bool conditionMoved) {
   const auto index = static_cast<size_t>(&l - links_.data());
   const bool now = fires(l);
   if (now == (fired_[index] != 0)) return;
   fired_[index] = now ? 1 : 0;
+
+  // A gate closing does not take back what went through it. Oloron's "Start
+  // blower on organ load" and "Enable Appels d'anches on load" reach the
+  // blower and the reed ventils through 1/7 links gated by a pulse at load
+  // (switch 108, "Blower init 1"); the pulse ending undid both at once
+  // (#263). A 7 still disengages when its own source lets go, as the reset
+  // buttons that use 1/7 need.
+  if (!now && conditionMoved && l.disengageAction == 7) {
+    const bool sourceOn = engaged_.count(l.sourceSwitchId) != 0;
+    if (sourceOn == l.sourceWhenEngaged) return;
+  }
 
   // A reversible piston: each press flips what it controls, and letting
   // go does nothing -- a toggle has no state of its own to undo. Every

@@ -37,6 +37,10 @@ struct OdfDiagnostics {
   std::vector<Id> unreferencedImageSets; // M1.4: set never instanced on any page
   std::vector<std::string> codmUnmappedElements; // M1.5: CODM ObjectTypes without a compiler
   std::vector<std::string> codmUnhandledFields; // M1.5: CODM table.field names the compiler ignores
+  // Full definitions, with Options::reportUnreadFields: "Table.Field (n row(s):
+  // up to three of its values)" for each field that holds a value in some row
+  // and that nothing read.
+  std::vector<std::string> unreadFields;
   std::vector<Id> layersUncoveredVelocity; // M2.1: layer ids with velocity gaps
   std::vector<Id> deadReleaseBranches; // M2.1: release ids linked to missing attacks
   std::vector<Id> enclosuresWithoutShades;   // M2.3: enclosure-without-shades
@@ -74,6 +78,9 @@ public:
     // and its UniqueOrganID — without parsing a 60 000-row Sample table to do
     // it. Used to locate an organ's saved settings before deciding to load it.
     bool headerOnly = false;
+    // Fill OdfDiagnostics::unreadFields. Off for an ordinary load: it walks
+    // the whole definition a second time.
+    bool reportUnreadFields = false;
   };
 
   // Detect by header/extension: full vs CODM vs SQLite-exported XML.

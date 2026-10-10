@@ -10,6 +10,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <csignal>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -23,6 +24,10 @@
 #include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
 
+#if JUCE_LINUX
+ #include <alsa/asoundlib.h>
+#endif
+
 namespace {
 // True when the open device can actually produce sound. A saved setup can
 // name hardware that is gone — or select a type with no output at all while
@@ -34,6 +39,13 @@ bool audioOutputAlive(juce::AudioDeviceManager& dm) {
   return dev != nullptr &&
          dev->getActiveOutputChannels().countNumberOfSetBits() > 0;
 }
+// Set from a signal handler: SIGTERM or SIGHUP, as a system shutdown, a
+// logout or a service manager stopping the program sends them. Only a flag
+// may be touched there; the message thread acts on it (QuitWatch).
+volatile std::sig_atomic_t quitSignalled = 0;
+#if JUCE_LINUX || JUCE_MAC
+extern "C" void onQuitSignal(int) { quitSignalled = 1; }
+#endif
 } // namespace
 
 class MasterpieceApp : public juce::JUCEApplication {
@@ -65,17 +77,67 @@ public:
 
   // A MIDI input's identifier where it names the same device in the next run:
   // Windows' interface path (which includes the USB socket) and macOS's
-  // CoreMIDI id. Linux and Android number their devices afresh each time.
+  // CoreMIDI id. Linux numbers its ports in the order the devices appear, so
+  // there the identifier is the USB socket of the card behind the port, with
+  // the port's number on that card. Android numbers its devices afresh.
   static juce::String lastingIdentifier(const juce::MidiDeviceInfo& in) {
    #if JUCE_WINDOWS || JUCE_MAC || JUCE_IOS
     return in.identifier;
+   #elif JUCE_LINUX
+    return alsaUsbSocket(in.identifier);
    #else
     juce::ignoreUnused(in);
     return {};
    #endif
   }
 
+ #if JUCE_LINUX
+  // "usb-0000:00:1d.0-1.2.3/0" for port 0 of the USB device in socket 1.2.3,
+  // from the ALSA sequencer port JUCE names "client-port". Two keyboards of
+  // the same model, which have the same name and often the same serial
+  // number, are told apart by the socket each is plugged into, and keep it
+  // when they are plugged in again in another order. The socket is read from
+  // the card's long name, which the USB audio driver writes as
+  // "<product> at usb-<socket>, <speed>". A device that is not on USB, or a
+  // port that is not a card's, has none and is known by its name.
+  static juce::String alsaUsbSocket(const juce::String& juceId) {
+    const auto numbers = juce::StringArray::fromTokens(juceId, "-:", "");
+    if (numbers.size() < 2 || !numbers[0].containsOnly("0123456789") ||
+        !numbers[1].containsOnly("0123456789"))
+      return {};
+    snd_seq_t* seq = nullptr;
+    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_INPUT, 0) < 0) return {};
+    snd_seq_client_info_t* info = nullptr;
+    snd_seq_client_info_alloca(&info);
+    int card = -1;
+    if (snd_seq_get_any_client_info(seq, numbers[0].getIntValue(), info) == 0)
+      card = snd_seq_client_info_get_card(info);
+    snd_seq_close(seq);
+    if (card < 0) return {};
+    char* longName = nullptr;
+    if (snd_card_get_longname(card, &longName) < 0 || longName == nullptr) return {};
+    const juce::String name(longName);
+    std::free(longName);
+    if (!name.contains(" at usb-")) return {};
+    const auto socket = name.fromFirstOccurrenceOf(" at usb-", false, false)
+                            .upToFirstOccurrenceOf(",", false, false)
+                            .trim();
+    return socket.isEmpty() ? juce::String() : "usb-" + socket + "/" + numbers[1];
+  }
+ #endif
+
   void initialise(const juce::String& commandLine) override {
+    // A shutdown or reboot ends the program with SIGTERM. Left to its default
+    // the signal ends it at once, without shutdown(), and at the next start
+    // that looked like a crash. Handled, it is an ordinary quit.
+   #if JUCE_LINUX || JUCE_MAC
+    struct sigaction quitAction {};
+    quitAction.sa_handler = onQuitSignal;
+    sigemptyset(&quitAction.sa_mask);
+    sigaction(SIGTERM, &quitAction, nullptr);
+    sigaction(SIGHUP, &quitAction, nullptr);
+   #endif
+    quitWatch_ = std::make_unique<QuitWatch>();
     proc_ = std::make_unique<mp::MasterpieceProcessor>();
     // Remember which organ is loaded until a clean exit, so a crash is not
     // repeated by reopening the organ it happened with.
@@ -277,8 +339,11 @@ public:
     // and a rig with two manuals plugged in sends the same note on the same
     // channel from both. Telling them apart is the whole point of "this
     // keyboard plays the Great and that one plays the Swell".
+    // Every one except those the player switched off (#230): a console
+    // plugged in for the first time plays at once.
+    proc_->readMidiInputSwitches();
     for (const auto& in : juce::MidiInput::getAvailableDevices()) {
-      devices_->setMidiInputDeviceEnabled(in.identifier, true);
+      devices_->setMidiInputDeviceEnabled(in.identifier, proc_->midiInputEnabled(in.name));
       auto route = std::make_unique<DeviceRoute>(
           *proc_, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());
@@ -342,15 +407,12 @@ public:
     proc_->loadGlobalDefaults();
     const juce::File crashed = proc_->crashedOrgan();
     proc_->forgetCrash();
-    bool skippedReopen = false;
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
       odf = proc_->lastOrgan();
-      // Never reopen the organ the last session died with: whatever took it
-      // down would take it down again before the player could intervene.
-      if (odf != juce::File() && odf == crashed) {
-        odf = juce::File();
-        skippedReopen = true;
-      }
+      // Reopened after an unclean end too. That is usually a power cut or a
+      // killed process, and a console with no screen has nobody to open the
+      // organ by hand. The program is started once per login, so an organ
+      // that did crash it is not reopened in a loop.
     }
 
     // Play MIDI through the organ as soon as it is up, with the stops drawn.
@@ -729,15 +791,12 @@ public:
 
     if (odf != juce::File()) win_->editor().loadOrgan(odf, guiOnly);
 
-    // Say what happened last time, once, and what can be done about it.
-    if (!guiOnly && crashed != juce::File())
-      juce::AlertWindow::showMessageBoxAsync(
-          juce::MessageBoxIconType::WarningIcon, "Masterpiece closed unexpectedly",
-          "The last session ended while " + crashed.getFileNameWithoutExtension() +
-              " was loaded" +
-              (skippedReopen ? ", so it was not reopened this time." : ".") +
-              "\n\nIf it happens again, a lower memory limit or 16-bit samples "
-              "(Settings, Engine) let a large organ fit in less memory.");
+    // An unclean end is written to the log. Nothing waits for a click: on a
+    // console that starts by itself there is nobody to give one.
+    if (crashed != juce::File())
+      juce::Logger::writeToLog("start: the last session did not end cleanly while " +
+                               crashed.getFileName() + " was loaded" +
+                               (odf == crashed ? "; reopened" : ""));
 
     // A fresh installation has no audio device chosen, no MIDI input enabled
     // and no organ. Offering the three in order beats three separate ways of
@@ -830,6 +889,17 @@ public:
   bool backButtonPressed() override { return mp::ui::closeFrontWindow(win_.get()); }
 
 private:
+  // Turns a quit signal into the same quit a closed window makes.
+  struct QuitWatch : juce::Timer {
+    QuitWatch() { startTimer(200); }
+    void timerCallback() override {
+      if (quitSignalled == 0) return;
+      stopTimer();
+      juce::Logger::writeToLog("quit: asked by the system (signal)");
+      if (auto* app = juce::JUCEApplication::getInstance()) app->systemRequestedQuit();
+    }
+  };
+  std::unique_ptr<QuitWatch> quitWatch_;
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
         : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
@@ -890,6 +960,7 @@ private:
       if (saved.isNotEmpty() && restoreWindowStateFromString(saved) &&
           juce::Desktop::getInstance().getDisplays().getDisplayForPoint(getBounds().getCentre()) == nullptr)
         centreWithSize(getWidth(), getHeight());
+      if (!isFullScreen()) mp::ui::keepOnScreen(*this);
     }
 
     void closeButtonPressed() override {

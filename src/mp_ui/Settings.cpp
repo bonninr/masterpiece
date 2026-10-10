@@ -1183,8 +1183,10 @@ void MidiPanel::refresh() {
                       juce::dontSendNotification);
     const auto id = in.identifier;
     auto* raw = b.get();
-    b->onClick = [this, id, raw] {
+    const auto name = in.name;
+    b->onClick = [this, id, name, raw] {
       devices_.setMidiInputDeviceEnabled(id, raw->getToggleState());
+      proc_.setMidiInputEnabled(name, raw->getToggleState());
     };
     addAndMakeVisible(*b);
     inputs_.push_back(std::move(b));
@@ -1193,9 +1195,9 @@ void MidiPanel::refresh() {
   // which the system's list above does not hold (#225).
   for (const auto& name : proc_.ownMidiInputs()) {
     auto b = std::make_unique<juce::ToggleButton>(name);
-    b->setToggleState(proc_.ownMidiInputEnabled(name), juce::dontSendNotification);
+    b->setToggleState(proc_.midiInputEnabled(name), juce::dontSendNotification);
     auto* raw = b.get();
-    b->onClick = [this, name, raw] { proc_.setOwnMidiInputEnabled(name, raw->getToggleState()); };
+    b->onClick = [this, name, raw] { proc_.setMidiInputEnabled(name, raw->getToggleState()); };
     addAndMakeVisible(*b);
     inputs_.push_back(std::move(b));
   }
@@ -1244,7 +1246,7 @@ void MidiPanel::refresh() {
     dev->addItem("Any device", 1);
     const auto& known = proc_.midiDevices();
     for (size_t i = 0; i < known.names().size(); ++i)
-      dev->addItem(juce::String(known.names()[i]), static_cast<int>(i) + 2);
+      dev->addItem(juce::String(known.displayName(static_cast<int>(i) + 1)), static_cast<int>(i) + 2);
     int selectedDev = 1;
     for (const auto& b : proc_.channelAssignments())
       if (b.keyboardId == kb && b.deviceId != 0) selectedDev = b.deviceId + 1;

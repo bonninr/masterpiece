@@ -28,6 +28,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "VoicingEq.h"
 #include "Favourites.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
@@ -77,7 +78,11 @@ public:
   ~MasterpieceProcessor() override = default;
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
-  void releaseResources() override {}
+  // The device is stopping, most often to change its buffer size: the engine
+  // comes to rest before prepareToPlay rebuilds it. Left running, the workers,
+  // the streaming thread and hundreds of sounding voices met the rebuild, and
+  // on a loaded Linux machine the heap was corrupted (#267).
+  void releaseResources() override;
   void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
   juce::AudioProcessorEditor* createEditor() override;
@@ -185,6 +190,13 @@ public:
   // re-injected), so the drawn manuals and the piano strip light up for an
   // external console too.
   juce::MidiKeyboardState& keyboardState() { return keyboardState_; }
+  // Whether this key of this manual is down: played on it by a keyboard bound
+  // to it, by its channel, or on the screen. Any thread.
+  bool keyDownOnKeyboard(Id keyboard, int note) const {
+    if (note < 0 || note > 127) return false;
+    const auto slot = (static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6);
+    return (keysDown_[slot].load(std::memory_order_relaxed) >> (note & 63)) & 1u;
+  }
 
   // Let go of every key on every channel, the way a console's cancel does.
   //
@@ -342,6 +354,12 @@ public:
   // drives this from the console; this is for one that has not, and for a UI
   // button.
   void setCaptureMode(bool on) {
+    // The organ's own Set follows the player's (#248): its switch puts the
+    // combinations into capture, so the console lights as the window does.
+    if (setterSwitchId_ != 0 && switchEngaged(setterSwitchId_) != on) {
+      setSwitchEngaged(setterSwitchId_, on);
+      return;
+    }
     const AudioLock audio(*this);
     combinations_.setCaptureMode(on);
   }
@@ -581,7 +599,15 @@ public:
   // The identifier is the one the system gives the device (MidiDeviceInfo),
   // passed only where it lasts across runs (MidiDevices.h).
   int registerMidiDevice(const juce::String& name, const juce::String& identifier = {}) {
-    return midiMap_.devices().claim(name.toStdString(), identifier.toStdString());
+    const int id = midiMap_.devices().claim(name.toStdString(), identifier.toStdString());
+    // The number the MIDI log calls it by ("midi: in dev=3"), next to its name
+    // and the name its mappings know it by (#217).
+    juce::Logger::writeToLog("midi: device " + juce::String(id) + " = " + name +
+                             (juce::String(midiMap_.devices().nameFor(id)) != name
+                                  ? " (mapped as " + juce::String(midiMap_.devices().nameFor(id)) + ")"
+                                  : juce::String()) +
+                             (identifier.isNotEmpty() ? " [" + identifier + "]" : juce::String()));
+    return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
 
@@ -592,8 +618,16 @@ public:
   // settings (#225). Message thread.
   int registerOwnMidiInput(const juce::String& name);
   juce::StringArray ownMidiInputs() const { return ownInputs_; }
-  bool ownMidiInputEnabled(const juce::String& name) const { return !ownInputsOff_.contains(name); }
-  void setOwnMidiInputEnabled(const juce::String& name, bool on);
+  // Whether an input plays, by name: any input, the system's included. The
+  // system's are opened by the audio device manager, whose saved state lists
+  // only the inputs that are on, so a switched-off one could not be told from
+  // a new one and every input came back on at the next start (#230). The
+  // inputs switched off are kept here, with the general settings.
+  bool midiInputEnabled(const juce::String& name) const { return !inputsOff_.contains(name); }
+  void setMidiInputEnabled(const juce::String& name, bool on);
+  // Only the inputs switched off, from the general settings: wanted before the
+  // inputs are opened, which comes before the rest of those settings is read.
+  void readMidiInputSwitches();
 
   MidiMap& midiMap() { return midiMap_; }
   const MidiMap& midiMap() const { return midiMap_; }
@@ -777,6 +811,10 @@ public:
   // settings to everyone's defaults, so this rewrites the file around the
   // defaults already in it rather than around the live state.
   void setLastOrgan(const juce::File& odf);
+  // The folder the last organ was chosen from in Open, where the next Open
+  // starts (#251). Empty, or a folder that is gone: the system's default.
+  juce::File openFolder() const { return openFolder_.isDirectory() ? openFolder_ : juce::File(); }
+  void setOpenFolder(const juce::File& folder);
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
@@ -982,6 +1020,13 @@ public:
   // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
   int addCurrentOrganToFavourites(int slot = 0);
 
+  // The organ's voicing EQ (Organ settings, Voicing EQ): off unless the
+  // player turns it on for this organ. Applied at once; saved with the organ.
+  const VoicingEqSettings& voicingEq() const { return voicingEqSettings_; }
+  void setVoicingEq(const VoicingEqSettings& s) {
+    voicingEqSettings_ = s;
+    voicingEq_.configure(s, sampleRate_);
+  }
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -1150,6 +1195,9 @@ public:
   const std::vector<juce::File>& sampleLibraries() const { return libraries_; }
   void rememberSampleLibrary(const juce::File& root);
   void setOrganRootOverride(const juce::File& dir) { organRootOverride_ = dir; }
+  // The next loads list the definition's fields nothing read, in
+  // LoadResult::diagnostics.unreadFields. For mp-render --check.
+  void setReportUnreadFields(bool on) { reportUnreadFields_ = on; }
 
   // Where the engine gets sample audio. Injected rather than owned, so the
   // preloaded and streaming backing stores share one voice path (ADR-004) and
@@ -1229,8 +1277,10 @@ private:
   void stopNote(int channel, int midiNote, int velocity);
   // The same, with the manual already decided. A mapped rig names it outright;
   // an unmapped one derives it from the channel.
+  // `playedNote` is the key as played on that manual, before transposition;
+  // -1 when it is `midiNote` itself. It is what the drawn manual lights.
   void startNoteOnKeyboard(Id keyboard, int noteKeyId, int midiNote,
-                           int velocity);
+                           int velocity, int playedNote = -1);
   void stopNoteByKey(int noteKeyId, int velocity);
   // Notes are held per (channel, key): two manuals playing the same key are
   // two separate presses and one release must not silence both.
@@ -1381,6 +1431,7 @@ private:
   std::unordered_set<Id> engagedSwitches_;
   std::string organRootDir_;
   juce::File organRootOverride_;
+  bool reportUnreadFields_ = false;
   std::vector<juce::File> libraries_;
   // The root that holds the packages this model names, or an empty file.
   juce::File libraryHolding(const OrganModel& model) const;
@@ -1419,6 +1470,8 @@ private:
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
+  VoicingEqSettings voicingEqSettings_;
+  VoicingEq voicingEq_;
   Favourites favourites_;
   // Empty means the organ's default set.
   std::vector<PagePlace> pageWindows_;
@@ -1490,6 +1543,7 @@ private:
   // threshold in a few blocks; without this it machine-guns ten taps.
   double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
+  juce::File openFolder_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
   juce::String settingsBody() const;
@@ -1562,7 +1616,7 @@ private:
   bool combinationsOnTop_ = false;
   bool setOffAfterStore_ = false;
   std::atomic<bool> fasterEngine_{false};
-  juce::StringArray ownInputs_, ownInputsOff_;
+  juce::StringArray ownInputs_, inputsOff_;
   // Per device id, whether its messages are dropped: read on MIDI threads.
   static constexpr int kMaxMutedDevices = 64;
   std::array<std::atomic<bool>, kMaxMutedDevices> deviceMuted_{};
@@ -1634,8 +1688,15 @@ private:
     // notes that are that channel's and leave every other manual alone.
     int channel = 0;
     int device = 0;
+    int playedNote = 60;  // the key as played, for the drawn manual
   };
   std::unordered_map<int, HeldNote> soundingNotes_;
+  // Which keys are down on which manual, by manual id (low six bits) and key.
+  // Written on the audio thread where a note starts or stops on a manual,
+  // read by the drawn manuals, so a key lights on the manual it reached
+  // whatever device or channel brought it (#240).
+  std::array<std::atomic<uint64_t>, 64 * 2> keysDown_{};
+  void setKeyDown(Id keyboard, int note, bool down);
   // The keys held on a channel whose manual a piston is switching, to strike
   // again on the new one. Reserved at prepare, so the switch does not allocate.
   std::vector<std::pair<int, HeldNote>> rerouteScratch_;

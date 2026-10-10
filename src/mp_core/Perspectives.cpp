@@ -78,8 +78,15 @@ std::map<std::string, std::vector<Id>> byLevelControl(const OrganModel& model, s
   std::map<Id, std::vector<Id>> groups;
   for (const auto& [rankId, rank] : model.ranks)
     if (const Id c = levelControlOf(rank); c != 0) groups[c].push_back(rankId);
-  for (auto it = groups.begin(); it != groups.end();)
-    it = it->second.size() < floor ? groups.erase(it) : std::next(it);
+  // Groups too small to establish that the organ has perspectives, kept
+  // aside: once the large ones have, a small one recorded for part of the
+  // organ is one too (#260).
+  std::map<Id, std::vector<Id>> small;
+  for (auto it = groups.begin(); it != groups.end();) {
+    if (it->second.size() >= floor) { ++it; continue; }
+    if (it->second.size() >= 3) small.insert(*it);
+    it = groups.erase(it);
+  }
   if (groups.size() < 2) return {};
 
   std::map<Id, Id> groupOfRank;
@@ -95,6 +102,18 @@ std::map<std::string, std::vector<Id>> byLevelControl(const OrganModel& model, s
     if (touched.size() >= 2) ++spanning;
   }
   if (spanning * 2 <= stops) return {};
+
+  // A small group joins when every rank in it names the same position:
+  // Ashton's Rear has a slider of its own and covers the Great alone, 11
+  // ranks of 211, under the tenth the large ones need. A group that names
+  // no position (a noise, a division) stays out.
+  for (auto& [c, ranks] : small) {
+    const std::string name = perspectiveOf(model.ranks.at(ranks.front()).name);
+    if (name.empty()) continue;
+    bool agree = true;
+    for (const Id r : ranks) agree = agree && perspectiveOf(model.ranks.at(r).name) == name;
+    if (agree) groups[c] = std::move(ranks);
+  }
 
   // Named as the rank names put it when they all agree ("rear"), so a choice
   // saved by name still applies; else by the slider.

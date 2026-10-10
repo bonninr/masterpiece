@@ -331,6 +331,11 @@ public:
                int maxBlockFrames = 2048);
   void setSampleProvider(SampleProvider provider) { provider_ = std::move(provider); }
   void reset();
+  // The engine at rest: the render workers and the streaming thread stopped
+  // and joined, every voice silent. For a device that is about to change, so
+  // nothing is half way through a block when prepare() rebuilds the pools
+  // (#267); prepare() starts both again.
+  void quiesce();
 
   // Start one voice. Returns its index, or -1 when nothing could be started
   // (no free voice and nothing stealable, or the audio is not resident).
@@ -574,6 +579,10 @@ private:
     // Bumped every time the slot is re-armed, so a fill that was in flight for
     // the previous voice cannot publish frames into the new one's ring.
     std::atomic<uint64_t> generation{0};
+    // Whether the last read found the ring short, so one shortfall counts
+    // once however many frames and taps it lasts. Set from the const read
+    // path, hence mutable.
+    mutable std::atomic<bool> starved{false};
   };
   std::vector<std::unique_ptr<VoiceStream>> streams_;
   std::thread streamer_;

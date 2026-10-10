@@ -31,6 +31,12 @@
 
 namespace mp {
 
+// The switches the import gives GrandOrgue's own setter buttons, for the code
+// that treats them as the player's own (#248).
+inline constexpr int kGrandOrgueSetterSwitch = 12900;          // its Set button
+inline constexpr int kGrandOrgueGeneralCancelSwitch = 12950;   // its GC button
+
+
 // True for a GrandOrgue definition (*.organ), by name.
 bool isGrandOrgueDefinition(const std::string& path);
 

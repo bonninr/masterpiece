@@ -140,6 +140,7 @@ void VoiceEngine::armStream(size_t voiceIndex, const SampleBuffer& buf,
   st.generation.fetch_add(1, std::memory_order_acq_rel);
   st.armed.store(false, std::memory_order_release);
   st.filled.store(0, std::memory_order_release);
+  st.starved.store(false, std::memory_order_relaxed);
   st.base = fromFrame;
   st.channels = buf.numChannels;
   st.tail = buf.tail;
@@ -163,16 +164,25 @@ float VoiceEngine::streamedSample(size_t voiceIndex, const SampleBuffer& buf,
   if (!st.armed.load(std::memory_order_acquire)) return 0.0f;
   const int64_t offset = frame - st.base;
   if (offset < 0) return 0.0f;
+  // Past the end of the file: the interpolation's last taps reach beyond the
+  // final frame of every release. That is the sample's end, and silence;
+  // counted as a shortfall, every release that played out added to the
+  // count, which reached the hundreds of millions in a session.
+  if (frame >= buf.totalFrames()) return 0.0f;
   // Acquire: everything the streamer wrote before publishing `filled` is
   // visible here. This one load is the whole synchronisation.
   const int64_t filled = st.filled.load(std::memory_order_acquire);
   if (offset >= filled) {
     // The disk did not keep up. Silence for this frame, and a count, because
     // a release that goes quiet halfway is exactly the fault a player would
-    // hear and have no way to diagnose.
-    underruns_.fetch_add(1, std::memory_order_relaxed);
+    // hear and have no way to diagnose. Counted once per shortfall: this
+    // runs for every frame, channel and interpolation tap.
+    if (!st.starved.exchange(true, std::memory_order_relaxed))
+      underruns_.fetch_add(1, std::memory_order_relaxed);
     return 0.0f;
   }
+  if (st.starved.load(std::memory_order_relaxed))
+    st.starved.store(false, std::memory_order_relaxed);
   const int ch = channel < st.channels ? channel : st.channels - 1;
   const auto idx = static_cast<size_t>(offset) * static_cast<size_t>(st.channels) +
                    static_cast<size_t>(ch);
@@ -226,6 +236,12 @@ void VoiceEngine::streamerLoop() {
 VoiceEngine::~VoiceEngine() {
   stopWorkers();
   stopStreamer();
+}
+
+void VoiceEngine::quiesce() {
+  stopWorkers();
+  stopStreamer();
+  reset();
 }
 
 void VoiceEngine::reset() {
@@ -914,6 +930,18 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   const int extra = numThreads > 1 ? numThreads - 1 : 0;
   if (extra <= 0 || maxFrames_ <= 0) return;
 
+  // The generation the new workers start from. jobGeneration_ outlives the
+  // pool: a worker starting from 0 took the last job of the previous pool for
+  // a new one and rendered it at once, at the old block size, into scratch
+  // sized for the new one -- past its end whenever the buffer got smaller
+  // (#267, found with AddressSanitizer).
+  uint64_t startGeneration = 0;
+  {
+    std::lock_guard<std::mutex> lock(jobMutex_);
+    startGeneration = jobGeneration_;
+    jobsOutstanding_ = 0;
+  }
+  const int scratchFrames = maxFrames_;
   workers_.resize(static_cast<size_t>(extra));
   for (size_t w = 0; w < workers_.size(); ++w) {
     auto& worker = workers_[w];
@@ -924,8 +952,8 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
       worker.planes[static_cast<size_t>(c)] =
           worker.scratch.data() + static_cast<size_t>(c) * static_cast<size_t>(maxFrames_);
 
-    worker.thread = std::thread([this, w]() {
-      uint64_t seen = 0;
+    worker.thread = std::thread([this, w, startGeneration, scratchFrames]() {
+      uint64_t seen = startGeneration;
       for (;;) {
         std::unique_lock<std::mutex> lock(jobMutex_);
         jobCv_.wait(lock, [&] { return jobGeneration_ != seen || shuttingDown_; });
@@ -933,8 +961,9 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
         seen = jobGeneration_;
         const auto begin = workers_[w].begin;
         const auto end = workers_[w].end;
-        const int channels = jobChannels_;
-        const int frames = jobFrames_;
+        // Never more than the scratch holds, whatever the job says.
+        const int channels = std::min(jobChannels_, numChannels_);
+        const int frames = std::min(jobFrames_, scratchFrames);
         const int bus = jobBus_;
         const int mixBus = jobMixBus_;
         auto* planes = workers_[w].planes.data();

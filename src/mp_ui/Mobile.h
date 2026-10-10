@@ -32,6 +32,11 @@ juce::String describeWindows();
 // On a phone or tablet, makes a window fill the screen, with a title bar
 // tall enough to touch and its close button in reach. Does nothing elsewhere.
 void fitToScreen(juce::DocumentWindow& window);
+// A window put back where it was saved, kept wholly on the display it lands
+// on: moved inside that display's usable area, and made smaller when it is
+// larger. A window saved on a big screen came back on a small one partly off
+// its edge, and the left of every console page was out of sight.
+void keepOnScreen(juce::Component& window);
 
 // Shows or hides a window that floats over the console (combinations,
 // recorder), above every other window while `onTop`. On Linux the window is

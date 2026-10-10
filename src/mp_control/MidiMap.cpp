@@ -160,6 +160,13 @@ void MidiMap::rebuildOrdered() {
             });
 }
 
+void MidiMap::bindFrom(const MidiMap& other, MidiBinding binding) {
+  if (binding.source.deviceId != MidiDeviceMap::kAnyDevice)
+    binding.source.deviceId = devices_.idFor(other.devices().nameFor(binding.source.deviceId),
+                                             other.devices().identifierFor(binding.source.deviceId));
+  bind(binding);
+}
+
 void MidiMap::bind(const MidiBinding& binding) {
   if (binding.source.kind == MidiSourceKind::None) return;
   if (binding.targetKind == MidiTargetKind::None) return;

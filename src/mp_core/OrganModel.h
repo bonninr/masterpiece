@@ -135,6 +135,12 @@ struct PipeLayer {
   // this costs nothing until it is used.
   Id pitchControlId = 0;
   double pitchSensitivityHzPerUnit = 0.0;
+  // A fixed detune of the layer, in cents (PitchLvl_DetuningPercentSemitones,
+  // percent of a semitone). It is what makes a celeste beat (#261): the
+  // recording is tuned to the tempered pitch like every other rank, and this
+  // puts it back sharp -- Clarendon's Viole Celeste 5.4, Klais' Vox Coelestis
+  // 13.
+  double detuneCents = 0.0;
   // How hard the key was struck changes how loud the pipe speaks. The organ
   // states the attenuation at the softest touch; full velocity is unattenuated.
   // Half the corpus declares one, and without it every note plays at one

@@ -5,6 +5,8 @@
 #endif
 #include "Mobile.h"
 
+#include <algorithm>
+
 #include "../mp_archive/OrganArchive.h"
 
 #if JUCE_ANDROID
@@ -374,6 +376,18 @@ juce::Rectangle<int> screenBounds() {
   return {0, 0, 1280, 800};
 }
 
+void keepOnScreen(juce::Component& window) {
+  const auto& displays = juce::Desktop::getInstance().getDisplays();
+  auto b = window.getBounds();
+  const auto* d = displays.getDisplayForRect(b);
+  if (d == nullptr) d = displays.getPrimaryDisplay();
+  if (d == nullptr) return;
+  const auto area = d->userArea;
+  b.setSize(std::min(b.getWidth(), area.getWidth()), std::min(b.getHeight(), area.getHeight()));
+  b = b.constrainedWithin(area);
+  if (b != window.getBounds()) window.setBounds(b);
+}
+
 void fitToScreen(juce::DocumentWindow& window) {
   if (!kMobile) return;
   // A native title bar is a desktop thing; the platform draws none.
@@ -435,6 +449,8 @@ void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
     window.addToDesktop();
   } else {
     window.setAlwaysOnTop(onTop);
+    // A window built hidden is kept off the desktop (CombinationsWindow).
+    if (show && !window.isOnDesktop()) window.addToDesktop();
   }
   window.setVisible(show);
   if (show) window.toFront(true);

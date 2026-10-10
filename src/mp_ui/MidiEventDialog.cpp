@@ -30,6 +30,14 @@ juce::String readable(const std::string& raw) {
   return n.trim();
 }
 
+// A target worked by a press, as a switch is: the organ's own switches, and
+// the program's buttons -- the player's pistons, the cancels, the setter, the
+// stepper. Everything but a shoe and a manual.
+bool pressable(MidiTargetKind k) {
+  return k != MidiTargetKind::ContinuousControl && k != MidiTargetKind::Keyboard &&
+         k != MidiTargetKind::None;
+}
+
 juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
   const auto& m = p.organModel();
   if (kind == MidiTargetKind::Switch) {
@@ -164,7 +172,8 @@ public:
     device_.addItem("Any console", 1);
     const auto& names = p.midiMap().devices().names();
     for (size_t i = 0; i < names.size(); ++i)
-      device_.addItem(juce::String(names[i]), static_cast<int>(i) + 2);
+      device_.addItem(juce::String(p.midiMap().devices().displayName(static_cast<int>(i) + 1)),
+                      static_cast<int>(i) + 2);
     device_.setSelectedId(b.source.deviceId + 1, juce::dontSendNotification);
     if (device_.getSelectedId() == 0) device_.setSelectedId(1, juce::dontSendNotification);
 
@@ -196,6 +205,13 @@ public:
       action_.addItem("Held while pressed", 2);
       action_.addItem("Draws it", 3);
       action_.addItem("Cancels it", 4);
+    } else if (pressable(kind)) {
+      // A piston fires when pressed; the setter may also be worked by a
+      // button that toggles it, as its Learn menu offers.
+      action_.addItem("Fires when pressed", 2);
+      if (kind == MidiTargetKind::Setter) action_.addItem("Each press toggles", 1);
+    }
+    if (pressable(kind)) {
       action_.setSelectedId(b.trigger == MidiTrigger::Momentary     ? 2
                             : b.trigger == MidiTrigger::EngageOnly    ? 3
                             : b.trigger == MidiTrigger::DisengageOnly ? 4
@@ -227,7 +243,7 @@ public:
   }
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
-    if (kind == MidiTargetKind::Switch)
+    if (pressable(kind))
       return {{"Device", 150}, {"Channel", 64}, {"Event", 116}, {"Number", 96},
               {"What it does", 150}, {"", 84}, {"", 28}};
     return {{"Device", 150}, {"Channel", 64}, {"Event", 116}, {"Number", 96},
@@ -239,7 +255,7 @@ public:
     std::vector<std::pair<juce::Component*, int>> cells{
         {&device_, cols[0].second}, {&channel_, cols[1].second},
         {&event_, cols[2].second}, {&number_, cols[3].second}};
-    if (kind_ == MidiTargetKind::Switch) {
+    if (pressable(kind_)) {
       cells.push_back({&action_, cols[4].second});
     } else {
       cells.push_back({&low_, cols[4].second});
@@ -267,7 +283,7 @@ public:
                         : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
                                                                       : juce::jmax(0, number_.getSelectedId() - 1);
     }
-    if (kind_ == MidiTargetKind::Switch) {
+    if (pressable(kind_)) {
       const int a = action_.getSelectedId();
       b.trigger = a == 2   ? MidiTrigger::Momentary
                   : a == 3 ? MidiTrigger::EngageOnly
@@ -313,7 +329,7 @@ public:
                       "drawstop or move the pedal on your console.");
     addAndMakeVisible(note_);
     styleNote(note_,
-              kind == MidiTargetKind::Switch
+              pressable(kind)
                   ? "Add a row for every message that works this. A rocker tab or a console "
                     "with separate draw and cancel buttons is two rows: one that draws it and "
                     "one that cancels it. Listen fills a row from the next message your "
@@ -384,6 +400,8 @@ private:
       const auto sw = proc_.organModel().switches.find(id_);
       const bool latching = sw == proc_.organModel().switches.end() || sw->second.latching;
       b.trigger = latching ? MidiTrigger::Toggle : MidiTrigger::Momentary;
+    } else if (pressable(kind_)) {
+      b.trigger = MidiTrigger::Momentary;
     }
     rows_.push_back(b);
     listening_ = static_cast<int>(rows_.size()) - 1;
@@ -812,7 +830,9 @@ public:
       : tabs_(juce::TabbedButtonBar::TabsAtTop) {
     addAndMakeVisible(tabs_);
     tabs_.addTab("Receive", kBg, new ReceivePanel(p, kind, id), true);
-    tabs_.addTab("Send", kBg, new SendPanel(p, kind, id), true);
+    // The program's own buttons light nothing on a console.
+    if (kind == MidiTargetKind::Switch || !pressable(kind))
+      tabs_.addTab("Send", kBg, new SendPanel(p, kind, id), true);
     tabs_.addTab("Shortcut", kBg, new ShortcutPanel(p, kind, id), true);
   }
   void resized() override { tabs_.setBounds(getLocalBounds()); }
@@ -823,12 +843,13 @@ private:
 
 } // namespace
 
-void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
+void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
+                           const juce::String& name) {
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
-  content->setSize(kind == MidiTargetKind::Switch ? 760 : 840, 460);
+  content->setSize(pressable(kind) ? 760 : 840, 460);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
-  o.dialogTitle = objectName(p, kind, id) + " - MIDI";
+  o.dialogTitle = (name.isNotEmpty() ? name : objectName(p, kind, id)) + " - MIDI";
   o.dialogBackgroundColour = kBg;
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;
