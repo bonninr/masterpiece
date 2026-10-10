@@ -11423,6 +11423,39 @@ public:
 static GrandOrgueSetterLinkTest g_grandOrgueSetterLink;
 #endif // MP_TEST_HAS_AUDIO
 
+// A WavPack file's size in memory, from its own header (#219). The
+// GrandOrgue demo names its WavPack files ".wav", and the estimate read them
+// as plain audio: 212 MB for an organ that loads 1373 MB.
+class WavPackShapeTest final : public mp::test::Test {
+public:
+  WavPackShapeTest() : Test("functional.files.wavpack-shape", Category::Functional) {}
+  void run() override {
+    const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-wavpack-shape.wav");
+    unsigned char h[32] = {'w', 'v', 'p', 'k'};
+    auto put32 = [&](int at, uint32_t v) {
+      for (int i = 0; i < 4; ++i) h[at + i] = static_cast<unsigned char>(v >> (8 * i));
+    };
+    put32(4, 24);
+    h[8] = 0x10;
+    h[9] = 0x04;                        // version 0x410
+    put32(12, 327165);                  // total samples
+    put32(20, 22050);                   // samples in this block
+    put32(24, 1u | (9u << 23));         // 16-bit, stereo, 44100 Hz
+    file.replaceWithData(h, sizeof h);
+    mp::SampleLibrary::ShapeJob job;
+    job.path = file.getFullPathName().toStdString();
+    const auto shape = mp::SampleLibrary::readShape(job);
+    MP_CHECK(shape.frames == 327165 && shape.channels == 2 && shape.rate == 44100.0,
+             "a WavPack file named .wav is measured from its header, got " + std::to_string(shape.frames) +
+                 " frames, " + std::to_string(shape.channels) + " channels");
+    h[24] |= 4;                         // MONO_FLAG
+    file.replaceWithData(h, sizeof h);
+    MP_CHECK(mp::SampleLibrary::readShape(job).channels == 1, "and a mono one as mono");
+    file.deleteFile();
+  }
+};
+static WavPackShapeTest g_wavPackShape;
+
 // A temperament from a Scala file, the format tuning libraries publish.
 class ScalaTemperamentTest final : public mp::test::Test {
 public:
