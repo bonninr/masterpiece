@@ -364,6 +364,22 @@ public:
   // Move every voice of this key press into release. `strike` carries the
   // key-off context the release matrix selects on.
   void noteOff(uint64_t noteId, const NoteRelease& release);
+  // Every voice still sounding goes into its release, whatever note it
+  // belongs to: Panic's last word, for a voice whose note-off was lost and
+  // that no key the program knows of is holding (#276). A note for which
+  // `keep(noteId)` is true sounds on: one a drawn switch holds, such as a
+  // motor noise, which would otherwise stay silent until the switch moved.
+  template <class Keep>
+  void releaseAll(Keep keep) {
+    for (size_t i = 0; i < voices_.size(); ++i) {
+      const Voice& v = voices_[i];
+      if (!v.active() || v.phase == VoicePhase::Release || keep(v.noteId)) continue;
+      releaseVoices(v.noteId, 0, NoteRelease{});
+    }
+  }
+  void releaseAll() {
+    releaseAll([](uint64_t) { return false; });
+  }
   // Release only the voices of ONE pipe of a held note, leaving the rest of
   // the note sounding. This is a stop pushed in while a key is down: that
   // rank stops speaking, the others carry on, and the key is still held.
