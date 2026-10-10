@@ -982,10 +982,6 @@ private:
         // close button with it (#233).
         panelHost_.setBounds(safe);
         panelHost_.toFront(false);
-        juce::Logger::writeToLog("panels: window " + getScreenBounds().toString() + ", safe " +
-                                 mp::ui::screenArea().toString() + ", content " +
-                                 content->getScreenBounds().toString() + ", layer " +
-                                 panelHost_.getScreenBounds().toString());
       }
     }
 
