@@ -261,7 +261,6 @@ private:
   // The pop-out icon on each tab: filled while its page has a window.
   void addPopOutIcons();
   void refreshPopOutIcons();
-  juce::TextButton toggleView_{"Stop list"};
   juce::TextButton settingsButton_{"Settings"};
   juce::TextButton keysButton_{"Keys"};
   juce::TextButton swellButton_{"Swell"};
@@ -290,6 +289,10 @@ private:
   void setPanelDetached(int index, bool detached);
   void rebuildPageTabs();
   void showPanelsMenu();
+  // A panel on screen: its tab, or its window brought to the front.
+  void showPanel(int index);
+  // The first panel and back to the console; a panel made if there is none.
+  void togglePanel();
   // The recorder, in a small window of its own above the console (#90): in
   // a settings dialog it took the console away while it recorded.
   std::unique_ptr<juce::DocumentWindow> recorderWindow_;
