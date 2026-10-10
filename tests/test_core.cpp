@@ -10243,6 +10243,43 @@ public:
              "one slider per position makes the perspectives, named after it");
     MP_CHECK(mp::perspectivesOf(levelled(false)).empty(),
              "a slider per division is not a perspective: its stops are its own");
+
+    // A perspective recorded for part of the organ (Ashton, #260): three
+    // front positions over every stop, and a Rear for five of them, under a
+    // tenth of the ranks; a noise slider beside them names no position.
+    {
+      mp::OrganModel am;
+      auto rank = [&](mp::Id id, const std::string& name, mp::Id control, mp::Stop* stop) {
+        mp::Rank r;
+        r.rankId = id;
+        r.name = name;
+        mp::Pipe pipe;
+        pipe.layers.emplace_back();
+        pipe.layers.back().ampScalingControlId = control;
+        r.pipes.push_back(pipe);
+        am.ranks[id] = r;
+        if (stop != nullptr) {
+          mp::StopRankEntry e;
+          e.rankId = id;
+          stop->ranks.push_back(e);
+        }
+      };
+      const char* fronts[] = {"Front A (direct)", "Front B (diffuse)", "Front C (distant)"};
+      for (int st = 0; st < 30; ++st) {
+        mp::Stop stop;
+        stop.stopId = st + 1;
+        for (int f = 0; f < 3; ++f)
+          rank(1000 + st * 10 + f, std::string(fronts[f]) + ": Stop " + std::to_string(st), 21 + f, &stop);
+        if (st < 5) rank(1000 + st * 10 + 5, "Rear: Great " + std::to_string(st), 24, &stop);
+        am.stops[stop.stopId] = stop;
+      }
+      for (int n = 0; n < 3; ++n) rank(5000 + n, "Blower noise " + std::to_string(n), 30, nullptr);
+      am.continuousControls[24].name = "Volume Rear:";
+      const auto withRear = mp::perspectivesOf(am);
+      MP_CHECK(withRear.size() == 4 && withRear.count("rear") && withRear.at("rear").size() == 5,
+               "a Rear recorded for one division is a perspective of its own, got " +
+                   std::to_string(withRear.size()));
+    }
   }
 };
 static PerspectivesTest g_perspectives;
