@@ -408,6 +408,10 @@ namespace {
 void hostIn(juce::Component& host, juce::DocumentWindow& window) {
   if (window.getParentComponent() != &host) host.addChildComponent(window);
   fitToScreen(window);
+  // Where a panel lands, for the simulator runs to read (#233).
+  juce::Logger::writeToLog("panels: '" + window.getName() + "' at " + window.getScreenBounds().toString() +
+                           " in layer " + host.getScreenBounds().toString() + ", safe " +
+                           screenArea().toString() + (window.isOnDesktop() ? ", on the desktop" : ""));
 }
 }  // namespace
 

@@ -975,9 +975,17 @@ private:
     void resized() override {
       juce::DocumentWindow::resized();
       if (auto* content = getContentComponent()) {
-        content->setBounds(getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds()));
-        panelHost_.setBounds(content->getBounds());
+        const auto safe = getLocalArea(nullptr, mp::ui::screenArea()).getIntersection(getLocalBounds());
+        content->setBounds(safe);
+        // The layer the panels open in, inside the safe area itself: a
+        // dialog's title bar under the status bar takes no taps, and its
+        // close button with it (#233).
+        panelHost_.setBounds(safe);
         panelHost_.toFront(false);
+        juce::Logger::writeToLog("panels: window " + getScreenBounds().toString() + ", safe " +
+                                 mp::ui::screenArea().toString() + ", content " +
+                                 content->getScreenBounds().toString() + ", layer " +
+                                 panelHost_.getScreenBounds().toString());
       }
     }
 
