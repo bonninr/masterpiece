@@ -52,14 +52,34 @@ def shot(name):
             f.write(f"{label(e)!r} {e.get('type', '')} {fr}\n")
 
 
-def portrait_width():
-    """The screen's upright width in points, from a screenshot's pixels."""
+def portrait_size():
+    """The screen's upright width and height in points, from a screenshot's
+    pixels."""
     path = os.path.join(OUT, ".probe.png")
     run("xcrun", "simctl", "io", UDID, "screenshot", path)
     with open(path, "rb") as f:
-        pixels = struct.unpack(">I", f.read(24)[16:20])[0]
+        w, h = struct.unpack(">II", f.read(24)[16:24])
     os.remove(path)
-    return pixels / float(os.environ.get("SCREEN_SCALE", "2"))
+    scale = float(os.environ.get("SCREEN_SCALE", "2"))
+    return w / scale, h / scale
+
+
+def portrait_width():
+    """The screen's upright width in points, from a screenshot's pixels."""
+    return portrait_size()[0]
+
+
+def label_at(x, y):
+    """The label of what idb finds at a point in the coordinates it taps in,
+    or None when it cannot say."""
+    r = run("idb", "ui", "describe-point", "--udid", UDID, "--json", str(int(x)), str(int(y)))
+    try:
+        data = json.loads(r.stdout)
+    except ValueError:
+        return None
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return label(data)
 
 
 def to_touch(es, x, y):
@@ -87,13 +107,28 @@ def settled():
     return es
 
 
+def touch_point(es, text, x, y):
+    """Where to tap for an element at (x, y) in the app's points. The app may
+    be turned either way, and idb taps in the screen's upright points: each
+    way of turning it is tried, and the one idb says lands on the element is
+    used. A guess tapped the console's empty corner, or Open, whenever the
+    simulator had turned the other way, and the run went on behind the file
+    picker. With no answer from idb, the turn to the left, as before."""
+    w, h = portrait_size()
+    for cx, cy in ((x, y), (w - y, x), (y, h - x)):
+        found = label_at(cx, cy)
+        if found and (found == text or text in found):
+            return cx, cy
+    return to_touch(es, x, y)
+
+
 def tap(name, contains=False, required=True):
     es = settled()
     for e in es:
         text = label(e)
         if text == name or (contains and name.lower() in text.lower()):
             fr = e["frame"]
-            x, y = to_touch(es, fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2)
+            x, y = touch_point(es, text, fr["x"] + fr["width"] / 2, fr["y"] + fr["height"] / 2)
             run("idb", "ui", "tap", "--udid", UDID, str(int(x)), str(int(y)))
             time.sleep(2)
             return True
