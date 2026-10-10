@@ -101,6 +101,8 @@ public:
   void markSaved() { saved_ = layout_; }
   // Its name: the player's, or "Panel <n>".
   juce::String title() const;
+  // Its place among the organ's panels, after one before it was deleted.
+  void setIndex(int index) { index_ = index; }
   // Set by the editor: the panel was renamed, so its tab and window follow.
   std::function<void()> onRenamed;
   // Ask for a new name for the panel.
