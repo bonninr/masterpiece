@@ -487,6 +487,33 @@ struct WavShape {
   int64_t dataBytes = 0;
 };
 
+// A WavPack file's own account of its length, channels and rate, from the
+// first block header. Recognised by its signature: the GrandOrgue demo names
+// WavPack files ".wav", so the extension says nothing, and a guessed ratio
+// put the demo at a sixth of what it loads (#219).
+bool readWavPackShape(const std::filesystem::path& path, WavShape& out) {
+  std::ifstream in(path, std::ios::binary);
+  unsigned char h[32];
+  if (!in || !in.read(reinterpret_cast<char*>(h), 32) || std::memcmp(h, "wvpk", 4) != 0)
+    return false;
+  auto u32 = [](const unsigned char* p) {
+    return static_cast<uint32_t>(p[0]) | static_cast<uint32_t>(p[1]) << 8 |
+           static_cast<uint32_t>(p[2]) << 16 | static_cast<uint32_t>(p[3]) << 24;
+  };
+  const uint32_t total = u32(h + 12);
+  if (total == 0xFFFFFFFFu) return false;  // length not stated
+  const int64_t frames = static_cast<int64_t>(total) | (static_cast<int64_t>(h[11]) << 32);
+  const uint32_t flags = u32(h + 24);
+  static const double rates[] = {6000,  8000,  9600,  11025, 12000, 16000,  22050, 24000,
+                                 32000, 44100, 48000, 64000, 88200, 96000, 192000};
+  const uint32_t rateIndex = (flags >> 23) & 0xF;
+  out.channels = (flags & 4u) != 0 ? 1 : 2;  // MONO_FLAG
+  out.bits = static_cast<int>((flags & 3u) + 1) * 8;
+  out.rate = rateIndex < 15 ? rates[rateIndex] : 0.0;
+  out.dataBytes = frames * out.channels * (out.bits / 8);
+  return frames > 0;
+}
+
 bool readWavShape(const std::filesystem::path& path, WavShape& out) {
   std::ifstream in(path, std::ios::binary);
   if (!in) return false;
@@ -570,7 +597,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   std::error_code ec;
   int64_t fileBytes = job.packageBytes;
   if (std::filesystem::exists(path, ec)) {
-    if (!job.wavpack && readWavShape(path, wav)) {
+    if (readWavPackShape(path, wav) || (!job.wavpack && readWavShape(path, wav))) {
       shape.channels = wav.channels;
       shape.rate = wav.rate;
       shape.frames = wav.dataBytes / std::max(1, wav.channels * wav.bits / 8);
