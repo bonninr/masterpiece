@@ -238,6 +238,12 @@ VoiceEngine::~VoiceEngine() {
   stopStreamer();
 }
 
+void VoiceEngine::quiesce() {
+  stopWorkers();
+  stopStreamer();
+  reset();
+}
+
 void VoiceEngine::reset() {
   for (size_t i = 0; i < voices_.size(); ++i) disarmStream(i);
   for (auto& v : voices_) v = Voice{};

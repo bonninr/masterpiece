@@ -78,7 +78,11 @@ public:
   ~MasterpieceProcessor() override = default;
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
-  void releaseResources() override {}
+  // The device is stopping, most often to change its buffer size: the engine
+  // comes to rest before prepareToPlay rebuilds it. Left running, the workers,
+  // the streaming thread and hundreds of sounding voices met the rebuild, and
+  // on a loaded Linux machine the heap was corrupted (#267).
+  void releaseResources() override;
   void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
   juce::AudioProcessorEditor* createEditor() override;
