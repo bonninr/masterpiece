@@ -13432,6 +13432,29 @@ public:
   }
 };
 static PanelsTest g_panels;
+
+// Version 3 of the format named a definition "Name.Organ.Hauptwerk.xml", dots
+// where later versions use underscores (Wildervank). It is offered beside the
+// others.
+class OlderDefinitionNamesTest final : public mp::test::Test {
+public:
+  OlderDefinitionNamesTest() : Test("functional.files.older-definition-names", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-older-names");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto older = dir.getChildFile("Wildervank.Organ.Hauptwerk.xml");
+    const auto newer = dir.getChildFile("Veendam.Organ_Hauptwerk_xml");
+    older.replaceWithText("<Hauptwerk/>");
+    newer.replaceWithText("<Hauptwerk/>");
+    dir.getChildFile("PackageID001161.InstallationPackageDefinition.Hauptwerk.xml").replaceWithText("<x/>");
+    const auto found = mp::MasterpieceProcessor::organVersions(newer);
+    MP_CHECK(found.contains(older) && found.contains(newer) && found.size() == 2,
+             "the older spelling is listed, a package's own file is not: " + std::to_string(found.size()));
+    dir.deleteRecursively();
+  }
+};
+static OlderDefinitionNamesTest g_olderDefinitionNames;
 #endif  // MP_TEST_HAS_AUDIO
 
 // A three-way drawstop's levels, as Azzio wires its Sesquialtera (#285): a

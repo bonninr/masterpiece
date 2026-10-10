@@ -61,7 +61,10 @@ public:
       if (path.startsWithChar('-')) continue;
       const auto f = juce::File::getCurrentWorkingDirectory().getChildFile(path);
       const auto ext = f.getFileExtension().toLowerCase();
+      const auto name = f.getFileName().toLowerCase();
       if (f.existsAsFile() && (ext == ".organ_hauptwerk_xml" || ext == ".customorgan_hauptwerk_xml" ||
+                               name.endsWith(".organ.hauptwerk.xml") ||
+                               name.endsWith(".customorgan.hauptwerk.xml") ||
                                ext == ".organ" || ext == ".orgue" || ext == ".rar"))
         return f;
     }
