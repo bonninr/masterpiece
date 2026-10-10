@@ -961,6 +961,7 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   if (loading_) return;
   loading_ = true;
   closePageWindowsForLoad();
+  console_.freeze();
   top_.setStatus("Loading " + odf.getFileName() + "...");
 
   showLoadingDialog(odf);
@@ -1307,7 +1308,14 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     // same after Cancel, which is often a load taking too much (#90). Once:
     // a console-only load reads no samples, and never comes back here.
     const bool cancelled = result.error == "cancelled";
-    if ((result.outOfMemory || cancelled) && !graphicsOnly && odf.existsAsFile()) loadOrgan(odf, true);
+    if ((result.outOfMemory || cancelled) && !graphicsOnly && odf.existsAsFile()) {
+      loadOrgan(odf, true);
+      return;
+    }
+    // Whatever organ is left, or none: drawn from the model as it now is.
+    jamb_.rebuild();
+    expression_.rebuild();
+    console_.rebuild();
     return;
   }
   // A licence confirmed during this load is the organ's from now on: saved
@@ -1762,6 +1770,8 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 }
 
 void MasterpieceEditor::timerCallback() {
+  // The model is the loader's until the load ends: nothing reads it here.
+  if (loading_) return;
   // A drawstop clicked on the console changes the jamb too, and vice versa.
   if (showingConsole_) console_.repaint();
   // And the stop list follows the console, pistons and MIDI the same way
