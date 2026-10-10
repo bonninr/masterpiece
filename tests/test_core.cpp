@@ -4704,6 +4704,30 @@ public:
       MP_CHECK(net.lastChanges().size() == 1, "one switch moved");
     }
 
+    // --- a 1/7 link gated by a pulse at load (Oloron, #263) -------------
+    // "Enable Appels d'anches on load" (142) reaches the reed ventil (30)
+    // while the load pulse (108) is on. The pulse ending leaves the ventil
+    // drawn; the source letting go still takes it back.
+    {
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{142}, mp::Id{108}, mp::Id{30}}) addSwitch(m, id);
+      auto gated = wire(142, 30, 108);
+      gated.engageAction = 1;
+      gated.disengageAction = 7;
+      m.switchLinkages.push_back(gated);
+      mp::SwitchNetwork net;
+      net.reset(m);
+      net.set(142, true);
+      MP_CHECK(!net.engaged(30), "the option alone draws nothing until the organ loads");
+      net.set(108, true);
+      MP_CHECK(net.engaged(30), "the load pulse draws the ventil");
+      net.set(108, false);
+      MP_CHECK(net.engaged(30), "and the ventil stays drawn when the pulse ends");
+      net.set(108, true);
+      net.set(142, false);
+      MP_CHECK(!net.engaged(30), "a 7 still disengages when its own source lets go");
+    }
+
     // --- the shape Lemmer actually uses --------------------------------
     // The drawn drawstop and the logical switch drive EACH OTHER, so that
     // moving either moves both; the logical one then drives the node the key
@@ -11001,6 +11025,64 @@ public:
   }
 };
 static PlayerPistonsProcessorTest g_playerPistonsProcessor;
+
+// The organ's own start signal (#263). Sets built on one template (Nancy,
+// Friesach, Oloron) start themselves with a hidden pair: "Hidden OffToOn"
+// moves 0 to 127 at load, a delay follows it, and the delay's top step
+// engages an init switch whose pulse starts the blower when "Start blower on
+// organ load" is set, through a 1/7 link gated by the pulse.
+class StartSignalTest final : public mp::test::Test {
+public:
+  StartSignalTest() : Test("functional.control.start-signal", Category::Functional) {}
+  void run() override {
+    const juce::File fixture(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    juce::String xml = fixture.loadFileAsString();
+    juce::String sw;
+    for (const auto& [id, name, def] : {std::tuple<int, const char*, bool>{141, "Start blower on organ load", true},
+                                        {108, "Blower init 1", false}, {100, "Blower internal", false}})
+      sw << "<Switch><SwitchID>" << id << "</SwitchID><Name>" << name << "</Name><Latching>Y</Latching>"
+         << "<DefaultToEngaged>" << (def ? "Y" : "N") << "</DefaultToEngaged></Switch>";
+    xml = xml.replaceFirstOccurrenceOf("<ObjectList ObjectType=\"Switch\">", "<ObjectList ObjectType=\"Switch\">" + sw);
+    const juce::String extra =
+        "<ObjectList ObjectType=\"SwitchLinkage\"><SwitchLinkage><SourceSwitchID>141</SourceSwitchID>"
+        "<DestSwitchID>100</DestSwitchID><ConditionSwitchID>108</ConditionSwitchID>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged><ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>7</DisengageLinkActionCode>"
+        "</SwitchLinkage></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControl\">"
+        "<ContinuousControl><ControlID>24</ControlID><Name>Hidden OffToOn</Name><DefaultValue>0</DefaultValue></ContinuousControl>"
+        "<ContinuousControl><ControlID>9003</ControlID><Name>__DelayInit50ms NoiseSwitch</Name></ContinuousControl>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlLinkage\"><ContinuousControlLinkage>"
+        "<SourceControlID>24</SourceControlID><DestControlID>9003</DestControlID>"
+        "</ContinuousControlLinkage></ObjectList>"
+        "<ObjectList ObjectType=\"ContinuousControlStageSwitch\">"
+        "<ContinuousControlStageSwitch><ContinuousControlID>9003</ContinuousControlID>"
+        "<ContinuousControlValue>127</ContinuousControlValue><ControlledSwitchID>108</ControlledSwitchID>"
+        "<EngageWhenValueIncreasing>Y</EngageWhenValueIncreasing></ContinuousControlStageSwitch>"
+        "<ContinuousControlStageSwitch><ContinuousControlID>9003</ContinuousControlID>"
+        "<ContinuousControlValue>126</ContinuousControlValue><ControlledSwitchID>108</ControlledSwitchID>"
+        "<DisengageWhenValueDecreasing>Y</DisengageWhenValueDecreasing></ContinuousControlStageSwitch>"
+        "</ObjectList></Hauptwerk>";
+    xml = xml.replaceFirstOccurrenceOf("</Hauptwerk>", extra);
+
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-start-signal");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto odf = dir.getChildFile("start.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+    mp::MasterpieceProcessor proc;
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    MP_CHECK(proc.continuousControlValue(24) == 127, "the start signal has moved");
+    MP_CHECK(proc.switchEngaged(108), "the delay at the top of its ramp fires the init pulse");
+    MP_CHECK(proc.switchEngaged(100), "and the pulse starts the blower, as the option asks");
+    proc.setSwitchEngaged(108, false);
+    MP_CHECK(proc.switchEngaged(100), "the pulse ending leaves the blower running");
+    proc.settingsFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static StartSignalTest g_startSignal;
 
 // A celeste's fixed detune, PitchLvl_DetuningPercentSemitones on the layer
 // (#261): read in both forms of the format, and heard. Without it every

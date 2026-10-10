@@ -111,7 +111,7 @@ private:
   bool fires(const SwitchLinkage& l) const;
   // The wire's firing state changed: assert what its action says, subject to
   // the OR rule for a disengage.
-  void reevaluate(const SwitchLinkage& l);
+  void reevaluate(const SwitchLinkage& l, bool conditionMoved = false);
   // Is any wire other than `except` currently firing into `dest` and asserting
   // engagement? If so a disengage against `dest` must not be applied.
   bool anotherEngagingWire(Id dest, const SwitchLinkage* except) const;
