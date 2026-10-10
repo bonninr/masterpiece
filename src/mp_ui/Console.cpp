@@ -91,7 +91,20 @@ constexpr int64_t cacheKey(Id setId, int index) {
 
 ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
 
+void ConsoleView::freeze() {
+  if (frozen_.isValid()) return;
+  stopTimer();
+  heldKey_ = -1;
+  heldButton_ = 0;
+  heldControl_ = 0;
+  // Painted now, while the model is still the one these items came from.
+  frozen_ = getWidth() > 0 && getHeight() > 0
+                ? createComponentSnapshot(getLocalBounds(), false)
+                : juce::Image(juce::Image::RGB, 1, 1, true);
+}
+
 void ConsoleView::rebuild() {
+  frozen_ = juce::Image();
   items_.clear();
   texts_.clear();
   keys_.clear();
@@ -547,6 +560,7 @@ juce::Rectangle<int> ConsoleView::keysBounds() const {
 }
 
 void ConsoleView::timerCallback() {
+  if (frozen_.isValid()) return;
   // The engine marks each key down on the manual it played, every block, so a
   // key lights up whether it was pressed on screen or on the player's own
   // console, and only on the manual it reached.
@@ -604,6 +618,7 @@ juce::String ConsoleView::pageName(int index) const {
 void ConsoleView::setLayout(int layout) {
   if (layout < 0 || layout == layout_) return;
   layout_ = layout;
+  if (frozen_.isValid()) return;  // drawn so by the rebuild that ends the load
   rebuild();
   repaint();
 }
@@ -611,6 +626,7 @@ void ConsoleView::setLayout(int layout) {
 void ConsoleView::setPage(int index) {
   if (index < 0 || index >= static_cast<int>(pageIds_.size())) return;
   pageIndex_ = index;
+  if (frozen_.isValid()) return;
   rebuild();
   repaint();
 }
@@ -743,6 +759,10 @@ std::filesystem::path ConsoleView::standardComponent(const std::filesystem::path
 
 void ConsoleView::paint(juce::Graphics& g) {
   g.fillAll(juce::Colour(0xff0d0f12));
+  if (frozen_.isValid()) {
+    g.drawImageAt(frozen_, 0, 0);
+    return;
+  }
 
   if (!hasArtwork_) {
     g.setColour(juce::Colours::grey);
@@ -872,6 +892,7 @@ void ConsoleView::paint(juce::Graphics& g) {
 }
 
 void ConsoleView::mouseDown(const juce::MouseEvent& e) {
+  if (frozen_.isValid()) return;
   // A drawn manual is playable: clicking a key sounds it. The click goes
   // through MidiKeyboardState, which is the same path a physical console
   // takes, so stops and couplers apply to it identically.
@@ -1078,6 +1099,7 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
 }
 
 void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
+  if (frozen_.isValid()) return;
   if (heldControl_ != 0) {
     // Deliberately not clamped to the image: a hand that slides off the side
     // of a shoe while pushing it is still pushing it, and the position
@@ -1100,6 +1122,7 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
 }
 
 void ConsoleView::mouseUp(const juce::MouseEvent&) {
+  if (frozen_.isValid()) return;
   heldControl_ = 0;
   if (heldButton_ != 0) {
     proc_.setSwitchEngaged(heldButton_, false);

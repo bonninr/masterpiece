@@ -37,6 +37,11 @@ public:
 
   // Rebuild from the current model. Safe to call on every organ load.
   void rebuild();
+  // Held as a picture of itself until the next rebuild: an organ being loaded
+  // replaces the model on the loader's thread, and a console still reading it
+  // drew the organ being left with the new one's artwork and switches, a
+  // general turned square, its neighbours gone (#228).
+  void freeze();
   void paint(juce::Graphics& g) override;
   void mouseDown(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
@@ -197,6 +202,8 @@ private:
   // a mouse click still shows on the jamb.
   uint64_t stopStateHash_ = 0;
   bool hasArtwork_ = false;
+  // The picture shown while frozen; invalid otherwise.
+  juce::Image frozen_;
   juce::Rectangle<int> extent_;
   std::string organRoot_;
 
