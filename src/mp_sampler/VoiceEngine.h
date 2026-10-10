@@ -364,6 +364,10 @@ public:
   // Move every voice of this key press into release. `strike` carries the
   // key-off context the release matrix selects on.
   void noteOff(uint64_t noteId, const NoteRelease& release);
+  // Every voice still sounding goes into its release, whatever note it
+  // belongs to: Panic's last word, for a voice whose note-off was lost and
+  // that no key the program knows of is holding (#276).
+  void releaseAll();
   // Release only the voices of ONE pipe of a held note, leaving the rest of
   // the note sounding. This is a stop pushed in while a key is down: that
   // rank stops speaking, the others carry on, and the key is still held.

@@ -1328,6 +1328,46 @@ public:
     MP_CHECK(ms >= 990 && ms <= 1010, "a second of blocks is a second on the engine's clock");
   }
 };
+
+// Panic's last word (#276): every voice still sounding is released, whatever
+// note it belongs to, a note whose note-off never came included.
+class ReleaseAllTest final : public mp::test::Test {
+public:
+  ReleaseAllTest() : Test("functional.voice.release-all", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    fx.attack = voicetest::makeTone(480.0, 48000.0, 4800);
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 256, 1);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart s;
+    s.pipe = &fx.pipe;
+    s.layer = &fx.pipe.layers[0];
+    s.attackIndex = 0;
+    s.velocity = 100;
+    s.ratio = 1.0;
+    s.gain = 1.0f;
+    MP_CHECK(eng.startVoice(s, 7) >= 0 && eng.startVoice(s, 8) >= 0, "two notes sound");
+    std::vector<float> buf(256, 0.0f);
+    float* out[1] = {buf.data()};
+    auto level = [&]() {
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.beginBlock(256);
+      eng.render(out, 1, 256);
+      float peak = 0.0f;
+      for (float v : buf) peak = std::max(peak, std::abs(v));
+      return peak;
+    };
+    for (int b = 0; b < 20; ++b) level();
+    MP_CHECK(level() > 0.01f, "held, they sound");
+    eng.releaseAll();
+    float last = 1.0f;
+    for (int b = 0; b < 48000 * 2 / 256; ++b) last = level();
+    MP_CHECK(last < 1e-4f, "released, both fall silent with no note-off for either");
+    MP_CHECK(eng.activeVoiceCount() == 0, "and no voice is left");
+  }
+};
+static ReleaseAllTest g_releaseAll;
 static LoopSeamAndClockTest g_loopSeamAndClock;
 
 // The vector runs (SimdRun) against the per-frame path: the same notes, held

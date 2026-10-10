@@ -3770,7 +3770,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // gets its release sample and the room's own decay, rather than being cut
   // dead. Done after the recorder so a stuck note cannot be re-triggered by
   // an event already queued this block.
-  if (releaseAll_.exchange(false, std::memory_order_acq_rel)) {
+  const bool panic = releaseAll_.exchange(false, std::memory_order_acq_rel);
+  if (panic) {
     for (int ch = 1; ch <= 16; ++ch) {
       for (int note = 0; note < 128; ++note)
         if (keyboardState_.isNoteOn(ch, note))
@@ -3786,6 +3787,14 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   outgoing_.clear();
   handleMidi(midi);
+  // And every voice still sounding, once the note-offs above have been dealt
+  // with: a note stuck because its note-off was lost, or arrived where the
+  // keyboard state did not have it, is in no keyboard state to release, and
+  // Panic did nothing for it (#276).
+  if (panic) {
+    voices_.releaseAll();
+    soundingNotes_.clear();
+  }
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
   // A pallet switch that was engaged before the organ went live never moved
