@@ -16,6 +16,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -63,6 +64,11 @@ void splitFootage(const std::string& label, std::string& name, std::string& foot
 struct PanelLayout {
   std::set<std::string> sectionsOff;
   std::set<std::string> hidden;
+  // Names the player gave elements, by element key: a switch the organ names
+  // "SW_GO_TRMLT" can read "Tremulant" (#276). The organ's own name otherwise.
+  std::map<std::string, std::string> names;
+  // The panel's own name, on its tab and its window; "Panel 1" when empty.
+  std::string title;
   bool detached = false;
   int x = 0, y = 0, w = 0, h = 0;  // the detached window, when it is one
   int scheme = 0;                  // PanelScheme, as a number
@@ -93,6 +99,12 @@ public:
   bool hasUnsavedChanges() const { return !(layout_ == saved_); }
   // Keep the current setup as saved (after the editor wrote it).
   void markSaved() { saved_ = layout_; }
+  // Its name: the player's, or "Panel <n>".
+  juce::String title() const;
+  // Set by the editor: the panel was renamed, so its tab and window follow.
+  std::function<void()> onRenamed;
+  // Ask for a new name for the panel.
+  void askForTitle();
   // Set by the editor: write every panel's layout now.
   std::function<void()> onSave;
   // Set by the editor: detach into a window, or come back to the tab strip.
@@ -113,6 +125,10 @@ private:
   void layoutSections();
   void setEditing(bool editing);
   void changed();
+  // Ask for a new name for one element; empty gives it the organ's name back.
+  void askForName(const PanelElement& e);
+  // The element as shown: the player's name when it has one.
+  PanelElement shown(const PanelElement& e) const;
 
   MasterpieceProcessor& proc_;
   int index_ = 0;
@@ -121,7 +137,7 @@ private:
   bool editing_ = false;
 
   juce::OwnedArray<juce::TextButton> sectionButtons_;
-  juce::TextButton edit_{"Edit"}, save_{"Save"}, detach_{"Detach"};
+  juce::TextButton edit_{"Edit"}, save_{"Save"}, detach_{"Detach"}, rename_{"Rename"};
   juce::ComboBox scheme_;
   juce::Viewport viewport_;
   juce::Component body_;

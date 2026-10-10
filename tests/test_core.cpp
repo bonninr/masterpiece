@@ -13279,6 +13279,9 @@ public:
     l.detached = true;
     l.x = 10; l.y = 20; l.w = 1024; l.h = 600;
     l.scheme = 2;
+    l.names["w340"] = "Tremulant Great";
+    l.names["s901"] = "Trumpet 8'";
+    l.title = "Recital set";
     mp::ui::PanelLayout back;
     back.fromText(l.toText());
     MP_CHECK(back == l, "a panel's layout reads back as it was saved");
