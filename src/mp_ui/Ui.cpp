@@ -769,7 +769,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                                  "combination set, in a window of their own");
   combinationsButton_.onClick = [this] { toggleCombinations(); };
   addAndMakeVisible(panelsButton_);
-  panelsButton_.setTooltip("Big-button panels of this organ, for touchscreens: add, delete");
+  panelsButton_.setTooltip("The organ's stops as big buttons, arranged and named as you like");
   panelsButton_.onClick = [this] { showPanelsMenu(); };
 
   addAndMakeVisible(tuningButton_);
@@ -785,13 +785,9 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     resized();
   };
 
-  addAndMakeVisible(toggleView_);
-  toggleView_.onClick = [this] {
-    showingConsole_ = !showingConsole_;
-    toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
-    resized();
-    repaint();
-  };
+  // The stop list's place on the toolbar is Panels' (#276): a panel shows
+  // the same stops, arranged and named as the player likes. The plain list
+  // stays as what an organ with no console artwork shows.
 
   addAndMakeVisible(jambView_);
   jambView_.setViewedComponent(&jamb_, false);
@@ -1401,7 +1397,6 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // photographed that way. The Keys button is there when it is wanted.
 
   showingConsole_ = console_.hasArtwork();
-  toggleView_.setButtonText(showingConsole_ ? "Stop list" : "Console");
   resized();
 
   // The organ's name is in the window title, so the bar says what the title
@@ -1529,7 +1524,7 @@ void MasterpieceEditor::resized() {
   bool stacked = false;
   {
     constexpr int kFaderRowMin = 350;  // Open, Audio, No DSP and the fader
-    const int buttons = 90 + 70 + 64 + 110 + 110 + 140 + 30 + 64 + 30 + 56 +
+    const int buttons = 90 + 70 + 64 + 110 + 140 + 30 + 64 + 30 + 56 +
                         (layout_.isVisible() ? 130 : 0) +
                         (swellButton_.isVisible() ? 70 : 0);
     if (bar.getWidth() - buttons < kFaderRowMin) {
@@ -1546,7 +1541,6 @@ void MasterpieceEditor::resized() {
   panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
   if (swellButton_.isVisible())
     swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
-  toggleView_.setBounds(bar.removeFromRight(110).reduced(2));
   combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
   panelsButton_.setBounds(bar.removeFromRight(76).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
@@ -1697,6 +1691,7 @@ void MasterpieceEditor::addPanel() {
   wirePanel(index);
   addChildComponent(*view);
   savePanels();
+  showingConsole_ = true;
   rebuildPageTabs();
   // Straight to the new panel's tab.
   for (int t = 0; t < pageTabs_.getNumTabs(); ++t)
@@ -1754,8 +1749,55 @@ void MasterpieceEditor::setPanelDetached(int index, bool detached) {
   rebuildPageTabs();
 }
 
+void MasterpieceEditor::showPanel(int index) {
+  if (index < 0 || index >= static_cast<int>(panels_.size())) return;
+  if (auto& w = panelWindows_[static_cast<size_t>(index)]; w != nullptr) {
+    w->toFront(true);
+    return;
+  }
+  // From the plain list of an organ without artwork too.
+  showingConsole_ = true;
+  for (int t = console_.pageCount(); t < pageTabs_.getNumTabs(); ++t)
+    if (panelTabs_[static_cast<size_t>(t - console_.pageCount())] == index)
+      pageTabs_.setCurrentTabIndex(t, true);
+  // Set here as well: a tab that is already the current one sends no change.
+  showingPanel_ = index;
+  resized();
+}
+
+void MasterpieceEditor::togglePanel() {
+  if (panels_.empty()) {
+    addPanel();
+    return;
+  }
+  if (showingConsole_ && showingPanel_ >= 0) {
+    // Back to the console page that was showing, or to the plain list of an
+    // organ that draws no console.
+    if (console_.pageCount() > 0)
+      pageTabs_.setCurrentTabIndex(juce::jlimit(0, console_.pageCount() - 1, console_.currentPage()),
+                                   true);
+    if (!console_.hasArtwork()) showingConsole_ = false;
+    showingPanel_ = -1;
+    resized();
+    return;
+  }
+  showPanel(0);
+}
+
 void MasterpieceEditor::showPanelsMenu() {
+  // The first press on an organ with no panel makes one and shows it: the
+  // whole organ, every stop, as the stop list showed it.
+  if (panels_.empty()) {
+    addPanel();
+    return;
+  }
   juce::PopupMenu menu;
+  for (size_t i = 0; i < panels_.size(); ++i)
+    menu.addItem(300 + static_cast<int>(i), "Show " + panels_[i]->title(), true,
+                 showingPanel_ == static_cast<int>(i));
+  menu.addItem(2, console_.hasArtwork() ? "Show the console" : "Show the stop list",
+               showingConsole_ && showingPanel_ >= 0);
+  menu.addSeparator();
   menu.addItem(1, "Add a panel", static_cast<int>(panels_.size()) < kMaxPanels);
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(200 + static_cast<int>(i), "Rename " + panels_[i]->title() + "...");
@@ -1765,6 +1807,8 @@ void MasterpieceEditor::showPanelsMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int r) {
                        if (safe == nullptr || r == 0) return;
                        if (r == 1) safe->addPanel();
+                       else if (r == 2) safe->togglePanel();
+                       else if (r >= 300) safe->showPanel(r - 300);
                        else if (r >= 200) safe->panels_[static_cast<size_t>(r - 200)]->askForTitle();
                        else safe->deletePanel(r - 100);
                      });
@@ -1825,7 +1869,8 @@ void MasterpieceEditor::timerCallback() {
                                                            : console_.layout() + 2);
       break;
     case MidiTargetKind::ConsoleToggleStopList:
-      toggleView_.triggerClick();
+      // The console's own stop-list piston: the first panel and back.
+      togglePanel();
       break;
     case MidiTargetKind::ConsoleToggleKeyboard:
       keysButton_.triggerClick();

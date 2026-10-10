@@ -238,11 +238,12 @@ def main():
                     shot("general-" + tab.lower())
             close_panel()
             shot("after-close")
-    # On a phone or tablet the stop list takes the console's place, and its
-    # button becomes "Console", which brings the console back.
-    if tap("Stop list"):
-        shot("stop-list")
-        tap("Console")
+    # Panels: the first press makes a panel of the whole organ and shows it
+    # in the console's place; a second press offers the console back.
+    if tap("Panels"):
+        shot("panel")
+        if tap("Panels"):
+            tap("Show the console", required=False)
     if tap("Audio"):
         shot("audio")
         close_panel()

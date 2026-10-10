@@ -272,7 +272,7 @@ private:
   juce::TextButton learnPageNext_{"Learn page +"};
   juce::TextButton learnPagePrev_{"Learn page -"};
   juce::TextButton learnLayout_{"Learn console size"};
-  juce::TextButton learnStopList_{"Learn stop list"};
+  juce::TextButton learnStopList_{"Learn panel"};
   juce::TextButton learnKeyboard_{"Learn keyboard"};
   juce::TextButton learnCombinations_{"Learn combinations"};
   juce::TextButton learnTransposeDown_{"Learn transpose -"};
