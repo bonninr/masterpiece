@@ -4,6 +4,9 @@
 #include <archive_entry.h>
 #include <unarr.h>
 
+#include <mutex>
+#include <set>
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -379,7 +382,7 @@ off64_t unarrTell(void* f) { return tellOf(static_cast<std::FILE*>(f)); }
 
 class UnarrPass final : public Pass {
 public:
-  explicit UnarrPass(const std::string& path) {
+  explicit UnarrPass(const std::string& path, bool solid = true) : solid_(solid) {
 #ifdef _WIN32
     stream_ = ar_open_file_w(fs::u8path(path).wstring().c_str());
 #else
@@ -394,7 +397,7 @@ public:
     }
 #endif
     if (stream_ != nullptr) ar_ = ar_open_rar_archive(stream_);
-    if (ar_ == nullptr) error_ = "the solid RAR 4 reader cannot open it";
+    if (ar_ == nullptr) error_ = "the RAR 4 reader cannot open it";
   }
   ~UnarrPass() override {
     if (ar_ != nullptr) ar_close_archive(ar_);
@@ -424,6 +427,9 @@ public:
   }
   void skip() override {}
   bool discard() override {
+    // Each file of a non-solid archive starts afresh: the next header is
+    // found without decompressing this one.
+    if (!solid_) return true;
     scratch_.resize(1 << 20);
     for (size_t left = size_; left > 0;) {
       const size_t n = (std::min)(left, scratch_.size());
@@ -442,6 +448,7 @@ public:
 private:
   ar_stream* stream_ = nullptr;
   ar_archive* ar_ = nullptr;
+  bool solid_ = true;
   size_t size_ = 0;
   bool end_ = false;
   std::string error_;
@@ -450,16 +457,40 @@ private:
 
 }  // namespace
 
+// RAR 4 archives libarchive turned away because they use RAR's filters
+// (the x86, delta and audio transforms), which it does not decode and unarr
+// does. Learned while reading; there is no telling from the headers.
+static std::mutex gFilteredMutex;
+static std::set<std::string> gFiltered;
+
+static bool knownFiltered(const std::string& path) {
+  const std::lock_guard<std::mutex> lock(gFilteredMutex);
+  return gFiltered.count(path) != 0;
+}
+
 // Which reader an archive needs, from its first header.
 static bool needsUnarr(const std::vector<std::string>& volumes) {
   if (volumes.size() != 1) return false;
   const ArchiveKind k = inspectArchive(volumes.front());
-  return k.format == ArchiveKind::Format::Rar4 && k.solid;
+  return k.format == ArchiveKind::Format::Rar4 && (k.solid || knownFiltered(volumes.front()));
 }
 
 static std::unique_ptr<Pass> passFor(const std::vector<std::string>& volumes) {
-  if (needsUnarr(volumes)) return std::make_unique<UnarrPass>(volumes.front());
+  if (needsUnarr(volumes)) {
+    const bool solid = inspectArchive(volumes.front()).solid;
+    return std::make_unique<UnarrPass>(volumes.front(), solid);
+  }
   return std::make_unique<LibarchivePass>(volumes);
+}
+
+// libarchive stopped on a RAR filter in a RAR 4 archive unarr can read: said
+// once, and the archive is read with unarr from then on. A split set stays
+// as it is: unarr reads no RAR 4 volumes.
+static bool switchedForFilters(const std::vector<std::string>& volumes, const Pass& pass) {
+  if (volumes.size() != 1 || pass.error().find("filters") == std::string::npos) return false;
+  if (inspectArchive(volumes.front()).format != ArchiveKind::Format::Rar4) return false;
+  const std::lock_guard<std::mutex> lock(gFilteredMutex);
+  return gFiltered.insert(volumes.front()).second;
 }
 
 namespace {
@@ -1076,6 +1107,15 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       std::error_code ec;
       fs::create_directories(target.parent_path(), ec);
       if (!pass->readData(bytes)) {
+        if (switchedForFilters(archives_[i], *pass)) {
+          // From the top with unarr: what was written is written again.
+          pass = passFor(archives_[i]);
+          remaining = 0;
+          for (const auto& e : entries_)
+            if (e.archive == i && !isAudio(e.path) && !e.encrypted) ++remaining;
+          bytes = {};
+          continue;
+        }
         damaged.push_back(archiveName(i) + ": " + rel + " is damaged (" + pass->error() + ")");
         bytes = {};
         continue;
@@ -1132,6 +1172,12 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
         continue;
       }
       if (!pass->readData(bytes)) {
+        if (switchedForFilters(volumes, *pass)) {
+          // The same file again, with unarr: what was delivered is skipped.
+          pass = passFor(volumes);
+          bytes = {};
+          continue;
+        }
         error += archiveName(archiveIndex) + ": " + name + " is damaged (" + pass->error() + ")\n";
         finished.insert(k);
         --remaining;
