@@ -4939,6 +4939,45 @@ public:
       MP_CHECK(!reaches(high, 3, 132) && reaches(high, 2, 120),
                "a coupler that runs off the top of MIDI simply does not sound");
     }
+    {
+      // A coupling manual (Oloron, #264): keyboard 5 is played, feeds
+      // keyboard 2 in unison, and keyboard 2 reaches the Grand Orgue and the
+      // Recit only through the couplers GO/I (25) and R/I (29). It has no
+      // division of its own, and plays what is coupled to it.
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{2}, mp::Id{3}}) {
+        mp::Division d;
+        d.divisionId = id;
+        m.divisions[id] = d;
+      }
+      for (mp::Id id : {mp::Id{2}, mp::Id{5}}) {
+        mp::Keyboard k;
+        k.keyboardId = id;
+        k.accessibleForInput = id == 5;
+        k.assignmentCode = id == 5 ? 2 : 0;
+        m.keyboards[id] = k;
+      }
+      mp::KeyAction unison;
+      unison.sourceKeyboard = 5;
+      unison.destIsKeyboard = true;
+      unison.destKeyboard = 2;
+      m.keyActions.push_back(unison);
+      for (const auto& [div, sw] : {std::pair<int, int>{2, 25}, {3, 29}}) {
+        mp::KeyAction c;
+        c.sourceKeyboard = 2;
+        c.destIsKeyboard = false;
+        c.destDivision = div;
+        c.conditionSwitchId = sw;
+        m.keyActions.push_back(c);
+      }
+      mp::CouplerMatrix flow;
+      flow.reset(m);
+      MP_CHECK(flow.expand(5, 60, 1.0f, {}).empty(),
+               "the coupling manual sounds nothing with no coupler drawn");
+      const auto go = flow.expand(5, 60, 1.0f, {25});
+      MP_CHECK(go.size() == 1 && go[0].divisionId == 2, "GO/I couples the Grand Orgue alone");
+      MP_CHECK(flow.expand(5, 60, 1.0f, {25, 29}).size() == 2, "and with R/I the Recit as well");
+    }
 
     // --- the inverted sense (unison off) ----------------------------------
     {

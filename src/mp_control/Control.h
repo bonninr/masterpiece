@@ -87,7 +87,7 @@ public:
   // than one that plays nothing.
   //
   // The fallback is decided at load, from what the keyboard reaches with
-  // NOTHING engaged, never per note. Deciding it per note would make a unison
+  // NOTHING engaged and with every coupler engaged, never per note. Deciding it per note would make a unison
   // off — an edge that is live only while its switch is out — silence a
   // manual and then immediately un-silence it by falling back.
   void expandInto(int sourceKeyboardId, int midiNote, float velocity,
