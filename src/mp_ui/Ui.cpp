@@ -5,6 +5,7 @@
 #include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
+#include "OpenWindow.h"
 #include "Mobile.h"
 
 #include <future>
@@ -487,41 +488,17 @@ void MasterpieceEditor::askForFolderOf(const juce::File& package, bool graphicsO
 #endif
 
 void MasterpieceEditor::showOpenMenu() {
-  const auto& bank = proc_.favourites().organs;
-  const auto slots = bank.used();
-  if (slots.empty()) {
-    chooseAndLoadOrgan();
-    return;
-  }
-  // Two favourites can share a name -- one organ as a Hauptwerk and a
-  // GrandOrgue set -- and then the file tells them apart, as in Settings.
-  std::map<std::string, int> named;
-  for (int slot : slots) ++named[bank.at(slot).name];
-  juce::PopupMenu menu;
-  menu.addSectionHeader("Favourites");
-  for (int slot : slots) {
-    const auto& fav = bank.at(slot);
-    juce::String shown = juce::String::fromUTF8(fav.name.c_str());
-    if (named[fav.name] > 1) shown << "  (" << juce::File(juce::String(fav.target)).getFileName() << ")";
-    menu.addItem(slot, shown);
-  }
-  menu.addSeparator();
-  menu.addItem(-1, "Open another organ...");
-  menu.showMenuAsync(
-      juce::PopupMenu::Options().withMousePosition(),
-      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int chosen) {
-        if (safe == nullptr || chosen == 0) return;
-        if (chosen == -1) {
-          safe->chooseAndLoadOrgan();
-          return;
-        }
-        const juce::File f(juce::String(safe->proc_.favourites().organs.at(chosen).target));
-        if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
-          // A set on a drive not plugged in: said, and the favourite kept.
-          safe->top_.setStatus("Not found: " + f.getFullPathName());
-          return;
-        }
-        safe->loadOrgan(f);
+  // The favourites in a window of their own, searched, ordered and named by
+  // the player, with the file dialog one button away (#250, #276). With no
+  // favourite yet it goes straight to the dialog.
+  juce::Component::SafePointer<MasterpieceEditor> safe(this);
+  OpenPanel::show(
+      proc_,
+      [safe](const juce::File& f) {
+        if (safe != nullptr) safe->loadOrgan(f);
+      },
+      [safe] {
+        if (safe != nullptr) safe->chooseAndLoadOrgan();
       });
 }
 

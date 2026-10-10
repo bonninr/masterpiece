@@ -1382,25 +1382,8 @@ void MidiPanel::resized() {
 // ------------------------------------------------------------ favourites
 
 FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
-  addAndMakeVisible(heading_);
-  styleLabel(heading_, "Favourite organs");
-  addAndMakeVisible(addCurrent_);
-  addCurrent_.onClick = [this] {
-    const int slot = proc_.addCurrentOrganToFavourites();
-    if (slot == 0)
-      status_.setText("Nothing to add - load an organ first, or all 64 slots "
-                      "are taken",
-                      juce::dontSendNotification);
-    else
-      status_.setText("On slot " + juce::String(slot),
-                      juce::dontSendNotification);
-    refresh();
-  };
-  addAndMakeVisible(status_);
-  styleLabel(status_, "");
-  addAndMakeVisible(viewport_);
-  viewport_.setViewedComponent(&rows_, false);
-  viewport_.setScrollBarsShown(true, false);
+  // The favourite organs are in Open, with everything else about getting an
+  // organ on the console (#276). What stays here is the registration books.
   // --- combination sets --------------------------------------------------
   addAndMakeVisible(setsHeading_);
   styleLabel(setsHeading_, "Combination sets");
@@ -1471,19 +1454,11 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "A slot number is something a thumb piston can be mapped to; a "
-            "file path is not. That is what these are for: on a console you "
-            "are standing at a keyboard with both hands busy, and finding a "
-            "19 GB set in a file browser is not something that happens "
-            "between two pieces.\n\n"
-            "Gaps are kept. Removing slot 1 does not renumber slot 5, because "
-            "the numbers are the thing you learned.\n\n"
-            "Loading happens in the background: the window stays usable while a "
-            "large set takes its time. The organ falls silent while the new one "
-            "loads.\n\n"
             "A combination set is a whole registration book: one for a "
             "recital, another for a service. Changing set saves the one you "
-            "are leaving first, so nothing you captured is lost by switching.");
+            "are leaving first, so nothing you captured is lost by switching.\n\n"
+            "Favourite organs are in Open: search them, put them in your own "
+            "order, rename them, and add the organ now loaded.");
   refresh();
 }
 
@@ -1510,119 +1485,24 @@ void FavouritesPanel::refreshSets() {
 
 void FavouritesPanel::refresh() {
   refreshSets();
-  slots_.clear();
-  labels_.clear();
-  loads_.clear();
-  removes_.clear();
-  rows_.removeAllChildren();
-
-  const auto& bank = proc_.favourites().organs;
-  slots_ = bank.used();
-  // Two favourites can share a name -- the same organ as a Hauptwerk and a
-  // GrandOrgue set (#90) -- and then the name alone does not say which.
-  std::map<std::string, int> named;
-  for (int slot : slots_) ++named[bank.at(slot).name];
-  for (int slot : slots_) {
-    const auto& fav = bank.at(slot);
-    auto label = std::make_unique<juce::Label>();
-    juce::String shown(fav.name);
-    if (named[fav.name] > 1) {
-      const juce::File f(fav.target);
-      const auto ext = f.getFileExtension().toLowerCase();
-      const juce::String kind = ext == ".organ" || ext == ".orgue" ? "GrandOrgue"
-                                : ext == ".organ_hauptwerk_xml"     ? "Hauptwerk"
-                                                                    : juce::String();
-      shown << "  (" << (kind.isEmpty() ? juce::String() : kind + ", ") << f.getFileName() << ")";
-    }
-    styleLabel(*label, juce::String(slot) + ".  " + shown);
-    // The path as a tooltip: two sets can share a name, and then the only
-    // thing that tells them apart is where they live.
-    label->setTooltip(juce::String(fav.target));
-    rows_.addAndMakeVisible(*label);
-    labels_.push_back(std::move(label));
-
-    auto load = std::make_unique<juce::TextButton>("Load");
-    const juce::String path(fav.target);
-    load->onClick = [this, path] {
-      const juce::File f(path);
-      if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
-        // A moved or unplugged set. Saying so beats a silent no-op, and the
-        // favourite is left alone: the drive may come back.
-        status_.setText("Not found: " + f.getFullPathName(),
-                        juce::dontSendNotification);
-        return;
-      }
-      status_.setText("Loading " + f.getFileName() + "...",
-                      juce::dontSendNotification);
-      if (onLoad) onLoad(f);
-      else proc_.loadOrganAsync(f);
-      // The settings have done their job: the load's own window takes over
-      // (#135). Posted, since this button is inside what is being closed.
-      juce::Component::SafePointer<juce::DialogWindow> dw(
-          findParentComponentOfClass<juce::DialogWindow>());
-      juce::MessageManager::callAsync([dw] {
-        if (dw != nullptr) dw->closeButtonPressed();
-      });
-    };
-    rows_.addAndMakeVisible(*load);
-    loads_.push_back(std::move(load));
-
-    auto rm = std::make_unique<juce::TextButton>("Remove");
-    rm->onClick = [this, slot] {
-      proc_.favourites().organs.clear(slot);
-      proc_.saveGlobalDefaults();
-      refresh();
-    };
-    rows_.addAndMakeVisible(*rm);
-    removes_.push_back(std::move(rm));
-  }
-  if (slots_.empty())
-    status_.setText("No favourites yet", juce::dontSendNotification);
   resized();
 }
 
 void FavouritesPanel::resized() {
   auto r = getLocalBounds().reduced(12);
-  heading_.setBounds(r.removeFromTop(kRow));
-  auto row = r.removeFromTop(kRow);
-  addCurrent_.setBounds(row.removeFromLeft(220).reduced(0, 1));
-  row.removeFromLeft(kGap);
-  status_.setBounds(row);
-  r.removeFromTop(kGap);
-
-  auto noteArea = r.removeFromBottom(juce::jmin(110, r.getHeight() / 3));
-  note_.setBounds(noteArea);
-  r.removeFromBottom(kGap);
-
-  // Sets sit under the list, where a player looks after choosing an organ.
-  // Heading on its own line: the heading, a label, a box and two buttons on
-  // one row overflowed the dialog and squeezed the last button's label.
-  auto setsArea = r.removeFromBottom(kRow * 3 + 12);
-  setsHeading_.setBounds(setsArea.removeFromTop(kRow));
-  setsArea.removeFromTop(4);
-  auto setRow = setsArea.removeFromTop(kRow);
+  setsHeading_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(4);
+  auto setRow = r.removeFromTop(kRow);
   setLabel_.setBounds(setRow.removeFromLeft(60));
   setBox_.setBounds(setRow.removeFromLeft(200).reduced(0, 1));
   setRow.removeFromLeft(kGap);
   setNew_.setBounds(setRow.removeFromLeft(160).reduced(0, 1));
   setRow.removeFromLeft(6);
   setDelete_.setBounds(setRow.removeFromLeft(120).reduced(0, 1));
-  setsArea.removeFromTop(4);
-  setStatus_.setBounds(setsArea.removeFromTop(kRow));
-  r.removeFromBottom(kGap);
-
-  viewport_.setBounds(r);
-
-  const int rowH = kRow + 2;
-  rows_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
-                static_cast<int>(slots_.size()) * rowH);
-  for (size_t i = 0; i < slots_.size(); ++i) {
-    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH, rows_.getWidth(),
-                              kRow);
-    removes_[i]->setBounds(line.removeFromRight(90).reduced(2, 1));
-    loads_[i]->setBounds(line.removeFromRight(80).reduced(2, 1));
-    labels_[i]->setBounds(line);
-  }
+  r.removeFromTop(4);
+  setStatus_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap * 2);
+  note_.setBounds(r.removeFromTop(120));
 }
 
 // --------------------------------------------------------------- voicing
@@ -2265,7 +2145,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab("MIDI", bg, &midi_, false);
   tabs_.addTab("Mixer", bg, &mixer_, false);
   tabs_.addTab("Voicing", bg, &voicing_, false);
-  tabs_.addTab("Favourites", bg, &favourites_, false);
+  tabs_.addTab("Combination sets", bg, &favourites_, false);
   tabs_.addTab("Display", bg, &display_, false);
   tabs_.addTab("Log", bg, &log_, false);
   // The Engine tab is the tallest: six switches, five memory controls, a
