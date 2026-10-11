@@ -285,6 +285,8 @@ private:
   void savePanels();
   void addPanel();
   void deletePanel(int index);
+  // A panel's callbacks, for the place it has now.
+  void wirePanel(int index);
   void setPanelDetached(int index, bool detached);
   void rebuildPageTabs();
   void showPanelsMenu();
