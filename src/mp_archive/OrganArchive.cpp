@@ -84,7 +84,10 @@ bool isAudio(const std::string& path) {
 
 bool isDefinition(const std::string& path) {
   const std::string p = lower(path);
+  // Version 3 of the format named its files with dots where later ones use
+  // underscores: "Wildervank.Organ.Hauptwerk.xml". The contents are the same.
   return endsWith(p, ".organ_hauptwerk_xml") || endsWith(p, ".customorgan_hauptwerk_xml") ||
+         endsWith(p, ".organ.hauptwerk.xml") || endsWith(p, ".customorgan.hauptwerk.xml") ||
          endsWith(p, ".organ");
 }
 
@@ -1070,7 +1073,9 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       // A Hauptwerk definition belongs in OrganDefinitions/, beside the
       // packages, whatever the archive did with it. A GrandOrgue one stays
       // put: its paths are relative to its own folder.
-      if (lower(rel).find("_hauptwerk_xml") != std::string::npos && rel.find('/') == std::string::npos)
+      if ((lower(rel).find("_hauptwerk_xml") != std::string::npos ||
+           lower(rel).find(".hauptwerk.xml") != std::string::npos) &&
+          rel.find('/') == std::string::npos)
         rel = "OrganDefinitions/" + rel;
       const fs::path target = fs::u8path(dir) / fs::u8path(rel);
       std::error_code ec;

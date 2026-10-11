@@ -514,7 +514,8 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   chooser_ = std::make_unique<juce::FileChooser>(
       kMobile ? "Choose an organ package" : "Choose an organ definition file", start,
       kMobile ? "*.rar;*.orgue"
-              : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.rar;*.orgue");
+              : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.Organ.Hauptwerk.xml;"
+                "*.CustomOrgan.Hauptwerk.xml;*.organ;*.rar;*.orgue");
   auto flags = juce::FileBrowserComponent::openMode |
                juce::FileBrowserComponent::canSelectFiles;
  #if JUCE_MAC

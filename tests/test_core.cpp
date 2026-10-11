@@ -13484,6 +13484,58 @@ public:
   }
 };
 static PanelsTest g_panels;
+
+// Version 3 of the format named a definition "Name.Organ.Hauptwerk.xml", dots
+// where later versions use underscores (Wildervank). It is offered beside the
+// others.
+class OlderDefinitionNamesTest final : public mp::test::Test {
+public:
+  OlderDefinitionNamesTest() : Test("functional.files.older-definition-names", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-older-names");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto older = dir.getChildFile("Wildervank.Organ.Hauptwerk.xml");
+    const auto newer = dir.getChildFile("Veendam.Organ_Hauptwerk_xml");
+    older.replaceWithText("<Hauptwerk/>");
+    newer.replaceWithText("<Hauptwerk/>");
+    dir.getChildFile("PackageID001161.InstallationPackageDefinition.Hauptwerk.xml").replaceWithText("<x/>");
+    const auto found = mp::MasterpieceProcessor::organVersions(newer);
+    MP_CHECK(found.contains(older) && found.contains(newer) && found.size() == 2,
+             "the older spelling is listed, a package's own file is not: " + std::to_string(found.size()));
+    dir.deleteRecursively();
+  }
+};
+static OlderDefinitionNamesTest g_olderDefinitionNames;
+
+// Version 3 also wrote its table names in lower case (Cembalo Mietke:
+// "_general", "keyboard"). The tables are read all the same.
+class LowerCaseTablesTest final : public mp::test::Test {
+public:
+  LowerCaseTablesTest() : Test("functional.odf.lower-case-tables", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\" FileFormatVersion=\"3.00\">"
+                 "<ObjectList ObjectType=\"_general\"><_general>"
+                 "<Identification_UniqueOrganID>377</Identification_UniqueOrganID>"
+                 "<Identification_Name>Lower</Identification_Name>"
+                 "</_general></ObjectList>"
+                 "<ObjectList ObjectType=\"keyboard\"><keyboard>"
+                 "<KeyboardID>2</KeyboardID><Name>Upper</Name>"
+                 "</keyboard></ObjectList>"
+                 "</Hauptwerk>",
+                 "Lower.Organ.Hauptwerk.xml", o, m, d),
+             "a definition with lower-case table names loads: " +
+                 (d.errors.empty() ? std::string() : d.errors.front()));
+    MP_CHECK(m.keyboards.size() == 1, "and its keyboard table is read");
+    MP_CHECK(m.unknownTables.empty(), "no table of it is taken for an unknown one");
+  }
+};
+static LowerCaseTablesTest g_lowerCaseTables;
 #endif  // MP_TEST_HAS_AUDIO
 
 // A three-way drawstop's levels, as Azzio wires its Sesquialtera (#285): a

@@ -5033,8 +5033,10 @@ juce::File packageFolderOf(const juce::File& odf) {
 constexpr const char* kChosenDefinition = "chosen-definition.txt";
 // The spellings a package carries: matching is case-sensitive on Linux, and
 // GrandOrgue sets inside Hauptwerk packages are often "Name.Organ".
+// The Hauptwerk.xml pair is version 3's spelling of the first two, dots for underscores.
 constexpr const char* kDefinitionPatterns =
-    "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.Organ;*.ORGAN";
+    "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.organ;*.Organ;*.ORGAN;"
+    "*.Organ.Hauptwerk.xml;*.CustomOrgan.Hauptwerk.xml";
 }  // namespace
 
 juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& odf) {
