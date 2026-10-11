@@ -404,10 +404,15 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 // zero and half an inch of water per step: that is what the sets' own gauge
 // linkages undo, (value - 63.5) * 8 across a needle whose 81 frames run 0 to
 // 20 inches. The next block's propagate carries it to the needle.
+//
+// A half rounds down: no pressure is 63, below the 63.5 the sets' linkages
+// subtract. Rounded up it read 64, and a delay ramp built on
+// (value - 63.5) * 63.5 -- Azzio's Sesquialtera and tremulant -- sat a quarter
+// open at rest (#285).
 void MasterpieceProcessor::publishWindPressures() {
   for (const auto& [compartment, control] : windGauges_) {
     const double v = 63.5 + wind_.pressureFor(compartment) * 0.5;
-    const int next = static_cast<int>(std::lround(std::clamp(v, 0.0, 127.0)));
+    const int next = static_cast<int>(std::ceil(std::clamp(v, 0.0, 127.0) - 0.5));
     if (controls_.value(control) != next) controls_.setValue(control, next);
   }
 }
@@ -3379,22 +3384,23 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // Every switch whose RESOLVED state moved — which on a wired console is
   // usually more than the one clicked.
   for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
-    const auto stopIt = stopBySwitch_.find(movedId);
-    if (stopIt != stopBySwitch_.end()) {
-      if (nowEngaged) engagedStops_.insert(stopIt->second);
-      else engagedStops_.erase(stopIt->second);
+    (void)nowEngaged;
+    // Every stop the moved switch controls, and every stop it STANDS for
+    // whether or not the wiring reaches it: on Friesach the knob and the
+    // stop's own switch are separate chains, so the knob moves alone and
+    // this is the only thing that draws the stop with it. Each is drawn while
+    // any of its switches is engaged.
+    auto follow = [this](Id stopId) {
+      if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
+      else engagedStops_.erase(stopId);
+    };
+    if (const auto stopIt = stopBySwitch_.find(movedId); stopIt != stopBySwitch_.end()) {
+      for (Id stopId : stopIt->second) follow(stopId);
       stopsChanged_.store(true, std::memory_order_release);
     }
-    // And every stop the moved switch STANDS for, whether or not the wiring
-    // reaches it: on Friesach the knob and the stop's own switch are
-    // separate chains, so the knob moves alone and this is the only thing
-    // that draws the stop with it.
     if (const auto stoodFor = stopsBySwitch_.find(movedId);
         stoodFor != stopsBySwitch_.end())
-      for (Id stopId : stoodFor->second) {
-        if (nowEngaged) engagedStops_.insert(stopId);
-        else engagedStops_.erase(stopId);
-      }
+      for (Id stopId : stoodFor->second) follow(stopId);
 
     // Reflect the change on the physical console, if the player wants that.
     // A switch with sends of its own is lit by those, every block.
@@ -3697,6 +3703,14 @@ MasterpieceProcessor::EngineSuspension::EngineSuspension(MasterpieceProcessor& p
 
 MasterpieceProcessor::EngineSuspension::~EngineSuspension() {
   proc.engineSuspended_.store(false);
+}
+
+bool MasterpieceProcessor::stopSourcesEngaged(Id stopId) const {
+  const auto it = stopSources_.find(stopId);
+  if (it == stopSources_.end()) return false;
+  for (Id sw : it->second)
+    if (switches_.engaged(sw)) return true;
+  return false;
 }
 
 void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
@@ -4098,7 +4112,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         alternateStopsBySwitch_[e.alternateSwitchId].push_back(stopId);
   for (const auto& [stopId, stop] : model_.stops)
     if (stop.controllingSwitchId != 0)
-      stopBySwitch_[stop.controllingSwitchId] = stopId;
+      stopBySwitch_[stop.controllingSwitchId].push_back(stopId);
 
   // The organ's switch wiring, solved once from the declared defaults. An
   // organ that ships with its blower running or a unison coupler drawn comes
@@ -4377,11 +4391,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // there is no linkage and only the two maps built here know they belong
   // together. Without this a clicked knob animates and sounds nothing.
   stopsBySwitch_.clear();
+  stopSources_.clear();
   {
     auto standsFor = [&](Id switchId, Id stopId) {
+      if (switchId == 0) return;
       auto& v = stopsBySwitch_[switchId];
       if (std::find(v.begin(), v.end(), stopId) == v.end())
         v.push_back(stopId);
+      auto& sources = stopSources_[stopId];
+      if (std::find(sources.begin(), sources.end(), switchId) == sources.end())
+        sources.push_back(switchId);
     };
     for (const auto& [stopId, stop] : model_.stops) {
       if (stop.controllingSwitchId == 0) continue;
@@ -4392,8 +4411,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     }
   }
   engagedStops_.clear();
-  for (const auto& [switchId, stopId] : stopBySwitch_)
-    if (switches_.engaged(switchId)) engagedStops_.insert(stopId);
+  for (const auto& [stopId, sources] : stopSources_)
+    if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
   // A new organ starts a new registration, so what the audio thread believes
   // is drawn has to be replaced rather than compared with the last organ's.
   stopsChanged_.store(true, std::memory_order_release);

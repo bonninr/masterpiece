@@ -13375,3 +13375,100 @@ public:
 };
 static PanelsTest g_panels;
 #endif  // MP_TEST_HAS_AUDIO
+
+// A three-way drawstop's levels, as Azzio wires its Sesquialtera (#285): a
+// rank's level is a perspective slider times a ramp; the ramp is fed by a
+// delay control while the wind model runs and by constants otherwise. The
+// delay moves; the constants must not hold the ramp where they left it. And
+// operation 7 is a product kept in range.
+class ConditionalLinkTest final : public mp::test::Test {
+public:
+  ConditionalLinkTest() : Test("functional.control.conditional-links", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    auto control = [&](mp::Id id, int def) {
+      mp::ContinuousControl c;
+      c.controlId = id;
+      c.defaultValue = def;
+      c.clickable = false;
+      m.continuousControls[id] = c;
+    };
+    control(11, 127);  // perspective level
+    control(22, 0);    // constant: off
+    control(92, 0);    // the delay, driven by the wind
+    control(192, 127); // the ramp
+    control(13, 0);    // the rank's level
+    auto link = [&](mp::Id src, mp::Id dst, mp::Id cond, bool when) {
+      mp::ContinuousControlLinkage l;
+      l.sourceControlId = src;
+      l.destControlId = dst;
+      l.conditionSwitchId = cond;
+      l.conditionWhenEngaged = when;
+      m.controlLinkages.push_back(l);
+    };
+    link(92, 192, 48, true);   // while the wind model runs
+    link(22, 192, 50, false);  // while the no-wind fallback is off
+    mp::ContinuousControlDoubleLinkage d;
+    d.destControlId = 13;
+    d.firstControlId = 11;
+    d.secondControlId = 192;
+    d.operationCode = 7;
+    m.controlDoubleLinkages.push_back(d);
+
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    const std::unordered_set<mp::Id> windOn{48};
+    bank.propagate(0, &windOn);
+    MP_CHECK(bank.value(192) == 0, "at rest the ramp is closed: " + std::to_string(bank.value(192)));
+    bank.setValue(92, 127);
+    bank.propagate(0, &windOn);
+    MP_CHECK(bank.value(192) == 127, "the delay opens it, the constant does not hold it shut: " +
+                                         std::to_string(bank.value(192)));
+    MP_CHECK(bank.value(13) == 127, "operation 7: 127 x 127 / 127 = 127, got " + std::to_string(bank.value(13)));
+    bank.setValue(92, 64);
+    bank.propagate(0, &windOn);
+    MP_CHECK(bank.value(13) == 64, "half the ramp is half the level: " + std::to_string(bank.value(13)));
+    bank.setValue(11, 0);
+    bank.propagate(0, &windOn);
+    MP_CHECK(bank.value(13) == 0, "and a perspective at nothing silences it");
+  }
+};
+static ConditionalLinkTest g_conditionalLinks;
+
+#ifdef MP_TEST_HAS_AUDIO
+// Two stops on one switch (#285): Azzio's Sesquialtera draws both of its stops
+// from one hidden switch. Kept one stop per switch, the second overwrote the
+// first, and that switch moved only one of them.
+class SharedStopSwitchTest final : public mp::test::Test {
+public:
+  SharedStopSwitchTest() : Test("functional.control.shared-stop-switch", Category::Functional) {}
+  void run() override {
+    const juce::File fixture(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    juce::String xml = fixture.loadFileAsString();
+    xml = xml.replaceFirstOccurrenceOf(
+        "<ObjectList ObjectType=\"Stop\">",
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>902</StopID><Name>Principal 8 second rank</Name>"
+        "<DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>");
+    xml = xml.replaceFirstOccurrenceOf(
+        "<ObjectList ObjectType=\"StopRank\">",
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>902</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes>"
+        "<MIDINoteNumIncrementFromDivisionToRank>0</MIDINoteNumIncrementFromDivisionToRank></StopRank>");
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-shared-stop");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const auto odf = dir.getChildFile("shared.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+    mp::MasterpieceProcessor proc;
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    proc.setSwitchEngaged(1101, true);
+    MP_CHECK(proc.stopEngaged(901) && proc.stopEngaged(902), "the switch draws both of its stops");
+    proc.setSwitchEngaged(1101, false);
+    MP_CHECK(!proc.stopEngaged(901) && !proc.stopEngaged(902), "and pushes both in");
+    proc.settingsFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static SharedStopSwitchTest g_sharedStopSwitch;
+#endif

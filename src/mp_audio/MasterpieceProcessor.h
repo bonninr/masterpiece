@@ -1438,8 +1438,14 @@ private:
   void seedSampleLibraries();
   // A drawstop on the console IS a switch; clicking it must draw the stop, not
   // merely animate the picture. Built at load so the audio thread never
-  // searches for it.
-  std::unordered_map<Id, Id> stopBySwitch_;
+  // searches for it. One switch can control several stops: Azzio's
+  // Sesquialtera hangs both of its stops on one (#285).
+  std::unordered_map<Id, std::vector<Id>> stopBySwitch_;
+  // Every switch a stop answers to -- its own, the player's, its knob. The
+  // stop is drawn while any of them is engaged; it used to follow whichever
+  // moved last, and a knob let go pushed in a stop its own switch still held.
+  std::unordered_map<Id, std::vector<Id>> stopSources_;
+  bool stopSourcesEngaged(Id stopId) const;
   std::map<int, int> defaultConsole_;  // role -> channel
   void applyDefaultConsole();
   // Switches that swap a stop's rank for its alternate and re-sound held
