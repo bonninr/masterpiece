@@ -16,15 +16,19 @@ void CouplerMatrix::reset(const OrganModel& m) {
   inputFor_.clear();
   divisionOfKeyboard_.clear();
   needsFallback_.clear();
+  hasExtremeActions_ = false;
 
   std::unordered_set<Id> sources, destinations;
   for (const KeyAction& a : m.keyActions) {
     if (a.sourceKeyboard == 0) continue;
-    // Action types beyond the plain one (pizzicato, reiteration, traps) are
+    // Plain key flow, and the two that pick one key of a chord: a bass
+    // coupler (2) carries the lowest key held, a melody coupler (3) the
+    // highest. The other types (all notes to one, traps, stop action) are
     // not modelled yet. Carrying them as ordinary key flow would sound the
     // right pipes in the wrong manner, which is worse than the loader's
     // existing report that they were seen and skipped.
-    if (a.actionType != 1) continue;
+    if (a.actionType < 1 || a.actionType > 3) continue;
+    if (a.actionType != 1) hasExtremeActions_ = true;
     edges_[static_cast<Id>(a.sourceKeyboard)].push_back(&a);
     sources.insert(static_cast<Id>(a.sourceKeyboard));
     if (a.destIsKeyboard && a.destKeyboard != 0)
@@ -339,10 +343,10 @@ void CouplerMatrix::expandInto(int sourceKeyboardId, int midiNote,
                                float velocity,
                                const std::unordered_set<Id>& engagedSwitches,
                                KeyFlowScratch& scratch,
-                               std::vector<ExpandedNote>& out) const {
+                               std::vector<ExpandedNote>& out, int extreme) const {
   const Id source = static_cast<Id>(sourceKeyboardId);
   if (!edges_.empty() && needsFallback_.count(source) == 0) {
-    walk(sourceKeyboardId, midiNote, velocity, engagedSwitches, scratch, out);
+    walk(sourceKeyboardId, midiNote, velocity, engagedSwitches, scratch, out, extreme);
     return;
   }
 
@@ -359,7 +363,7 @@ void CouplerMatrix::expandInto(int sourceKeyboardId, int midiNote,
 void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
                          const std::unordered_set<Id>& engagedSwitches,
                          KeyFlowScratch& scratch,
-                         std::vector<ExpandedNote>& out) const {
+                         std::vector<ExpandedNote>& out, int extreme) const {
   scratch.clear();
   const std::pair<Id, int> origin{static_cast<Id>(sourceKeyboardId), midiNote};
   scratch.frontier.push_back(origin);
@@ -388,6 +392,10 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       for (const KeyAction* a : it->second) {
         if (!a->carries(step.second)) continue;
         if (!conditionMet(*a, engagedSwitches)) continue;
+        // The lowest key of the chord for a bass coupler, the highest for a
+        // melody coupler: where the key played stands, carried along the walk.
+        if (a->actionType == 2 && (extreme & kLowestHeld) == 0) continue;
+        if (a->actionType == 3 && (extreme & kHighestHeld) == 0) continue;
         const int note = step.second + a->midiIncrement;
         // Coupled off the end of the compass: a 16' coupler at the bottom of
         // the manual has nowhere to go, and a real organ simply does not
