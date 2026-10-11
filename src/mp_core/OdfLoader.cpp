@@ -422,6 +422,30 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // loader will actually look, or every packaged sample reports missing
   // regardless of whether it truly is.
   if (!opts.organRootDir.empty()) {
+    // A GrandOrgue definition shipped in a Hauptwerk package at its top level,
+    // beside OrganInstallationPackages, names its samples from inside that
+    // folder: "./001629/Ped_04_Diapason 8/036-c.wav". Its author meant it to
+    // sit in there; read from where it is, the samples are under it.
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path root(opts.organRootDir);
+    std::map<std::string, bool> movedFolder;  // first folder -> found under the packages
+    for (auto& [id, s] : outModel.samples) {
+      (void)id;
+      if (s.installationPackageId != 0 || s.fileName.empty()) continue;
+      std::string rel = s.fileName;
+      std::replace(rel.begin(), rel.end(), '\\', '/');
+      while (rel.rfind("./", 0) == 0) rel.erase(0, 2);
+      const auto slash = rel.find('/');
+      if (slash == std::string::npos) continue;
+      const std::string first = rel.substr(0, slash);
+      auto known = movedFolder.find(first);
+      if (known == movedFolder.end())
+        known = movedFolder.emplace(first, !fs::exists(root / first, ec) &&
+                                               fs::is_directory(root / "OrganInstallationPackages" / first, ec))
+                    .first;
+      if (known->second) s.fileName = "OrganInstallationPackages/" + rel;
+    }
     for (const auto& [id, s] : outModel.samples) {
       (void)id;
       if (s.encrypted || s.fileName.empty()) continue;
