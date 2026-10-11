@@ -9483,6 +9483,55 @@ static StageSwitchTest g_stageSwitches;
 static CombinationTest g_combinationPistons;
 static SwitchNetworkTest g_switchNetwork;
 static CouplerGraphTest g_couplerGraph;
+
+// Bass and melody couplers (action types 2 and 3): of the keys held on a
+// manual, only the lowest passes a bass coupler and only the highest a melody
+// coupler. Augustine's sets offer both ("I+II_Mel").
+class ExtremeCouplersTest final : public mp::test::Test {
+public:
+  ExtremeCouplersTest() : Test("functional.control.bass-melody-couplers", Category::Functional) {}
+  void run() override {
+    auto m = CouplerGraphTest::organ();
+    auto melody = CouplerGraphTest::edge(2, 3, /*condition*/ 600);
+    melody.actionType = 3;
+    auto bass = CouplerGraphTest::edge(2, 1, /*condition*/ 601);
+    bass.actionType = 2;
+    m.keyActions.push_back(melody);
+    m.keyActions.push_back(bass);
+    mp::CouplerMatrix flow;
+    flow.reset(m);
+    MP_CHECK(flow.hasExtremeActions(), "the organ is known to have them");
+
+    const std::unordered_set<mp::Id> drawn{600, 601};
+    mp::KeyFlowScratch scratch;
+    auto reached = [&](int extreme) {
+      std::vector<mp::ExpandedNote> out;
+      flow.expandInto(2, 60, 1.0f, drawn, scratch, out, extreme);
+      return out;
+    };
+    using M = mp::CouplerMatrix;
+    auto middle = reached(0);
+    MP_CHECK(middle.size() == 1 && CouplerGraphTest::reaches(middle, 2, 60),
+             "a key in the middle of a chord plays its own division only");
+    auto top = reached(M::kHighestHeld);
+    MP_CHECK(CouplerGraphTest::reaches(top, 3, 60) && !CouplerGraphTest::reaches(top, 1, 60),
+             "the highest key passes the melody coupler, not the bass coupler");
+    auto bottom = reached(M::kLowestHeld);
+    MP_CHECK(CouplerGraphTest::reaches(bottom, 1, 60) && !CouplerGraphTest::reaches(bottom, 3, 60),
+             "the lowest key passes the bass coupler, not the melody coupler");
+    auto alone = reached(M::kLowestHeld | M::kHighestHeld);
+    MP_CHECK(CouplerGraphTest::reaches(alone, 1, 60) && CouplerGraphTest::reaches(alone, 3, 60),
+             "a key held alone is both");
+    std::vector<mp::ExpandedNote> undrawn;
+    flow.expandInto(2, 60, 1.0f, {}, scratch, undrawn, M::kHighestHeld);
+    MP_CHECK(undrawn.size() == 1, "and neither coupler acts while it is not drawn");
+
+    mp::CouplerMatrix plain;
+    plain.reset(CouplerGraphTest::organ());
+    MP_CHECK(!plain.hasExtremeActions(), "an organ without them is not charged for them");
+  }
+};
+static ExtremeCouplersTest g_extremeCouplers;
 static DefaultKeyboardTest g_defaultKeyboard;
 static KeyboardBindingTest g_keyboardBinding;
 static LcdPanelTest g_lcdPanels;

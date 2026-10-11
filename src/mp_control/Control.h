@@ -90,9 +90,19 @@ public:
   // NOTHING engaged and with every coupler engaged, never per note. Deciding it per note would make a unison
   // off — an edge that is live only while its switch is out — silence a
   // manual and then immediately un-silence it by falling back.
+  //
+  // `extreme` says where the key stands among the keys held on its keyboard:
+  // kLowestHeld, kHighestHeld, both for a key held alone, neither for one in
+  // the middle of a chord. A bass coupler carries only the lowest key and a
+  // melody coupler only the highest; left at 0, neither carries anything.
+  static constexpr int kLowestHeld = 1, kHighestHeld = 2;
   void expandInto(int sourceKeyboardId, int midiNote, float velocity,
                   const std::unordered_set<Id>& engagedSwitches,
-                  KeyFlowScratch& scratch, std::vector<ExpandedNote>& out) const;
+                  KeyFlowScratch& scratch, std::vector<ExpandedNote>& out,
+                  int extreme = 0) const;
+  // Whether the organ has a bass or a melody coupler at all, so a player
+  // without one pays nothing for them.
+  bool hasExtremeActions() const { return hasExtremeActions_; }
 
   // Same, allocating its own scratch and result. For tests and tools, never
   // for the audio thread.
@@ -134,7 +144,9 @@ private:
   // The walk itself, with no fallback. Used to decide which keyboards need one.
   void walk(int sourceKeyboardId, int midiNote, float velocity,
             const std::unordered_set<Id>& engagedSwitches,
-            KeyFlowScratch& scratch, std::vector<ExpandedNote>& out) const;
+            KeyFlowScratch& scratch, std::vector<ExpandedNote>& out,
+            int extreme = 0) const;
+  bool hasExtremeActions_ = false;
 
   const OrganModel* model_ = nullptr;
   // Key-flow edges indexed by source keyboard, so a note-on never scans the

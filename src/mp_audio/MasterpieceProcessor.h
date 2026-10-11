@@ -1695,7 +1695,16 @@ private:
     int channel = 0;
     int device = 0;
     int playedNote = 60;  // the key as played, for the drawn manual
+    // Where it stood among the keys held on its keyboard when its voices were
+    // last worked out (CouplerMatrix::kLowestHeld / kHighestHeld): what a
+    // bass or melody coupler carried for it.
+    int extreme = 0;
   };
+  // Where a key stands among those held on its keyboard, itself included.
+  int extremeFor(Id keyboard, int midiNote) const;
+  // A key went down or up on this keyboard: the keys still held there whose
+  // standing changed gain or lose what the bass and melody couplers carry.
+  void reflowExtremes(Id keyboard);
   std::unordered_map<int, HeldNote> soundingNotes_;
   // Which keys are down on which manual, by manual id (low six bits) and key.
   // Written on the audio thread where a note starts or stops on a manual,
@@ -1716,8 +1725,9 @@ private:
   // Start the voices one key press asks for, drawing only on `stops`. The
   // whole registration when a key is struck; only what just moved when a stop
   // changes under a key already down. Returns whether any pipe answered.
+  // `extreme`: see HeldNote.
   bool startVoicesForKey(Id keyboard, int midiNote, int velocity,
-                         uint64_t noteId, const std::unordered_set<Id>& stops);
+                         uint64_t noteId, const std::unordered_set<Id>& stops, int extreme = 0);
   // Bring the sounding notes into line with the registration.
   void applyStopChangeToHeldNotes();
   // Every layer of one pipe, under `noteId`.

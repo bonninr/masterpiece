@@ -848,7 +848,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         ka.numKeys = 0; // nothing says where the window starts: carry everything
     }
     ka.midiIncrement = fieldInt(row, "MIDINoteNumberIncrement", "n", 0);
-    if (ka.actionType != 1 &&
+    if ((ka.actionType < 1 || ka.actionType > 3) &&
         std::find(outDiag.unmappedActionTypes.begin(), outDiag.unmappedActionTypes.end(),
                   ka.actionType) == outDiag.unmappedActionTypes.end())
       outDiag.unmappedActionTypes.push_back(ka.actionType);

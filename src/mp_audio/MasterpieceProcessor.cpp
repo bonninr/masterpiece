@@ -2278,12 +2278,73 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   rel.velocity = velocity;
   voices_.noteOff(it->second.id, rel);
   setKeyDown(it->second.keyboard, it->second.playedNote, false);
+  const Id releasedOn = it->second.keyboard;
   soundingNotes_.erase(it);
+  reflowExtremes(releasedOn);
+}
+
+int MasterpieceProcessor::extremeFor(Id keyboard, int midiNote) const {
+  if (!couplers_.hasExtremeActions()) return 0;
+  int lowest = midiNote, highest = midiNote;
+  for (const auto& [key, held] : soundingNotes_) {
+    (void)key;
+    if (held.keyboard != keyboard) continue;
+    lowest = std::min(lowest, held.midiNote);
+    highest = std::max(highest, held.midiNote);
+  }
+  return (midiNote <= lowest ? CouplerMatrix::kLowestHeld : 0) |
+         (midiNote >= highest ? CouplerMatrix::kHighestHeld : 0);
+}
+
+void MasterpieceProcessor::reflowExtremes(Id keyboard) {
+  if (!couplers_.hasExtremeActions()) return;
+  const auto same = [](const ExpandedNote& a, const ExpandedNote& b) {
+    return a.divisionId == b.divisionId && a.midiNote == b.midiNote;
+  };
+  const auto contains = [&same](const std::vector<ExpandedNote>& v, const ExpandedNote& n) {
+    return std::any_of(v.begin(), v.end(), [&](const ExpandedNote& x) { return same(x, n); });
+  };
+  for (auto& [key, held] : soundingNotes_) {
+    (void)key;
+    if (held.keyboard != keyboard) continue;
+    const int now = extremeFor(keyboard, held.midiNote);
+    if (now == held.extreme) continue;
+    const float vel = static_cast<float>(held.velocity) / 127.0f;
+    reflowBefore_.clear();
+    couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, engagedSwitches_,
+                         keyFlow_, reflowBefore_, held.extreme);
+    reflowAfter_.clear();
+    couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, engagedSwitches_,
+                         keyFlow_, reflowAfter_, now);
+    held.extreme = now;
+    // Now the top or the bottom of the chord: what the coupler reaches
+    // speaks, under the key's own note id.
+    for (const ExpandedNote& reached : reflowAfter_) {
+      if (contains(reflowBefore_, reached)) continue;
+      for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
+                                         engagedStops_, &engagedSwitches_)) {
+        const auto rankIt = model_.ranks.find(rp.rankId);
+        if (rankIt == model_.ranks.end()) continue;
+        for (const auto& pipe : rankIt->second.pipes)
+          if (pipe.pipeId == rp.pipeId) {
+            startPipeLayers(pipe, rp.rankId, reached.midiNote, held.velocity, held.id);
+            break;
+          }
+      }
+    }
+    // No longer the top or the bottom: those pipes let go, the key stays down.
+    for (const ExpandedNote& reached : reflowBefore_) {
+      if (contains(reflowAfter_, reached)) continue;
+      for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
+                                         engagedStops_, &engagedSwitches_))
+        voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
+    }
+  }
 }
 
 bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
                                              int velocity, uint64_t noteId,
-                                             const std::unordered_set<Id>& stops) {
+                                             const std::unordered_set<Id>& stops, int extreme) {
   bool anyStarted = false;
   // Which divisions this key actually reaches, at which pitches. This is where
   // couplers live: a drawn "Great to Pedal" is an edge of the key-flow graph
@@ -2291,7 +2352,7 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
   expandScratch_.clear();
   couplers_.expandInto(static_cast<int>(keyboard), midiNote,
                        static_cast<float>(velocity) / 127.0f, engagedSwitches_,
-                       keyFlow_, expandScratch_);
+                       keyFlow_, expandScratch_, extreme);
 
   for (const ExpandedNote& reached : expandScratch_) {
     const int divisionId = reached.divisionId;
@@ -2480,9 +2541,10 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
 
   const uint64_t noteId = nextNoteId_++;
 
+  const int extreme = extremeFor(keyboard, midiNote);
   const bool anyStarted =
       !engagedStops_.empty() &&
-      startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_);
+      startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_, extreme);
 
   // Held whether or not anything sounds yet. A key pressed before its stop is
   // drawn speaks the moment the stop is drawn, as on a real organ; recorded
@@ -2490,8 +2552,11 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // follows stops for held notes, so drawing the stop did nothing (#120: "it
   // isn't always possible to change stops while holding a note").
   soundingNotes_[noteKeyId] =
-      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_, playedNote};
+      HeldNote{noteId, keyboard, midiNote, velocity, noteChannel_, noteDeviceId_, playedNote, extreme};
   setKeyDown(keyboard, playedNote, true);
+  // The keys already held on this manual: one of them was the top or the
+  // bottom of the chord until now.
+  reflowExtremes(keyboard);
 
   if (engagedStops_.empty()) {
     if (logMidi_.load(std::memory_order_acquire))
@@ -2535,10 +2600,10 @@ void MasterpieceProcessor::reflowHeldNotes() {
     const float vel = static_cast<float>(held.velocity) / 127.0f;
     reflowBefore_.clear();
     couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, heldFlowBefore_,
-                         keyFlow_, reflowBefore_);
+                         keyFlow_, reflowBefore_, held.extreme);
     reflowAfter_.clear();
     couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, vel, engagedSwitches_,
-                         keyFlow_, reflowAfter_);
+                         keyFlow_, reflowAfter_, held.extreme);
     // Newly reached: its pipes speak, under the key's own note id so the
     // note-off still to come releases them with the rest.
     for (const ExpandedNote& reached : reflowAfter_) {
@@ -2587,7 +2652,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
     for (const auto& [key, held] : soundingNotes_) {
       (void)key;
       startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
-                        stopSetScratch_);
+                        stopSetScratch_, held.extreme);
     }
   }
 
@@ -2602,7 +2667,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
       expandScratch_.clear();
       couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote,
                            static_cast<float>(held.velocity) / 127.0f,
-                           engagedSwitches_, keyFlow_, expandScratch_);
+                           engagedSwitches_, keyFlow_, expandScratch_, held.extreme);
       for (const ExpandedNote& reached : expandScratch_) {
         const auto pipes = resolvePipes(model_, reached.divisionId,
                                         reached.midiNote, stopSetScratch_, &engagedSwitches_);
@@ -3371,13 +3436,13 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
         expandScratch_.clear();
         couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote,
                              static_cast<float>(held.velocity) / 127.0f,
-                             previousSwitches_, keyFlow_, expandScratch_);
+                             previousSwitches_, keyFlow_, expandScratch_, held.extreme);
         for (const ExpandedNote& reached : expandScratch_)
           for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
                                              stopSetScratch_, &previousSwitches_))
             voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
         startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
-                          stopSetScratch_);
+                          stopSetScratch_, held.extreme);
       }
     }
 
