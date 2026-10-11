@@ -284,8 +284,8 @@ private:
   std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
-// Favourites: numbered slots for the organs a player actually uses, so getting
-// back to one does not mean finding a 19 GB set in a file browser.
+// Combination sets: the registration books of the organ loaded. The favourite
+// organs that shared this tab are in Open (OpenWindow.h).
 class FavouritesPanel : public juce::Component {
 public:
   explicit FavouritesPanel(MasterpieceProcessor& p);
@@ -300,10 +300,6 @@ private:
   MasterpieceProcessor& proc_;
   void refreshSets();
 
-  juce::Label heading_;
-  juce::TextButton addCurrent_{"Add the organ now loaded"};
-  // Combination sets live here rather than on their own tab: a set IS a
-  // favourite registration, and the two are reached at the same moment.
   juce::Label setsHeading_;
   juce::Label setLabel_;
   juce::ComboBox setBox_;
@@ -312,13 +308,6 @@ private:
   juce::Label setStatus_;
   std::vector<std::string> setNames_;
   std::unique_ptr<juce::AlertWindow> setPrompt_;
-  juce::Label status_;
-  juce::Viewport viewport_;
-  juce::Component rows_;
-  std::vector<int> slots_;
-  std::vector<std::unique_ptr<juce::Label>> labels_;
-  std::vector<std::unique_ptr<juce::TextButton>> loads_;
-  std::vector<std::unique_ptr<juce::TextButton>> removes_;
   juce::Label note_;
 };
 
