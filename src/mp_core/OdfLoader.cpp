@@ -299,6 +299,22 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   if (outModel.odfType == OdfType::Codm)
     return parseCodm(odfRoot, opts, outModel, outDiag);
 
+  // Version 3 of the format wrote table names in lower case ("_general",
+  // "keyboardkey": Cembalo Mietke). They are given the spelling the tables
+  // are read by.
+  {
+    std::unordered_map<std::string, std::string> byLower;
+    for (const auto& name : knownTables()) byLower[lower(name)] = name;
+    for (pugi::xml_node list : odfRoot.children()) {
+      if (list.type() != pugi::node_element || lower(list.name()) != "objectlist") continue;
+      pugi::xml_attribute type = list.attribute("ObjectType");
+      const std::string name = type.value();
+      if (name.empty() || knownTables().count(name) != 0) continue;
+      const auto it = byLower.find(lower(name));
+      if (it != byLower.end()) type.set_value(it->second.c_str());
+    }
+  }
+
   std::unordered_set<std::string> asked;
   if (opts.reportUnreadFields) fieldsAskedFor = &asked;
 

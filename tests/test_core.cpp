@@ -13455,6 +13455,35 @@ public:
   }
 };
 static OlderDefinitionNamesTest g_olderDefinitionNames;
+
+// Version 3 also wrote its table names in lower case (Cembalo Mietke:
+// "_general", "keyboard"). The tables are read all the same.
+class LowerCaseTablesTest final : public mp::test::Test {
+public:
+  LowerCaseTablesTest() : Test("functional.odf.lower-case-tables", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\" FileFormatVersion=\"3.00\">"
+                 "<ObjectList ObjectType=\"_general\"><_general>"
+                 "<Identification_UniqueOrganID>377</Identification_UniqueOrganID>"
+                 "<Identification_Name>Lower</Identification_Name>"
+                 "</_general></ObjectList>"
+                 "<ObjectList ObjectType=\"keyboard\"><keyboard>"
+                 "<KeyboardID>2</KeyboardID><Name>Upper</Name>"
+                 "</keyboard></ObjectList>"
+                 "</Hauptwerk>",
+                 "Lower.Organ.Hauptwerk.xml", o, m, d),
+             "a definition with lower-case table names loads: " +
+                 (d.errors.empty() ? std::string() : d.errors.front()));
+    MP_CHECK(m.keyboards.size() == 1, "and its keyboard table is read");
+    MP_CHECK(m.unknownTables.empty(), "no table of it is taken for an unknown one");
+  }
+};
+static LowerCaseTablesTest g_lowerCaseTables;
 #endif  // MP_TEST_HAS_AUDIO
 
 // A three-way drawstop's levels, as Azzio wires its Sesquialtera (#285): a
