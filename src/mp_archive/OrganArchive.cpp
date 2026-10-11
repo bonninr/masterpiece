@@ -675,6 +675,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   archives_.clear();
   entries_.clear();
   byKey_.clear();
+  chosen_ = path;
 
   const fs::path chosen(path);
   const fs::path dir = chosen.parent_path();
@@ -965,11 +966,27 @@ bool OrganArchive::index(std::string& error, const Progress& progress) {
     }
     const std::string file = fs::path(archives_[i].front()).filename().string();
     if (pass->failed()) {
-      error = "\"" + file + "\" could not be read: " + pass->error() + " (" +
-              (last.empty() ? std::string("before its first file")
-                            : "after " + std::to_string(count) + " files, the last \"" + last + "\"") +
-              ").";
-      return false;
+      const std::string what =
+          "\"" + file + "\" could not be read: " + pass->error() + " (" +
+          (last.empty() ? std::string("before its first file")
+                        : "after " + std::to_string(count) + " files, the last \"" + last + "\"") +
+          ").";
+      // A damaged part found beside the archive that was opened gives the
+      // files it lists up to the damage; the opened archive still loads.
+      bool opened = chosen_.empty();
+      for (const auto& volume : archives_[i]) {
+        std::error_code ec;
+        if (volume == chosen_ || fs::equivalent(fs::u8path(volume), fs::u8path(chosen_), ec))
+          opened = true;
+      }
+      if (opened) {
+        error = what;
+        return false;
+      }
+      report_.push_back(what + " The files after that point are left out.");
+      completedBytes += bytes[i];
+      if (!notify(completedBytes)) return false;
+      continue;
     }
     report_.push_back(file + " -- " + std::to_string(count) + " files" +
                       (locked ? ", " + std::to_string(locked) + " password-protected" : ""));

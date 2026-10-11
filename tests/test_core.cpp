@@ -10692,6 +10692,34 @@ public:
                "damaged: the bad sample is reported with its archive: " + error);
       MP_CHECK(got.count(mp::OrganArchive::key("OrganInstallationPackages/000123/pipe1.wav")) == 1,
                "damaged: and the sample before it is kept");
+
+      // A damaged part beside a whole one (Buckow-Rieger's four numbered
+      // archives, the first cut short): opening the whole one still indexes,
+      // and the damaged part is a line in the report.
+      const fs::path parts = dir / "parts";
+      fs::create_directories(parts);
+      // Garbage from inside the second file's header on: the list itself breaks.
+      const size_t bad = whole.find(files[1].first) - 6;
+      std::ofstream(parts / "01_Pair_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary)
+          << whole.substr(0, bad) + std::string(whole.size() - bad, 'Z');
+      std::ofstream(parts / "02_Pair_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary) << whole;
+      mp::OrganArchive whole2;
+      error.clear();
+      MP_CHECK(whole2.discover((parts / "02_Pair_demo.Organ.CompPkg.Hauptwerk.rar").string(), error) &&
+                   whole2.archives().size() == 2 && whole2.inspect(error),
+               "damaged part: the two parts are one set: " + error);
+      MP_CHECK(whole2.index(error), "damaged part: the whole archive still indexes: " + error);
+      bool told = false;
+      for (const auto& line : whole2.report())
+        if (line.find("01_Pair_demo") != std::string::npos &&
+            line.find("could not be read") != std::string::npos)
+          told = true;
+      MP_CHECK(told, "damaged part: the report names the damaged part");
+      mp::OrganArchive cut2;
+      error.clear();
+      MP_CHECK(cut2.discover((parts / "01_Pair_demo.Organ.CompPkg.Hauptwerk.rar").string(), error) &&
+                   cut2.inspect(error) && !cut2.index(error),
+               "damaged part: opened itself, the damaged archive is the error");
     }
     fs::remove_all(dir, ec);
   }
