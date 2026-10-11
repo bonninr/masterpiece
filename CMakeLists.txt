@@ -324,6 +324,24 @@ if(TARGET juce::juce_core)
   endif()
 endif()
 
+# ---- Verovio (MusicXML engraving; spike for the score panel) ----
+option(MP_FETCH_VEROVIO "Fetch Verovio via FetchContent" ON)
+set(MP_VEROVIO_TAG "version-6.3.0" CACHE STRING "Verovio git tag for FetchContent")
+if(MP_FETCH_VEROVIO)
+  include(FetchContent)
+  set(BUILD_AS_LIBRARY ON CACHE BOOL "" FORCE)
+  set(NO_RUNTIME ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    verovio
+    GIT_REPOSITORY https://github.com/rism-digital/verovio.git
+    GIT_TAG ${MP_VEROVIO_TAG}
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    SOURCE_SUBDIR cmake
+  )
+  FetchContent_MakeAvailable(verovio)
+endif()
+
 add_subdirectory(src/mp_core)
 add_subdirectory(src/mp_archive)
 if(MP_ENABLE_STREAMING)
