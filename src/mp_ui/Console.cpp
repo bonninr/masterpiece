@@ -147,13 +147,30 @@ void ConsoleView::rebuild() {
   const auto pageIt = model.displayPages.find(showing);
   if (pageIt == model.displayPages.end()) return;
 
+  // A page that declares nothing for the layout chosen is drawn in the
+  // primary one, whole. St Davids redraws its jamb pages for a portrait
+  // screen and leaves the console page alone: drawn at its own positions and
+  // then cut to the portrait screen, that page lost its right-hand jambs and
+  // its pedalboard.
+  drawLayout_ = layout_;
+  if (layout_ > 0) {
+    bool declared = false;
+    for (const auto& inst : pageIt->second.instances)
+      if (inst.hasLayout(layout_)) declared = true;
+    for (const auto& [kid, kb] : model.keyboards) {
+      (void)kid;
+      if (kb.displayPageId == showing && kb.keyImageSetFor(layout_) != 0) declared = true;
+    }
+    if (!declared) drawLayout_ = 0;
+  }
+
   for (const auto& inst : pageIt->second.instances) {
-    const auto setIt = model.imageSets.find(inst.imageSetFor(layout_));
+    const auto setIt = model.imageSets.find(inst.imageSetFor(drawLayout_));
     if (setIt == model.imageSets.end()) continue;
 
     Item item;
     item.instanceId = inst.instanceId;
-    item.imageSetId = inst.imageSetFor(layout_);
+    item.imageSetId = inst.imageSetFor(drawLayout_);
     item.defaultIndex = inst.defaultImageIndex > 0 ? inst.defaultImageIndex : 1;
     item.layer = inst.layer;
 
@@ -171,12 +188,12 @@ void ConsoleView::rebuild() {
         key.keyboardId = kk->second.keyboardId;
         key.channel = proc_.clickChannelForKeyboard(key.keyboardId);
         key.litChannel = proc_.litChannelForKeyboard(key.keyboardId);
-        key.imageSetId = inst.imageSetFor(layout_);
+        key.imageSetId = inst.imageSetFor(drawLayout_);
         key.engagedIndex = sit->second->dispIndexEngaged;
         key.disengagedIndex = sit->second->dispIndexDisengaged;
         const int kw = setIt->second.widthPx;
         const int kh = setIt->second.heightPx;
-        key.bounds = {inst.leftFor(layout_), inst.topFor(layout_),
+        key.bounds = {inst.leftFor(drawLayout_), inst.topFor(drawLayout_),
                       kw > 0 ? kw : 12, kh > 0 ? kh : 60};
         if (kw <= 0 || kh <= 0)
           if (const juce::Image* img =
@@ -211,13 +228,13 @@ void ConsoleView::rebuild() {
     // whether it repeats to fill a larger rectangle.
     int w = setIt->second.widthPx;
     int h = setIt->second.heightPx;
-    const int left = inst.leftFor(layout_);
-    const int top = inst.topFor(layout_);
+    const int left = inst.leftFor(drawLayout_);
+    const int top = inst.topFor(drawLayout_);
     // Most sets declare no size at all and let the bitmap say. Falling back to
     // a fixed box instead made a drawstop clickable only in its top-left
     // corner, so clicking the knob did nothing — which looked exactly like a
     // coupler that was not wired up.
-    if ((w <= 0 || h <= 0) && !inst.tilesFor(layout_)) {
+    if ((w <= 0 || h <= 0) && !inst.tilesFor(drawLayout_)) {
       if (const juce::Image* img = imageFor(item.imageSetId, item.defaultIndex)) {
         w = img->getWidth();
         h = img->getHeight();
@@ -231,10 +248,10 @@ void ConsoleView::rebuild() {
         h = setIt->second.clickBottomPx;
       }
     }
-    if (inst.tilesFor(layout_)) {
+    if (inst.tilesFor(drawLayout_)) {
       item.tiled = true;
-      item.bounds = {left, top, inst.tileRightFor(layout_) - left,
-                     inst.tileBottomFor(layout_) - top};
+      item.bounds = {left, top, inst.tileRightFor(drawLayout_) - left,
+                     inst.tileBottomFor(drawLayout_) - top};
     } else {
       item.bounds = {left, top, w > 0 ? w : 32, h > 0 ? h : 32};
     }
@@ -290,8 +307,8 @@ void ConsoleView::rebuild() {
   // Vasvar keeps five at x=1230 on a 1016-wide page -- and widening the
   // canvas to take them in showed them floating beside the organ. Only what
   // misses the screen entirely goes: a piece that overlaps its edge stays.
-  const int screenW = model.consoleWidthPx[layout_];
-  const int screenH = model.consoleHeightPx[layout_];
+  const int screenW = model.consoleWidthPx[drawLayout_];
+  const int screenH = model.consoleHeightPx[drawLayout_];
   if (screenW > 0 && screenH > 0) {
     const juce::Rectangle<int> screen(0, 0, screenW, screenH);
     auto off = [&screen](const juce::Rectangle<int>& b) { return !b.intersects(screen); };
@@ -375,8 +392,8 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
     if (t.attachedInstanceId != 0 && t.posRelativeToInstance) {
       const auto ait = byId.find(t.attachedInstanceId);
       if (ait != byId.end()) {
-        x += ait->second->leftFor(layout_);
-        y += ait->second->topFor(layout_);
+        x += ait->second->leftFor(drawLayout_);
+        y += ait->second->topFor(drawLayout_);
       }
     }
 
@@ -446,13 +463,13 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
     // A keyboard with no image set is not drawn at all: an input-only manual
     // and most pedalboards are like this, and Hauptwerk does not draw them
     // either.
-    const Id keySetId = kb.keyImageSetFor(layout_);
+    const Id keySetId = kb.keyImageSetFor(drawLayout_);
     if (keySetId == 0 || kb.numKeys <= 0) continue;
     if (kb.displayPageId != pageId) continue;
     const auto ksIt = model.keyImageSets.find(keySetId);
     if (ksIt == model.keyImageSets.end()) continue;
     if (!alreadyDrawn
-             .insert({keySetId, kb.dispLeftFor(layout_), kb.dispTopFor(layout_),
+             .insert({keySetId, kb.dispLeftFor(drawLayout_), kb.dispTopFor(drawLayout_),
                       kb.numKeys, kb.firstMidiNote})
              .second)
       continue;
@@ -462,8 +479,8 @@ void ConsoleView::buildKeyboards(const OrganModel& model, Id pageId) {
     const int channel = proc_.clickChannelForKeyboard(kb.keyboardId);
     const int litChannel = proc_.litChannelForKeyboard(kb.keyboardId);
 
-    int x = kb.dispLeftFor(layout_);
-    const int keyTop = kb.dispTopFor(layout_);
+    int x = kb.dispLeftFor(drawLayout_);
+    const int keyTop = kb.dispTopFor(drawLayout_);
     for (int i = 0; i < kb.numKeys; ++i) {
       const int note = kb.firstMidiNote + i;
       const int pc = pitchClassOf(note);

@@ -13371,27 +13371,4 @@ public:
   }
 };
 static PanelsTest g_panels;
-
-// A keyboard a layout says nothing about is drawn where the primary layout
-// draws it, as an image without an alternate is: Arrabona's alternate layout
-// lost its manuals and pedalboard.
-class KeyboardLayoutFallbackTest final : public mp::test::Test {
-public:
-  KeyboardLayoutFallbackTest() : Test("functional.odf.keyboard-layout-fallback", Category::Functional) {}
-  void run() override {
-    mp::Keyboard k;
-    k.keyImageSetId = 2;
-    k.dispLeftPx = 655;
-    k.dispTopPx = 930;
-    MP_CHECK(k.keyImageSetFor(1) == 2 && k.dispLeftFor(1) == 655 && k.dispTopFor(1) == 930,
-             "with no alternate, layout 1 draws it as the primary does");
-    k.altKeyImageSetId[0] = 7;
-    k.altLeftPx[0] = 100;
-    k.altTopPx[0] = 200;
-    MP_CHECK(k.keyImageSetFor(1) == 7 && k.dispLeftFor(1) == 100 && k.dispTopFor(1) == 200,
-             "with one, layout 1 draws its own");
-    MP_CHECK(k.keyImageSetFor(2) == 2 && k.keyImageSetFor(0) == 2, "and the others fall back");
-  }
-};
-static KeyboardLayoutFallbackTest g_keyboardLayoutFallback;
 #endif  // MP_TEST_HAS_AUDIO

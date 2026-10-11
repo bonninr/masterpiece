@@ -171,6 +171,9 @@ private:
   std::vector<Id> pageIds_;
   int pageIndex_ = 0;
   int layout_ = 0;
+  // The layout the page on show is drawn in: layout_, or the primary one
+  // for a page that declares nothing for it.
+  int drawLayout_ = 0;
   int layoutCount_ = 1;
   // Naturals first, then sharps: painter's order, since a sharp overlaps the
   // naturals on either side of it.
