@@ -485,9 +485,13 @@ static std::unique_ptr<Pass> passFor(const std::vector<std::string>& volumes) {
 
 // libarchive stopped on a RAR filter in a RAR 4 archive unarr can read: said
 // once, and the archive is read with unarr from then on. A split set stays
-// as it is: unarr reads no RAR 4 volumes.
+// as it is: unarr reads no RAR 4 volumes. Its "Internal error extracting RAR
+// file" is the same case under another name: Pekela's archive tests sound
+// and 29 of its samples stopped there.
 static bool switchedForFilters(const std::vector<std::string>& volumes, const Pass& pass) {
-  if (volumes.size() != 1 || pass.error().find("filters") == std::string::npos) return false;
+  const bool unarrMayRead = pass.error().find("filters") != std::string::npos ||
+                            pass.error().find("Internal error extracting RAR file") != std::string::npos;
+  if (volumes.size() != 1 || !unarrMayRead) return false;
   if (inspectArchive(volumes.front()).format != ArchiveKind::Format::Rar4) return false;
   const std::lock_guard<std::mutex> lock(gFilteredMutex);
   return gFiltered.insert(volumes.front()).second;
