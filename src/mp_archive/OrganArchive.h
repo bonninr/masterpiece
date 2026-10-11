@@ -142,6 +142,8 @@ public:
 private:
   bool readIndex(const std::string& file, bool checkVolumes);
   std::vector<std::string> report_;
+  // The archive that was opened; the others were found beside it.
+  std::string chosen_;
   std::vector<std::vector<std::string>> archives_;
   std::vector<Entry> entries_;
   std::unordered_map<std::string, size_t> byKey_;
