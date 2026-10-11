@@ -142,7 +142,10 @@ juce::Image loadBmpImage(const juce::File& file) {
     cr = Channel::from(0x7c00); cg = Channel::from(0x03e0); cb = Channel::from(0x001f);
   } else if (bpp == 32) {
     cr = Channel::from(0x00ff0000); cg = Channel::from(0x0000ff00);
-    cb = Channel::from(0x000000ff); ca = Channel::from(0xff000000);
+    cb = Channel::from(0x000000ff);
+    // The fourth byte of an uncompressed 32-bit pixel is reserved. It carries
+    // transparency only where a version 4 or 5 header names an alpha mask.
+    if (headerSize >= 108) ca = Channel::from(r.u32(66));
   }
   if (!r.ok) return {};
 

@@ -544,6 +544,8 @@ public:
     check(dir / "b32.bmp", write32(dir / "b32.bmp", 255), want, 32);
     // Alpha bytes left at zero: the image must still be visible.
     check(dir / "b32z.bmp", write32(dir / "b32z.bmp", 0), want, 32);
+    // Reserved bytes holding leftovers, some zero and some not: still opaque.
+    check(dir / "b32m.bmp", write32(dir / "b32m.bmp", 0, 255), want, 32);
     check(dir / "b8.bmp", write8(dir / "b8.bmp"), want, 8);
     check(dir / "btd.bmp", writeTopDown(dir / "btd.bmp"), want, -24);
 
@@ -583,9 +585,10 @@ private:
     v.insert(v.end(), rows.begin(), rows.end());
     writeFile(p, v); return true;
   }
-  static bool write32(const std::filesystem::path& p, int alpha) {
+  static bool write32(const std::filesystem::path& p, int alpha, int lastAlpha = -1) {
+    if (lastAlpha < 0) lastAlpha = alpha;
     std::vector<uint8_t> rows{0,0,255,(uint8_t)alpha, 0,255,0,(uint8_t)alpha,
-                              255,0,0,(uint8_t)alpha, 255,255,255,(uint8_t)alpha};
+                              255,0,0,(uint8_t)alpha, 255,255,255,(uint8_t)lastAlpha};
     auto v = header(4, 1, 32, rows.size());
     v.insert(v.end(), rows.begin(), rows.end());
     writeFile(p, v); return true;
