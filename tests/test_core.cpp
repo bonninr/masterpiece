@@ -13533,6 +13533,7 @@ public:
 static VoicingEqTest g_voicingEq;
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/Panels.h"
+#include "../src/mp_ui/Settings.h"
 
 // Panels (#237): the organ as sections, a footage on its own line, and a
 // layout that reads back as it was saved.
@@ -13652,6 +13653,27 @@ public:
   }
 };
 static PanelsTest g_panels;
+
+// The Log tab's checks, the text a phone or tablet player sends with a report
+// (#197): the folders Masterpiece writes to, the audio, the organ.
+class DiagnosticsReportTest final : public mp::test::Test {
+public:
+  DiagnosticsReportTest() : Test("functional.ui.diagnostics-report", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const auto text = mp::ui::diagnosticsReport(proc);
+    MP_CHECK(text.contains("Settings folder: ") && text.contains("Sample cache: ") &&
+                 text.contains("Temporary folder: "),
+             "each folder Masterpiece writes to is checked");
+    MP_CHECK(!text.contains("CANNOT be written"),
+             "and each can be written here: " + text.toStdString());
+    MP_CHECK(text.contains("No organ is loaded"), "no organ is said plainly");
+    MP_CHECK(text.contains("Audio: ") && text.contains("MIDI inputs: ") &&
+                 text.contains("Impulse response: none"),
+             "audio, MIDI and the room are reported");
+  }
+};
+static DiagnosticsReportTest g_diagnosticsReport;
 
 // Version 3 of the format named a definition "Name.Organ.Hauptwerk.xml", dots
 // where later versions use underscores (Wildervank). It is offered beside the

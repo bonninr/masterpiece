@@ -121,6 +121,14 @@ void restoreHeldAccess() {
     heldList().replaceWithText(kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
 }
 
+juce::StringArray heldDocuments() {
+  juce::StringArray lines, paths;
+  lines.addLines(heldList().loadFileAsString());
+  for (const auto& line : lines)
+    if (line.containsChar('\t')) paths.add(line.upToFirstOccurrenceOf("\t", false, false));
+  return paths;
+}
+
 // ------------------------------------------------------------ the scene
 
 // The screen as the app has it now. JUCE reads UIScreen's bounds and the

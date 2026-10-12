@@ -310,6 +310,16 @@ static juce::File openInPlaceAndRemember(const juce::URL& document) {
 }
 #endif
 
+juce::File pickedFile(const juce::FileChooser& chooser) {
+ #if JUCE_IOS
+  const auto picked = chooser.getURLResult();
+  if (picked.isEmpty()) return {};
+  return holdPickedAccess(picked);
+ #else
+  return chooser.getResult();
+ #endif
+}
+
 void restoreLinkedDocuments() {
  #if JUCE_IOS
   restoreHeldAccess();
