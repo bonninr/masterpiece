@@ -13743,9 +13743,12 @@ public:
     const std::string xml = readFixture("two-bars.musicxml");
     MP_CHECK(!xml.empty(), "the fixture is present");
     eng.setPage(800, 600, 40);
+    const auto t0 = std::chrono::steady_clock::now();
     MP_CHECK(eng.load(xml), "the two-bar score loads: " + eng.error());
     MP_CHECK(eng.pageCount() == 1, "two bars fit one page");
     const std::string svg = eng.renderPage(1);
+    std::printf("score engraving: load + page, %.1f ms\n",
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     if (const char* out = std::getenv("MP_TEST_SCORE_SVG")) std::ofstream(out, std::ios::binary) << svg;
     MP_CHECK(svg.rfind("<?xml", 0) == 0 && svg.find("<svg") != std::string::npos, "the page is an SVG document");
     MP_CHECK(countOf(svg, "class=\"note\"") == 6, "six notes are drawn, got " + std::to_string(countOf(svg, "class=\"note\"")));
