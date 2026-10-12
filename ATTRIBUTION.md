@@ -156,5 +156,7 @@ packages, and [WavPack](https://www.wavpack.com/), which decodes compressed samp
 The Panic icon is from [Lucide](https://lucide.dev/) (ISC licence; the
 portions from Feather are MIT). The licence text is in `src/mp_ui/Icons.cpp`.
 
+The score panel engraves MusicXML with [Verovio](https://www.verovio.org/) (LGPL-3.0, compiled into the program from its published source) and draws it with the [Bravura](https://github.com/steinbergmedia/bravura) music font (SIL Open Font Licence 1.1), whose glyph outlines Verovio carries.
+
 Masterpiece is not affiliated with, nor endorsed by, any sample library
 producer or any other organ software.

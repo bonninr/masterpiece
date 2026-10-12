@@ -13718,3 +13718,116 @@ public:
 };
 static SharedStopSwitchTest g_sharedStopSwitch;
 #endif
+
+#ifdef MP_TEST_HAS_SCORE
+#include "../src/mp_score/ScoreEngraver.h"
+
+static size_t countOf(const std::string& text, const std::string& what) {
+  size_t n = 0;
+  for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + what.size())) ++n;
+  return n;
+}
+
+// The engraver takes MusicXML and gives back SVG: one page for two bars, with
+// a drawn note for each of the six in the file. Input that is not a score
+// fails with a reason and leaves the engraver usable.
+class ScoreEngraverTest final : public mp::test::Test {
+public:
+  ScoreEngraverTest() : Test("functional.score.engraver", Category::Functional) {}
+
+  void run() override {
+    mp::ScoreEngraver eng(MP_TEST_SCORE_DATA_DIR);
+    MP_CHECK(eng.ready(), "the font folder is found");
+    MP_CHECK(eng.pageCount() == 0 && eng.renderPage(1).empty(), "nothing is loaded yet");
+
+    const std::string xml = readFixture("two-bars.musicxml");
+    MP_CHECK(!xml.empty(), "the fixture is present");
+    eng.setPage(800, 600, 40);
+    MP_CHECK(eng.load(xml), "the two-bar score loads: " + eng.error());
+    MP_CHECK(eng.pageCount() == 1, "two bars fit one page");
+    const std::string svg = eng.renderPage(1);
+    if (const char* out = std::getenv("MP_TEST_SCORE_SVG")) std::ofstream(out, std::ios::binary) << svg;
+    MP_CHECK(svg.rfind("<?xml", 0) == 0 && svg.find("<svg") != std::string::npos, "the page is an SVG document");
+    MP_CHECK(countOf(svg, "class=\"note\"") == 6, "six notes are drawn, got " + std::to_string(countOf(svg, "class=\"note\"")));
+    MP_CHECK(svg.find("width=\"800px\"") != std::string::npos, "the page is 800 px wide, as asked: " + svg.substr(0, 160));
+    MP_CHECK(eng.renderPage(0).empty() && eng.renderPage(2).empty(), "pages outside the score give nothing");
+
+    // A narrower page breaks the same bars differently but keeps every note.
+    eng.setPage(200, 600, 40);
+    MP_CHECK(eng.pageCount() >= 1, "the score is engraved again for a new size");
+    size_t notes = 0;
+    for (int p = 1; p <= eng.pageCount(); ++p) notes += countOf(eng.renderPage(p), "class=\"note\"");
+    MP_CHECK(notes == 6, "no note is lost when the page narrows");
+
+    MP_CHECK(!eng.load("this is not a score"), "text that is not XML is refused");
+    MP_CHECK(!eng.error().empty(), "and says so");
+    MP_CHECK(eng.pageCount() == 0 && eng.renderPage(1).empty(), "a refused file leaves no page behind");
+    MP_CHECK(!eng.load(std::string()), "an empty file is refused");
+    MP_CHECK(eng.load(xml), "a good score loads after the bad ones");
+
+    mp::ScoreEngraver lost("/this/folder/does/not/exist");
+    MP_CHECK(!lost.ready() && !lost.load(xml), "a missing font folder is reported, not drawn without fonts");
+  }
+};
+static ScoreEngraverTest g_scoreEngraver;
+#endif
+
+#if defined(MP_TEST_HAS_SCORE) && defined(MP_TEST_HAS_AUDIO)
+#include "../src/mp_ui/ScorePanel.h"
+
+// The panel unpacks the fonts the program carries, engraves the two-bar score
+// at its own size and draws it: the picture is not blank, has ink in the
+// staff and the notes, and is written out for a look (MP_TEST_SCORE_PNG).
+class ScorePanelTest final : public mp::test::Test {
+public:
+  ScorePanelTest() : Test("functional.score.panel", Category::Functional) {}
+
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-score-fonts");
+    MP_CHECK(mp::ui::unpackScoreFonts(dir), "the built-in fonts unpack");
+    MP_CHECK(dir.getChildFile("Bravura.xml").existsAsFile() && dir.getChildFile("text").isDirectory(),
+             "the unpacked folder holds the font data");
+
+    mp::ui::ScorePanel panel(dir);
+    panel.setSize(900, 400);
+    const std::string xml = readFixture("two-bars.musicxml");
+    juce::MemoryBlock bytes(xml.data(), xml.size());
+    MP_CHECK(panel.openData(bytes, "two-bars.musicxml"), "the score opens in the panel");
+    MP_CHECK(panel.pageCount() == 1, "one page");
+    const juce::Image img = panel.render();
+
+    // A look at the result: MP_TEST_SCORE_PNG is a folder for pictures of the
+    // panel at its own width and at a narrower one.
+    const char* pngDir = std::getenv("MP_TEST_SCORE_PNG");
+    auto save = [&](const juce::Image& image, const char* name) {
+      if (pngDir == nullptr) return;
+      juce::File out = juce::File(pngDir).getChildFile(name);
+      out.deleteFile();
+      juce::FileOutputStream os(out);
+      juce::PNGImageFormat().writeImageToStream(image, os);
+    };
+    save(img, "panel-two-bars.png");
+    int dark = 0;
+    // The panel's dark margin and button bar are not ink: count only inside
+    // the white page.
+    for (int y = 52; y < img.getHeight() - 10; ++y)
+      for (int x = 10; x < img.getWidth() - 10; ++x)
+        if (img.getPixelAt(x, y).getBrightness() < 0.3f) ++dark;
+    MP_CHECK(dark > 500, "the score is drawn, dark pixels: " + std::to_string(dark));
+
+    panel.setSize(420, 300);
+    const juce::Image narrow = panel.render();
+    save(narrow, "panel-two-bars-narrow.png");
+    MP_CHECK(panel.pageCount() >= 1, "the score is engraved again for the narrower panel");
+
+    mp::ui::ScorePanel bad(dir);
+    bad.setSize(900, 400);
+    juce::MemoryBlock junk("not a score", 11);
+    MP_CHECK(!bad.openData(junk, "junk.xml"), "a file that is not a score is refused");
+    MP_CHECK(bad.pageCount() == 0, "and shows no page");
+    dir.deleteRecursively();
+  }
+};
+static ScorePanelTest g_scorePanel;
+#endif

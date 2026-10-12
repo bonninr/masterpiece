@@ -307,6 +307,7 @@ private:
   // a settings dialog it took the console away while it recorded.
   std::unique_ptr<juce::DocumentWindow> recorderWindow_;
   void toggleRecorder();
+  std::unique_ptr<juce::DocumentWindow> scoreWindow_;  // the score panel, when built
   void toggleCombinations();
   // Temperament, pitch and transposer. Labelled with what is in force, so the
   // panel behind it only has to open to change something.

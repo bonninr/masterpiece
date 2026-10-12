@@ -18,6 +18,13 @@ if(TARGET mp_dsp)
   target_link_libraries(mp_tests PRIVATE mp_dsp)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_DSP=1)
 endif()
+# The engraver reads the trimmed font folder the configure step prepared.
+if(TARGET mp_score)
+  target_link_libraries(mp_tests PRIVATE mp_score)
+  target_compile_definitions(mp_tests PRIVATE
+    MP_TEST_HAS_SCORE=1
+    MP_TEST_SCORE_DATA_DIR="${MP_SCORE_FONTS_DIR}")
+endif()
 # mp_audio carries the JUCE-backed backing store (SampleLibrary). Like mp_dsp
 # it only exists in the full build, so its tests are guarded the same way.
 if(TARGET mp_audio)
