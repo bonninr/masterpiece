@@ -24,8 +24,8 @@ void PageView::resized() {
   // As the main window does it: the whole page, as large as the window
   // allows, centred, the spare room split evenly either side.
   const auto area = getLocalBounds();
-  const float scale = juce::jmin(static_cast<float>(area.getWidth()) / static_cast<float>(art.getRight()),
-                                 static_cast<float>(area.getHeight()) / static_cast<float>(art.getBottom()));
+  // A window of its own shows its page whole, however small the page is.
+  const float scale = ConsoleView::fitScale(art, {}, area);
   console_.setTransform({});
   console_.setBounds(0, 0, art.getRight(), art.getBottom());
   console_.setTransform(juce::AffineTransform::scale(scale));
