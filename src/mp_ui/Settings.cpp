@@ -1179,15 +1179,32 @@ void MidiPanel::showSharedChannels() {
 void MidiPanel::refresh() {
   inputs_.clear();
   for (const auto& in : juce::MidiInput::getAvailableDevices()) {
-    auto b = std::make_unique<juce::ToggleButton>(in.name);
-    b->setToggleState(devices_.isMidiInputDeviceEnabled(in.identifier),
-                      juce::dontSendNotification);
+    // Ticked is what the player wants. A device another program holds cannot
+    // be opened (Windows gives a MIDI port to one program at a time): it stays
+    // ticked, says so, and is opened when it is free (#305).
+    const bool wanted = proc_.midiInputEnabled(in.name);
+    const bool open = devices_.isMidiInputDeviceEnabled(in.identifier);
+    auto b = std::make_unique<juce::ToggleButton>(
+        wanted && !open ? in.name + "  -  in use by another program; opened when it is free"
+                        : in.name);
+    b->setToggleState(wanted, juce::dontSendNotification);
     const auto id = in.identifier;
     auto* raw = b.get();
     const auto name = in.name;
     b->onClick = [this, id, name, raw] {
-      devices_.setMidiInputDeviceEnabled(id, raw->getToggleState());
-      proc_.setMidiInputEnabled(name, raw->getToggleState());
+      const bool on = raw->getToggleState();
+      devices_.setMidiInputDeviceEnabled(id, on);
+      proc_.setMidiInputEnabled(name, on);
+      const bool failed = on && !devices_.isMidiInputDeviceEnabled(id);
+      raw->setButtonText(failed ? name + "  -  in use by another program; opened when it is free"
+                                : name);
+      if (failed) {
+        juce::Logger::writeToLog("midi: " + name + " could not be opened");
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::WarningIcon, name + " could not be opened",
+            "Another program is probably using this MIDI device. Masterpiece keeps it ticked "
+            "and opens it as soon as the other program lets it go.");
+      }
     };
     addAndMakeVisible(*b);
     inputs_.push_back(std::move(b));

@@ -347,11 +347,15 @@ public:
     proc_->readMidiInputSwitches();
     for (const auto& in : juce::MidiInput::getAvailableDevices()) {
       devices_->setMidiInputDeviceEnabled(in.identifier, proc_->midiInputEnabled(in.name));
+      if (proc_->midiInputEnabled(in.name) && !devices_->isMidiInputDeviceEnabled(in.identifier))
+        juce::Logger::writeToLog("midi: " + in.name + " could not be opened (another program may "
+                                 "be using it); it is tried again every few seconds");
       auto route = std::make_unique<DeviceRoute>(
           *proc_, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());
       routes_.push_back({in.identifier, std::move(route)});
     }
+    midiRetry_ = std::make_unique<MidiRetry>(*devices_, *proc_);
     // And JACK's MIDI, which the inputs above do not include (#198).
     jackMidi_ = JackMidiInput::open(*proc_);
 
@@ -849,6 +853,7 @@ public:
     if (virtualInput_) virtualInput_->stop();
     virtualInput_.reset();
     virtualRoute_.reset();
+    midiRetry_.reset();
     jackMidi_.reset();  // its process thread hands messages to the processor
 
     if (devices_ && player_) {
@@ -903,6 +908,25 @@ private:
     }
   };
   std::unique_ptr<QuitWatch> quitWatch_;
+  // An input the player wants and another program holds (Windows gives a MIDI
+  // port to one program at a time) is opened as soon as it is free: before,
+  // it stayed shut until Masterpiece was started again (#305).
+  struct MidiRetry : juce::Timer {
+    MidiRetry(juce::AudioDeviceManager& d, mp::MasterpieceProcessor& p) : devices(d), proc(p) {
+      startTimer(3000);
+    }
+    void timerCallback() override {
+      for (const auto& in : juce::MidiInput::getAvailableDevices()) {
+        if (!proc.midiInputEnabled(in.name) || devices.isMidiInputDeviceEnabled(in.identifier)) continue;
+        devices.setMidiInputDeviceEnabled(in.identifier, true);
+        if (devices.isMidiInputDeviceEnabled(in.identifier))
+          juce::Logger::writeToLog("midi: " + in.name + " is free now and has been opened");
+      }
+    }
+    juce::AudioDeviceManager& devices;
+    mp::MasterpieceProcessor& proc;
+  };
+  std::unique_ptr<MidiRetry> midiRetry_;
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
         : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
