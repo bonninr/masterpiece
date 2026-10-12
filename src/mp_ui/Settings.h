@@ -431,6 +431,8 @@ class SettingsWindow : public juce::Component {
 public:
   SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
   ~SettingsWindow() override;
+  // Open on the tab of this name ("Audio"), when there is one.
+  void showTab(const juce::String& name);
   void resized() override;
 
   // Run once the window has closed, on the message thread: an organ's first
@@ -444,6 +446,9 @@ private:
   // General settings: the program and the player's console. What belongs to
   // the organ -- how it is loaded, which stops -- is OrganSettingsWindow.
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
+  // The output device and MIDI inputs: the toolbar's Audio window, which is
+  // set up once and seldom visited again (#276).
+  std::unique_ptr<juce::Component> audio_;
   ReverbPanel reverb_;
   MetronomePanel metronome_;
   MidiPanel midi_;

@@ -3,6 +3,7 @@
 #include <map>
 
 #include "ManualDialog.h"
+#include "Ui.h"
 
 namespace mp::ui {
 namespace {
@@ -2140,6 +2141,8 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
+  audio_ = std::make_unique<AudioSettingsPanel>(devices, p);
+  tabs_.addTab("Audio", bg, audio_.get(), false);
   tabs_.addTab("Room", bg, &reverb_, false);
   tabs_.addTab("Metronome", bg, &metronome_, false);
   tabs_.addTab("MIDI", bg, &midi_, false);
@@ -2152,6 +2155,11 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   // readout and a footer. Adding a row without adding height pushes the
   // Save buttons off the bottom, where they cannot be pressed at all.
   setSize(660, 560);
+}
+
+void SettingsWindow::showTab(const juce::String& name) {
+  const auto names = tabs_.getTabNames();
+  if (const int i = names.indexOf(name); i >= 0) tabs_.setCurrentTabIndex(i);
 }
 
 void SettingsWindow::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff15171c)); }

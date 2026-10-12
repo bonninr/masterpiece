@@ -1037,9 +1037,11 @@ private:
     // without a human having to click through a file dialog first.
     std::function<void()> onLoaded;
 
-    void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
+    void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {},
+                      const juce::String& tab = {}) {
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
       panel->onClosed = std::move(onClosed);
+      if (tab.isNotEmpty()) panel->showTab(tab);
       panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
@@ -1081,18 +1083,8 @@ private:
       mp::ui::launchDialog(opts);
     }
 
-    void showAudioSettings() {
-      auto panel = std::make_unique<mp::ui::AudioSettingsPanel>(
-          devices_, editor_->organProcessor());
-      juce::DialogWindow::LaunchOptions opts;
-      opts.content.setOwned(panel.release());
-      opts.dialogTitle = "Audio and MIDI";
-      opts.dialogBackgroundColour = juce::Colour(0xff15171c);
-      opts.escapeKeyTriggersCloseButton = true;
-      opts.useNativeTitleBar = true;
-      opts.resizable = true;
-      mp::ui::launchDialog(opts);
-    }
+    // Audio and MIDI are a tab of General settings (#276).
+    void showAudioSettings() { showSettings(editor_->organProcessor(), {}, "Audio"); }
 
    private:
     juce::AudioDeviceManager& devices_;

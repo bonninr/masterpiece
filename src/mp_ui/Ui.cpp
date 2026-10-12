@@ -327,10 +327,8 @@ void LevelMeter::paint(juce::Graphics& g) {
   }
 }
 
-TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSettings)
+TopBar::TopBar(MasterpieceProcessor& p)
     : proc_(p), meter_(p) {
-  addAndMakeVisible(load_);
-  addAndMakeVisible(audio_);
   addAndMakeVisible(simple_);
   addAndMakeVisible(meter_);
   addAndMakeVisible(volume_);
@@ -362,8 +360,6 @@ TopBar::TopBar(MasterpieceProcessor& p, Callback onLoad, Callback onAudioSetting
 
   addAndMakeVisible(status_);
   status_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
-  load_.onClick = std::move(onLoad);
-  audio_.onClick = std::move(onAudioSettings);
   simple_.onClick = [this] {
     auto sw = proc_.engineSwitch();
     sw.simpleWavOnly = simple_.getToggleState();
@@ -430,10 +426,6 @@ void TopBar::setStatus(const juce::String& text) {
 
 void TopBar::resized() {
   auto r = getLocalBounds().reduced(4);
-  load_.setBounds(r.removeFromLeft(64));
-  r.removeFromLeft(6);
-  audio_.setBounds(r.removeFromLeft(64));
-  r.removeFromLeft(6);
   simple_.setBounds(r.removeFromLeft(88));
   r.removeFromLeft(10);
   // When the console's buttons leave too little room, things give way in
@@ -572,8 +564,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
 MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     : juce::AudioProcessorEditor(p),
       proc_(p),
-      top_(p, [this] { showOpenMenu(); },
-           [this] { if (onAudioSettings) onAudioSettings(); }),
+      top_(p),
       console_(p),
       jamb_(p),
       expression_(p),
@@ -647,59 +638,13 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       if (choice >= 10) openPageWindow(page, {}, choice - 10);
     });
   };
-  addAndMakeVisible(settingsButton_);
-  settingsButton_.onClick = [this] {
-    // Two windows: what belongs to this organ, and what belongs to the
-    // program and the player's console.
-    juce::PopupMenu menu;
-    menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
-    // A licence confirmed for this organ can be taken back here.
-    if (proc_.organModel().hasLicensedSamples)
-      menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
-    menu.addItem(2, "General settings...");
-    menu.addItem(5, "Recorder...", true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
-    // Pages in windows of their own, for a second screen: the same as a
-    // right-click on a page's tab, here where it can be found.
-    if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
-      juce::PopupMenu pages;
-      for (int i = 0; i < console_.pageCount(); ++i)
-        pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
-      menu.addSeparator();
-      menu.addSubMenu("Open a page in its own window", pages);
-    }
-    // The same organ as another definition: a perspective, or full and light.
-    const juce::File loaded = proc_.loadedOrganFile();
-    const auto versions = MasterpieceProcessor::organVersions(loaded);
-    if (versions.size() > 1) {
-      juce::PopupMenu other;
-      for (int i = 0; i < versions.size(); ++i)
-        other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
-                      versions[i] == loaded);
-      menu.addSeparator();
-      menu.addSubMenu("Other versions of this organ", other);
-    }
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
-                       [this, versions](int choice) {
-                         if (choice == 1 && onOrganSettings) onOrganSettings();
-                         if (choice == 2 && onSettings) onSettings();
-                         if (choice == 5) toggleRecorder();
-                         if (choice == 4) {
-                           if (proc_.licenceConfirmed()) {
-                             proc_.setLicenceConfirmed(false);
-                             proc_.saveSettingsIfDirty();
-                             reloadOrgan();
-                           } else {
-                             askForLicence();
-                           }
-                         }
-                         if (choice >= 100 && choice - 100 < versions.size())
-                           loadOrgan(versions[choice - 100]);
-                         if (choice >= 300 && choice - 300 < console_.pageCount()) {
-                           if (auto* w = pageWindowFor(choice - 300)) closePageWindow(w);
-                           else openPageWindow(choice - 300);
-                         }
-                       });
-  };
+  for (auto* b : {&fileMenu_, &viewMenu_, &settingsButton_}) {
+    addAndMakeVisible(*b);
+    b->setTriggeredOnMouseDown(true);
+  }
+  fileMenu_.onClick = [this] { showFileMenu(); };
+  viewMenu_.onClick = [this] { showViewMenu(); };
+  settingsButton_.onClick = [this] { showSettingsMenu(); };
 
   // The sequencer. Held with "Set", stepping CAPTURES the frame it lands on,
   // which is how a registration is built for a piece.
@@ -730,25 +675,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   stepFrame_.setJustificationType(juce::Justification::centred);
   stepFrame_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
 
-  addAndMakeVisible(keysButton_);
-  keysButton_.onClick = [this] {
-    showingKeyboard_ = !showingKeyboard_;
-    resized();
-  };
-
   addAndMakeVisible(panicButton_);
-  panicButton_.setTooltip("Release every key on every manual and the pedal");
-  panicButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe0a0a0));
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
 
   combinations_ = std::make_unique<CombinationsWindow>(proc_);
-  addAndMakeVisible(combinationsButton_);
-  combinationsButton_.setTooltip("Generals, divisionals, the stepper and the "
-                                 "combination set, in a window of their own");
-  combinationsButton_.onClick = [this] { toggleCombinations(); };
-  addAndMakeVisible(panelsButton_);
-  panelsButton_.setTooltip("The organ's stops as big buttons, arranged and named as you like");
-  panelsButton_.onClick = [this] { showPanelsMenu(); };
 
   addAndMakeVisible(tuningButton_);
   tuningButton_.setTooltip("Temperament, pitch and transposer for this organ");
@@ -757,11 +687,6 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                                            tuningButton_.getScreenBounds(), nullptr);
   };
 
-  addAndMakeVisible(swellButton_);
-  swellButton_.onClick = [this] {
-    showingSwell_ = !showingSwell_;
-    resized();
-  };
 
   // The stop list's place on the toolbar is Panels' (#276): a panel shows
   // the same stops, arranged and named as the player likes. The plain list
@@ -1495,38 +1420,41 @@ void MasterpieceEditor::resized() {
   // status line absorbs the difference.
   auto bar = r.removeFromTop(36);
   layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
-  swellButton_.setVisible(expression_.shoeCount() > 0);
   // On a narrow window -- a monitor stood on end is 1080 wide -- the buttons
   // on the right left the bar on the left too little room, and the volume
   // fader went with it (#53). Below that, the buttons take a row of their own.
+  const int menuW = kMobile ? 84 : 70;
   bool stacked = false;
   {
-    constexpr int kFaderRowMin = 350;  // Open, Audio, No DSP and the fader
-    const int buttons = 90 + 70 + 64 + 110 + 140 + 30 + 64 + 30 + 56 +
-                        (layout_.isVisible() ? 130 : 0) +
-                        (swellButton_.isVisible() ? 70 : 0);
+    constexpr int kFaderRowMin = 350;  // the menus, No DSP and the fader
+    const int buttons = 70 + 140 + 64 + (kMobile ? 44 + 44 + 64 : 30 + 30 + 56) +
+                        (layout_.isVisible() ? 130 : 0);
     if (bar.getWidth() - buttons < kFaderRowMin) {
-      top_.setBounds(bar);
+      auto row = bar;
+      fileMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
+      viewMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
+      settingsButton_.setBounds(row.removeFromLeft(menuW + 14).reduced(2));
+      top_.setBounds(row);
       bar = r.removeFromTop(36);
       stacked = true;
     }
   }
-  settingsButton_.setBounds(bar.removeFromRight(90).reduced(2));
+  if (!stacked) {
+    fileMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
+    viewMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
+    settingsButton_.setBounds(bar.removeFromLeft(menuW + 14).reduced(2));
+  }
+  panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
-  keysButton_.setBounds(bar.removeFromRight(70).reduced(2));
-  // No swell button on an organ with nothing to enclose.
-  panicButton_.setBounds(bar.removeFromRight(64).reduced(2));
-  if (swellButton_.isVisible())
-    swellButton_.setBounds(bar.removeFromRight(70).reduced(2));
-  combinationsButton_.setBounds(bar.removeFromRight(110).reduced(2));
-  panelsButton_.setBounds(bar.removeFromRight(76).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
-  stepNext_.setBounds(bar.removeFromRight(30).reduced(2));
+  // A fingertip wide on a phone or tablet.
+  const int stepW = kMobile ? 44 : 30;
+  stepNext_.setBounds(bar.removeFromRight(stepW).reduced(2));
   stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
-  stepPrev_.setBounds(bar.removeFromRight(30).reduced(2));
-  setter_.setBounds(bar.removeFromRight(56).reduced(2));
+  stepPrev_.setBounds(bar.removeFromRight(stepW).reduced(2));
+  setter_.setBounds(bar.removeFromRight(kMobile ? 64 : 56).reduced(2));
   if (!stacked) top_.setBounds(bar);
 
   // The tabs keep a strip of their own, and only when there is more than one
@@ -1762,33 +1690,127 @@ void MasterpieceEditor::togglePanel() {
   showPanel(0);
 }
 
-void MasterpieceEditor::showPanelsMenu() {
-  // The first press on an organ with no panel makes one and shows it: the
-  // whole organ, every stop, as the stop list showed it.
-  if (panels_.empty()) {
-    addPanel();
-    return;
+void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
+  const bool onPanel = showingConsole_ && showingPanel_ >= 0;
+  menu.addItem(1002, console_.hasArtwork() ? "Console" : "Stop list", true, !onPanel);
+  for (size_t i = 0; i < panels_.size(); ++i)
+    menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
+                 onPanel && showingPanel_ == static_cast<int>(i));
+  // The first panel is the whole organ, every stop by division: what the
+  // stop list showed, as big buttons to arrange and name.
+  menu.addItem(1001, panels_.empty() ? "Panel of the whole organ" : "New panel",
+               static_cast<int>(panels_.size()) < kMaxPanels);
+  if (!panels_.empty()) {
+    juce::PopupMenu edit;
+    for (size_t i = 0; i < panels_.size(); ++i)
+      edit.addItem(1200 + static_cast<int>(i), "Rename " + panels_[i]->title() + "...");
+    for (size_t i = 0; i < panels_.size(); ++i)
+      edit.addItem(1100 + static_cast<int>(i), "Delete " + panels_[i]->title());
+    menu.addSubMenu("Rename or delete a panel", edit);
   }
+}
+
+void MasterpieceEditor::panelItemChosen(int r) {
+  if (r == 1001) addPanel();
+  else if (r == 1002) {
+    if (showingConsole_ && showingPanel_ >= 0) togglePanel();
+  } else if (r >= 1300) showPanel(r - 1300);
+  else if (r >= 1200) panels_[static_cast<size_t>(r - 1200)]->askForTitle();
+  else if (r >= 1100) deletePanel(r - 1100);
+}
+
+void MasterpieceEditor::toggleKeyboard() {
+  showingKeyboard_ = !showingKeyboard_;
+  resized();
+}
+
+void MasterpieceEditor::toggleSwell() {
+  showingSwell_ = !showingSwell_;
+  resized();
+}
+
+void MasterpieceEditor::showFileMenu() {
   juce::PopupMenu menu;
-  for (size_t i = 0; i < panels_.size(); ++i)
-    menu.addItem(300 + static_cast<int>(i), "Show " + panels_[i]->title(), true,
-                 showingPanel_ == static_cast<int>(i));
-  menu.addItem(2, console_.hasArtwork() ? "Show the console" : "Show the stop list",
-               showingConsole_ && showingPanel_ >= 0);
+  // One door (#276): the favourites, with the file dialog a button away in
+  // the same window; with no favourite yet, the file dialog itself.
+  menu.addItem(1, "Open...");
+  // The same organ as another definition: a perspective, or full and light.
+  const juce::File loaded = proc_.loadedOrganFile();
+  const auto versions = MasterpieceProcessor::organVersions(loaded);
+  if (versions.size() > 1) {
+    juce::PopupMenu other;
+    for (int i = 0; i < versions.size(); ++i)
+      other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
+                    versions[i] == loaded);
+    menu.addSubMenu("Other versions of this organ", other);
+  }
   menu.addSeparator();
-  menu.addItem(1, "Add a panel", static_cast<int>(panels_.size()) < kMaxPanels);
-  for (size_t i = 0; i < panels_.size(); ++i)
-    menu.addItem(200 + static_cast<int>(i), "Rename " + panels_[i]->title() + "...");
-  for (size_t i = 0; i < panels_.size(); ++i)
-    menu.addItem(100 + static_cast<int>(i), "Delete " + panels_[i]->title());
-  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&panelsButton_),
-                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int r) {
-                       if (safe == nullptr || r == 0) return;
-                       if (r == 1) safe->addPanel();
-                       else if (r == 2) safe->togglePanel();
-                       else if (r >= 300) safe->showPanel(r - 300);
-                       else if (r >= 200) safe->panels_[static_cast<size_t>(r - 200)]->askForTitle();
-                       else safe->deletePanel(r - 100);
+  menu.addItem(5, "Recorder...", true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
+                       if (safe == nullptr || c == 0) return;
+                       if (c == 1) safe->showOpenMenu();
+                       if (c == 5) safe->toggleRecorder();
+                       if (c >= 100 && c - 100 < versions.size()) safe->loadOrgan(versions[c - 100]);
+                     });
+}
+
+void MasterpieceEditor::showViewMenu() {
+  juce::PopupMenu menu;
+  addPanelItems(menu);
+  menu.addSeparator();
+  menu.addItem(10, "Combinations", combinations_ != nullptr,
+               combinations_ != nullptr && combinations_->isVisible());
+  if (expression_.shoeCount() > 0) menu.addItem(11, "Swell faders", true, showingSwell_);
+  menu.addItem(12, "Keyboard", true, showingKeyboard_);
+  // Pages in windows of their own, for a second screen: the same as a
+  // right-click on a page's tab, here where it can be found.
+  if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
+    juce::PopupMenu pages;
+    for (int i = 0; i < console_.pageCount(); ++i)
+      pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
+    menu.addSeparator();
+    menu.addSubMenu("A page in its own window", pages);
+  }
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
+                       if (safe == nullptr || c == 0) return;
+                       if (c >= 1000) safe->panelItemChosen(c);
+                       if (c == 10) safe->toggleCombinations();
+                       if (c == 11) safe->toggleSwell();
+                       if (c == 12) safe->toggleKeyboard();
+                       if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
+                         if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
+                         else safe->openPageWindow(c - 300);
+                       }
+                     });
+}
+
+void MasterpieceEditor::showSettingsMenu() {
+  // Two windows: what belongs to this organ, and what belongs to the
+  // program and the player's console; and the sound card, set up once.
+  juce::PopupMenu menu;
+  menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
+  // A licence confirmed for this organ can be taken back here.
+  if (proc_.organModel().hasLicensedSamples)
+    menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
+  menu.addItem(2, "General settings...");
+  if (onAudioSettings) menu.addItem(6, "Audio and MIDI...");
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
+                       if (safe == nullptr || c == 0) return;
+                       if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
+                       if (c == 2 && safe->onSettings) safe->onSettings();
+                       if (c == 6 && safe->onAudioSettings) safe->onAudioSettings();
+                       if (c == 4) {
+                         if (safe->proc_.licenceConfirmed()) {
+                           safe->proc_.setLicenceConfirmed(false);
+                           safe->proc_.saveSettingsIfDirty();
+                           safe->reloadOrgan();
+                         } else {
+                           safe->askForLicence();
+                         }
+                       }
                      });
 }
 
@@ -1851,7 +1873,7 @@ void MasterpieceEditor::timerCallback() {
       togglePanel();
       break;
     case MidiTargetKind::ConsoleToggleKeyboard:
-      keysButton_.triggerClick();
+      toggleKeyboard();
       break;
     case MidiTargetKind::ConsoleToggleCombinations:
       toggleCombinations();
