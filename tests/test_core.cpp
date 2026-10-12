@@ -11370,6 +11370,61 @@ public:
 };
 static MomentarySetTest g_momentarySet;
 
+// The sequencer's longer moves (#298): to the first frame and the last, and
+// ten either way, held at the ends as stepping is.
+class SequencerJumpsTest final : public mp::test::Test {
+public:
+  SequencerJumpsTest() : Test("functional.control.sequencer-jumps", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+
+    MP_CHECK(!proc.stepperFirst() && !proc.stepperLast() && !proc.stepperJump(10) && pc.frame() == 0,
+             "an empty sequence has nowhere to go");
+
+    // Twenty-five frames, the stop drawn in the odd ones.
+    proc.setCaptureMode(true);
+    for (int f = 1; f <= 25; ++f) {
+      proc.setStopEngaged(901, f % 2 == 1);
+      proc.stepperGoto(f);
+    }
+    proc.setCaptureMode(false);
+    MP_CHECK(pc.lastUsedFrame() == 25 && pc.frame() == 25, "twenty-five frames are stored");
+
+    MP_CHECK(proc.stepperFirst() && pc.frame() == 1 && proc.stopEngaged(901),
+             "first goes to frame 1 and recalls it");
+    MP_CHECK(!proc.stepperFirst(), "and stays there");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 11, "ten on from 1 is 11");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 21, "and 21");
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 25, "ten on from 21 stops at the last frame");
+    MP_CHECK(!proc.stepperJump(10) && pc.frame() == 25, "and goes no further");
+    MP_CHECK(proc.stepperJump(-10) && pc.frame() == 15, "ten back from 25 is 15");
+    MP_CHECK(proc.stepperJump(-10) && pc.frame() == 5, "and 5");
+    MP_CHECK(proc.stepperJump(-10) && pc.frame() == 1, "ten back from 5 stops at frame 1");
+    MP_CHECK(proc.stepperLast() && pc.frame() == 25 && proc.stopEngaged(901),
+             "last goes to the last frame that holds anything");
+    proc.stepperGoto(2);
+    MP_CHECK(!proc.stopEngaged(901), "an even frame pushes the stop in");
+
+    // With Set on, a jump may run past the end: that is how a sequence grows.
+    proc.stepperLast();
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.stepperJump(10) && pc.frame() == 35, "with Set on, ten on from 25 is 35");
+    proc.setCaptureMode(false);
+
+    // The new targets keep their names in a map file.
+    for (auto kind : {mp::MidiTargetKind::StepperFirst, mp::MidiTargetKind::StepperLast,
+                      mp::MidiTargetKind::StepperForward10, mp::MidiTargetKind::StepperBack10})
+      MP_CHECK(mp::MidiMap::isConsoleTarget(kind), "a sequencer target is kept for every organ");
+  }
+};
+static SequencerJumpsTest g_sequencerJumps;
+
 // The organ's own start signal (#263). Sets built on one template (Nancy,
 // Friesach, Oloron) start themselves with a hidden pair: "Hidden OffToOn"
 // moves 0 to 127 at load, a delay follows it, and the delay's top step

@@ -701,6 +701,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::StepperPrev:
           stepperPrev();
           continue;
+        case MidiTargetKind::StepperFirst:
+          stepperFirst();
+          continue;
+        case MidiTargetKind::StepperLast:
+          stepperLast();
+          continue;
+        case MidiTargetKind::StepperForward10:
+          stepperJump(10);
+          continue;
+        case MidiTargetKind::StepperBack10:
+          stepperJump(-10);
+          continue;
         case MidiTargetKind::PlayerGeneral:
           pressGeneral(static_cast<int>(action.targetId));
           continue;
@@ -3247,7 +3259,28 @@ bool MasterpieceProcessor::stepperPrev() {
   return true;
 }
 
+bool MasterpieceProcessor::stepperFirst() {
+  if (player_.frame() == 1) return false;
+  if (player_.lastUsedFrame() < 1 && !captureMode()) return false;
+  return stepperGoto(1);
+}
+
+bool MasterpieceProcessor::stepperLast() {
+  const int last = player_.lastUsedFrame();
+  if (last < 1 || player_.frame() == last) return false;
+  return stepperGoto(last);
+}
+
+bool MasterpieceProcessor::stepperJump(int frames) {
+  const int limit = captureMode() ? PlayerCombinations::kMaxFrames : player_.lastUsedFrame();
+  if (limit < 1) return false;
+  const int to = std::clamp(player_.frame() + frames, 1, limit);
+  if (to == player_.frame()) return false;
+  return stepperGoto(to);
+}
+
 bool MasterpieceProcessor::stepperGoto(int frame) {
+  const AudioLock audio(*this);
   const bool capturing = captureMode();
   playerScratch_.clear();
   const bool moved = player_.gotoFrame(

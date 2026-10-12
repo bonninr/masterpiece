@@ -26,6 +26,19 @@ public:
   void mouseUp(const juce::MouseEvent& e) override;
 };
 
+// The sequencer's frame readout: a click on it asks for the frame to go to.
+class FrameLabel : public juce::Label {
+public:
+  std::function<void()> onClick;
+  void mouseUp(const juce::MouseEvent& e) override {
+    if (onClick && !e.mouseWasDraggedSinceMouseDown()) onClick();
+  }
+};
+
+// Asks for a frame number and goes there (#298). A number past the last
+// frame holding anything goes to that last frame, unless the setter is on.
+void askForFrame(MasterpieceProcessor& p);
+
 class CombinationsPanel : public juce::Component, private juce::Timer {
 public:
   explicit CombinationsPanel(MasterpieceProcessor& p);
@@ -56,7 +69,11 @@ private:
   PistonButton generalCancel_{"GC"};
   PistonButton stepPrev_{"<"};
   PistonButton stepNext_{">"};
-  juce::Label frame_;
+  PistonButton stepFirst_{"|<"};
+  PistonButton stepLast_{">|"};
+  PistonButton stepBack10_{"-10"};
+  PistonButton stepForward10_{"+10"};
+  FrameLabel frame_;
   juce::TextButton insertFrame_{"Insert"};
   juce::TextButton deleteFrame_{"Delete"};
 

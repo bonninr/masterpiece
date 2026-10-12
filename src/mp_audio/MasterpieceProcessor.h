@@ -445,6 +445,13 @@ public:
   bool stepperNext();
   bool stepperPrev();
   bool stepperGoto(int frame);
+  // The longer moves (#298). First and last are the ends of the frames that
+  // hold anything. A jump of several frames stops at those ends, as stepping
+  // does; with the setter on it may run past the last one, as stepping may.
+  // False when there is nowhere to go.
+  bool stepperFirst();
+  bool stepperLast();
+  bool stepperJump(int frames);
   // Open a frame before the current one, or take the current one out; the
   // frames after it move along.
   bool stepperInsertFrame();

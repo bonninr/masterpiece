@@ -686,6 +686,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   addAndMakeVisible(stepFrame_);
   stepFrame_.setJustificationType(juce::Justification::centred);
   stepFrame_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+  stepFrame_.setTooltip("The sequencer's frame, out of the frames that hold a registration. "
+                        "Click to go to a frame by its number");
+  stepFrame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+  stepFrame_.onClick = [this] { askForFrame(proc_); };
 
   addAndMakeVisible(panicButton_);
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
@@ -1439,7 +1443,7 @@ void MasterpieceEditor::resized() {
   bool stacked = false;
   {
     constexpr int kFaderRowMin = 350;  // the menus, No DSP and the fader
-    const int buttons = 70 + 140 + 64 + (kMobile ? 44 + 44 + 64 : 30 + 30 + 56) +
+    const int buttons = 70 + 140 + 96 + (kMobile ? 44 + 44 + 64 : 30 + 30 + 56) +
                         (layout_.isVisible() ? 130 : 0);
     if (bar.getWidth() - buttons < kFaderRowMin) {
       auto row = bar;
@@ -1464,7 +1468,7 @@ void MasterpieceEditor::resized() {
   // A fingertip wide on a phone or tablet.
   const int stepW = kMobile ? 44 : 30;
   stepNext_.setBounds(bar.removeFromRight(stepW).reduced(2));
-  stepFrame_.setBounds(bar.removeFromRight(64).reduced(2));
+  stepFrame_.setBounds(bar.removeFromRight(96).reduced(2));
   stepPrev_.setBounds(bar.removeFromRight(stepW).reduced(2));
   setter_.setBounds(bar.removeFromRight(kMobile ? 64 : 56).reduced(2));
   if (!stacked) top_.setBounds(bar);
@@ -1921,8 +1925,8 @@ void MasterpieceEditor::timerCallback() {
   const int last = seq.lastUsedFrame();
   const bool capturing = proc_.captureMode();
   stepFrame_.setText(last == 0 && seq.frame() == 0
-                         ? juce::String("empty")
-                         : juce::String(seq.frame()) + " / " +
+                         ? juce::String("No frames")
+                         : "Frame " + juce::String(seq.frame()) + " / " +
                                juce::String(juce::jmax(last, seq.frame())),
                      juce::dontSendNotification);
   stepPrev_.setEnabled(seq.frame() > 1);

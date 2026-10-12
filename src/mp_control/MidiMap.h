@@ -67,6 +67,13 @@ enum class MidiTargetKind {
   // one or two keyboards plays an organ with three or four (#90, "virtual
   // keyboards"). id = routeKeyboardTarget(manual, channel).
   RouteKeyboard,
+  // The sequencer's longer moves (#298): to its first frame and its last, and
+  // ten frames either way. Added at the end; a map file names targets by
+  // word, so the order here is free.
+  StepperFirst,
+  StepperLast,
+  StepperForward10,
+  StepperBack10,
 };
 
 inline Id routeKeyboardTarget(Id keyboardId, int channel) { return keyboardId * 32 + channel; }
@@ -268,6 +275,10 @@ public:
     switch (k) {
       case MidiTargetKind::StepperNext:
       case MidiTargetKind::StepperPrev:
+      case MidiTargetKind::StepperFirst:
+      case MidiTargetKind::StepperLast:
+      case MidiTargetKind::StepperForward10:
+      case MidiTargetKind::StepperBack10:
       case MidiTargetKind::ConsoleNextPage:
       case MidiTargetKind::ConsolePrevPage:
       case MidiTargetKind::ConsoleNextLayout:
