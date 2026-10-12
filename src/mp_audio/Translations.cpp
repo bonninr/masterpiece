@@ -44,7 +44,11 @@ std::vector<Language> availableLanguages() {
 }
 
 juce::String systemLanguageCode() {
-  const auto system = juce::SystemStats::getUserLanguage().toLowerCase();
+  // "es" on most systems; "es-AR" or "es_AR" where the system adds the region.
+  const auto system = juce::SystemStats::getUserLanguage()
+                          .toLowerCase()
+                          .upToFirstOccurrenceOf("-", false, false)
+                          .upToFirstOccurrenceOf("_", false, false);
   return hasLanguage(system) ? system : juce::String("en");
 }
 
