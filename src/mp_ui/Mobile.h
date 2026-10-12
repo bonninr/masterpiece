@@ -106,6 +106,12 @@ void importDocument(const juce::URL& document, std::function<void(juce::File)> d
 // loaded; does nothing on the desktop.
 void restoreLinkedDocuments();
 
+// The file or folder a chooser gave back. On iPhone and iPad it is lent
+// through a security-scoped URL, and the loan is started and held as for an
+// organ: read by its plain path after the chooser closed, a picked impulse
+// response was refused and nothing was said (#197).
+juce::File pickedFile(const juce::FileChooser& chooser);
+
 #if JUCE_IOS
 // iPhone and iPad lend a picked document or folder through a security-scoped
 // URL (#197). Starts that access from the bookmark the file chooser keeps in
@@ -115,6 +121,8 @@ void restoreLinkedDocuments();
 juce::File holdPickedAccess(const juce::URL& picked);
 // Lends again, at startup, what was picked in earlier sessions.
 void restoreHeldAccess();
+// The paths of what is remembered as lent, for the checks in the Log tab.
+juce::StringArray heldDocuments();
 #endif
 
 }  // namespace mp::ui

@@ -4,6 +4,7 @@
 
 #include "ManualDialog.h"
 #include "Ui.h"
+#include "Mobile.h"
 
 namespace mp::ui {
 namespace {
@@ -169,7 +170,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
         juce::FileBrowserComponent::openMode |
             juce::FileBrowserComponent::canSelectDirectories,
         [this](const juce::FileChooser& fc) {
-          const auto dir = fc.getResult();
+          const auto dir = pickedFile(fc);
           if (dir.getFullPathName().isEmpty()) return;
           proc_.setCacheDirectory(dir);
           showCacheDir();
@@ -199,7 +200,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
         juce::FileBrowserComponent::openMode |
             juce::FileBrowserComponent::canSelectDirectories,
         [this](const juce::FileChooser& fc) {
-          const auto dir = fc.getResult();
+          const auto dir = pickedFile(fc);
           if (dir.getFullPathName().isEmpty()) return;
           proc_.setOrganRootOverride(dir);
           proc_.markSettingsDirty();
@@ -720,13 +721,24 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
-                            const auto f = fc.getResult();
-                            if (!f.existsAsFile()) return;
-                            if (proc_.convolver().loadImpulseResponse(f)) {
-                              irName_.setText("IR: " + f.getFileName(),
-                                              juce::dontSendNotification);
-                              enabled_.setToggleState(true, juce::sendNotification);
+                            if (fc.getURLResults().isEmpty()) return;  // cancelled
+                            const auto f = pickedFile(fc);
+                            juce::String why;
+                            if (!f.existsAsFile())
+                              why = "The file could not be read where it is.";
+                            else if (!proc_.convolver().loadImpulseResponse(f))
+                              why = f.getFileName() + " is not an impulse response Masterpiece "
+                                    "can read (WAV, AIFF or FLAC).";
+                            if (why.isNotEmpty()) {
+                              juce::Logger::writeToLog("impulse response not loaded: " +
+                                                       f.getFullPathName() + ": " + why);
+                              juce::AlertWindow::showMessageBoxAsync(
+                                  juce::MessageBoxIconType::WarningIcon,
+                                  "The impulse response was not loaded", why);
+                              return;
                             }
+                            irName_.setText("IR: " + f.getFileName(), juce::dontSendNotification);
+                            enabled_.setToggleState(true, juce::sendNotification);
                           });
   };
 
@@ -872,7 +884,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
-                            const auto f = fc.getResult();
+                            const auto f = pickedFile(fc);
                             if (f.existsAsFile()) proc_.recorder().loadFromFile(f);
                           });
   };
@@ -1935,10 +1947,160 @@ void MixerPanel::resized() {
 
 // ------------------------------------------------------- console display
 
-LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
-  juce::File file;
+namespace {
+juce::File logFile() {
   if (auto* logger = dynamic_cast<juce::FileLogger*>(juce::Logger::getCurrentLogger()))
-    file = logger->getLogFile();
+    return logger->getLogFile();
+  return {};
+}
+}  // namespace
+
+juce::String diagnosticsReport(MasterpieceProcessor& p) {
+  juce::StringArray out;
+  // 1 passed, -1 failed, 0 a fact with nothing to pass.
+  const auto row = [&out](int state, const juce::String& what) {
+    out.add(juce::String(state > 0 ? "ok      " : state < 0 ? "FAILED  " : "        ") + what);
+  };
+  // A folder Masterpiece has to be able to write to.
+  const auto folder = [&row](const juce::String& name, const juce::File& dir) {
+    if (dir == juce::File()) {
+      row(-1, name + ": none");
+      return;
+    }
+    dir.createDirectory();
+    const auto probe = dir.getChildFile(".masterpiece-check");
+    const bool wrote = probe.replaceWithText("check") && probe.loadFileAsString() == "check";
+    probe.deleteFile();
+    const double freeGb = static_cast<double>(dir.getBytesFreeOnVolume()) / (1024.0 * 1024.0 * 1024.0);
+    row(wrote ? 1 : -1, name + ": " + dir.getFullPathName() +
+                            (wrote ? ", can be written, " : ", CANNOT be written, ") +
+                            juce::String(freeGb, 1) + " GB free");
+  };
+  const auto readable = [](const juce::File& f) {
+    if (f.isDirectory()) return true;
+    juce::FileInputStream in(f);
+    return in.openedOk();
+  };
+
+  juce::String version = "plug-in";
+  if (auto* app = juce::JUCEApplicationBase::getInstance()) version = app->getApplicationVersion();
+  out.add("Masterpiece " + version + ", " + juce::SystemStats::getOperatingSystemName() + ", " +
+          juce::SystemStats::getDeviceDescription());
+  out.add(juce::String(juce::SystemStats::getNumCpus()) + " processors, " +
+          juce::String(juce::SystemStats::getMemorySizeInMegabytes()) + " MB of memory");
+  out.add("Checked " + juce::Time::getCurrentTime().toISO8601(true));
+  out.add({});
+
+  const auto data = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                        .getChildFile("Masterpiece");
+  folder("Settings folder", data);
+  folder("Sample cache", p.cacheDirectory());
+  if (p.cacheDirectorySetting() != juce::File() && p.cacheDirectorySetting() != p.cacheDirectory())
+    row(-1, "The cache folder chosen in Loading cannot be used, so the usual one is: " +
+                p.cacheDirectorySetting().getFullPathName());
+  folder("Temporary folder", juce::File::getSpecialLocation(juce::File::tempDirectory));
+  {
+    juce::int64 bytes = 0;
+    const auto caches = p.cacheDirectory().findChildFiles(juce::File::findFiles, false, "*.mpcache");
+    for (const auto& f : caches) bytes += f.getSize();
+    row(0, "Cache files: " + juce::String(caches.size()) + ", " +
+               juce::String(static_cast<double>(bytes) / (1024.0 * 1024.0), 0) + " MB");
+    row(0, "Organs unpacked from their archives: " +
+               juce::String(data.getChildFile("Packaged").getNumberOfChildFiles(juce::File::findDirectories)));
+  }
+  {
+    const auto log = logFile();
+    if (log == juce::File()) row(-1, "No log is being written");
+    else row(log.existsAsFile() ? 1 : -1, "Log: " + log.getFullPathName() + ", " +
+                                             juce::String(log.getSize() / 1024) + " KB");
+  }
+
+  const double rate = p.getSampleRate();
+  row(rate > 0.0 ? 1 : -1,
+      rate > 0.0 ? "Audio: " + juce::String(rate, 0) + " Hz, blocks of " + juce::String(p.getBlockSize()) + " frames"
+                 : juce::String("Audio: not running"));
+  {
+    juce::StringArray names;
+    for (const auto& d : juce::MidiInput::getAvailableDevices()) names.add(d.name);
+    row(0, "MIDI inputs: " + (names.isEmpty() ? juce::String("none") : names.joinIntoString(", ")));
+  }
+
+  const auto odf = p.loadedOrganFile();
+  if (odf == juce::File()) {
+    row(0, "No organ is loaded");
+  } else {
+    row(odf.existsAsFile() ? 1 : -1, "Organ: " + odf.getFullPathName() +
+                                         (odf.existsAsFile() ? "" : " (the file is no longer there)"));
+    row(readable(odf) ? 1 : -1, readable(odf) ? "The organ's definition can be read"
+                                              : "The organ's definition CANNOT be read");
+    const juce::File organRoot(p.organRootDir());
+    row(organRoot.isDirectory() ? 1 : -1, "Organ folder: " + organRoot.getFullPathName());
+    const auto& model = p.organModel();
+    row(0, juce::String(static_cast<int>(model.ranks.size())) + " ranks, " +
+               juce::String(static_cast<int>(model.stops.size())) + " stops, " +
+               juce::String(static_cast<int>(model.displayPages.size())) + " console pages");
+  }
+  const auto storage = p.sampleStorage();
+  row(0, juce::String("Samples kept as ") +
+             (storage == SampleStorage::Int16 ? "16-bit" : storage == SampleStorage::Int24 ? "24-bit" : "32-bit float") +
+             ", memory limit " +
+             (p.memoryLimitSettingMB() > 0 ? juce::String(p.memoryLimitSettingMB()) + " MB" : juce::String("not set")) +
+             ", " + juce::String(p.streamUnderruns()) + " stream underruns");
+  row(0, "Impulse response: " + (p.convolver().hasImpulseResponse() ? p.convolver().impulseResponseName()
+                                                                    : juce::String("none")));
+ #if JUCE_IOS
+  const auto held = heldDocuments();
+  row(0, "Documents lent by the Files app: " + juce::String(held.size()));
+  for (const auto& path : held) {
+    const juce::File f(path);
+    const bool there = f.exists() && readable(f);
+    row(there ? 1 : -1, "  " + path + (there ? "" : " (cannot be read now)"));
+  }
+ #endif
+  return out.joinIntoString("\n");
+}
+
+void LogPanel::runChecks() { report_.setText(diagnosticsReport(proc_), false); }
+
+juce::String LogPanel::reportWithLog() {
+  if (report_.isEmpty()) runChecks();
+  juce::StringArray lines;
+  lines.addLines(logFile().loadFileAsString());
+  const int from = juce::jmax(0, lines.size() - 200);
+  lines.removeRange(0, from);
+  return report_.getText() + "\n\n---- the end of the log ----\n" + lines.joinIntoString("\n");
+}
+
+LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
+  const juce::File file = logFile();
+  check_.setTooltip("The folders Masterpiece writes to, the audio, the organ and its files");
+  check_.onClick = [this] { runChecks(); };
+  addAndMakeVisible(check_);
+  copy_.setTooltip("The checks and the last 200 lines of the log, to paste into a bug report");
+  copy_.onClick = [this] { juce::SystemClipboard::copyTextToClipboard(reportWithLog()); };
+  addAndMakeVisible(copy_);
+  send_.onClick = [this] {
+    const auto report = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("masterpiece-report.txt");
+    report.replaceWithText(reportWithLog());
+    juce::Array<juce::URL> files;
+    files.add(juce::URL(report));
+    const auto log = logFile();
+    if (log.existsAsFile()) files.add(juce::URL(log));
+    const auto previous = log.getSiblingFile("masterpiece.previous.log");
+    if (previous.existsAsFile()) files.add(juce::URL(previous));
+    sending_ = juce::ContentSharer::shareFilesScoped(files, [](bool, const juce::String&) {}, this);
+  };
+  // Only a phone or a tablet has a share sheet; a desktop opens the folder.
+  addChildComponent(send_);
+  send_.setVisible(kMobile);
+  report_.setMultiLine(true);
+  report_.setReadOnly(true);
+  report_.setScrollbarsShown(true);
+  report_.setFont(juce::Font(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
+  report_.setTextToShowWhenEmpty("Run the checks to see what Masterpiece finds on this device.",
+                                 juce::Colours::grey);
+  addAndMakeVisible(report_);
   about_.setText("Masterpiece always keeps a log of this session, and the previous one beside "
                  "it. Attach it to a bug report.\n\n" +
                      (file == juce::File() ? juce::String("No log is being written.")
@@ -1948,7 +2110,8 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(about_);
   open_.setEnabled(file != juce::File());
   open_.onClick = [file] { file.revealToUser(); };
-  addAndMakeVisible(open_);
+  addChildComponent(open_);
+  open_.setVisible(!kMobile);
   midi_.setToggleState(proc_.midiLogging(), juce::dontSendNotification);
   midi_.setTooltip("For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed.");
   midi_.onClick = [this] { proc_.setMidiLogging(midi_.getToggleState()); };
@@ -1963,10 +2126,19 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
 void LogPanel::resized() {
   auto r = getLocalBounds().reduced(16);
   about_.setBounds(r.removeFromTop(80));
-  open_.setBounds(r.removeFromTop(30).removeFromLeft(200));
-  r.removeFromTop(16);
+  auto buttons = r.removeFromTop(kMobile ? 40 : 30);
+  if (open_.isVisible()) open_.setBounds(buttons.removeFromLeft(180).reduced(0, 1));
+  buttons.removeFromLeft(open_.isVisible() ? 8 : 0);
+  check_.setBounds(buttons.removeFromLeft(130).reduced(0, 1));
+  buttons.removeFromLeft(8);
+  copy_.setBounds(buttons.removeFromLeft(140).reduced(0, 1));
+  buttons.removeFromLeft(8);
+  if (send_.isVisible()) send_.setBounds(buttons.removeFromLeft(220).reduced(0, 1));
+  r.removeFromTop(12);
   midi_.setBounds(r.removeFromTop(28));
   releases_.setBounds(r.removeFromTop(28));
+  r.removeFromTop(8);
+  report_.setBounds(r);
 }
 
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {

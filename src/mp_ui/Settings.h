@@ -385,15 +385,30 @@ private:
 // Where the log is, and the two detailed logs a report may ask for, without
 // the command line (#53: starting a program with flags is awkward on macOS).
 // Both last until Masterpiece is closed.
+// A phone or a tablet has no command line and no folder to open, so the tab
+// also checks what a report needs and gives it as text to copy or send: the
+// program and the device, each folder Masterpiece writes to, the audio, the
+// organ, and every document the Files app has lent (#197).
+juce::String diagnosticsReport(MasterpieceProcessor& p);
+
 class LogPanel : public juce::Component {
 public:
   explicit LogPanel(MasterpieceProcessor& p);
   void resized() override;
 
 private:
+  void runChecks();
+  // The checks, then the end of the log.
+  juce::String reportWithLog();
+
   MasterpieceProcessor& proc_;
   juce::Label about_;
   juce::TextButton open_{"Open the log folder"};
+  juce::TextButton check_{"Run the checks"};
+  juce::TextButton copy_{"Copy the report"};
+  juce::TextButton send_{"Send the report and the log"};
+  juce::TextEditor report_;
+  juce::ScopedMessageBox sending_;
   juce::ToggleButton midi_{"Log every MIDI message and what became of it"};
   juce::ToggleButton releases_{"Log every key release: the release played, its length and start"};
 };

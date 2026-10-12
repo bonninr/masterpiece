@@ -1,4 +1,5 @@
 #include "TuningPanel.h"
+#include "Mobile.h"
 
 #include "../mp_core/Temperament.h"
 
@@ -52,7 +53,7 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
-                            const auto f = fc.getResult();
+                            const auto f = pickedFile(fc);
                             if (!f.existsAsFile()) return;
                             std::string why;
                             if (!proc_.setTemperament("scala:" + f.getFullPathName().toStdString(), &why))
