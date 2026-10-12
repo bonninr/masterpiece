@@ -100,9 +100,36 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   stepNext_.onRightClick = [this] {
     showMidiMenu(stepNext_, MidiTargetKind::StepperNext, 0, false);
   };
+  addAndMakeVisible(stepFirst_);
+  stepFirst_.setTooltip("The first frame");
+  stepFirst_.onClick = [this] { proc_.stepperFirst(); };
+  stepFirst_.onRightClick = [this] {
+    showMidiMenu(stepFirst_, MidiTargetKind::StepperFirst, 0, false);
+  };
+  addAndMakeVisible(stepLast_);
+  stepLast_.setTooltip("The last frame that holds anything");
+  stepLast_.onClick = [this] { proc_.stepperLast(); };
+  stepLast_.onRightClick = [this] {
+    showMidiMenu(stepLast_, MidiTargetKind::StepperLast, 0, false);
+  };
+  addAndMakeVisible(stepBack10_);
+  stepBack10_.setTooltip("Ten frames back");
+  stepBack10_.onClick = [this] { proc_.stepperJump(-10); };
+  stepBack10_.onRightClick = [this] {
+    showMidiMenu(stepBack10_, MidiTargetKind::StepperBack10, 0, false);
+  };
+  addAndMakeVisible(stepForward10_);
+  stepForward10_.setTooltip("Ten frames on");
+  stepForward10_.onClick = [this] { proc_.stepperJump(10); };
+  stepForward10_.onRightClick = [this] {
+    showMidiMenu(stepForward10_, MidiTargetKind::StepperForward10, 0, false);
+  };
   addAndMakeVisible(frame_);
   frame_.setJustificationType(juce::Justification::centred);
   frame_.setColour(juce::Label::textColourId, kText);
+  frame_.setTooltip("Click to go to a frame by its number");
+  frame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+  frame_.onClick = [this] { askForFrame(proc_); };
   addAndMakeVisible(insertFrame_);
   insertFrame_.setTooltip("Open an empty frame here; the frames after it move up one");
   insertFrame_.onClick = [this] { proc_.stepperInsertFrame(); };
@@ -272,13 +299,17 @@ void CombinationsPanel::resized() {
   setter_.setBounds(row.removeFromLeft(56).reduced(1));
   row.removeFromLeft(kGap);
   generalCancel_.setBounds(row.removeFromLeft(56).reduced(1));
-  row.removeFromLeft(24);
+  row.removeFromLeft(12);
+  stepFirst_.setBounds(row.removeFromLeft(34).reduced(1));
+  stepBack10_.setBounds(row.removeFromLeft(40).reduced(1));
   stepPrev_.setBounds(row.removeFromLeft(34).reduced(1));
-  frame_.setBounds(row.removeFromLeft(120));
+  frame_.setBounds(row.removeFromLeft(110));
   stepNext_.setBounds(row.removeFromLeft(34).reduced(1));
+  stepForward10_.setBounds(row.removeFromLeft(40).reduced(1));
+  stepLast_.setBounds(row.removeFromLeft(34).reduced(1));
   row.removeFromLeft(kGap * 2);
-  insertFrame_.setBounds(row.removeFromLeft(64).reduced(1));
-  deleteFrame_.setBounds(row.removeFromLeft(64).reduced(1));
+  insertFrame_.setBounds(row.removeFromLeft(56).reduced(1));
+  deleteFrame_.setBounds(row.removeFromLeft(56).reduced(1));
   r.removeFromTop(kSection);
 
   row = r.removeFromTop(kHeading);
@@ -372,6 +403,10 @@ void CombinationsPanel::refreshState() {
                  juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
   stepNext_.setEnabled(capturing || pc.frame() < last);
+  stepFirst_.setEnabled(pc.frame() != 1 && (last > 0 || capturing));
+  stepBack10_.setEnabled(pc.frame() > 1);
+  stepForward10_.setEnabled(capturing || pc.frame() < last);
+  stepLast_.setEnabled(last > 0 && pc.frame() != last);
   deleteFrame_.setEnabled(pc.frame() >= 1 && last > 0);
   setDelete_.setEnabled(!proc_.combinationSetName().empty());
 
@@ -397,6 +432,35 @@ void CombinationsPanel::refreshSets() {
     if (n == proc_.combinationSetName()) selected = static_cast<int>(i) + 1;
   }
   setBox_.setSelectedId(selected, juce::dontSendNotification);
+}
+
+void askForFrame(MasterpieceProcessor& p) {
+  // One at a time, and gone with its answer.
+  static std::unique_ptr<juce::AlertWindow> prompt;
+  const int last = p.playerCombinations().lastUsedFrame();
+  prompt = std::make_unique<juce::AlertWindow>(
+      "Go to a frame",
+      last > 0 ? "A frame number, 1 to " + juce::String(last) + ":"
+               : juce::String("A frame number:"),
+      juce::MessageBoxIconType::NoIcon);
+  prompt->addTextEditor("frame", "", "Frame");
+  if (auto* editor = prompt->getTextEditor("frame")) {
+    editor->setInputRestrictions(3, "0123456789");
+    editor->setKeyboardType(juce::TextInputTarget::numericKeyboard);
+  }
+  prompt->addButton("Go", 1, juce::KeyPress(juce::KeyPress::returnKey));
+  prompt->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  prompt->enterModalState(true, juce::ModalCallbackFunction::create([&p](int result) {
+    const int typed = result == 1 && prompt != nullptr
+                          ? prompt->getTextEditorContents("frame").getIntValue()
+                          : 0;
+    prompt.reset();
+    if (typed < 1) return;
+    // Past the end is the end, unless the setter is on and the sequence may grow.
+    const int last = p.playerCombinations().lastUsedFrame();
+    const int to = p.captureMode() ? typed : juce::jmin(typed, last);
+    if (to >= 1 && to != p.playerCombinations().frame()) p.stepperGoto(to);
+  }));
 }
 
 void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
