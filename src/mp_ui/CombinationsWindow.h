@@ -74,8 +74,8 @@ private:
   PistonButton stepBack10_{"-10"};
   PistonButton stepForward10_{"+10"};
   FrameLabel frame_;
-  juce::TextButton insertFrame_{"Insert"};
-  juce::TextButton deleteFrame_{"Delete"};
+  juce::TextButton insertFrame_{TRANS("Insert")};
+  juce::TextButton deleteFrame_{TRANS("Delete")};
 
   juce::Label generalsLabel_;
   juce::TextButton fewerGenerals_{"-"};

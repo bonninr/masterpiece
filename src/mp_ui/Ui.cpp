@@ -669,16 +669,16 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   setter_.onClick = [this] {
     if (proc_.captureMode()) {
       proc_.setCaptureMode(false);
-      top_.setStatus("Set is off: pistons recall again");
+      top_.setStatus(TRANS("Set is off: pistons recall again"));
       return;
     }
     const auto where = proc_.storeTargetName();
     if (!proc_.storeIntoTarget()) {
-      top_.setStatus("Choose a piston or a step first; then Set stores what is drawn into it");
+      top_.setStatus(TRANS("Choose a piston or a step first; then Set stores what is drawn into it"));
       return;
     }
     proc_.saveCombinationsIfDirty();
-    top_.setStatus("Stored in " + juce::String(where));
+    top_.setStatus(TRANS("Stored in %1").replace("%1", juce::String(where)));
   };
 
   addAndMakeVisible(stepPrev_);
@@ -688,8 +688,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   addAndMakeVisible(stepFrame_);
   stepFrame_.setJustificationType(juce::Justification::centred);
   stepFrame_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
-  stepFrame_.setTooltip("The sequencer's frame, out of the frames that hold a registration. "
-                        "Click to go to a frame by its number");
+  stepFrame_.setTooltip(TRANS("The sequencer's frame, out of the frames that hold a registration. "
+                              "Click to go to a frame by its number"));
   stepFrame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
   stepFrame_.onClick = [this] { askForFrame(proc_); };
 
@@ -1943,9 +1943,10 @@ void MasterpieceEditor::timerCallback() {
   const int last = seq.lastUsedFrame();
   const bool capturing = proc_.captureMode();
   stepFrame_.setText(last == 0 && seq.frame() == 0
-                         ? juce::String("No frames")
-                         : "Frame " + juce::String(seq.frame()) + " / " +
-                               juce::String(juce::jmax(last, seq.frame())),
+                         ? TRANS("No frames")
+                         : TRANS("Frame %1 / %2")
+                               .replace("%1", juce::String(seq.frame()))
+                               .replace("%2", juce::String(juce::jmax(last, seq.frame()))),
                      juce::dontSendNotification);
   stepPrev_.setEnabled(seq.frame() > 1);
   stepNext_.setEnabled(capturing || seq.frame() < last);
@@ -1953,11 +1954,11 @@ void MasterpieceEditor::timerCallback() {
   {
     const auto where = proc_.storeTargetName();
     const juce::String tip =
-        capturing ? juce::String("Set is on from the console or the combinations window: "
-                                 "pistons store. Press to let it go.")
-        : where.empty() ? juce::String("Set: choose a piston or a step, draw the stops, "
-                                       "then press Set to store them there")
-                        : "Set: store what is drawn into " + juce::String(where);
+        capturing ? TRANS("Set is on from the console or the combinations window: "
+                          "pistons store. Press to let it go.")
+        : where.empty() ? TRANS("Set: choose a piston or a step, draw the stops, "
+                                "then press Set to store them there")
+                        : TRANS("Set: store what is drawn into %1").replace("%1", juce::String(where));
     if (setter_.getTooltip() != tip) setter_.setTooltip(tip);
   }
   {

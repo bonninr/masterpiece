@@ -335,7 +335,7 @@ private:
   // Momentary (#276): stores what is drawn into the piston or step chosen
   // last. Lit while capture is on from elsewhere -- the console's own Set,
   // the combinations window -- and then a press lets capture go.
-  juce::TextButton setter_{"Set"};
+  juce::TextButton setter_{TRANS("Set")};
   FrameLabel stepFrame_;
   // The console already shows the organ's own manuals; a second giant
   // keyboard underneath is duplicate furniture, so it is off by default and

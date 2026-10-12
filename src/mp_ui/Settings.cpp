@@ -1203,7 +1203,7 @@ void MidiPanel::refresh() {
     const bool wanted = proc_.midiInputEnabled(in.name);
     const bool open = devices_.isMidiInputDeviceEnabled(in.identifier);
     auto b = std::make_unique<juce::ToggleButton>(
-        wanted && !open ? in.name + "  -  in use by another program; opened when it is free"
+        wanted && !open ? TRANS("%1  -  in use by another program; opened when it is free").replace("%1", in.name)
                         : in.name);
     b->setToggleState(wanted, juce::dontSendNotification);
     const auto id = in.identifier;
@@ -1214,14 +1214,14 @@ void MidiPanel::refresh() {
       devices_.setMidiInputDeviceEnabled(id, on);
       proc_.setMidiInputEnabled(name, on);
       const bool failed = on && !devices_.isMidiInputDeviceEnabled(id);
-      raw->setButtonText(failed ? name + "  -  in use by another program; opened when it is free"
+      raw->setButtonText(failed ? TRANS("%1  -  in use by another program; opened when it is free").replace("%1", name)
                                 : name);
       if (failed) {
         juce::Logger::writeToLog("midi: " + name + " could not be opened");
         juce::AlertWindow::showMessageBoxAsync(
-            juce::MessageBoxIconType::WarningIcon, name + " could not be opened",
-            "Another program is probably using this MIDI device. Masterpiece keeps it ticked "
-            "and opens it as soon as the other program lets it go.");
+            juce::MessageBoxIconType::WarningIcon, TRANS("%1 could not be opened").replace("%1", name),
+            TRANS("Another program is probably using this MIDI device. Masterpiece keeps it ticked "
+                  "and opens it as soon as the other program lets it go."));
       }
     };
     addAndMakeVisible(*b);
