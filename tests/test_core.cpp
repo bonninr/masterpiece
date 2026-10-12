@@ -482,6 +482,7 @@ public:
 
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/BmpImage.h"
+#include "../src/mp_ui/Console.h"
 #include "../src/mp_audio/Convolver.h"
 
 // A Hauptwerk impulse-response package ships one room at several sample
@@ -9417,6 +9418,34 @@ static LibraryMatchTest g_libraryMatch;
 static LoaderMissingElementsTest g_loaderMissing;
 #ifdef MP_TEST_HAS_AUDIO
 static BmpImageTest g_bmpImage;
+
+// A page far smaller than the organ's first page is a panel of its own: the
+// GrandOrgue demo's Noises panel, 300 by 160 beside a console of 1007 by 663,
+// filled the window at six times its size (#299).
+class SmallPageScaleTest final : public mp::test::Test {
+public:
+  SmallPageScaleTest() : Test("functional.ui.small-page-scale", Category::Functional) {}
+  void run() override {
+    using R = juce::Rectangle<int>;
+    const R area(0, 0, 2014, 1326), first(0, 0, 1007, 663);
+    const auto near = [](float a, float b) { return std::abs(a - b) < 0.001f; };
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(first, first, area), 2.0f),
+             "the first page fills the area");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 300, 160), first, area), 2.0f),
+             "a small panel is magnified as the first page is");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 900, 600), first, area), 1326.0f / 600.0f),
+             "a page near the first page's size fills the area as before");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 300, 600), first, area), 1326.0f / 600.0f),
+             "a page small one way only fills the area as before");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 300, 160), R(), area), 2014.0f / 300.0f),
+             "with no first page measured, the page fills the area");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 300, 160), first, R(0, 0, 150, 80)), 80.0f / 663.0f),
+             "in a small area the panel keeps the first page's scale");
+    MP_CHECK(near(mp::ui::ConsoleView::fitScale(R(0, 0, 300, 160), R(), R(0, 0, 150, 80)), 0.5f),
+             "and a window of its own fits it whole");
+  }
+};
+static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;

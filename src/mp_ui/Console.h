@@ -72,6 +72,11 @@ public:
   bool hasArtwork() const { return hasArtwork_; }
   // The artwork's own pixel size, which is what the editor scales to fit.
   juce::Rectangle<int> artworkBounds() const { return extent_; }
+  // The scale at which this page fits an area. A page far smaller than the
+  // organ's first page (the GrandOrgue demo's Noises panel is 300 by 160) is
+  // magnified as the first page is, and no further (#299).
+  float fitScale(juce::Rectangle<int> area) const { return fitScale(extent_, firstExtent_, area); }
+  static float fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first, juce::Rectangle<int> area);
 
 private:
   // One drawn thing: an instance, the switch that owns it (if any), and where.
@@ -208,6 +213,9 @@ private:
   // The picture shown while frozen; invalid otherwise.
   juce::Image frozen_;
   juce::Rectangle<int> extent_;
+  // The first page's extent, and the organ and layout it was measured for.
+  juce::Rectangle<int> firstExtent_;
+  std::string firstOf_;
   std::string organRoot_;
 
   // Cache key is (imageSetId, frame index). A miss is remembered too, as a

@@ -1517,10 +1517,6 @@ void MasterpieceEditor::resized() {
     } else {
       console_.setTransform({});
       console_.setBounds(0, 0, art.getRight(), art.getBottom());
-      const float sx = static_cast<float>(r.getWidth()) /
-                       static_cast<float>(art.getRight());
-      const float sy = static_cast<float>(r.getHeight()) /
-                       static_cast<float>(art.getBottom());
       // Scale UP as well as down. The old cap at 1.0 meant a console drawn
       // smaller than the window sat at its native size with a band of dead
       // background beside it, which read as part of the program rather than
@@ -1529,8 +1525,9 @@ void MasterpieceEditor::resized() {
       // Uniformly, and never to fill the width exactly: the console is a
       // photograph of a real instrument, so stretching it to the window's
       // aspect would visibly distort the case and the keys. Whichever
-      // dimension runs out first sets the size.
-      const float scale = juce::jmin(sx, sy);
+      // dimension runs out first sets the size. A small panel of its own is
+      // magnified as the console is, and no further.
+      const float scale = console_.fitScale(r);
       console_.setTransform(juce::AffineTransform::scale(scale));
 
       // Centre by moving the VIEWPORT, not the console inside it: a viewport

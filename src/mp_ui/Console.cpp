@@ -328,6 +328,14 @@ void ConsoleView::rebuild() {
   }
 
   hasArtwork_ = !items_.empty() || !keys_.empty() || !texts_.empty();
+  const std::string firstOf = organRoot_ + "#" + std::to_string(layout_);
+  if (pageIndex_ == 0) {
+    firstExtent_ = extent_;
+    firstOf_ = firstOf;
+  } else if (firstOf_ != firstOf) {
+    firstExtent_ = {};
+    firstOf_.clear();
+  }
   setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
 
   // Only poll while there is something on screen whose picture can change
@@ -638,6 +646,20 @@ void ConsoleView::setLayout(int layout) {
   if (frozen_.isValid()) return;  // drawn so by the rebuild that ends the load
   rebuild();
   repaint();
+}
+
+float ConsoleView::fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first,
+                            juce::Rectangle<int> area) {
+  if (art.getRight() <= 0 || art.getBottom() <= 0) return 1.0f;
+  const auto fit = [&area](juce::Rectangle<int> r) {
+    return juce::jmin(static_cast<float>(area.getWidth()) / static_cast<float>(r.getRight()),
+                      static_cast<float>(area.getHeight()) / static_cast<float>(r.getBottom()));
+  };
+  float scale = fit(art);
+  // Half the first page or less, both ways: a small panel of its own.
+  if (first.getRight() >= art.getRight() * 2 && first.getBottom() >= art.getBottom() * 2)
+    scale = juce::jmin(scale, fit(first));
+  return scale;
 }
 
 void ConsoleView::setPage(int index) {
