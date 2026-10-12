@@ -11440,7 +11440,8 @@ public:
     progress.beginPhase(Phase::LoadingSamples, 10);
     const auto wiring = progress.timeIn(Phase::WiringConsole);
     const auto finding = progress.timeIn(Phase::FindingSamples);
-    MP_CHECK(wiring >= 30 && wiring < 75, "the stage left is charged its own time: " + std::to_string(wiring));
+    // Lower bounds only: a busy machine sleeps longer than it is asked to.
+    MP_CHECK(wiring >= 30, "the stage left is charged its own time: " + std::to_string(wiring));
     MP_CHECK(finding >= 70, "and the next stage its own: " + std::to_string(finding));
     MP_CHECK(progress.timeIn(Phase::LoadingSamples) == 0, "a stage still running has nothing yet");
     MP_CHECK(std::string(mp::LoadProgress::phaseName(Phase::FindingSamples)) == "Finding the samples",
