@@ -162,10 +162,7 @@ void ScorePanel::timerCallback() { engrave(); }
 
 juce::Image ScorePanel::render() {
   if (isTimerRunning()) engrave();
-  juce::Image image(juce::Image::ARGB, std::max(1, getWidth()), std::max(1, getHeight()), true);
-  juce::Graphics g(image);
-  paint(g);
-  return image;
+  return createComponentSnapshot(getLocalBounds(), false);
 }
 
 void ScorePanel::paint(juce::Graphics& g) {
