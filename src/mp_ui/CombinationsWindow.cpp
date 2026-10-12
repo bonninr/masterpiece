@@ -41,14 +41,14 @@ void paintPiston(juce::TextButton& b, bool set, bool lit) {
 }
 
 juce::String describe(const MidiBinding& b) {
-  juce::String what = b.source.kind == MidiSourceKind::Note          ? "Note "
-                      : b.source.kind == MidiSourceKind::ProgramChange ? "Program "
-                      : b.source.kind == MidiSourceKind::SysEx         ? "SysEx #"
-                                                                       : "CC ";
-  what << b.source.number;
-  if (b.source.channel > 0) what << " ch " << b.source.channel;
+  juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
+                      : b.source.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
+                      : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
+                                                                       : TRANS("CC %1");
+  what = what.replace("%1", juce::String(b.source.number));
+  if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
   if (b.targetKind == MidiTargetKind::Setter)
-    what << (b.trigger == MidiTrigger::Momentary ? "  (held)" : "  (toggles)");
+    what << "  " << (b.trigger == MidiTrigger::Momentary ? TRANS("(held)") : TRANS("(toggles)"));
   return what;
 }
 
@@ -76,15 +76,15 @@ void PistonButton::mouseUp(const juce::MouseEvent& e) {
 CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(setter_);
   setter_.setClickingTogglesState(true);
-  setter_.setTooltip("While Set is on, pressing a piston stores what is drawn "
-                     "instead of recalling it");
+  setter_.setTooltip(TRANS("While Set is on, pressing a piston stores what is drawn "
+                           "instead of recalling it"));
   setter_.onClick = [this] { proc_.setCaptureMode(setter_.getToggleState()); };
   setter_.onRightClick = [this] {
     showMidiMenu(setter_, MidiTargetKind::Setter, kSetterTarget, true);
   };
 
   addAndMakeVisible(generalCancel_);
-  generalCancel_.setTooltip("General cancel: push in every stop, coupler and tremulant");
+  generalCancel_.setTooltip(TRANS("General cancel: push in every stop, coupler and tremulant"));
   generalCancel_.onClick = [this] { proc_.pressGeneralCancel(); };
   generalCancel_.onRightClick = [this] {
     showMidiMenu(generalCancel_, MidiTargetKind::PlayerGeneralCancel, 0, false);
@@ -131,20 +131,20 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   frame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
   frame_.onClick = [this] { askForFrame(proc_); };
   addAndMakeVisible(insertFrame_);
-  insertFrame_.setTooltip("Open an empty frame here; the frames after it move up one");
+  insertFrame_.setTooltip(TRANS("Open an empty frame here; the frames after it move up one"));
   insertFrame_.onClick = [this] { proc_.stepperInsertFrame(); };
   addAndMakeVisible(deleteFrame_);
-  deleteFrame_.setTooltip("Take this frame out; the frames after it move down one");
+  deleteFrame_.setTooltip(TRANS("Take this frame out; the frames after it move down one"));
   deleteFrame_.onClick = [this] { proc_.stepperDeleteFrame(); };
 
   addAndMakeVisible(generalsLabel_);
-  styleHeading(generalsLabel_, "Generals");
+  styleHeading(generalsLabel_, TRANS("Generals"));
   for (auto* b : {&fewerGenerals_, &moreGenerals_, &fewerDivisionals_, &moreDivisionals_})
     addAndMakeVisible(*b);
-  fewerGenerals_.setTooltip("Show fewer generals");
-  moreGenerals_.setTooltip("Show more generals");
-  fewerDivisionals_.setTooltip("Show fewer divisionals on each division");
-  moreDivisionals_.setTooltip("Show more divisionals on each division");
+  fewerGenerals_.setTooltip(TRANS("Show fewer generals"));
+  moreGenerals_.setTooltip(TRANS("Show more generals"));
+  fewerDivisionals_.setTooltip(TRANS("Show fewer divisionals on each division"));
+  moreDivisionals_.setTooltip(TRANS("Show more divisionals on each division"));
   auto changeCounts = [this](int dg, int dd) {
     const auto& pc = proc_.playerCombinations();
     const int g = dg == 0 ? pc.generalCount() : pc.generalCount() + dg * kPerRow;
@@ -159,10 +159,10 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   moreDivisionals_.onClick = [changeCounts] { changeCounts(0, 1); };
 
   addAndMakeVisible(divisionalsLabel_);
-  styleHeading(divisionalsLabel_, "Divisionals");
+  styleHeading(divisionalsLabel_, TRANS("Divisionals"));
 
   addAndMakeVisible(setLabel_);
-  styleHeading(setLabel_, "Set in use");
+  styleHeading(setLabel_, TRANS("Set in use"));
   addAndMakeVisible(setBox_);
   setBox_.onChange = [this] {
     const int idx = setBox_.getSelectedId() - 1;
@@ -177,11 +177,11 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(setNew_);
   setNew_.onClick = [this] {
     setPrompt_ = std::make_unique<juce::AlertWindow>(
-        "Save as new set", "A name for this registration set:",
+        TRANS("Save as new set"), TRANS("A name for this registration set:"),
         juce::MessageBoxIconType::NoIcon);
-    setPrompt_->addTextEditor("name", "", "Name");
-    setPrompt_->addButton("Save", 1);
-    setPrompt_->addButton("Cancel", 0);
+    setPrompt_->addTextEditor("name", "", TRANS("Name"));
+    setPrompt_->addButton(TRANS("Save"), 1);
+    setPrompt_->addButton(TRANS("Cancel"), 0);
     setPrompt_->enterModalState(
         true, juce::ModalCallbackFunction::create([this](int result) {
           const juce::String name =
@@ -263,7 +263,7 @@ void CombinationsPanel::rebuild() {
       row.pistons.push_back(std::move(b));
     }
     row.cancel = std::make_unique<PistonButton>("0");
-    row.cancel->setTooltip("Cancel this division");
+    row.cancel->setTooltip(TRANS("Cancel this division"));
     auto* raw = row.cancel.get();
     row.cancel->onClick = [this, div] { proc_.pressDivisionalCancel(div); };
     row.cancel->onRightClick = [this, raw, div] {
@@ -396,10 +396,11 @@ void CombinationsPanel::refreshState() {
   }
 
   const int last = pc.lastUsedFrame();
-  frame_.setText(pc.frame() == 0 ? (last == 0 ? juce::String("No frames")
-                                              : "- of " + juce::String(last))
-                                 : "Frame " + juce::String(pc.frame()) + " of " +
-                                       juce::String(std::max(last, pc.frame())),
+  frame_.setText(pc.frame() == 0 ? (last == 0 ? juce::String(TRANS("No frames"))
+                                              : TRANS("- of %1").replace("%1", juce::String(last)))
+                                 : TRANS("Frame %1 of %2")
+                                       .replace("%1", juce::String(pc.frame()))
+                                       .replace("%2", juce::String(std::max(last, pc.frame()))),
                  juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
   stepNext_.setEnabled(capturing || pc.frame() < last);
@@ -412,11 +413,11 @@ void CombinationsPanel::refreshState() {
 
   const auto& map = proc_.midiMap();
   note_.setText(map.learning()
-                    ? "Now press the control on your console that should do "
-                      "this. Right-click the piston again to cancel."
-                    : "Hold Set and press a piston to store what is drawn. "
-                      "A piston never set does nothing. Right-click any piston "
-                      "to map it to your console.",
+                    ? TRANS("Now press the control on your console that should do "
+                            "this. Right-click the piston again to cancel.")
+                    : TRANS("Hold Set and press a piston to store what is drawn. "
+                            "A piston never set does nothing. Right-click any piston "
+                            "to map it to your console."),
                 juce::dontSendNotification);
 }
 
@@ -428,7 +429,7 @@ void CombinationsPanel::refreshSets() {
   int selected = 1;
   for (size_t i = 0; i < setNames_.size(); ++i) {
     const auto& n = setNames_[i];
-    setBox_.addItem(n.empty() ? "(default)" : juce::String(n), static_cast<int>(i) + 1);
+    setBox_.addItem(n.empty() ? TRANS("(default)") : juce::String(n), static_cast<int>(i) + 1);
     if (n == proc_.combinationSetName()) selected = static_cast<int>(i) + 1;
   }
   setBox_.setSelectedId(selected, juce::dontSendNotification);
@@ -473,20 +474,20 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   }
   juce::PopupMenu menu;
   const auto existing = map.bindingsFor(kind, targetId);
-  if (existing.empty()) menu.addSectionHeader("Not mapped");
+  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
   for (const MidiBinding* binding : existing) menu.addSectionHeader(describe(*binding));
   menu.addSeparator();
   if (offerHold) {
-    menu.addItem(1, "Learn: held while pressed");
-    menu.addItem(2, "Learn: toggles");
+    menu.addItem(1, TRANS("Learn: held while pressed"));
+    menu.addItem(2, TRANS("Learn: toggles"));
   } else {
-    menu.addItem(1, "Learn");
+    menu.addItem(1, TRANS("Learn"));
   }
   menu.addSeparator();
   // Every message, its channel and device, and a key of the computer
   // keyboard, as the console's switches have (#226).
-  menu.addItem(4, "MIDI window...");
-  menu.addItem(3, "Clear mapping", !existing.empty());
+  menu.addItem(4, TRANS("MIDI window..."));
+  menu.addItem(3, TRANS("Clear mapping"), !existing.empty());
 
   const juce::String name = b.getButtonText();
   menu.showMenuAsync(
@@ -516,7 +517,7 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
 // ------------------------------------------------------ CombinationsWindow
 
 CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
-    : juce::DocumentWindow("Combinations", kBackground,
+    : juce::DocumentWindow(TRANS("Combinations"), kBackground,
                            juce::DocumentWindow::closeButton),
       proc_(p),
       panel_(std::make_unique<CombinationsPanel>(p)) {
@@ -543,8 +544,8 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   content_.addAndMakeVisible(onTop_);
   setOff_.setToggleState(p.setOffAfterStore(), juce::dontSendNotification);
   setOff_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
-  setOff_.setTooltip("After a piston clicked here has stored a combination, Set turns off, "
-                     "so the next click recalls it instead of overwriting it");
+  setOff_.setTooltip(TRANS("After a piston clicked here has stored a combination, Set turns off, "
+                           "so the next click recalls it instead of overwriting it"));
   setOff_.onClick = [this] { proc_.setSetOffAfterStore(setOff_.getToggleState()); };
   content_.addAndMakeVisible(setOff_);
   content_.addAndMakeVisible(viewport_);

@@ -139,7 +139,7 @@ private:
   bool editing_ = false;
 
   juce::OwnedArray<juce::TextButton> sectionButtons_;
-  juce::TextButton edit_{"Edit"}, save_{"Save"}, detach_{"Detach"}, rename_{"Rename"};
+  juce::TextButton edit_{TRANS("Edit")}, save_{TRANS("Save")}, detach_{TRANS("Detach")}, rename_{TRANS("Rename")};
   juce::ComboBox scheme_;
   juce::Viewport viewport_;
   juce::Component body_;

@@ -65,8 +65,8 @@ private:
 
   MasterpieceProcessor& proc_;
 
-  PistonButton setter_{"Set"};
-  PistonButton generalCancel_{"GC"};
+  PistonButton setter_{TRANS("Set")};
+  PistonButton generalCancel_{TRANS("GC")};
   PistonButton stepPrev_{"<"};
   PistonButton stepNext_{">"};
   PistonButton stepFirst_{"|<"};
@@ -95,8 +95,8 @@ private:
 
   juce::Label setLabel_;
   juce::ComboBox setBox_;
-  juce::TextButton setNew_{"Save as..."};
-  juce::TextButton setDelete_{"Delete"};
+  juce::TextButton setNew_{TRANS("Save as...")};
+  juce::TextButton setDelete_{TRANS("Delete")};
   std::vector<std::string> setNames_;
   std::unique_ptr<juce::AlertWindow> setPrompt_;
 
@@ -133,8 +133,8 @@ private:
       if (layout) layout();
     }
   } content_;
-  juce::ToggleButton onTop_{"Always on top"};
-  juce::ToggleButton setOff_{"Set turns off after storing"};
+  juce::ToggleButton onTop_{TRANS("Always on top")};
+  juce::ToggleButton setOff_{TRANS("Set turns off after storing")};
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it

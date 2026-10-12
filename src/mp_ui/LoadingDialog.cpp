@@ -30,8 +30,8 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
     // cannot make the load stop sooner, and a dead-looking button invites a
     // second press.
     cancel_.setEnabled(false);
-    cancel_.setButtonText("Cancelling...");
-    detail_.setText("Finishing the file it is reading",
+    cancel_.setButtonText(TRANS("Cancelling..."));
+    detail_.setText(TRANS("Finishing the file it is reading"),
                     juce::dontSendNotification);
     if (onCancel) onCancel();
   };
@@ -42,14 +42,35 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
 
 LoadingDialog::~LoadingDialog() { stopTimer(); }
 
+// LoadProgress is below the interface and has no translations of its own, so
+// the words for each phase are given here.
+static juce::String phaseText(LoadProgress::Phase p) {
+  switch (p) {
+    case LoadProgress::Phase::OpeningArchive:    return TRANS("Opening the archive");
+    case LoadProgress::Phase::ReadingArchive:    return TRANS("Reading the archive");
+    case LoadProgress::Phase::ExtractingArchive: return TRANS("Extracting definitions and artwork");
+    case LoadProgress::Phase::ReadingDefinition: return TRANS("Reading the organ definition");
+    case LoadProgress::Phase::BuildingWind:      return TRANS("Building the wind model");
+    case LoadProgress::Phase::WiringConsole:     return TRANS("Wiring the console");
+    case LoadProgress::Phase::LoadingSamples:    return TRANS("Loading samples");
+    case LoadProgress::Phase::Preparing:         return TRANS("Preparing to play");
+    case LoadProgress::Phase::BuildingConsole:   return TRANS("Building the console");
+    case LoadProgress::Phase::Done:              return TRANS("Ready");
+    case LoadProgress::Phase::Cancelled:         return TRANS("Cancelled");
+    case LoadProgress::Phase::Failed:            return TRANS("Failed");
+    case LoadProgress::Phase::Idle:              break;
+  }
+  return {};
+}
+
 // Whole seconds are noise on a multi-minute estimate; "about 4 minutes" is
 // both truer and easier to read than "4:07 remaining" that is wrong by a
 // minute either way.
 static juce::String humanise(double secs) {
-  if (secs < 45.0) return "less than a minute";
+  if (secs < 45.0) return TRANS("less than a minute");
   const int mins = static_cast<int>(secs / 60.0 + 0.5);
-  if (mins <= 1) return "about a minute";
-  return "about " + juce::String(mins) + " minutes";
+  if (mins <= 1) return TRANS("about a minute");
+  return TRANS("about %1 minutes").replace("%1", juce::String(mins));
 }
 
 juce::String LoadingDialog::estimateRemaining() {
@@ -86,7 +107,7 @@ void LoadingDialog::timerCallback() {
     etaSeconds_ = -1.0;
   }
   if (!cancelling_)
-    phase_.setText(LoadProgress::phaseName(phase), juce::dontSendNotification);
+    phase_.setText(phaseText(phase), juce::dontSendNotification);
 
   const double f = p.fraction();
   barValue_ = f;  // negative keeps the bar indeterminate rather than faking 0%
@@ -95,18 +116,20 @@ void LoadingDialog::timerCallback() {
     const int done = p.done.load(std::memory_order_relaxed);
     const int total = p.total.load(std::memory_order_relaxed);
     if (!cancelling_ && total > 0) {
-      juce::String text = juce::String(done) + " of " + juce::String(total) +
-                          " samples";
+      juce::String text = TRANS("%1 of %2 samples")
+                              .replace("%1", juce::String(done))
+                              .replace("%2", juce::String(total));
       const auto eta = estimateRemaining();
-      if (eta.isNotEmpty()) text += "   -   " + eta + " left";
+      if (eta.isNotEmpty()) text += "   -   " + TRANS("%1 left").replace("%1", eta);
       detail_.setText(text, juce::dontSendNotification);
     }
   } else if (!cancelling_ && (phase == LoadProgress::Phase::ReadingArchive ||
                               phase == LoadProgress::Phase::ExtractingArchive)) {
-    const juce::String operation = phase == LoadProgress::Phase::ReadingArchive
-                                      ? " of archive scanned" : " of files processed";
-    detail_.setText(f >= 0.0 ? juce::String(static_cast<int>(f * 100.0)) + "%" + operation
-                            : juce::String("This may take a few minutes"),
+    const juce::String percent = juce::String(static_cast<int>(f * 100.0));
+    detail_.setText(f >= 0.0 ? (phase == LoadProgress::Phase::ReadingArchive
+                                    ? TRANS("%1% of archive scanned")
+                                    : TRANS("%1% of files processed")).replace("%1", percent)
+                            : juce::String(TRANS("This may take a few minutes")),
                     juce::dontSendNotification);
   } else if (!cancelling_) {
     // Every other phase counts nothing, and inventing a number would be a lie

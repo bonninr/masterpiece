@@ -107,12 +107,12 @@ private:
   std::vector<RankRow> ranks_;
   std::unique_ptr<juce::Label> ranksHeading_;
   juce::TextEditor filter_;
-  juce::TextButton loadShown_{"Load shown ranks"}, leaveShown_{"Leave out shown ranks"};
+  juce::TextButton loadShown_{TRANS("Load shown ranks")}, leaveShown_{TRANS("Leave out shown ranks")};
   std::set<std::string> perspectivesOut() const;
 
   // About stops only: perspectives and ranks keep their own choices (#53).
-  juce::TextButton all_{"All stops"}, none_{"No stops"}, drawn_{"Only the stops drawn now"};
-  juce::TextButton reloadNow_{"Load the organ again"};
+  juce::TextButton all_{TRANS("All stops")}, none_{TRANS("No stops")}, drawn_{TRANS("Only the stops drawn now")};
+  juce::TextButton reloadNow_{TRANS("Load the organ again")};
   juce::Label total_;
   juce::Label note_;
 
@@ -136,8 +136,8 @@ private:
   void apply();
   void showValues();
   MasterpieceProcessor& proc_;
-  juce::ToggleButton on_{"On"};
-  juce::TextButton flat_{"Flat"}, save_{"Save for this organ"};
+  juce::ToggleButton on_{TRANS("On")};
+  juce::TextButton flat_{TRANS("Flat")}, save_{TRANS("Save for this organ")};
   juce::Label note_;
   std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
   std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;

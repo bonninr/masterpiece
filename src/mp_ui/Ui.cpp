@@ -20,7 +20,7 @@ juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
   const auto it = divs.find(divisionId);
   if (it != divs.end() && !it->second.name.empty())
     return juce::String(it->second.name);
-  return "Division " + juce::String(divisionId);
+  return TRANS("Division %1").replace("%1", juce::String(divisionId));
 }
 
 constexpr int kStopHeight = 30;
@@ -47,10 +47,11 @@ void showWithLog(const juce::String& title, const juce::String& message) {
   }
   juce::AlertWindow::showOkCancelBox(
       juce::MessageBoxIconType::WarningIcon, title,
-      message + "\n\nThe details are in the log, " + log.getFileName() +
-          ". If Masterpiece has been started again since, they are in "
-          "masterpiece.previous.log beside it.",
-      "Show the log", "OK", nullptr,
+      message + "\n\n" +
+          TRANS("The details are in the log, %1. If Masterpiece has been started again since, "
+                "they are in masterpiece.previous.log beside it.")
+              .replace("%1", log.getFileName()),
+      TRANS("Show the log"), TRANS("OK"), nullptr,
       juce::ModalCallbackFunction::create([log](int choice) {
         if (choice == 1) log.revealToUser();
       }));
@@ -96,12 +97,12 @@ void StopJamb::rebuild() {
     e.button->setEnabled(s.playable);
     if (s.playable && !proc_.stopLoaded(s.stopId)) {
       e.button->setAlpha(0.45f);
-      e.button->setTooltip("Not loaded: chosen in Organ settings, Stops");
+      e.button->setTooltip(TRANS("Not loaded: chosen in Organ settings, Stops"));
     }
     if (!s.playable) {
       // Say WHY rather than just greying it: on a demo set this is the single
       // most confusing thing about the instrument.
-      e.button->setTooltip("This stop's ranks ship no pipes in this sample set");
+      e.button->setTooltip(TRANS("This stop's ranks ship no pipes in this sample set"));
     }
     const Id id = s.stopId;
     auto* raw = e.button.get();
@@ -196,7 +197,7 @@ void ExpressionBar::rebuild() {
       if (name.startsWith(word) && name.length() > juce::String(word).length())
         name = name.substring(juce::String(word).length()).trim();
     shoes.emplace_back(proc_.playerControlFor(enc.continuousControlId),
-                       name.isEmpty() ? juce::String("Swell") : name);
+                       name.isEmpty() ? juce::String(TRANS("Swell")) : name);
   }
   std::sort(shoes.begin(), shoes.end());
   // Two boxes worked by one shoe are one slider.
@@ -376,15 +377,15 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   const float db = proc_.speakerKeepAlive();
   keepAwake_.setToggleState(db < 0.0f, juce::dontSendNotification);
   keepAwake_.setTooltip(
-      "For a battery speaker that switches itself off after a few seconds of "
-      "silence and swallows the first notes while it wakes. Plays a 20 Hz tone "
-      "too low and too quiet to hear under the organ, so the line is never "
-      "silent.");
+      TRANS("For a battery speaker that switches itself off after a few seconds of "
+            "silence and swallows the first notes while it wakes. Plays a 20 Hz tone "
+            "too low and too quiet to hear under the organ, so the line is never "
+            "silent."));
   level_.setRange(-80.0, -40.0, 1.0);
   level_.setTextValueSuffix(" dB");
   level_.setValue(db < 0.0f ? db : -60.0, juce::dontSendNotification);
-  level_.setTooltip("Raise it if the speaker still goes to sleep; lower it if "
-                    "you can hear it.");
+  level_.setTooltip(TRANS("Raise it if the speaker still goes to sleep; lower it if "
+                          "you can hear it."));
   level_.setEnabled(keepAwake_.getToggleState());
   keepAwake_.onClick = [this] { apply(); };
   level_.onDragEnd = [this] { apply(); };
@@ -452,13 +453,14 @@ void TopBar::resized() {
 void MasterpieceEditor::askForFolderOf(const juce::File& package, bool graphicsOnly) {
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   juce::AlertWindow::showOkCancelBox(
-      juce::MessageBoxIconType::QuestionIcon, "The rest of " + package.getFileName(),
-      package.getFileName() + " is one part of a set of several files. Choose the folder that holds "
-      "all of them, and Masterpiece reads the set from there.",
-      "Choose the folder", "Cancel", nullptr,
+      juce::MessageBoxIconType::QuestionIcon, TRANS("The rest of %1").replace("%1", package.getFileName()),
+      TRANS("%1 is one part of a set of several files. Choose the folder that holds "
+            "all of them, and Masterpiece reads the set from there.")
+          .replace("%1", package.getFileName()),
+      TRANS("Choose the folder"), TRANS("Cancel"), nullptr,
       juce::ModalCallbackFunction::create([self, package, graphicsOnly](int ok) {
         if (self == nullptr || ok == 0) return;
-        self->chooser_ = std::make_unique<juce::FileChooser>("Choose the folder that holds the set",
+        self->chooser_ = std::make_unique<juce::FileChooser>(TRANS("Choose the folder that holds the set"),
                                                              package.getParentDirectory());
         self->chooser_->launchAsync(
             juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
@@ -504,7 +506,7 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
   // the next organ is usually beside the last one (#251).
   const juce::File start = startIn != juce::File() ? startIn : proc_.openFolder();
   chooser_ = std::make_unique<juce::FileChooser>(
-      kMobile ? "Choose an organ package" : "Choose an organ definition file", start,
+      kMobile ? TRANS("Choose an organ package") : TRANS("Choose an organ definition file"), start,
       kMobile ? "*.rar;*.orgue"
               : "*.Organ_Hauptwerk_xml;*.CustomOrgan_Hauptwerk_xml;*.Organ.Hauptwerk.xml;"
                 "*.CustomOrgan.Hauptwerk.xml;*.organ;*.rar;*.orgue");
@@ -523,8 +525,8 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
                           if (picked.isEmpty()) return;
                           const auto f = holdPickedAccess(picked);
                           if (!f.existsAsFile()) {
-                            showWithLog("Could not open the organ",
-                                        "The Files app did not lend this document to Masterpiece.");
+                            showWithLog(TRANS("Could not open the organ"),
+                                        TRANS("The Files app did not lend this document to Masterpiece."));
                             return;
                           }
                          #else
@@ -614,7 +616,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       if (at < 0 || at >= static_cast<int>(panelTabs_.size())) return;
       const int panel = panelTabs_[static_cast<size_t>(at)];
       juce::PopupMenu menu;
-      menu.addItem(1, "Rename " + panels_[static_cast<size_t>(panel)]->title() + "...");
+      menu.addItem(1, TRANS("Rename %1...").replace("%1", panels_[static_cast<size_t>(panel)]->title()));
       menu.showMenuAsync(juce::PopupMenu::Options(), [this, panel](int choice) {
         if (choice == 1 && panel < static_cast<int>(panels_.size()))
           panels_[static_cast<size_t>(panel)]->askForTitle();
@@ -624,14 +626,14 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     if (!pagesCanFloat()) return;
     juce::PopupMenu menu;
     const bool open = pageWindowFor(page) != nullptr;
-    menu.addItem(1, open ? "Bring its window to the front" : "Open in its own window");
+    menu.addItem(1, open ? TRANS("Bring its window to the front") : TRANS("Open in its own window"));
     // A set can draw its pages again for another screen shape -- Buckeburg's
     // jambs in portrait -- and a window of its own can show that one while
     // the main window keeps its layout.
     if (!open && console_.layoutCount() > 1)
       for (int l = 0; l < console_.layoutCount(); ++l)
-        menu.addItem(10 + l, "Open in its own window, " + layoutName(l));
-    if (open) menu.addItem(2, "Close its window");
+        menu.addItem(10 + l, TRANS("Open in its own window, %1").replace("%1", layoutName(l)));
+    if (open) menu.addItem(2, TRANS("Close its window"));
     menu.showMenuAsync(juce::PopupMenu::Options(), [this, page](int choice) {
       if (choice == 1) openPageWindow(page);
       if (choice == 2) closePageWindow(pageWindowFor(page));
@@ -697,7 +699,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   combinations_ = std::make_unique<CombinationsWindow>(proc_);
 
   addAndMakeVisible(tuningButton_);
-  tuningButton_.setTooltip("Temperament, pitch and transposer for this organ");
+  tuningButton_.setTooltip(TRANS("Temperament, pitch and transposer for this organ"));
   tuningButton_.onClick = [this] {
     juce::CallOutBox::launchAsynchronously(std::make_unique<TuningPanel>(proc_),
                                            tuningButton_.getScreenBounds(), nullptr);
@@ -738,7 +740,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
   setSize(1280, 760);
   setResizable(true, true);
-  top_.setStatus("No organ loaded.");
+  top_.setStatus(TRANS("No organ loaded."));
   startTimerHz(4);
 }
 
@@ -793,7 +795,7 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
   if (mp::isOrganArchive(odf.getFullPathName().toStdString())) {
     loading_ = true;
     proc_.beginPackageLoad();
-    top_.setStatus("Opening " + odf.getFileName() + "...");
+    top_.setStatus(TRANS("Opening %1...").replace("%1", odf.getFileName()));
     showLoadingDialog(odf);
     juce::Component::SafePointer<MasterpieceEditor> self(this);
     auto* processor = &proc_;
@@ -808,18 +810,18 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
         }
         self->loading_ = false;
         if (error == "cancelled") {
-          self->top_.setStatus("Archive opening cancelled");
+          self->top_.setStatus(TRANS("Archive opening cancelled"));
           return;
         }
         // Opened, but with files that did not read: said, and the load goes on.
         if (!definitions.isEmpty() && error.isNotEmpty())
-          showWithLog(odf.getFileName() + " is damaged", error);
+          showWithLog(TRANS("%1 is damaged").replace("%1", odf.getFileName()), error);
         if (definitions.size() == 1) {
           self->loadOrgan(definitions.getFirst(), graphicsOnly);
         } else if (definitions.size() > 1) {
           self->chooseDefinition(definitions, graphicsOnly);
         } else {
-          self->status_ = "Failed to open " + odf.getFileName();
+          self->status_ = TRANS("Failed to open %1").replace("%1", odf.getFileName());
           self->top_.setStatus(self->status_);
          #if JUCE_IOS
           // One volume of a set, lent on its own: the others are beside it but
@@ -829,7 +831,7 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
             return;
           }
          #endif
-          showWithLog("Could not open " + odf.getFileName(), error);
+          showWithLog(TRANS("Could not open %1").replace("%1", odf.getFileName()), error);
         }
       });
     });
@@ -872,7 +874,7 @@ void MasterpieceEditor::showLoadingDialog(const juce::File& file) {
 
   juce::DialogWindow::LaunchOptions opts;
   opts.content.setOwned(dialog.release());
-  opts.dialogTitle = "Loading";
+  opts.dialogTitle = TRANS("Loading");
   opts.dialogBackgroundColour = juce::Colour(0xff15171c);
   // No escape-to-close and no title-bar close: leaving this window while the
   // load runs would strand it with nothing watching and no way back.
@@ -889,7 +891,7 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   loading_ = true;
   closePageWindowsForLoad();
   console_.freeze();
-  top_.setStatus("Loading " + odf.getFileName() + "...");
+  top_.setStatus(TRANS("Loading %1...").replace("%1", odf.getFileName()));
 
   showLoadingDialog(odf);
 
@@ -915,7 +917,7 @@ void MasterpieceEditor::askForLicence() {
                      [self](bool yes) {
                        if (self == nullptr) return;
                        if (!yes) {
-                         self->top_.setStatus(self->status_ + "  -  licensed samples not loaded");
+                         self->top_.setStatus(self->status_ + "  -  " + TRANS("licensed samples not loaded"));
                          return;
                        }
                        juce::Logger::writeToLog("licence: the player confirmed a licence for this organ");
@@ -927,22 +929,23 @@ void MasterpieceEditor::askForLicence() {
 
 void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const juce::String& who,
                                            std::function<void(bool)> answered) {
-  const juce::String organ = organName.isEmpty() ? juce::String("This organ") : organName;
-  const juce::String from = who.isEmpty() ? juce::String("its publisher") : who;
+  const juce::String organ = organName.isEmpty() ? TRANS("This organ") : organName;
+  const juce::String from = who.isEmpty() ? TRANS("its publisher") : who;
   // Built by hand: a stock two-button box gives Enter to the first button and
   // Escape to the second, and neither order makes Cancel answer both. Here
   // Enter, Escape and closing the box all cancel; only a click on Load loads.
   auto* box = new juce::AlertWindow(
-      "A licence is needed for these samples",
-      organ + (who.isEmpty() ? juce::String() : ", from " + who) +
-          ", requires a licence from its publisher to use its samples. "
-          "Masterpiece cannot check that licence.\n\n"
-          "Load its samples only if your licence from " + from +
-          " allows you to play this set in this program. Your answer is saved for "
-          "this organ and can be withdrawn from the Settings menu.",
+      TRANS("A licence is needed for these samples"),
+      TRANS("%1 requires a licence from its publisher to use its samples. "
+            "Masterpiece cannot check that licence.\n\n"
+            "Load its samples only if your licence from %2 allows you to play this set "
+            "in this program. Your answer is saved for this organ and can be withdrawn "
+            "from the Settings menu.")
+          .replace("%1", who.isEmpty() ? organ : TRANS("%1, from %2,").replace("%1", organ).replace("%2", who))
+          .replace("%2", from),
       juce::MessageBoxIconType::QuestionIcon, this);
-  box->addButton("Load the samples", 1);
-  box->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey),
+  box->addButton(TRANS("Load the samples"), 1);
+  box->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey),
                  juce::KeyPress(juce::KeyPress::returnKey));
   box->enterModalState(true, juce::ModalCallbackFunction::create([answered](int result) {
                          answered(result == 1);
@@ -954,7 +957,7 @@ void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const 
 // failure or build the console from the model that is now in place.
 void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definitions,
                                          bool graphicsOnly) {
-  top_.setStatus("These packages hold several organs: choose one");
+  top_.setStatus(TRANS("These packages hold several organs: choose one"));
   const juce::File last = MasterpieceProcessor::rememberedDefinition(definitions);
   juce::Array<juce::File> order;
   if (last != juce::File()) order.add(last);
@@ -962,16 +965,16 @@ void MasterpieceEditor::chooseDefinition(const juce::Array<juce::File>& definiti
     if (d != last) order.add(d);
 
   juce::PopupMenu menu;
-  menu.addSectionHeader("Which organ?");
+  menu.addSectionHeader(TRANS("Which organ?"));
   for (int i = 0; i < order.size(); ++i)
     menu.addItem(i + 1, order[i].getFileNameWithoutExtension() +
-                            (order[i] == last ? juce::String("  (last opened)") : juce::String()));
+                            (order[i] == last ? "  " + TRANS("(last opened)") : juce::String()));
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&top_),
                      [self, order, graphicsOnly](int choice) {
                        if (self == nullptr) return;
                        if (choice < 1 || choice > order.size()) {
-                         self->top_.setStatus("No organ opened");
+                         self->top_.setStatus(TRANS("No organ opened"));
                          return;
                        }
                        self->loadOrgan(order[choice - 1], graphicsOnly);
@@ -987,13 +990,13 @@ class PopOutIcon : public juce::Button {
 public:
   PopOutIcon() : juce::Button("pop out") {
     setSize(16, 16);
-    setTooltip("Open this page in its own window, to move to another screen");
+    setTooltip(TRANS("Open this page in its own window, to move to another screen"));
   }
   void setOut(bool out) {
     if (out_ == out) return;
     out_ = out;
-    setTooltip(out ? "Close this page's window and bring it back here"
-                   : "Open this page in its own window, to move to another screen");
+    setTooltip(out ? TRANS("Close this page's window and bring it back here")
+                   : TRANS("Open this page in its own window, to move to another screen"));
     repaint();
   }
   void paintButton(juce::Graphics& g, bool over, bool) override {
@@ -1050,10 +1053,10 @@ PageWindow* MasterpieceEditor::pageWindowFor(int page) const {
 
 juce::String MasterpieceEditor::layoutName(int layout) const {
   const auto& m = proc_.organModel();
-  juce::String name = layout == 0 ? juce::String("main layout") : "alternate layout " + juce::String(layout);
+  juce::String name = layout == 0 ? TRANS("main layout") : TRANS("alternate layout %1").replace("%1", juce::String(layout));
   if (layout >= 0 && layout < 4 && m.consoleHeightPx[layout] > m.consoleWidthPx[layout] &&
       m.consoleWidthPx[layout] > 0)
-    name << " (portrait)";
+    name = TRANS("%1 (portrait)").replace("%1", name);
   return name;
 }
 
@@ -1171,7 +1174,7 @@ namespace {
 class RecorderWindow : public juce::DocumentWindow {
 public:
   explicit RecorderWindow(MasterpieceProcessor& p)
-      : juce::DocumentWindow("Recorder", juce::Colour(0xff15171c), juce::DocumentWindow::closeButton) {
+      : juce::DocumentWindow(TRANS("Recorder"), juce::Colour(0xff15171c), juce::DocumentWindow::closeButton) {
     setUsingNativeTitleBar(true);
     setContentOwned(new RecorderPanel(p), false);
     setResizable(false, false);
@@ -1213,23 +1216,24 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   if (!result.ok) {
     // Cancelling is a choice, not a fault, and must not look like one.
     status_ = result.error == "cancelled"
-                  ? "Load cancelled - no organ is loaded"
-                  : "Failed to load " + odf.getFileName() + ": " +
-                        juce::String(result.error);
+                  ? TRANS("Load cancelled - no organ is loaded")
+                  : TRANS("Failed to load %1: %2")
+                        .replace("%1", odf.getFileName())
+                        .replace("%2", juce::String(result.error));
     top_.setStatus(status_);
     // Stopping at the memory limit is the one failure a player can fix from
     // here, so it is said in full rather than left in the status line.
     if (result.outOfMemory)
       juce::AlertWindow::showMessageBoxAsync(
-          juce::MessageBoxIconType::WarningIcon, "Not enough memory for this organ",
-          odf.getFileNameWithoutExtension() +
-              " was not loaded: its samples need more than the memory limit (" +
-              juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
-              " GB).\n\nIts console is shown without sound, so Organ settings can be opened "
-              "from the Settings menu: leave out perspectives or stops, or on the Loading tab "
-              "load 16-bit samples, stream the release tails, load in mono or preload less of "
-              "each sample -- or raise the limit in General settings, if this computer has "
-              "the memory to spare.");
+          juce::MessageBoxIconType::WarningIcon, TRANS("Not enough memory for this organ"),
+          TRANS("%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\n"
+                "Its console is shown without sound, so Organ settings can be opened "
+                "from the Settings menu: leave out perspectives or stops, or on the Loading tab "
+                "load 16-bit samples, stream the release tails, load in mono or preload less of "
+                "each sample -- or raise the limit in General settings, if this computer has "
+                "the memory to spare.")
+              .replace("%1", odf.getFileNameWithoutExtension())
+              .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
     // The organ's console, without its audio, so the way out is on screen
     // (#53: the only way back was deleting the organ's settings file). The
     // same after Cancel, which is often a load taking too much (#90). Once:
@@ -1280,8 +1284,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // per organ, because the count is the organ's.
   layout_.clear(juce::dontSendNotification);
   for (int i = 0; i < console_.layoutCount(); ++i)
-    layout_.addItem(i == 0 ? "Console: main"
-                           : "Console: alt " + juce::String(i),
+    layout_.addItem(i == 0 ? TRANS("Console: main")
+                           : TRANS("Console: alt %1").replace("%1", juce::String(i)),
                     i + 1);
   layout_.setSelectedId(console_.layout() + 1, juce::dontSendNotification);
 
@@ -1321,17 +1325,19 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // The organ's name is in the window title, so the bar says what the title
   // cannot: how much instrument arrived, and whether it has any audio.
   const auto& m = proc_.organModel();
-  status_ = juce::String(m.stops.size()) + " stops, " +
-            juce::String(m.ranks.size()) + " ranks, ";
+  // Each part is a sentence of its own, so a language can word and order it
+  // as it needs to; they are joined by commas.
+  juce::StringArray parts;
+  parts.add(TRANS("%1 stops").replace("%1", juce::String(m.stops.size())));
+  parts.add(TRANS("%1 ranks").replace("%1", juce::String(m.ranks.size())));
   if (graphicsOnly) {
     // "0 samples (0 MB)" reads as a set that failed to load. Say what was
     // actually asked for, so a silent console is not mistaken for a broken one.
-    status_ += "graphics only — no audio loaded";
+    parts.add(TRANS("graphics only - no audio loaded"));
   } else {
-    status_ += juce::String(result.samples.loaded) + " samples (" +
-               juce::String(
-                   proc_.sampleLibrary().residentBytes() / (1024 * 1024)) +
-               " MB)";
+    parts.add(TRANS("%1 samples (%2 MB)")
+                  .replace("%1", juce::String(result.samples.loaded))
+                  .replace("%2", juce::String(proc_.sampleLibrary().residentBytes() / (1024 * 1024))));
     // Which ones, in the log: a count alone says nothing to act on (#90).
     for (const auto& f : result.samples.missingFiles)
       juce::Logger::writeToLog("samples: missing " + juce::String(f));
@@ -1342,41 +1348,44 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     for (const auto& f : result.samples.failedFiles)
       juce::Logger::writeToLog("samples: unreadable " + juce::String(f));
     if (result.samples.missing > 0)
-      status_ += ", " + juce::String(result.samples.missing) + " missing (named in the log)";
+      parts.add(TRANS("%1 missing (named in the log)").replace("%1", juce::String(result.samples.missing)));
     if (result.samples.failed > 0)
-      status_ += ", " + juce::String(result.samples.failed) + " unreadable (named in the log)";
+      parts.add(TRANS("%1 unreadable (named in the log)").replace("%1", juce::String(result.samples.failed)));
     if (result.samples.encrypted > 0)
-      status_ += ", " + juce::String(result.samples.encrypted) + " encrypted";
+      parts.add(TRANS("%1 encrypted").replace("%1", juce::String(result.samples.encrypted)));
     if (result.samples.licensed > 0)
-      status_ += ", " + juce::String(result.samples.licensed) + " awaiting a licence";
-    if (result.incomplete)
-      status_ += "  -  INCOMPLETE (memory limit)";
+      parts.add(TRANS("%1 awaiting a licence").replace("%1", juce::String(result.samples.licensed)));
   }
+  status_ = parts.joinIntoString(", ");
+  if (!graphicsOnly && result.incomplete)
+    status_ += "  -  " + TRANS("INCOMPLETE (memory limit)");
   if (!graphicsOnly && result.incomplete) {
     const int percent = result.samples.wanted > 0
                             ? juce::roundToInt(100.0 * result.samples.loaded / result.samples.wanted)
                             : 0;
     juce::AlertWindow::showMessageBoxAsync(
-        juce::MessageBoxIconType::WarningIcon, "Only part of this organ fits",
-        juce::String(result.samples.loaded) + " of " + juce::String(result.samples.wanted) +
-            " samples (" + juce::String(percent) + "%) were loaded before the memory limit (" +
-            juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1) +
-            " GB) was reached. The organ plays, but some stops or notes will be silent.\n\n"
-            "To load all of it: leave out perspectives or stops in Organ settings, load "
-            "16-bit samples or stream the release tails on its Loading tab, or raise the "
-            "limit in General settings if this computer has the memory to spare.");
+        juce::MessageBoxIconType::WarningIcon, TRANS("Only part of this organ fits"),
+        TRANS("%1 of %2 samples (%3%) were loaded before the memory limit (%4 GB) was "
+              "reached. The organ plays, but some stops or notes will be silent.\n\n"
+              "To load all of it: leave out perspectives or stops in Organ settings, load "
+              "16-bit samples or stream the release tails on its Loading tab, or raise the "
+              "limit in General settings if this computer has the memory to spare.")
+            .replace("%1", juce::String(result.samples.loaded))
+            .replace("%2", juce::String(result.samples.wanted))
+            .replace("%3", juce::String(percent))
+            .replace("%4", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
   } else if (!graphicsOnly && result.samples.licensed > 0 && !proc_.licenceConfirmed()) {
     // Asked already, before any sample was read, and answered no: said, not
     // asked again. Only a load that could not ask is asked now.
-    if (result.licenceAsked) top_.setStatus(status_ + "  -  licensed samples not loaded");
+    if (result.licenceAsked) top_.setStatus(status_ + "  -  " + TRANS("licensed samples not loaded"));
     else askForLicence();
   } else if (!graphicsOnly && result.samples.loaded == 0 && result.samples.encrypted > 0) {
     juce::AlertWindow::showMessageBoxAsync(
-        juce::MessageBoxIconType::WarningIcon, "This organ's samples are encrypted",
-        "All " + juce::String(result.samples.encrypted) +
-            " of its samples are encrypted (.hbw/.hbx) for the program they were made "
-            "for, and Masterpiece cannot play them. The console loads, but the organ "
-            "makes no sound.");
+        juce::MessageBoxIconType::WarningIcon, TRANS("This organ's samples are encrypted"),
+        TRANS("All %1 of its samples are encrypted (.hbw/.hbx) for the program they were made "
+              "for, and Masterpiece cannot play them. The console loads, but the organ "
+              "makes no sound.")
+            .replace("%1", juce::String(result.samples.encrypted)));
   } else if (!graphicsOnly && result.samples.failed > 0) {
     // The organ plays, with holes in it. Without this the only sign was a
     // line in the log and pipes that stay silent for no visible reason.
@@ -1385,32 +1394,41 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
       which << juce::String(result.samples.failedFiles[i]) << "\n";
     juce::String fix =
         which.contains(" is damaged") || which.contains(": damaged")
-            ? "The archive they come from is damaged, usually by a download that was cut "
-              "short or corrupted. Test it in 7-Zip or WinRAR, and download it again."
-            : "The files are damaged or not sample files Masterpiece can read. Installing "
-              "the organ again usually puts them right.";
-    showWithLog("Some samples could not be read",
-                juce::String(result.samples.failed) + " sample file" +
-                    (result.samples.failed == 1 ? " was" : "s were") +
-                    " unreadable, so the pipes they belong to are silent. The organ plays "
-                    "without them.\n\n" + which + "\n" + fix);
+            ? TRANS("The archive they come from is damaged, usually by a download that was cut "
+                    "short or corrupted. Test it in 7-Zip or WinRAR, and download it again.")
+            : TRANS("The files are damaged or not sample files Masterpiece can read. Installing "
+                    "the organ again usually puts them right.");
+    // No plurals in the translation files: one sentence for a single file,
+    // another for several.
+    showWithLog(TRANS("Some samples could not be read"),
+                (result.samples.failed == 1
+                     ? TRANS("1 sample file was unreadable, so the pipes it belongs to are silent. "
+                             "The organ plays without it.")
+                     : TRANS("%1 sample files were unreadable, so the pipes they belong to are "
+                             "silent. The organ plays without them.")
+                           .replace("%1", juce::String(result.samples.failed))) +
+                    "\n\n" + which + "\n" + fix);
   }
   // Say it out loud, once. The status line has no room beside the console's
   // buttons, and a mapping that changes without a word costs more trust than
   // the fault it fixes. Only shown when a repair actually happened, which is
   // the first load of a mapping saved by 0.3.7 or earlier.
   if (const int fixed = proc_.midiMapRepairedOnLoad(); fixed > 0) {
-    status_ += "  -  MIDI mapping repaired";
+    status_ += "  -  " + TRANS("MIDI mapping repaired");
     juce::AlertWindow::showMessageBoxAsync(
-        juce::MessageBoxIconType::InfoIcon, "MIDI mapping repaired",
-        "The saved MIDI mapping for this organ assigned more than one manual "
-        "to the same channel, which left some manuals silent. " +
-            juce::String(fixed) + " conflicting assignment" +
-            (fixed == 1 ? " was" : "s were") +
-            " removed, and each manual now uses the organ's own channel.\n\n"
-            "Your previous mapping was saved next to the new one with the "
-            "ending \".before-repair\". You can reassign manuals in "
-            "Settings > MIDI.");
+        juce::MessageBoxIconType::InfoIcon, TRANS("MIDI mapping repaired"),
+        TRANS("The saved MIDI mapping for this organ assigned more than one manual "
+              "to the same channel, which left some manuals silent.") +
+            " " +
+            (fixed == 1 ? TRANS("1 conflicting assignment was removed, and each manual now "
+                                "uses the organ's own channel.")
+                        : TRANS("%1 conflicting assignments were removed, and each manual now "
+                                "uses the organ's own channel.")
+                              .replace("%1", juce::String(fixed))) +
+            "\n\n" +
+            TRANS("Your previous mapping was saved next to the new one with the "
+                  "ending \".before-repair\". You can reassign manuals in "
+                  "Settings > MIDI."));
   }
   top_.setStatus(status_);
 
@@ -1705,21 +1723,21 @@ void MasterpieceEditor::togglePanel() {
 
 void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   const bool onPanel = showingConsole_ && showingPanel_ >= 0;
-  menu.addItem(1002, console_.hasArtwork() ? "Console" : "Stop list", true, !onPanel);
+  menu.addItem(1002, console_.hasArtwork() ? TRANS("Console") : TRANS("Stop list"), true, !onPanel);
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
                  onPanel && showingPanel_ == static_cast<int>(i));
   // The first panel is the whole organ, every stop by division: what the
   // stop list showed, as big buttons to arrange and name.
-  menu.addItem(1001, panels_.empty() ? "Panel of the whole organ" : "New panel",
+  menu.addItem(1001, panels_.empty() ? TRANS("Panel of the whole organ") : TRANS("New panel"),
                static_cast<int>(panels_.size()) < kMaxPanels);
   if (!panels_.empty()) {
     juce::PopupMenu edit;
     for (size_t i = 0; i < panels_.size(); ++i)
-      edit.addItem(1200 + static_cast<int>(i), "Rename " + panels_[i]->title() + "...");
+      edit.addItem(1200 + static_cast<int>(i), TRANS("Rename %1...").replace("%1", panels_[i]->title()));
     for (size_t i = 0; i < panels_.size(); ++i)
-      edit.addItem(1100 + static_cast<int>(i), "Delete " + panels_[i]->title());
-    menu.addSubMenu("Rename or delete a panel", edit);
+      edit.addItem(1100 + static_cast<int>(i), TRANS("Delete %1").replace("%1", panels_[i]->title()));
+    menu.addSubMenu(TRANS("Rename or delete a panel"), edit);
   }
 }
 
@@ -1746,7 +1764,7 @@ void MasterpieceEditor::showFileMenu() {
   juce::PopupMenu menu;
   // One door (#276): the favourites, with the file dialog a button away in
   // the same window; with no favourite yet, the file dialog itself.
-  menu.addItem(1, "Open...");
+  menu.addItem(1, TRANS("Open..."));
   // The same organ as another definition: a perspective, or full and light.
   const juce::File loaded = proc_.loadedOrganFile();
   const auto versions = MasterpieceProcessor::organVersions(loaded);
@@ -1755,10 +1773,10 @@ void MasterpieceEditor::showFileMenu() {
     for (int i = 0; i < versions.size(); ++i)
       other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
                     versions[i] == loaded);
-    menu.addSubMenu("Other versions of this organ", other);
+    menu.addSubMenu(TRANS("Other versions of this organ"), other);
   }
   menu.addSeparator();
-  menu.addItem(5, "Recorder...", true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  menu.addItem(5, TRANS("Recorder..."), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
@@ -1772,10 +1790,10 @@ void MasterpieceEditor::showViewMenu() {
   juce::PopupMenu menu;
   addPanelItems(menu);
   menu.addSeparator();
-  menu.addItem(10, "Combinations", combinations_ != nullptr,
+  menu.addItem(10, TRANS("Combinations"), combinations_ != nullptr,
                combinations_ != nullptr && combinations_->isVisible());
-  if (expression_.shoeCount() > 0) menu.addItem(11, "Swell faders", true, showingSwell_);
-  menu.addItem(12, "Keyboard", true, showingKeyboard_);
+  if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
+  menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -1783,7 +1801,7 @@ void MasterpieceEditor::showViewMenu() {
     for (int i = 0; i < console_.pageCount(); ++i)
       pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
     menu.addSeparator();
-    menu.addSubMenu("A page in its own window", pages);
+    menu.addSubMenu(TRANS("A page in its own window"), pages);
   }
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
@@ -1803,12 +1821,12 @@ void MasterpieceEditor::showSettingsMenu() {
   // Two windows: what belongs to this organ, and what belongs to the
   // program and the player's console; and the sound card, set up once.
   juce::PopupMenu menu;
-  menu.addItem(1, "Organ settings...", !proc_.loadedOrganFile().getFullPathName().isEmpty());
+  menu.addItem(1, TRANS("Organ settings..."), !proc_.loadedOrganFile().getFullPathName().isEmpty());
   // A licence confirmed for this organ can be taken back here.
   if (proc_.organModel().hasLicensedSamples)
-    menu.addItem(4, "Licence confirmed for this organ", true, proc_.licenceConfirmed());
-  menu.addItem(2, "General settings...");
-  if (onAudioSettings) menu.addItem(6, "Audio and MIDI...");
+    menu.addItem(4, TRANS("Licence confirmed for this organ"), true, proc_.licenceConfirmed());
+  menu.addItem(2, TRANS("General settings..."));
+  if (onAudioSettings) menu.addItem(6, TRANS("Audio and MIDI..."));
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
@@ -1967,7 +1985,7 @@ void MasterpieceEditor::timerCallback() {
   const auto& stats = proc_.voiceStats();
   juce::String live = status_;
   if (live.isNotEmpty()) live += "  |  ";
-  live += "voices " + juce::String(stats.activeVoices);
+  live += TRANS("voices %1").replace("%1", juce::String(stats.activeVoices));
   // The organ plays while its samples are saved for next time (#120).
   // How far along, and how long is left once a few seconds give a rate to
   // go by: on a large organ this is minutes, and a bare "saving..." for that
@@ -1979,15 +1997,15 @@ void MasterpieceEditor::timerCallback() {
       cacheSaveStartMs_ = now;
       cacheSaveStartFraction_ = f;
     }
-    live += "  |  saving the samples for the next load";
+    live += "  |  " + TRANS("saving the samples for the next load");
     if (f >= 0.0) {
       live += ": " + juce::String(juce::roundToInt(f * 100.0)) + "%";
       const double elapsed = (now - cacheSaveStartMs_) / 1000.0;
       const double moved = f - cacheSaveStartFraction_;
       if (elapsed > 3.0 && moved > 0.01) {
         const int left = juce::roundToInt(elapsed / moved * (1.0 - f));
-        live += left >= 90 ? ", about " + juce::String((left + 30) / 60) + " min left"
-                           : ", about " + juce::String(juce::jmax(1, left)) + " s left";
+        live += ", " + (left >= 90 ? TRANS("about %1 min left").replace("%1", juce::String((left + 30) / 60))
+                                   : TRANS("about %1 s left").replace("%1", juce::String(juce::jmax(1, left))));
       }
     } else {
       live += "...";
@@ -1996,22 +2014,22 @@ void MasterpieceEditor::timerCallback() {
     cacheSaveStartMs_ = 0.0;
   }
   if (stats.startsDropped > 0)
-    live += ", dropped " + juce::String(stats.startsDropped);
+    live += ", " + TRANS("dropped %1").replace("%1", juce::String(stats.startsDropped));
   if (stats.samplesMissing > 0)
-    live += ", no audio " + juce::String(stats.samplesMissing);
+    live += ", " + TRANS("no audio %1").replace("%1", juce::String(stats.samplesMissing));
 
   // Audio that did not keep time: each late block is a glitch the player
   // heard, and the log says how late, so a report can say why (#120).
   const auto load = proc_.takeAudioLoad();
   worstBlockSinceLog_ = juce::jmax(worstBlockSinceLog_, load.worstPercent);
-  if (load.late > 0) live += ", late blocks " + juce::String(load.late);
+  if (load.late > 0) live += ", " + TRANS("late blocks %1").replace("%1", juce::String(load.late));
   // A streamed release the disk did not deliver in time goes quiet partway.
   // Said here, with what to do about it: the Loading tab's count is out of
   // sight, and whether a machine can stream is only known by playing (#120).
   if (proc_.streamReleases())
     if (const auto under = proc_.streamUnderruns(); under > 0)
-      live += ", streamed releases fell behind " + juce::String(under) +
-              "x: turn off \"Stream release tails\" in Organ settings";
+      live += ", " + TRANS("streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings")
+                         .replace("%1", juce::String(under));
   const auto now = juce::Time::getMillisecondCounter();
   if (load.late > lateBlocksLogged_ && now - lateLoggedAt_ > 5000) {
     juce::Logger::writeToLog("audio: " + juce::String(load.late - lateBlocksLogged_) +

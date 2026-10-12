@@ -48,7 +48,7 @@ private:
   juce::Label detail_;
   juce::ProgressBar bar_;
   double barValue_ = 0.0;
-  juce::TextButton cancel_{"Cancel"};
+  juce::TextButton cancel_{TRANS("Cancel")};
   bool cancelling_ = false;
 };
 

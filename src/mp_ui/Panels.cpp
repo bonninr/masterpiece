@@ -175,7 +175,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     const auto d = m.divisions.find(div);
     s.title = d != m.divisions.end() && !d->second.name.empty()
                   ? d->second.name
-                  : "Division " + std::to_string(static_cast<long long>(div));
+                  : TRANS("Division %1").replace("%1", juce::String(static_cast<int>(div))).toStdString();
     byDivision[div] = divisions.size();
     divisions.push_back(std::move(s));
     return divisions.back();
@@ -206,7 +206,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   PanelSection other;
   other.kind = PanelSection::Kind::Other;
   other.key = "other";
-  other.title = "Other";
+  other.title = TRANS("Other").toStdString();
   // A coupler or tremulant is a drawn, latching knob, flagged as one (custom
   // organs) or wired to a key action or a tremulant (full definitions).
   std::set<Id> tremulantSwitches;
@@ -240,7 +240,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   PanelSection presets;
   presets.kind = PanelSection::Kind::Presets;
   presets.key = "presets";
-  presets.title = "Pistons";
+  presets.title = TRANS("Pistons").toStdString();
   std::vector<const Combination*> combos;
   for (const auto& [id, c] : m.combinations) combos.push_back(&c);
   std::sort(combos.begin(), combos.end(), [](const Combination* a, const Combination* b) {
@@ -259,7 +259,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     const auto s = m.switches.find(sw);
     e.name = !c->name.empty() ? c->name
              : s != m.switches.end() && !s->second.name.empty() ? s->second.name
-                                                               : "Piston";
+                                                               : TRANS("Piston").toStdString();
     presets.elements.push_back(std::move(e));
   }
 
@@ -267,7 +267,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   PanelSection controls;
   controls.kind = PanelSection::Kind::Controls;
   controls.key = "controls";
-  controls.title = "Expression";
+  controls.title = TRANS("Expression").toStdString();
   std::set<Id> shoes;
   auto addControl = [&](Id controlId, const std::string& fallback) {
     if (controlId == 0 || !shoes.insert(controlId).second) return;
@@ -283,7 +283,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     if (const auto c = m.continuousControls.find(enc.continuousControlId);
         c != m.continuousControls.end() && c->second.rememberState && c->second.imageSetInstanceId != 0)
       continue;  // a level set on its own page, not a shoe (see ExpressionBar)
-    addControl(p.playerControlFor(enc.continuousControlId), enc.name.empty() ? "Swell" : enc.name);
+    addControl(p.playerControlFor(enc.continuousControlId), enc.name.empty() ? TRANS("Swell").toStdString() : enc.name);
   }
   Id crescendo = 0;
   size_t steps = 0;
@@ -292,7 +292,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       steps = n;
       crescendo = id;
     }
-  if (steps >= 3) addControl(crescendo, "Crescendo");
+  if (steps >= 3) addControl(crescendo, TRANS("Crescendo").toStdString());
 
   // A division's own prefix, repeated on its stops ("HW Principal", "SW
   // Viola"), says nothing inside that division's column. The short capitalised
@@ -421,7 +421,7 @@ bool savePanelLayouts(const MasterpieceProcessor& p, const std::vector<PanelLayo
 // ---- colours -----------------------------------------------------------------
 
 juce::StringArray panelSchemeNames() {
-  return {"Dark", "Light", "High contrast", "By division"};
+  return juce::StringArray(TRANS("Dark"), TRANS("Light"), TRANS("High contrast"), TRANS("By division"));
 }
 
 namespace {
@@ -654,16 +654,16 @@ PanelView::PanelView(MasterpieceProcessor& p, int index, PanelLayout layout)
     : proc_(p), index_(index), layout_(std::move(layout)), saved_(layout_) {
   addAndMakeVisible(edit_);
   edit_.setClickingTogglesState(true);
-  edit_.setTooltip("Tick the elements this panel shows; touch a name to change it");
+  edit_.setTooltip(TRANS("Tick the elements this panel shows; touch a name to change it"));
   addAndMakeVisible(rename_);
-  rename_.setTooltip("Give this panel a name of its own");
+  rename_.setTooltip(TRANS("Give this panel a name of its own"));
   rename_.onClick = [this] { askForTitle(); };
   edit_.onClick = [this] { setEditing(edit_.getToggleState()); };
   addAndMakeVisible(save_);
-  save_.setTooltip("Keep the sections, hidden elements, window and colours");
+  save_.setTooltip(TRANS("Keep the sections, hidden elements, window and colours"));
   save_.onClick = [this] { if (onSave) onSave(); };
   addAndMakeVisible(detach_);
-  detach_.setTooltip("Show this panel in a window of its own, or back among the tabs");
+  detach_.setTooltip(TRANS("Show this panel in a window of its own, or back among the tabs"));
   detach_.onClick = [this] { if (onDetachToggle) onDetachToggle(); };
   detach_.setVisible(!kMobile);
   addAndMakeVisible(scheme_);
@@ -686,7 +686,7 @@ PanelView::~PanelView() { stopTimer(); }
 
 void PanelView::setDetached(bool detached) {
   layout_.detached = detached;
-  detach_.setButtonText(detached ? "Attach" : "Detach");
+  detach_.setButtonText(detached ? TRANS("Attach") : TRANS("Detach"));
 }
 
 void PanelView::rebuild() {
@@ -732,9 +732,9 @@ void askText(const juce::String& title, const juce::String& prompt, const juce::
              const juce::String& original, std::function<void(juce::String)> done) {
   auto* w = new juce::AlertWindow(title, prompt, juce::MessageBoxIconType::NoIcon);
   w->addTextEditor("name", current);
-  w->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
-  if (original.isNotEmpty()) w->addButton("Organ's name", 2);
-  w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  w->addButton(TRANS("OK"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+  if (original.isNotEmpty()) w->addButton(TRANS("Organ's name"), 2);
+  w->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
   if (auto* ed = w->getTextEditor("name")) ed->selectAll();
   w->enterModalState(true, juce::ModalCallbackFunction::create([w, done](int r) {
                        if (r == 1) done(w->getTextEditorContents("name").trim());
@@ -752,7 +752,7 @@ void PanelView::askForName(const PanelElement& e) {
                                 (e.footage.empty() ? "" : " " + juce::String::fromUTF8(e.footage.c_str()));
   juce::Component::SafePointer<PanelView> self(this);
   const std::string key = e.key();
-  askText("Name", "The name this panel shows for " + original + ".", current, original,
+  askText(TRANS("Name"), TRANS("The name this panel shows for %1.").replace("%1", original), current, original,
           [self, key, original](juce::String name) {
             if (self == nullptr) return;
             if (name.isEmpty() || name == original) self->layout_.names.erase(key);
@@ -763,13 +763,13 @@ void PanelView::askForName(const PanelElement& e) {
 }
 
 juce::String PanelView::title() const {
-  return layout_.title.empty() ? "Panel " + juce::String(index_ + 1)
+  return layout_.title.empty() ? TRANS("Panel %1").replace("%1", juce::String(index_ + 1))
                                : juce::String::fromUTF8(layout_.title.c_str());
 }
 
 void PanelView::askForTitle() {
   juce::Component::SafePointer<PanelView> self(this);
-  askText("Panel name", "The name on this panel's tab and window.", title(), {},
+  askText(TRANS("Panel name"), TRANS("The name on this panel's tab and window."), title(), {},
           [self](juce::String name) {
             if (self == nullptr) return;
             self->layout_.title = name.toStdString();
@@ -784,7 +784,7 @@ void PanelView::setEditing(bool editing) {
 }
 
 void PanelView::changed() {
-  save_.setButtonText(hasUnsavedChanges() ? "Save *" : "Save");
+  save_.setButtonText(hasUnsavedChanges() ? TRANS("Save *") : TRANS("Save"));
 }
 
 void PanelView::resized() {

@@ -53,14 +53,14 @@ private:
   juce::Label title_;
   juce::ListBox list_;
   std::unique_ptr<juce::ListBoxModel> model_;
-  juce::TextButton add_{"Add"}, remove_{"Remove"}, learn_{"Learn from a key"};
+  juce::TextButton add_{TRANS("Add")}, remove_{TRANS("Remove")}, learn_{TRANS("Learn from a key")};
 
   juce::Label deviceLabel_, channelLabel_, rangeLabel_, transposeLabel_,
       velocityLabel_, debounceLabel_;
   juce::ComboBox device_, channel_;
   juce::Slider lowKey_, highKey_, transpose_, lowVel_, highVel_, debounce_;
-  juce::ToggleButton ignoreVel_{"Ignore velocity (tracker action)"};
-  juce::ToggleButton shortOctave_{"Short octave"};
+  juce::ToggleButton ignoreVel_{TRANS("Ignore velocity (tracker action)")};
+  juce::ToggleButton shortOctave_{TRANS("Short octave")};
   juce::Label note_;
   // Set while the controls are being filled in, so writing to them does not
   // read straight back as an edit.

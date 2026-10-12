@@ -43,16 +43,23 @@ public:
 
     const auto& b = list[static_cast<size_t>(row)];
     juce::String text;
-    text << (b.deviceId == 0 ? juce::String("Any device")
+    text << (b.deviceId == 0 ? juce::String(TRANS("Any device"))
                              : juce::String(proc_.midiDevices().displayName(b.deviceId)));
-    text << "  ch " << (b.channel == 0 ? juce::String("any")
-                                       : juce::String(b.channel));
-    text << "  keys " << noteName(b.lowKey) << " to " << noteName(b.highKey);
+    text << "  "
+         << TRANS("ch %1").replace("%1", b.channel == 0 ? juce::String(TRANS("any"))
+                                                        : juce::String(b.channel));
+    text << "  "
+         << TRANS("keys %1 to %2")
+                .replace("%1", noteName(b.lowKey))
+                .replace("%2", noteName(b.highKey));
     if (b.transpose != 0)
-      text << "  transposed " << (b.transpose > 0 ? "+" : "") << b.transpose;
-    if (b.ignoreVelocity) text << "  no velocity";
-    if (b.shortOctave) text << "  short octave";
-    if (b.debounceMs > 0) text << "  debounce " << b.debounceMs << " ms";
+      text << "  "
+           << TRANS("transposed %1")
+                  .replace("%1", juce::String(b.transpose > 0 ? "+" : "") + juce::String(b.transpose));
+    if (b.ignoreVelocity) text << "  " << TRANS("no velocity");
+    if (b.shortOctave) text << "  " << TRANS("short octave");
+    if (b.debounceMs > 0)
+      text << "  " << TRANS("debounce %1 ms").replace("%1", juce::String(b.debounceMs));
     g.drawText(text, 6, 0, w - 12, h, juce::Justification::centredLeft, true);
   }
 
@@ -74,7 +81,7 @@ private:
 ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     : proc_(p), keyboardId_(keyboardId) {
   addAndMakeVisible(title_);
-  styleLabel(title_, "What plays " + juce::String(proc_.keyboardName(keyboardId)));
+  styleLabel(title_, TRANS("What plays %1").replace("%1", juce::String(proc_.keyboardName(keyboardId))));
   title_.setFont(juce::FontOptions(16.0f));
 
   model_ = std::make_unique<BindingList>(proc_, keyboardId_);
@@ -102,7 +109,7 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   };
 
   addAndMakeVisible(learn_);
-  learn_.setTooltip("Press the lowest key you want, then the highest");
+  learn_.setTooltip(TRANS("Press the lowest key you want, then the highest"));
   learn_.onClick = [this] {
     // Learning a manual is two presses: the ends of the range. Anything in
     // between follows, and the transpose is worked out from where the organ's
@@ -111,23 +118,23 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   };
 
   addAndMakeVisible(deviceLabel_);
-  styleLabel(deviceLabel_, "Console");
+  styleLabel(deviceLabel_, TRANS("Console"));
   addAndMakeVisible(device_);
-  device_.addItem("Any device", 1);
+  device_.addItem(TRANS("Any device"), 1);
   for (size_t i = 0; i < proc_.midiDevices().names().size(); ++i)
     device_.addItem(juce::String(proc_.midiDevices().displayName(static_cast<int>(i) + 1)),
                     static_cast<int>(i) + 2);
   device_.onChange = [this] { applyEdits(); };
 
   addAndMakeVisible(channelLabel_);
-  styleLabel(channelLabel_, "Channel");
+  styleLabel(channelLabel_, TRANS("Channel"));
   addAndMakeVisible(channel_);
-  channel_.addItem("Any channel", 1);
+  channel_.addItem(TRANS("Any channel"), 1);
   for (int c = 1; c <= 16; ++c) channel_.addItem(juce::String(c), c + 1);
   channel_.onChange = [this] { applyEdits(); };
 
   addAndMakeVisible(rangeLabel_);
-  styleLabel(rangeLabel_, "Keys");
+  styleLabel(rangeLabel_, TRANS("Keys"));
   for (auto* sl : {&lowKey_, &highKey_}) {
     addAndMakeVisible(*sl);
     styleSlider(*sl, 0, 127, 1);
@@ -136,14 +143,14 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   }
 
   addAndMakeVisible(transposeLabel_);
-  styleLabel(transposeLabel_, "Transpose");
+  styleLabel(transposeLabel_, TRANS("Transpose"));
   addAndMakeVisible(transpose_);
   styleSlider(transpose_, -48, 48, 1);
-  transpose_.setTextValueSuffix(" semitones");
+  transpose_.setTextValueSuffix(" " + TRANS("semitones"));
   transpose_.onValueChange = [this] { applyEdits(); };
 
   addAndMakeVisible(velocityLabel_);
-  styleLabel(velocityLabel_, "Velocity");
+  styleLabel(velocityLabel_, TRANS("Velocity"));
   for (auto* sl : {&lowVel_, &highVel_}) {
     addAndMakeVisible(*sl);
     styleSlider(*sl, 0, 127, 1);
@@ -156,7 +163,7 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   shortOctave_.onClick = [this] { applyEdits(); };
 
   addAndMakeVisible(debounceLabel_);
-  styleLabel(debounceLabel_, "Debounce");
+  styleLabel(debounceLabel_, TRANS("Debounce"));
   addAndMakeVisible(debounce_);
   styleSlider(debounce_, 0, 200, 1);
   debounce_.setTextValueSuffix(" ms");
@@ -166,10 +173,10 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   note_.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
   note_.setJustificationType(juce::Justification::topLeft);
   note_.setText(
-      "A manual can have several of these. One keyboard split across two "
-      "manuals is two entries, and so is a manual played from two consoles.\n\n"
-      "An inverted velocity range (low above high) reverses the sense, which "
-      "is how a normally-closed key contact is read.",
+      TRANS("A manual can have several of these. One keyboard split across two "
+            "manuals is two entries, and so is a manual played from two consoles.\n\n"
+            "An inverted velocity range (low above high) reverses the sense, which "
+            "is how a normally-closed key contact is read."),
       juce::dontSendNotification);
   note_.setFont(juce::FontOptions(12.0f));
 
@@ -251,9 +258,9 @@ void ManualDialog::timerCallback() {
   // say which key it wants next. It used to stay on "lowest" after the first
   // press, so players pressed the lowest key twice and got a one-key range.
   const juce::String prompt =
-      proc_.keyboardLearning() != keyboardId_ ? "Learn from a key"
-      : proc_.keyboardLearnHasLowKey()        ? "Now press the highest key..."
-                                              : "Press the lowest key...";
+      proc_.keyboardLearning() != keyboardId_ ? TRANS("Learn from a key")
+      : proc_.keyboardLearnHasLowKey()        ? TRANS("Now press the highest key...")
+                                              : TRANS("Press the lowest key...");
   if (learn_.getButtonText() != prompt) learn_.setButtonText(prompt);
   if (!has) return;
 
@@ -332,7 +339,7 @@ public:
       : proc_(p), keyboardId_(keyboardId),
         manual_(juce::String(p.keyboardName(keyboardId))) {
     addAndMakeVisible(title_);
-    title_.setText("Pistons that bring the " + manual_ + " to one of your keyboards",
+    title_.setText(TRANS("Pistons that bring the %1 to one of your keyboards").replace("%1", manual_),
                    juce::dontSendNotification);
     title_.setFont(juce::FontOptions(16.0f));
     title_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
@@ -360,14 +367,14 @@ public:
     note_.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
     note_.setJustificationType(juce::Justification::topLeft);
     note_.setFont(juce::FontOptions(12.0f));
-    note_.setText("A piston here makes a keyboard play the " + manual_ +
-                      ", so a console with fewer keyboards than the organ has manuals "
-                      "can reach all of them. Pressing it lets go of any notes held on "
-                      "that keyboard first. Add one for each keyboard that should be able "
-                      "to play this manual.\n\nThe same button added on several manuals steps "
-                      "the keyboard through them, one press at a time. Settings, MIDI can make "
-                      "General Cancel put every keyboard back where it started. Saved with "
-                      "this organ.",
+    note_.setText(TRANS("A piston here makes a keyboard play the %1, so a console with fewer "
+                        "keyboards than the organ has manuals can reach all of them. Pressing "
+                        "it lets go of any notes held on that keyboard first. Add one for each "
+                        "keyboard that should be able to play this manual.\n\nThe same button "
+                        "added on several manuals steps the keyboard through them, one press at "
+                        "a time. Settings, MIDI can make General Cancel put every keyboard back "
+                        "where it started. Saved with this organ.")
+                      .replace("%1", manual_),
                   juce::dontSendNotification);
     refresh();
     startTimerHz(10);
@@ -445,20 +452,24 @@ private:
     for (int ch = 1; ch <= 16; ++ch)
       for (const MidiBinding* b : proc_.midiMap().bindingsFor(
                MidiTargetKind::RouteKeyboard, routeKeyboardTarget(keyboardId_, ch))) {
-        text << (b->source.kind == MidiSourceKind::Note ? "Note " : "Controller ")
-             << b->source.number;
-        if (b->source.channel > 0) text << " on channel " << b->source.channel;
-        text << "  brings the " << manual_ << " to the keyboard on channel " << ch << "\n";
+        text << (b->source.kind == MidiSourceKind::Note ? TRANS("Note %1") : TRANS("Controller %1"))
+                    .replace("%1", juce::String(b->source.number));
+        if (b->source.channel > 0) text << " " << TRANS("on channel %1").replace("%1", juce::String(b->source.channel));
+        text << "  "
+             << TRANS("brings the %1 to the keyboard on channel %2")
+                    .replace("%1", manual_)
+                    .replace("%2", juce::String(ch))
+             << "\n";
         ++count;
       }
-    list_.setText(count == 0 ? "No pistons yet." : text, juce::dontSendNotification);
+    list_.setText(count == 0 ? TRANS("No pistons yet.") : text, juce::dontSendNotification);
     remove_.setEnabled(count > 0 && step_ == Step::Idle);
     add_.setEnabled(step_ == Step::Idle);
     cancel_.setVisible(step_ != Step::Idle);
     prompt_.setText(step_ == Step::Keyboard
-                        ? "Play any key on the keyboard that should play the " + manual_ + "..."
+                        ? TRANS("Play any key on the keyboard that should play the %1...").replace("%1", manual_)
                     : step_ == Step::Piston
-                        ? "Now press the piston (keyboard on channel " + juce::String(channel_) + ")..."
+                        ? TRANS("Now press the piston (keyboard on channel %1)...").replace("%1", juce::String(channel_))
                         : juce::String(),
                     juce::dontSendNotification);
   }
@@ -469,8 +480,8 @@ private:
   Step step_ = Step::Idle;
   int channel_ = 0;
   juce::Label title_, list_, prompt_, note_;
-  juce::TextButton add_{"Add a piston..."}, cancel_{"Cancel"}, remove_{"Remove all pistons"};
-  juce::ToggleButton tab_{"It is a drawstop or tab: going on and going off both count"};
+  juce::TextButton add_{TRANS("Add a piston...")}, cancel_{TRANS("Cancel")}, remove_{TRANS("Remove all pistons")};
+  juce::ToggleButton tab_{TRANS("It is a drawstop or tab: going on and going off both count")};
 };
 
 // GrandOrgue's shape: one window per manual, a tab per kind of thing.
@@ -480,9 +491,9 @@ public:
       : tabs_(juce::TabbedButtonBar::TabsAtTop) {
     addAndMakeVisible(tabs_);
     const auto bg = juce::Colour(0xff1b1e24);
-    tabs_.addTab("Keys", bg, new ManualDialog(p, keyboardId), true);
-    tabs_.addTab("Pistons", bg, new ManualPistonsPanel(p, keyboardId), true);
-    tabs_.addTab("Send", bg,
+    tabs_.addTab(TRANS("Keys"), bg, new ManualDialog(p, keyboardId), true);
+    tabs_.addTab(TRANS("Pistons"), bg, new ManualPistonsPanel(p, keyboardId), true);
+    tabs_.addTab(TRANS("Send"), bg,
                  MidiEventDialog::makeSendPanel(p, MidiTargetKind::Keyboard, keyboardId).release(),
                  true);
   }

@@ -821,6 +821,13 @@ public:
   static juce::File defaultCacheDirectory();
   juce::File cacheDirectorySetting() const { return cacheDir_; }
   void setLoadTicks(bool on);
+  // The language the program speaks: "" follows the system, "en" is English,
+  // anything else is a code from availableLanguages(). The windows are built
+  // with their words already in place, so the choice is applied once, when the
+  // global file is first read. A change is saved at once and is heard at the
+  // next start.
+  juce::String languageSetting() const { return language_; }
+  void setLanguageSetting(const juce::String& code);
   // Session-only form of the above: flips the switch without writing the
   // global file. Headless tools use this so a measurement render never
   // carries the progress taps, and without changing the player's preference
@@ -1556,6 +1563,7 @@ private:
   int memoryLimitMB_ = 0;
   int memoryLimitOverrideMB_ = 0;  // this session only; never written
   std::atomic<bool> loadTicks_{false};
+  juce::String language_;  // empty: the system's
   juce::File cacheDir_; // empty: the default place
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
   // load and advanced by the audio thread, so both sides use an atomic and

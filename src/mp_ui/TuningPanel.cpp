@@ -33,9 +33,9 @@ juce::String TuningPanel::summary(const MasterpieceProcessor& p) {
 }
 
 TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
-  styleHeading(temperamentLabel_, "Temperament");
-  styleHeading(pitchLabel_, "Pitch (A)");
-  styleHeading(transposeLabel_, "Transpose");
+  styleHeading(temperamentLabel_, TRANS("Temperament"));
+  styleHeading(pitchLabel_, TRANS("Pitch (A)"));
+  styleHeading(transposeLabel_, TRANS("Transpose"));
   for (auto* l : {&temperamentLabel_, &pitchLabel_, &transposeLabel_}) addAndMakeVisible(*l);
 
   addAndMakeVisible(temperament_);
@@ -47,9 +47,9 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
       proc_.setTemperament(choices_[static_cast<size_t>(i)]);
   };
   addAndMakeVisible(scala_);
-  scala_.setTooltip("A temperament from a Scala .scl file: twelve notes, repeating at the octave");
+  scala_.setTooltip(TRANS("A temperament from a Scala .scl file: twelve notes, repeating at the octave"));
   scala_.onClick = [this] {
-    chooser_ = std::make_unique<juce::FileChooser>("A Scala temperament", juce::File(), "*.scl");
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("A Scala temperament"), juce::File(), "*.scl");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
@@ -57,7 +57,9 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
                             if (!f.existsAsFile()) return;
                             std::string why;
                             if (!proc_.setTemperament("scala:" + f.getFullPathName().toStdString(), &why))
-                              note_.setText(f.getFileName() + " was not loaded: " + juce::String(why),
+                              note_.setText(TRANS("%1 was not loaded: %2")
+                                                .replace("%1", f.getFileName())
+                                                .replace("%2", juce::String(why)),
                                             juce::dontSendNotification);
                             fillTemperaments();
                           });
@@ -78,7 +80,7 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   addAndMakeVisible(pitchNote_);
   pitchNote_.setColour(juce::Label::textColourId, kTextDim);
-  native_.setButtonText("Organ's own (" + juce::String(native, 1) + ")");
+  native_.setButtonText(TRANS("Organ's own (%1)").replace("%1", juce::String(native, 1)));
   native_.onClick = [this] { proc_.setMasterPitchHz(0.0); };
   a415_.onClick = [this] { proc_.setMasterPitchHz(415.0); };
   a440_.onClick = [this] { proc_.setMasterPitchHz(440.0); };
@@ -96,9 +98,9 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(note_);
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
-  note_.setText("Notes played from now on take the change; held notes keep the pitch "
-                "they started with. Saved for this organ. Transposing moves the keys, "
-                "not the samples. Map any of these to your console in Settings, MIDI.",
+  note_.setText(TRANS("Notes played from now on take the change; held notes keep the pitch "
+                      "they started with. Saved for this organ. Transposing moves the keys, "
+                      "not the samples. Map any of these to your console in Settings, MIDI."),
                 juce::dontSendNotification);
 
   setSize(460, 262);
@@ -112,7 +114,7 @@ void TuningPanel::fillTemperaments() {
   choices_.clear();
   temperament_.clear(juce::dontSendNotification);
   choices_.push_back("");
-  temperament_.addItem("The organ's own", 1);
+  temperament_.addItem(TRANS("The organ's own"), 1);
   for (const auto& t : temperamentLibrary()) {
     choices_.push_back(t.name);
     temperament_.addItem(juce::String(t.name), static_cast<int>(choices_.size()));
@@ -120,7 +122,7 @@ void TuningPanel::fillTemperaments() {
   const std::string& now = proc_.temperamentChoice();
   if (now.rfind("scala:", 0) == 0) {
     choices_.push_back(now);
-    temperament_.addItem("Scala: " + juce::String(proc_.temperamentName()),
+    temperament_.addItem(TRANS("Scala: %1").replace("%1", juce::String(proc_.temperamentName())),
                          static_cast<int>(choices_.size()));
   }
   refresh();
@@ -130,14 +132,13 @@ void TuningPanel::refresh() {
   const std::string& now = proc_.temperamentChoice();
   for (size_t i = 0; i < choices_.size(); ++i)
     if (choices_[i] == now) temperament_.setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
-  temperament_.changeItemText(1, "The organ's own" +
-                                     (now.empty() ? " (" + juce::String(proc_.temperamentName()) + ")"
-                                                  : juce::String()));
+  temperament_.changeItemText(1, now.empty() ? TRANS("The organ's own (%1)").replace("%1", juce::String(proc_.temperamentName()))
+                                             : TRANS("The organ's own"));
   if (!pitch_.isMouseButtonDown())
     pitch_.setValue(proc_.masterPitchHz(), juce::dontSendNotification);
   const double cents = 1200.0 * std::log2(proc_.masterPitchHz() / proc_.nativePitchHz());
-  pitchNote_.setText(std::abs(cents) < 0.05 ? juce::String("The organ's own pitch")
-                                            : juce::String(cents, 1) + " cents from the organ's own",
+  pitchNote_.setText(std::abs(cents) < 0.05 ? TRANS("The organ's own pitch")
+                                            : TRANS("%1 cents from the organ's own").replace("%1", juce::String(cents, 1)),
                      juce::dontSendNotification);
   transposeValue_.setText(signedSemitones(proc_.transpose()), juce::dontSendNotification);
   down_.setEnabled(proc_.transpose() > -12);

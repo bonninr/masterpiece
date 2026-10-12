@@ -38,13 +38,13 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
 
   addChildComponent(midiHeading_);
   style(midiHeading_, 13.0f, juce::Colours::lightgrey);
-  midiHeading_.setText("Tick the keyboards you play from:",
+  midiHeading_.setText(TRANS("Tick the keyboards you play from:"),
                        juce::dontSendNotification);
   addChildComponent(midiNone_);
   style(midiNone_, 13.0f, juce::Colours::grey);
   midiNone_.setText(
-      "No MIDI inputs found. You can still play with the mouse on the "
-      "on-screen keyboard, and plug a console in later.",
+      TRANS("No MIDI inputs found. You can still play with the mouse on the "
+            "on-screen keyboard, and plug a console in later."),
       juce::dontSendNotification);
 
   for (const auto& in : juce::MidiInput::getAvailableDevices()) {
@@ -94,45 +94,46 @@ void WizardPanel::showStep(int step) {
 
   switch (step_) {
     case 0:
-      title_.setText("Sound", juce::dontSendNotification);
+      title_.setText(TRANS("Sound"), juce::dontSendNotification);
       body_.setText(
-          "Pick the device you listen through, and a buffer size.\n\n"
-          "A smaller buffer responds faster to a key; too small and the audio "
-          "breaks up. 256 or 512 samples suits most machines. You can change "
-          "this at any time.",
+          TRANS("Pick the device you listen through, and a buffer size.\n\n"
+                "A smaller buffer responds faster to a key; too small and the audio "
+                "breaks up. 256 or 512 samples suits most machines. You can change "
+                "this at any time."),
           juce::dontSendNotification);
       break;
     case 1:
-      title_.setText("Your keyboards", juce::dontSendNotification);
+      title_.setText(TRANS("Your keyboards"), juce::dontSendNotification);
       body_.setText(
-          "Which manual a key plays is decided by its MIDI channel, and no "
-          "organ file can guess how your console is wired.\n\n"
-          "Turn your inputs on here; the channel for each manual is on the "
-          "MIDI page in settings, where you can also right-click a drawstop "
-          "and move the real one to learn it.",
+          TRANS("Which manual a key plays is decided by its MIDI channel, and no "
+                "organ file can guess how your console is wired.\n\n"
+                "Turn your inputs on here; the channel for each manual is on the "
+                "MIDI page in settings, where you can also right-click a drawstop "
+                "and move the real one to learn it."),
           juce::dontSendNotification);
       break;
     default:
-      title_.setText("An organ", juce::dontSendNotification);
+      title_.setText(TRANS("An organ"), juce::dontSendNotification);
       body_.setText(
-          "Choose the organ definition file of a sample set you have "
-          "installed. A large set takes a while to load the first time; the "
-          "console appears as soon as it is ready.\n\n"
-          "Afterwards you can put it on a numbered slot from the Favourites "
-          "page, so getting back to it never means finding it again.",
+          TRANS("Choose the organ definition file of a sample set you have "
+                "installed. A large set takes a while to load the first time; the "
+                "console appears as soon as it is ready.\n\n"
+                "Afterwards you can put it on a numbered slot from the Favourites "
+                "page, so getting back to it never means finding it again."),
           juce::dontSendNotification);
       organStatus_.setText(
           proc_.organModel().organName.empty()
-              ? "No organ loaded yet"
-              : "Loaded: " + juce::String(proc_.organModel().organName),
+              ? TRANS("No organ loaded yet")
+              : TRANS("Loaded: %1").replace("%1", juce::String(proc_.organModel().organName)),
           juce::dontSendNotification);
       break;
   }
 
   back_.setEnabled(step_ > 0);
-  next_.setButtonText(step_ + 1 >= kSteps ? "Finish" : "Next");
-  progress_.setText("Step " + juce::String(step_ + 1) + " of " +
-                        juce::String(kSteps),
+  next_.setButtonText(step_ + 1 >= kSteps ? TRANS("Finish") : TRANS("Next"));
+  progress_.setText(TRANS("Step %1 of %2")
+                        .replace("%1", juce::String(step_ + 1))
+                        .replace("%2", juce::String(kSteps)),
                     juce::dontSendNotification);
   resized();
 }

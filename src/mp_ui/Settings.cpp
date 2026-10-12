@@ -63,30 +63,30 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // because someone who knows their machine should not have to accept a
   // profile to get at them.
   addAndMakeVisible(profileLabel_);
-  styleLabel(profileLabel_, "Memory profile");
+  styleLabel(profileLabel_, TRANS("Memory profile"));
   addAndMakeVisible(profile_);
   // Named for what they do, not for a machine they suit. The figures that
   // actually decide whether one fits are in the readout below the controls,
   // measured on the organ in front of you rather than assumed.
-  profile_.addItem("Best quality - 24-bit, hold everything", 1);
-  profile_.addItem("Recommended - 16-bit, stream releases", 2);
-  profile_.addItem("Smallest - 16-bit mono, stream releases", 3);
-  profile_.addItem("Custom", 4);
+  profile_.addItem(TRANS("Best quality - 24-bit, hold everything"), 1);
+  profile_.addItem(TRANS("Recommended - 16-bit, stream releases"), 2);
+  profile_.addItem(TRANS("Smallest - 16-bit mono, stream releases"), 3);
+  profile_.addItem(TRANS("Custom"), 4);
   profile_.onChange = [this] {
     if (applyingProfile_) return;
     if (profile_.getSelectedId() != 4) applyProfile(profile_.getSelectedId());
   };
 
   addAndMakeVisible(preloadLabel_);
-  styleLabel(preloadLabel_, "Preloaded per sample");
+  styleLabel(preloadLabel_, TRANS("Preloaded per sample"));
   addAndMakeVisible(preload_);
   // Two real choices. An attack's head is always extended to the end of its
   // sustain loop, and in an organ sample the loop runs nearly to the end of
   // the file, so a second or two past it, or a share of the file, came to
   // the same thing as the loop alone. The seconds an earlier version
   // offered are still shown while they are in force.
-  preload_.addItem("Whole samples (most memory)", 1);
-  preload_.addItem("Up to the loop (less memory)", 4);
+  preload_.addItem(TRANS("Whole samples (most memory)"), 1);
+  preload_.addItem(TRANS("Up to the loop (less memory)"), 4);
   showPreload(proc_.preloadHeadFrames());
   preload_.onChange = [this] {
     const int id = preload_.getSelectedId();
@@ -96,11 +96,11 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   };
 
   addAndMakeVisible(storageLabel_);
-  styleLabel(storageLabel_, "Resident format");
+  styleLabel(storageLabel_, TRANS("Resident format"));
   addAndMakeVisible(storage_);
-  storage_.addItem("24-bit - what the samples are", 1);
-  storage_.addItem("16-bit - two thirds of that, inaudible", 2);
-  storage_.addItem("32-bit float - larger than the source", 3);
+  storage_.addItem(TRANS("24-bit - what the samples are"), 1);
+  storage_.addItem(TRANS("16-bit - two thirds of that, inaudible"), 2);
+  storage_.addItem(TRANS("32-bit float - larger than the source"), 3);
   storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int16     ? 2
                          : proc_.sampleStorage() == SampleStorage::Float32 ? 3
                                                                            : 1,
@@ -118,11 +118,11 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // held at twice the size it needs. Converting up is never offered: it
   // invents nothing and costs the memory anyway.
   addAndMakeVisible(rateLabel_);
-  styleLabel(rateLabel_, "Sample rate");
+  styleLabel(rateLabel_, TRANS("Sample rate"));
   addAndMakeVisible(rate_);
-  rate_.addItem("As recorded", 1);
-  rate_.addItem("48 kHz", 2);
-  rate_.addItem("44.1 kHz", 3);
+  rate_.addItem(TRANS("As recorded"), 1);
+  rate_.addItem(TRANS("48 kHz"), 2);
+  rate_.addItem(TRANS("44.1 kHz"), 3);
   const auto hz = proc_.loadSampleRate();
   rate_.setSelectedId(hz >= 47000.0 && hz <= 49000.0   ? 2
                       : hz >= 43000.0 && hz <= 45000.0 ? 3
@@ -138,11 +138,11 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // gigabytes, and a cache per organ per settings combination would fill a
   // disk without ever being asked to. Loading something else replaces it.
   addAndMakeVisible(cacheLabel_);
-  styleLabel(cacheLabel_, "Sample cache");
+  styleLabel(cacheLabel_, TRANS("Sample cache"));
   addAndMakeVisible(cache_);
-  cache_.addItem("One cache, replaced as organs change", 1);
-  cache_.addItem("One cache per organ (uses more disk)", 2);
-  cache_.addItem("Off", 3);
+  cache_.addItem(TRANS("One cache, replaced as organs change"), 1);
+  cache_.addItem(TRANS("One cache per organ (uses more disk)"), 2);
+  cache_.addItem(TRANS("Off"), 3);
   cache_.setSelectedId(proc_.cacheMode() == SampleLibrary::CacheMode::Off        ? 3
                        : proc_.cacheMode() == SampleLibrary::CacheMode::PerOrgan ? 2
                                                                                  : 1,
@@ -158,14 +158,14 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // it, so a machine with a small fast disk and a large slow one needs to be
   // able to say which holds it.
   addAndMakeVisible(cacheDirLabel_);
-  styleLabel(cacheDirLabel_, "Cache folder");
+  styleLabel(cacheDirLabel_, TRANS("Cache folder"));
   addAndMakeVisible(cacheDirValue_);
   cacheDirValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   showCacheDir();
   addAndMakeVisible(cacheDirChoose_);
   cacheDirChoose_.onClick = [this] {
     cacheDirChooser_ = std::make_unique<juce::FileChooser>(
-        "Where should the sample cache be written?", proc_.cacheDirectory());
+        TRANS("Where should the sample cache be written?"), proc_.cacheDirectory());
     cacheDirChooser_->launchAsync(
         juce::FileBrowserComponent::openMode |
             juce::FileBrowserComponent::canSelectDirectories,
@@ -187,14 +187,14 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // another tree can leave that path pointing nowhere near the audio, and
   // then only the player knows. Takes effect the next time it loads.
   addAndMakeVisible(organRootLabel_);
-  styleLabel(organRootLabel_, "Organ folder");
+  styleLabel(organRootLabel_, TRANS("Organ folder"));
   addAndMakeVisible(organRootValue_);
   organRootValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   showOrganRoot();
   addAndMakeVisible(organRootChoose_);
   organRootChoose_.onClick = [this] {
     organRootChooser_ = std::make_unique<juce::FileChooser>(
-        "Which folder holds OrganInstallationPackages?",
+        TRANS("Which folder holds OrganInstallationPackages?"),
         juce::File(proc_.organRootDir()));
     organRootChooser_->launchAsync(
         juce::FileBrowserComponent::openMode |
@@ -224,10 +224,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // How much of each release stays in memory while streaming. More gives a
   // slow disk longer to catch up before a release goes quiet (#120).
   addAndMakeVisible(streamHead_);
-  streamHead_.addItem("Hold the first second", 1);
-  streamHead_.addItem("Hold 25% of each release", 2);
-  streamHead_.addItem("Hold 50% of each release", 3);
-  streamHead_.addItem("Hold 75% of each release", 4);
+  streamHead_.addItem(TRANS("Hold the first second"), 1);
+  streamHead_.addItem(TRANS("Hold 25% of each release"), 2);
+  streamHead_.addItem(TRANS("Hold 50% of each release"), 3);
+  streamHead_.addItem(TRANS("Hold 75% of each release"), 4);
   showStreamPercent(proc_.streamHeadPercent());
   streamHead_.setEnabled(proc_.streamReleases());
   streamHead_.onChange = [this] {
@@ -247,24 +247,24 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(loadTicks_);
   loadTicks_.setToggleState(proc_.loadTicks(), juce::dontSendNotification);
   loadTicks_.setTooltip(
-      "Play a short tap at each 10% of an organ load, so a large set can be "
-      "followed by ear.");
+      TRANS("Play a short tap at each 10% of an organ load, so a large set can be "
+            "followed by ear."));
   loadTicks_.onClick = [this] { proc_.setLoadTicks(loadTicks_.getToggleState()); };
 
   // Startup and memory: general config, written to the global file at once.
   addAndMakeVisible(reopen_);
   reopen_.setToggleState(proc_.reopenLastOrgan(), juce::dontSendNotification);
   reopen_.setTooltip(
-      "Off by default. Even when on, an organ that was loaded when Masterpiece "
-      "last closed unexpectedly is not reopened.");
+      TRANS("Off by default. Even when on, an organ that was loaded when Masterpiece "
+            "last closed unexpectedly is not reopened."));
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
   // The vector engine, off until it has proved itself in players' hands. It
   // changes at once, so the same chord can be heard both ways.
   addAndMakeVisible(faster_);
   faster_.setToggleState(proc_.fasterEngine(), juce::dontSendNotification);
-  faster_.setTooltip("Renders several samples at a time with the processor's vector unit (AVX2 on "
-                     "a PC, NEON on ARM): the same sound, with more polyphony to spare. New, so off "
-                     "by default. If anything sounds wrong with it on, turn it off and please report it.");
+  faster_.setTooltip(TRANS("Renders several samples at a time with the processor's vector unit (AVX2 on "
+                           "a PC, NEON on ARM): the same sound, with more polyphony to spare. New, so off "
+                           "by default. If anything sounds wrong with it on, turn it off and please report it."));
   faster_.onClick = [this] {
     proc_.setFasterEngine(faster_.getToggleState());
     showFasterUnit();
@@ -272,19 +272,19 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   showFasterUnit();
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
-  portable_.setTooltip("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
-                       "and a copy of its definition and console pictures, so it opens with the drive "
-                       "holding its installation files unplugged. Made at the next complete load; costs "
-                       "the cache's size on this disk. Streamed release tails still come from the "
-                       "installation files: turn streaming off for an organ that must play without them.");
+  portable_.setTooltip(TRANS("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
+                             "and a copy of its definition and console pictures, so it opens with the drive "
+                             "holding its installation files unplugged. Made at the next complete load; costs "
+                             "the cache's size on this disk. Streamed release tails still come from the "
+                             "installation files: turn streaming off for an organ that must play without them."));
   portable_.onClick = [this] { proc_.setKeepPortableCopy(portable_.getToggleState()); };
 
   addAndMakeVisible(memLimitLabel_);
-  styleLabel(memLimitLabel_, "Memory limit for samples");
+  styleLabel(memLimitLabel_, TRANS("Memory limit for samples"));
   addAndMakeVisible(memLimit_);
   memLimit_.setTooltip(
-      "A load that would take more than this stops and says so, instead of "
-      "running the computer out of memory.");
+      TRANS("A load that would take more than this stops and says so, instead of "
+            "running the computer out of memory."));
   fillMemLimit();
   memLimit_.onChange = [this] {
     const int id = memLimit_.getSelectedId();
@@ -304,7 +304,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   keep_.onClick = [this] { closeDialog(); };
   addChildComponent(reload_);
   reload_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff8a5a12));
-  reload_.setTooltip("These settings take effect when the organ is loaded; this loads it again now");
+  reload_.setTooltip(TRANS("These settings take effect when the organ is loaded; this loads it again now"));
   reload_.onClick = [this] {
     if (onReload) onReload();
   };
@@ -321,29 +321,29 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(memory_, "");
   addAndMakeVisible(note_);
   styleNote(note_,
-            "These settings take effect on the next organ load.\n\n"
-            "\"Up to the loop\" keeps each attack from its start to the end of "
-            "its sustain loop, which is all a held note plays; a sample whose "
-            "release is in the same file is always kept whole.\n\n"
-            "The resident format decides what a held frame costs. 16-bit halves "
-            "the memory and is what most players load by default; each sample "
-            "is scaled by its own peak first, so a quiet stop keeps the full "
-            "sixteen bits instead of only the top few.\n\n"
-            "Streaming holds only the start of each release - the first second, "
-            "or the share chosen beside it - and fetches the rest from disk while "
-            "it plays. A larger share gives a slow disk longer to catch up. Releases are the only samples "
-            "in an organ worth streaming - several seconds each, played once, "
-            "straight through, never looped - and an attack cannot be treated "
-            "the same way because its sustain loop has to be resident. On the "
-            "Nancy demo this is 12.2 GB down to 5.6 GB, with the rendered "
-            "audio identical sample for sample. Needs a disk that keeps up; "
-            "the Engine readout says if it did not.\n\n"
-            "\"Keep this organ playable without its installation files\" gives "
-            "the organ a sample cache of its own, whatever the Sample cache "
-            "setting says, and keeps a copy of its definition and console "
-            "pictures beside it. It is made at the next complete load. Released "
-            "notes streamed from disk still need the installation files, so "
-            "turn streaming off for an organ that has to play without them.");
+            TRANS("These settings take effect on the next organ load.\n\n"
+                  "\"Up to the loop\" keeps each attack from its start to the end of "
+                  "its sustain loop, which is all a held note plays; a sample whose "
+                  "release is in the same file is always kept whole.\n\n"
+                  "The resident format decides what a held frame costs. 16-bit halves "
+                  "the memory and is what most players load by default; each sample "
+                  "is scaled by its own peak first, so a quiet stop keeps the full "
+                  "sixteen bits instead of only the top few.\n\n"
+                  "Streaming holds only the start of each release - the first second, "
+                  "or the share chosen beside it - and fetches the rest from disk while "
+                  "it plays. A larger share gives a slow disk longer to catch up. Releases are the only samples "
+                  "in an organ worth streaming - several seconds each, played once, "
+                  "straight through, never looped - and an attack cannot be treated "
+                  "the same way because its sustain loop has to be resident. On the "
+                  "Nancy demo this is 12.2 GB down to 5.6 GB, with the rendered "
+                  "audio identical sample for sample. Needs a disk that keeps up; "
+                  "the Engine readout says if it did not.\n\n"
+                  "\"Keep this organ playable without its installation files\" gives "
+                  "the organ a sample cache of its own, whatever the Sample cache "
+                  "setting says, and keeps a copy of its definition and console "
+                  "pictures beside it. It is made at the next complete load. Released "
+                  "notes streamed from disk still need the installation files, so "
+                  "turn streaming off for an organ that has to play without them."));
   startTimerHz(2);
 }
 
@@ -358,13 +358,14 @@ void EnginePanel::fillMemLimit() {
   memLimit_.clear(juce::dontSendNotification);
   const int ram = juce::SystemStats::getMemorySizeInMegabytes();
   auto gb = [](int mb) { return juce::String(mb / 1024.0, 1) + " GB"; };
-  memLimit_.addItem("Default: 80% of memory (" +
-                        gb(MasterpieceProcessor::defaultMemoryLimitMB()) + ")", 1);
+  memLimit_.addItem(TRANS("Default: 80% of memory (%1)")
+                        .replace("%1", gb(MasterpieceProcessor::defaultMemoryLimitMB())), 1);
   const int current = proc_.memoryLimitSettingMB();
   bool listed = current == 0;
   for (int pct : {50, 60, 70, 90}) {
     const int mb = ram * pct / 100;
-    memLimit_.addItem(juce::String(pct) + "% of memory (" + gb(mb) + ")", 1000 + mb);
+    memLimit_.addItem(TRANS("%1% of memory (%2)").replace("%1", juce::String(pct)).replace("%2", gb(mb)),
+                      1000 + mb);
     if (mb == current) listed = true;
   }
   // A size set in the file that is none of the above is still shown as itself.
@@ -424,11 +425,12 @@ void EnginePanel::revert() {
 
 // Says what the faster engine found on this machine, so a report can say it.
 void EnginePanel::showFasterUnit() {
-  const juce::String base = "Faster audio engine (experimental)";
+  const juce::String base = TRANS("Faster audio engine (experimental)");
   const juce::String unit = proc_.fasterEngineUnit();
   faster_.setButtonText(!proc_.fasterEngine() ? base
-                        : unit.isNotEmpty()   ? base + ": using " + unit
-                                              : base + ": not available on this processor");
+                        : unit.isNotEmpty()   ? TRANS("Faster audio engine (experimental): using %1").replace("%1", unit)
+                                              : TRANS("Faster audio engine (experimental): not available on this "
+                                                      "processor"));
 }
 
 void EnginePanel::closeDialog() {
@@ -468,24 +470,24 @@ bool EnginePanel::loadingChanged() const {
 }
 
 void EnginePanel::showSaved(juce::TextButton& button) {
-  saveOrgan_.setButtonText("Save for this organ");
-  saveGlobal_.setButtonText("Save as default");
-  button.setButtonText("Saved");
+  saveOrgan_.setButtonText(TRANS("Save for this organ"));
+  saveGlobal_.setButtonText(TRANS("Save as default"));
+  button.setButtonText(TRANS("Saved"));
   savedUntilMs_ = juce::Time::getMillisecondCounter() + 2000;
 }
 
 void EnginePanel::timerCallback() {
   if (savedUntilMs_ != 0 && juce::Time::getMillisecondCounter() >= savedUntilMs_) {
     savedUntilMs_ = 0;
-    saveOrgan_.setButtonText("Save for this organ");
-    saveGlobal_.setButtonText("Save as default");
+    saveOrgan_.setButtonText(TRANS("Save for this organ"));
+    saveGlobal_.setButtonText(TRANS("Save as default"));
   }
   // Always there while an organ is loaded (#134), and marked when a change
   // here is waiting for it.
   const bool offer = onReload != nullptr && proc_.loadedOrganFile().getFullPathName().isNotEmpty();
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
   const bool pending = offer && loadingChanged();
-  const juce::String reloadText = pending ? "Load the organ again to apply" : "Load the organ again";
+  const juce::String reloadText = pending ? TRANS("Load the organ again to apply") : TRANS("Load the organ again");
   if (reload_.getButtonText() != reloadText) {
     reload_.setButtonText(reloadText);
     reload_.setColour(juce::TextButton::buttonColourId,
@@ -494,29 +496,25 @@ void EnginePanel::timerCallback() {
 
   const auto bytes = proc_.sampleLibrary().residentBytes();
   const auto fmt = proc_.sampleStorage();
-  juce::String text = "Resident samples: " +
-                      juce::String(bytes / (1024 * 1024)) + " MB (" +
-                      juce::String(proc_.sampleLibrary().residentCount()) +
-                      " samples, " +
-                      (fmt == SampleStorage::Int16     ? "16-bit"
-                       : fmt == SampleStorage::Float32 ? "32-bit float"
-                                                       : "24-bit") +
-                      ", " + (proc_.loadMono() ? "mono" : "stereo") +
-                      (proc_.loadSampleRate() > 0.0
-                           ? ", " + juce::String(proc_.loadSampleRate() / 1000.0, 1) +
-                                 " kHz"
-                           : juce::String()) +
-                      ")";
+  const juce::String format = fmt == SampleStorage::Int16     ? juce::String("16-bit")
+                              : fmt == SampleStorage::Float32 ? TRANS("32-bit float")
+                                                              : juce::String("24-bit");
+  juce::String text = TRANS("Resident samples: %1 MB (%2 samples, %3, %4%5)")
+                          .replace("%1", juce::String(bytes / (1024 * 1024)))
+                          .replace("%2", juce::String(proc_.sampleLibrary().residentCount()))
+                          .replace("%3", format)
+                          .replace("%4", proc_.loadMono() ? TRANS("mono") : TRANS("stereo"))
+                          .replace("%5", proc_.loadSampleRate() > 0.0
+                                             ? ", " + juce::String(proc_.loadSampleRate() / 1000.0, 1) + " kHz"
+                                             : juce::String());
   const auto streamed = proc_.sampleLibrary().streamedCount();
   if (streamed > 0)
-    text += "  -  " + juce::String(static_cast<int>(streamed)) +
-            " streamed, " +
-            juce::String(proc_.sampleLibrary().streamedBytesSaved() /
-                         (1024 * 1024)) +
-            " MB left on disk";
+    text += "  -  " + TRANS("%1 streamed, %2 MB left on disk")
+                              .replace("%1", juce::String(static_cast<int>(streamed)))
+                              .replace("%2", juce::String(proc_.sampleLibrary().streamedBytesSaved() /
+                                                          (1024 * 1024)));
   if (const auto under = proc_.streamUnderruns(); under > 0)
-    text += "  -  DISK TOO SLOW: " + juce::String(static_cast<int>(under)) +
-            " underrun(s)";
+    text += "  -  " + TRANS("DISK TOO SLOW: %1 underrun(s)").replace("%1", juce::String(static_cast<int>(under)));
   memory_.setText(text, juce::dontSendNotification);
 }
 
@@ -575,7 +573,7 @@ void EnginePanel::syncProfile() {
 void EnginePanel::showCacheDir() {
   const auto chosen = proc_.cacheDirectorySetting();
   cacheDirValue_.setText(chosen.getFullPathName().isEmpty()
-                             ? "Default (" + proc_.cacheDirectory().getFullPathName() + ")"
+                             ? TRANS("Default (%1)").replace("%1", proc_.cacheDirectory().getFullPathName())
                              : chosen.getFullPathName(),
                          juce::dontSendNotification);
   cacheDirValue_.setTooltip(proc_.cacheDirectory().getFullPathName());
@@ -587,8 +585,8 @@ void EnginePanel::showCacheDir() {
 void EnginePanel::showOrganRoot() {
   const auto chosen = proc_.organRootOverride();
   organRootValue_.setText(chosen.getFullPathName().isEmpty()
-                              ? "From the definition (" + juce::String(proc_.organRootDir()) + ")"
-                              : chosen.getFullPathName() + "  -- loads next time",
+                              ? TRANS("From the definition (%1)").replace("%1", juce::String(proc_.organRootDir()))
+                              : TRANS("%1  -- loads next time").replace("%1", chosen.getFullPathName()),
                           juce::dontSendNotification);
 }
 
@@ -596,7 +594,7 @@ void EnginePanel::showPreload(int64_t frames) {
   const int64_t rate = 48000;
   const int id = frames == 0 ? 1 : frames == 1 ? 4 : frames >= 2 * rate ? 2 : 3;
   if ((id == 2 || id == 3) && preload_.indexOfItemId(id) < 0)
-    preload_.addItem(id == 2 ? "Loop + 2 s (earlier choice)" : "Loop + 1 s (earlier choice)", id);
+    preload_.addItem(id == 2 ? TRANS("Loop + 2 s (earlier choice)") : TRANS("Loop + 1 s (earlier choice)"), id);
   preload_.setSelectedId(id, juce::dontSendNotification);
 }
 
@@ -717,7 +715,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(load_);
   load_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        "Choose an impulse response", juce::File(), "*.wav;*.aiff;*.aif;*.flac");
+        TRANS("Choose an impulse response"), juce::File(), "*.wav;*.aiff;*.aif;*.flac");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
@@ -745,16 +743,16 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(clear_);
   clear_.onClick = [this] {
     proc_.convolver().clear();
-    irName_.setText("No IR loaded", juce::dontSendNotification);
+    irName_.setText(TRANS("No IR loaded"), juce::dontSendNotification);
   };
 
   addAndMakeVisible(irName_);
   styleLabel(irName_, proc_.convolver().hasImpulseResponse()
-                          ? "IR: " + proc_.convolver().impulseResponseName()
-                          : "No IR loaded");
+                          ? TRANS("IR: %1").replace("%1", proc_.convolver().impulseResponseName())
+                          : TRANS("No IR loaded"));
 
   addAndMakeVisible(mixLabel_);
-  styleLabel(mixLabel_, "Wet");
+  styleLabel(mixLabel_, TRANS("Wet"));
   addAndMakeVisible(mix_);
   mix_.setRange(0.0, 1.0, 0.01);
   mix_.setValue(proc_.convolver().mix(), juce::dontSendNotification);
@@ -764,10 +762,10 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "Most sample sets are recorded in the room they live in, and "
-            "several ship close / far / rear perspectives which ARE the room. "
-            "Convolution is for a dry set, or for headphones, and usually "
-            "wants far less wet signal than a reverb plugin would suggest.");
+            TRANS("Most sample sets are recorded in the room they live in, and "
+                  "several ship close / far / rear perspectives which ARE the room. "
+                  "Convolution is for a dry set, or for headphones, and usually "
+                  "wants far less wet signal than a reverb plugin would suggest."));
 }
 
 void ReverbPanel::resized() {
@@ -797,7 +795,7 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   };
 
   addAndMakeVisible(tempoLabel_);
-  styleLabel(tempoLabel_, "Tempo");
+  styleLabel(tempoLabel_, TRANS("Tempo"));
   addAndMakeVisible(tempo_);
   tempo_.setRange(20.0, 300.0, 1.0);
   tempo_.setValue(proc_.metronome().tempo(), juce::dontSendNotification);
@@ -805,7 +803,7 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   tempo_.onValueChange = [this] { proc_.metronome().setTempo(tempo_.getValue()); };
 
   addAndMakeVisible(beatsLabel_);
-  styleLabel(beatsLabel_, "Beats per bar");
+  styleLabel(beatsLabel_, TRANS("Beats per bar"));
   addAndMakeVisible(beats_);
   beats_.setRange(0.0, 12.0, 1.0);
   beats_.setValue(proc_.metronome().beatsPerBar(), juce::dontSendNotification);
@@ -814,7 +812,7 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   };
 
   addAndMakeVisible(levelLabel_);
-  styleLabel(levelLabel_, "Level");
+  styleLabel(levelLabel_, TRANS("Level"));
   addAndMakeVisible(level_);
   level_.setRange(0.0, 1.0, 0.01);
   level_.setValue(proc_.metronome().level(), juce::dontSendNotification);
@@ -831,7 +829,7 @@ MetronomePanel::~MetronomePanel() { stopTimer(); }
 
 void MetronomePanel::timerCallback() {
   const int b = proc_.metronome().currentBeat();
-  beat_.setText(b > 0 ? "Beat " + juce::String(b) : "", juce::dontSendNotification);
+  beat_.setText(b > 0 ? TRANS("Beat %1").replace("%1", juce::String(b)) : juce::String(), juce::dontSendNotification);
 }
 
 void MetronomePanel::resized() {
@@ -867,7 +865,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 
   save_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        "Save the performance", juce::File(), "*.mid");
+        TRANS("Save the performance"), juce::File(), "*.mid");
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                               juce::FileBrowserComponent::canSelectFiles |
                               juce::FileBrowserComponent::warnAboutOverwriting,
@@ -880,7 +878,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   load_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        "Load a performance", juce::File(), "*.mid;*.midi");
+        TRANS("Load a performance"), juce::File(), "*.mid;*.midi");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
@@ -893,27 +891,27 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(status_, "");
   addAndMakeVisible(note_);
   styleNote(note_,
-            "Records everything that reaches the engine, not just notes: stop "
-            "changes, couplers and shoe movements that arrive as MIDI are "
-            "captured too, so a recording plays back as the same performance "
-            "rather than as notes on whatever registration happens to be "
-            "drawn at the time.");
+            TRANS("Records everything that reaches the engine, not just notes: stop "
+                  "changes, couplers and shoe movements that arrive as MIDI are "
+                  "captured too, so a recording plays back as the same performance "
+                  "rather than as notes on whatever registration happens to be "
+                  "drawn at the time."));
 
   addAndMakeVisible(audioHeading_);
-  styleLabel(audioHeading_, "Audio");
+  styleLabel(audioHeading_, TRANS("Audio"));
   for (auto* b : {&audioRecord_, &audioStop_}) addAndMakeVisible(*b);
   addAndMakeVisible(audioStatus_);
   styleLabel(audioStatus_, "");
   addAndMakeVisible(audioNote_);
   styleNote(audioNote_,
-            "Captures the organ's output after the master fader and before "
-            "the metronome, so the click stays out of the file. Written on a "
-            "background thread at 24-bit; the audio callback only hands over "
-            "the block it has already finished.");
+            TRANS("Captures the organ's output after the master fader and before "
+                  "the metronome, so the click stays out of the file. Written on a "
+                  "background thread at 24-bit; the audio callback only hands over "
+                  "the block it has already finished."));
 
   audioRecord_.onClick = [this] {
     audioChooser_ = std::make_unique<juce::FileChooser>(
-        "Record the organ to", juce::File(), "*.wav");
+        TRANS("Record the organ to"), juce::File(), "*.wav");
     audioChooser_->launchAsync(
         juce::FileBrowserComponent::saveMode |
             juce::FileBrowserComponent::canSelectFiles |
@@ -925,7 +923,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
           if (!proc_.audioRecorder().start(f.withFileExtension(".wav"),
                                            proc_.getSampleRate(),
                                            proc_.getTotalNumOutputChannels()))
-            audioStatus_.setText("Could not open that file for writing",
+            audioStatus_.setText(TRANS("Could not open that file for writing"),
                                  juce::dontSendNotification);
         });
   };
@@ -941,17 +939,20 @@ void RecorderPanel::timerCallback() {
   juce::String s;
   switch (r.state()) {
     case MidiRecorder::State::Recording:
-      s = "Recording - " + juce::String(r.positionSeconds(), 1) + " s, " +
-          juce::String(r.eventCount()) + " events";
+      s = TRANS("Recording - %1 s, %2 events")
+              .replace("%1", juce::String(r.positionSeconds(), 1))
+              .replace("%2", juce::String(r.eventCount()));
       break;
     case MidiRecorder::State::Playing:
-      s = "Playing - " + juce::String(r.positionSeconds(), 1) + " / " +
-          juce::String(r.lengthSeconds(), 1) + " s";
+      s = TRANS("Playing - %1 / %2 s")
+              .replace("%1", juce::String(r.positionSeconds(), 1))
+              .replace("%2", juce::String(r.lengthSeconds(), 1));
       break;
     case MidiRecorder::State::Idle:
-      s = r.empty() ? "Nothing recorded"
-                    : juce::String(r.eventCount()) + " events, " +
-                          juce::String(r.lengthSeconds(), 1) + " s";
+      s = r.empty() ? TRANS("Nothing recorded")
+                    : TRANS("%1 events, %2 s")
+                          .replace("%1", juce::String(r.eventCount()))
+                          .replace("%2", juce::String(r.lengthSeconds(), 1));
       break;
   }
   status_.setText(s, juce::dontSendNotification);
@@ -962,9 +963,10 @@ void RecorderPanel::timerCallback() {
   auto& a = proc_.audioRecorder();
   const bool on = a.isRecording();
   audioStatus_.setText(
-      on ? "Recording " + a.file().getFileName() + " - " +
-               juce::String(a.secondsRecorded(), 1) + " s"
-         : "Not recording",
+      on ? TRANS("Recording %1 - %2 s")
+               .replace("%1", a.file().getFileName())
+               .replace("%2", juce::String(a.secondsRecorded(), 1))
+         : TRANS("Not recording"),
       juce::dontSendNotification);
   audioRecord_.setEnabled(!on);
   audioStop_.setEnabled(on);
@@ -1009,9 +1011,9 @@ void RecorderPanel::resized() {
 MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
     : proc_(p), devices_(devices) {
   addAndMakeVisible(inputsLabel_);
-  styleLabel(inputsLabel_, "MIDI inputs");
+  styleLabel(inputsLabel_, TRANS("MIDI inputs"));
   addAndMakeVisible(outputsLabel_);
-  styleLabel(outputsLabel_, "MIDI output");
+  styleLabel(outputsLabel_, TRANS("MIDI output"));
   addAndMakeVisible(sharedNote_);
   sharedNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   addAndMakeVisible(useAsDefault_);
@@ -1028,7 +1030,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   defaultNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   showDefaultConsole();
   addAndMakeVisible(keyboardsLabel_);
-  styleLabel(keyboardsLabel_, "Keyboards");
+  styleLabel(keyboardsLabel_, TRANS("Keyboards"));
 
   addAndMakeVisible(output_);
   output_.onChange = [this] {
@@ -1056,7 +1058,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   };
 
   addAndMakeVisible(stepperLabel_);
-  styleLabel(stepperLabel_, "Sequencer");
+  styleLabel(stepperLabel_, TRANS("Sequencer"));
   addAndMakeVisible(learnNext_);
   learnNext_.onClick = [this] {
     // Momentary: a sequencer piston is a button, and a latching binding would
@@ -1071,10 +1073,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   // the keyboard on a channel play another manual (#90). Pick the channel,
   // then the manual, then press the piston.
   addAndMakeVisible(keyboardsHeading_);
-  styleLabel(keyboardsHeading_, "Manual buttons");
+  styleLabel(keyboardsHeading_, TRANS("Manual buttons"));
   addAndMakeVisible(learnManuals_);
-  learnManuals_.setTooltip("Pistons that switch which manual a keyboard plays: choose the keyboard's "
-                           "channel and the manual, then press the piston");
+  learnManuals_.setTooltip(TRANS("Pistons that switch which manual a keyboard plays: choose the keyboard's "
+                                 "channel and the manual, then press the piston"));
   learnManuals_.onClick = [this] {
     juce::PopupMenu menu;
     const auto manuals = proc_.playableKeyboards();
@@ -1086,9 +1088,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
                     juce::String(proc_.keyboardName(kb)), true, now);
       }
       const Id playing = proc_.keyboardForChannel(channel);
-      menu.addSubMenu("Keyboard on channel " + juce::String(channel) +
-                          (playing != 0 ? " (plays " + juce::String(proc_.keyboardName(playing)) + ")"
-                                        : juce::String()),
+      menu.addSubMenu(playing != 0 ? TRANS("Keyboard on channel %1 (plays %2)")
+                                           .replace("%1", juce::String(channel))
+                                           .replace("%2", juce::String(proc_.keyboardName(playing)))
+                                   : TRANS("Keyboard on channel %1").replace("%1", juce::String(channel)),
                       sub);
     }
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&learnManuals_),
@@ -1107,21 +1110,21 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   styleLabel(mapStatus_, "");
   addAndMakeVisible(note_);
   styleNote(note_,
-            "To map a control: right-click a drawstop on the console, then "
-            "move the control on your console. Unmapped messages keep working "
-            "as they are, so an organ is playable the moment it loads rather "
-            "than only after a mapping session.\n\n"
-            "The mapping is saved per organ, in your own application data - "
-            "never inside the sample set.\n\n"
-            "Keyboards: the channel decides which manual your console plays, "
-            "and therefore which division sounds. Couplers work off that, so "
-            "getting it wrong makes a manual sound like the wrong one."
-            "\n\nSequencer and console actions: the organ declares none of "
-            "these, so there is nothing on the console to right-click. Press "
-            "a Learn button here, then the piston you want to use.");
+            TRANS("To map a control: right-click a drawstop on the console, then "
+                  "move the control on your console. Unmapped messages keep working "
+                  "as they are, so an organ is playable the moment it loads rather "
+                  "than only after a mapping session.\n\n"
+                  "The mapping is saved per organ, in your own application data - "
+                  "never inside the sample set.\n\n"
+                  "Keyboards: the channel decides which manual your console plays, "
+                  "and therefore which division sounds. Couplers work off that, so "
+                  "getting it wrong makes a manual sound like the wrong one."
+                  "\n\nSequencer and console actions: the organ declares none of "
+                  "these, so there is nothing on the console to right-click. Press "
+                  "a Learn button here, then the piston you want to use."));
 
   addAndMakeVisible(consoleHeading_);
-  styleLabel(consoleHeading_, "Console");
+  styleLabel(consoleHeading_, TRANS("Console"));
   struct { juce::TextButton* b; MidiTargetKind k; } consoleLearn[] = {
       {&learnPageNext_, MidiTargetKind::ConsoleNextPage},
       {&learnPagePrev_, MidiTargetKind::ConsolePrevPage},
@@ -1157,14 +1160,17 @@ MidiPanel::~MidiPanel() {
 void MidiPanel::showDefaultConsole() {
   const auto& def = proc_.defaultConsole();
   if (def.empty()) {
-    defaultNote_.setText("No default: each organ starts from its own channels",
+    defaultNote_.setText(TRANS("No default: each organ starts from its own channels"),
                          juce::dontSendNotification);
     return;
   }
-  juce::String text = "Default for organs with no channels saved:";
-  for (const auto& [role, channel] : def)
-    text << (role == 0 ? juce::String(" Pedal ") : " Manual " + juce::String(role) + " ")
-         << channel << ";";
+  juce::String text = TRANS("Default for organs with no channels saved:");
+  for (const auto& [role, channel] : def) {
+    const juce::String item =
+        role == 0 ? TRANS("Pedal %1").replace("%1", juce::String(channel))
+                  : TRANS("Manual %1 %2").replace("%1", juce::String(role)).replace("%2", juce::String(channel));
+    text << " " << item << ";";
+  }
   defaultNote_.setText(text.dropLastCharacters(1), juce::dontSendNotification);
 }
 
@@ -1176,15 +1182,15 @@ void MidiPanel::showSharedChannels() {
     byChannel[b.channel].add(it != proc_.organModel().keyboards.end() &&
                                      !it->second.name.empty()
                                  ? juce::String(it->second.name)
-                                 : "keyboard " + juce::String((int) b.keyboardId));
+                                 : TRANS("keyboard %1").replace("%1", juce::String((int) b.keyboardId)));
   }
   juce::String text;
   for (const auto& [channel, names] : byChannel) {
     if (names.size() < 2) continue;
-    text << (text.isEmpty() ? "" : "   ") << "Channel " << channel << ": "
-         << names.joinIntoString(", ");
+    text << (text.isEmpty() ? "" : "   ")
+         << TRANS("Channel %1: %2").replace("%1", juce::String(channel)).replace("%2", names.joinIntoString(", "));
   }
-  sharedNote_.setText(text.isEmpty() ? "" : "Shared -- " + text,
+  sharedNote_.setText(text.isEmpty() ? juce::String() : TRANS("Shared -- %1").replace("%1", text),
                       juce::dontSendNotification);
 }
 
@@ -1246,10 +1252,9 @@ void MidiPanel::refresh() {
     keyboardLabels_.push_back(std::move(label));
 
     auto box = std::make_unique<juce::ComboBox>();
-    box->addItem("Default (channel " +
-                     juce::String(proc_.channelForKeyboard(kb)) + ")", 1);
+    box->addItem(TRANS("Default (channel %1)").replace("%1", juce::String(proc_.channelForKeyboard(kb))), 1);
     for (int ch = 1; ch <= 16; ++ch)
-      box->addItem("Channel " + juce::String(ch), ch + 1);
+      box->addItem(TRANS("Channel %1").replace("%1", juce::String(ch)), ch + 1);
     const auto& assigned = proc_.channelAssignments();
     int selected = 1;
     for (const auto& b : assigned)
@@ -1273,7 +1278,7 @@ void MidiPanel::refresh() {
     // And which console. Named by the device itself, because a saved mapping
     // refers to it by name and an id means nothing across runs.
     auto dev = std::make_unique<juce::ComboBox>();
-    dev->addItem("Any device", 1);
+    dev->addItem(TRANS("Any device"), 1);
     const auto& known = proc_.midiDevices();
     for (size_t i = 0; i < known.names().size(); ++i)
       dev->addItem(juce::String(known.displayName(static_cast<int>(i) + 1)), static_cast<int>(i) + 2);
@@ -1294,14 +1299,14 @@ void MidiPanel::refresh() {
     addAndMakeVisible(*dev);
     keyboardDevices_.push_back(std::move(dev));
 
-    auto more = std::make_unique<juce::TextButton>("Range, transpose...");
+    auto more = std::make_unique<juce::TextButton>(TRANS("Range, transpose..."));
     more->onClick = [this, kb] { ManualDialog::show(proc_, kb); };
     addAndMakeVisible(*more);
     keyboardMore_.push_back(std::move(more));
   }
 
   output_.clear(juce::dontSendNotification);
-  output_.addItem("None", 1);
+  output_.addItem(TRANS("None"), 1);
   int id = 2;
   for (const auto& out : juce::MidiOutput::getAvailableDevices())
     output_.addItem(out.name, id++);
@@ -1311,8 +1316,8 @@ void MidiPanel::refresh() {
 
 void MidiPanel::timerCallback() {
   const auto& map = proc_.midiMap();
-  juce::String s = juce::String(static_cast<int>(map.size())) + " binding(s)";
-  if (map.learning()) s += "  -  LEARNING: move a control now";
+  juce::String s = TRANS("%1 binding(s)").replace("%1", juce::String(static_cast<int>(map.size())));
+  if (map.learning()) s += "  -  " + TRANS("LEARNING: move a control now");
   mapStatus_.setText(s, juce::dontSendNotification);
 
 }
@@ -1416,9 +1421,9 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
   // organ on the console (#276). What stays here is the registration books.
   // --- combination sets --------------------------------------------------
   addAndMakeVisible(setsHeading_);
-  styleLabel(setsHeading_, "Combination sets");
+  styleLabel(setsHeading_, TRANS("Combination sets"));
   addAndMakeVisible(setLabel_);
-  styleLabel(setLabel_, "In use");
+  styleLabel(setLabel_, TRANS("In use"));
   addAndMakeVisible(setBox_);
   setBox_.onChange = [this] {
     const int idx = setBox_.getSelectedId() - 1;
@@ -1429,20 +1434,19 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
     // silently discards what was just captured.
     proc_.switchCombinationSet(want);
     proc_.saveSettings();
-    setStatus_.setText("Now using " +
-                           (want.empty() ? juce::String("the default set")
-                                         : juce::String(want)),
+    setStatus_.setText(TRANS("Now using %1").replace("%1", want.empty() ? TRANS("the default set")
+                                                                       : juce::String(want)),
                        juce::dontSendNotification);
   };
 
   addAndMakeVisible(setNew_);
   setNew_.onClick = [this] {
     setPrompt_ = std::make_unique<juce::AlertWindow>(
-        "Save as new set", "A name for this registration set:",
+        TRANS("Save as new set"), TRANS("A name for this registration set:"),
         juce::MessageBoxIconType::NoIcon);
-    setPrompt_->addTextEditor("name", "", "Name");
-    setPrompt_->addButton("Save", 1);
-    setPrompt_->addButton("Cancel", 0);
+    setPrompt_->addTextEditor("name", "", TRANS("Name"));
+    setPrompt_->addButton(TRANS("Save"), 1);
+    setPrompt_->addButton(TRANS("Cancel"), 0);
     setPrompt_->enterModalState(
         true, juce::ModalCallbackFunction::create([this](int result) {
           const juce::String name =
@@ -1458,7 +1462,7 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
           proc_.switchCombinationSet(name.toStdString());
           proc_.saveSettings();
           refreshSets();
-          setStatus_.setText("Now using " + name, juce::dontSendNotification);
+          setStatus_.setText(TRANS("Now using %1").replace("%1", name), juce::dontSendNotification);
         }));
   };
 
@@ -1466,7 +1470,7 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
   setDelete_.onClick = [this] {
     const std::string live = proc_.combinationSetName();
     if (live.empty()) {
-      setStatus_.setText("The default set cannot be deleted",
+      setStatus_.setText(TRANS("The default set cannot be deleted"),
                          juce::dontSendNotification);
       return;
     }
@@ -1476,7 +1480,7 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.deleteCombinationSet(live);
     proc_.saveSettings();
     refreshSets();
-    setStatus_.setText("Deleted " + juce::String(live) + ", back on the default",
+    setStatus_.setText(TRANS("Deleted %1, back on the default").replace("%1", juce::String(live)),
                        juce::dontSendNotification);
   };
   addAndMakeVisible(setStatus_);
@@ -1484,11 +1488,11 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "A combination set is a whole registration book: one for a "
-            "recital, another for a service. Changing set saves the one you "
-            "are leaving first, so nothing you captured is lost by switching.\n\n"
-            "Favourite organs are in Open: search them, put them in your own "
-            "order, rename them, and add the organ now loaded.");
+            TRANS("A combination set is a whole registration book: one for a "
+                  "recital, another for a service. Changing set saves the one you "
+                  "are leaving first, so nothing you captured is lost by switching.\n\n"
+                  "Favourite organs are in Open: search them, put them in your own "
+                  "order, rename them, and add the organ now loaded."));
   refresh();
 }
 
@@ -1506,7 +1510,7 @@ void FavouritesPanel::refreshSets() {
   int selected = 1;
   for (size_t i = 0; i < setNames_.size(); ++i) {
     const auto& n = setNames_[i];
-    setBox_.addItem(n.empty() ? "(default)" : juce::String(n),
+    setBox_.addItem(n.empty() ? TRANS("(default)") : juce::String(n),
                     static_cast<int>(i) + 1);
     if (n == proc_.combinationSetName()) selected = static_cast<int>(i) + 1;
   }
@@ -1539,18 +1543,18 @@ void FavouritesPanel::resized() {
 
 VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
-  styleLabel(heading_, "Voicing");
+  styleLabel(heading_, TRANS("Voicing"));
 
   addAndMakeVisible(rankLabel_);
-  styleLabel(rankLabel_, "Rank");
+  styleLabel(rankLabel_, TRANS("Rank"));
   addAndMakeVisible(rank_);
   rank_.onChange = [this] { loadCurrentIntoSliders(); };
 
   addAndMakeVisible(scopeLabel_);
-  styleLabel(scopeLabel_, "Applies to");
+  styleLabel(scopeLabel_, TRANS("Applies to"));
   addAndMakeVisible(scope_);
-  scope_.addItem("The whole rank", 1);
-  scope_.addItem("One pipe", 2);
+  scope_.addItem(TRANS("The whole rank"), 1);
+  scope_.addItem(TRANS("One pipe"), 2);
   scope_.setSelectedId(1, juce::dontSendNotification);
   scope_.onChange = [this] {
     const bool perPipe = scope_.getSelectedId() == 2;
@@ -1560,7 +1564,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   };
 
   addAndMakeVisible(noteLabel_);
-  styleLabel(noteLabel_, "MIDI note");
+  styleLabel(noteLabel_, TRANS("MIDI note"));
   addAndMakeVisible(note_);
   note_.setRange(0, 127, 1);
   note_.setValue(60, juce::dontSendNotification);
@@ -1568,7 +1572,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.onValueChange = [this] { loadCurrentIntoSliders(); };
 
   addAndMakeVisible(gainLabel_);
-  styleLabel(gainLabel_, "Level");
+  styleLabel(gainLabel_, TRANS("Level"));
   addAndMakeVisible(gain_);
   // +/-12 dB is the range a voicer works in. Wider would mostly offer new
   // ways to make an organ wrong.
@@ -1578,7 +1582,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   gain_.onValueChange = [this] { pushCurrent(); };
 
   addAndMakeVisible(tuneLabel_);
-  styleLabel(tuneLabel_, "Tuning");
+  styleLabel(tuneLabel_, TRANS("Tuning"));
   // +/-50 cents is half a semitone: past that you are playing a different
   // note, not tuning this one.
   tune_.setRange(-50.0, 50.0, 0.1);
@@ -1617,20 +1621,20 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(status_, "");
   addAndMakeVisible(note2_);
   styleNote(note2_,
-            "A rank adjustment and a pipe adjustment ADD. Pulling one sour "
-            "pipe into tune does not throw away the trim you put on the rank "
-            "it belongs to.\n\n"
-            "A and B are two complete sets. Make a change, swap, and hear it "
-            "against what was there before - from memory the comparison "
-            "always flatters whichever you heard last. Copy to other starts "
-            "the far slot from this one, so B is a variation rather than a "
-            "comparison against an unvoiced organ.\n\n"
-            "Level and tuning are a multiply and a ratio taken once when a "
-            "note starts, so they cost nothing while it sounds and work with "
-            "the DSP switched off. Notes already sounding keep what they "
-            "began with, exactly as a pipe does.\n\n"
-            "Saved per organ: a rank number means nothing in a different "
-            "instrument.");
+            TRANS("A rank adjustment and a pipe adjustment ADD. Pulling one sour "
+                  "pipe into tune does not throw away the trim you put on the rank "
+                  "it belongs to.\n\n"
+                  "A and B are two complete sets. Make a change, swap, and hear it "
+                  "against what was there before - from memory the comparison "
+                  "always flatters whichever you heard last. Copy to other starts "
+                  "the far slot from this one, so B is a variation rather than a "
+                  "comparison against an unvoiced organ.\n\n"
+                  "Level and tuning are a multiply and a ratio taken once when a "
+                  "note starts, so they cost nothing while it sounds and work with "
+                  "the DSP switched off. Notes already sounding keep what they "
+                  "began with, exactly as a pipe does.\n\n"
+                  "Saved per organ: a rank number means nothing in a different "
+                  "instrument."));
   refresh();
 }
 
@@ -1692,7 +1696,7 @@ void VoicingPanel::pushCurrent() {
     const Id pipeId = pipeAt(proc_.organModel(), rankId,
                              static_cast<int>(note_.getValue()));
     if (pipeId == 0) {
-      status_.setText("This rank has no pipe at that note",
+      status_.setText(TRANS("This rank has no pipe at that note"),
                       juce::dontSendNotification);
       return;
     }
@@ -1712,12 +1716,13 @@ void VoicingPanel::pushCurrent() {
 void VoicingPanel::updateStatus() {
   const auto& v = proc_.voicing().live();
   juce::String s;
-  s << "Slot " << (proc_.voicing().usingB ? "B" : "A") << "  -  "
-    << static_cast<int>(v.ranks().size()) << " rank(s), "
-    << static_cast<int>(v.pipes().size()) << " pipe(s) adjusted";
+  s << TRANS("Slot %1  -  %2 rank(s), %3 pipe(s) adjusted")
+           .replace("%1", proc_.voicing().usingB ? "B" : "A")
+           .replace("%2", juce::String(static_cast<int>(v.ranks().size())))
+           .replace("%3", juce::String(static_cast<int>(v.pipes().size())));
   // Voicing is heard on the NEXT note, like a real pipe being touched while
   // another is sounding. Saying so stops it looking broken.
-  s << "  -  takes effect on the next note";
+  s << "  -  " << TRANS("takes effect on the next note");
   status_.setText(s, juce::dontSendNotification);
 }
 
@@ -1768,12 +1773,12 @@ void VoicingPanel::resized() {
 
 MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
-  styleLabel(heading_, "Mixer");
+  styleLabel(heading_, TRANS("Mixer"));
   addAndMakeVisible(busesLabel_);
-  styleLabel(busesLabel_, "Output pairs");
+  styleLabel(busesLabel_, TRANS("Output pairs"));
   addAndMakeVisible(busCount_);
   for (int i = 1; i <= 8; ++i)
-    busCount_.addItem(juce::String(i) + (i == 1 ? " (stereo)" : " pairs"), i);
+    busCount_.addItem(i == 1 ? TRANS("1 (stereo)") : TRANS("%1 pairs").replace("%1", juce::String(i)), i);
   busCount_.setSelectedId(juce::jmax(1, proc_.mixBusCount()),
                           juce::dontSendNotification);
   busCount_.onChange = [this] { setBusCount(busCount_.getSelectedId()); };
@@ -1806,15 +1811,15 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "No sample set says anything about audio routing - not one - so "
-            "this is yours to decide, like the MIDI mapping. Output pairs and "
-            "their device channels carry across organs; which rank goes where "
-            "is saved per organ, because a rank number means nothing in a "
-            "different instrument.\n\n"
-            "A rank you never touch plays through the first pair, so an organ "
-            "is audible before you open this page. If you are listening in "
-            "stereo the pairs are summed, so nothing disappears when you "
-            "split them up.");
+            TRANS("No sample set says anything about audio routing - not one - so "
+                  "this is yours to decide, like the MIDI mapping. Output pairs and "
+                  "their device channels carry across organs; which rank goes where "
+                  "is saved per organ, because a rank number means nothing in a "
+                  "different instrument.\n\n"
+                  "A rank you never touch plays through the first pair, so an organ "
+                  "is audible before you open this page. If you are listening in "
+                  "stereo the pairs are summed, so nothing disappears when you "
+                  "split them up."));
 
   refresh();
 }
@@ -1837,7 +1842,7 @@ void MixerPanel::setBusCount(int buses) {
   // reason nowhere on screen, so fold it back to the first one.
   for (auto& box : rankBuses_) {
     box->clear(juce::dontSendNotification);
-    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
   }
   for (size_t i = 0; i < rankIds_.size(); ++i) {
     const auto& dest = proc_.mixer().routingFor(rankIds_[i]).perspectives[0].dest;
@@ -1858,15 +1863,14 @@ void MixerPanel::pushRouting() {
     mixer.rankRoutings[rankIds_[i]] = r;
   }
   const auto d = validateMixer(proc_.organModel(), mixer);
-  status_.setText(juce::String(static_cast<int>(rankIds_.size())) +
-                      " rank(s), " + juce::String(proc_.mixBusCount()) +
-                      " pair(s)" +
-                      (d.clean() ? "" : "  -  " +
-                                            juce::String((int)d.unroutedRanks.size()) +
-                                            " unrouted, " +
-                                            juce::String((int)d.ranksRoutedToMissingBus.size()) +
-                                            " stale"),
-                  juce::dontSendNotification);
+  juce::String text = TRANS("%1 rank(s), %2 pair(s)")
+                          .replace("%1", juce::String(static_cast<int>(rankIds_.size())))
+                          .replace("%2", juce::String(proc_.mixBusCount()));
+  if (!d.clean())
+    text += "  -  " + TRANS("%1 unrouted, %2 stale")
+                          .replace("%1", juce::String((int)d.unroutedRanks.size()))
+                          .replace("%2", juce::String((int)d.ranksRoutedToMissingBus.size()));
+  status_.setText(text, juce::dontSendNotification);
 }
 
 void MixerPanel::refresh() {
@@ -1892,7 +1896,7 @@ void MixerPanel::refresh() {
     rankLabels_.push_back(std::move(label));
 
     auto box = std::make_unique<juce::ComboBox>();
-    for (int i = 1; i <= buses; ++i) box->addItem("Pair " + juce::String(i), i);
+    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
     const auto& dest = proc_.mixer().routingFor(rankId).perspectives[0].dest;
     int sel = 1;
     if (std::holds_alternative<BusId>(dest)) sel = std::get<BusId>(dest).value;
@@ -2113,12 +2117,12 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   addChildComponent(open_);
   open_.setVisible(!kMobile);
   midi_.setToggleState(proc_.midiLogging(), juce::dontSendNotification);
-  midi_.setTooltip("For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed.");
+  midi_.setTooltip(TRANS("For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed."));
   midi_.onClick = [this] { proc_.setMidiLogging(midi_.getToggleState()); };
   addAndMakeVisible(midi_);
   releases_.setToggleState(proc_.releaseLogging(), juce::dontSendNotification);
-  releases_.setTooltip("For a click, a noise or a note that goes on sounding when keys are let go. "
-                       "Until Masterpiece is closed.");
+  releases_.setTooltip(TRANS("For a click, a noise or a note that goes on sounding when keys are let go. "
+                             "Until Masterpiece is closed."));
   releases_.onClick = [this] { proc_.setReleaseLogging(releases_.getToggleState()); };
   addAndMakeVisible(releases_);
 }
@@ -2143,19 +2147,19 @@ void LogPanel::resized() {
 
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
-  styleLabel(heading_, "Console display");
+  styleLabel(heading_, TRANS("Console display"));
   addAndMakeVisible(enable_);
   enable_.onClick = [this] { rebuild(); };
 
   addAndMakeVisible(idLabel_);
-  styleLabel(idLabel_, "Display number");
+  styleLabel(idLabel_, TRANS("Display number"));
   addAndMakeVisible(id_);
   id_.setRange(0, 15, 1);
   id_.setValue(0, juce::dontSendNotification);
   id_.onValueChange = [this] { rebuild(); };
 
   addAndMakeVisible(widthLabel_);
-  styleLabel(widthLabel_, "Characters per line");
+  styleLabel(widthLabel_, TRANS("Characters per line"));
   addAndMakeVisible(width_);
   int wid = 1;
   for (int w : {16, 20, 32, 40}) width_.addItem(juce::String(w), wid++);
@@ -2163,7 +2167,7 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   width_.onChange = [this] { rebuild(); };
 
   addAndMakeVisible(headerLabel_);
-  styleLabel(headerLabel_, "Sys-ex prefix (hex)");
+  styleLabel(headerLabel_, TRANS("Sys-ex prefix (hex)"));
   addAndMakeVisible(header_);
   header_.setText("7D", juce::dontSendNotification);
   header_.setInputRestrictions(23, "0123456789abcdefABCDEF ");
@@ -2171,17 +2175,17 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   header_.onFocusLost = [this] { rebuild(); };
 
   addAndMakeVisible(linesLabel_);
-  styleLabel(linesLabel_, "Lines");
+  styleLabel(linesLabel_, TRANS("Lines"));
   // The fields a jamb display is worth having for. Deliberately short: a
   // player reads this at a glance between pieces, not as a report.
-  const char* fields[] = {"(blank)",   "Organ",       "Temperament",
-                          "Pitch",     "Transpose",   "Stops drawn",
-                          "Crescendo", "Combination set"};
+  const juce::String fields[] = {TRANS("(blank)"),   TRANS("Organ"),     TRANS("Temperament"),
+                                 TRANS("Pitch"),     TRANS("Transpose"), TRANS("Stops drawn"),
+                                 TRANS("Crescendo"), TRANS("Combination set")};
   for (size_t i = 0; i < lines_.size(); ++i) {
     lines_[i] = std::make_unique<juce::ComboBox>();
     addAndMakeVisible(*lines_[i]);
     int id = 1;
-    for (const char* f : fields) lines_[i]->addItem(f, id++);
+    for (const auto& f : fields) lines_[i]->addItem(f, id++);
     lines_[i]->onChange = [this] { rebuild(); };
   }
   // Something useful out of the box, so the first send shows the player it is
@@ -2192,7 +2196,7 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   lines_[3]->setSelectedId(7, juce::dontSendNotification); // Crescendo
 
   addAndMakeVisible(previewLabel_);
-  styleLabel(previewLabel_, "What the display reads");
+  styleLabel(previewLabel_, TRANS("What the display reads"));
   addAndMakeVisible(preview_);
   // Monospaced and top-left: the preview is fixed-width lines, and the whole
   // point is that the columns line up the way the glass does. The bars mark
@@ -2206,18 +2210,18 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(note_);
   styleNote(note_,
-            "A console display is driven by system exclusive messages, and the "
-            "bytes that introduce one belong to the display hardware rather "
-            "than to the organ - so they are typed in here rather than "
-            "guessed. 7D is the id the MIDI specification reserves for "
-            "non-commercial use, which is the honest default when your "
-            "manufacturer's prefix is unknown.\n\n"
-            "Choose the MIDI output on the MIDI page first: this sends "
-            "through the same port that lights your drawstops.\n\n"
-            "Only lines whose text actually changed are sent, so a display "
-            "showing a steady temperament costs nothing. Accented letters are "
-            "transliterated, because system exclusive carries seven bits and a "
-            "high byte would end the message rather than draw a character.");
+            TRANS("A console display is driven by system exclusive messages, and the "
+                  "bytes that introduce one belong to the display hardware rather "
+                  "than to the organ - so they are typed in here rather than "
+                  "guessed. 7D is the id the MIDI specification reserves for "
+                  "non-commercial use, which is the honest default when your "
+                  "manufacturer's prefix is unknown.\n\n"
+                  "Choose the MIDI output on the MIDI page first: this sends "
+                  "through the same port that lights your drawstops.\n\n"
+                  "Only lines whose text actually changed are sent, so a display "
+                  "showing a steady temperament costs nothing. Accented letters are "
+                  "transliterated, because system exclusive carries seven bits and a "
+                  "high byte would end the message rather than draw a character."));
 
   rebuild();
   startTimerHz(2);
@@ -2318,6 +2322,44 @@ void DisplayPanel::resized() {
   note_.setBounds(r);
 }
 
+// -------------------------------------------------------------- language
+
+LanguagePanel::LanguagePanel(MasterpieceProcessor& p) : proc_(p) {
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, TRANS("Language"));
+  addAndMakeVisible(language_);
+  language_.addItem(TRANS("System default"), 1);
+  language_.addItem("English", 2);
+  // Each language is named in itself, so a player who cannot read the current
+  // one can still find theirs.
+  int id = 3;
+  for (const auto& l : availableLanguages()) {
+    codes_.push_back(l.code);
+    language_.addItem(l.name, id++);
+  }
+  const auto chosen = proc_.languageSetting();
+  int selected = chosen.isEmpty() ? 1 : chosen == "en" ? 2 : 0;
+  for (size_t i = 0; i < codes_.size(); ++i)
+    if (codes_[i] == chosen) selected = static_cast<int>(i) + 3;
+  language_.setSelectedId(selected != 0 ? selected : 1, juce::dontSendNotification);
+  language_.onChange = [this] {
+    const int sel = language_.getSelectedId();
+    proc_.setLanguageSetting(sel == 1 ? juce::String() : sel == 2 ? juce::String("en")
+                                                                  : codes_[static_cast<size_t>(sel - 3)]);
+  };
+  addAndMakeVisible(note_);
+  styleNote(note_, TRANS("The language changes the next time Masterpiece starts. Names of organs, stops and "
+                         "pages stay as the organ gives them."));
+}
+
+void LanguagePanel::resized() {
+  auto r = getLocalBounds().reduced(16);
+  heading_.setBounds(r.removeFromTop(kRow));
+  language_.setBounds(r.removeFromTop(kRow).removeFromLeft(260).reduced(0, 1));
+  r.removeFromTop(kGap);
+  note_.setBounds(r.removeFromTop(48));
+}
+
 // --------------------------------------------------------------- window
 
 SettingsWindow::~SettingsWindow() {
@@ -2327,19 +2369,20 @@ SettingsWindow::~SettingsWindow() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager& devices)
-    : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), log_(p) {
+    : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   audio_ = std::make_unique<AudioSettingsPanel>(devices, p);
-  tabs_.addTab("Audio", bg, audio_.get(), false);
-  tabs_.addTab("Room", bg, &reverb_, false);
-  tabs_.addTab("Metronome", bg, &metronome_, false);
-  tabs_.addTab("MIDI", bg, &midi_, false);
-  tabs_.addTab("Mixer", bg, &mixer_, false);
-  tabs_.addTab("Voicing", bg, &voicing_, false);
-  tabs_.addTab("Combination sets", bg, &favourites_, false);
-  tabs_.addTab("Display", bg, &display_, false);
-  tabs_.addTab("Log", bg, &log_, false);
+  tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+  tabs_.addTab(TRANS("Room"), bg, &reverb_, false);
+  tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
+  tabs_.addTab(TRANS("MIDI"), bg, &midi_, false);
+  tabs_.addTab(TRANS("Mixer"), bg, &mixer_, false);
+  tabs_.addTab(TRANS("Voicing"), bg, &voicing_, false);
+  tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);
+  tabs_.addTab(TRANS("Display"), bg, &display_, false);
+  tabs_.addTab(TRANS("Language"), bg, &language_, false);
+  tabs_.addTab(TRANS("Log"), bg, &log_, false);
   // The Engine tab is the tallest: six switches, five memory controls, a
   // readout and a footer. Adding a row without adding height pushes the
   // Save buttons off the bottom, where they cannot be pressed at all.

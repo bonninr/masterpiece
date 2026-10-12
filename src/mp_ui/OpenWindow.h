@@ -48,8 +48,8 @@ private:
   std::vector<std::unique_ptr<Row>> rowViews_;
   juce::Label empty_;
   juce::Label status_;
-  juce::TextButton addCurrent_{"Add the organ now loaded"};
-  juce::TextButton another_{"Open an organ file..."};
+  juce::TextButton addCurrent_{TRANS("Add the organ now loaded")};
+  juce::TextButton another_{TRANS("Open an organ file...")};
 };
 
 }  // namespace mp::ui

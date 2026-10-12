@@ -77,7 +77,7 @@ namespace {
 class ImportThread : public juce::ThreadWithProgressWindow {
 public:
   ImportThread(const juce::URL& document, std::function<void(juce::File)> done)
-      : juce::ThreadWithProgressWindow("Copying the organ", true, true),
+      : juce::ThreadWithProgressWindow(TRANS("Copying the organ"), true, true),
         document_(document), done_(std::move(done)) {}
 
   void run() override {
@@ -86,11 +86,11 @@ public:
     const auto info = doc.getInfo();
     const auto name = juce::File::createLegalFileName(info.getName());
     const juce::int64 size = info.getSizeInBytes();
-    if (name.isEmpty()) { failure_ = "This document has no name."; return; }
+    if (name.isEmpty()) { failure_ = TRANS("This document has no name."); return; }
     // The picker cannot always filter by extension (Android knows no type
     // for .orgue), so the choice is checked here, before anything is copied.
     if (!isMobilePackage(name)) {
-      failure_ = "Masterpiece opens an organ from its package: a .rar or .orgue file.";
+      failure_ = TRANS("Masterpiece opens an organ from its package: a .rar or .orgue file.");
       return;
     }
     auto folder = importedOrgansFolder();
@@ -101,14 +101,14 @@ public:
       return;
     }
     auto in = doc.createInputStream();
-    if (in == nullptr) { failure_ = "The document could not be read."; return; }
+    if (in == nullptr) { failure_ = TRANS("The document could not be read."); return; }
     // Written beside the target and renamed at the end, so a cancelled or
     // failed copy never looks like a finished one.
     const auto partial = folder.getChildFile(name + ".part");
     partial.deleteFile();
     {
       juce::FileOutputStream out(partial);
-      if (!out.openedOk()) { failure_ = "There is no room to copy it."; return; }
+      if (!out.openedOk()) { failure_ = TRANS("There is no room to copy it."); return; }
       juce::HeapBlock<char> buffer(1 << 20);
       juce::int64 copied = 0;
       for (;;) {
@@ -116,26 +116,28 @@ public:
         const int n = in->read(buffer, 1 << 20);
         if (n <= 0) break;
         if (!out.write(buffer, (size_t)n)) {
-          failure_ = "The copy stopped: the device may be full.";
+          failure_ = TRANS("The copy stopped: the device may be full.");
           break;
         }
         copied += n;
         if (size > 0) setProgress((double)copied / (double)size);
-        setStatusMessage(juce::File::descriptionOfSizeInBytes(copied) +
-                         (size > 0 ? " of " + juce::File::descriptionOfSizeInBytes(size) : juce::String()));
+        setStatusMessage(size > 0 ? TRANS("%1 of %2")
+                                        .replace("%1", juce::File::descriptionOfSizeInBytes(copied))
+                                        .replace("%2", juce::File::descriptionOfSizeInBytes(size))
+                                  : juce::File::descriptionOfSizeInBytes(copied));
       }
     }
     if (failure_.isNotEmpty()) { partial.deleteFile(); return; }
     target.deleteFile();
     if (partial.moveFileTo(target)) result_ = target;
-    else failure_ = "The copy could not be finished.";
+    else failure_ = TRANS("The copy could not be finished.");
    #endif
   }
 
   void threadComplete(bool cancelled) override {
     if (!cancelled && failure_.isNotEmpty())
       juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
-                                             "Organ not copied", failure_);
+                                             TRANS("Organ not copied"), failure_);
     if (done_) done_(cancelled ? juce::File() : result_);
     delete this;
   }

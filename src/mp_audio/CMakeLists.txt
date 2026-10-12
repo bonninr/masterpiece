@@ -14,6 +14,7 @@ add_library(mp_audio STATIC
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
   Convolver.h Convolver.cpp
+  Translations.h Translations.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.h
@@ -65,8 +66,18 @@ juce_add_binary_data(mp_assets
   NAMESPACE MpAssets
   SOURCES ${MP_WOOD_TILES} ${MP_STANDARD_STANDINS} ${MP_GRANDORGUE_STANDINS})
 
+# The program's words in other languages, one plain-text file each. Not
+# strings.txt, which is the list translators start from and is never read.
+file(GLOB MP_TRANSLATIONS CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/translations/*.txt)
+list(FILTER MP_TRANSLATIONS EXCLUDE REGEX "/strings[.]txt$")
+juce_add_binary_data(mp_translations
+  HEADER_NAME MpTranslations.h
+  NAMESPACE MpTranslations
+  SOURCES ${MP_TRANSLATIONS})
+
 target_link_libraries(mp_audio PUBLIC
-  mp_assets
+  mp_assets mp_translations
   mp_core mp_control mp_archive ${MP_WAVPACK_TARGET}
   juce::juce_audio_processors juce::juce_audio_utils juce::juce_audio_devices
   juce::juce_audio_formats juce::juce_data_structures

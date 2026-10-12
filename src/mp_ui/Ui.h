@@ -92,7 +92,7 @@ public:
 private:
   MasterpieceProcessor& proc_;
   juce::AudioDeviceSelectorComponent selector_;
-  juce::ToggleButton keepAwake_{"Keep portable speakers awake"};
+  juce::ToggleButton keepAwake_{TRANS("Keep portable speakers awake")};
   juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   void apply();
 };
@@ -130,7 +130,7 @@ private:
   MasterpieceProcessor& proc_;
   // Terse on purpose: everything the console offers has to share one row, and
   // a slider that reads out in dB does not also need a label saying "Volume".
-  juce::ToggleButton simple_{"No DSP"};
+  juce::ToggleButton simple_{TRANS("No DSP")};
   LevelMeter meter_;
   // In decibels, because that is the only scale a volume control feels linear
   // on: the useful part of a 0..16 gain range is all crowded below 1.
@@ -263,9 +263,9 @@ private:
   // Three menus at the left, named in words (#276): File for organs and
   // recordings, View for what the window shows, Settings for the windows that
   // change how things work.
-  juce::TextButton fileMenu_{"File"};
-  juce::TextButton viewMenu_{"View"};
-  juce::TextButton settingsButton_{"Settings"};
+  juce::TextButton fileMenu_{TRANS("File")};
+  juce::TextButton viewMenu_{TRANS("View")};
+  juce::TextButton settingsButton_{TRANS("Settings")};
   void showFileMenu();
   void showViewMenu();
   void showSettingsMenu();
@@ -315,7 +315,7 @@ private:
   // on sounding until something stops it -- and the usual causes (a coupler
   // changed mid-chord, a MIDI note-off lost on the cable) leave the player
   // with no key to lift.
-  IconButton panicButton_{Icon::Panic, "Panic", "Panic: silence every note still sounding",
+  IconButton panicButton_{Icon::Panic, TRANS("Panic"), TRANS("Panic: silence every note still sounding"),
                           juce::Colour(0xffe8a09a)};
   // The registration sequencer. Two thumb pistons and a frame number, which is
   // all an organist wants from it: the point of a sequencer is that you press
