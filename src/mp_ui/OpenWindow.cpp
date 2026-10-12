@@ -18,7 +18,7 @@ juce::String formatOf(const juce::File& f) {
   const auto ext = f.getFileExtension().toLowerCase();
   if (ext == ".organ" || ext == ".orgue") return "GrandOrgue";
   if (ext.endsWith("hauptwerk_xml")) return "Hauptwerk";
-  if (ext == ".rar") return "package";
+  if (ext == ".rar") return TRANS("package");
   return {};
 }
 }  // namespace
@@ -34,8 +34,8 @@ public:
     }
     up_.setEnabled(canUp);
     down_.setEnabled(canDown);
-    up_.setTooltip("Move up the list");
-    down_.setTooltip("Move down the list");
+    up_.setTooltip(TRANS("Move up the list"));
+    down_.setTooltip(TRANS("Move down the list"));
     up_.onClick = [this] { owner_.move(slot_, -1); };
     down_.onClick = [this] { owner_.move(slot_, +1); };
     addAndMakeVisible(rename_);
@@ -92,14 +92,14 @@ private:
   juce::String name_, detail_;
   int textRight_ = 0;
   juce::ArrowButton up_{"Up", 0.75f, kDim}, down_{"Down", 0.25f, kDim};
-  juce::TextButton rename_{"Rename"}, remove_{"Remove"};
+  juce::TextButton rename_{TRANS("Rename")}, remove_{TRANS("Remove")};
 };
 
 OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::File&)> open,
                      std::function<void()> browse)
     : proc_(p), open_(std::move(open)), browse_(std::move(browse)) {
   addAndMakeVisible(search_);
-  search_.setTextToShowWhenEmpty("Search the favourites", kDim);
+  search_.setTextToShowWhenEmpty(TRANS("Search the favourites"), kDim);
   search_.setColour(juce::TextEditor::backgroundColourId, kRowBg);
   search_.setColour(juce::TextEditor::textColourId, kText);
   search_.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff3a404c));
@@ -125,15 +125,16 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
   status_.setColour(juce::Label::textColourId, kDim);
 
   addAndMakeVisible(addCurrent_);
-  addCurrent_.setTooltip("Keep the organ now on the console in this list");
+  addCurrent_.setTooltip(TRANS("Keep the organ now on the console in this list"));
   addCurrent_.onClick = [this] {
     const int slot = proc_.addCurrentOrganToFavourites();
-    status_.setText(slot == 0 ? "All 64 slots are taken" : "Added on slot " + juce::String(slot),
+    status_.setText(slot == 0 ? TRANS("All 64 slots are taken")
+                              : TRANS("Added on slot %1").replace("%1", juce::String(slot)),
                     juce::dontSendNotification);
     refresh();
   };
   addAndMakeVisible(another_);
-  another_.setTooltip("Any organ on this computer, in the file dialog");
+  another_.setTooltip(TRANS("Any organ on this computer, in the file dialog"));
   another_.onClick = [this] {
     auto browse = browse_;
     close();
@@ -163,7 +164,7 @@ void OpenPanel::refresh() {
     if (named[fav.name] > 1)
       if (const auto kind = formatOf(f); kind.isNotEmpty()) detail = kind + ": " + detail;
     if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile())
-      detail = "not found: " + f.getFullPathName();
+      detail = TRANS("not found: %1").replace("%1", f.getFullPathName());
     // Moving is by place in the whole list, so it is offered only unfiltered.
     const bool canMove = query.isEmpty();
     auto row = std::make_unique<Row>(*this, slot, name, detail, canMove && i > 0,
@@ -174,8 +175,8 @@ void OpenPanel::refresh() {
     rowViews_.push_back(std::move(row));
   }
   empty_.setVisible(rowViews_.empty());
-  empty_.setText(slots.empty() ? "No favourite organs yet. Open one, then add it here."
-                               : "No favourite matches \"" + search_.getText().trim() + "\".",
+  empty_.setText(slots.empty() ? TRANS("No favourite organs yet. Open one, then add it here.")
+                               : TRANS("No favourite matches \"%1\".").replace("%1", search_.getText().trim()),
                  juce::dontSendNotification);
   const auto loaded = proc_.loadedOrganFile();
   addCurrent_.setEnabled(loaded != juce::File() &&
@@ -187,7 +188,7 @@ void OpenPanel::openSlot(int slot) {
   const juce::File f(juce::String::fromUTF8(proc_.favourites().organs.at(slot).target.c_str()));
   if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile()) {
     // A set on a drive not plugged in: said, and the favourite kept.
-    status_.setText("Not found: " + f.getFullPathName(), juce::dontSendNotification);
+    status_.setText(TRANS("Not found: %1").replace("%1", f.getFullPathName()), juce::dontSendNotification);
     return;
   }
   auto open = open_;
@@ -208,18 +209,20 @@ void OpenPanel::move(int slot, int by) {
   bank.set(slot, b);
   bank.set(other, a);
   proc_.saveGlobalDefaults();
-  status_.setText(juce::String::fromUTF8(a.name.c_str()) + " is on slot " + juce::String(other),
+  status_.setText(TRANS("%1 is on slot %2")
+                      .replace("%1", juce::String::fromUTF8(a.name.c_str()))
+                      .replace("%2", juce::String(other)),
                   juce::dontSendNotification);
   refresh();
 }
 
 void OpenPanel::rename(int slot) {
   const auto& fav = proc_.favourites().organs.at(slot);
-  auto* w = new juce::AlertWindow("Rename", "The name this favourite shows.",
+  auto* w = new juce::AlertWindow(TRANS("Rename"), TRANS("The name this favourite shows."),
                                   juce::MessageBoxIconType::NoIcon);
   w->addTextEditor("name", juce::String::fromUTF8(fav.name.c_str()));
-  w->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
-  w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  w->addButton(TRANS("OK"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+  w->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
   juce::Component::SafePointer<OpenPanel> self(this);
   w->enterModalState(true, juce::ModalCallbackFunction::create([self, w, slot](int r) {
                        if (self == nullptr || r != 1) return;
@@ -278,7 +281,7 @@ void OpenPanel::show(MasterpieceProcessor& p, std::function<void(const juce::Fil
   juce::DialogWindow::LaunchOptions o;
   auto panel = std::make_unique<OpenPanel>(p, std::move(open), std::move(browse));
   o.content.setOwned(panel.release());
-  o.dialogTitle = "Open";
+  o.dialogTitle = TRANS("Open");
   o.dialogBackgroundColour = kBg;
   o.escapeKeyTriggersCloseButton = true;
   o.useNativeTitleBar = true;

@@ -238,15 +238,13 @@ def main():
                     shot("general-" + tab.lower())
             close_panel()
             shot("after-close")
-    # View: a panel of the whole organ in the console's place, then the
-    # console back.
-    if tap("View") and tap("Panel of the whole organ"):
+    # Panels: the first press makes a panel of the whole organ and shows it
+    # in the console's place; a second press offers the console back.
+    if tap("Panels"):
         shot("panel")
-        if tap("View"):
-            tap("Console", required=False)
-    # Audio and MIDI: a tab of General settings, reached from the Settings
-    # menu (#276).
-    if tap("Settings") and tap("Audio and MIDI", contains=True):
+        if tap("Panels"):
+            tap("Show the console", required=False)
+    if tap("Audio"):
         shot("audio")
         close_panel()
     # An organ package opened as a player opens one: Open, then the system's
@@ -254,7 +252,7 @@ def main():
     # where the run put it beforehand (#197: a package outside the app's own
     # folder, lent by the Files app).
     package = os.environ.get("PICK_PACKAGE")
-    if package and tap("File") and tap("Open..."):
+    if package and tap("Open"):
         # The picker is another process's: found by its text on screen.
         shot("picker")
         # On a phone the locations are behind the Browse tab.

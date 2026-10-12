@@ -59,12 +59,12 @@ private:
   juce::Label midiHeading_;
   std::vector<std::unique_ptr<juce::ToggleButton>> midiInputs_;
   juce::Label midiNone_;
-  juce::TextButton openOrgan_{"Choose an organ..."};
+  juce::TextButton openOrgan_{TRANS("Choose an organ...")};
   juce::Label organStatus_;
 
-  juce::TextButton back_{"Back"};
-  juce::TextButton next_{"Next"};
-  juce::TextButton skip_{"Skip setup"};
+  juce::TextButton back_{TRANS("Back")};
+  juce::TextButton next_{TRANS("Next")};
+  juce::TextButton skip_{TRANS("Skip setup")};
   juce::Label progress_;
 };
 

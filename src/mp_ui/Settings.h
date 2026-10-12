@@ -90,21 +90,21 @@ private:
   // organ already loaded, and nothing said so (#120: streaming switched off,
   // and the glitches went on until Masterpiece was restarted).
   bool loadingChanged() const;
-  juce::TextButton reload_{"Load the organ again to apply"};
-  juce::TextButton revert_{"Revert changes"};
-  juce::TextButton keep_{"Keep changes"};
-  juce::TextButton saveOrgan_{"Save for this organ"};
-  juce::TextButton saveGlobal_{"Save as default"};
+  juce::TextButton reload_{TRANS("Load the organ again to apply")};
+  juce::TextButton revert_{TRANS("Revert changes")};
+  juce::TextButton keep_{TRANS("Keep changes")};
+  juce::TextButton saveOrgan_{TRANS("Save for this organ")};
+  juce::TextButton saveGlobal_{TRANS("Save as default")};
   // A save leaves the panel open, so the organ can be loaded again with what
   // was saved (#120). The button says it was saved, for a moment.
   void showSaved(juce::TextButton& button);
   juce::uint32 savedUntilMs_ = 0;
-  juce::ToggleButton simpleWav_{"Simple WAV only (bypass all DSP)"};
-  juce::ToggleButton wind_{"Wind model"};
-  juce::ToggleButton tremulant_{"Tremulants"};
-  juce::ToggleButton enclosure_{"Enclosures (swell shades)"};
-  juce::ToggleButton voicing_{"Voicing"};
-  juce::ToggleButton originalPitch_{"Play at the original organ's pitch"};
+  juce::ToggleButton simpleWav_{TRANS("Simple WAV only (bypass all DSP)")};
+  juce::ToggleButton wind_{TRANS("Wind model")};
+  juce::ToggleButton tremulant_{TRANS("Tremulants")};
+  juce::ToggleButton enclosure_{TRANS("Enclosures (swell shades)")};
+  juce::ToggleButton voicing_{TRANS("Voicing")};
+  juce::ToggleButton originalPitch_{TRANS("Play at the original organ's pitch")};
   juce::Label preloadLabel_;
   juce::ComboBox preload_;
   juce::Label storageLabel_;
@@ -115,27 +115,27 @@ private:
   juce::ComboBox cache_;
   juce::Label cacheDirLabel_;
   juce::Label cacheDirValue_;
-  juce::TextButton cacheDirChoose_{"Choose..."};
-  juce::TextButton cacheDirDefault_{"Default"};
+  juce::TextButton cacheDirChoose_{TRANS("Choose...")};
+  juce::TextButton cacheDirDefault_{TRANS("Default")};
   std::unique_ptr<juce::FileChooser> cacheDirChooser_;
   void showCacheDir();
   juce::Label organRootLabel_;
   juce::Label organRootValue_;
-  juce::TextButton organRootChoose_{"Choose..."};
-  juce::TextButton organRootDefault_{"Default"};
+  juce::TextButton organRootChoose_{TRANS("Choose...")};
+  juce::TextButton organRootDefault_{TRANS("Default")};
   std::unique_ptr<juce::FileChooser> organRootChooser_;
   void showOrganRoot();
   juce::Label profileLabel_;
   juce::ComboBox profile_;
-  juce::ToggleButton stream_{"Stream release tails from disk"};
+  juce::ToggleButton stream_{TRANS("Stream release tails from disk")};
   juce::ComboBox streamHead_;
   void showStreamPercent(int percent);
   void showPreload(int64_t frames);
-  juce::ToggleButton mono_{"Load in mono (halves memory, gives up the stereo image)"};
-  juce::ToggleButton loadTicks_{"Tap at each 10% while loading an organ"};
-  juce::ToggleButton reopen_{"Reopen the last organ when Masterpiece starts"};
-  juce::ToggleButton faster_{"Faster audio engine (experimental)"};
-  juce::ToggleButton portable_{"Keep this organ playable without its installation files"};
+  juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
+  juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
+  juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
+  juce::ToggleButton faster_{TRANS("Faster audio engine (experimental)")};
+  juce::ToggleButton portable_{TRANS("Keep this organ playable without its installation files")};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;
   // Fill the memory-limit choices around the current setting.
@@ -152,9 +152,9 @@ public:
 
 private:
   MasterpieceProcessor& proc_;
-  juce::ToggleButton enabled_{"Impulse-response reverb"};
-  juce::TextButton load_{"Load IR..."};
-  juce::TextButton clear_{"Clear"};
+  juce::ToggleButton enabled_{TRANS("Impulse-response reverb")};
+  juce::TextButton load_{TRANS("Load IR...")};
+  juce::TextButton clear_{TRANS("Clear")};
   juce::Label irName_;
   juce::Label mixLabel_;
   juce::Slider mix_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
@@ -173,7 +173,7 @@ private:
   void timerCallback() override;
 
   MasterpieceProcessor& proc_;
-  juce::ToggleButton enabled_{"Metronome"};
+  juce::ToggleButton enabled_{TRANS("Metronome")};
   juce::Label tempoLabel_, beatsLabel_, levelLabel_;
   juce::Slider tempo_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider beats_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
@@ -192,12 +192,12 @@ private:
   void timerCallback() override;
 
   MasterpieceProcessor& proc_;
-  juce::TextButton record_{"Record"};
-  juce::TextButton play_{"Play"};
-  juce::TextButton stop_{"Stop"};
-  juce::TextButton save_{"Save MIDI..."};
-  juce::TextButton load_{"Load MIDI..."};
-  juce::TextButton clear_{"Clear"};
+  juce::TextButton record_{TRANS("Record")};
+  juce::TextButton play_{TRANS("Play")};
+  juce::TextButton stop_{TRANS("Stop")};
+  juce::TextButton save_{TRANS("Save MIDI...")};
+  juce::TextButton load_{TRANS("Load MIDI...")};
+  juce::TextButton clear_{TRANS("Clear")};
   juce::Label status_;
   juce::Label note_;
   std::unique_ptr<juce::FileChooser> chooser_;
@@ -206,8 +206,8 @@ private:
   // useful together: the MIDI file is the performance and can be replayed
   // through a different registration, the WAV is what it sounded like.
   juce::Label audioHeading_;
-  juce::TextButton audioRecord_{"Record audio..."};
-  juce::TextButton audioStop_{"Stop"};
+  juce::TextButton audioRecord_{TRANS("Record audio...")};
+  juce::TextButton audioStop_{TRANS("Stop")};
   juce::Label audioStatus_;
   juce::Label audioNote_;
   std::unique_ptr<juce::FileChooser> audioChooser_;
@@ -247,38 +247,38 @@ private:
   void showSharedChannels();
   // The player's own console: these channels for every organ that has none
   // saved for it.
-  juce::TextButton useAsDefault_{"Use as default for all organs"};
-  juce::TextButton clearDefault_{"Clear default"};
+  juce::TextButton useAsDefault_{TRANS("Use as default for all organs")};
+  juce::TextButton clearDefault_{TRANS("Clear default")};
   juce::Label defaultNote_;
   void showDefaultConsole();
   juce::ComboBox output_;
-  juce::ToggleButton feedback_{"Send stop changes back to the console"};
+  juce::ToggleButton feedback_{TRANS("Send stop changes back to the console")};
   juce::ToggleButton cancelResets_{
-      "General Cancel also puts the keyboards back on their own manuals"};
-  juce::TextButton saveMap_{"Save mapping"};
-  juce::TextButton clearMap_{"Clear mapping"};
+      TRANS("General Cancel also puts the keyboards back on their own manuals")};
+  juce::TextButton saveMap_{TRANS("Save mapping")};
+  juce::TextButton clearMap_{TRANS("Clear mapping")};
   // The sequencer pistons have nothing on the console to right-click, because
   // the organ does not declare them — Hauptwerk provides the sequencer and the
   // player maps it. So they get their own learn buttons.
   juce::Label stepperLabel_;
-  juce::TextButton learnNext_{"Learn sequencer +"};
-  juce::TextButton learnPrev_{"Learn sequencer -"};
+  juce::TextButton learnNext_{TRANS("Learn sequencer +")};
+  juce::TextButton learnPrev_{TRANS("Learn sequencer -")};
   // Pistons that switch which manual a keyboard plays (#90).
-  juce::TextButton learnManuals_{"Learn manual buttons..."};
+  juce::TextButton learnManuals_{TRANS("Learn manual buttons...")};
   // Console actions a real console's thumb pistons would do. A player whose
   // hands are on the keys cannot reach for a mouse to turn a page.
   juce::Label consoleHeading_;
   juce::Label keyboardsHeading_;
-  juce::TextButton learnPageNext_{"Learn page +"};
-  juce::TextButton learnPagePrev_{"Learn page -"};
-  juce::TextButton learnLayout_{"Learn console size"};
-  juce::TextButton learnStopList_{"Learn panel"};
-  juce::TextButton learnKeyboard_{"Learn keyboard"};
-  juce::TextButton learnCombinations_{"Learn combinations"};
-  juce::TextButton learnTransposeDown_{"Learn transpose -"};
-  juce::TextButton learnTransposeUp_{"Learn transpose +"};
-  juce::TextButton learnTemperamentPrev_{"Learn temperament -"};
-  juce::TextButton learnTemperamentNext_{"Learn temperament +"};
+  juce::TextButton learnPageNext_{TRANS("Learn page +")};
+  juce::TextButton learnPagePrev_{TRANS("Learn page -")};
+  juce::TextButton learnLayout_{TRANS("Learn console size")};
+  juce::TextButton learnStopList_{TRANS("Learn panel")};
+  juce::TextButton learnKeyboard_{TRANS("Learn keyboard")};
+  juce::TextButton learnCombinations_{TRANS("Learn combinations")};
+  juce::TextButton learnTransposeDown_{TRANS("Learn transpose -")};
+  juce::TextButton learnTransposeUp_{TRANS("Learn transpose +")};
+  juce::TextButton learnTemperamentPrev_{TRANS("Learn temperament -")};
+  juce::TextButton learnTemperamentNext_{TRANS("Learn temperament +")};
   juce::Label mapStatus_;
   juce::Label note_;
   std::unique_ptr<juce::MidiOutput> openedOutput_;
@@ -303,8 +303,8 @@ private:
   juce::Label setsHeading_;
   juce::Label setLabel_;
   juce::ComboBox setBox_;
-  juce::TextButton setNew_{"Save as new set..."};
-  juce::TextButton setDelete_{"Delete set"};
+  juce::TextButton setNew_{TRANS("Save as new set...")};
+  juce::TextButton setDelete_{TRANS("Delete set")};
   juce::Label setStatus_;
   std::vector<std::string> setNames_;
   std::unique_ptr<juce::AlertWindow> setPrompt_;
@@ -337,10 +337,10 @@ private:
   juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::TextButton abSwap_{"A / B"};
-  juce::TextButton abCopy_{"Copy to other"};
-  juce::TextButton resetOne_{"Reset this"};
-  juce::TextButton resetAll_{"Reset everything"};
-  juce::TextButton save_{"Save for this organ"};
+  juce::TextButton abCopy_{TRANS("Copy to other")};
+  juce::TextButton resetOne_{TRANS("Reset this")};
+  juce::TextButton resetAll_{TRANS("Reset everything")};
+  juce::TextButton save_{TRANS("Save for this organ")};
   juce::Label status_;
   juce::Label note2_;
   std::vector<Id> rankIds_;
@@ -366,9 +366,9 @@ private:
   juce::Label busesLabel_;
   juce::ComboBox busCount_;
   juce::Label status_;
-  juce::TextButton save_{"Save for this organ"};
-  juce::TextButton spread_{"Spread ranks evenly"};
-  juce::TextButton reset_{"All to bus 1"};
+  juce::TextButton save_{TRANS("Save for this organ")};
+  juce::TextButton spread_{TRANS("Spread ranks evenly")};
+  juce::TextButton reset_{TRANS("All to bus 1")};
   // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
   juce::Viewport viewport_;
   juce::Component rankHolder_;
@@ -403,14 +403,14 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label about_;
-  juce::TextButton open_{"Open the log folder"};
-  juce::TextButton check_{"Run the checks"};
-  juce::TextButton copy_{"Copy the report"};
-  juce::TextButton send_{"Send the report and the log"};
+  juce::TextButton open_{TRANS("Open the log folder")};
+  juce::TextButton check_{TRANS("Run the checks")};
+  juce::TextButton copy_{TRANS("Copy the report")};
+  juce::TextButton send_{TRANS("Send the report and the log")};
   juce::TextEditor report_;
   juce::ScopedMessageBox sending_;
-  juce::ToggleButton midi_{"Log every MIDI message and what became of it"};
-  juce::ToggleButton releases_{"Log every key release: the release played, its length and start"};
+  juce::ToggleButton midi_{TRANS("Log every MIDI message and what became of it")};
+  juce::ToggleButton releases_{TRANS("Log every key release: the release played, its length and start")};
 };
 
 class DisplayPanel : public juce::Component, private juce::Timer {
@@ -425,7 +425,7 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
-  juce::ToggleButton enable_{"Drive a console display"};
+  juce::ToggleButton enable_{TRANS("Drive a console display")};
   juce::Label idLabel_;
   juce::Slider id_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
   juce::Label widthLabel_;
@@ -438,8 +438,26 @@ private:
   // the part a player needs to see.
   juce::Label previewLabel_;
   juce::Label preview_;
-  juce::TextButton send_{"Send to display"};
+  juce::TextButton send_{TRANS("Send to display")};
   juce::Label note_;
+};
+
+// The language the program speaks. Applies at the next start: every window is
+// built with its words already in place, and rebuilding the open ones to
+// follow a change would lose where the player was.
+class LanguagePanel : public juce::Component {
+public:
+  explicit LanguagePanel(MasterpieceProcessor& p);
+  void resized() override;
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  juce::ComboBox language_;
+  juce::Label note_;
+  // The codes behind the list, by item id minus 3. Ids 1 and 2 are the system
+  // default and English.
+  std::vector<juce::String> codes_;
 };
 
 class SettingsWindow : public juce::Component {
@@ -471,6 +489,7 @@ private:
   VoicingPanel voicing_;
   FavouritesPanel favourites_;
   DisplayPanel display_;
+  LanguagePanel language_;
   LogPanel log_;
 };
 

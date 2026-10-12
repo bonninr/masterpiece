@@ -636,7 +636,7 @@ juce::String ConsoleView::pageName(int index) const {
   const auto& pages = proc_.organModel().displayPages;
   const auto it = pages.find(pageIds_[static_cast<size_t>(index)]);
   if (it == pages.end() || it->second.name.empty())
-    return "Page " + juce::String(index + 1);
+    return TRANS("Page %1").replace("%1", juce::String(index + 1));
   return juce::String(it->second.name);
 }
 
@@ -805,7 +805,7 @@ void ConsoleView::paint(juce::Graphics& g) {
 
   if (!hasArtwork_) {
     g.setColour(juce::Colours::grey);
-    g.drawText("This organ ships no console artwork on this page.",
+    g.drawText(TRANS("This organ ships no console artwork on this page."),
                getLocalBounds(), juce::Justification::centred);
     return;
   }
@@ -924,8 +924,8 @@ void ConsoleView::paint(juce::Graphics& g) {
   // images did not resolve looks identical to one that has none.
   if (drawn == 0 && missing > 0) {
     g.setColour(juce::Colours::orangered);
-    g.drawText("Console artwork could not be loaded (" + juce::String(missing) +
-                   " images). Check OrganInstallationPackages.",
+    g.drawText(TRANS("Console artwork could not be loaded (%1 images). Check OrganInstallationPackages.")
+                   .replace("%1", juce::String(missing)),
                getLocalBounds().reduced(20), juce::Justification::centred);
   }
 }
@@ -1024,40 +1024,39 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
 
   const auto existing = map.bindingsFor(MidiTargetKind::Switch, switchId);
   if (existing.empty()) {
-    menu.addSectionHeader("Not mapped");
+    menu.addSectionHeader(TRANS("Not mapped"));
   } else {
     for (const MidiBinding* b : existing) {
-      juce::String what =
-          b->source.kind == MidiSourceKind::Note ? "Note " : "CC ";
-      what << b->source.number;
-      if (b->source.channel > 0) what << " ch " << b->source.channel;
+      juce::String what = (b->source.kind == MidiSourceKind::Note ? TRANS("Note %1") : TRANS("CC %1"))
+                              .replace("%1", juce::String(b->source.number));
+      if (b->source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b->source.channel));
       switch (b->trigger) {
-        case MidiTrigger::Momentary: what << "  (held)"; break;
-        case MidiTrigger::EngageOnly: what << "  (draws)"; break;
-        case MidiTrigger::DisengageOnly: what << "  (cancels)"; break;
-        case MidiTrigger::Toggle: what << "  (toggles)"; break;
+        case MidiTrigger::Momentary: what << "  " << TRANS("(held)"); break;
+        case MidiTrigger::EngageOnly: what << "  " << TRANS("(draws)"); break;
+        case MidiTrigger::DisengageOnly: what << "  " << TRANS("(cancels)"); break;
+        case MidiTrigger::Toggle: what << "  " << TRANS("(toggles)"); break;
       }
       menu.addSectionHeader(what);
     }
   }
   menu.addSeparator();
   // Everything at once: several messages, what the console is sent, a key.
-  menu.addItem(7, "MIDI window...");
+  menu.addItem(7, TRANS("MIDI window..."));
   menu.addSeparator();
   // The organ says whether this switch latches (a drawstop, a coupler) or is
   // held (a piston, a Set button), so the plain Learn follows it; the four
   // ways remain for a console that sends something else (#53).
   const auto sw = proc_.organModel().switches.find(switchId);
   const bool latching = sw == proc_.organModel().switches.end() || sw->second.latching;
-  menu.addItem(6, latching ? "Learn" : "Learn (held while pressed)");
+  menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (held while pressed)"));
   juce::PopupMenu other;
-  other.addItem(1, "Toggle: each press draws or cancels");
-  other.addItem(2, "Held while pressed");
-  other.addItem(3, "Draws it only");
-  other.addItem(4, "Cancels it only");
-  menu.addSubMenu("Learn another way", other);
+  other.addItem(1, TRANS("Toggle: each press draws or cancels"));
+  other.addItem(2, TRANS("Held while pressed"));
+  other.addItem(3, TRANS("Draws it only"));
+  other.addItem(4, TRANS("Cancels it only"));
+  menu.addSubMenu(TRANS("Learn another way"), other);
   menu.addSeparator();
-  menu.addItem(5, "Clear mapping", !existing.empty());
+  menu.addItem(5, TRANS("Clear mapping"), !existing.empty());
 
   // Not attached to this view: a popup takes its target component's scale,
   // and the console is drawn scaled down to fit, so the menu came out smaller
@@ -1182,33 +1181,35 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   juce::PopupMenu menu;
   const auto existing = map.bindingsFor(MidiTargetKind::ContinuousControl, controlId);
   if (existing.empty()) {
-    menu.addSectionHeader("Not mapped");
+    menu.addSectionHeader(TRANS("Not mapped"));
   } else {
     for (const MidiBinding* b : existing) {
-      juce::String what = b->source.kind != MidiSourceKind::Note ? "CC " + juce::String(b->source.number)
-                          : b->source.number == kAnyNote        ? juce::String("Velocity of any note")
-                                                                : "Velocity of note " + juce::String(b->source.number);
-      if (b->source.channel > 0) what << " ch " << b->source.channel;
+      juce::String what = b->source.kind != MidiSourceKind::Note ? TRANS("CC %1").replace("%1", juce::String(b->source.number))
+                          : b->source.number == kAnyNote        ? juce::String(TRANS("Velocity of any note"))
+                                                                : TRANS("Velocity of note %1").replace("%1", juce::String(b->source.number));
+      if (b->source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b->source.channel));
       // The pedal's travel, when it is not the whole 0..127, closed to open.
       const int lo = std::min(b->lowValue, b->highValue), hi = std::max(b->lowValue, b->highValue);
       if (lo != 0 || hi != 127 || b->invert)
-        what << "  (closed at " << (b->invert ? hi : lo) << ", open at " << (b->invert ? lo : hi) << ")";
+        what << "  " << TRANS("(closed at %1, open at %2)")
+                                .replace("%1", juce::String(b->invert ? hi : lo))
+                                .replace("%2", juce::String(b->invert ? lo : hi));
       menu.addSectionHeader(what);
     }
   }
   menu.addSeparator();
-  menu.addItem(6, "MIDI window...");
+  menu.addItem(6, TRANS("MIDI window..."));
   menu.addSeparator();
   // One way to teach it: move the pedal, knob or fader. A controller carries
   // its position in every message, so there is no behaviour to choose. A pedal
   // already mapped to another control drives both.
-  menu.addItem(1, "Learn: move a pedal, knob or fader");
+  menu.addItem(1, TRANS("Learn: move a pedal, knob or fader"));
   // A console's shoe rarely sends the whole 0..127 (#90: 55..127, so the box
   // only half closed). Put the pedal where it should be, then choose.
-  menu.addItem(3, "Closed position: where the pedal is now", !existing.empty());
-  menu.addItem(4, "Open position: where the pedal is now", !existing.empty());
-  menu.addItem(5, "Use the pedal's whole travel", !existing.empty());
-  menu.addItem(2, "Clear mapping", !existing.empty());
+  menu.addItem(3, TRANS("Closed position: where the pedal is now"), !existing.empty());
+  menu.addItem(4, TRANS("Open position: where the pedal is now"), !existing.empty());
+  menu.addItem(5, TRANS("Use the pedal's whole travel"), !existing.empty());
+  menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
                        auto& m = proc.midiMap();
@@ -1225,9 +1226,9 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                        } else if (choice == 3 || choice == 4) {
                          if (proc.setControlPedalEnd(controlId, choice == 4) < 0)
                            juce::AlertWindow::showMessageBoxAsync(
-                               juce::MessageBoxIconType::InfoIcon, "Move the pedal first",
-                               "Masterpiece has not heard from this pedal yet, or both ends would be "
-                               "the same. Move it to the position you want, then choose this again.");
+                               juce::MessageBoxIconType::InfoIcon, TRANS("Move the pedal first"),
+                               TRANS("Masterpiece has not heard from this pedal yet, or both ends would be "
+                                     "the same. Move it to the position you want, then choose this again."));
                        } else if (choice == 5) {
                          proc.resetControlPedalRange(controlId);
                        } else {

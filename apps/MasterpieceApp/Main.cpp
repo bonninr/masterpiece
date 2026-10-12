@@ -1069,7 +1069,7 @@ private:
       panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
-      opts.dialogTitle = "General settings";
+      opts.dialogTitle = TRANS("General settings");
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
@@ -1083,7 +1083,7 @@ private:
       panel->onClosed = std::move(onClosed);
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
-      opts.dialogTitle = "Organ settings";
+      opts.dialogTitle = TRANS("Organ settings");
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
@@ -1099,7 +1099,7 @@ private:
       panel->onOpenOrgan = [this] { editor_->chooseAndLoadOrgan(); };
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
-      opts.dialogTitle = "Welcome to Masterpiece";
+      opts.dialogTitle = TRANS("Welcome to Masterpiece");
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;
@@ -1108,7 +1108,7 @@ private:
     }
 
     // Audio and MIDI are a tab of General settings (#276).
-    void showAudioSettings() { showSettings(editor_->organProcessor(), {}, "Audio"); }
+    void showAudioSettings() { showSettings(editor_->organProcessor(), {}, TRANS("Audio")); }
 
    private:
     juce::AudioDeviceManager& devices_;

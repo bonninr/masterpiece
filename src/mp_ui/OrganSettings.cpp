@@ -35,7 +35,7 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
       if (!r.effect || !r.toggle->getToggleState()) out.insert(r.stopId);
     choose(std::move(out));
   };
-  drawn_.setTooltip("Load only the stops drawn on the console at this moment");
+  drawn_.setTooltip(TRANS("Load only the stops drawn on the console at this moment"));
   drawn_.onClick = [this] {
     std::set<Id> out;
     for (const auto& r : rows_)
@@ -45,13 +45,13 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
   };
 
   addAndMakeVisible(filter_);
-  filter_.setTextToShowWhenEmpty("Filter, for example: Rear, tremmed, Pedal", kTextDim);
-  filter_.setTooltip("Shows only the perspectives, stops and ranks whose name holds this text");
+  filter_.setTextToShowWhenEmpty(TRANS("Filter, for example: Rear, tremmed, Pedal"), kTextDim);
+  filter_.setTooltip(TRANS("Shows only the perspectives, stops and ranks whose name holds this text"));
   filter_.onTextChange = [this] { applyFilter(); };
   for (auto* b : {&loadShown_, &leaveShown_}) addAndMakeVisible(*b);
   loadShown_.onClick = [this] { setShownRanks(true); };
   leaveShown_.onClick = [this] { setShownRanks(false); };
-  leaveShown_.setTooltip("Leave out every rank in the list as it is filtered now");
+  leaveShown_.setTooltip(TRANS("Leave out every rank in the list as it is filtered now"));
 
   addAndMakeVisible(viewport_);
   viewport_.setViewedComponent(&list_, false);
@@ -66,11 +66,11 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
   addAndMakeVisible(note_);
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
-  note_.setText("A perspective left out takes every rank recorded from that position; the "
-                "stops still play from the others. A stop left out costs no memory and makes "
-                "no sound, and keeps its drawstop, dimmed. Both are saved for this organ and "
-                "take effect when it is loaded again. Figures are estimates from the sample "
-                "files, at the settings on the Loading tab.",
+  note_.setText(TRANS("A perspective left out takes every rank recorded from that position; the "
+                      "stops still play from the others. A stop left out costs no memory and makes "
+                      "no sound, and keeps its drawstop, dimmed. Both are saved for this organ and "
+                      "take effect when it is loaded again. Figures are estimates from the sample "
+                      "files, at the settings on the Loading tab."),
                 juce::dontSendNotification);
 
   build();
@@ -99,7 +99,7 @@ void StopsLoadPanel::build() {
     perspectivesHeading_ = std::make_unique<juce::Label>();
     // A GrandOrgue set's windchest groups stand in for perspectives (#136).
     const bool chests = groupedByWindchest(proc_.organModel());
-    perspectivesHeading_->setText(chests ? "Windchest groups" : "Perspectives", juce::dontSendNotification);
+    perspectivesHeading_->setText(chests ? TRANS("Windchest groups") : TRANS("Perspectives"), juce::dontSendNotification);
     perspectivesHeading_->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     perspectivesHeading_->setColour(juce::Label::textColourId, juce::Colours::orange);
     list_.addAndMakeVisible(*perspectivesHeading_);
@@ -108,13 +108,13 @@ void StopsLoadPanel::build() {
       row.name = name;
       row.ranks.assign(ranks.begin(), ranks.end());
       juce::String label(juce::CharPointer_UTF8(name.c_str()));
-      label = label.substring(0, 1).toUpperCase() + label.substring(1) + "  (" +
-              juce::String(static_cast<int>(ranks.size())) + " ranks)";
+      label = label.substring(0, 1).toUpperCase() + label.substring(1) + "  " +
+              TRANS("(%1 ranks)").replace("%1", juce::String(static_cast<int>(ranks.size())));
       row.toggle = std::make_unique<juce::ToggleButton>(label);
       row.toggle->setToggleState(proc_.excludedPerspectives().count(name) == 0,
                                  juce::dontSendNotification);
-      row.toggle->setTooltip("Every rank recorded from this position. Left out, it costs "
-                             "no memory; the stops still play from the other positions.");
+      row.toggle->setTooltip(TRANS("Every rank recorded from this position. Left out, it costs "
+                                   "no memory; the stops still play from the other positions."));
       row.toggle->onClick = [this, clicked = row.toggle.get()] {
         // At least one position stays: without any, the organ is silent.
         if (perspectivesOut().size() == perspectives_.size())
@@ -141,7 +141,7 @@ void StopsLoadPanel::build() {
     h.label->setText(text, juce::dontSendNotification);
     h.label->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     h.label->setColour(juce::Label::textColourId, juce::Colours::orange);
-    h.label->setTooltip("Click to select or clear every stop in this division");
+    h.label->setTooltip(TRANS("Click to select or clear every stop in this division"));
     h.label->setMouseCursor(juce::MouseCursor::PointingHandCursor);
     h.label->addMouseListener(this, false);
     list_.addAndMakeVisible(*h.label);
@@ -161,13 +161,13 @@ void StopsLoadPanel::build() {
   for (const auto& [entry, effect] : order) {
     const auto& s = *entry;
     if (effect && !inEffects) {
-      heading("Effects and noises");
+      heading(TRANS("Effects and noises"));
       inEffects = true;
     } else if (!effect && s.divisionId != lastDivision) {
       const auto it = divisions.find(s.divisionId);
       heading(it != divisions.end() && !it->second.name.empty()
                   ? juce::String(it->second.name)
-                  : "Division " + juce::String(s.divisionId));
+                  : TRANS("Division %1").replace("%1", juce::String(s.divisionId)));
       lastDivision = s.divisionId;
     }
     Row row;
@@ -176,7 +176,7 @@ void StopsLoadPanel::build() {
     row.toggle = std::make_unique<juce::ToggleButton>(juce::String(s.name));
     row.toggle->setToggleState(excluded.count(s.stopId) == 0, juce::dontSendNotification);
     row.toggle->setEnabled(s.playable);
-    if (!s.playable) row.toggle->setTooltip("This stop's ranks ship no pipes in this sample set");
+    if (!s.playable) row.toggle->setTooltip(TRANS("This stop's ranks ship no pipes in this sample set"));
     row.toggle->addMouseListener(this, false);
     row.toggle->addKeyListener(this);
     row.toggle->onClick = [this, clicked = row.toggle.get()] {
@@ -210,7 +210,7 @@ void StopsLoadPanel::build() {
   });
   if (!byName.empty()) {
     ranksHeading_ = std::make_unique<juce::Label>();
-    ranksHeading_->setText("Ranks", juce::dontSendNotification);
+    ranksHeading_->setText(TRANS("Ranks"), juce::dontSendNotification);
     ranksHeading_->setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
     ranksHeading_->setColour(juce::Label::textColourId, juce::Colours::orange);
     list_.addAndMakeVisible(*ranksHeading_);
@@ -221,13 +221,13 @@ void StopsLoadPanel::build() {
     row.rankId = rankId;
     row.own = ranksOutNow.count(rankId) == 0;
     if (const auto it = stopIdsOfRank.find(rankId); it != stopIdsOfRank.end()) row.stops = it->second;
-    row.toggle = std::make_unique<juce::ToggleButton>(name.isEmpty() ? "Rank " + juce::String(rankId) : name);
+    row.toggle = std::make_unique<juce::ToggleButton>(name.isEmpty() ? TRANS("Rank %1").replace("%1", juce::String(rankId)) : name);
     row.toggle->setToggleState(row.own, juce::dontSendNotification);
     const auto users = stopsOfRank.find(rankId);
     const juce::String playedBy =
         users == stopsOfRank.end()
-            ? juce::String("Played by no stop: a noise, or wired to a key directly")
-            : "Played by " + users->second.joinIntoString(", ");
+            ? juce::String(TRANS("Played by no stop: a noise, or wired to a key directly"))
+            : TRANS("Played by %1").replace("%1", users->second.joinIntoString(", "));
     row.toggle->setTooltip(playedBy);
     row.toggle->getProperties().set("playedBy", playedBy);
     row.toggle->onClick = [this, rankId] {
@@ -437,12 +437,13 @@ void StopsLoadPanel::showRankStates() {
   for (auto& r : ranks_) {
     juce::String why;
     if (const auto it = byPerspective.find(r.rankId); it != byPerspective.end())
-      why = "Left out with the " + juce::String(juce::CharPointer_UTF8(it->second.c_str())) +
-            (groupedByWindchest(proc_.organModel()) ? " windchest group" : " perspective");
+      why = (groupedByWindchest(proc_.organModel()) ? TRANS("Left out with the %1 windchest group")
+                                                    : TRANS("Left out with the %1 perspective"))
+                .replace("%1", juce::String(juce::CharPointer_UTF8(it->second.c_str())));
     else if (!r.stops.empty() &&
              std::all_of(r.stops.begin(), r.stops.end(),
                          [&](Id s) { return stopsOut.count(s) != 0; }))
-      why = r.stops.size() == 1 ? "Left out with its stop" : "Left out with every stop that plays it";
+      why = r.stops.size() == 1 ? TRANS("Left out with its stop") : TRANS("Left out with every stop that plays it");
     const bool covered = why.isNotEmpty();
     r.toggle->setEnabled(!covered);
     r.toggle->setToggleState(covered ? false : r.own, juce::dontSendNotification);
@@ -465,7 +466,7 @@ void StopsLoadPanel::refreshFigures() {
                        pending ? juce::Colour(0xff8a5a12) : juce::Colour(0xff2a2f38));
 
   if (!ready_) {
-    total_.setText("Estimating the memory each stop takes...", juce::dontSendNotification);
+    total_.setText(TRANS("Estimating the memory each stop takes..."), juce::dontSendNotification);
     return;
   }
   auto bytesOf = [this](Id sampleId) -> int64_t {
@@ -508,8 +509,8 @@ void StopsLoadPanel::refreshFigures() {
   for (Id id : dropped) total -= bytesOf(id);
 
   const int64_t limit = proc_.memoryLimitBytes();
-  juce::String text = "About " + megabytes(total) + " for this choice";
-  if (limit > 0) text << " (the limit is " << megabytes(limit) << ")";
+  juce::String text = TRANS("About %1 for this choice").replace("%1", megabytes(total));
+  if (limit > 0) text << " " << TRANS("(the limit is %1)").replace("%1", megabytes(limit));
   total_.setText(text, juce::dontSendNotification);
   total_.setColour(juce::Label::textColourId,
                    limit > 0 && total > limit ? juce::Colour(0xffe06c5c) : kText);
@@ -581,20 +582,20 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(on_);
   on_.onClick = [this] { apply(); };
   addAndMakeVisible(flat_);
-  flat_.setTooltip("Every band and the gain back to 0 dB");
+  flat_.setTooltip(TRANS("Every band and the gain back to 0 dB"));
   flat_.onClick = [this] {
     for (auto& b : bands_) b.setValue(0.0, juce::dontSendNotification);
     gain_.setValue(0.0, juce::dontSendNotification);
     apply();
   };
   addAndMakeVisible(save_);
-  save_.setTooltip("Keep this EQ with this organ for the next time it is loaded");
+  save_.setTooltip(TRANS("Keep this EQ with this organ for the next time it is loaded"));
   save_.onClick = [this] {
-    save_.setButtonText(proc_.saveSettings() ? "Saved" : "Could not save");
+    save_.setButtonText(proc_.saveSettings() ? TRANS("Saved") : TRANS("Could not save"));
   };
   addAndMakeVisible(note_);
-  note_.setText("A correction for the room and the speakers, on the whole organ. "
-                "Off unless turned on here; the organ as recorded is the reference.",
+  note_.setText(TRANS("A correction for the room and the speakers, on the whole organ. "
+                      "Off unless turned on here; the organ as recorded is the reference."),
                 juce::dontSendNotification);
   note_.setColour(juce::Label::textColourId, juce::Colour(0xff9aa3b2));
   note_.setFont(juce::Font(juce::FontOptions(13.0f)));
@@ -616,7 +617,7 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     style(bands_[static_cast<size_t>(i)], bandNames_[static_cast<size_t>(i)],
           f >= 1000.0 ? juce::String(f / 1000.0, 0) + "k" : juce::String(f, f < 40 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false));
   }
-  style(gain_, gainName_, "Gain");
+  style(gain_, gainName_, TRANS("Gain"));
   showValues();
 }
 
@@ -634,7 +635,7 @@ void VoicingEqPanel::apply() {
   for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
   eq.gainDb = gain_.getValue();
   proc_.setVoicingEq(eq);
-  save_.setButtonText("Save for this organ");
+  save_.setButtonText(TRANS("Save for this organ"));
   repaint(curveArea_);
 }
 
@@ -696,12 +697,12 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
     : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }), eq_(p) {
   addAndMakeVisible(tabs_);
   engine_.onReload = [this] { reloadOnClose(); };
-  tabs_.addTab("Loading", kBackground, &engineScroll_, false);
-  tabs_.addTab("Stops and perspectives", kBackground, &stops_, false);
-  tabs_.addTab("Voicing EQ", kBackground, &eq_, false);
+  tabs_.addTab(TRANS("Loading"), kBackground, &engineScroll_, false);
+  tabs_.addTab(TRANS("Stops and perspectives"), kBackground, &stops_, false);
+  tabs_.addTab(TRANS("Voicing EQ"), kBackground, &eq_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices);
-    tabs_.addTab("MIDI", kBackground, midi_.get(), false);
+    tabs_.addTab(TRANS("MIDI"), kBackground, midi_.get(), false);
   }
   setSize(660, 560);
 }

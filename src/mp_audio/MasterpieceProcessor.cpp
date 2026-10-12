@@ -3,6 +3,7 @@
 
 #include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/Temperament.h"
+#include "Translations.h"
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -1551,6 +1552,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
+  if (language_.isNotEmpty()) text << "language " << language_ << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
@@ -1597,6 +1599,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   const auto f = globalSettingsFile();
   if (!f.existsAsFile()) {
     globalsReadOnce_ = true;  // a first start: nothing can have crashed
+    applyLanguage(language_);
     return false;
   }
 
@@ -1628,6 +1631,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       const int role = val.upToFirstOccurrenceOf(" ", false, false).getIntValue();
       const int channel = val.fromFirstOccurrenceOf(" ", false, false).getIntValue();
       if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
+    } else if (key == "language") {
+      language_ = val.toLowerCase();
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
@@ -1676,6 +1681,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   }
   graph_.engineSwitch = sw;
   globalBody_ = body;
+  // Only the first read speaks the language: the windows already open were
+  // built in the one that was chosen when they were made.
+  if (!globalsReadOnce_) applyLanguage(language_);
   globalsReadOnce_ = true;
   return true;
 }
@@ -1846,6 +1854,12 @@ void MasterpieceProcessor::setLoadTicks(bool on) {
   loadTicks_.store(on, std::memory_order_release);
   // Written at once, like the startup preference above: a general config is
   // not something a player sets per organ.
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLanguageSetting(const juce::String& code) {
+  if (language_ == code) return;
+  language_ = code;
   writeGlobalFile();
 }
 

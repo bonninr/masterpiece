@@ -43,22 +43,22 @@ juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id i
   if (kind == MidiTargetKind::Switch) {
     const auto it = m.switches.find(id);
     if (it != m.switches.end() && !it->second.name.empty()) return readable(it->second.name);
-    return "Switch " + juce::String(static_cast<int>(id));
+    return TRANS("Switch %1").replace("%1", juce::String(static_cast<int>(id)));
   }
   if (kind == MidiTargetKind::ContinuousControl) {
     const auto it = m.continuousControls.find(id);
     if (it != m.continuousControls.end() && !it->second.name.empty())
       return readable(it->second.name);
-    return "Control " + juce::String(static_cast<int>(id));
+    return TRANS("Control %1").replace("%1", juce::String(static_cast<int>(id)));
   }
   return juce::String(p.keyboardName(id));
 }
 
 void fillEvents(juce::ComboBox& box) {
-  box.addItem("Note", 1);
-  box.addItem("Controller", 2);
-  box.addItem("Program change", 3);
-  box.addItem("System exclusive", 4);
+  box.addItem(TRANS("Note"), 1);
+  box.addItem(TRANS("Controller"), 2);
+  box.addItem(TRANS("Program change"), 3);
+  box.addItem(TRANS("System exclusive"), 4);
 }
 int eventItem(MidiSourceKind k) {
   return k == MidiSourceKind::ControlChange   ? 2
@@ -82,7 +82,7 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
   box.clear(juce::dontSendNotification);
   // A control set by a note's velocity can take it from every note (#199).
   if (kind == MidiSourceKind::Note && offerAnyNote) {
-    box.addItem("Any note", kAnyNoteItem);
+    box.addItem(TRANS("Any note"), kAnyNoteItem);
     if (selected == kAnyNote || selected == kAnyNoteItem - 1) {
       for (int n = 0; n < 128; ++n) box.addItem(noteName(n), n + 1);
       box.setSelectedId(kAnyNoteItem, juce::dontSendNotification);
@@ -91,7 +91,7 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
   }
   // A system exclusive message is identified by its bytes, taken by Listen.
   if (kind == MidiSourceKind::SysEx) {
-    box.addItem("Learned message", 1);
+    box.addItem(TRANS("Learned message"), 1);
     box.setSelectedId(1, juce::dontSendNotification);
     return;
   }
@@ -104,7 +104,7 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
 }
 
 void fillChannels(juce::ComboBox& box, bool any) {
-  if (any) box.addItem("Any", 1);
+  if (any) box.addItem(TRANS("Any"), 1);
   for (int c = 1; c <= 16; ++c) box.addItem(juce::String(c), c + 1);
 }
 
@@ -169,7 +169,7 @@ public:
 
   ReceiveRow(MasterpieceProcessor& p, MidiTargetKind kind, const MidiBinding& b)
       : kind_(kind), binding_(b) {
-    device_.addItem("Any console", 1);
+    device_.addItem(TRANS("Any console"), 1);
     const auto& names = p.midiMap().devices().names();
     for (size_t i = 0; i < names.size(); ++i)
       device_.addItem(juce::String(p.midiMap().devices().displayName(static_cast<int>(i) + 1)),
@@ -185,7 +185,7 @@ public:
     fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number,
                 kind_ == MidiTargetKind::ContinuousControl);
     if (!set) {
-      event_.setTextWhenNothingSelected("Listen...");
+      event_.setTextWhenNothingSelected(TRANS("Listen..."));
       event_.setSelectedId(0, juce::dontSendNotification);
       number_.setSelectedId(0, juce::dontSendNotification);
     }
@@ -201,15 +201,15 @@ public:
     };
 
     if (kind == MidiTargetKind::Switch) {
-      action_.addItem("Each press toggles", 1);
-      action_.addItem("Held while pressed", 2);
-      action_.addItem("Draws it", 3);
-      action_.addItem("Cancels it", 4);
+      action_.addItem(TRANS("Each press toggles"), 1);
+      action_.addItem(TRANS("Held while pressed"), 2);
+      action_.addItem(TRANS("Draws it"), 3);
+      action_.addItem(TRANS("Cancels it"), 4);
     } else if (pressable(kind)) {
       // A piston fires when pressed; the setter may also be worked by a
       // button that toggles it, as its Learn menu offers.
-      action_.addItem("Fires when pressed", 2);
-      if (kind == MidiTargetKind::Setter) action_.addItem("Each press toggles", 1);
+      action_.addItem(TRANS("Fires when pressed"), 2);
+      if (kind == MidiTargetKind::Setter) action_.addItem(TRANS("Each press toggles"), 1);
     }
     if (pressable(kind)) {
       action_.setSelectedId(b.trigger == MidiTrigger::Momentary     ? 2
@@ -238,16 +238,16 @@ public:
     addAndMakeVisible(listen_);
     listen_.onClick = [this] { if (onListen) onListen(); };
     addAndMakeVisible(delete_);
-    delete_.setTooltip("Remove this event");
+    delete_.setTooltip(TRANS("Remove this event"));
     delete_.onClick = [this] { if (onDelete) onDelete(); };
   }
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
     if (pressable(kind))
-      return {{"Device", 150}, {"Channel", 64}, {"Event", 116}, {"Number", 96},
-              {"What it does", 150}, {"", 84}, {"", 28}};
-    return {{"Device", 150}, {"Channel", 64}, {"Event", 116}, {"Number", 96},
-            {"Closed at", 72}, {"Open at", 72}, {"", 60}, {"", 84}, {"", 28}};
+      return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
+              {TRANS("What it does"), 150}, {"", 84}, {"", 28}};
+    return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
+            {TRANS("Closed at"), 72}, {TRANS("Open at"), 72}, {"", 60}, {"", 84}, {"", 28}};
   }
 
   void resized() override {
@@ -268,7 +268,7 @@ public:
   }
 
   void setListening(bool on) {
-    listen_.setButtonText(on ? "Listening..." : "Listen");
+    listen_.setButtonText(on ? TRANS("Listening...") : TRANS("Listen"));
     listen_.setColour(juce::TextButton::buttonColourId,
                       on ? juce::Colours::darkorange : juce::Colour(0xff2a2f38));
   }
@@ -307,8 +307,8 @@ private:
   MidiBinding binding_;
   juce::ComboBox device_, channel_, event_, number_, action_;
   juce::Slider low_, high_;
-  juce::ToggleButton invert_{"Invert"};
-  juce::TextButton listen_{"Listen"}, delete_{"X"};
+  juce::ToggleButton invert_{TRANS("Invert")};
+  juce::TextButton listen_{TRANS("Listen")}, delete_{"X"};
 };
 
 // Every message that works one object, a row each.
@@ -325,20 +325,20 @@ public:
     addAndMakeVisible(add_);
     add_.onClick = [this] { addRow(); };
     addAndMakeVisible(empty_);
-    styleNote(empty_, "Nothing works this yet. Press New event, then press the button, pull the "
-                      "drawstop or move the pedal on your console.");
+    styleNote(empty_, TRANS("Nothing works this yet. Press New event, then press the button, pull the "
+                            "drawstop or move the pedal on your console."));
     addAndMakeVisible(note_);
     styleNote(note_,
               pressable(kind)
-                  ? "Add a row for every message that works this. A rocker tab or a console "
-                    "with separate draw and cancel buttons is two rows: one that draws it and "
-                    "one that cancels it. Listen fills a row from the next message your "
-                    "console sends. A message already used by something else moves here. "
-                    "Saved with this organ."
-                  : "Add a row for every pedal or knob that moves this. Closed at and Open "
-                    "at are the values your pedal sends at its two ends, when it does not "
-                    "travel the whole 0 to 127; Invert turns a pedal wired backwards around. "
-                    "One pedal can move several shoes. Saved with this organ.");
+                  ? TRANS("Add a row for every message that works this. A rocker tab or a console "
+                          "with separate draw and cancel buttons is two rows: one that draws it and "
+                          "one that cancels it. Listen fills a row from the next message your "
+                          "console sends. A message already used by something else moves here. "
+                          "Saved with this organ.")
+                  : TRANS("Add a row for every pedal or knob that moves this. Closed at and Open "
+                          "at are the values your pedal sends at its two ends, when it does not "
+                          "travel the whole 0 to 127; Invert turns a pedal wired backwards around. "
+                          "One pedal can move several shoes. Saved with this organ."));
     rebuild();
     startTimerHz(20);
   }
@@ -454,7 +454,7 @@ private:
   Header header_;
   juce::Viewport viewport_;
   juce::Component list_;
-  juce::TextButton add_{"New event"};
+  juce::TextButton add_{TRANS("New event")};
   juce::Label empty_, note_;
 };
 
@@ -492,10 +492,11 @@ public:
       styleValue(high_, 0, 127);
       styleValue(low_, kind == MidiTargetKind::Switch ? -1 : 0, 127);
       low_.textFromValueFunction = [](double v) {
-        return v < 0 ? juce::String("none") : juce::String(static_cast<int>(v));
+        return v < 0 ? TRANS("none") : juce::String(static_cast<int>(v));
       };
       low_.valueFromTextFunction = [](const juce::String& t) {
-        return t.trim().equalsIgnoreCase("none") ? -1.0 : t.getDoubleValue();
+        return t.trim().equalsIgnoreCase("none") || t.trim().equalsIgnoreCase(TRANS("none")) ? -1.0
+                                                                                      : t.getDoubleValue();
       };
       high_.setValue(s.high, juce::dontSendNotification);
       low_.setValue(s.low, juce::dontSendNotification);
@@ -506,18 +507,18 @@ public:
       low_.onValueChange = [this] { changed(); };
     }
     addAndMakeVisible(delete_);
-    delete_.setTooltip("Remove this event");
+    delete_.setTooltip(TRANS("Remove this event"));
     delete_.onClick = [this] { if (onDelete) onDelete(); };
   }
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
     if (kind == MidiTargetKind::Keyboard)
-      return {{"Channel", 64}, {"Transpose", 110}, {"", 28}};
+      return {{TRANS("Channel"), 64}, {TRANS("Transpose"), 110}, {"", 28}};
     if (kind == MidiTargetKind::Switch)
-      return {{"Event", 116}, {"Channel", 64}, {"Number", 96}, {"When on", 80},
-              {"When off", 80}, {"", 28}};
-    return {{"Event", 116}, {"Channel", 64}, {"Number", 96}, {"Closed", 80},
-            {"Open", 80}, {"", 28}};
+      return {{TRANS("Event"), 116}, {TRANS("Channel"), 64}, {TRANS("Number"), 96}, {TRANS("When on"), 80},
+              {TRANS("When off"), 80}, {"", 28}};
+    return {{TRANS("Event"), 116}, {TRANS("Channel"), 64}, {TRANS("Number"), 96}, {TRANS("Closed"), 80},
+            {TRANS("Open"), 80}, {"", 28}};
   }
 
   void resized() override {
@@ -591,22 +592,22 @@ public:
       rebuild();
     };
     addAndMakeVisible(empty_);
-    styleNote(empty_, "Nothing is sent yet.");
+    styleNote(empty_, TRANS("Nothing is sent yet."));
     addAndMakeVisible(output_);
     output_.setColour(juce::Label::textColourId, kText);
     addAndMakeVisible(note_);
     styleNote(note_,
               kind == MidiTargetKind::Switch
-                  ? "Sent whenever this comes on or goes off, however it moved: by your "
-                    "console, a piston, the crescendo or a click. For the lamp in a drawstop "
-                    "or an LED by a piston. When off \"none\" sends nothing when it goes off. "
-                    "Saved with this organ."
+                  ? TRANS("Sent whenever this comes on or goes off, however it moved: by your "
+                          "console, a piston, the crescendo or a click. For the lamp in a drawstop "
+                          "or an LED by a piston. When off \"none\" sends nothing when it goes off. "
+                          "Saved with this organ.")
               : kind == MidiTargetKind::Keyboard
-                  ? "Every key played on this manual is sent as a note on the channel, moved "
-                    "by Transpose: to play a sound module or a second program from it. Saved "
-                    "with this organ."
-                  : "Sent whenever this moves, across Closed to Open: for a motorised fader, "
-                    "or a display that shows the swell box. Saved with this organ.");
+                  ? TRANS("Every key played on this manual is sent as a note on the channel, moved "
+                          "by Transpose: to play a sound module or a second program from it. Saved "
+                          "with this organ.")
+                  : TRANS("Sent whenever this moves, across Closed to Open: for a motorised fader, "
+                          "or a display that shows the swell box. Saved with this organ."));
     rebuild();
     showOutput();
     startTimerHz(2);
@@ -633,8 +634,8 @@ private:
 
   void showOutput() {
     const auto* out = proc_.midiOutput();
-    output_.setText(out != nullptr ? "Sent to " + out->getName()
-                                   : "No MIDI output is chosen: choose one in Settings, MIDI.",
+    output_.setText(out != nullptr ? TRANS("Sent to %1").replace("%1", out->getName())
+                                   : TRANS("No MIDI output is chosen: choose one in Settings, MIDI."),
                     juce::dontSendNotification);
     output_.setColour(juce::Label::textColourId, out != nullptr ? kText : juce::Colours::orange);
   }
@@ -679,7 +680,7 @@ private:
   Header header_;
   juce::Viewport viewport_;
   juce::Component list_;
-  juce::TextButton add_{"New event"};
+  juce::TextButton add_{TRANS("New event")};
   juce::Label empty_, output_, note_;
 };
 
@@ -719,7 +720,7 @@ public:
 
 private:
   void show() {
-    setButtonText(capturing_ ? "Press a key..." : key_.isEmpty() ? "None" : key_);
+    setButtonText(capturing_ ? TRANS("Press a key...") : key_.isEmpty() ? TRANS("None") : key_);
     setColour(juce::TextButton::buttonColourId,
               capturing_ ? juce::Colours::darkorange : juce::Colour(0xff2a2f38));
   }
@@ -743,7 +744,7 @@ public:
     }
     const bool control = kind == MidiTargetKind::ContinuousControl;
     addAndMakeVisible(upLabel_);
-    upLabel_.setText(control ? "Opens it" : "Draws or cancels it", juce::dontSendNotification);
+    upLabel_.setText(control ? TRANS("Opens it") : TRANS("Draws or cancels it"), juce::dontSendNotification);
     upLabel_.setColour(juce::Label::textColourId, kText);
     addAndMakeVisible(upKey_);
     upKey_.setKey(up_);
@@ -752,7 +753,7 @@ public:
     clearUp_.onClick = [this] { up_.clear(); upKey_.setKey({}); commit(); };
     if (control) {
       addAndMakeVisible(downLabel_);
-      downLabel_.setText("Closes it", juce::dontSendNotification);
+      downLabel_.setText(TRANS("Closes it"), juce::dontSendNotification);
       downLabel_.setColour(juce::Label::textColourId, kText);
       addAndMakeVisible(downKey_);
       downKey_.setKey(down_);
@@ -760,7 +761,7 @@ public:
       addAndMakeVisible(clearDown_);
       clearDown_.onClick = [this] { down_.clear(); downKey_.setKey({}); commit(); };
       addAndMakeVisible(stepLabel_);
-      stepLabel_.setText("Each press moves it by", juce::dontSendNotification);
+      stepLabel_.setText(TRANS("Each press moves it by"), juce::dontSendNotification);
       stepLabel_.setColour(juce::Label::textColourId, kText);
       styleValue(step_, 1, 64);
       if (step_.getValue() < 1) step_.setValue(8, juce::dontSendNotification);
@@ -768,10 +769,10 @@ public:
       step_.onValueChange = [this] { commit(); };
     }
     addAndMakeVisible(note_);
-    styleNote(note_, "Click the button, then press the key, with Ctrl, Alt or Shift if you "
-                     "like. Escape leaves it as it was. The key works while the console window "
-                     "is in front. One key can work several things at once. Saved with this "
-                     "organ.");
+    styleNote(note_, TRANS("Click the button, then press the key, with Ctrl, Alt or Shift if you "
+                           "like. Escape leaves it as it was. The key works while the console window "
+                           "is in front. One key can work several things at once. Saved with this "
+                           "organ."));
   }
 
   void paint(juce::Graphics& g) override { g.fillAll(kBg); }
@@ -819,7 +820,7 @@ private:
   juce::String up_, down_;
   juce::Label upLabel_, downLabel_, stepLabel_, note_;
   KeyButton upKey_, downKey_;
-  juce::TextButton clearUp_{"Clear"}, clearDown_{"Clear"};
+  juce::TextButton clearUp_{TRANS("Clear")}, clearDown_{TRANS("Clear")};
   juce::Slider step_;
 };
 
@@ -829,11 +830,11 @@ public:
   MidiEventContent(MasterpieceProcessor& p, MidiTargetKind kind, Id id)
       : tabs_(juce::TabbedButtonBar::TabsAtTop) {
     addAndMakeVisible(tabs_);
-    tabs_.addTab("Receive", kBg, new ReceivePanel(p, kind, id), true);
+    tabs_.addTab(TRANS("Receive"), kBg, new ReceivePanel(p, kind, id), true);
     // The program's own buttons light nothing on a console.
     if (kind == MidiTargetKind::Switch || !pressable(kind))
-      tabs_.addTab("Send", kBg, new SendPanel(p, kind, id), true);
-    tabs_.addTab("Shortcut", kBg, new ShortcutPanel(p, kind, id), true);
+      tabs_.addTab(TRANS("Send"), kBg, new SendPanel(p, kind, id), true);
+    tabs_.addTab(TRANS("Shortcut"), kBg, new ShortcutPanel(p, kind, id), true);
   }
   void resized() override { tabs_.setBounds(getLocalBounds()); }
 

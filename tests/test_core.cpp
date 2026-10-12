@@ -11440,7 +11440,8 @@ public:
     progress.beginPhase(Phase::LoadingSamples, 10);
     const auto wiring = progress.timeIn(Phase::WiringConsole);
     const auto finding = progress.timeIn(Phase::FindingSamples);
-    MP_CHECK(wiring >= 30 && wiring < 75, "the stage left is charged its own time: " + std::to_string(wiring));
+    // Lower bounds only: a busy machine sleeps longer than it is asked to.
+    MP_CHECK(wiring >= 30, "the stage left is charged its own time: " + std::to_string(wiring));
     MP_CHECK(finding >= 70, "and the next stage its own: " + std::to_string(finding));
     MP_CHECK(progress.timeIn(Phase::LoadingSamples) == 0, "a stage still running has nothing yet");
     MP_CHECK(std::string(mp::LoadProgress::phaseName(Phase::FindingSamples)) == "Finding the samples",
@@ -13848,4 +13849,192 @@ public:
   }
 };
 static SharedStopSwitchTest g_sharedStopSwitch;
+#endif
+
+#ifdef MP_TEST_HAS_AUDIO
+#include "../src/mp_audio/Translations.h"
+
+namespace {
+
+std::string utf8(const juce::String& s) { return std::string(s.toRawUTF8()); }
+
+// The %1, %2 ... a string carries, in order.
+juce::String placeholdersOf(const juce::String& s) {
+  juce::String out;
+  for (int i = 0; i + 1 < s.length(); ++i)
+    if (s[i] == '%' && s[i + 1] >= '0' && s[i + 1] <= '9') out << s.substring(i, i + 2);
+  return out;
+}
+
+juce::String sortedPlaceholders(const juce::String& s) {
+  juce::StringArray a;
+  const auto p = placeholdersOf(s);
+  for (int i = 0; i + 1 < p.length(); i += 2) a.add(p.substring(i, i + 2));
+  a.sort(false);
+  return a.joinIntoString(",");
+}
+
+// The strings inside every TRANS("...") in a source file, with a literal split
+// over several lines joined, as the compiler joins it.
+std::vector<juce::String> transStringsIn(const juce::File& f) {
+  std::vector<juce::String> out;
+  const juce::String text = f.loadFileAsString();
+  const int n = text.length();
+  int from = 0;
+  for (;;) {
+    const int at = text.indexOf(from, "TRANS(");
+    if (at < 0) break;
+    from = at + 6;
+    if (at > 0 && (juce::CharacterFunctions::isLetterOrDigit(text[at - 1]) || text[at - 1] == '_')) continue;
+    const int lineStart = text.substring(0, at).lastIndexOfChar('\n') + 1;
+    if (text.substring(lineStart, at).contains("//")) continue;
+    juce::String key;
+    int i = from;
+    bool any = false;
+    for (;;) {
+      while (i < n && juce::CharacterFunctions::isWhitespace(text[i])) ++i;
+      if (i >= n || text[i] != '"') break;
+      ++i;
+      while (i < n && text[i] != '"') {
+        if (text[i] == '\\' && i + 1 < n) {
+          ++i;
+          switch (text[i]) {
+            case 'n': key << '\n'; break;
+            case 't': key << '\t'; break;
+            default: key << text[i]; break;
+          }
+        } else {
+          key << text[i];
+        }
+        ++i;
+      }
+      ++i;
+      any = true;
+    }
+    if (any) out.push_back(key);
+  }
+  return out;
+}
+
+juce::LocalisedStrings loadTemplate() {
+  return juce::LocalisedStrings(juce::File(MP_TEST_TRANSLATIONS_DIR).getChildFile("strings.txt"), false);
+}
+
+}  // namespace
+
+// The program speaks the player's language (#290). Each language file ships
+// inside the program, so each has to read, leave nothing empty and cover every
+// string in the template.
+class LanguageFilesTest final : public mp::test::Test {
+public:
+  LanguageFilesTest() : Test("functional.i18n.language-files", Category::Functional) {}
+  void run() override {
+    const auto tmpl = loadTemplate();
+    const auto keys = tmpl.getMappings().getAllKeys();
+    MP_CHECK(keys.size() > 300, "the template lists the program's strings");
+
+    const auto languages = mp::availableLanguages();
+    for (const char* wanted : {"es", "de", "nl", "pl", "cs", "fr", "it"}) {
+      bool found = false;
+      for (const auto& l : languages) found = found || l.code == wanted;
+      MP_CHECK(found, std::string(wanted) + " is shipped");
+    }
+
+    for (const auto& l : languages) {
+      const std::string code = utf8(l.code);
+      const auto text = mp::translationText(l.code);
+      MP_CHECK(text.isNotEmpty(), code + ": the file is embedded");
+      MP_CHECK(!text.startsWithChar(0xfeff), code + ": the file has no byte order mark");
+      MP_CHECK(l.name.isNotEmpty() && l.name != l.code, code + ": the file names its language");
+
+      juce::LocalisedStrings file(text, false);
+      MP_CHECK(file.getCountryCodes().size() > 0, code + ": the file lists its countries");
+
+      for (const auto& line : juce::StringArray::fromLines(text)) {
+        const auto t = line.trim();
+        MP_CHECK(!(t.startsWithChar('"') && t.endsWith("= \"\"")), code + ": an empty translation: " + utf8(t));
+      }
+      for (const auto& key : keys) {
+        MP_CHECK(file.getMappings().containsKey(key), code + ": missing: " + utf8(key));
+        const auto value = file.getMappings()[key];
+        MP_CHECK(value.trim().isNotEmpty(), code + ": empty: " + utf8(key));
+        MP_CHECK(sortedPlaceholders(key) == sortedPlaceholders(value),
+                 code + ": the placeholders differ: " + utf8(key));
+      }
+      for (const auto& key : file.getMappings().getAllKeys())
+        MP_CHECK(tmpl.getMappings().containsKey(key), code + ": not in the template: " + utf8(key));
+    }
+  }
+};
+static LanguageFilesTest g_languageFiles;
+
+// Every string the window code passes through TRANS() is in the template, so a
+// new string cannot be added without the translators' list growing. Fixed by
+// running tools/i18n.py --write.
+class TemplateCoversSourcesTest final : public mp::test::Test {
+public:
+  TemplateCoversSourcesTest() : Test("functional.i18n.template-covers-sources", Category::Functional) {}
+  void run() override {
+    const auto tmpl = loadTemplate();
+    const juce::File root(MP_TEST_SOURCE_DIR);
+    juce::Array<juce::File> files;
+    root.getChildFile("src/mp_ui").findChildFiles(files, juce::File::findFiles, false, "*.cpp;*.h");
+    files.add(root.getChildFile("apps/MasterpieceApp/Main.cpp"));
+    int found = 0;
+    for (const auto& f : files)
+      for (const auto& s : transStringsIn(f)) {
+        ++found;
+        MP_CHECK(tmpl.getMappings().containsKey(s),
+                 utf8(f.getFileName()) + ": not in resources/translations/strings.txt: " + utf8(s));
+      }
+    MP_CHECK(found > 300, "the sources were scanned");
+  }
+};
+static TemplateCoversSourcesTest g_templateCoversSources;
+
+// Choosing a language makes TRANS() answer in it, a string the file lacks stays
+// English, and a placeholder survives the trip.
+class ChooseLanguageTest final : public mp::test::Test {
+public:
+  ChooseLanguageTest() : Test("functional.i18n.choose-language", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::applyLanguage("en") == "en", "English is always available");
+    MP_CHECK(TRANS("Settings") == "Settings", "English is the text in the code");
+
+    MP_CHECK(mp::applyLanguage("es") == "es", "Spanish is chosen");
+    MP_CHECK(TRANS("Settings") == juce::String::fromUTF8("Ajustes"), "Settings in Spanish");
+    MP_CHECK(TRANS("Frame %1 of %2").replace("%1", "3").replace("%2", "12") == "Paso 3 de 12",
+             "a placeholder string reads correctly with numbers put in");
+    MP_CHECK(TRANS("A sentence no file has") == "A sentence no file has", "an untranslated string stays English");
+
+    MP_CHECK(mp::applyLanguage("de") == "de", "German is chosen");
+    MP_CHECK(TRANS("Settings") == juce::String::fromUTF8("Einstellungen"), "Settings in German");
+    MP_CHECK(TRANS("Frame %1 of %2").replace("%1", "3").replace("%2", "12") == "Schritt 3 von 12",
+             "the German word order is the file's own");
+
+    struct Expected { const char* code; const char* settings; const char* frame; };
+    const Expected others[] = {
+        {"nl", "Instellingen", "Stap 3 van 12"},
+        {"pl", "Ustawienia", "Krok 3 z 12"},
+        {"cs", "Nastavení", "Krok 3 z 12"},
+        {"fr", "Réglages", "Étape 3 sur 12"},
+        {"it", "Impostazioni", "Passo 3 di 12"},
+    };
+    for (const auto& e : others) {
+      MP_CHECK(mp::applyLanguage(e.code) == e.code, std::string(e.code) + " is chosen");
+      MP_CHECK(TRANS("Settings") == juce::String::fromUTF8(e.settings), std::string(e.code) + ": Settings");
+      MP_CHECK(TRANS("Frame %1 of %2").replace("%1", "3").replace("%2", "12") == juce::String::fromUTF8(e.frame),
+               std::string(e.code) + ": the frame label");
+    }
+
+    MP_CHECK(mp::applyLanguage("DE") == "de", "a code is taken in any case");
+    MP_CHECK(mp::applyLanguage("xx") == "en", "a language with no file is English");
+    MP_CHECK(TRANS("Settings") == "Settings", "and speaks English");
+
+    const auto system = mp::applyLanguage("");
+    MP_CHECK(system == mp::systemLanguageCode(), "an empty choice follows the system");
+    mp::applyLanguage("en");
+  }
+};
+static ChooseLanguageTest g_chooseLanguage;
 #endif

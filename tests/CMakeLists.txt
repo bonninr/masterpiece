@@ -9,6 +9,8 @@ target_compile_features(mp_tests PRIVATE cxx_std_20)
 target_link_libraries(mp_tests PRIVATE mp_core mp_control mp_archive)
 target_compile_definitions(mp_tests PRIVATE
   MP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+  MP_TEST_TRANSLATIONS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../resources/translations"
+  MP_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
 if(TARGET mp_sampler)
   target_link_libraries(mp_tests PRIVATE mp_sampler)
