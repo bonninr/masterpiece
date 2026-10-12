@@ -4123,6 +4123,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // And the tap thresholds start over, so the first 10% of this load taps
   // rather than whatever the last one reached.
   loadTickNext_.store(10, std::memory_order_release);
+  // An archive's stages, when there were any, came before this point and
+  // keep their times; the rest start from nothing.
+  for (auto p : {LoadProgress::Phase::ReadingDefinition, LoadProgress::Phase::BuildingWind,
+                 LoadProgress::Phase::WiringConsole, LoadProgress::Phase::FindingSamples,
+                 LoadProgress::Phase::LoadingSamples, LoadProgress::Phase::Preparing})
+    loadProgress_.phaseMs[static_cast<size_t>(p)].store(0, std::memory_order_relaxed);
   loadProgress_.beginPhase(LoadProgress::Phase::ReadingDefinition);
 
   if (!odfFile.existsAsFile()) {
@@ -4592,6 +4598,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // then finds no audio for a pipe and stays silent, which is the same path a
   // set with a missing sample already takes.
   phases.mark("model");
+  loadProgress_.beginPhase(LoadProgress::Phase::FindingSamples);
   unloadedStops_.clear();
 
   // The library still holds the PREVIOUS organ's audio, and nothing else ever
@@ -4944,6 +4951,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   juce::Logger::writeToLog("load: TOTAL         " +
                            juce::String(phases.sinceStart(), 1) + " ms  (" +
                            odfFile.getFileName() + ")");
+  // The same load as the dialog showed it: the time under each of its labels.
+  {
+    const int64_t now = LoadProgress::nowMs();
+    const int64_t began = loadProgress_.phaseBeganMs.load(std::memory_order_acquire);
+    for (auto p : {LoadProgress::Phase::OpeningArchive, LoadProgress::Phase::ReadingArchive,
+                   LoadProgress::Phase::ExtractingArchive, LoadProgress::Phase::ReadingDefinition,
+                   LoadProgress::Phase::BuildingWind, LoadProgress::Phase::WiringConsole,
+                   LoadProgress::Phase::FindingSamples, LoadProgress::Phase::LoadingSamples,
+                   LoadProgress::Phase::Preparing}) {
+      int64_t ms = loadProgress_.timeIn(p);
+      // The stage still running is the last one, charged up to now.
+      if (p == loadProgress_.phase.load(std::memory_order_acquire) && began > 0) ms += now - began;
+      if (ms > 0)
+        juce::Logger::writeToLog("stage: " + juce::String(LoadProgress::phaseName(p)) + "  " +
+                                 juce::String(static_cast<double>(ms) / 1000.0, 1) + " s");
+    }
+  }
 
   // What the organ costs to hold, in the library's own terms. The process
   // will always be larger than this -- artwork, JUCE, the heap it has not

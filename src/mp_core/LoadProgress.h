@@ -9,7 +9,10 @@
 // atomic and nothing in it allocates. A progress channel that needed a lock
 // would put the message thread behind the very work it is reporting on.
 #pragma once
+#include <array>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 
 namespace mp {
 
@@ -27,6 +30,11 @@ struct LoadProgress {
     // teaches the player to distrust it.
     BuildingWind,       // solving the wind system: the long half of the build
     WiringConsole,      // linkages, couplers, the key-flow walk
+    // The organ being left is let go, the samples the pipework wants are
+    // listed and looked for on disk and in the cache. On a large set this is
+    // seconds, and it was shown as "Wiring the console", which takes
+    // milliseconds (#133).
+    FindingSamples,
     LoadingSamples,     // the long one: done/total are meaningful here
     Preparing,          // audio graph, MIDI map, combinations: after the samples
     BuildingConsole,    // artwork decode, back on the message thread
@@ -47,10 +55,32 @@ struct LoadProgress {
   std::atomic<bool> cancelled{false};
 
   void beginPhase(Phase p, int itemTotal = 0) {
+    // The stage being left is charged the time since it began.
+    const int64_t now = nowMs();
+    const auto leaving = static_cast<size_t>(phase.load(std::memory_order_acquire));
+    const int64_t began = phaseBeganMs.exchange(now, std::memory_order_acq_rel);
+    if (began > 0 && leaving < phaseMs.size())
+      phaseMs[leaving].fetch_add(now - began, std::memory_order_relaxed);
     archiveFraction.store(-1.0, std::memory_order_relaxed);
     done.store(0, std::memory_order_relaxed);
     total.store(itemTotal, std::memory_order_relaxed);
     phase.store(p, std::memory_order_release);
+  }
+
+  // How long each stage of this load took, for the log: a report of a slow
+  // load can then say which stage was slow. Cleared by whoever starts a load,
+  // stage by stage.
+  static constexpr size_t kPhases = 16;
+  std::array<std::atomic<int64_t>, kPhases> phaseMs{};
+  std::atomic<int64_t> phaseBeganMs{0};
+  int64_t timeIn(Phase p) const {
+    const auto i = static_cast<size_t>(p);
+    return i < phaseMs.size() ? phaseMs[i].load(std::memory_order_relaxed) : 0;
+  }
+  static int64_t nowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
   }
 
   bool isCancelled() const { return cancelled.load(std::memory_order_acquire); }
@@ -103,6 +133,7 @@ struct LoadProgress {
       case Phase::ReadingDefinition: return "Reading the organ definition";
       case Phase::BuildingWind:      return "Building the wind model";
       case Phase::WiringConsole:     return "Wiring the console";
+      case Phase::FindingSamples:    return "Finding the samples";
       case Phase::LoadingSamples:    return "Loading samples";
       case Phase::Preparing:         return "Preparing to play";
       case Phase::BuildingConsole:   return "Building the console";

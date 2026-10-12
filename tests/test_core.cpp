@@ -11425,6 +11425,31 @@ public:
 };
 static SequencerJumpsTest g_sequencerJumps;
 
+// The load dialog's stages are timed, so a slow load can say which stage was
+// slow, and the stage before the samples has a name of its own (#133).
+class LoadStageTimesTest final : public mp::test::Test {
+public:
+  LoadStageTimesTest() : Test("functional.load.stage-times", Category::Functional) {}
+  void run() override {
+    using Phase = mp::LoadProgress::Phase;
+    mp::LoadProgress progress;
+    progress.beginPhase(Phase::WiringConsole);
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    progress.beginPhase(Phase::FindingSamples);
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    progress.beginPhase(Phase::LoadingSamples, 10);
+    const auto wiring = progress.timeIn(Phase::WiringConsole);
+    const auto finding = progress.timeIn(Phase::FindingSamples);
+    MP_CHECK(wiring >= 30 && wiring < 75, "the stage left is charged its own time: " + std::to_string(wiring));
+    MP_CHECK(finding >= 70, "and the next stage its own: " + std::to_string(finding));
+    MP_CHECK(progress.timeIn(Phase::LoadingSamples) == 0, "a stage still running has nothing yet");
+    MP_CHECK(std::string(mp::LoadProgress::phaseName(Phase::FindingSamples)) == "Finding the samples",
+             "the stage before the samples is named");
+    MP_CHECK(static_cast<size_t>(Phase::Failed) < mp::LoadProgress::kPhases, "every stage has a slot");
+  }
+};
+static LoadStageTimesTest g_loadStageTimes;
+
 // The organ's own start signal (#263). Sets built on one template (Nancy,
 // Friesach, Oloron) start themselves with a hidden pair: "Hidden OffToOn"
 // moves 0 to 127 at load, a delay follows it, and the delay's top step
