@@ -52,6 +52,7 @@ static juce::String phaseText(LoadProgress::Phase p) {
     case LoadProgress::Phase::ReadingDefinition: return TRANS("Reading the organ definition");
     case LoadProgress::Phase::BuildingWind:      return TRANS("Building the wind model");
     case LoadProgress::Phase::WiringConsole:     return TRANS("Wiring the console");
+    case LoadProgress::Phase::FindingSamples:    return TRANS("Finding the samples");
     case LoadProgress::Phase::LoadingSamples:    return TRANS("Loading samples");
     case LoadProgress::Phase::Preparing:         return TRANS("Preparing to play");
     case LoadProgress::Phase::BuildingConsole:   return TRANS("Building the console");

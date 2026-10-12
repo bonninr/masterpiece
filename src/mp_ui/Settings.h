@@ -403,14 +403,14 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label about_;
-  juce::TextButton open_{"Open the log folder"};
-  juce::TextButton check_{"Run the checks"};
-  juce::TextButton copy_{"Copy the report"};
-  juce::TextButton send_{"Send the report and the log"};
+  juce::TextButton open_{TRANS("Open the log folder")};
+  juce::TextButton check_{TRANS("Run the checks")};
+  juce::TextButton copy_{TRANS("Copy the report")};
+  juce::TextButton send_{TRANS("Send the report and the log")};
   juce::TextEditor report_;
   juce::ScopedMessageBox sending_;
-  juce::ToggleButton midi_{"Log every MIDI message and what became of it"};
-  juce::ToggleButton releases_{"Log every key release: the release played, its length and start"};
+  juce::ToggleButton midi_{TRANS("Log every MIDI message and what became of it")};
+  juce::ToggleButton releases_{TRANS("Log every key release: the release played, its length and start")};
 };
 
 class DisplayPanel : public juce::Component, private juce::Timer {

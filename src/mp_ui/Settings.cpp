@@ -5,6 +5,7 @@
 #include "ManualDialog.h"
 #include "Ui.h"
 #include "Mobile.h"
+#include "../mp_audio/Translations.h"
 
 namespace mp::ui {
 namespace {
@@ -723,19 +724,19 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
                             const auto f = pickedFile(fc);
                             juce::String why;
                             if (!f.existsAsFile())
-                              why = "The file could not be read where it is.";
+                              why = TRANS("The file could not be read where it is.");
                             else if (!proc_.convolver().loadImpulseResponse(f))
-                              why = f.getFileName() + " is not an impulse response Masterpiece "
-                                    "can read (WAV, AIFF or FLAC).";
+                              why = TRANS("%1 is not an impulse response Masterpiece can read (WAV, AIFF or FLAC).")
+                                        .replace("%1", f.getFileName());
                             if (why.isNotEmpty()) {
                               juce::Logger::writeToLog("impulse response not loaded: " +
                                                        f.getFullPathName() + ": " + why);
                               juce::AlertWindow::showMessageBoxAsync(
                                   juce::MessageBoxIconType::WarningIcon,
-                                  "The impulse response was not loaded", why);
+                                  TRANS("The impulse response was not loaded"), why);
                               return;
                             }
-                            irName_.setText("IR: " + f.getFileName(), juce::dontSendNotification);
+                            irName_.setText(TRANS("IR: %1").replace("%1", f.getFileName()), juce::dontSendNotification);
                             enabled_.setToggleState(true, juce::sendNotification);
                           });
   };
@@ -2077,10 +2078,10 @@ juce::String LogPanel::reportWithLog() {
 
 LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   const juce::File file = logFile();
-  check_.setTooltip("The folders Masterpiece writes to, the audio, the organ and its files");
+  check_.setTooltip(TRANS("The folders Masterpiece writes to, the audio, the organ and its files"));
   check_.onClick = [this] { runChecks(); };
   addAndMakeVisible(check_);
-  copy_.setTooltip("The checks and the last 200 lines of the log, to paste into a bug report");
+  copy_.setTooltip(TRANS("The checks and the last 200 lines of the log, to paste into a bug report"));
   copy_.onClick = [this] { juce::SystemClipboard::copyTextToClipboard(reportWithLog()); };
   addAndMakeVisible(copy_);
   send_.onClick = [this] {
@@ -2102,12 +2103,13 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   report_.setReadOnly(true);
   report_.setScrollbarsShown(true);
   report_.setFont(juce::Font(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
-  report_.setTextToShowWhenEmpty("Run the checks to see what Masterpiece finds on this device.",
+  report_.setTextToShowWhenEmpty(TRANS("Run the checks to see what Masterpiece finds on this device."),
                                  juce::Colours::grey);
   addAndMakeVisible(report_);
-  about_.setText("Masterpiece always keeps a log of this session, and the previous one beside "
-                 "it. Attach it to a bug report.\n\n" +
-                     (file == juce::File() ? juce::String("No log is being written.")
+  about_.setText(TRANS("Masterpiece always keeps a log of this session, and the previous one beside "
+                       "it. Attach it to a bug report.") +
+                     "\n\n" +
+                     (file == juce::File() ? TRANS("No log is being written.")
                                            : file.getFullPathName()),
                  juce::dontSendNotification);
   about_.setJustificationType(juce::Justification::topLeft);

@@ -13933,7 +13933,7 @@ public:
     MP_CHECK(keys.size() > 300, "the template lists the program's strings");
 
     const auto languages = mp::availableLanguages();
-    for (const char* wanted : {"es", "de", "nl", "pl", "cs", "fr"}) {
+    for (const char* wanted : {"es", "de", "nl", "pl", "cs", "fr", "it"}) {
       bool found = false;
       for (const auto& l : languages) found = found || l.code == wanted;
       MP_CHECK(found, std::string(wanted) + " is shipped");
@@ -14017,6 +14017,7 @@ public:
         {"pl", "Ustawienia", "Krok 3 z 12"},
         {"cs", "Nastavení", "Krok 3 z 12"},
         {"fr", "Réglages", "Étape 3 sur 12"},
+        {"it", "Impostazioni", "Passo 3 di 12"},
     };
     for (const auto& e : others) {
       MP_CHECK(mp::applyLanguage(e.code) == e.code, std::string(e.code) + " is chosen");
