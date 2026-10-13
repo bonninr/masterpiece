@@ -742,6 +742,8 @@ public:
   // per-frame path is the one every earlier version used. Takes effect at
   // once. MASTERPIECE_SIMD=0 in the environment still forces it off.
   bool fasterEngine() const { return fasterEngine_.load(); }
+  // What a program that has never been told starts with.
+  static bool fasterEngineByDefault() { return true; }
   void setFasterEngine(bool on) {
     fasterEngine_.store(on);
     {
@@ -1656,7 +1658,7 @@ private:
   // See storeTarget(). Written where a piston or step is chosen, under the
   // audio lock or on the audio thread; read under the lock.
   StoreTarget storeTarget_;
-  std::atomic<bool> fasterEngine_{false};
+  std::atomic<bool> fasterEngine_{fasterEngineByDefault()};
   juce::StringArray ownInputs_, inputsOff_;
   // Per device id, whether its messages are dropped: read on MIDI threads.
   static constexpr int kMaxMutedDevices = 64;

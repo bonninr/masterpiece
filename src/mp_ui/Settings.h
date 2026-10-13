@@ -80,7 +80,7 @@ private:
   // the global file at once.
   bool openLoadTicks_ = false;
   bool openReopen_ = false;
-  bool openFaster_ = false;
+  bool openFaster_ = true;
   int openMemLimit_ = 0;
   // Set while a profile is writing the individual controls, so their
   // onChange handlers do not bounce the profile straight back to Custom.
@@ -134,7 +134,7 @@ private:
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
   juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
-  juce::ToggleButton faster_{TRANS("Faster audio engine (experimental)")};
+  juce::ToggleButton faster_{TRANS("Faster audio engine")};
   juce::ToggleButton portable_{TRANS("Keep this organ playable without its installation files")};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;
