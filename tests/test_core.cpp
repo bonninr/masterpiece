@@ -1417,10 +1417,12 @@ public:
   // Eight notes held, then released, rendered to stereo. The ratios run from
   // an octave down to an octave up, and the tone is short beside the render,
   // so every note goes round its loop many times.
-  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa) {
+  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa,
+                                   const mp::VoiceEngine::TremMod* trem = nullptr) {
     eng.prepare(48000.0, 32, 2);
     eng.setSimdIsa(isa);
     eng.setSampleProvider(fx.provider());
+    if (trem != nullptr) eng.setTremMods(trem, 1);
     const double ratios[8] = {0.5, 0.75, 0.97, 1.0, 1.003, 1.26, 1.5, 2.0};
     for (int n = 0; n < 8; ++n) {
       mp::VoiceStart st;
@@ -1429,6 +1431,11 @@ public:
       st.velocity = 80;
       st.ratio = ratios[n];
       st.gain = 0.1f;
+      if (trem != nullptr) {
+        st.tremIndex = 0;
+        st.tremAmpDepth = 0.2f;
+        st.tremPitchDepth = 0.3;
+      }
       eng.startVoice(st, static_cast<uint64_t>(n + 1));
     }
     std::vector<float> all, l(256), r(256);
@@ -1466,6 +1473,36 @@ public:
           const std::vector<float> a = render(plain, fx, mp::simd::Isa::None);
           const std::vector<float> b = render(fast, fx, isa);
 
+          // The same again with the crossfade a release names (28 ms is what
+          // Nancy authors): the tail fading in over the attack fading out is
+          // two straight runs, and gives the same samples as frame by frame.
+          fx.pipe.layers[0].releases[0].releaseCrossfadeMs = 28.0;
+          mp::VoiceEngine plainFade, fastFade;
+          const std::vector<float> af = render(plainFade, fx, mp::simd::Isa::None);
+          const std::vector<float> bf = render(fastFade, fx, isa);
+          double worstFade = 0.0, apart = 0.0;
+          for (size_t i = 0; i < af.size() && i < bf.size(); ++i) {
+            worstFade = std::max(worstFade, static_cast<double>(std::abs(af[i] - bf[i])));
+            apart = std::max(apart, static_cast<double>(std::abs(af[i] - a[i])));
+          }
+
+          // And under a tremulant in motion: its swing crosses every block,
+          // level and pitch together, and the runs are given both frame by
+          // frame.
+          mp::VoiceEngine::TremMod swing;
+          swing.ampStart = -0.5f;
+          swing.ampStep = 1.0f / 256.0f;
+          swing.pitchStart = -0.5;
+          swing.pitchStep = 1.0 / 256.0;
+          mp::VoiceEngine plainTrem, fastTrem;
+          const std::vector<float> at = render(plainTrem, fx, mp::simd::Isa::None, &swing);
+          const std::vector<float> bt = render(fastTrem, fx, isa, &swing);
+          double worstTrem = 0.0, tremApart = 0.0;
+          for (size_t i = 0; i < at.size() && i < bt.size(); ++i) {
+            worstTrem = std::max(worstTrem, static_cast<double>(std::abs(at[i] - bt[i])));
+            tremApart = std::max(tremApart, static_cast<double>(std::abs(at[i] - af[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -1481,6 +1518,33 @@ public:
           else
             MP_CHECK(fast.simdFrames() == 0, what + ": a layout this unit does not take stays per frame");
           MP_CHECK(level > 0.05, what + ": the notes sound");
+          MP_CHECK(apart > 0.01, what + ": the crossfade changes the release");
+          // Eight voices, 1344 frames of crossfade each: nearly all of them
+          // now go to the vector code, as the frames without a crossfade do.
+          if (mp::simd::runSupports(isa, channels) && channels <= 2)
+            MP_CHECK(fastFade.simdFrames() + 2000 > fast.simdFrames(),
+                     what + ": a release crossfade goes to the vector code (" +
+                         std::to_string(fastFade.simdFrames()) + " frames against " +
+                         std::to_string(fast.simdFrames()) + " without one)");
+          MP_CHECK(tremApart > 0.01, what + ": the tremulant moves the sound");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastTrem.simdFrames() > 100000,
+                     what + ": notes under a moving tremulant go to the vector code (" +
+                         std::to_string(fastTrem.simdFrames()) + " frames)");
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstTrem < 1e-6, what + ": the same tremulant within rounding (worst " +
+                                         std::to_string(worstTrem) + ")");
+#else
+          MP_CHECK(worstTrem == 0.0, what + ": the same tremulant either way (worst difference " +
+                                         std::to_string(worstTrem) + ")");
+#endif
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstFade < 1e-6, what + ": the same crossfade within rounding (worst " +
+                                         std::to_string(worstFade) + ")");
+#else
+          MP_CHECK(worstFade == 0.0, what + ": the same crossfade either way (worst difference " +
+                                         std::to_string(worstFade) + ")");
+#endif
 #if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
           // GCC may fuse a multiply-add in the per-frame reader on ARM.
           MP_CHECK(worst < 1e-6, what + ": the same output within rounding (worst " +
@@ -2060,6 +2124,84 @@ public:
              "a console's note on and note off are recorded, got " +
                  std::to_string(proc.recorder().eventCount()));
     proc.releaseResources();
+  }
+};
+
+// Playback that ends with keys down lets them go (#325). A pipe has no decay:
+// stopped part-way, the chord of that instant sounded until Panic.
+class PlaybackStopReleasesTest final : public mp::test::Test {
+public:
+  PlaybackStopReleasesTest()
+      : Test("functional.midi.playback-stop-releases", Category::Functional) {}
+  void run() override {
+    mp::MidiRecorder rec;
+    rec.prepare(48000.0);
+    auto noteOffs = [](const juce::MidiBuffer& b) {
+      std::vector<std::pair<int, int>> offs;
+      for (const auto meta : b)
+        if (meta.getMessage().isNoteOff())
+          offs.emplace_back(meta.getMessage().getChannel(), meta.getMessage().getNoteNumber());
+      return offs;
+    };
+    // A take of three blocks: a key down in the first, another in the second,
+    // both let go in the third.
+    rec.startRecording();
+    juce::MidiBuffer b;
+    b.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(3, 64, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
+    b.addEvent(juce::MidiMessage::noteOff(3, 64), 0);
+    rec.process(b, 256);
+    rec.stopRecording();
+
+    // Stopped after the first block: its key is let go, and only that one.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.stopPlayback();
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(1, 40, 0.8f), 0);  // the player's own key
+    rec.process(b, 256);
+    const auto stopped = noteOffs(b);
+    MP_CHECK(stopped.size() == 1 && stopped[0] == std::make_pair(2, 60),
+             "stopping playback lets go of the key it was holding, got " +
+                 std::to_string(stopped.size()) + " note-offs");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "and says so once");
+
+    // Played to the end: the take lets go of its own keys, nothing is added.
+    rec.startPlayback();
+    for (int i = 0; i < 3; ++i) {
+      b.clear();
+      rec.process(b, 256);
+    }
+    MP_CHECK(!rec.isPlaying(), "the take ends after its last event");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "a take that lets go of its keys adds no note-offs");
+
+    // Begun again from the top while a key is down: let go before it restarts.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    bool offFirst = false;
+    for (const auto meta : b) {
+      const auto m = meta.getMessage();
+      if (m.isNoteOff() && m.getNoteNumber() == 60) offFirst = true;
+      if (m.isNoteOn() && m.getNoteNumber() == 60) {
+        MP_CHECK(offFirst, "a restart lets the key go before it plays it again");
+        break;
+      }
+    }
+    MP_CHECK(offFirst, "a restart lets go of the key that was down");
   }
 };
 #endif // MP_TEST_HAS_AUDIO
@@ -3077,6 +3219,43 @@ public:
     MP_CHECK(energyAfterHead < 1e-9,
              "the head on its own goes silent past its end, so the match above "
              "could only have come from the streamed frames");
+
+    // The streamer sleeps while nothing streams, and wakes for a voice that
+    // does. It used to go over every voice a hundred times a second.
+    {
+      voicetest::Fixture fx;
+      fx.attack = streamed;
+      mp::VoiceEngine eng;
+      eng.prepare(48000.0, 1, 1, 256);
+      eng.setSampleProvider(fx.provider());
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == 0,
+               "with nothing streaming the streamer makes no pass, made " +
+                   std::to_string(eng.streamerPasses()));
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.ratio = 1.0;
+      st.gain = 1.0f;
+      st.oneShot = true;
+      const int before = disk->reads.load();
+      eng.startVoice(st, 1);
+      std::this_thread::sleep_for(std::chrono::milliseconds(120));
+      MP_CHECK(eng.streamerPasses() > 0 && disk->reads.load() > before,
+               "a streaming voice wakes it");
+      // The one slot taken over by another streaming voice is one stream.
+      eng.startVoice(st, 2);
+      MP_CHECK(eng.streamingVoices() == 1,
+               "a slot taken over while streaming counts once, counted " +
+                   std::to_string(eng.streamingVoices()));
+      eng.reset();
+      MP_CHECK(eng.streamingVoices() == 0, "and none once the voices are gone");
+      std::this_thread::sleep_for(std::chrono::milliseconds(40));
+      const int64_t rested = eng.streamerPasses();
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == rested,
+               "it sleeps again when the last streaming voice ends");
+    }
   }
 };
 
@@ -3422,6 +3601,42 @@ public:
           MP_CHECK(a1[i] == a2[i],
                    "threaded rendering is deterministic run to run");
       }
+    }
+
+    // A block shorter than the largest the pool was prepared for, which is
+    // what a host sends whenever it likes. Each worker's second channel was
+    // left holding the block before and summed in again, block after block.
+    {
+      voicetest::Fixture f1, f2;
+      mp::VoiceEngine inlineEng, threaded;
+      inlineEng.prepare(48000.0, kVoices, 2, kFrames);
+      threaded.prepare(48000.0, kVoices, 2, kFrames);
+      inlineEng.setSampleProvider(f1.provider());
+      threaded.setSampleProvider(f2.provider());
+      threaded.setRenderThreads(4, 8);
+      fill(inlineEng, f1, kVoices);
+      fill(threaded, f2, kVoices);
+      const int shortFrames = kFrames / 4;
+      std::vector<float> a1(kFrames, 0.0f), b1(kFrames, 0.0f), a2(kFrames, 0.0f), b2(kFrames, 0.0f);
+      float* o1[2] = {a1.data(), b1.data()};
+      float* o2[2] = {a2.data(), b2.data()};
+      float worstLeft = 0.0f, worstRight = 0.0f;
+      for (int block = 0; block < 6; ++block) {
+        std::fill(a1.begin(), a1.end(), 0.0f);
+        std::fill(b1.begin(), b1.end(), 0.0f);
+        std::fill(a2.begin(), a2.end(), 0.0f);
+        std::fill(b2.begin(), b2.end(), 0.0f);
+        inlineEng.render(o1, 2, shortFrames);
+        threaded.render(o2, 2, shortFrames);
+        for (int i = 0; i < shortFrames; ++i) {
+          worstLeft = std::max(worstLeft, std::fabs(a1[i] - a2[i]));
+          worstRight = std::max(worstRight, std::fabs(b1[i] - b2[i]));
+        }
+      }
+      MP_CHECK(worstLeft < 1e-4f, "short blocks: threaded matches inline (left)");
+      MP_CHECK(worstRight < 1e-4f,
+               "short blocks: threaded matches inline (right, worst " +
+                   std::to_string(worstRight) + ")");
     }
 
     // A block larger than the pool was prepared for must fall back to inline
@@ -9447,6 +9662,7 @@ public:
 };
 static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
+static PlaybackStopReleasesTest g_playbackStopReleases;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
@@ -11208,6 +11424,69 @@ public:
   }
 };
 static DefaultConsoleTest g_defaultConsole;
+
+// The no-DSP tick in Organ settings did nothing: the audio block copied a
+// host parameter over the organ's switch on every block, so the tick was
+// undone within one block and the next save wrote it as off. The switch is
+// the organ's own -- it holds while playing, is saved with the organ and
+// comes back with it -- and a host moving the parameter still moves it.
+class NoDspSwitchHoldsTest final : public mp::test::Test {
+public:
+  NoDspSwitchHoldsTest()
+    : Test("functional.settings.no-dsp-switch-holds", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-no-dsp-switch");
+    dir.createDirectory();
+    const juce::File odf = DefaultConsoleTest::organ(dir, "NoDspSwitch", 918273661);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    const auto block = [&] {
+      buf.clear();
+      proc.processBlock(buf, none);
+    };
+    const auto set = [&](bool on) {
+      auto sw = proc.engineSwitch();
+      sw.simpleWavOnly = on;
+      proc.setEngineSwitch(sw);
+    };
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    set(true);
+    block();
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "the tick holds through the audio block");
+
+    MP_CHECK(proc.saveSettings(), "saved for this organ");
+    set(false);
+    block();
+    MP_CHECK(!proc.engineSwitch().simpleWavOnly, "and it can be turned off again");
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads again");
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "what was saved comes back with the organ");
+
+    // A host's handle on the same switch: it follows the organ, and moving it
+    // moves the organ's switch.
+    auto* param = proc.apvts().getParameter("simpleWavOnly");
+    MP_CHECK(param != nullptr && param->getValue() > 0.5f,
+             "the host parameter shows what the organ's file set");
+    if (param != nullptr) {
+      param->setValueNotifyingHost(0.0f);
+      block();
+      MP_CHECK(!proc.engineSwitch().simpleWavOnly, "a host turning the parameter off turns DSP on");
+      param->setValueNotifyingHost(1.0f);
+      block();
+      MP_CHECK(proc.engineSwitch().simpleWavOnly, "and turning it on turns DSP off");
+    }
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static NoDspSwitchHoldsTest g_noDspSwitchHolds;
 
 // Issue #44: a pedal left on its default channel 1 after the player mapped a
 // manual to channel 1 lit its drawn keys whenever the manual was played --
