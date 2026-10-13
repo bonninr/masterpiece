@@ -110,6 +110,7 @@ void ConsoleView::rebuild() {
   keys_.clear();
   drawnKeys_.clear();
   heldKey_ = -1;
+  routingTick_ = kRoutingEvery;  // the new keys are routed on the next look
   pageIds_.clear();
   cache_.clear();
   hasArtwork_ = false;
@@ -589,23 +590,56 @@ void ConsoleView::timerCallback() {
   // The engine marks each key down on the manual it played, every block, so a
   // key lights up whether it was pressed on screen or on the player's own
   // console, and only on the manual it reached.
-  uint64_t hash = 1469598103934665603ull;
+  // A window nobody can see has nothing to keep up to date; what moved while
+  // it was hidden is found on the first tick after it is shown again.
+  if (!isShowing()) return;
+
   // The player may have moved a manual to another channel in Settings since
-  // the console was built; the drawn keys follow without a reload.
-  bool channelsMoved = false;
-  for (auto& k : keys_) {
-    const int now = proc_.clickChannelForKeyboard(k.keyboardId);
-    const int lit = proc_.litChannelForKeyboard(k.keyboardId);
-    if (now != k.channel || lit != k.litChannel) {
-      k.channel = now;
+  // the console was built; the drawn keys follow without a reload. Routing is
+  // worked out once per manual and a few times a second: it walks the MIDI
+  // map, and asking for every key on every tick was most of this timer's cost.
+  if (++routingTick_ >= kRoutingEvery) {
+    routingTick_ = 0;
+    Id seen = 0;
+    int click = 0, lit = 0;
+    bool have = false;
+    for (auto& k : keys_) {
+      if (!have || k.keyboardId != seen) {
+        seen = k.keyboardId;
+        click = proc_.clickChannelForKeyboard(seen);
+        lit = proc_.litChannelForKeyboard(seen);
+        have = true;
+      }
+      k.channel = click;
       k.litChannel = lit;
-      channelsMoved = true;
     }
   }
-  if (channelsMoved) hash ^= 0x9e3779b97f4a7c15ull;
-  for (const auto& k : keys_) {
-    hash ^= proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote) ? 1u : 0u;
-    hash *= 1099511628211ull;
+
+  // Only what changed is repainted, each thing in its own rectangle. A key
+  // going down used to repaint every manual and whatever lay between them,
+  // and a stop the whole console.
+  int changed = 0;
+  juce::Rectangle<int> first;
+  auto mark = [&](juce::Rectangle<int> r) {
+    // One pixel more: the console may be drawn scaled, and an edge then
+    // shares a pixel with its neighbour.
+    r = r.expanded(1);
+    if (changed == 0) first = r;
+    else if (changed < kRepaintWhole) {
+      if (changed == 1) repaint(first);
+      repaint(r);
+    }
+    ++changed;
+  };
+
+  // The engine marks each key down on the manual it played, every block, so a
+  // key lights up whether it was pressed on screen or on the player's own
+  // console, and only on the manual it reached.
+  for (auto& k : keys_) {
+    const bool down = proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
+    if (down == k.shownDown) continue;
+    k.shownDown = down;
+    mark(k.bounds);
   }
 
   // The drawstops are watched the same way, and for the same reason: a stop
@@ -613,22 +647,28 @@ void ConsoleView::timerCallback() {
   // sequencer or the command line all move the switch in the engine, and
   // repainting only on a mouse click leaves the jamb showing the registration
   // the player last set by hand rather than the one that is actually drawn.
-  uint64_t stopHash = 1469598103934665603ull;
-  for (const auto& item : items_) {
+  for (auto& item : items_) {
     if (item.switchId == 0 && item.controlId == 0) continue;
-    stopHash ^= static_cast<uint64_t>(frameIndexFor(item));
-    stopHash *= 1099511628211ull;
+    const int frame = frameIndexFor(item);
+    if (frame == item.shownIndex) continue;
+    item.shownIndex = frame;
+    mark(item.bounds);
   }
 
-  const bool keysMoved = hash != keyStateHash_;
-  const bool stopsMoved = stopHash != stopStateHash_;
-  keyStateHash_ = hash;
-  stopStateHash_ = stopHash;
+  // The frame round the control being learned, which comes and goes without
+  // any control changing its picture.
+  const auto& map = proc_.midiMap();
+  const int64_t learning = map.learning()
+                               ? (static_cast<int64_t>(map.learningKind()) << 40) ^
+                                     static_cast<int64_t>(map.learningTarget())
+                               : -1;
+  const bool learningMoved = learning != shownLearning_;
+  shownLearning_ = learning;
 
-  // A stop changing means repainting the console furniture; a key changing
-  // needs only the manuals, which is the common case and the cheap one.
-  if (stopsMoved) repaint();
-  else if (keysMoved) repaint(keysBounds());
+  // Many at once -- a general piston, a cancel, the first tick of a page --
+  // is one repaint of the lot.
+  if (learningMoved || changed >= kRepaintWhole) repaint();
+  else if (changed == 1) repaint(first);
 }
 
 juce::String ConsoleView::pageName(int index) const {

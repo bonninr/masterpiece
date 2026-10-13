@@ -104,6 +104,9 @@ private:
     // The frame shown when the organ came up. A control showing another one
     // is painted over everything else (see paint()); -1 before it is known.
     int loadedIndex = -1;
+    // The frame last seen by the timer, which repaints this item alone when
+    // it differs; -1 before the first look.
+    int shownIndex = -1;
   };
 
   // One drawn key of a drawn manual. Assembled from the KeyImageSet's
@@ -131,6 +134,9 @@ private:
     // theatre console whose manuals are standard keys is otherwise invisible
     // and unplayable.
     bool synthetic = false;
+    // Whether the timer last saw it down, to repaint this key alone when
+    // that changes.
+    bool shownDown = false;
   };
 
   // A piece of engraved console text. Many sets paint the stop names into
@@ -204,11 +210,14 @@ private:
   int heldControlStartY_ = 0;
   int heldControlStartX_ = 0;
   int heldControlStartValue_ = 0;
-  // Last seen sounding set, to repaint only when it actually changed.
-  uint64_t keyStateHash_ = 0;
-  // Same trick for the drawstops, so a registration set by anything other than
-  // a mouse click still shows on the jamb.
-  uint64_t stopStateHash_ = 0;
+  // The timer looks 30 times a second and asks where each manual's keys are
+  // routed on every eighth look.
+  static constexpr int kRoutingEvery = 8;
+  int routingTick_ = kRoutingEvery;
+  // This many changes in one look are repainted as the whole console.
+  static constexpr int kRepaintWhole = 24;
+  // The control being learned when the timer last looked, -1 for none.
+  int64_t shownLearning_ = -1;
   bool hasArtwork_ = false;
   // The picture shown while frozen; invalid otherwise.
   juce::Image frozen_;

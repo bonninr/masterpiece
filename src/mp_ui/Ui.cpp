@@ -286,7 +286,9 @@ constexpr int kFirstAmber = 9;
 constexpr int kFirstRed = 12;
 } // namespace
 
-LevelMeter::LevelMeter(MasterpieceProcessor& p) : proc_(p) { startTimerHz(30); }
+// Ten looks a second: the peak it reads already falls slowly, and a lamp that
+// moves repaints the bar it sits in.
+LevelMeter::LevelMeter(MasterpieceProcessor& p) : proc_(p) { startTimerHz(10); }
 LevelMeter::~LevelMeter() { stopTimer(); }
 
 void LevelMeter::timerCallback() {
@@ -1866,10 +1868,9 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // The model is the loader's until the load ends: nothing reads it here.
   if (loading_) return;
-  // A drawstop clicked on the console changes the jamb too, and vice versa.
-  if (showingConsole_) console_.repaint();
-  // And the stop list follows the console, pistons and MIDI the same way
-  // (#56): it used to show only what was clicked in it.
+  // The console follows the engine by itself, and repaints what changed. The
+  // stop list follows the console, pistons and MIDI the same way (#56): it
+  // used to show only what was clicked in it.
   jamb_.refresh();
 
   // The on-screen keyboard plays the chosen manual on that manual's channel,
