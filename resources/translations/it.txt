@@ -43,6 +43,8 @@ countries: it ch sm va
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Tieni premuto Set e premi un pulsante per memorizzare i registri inseriti. Un pulsante mai programmato non fa nulla. Clicca con il tasto destro su un pulsante per associarlo alla tua consolle."
 "(default)" = "(predefinito)"
 "Go to a frame" = "Vai a un passo"
+"Go to frame %1" = "Vai al passo %1"
+"Go to frame 10" = "Vai al passo 10"
 "A frame number, 1 to %1:" = "Un numero di passo, da 1 a %1:"
 "A frame number:" = "Un numero di passo:"
 "Frame" = "Passo"

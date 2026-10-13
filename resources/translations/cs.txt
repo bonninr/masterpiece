@@ -43,6 +43,8 @@ countries: cz
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Podržte Set a stiskněte tlačítko, čímž uložíte zapnuté rejstříky. Tlačítko, do něhož nebylo nic uloženo, nedělá nic. Kliknutím pravým tlačítkem myši na libovolné tlačítko jej přiřadíte ke hracímu stolu."
 "(default)" = "(výchozí)"
 "Go to a frame" = "Přejít na krok"
+"Go to frame %1" = "Přejít na krok %1"
+"Go to frame 10" = "Přejít na krok 10"
 "A frame number, 1 to %1:" = "Číslo kroku, 1 až %1:"
 "A frame number:" = "Číslo kroku:"
 "Frame" = "Krok"
