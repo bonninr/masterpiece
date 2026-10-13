@@ -51,15 +51,24 @@ inline void scalarFrame(const T* data, int channels, int64_t k, float t, float e
   }
 }
 
+// A run whose pitch and level move from frame to frame -- a tremulant -- is
+// given as two arrays, one step and one level per frame; without them every
+// frame takes `ratio` and `env`.
+struct PerFrame {
+  const double* ratios = nullptr;
+  const float* envs = nullptr;
+};
+
 template <typename T>
 double runScalar(const T* data, int channels, double cursor, double ratio, float env,
-                 float* const* out, int numChannels, int start, int frames) {
+                 float* const* out, int numChannels, int start, int frames, PerFrame pf = {},
+                 int first = 0) {
   double p = cursor;
   for (int j = 0; j < frames; ++j) {
     const auto k = static_cast<int64_t>(p);
-    scalarFrame(data, channels, k, static_cast<float>(p - static_cast<double>(k)), env, out,
-                numChannels, start + j);
-    p += ratio;
+    scalarFrame(data, channels, k, static_cast<float>(p - static_cast<double>(k)),
+                pf.envs != nullptr ? pf.envs[first + j] : env, out, numChannels, start + j);
+    p += pf.ratios != nullptr ? pf.ratios[first + j] : ratio;
   }
   return p;
 }
@@ -98,7 +107,7 @@ MP_AVX2 inline __m256 gather8(const Pcm24* data, __m256i e) {
 
 template <typename T>
 MP_AVX2 double runAvx2(const T* data, int channels, double cursor, double ratio, float env,
-                       float* const* out, int numChannels, int start, int frames) {
+                       float* const* out, int numChannels, int start, int frames, PerFrame pf) {
   alignas(32) int32_t base[8];
   alignas(32) float frac[8];
   const __m256 envv = _mm256_set1_ps(env);
@@ -112,10 +121,11 @@ MP_AVX2 double runAvx2(const T* data, int channels, double cursor, double ratio,
       const auto k = static_cast<int64_t>(p);
       frac[l] = static_cast<float>(p - static_cast<double>(k));
       base[l] = static_cast<int32_t>((k - 1) * channels);
-      p += ratio;
+      p += pf.ratios != nullptr ? pf.ratios[j + l] : ratio;
     }
     const __m256i b = _mm256_load_si256(reinterpret_cast<const __m256i*>(base));
     const __m256 t = _mm256_load_ps(frac);
+    const __m256 level = pf.envs != nullptr ? _mm256_loadu_ps(pf.envs + j) : envv;
     const int sources = channels == 1 ? 1 : numChannels;
     for (int s = 0; s < sources; ++s) {
       const int srcCh = s < channels ? s : channels - 1;
@@ -125,7 +135,7 @@ MP_AVX2 double runAvx2(const T* data, int channels, double cursor, double ratio,
       const __m256i e3 = _mm256_add_epi32(e2, step);
       const __m256 y = _mm256_mul_ps(
           hermite8(gather8(data, e0), gather8(data, e1), gather8(data, e2), gather8(data, e3), t),
-          envv);
+          level);
       // A mono sample sounds the same in every output channel.
       const int from = channels == 1 ? 0 : s;
       const int to = channels == 1 ? numChannels : s + 1;
@@ -136,7 +146,7 @@ MP_AVX2 double runAvx2(const T* data, int channels, double cursor, double ratio,
     }
   }
   const double rest = runScalar(data, channels, p, ratio, env, out, numChannels, start + j,
-                                frames - j);
+                                frames - j, pf, j);
   return rest;
 }
 
@@ -183,7 +193,7 @@ inline void tapsSse(const T* data, int channels, int64_t k, __m128* ch) {
 
 template <typename T>
 double runSse2(const T* data, int channels, double cursor, double ratio, float env,
-               float* const* out, int numChannels, int start, int frames) {
+               float* const* out, int numChannels, int start, int frames, PerFrame pf) {
   const __m128 envv = _mm_set1_ps(env);
   double p = cursor;
   int j = 0;
@@ -194,16 +204,17 @@ double runSse2(const T* data, int channels, double cursor, double ratio, float e
       const auto k = static_cast<int64_t>(p);
       frac[l] = static_cast<float>(p - static_cast<double>(k));
       tapsSse(data, channels, k, rows[l]);
-      p += ratio;
+      p += pf.ratios != nullptr ? pf.ratios[j + l] : ratio;
     }
     const __m128 t = _mm_load_ps(frac);
+    const __m128 level = pf.envs != nullptr ? _mm_loadu_ps(pf.envs + j) : envv;
     const int sources = channels == 1 ? 1 : numChannels;
     for (int s = 0; s < sources; ++s) {
       const int c = s < channels ? s : channels - 1;
       // Frames across, taps down.
       __m128 xm1 = rows[0][c], x0 = rows[1][c], x1 = rows[2][c], x2 = rows[3][c];
       _MM_TRANSPOSE4_PS(xm1, x0, x1, x2);
-      const __m128 y = _mm_mul_ps(hermite4(xm1, x0, x1, x2, t), envv);
+      const __m128 y = _mm_mul_ps(hermite4(xm1, x0, x1, x2, t), level);
       const int from = channels == 1 ? 0 : s;
       const int to = channels == 1 ? numChannels : s + 1;
       for (int ch = from; ch < to; ++ch) {
@@ -212,7 +223,8 @@ double runSse2(const T* data, int channels, double cursor, double ratio, float e
       }
     }
   }
-  return runScalar(data, channels, p, ratio, env, out, numChannels, start + j, frames - j);
+  return runScalar(data, channels, p, ratio, env, out, numChannels, start + j, frames - j, pf,
+                   j);
 }
 
 bool avx2Present() {
@@ -282,7 +294,7 @@ inline void taps(const Pcm24* data, int channels, int64_t k, float32x4_t* ch) {
 
 template <typename T>
 double runNeon(const T* data, int channels, double cursor, double ratio, float env,
-               float* const* out, int numChannels, int start, int frames) {
+               float* const* out, int numChannels, int start, int frames, PerFrame pf) {
   const float32x4_t envv = vdupq_n_f32(env);
   double p = cursor;
   int j = 0;
@@ -293,9 +305,10 @@ double runNeon(const T* data, int channels, double cursor, double ratio, float e
       const auto k = static_cast<int64_t>(p);
       frac[l] = static_cast<float>(p - static_cast<double>(k));
       taps(data, channels, k, rows[l]);
-      p += ratio;
+      p += pf.ratios != nullptr ? pf.ratios[j + l] : ratio;
     }
     const float32x4_t t = vld1q_f32(frac);
+    const float32x4_t level = pf.envs != nullptr ? vld1q_f32(pf.envs + j) : envv;
     const int sources = channels == 1 ? 1 : numChannels;
     for (int s = 0; s < sources; ++s) {
       const int c = s < channels ? s : channels - 1;
@@ -306,7 +319,7 @@ double runNeon(const T* data, int channels, double cursor, double ratio, float e
       const float32x4_t x0 = vcombine_f32(vget_low_f32(t01.val[1]), vget_low_f32(t23.val[1]));
       const float32x4_t x1 = vcombine_f32(vget_high_f32(t01.val[0]), vget_high_f32(t23.val[0]));
       const float32x4_t x2 = vcombine_f32(vget_high_f32(t01.val[1]), vget_high_f32(t23.val[1]));
-      const float32x4_t y = vmulq_f32(hermite4(xm1, x0, x1, x2, t), envv);
+      const float32x4_t y = vmulq_f32(hermite4(xm1, x0, x1, x2, t), level);
       const int from = channels == 1 ? 0 : s;
       const int to = channels == 1 ? numChannels : s + 1;
       for (int ch = from; ch < to; ++ch) {
@@ -315,25 +328,26 @@ double runNeon(const T* data, int channels, double cursor, double ratio, float e
       }
     }
   }
-  return runScalar(data, channels, p, ratio, env, out, numChannels, start + j, frames - j);
+  return runScalar(data, channels, p, ratio, env, out, numChannels, start + j, frames - j, pf,
+                   j);
 }
 #endif  // MP_SIMD_NEON
 
 template <typename T>
 double run(Isa isa, const T* data, int channels, double cursor, double ratio, float env,
-           float* const* out, int numChannels, int start, int frames) {
+           float* const* out, int numChannels, int start, int frames, PerFrame pf = {}) {
 #if defined(MP_SIMD_X86)
   if (isa == Isa::Avx2)
-    return runAvx2(data, channels, cursor, ratio, env, out, numChannels, start, frames);
+    return runAvx2(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
   if (isa == Isa::Sse2)
-    return runSse2(data, channels, cursor, ratio, env, out, numChannels, start, frames);
+    return runSse2(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
 #endif
 #if defined(MP_SIMD_NEON)
   if (isa == Isa::Neon)
-    return runNeon(data, channels, cursor, ratio, env, out, numChannels, start, frames);
+    return runNeon(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
 #endif
   (void)isa;
-  return runScalar(data, channels, cursor, ratio, env, out, numChannels, start, frames);
+  return runScalar(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
 }
 
 }  // namespace
@@ -400,6 +414,25 @@ double renderRun(Isa isa, const int16_t* data, int bufChannels, double cursor, d
 double renderRun(Isa isa, const Pcm24* data, int bufChannels, double cursor, double ratio,
                  float env, float* const* out, int numChannels, int start, int frames) {
   return run(isa, data, bufChannels, cursor, ratio, env, out, numChannels, start, frames);
+}
+
+double renderRunPerFrame(Isa isa, const float* data, int bufChannels, double cursor,
+                         const double* ratios, const float* envs, float* const* out,
+                         int numChannels, int start, int frames) {
+  return run(isa, data, bufChannels, cursor, 0.0, 0.0f, out, numChannels, start, frames,
+             PerFrame{ratios, envs});
+}
+double renderRunPerFrame(Isa isa, const int16_t* data, int bufChannels, double cursor,
+                         const double* ratios, const float* envs, float* const* out,
+                         int numChannels, int start, int frames) {
+  return run(isa, data, bufChannels, cursor, 0.0, 0.0f, out, numChannels, start, frames,
+             PerFrame{ratios, envs});
+}
+double renderRunPerFrame(Isa isa, const Pcm24* data, int bufChannels, double cursor,
+                         const double* ratios, const float* envs, float* const* out,
+                         int numChannels, int start, int frames) {
+  return run(isa, data, bufChannels, cursor, 0.0, 0.0f, out, numChannels, start, frames,
+             PerFrame{ratios, envs});
 }
 
 }  // namespace mp::simd

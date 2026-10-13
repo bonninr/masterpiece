@@ -1417,10 +1417,12 @@ public:
   // Eight notes held, then released, rendered to stereo. The ratios run from
   // an octave down to an octave up, and the tone is short beside the render,
   // so every note goes round its loop many times.
-  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa) {
+  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa,
+                                   const mp::VoiceEngine::TremMod* trem = nullptr) {
     eng.prepare(48000.0, 32, 2);
     eng.setSimdIsa(isa);
     eng.setSampleProvider(fx.provider());
+    if (trem != nullptr) eng.setTremMods(trem, 1);
     const double ratios[8] = {0.5, 0.75, 0.97, 1.0, 1.003, 1.26, 1.5, 2.0};
     for (int n = 0; n < 8; ++n) {
       mp::VoiceStart st;
@@ -1429,6 +1431,11 @@ public:
       st.velocity = 80;
       st.ratio = ratios[n];
       st.gain = 0.1f;
+      if (trem != nullptr) {
+        st.tremIndex = 0;
+        st.tremAmpDepth = 0.2f;
+        st.tremPitchDepth = 0.3;
+      }
       eng.startVoice(st, static_cast<uint64_t>(n + 1));
     }
     std::vector<float> all, l(256), r(256);
@@ -1466,6 +1473,36 @@ public:
           const std::vector<float> a = render(plain, fx, mp::simd::Isa::None);
           const std::vector<float> b = render(fast, fx, isa);
 
+          // The same again with the crossfade a release names (28 ms is what
+          // Nancy authors): the tail fading in over the attack fading out is
+          // two straight runs, and gives the same samples as frame by frame.
+          fx.pipe.layers[0].releases[0].releaseCrossfadeMs = 28.0;
+          mp::VoiceEngine plainFade, fastFade;
+          const std::vector<float> af = render(plainFade, fx, mp::simd::Isa::None);
+          const std::vector<float> bf = render(fastFade, fx, isa);
+          double worstFade = 0.0, apart = 0.0;
+          for (size_t i = 0; i < af.size() && i < bf.size(); ++i) {
+            worstFade = std::max(worstFade, static_cast<double>(std::abs(af[i] - bf[i])));
+            apart = std::max(apart, static_cast<double>(std::abs(af[i] - a[i])));
+          }
+
+          // And under a tremulant in motion: its swing crosses every block,
+          // level and pitch together, and the runs are given both frame by
+          // frame.
+          mp::VoiceEngine::TremMod swing;
+          swing.ampStart = -0.5f;
+          swing.ampStep = 1.0f / 256.0f;
+          swing.pitchStart = -0.5;
+          swing.pitchStep = 1.0 / 256.0;
+          mp::VoiceEngine plainTrem, fastTrem;
+          const std::vector<float> at = render(plainTrem, fx, mp::simd::Isa::None, &swing);
+          const std::vector<float> bt = render(fastTrem, fx, isa, &swing);
+          double worstTrem = 0.0, tremApart = 0.0;
+          for (size_t i = 0; i < at.size() && i < bt.size(); ++i) {
+            worstTrem = std::max(worstTrem, static_cast<double>(std::abs(at[i] - bt[i])));
+            tremApart = std::max(tremApart, static_cast<double>(std::abs(at[i] - af[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -1481,6 +1518,33 @@ public:
           else
             MP_CHECK(fast.simdFrames() == 0, what + ": a layout this unit does not take stays per frame");
           MP_CHECK(level > 0.05, what + ": the notes sound");
+          MP_CHECK(apart > 0.01, what + ": the crossfade changes the release");
+          // Eight voices, 1344 frames of crossfade each: nearly all of them
+          // now go to the vector code, as the frames without a crossfade do.
+          if (mp::simd::runSupports(isa, channels) && channels <= 2)
+            MP_CHECK(fastFade.simdFrames() + 2000 > fast.simdFrames(),
+                     what + ": a release crossfade goes to the vector code (" +
+                         std::to_string(fastFade.simdFrames()) + " frames against " +
+                         std::to_string(fast.simdFrames()) + " without one)");
+          MP_CHECK(tremApart > 0.01, what + ": the tremulant moves the sound");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastTrem.simdFrames() > 100000,
+                     what + ": notes under a moving tremulant go to the vector code (" +
+                         std::to_string(fastTrem.simdFrames()) + " frames)");
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstTrem < 1e-6, what + ": the same tremulant within rounding (worst " +
+                                         std::to_string(worstTrem) + ")");
+#else
+          MP_CHECK(worstTrem == 0.0, what + ": the same tremulant either way (worst difference " +
+                                         std::to_string(worstTrem) + ")");
+#endif
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstFade < 1e-6, what + ": the same crossfade within rounding (worst " +
+                                         std::to_string(worstFade) + ")");
+#else
+          MP_CHECK(worstFade == 0.0, what + ": the same crossfade either way (worst difference " +
+                                         std::to_string(worstFade) + ")");
+#endif
 #if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
           // GCC may fuse a multiply-add in the per-frame reader on ARM.
           MP_CHECK(worst < 1e-6, what + ": the same output within rounding (worst " +
@@ -3422,6 +3486,42 @@ public:
           MP_CHECK(a1[i] == a2[i],
                    "threaded rendering is deterministic run to run");
       }
+    }
+
+    // A block shorter than the largest the pool was prepared for, which is
+    // what a host sends whenever it likes. Each worker's second channel was
+    // left holding the block before and summed in again, block after block.
+    {
+      voicetest::Fixture f1, f2;
+      mp::VoiceEngine inlineEng, threaded;
+      inlineEng.prepare(48000.0, kVoices, 2, kFrames);
+      threaded.prepare(48000.0, kVoices, 2, kFrames);
+      inlineEng.setSampleProvider(f1.provider());
+      threaded.setSampleProvider(f2.provider());
+      threaded.setRenderThreads(4, 8);
+      fill(inlineEng, f1, kVoices);
+      fill(threaded, f2, kVoices);
+      const int shortFrames = kFrames / 4;
+      std::vector<float> a1(kFrames, 0.0f), b1(kFrames, 0.0f), a2(kFrames, 0.0f), b2(kFrames, 0.0f);
+      float* o1[2] = {a1.data(), b1.data()};
+      float* o2[2] = {a2.data(), b2.data()};
+      float worstLeft = 0.0f, worstRight = 0.0f;
+      for (int block = 0; block < 6; ++block) {
+        std::fill(a1.begin(), a1.end(), 0.0f);
+        std::fill(b1.begin(), b1.end(), 0.0f);
+        std::fill(a2.begin(), a2.end(), 0.0f);
+        std::fill(b2.begin(), b2.end(), 0.0f);
+        inlineEng.render(o1, 2, shortFrames);
+        threaded.render(o2, 2, shortFrames);
+        for (int i = 0; i < shortFrames; ++i) {
+          worstLeft = std::max(worstLeft, std::fabs(a1[i] - a2[i]));
+          worstRight = std::max(worstRight, std::fabs(b1[i] - b2[i]));
+        }
+      }
+      MP_CHECK(worstLeft < 1e-4f, "short blocks: threaded matches inline (left)");
+      MP_CHECK(worstRight < 1e-4f,
+               "short blocks: threaded matches inline (right, worst " +
+                   std::to_string(worstRight) + ")");
     }
 
     // A block larger than the pool was prepared for must fall back to inline
