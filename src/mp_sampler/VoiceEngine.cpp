@@ -797,6 +797,91 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
 
+    // The same crossfade under a tremulant in motion. Both sides move at the
+    // tremulant's pitch and sound at its level, frame by frame, so each
+    // frame's step and level are worked out first, as the per-frame path
+    // works them out, and both sides go to the vector code with them.
+    if (canRun && tremMoving && numChannels <= kXfadeChannels &&
+        v.phase == VoicePhase::Release && v.releaseIsSample && v.xfadeBuf != nullptr &&
+        v.relXfadeLeft > 0 && v.relXfadeLength > 0 && v.xfadeRemaining <= 0) {
+      const SampleBuffer& ob = *v.xfadeBuf;
+      const bool oldLoops = v.xfadeOldLoopEnd > v.xfadeOldLoopStart && v.xfadeOldLoopStart >= 0;
+      const double newLimit =
+          static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
+      double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
+      if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
+      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() && v.xfadeRatioScale > 0.0 &&
+          simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
+          v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
+        double ratios[kXfadeChunk];
+        double oldRatios[kXfadeChunk];
+        float levels[kXfadeChunk];
+        const int want = std::min({numFrames - i, v.relXfadeLeft, kXfadeChunk});
+        const float base = v.gain * wind.ampMul;
+        double p = v.cursor;
+        double q = v.xfadeOldCursor;
+        float phase = tremPhase;
+        double swing = tremRatio;
+        int n = 0;
+        // Every frame of the run reads short of both limits.
+        for (; n < want && p < newLimit && q < oldLimit; ++n) {
+          float e = base;
+          e *= 1.0f + v.tremAmpDepth * phase;
+          if (e < 0.0f) e = 0.0f;
+          levels[n] = e;
+          ratios[n] = windRatio * swing;
+          oldRatios[n] = ratios[n] * v.xfadeRatioScale;
+          p += ratios[n];
+          q += oldRatios[n];
+          phase += trem.ampStep;
+          swing *= tremRatioStep;
+        }
+        if (n >= kMinSimdRun) {
+          static const std::array<float, kXfadeChunk> ones = [] {
+            std::array<float, kXfadeChunk> a;
+            a.fill(1.0f);
+            return a;
+          }();
+          float tail[kXfadeChannels][kXfadeChunk];
+          float attack[kXfadeChannels][kXfadeChunk];
+          float* tailPlanes[kXfadeChannels];
+          float* attackPlanes[kXfadeChannels];
+          for (int ch = 0; ch < numChannels; ++ch) {
+            std::fill(tail[ch], tail[ch] + n, 0.0f);
+            std::fill(attack[ch], attack[ch] + n, 0.0f);
+            tailPlanes[ch] = tail[ch];
+            attackPlanes[ch] = attack[ch];
+          }
+          v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios,
+                                             ones.data(), tailPlanes, numChannels, 0, n);
+          v.xfadeOldCursor =
+              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
+                                      oldRatios, ones.data(), attackPlanes, numChannels, 0, n);
+          const float oldScale = storageScale(ob);
+          const float length = static_cast<float>(v.relXfadeLength);
+          const int left = v.relXfadeLeft;
+          for (int ch = 0; ch < numChannels; ++ch) {
+            float* dst = out[ch] + i;
+            const float* a = attack[ch];
+            const float* r = tail[ch];
+            for (int k = 0; k < n; ++k) {
+              const float t = 1.0f - static_cast<float>(left - k) / length;
+              dst[k] += r[k] * ((levels[k] * t) * storeScale);
+              dst[k] += a[k] * (levels[k] * oldScale * (1.0f - t));
+            }
+          }
+          v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
+          v.relXfadeLeft = left - n;
+          if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
+          tremPhase = phase;
+          tremRatio = swing;
+          simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+          i += n - 1;
+          continue;
+        }
+      }
+    }
+
     // A straight run: nothing but interpolating and mixing until the cursor
     // reaches the loop end, the end of the resident head, or the fade at the
     // end of a release. Those frames go to the vector code at once and the

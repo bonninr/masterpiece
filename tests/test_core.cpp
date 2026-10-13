@@ -1527,6 +1527,13 @@ public:
                          std::to_string(fastFade.simdFrames()) + " frames against " +
                          std::to_string(fast.simdFrames()) + " without one)");
           MP_CHECK(tremApart > 0.01, what + ": the tremulant moves the sound");
+          // The release crossfade as well: under the tremulant as many frames
+          // go to the vector code as without it, near enough.
+          if (mp::simd::runSupports(isa, channels) && channels <= 2)
+            MP_CHECK(fastTrem.simdFrames() + 4000 > fastFade.simdFrames(),
+                     what + ": a release crossfade under a moving tremulant goes to the vector code (" +
+                         std::to_string(fastTrem.simdFrames()) + " frames against " +
+                         std::to_string(fastFade.simdFrames()) + " without the tremulant)");
           if (mp::simd::runSupports(isa, channels))
             MP_CHECK(fastTrem.simdFrames() > 100000,
                      what + ": notes under a moving tremulant go to the vector code (" +
