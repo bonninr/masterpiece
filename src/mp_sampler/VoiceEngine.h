@@ -546,6 +546,13 @@ public:
   const Voice& voice(int index) const { return voices_[static_cast<size_t>(index)]; }
   int poolSize() const { return static_cast<int>(voices_.size()); }
 
+  // The most voices that sound at once, at or below the pool's size; 0 means
+  // the whole pool. A voice started at the limit takes the place of one dying
+  // away, or of the quietest, as it does when the pool itself is full. Set
+  // from the audio thread or with it stopped.
+  void setPolyphony(int voices) { polyphony_ = voices > 0 ? voices : 0; }
+  int polyphony() const { return polyphony_; }
+
 private:
   // Free slot, else the least musically costly voice to cut short.
   int allocateVoice();
@@ -565,6 +572,18 @@ private:
   void stopWorkers();
 
   std::vector<Voice> voices_;
+  // Finding a slot for a voice. Every slot below the hint was in use when
+  // render() last looked; liveCount_ is the voices in use then plus the slots
+  // given out since.
+  size_t freeHint_ = 0;
+  int liveCount_ = 0;
+  int polyphony_ = 0;
+  // The voices to take when there is no free slot, in the order to take
+  // them, made once a block: stage 1 is the voices dying away, 2 the rest.
+  std::vector<uint32_t> stealList_;
+  size_t stealNext_ = 0;
+  int stealStage_ = 0;
+  uint64_t stealBlock_ = 0;
   SampleProvider provider_;
   double sampleRate_ = 48000.0;
   int numChannels_ = 2;

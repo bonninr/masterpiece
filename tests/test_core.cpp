@@ -2690,6 +2690,69 @@ public:
     MP_CHECK(tiny.startVoice(start, 2) < 0,
              "a voice started this block is never stolen");
     MP_CHECK(tiny.stats().startsDropped == 1, "the dropped start is counted");
+
+    // The player's own limit, below the pool's size: a voice started at the
+    // limit takes another's place though free slots remain.
+    {
+      mp::VoiceEngine lim;
+      lim.prepare(48000.0, 8, 1);
+      lim.setSampleProvider(fx.provider());
+      lim.setPolyphony(3);
+      for (int i = 0; i < 3; ++i) {
+        MP_CHECK(lim.startVoice(start, static_cast<uint64_t>(i + 1)) >= 0, "under the limit, a voice starts");
+        lim.render(out, 1, 64);
+      }
+      MP_CHECK(lim.startVoice(start, 50) >= 0, "at the limit a new note still sounds");
+      MP_CHECK(lim.activeVoiceCount() == 3 && lim.stats().stolenVoices == 1,
+               "by taking a voice's place, with the pool not full");
+      lim.setPolyphony(0);
+      MP_CHECK(lim.startVoice(start, 51) >= 0 && lim.activeVoiceCount() == 4 &&
+                   lim.stats().stolenVoices == 1,
+               "and with the limit lifted the next one takes a free slot");
+    }
+
+    // Several taken in one block, with nothing dying away: the quietest go
+    // first, in order, and the loudest of the old ones is still there.
+    {
+      mp::VoiceEngine many;
+      many.prepare(48000.0, 4, 1);
+      many.setSampleProvider(fx.provider());
+      const float gains[4] = {0.4f, 0.1f, 0.3f, 0.2f};
+      for (int i = 0; i < 4; ++i) {
+        mp::VoiceStart s = start;
+        s.gain = gains[i];
+        many.startVoice(s, static_cast<uint64_t>(i + 1));
+      }
+      many.render(out, 1, 64);
+      for (int i = 0; i < 3; ++i) many.startVoice(start, static_cast<uint64_t>(100 + i));
+      MP_CHECK(many.stats().stolenVoices == 3, "three voices were taken in the one block");
+      int oldLeft = 0;
+      float oldGain = 0.0f;
+      for (int i = 0; i < many.poolSize(); ++i)
+        if (many.voice(i).active() && many.voice(i).noteId < 100) {
+          ++oldLeft;
+          oldGain = many.voice(i).gain;
+        }
+      MP_CHECK(oldLeft == 1 && oldGain == 0.4f, "the loudest of the old voices is the one left");
+      MP_CHECK(many.startVoice(start, 200) >= 0 && many.stats().stolenVoices == 4,
+               "and it goes last");
+      MP_CHECK(many.startVoice(start, 201) < 0, "with only this block's voices left, none is taken");
+    }
+
+    // A free slot is found wherever it is: the search starts past the voices
+    // known to be in use and comes round to the start.
+    {
+      mp::VoiceEngine hole;
+      hole.prepare(48000.0, 6, 1);
+      hole.setSampleProvider(fx.provider());
+      for (int i = 0; i < 6; ++i) hole.startVoice(start, static_cast<uint64_t>(i + 1));
+      hole.render(out, 1, 64);
+      hole.reset();
+      for (int i = 0; i < 6; ++i)
+        MP_CHECK(hole.startVoice(start, static_cast<uint64_t>(10 + i)) >= 0, "every slot is found again");
+      MP_CHECK(hole.stats().stolenVoices == 0 && hole.activeVoiceCount() == 6,
+               "without taking a voice");
+    }
   }
 };
 

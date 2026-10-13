@@ -100,6 +100,11 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   voices_.assign(static_cast<size_t>(std::max(1, maxVoices)), Voice{});
   jobList_.clear();
   jobList_.reserve(voices_.size());
+  stealList_.clear();
+  stealList_.reserve(voices_.size());
+  stealStage_ = 0;
+  freeHint_ = 0;
+  liveCount_ = 0;
   blockCounter_ = 0;
   stats_ = EngineStats{};
 
@@ -278,6 +283,9 @@ void VoiceEngine::reset() {
   for (size_t i = 0; i < voices_.size(); ++i) disarmStream(i);
   for (auto& v : voices_) v = Voice{};
   stats_ = EngineStats{};
+  freeHint_ = 0;
+  liveCount_ = 0;
+  stealStage_ = 0;
 }
 
 int VoiceEngine::activeVoiceCount() const {
@@ -288,44 +296,77 @@ int VoiceEngine::activeVoiceCount() const {
 }
 
 int VoiceEngine::allocateVoice() {
-  // 1. A free slot is always best.
-  for (size_t i = 0; i < voices_.size(); ++i)
-    if (!voices_[i].active()) return static_cast<int>(i);
+  // 1. A free slot is always best, while the player's limit leaves one.
+  //    Every slot below the hint was in use when render() last looked, so the
+  //    search starts there: a chord of six hundred pipes used to walk the
+  //    pool from its first slot for each of them.
+  const int limit = polyphony_ > 0 ? std::min(polyphony_, static_cast<int>(voices_.size()))
+                                   : static_cast<int>(voices_.size());
+  if (liveCount_ < limit) {
+    const size_t n = voices_.size();
+    for (size_t k = 0; k < n; ++k) {
+      const size_t i = freeHint_ + k < n ? freeHint_ + k : freeHint_ + k - n;
+      if (voices_[i].active()) continue;
+      freeHint_ = i + 1 < n ? i + 1 : 0;
+      ++liveCount_;
+      return static_cast<int>(i);
+    }
+  }
 
   // 2. Otherwise steal, and steal musically. A voice already releasing is the
   //    cheapest thing to lose — it is decaying anyway — so take the oldest of
   //    those before touching anything still speaking.
-  int best = -1;
-  uint64_t oldest = UINT64_MAX;
-  for (size_t i = 0; i < voices_.size(); ++i) {
-    const Voice& v = voices_[i];
-    if (v.phase != VoicePhase::Release) continue;
-    if (v.startedAtBlock < oldest) {
-      oldest = v.startedAtBlock;
-      best = static_cast<int>(i);
-    }
-  }
-
   // 3. Nothing releasing: take the oldest quietest sounding voice. Never the
   //    newest — stealing the note the player just pressed is the one failure
   //    they always hear.
-  if (best < 0) {
-    float quietest = 0.0f;
-    oldest = UINT64_MAX;
+  //
+  // The order is worked out once and handed out from the front: a chord that
+  // arrives with the pool full steals hundreds of voices in one block, and
+  // looking over the whole pool twice for each was the dearest moment the
+  // engine had, at the moment it had least to spare.
+  for (;;) {
+    if (stealStage_ == 0 || stealBlock_ != blockCounter_) {
+      stealList_.clear();
+      for (size_t i = 0; i < voices_.size(); ++i)
+        if (voices_[i].phase == VoicePhase::Release) stealList_.push_back(static_cast<uint32_t>(i));
+      std::sort(stealList_.begin(), stealList_.end(), [this](uint32_t a, uint32_t b) {
+        const Voice& x = voices_[a];
+        const Voice& y = voices_[b];
+        if (x.startedAtBlock != y.startedAtBlock) return x.startedAtBlock < y.startedAtBlock;
+        return a < b;
+      });
+      stealStage_ = 1;
+      stealNext_ = 0;
+      stealBlock_ = blockCounter_;
+    }
+    while (stealNext_ < stealList_.size()) {
+      const uint32_t i = stealList_[stealNext_++];
+      const Voice& v = voices_[i];
+      // Still what it was when the order was made: a slot already taken from
+      // the list is a new voice now.
+      const bool takeable = stealStage_ == 1 ? v.phase == VoicePhase::Release
+                                             : v.active() && v.startedAtBlock != blockCounter_;
+      if (!takeable) continue;
+      ++stats_.stolenVoices;
+      return static_cast<int>(i);
+    }
+    if (stealStage_ != 1) return -1;
+    stealList_.clear();
     for (size_t i = 0; i < voices_.size(); ++i) {
       const Voice& v = voices_[i];
-      if (v.startedAtBlock == blockCounter_) continue; // started this block
-      if (best < 0 || v.gain < quietest ||
-          (v.gain == quietest && v.startedAtBlock < oldest)) {
-        quietest = v.gain;
-        oldest = v.startedAtBlock;
-        best = static_cast<int>(i);
-      }
+      if (!v.active() || v.startedAtBlock == blockCounter_) continue; // started this block
+      stealList_.push_back(static_cast<uint32_t>(i));
     }
+    std::sort(stealList_.begin(), stealList_.end(), [this](uint32_t a, uint32_t b) {
+      const Voice& x = voices_[a];
+      const Voice& y = voices_[b];
+      if (x.gain != y.gain) return x.gain < y.gain;
+      if (x.startedAtBlock != y.startedAtBlock) return x.startedAtBlock < y.startedAtBlock;
+      return a < b;
+    });
+    stealStage_ = 2;
+    stealNext_ = 0;
   }
-
-  if (best >= 0) ++stats_.stolenVoices;
-  return best;
 }
 
 int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
@@ -431,6 +472,7 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     if (!v.active() || v.noteId != noteId) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
     if (v.phase == VoicePhase::Release) continue;
+    stealStage_ = 0;  // the voices to take first have changed
     if (v.pipeId != 0) pipeClosedAt_[v.pipeId] = framesRendered_;
 
     // Pick the release sample that matches the attack this voice actually
@@ -1206,10 +1248,14 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
   // and counting the whole organ's voices woke every thread for an enclosure
   // with five pipes in it.
   int active = 0;
+  size_t firstFree = voices_.size();
   jobList_.clear();
   for (size_t i = 0; i < voices_.size(); ++i) {
     const Voice& v = voices_[i];
-    if (!v.active()) continue;
+    if (!v.active()) {
+      if (firstFree == voices_.size()) firstFree = i;
+      continue;
+    }
     ++active;
     if (v.buffer == nullptr) continue;
     if (busIndex >= 0 && v.busIndex != busIndex) continue;
@@ -1217,6 +1263,10 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
     jobList_.push_back(static_cast<uint32_t>(i));
   }
   stats_.activeVoices = active;
+  // Where the next voice looks for a slot, and how many are in use: voices
+  // end inside the render below, and are counted out at the next one.
+  freeHint_ = firstFree < voices_.size() ? firstFree : 0;
+  liveCount_ = active;
 
   // As many threads as have minVoicesPerThread voices each to render: below
   // that a thread's handoff costs more than its share saves.

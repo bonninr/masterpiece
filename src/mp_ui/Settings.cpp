@@ -43,6 +43,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openReopen_ = proc_.reopenLastOrgan();
   openFaster_ = proc_.fasterEngine();
   openMemLimit_ = proc_.memoryLimitSettingMB();
+  openPolyphony_ = proc_.polyphonyLimit();
 
   for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
                   &originalPitch_}) {
@@ -293,6 +294,17 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.setMemoryLimitMB(id == 1 ? 0 : id - 1000);
   };
 
+  addAndMakeVisible(polyphonyLabel_);
+  styleLabel(polyphonyLabel_, TRANS("Polyphony limit"));
+  addAndMakeVisible(polyphony_);
+  polyphony_.setTooltip(TRANS("The most pipes that sound at once. Past it, a new pipe takes the place of one that is dying away, or of the quietest. A lower limit keeps a small computer from falling behind on full organ."));
+  fillPolyphony();
+  polyphony_.onChange = [this] {
+    const int id = polyphony_.getSelectedId();
+    // Ids above 1000 are a number of voices plus 1000; 1 is every voice.
+    proc_.setPolyphonyLimit(id == 1 ? 0 : id - 1000);
+  };
+
   syncProfile();
 
   // Nothing on this panel writes to disk on its own. Changes are live the
@@ -374,6 +386,22 @@ void EnginePanel::fillMemLimit() {
   memLimit_.setSelectedId(current == 0 ? 1 : 1000 + current, juce::dontSendNotification);
 }
 
+void EnginePanel::fillPolyphony() {
+  polyphony_.clear(juce::dontSendNotification);
+  const int all = proc_.maxPolyphony();
+  polyphony_.addItem(TRANS("Default: every voice (%1)").replace("%1", juce::String(all)), 1);
+  const int current = proc_.polyphonyLimit();
+  bool listed = current == 0;
+  for (int voices : {128, 256, 384, 512, 768, 1024}) {
+    if (voices >= all) continue;
+    polyphony_.addItem(TRANS("%1 voices").replace("%1", juce::String(voices)), 1000 + voices);
+    if (voices == current) listed = true;
+  }
+  // A number set in the file that is none of the above is still shown as itself.
+  if (!listed) polyphony_.addItem(TRANS("%1 voices").replace("%1", juce::String(current)), 1000 + current);
+  polyphony_.setSelectedId(current == 0 ? 1 : 1000 + current, juce::dontSendNotification);
+}
+
 void EnginePanel::revert() {
   proc_.setEngineSwitch(openSwitch_);
   proc_.setPreloadHeadFrames(openPreload_);
@@ -391,6 +419,8 @@ void EnginePanel::revert() {
   showFasterUnit();
   proc_.setMemoryLimitMB(openMemLimit_);
   fillMemLimit();
+  proc_.setPolyphonyLimit(openPolyphony_);
+  fillPolyphony();
   proc_.setLoadSampleRate(openRate_);
   proc_.setCacheMode(openCache_);
   cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
@@ -688,6 +718,10 @@ void EnginePanel::resized() {
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));
   memLimit_.setBounds(memRow.removeFromLeft(300));
+  r.removeFromTop(4);
+  auto polyRow = r.removeFromTop(kRow);
+  polyphonyLabel_.setBounds(polyRow.removeFromLeft(180));
+  polyphony_.setBounds(polyRow.removeFromLeft(300));
   r.removeFromTop(kGap);
   memory_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);

@@ -82,6 +82,7 @@ private:
   bool openReopen_ = false;
   bool openFaster_ = true;
   int openMemLimit_ = 0;
+  int openPolyphony_ = 0;
   // Set while a profile is writing the individual controls, so their
   // onChange handlers do not bounce the profile straight back to Custom.
   bool applyingProfile_ = false;
@@ -140,6 +141,9 @@ private:
   juce::ComboBox memLimit_;
   // Fill the memory-limit choices around the current setting.
   void fillMemLimit();
+  juce::Label polyphonyLabel_;
+  juce::ComboBox polyphony_;
+  void fillPolyphony();
   juce::Label memory_;
   juce::Label note_;
 };
