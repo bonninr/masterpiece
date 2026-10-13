@@ -1417,10 +1417,12 @@ public:
   // Eight notes held, then released, rendered to stereo. The ratios run from
   // an octave down to an octave up, and the tone is short beside the render,
   // so every note goes round its loop many times.
-  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa) {
+  static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa,
+                                   const mp::VoiceEngine::TremMod* trem = nullptr) {
     eng.prepare(48000.0, 32, 2);
     eng.setSimdIsa(isa);
     eng.setSampleProvider(fx.provider());
+    if (trem != nullptr) eng.setTremMods(trem, 1);
     const double ratios[8] = {0.5, 0.75, 0.97, 1.0, 1.003, 1.26, 1.5, 2.0};
     for (int n = 0; n < 8; ++n) {
       mp::VoiceStart st;
@@ -1429,6 +1431,11 @@ public:
       st.velocity = 80;
       st.ratio = ratios[n];
       st.gain = 0.1f;
+      if (trem != nullptr) {
+        st.tremIndex = 0;
+        st.tremAmpDepth = 0.2f;
+        st.tremPitchDepth = 0.3;
+      }
       eng.startVoice(st, static_cast<uint64_t>(n + 1));
     }
     std::vector<float> all, l(256), r(256);
@@ -1479,6 +1486,23 @@ public:
             apart = std::max(apart, static_cast<double>(std::abs(af[i] - a[i])));
           }
 
+          // And under a tremulant in motion: its swing crosses every block,
+          // level and pitch together, and the runs are given both frame by
+          // frame.
+          mp::VoiceEngine::TremMod swing;
+          swing.ampStart = -0.5f;
+          swing.ampStep = 1.0f / 256.0f;
+          swing.pitchStart = -0.5;
+          swing.pitchStep = 1.0 / 256.0;
+          mp::VoiceEngine plainTrem, fastTrem;
+          const std::vector<float> at = render(plainTrem, fx, mp::simd::Isa::None, &swing);
+          const std::vector<float> bt = render(fastTrem, fx, isa, &swing);
+          double worstTrem = 0.0, tremApart = 0.0;
+          for (size_t i = 0; i < at.size() && i < bt.size(); ++i) {
+            worstTrem = std::max(worstTrem, static_cast<double>(std::abs(at[i] - bt[i])));
+            tremApart = std::max(tremApart, static_cast<double>(std::abs(at[i] - af[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -1502,6 +1526,18 @@ public:
                      what + ": a release crossfade goes to the vector code (" +
                          std::to_string(fastFade.simdFrames()) + " frames against " +
                          std::to_string(fast.simdFrames()) + " without one)");
+          MP_CHECK(tremApart > 0.01, what + ": the tremulant moves the sound");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastTrem.simdFrames() > 100000,
+                     what + ": notes under a moving tremulant go to the vector code (" +
+                         std::to_string(fastTrem.simdFrames()) + " frames)");
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstTrem < 1e-6, what + ": the same tremulant within rounding (worst " +
+                                         std::to_string(worstTrem) + ")");
+#else
+          MP_CHECK(worstTrem == 0.0, what + ": the same tremulant either way (worst difference " +
+                                         std::to_string(worstTrem) + ")");
+#endif
 #if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
           MP_CHECK(worstFade < 1e-6, what + ": the same crossfade within rounding (worst " +
                                          std::to_string(worstFade) + ")");

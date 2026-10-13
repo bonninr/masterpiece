@@ -80,6 +80,8 @@ constexpr int kMinSimdRun = 8;
 // time, into scratch of this many channels on the stack.
 constexpr int kXfadeChunk = 256;
 constexpr int kXfadeChannels = 2;
+// A run under a moving tremulant is worked out this many frames at a time.
+constexpr int kTremChunk = 256;
 
 } // namespace
 
@@ -624,7 +626,6 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // swing in -1..1; this pipe's depths turn that into a gain and a pitch.
   const TremMod trem = tremModFor(v.tremIndex);
   float tremPhase = trem.ampStart;
-  double tremPitchPhase = trem.pitchStart;
   // Whether the tremulant moves anything in this block. A pipe that stands
   // under a tremulant is under it whether it is drawn or not, and most pipes
   // of most organs do: with the tremulant at rest its swing is zero from one
@@ -635,14 +636,26 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   const bool tremMoving = v.tremIndex >= 0 &&
                           (trem.ampStart != 0.0f || trem.ampStep != 0.0f ||
                            trem.pitchStart != 0.0 || trem.pitchStep != 0.0);
+  // The pitch the tremulant gives this pipe, as a ratio that is multiplied on
+  // from one frame to the next. Its swing is a straight line across the block
+  // in semitones, which is a geometric one in ratio: two pow() for the block
+  // give every frame's ratio exactly, where one pow() per frame gave it at an
+  // eighth of the engine's time with a tremulant running.
+  double tremRatio = 1.0;
+  double tremRatioStep = 1.0;
+  if (tremMoving) {
+    tremRatio = std::pow(2.0, v.tremPitchDepth * trem.pitchStart / 12.0);
+    tremRatioStep = std::pow(2.0, v.tremPitchDepth * trem.pitchStep / 12.0);
+  }
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
   const float storeScale = storageScale(buf);
-  // Whether this voice can have straight runs at all this block. A tremulant
-  // in motion moves the pitch every frame, so its voices stay on the
-  // per-frame path.
-  const bool runnable = isa_ != simd::Isa::None && !tremMoving &&
-                        simd::runSupports(isa_, bufChannels) && windRatio > 0.0;
+  // Whether this voice can have straight runs at all this block, and whether
+  // they are the plain kind. A tremulant in motion moves the pitch and the
+  // level every frame; its runs are given both frame by frame.
+  const bool canRun = isa_ != simd::Isa::None && simd::runSupports(isa_, bufChannels) &&
+                      windRatio > 0.0;
+  const bool runnable = canRun && !tremMoving;
   const int64_t runEnd = resident - simd::kRunMargin;
 
   for (int i = 0; i < numFrames; ++i) {
@@ -758,6 +771,53 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
 
+    // The same straight run under a tremulant in motion: every frame has its
+    // own step and its own level, worked out here as the per-frame path works
+    // them out, and the vector code is given both.
+    if (canRun && tremMoving && v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr) {
+      const bool release = v.phase == VoicePhase::Release;
+      if (!release || v.releaseIsSample) {
+        double limit = static_cast<double>(runEnd);
+        if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd - 3));
+        if (release)
+          limit = std::min(limit, static_cast<double>(total - kReleaseEndFadeFrames));
+        if (v.cursor >= 1.0 && v.cursor < limit) {
+          double ratios[kTremChunk];
+          float envs[kTremChunk];
+          const int want = std::min(numFrames - i, kTremChunk);
+          const float base = v.gain * wind.ampMul;
+          double p = v.cursor;
+          float phase = tremPhase;
+          double swing = tremRatio;
+          int n = 0;
+          // Every frame of the run reads short of the limit.
+          for (; n < want && p < limit; ++n) {
+            float e = base;
+            e *= 1.0f + v.tremAmpDepth * phase;
+            if (e < 0.0f) e = 0.0f;
+            envs[n] = e * storeScale;
+            ratios[n] = windRatio * swing;
+            p += ratios[n];
+            phase += trem.ampStep;
+            swing *= tremRatioStep;
+          }
+          if (n >= kMinSimdRun) {
+            if (release) {
+              v.releaseGain = 1.0f;
+              v.relXfadeLeft = 0;
+            }
+            v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios, envs,
+                                               out, numChannels, i, n);
+            tremPhase = phase;
+            tremRatio = swing;
+            simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+            i += n - 1;
+            continue;
+          }
+        }
+      }
+    }
+
     // Loop handling: wrap inside the sustain loop while the key is held. The
     // loop is the voice's, not the buffer's, so a layer override applies.
     if (v.phase != VoicePhase::Release && v.loops()) {
@@ -835,10 +895,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
     const float env = envReal * storeScale;
-    const double ratio =
-        tremMoving
-            ? windRatio * std::pow(2.0, v.tremPitchDepth * tremPitchPhase / 12.0)
-            : windRatio;
+    const double ratio = tremMoving ? windRatio * tremRatio : windRatio;
 
     // One range test for all four taps and every channel, instead of one per
     // tap per channel. The edges fall back to the checked reader.
@@ -971,7 +1028,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
 
     v.cursor += ratio;
     tremPhase += trem.ampStep;
-    tremPitchPhase += trem.pitchStep;
+    tremRatio *= tremRatioStep;
   }
 }
 
