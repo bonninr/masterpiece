@@ -68,23 +68,29 @@ jobs:
             arm: true
             debarch: armhf
             triple: arm-linux-gnueabihf
-          # Both Macs, each built on its own architecture, each naming the
-          # oldest macOS it runs on. Left to the toolchain, the Apple-silicon
-          # build took the build machine's own macOS (14) and would not open
-          # on an M1 still on Big Sur, Monterey or Ventura. 11.0 is the first
-          # macOS on Apple silicon; 10.15 is the first with std::filesystem.
+          # Both Macs, each naming the oldest macOS it runs on. Left to the
+          # toolchain, the Apple-silicon build took the build machine's own
+          # macOS (14) and would not open on an M1 still on Big Sur, Monterey
+          # or Ventura. 11.0 is the first macOS on Apple silicon; 10.15 is the
+          # first with std::filesystem.
+          #
+          # Both are built on an Apple-silicon runner. The Intel runners are
+          # few, and a job waited a quarter of an hour or more for one on
+          # every run, a release included. The Intel build is compiled for
+          # x86_64 here and its tests and its launch run under Rosetta, which
+          # is also how a good share of its players run it.
           - os: macos-14
             preset: ci-macos
             artifact: masterpiece-macos-arm64
             mac: true
             macarch: arm64
             cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          - os: macos-15-intel
+          - os: macos-14
             preset: ci-macos
             artifact: masterpiece-macos-x86_64
             mac: true
             macarch: x86_64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +101,8 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ matrix.preset }}-${{ matrix.os }}
+          # The architecture too, now that both Macs build on one runner.
+          key: ${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}
           max-size: 500M
           # Saved from main only; pull requests restore main's. Every run
           # saving its own filled the 10 GB cache allowance in a day.
@@ -123,7 +130,13 @@ jobs:
 
       - name: Dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install ninja
+        run: |
+          brew install ninja
+          # For the Intel build's tests and launch; already there on most
+          # images, and a no-op then.
+          if [ "${{ matrix.macarch }}" = "x86_64" ]; then
+            softwareupdate --install-rosetta --agree-to-license || true
+          fi
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
@@ -428,9 +441,35 @@ jobs:
           sudo xcode-select -s "$X"
           xcodebuild -version
           xcrun simctl list runtimes | grep -i ios
+          echo "XCODE=$(xcodebuild -version | tr -d ' \n')" >> "$GITHUB_ENV"
+
+      # Configuring for iOS took a quarter of an hour of every run: the
+      # dependencies are fetched, and each of their feature checks is a build
+      # of its own under the Xcode generator. What a configure leaves behind
+      # is kept, so the next one finds its answers. Saved from main only, like
+      # the compiler cache; a pull request restores main's.
+      - name: Configure cache
+        id: configure-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/ios-sim/CMakeCache.txt
+            build/ios-sim/CMakeFiles
+            build/ios-sim/_deps
+          key: ios-sim-configure-${{ env.XCODE }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}
 
       - name: Configure
         run: cmake --preset ios-sim
+
+      - name: Save the configure cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.configure-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/ios-sim/CMakeCache.txt
+            build/ios-sim/CMakeFiles
+            build/ios-sim/_deps
+          key: ${{ steps.configure-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: >
@@ -464,7 +503,12 @@ jobs:
           python3 .github/ios-check/make_organ.py organs/heavy --heavy
           du -sh organs/*/check.orgue
 
+      # A pull request runs the large iPad, which also plays the heavy organ;
+      # main runs all three. Three devices one after another were twenty
+      # minutes of every pull request.
       - name: Run on each device
+        env:
+          MP_IOS_DEVICES: ${{ github.event_name == 'pull_request' && 'iPad Pro 13' || '' }}
         run: bash .github/ios-check/run_devices.sh "$APP" organs
 
       - uses: actions/upload-artifact@v4
@@ -484,8 +528,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # As in the simulator job: what a configure leaves behind is kept.
+      - name: Xcode version
+        run: echo "XCODE=$(xcodebuild -version | tr -d ' \n')" >> "$GITHUB_ENV"
+
+      - name: Configure cache
+        id: configure-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/ios-sim/CMakeCache.txt
+            build/ios-sim/CMakeFiles
+            build/ios-sim/_deps
+          key: ios-device-configure-${{ env.XCODE }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}
+
       - name: Configure
         run: cmake --preset ios-sim
+
+      - name: Save the configure cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.configure-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/ios-sim/CMakeCache.txt
+            build/ios-sim/CMakeFiles
+            build/ios-sim/_deps
+          key: ${{ steps.configure-cache.outputs.cache-primary-key }}
 
       - name: Build
         run: >
