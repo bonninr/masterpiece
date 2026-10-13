@@ -358,7 +358,18 @@ void CombinationsPanel::resized() {
 
 void CombinationsPanel::paint(juce::Graphics& g) { g.fillAll(kBackground); }
 
-void CombinationsPanel::timerCallback() { refreshState(); }
+void CombinationsPanel::timerCallback() {
+  // Its window exists from the start and is hidden most of the time.
+  // While nobody can see it, four looks a second, each of which only finds
+  // out whether that is still so; its own rate from the first look after
+  // it is shown. Every look of a timer wakes two threads.
+  if (!isShowing()) {
+    if (getTimerInterval() < 250) startTimer(250);
+    return;
+  }
+  if (getTimerInterval() >= 250) startTimerHz(10);
+  refreshState();
+}
 
 void CombinationsPanel::afterPiston(bool stored) {
   // Only a store made from here, with the mouse: a console's own Set button

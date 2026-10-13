@@ -146,6 +146,8 @@ void TuningPanel::refresh() {
 }
 
 void TuningPanel::timerCallback() {
+  // Nothing to keep up to date while nobody can see it.
+  if (!isShowing()) return;
   // A MIDI piston may have moved any of these while the panel is open.
   if (proc_.temperamentChoice().rfind("scala:", 0) == 0 &&
       temperament_.getNumItems() == static_cast<int>(temperamentLibrary().size()) + 1)

@@ -829,6 +829,8 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
 MetronomePanel::~MetronomePanel() { stopTimer(); }
 
 void MetronomePanel::timerCallback() {
+  // A tab of the settings window that is not the one on show.
+  if (!isShowing()) return;
   const int b = proc_.metronome().currentBeat();
   beat_.setText(b > 0 ? TRANS("Beat %1").replace("%1", juce::String(b)) : juce::String(), juce::dontSendNotification);
 }
@@ -936,6 +938,8 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 RecorderPanel::~RecorderPanel() { stopTimer(); }
 
 void RecorderPanel::timerCallback() {
+  // A tab of the settings window that is not the one on show.
+  if (!isShowing()) return;
   const auto& r = proc_.recorder();
   juce::String s;
   switch (r.state()) {
@@ -1316,6 +1320,8 @@ void MidiPanel::refresh() {
 }
 
 void MidiPanel::timerCallback() {
+  // A tab of the settings window that is not the one on show.
+  if (!isShowing()) return;
   const auto& map = proc_.midiMap();
   juce::String s = TRANS("%1 binding(s)").replace("%1", juce::String(static_cast<int>(map.size())));
   if (map.learning()) s += "  -  " + TRANS("LEARNING: move a control now");
