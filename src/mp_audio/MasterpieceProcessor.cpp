@@ -11,7 +11,29 @@
 #include <thread>
 #include <vector>
 
+#if defined(__linux__)
+#include <sched.h>
+#endif
+
 namespace mp {
+
+// The cores this program may run on. The machine's count is the usual
+// answer; on Linux a program can be held to fewer of them -- taskset, a
+// container, a cgroup -- and render threads beyond those only wait on each
+// other for the same core: a full organ held to one core of eight ran its
+// audio thread behind seven workers it had started for the other seven.
+static int usableCores() {
+  int cores = static_cast<int>(std::thread::hardware_concurrency());
+#if defined(__linux__)
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  if (sched_getaffinity(0, sizeof(set), &set) == 0) {
+    const int allowed = CPU_COUNT(&set);
+    if (allowed > 0 && (cores <= 0 || allowed < cores)) cores = allowed;
+  }
+#endif
+  return cores;
+}
 
 static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
   std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
@@ -149,7 +171,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // voice work is that count. Threads are started here, never in the callback.
   int threads = graph_.parallel.renderThreads;
   if (threads <= 0) {
-    const int cores = static_cast<int>(std::thread::hardware_concurrency());
+    const int cores = usableCores();
     threads = cores > 2 ? cores - 1 : 1;
     // But not every core of a big machine: a block is shared out only above
     // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
