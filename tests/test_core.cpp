@@ -11209,6 +11209,69 @@ public:
 };
 static DefaultConsoleTest g_defaultConsole;
 
+// The no-DSP tick in Organ settings did nothing: the audio block copied a
+// host parameter over the organ's switch on every block, so the tick was
+// undone within one block and the next save wrote it as off. The switch is
+// the organ's own -- it holds while playing, is saved with the organ and
+// comes back with it -- and a host moving the parameter still moves it.
+class NoDspSwitchHoldsTest final : public mp::test::Test {
+public:
+  NoDspSwitchHoldsTest()
+    : Test("functional.settings.no-dsp-switch-holds", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-no-dsp-switch");
+    dir.createDirectory();
+    const juce::File odf = DefaultConsoleTest::organ(dir, "NoDspSwitch", 918273661);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    const auto block = [&] {
+      buf.clear();
+      proc.processBlock(buf, none);
+    };
+    const auto set = [&](bool on) {
+      auto sw = proc.engineSwitch();
+      sw.simpleWavOnly = on;
+      proc.setEngineSwitch(sw);
+    };
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    set(true);
+    block();
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "the tick holds through the audio block");
+
+    MP_CHECK(proc.saveSettings(), "saved for this organ");
+    set(false);
+    block();
+    MP_CHECK(!proc.engineSwitch().simpleWavOnly, "and it can be turned off again");
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads again");
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "what was saved comes back with the organ");
+
+    // A host's handle on the same switch: it follows the organ, and moving it
+    // moves the organ's switch.
+    auto* param = proc.apvts().getParameter("simpleWavOnly");
+    MP_CHECK(param != nullptr && param->getValue() > 0.5f,
+             "the host parameter shows what the organ's file set");
+    if (param != nullptr) {
+      param->setValueNotifyingHost(0.0f);
+      block();
+      MP_CHECK(!proc.engineSwitch().simpleWavOnly, "a host turning the parameter off turns DSP on");
+      param->setValueNotifyingHost(1.0f);
+      block();
+      MP_CHECK(proc.engineSwitch().simpleWavOnly, "and turning it on turns DSP off");
+    }
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static NoDspSwitchHoldsTest g_noDspSwitchHolds;
+
 // Issue #44: a pedal left on its default channel 1 after the player mapped a
 // manual to channel 1 lit its drawn keys whenever the manual was played --
 // the sound went to the manual, the picture to both. A drawn keyboard lights,
