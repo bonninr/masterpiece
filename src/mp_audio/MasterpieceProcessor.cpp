@@ -2713,6 +2713,7 @@ void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
   if (!applyingPistons_) player_.registrationMoved();
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
+  shownStale_ = true;
   stopsChanged_.store(true, std::memory_order_release);
 
   // Drawing a stop is a physical act on a real console, and sample sets record
@@ -2732,6 +2733,15 @@ void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
 
 bool MasterpieceProcessor::switchEngaged(Id switchId) const {
   return engagedSwitches_.count(switchId) != 0;
+}
+
+void MasterpieceProcessor::publishShown() {
+  if (!shownStale_) return;
+  const std::unique_lock<std::mutex> lock(shownMutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return;  // the window is reading: the next block tries again
+  shownStops_ = engagedStops_;
+  shownSwitches_ = engagedSwitches_;
+  shownStale_ = false;
 }
 
 // ------------------------------------------------------ load estimates
@@ -3515,6 +3525,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   const bool keysHeld = !soundingNotes_.empty();
   if (keysHeld) heldFlowBefore_ = engagedSwitches_;
   engagedSwitches_ = switches_.engagedSwitches();
+  shownStale_ = true;
   // A coupler drawn or pushed in while keys are down reaches, or stops
   // reaching, the divisions it couples at once, as on a console with
   // electric action (#131). Only what the switch changed moves.
@@ -3559,6 +3570,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     auto follow = [this](Id stopId) {
       if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
       else engagedStops_.erase(stopId);
+      shownStale_ = true;
     };
     if (const auto stopIt = stopBySwitch_.find(movedId); stopIt != stopBySwitch_.end()) {
       for (Id stopId : stopIt->second) follow(stopId);
@@ -3889,6 +3901,12 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     std::atomic<int>& count;
     ~Leave() { count.fetch_sub(1); }
   } leave{inAudioCallback_};
+  // What this block changed that the window draws, handed over on every way
+  // out.
+  struct Publish {
+    MasterpieceProcessor& p;
+    ~Publish() { p.publishShown(); }
+  } publish{*this};
 
   // Timed on every way out too: how long this block took against the time
   // the audio it makes lasts (#120).
@@ -4307,6 +4325,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     switches_.set(id, on);
   }
   engagedSwitches_ = switches_.engagedSwitches();
+  shownStale_ = true;
   buildPalletIndex();
 
   // Continuous controls. This was never reset, so the bank held no model and
@@ -4585,6 +4604,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   engagedStops_.clear();
   for (const auto& [stopId, sources] : stopSources_)
     if (stopSourcesEngaged(stopId)) engagedStops_.insert(stopId);
+  shownStale_ = true;
   // A new organ starts a new registration, so what the audio thread believes
   // is drawn has to be replaced rather than compared with the last organ's.
   stopsChanged_.store(true, std::memory_order_release);

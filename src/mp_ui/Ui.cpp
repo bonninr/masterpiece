@@ -86,7 +86,7 @@ void StopJamb::rebuild() {
     e.playable = s.playable;
     e.button = std::make_unique<juce::TextButton>(juce::String(s.name));
     e.button->setClickingTogglesState(true);
-    e.button->setToggleState(proc_.stopEngaged(s.stopId),
+    e.button->setToggleState(proc_.shownStopEngaged(s.stopId),
                              juce::dontSendNotification);
     // Drawn reads as drawn at a glance: ivory with dark lettering, like a
     // stop face, against the dark of one pushed in.
@@ -121,7 +121,7 @@ void StopJamb::rebuild() {
 
 void StopJamb::refresh() {
   for (auto& e : entries_) {
-    const bool on = proc_.stopEngaged(e.stopId);
+    const bool on = proc_.shownStopEngaged(e.stopId);
     if (e.button->getToggleState() != on) e.button->setToggleState(on, juce::dontSendNotification);
   }
 }

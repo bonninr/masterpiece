@@ -11760,9 +11760,40 @@ public:
     send(20, 127);
     send(20, 0);
     MP_CHECK(proc.stopEngaged(stop), "a CC draws the stop");
+    MP_CHECK(proc.shownStopEngaged(stop) && proc.shownSwitchEngaged(stopSwitch),
+             "and the window's copy has it at the end of that block");
     send(21, 127);
     send(21, 0);
     MP_CHECK(!proc.stopEngaged(stop), "a CC on the GC cancels it");
+    MP_CHECK(!proc.shownStopEngaged(stop), "and the window's copy has that too");
+
+    // The window asking while the audio thread draws and cancels: its answers
+    // come from the copy, so the sets being rewritten are never read from
+    // here. A block the window was reading through leaves the copy a block
+    // behind, and the next one brings it up.
+    {
+      std::atomic<bool> stop_{false};
+      std::atomic<int> reads{0};
+      std::thread window([&] {
+        while (!stop_.load()) {
+          (void)proc.shownStopEngaged(stop);
+          (void)proc.shownSwitchEngaged(stopSwitch);
+          reads.fetch_add(1);
+        }
+      });
+      for (int i = 0; i < 400; ++i) {
+        send(20, 127);
+        send(20, 0);
+      }
+      stop_.store(true);
+      window.join();
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+      MP_CHECK(reads.load() > 0, "the window read throughout");
+      MP_CHECK(proc.shownStopEngaged(stop) == proc.stopEngaged(stop) &&
+                   proc.shownSwitchEngaged(stopSwitch) == proc.switchEngaged(stopSwitch),
+               "and its copy agrees with the engine once the playing stops");
+    }
     proc.releaseResources();
     proc.settingsFileFor(odf).deleteFile();
     proc.midiMapFileFor(odf).deleteFile();
@@ -12663,6 +12694,11 @@ public:
       proc.processBlock(buf, none);
 
       proc.setStopEngaged(1, true);
+      // The window reads a copy of what is drawn, made as the change is: it
+      // has it before the next block, and with no audio running at all.
+      MP_CHECK(proc.shownStopEngaged(1) && proc.shownSwitchEngaged(10069) &&
+                   !proc.shownStopEngaged(2),
+               "the window's copy has the stop and its knob as soon as it is drawn");
       proc.processBlock(buf, none);
       MP_CHECK(proc.stopEngaged(1), "the stop drawn is on");
       MP_CHECK(!proc.stopEngaged(2), "drawing one stop leaves the other in");

@@ -687,7 +687,7 @@ int ConsoleView::frameIndexFor(const Item& item) const {
   }
 
   if (item.switchId == 0) return item.defaultIndex;
-  const bool on = proc_.switchEngaged(item.switchId);
+  const bool on = proc_.shownSwitchEngaged(item.switchId);
   const int chosen = on ? item.engagedIndex : item.disengagedIndex;
   // A set that names no frame for a state falls back to what the instance
   // declares, rather than drawing nothing.
@@ -999,7 +999,7 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       heldButtonBounds_ = it->bounds;
       proc_.setSwitchEngaged(it->switchId, true);
     } else {
-      proc_.setSwitchEngaged(it->switchId, !proc_.switchEngaged(it->switchId));
+      proc_.setSwitchEngaged(it->switchId, !proc_.shownSwitchEngaged(it->switchId));
     }
     repaint(it->bounds);
     return;
