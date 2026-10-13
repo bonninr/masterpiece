@@ -137,6 +137,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   voices_.prepare(sampleRate_, graph_.maxVoices,
                   juce::jmax(1, getTotalNumOutputChannels()),
                   juce::jmax(1, samplesPerBlock));
+  voices_.setPolyphony(polyphony_);
   // Which path renders, for any report about the sound: the new engine is
   // the first thing to rule in or out.
   juce::Logger::writeToLog(juce::String("audio engine: ") +
@@ -1550,6 +1551,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
+  if (polyphony_ > 0) text << "polyphony " << polyphony_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   if (language_.isNotEmpty()) text << "language " << language_ << "\n";
@@ -1621,6 +1623,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
                          std::memory_order_relaxed);
     } else if (key == "memlimit") {
       memoryLimitMB_ = std::max(0, val.getIntValue());
+    } else if (key == "polyphony") {
+      polyphony_ = std::max(0, val.getIntValue());
     } else if (key == "running") {
       // Still here at the first read of a session: the last one did not exit
       // cleanly. Every later read finds this session's own entry, which says
@@ -1752,6 +1756,19 @@ void MasterpieceProcessor::setMemoryLimitMB(int mb) {
   mb = std::max(0, mb);
   if (memoryLimitMB_ == mb) return;
   memoryLimitMB_ = mb;
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setPolyphonyLimit(int voices) {
+  // Not below what one key of a large organ sounds, and nothing above the
+  // engine's own count means anything.
+  voices = voices <= 0 || voices >= graph_.maxVoices ? 0 : std::max(64, voices);
+  if (polyphony_ == voices) return;
+  polyphony_ = voices;
+  {
+    const AudioLock lock(*this);
+    voices_.setPolyphony(polyphony_);
+  }
   writeGlobalFile();
 }
 

@@ -803,6 +803,13 @@ public:
   // cleanly and says so, rather than running the machine out of memory.
   int memoryLimitSettingMB() const { return memoryLimitMB_; }
   void setMemoryLimitMB(int mb);
+  // The most voices that sound at once; 0 means every voice the engine has
+  // (maxPolyphony()). Past it a new pipe takes the place of one dying away,
+  // or of the quietest. For a machine that falls behind on full organ: fewer
+  // voices is a thinner tutti, more than it can render is a glitch.
+  int polyphonyLimit() const { return polyphony_; }
+  void setPolyphonyLimit(int voices);
+  int maxPolyphony() const { return graph_.maxVoices; }
   // The same ceiling for this session only, saved nowhere: for tools that
   // must not rewrite the player's settings.
   void overrideMemoryLimitMB(int mb) { memoryLimitOverrideMB_ = mb > 0 ? mb : 0; }
@@ -1561,6 +1568,7 @@ private:
   juce::File crashedOrgan_;
   bool globalsReadOnce_ = false;
   int memoryLimitMB_ = 0;
+  int polyphony_ = 0;
   int memoryLimitOverrideMB_ = 0;  // this session only; never written
   std::atomic<bool> loadTicks_{false};
   juce::String language_;  // empty: the system's
