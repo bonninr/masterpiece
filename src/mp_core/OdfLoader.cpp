@@ -182,13 +182,53 @@ std::string packageDirName(Id packageId) {
   return digits;
 }
 
-bool diskMissing(const std::string& rootDir, const std::string& rel) {
-  if (rootDir.empty() || rel.empty()) return false;
-  std::string p = rel;
-  std::replace(p.begin(), p.end(), '\\', '/');
-  std::error_code ec;
-  return !std::filesystem::exists(std::filesystem::path(rootDir) / p, ec);
-}
+// Whether the files an organ names are there, asked a folder at a time.
+//
+// An organ names tens of thousands of samples and they sit a rank to a
+// folder. Asking the disk about each one is one request per file, and on a
+// network share, a USB disk or a drive that has just been plugged in that is
+// most of what opening the organ takes: Nancy's definition took 74 seconds to
+// read cold, nearly all of it here. A folder is listed once and every file in
+// it is answered from the list.
+//
+// A name the list does not have is still asked of the disk itself, so the
+// answer is the disk's own in every case the list cannot speak for: a file
+// system that ignores case or spells accents its own way, and a link, which
+// is left out of the list because only the disk knows where it leads.
+class DiskIndex {
+public:
+  explicit DiskIndex(std::string rootDir) : root_(std::move(rootDir)) {}
+
+  bool missing(const std::string& rel) {
+    if (root_.empty() || rel.empty()) return false;
+    std::string p = rel;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    const std::filesystem::path full = std::filesystem::path(root_) / p;
+    const std::filesystem::path name = full.filename();
+    if (!name.empty() && name != "." && name != "..") {
+      const std::filesystem::path dir = full.parent_path();
+      auto known = dirs_.find(dir.native());
+      if (known == dirs_.end()) {
+        known = dirs_.emplace(dir.native(), Names{}).first;
+        std::error_code ec;
+        for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end;
+             it.increment(ec)) {
+          std::error_code linkEc;
+          if (it->is_symlink(linkEc)) continue;
+          known->second.insert(it->path().filename().native());
+        }
+      }
+      if (known->second.count(name.native()) != 0) return false;
+    }
+    std::error_code ec;
+    return !std::filesystem::exists(full, ec);
+  }
+
+private:
+  using Names = std::unordered_set<std::filesystem::path::string_type>;
+  std::string root_;
+  std::unordered_map<std::filesystem::path::string_type, Names> dirs_;
+};
 
 // Iterate rows of every <ObjectList ObjectType="table"> block (exact-case
 // match; CODM matching lives in parseCodm which is case-insensitive).
@@ -462,6 +502,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
                     .first;
       if (known->second) s.fileName = "OrganInstallationPackages/" + rel;
     }
+    DiskIndex disk(opts.organRootDir);
     for (const auto& [id, s] : outModel.samples) {
       (void)id;
       if (s.encrypted || s.fileName.empty()) continue;
@@ -469,7 +510,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       if (s.installationPackageId > 0)
         rel = "OrganInstallationPackages/" + packageDirName(s.installationPackageId) +
               "/" + rel;
-      if (diskMissing(opts.organRootDir, rel))
+      if (disk.missing(rel))
         outDiag.missingSampleFiles.push_back(s.fileName);
     }
   }
@@ -1789,9 +1830,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
 
   // ---- M1.4 validator: missing images / empty pages / unreferenced sets ----
   if (!opts.organRootDir.empty()) {
+    DiskIndex disk(opts.organRootDir);
     auto checkImage = [&](const std::string& rel) {
       if (rel.empty()) return;
-      if (diskMissing(opts.organRootDir, rel))
+      if (disk.missing(rel))
         outDiag.missingImageFiles.push_back(rel);
     };
     for (const auto& [id, set] : outModel.imageSets) {
