@@ -3293,6 +3293,15 @@ bool MasterpieceProcessor::stepperJump(int frames) {
   return stepperGoto(to);
 }
 
+bool MasterpieceProcessor::stepperDigit(int digit) {
+  if (digit < 0 || digit > 9) return false;
+  const int to = digit == 0 ? 10 : digit;
+  const int last = player_.lastUsedFrame();
+  if (!captureMode() && (last < 1 || to > last)) return false;
+  if (to == player_.frame()) return false;
+  return stepperGoto(to);
+}
+
 bool MasterpieceProcessor::stepperGoto(int frame) {
   const AudioLock audio(*this);
   const bool capturing = captureMode();

@@ -452,6 +452,10 @@ public:
   bool stepperFirst();
   bool stepperLast();
   bool stepperJump(int frames);
+  // A digit button: 1 to 9 go to that frame, and 0 to the tenth. Like the
+  // frame prompt, it stops at the last frame that holds anything unless
+  // capture is on. False when there is nowhere to go.
+  bool stepperDigit(int digit);
   // Open a frame before the current one, or take the current one out; the
   // frames after it move along.
   bool stepperInsertFrame();
