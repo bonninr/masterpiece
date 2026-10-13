@@ -620,12 +620,23 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   const TremMod trem = tremModFor(v.tremIndex);
   float tremPhase = trem.ampStart;
   double tremPitchPhase = trem.pitchStart;
+  // Whether the tremulant moves anything in this block. A pipe that stands
+  // under a tremulant is under it whether it is drawn or not, and most pipes
+  // of most organs do: with the tremulant at rest its swing is zero from one
+  // end of the block to the other, and the voice sounds exactly as one with
+  // no tremulant. Treating it as one keeps it on the straight runs and spares
+  // a pow() per frame. Before this, every such voice took the per-frame path
+  // for as long as it sounded.
+  const bool tremMoving = v.tremIndex >= 0 &&
+                          (trem.ampStart != 0.0f || trem.ampStep != 0.0f ||
+                           trem.pitchStart != 0.0 || trem.pitchStep != 0.0);
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
   const float storeScale = storageScale(buf);
   // Whether this voice can have straight runs at all this block. A tremulant
-  // moves the pitch every frame, so its voices stay on the per-frame path.
-  const bool runnable = isa_ != simd::Isa::None && v.tremIndex < 0 &&
+  // in motion moves the pitch every frame, so its voices stay on the
+  // per-frame path.
+  const bool runnable = isa_ != simd::Isa::None && !tremMoving &&
                         simd::runSupports(isa_, bufChannels) && windRatio > 0.0;
   const int64_t runEnd = resident - simd::kRunMargin;
 
@@ -704,7 +715,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     // A tremulant swings the level and the pitch together, which is what makes
     // it sound like wind rather than like a volume pedal. Shared by both
     // sides of a release crossfade: the wind does not jump at note-off.
-    if (v.tremIndex >= 0) {
+    if (tremMoving) {
       envReal *= 1.0f + v.tremAmpDepth * tremPhase;
       if (envReal < 0.0f) envReal = 0.0f;
     }
@@ -749,7 +760,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     }
     const float env = envReal * storeScale;
     const double ratio =
-        v.tremIndex >= 0
+        tremMoving
             ? windRatio * std::pow(2.0, v.tremPitchDepth * tremPitchPhase / 12.0)
             : windRatio;
 
