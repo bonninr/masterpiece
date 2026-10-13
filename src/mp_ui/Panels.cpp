@@ -855,6 +855,14 @@ void PanelView::paint(juce::Graphics& g) {
 }
 
 void PanelView::timerCallback() {
+  // While nobody can see it, four looks a second, each of which only finds
+  // out whether that is still so; its own rate from the first look after
+  // it is shown. Every look of a timer wakes two threads.
+  if (!isShowing()) {
+    if (getTimerInterval() < 250) startTimer(250);
+    return;
+  }
+  if (getTimerInterval() >= 250) startTimerHz(15);
   for (auto* c : cells_) {
     if (auto* cell = dynamic_cast<Cell*>(c)) cell->follow();
     else if (auto* fader = dynamic_cast<Fader*>(c)) fader->follow();

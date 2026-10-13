@@ -214,6 +214,14 @@ private:
   // routed on every eighth look.
   static constexpr int kRoutingEvery = 8;
   int routingTick_ = kRoutingEvery;
+  // How often the timer looks, in milliseconds: while the organ is played,
+  // once nothing has moved for kQuietTicks looks, and while the console is
+  // not on screen.
+  static constexpr int kPlayingMs = 33;
+  static constexpr int kRestingMs = 100;
+  static constexpr int kHiddenMs = 250;
+  static constexpr int kQuietTicks = 60;
+  int quietTicks_ = 0;
   // This many changes in one look are repainted as the whole console.
   static constexpr int kRepaintWhole = 24;
   // The control being learned when the timer last looked, -1 for none.

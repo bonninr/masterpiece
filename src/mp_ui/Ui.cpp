@@ -307,6 +307,14 @@ void LevelMeter::timerCallback() {
   // Only when a lamp actually moved: the console behind this is expensive to
   // repaint and a silent organ should cost nothing.
   if (changed) repaint();
+
+  // Dark for two seconds, it looks four times a second; a lamp lit, ten.
+  if (lit_[0] > 0 || lit_[1] > 0) {
+    darkTicks_ = 0;
+    if (getTimerInterval() != 100) startTimer(100);
+  } else if (getTimerInterval() != 250 && ++darkTicks_ >= 20) {
+    startTimer(250);
+  }
 }
 
 void LevelMeter::paint(juce::Graphics& g) {

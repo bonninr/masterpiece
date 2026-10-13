@@ -114,6 +114,7 @@ private:
   // What was last painted, so a still meter does not repaint 30 times a
   // second behind a console that is doing real work.
   int lit_[2] = {-1, -1};
+  int darkTicks_ = 0;
 };
 
 class TopBar : public juce::Component {

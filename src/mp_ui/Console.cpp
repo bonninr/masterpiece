@@ -89,7 +89,17 @@ constexpr int64_t cacheKey(Id setId, int index) {
 
 } // namespace
 
-ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
+ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) {
+  // paint() covers every pixel, so nothing behind the console is drawn for
+  // it. And the console is kept as a picture at the size it is shown: it is
+  // drawn scaled, through the software renderer, and without the picture
+  // every repaint that reaches it from outside -- a window uncovered, a
+  // neighbour redrawn -- scaled the whole of the artwork again. With it,
+  // only the rectangles the console itself marks are drawn anew.
+  setOpaque(true);
+  setBufferedToImage(true);
+  rebuild();
+}
 
 void ConsoleView::freeze() {
   if (frozen_.isValid()) return;
@@ -345,8 +355,9 @@ void ConsoleView::rebuild() {
   const bool anyControl = std::any_of(items_.begin(), items_.end(), [](const Item& i) {
     return i.switchId != 0 || i.controlId != 0;
   });
+  quietTicks_ = 0;
   if (!keys_.empty() || anyControl)
-    startTimerHz(30);
+    startTimer(kPlayingMs);
   else
     stopTimer();
 }
@@ -591,8 +602,12 @@ void ConsoleView::timerCallback() {
   // key lights up whether it was pressed on screen or on the player's own
   // console, and only on the manual it reached.
   // A window nobody can see has nothing to keep up to date; what moved while
-  // it was hidden is found on the first tick after it is shown again.
-  if (!isShowing()) return;
+  // it was hidden is found on the first look after it is shown again. Four
+  // looks a second until then: every look of a timer wakes two threads.
+  if (!isShowing()) {
+    if (getTimerInterval() != kHiddenMs) startTimer(kHiddenMs);
+    return;
+  }
 
   // The player may have moved a manual to another channel in Settings since
   // the console was built; the drawn keys follow without a reload. Routing is
@@ -669,6 +684,16 @@ void ConsoleView::timerCallback() {
   // is one repaint of the lot.
   if (learningMoved || changed >= kRepaintWhole) repaint();
   else if (changed == 1) repaint(first);
+
+  // Thirty looks a second while the organ is being played, ten once nothing
+  // has moved for two seconds. The first key after a pause lights up to a
+  // tenth of a second late, and the organ at rest is woken a third as often.
+  if (changed > 0 || learningMoved) {
+    quietTicks_ = 0;
+    if (getTimerInterval() != kPlayingMs) startTimer(kPlayingMs);
+  } else if (getTimerInterval() != kRestingMs && ++quietTicks_ >= kQuietTicks) {
+    startTimer(kRestingMs);
+  }
 }
 
 juce::String ConsoleView::pageName(int index) const {
