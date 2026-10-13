@@ -2062,6 +2062,84 @@ public:
     proc.releaseResources();
   }
 };
+
+// Playback that ends with keys down lets them go (#325). A pipe has no decay:
+// stopped part-way, the chord of that instant sounded until Panic.
+class PlaybackStopReleasesTest final : public mp::test::Test {
+public:
+  PlaybackStopReleasesTest()
+      : Test("functional.midi.playback-stop-releases", Category::Functional) {}
+  void run() override {
+    mp::MidiRecorder rec;
+    rec.prepare(48000.0);
+    auto noteOffs = [](const juce::MidiBuffer& b) {
+      std::vector<std::pair<int, int>> offs;
+      for (const auto meta : b)
+        if (meta.getMessage().isNoteOff())
+          offs.emplace_back(meta.getMessage().getChannel(), meta.getMessage().getNoteNumber());
+      return offs;
+    };
+    // A take of three blocks: a key down in the first, another in the second,
+    // both let go in the third.
+    rec.startRecording();
+    juce::MidiBuffer b;
+    b.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(3, 64, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
+    b.addEvent(juce::MidiMessage::noteOff(3, 64), 0);
+    rec.process(b, 256);
+    rec.stopRecording();
+
+    // Stopped after the first block: its key is let go, and only that one.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.stopPlayback();
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(1, 40, 0.8f), 0);  // the player's own key
+    rec.process(b, 256);
+    const auto stopped = noteOffs(b);
+    MP_CHECK(stopped.size() == 1 && stopped[0] == std::make_pair(2, 60),
+             "stopping playback lets go of the key it was holding, got " +
+                 std::to_string(stopped.size()) + " note-offs");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "and says so once");
+
+    // Played to the end: the take lets go of its own keys, nothing is added.
+    rec.startPlayback();
+    for (int i = 0; i < 3; ++i) {
+      b.clear();
+      rec.process(b, 256);
+    }
+    MP_CHECK(!rec.isPlaying(), "the take ends after its last event");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "a take that lets go of its keys adds no note-offs");
+
+    // Begun again from the top while a key is down: let go before it restarts.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    bool offFirst = false;
+    for (const auto meta : b) {
+      const auto m = meta.getMessage();
+      if (m.isNoteOff() && m.getNoteNumber() == 60) offFirst = true;
+      if (m.isNoteOn() && m.getNoteNumber() == 60) {
+        MP_CHECK(offFirst, "a restart lets the key go before it plays it again");
+        break;
+      }
+    }
+    MP_CHECK(offFirst, "a restart lets go of the key that was down");
+  }
+};
 #endif // MP_TEST_HAS_AUDIO
 
 class VoiceEngineRenderTest final : public mp::test::Test {
@@ -9447,6 +9525,7 @@ public:
 };
 static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
+static PlaybackStopReleasesTest g_playbackStopReleases;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
