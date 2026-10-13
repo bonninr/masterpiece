@@ -9,7 +9,7 @@
 
 namespace mp::ui {
 
-enum class Icon { Panic };
+enum class Icon { Panic, Save };
 
 // The icon in one colour, 24 units square.
 std::unique_ptr<juce::Drawable> makeIcon(Icon icon, juce::Colour colour);

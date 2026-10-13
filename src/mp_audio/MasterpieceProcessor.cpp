@@ -1443,6 +1443,21 @@ bool MasterpieceProcessor::saveRememberedStateIfPending() {
   return saveRememberedState();
 }
 
+bool MasterpieceProcessor::saveCurrentState() {
+  // Every latching switch that is not where the organ starts is recorded, so
+  // the organ comes up with the registration the player left it in. A switch
+  // at its default is left out: it starts there anyway.
+  snapshotStates_.clear();
+  snapshotStops_.clear();
+  for (const auto& [id, s] : model_.switches)
+    if (s.latching && switches_.engaged(id) != s.defaultEngaged)
+      snapshotStates_.emplace_back(id, switches_.engaged(id));
+  std::sort(snapshotStates_.begin(), snapshotStates_.end());
+  snapshotStops_.assign(engagedStops_.begin(), engagedStops_.end());
+  std::sort(snapshotStops_.begin(), snapshotStops_.end());
+  return saveSettings();
+}
+
 bool MasterpieceProcessor::saveSettings() const {
   const auto f = organFileForSaving("organs", ".mporgan");
   if (f.getFullPathName().isEmpty()) return false;
@@ -1451,6 +1466,9 @@ bool MasterpieceProcessor::saveSettings() const {
   juce::String text = "# Masterpiece per-organ settings\n";
   text << settingsBody();
   text << rememberedStateLines();
+  for (const auto& [id, on] : snapshotStates_)
+    text << "state " << juce::String(id) << " " << (on ? 1 : 0) << "\n";
+  for (Id id : snapshotStops_) text << "stopon " << juce::String(id) << "\n";
 
   // Where each rank speaks. Per organ because a rank id means nothing
   // elsewhere, and only the ranks the player actually routed: the rest fall
@@ -1526,6 +1544,8 @@ bool MasterpieceProcessor::saveSettings() const {
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pendingControlValues_.clear();
   pendingSwitchStates_.clear();
+  snapshotStates_.clear();
+  snapshotStops_.clear();
   // Routes and voicing belong to the organ being left, not the one arriving.
   // Keeping either would point this organ's rank ids at the previous organ's
   // mix, or worse, at its tuning.
@@ -1569,6 +1589,18 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pendingSwitchStates_.emplace_back(
           static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
           val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue() != 0);
+      continue;
+    }
+    if (key == "state") {
+      // "state <id> <0|1>": the starting state saved with saveCurrentState().
+      // Kept as the snapshot as well, so the next save keeps what was loaded.
+      snapshotStates_.emplace_back(
+          static_cast<Id>(val.upToFirstOccurrenceOf(" ", false, false).getLargeIntValue()),
+          val.fromFirstOccurrenceOf(" ", false, false).trim().getIntValue() != 0);
+      continue;
+    }
+    if (key == "stopon") {
+      snapshotStops_.push_back(static_cast<Id>(val.getLargeIntValue()));
       continue;
     }
     if (key == "licenceconfirmed") {
@@ -4613,6 +4645,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       continue;
     switches_.set(id, on);
   }
+  // The state the player saved with saveCurrentState(): applied whatever the
+  // organ marks as remembered, since the player asked for exactly this.
+  for (const auto& [id, on] : snapshotStates_) {
+    const auto it = model_.switches.find(id);
+    if (it != model_.switches.end() && it->second.latching) switches_.set(id, on);
+  }
+  for (Id id : snapshotStops_) engagedStops_.insert(id);
   engagedSwitches_ = switches_.engagedSwitches();
   shownStale_ = true;
   buildPalletIndex();

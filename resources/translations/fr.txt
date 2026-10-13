@@ -45,6 +45,8 @@ countries: fr be ca ch lu mc
 "Go to a frame" = "Aller à une étape"
 "Go to frame %1" = "Aller à l'étape %1"
 "Go to frame 10" = "Aller à l'étape 10"
+"Save state" = "Enregistrer l'état"
+"Save the stops as they are now: the organ starts with them" = "Enregistrer les jeux tels qu'ils sont : l'orgue démarre avec eux"
 "A frame number, 1 to %1:" = "Un numéro d'étape, de 1 à %1 :"
 "A frame number:" = "Un numéro d'étape :"
 "Frame" = "Étape"

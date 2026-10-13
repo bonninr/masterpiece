@@ -734,6 +734,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
   addAndMakeVisible(panicButton_);
   panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
+  addAndMakeVisible(saveStateButton_);
+  saveStateButton_.onClick = [this] { proc_.saveCurrentState(); };
 
   combinations_ = std::make_unique<CombinationsWindow>(proc_);
 
@@ -1518,6 +1520,7 @@ void MasterpieceEditor::resized() {
     settingsButton_.setBounds(bar.removeFromLeft(menuW + 14).reduced(2));
   }
   panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
+  saveStateButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   if (layout_.isVisible())
     layout_.setBounds(bar.removeFromRight(130).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));

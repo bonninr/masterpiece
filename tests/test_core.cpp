@@ -12453,6 +12453,31 @@ public:
   }
 };
 static SequencerDigitsTest g_sequencerDigits;
+// Save state (toolbar): the stops as the player left them are the organ's
+// starting state, and a new session brings them back.
+class SavedStateTest final : public mp::test::Test {
+public:
+  SavedStateTest() : Test("functional.organ.saved-state", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor probe;
+    PlayerPistonsProcessorTest::Keep keepSettings(probe.settingsFileFor(odf));
+    keepSettings.file.deleteFile();
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+      MP_CHECK(!proc.stopEngaged(901), "stop 901 starts off");
+      proc.setStopEngaged(901, true);
+      MP_CHECK(proc.saveCurrentState(), "the state saves");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads again");
+      MP_CHECK(proc.stopEngaged(901), "the saved stop is on again after a new session");
+    }
+  }
+};
+static SavedStateTest g_savedState;
 
 // The load dialog's stages are timed, so a slow load can say which stage was
 // slow, and the stage before the samples has a name of its own (#133).
