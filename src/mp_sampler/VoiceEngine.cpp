@@ -76,6 +76,11 @@ constexpr int64_t kReleaseEndFadeFrames = 256;
 // setup costs more than the frames save.
 constexpr int kMinSimdRun = 8;
 
+// A release crossfade is run through the vector code this many frames at a
+// time, into scratch of this many channels on the stack.
+constexpr int kXfadeChunk = 256;
+constexpr int kXfadeChannels = 2;
+
 } // namespace
 
 void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
@@ -643,6 +648,77 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   for (int i = 0; i < numFrames; ++i) {
     if (v.phase == VoicePhase::Idle) return;
 
+    // A release crossfade, as two straight runs. For the length the release
+    // names -- tens of milliseconds -- the tail fades in over the attack fading
+    // out, and both are being read well inside their samples. Every voice of a
+    // chord does this at once when the keys are let go, a frame at a time it
+    // was the most expensive thing the engine did: a full organ's note-off
+    // took two blocks' time on one core. Each side goes to the vector code at
+    // full level into a small scratch, and the two are mixed under the ramp.
+    if (runnable && numChannels <= kXfadeChannels && v.phase == VoicePhase::Release &&
+        v.releaseIsSample && v.xfadeBuf != nullptr && v.relXfadeLeft > 0 &&
+        v.relXfadeLength > 0 && v.xfadeRemaining <= 0) {
+      const SampleBuffer& ob = *v.xfadeBuf;
+      const double oldRatio = windRatio * v.xfadeRatioScale;
+      const bool oldLoops = v.xfadeOldLoopEnd > v.xfadeOldLoopStart && v.xfadeOldLoopStart >= 0;
+      // Short of each side's own seam, which the per-frame path reads.
+      const double newLimit =
+          static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
+      double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
+      if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
+      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() && oldRatio > 0.0 &&
+          simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
+          v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
+        int n = std::min({numFrames - i, v.relXfadeLeft, kXfadeChunk});
+        const double newRoom = (newLimit - v.cursor) / windRatio;
+        const double oldRoom = (oldLimit - v.xfadeOldCursor) / oldRatio;
+        if (newRoom < static_cast<double>(n) + 1.0) n = static_cast<int>(newRoom) - 1;
+        if (oldRoom < static_cast<double>(n) + 1.0) n = static_cast<int>(oldRoom) - 1;
+        if (n >= kMinSimdRun) {
+          float tail[kXfadeChannels][kXfadeChunk];
+          float attack[kXfadeChannels][kXfadeChunk];
+          float* tailPlanes[kXfadeChannels];
+          float* attackPlanes[kXfadeChannels];
+          for (int ch = 0; ch < numChannels; ++ch) {
+            std::fill(tail[ch], tail[ch] + n, 0.0f);
+            std::fill(attack[ch], attack[ch] + n, 0.0f);
+            tailPlanes[ch] = tail[ch];
+            attackPlanes[ch] = attack[ch];
+          }
+          // In storage counts, at a level of one, which changes nothing: the
+          // levels go on below exactly as the per-frame path puts them on.
+          v.cursor = simd::renderRun(isa_, frames, bufChannels, v.cursor, windRatio, 1.0f,
+                                     tailPlanes, numChannels, 0, n);
+          v.xfadeOldCursor =
+              simd::renderRun(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor, oldRatio,
+                              1.0f, attackPlanes, numChannels, 0, n);
+          // The same ramp the per-frame path walks, in the same arithmetic and
+          // the same order, so the two give the same samples: the tail's share
+          // on each frame is how far through the crossfade that frame is.
+          const float level = v.gain * wind.ampMul;
+          const float oldScale = storageScale(ob);
+          const float length = static_cast<float>(v.relXfadeLength);
+          const int left = v.relXfadeLeft;
+          for (int ch = 0; ch < numChannels; ++ch) {
+            float* dst = out[ch] + i;
+            const float* a = attack[ch];
+            const float* r = tail[ch];
+            for (int k = 0; k < n; ++k) {
+              const float t = 1.0f - static_cast<float>(left - k) / length;
+              dst[k] += r[k] * ((level * t) * storeScale);
+              dst[k] += a[k] * (level * oldScale * (1.0f - t));
+            }
+          }
+          v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
+          v.relXfadeLeft = left - n;
+          if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
+          simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+          i += n - 1;
+          continue;
+        }
+      }
+    }
+
     // A straight run: nothing but interpolating and mixing until the cursor
     // reaches the loop end, the end of the resident head, or the fade at the
     // end of a release. Those frames go to the vector code at once and the
@@ -873,7 +949,9 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       const float ofrac =
           static_cast<float>(v.xfadeOldCursor - static_cast<double>(opos));
       const SampleBuffer& ob = *v.xfadeBuf;
-      const float oldEnv = xfadeEnv * storeScale * xfadeOld;
+      // At the attack's own storage scale: 16-bit samples are each scaled by
+      // their own peak, and the release's scale was used here for both.
+      const float oldEnv = xfadeEnv * storageScale(ob) * xfadeOld;
       // Past the loop end comes the loop start, as on the attack's own path
       // (atSeam): a key let go just after a wrap clicked otherwise.
       const int64_t oldLoopLen = v.xfadeOldLoopEnd - v.xfadeOldLoopStart;

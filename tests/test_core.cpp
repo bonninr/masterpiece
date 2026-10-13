@@ -1466,6 +1466,19 @@ public:
           const std::vector<float> a = render(plain, fx, mp::simd::Isa::None);
           const std::vector<float> b = render(fast, fx, isa);
 
+          // The same again with the crossfade a release names (28 ms is what
+          // Nancy authors): the tail fading in over the attack fading out is
+          // two straight runs, and gives the same samples as frame by frame.
+          fx.pipe.layers[0].releases[0].releaseCrossfadeMs = 28.0;
+          mp::VoiceEngine plainFade, fastFade;
+          const std::vector<float> af = render(plainFade, fx, mp::simd::Isa::None);
+          const std::vector<float> bf = render(fastFade, fx, isa);
+          double worstFade = 0.0, apart = 0.0;
+          for (size_t i = 0; i < af.size() && i < bf.size(); ++i) {
+            worstFade = std::max(worstFade, static_cast<double>(std::abs(af[i] - bf[i])));
+            apart = std::max(apart, static_cast<double>(std::abs(af[i] - a[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -1481,6 +1494,21 @@ public:
           else
             MP_CHECK(fast.simdFrames() == 0, what + ": a layout this unit does not take stays per frame");
           MP_CHECK(level > 0.05, what + ": the notes sound");
+          MP_CHECK(apart > 0.01, what + ": the crossfade changes the release");
+          // Eight voices, 1344 frames of crossfade each: nearly all of them
+          // now go to the vector code, as the frames without a crossfade do.
+          if (mp::simd::runSupports(isa, channels) && channels <= 2)
+            MP_CHECK(fastFade.simdFrames() + 2000 > fast.simdFrames(),
+                     what + ": a release crossfade goes to the vector code (" +
+                         std::to_string(fastFade.simdFrames()) + " frames against " +
+                         std::to_string(fast.simdFrames()) + " without one)");
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstFade < 1e-6, what + ": the same crossfade within rounding (worst " +
+                                         std::to_string(worstFade) + ")");
+#else
+          MP_CHECK(worstFade == 0.0, what + ": the same crossfade either way (worst difference " +
+                                         std::to_string(worstFade) + ")");
+#endif
 #if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
           // GCC may fuse a multiply-add in the per-frame reader on ARM.
           MP_CHECK(worst < 1e-6, what + ": the same output within rounding (worst " +
