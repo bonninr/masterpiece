@@ -192,9 +192,14 @@ std::string packageDirName(Id packageId) {
 // it is answered from the list.
 //
 // A name the list does not have is still asked of the disk itself, so the
-// answer is the disk's own in every case the list cannot speak for: a file
-// system that ignores case or spells accents its own way, and a link, which
-// is left out of the list because only the disk knows where it leads.
+// answer is the disk's own wherever the list cannot speak for it: a file
+// system that ignores case, or spells accents its own way.
+//
+// A name in the list is taken as there without asking what kind of thing it
+// is. Asking is the request per file this exists to avoid -- on a mount that
+// does not say an entry's kind in its listing, it took back two thirds of the
+// time saved. So a link that leads nowhere counts as present here, and is
+// reported when its sample is read.
 class DiskIndex {
 public:
   explicit DiskIndex(std::string rootDir) : root_(std::move(rootDir)) {}
@@ -209,25 +214,32 @@ public:
       const std::filesystem::path dir = full.parent_path();
       auto known = dirs_.find(dir.native());
       if (known == dirs_.end()) {
-        known = dirs_.emplace(dir.native(), Names{}).first;
+        known = dirs_.emplace(dir.native(), Folder{}).first;
         std::error_code ec;
         for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end;
-             it.increment(ec)) {
-          std::error_code linkEc;
-          if (it->is_symlink(linkEc)) continue;
-          known->second.insert(it->path().filename().native());
-        }
+             it.increment(ec))
+          known->second.names.insert(it->path().filename().native());
+        // A folder that is not there holds none of its files. A demo names
+        // the whole organ and ships a part of it: most of what Nancy's names
+        // is in folders it does not have, and each of those files was asked
+        // for on its own.
+        std::error_code dirEc;
+        known->second.absent = !std::filesystem::is_directory(dir, dirEc);
       }
-      if (known->second.count(name.native()) != 0) return false;
+      if (known->second.absent) return true;
+      if (known->second.names.count(name.native()) != 0) return false;
     }
     std::error_code ec;
     return !std::filesystem::exists(full, ec);
   }
 
 private:
-  using Names = std::unordered_set<std::filesystem::path::string_type>;
+  struct Folder {
+    std::unordered_set<std::filesystem::path::string_type> names;
+    bool absent = false;
+  };
   std::string root_;
-  std::unordered_map<std::filesystem::path::string_type, Names> dirs_;
+  std::unordered_map<std::filesystem::path::string_type, Folder> dirs_;
 };
 
 // Iterate rows of every <ObjectList ObjectType="table"> block (exact-case
