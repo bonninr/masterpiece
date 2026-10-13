@@ -25,6 +25,7 @@ void MidiRecorder::startPlayback() {
   if (events_.empty()) return;
   playPos_ = 0;
   playIndex_ = 0;
+  restarted_ = state_ == State::Playing;
   state_ = State::Playing;
 }
 
@@ -58,8 +59,25 @@ void MidiRecorder::captureLive(const juce::MidiMessage& message) {
   events_.insert(at, Event{blockStart_, message});
 }
 
+void MidiRecorder::releaseHeld(juce::MidiBuffer& midi) {
+  if (held_.none()) return;
+  for (size_t i = 0; i < held_.size(); ++i)
+    if (held_[i])
+      midi.addEvent(juce::MidiMessage::noteOff(static_cast<int>(i / 128) + 1,
+                                               static_cast<int>(i % 128)),
+                    0);
+  held_.reset();
+}
+
 void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
   if (numSamples <= 0) return;
+
+  // Playback that has ended, or begun again from the top, lets go of the keys
+  // it left down. As note-offs in this block, so each pipe gets its release.
+  // While recording they go in after the capture below, and stay out of the
+  // take.
+  if (restarted_ || state_ == State::Idle) releaseHeld(midi);
+  restarted_ = false;
 
   if (state_ == State::Recording) {
     blockStart_ = writePos_;
@@ -71,6 +89,7 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
       events_.push_back({writePos_ + meta.samplePosition, meta.getMessage()});
     }
     writePos_ += numSamples;
+    releaseHeld(midi);
     return;
   }
 
@@ -83,6 +102,11 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
           static_cast<int>(juce::jlimit<int64_t>(0, numSamples - 1,
                                                  e.samplePos - playPos_));
       midi.addEvent(e.message, offset);
+      if (e.message.isNoteOnOrOff()) {
+        const size_t key = static_cast<size_t>(e.message.getChannel() - 1) * 128 +
+                           static_cast<size_t>(e.message.getNoteNumber());
+        held_[key] = e.message.isNoteOn();
+      }
       ++playIndex_;
     }
     playPos_ = blockEnd;

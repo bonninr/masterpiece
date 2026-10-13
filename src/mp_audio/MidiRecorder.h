@@ -10,6 +10,7 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <bitset>
 #include <vector>
 
 namespace mp {
@@ -62,6 +63,15 @@ private:
   int64_t blockStart_ = 0; // where the block being recorded began
   int64_t playPos_ = 0;    // playback head
   size_t playIndex_ = 0;   // next event to emit
+  // The keys playback has put down and not yet let go, by channel and note.
+  // When playback ends with any of them still down -- stopped part-way, or a
+  // file that ends on a held chord -- they are let go in the next block: an
+  // organ pipe has no decay, and the chord would sound until Panic (#325).
+  // Only playback's own keys: what the player is holding stays held.
+  std::bitset<16 * 128> held_;
+  // Playback was started again from the top while it was running.
+  bool restarted_ = false;
+  void releaseHeld(juce::MidiBuffer& midi);
 };
 
 } // namespace mp

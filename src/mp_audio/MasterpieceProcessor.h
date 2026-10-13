@@ -1245,8 +1245,11 @@ public:
   // Runtime DSP toggles (ADR-005). DSP always ships; this is how a slow
   // machine turns it off without a rebuild.
   void setEngineSwitch(const EngineSwitch& sw) {
-    const AudioLock audio(*this);
-    graph_.engineSwitch = sw;
+    {
+      const AudioLock audio(*this);
+      graph_.engineSwitch = sw;
+    }
+    mirrorSimpleWavParameter();
   }
   const EngineSwitch& engineSwitch() const { return graph_.engineSwitch; }
 
@@ -1838,6 +1841,12 @@ private:
   uint64_t nextNoteId_ = 1;
   AudioGraphConfig graph_;
   juce::AudioProcessorValueTreeState apvts_;
+  // The "simpleWavOnly" parameter as the audio thread last saw it. The
+  // parameter is a host's handle on the no-DSP switch: when it moves, the
+  // switch follows; when the switch is set here or read from an organ's file,
+  // the parameter is brought in line (mirrorSimpleWavParameter).
+  bool simpleParamSeen_ = false;
+  void mirrorSimpleWavParameter();
 #if MP_ENABLE_DSP
   // Keyed by enclosure id so a reload cannot mismatch filters and boxes.
   std::unordered_map<Id, dsp::EnclosureFilter> enclosureFilters_;

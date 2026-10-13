@@ -2126,6 +2126,84 @@ public:
     proc.releaseResources();
   }
 };
+
+// Playback that ends with keys down lets them go (#325). A pipe has no decay:
+// stopped part-way, the chord of that instant sounded until Panic.
+class PlaybackStopReleasesTest final : public mp::test::Test {
+public:
+  PlaybackStopReleasesTest()
+      : Test("functional.midi.playback-stop-releases", Category::Functional) {}
+  void run() override {
+    mp::MidiRecorder rec;
+    rec.prepare(48000.0);
+    auto noteOffs = [](const juce::MidiBuffer& b) {
+      std::vector<std::pair<int, int>> offs;
+      for (const auto meta : b)
+        if (meta.getMessage().isNoteOff())
+          offs.emplace_back(meta.getMessage().getChannel(), meta.getMessage().getNoteNumber());
+      return offs;
+    };
+    // A take of three blocks: a key down in the first, another in the second,
+    // both let go in the third.
+    rec.startRecording();
+    juce::MidiBuffer b;
+    b.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(3, 64, 0.8f), 0);
+    rec.process(b, 256);
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
+    b.addEvent(juce::MidiMessage::noteOff(3, 64), 0);
+    rec.process(b, 256);
+    rec.stopRecording();
+
+    // Stopped after the first block: its key is let go, and only that one.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.stopPlayback();
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOn(1, 40, 0.8f), 0);  // the player's own key
+    rec.process(b, 256);
+    const auto stopped = noteOffs(b);
+    MP_CHECK(stopped.size() == 1 && stopped[0] == std::make_pair(2, 60),
+             "stopping playback lets go of the key it was holding, got " +
+                 std::to_string(stopped.size()) + " note-offs");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "and says so once");
+
+    // Played to the end: the take lets go of its own keys, nothing is added.
+    rec.startPlayback();
+    for (int i = 0; i < 3; ++i) {
+      b.clear();
+      rec.process(b, 256);
+    }
+    MP_CHECK(!rec.isPlaying(), "the take ends after its last event");
+    b.clear();
+    rec.process(b, 256);
+    MP_CHECK(noteOffs(b).empty(), "a take that lets go of its keys adds no note-offs");
+
+    // Begun again from the top while a key is down: let go before it restarts.
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    rec.startPlayback();
+    b.clear();
+    rec.process(b, 256);
+    bool offFirst = false;
+    for (const auto meta : b) {
+      const auto m = meta.getMessage();
+      if (m.isNoteOff() && m.getNoteNumber() == 60) offFirst = true;
+      if (m.isNoteOn() && m.getNoteNumber() == 60) {
+        MP_CHECK(offFirst, "a restart lets the key go before it plays it again");
+        break;
+      }
+    }
+    MP_CHECK(offFirst, "a restart lets go of the key that was down");
+  }
+};
 #endif // MP_TEST_HAS_AUDIO
 
 class VoiceEngineRenderTest final : public mp::test::Test {
@@ -3204,6 +3282,43 @@ public:
     MP_CHECK(energyAfterHead < 1e-9,
              "the head on its own goes silent past its end, so the match above "
              "could only have come from the streamed frames");
+
+    // The streamer sleeps while nothing streams, and wakes for a voice that
+    // does. It used to go over every voice a hundred times a second.
+    {
+      voicetest::Fixture fx;
+      fx.attack = streamed;
+      mp::VoiceEngine eng;
+      eng.prepare(48000.0, 1, 1, 256);
+      eng.setSampleProvider(fx.provider());
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == 0,
+               "with nothing streaming the streamer makes no pass, made " +
+                   std::to_string(eng.streamerPasses()));
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.ratio = 1.0;
+      st.gain = 1.0f;
+      st.oneShot = true;
+      const int before = disk->reads.load();
+      eng.startVoice(st, 1);
+      std::this_thread::sleep_for(std::chrono::milliseconds(120));
+      MP_CHECK(eng.streamerPasses() > 0 && disk->reads.load() > before,
+               "a streaming voice wakes it");
+      // The one slot taken over by another streaming voice is one stream.
+      eng.startVoice(st, 2);
+      MP_CHECK(eng.streamingVoices() == 1,
+               "a slot taken over while streaming counts once, counted " +
+                   std::to_string(eng.streamingVoices()));
+      eng.reset();
+      MP_CHECK(eng.streamingVoices() == 0, "and none once the voices are gone");
+      std::this_thread::sleep_for(std::chrono::milliseconds(40));
+      const int64_t rested = eng.streamerPasses();
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == rested,
+               "it sleeps again when the last streaming voice ends");
+    }
   }
 };
 
@@ -9610,6 +9725,7 @@ public:
 };
 static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
+static PlaybackStopReleasesTest g_playbackStopReleases;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
@@ -11371,6 +11487,69 @@ public:
   }
 };
 static DefaultConsoleTest g_defaultConsole;
+
+// The no-DSP tick in Organ settings did nothing: the audio block copied a
+// host parameter over the organ's switch on every block, so the tick was
+// undone within one block and the next save wrote it as off. The switch is
+// the organ's own -- it holds while playing, is saved with the organ and
+// comes back with it -- and a host moving the parameter still moves it.
+class NoDspSwitchHoldsTest final : public mp::test::Test {
+public:
+  NoDspSwitchHoldsTest()
+    : Test("functional.settings.no-dsp-switch-holds", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-no-dsp-switch");
+    dir.createDirectory();
+    const juce::File odf = DefaultConsoleTest::organ(dir, "NoDspSwitch", 918273661);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer none;
+    const auto block = [&] {
+      buf.clear();
+      proc.processBlock(buf, none);
+    };
+    const auto set = [&](bool on) {
+      auto sw = proc.engineSwitch();
+      sw.simpleWavOnly = on;
+      proc.setEngineSwitch(sw);
+    };
+
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    set(true);
+    block();
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "the tick holds through the audio block");
+
+    MP_CHECK(proc.saveSettings(), "saved for this organ");
+    set(false);
+    block();
+    MP_CHECK(!proc.engineSwitch().simpleWavOnly, "and it can be turned off again");
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads again");
+    block();
+    MP_CHECK(proc.engineSwitch().simpleWavOnly, "what was saved comes back with the organ");
+
+    // A host's handle on the same switch: it follows the organ, and moving it
+    // moves the organ's switch.
+    auto* param = proc.apvts().getParameter("simpleWavOnly");
+    MP_CHECK(param != nullptr && param->getValue() > 0.5f,
+             "the host parameter shows what the organ's file set");
+    if (param != nullptr) {
+      param->setValueNotifyingHost(0.0f);
+      block();
+      MP_CHECK(!proc.engineSwitch().simpleWavOnly, "a host turning the parameter off turns DSP on");
+      param->setValueNotifyingHost(1.0f);
+      block();
+      MP_CHECK(proc.engineSwitch().simpleWavOnly, "and turning it on turns DSP off");
+    }
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static NoDspSwitchHoldsTest g_noDspSwitchHolds;
 
 // Issue #44: a pedal left on its default channel 1 after the player mapped a
 // manual to channel 1 lit its drawn keys whenever the manual was played --

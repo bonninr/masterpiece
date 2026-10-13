@@ -511,6 +511,11 @@ public:
   int64_t streamingVoices() const {
     return streaming_.load(std::memory_order_relaxed);
   }
+  // How many times the streamer has gone over the voices looking for a ring
+  // to fill. It stands still while nothing streams.
+  int64_t streamerPasses() const {
+    return streamPasses_.load(std::memory_order_relaxed);
+  }
 
   // How much air every windchest is being asked for right now, in kilograms
   // per second. Writes `count` entries; the caller owns the array.
@@ -636,6 +641,7 @@ private:
   std::atomic<int64_t> releaseDropped_{0};
   std::atomic<bool> logReleases_{false};
   std::atomic<int64_t> streaming_{0};
+  std::atomic<int64_t> streamPasses_{0};
 
   void startStreamer();
   void stopStreamer();

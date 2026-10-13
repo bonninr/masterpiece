@@ -1055,6 +1055,13 @@ juce::File MasterpieceProcessor::settingsFileFor(const juce::File& odf) const {
   return organFile(odf, "organs", ".mporgan");
 }
 
+void MasterpieceProcessor::mirrorSimpleWavParameter() {
+  auto* p = apvts_.getParameter("simpleWavOnly");
+  if (p == nullptr) return;
+  const float value = graph_.engineSwitch.simpleWavOnly ? 1.0f : 0.0f;
+  if (p->getValue() != value) p->setValueNotifyingHost(value);
+}
+
 juce::String MasterpieceProcessor::settingsBody() const {
   const auto& sw = graph_.engineSwitch;
   juce::String text;
@@ -3936,10 +3943,16 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     return;
   }
 
-  // The runtime DSP switch is a plain parameter so a slow machine can drop to
-  // the simple-WAV path without a rebuild (ADR-005).
-  graph_.engineSwitch.simpleWavOnly =
-      *apvts_.getRawParameterValue("simpleWavOnly") > 0.5f;
+  // The runtime DSP switch is also a plain parameter, so a host can drop to
+  // the simple-WAV path without a rebuild (ADR-005). The organ's own switch
+  // is the one that is saved and loaded, so the parameter moves it only when
+  // the parameter itself has moved. Copying it in on every block undid the
+  // Organ settings tick within one block, and the next save wrote it as off.
+  const bool simpleParam = *apvts_.getRawParameterValue("simpleWavOnly") > 0.5f;
+  if (simpleParam != simpleParamSeen_) {
+    simpleParamSeen_ = simpleParam;
+    graph_.engineSwitch.simpleWavOnly = simpleParam;
+  }
 
   // Merge the on-screen keyboard into the same buffer a device would fill, so
   // mouse and MIDI take one identical path.
@@ -4241,6 +4254,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   } else {
     sessionLoading_.reset();
   }
+  // The switch is as this organ's files left it; a host sees the same.
+  mirrorSimpleWavParameter();
 
   OdfLoader loader;
   OdfLoader::Options opts;
