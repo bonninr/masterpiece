@@ -3077,6 +3077,43 @@ public:
     MP_CHECK(energyAfterHead < 1e-9,
              "the head on its own goes silent past its end, so the match above "
              "could only have come from the streamed frames");
+
+    // The streamer sleeps while nothing streams, and wakes for a voice that
+    // does. It used to go over every voice a hundred times a second.
+    {
+      voicetest::Fixture fx;
+      fx.attack = streamed;
+      mp::VoiceEngine eng;
+      eng.prepare(48000.0, 1, 1, 256);
+      eng.setSampleProvider(fx.provider());
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == 0,
+               "with nothing streaming the streamer makes no pass, made " +
+                   std::to_string(eng.streamerPasses()));
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.ratio = 1.0;
+      st.gain = 1.0f;
+      st.oneShot = true;
+      const int before = disk->reads.load();
+      eng.startVoice(st, 1);
+      std::this_thread::sleep_for(std::chrono::milliseconds(120));
+      MP_CHECK(eng.streamerPasses() > 0 && disk->reads.load() > before,
+               "a streaming voice wakes it");
+      // The one slot taken over by another streaming voice is one stream.
+      eng.startVoice(st, 2);
+      MP_CHECK(eng.streamingVoices() == 1,
+               "a slot taken over while streaming counts once, counted " +
+                   std::to_string(eng.streamingVoices()));
+      eng.reset();
+      MP_CHECK(eng.streamingVoices() == 0, "and none once the voices are gone");
+      std::this_thread::sleep_for(std::chrono::milliseconds(40));
+      const int64_t rested = eng.streamerPasses();
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      MP_CHECK(eng.streamerPasses() == rested,
+               "it sleeps again when the last streaming voice ends");
+    }
   }
 };
 
