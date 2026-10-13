@@ -3488,6 +3488,42 @@ public:
       }
     }
 
+    // A block shorter than the largest the pool was prepared for, which is
+    // what a host sends whenever it likes. Each worker's second channel was
+    // left holding the block before and summed in again, block after block.
+    {
+      voicetest::Fixture f1, f2;
+      mp::VoiceEngine inlineEng, threaded;
+      inlineEng.prepare(48000.0, kVoices, 2, kFrames);
+      threaded.prepare(48000.0, kVoices, 2, kFrames);
+      inlineEng.setSampleProvider(f1.provider());
+      threaded.setSampleProvider(f2.provider());
+      threaded.setRenderThreads(4, 8);
+      fill(inlineEng, f1, kVoices);
+      fill(threaded, f2, kVoices);
+      const int shortFrames = kFrames / 4;
+      std::vector<float> a1(kFrames, 0.0f), b1(kFrames, 0.0f), a2(kFrames, 0.0f), b2(kFrames, 0.0f);
+      float* o1[2] = {a1.data(), b1.data()};
+      float* o2[2] = {a2.data(), b2.data()};
+      float worstLeft = 0.0f, worstRight = 0.0f;
+      for (int block = 0; block < 6; ++block) {
+        std::fill(a1.begin(), a1.end(), 0.0f);
+        std::fill(b1.begin(), b1.end(), 0.0f);
+        std::fill(a2.begin(), a2.end(), 0.0f);
+        std::fill(b2.begin(), b2.end(), 0.0f);
+        inlineEng.render(o1, 2, shortFrames);
+        threaded.render(o2, 2, shortFrames);
+        for (int i = 0; i < shortFrames; ++i) {
+          worstLeft = std::max(worstLeft, std::fabs(a1[i] - a2[i]));
+          worstRight = std::max(worstRight, std::fabs(b1[i] - b2[i]));
+        }
+      }
+      MP_CHECK(worstLeft < 1e-4f, "short blocks: threaded matches inline (left)");
+      MP_CHECK(worstRight < 1e-4f,
+               "short blocks: threaded matches inline (right, worst " +
+                   std::to_string(worstRight) + ")");
+    }
+
     // A block larger than the pool was prepared for must fall back to inline
     // rendering rather than overrun the worker scratch buffers.
     std::vector<float> big(kFrames * 4, 0.0f), big2(kFrames * 4, 0.0f);

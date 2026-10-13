@@ -552,11 +552,11 @@ private:
   void renderVoiceFrom(Voice& v, size_t voiceIndex, float* const* out,
                        int numChannels, int numFrames);
 
-  // Render voices [begin, end) of the pool into `out`. This is the unit of
-  // work a thread takes; ranges never overlap, so no voice is touched twice
-  // and no locking is needed on the voices themselves.
-  void renderRange(size_t begin, size_t end, float* const* out, int numChannels,
-                   int numFrames, int busIndex, int mixBus);
+  // Render the voices at these pool indices into `out`. This is the unit of
+  // work a thread takes; the shares never overlap, so no voice is touched
+  // twice and no locking is needed on the voices themselves.
+  void renderList(const uint32_t* list, size_t count, float* const* out, int numChannels,
+                  int numFrames);
   void stopWorkers();
 
   std::vector<Voice> voices_;
@@ -630,37 +630,44 @@ private:
   EngineStats stats_;
 
   // --- worker pool ---
-  // Each worker owns one contiguous voice range and one scratch buffer; the
-  // audio thread sums the scratches after the barrier. Summing on the audio
-  // thread, rather than having workers accumulate into a shared buffer, is
-  // what keeps this free of atomics on the hot path and makes the result
-  // deterministic: a fixed partition summed in a fixed order gives the same
-  // samples every run. It is NOT bit-identical to inline rendering, because
-  // parallel partial sums group float additions differently.
+  // The voices one render() call plays, by pool index, found in one pass and
+  // shared out in equal parts. Each worker takes one part and one scratch
+  // buffer; the audio thread sums the scratches after the barrier. Summing on
+  // the audio thread, rather than having workers accumulate into a shared
+  // buffer, makes the result deterministic: fixed shares summed in a fixed
+  // order give the same samples every run. It is NOT bit-identical to inline
+  // rendering, because parallel partial sums group float additions
+  // differently.
+  std::vector<uint32_t> jobList_;
   struct Worker {
     std::thread thread;
     std::vector<float> scratch; // numChannels * maxFrames, planar
     std::vector<float*> planes;
-    size_t begin = 0, end = 0;
+    size_t begin = 0, end = 0;  // its share of jobList_
+    // Moved on by the audio thread to hand this worker a share, and only
+    // this worker: a render that needs two threads wakes one.
+    std::atomic<uint32_t> ticket{0};
+    std::condition_variable wake;
   };
-  std::vector<Worker> workers_;
+  std::vector<std::unique_ptr<Worker>> workers_;
   int minVoicesPerThread_ = 32;
   int maxFrames_ = 0;
 
-  // Job handshake. Workers spin on a generation counter rather than a queue:
-  // one integer compare is cheaper than any queue, and the work is always the
-  // same shape.
+  // Job handshake. A worker looks at its ticket for a few microseconds before
+  // it sleeps on its condition variable, and the audio thread looks at the
+  // count of shares outstanding the same way: the renders of one block follow
+  // each other more closely than a thread can be put to sleep and woken.
   std::mutex jobMutex_;
-  std::condition_variable jobCv_;
   std::condition_variable doneCv_;
-  uint64_t jobGeneration_ = 0;
-  int jobsOutstanding_ = 0;
-  bool shuttingDown_ = false;
-  float* const* jobOut_ = nullptr;
+  std::atomic<int> jobsOutstanding_{0};
+  std::atomic<bool> shuttingDown_{false};
   int jobChannels_ = 0;
   int jobFrames_ = 0;
-  int jobBus_ = -1;
-  int jobMixBus_ = -1;
+  // Whether the threads look before they sleep, and for how many more
+  // renders they do not: see kSpinHoldoffRenders.
+  std::atomic<bool> spinning_{true};
+  int spinHoldoff_ = 0;
+  int spinMisses_ = 0;
 };
 
 } // namespace mp

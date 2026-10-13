@@ -4,6 +4,10 @@
 #include <chrono>
 #include <cmath>
 
+#if defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>  // _mm_pause
+#endif
+
 namespace mp {
 namespace {
 
@@ -94,6 +98,8 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   numChannels_ = numChannels > 0 ? numChannels : 2;
   maxFrames_ = maxBlockFrames > 0 ? maxBlockFrames : 2048;
   voices_.assign(static_cast<size_t>(std::max(1, maxVoices)), Voice{});
+  jobList_.clear();
+  jobList_.reserve(voices_.size());
   blockCounter_ = 0;
   stats_ = EngineStats{};
 
@@ -1042,30 +1048,61 @@ void VoiceEngine::gatherWindDemand(float* out, int count) const {
   }
 }
 
-void VoiceEngine::renderRange(size_t begin, size_t end, float* const* out,
-                              int numChannels, int numFrames, int busIndex,
-                              int mixBus) {
-  for (size_t i = begin; i < end && i < voices_.size(); ++i) {
-    Voice& v = voices_[i];
-    if (!v.active() || v.buffer == nullptr) continue;
-    if (busIndex >= 0 && v.busIndex != busIndex) continue;
-    if (mixBus >= 0 && v.mixBus != mixBus) continue;
-    renderVoice(v, out, numChannels, numFrames);
+namespace {
+// What a thread does while it waits a few microseconds for another: tell the
+// processor so, where there is a way to.
+inline void spinPause() {
+#if defined(_M_X64) || defined(__x86_64__)
+  _mm_pause();
+#elif (defined(__aarch64__) || defined(__arm__)) && (defined(__GNUC__) || defined(__clang__))
+  __asm__ __volatile__("yield");
+#endif
+}
+
+// Spin until `done` says so or `microseconds` have gone by; whether it did.
+template <typename Done>
+inline bool spinFor(int microseconds, Done done) {
+  const auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(microseconds);
+  for (;;) {
+    for (int i = 0; i < 32; ++i) {
+      if (done()) return true;
+      spinPause();
+    }
+    if (std::chrono::steady_clock::now() >= until) return done();
   }
+}
+
+// A worker that has just finished a share looks for the next one this long
+// before it sleeps: a block with enclosures is several renders a few
+// microseconds apart, and going to sleep between them cost more than the
+// renders. The audio thread looks this long for its workers to finish.
+constexpr int kWorkerSpinMicros = 40;
+constexpr int kBarrierSpinMicros = 150;
+// Looking instead of sleeping pays only while there is a core for every
+// thread. When the workers were not done within the look -- fewer cores than
+// threads, or a machine busy with something else -- nobody looks for this many
+// renders, and the threads sleep and are woken as they always were.
+constexpr int kSpinHoldoffRenders = 256;
+constexpr int kSpinMissesBeforeHoldoff = 4;
+} // namespace
+
+void VoiceEngine::renderList(const uint32_t* list, size_t count, float* const* out,
+                             int numChannels, int numFrames) {
+  for (size_t i = 0; i < count; ++i)
+    renderVoice(voices_[list[i]], out, numChannels, numFrames);
 }
 
 void VoiceEngine::stopWorkers() {
   if (workers_.empty()) return;
   {
     std::lock_guard<std::mutex> lock(jobMutex_);
-    shuttingDown_ = true;
-    ++jobGeneration_;
+    shuttingDown_.store(true, std::memory_order_release);
   }
-  jobCv_.notify_all();
+  for (auto& w : workers_) w->wake.notify_all();
   for (auto& w : workers_)
-    if (w.thread.joinable()) w.thread.join();
+    if (w->thread.joinable()) w->thread.join();
   workers_.clear();
-  shuttingDown_ = false;
+  shuttingDown_.store(false, std::memory_order_release);
 }
 
 void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
@@ -1076,53 +1113,60 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   const int extra = numThreads > 1 ? numThreads - 1 : 0;
   if (extra <= 0 || maxFrames_ <= 0) return;
 
-  // The generation the new workers start from. jobGeneration_ outlives the
-  // pool: a worker starting from 0 took the last job of the previous pool for
-  // a new one and rendered it at once, at the old block size, into scratch
-  // sized for the new one -- past its end whenever the buffer got smaller
-  // (#267, found with AddressSanitizer).
-  uint64_t startGeneration = 0;
-  {
-    std::lock_guard<std::mutex> lock(jobMutex_);
-    startGeneration = jobGeneration_;
-    jobsOutstanding_ = 0;
-  }
+  // Every worker starts with a ticket of its own at zero, so a pool made new
+  // cannot take the last job of the one before it: a worker that did rendered
+  // it at once, at the old block size, into scratch sized for the new one --
+  // past its end whenever the buffer got smaller (#267, found with
+  // AddressSanitizer).
+  jobsOutstanding_.store(0, std::memory_order_release);
   const int scratchFrames = maxFrames_;
-  workers_.resize(static_cast<size_t>(extra));
-  for (size_t w = 0; w < workers_.size(); ++w) {
-    auto& worker = workers_[w];
-    worker.scratch.assign(
+  workers_.reserve(static_cast<size_t>(extra));
+  for (int n = 0; n < extra; ++n) {
+    auto worker = std::make_unique<Worker>();
+    worker->scratch.assign(
         static_cast<size_t>(numChannels_) * static_cast<size_t>(maxFrames_), 0.0f);
-    worker.planes.resize(static_cast<size_t>(numChannels_));
+    worker->planes.resize(static_cast<size_t>(numChannels_));
     for (int c = 0; c < numChannels_; ++c)
-      worker.planes[static_cast<size_t>(c)] =
-          worker.scratch.data() + static_cast<size_t>(c) * static_cast<size_t>(maxFrames_);
+      worker->planes[static_cast<size_t>(c)] =
+          worker->scratch.data() + static_cast<size_t>(c) * static_cast<size_t>(maxFrames_);
+    workers_.push_back(std::move(worker));
+  }
 
-    worker.thread = std::thread([this, w, startGeneration, scratchFrames]() {
-      uint64_t seen = startGeneration;
+  for (auto& owned : workers_) {
+    Worker* const wk = owned.get();
+    wk->thread = std::thread([this, wk, scratchFrames]() {
+      uint32_t seen = 0;
+      const auto called = [&] {
+        return wk->ticket.load(std::memory_order_acquire) != seen ||
+               shuttingDown_.load(std::memory_order_acquire);
+      };
       for (;;) {
-        std::unique_lock<std::mutex> lock(jobMutex_);
-        jobCv_.wait(lock, [&] { return jobGeneration_ != seen || shuttingDown_; });
-        if (shuttingDown_) return;
-        seen = jobGeneration_;
-        const auto begin = workers_[w].begin;
-        const auto end = workers_[w].end;
+        if (!spinning_.load(std::memory_order_relaxed) ||
+            !spinFor(kWorkerSpinMicros, called)) {
+          std::unique_lock<std::mutex> lock(jobMutex_);
+          wk->wake.wait(lock, called);
+        }
+        if (shuttingDown_.load(std::memory_order_acquire)) return;
+        seen = wk->ticket.load(std::memory_order_acquire);
         // Never more than the scratch holds, whatever the job says.
         const int channels = std::min(jobChannels_, numChannels_);
         const int frames = std::min(jobFrames_, scratchFrames);
-        const int bus = jobBus_;
-        const int mixBus = jobMixBus_;
-        auto* planes = workers_[w].planes.data();
-        lock.unlock();
 
-        std::fill(workers_[w].scratch.begin(),
-                  workers_[w].scratch.begin() +
-                      static_cast<ptrdiff_t>(channels) * frames, 0.0f);
-        renderRange(begin, end, planes, channels, frames, bus, mixBus);
+        // Each channel's own plane, for the frames of this block. The planes
+        // stand maxFrames_ apart; clearing channels * frames from the start
+        // of the scratch left the second channel of any block shorter than
+        // the largest holding the block before it, and summed it in again.
+        for (int c = 0; c < channels; ++c)
+          std::fill(wk->planes[static_cast<size_t>(c)],
+                    wk->planes[static_cast<size_t>(c)] + frames, 0.0f);
+        renderList(jobList_.data() + wk->begin, wk->end - wk->begin, wk->planes.data(), channels,
+                   frames);
 
-        {
+        if (jobsOutstanding_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          // Under the lock, so the audio thread cannot miss it between its
+          // test and its sleep.
           std::lock_guard<std::mutex> done(jobMutex_);
-          if (--jobsOutstanding_ == 0) doneCv_.notify_one();
+          doneCv_.notify_one();
         }
       }
     });
@@ -1139,69 +1183,91 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
   }
   if (out == nullptr || numFrames <= 0 || numChannels <= 0) return;
 
-  const int active = activeVoiceCount();
-  const int threads = renderThreads();
-  const bool worthSplitting =
-      !workers_.empty() && numFrames <= maxFrames_ &&
-      numChannels <= numChannels_ &&
-      active >= minVoicesPerThread_ * threads;
+  // The voices this call renders, found in one pass over the pool. The split
+  // below is of these: sharing out the pool by slot gave the first threads
+  // every voice of an organ that fills a third of it and the rest nothing,
+  // and counting the whole organ's voices woke every thread for an enclosure
+  // with five pipes in it.
+  int active = 0;
+  jobList_.clear();
+  for (size_t i = 0; i < voices_.size(); ++i) {
+    const Voice& v = voices_[i];
+    if (!v.active()) continue;
+    ++active;
+    if (v.buffer == nullptr) continue;
+    if (busIndex >= 0 && v.busIndex != busIndex) continue;
+    if (mixBus >= 0 && v.mixBus != mixBus) continue;
+    jobList_.push_back(static_cast<uint32_t>(i));
+  }
+  stats_.activeVoices = active;
 
-  if (!worthSplitting) {
-    // Inline: below the threshold, thread handoff costs more than it saves.
-    renderRange(0, voices_.size(), out, numChannels, numFrames, busIndex,
-                mixBus);
-    stats_.activeVoices = active;
+  // As many threads as have minVoicesPerThread voices each to render: below
+  // that a thread's handoff costs more than its share saves.
+  const size_t count = jobList_.size();
+  size_t shares = 1;
+  if (!workers_.empty() && numFrames <= maxFrames_ && numChannels <= numChannels_)
+    shares = std::min(workers_.size() + 1,
+                      count / static_cast<size_t>(std::max(1, minVoicesPerThread_)));
+  if (shares <= 1) {
+    renderList(jobList_.data(), count, out, numChannels, numFrames);
     return;
   }
 
-  // Split the POOL, not the active voices: ranges must be fixed before the
-  // workers start, and scanning for active ones first would cost a pass.
-  const size_t total = voices_.size();
-  const size_t share = (total + static_cast<size_t>(threads) - 1) /
-                       static_cast<size_t>(threads);
+  // Equal shares of the list, in order: the same voices and the same thread
+  // count give the same shares on every run.
+  const size_t helpers = shares - 1;
   {
     std::lock_guard<std::mutex> lock(jobMutex_);
-    for (size_t w = 0; w < workers_.size(); ++w) {
-      workers_[w].begin = std::min(total, (w + 1) * share);
-      workers_[w].end = std::min(total, (w + 2) * share);
-    }
-    jobOut_ = out;
     jobChannels_ = numChannels;
     jobFrames_ = numFrames;
-    jobBus_ = busIndex;
-    jobMixBus_ = mixBus;
-    jobsOutstanding_ = static_cast<int>(workers_.size());
-    ++jobGeneration_;
+    for (size_t w = 0; w < helpers; ++w) {
+      workers_[w]->begin = count * (w + 1) / shares;
+      workers_[w]->end = count * (w + 2) / shares;
+    }
+    jobsOutstanding_.store(static_cast<int>(helpers), std::memory_order_release);
+    for (size_t w = 0; w < helpers; ++w)
+      workers_[w]->ticket.fetch_add(1, std::memory_order_release);
   }
-  jobCv_.notify_all();
+  for (size_t w = 0; w < helpers; ++w) workers_[w]->wake.notify_one();
 
   // The audio thread takes the first share rather than blocking idle.
-  renderRange(0, std::min(total, share), out, numChannels, numFrames, busIndex,
-              mixBus);
+  renderList(jobList_.data(), count / shares, out, numChannels, numFrames);
 
-  {
+  const auto finished = [&] { return jobsOutstanding_.load(std::memory_order_acquire) == 0; };
+  if (spinHoldoff_ > 0) {
+    if (--spinHoldoff_ == 0) spinning_.store(true, std::memory_order_relaxed);
     std::unique_lock<std::mutex> lock(jobMutex_);
-    doneCv_.wait(lock, [&] { return jobsOutstanding_ == 0; });
+    doneCv_.wait(lock, finished);
+  } else if (spinFor(kBarrierSpinMicros, finished)) {
+    spinMisses_ = 0;
+  } else {
+    // One late worker is a worker the system took away for a moment; several
+    // in a row are threads without cores.
+    if (++spinMisses_ >= kSpinMissesBeforeHoldoff) {
+      spinMisses_ = 0;
+      spinHoldoff_ = kSpinHoldoffRenders;
+      spinning_.store(false, std::memory_order_relaxed);
+    }
+    std::unique_lock<std::mutex> lock(jobMutex_);
+    doneCv_.wait(lock, finished);
   }
 
-  // Sum the workers' scratches in a fixed order. This does NOT reproduce the
-  // inline path bit for bit — float addition is not associative, and parallel
-  // partial sums group the terms differently, so the two differ in the last
-  // ulp or so. What the fixed order does guarantee is that the threaded path
-  // is deterministic: the same voices and the same partition give the same
-  // samples on every run, whatever order the workers happen to finish in.
-  // That is the property worth having, because it makes renders reproducible
-  // and bugs repeatable; exact equality with inline rendering is not
-  // achievable without giving up the parallelism.
-  for (auto& w : workers_) {
+  // Sum the scratches of the workers that rendered, in a fixed order. This
+  // does NOT reproduce the inline path bit for bit — float addition is not
+  // associative, and parallel partial sums group the terms differently, so
+  // the two differ in the last ulp or so. What the fixed order does guarantee
+  // is that the threaded path is deterministic: the same voices and the same
+  // shares give the same samples on every run, whatever order the workers
+  // happen to finish in. That is the property worth having, because it makes
+  // renders reproducible and bugs repeatable; exact equality with inline
+  // rendering is not achievable without giving up the parallelism.
+  for (size_t w = 0; w < helpers; ++w) {
     for (int c = 0; c < numChannels; ++c) {
-      const float* src = w.planes[static_cast<size_t>(c)];
+      const float* src = workers_[w]->planes[static_cast<size_t>(c)];
       float* dst = out[c];
       for (int i = 0; i < numFrames; ++i) dst[i] += src[i];
     }
   }
-
-  stats_.activeVoices = active;
 }
 
 } // namespace mp
