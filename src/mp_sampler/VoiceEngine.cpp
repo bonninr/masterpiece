@@ -151,7 +151,10 @@ void VoiceEngine::armStream(size_t voiceIndex, const SampleBuffer& buf,
   // Bump the generation FIRST: a fill still in flight for the previous voice
   // must not publish its frames into this one's ring.
   st.generation.fetch_add(1, std::memory_order_acq_rel);
-  st.armed.store(false, std::memory_order_release);
+  // A slot taken over while its last voice was still streaming was counted
+  // twice, and the count is what lets the streamer sleep.
+  if (st.armed.exchange(false, std::memory_order_acq_rel))
+    streaming_.fetch_sub(1, std::memory_order_relaxed);
   st.filled.store(0, std::memory_order_release);
   st.starved.store(false, std::memory_order_relaxed);
   st.base = fromFrame;
@@ -206,13 +209,27 @@ void VoiceEngine::streamerLoop() {
   for (;;) {
     {
       std::unique_lock<std::mutex> lock(streamMutex_);
-      // Woken by a new streaming voice, and otherwise often enough to keep
-      // every ring topped up. A voice consumes one frame per output frame, so
-      // even a full ring lasts seconds; ten milliseconds is generous.
-      streamCv_.wait_for(lock, std::chrono::milliseconds(10),
-                         [this] { return streamQuit_; });
+      // With nothing streaming there is nothing to top up: sleep until a
+      // voice is armed. An organ loaded whole never streams, and this thread
+      // used to go over every voice a hundred times a second regardless.
+      // The audio thread signals without taking the lock, so a signal can
+      // fall between the test and the sleep; the timeout bounds what that
+      // costs, and the resident head of a sample is far longer.
+      if (streaming_.load(std::memory_order_acquire) == 0)
+        streamCv_.wait_for(lock, std::chrono::milliseconds(50), [this] {
+          return streamQuit_ || streaming_.load(std::memory_order_acquire) > 0;
+        });
+      // While something streams, often enough to keep every ring topped up.
+      // A voice consumes one frame per output frame, so even a full ring
+      // lasts seconds; ten milliseconds is generous. The first pass after a
+      // sleep goes at once.
+      else
+        streamCv_.wait_for(lock, std::chrono::milliseconds(10),
+                           [this] { return streamQuit_; });
       if (streamQuit_) return;
     }
+    if (streaming_.load(std::memory_order_acquire) == 0) continue;
+    streamPasses_.fetch_add(1, std::memory_order_relaxed);
 
     for (size_t i = 0; i < streams_.size(); ++i) {
       VoiceStream& st = *streams_[i];
