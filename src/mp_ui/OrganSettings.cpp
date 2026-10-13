@@ -39,7 +39,7 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
   drawn_.onClick = [this] {
     std::set<Id> out;
     for (const auto& r : rows_)
-      if (r.effect ? !r.toggle->getToggleState() : !proc_.stopEngaged(r.stopId))
+      if (r.effect ? !r.toggle->getToggleState() : !proc_.shownStopEngaged(r.stopId))
         out.insert(r.stopId);
     choose(std::move(out));
   };

@@ -465,8 +465,8 @@ public:
   bool engaged() const {
     auto& p = owner_.proc_;
     switch (e_.kind) {
-      case PanelElement::Kind::Stop: return p.stopEngaged(e_.id);
-      case PanelElement::Kind::Switch: return p.switchEngaged(e_.id);
+      case PanelElement::Kind::Stop: return p.shownStopEngaged(e_.id);
+      case PanelElement::Kind::Switch: return p.shownSwitchEngaged(e_.id);
       case PanelElement::Kind::Piston: return pressed_;
       case PanelElement::Kind::Control: return false;
     }
@@ -553,8 +553,8 @@ public:
       return;
     }
     switch (e_.kind) {
-      case PanelElement::Kind::Stop: p.setStopEngaged(e_.id, !p.stopEngaged(e_.id)); break;
-      case PanelElement::Kind::Switch: p.setSwitchEngaged(e_.id, !p.switchEngaged(e_.id)); break;
+      case PanelElement::Kind::Stop: p.setStopEngaged(e_.id, !p.shownStopEngaged(e_.id)); break;
+      case PanelElement::Kind::Switch: p.setSwitchEngaged(e_.id, !p.shownSwitchEngaged(e_.id)); break;
       case PanelElement::Kind::Piston:
         // Fired on press, as on a console; let go with the finger.
         pressed_ = true;

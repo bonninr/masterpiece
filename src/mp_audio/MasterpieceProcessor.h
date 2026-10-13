@@ -70,7 +70,11 @@ public:
   // holds it may call another that takes it, and the audio thread may call
   // these from inside its own block. The window waits at most one block.
   struct AudioLock {
-    explicit AudioLock(juce::AudioProcessor& p) : lock(p.getCallbackLock()) {}
+    explicit AudioLock(MasterpieceProcessor& p) : owner(p), lock(p.getCallbackLock()) {}
+    // What was changed under the lock is handed to the window as the lock is
+    // let go: see publishShown().
+    ~AudioLock() { owner.publishShown(); }
+    MasterpieceProcessor& owner;
     const juce::ScopedLock lock;
   };
 
@@ -215,6 +219,19 @@ public:
   struct StopEntry { Id stopId = 0; Id divisionId = 0; std::string name; bool playable = false; };
   std::vector<StopEntry> stopList() const;
   bool stopEngaged(Id stopId) const { return engagedStops_.count(stopId) != 0; }
+  // The same two answers for the window, which asks from its own thread while
+  // the audio thread plays: stopEngaged() and switchEngaged() read the sets
+  // the audio thread rewrites when a stop or a piston arrives over MIDI, and
+  // a set read while it is rewritten is a crash waiting for its moment. These
+  // read a copy made for the window each time the sets change.
+  bool shownStopEngaged(Id stopId) const {
+    const std::lock_guard<std::mutex> lock(shownMutex_);
+    return shownStops_.count(stopId) != 0;
+  }
+  bool shownSwitchEngaged(Id switchId) const {
+    const std::lock_guard<std::mutex> lock(shownMutex_);
+    return shownSwitches_.count(switchId) != 0;
+  }
 
   // Draw every stop the organ has. Blunt, but it is what a "does this make
   // sound at all" check wants, and it is how the renderer gets a full organ.
@@ -1446,6 +1463,16 @@ private:
     return n < 0 ? 0 : (n > 127 ? 127 : n);
   }
   std::unordered_set<Id> engagedStops_;
+  // The window's copy of engagedStops_ and engagedSwitches_, and whether
+  // either has changed since it was made. The copy is made by whoever changed
+  // them -- at the end of the audio block, or as the audio lock is let go --
+  // and only if the window is not reading at that instant: the audio thread
+  // does not wait for it, and tries again at the next block.
+  mutable std::mutex shownMutex_;
+  std::unordered_set<Id> shownStops_;
+  std::unordered_set<Id> shownSwitches_;
+  bool shownStale_ = true;
+  void publishShown();
   std::atomic<bool> logMidi_{false};
   int64_t loggedUnderruns_ = 0;
   // Each controller's last value plus one; 0 until it sends anything.
