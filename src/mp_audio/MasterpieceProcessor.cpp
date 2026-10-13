@@ -1558,7 +1558,9 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
-  if (fasterEngine_.load()) text << "fasterengine 1\n";
+  // Written either way: on is the default since 0.7.11, and a player who
+  // turned it off has to find it off.
+  text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";

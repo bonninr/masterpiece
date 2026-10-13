@@ -259,13 +259,13 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       TRANS("Off by default. Even when on, an organ that was loaded when Masterpiece "
             "last closed unexpectedly is not reopened."));
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
-  // The vector engine, off until it has proved itself in players' hands. It
-  // changes at once, so the same chord can be heard both ways.
+  // The vector engine, on unless the player turns it off. It changes at
+  // once, so the same chord can be heard both ways.
   addAndMakeVisible(faster_);
   faster_.setToggleState(proc_.fasterEngine(), juce::dontSendNotification);
   faster_.setTooltip(TRANS("Renders several samples at a time with the processor's vector unit (AVX2 on "
-                           "a PC, NEON on ARM): the same sound, with more polyphony to spare. New, so off "
-                           "by default. If anything sounds wrong with it on, turn it off and please report it."));
+                           "a PC, NEON on ARM): the same sound, with more polyphony to spare. On by default. "
+                           "If anything sounds wrong with it on, turn it off and please report it."));
   faster_.onClick = [this] {
     proc_.setFasterEngine(faster_.getToggleState());
     showFasterUnit();
@@ -426,11 +426,11 @@ void EnginePanel::revert() {
 
 // Says what the faster engine found on this machine, so a report can say it.
 void EnginePanel::showFasterUnit() {
-  const juce::String base = TRANS("Faster audio engine (experimental)");
+  const juce::String base = TRANS("Faster audio engine");
   const juce::String unit = proc_.fasterEngineUnit();
   faster_.setButtonText(!proc_.fasterEngine() ? base
-                        : unit.isNotEmpty()   ? TRANS("Faster audio engine (experimental): using %1").replace("%1", unit)
-                                              : TRANS("Faster audio engine (experimental): not available on this "
+                        : unit.isNotEmpty()   ? TRANS("Faster audio engine: using %1").replace("%1", unit)
+                                              : TRANS("Faster audio engine: not available on this "
                                                       "processor"));
 }
 
