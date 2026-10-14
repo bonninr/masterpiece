@@ -792,10 +792,12 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       if (level < releaseCutoff_) {
         v.quietFrames += numFrames;
         if (static_cast<double>(v.quietFrames) >= 0.05 * sampleRate_) {
-          v.phase = VoicePhase::Idle;
-          if (streaming) disarmStream(voiceIndex);
+          // Faded out, not stopped: the tail plays on under the fade a pipe
+          // with no release sample is given, a tenth of a second to nothing.
+          // A room decay that stops dead is heard where one that fades is not.
+          v.releaseIsSample = false;
+          v.releaseGain = 1.0f;
           tailsEnded_.fetch_add(1, std::memory_order_relaxed);
-          return;
         }
       } else {
         v.quietFrames = 0;
