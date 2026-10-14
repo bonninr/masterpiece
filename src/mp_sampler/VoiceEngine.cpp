@@ -111,6 +111,9 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   liveCount_ = 0;
   scanEnd_ = 0;
   blockCounter_ = 0;
+  // Room for every pipe a pool can sound, so a release on the audio thread
+  // never makes the table grow.
+  pipeClosedAt_.reserve(voices_.size() * 4);
   stats_ = EngineStats{};
 
   // One ring per voice, allocated here and never again: the audio thread must
@@ -751,6 +754,54 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
   const float storeScale = storageScale(buf);
+
+  // A release tail heard below the cutoff for a twentieth of a second ends.
+  // Its level is read from sixteen frames across what this block will play,
+  // at the level they will be played at.
+  if (releaseCutoff_ > 0.0f && v.phase == VoicePhase::Release && v.releaseIsSample &&
+      v.xfadeBuf == nullptr && v.relXfadeLeft <= 0 && v.delayFrames <= 0) {
+    const double span = windRatio * static_cast<double>(numFrames);
+    const VoiceStream* st =
+        streaming && voiceIndex < streams_.size() ? streams_[voiceIndex].get() : nullptr;
+    const int64_t filled =
+        st != nullptr && st->armed.load(std::memory_order_acquire)
+            ? st->filled.load(std::memory_order_acquire)
+            : 0;
+    float peak = 0.0f;
+    bool read = false;
+    for (int k = 0; k < 16; ++k) {
+      const auto f = static_cast<int64_t>(v.cursor + span * (k + 0.5) / 16.0);
+      if (f >= total) break;
+      for (int c = 0; c < bufChannels && c < 2; ++c) {
+        float x;
+        if (f < resident) {
+          x = rawSample<T>(buf, f, c) * storeScale;
+        } else if (st != nullptr && f - st->base >= 0 && f - st->base < filled) {
+          const auto idx = static_cast<size_t>(f - st->base) * static_cast<size_t>(st->channels) +
+                           static_cast<size_t>(std::min(c, st->channels - 1));
+          x = idx < st->ring.size() ? st->ring[idx] : 0.0f;
+        } else {
+          continue;  // not read yet: no judgement from it
+        }
+        read = true;
+        peak = std::max(peak, std::abs(x));
+      }
+    }
+    if (read) {
+      const float level = peak * v.gain * wind.ampMul;
+      if (level < releaseCutoff_) {
+        v.quietFrames += numFrames;
+        if (static_cast<double>(v.quietFrames) >= 0.05 * sampleRate_) {
+          v.phase = VoicePhase::Idle;
+          if (streaming) disarmStream(voiceIndex);
+          tailsEnded_.fetch_add(1, std::memory_order_relaxed);
+          return;
+        }
+      } else {
+        v.quietFrames = 0;
+      }
+    }
+  }
   // Whether this voice can have straight runs at all this block, and whether
   // they are the plain kind. A tremulant in motion moves the pitch and the
   // level every frame; its runs are given both frame by frame.
@@ -789,40 +840,32 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         if (newRoom < static_cast<double>(n) + 1.0) n = static_cast<int>(newRoom) - 1;
         if (oldRoom < static_cast<double>(n) + 1.0) n = static_cast<int>(oldRoom) - 1;
         if (n >= kMinSimdRun) {
-          float tail[kXfadeChannels][kXfadeChunk];
-          float attack[kXfadeChannels][kXfadeChunk];
-          float* tailPlanes[kXfadeChannels];
-          float* attackPlanes[kXfadeChannels];
-          for (int ch = 0; ch < numChannels; ++ch) {
-            std::fill(tail[ch], tail[ch] + n, 0.0f);
-            std::fill(attack[ch], attack[ch] + n, 0.0f);
-            tailPlanes[ch] = tail[ch];
-            attackPlanes[ch] = attack[ch];
-          }
-          // In storage counts, at a level of one, which changes nothing: the
-          // levels go on below exactly as the per-frame path puts them on.
-          v.cursor = simd::renderRun(isa_, frames, bufChannels, v.cursor, windRatio, 1.0f,
-                                     tailPlanes, numChannels, 0, n);
-          v.xfadeOldCursor =
-              simd::renderRun(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor, oldRatio,
-                              1.0f, attackPlanes, numChannels, 0, n);
-          // The same ramp the per-frame path walks, in the same arithmetic and
-          // the same order, so the two give the same samples: the tail's share
-          // on each frame is how far through the crossfade that frame is.
+          // Each side straight into the output at its own level for each
+          // frame: the same ramp the per-frame path walks, in the same
+          // arithmetic, the tail added before the attack on every frame as
+          // there. Rendering both into scratch first and mixing them after
+          // cost a clear and a pass of its own, on every voice of a chord
+          // at the moment it is let go.
           const float level = v.gain * wind.ampMul;
           const float oldScale = storageScale(ob);
           const float length = static_cast<float>(v.relXfadeLength);
           const int left = v.relXfadeLeft;
-          for (int ch = 0; ch < numChannels; ++ch) {
-            float* dst = out[ch] + i;
-            const float* a = attack[ch];
-            const float* r = tail[ch];
-            for (int k = 0; k < n; ++k) {
-              const float t = 1.0f - static_cast<float>(left - k) / length;
-              dst[k] += r[k] * ((level * t) * storeScale);
-              dst[k] += a[k] * (level * oldScale * (1.0f - t));
-            }
+          double tailSteps[kXfadeChunk];
+          double attackSteps[kXfadeChunk];
+          float tailLevels[kXfadeChunk];
+          float attackLevels[kXfadeChunk];
+          for (int k = 0; k < n; ++k) {
+            const float t = 1.0f - static_cast<float>(left - k) / length;
+            tailLevels[k] = (level * t) * storeScale;
+            attackLevels[k] = level * oldScale * (1.0f - t);
+            tailSteps[k] = windRatio;
+            attackSteps[k] = oldRatio;
           }
+          v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, tailSteps,
+                                             tailLevels, out, numChannels, i, n);
+          v.xfadeOldCursor =
+              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
+                                      attackSteps, attackLevels, out, numChannels, i, n);
           v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
           v.relXfadeLeft = left - n;
           if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
@@ -873,39 +916,22 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           swing *= tremRatioStep;
         }
         if (n >= kMinSimdRun) {
-          static const std::array<float, kXfadeChunk> ones = [] {
-            std::array<float, kXfadeChunk> a;
-            a.fill(1.0f);
-            return a;
-          }();
-          float tail[kXfadeChannels][kXfadeChunk];
-          float attack[kXfadeChannels][kXfadeChunk];
-          float* tailPlanes[kXfadeChannels];
-          float* attackPlanes[kXfadeChannels];
-          for (int ch = 0; ch < numChannels; ++ch) {
-            std::fill(tail[ch], tail[ch] + n, 0.0f);
-            std::fill(attack[ch], attack[ch] + n, 0.0f);
-            tailPlanes[ch] = tail[ch];
-            attackPlanes[ch] = attack[ch];
-          }
-          v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios,
-                                             ones.data(), tailPlanes, numChannels, 0, n);
-          v.xfadeOldCursor =
-              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
-                                      oldRatios, ones.data(), attackPlanes, numChannels, 0, n);
+          // Straight into the output, as above, at the tremulant's level.
           const float oldScale = storageScale(ob);
           const float length = static_cast<float>(v.relXfadeLength);
           const int left = v.relXfadeLeft;
-          for (int ch = 0; ch < numChannels; ++ch) {
-            float* dst = out[ch] + i;
-            const float* a = attack[ch];
-            const float* r = tail[ch];
-            for (int k = 0; k < n; ++k) {
-              const float t = 1.0f - static_cast<float>(left - k) / length;
-              dst[k] += r[k] * ((levels[k] * t) * storeScale);
-              dst[k] += a[k] * (levels[k] * oldScale * (1.0f - t));
-            }
+          float tailLevels[kXfadeChunk];
+          float attackLevels[kXfadeChunk];
+          for (int k = 0; k < n; ++k) {
+            const float t = 1.0f - static_cast<float>(left - k) / length;
+            tailLevels[k] = (levels[k] * t) * storeScale;
+            attackLevels[k] = levels[k] * oldScale * (1.0f - t);
           }
+          v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios,
+                                             tailLevels, out, numChannels, i, n);
+          v.xfadeOldCursor =
+              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
+                                      oldRatios, attackLevels, out, numChannels, i, n);
           v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
           v.relXfadeLeft = left - n;
           if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;

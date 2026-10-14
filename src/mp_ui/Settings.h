@@ -118,6 +118,8 @@ private:
   juce::ComboBox releases_;
   juce::Label releaseLengthLabel_;
   juce::ComboBox releaseLength_;
+  juce::Label releaseCutoffLabel_;
+  juce::ComboBox releaseCutoff_;
   void showReleaseLength(int ms);
   juce::Label cacheLabel_;
   juce::ComboBox cache_;

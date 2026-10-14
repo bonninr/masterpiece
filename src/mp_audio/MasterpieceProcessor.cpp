@@ -35,6 +35,14 @@ static int usableCores() {
   return cores;
 }
 
+int MasterpieceProcessor::defaultPolyphony() {
+  const int threads = usableCores();
+  if (threads <= 2) return 512;
+  if (threads <= 4) return 768;
+  if (threads <= 8) return 1536;
+  return 2048;
+}
+
 static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
   std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
   // Shoes/controls automatable (M3); M1: master gain + simple-wav toggle.
@@ -68,6 +76,26 @@ MasterpieceProcessor::MasterpieceProcessor()
   (void)tails;
   // A cache written while the organ plays waits for silence.
   samples_.setCacheBusy([this] { return soundingVoices_.load(std::memory_order_relaxed) > 0; });
+  setReleaseCutoffDb(releaseCutoffDb_);
+  if (const char* path = std::getenv("MASTERPIECE_BLOCKLOG"); path != nullptr && *path != 0) {
+    blockLogPath_ = path;
+    blockLog_.resize(400000);
+  }
+}
+
+void MasterpieceProcessor::writeBlockLog() {
+  if (blockLogPath_.empty() || blockLogCount_ == 0) return;
+  std::FILE* f = std::fopen(blockLogPath_.c_str(), "w");
+  if (f == nullptr) return;
+  std::fprintf(f, "block total_us budget_us pre_us midi_us controls_us wind_us render_us dsp_us "
+                  "note_ons note_offs active_before active_after stolen\n");
+  for (size_t i = 0; i < blockLogCount_; ++i) {
+    const auto& r = blockLog_[i];
+    std::fprintf(f, "%zu %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %d %d %d %d %d\n", i, r.totalUs,
+                 r.budgetUs, r.preUs, r.midiUs, r.controlsUs, r.windUs, r.renderUs, r.dspUs,
+                 r.noteOns, r.noteOffs, r.activeBefore, r.activeAfter, r.stolen);
+  }
+  std::fclose(f);
 }
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -551,8 +579,11 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
+  const juce::int64 w0 = blockLog_.empty() ? 0 : juce::Time::getHighResolutionTicks();
   advanceWind(numFrames);
   advanceTremulants(numFrames);
+  if (!blockLog_.empty())
+    blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
 
   const int buses = static_cast<int>(mixBusOrder_.size());
   bool anyBusReverb = false;
@@ -1157,6 +1188,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
+  text << "releasecutoff " << releaseCutoffDb_ << "\n";
   // The room this organ is played in: kept with the organ, the path last
   // because it can hold spaces.
   text << "reverb " << (convolver_.enabled() ? 1 : 0) << " " << juce::String(convolver_.mix(), 3)
@@ -1236,6 +1268,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
   else if (key == "releaselength") samples_.setReleaseMaxMs(val.getIntValue());
+  else if (key == "releasecutoff") setReleaseCutoffDb(val.getIntValue());
   else if (key == "reverb") {
     // "reverb <enabled> <mix> <path...>"
     auto rest = val.trim();
@@ -4119,6 +4152,16 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     graph_.engineSwitch.simpleWavOnly = simpleParam;
   }
 
+  const bool logBlocks = !blockLog_.empty() && blockLogCount_ < blockLog_.size();
+  const auto tick = [] { return juce::Time::getHighResolutionTicks(); };
+  const auto us = [](juce::int64 a, juce::int64 b) {
+    return static_cast<float>(juce::Time::highResolutionTicksToSeconds(b - a) * 1.0e6);
+  };
+  const juce::int64 t0 = logBlocks ? tick() : 0;
+  const int activeBefore = logBlocks ? voices_.stats().activeVoices : 0;
+  const int stolenBefore = logBlocks ? voices_.stats().stolenVoices : 0;
+  int ons = 0, offs = 0;
+
   // Merge the on-screen keyboard into the same buffer a device would fill, so
   // mouse and MIDI take one identical path.
   keyboardState_.processNextMidiBuffer(midi, 0, buffer.getNumSamples(), true);
@@ -4161,7 +4204,17 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     applyStopChangeToHeldNotes();
 
   outgoing_.clear();
+  juce::int64 t1 = 0, t2 = 0;
+  if (logBlocks) {
+    for (const auto meta : midi) {
+      const auto m = meta.getMessage();
+      if (m.isNoteOn()) ++ons;
+      else if (m.isNoteOff()) ++offs;
+    }
+    t1 = tick();
+  }
   handleMidi(midi);
+  if (logBlocks) t2 = tick();
   // And every voice still sounding, once the note-offs above have been dealt
   // with: a note stuck because its note-off was lost, or arrived where the
   // keyboard state did not have it, is in no keyboard state to release, and
@@ -4205,7 +4258,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Each enclosure renders its own voices and filters only those, so an
   // unenclosed Great stays unenclosed while the Swell shades move.
+  const juce::int64 t3 = logBlocks ? tick() : 0;
   renderBuses(buffer);
+  const juce::int64 t4 = logBlocks ? tick() : 0;
 
   // The player's voicing EQ for this organ, on the organ itself: before the
   // room and the master fader. Off, or under "no DSP", it does nothing.
@@ -4221,6 +4276,25 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // called "no DSP" — a machine that needs it needs this gone more than it
   // needs anything else gone.
   if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(buffer);
+  if (logBlocks) {
+    const juce::int64 t5 = tick();
+    BlockRecord& r = blockLog_[blockLogCount_++];
+    r.totalUs = us(t0, t5);
+    r.budgetUs = getSampleRate() > 0.0
+                     ? static_cast<float>(1.0e6 * buffer.getNumSamples() / getSampleRate())
+                     : 0.0f;
+    r.preUs = us(t0, t1);
+    r.midiUs = us(t1, t2);
+    r.controlsUs = us(t2, t3);
+    r.windUs = static_cast<float>(blockWindUs_);
+    r.renderUs = us(t3, t4) - r.windUs;
+    r.dspUs = us(t4, t5);
+    r.noteOns = ons;
+    r.noteOffs = offs;
+    r.activeBefore = activeBefore;
+    r.activeAfter = voices_.stats().activeVoices;
+    r.stolen = voices_.stats().stolenVoices - stolenBefore;
+  }
 
   // The organ's own output trim, before the player's fader: it is part of how
   // this set is meant to sound, not a setting. Folded into the same multiply

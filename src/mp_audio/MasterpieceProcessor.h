@@ -79,7 +79,7 @@ public:
   };
 
   MasterpieceProcessor();
-  ~MasterpieceProcessor() override = default;
+  ~MasterpieceProcessor() override { writeBlockLog(); }
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   // The device is stopping, most often to change its buffer size: the engine
@@ -837,8 +837,18 @@ public:
   // a glitch. The pool is made at the next load of the organ; a smaller
   // number applies at once.
   int polyphonyLimit() const { return polyphony_; }
+  // Where a release tail ends: decibels below full scale, 0 for never. Saved
+  // with the organ; -80 unless the player chose.
+  int releaseCutoffDb() const { return releaseCutoffDb_; }
+  void setReleaseCutoffDb(int db) {
+    releaseCutoffDb_ = db < 0 ? db : 0;
+    voices_.setReleaseCutoff(releaseCutoffDb_ < 0 ? std::pow(10.0f, releaseCutoffDb_ / 20.0f) : 0.0f);
+  }
   void setPolyphonyLimit(int voices);
-  static int defaultPolyphony() { return 1536; }
+  // What this computer is given when the player has chosen nothing: as many
+  // voices as its processor threads can render in time with every stop
+  // drawn. Two cores rendered 1,500 voices at a third of real time.
+  static int defaultPolyphony();
   static int maxPolyphonySetting() { return 16384; }
   int voicePool() const { return polyphony_ > 0 ? polyphony_ : defaultPolyphony(); }
   // What a pool of this many voices holds in memory with the streaming
@@ -1745,6 +1755,20 @@ private:
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
   std::atomic<bool> cacheWhilePlaying_{false};
+  int releaseCutoffDb_ = -80;
+  // MASTERPIECE_BLOCKLOG=<file>: every block's stages timed, with its note-ons,
+  // note-offs and voices, kept in memory made at start and written to the
+  // file when the program closes. For finding what a late block spent its
+  // time on; without the variable, a flag test per block.
+  struct BlockRecord {
+    float totalUs, preUs, midiUs, controlsUs, windUs, renderUs, dspUs, budgetUs;
+    int noteOns, noteOffs, activeBefore, activeAfter, stolen;
+  };
+  std::vector<BlockRecord> blockLog_;
+  size_t blockLogCount_ = 0;
+  std::string blockLogPath_;
+  double blockWindUs_ = 0.0;
+  void writeBlockLog();
   std::atomic<bool> skipCacheSave_{false};
   // The cache-deciding choices, as one string to compare, and what the
   // loaded organ was loaded with.
