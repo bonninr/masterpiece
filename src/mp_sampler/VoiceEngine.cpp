@@ -413,6 +413,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.busIndex = start.busIndex;
   v.mixBus = start.mixBus;
   v.windIndex = start.windIndex;
+  v.delayFrames = start.startOffset > 0 ? start.startOffset : 0;
   v.windFlow = start.windFlowKgPerSec;
   {
     // A release started as a voice of its own begins from the chest as it
@@ -652,6 +653,19 @@ inline float readInterior(const T* frames, int channels, int channel, int64_t i,
 void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
                               int numFrames) {
   const size_t index = static_cast<size_t>(&v - voices_.data());
+  // A voice started part-way into the block begins there: what comes before
+  // its note-on stays as it was.
+  if (v.delayFrames > 0) {
+    const int skip = std::min(v.delayFrames, numFrames);
+    v.delayFrames -= skip;
+    if (skip >= numFrames) return;
+    constexpr int kMaxChannels = 16;
+    float* shifted[kMaxChannels];
+    const int channels = std::min(numChannels, kMaxChannels);
+    for (int c = 0; c < channels; ++c) shifted[c] = out[c] + skip;
+    renderVoice(v, shifted, channels, numFrames - skip);
+    return;
+  }
   if (v.buffer != nullptr && v.buffer->wide())
     renderVoiceFrom<Pcm24>(v, index, out, numChannels, numFrames);
   else if (v.buffer != nullptr && v.buffer->compact())

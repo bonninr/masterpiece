@@ -238,6 +238,9 @@ struct Voice {
   // table. -1 means the organ models no wind for it, and then nothing is
   // applied. The wind moves every block, so it cannot be baked into `gain`
   // and `ratio` at note-on the way the temperament is.
+  // Frames of the next rendered block to leave before the voice begins; see
+  // VoiceStart::startOffset.
+  int delayFrames = 0;
   int windIndex = -1;
   // What this pipe draws from its chest while it is speaking, in kilograms per
   // second. Carried on the voice because the engine is what knows which pipes
@@ -305,6 +308,9 @@ struct VoiceStart {
   int tremIndex = -1;
   float tremAmpDepth = 0.0f;
   double tremPitchDepth = 0.0;
+  // How many frames into the next rendered block the voice begins: the place
+  // of its note-on in that block, when the note came with one.
+  int startOffset = 0;
   // Force a one-shot: ignore the file's own loop as well as any override.
   // Noises, percussive ranks and releases must not sustain, and "-1 means use
   // the file's loop" cannot express that.

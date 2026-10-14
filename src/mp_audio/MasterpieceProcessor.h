@@ -1677,6 +1677,11 @@ private:
   // and host-delivered messages take exactly the same path afterwards.
   void drainTaggedMidi(std::vector<std::pair<int, juce::MidiMessage>>& out);
   std::vector<std::pair<int, juce::MidiMessage>> midiScratch_;
+  // Where in the block each of midiScratch_ falls: the host's and a MIDI
+  // file's messages carry their place; a console's arrive between blocks and
+  // take the block's start. Voices started while one is handled begin there.
+  std::vector<int> midiOffsets_;
+  int eventOffset_ = 0;
   // The console the message being handled came from. Set as each message is
   // dispatched rather than threaded through every call, because only the note
   // path cares and threading it would touch a dozen signatures.

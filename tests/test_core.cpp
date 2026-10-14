@@ -2643,6 +2643,57 @@ public:
   }
 };
 
+// A voice started part-way into a block begins there (MIDI files and hosts
+// give each note its place in the block). The frames before stay silent, and
+// from its place on the voice is the same one started at a block's start,
+// moved along by that many frames.
+class VoiceStartOffsetTest final : public mp::test::Test {
+public:
+  VoiceStartOffsetTest() : Test("functional.voice.start-offset", Category::Functional) {}
+  static std::vector<float> render(int offset, int blocks) {
+    voicetest::Fixture fx;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 4, 1, 256);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.startOffset = offset;
+    eng.startVoice(st, 1);
+    std::vector<float> all, buf(256);
+    float* out[1] = {buf.data()};
+    for (int b = 0; b < blocks; ++b) {
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.render(out, 1, 256);
+      all.insert(all.end(), buf.begin(), buf.end());
+    }
+    return all;
+  }
+  void run() override {
+    const auto plain = render(0, 4);
+    const auto later = render(100, 4);
+    double before = 0.0;
+    for (int i = 0; i < 100; ++i) before += std::fabs(later[static_cast<size_t>(i)]);
+    MP_CHECK(before == 0.0, "nothing sounds before the voice's place in the block");
+    double worst = 0.0;
+    for (size_t i = 100; i < later.size(); ++i)
+      worst = std::max(worst, static_cast<double>(std::fabs(later[i] - plain[i - 100])));
+    MP_CHECK(worst < 1e-6, "from there it is the same voice, a hundred frames later (worst " +
+                               std::to_string(worst) + ")");
+    double level = 0.0;
+    for (float v : later) level = std::max(level, static_cast<double>(std::fabs(v)));
+    MP_CHECK(level > 0.1, "and it sounds");
+    // A place past the block carries into the next one.
+    const auto next = render(300, 4);
+    double first = 0.0;
+    for (int i = 0; i < 300; ++i) first += std::fabs(next[static_cast<size_t>(i)]);
+    MP_CHECK(first == 0.0 && std::fabs(next[310]) > 0.0f, "a place past the block falls in the next");
+  }
+};
+static VoiceStartOffsetTest g_voiceStartOffset;
+
 class VoiceEngineStealingTest final : public mp::test::Test {
 public:
   VoiceEngineStealingTest()

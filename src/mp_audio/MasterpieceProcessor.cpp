@@ -184,6 +184,9 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // Worst case one pipe per rank sounding on a single key.
   resolveScratch_.reserve(model_.ranks.empty() ? 64 : model_.ranks.size());
   soundingNotes_.reserve(128);
+  // A block's MIDI, and the place of each message in it.
+  midiScratch_.reserve(1024);
+  midiOffsets_.reserve(1024);
   // The key-flow walk runs on every note-on and must not allocate: one press
   // on a fully coupled console reaches every division at several pitches.
   keyFlow_.reserve(64);
@@ -591,16 +594,27 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   blockTimeMs_ += 1000.0 * static_cast<double>(getBlockSize()) /
                   (sampleRate_ > 0.0 ? sampleRate_ : 48000.0);
   midiScratch_.clear();
-  for (const auto meta : midi)
+  midiOffsets_.clear();
+  for (const auto meta : midi) {
     midiScratch_.emplace_back(MidiDeviceMap::kAnyDevice, meta.getMessage());
+    midiOffsets_.push_back(meta.samplePosition);
+  }
   drainTaggedMidi(midiScratch_);
+  midiOffsets_.resize(midiScratch_.size(), 0);
   // Console input reaches the recorder here: it is not in the host's buffer,
   // which is all the recorder saw.
   if (recorder_.isRecording())
     for (const auto& [deviceId, msg] : midiScratch_)
       if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg);
 
-  for (const auto& [deviceId, msg] : midiScratch_) {
+  for (size_t m = 0; m < midiScratch_.size(); ++m) {
+    const int deviceId = midiScratch_[m].first;
+    const juce::MidiMessage& msg = midiScratch_[m].second;
+    // The voices this message starts begin at its place in the block. A
+    // MIDI file played back, or a host's sequence, keeps its timing to the
+    // sample this way; at the block's start, every note in a block of 2048
+    // frames moved by up to 43 ms.
+    eventOffset_ = midiOffsets_[m];
 
     // Mirror device input in the keyboard state, so drawn manuals and the
     // piano strip light up for an external console exactly as they do for
@@ -860,6 +874,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       // drive a swell shoe from a real pedal out of the box.
       setControlValue(msg.getControllerNumber(), msg.getControllerValue());
   }
+  // Voices started from anywhere else -- a stop drawn, a pallet -- begin at
+  // the block's start.
+  eventOffset_ = 0;
 }
 
 namespace {
@@ -2553,6 +2570,7 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     // sample rate, so convert with the file's rate, not the engine's.
     vs.loopCrossfadeFrames = static_cast<int>(
         layer.loopCrossfadeMs * 0.001 * sampleRate_);
+    vs.startOffset = eventOffset_;
     if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
   }
   return anyStarted;
@@ -3914,6 +3932,7 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // A noise belongs to the console, not to a division, so it has no rank
       // routing of its own and stays on the first bus.
       vs.mixBus = 0;
+      vs.startOffset = eventOffset_;
       voices_.startVoice(vs, noteId);
     }
   }
