@@ -1094,6 +1094,9 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
   // list is GrandOrgue's, which documents these properly.
   auto& map = proc_.midiMap();
   juce::PopupMenu menu;
+  // What was clicked, so a player can see it is the right one (#346).
+  menu.addSectionHeader(MidiEventDialog::targetName(proc_, MidiTargetKind::Switch, switchId));
+  menu.addSeparator();
 
   const auto existing = map.bindingsFor(MidiTargetKind::Switch, switchId);
   if (existing.empty()) {
@@ -1252,6 +1255,8 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                          juce::Rectangle<int> area, std::function<void()> after) {
   auto& map = proc.midiMap();
   juce::PopupMenu menu;
+  menu.addSectionHeader(MidiEventDialog::targetName(proc, MidiTargetKind::ContinuousControl, controlId));
+  menu.addSeparator();
   const auto existing = map.bindingsFor(MidiTargetKind::ContinuousControl, controlId);
   if (existing.empty()) {
     menu.addSectionHeader(TRANS("Not mapped"));

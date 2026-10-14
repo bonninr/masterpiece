@@ -30,6 +30,13 @@ public:
   static void show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                    const juce::String& name = {});
 
+  // What a player calls the object (#346): for a switch, the stop or
+  // tremulant it works, followed through the organ's switch linkages, since
+  // the switch behind a drawn knob is often named only by a number. Shown at
+  // the top of the right-click menu and in the MIDI window's title.
+  static juce::String targetName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id);
+  static juce::String switchName(const OrganModel& m, Id switchId);
+
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,
                                                         MidiTargetKind kind, Id id);
