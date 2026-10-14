@@ -109,7 +109,9 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   stats_ = EngineStats{};
 
   // One ring per voice, allocated here and never again: the audio thread must
-  // not allocate, and a voice can start streaming at any note-off.
+  // not allocate, and a voice can start streaming at any note-off. Only when
+  // something can stream: an organ loaded whole never reads a ring, and the
+  // rings were most of the pool's memory.
   stopStreamer();
   const auto ringFrames =
       static_cast<size_t>(std::max(1.0, streamSeconds_ * sampleRate_));
@@ -118,7 +120,7 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   for (size_t i = 0; i < voices_.size(); ++i) {
     auto st = std::make_unique<VoiceStream>();
     // Stereo worst case; a mono sample simply uses half of it.
-    st->ring.assign(ringFrames * 2, 0.0f);
+    if (streamRings_) st->ring.assign(ringFrames * 2, 0.0f);
     streams_.push_back(std::move(st));
   }
   underruns_.store(0, std::memory_order_relaxed);
@@ -149,10 +151,22 @@ void VoiceEngine::stopStreamer() {
   if (streamer_.joinable()) streamer_.join();
 }
 
+int64_t VoiceEngine::bytesPerVoice(double sampleRate, double streamSeconds, bool rings) {
+  const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
+  const auto ringFrames = static_cast<int64_t>(std::max(1.0, streamSeconds * rate));
+  // The voice, its stream record, and its places in the render and steal
+  // lists; the ring, stereo, when there is one.
+  return static_cast<int64_t>(sizeof(Voice) + sizeof(VoiceStream) + 2 * sizeof(uint32_t)) +
+         (rings ? ringFrames * 2 * static_cast<int64_t>(sizeof(float)) : 0);
+}
+
 void VoiceEngine::armStream(size_t voiceIndex, const SampleBuffer& buf,
                             int64_t fromFrame) {
   if (voiceIndex >= streams_.size()) return;
   VoiceStream& st = *streams_[voiceIndex];
+  // A pool prepared without rings has nowhere to put a tail: the voice plays
+  // what is resident and goes quiet at its end.
+  if (st.ring.empty()) return;
   // Bump the generation FIRST: a fill still in flight for the previous voice
   // must not publish its frames into this one's ring.
   st.generation.fetch_add(1, std::memory_order_acq_rel);

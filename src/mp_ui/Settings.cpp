@@ -297,7 +297,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(polyphonyLabel_);
   styleLabel(polyphonyLabel_, TRANS("Polyphony limit"));
   addAndMakeVisible(polyphony_);
-  polyphony_.setTooltip(TRANS("The most pipes that sound at once. Past it, a new pipe takes the place of one that is dying away, or of the quietest. A lower limit keeps a small computer from falling behind on full organ."));
+  polyphony_.setTooltip(TRANS("The most pipes that sound at once, made at the next load of the organ. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
   fillPolyphony();
   polyphony_.onChange = [this] {
     const int id = polyphony_.getSelectedId();
@@ -388,17 +388,22 @@ void EnginePanel::fillMemLimit() {
 
 void EnginePanel::fillPolyphony() {
   polyphony_.clear(juce::dontSendNotification);
-  const int all = proc_.maxPolyphony();
-  polyphony_.addItem(TRANS("Default: every voice (%1)").replace("%1", juce::String(all)), 1);
+  const auto mb = [this](int voices) {
+    return juce::String(juce::jmax<int64_t>(1, proc_.voicePoolBytes(voices) / (1024 * 1024)));
+  };
+  const int def = MasterpieceProcessor::defaultPolyphony();
+  polyphony_.addItem(TRANS("Default: %1 voices (%2 MB)").replace("%1", juce::String(def)).replace("%2", mb(def)), 1);
   const int current = proc_.polyphonyLimit();
   bool listed = current == 0;
-  for (int voices : {128, 256, 384, 512, 768, 1024}) {
-    if (voices >= all) continue;
-    polyphony_.addItem(TRANS("%1 voices").replace("%1", juce::String(voices)), 1000 + voices);
+  for (int voices : {256, 512, 768, 1024, 2048, 3072, 4096, 6144, 8192, 10240}) {
+    polyphony_.addItem(TRANS("%1 voices (%2 MB)").replace("%1", juce::String(voices)).replace("%2", mb(voices)),
+                       1000 + voices);
     if (voices == current) listed = true;
   }
   // A number set in the file that is none of the above is still shown as itself.
-  if (!listed) polyphony_.addItem(TRANS("%1 voices").replace("%1", juce::String(current)), 1000 + current);
+  if (!listed)
+    polyphony_.addItem(TRANS("%1 voices (%2 MB)").replace("%1", juce::String(current)).replace("%2", mb(current)),
+                       1000 + current);
   polyphony_.setSelectedId(current == 0 ? 1 : 1000 + current, juce::dontSendNotification);
 }
 
@@ -492,6 +497,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
+         proc_.polyphonyLimit() != openPolyphony_ ||
          sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
          sw.enableWindModel != openSwitch_.enableWindModel ||
          sw.enableTremulant != openSwitch_.enableTremulant ||
@@ -546,6 +552,9 @@ void EnginePanel::timerCallback() {
                                                           (1024 * 1024)));
   if (const auto under = proc_.streamUnderruns(); under > 0)
     text += "  -  " + TRANS("DISK TOO SLOW: %1 underrun(s)").replace("%1", juce::String(static_cast<int>(under)));
+  text += "  -  " + TRANS("Voice pool: %1 voices, %2 MB")
+                        .replace("%1", juce::String(proc_.voicePool()))
+                        .replace("%2", juce::String(proc_.voicePoolBytes(proc_.voicePool()) / (1024 * 1024)));
   memory_.setText(text, juce::dontSendNotification);
 }
 

@@ -156,10 +156,18 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
   // Voice pool is allocated once, here: render() must never allocate.
   voices_.setSimd(fasterEngine_.load());
+  // The pool the player chose, with a ring per voice only when releases can
+  // stream.
+  graph_.maxVoices = voicePool();
+  // What is loaded may stream though the choice for the next load says
+  // otherwise: either way, rings.
+  voices_.setStreamRings(samples_.streamReleases() || samples_.streamedCount() > 0);
   voices_.prepare(sampleRate_, graph_.maxVoices,
                   juce::jmax(1, getTotalNumOutputChannels()),
                   juce::jmax(1, samplesPerBlock));
-  voices_.setPolyphony(polyphony_);
+  juce::Logger::writeToLog("voices: " + juce::String(graph_.maxVoices) + ", " +
+                           juce::String(voicePoolBytes(graph_.maxVoices) / (1024 * 1024)) +
+                           " MB" + (samples_.streamReleases() ? " with release streaming" : ""));
   // Which path renders, for any report about the sound: the new engine is
   // the first thing to rule in or out.
   juce::Logger::writeToLog(juce::String("audio engine: ") +
@@ -1791,16 +1799,24 @@ void MasterpieceProcessor::setMemoryLimitMB(int mb) {
 }
 
 void MasterpieceProcessor::setPolyphonyLimit(int voices) {
-  // Not below what one key of a large organ sounds, and nothing above the
-  // engine's own count means anything.
-  voices = voices <= 0 || voices >= graph_.maxVoices ? 0 : std::max(64, voices);
+  // Not below what one key of a large organ sounds.
+  voices = voices <= 0 ? 0 : std::clamp(voices, 64, maxPolyphonySetting());
+  if (voices == defaultPolyphony()) voices = 0;
   if (polyphony_ == voices) return;
   polyphony_ = voices;
+  // A smaller pool applies at once, as a limit on the one there is; a larger
+  // one is made at the next load.
   {
     const AudioLock lock(*this);
-    voices_.setPolyphony(polyphony_);
+    voices_.setPolyphony(voicePool() < voices_.poolSize() ? voicePool() : 0);
   }
   writeGlobalFile();
+}
+
+int64_t MasterpieceProcessor::voicePoolBytes(int voices) const {
+  return static_cast<int64_t>(std::max(0, voices)) *
+         VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
+                                    voices_.streamSeconds(), samples_.streamReleases());
 }
 
 int64_t MasterpieceProcessor::memoryLimitBytes() const {
@@ -4251,7 +4267,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // After the defaults, which hold both: the ceiling a player set, and the
   // rest of the global file, which writing the marker rewrites around.
   // The samples of this load may take up to the memory ceiling, and no more.
-  loadProgress_.resetBudget(graphicsOnly ? 0 : memoryLimitBytes());
+  // The voices are made from the same memory: what the pool will hold is
+  // taken off what the samples may.
+  loadProgress_.resetBudget(
+      graphicsOnly ? 0 : std::max<int64_t>(0, memoryLimitBytes() - voicePoolBytes(voicePool())));
   // Written before the load can crash, cleared only by a clean exit.
   if (crashGuard_ && !graphicsOnly && odfFile.existsAsFile()) {
     runningOrgan_ = odfFile;

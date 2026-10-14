@@ -84,14 +84,21 @@ private:
 
 // The Audio and MIDI dialog: the device selector, and under it what belongs
 // to the output rather than to any organ -- keeping portable speakers awake.
-class AudioSettingsPanel : public juce::Component {
+class AudioSettingsPanel : public juce::Component, private juce::ChangeListener {
 public:
   AudioSettingsPanel(juce::AudioDeviceManager& devices, MasterpieceProcessor& p);
+  ~AudioSettingsPanel() override;
   void resized() override;
 
 private:
+  // The delay from a key to the speaker as the open device has it: the
+  // selector shows one buffer's length, which is only part of it.
+  void changeListenerCallback(juce::ChangeBroadcaster*) override;
+  void showLatency();
   MasterpieceProcessor& proc_;
+  juce::AudioDeviceManager& devices_;
   juce::AudioDeviceSelectorComponent selector_;
+  juce::Label latency_;
   juce::ToggleButton keepAwake_{TRANS("Keep portable speakers awake")};
   juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   void apply();

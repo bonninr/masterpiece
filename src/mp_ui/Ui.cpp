@@ -380,8 +380,14 @@ TopBar::TopBar(MasterpieceProcessor& p)
 
 AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
                                        MasterpieceProcessor& p)
-    : proc_(p), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
+    : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
   addAndMakeVisible(selector_);
+  addAndMakeVisible(latency_);
+  latency_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  latency_.setTooltip(TRANS("The buffer size sets the delay between a key and its sound. How many "
+                            "pipes can sound is the polyphony, in Organ settings, Loading."));
+  devices_.addChangeListener(this);
+  showLatency();
   addAndMakeVisible(keepAwake_);
   addAndMakeVisible(level_);
   const float db = proc_.speakerKeepAlive();
@@ -405,6 +411,28 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   setSize(500, 510);
 }
 
+AudioSettingsPanel::~AudioSettingsPanel() { devices_.removeChangeListener(this); }
+
+void AudioSettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*) { showLatency(); }
+
+void AudioSettingsPanel::showLatency() {
+  auto* dev = devices_.getCurrentAudioDevice();
+  const double rate = dev != nullptr ? dev->getCurrentSampleRate() : 0.0;
+  if (dev == nullptr || rate <= 0.0) {
+    latency_.setText({}, juce::dontSendNotification);
+    return;
+  }
+  const int buffer = dev->getCurrentBufferSizeSamples();
+  const int output = juce::jmax(0, dev->getOutputLatencyInSamples());
+  auto ms = [rate](int samples) { return juce::String(juce::roundToInt(1000.0 * samples / rate)); };
+  latency_.setText(TRANS("Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, "
+                         "as the device reports it.")
+                       .replace("%1", ms(buffer + output))
+                       .replace("%2", ms(buffer))
+                       .replace("%3", ms(output)),
+                   juce::dontSendNotification);
+}
+
 void AudioSettingsPanel::apply() {
   level_.setEnabled(keepAwake_.getToggleState());
   proc_.setSpeakerKeepAlive(keepAwake_.getToggleState()
@@ -417,6 +445,7 @@ void AudioSettingsPanel::resized() {
   auto row = r.removeFromBottom(40).reduced(12, 6);
   keepAwake_.setBounds(row.removeFromLeft(240));
   level_.setBounds(row);
+  latency_.setBounds(r.removeFromBottom(28).reduced(12, 2));
   selector_.setBounds(r);
 }
 
@@ -1240,7 +1269,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                 "Its console is shown without sound, so Organ settings can be opened "
                 "from the Settings menu: leave out perspectives or stops, or on the Loading tab "
                 "load 16-bit samples, stream the release tails, load in mono or preload less of "
-                "each sample -- or raise the limit in General settings, if this computer has "
+                "each sample -- or raise the memory limit on the same tab, if this computer has "
                 "the memory to spare.")
               .replace("%1", odf.getFileNameWithoutExtension())
               .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
