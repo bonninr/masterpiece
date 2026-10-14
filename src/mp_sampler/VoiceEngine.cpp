@@ -968,6 +968,80 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
 
+    // A streamed release tail, as straight runs over the voice's ring. Past
+    // its resident start a release is read from the ring the streamer fills,
+    // and every tap of every frame went through streamedSample() and its
+    // checks. In a fast passage nearly every voice is such a tail a moment
+    // after its note: on a two-core computer, half of the program's time.
+    // The ring is plain samples in order, so the vector code reads it as it
+    // reads a resident sample, up to what the streamer has published. What
+    // lies past that, and the fade at the file's end, stay frame by frame.
+    if (canRun && streaming && v.phase == VoicePhase::Release && v.releaseIsSample &&
+        v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr && voiceIndex < streams_.size()) {
+      const VoiceStream& st = *streams_[voiceIndex];
+      if (st.armed.load(std::memory_order_acquire) && !st.ring.empty() &&
+          simd::runSupports(isa_, st.channels)) {
+        const int64_t filled = st.filled.load(std::memory_order_acquire);
+        const double base = static_cast<double>(st.base);
+        // Every tap of every frame inside what is published, and short of
+        // the fade at the end of the file.
+        const double limit = std::min(base + static_cast<double>(filled - simd::kRunMargin),
+                                      static_cast<double>(total - kReleaseEndFadeFrames));
+        if (v.cursor >= base + 1.0 && v.cursor < limit) {
+          const float* ring = st.ring.data();
+          // Read in time: a shortfall counted before is over.
+          if (st.starved.load(std::memory_order_relaxed)) st.starved.store(false, std::memory_order_relaxed);
+          if (!tremMoving) {
+            const double room = (limit - v.cursor) / windRatio;
+            int n = numFrames - i;
+            if (room < static_cast<double>(n) + 1.0) n = static_cast<int>(room) - 1;
+            if (n >= kMinSimdRun) {
+              v.releaseGain = 1.0f;
+              v.relXfadeLeft = 0;
+              // The ring is in real units: the level goes on as it is, with
+              // no storage scale, as the per-frame path does for it.
+              const float env = v.gain * wind.ampMul * v.releaseGain;
+              v.cursor = base + simd::renderRun(isa_, ring, st.channels, v.cursor - base,
+                                                windRatio, env, out, numChannels, i, n);
+              simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+              i += n - 1;
+              continue;
+            }
+          } else {
+            double ratios[kTremChunk];
+            float envs[kTremChunk];
+            const int want = std::min(numFrames - i, kTremChunk);
+            const float level = v.gain * wind.ampMul;
+            double p = v.cursor;
+            float phase = tremPhase;
+            double swing = tremRatio;
+            int n = 0;
+            for (; n < want && p < limit; ++n) {
+              float e = level;
+              e *= 1.0f + v.tremAmpDepth * phase;
+              if (e < 0.0f) e = 0.0f;
+              envs[n] = e;
+              ratios[n] = windRatio * swing;
+              p += ratios[n];
+              phase += trem.ampStep;
+              swing *= tremRatioStep;
+            }
+            if (n >= kMinSimdRun) {
+              v.releaseGain = 1.0f;
+              v.relXfadeLeft = 0;
+              v.cursor = base + simd::renderRunPerFrame(isa_, ring, st.channels, v.cursor - base,
+                                                        ratios, envs, out, numChannels, i, n);
+              tremPhase = phase;
+              tremRatio = swing;
+              simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+              i += n - 1;
+              continue;
+            }
+          }
+        }
+      }
+    }
+
     // Loop handling: wrap inside the sustain loop while the key is held. The
     // loop is the voice's, not the buffer's, so a layer override applies.
     if (v.phase != VoicePhase::Release && v.loops()) {
