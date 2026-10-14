@@ -1951,6 +1951,10 @@ private:
   int unenclosedBus_ = 0;
   // Scratch for one bus. Preallocated: the audio thread must not allocate.
   juce::AudioBuffer<float> busScratch_;
+  // Every enclosure bus of a block side by side, numCh channels each, for
+  // VoiceEngine::renderBuses(); and where each bus's channels begin.
+  juce::AudioBuffer<float> busScratchAll_;
+  std::vector<float* const*> busOuts_;
   std::unordered_map<Id, dsp::TremulantLfo> tremulantLfos_;
 
 #endif

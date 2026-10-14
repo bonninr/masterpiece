@@ -100,6 +100,10 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   voices_.assign(static_cast<size_t>(std::max(1, maxVoices)), Voice{});
   jobList_.clear();
   jobList_.reserve(voices_.size());
+  for (auto& list : busLists_) {
+    list.clear();
+    list.reserve(voices_.size());
+  }
   stealList_.clear();
   stealList_.reserve(voices_.size());
   stealStage_ = 0;
@@ -1451,9 +1455,19 @@ void VoiceEngine::stopWorkers() {
   shuttingDown_.store(false, std::memory_order_release);
 }
 
+void VoiceEngine::setBusCount(int buses) {
+  buses = std::max(1, buses);
+  if (buses == busCount_ && static_cast<int>(busLists_.size()) == buses) return;
+  busCount_ = buses;
+  busLists_.assign(static_cast<size_t>(buses), {});
+  for (auto& list : busLists_) list.reserve(voices_.size());
+  if (!workers_.empty()) setRenderThreads(lastThreads_, minVoicesPerThread_);
+}
+
 void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   stopWorkers();
   minVoicesPerThread_ = minVoicesPerThread > 0 ? minVoicesPerThread : 1;
+  lastThreads_ = numThreads;
 
   // numThreads counts the audio thread, which always renders a share itself.
   const int extra = numThreads > 1 ? numThreads - 1 : 0;
@@ -1466,15 +1480,17 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   // AddressSanitizer).
   jobsOutstanding_.store(0, std::memory_order_release);
   const int scratchFrames = maxFrames_;
+  const size_t planesPerWorker =
+      static_cast<size_t>(numChannels_) * static_cast<size_t>(std::max(1, busCount_));
   workers_.reserve(static_cast<size_t>(extra));
   for (int n = 0; n < extra; ++n) {
     auto worker = std::make_unique<Worker>();
-    worker->scratch.assign(
-        static_cast<size_t>(numChannels_) * static_cast<size_t>(maxFrames_), 0.0f);
-    worker->planes.resize(static_cast<size_t>(numChannels_));
-    for (int c = 0; c < numChannels_; ++c)
-      worker->planes[static_cast<size_t>(c)] =
-          worker->scratch.data() + static_cast<size_t>(c) * static_cast<size_t>(maxFrames_);
+    worker->scratch.assign(planesPerWorker * static_cast<size_t>(maxFrames_), 0.0f);
+    worker->planes.resize(planesPerWorker);
+    for (size_t c = 0; c < planesPerWorker; ++c)
+      worker->planes[c] = worker->scratch.data() + c * static_cast<size_t>(maxFrames_);
+    worker->busBegin.assign(static_cast<size_t>(std::max(1, busCount_)), 0);
+    worker->busEnd.assign(static_cast<size_t>(std::max(1, busCount_)), 0);
     workers_.push_back(std::move(worker));
   }
 
@@ -1497,6 +1513,25 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
         // Never more than the scratch holds, whatever the job says.
         const int channels = std::min(jobChannels_, numChannels_);
         const int frames = std::min(jobFrames_, scratchFrames);
+
+        // A share of every bus, each into its own planes.
+        if (jobBuses_ > 0) {
+          const int buses = std::min(jobBuses_, static_cast<int>(wk->busBegin.size()));
+          for (int b = 0; b < buses; ++b) {
+            const size_t from = wk->busBegin[static_cast<size_t>(b)];
+            const size_t to = wk->busEnd[static_cast<size_t>(b)];
+            if (from >= to) continue;
+            float* const* planes = wk->planes.data() + static_cast<size_t>(b) * static_cast<size_t>(numChannels_);
+            for (int c = 0; c < channels; ++c) std::fill(planes[c], planes[c] + frames, 0.0f);
+            renderList(busLists_[static_cast<size_t>(b)].data() + from, to - from, planes, channels,
+                       frames);
+          }
+          if (jobsOutstanding_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            std::lock_guard<std::mutex> done(jobMutex_);
+            doneCv_.notify_one();
+          }
+          continue;
+        }
 
         // Each channel's own plane, for the frames of this block. The planes
         // stand maxFrames_ apart; clearing channels * frames from the start
@@ -1578,6 +1613,7 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
     std::lock_guard<std::mutex> lock(jobMutex_);
     jobChannels_ = numChannels;
     jobFrames_ = numFrames;
+    jobBuses_ = 0;
     for (size_t w = 0; w < helpers; ++w) {
       workers_[w]->begin = count * (w + 1) / shares;
       workers_[w]->end = count * (w + 2) / shares;
@@ -1590,7 +1626,27 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
 
   // The audio thread takes the first share rather than blocking idle.
   renderList(jobList_.data(), count / shares, out, numChannels, numFrames);
+  waitForWorkers();
 
+  // Sum the scratches of the workers that rendered, in a fixed order. This
+  // does NOT reproduce the inline path bit for bit — float addition is not
+  // associative, and parallel partial sums group the terms differently, so
+  // the two differ in the last ulp or so. What the fixed order does guarantee
+  // is that the threaded path is deterministic: the same voices and the same
+  // shares give the same samples on every run, whatever order the workers
+  // happen to finish in. That is the property worth having, because it makes
+  // renders reproducible and bugs repeatable; exact equality with inline
+  // rendering is not achievable without giving up the parallelism.
+  for (size_t w = 0; w < helpers; ++w) {
+    for (int c = 0; c < numChannels; ++c) {
+      const float* src = workers_[w]->planes[static_cast<size_t>(c)];
+      float* dst = out[c];
+      for (int i = 0; i < numFrames; ++i) dst[i] += src[i];
+    }
+  }
+}
+
+void VoiceEngine::waitForWorkers() {
   const auto finished = [&] { return jobsOutstanding_.load(std::memory_order_acquire) == 0; };
   if (spinHoldoff_ > 0) {
     if (--spinHoldoff_ == 0) spinning_.store(true, std::memory_order_relaxed);
@@ -1609,23 +1665,111 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
     std::unique_lock<std::mutex> lock(jobMutex_);
     doneCv_.wait(lock, finished);
   }
+}
 
-  // Sum the scratches of the workers that rendered, in a fixed order. This
-  // does NOT reproduce the inline path bit for bit — float addition is not
-  // associative, and parallel partial sums group the terms differently, so
-  // the two differ in the last ulp or so. What the fixed order does guarantee
-  // is that the threaded path is deterministic: the same voices and the same
-  // shares give the same samples on every run, whatever order the workers
-  // happen to finish in. That is the property worth having, because it makes
-  // renders reproducible and bugs repeatable; exact equality with inline
-  // rendering is not achievable without giving up the parallelism.
-  for (size_t w = 0; w < helpers; ++w) {
-    for (int c = 0; c < numChannels; ++c) {
-      const float* src = workers_[w]->planes[static_cast<size_t>(c)];
-      float* dst = out[c];
-      for (int i = 0; i < numFrames; ++i) dst[i] += src[i];
-    }
+void VoiceEngine::renderBuses(float* const* const* busOut, int numBuses, int numChannels,
+                              int numFrames, int mixBus) {
+  if (busOut == nullptr || numBuses <= 0 || numFrames <= 0 || numChannels <= 0) return;
+  // More buses than the threads were given room for, or the lists not made
+  // yet: bus by bus, as before.
+  if (numBuses > static_cast<int>(busLists_.size()) ||
+      (!workers_.empty() && numBuses > static_cast<int>(workers_.front()->busBegin.size()))) {
+    for (int b = 0; b < numBuses; ++b) render(busOut[b], numChannels, numFrames, b, mixBus);
+    return;
   }
+
+  // One pass over the pool for every bus: the same voices, in the same
+  // order, as render() finds for each bus.
+  int active = 0;
+  size_t firstFree = voices_.size();
+  size_t lastActive = 0;
+  for (int b = 0; b < numBuses; ++b) busLists_[static_cast<size_t>(b)].clear();
+  for (size_t i = 0; i < scanEnd_; ++i) {
+    const Voice& v = voices_[i];
+    if (!v.active()) {
+      if (firstFree == voices_.size()) firstFree = i;
+      continue;
+    }
+    ++active;
+    lastActive = i + 1;
+    if (v.buffer == nullptr) continue;
+    if (mixBus >= 0 && v.mixBus != mixBus) continue;
+    if (v.busIndex < 0 || v.busIndex >= numBuses) continue;
+    busLists_[static_cast<size_t>(v.busIndex)].push_back(static_cast<uint32_t>(i));
+  }
+  stats_.activeVoices = active;
+  if (firstFree == voices_.size() && scanEnd_ < voices_.size()) firstFree = scanEnd_;
+  scanEnd_ = lastActive;
+  freeHint_ = firstFree < voices_.size() ? firstFree : 0;
+  liveCount_ = active;
+
+  // Each bus shared out exactly as render() shares it.
+  const bool threaded =
+      !workers_.empty() && numFrames <= maxFrames_ && numChannels <= numChannels_;
+  size_t helpers = 0;
+  for (int b = 0; b < numBuses; ++b) {
+    const size_t count = busLists_[static_cast<size_t>(b)].size();
+    size_t shares = 1;
+    if (threaded)
+      shares = std::min(workers_.size() + 1,
+                        count / static_cast<size_t>(std::max(1, minVoicesPerThread_)));
+    if (shares < 1) shares = 1;
+    for (size_t w = 0; w < workers_.size(); ++w) {
+      Worker& wk = *workers_[w];
+      if (w + 1 < shares) {
+        wk.busBegin[static_cast<size_t>(b)] = count * (w + 1) / shares;
+        wk.busEnd[static_cast<size_t>(b)] = count * (w + 2) / shares;
+      } else {
+        wk.busBegin[static_cast<size_t>(b)] = wk.busEnd[static_cast<size_t>(b)] = 0;
+      }
+    }
+    helpers = std::max(helpers, shares - 1);
+  }
+
+  if (helpers > 0) {
+    {
+      std::lock_guard<std::mutex> lock(jobMutex_);
+      jobChannels_ = numChannels;
+      jobFrames_ = numFrames;
+      jobBuses_ = numBuses;
+      jobsOutstanding_.store(static_cast<int>(helpers), std::memory_order_release);
+      for (size_t w = 0; w < helpers; ++w) workers_[w]->ticket.fetch_add(1, std::memory_order_release);
+    }
+    for (size_t w = 0; w < helpers; ++w) workers_[w]->wake.notify_one();
+  }
+
+  // The audio thread's share of every bus: the first, as render() takes it.
+  for (int b = 0; b < numBuses; ++b) {
+    const auto& list = busLists_[static_cast<size_t>(b)];
+    size_t shares = 1;
+    for (size_t w = 0; w < helpers; ++w)
+      if (workers_[w]->busBegin[static_cast<size_t>(b)] < workers_[w]->busEnd[static_cast<size_t>(b)])
+        shares = w + 2;
+    renderList(list.data(), list.size() / shares, busOut[b], numChannels, numFrames);
+  }
+  if (helpers > 0) waitForWorkers();
+  // Voices that ended in this block's render are free for the next note-on,
+  // as when each bus counted them out at its own pass.
+  for (int b = 0; b < numBuses; ++b)
+    for (const uint32_t idx : busLists_[static_cast<size_t>(b)])
+      if (!voices_[idx].active()) {
+        if (liveCount_ > 0) --liveCount_;
+        if (idx < freeHint_) freeHint_ = idx;
+      }
+  if (helpers == 0) return;
+
+  // Each bus summed as render() sums it: its workers in order.
+  for (int b = 0; b < numBuses; ++b)
+    for (size_t w = 0; w < helpers; ++w) {
+      const Worker& wk = *workers_[w];
+      if (wk.busBegin[static_cast<size_t>(b)] >= wk.busEnd[static_cast<size_t>(b)]) continue;
+      const size_t first = static_cast<size_t>(b) * static_cast<size_t>(numChannels_);
+      for (int c = 0; c < numChannels; ++c) {
+        const float* src = wk.planes[first + static_cast<size_t>(c)];
+        float* dst = busOut[b][c];
+        for (int i = 0; i < numFrames; ++i) dst[i] += src[i];
+      }
+    }
 }
 
 } // namespace mp
