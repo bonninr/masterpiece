@@ -2643,6 +2643,121 @@ public:
   }
 };
 
+// A voice started part-way into a block begins there (MIDI files and hosts
+// give each note its place in the block). The frames before stay silent, and
+// from its place on the voice is the same one started at a block's start,
+// moved along by that many frames.
+class VoiceStartOffsetTest final : public mp::test::Test {
+public:
+  VoiceStartOffsetTest() : Test("functional.voice.start-offset", Category::Functional) {}
+  static std::vector<float> render(int offset, int blocks) {
+    voicetest::Fixture fx;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 4, 1, 256);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.startOffset = offset;
+    eng.startVoice(st, 1);
+    std::vector<float> all, buf(256);
+    float* out[1] = {buf.data()};
+    for (int b = 0; b < blocks; ++b) {
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.render(out, 1, 256);
+      all.insert(all.end(), buf.begin(), buf.end());
+    }
+    return all;
+  }
+  void run() override {
+    const auto plain = render(0, 4);
+    const auto later = render(100, 4);
+    double before = 0.0;
+    for (int i = 0; i < 100; ++i) before += std::fabs(later[static_cast<size_t>(i)]);
+    MP_CHECK(before == 0.0, "nothing sounds before the voice's place in the block");
+    double worst = 0.0;
+    for (size_t i = 100; i < later.size(); ++i)
+      worst = std::max(worst, static_cast<double>(std::fabs(later[i] - plain[i - 100])));
+    MP_CHECK(worst < 1e-6, "from there it is the same voice, a hundred frames later (worst " +
+                               std::to_string(worst) + ")");
+    double level = 0.0;
+    for (float v : later) level = std::max(level, static_cast<double>(std::fabs(v)));
+    MP_CHECK(level > 0.1, "and it sounds");
+    // A place past the block carries into the next one.
+    const auto next = render(300, 4);
+    double first = 0.0;
+    for (int i = 0; i < 300; ++i) first += std::fabs(next[static_cast<size_t>(i)]);
+    MP_CHECK(first == 0.0 && std::fabs(next[310]) > 0.0f, "a place past the block falls in the next");
+  }
+};
+static VoiceStartOffsetTest g_voiceStartOffset;
+
+// A virtuoso passage through the engine: two hundred notes, a new one every
+// 37 frames (about 1300 a second, far past any hand), in blocks of 256, so
+// that most land part-way into a block and many in the block after the one
+// they were given in. Each note is a constant level, so the output at every
+// frame is the count of notes begun by then, and a note that started a frame
+// early or late, or not at all, shows as a wrong step. None may be dropped or
+// stolen: the pool holds them all.
+class VirtuosoPassageTest final : public mp::test::Test {
+public:
+  VirtuosoPassageTest() : Test("functional.voice.virtuoso-passage", Category::Functional) {}
+  void run() override {
+    constexpr int kBlock = 256;
+    constexpr int kNotes = 200;
+    constexpr int kGap = 37;
+    voicetest::Fixture fx;
+    // A level of one, held: every frame of the sample is 1, looped.
+    fx.attack.numChannels = 1;
+    fx.attack.sampleRate = 48000.0;
+    fx.attack.numFrames = 4800;
+    fx.attack.frames.assign(4800, 1.0f);
+    fx.attack.loopStart = 2400;
+    fx.attack.loopEnd = 4800;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 256, 1, kBlock);
+    eng.setSampleProvider(fx.provider());
+
+    std::vector<float> all, buf(kBlock);
+    float* out[1] = {buf.data()};
+    int next = 0;
+    const int blocks = (kNotes * kGap) / kBlock + 4;
+    for (int b = 0; b < blocks; ++b) {
+      const int blockStart = b * kBlock;
+      // The notes whose frame falls in this block, started at their place.
+      while (next < kNotes && next * kGap < blockStart + kBlock) {
+        mp::VoiceStart st;
+        st.pipe = &fx.pipe;
+        st.layer = &fx.pipe.layers[0];
+        st.ratio = 1.0;
+        st.gain = 1.0f;
+        st.startOffset = next * kGap - blockStart;
+        MP_CHECK(eng.startVoice(st, static_cast<uint64_t>(next + 1)) >= 0, "every note finds a voice");
+        ++next;
+      }
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.render(out, 1, kBlock);
+      all.insert(all.end(), buf.begin(), buf.end());
+    }
+    int wrong = 0, firstWrong = -1;
+    for (size_t f = 0; f < all.size(); ++f) {
+      const int expected = std::min(kNotes, static_cast<int>(f) / kGap + 1);
+      if (std::fabs(all[f] - static_cast<float>(expected)) > 1e-3f) {
+        if (firstWrong < 0) firstWrong = static_cast<int>(f);
+        ++wrong;
+      }
+    }
+    MP_CHECK(wrong == 0, "every note begins on its own frame (" + std::to_string(wrong) +
+                             " frames wrong, the first at " + std::to_string(firstWrong) + ")");
+    MP_CHECK(eng.stats().startsDropped == 0 && eng.stats().stolenVoices == 0,
+             "and none is dropped or stolen");
+    MP_CHECK(eng.activeVoiceCount() == kNotes, "all two hundred are sounding at the end");
+  }
+};
+static VirtuosoPassageTest g_virtuosoPassage;
+
 class VoiceEngineStealingTest final : public mp::test::Test {
 public:
   VoiceEngineStealingTest()
