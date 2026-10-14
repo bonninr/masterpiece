@@ -114,6 +114,14 @@ private:
   juce::ComboBox rate_;
   juce::Label cacheLabel_;
   juce::ComboBox cache_;
+  juce::Label cacheWhenLabel_;
+  juce::ComboBox cacheWhen_;
+  juce::Label rebuildNote_;
+public:
+  // Whether closing now should rebuild the loaded organ's cache: a setting
+  // that changes what it holds differs from what the organ was loaded with.
+  bool cacheRebuildPending() const;
+private:
   juce::Label cacheDirLabel_;
   juce::Label cacheDirValue_;
   juce::TextButton cacheDirChoose_{TRANS("Choose...")};

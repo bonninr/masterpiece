@@ -709,8 +709,32 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
 
 OrganSettingsWindow::~OrganSettingsWindow() {
   // Posted, not called: the window is still being torn down here.
-  if (onClosed) juce::MessageManager::callAsync(std::move(onClosed));
-  else if (reloadOnClose_ && reload_) juce::MessageManager::callAsync(std::move(reload_));
+  if (onClosed) {
+    juce::MessageManager::callAsync(std::move(onClosed));
+  } else if (reloadOnClose_ && reload_) {
+    juce::MessageManager::callAsync(std::move(reload_));
+  } else if (engine_.cacheRebuildPending() && reload_) {
+    // A change that rebuilds the cache, and the window closed without loading
+    // the organ again: asked now, once, for everything changed. Not accepted,
+    // the window opens again, where the change can be undone.
+    juce::MessageManager::callAsync([reload = std::move(reload_), reopen = std::move(onReopen)] {
+      juce::AlertWindow::showAsync(
+          juce::MessageBoxOptions()
+              .withIconType(juce::MessageBoxIconType::QuestionIcon)
+              .withTitle(TRANS("Rebuild the sample cache?"))
+              .withMessage(TRANS("This changes the samples the cache holds. The organ is loaded again "
+                                 "now, and its cache is built anew."))
+              .withButton(TRANS("Rebuild and load again"))
+              .withButton(TRANS("Back to settings")),
+          [reload, reopen](int result) {
+            if (result == 1) {
+              if (reload) reload();
+            } else if (reopen) {
+              reopen();
+            }
+          });
+    });
+  }
 }
 
 void OrganSettingsWindow::reloadOnClose() {

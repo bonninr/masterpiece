@@ -44,13 +44,13 @@ extern "C" __declspec(dllimport) int __stdcall SetThreadPriority(void* thread, i
 namespace mp {
 namespace {
 
-// The thread that saves the sample cache runs only on time nothing else
-// wants. It starts as the organ becomes playable and reads and checksums
-// every sample it has: gigabytes, for half a minute or more. On a two-core
-// computer it took a core from the first notes played, and the audio fell
-// behind until it was done. The system's own lowest class for work in the
-// background: idle scheduling on Linux, the background class on macOS and
-// iOS, background mode on Windows, which lowers its disk use as well.
+// The thread that saves the sample cache while the organ plays runs only on
+// time nothing else wants. It reads and checksums every sample it has:
+// gigabytes, for half a minute or more. On a two-core computer it took a core
+// from the first notes played, and the audio fell behind until it was done.
+// The system's own lowest class for work in the background: idle scheduling
+// on Linux, the background class on macOS and iOS, background mode on
+// Windows, which lowers its disk use as well.
 void runInTheBackground() {
 #if defined(__linux__)
   sched_param none{};
@@ -1015,7 +1015,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     // them here while notes play is safe.
     cacheWriting_.store(true);
     cacheThread_ = std::thread([this, written, fingerprint, path = cachePath()] {
-      runInTheBackground();
+      if (cacheWhilePlaying_) runInTheBackground();
       const auto started = std::chrono::steady_clock::now();
       const bool saved = writeCache(*written, fingerprint, path);
       const double seconds =
@@ -1422,6 +1422,10 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
 
     for (const auto& [id, buf] : store) {
       if (buf == nullptr) continue;
+      // While the organ plays, the write waits for silence: it is not let near
+      // the sound at all.
+      while (cacheWhilePlaying_ && cacheBusy_ && cacheBusy_() && !cacheStop_.load())
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
       if (cacheStop_.load()) break;
       putPod<uint32_t>(os, static_cast<uint32_t>(id));
       putPod<int64_t>(os, buf->numFrames);

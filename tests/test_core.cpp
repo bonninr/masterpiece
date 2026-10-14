@@ -10121,6 +10121,30 @@ public:
                "and its progress reaches the end, for the status line's percentage");
     }
     {
+      // Written while the organ plays, the cache waits for silence: nothing
+      // is written while a note sounds, and all of it once none does.
+      for (const auto& f : cacheDir.findChildFiles(juce::File::findFiles, false)) f.deleteFile();
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("partial", "stamp");
+      lib.setCacheWhilePlaying(true);
+      std::atomic<bool> sounding{true};
+      lib.setCacheBusy([&sounding] { return sounding.load(); });
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      lib.loadAll(model, root.getFullPathName().toStdString(), 0, mp::LoopSelection::Longest,
+                  &progress);
+      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      MP_CHECK(lib.cacheWriting() && lib.cacheBytesDone() == 0,
+               "while a note sounds the cache write waits");
+      sounding.store(false);
+      lib.finishCacheWrite(false);
+      MP_CHECK(cacheFiles() == 1 && lib.cacheWriteFraction() == 1.0,
+               "and in silence it is written whole");
+    }
+    {
       // One flipped bit in a sample's audio, as a failing disk leaves it: the
       // cache is refused and the organ read from its samples, every one.
       const auto cache = cacheDir.findChildFiles(juce::File::findFiles, false).getFirst();

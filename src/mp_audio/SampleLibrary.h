@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -192,6 +193,14 @@ public:
     const int64_t total = cacheTotal_.load();
     return total > 0 ? static_cast<double>(cacheDone_.load()) / static_cast<double>(total) : -1.0;
   }
+  // The bytes of samples the cache write has written, and has to write.
+  int64_t cacheBytesDone() const { return cacheDone_.load(); }
+  int64_t cacheBytesTotal() const { return cacheTotal_.load(); }
+  // Whether the next cache write runs while the organ plays: then at the
+  // system's lowest priority, and only while `busy` says nothing sounds. Off,
+  // the load waits for it at full speed, with the organ not yet playable.
+  void setCacheWhilePlaying(bool on) { cacheWhilePlaying_ = on; }
+  void setCacheBusy(std::function<bool()> busy) { cacheBusy_ = std::move(busy); }
   // Waits for a cache write still running, so a load never reads one half
   // written. Asks it to stop first when `abandon` (quitting); the old cache,
   // if any, is then left as it was.
@@ -286,6 +295,8 @@ private:
   std::thread cacheThread_;
   std::atomic<bool> cacheWriting_{false};
   mutable std::atomic<bool> cacheStop_{false};
+  bool cacheWhilePlaying_ = false;
+  std::function<bool()> cacheBusy_;
 
 
   // Static, so everything it depends on arrives as an argument: `loadMono`

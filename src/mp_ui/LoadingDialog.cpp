@@ -25,6 +25,15 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
   addAndMakeVisible(cancel_);
   cancel_.onClick = [this] {
     if (cancelling_) return;
+    // While the cache is saved, the organ is loaded: the button opens it
+    // without the cache.
+    if (proc_.loadProgress().phase.load() == LoadProgress::Phase::SavingCache) {
+      cancelling_ = true;
+      cancel_.setEnabled(false);
+      detail_.setText(TRANS("The organ opens without saving its samples"), juce::dontSendNotification);
+      proc_.skipCacheSave();
+      return;
+    }
     cancelling_ = true;
     // The button stays visible but stops responding: pressing Cancel twice
     // cannot make the load stop sooner, and a dead-looking button invites a
@@ -54,6 +63,7 @@ static juce::String phaseText(LoadProgress::Phase p) {
     case LoadProgress::Phase::WiringConsole:     return TRANS("Wiring the console");
     case LoadProgress::Phase::FindingSamples:    return TRANS("Finding the samples");
     case LoadProgress::Phase::LoadingSamples:    return TRANS("Loading samples");
+    case LoadProgress::Phase::SavingCache:       return TRANS("Saving the samples for the next load");
     case LoadProgress::Phase::Preparing:         return TRANS("Preparing to play");
     case LoadProgress::Phase::BuildingConsole:   return TRANS("Building the console");
     case LoadProgress::Phase::Done:              return TRANS("Ready");
@@ -122,6 +132,27 @@ void LoadingDialog::timerCallback() {
                               .replace("%2", juce::String(total));
       const auto eta = estimateRemaining();
       if (eta.isNotEmpty()) text += "   -   " + TRANS("%1 left").replace("%1", eta);
+      detail_.setText(text, juce::dontSendNotification);
+    }
+  } else if (phase == LoadProgress::Phase::SavingCache) {
+    if (cancel_.getButtonText() != TRANS("Skip saving")) cancel_.setButtonText(TRANS("Skip saving"));
+    if (!cancelling_) {
+      const double mb = 1024.0 * 1024.0;
+      const auto done = static_cast<double>(proc_.cacheBytesDone());
+      const auto total = static_cast<double>(proc_.cacheBytesTotal());
+      const double elapsed = (juce::Time::getMillisecondCounterHiRes() - phaseStartMs_) / 1000.0;
+      juce::String text = TRANS("%1 of %2 MB written")
+                              .replace("%1", juce::String(static_cast<int>(done / mb)))
+                              .replace("%2", juce::String(static_cast<int>(total / mb)));
+      if (elapsed > 1.5 && done > 0.0) {
+        const double rate = done / elapsed;
+        text += "   -   " + TRANS("%1 MB/s").replace("%1", juce::String(static_cast<int>(rate / mb)));
+        if (elapsed > 3.0 && total > done) {
+          const double raw = (total - done) / rate;
+          etaSeconds_ = etaSeconds_ < 0.0 ? raw : etaSeconds_ * 0.85 + raw * 0.15;
+          text += "   -   " + TRANS("%1 left").replace("%1", humanise(etaSeconds_));
+        }
+      }
       detail_.setText(text, juce::dontSendNotification);
     }
   } else if (!cancelling_ && (phase == LoadProgress::Phase::ReadingArchive ||

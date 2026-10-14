@@ -156,6 +156,26 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                                  : SampleLibrary::CacheMode::Single);
   };
 
+  // When the cache of a new load is written: before the organ plays, as
+  // GrandOrgue does, or while it plays, in its silences.
+  addAndMakeVisible(cacheWhenLabel_);
+  styleLabel(cacheWhenLabel_, TRANS("Save the sample cache"));
+  addAndMakeVisible(cacheWhen_);
+  cacheWhen_.addItem(TRANS("Before the organ plays"), 1);
+  cacheWhen_.addItem(TRANS("In silence, while it plays"), 2);
+  cacheWhen_.setSelectedId(proc_.cacheWhilePlaying() ? 2 : 1, juce::dontSendNotification);
+  cacheWhen_.setTooltip(TRANS("Before the organ plays: the first load of an organ takes longer, and "
+                              "nothing competes with its sound. In silence: the organ plays at once, "
+                              "and the samples are saved whenever nothing sounds; until they are, the "
+                              "next load reads them again."));
+  cacheWhen_.onChange = [this] { proc_.setCacheWhilePlaying(cacheWhen_.getSelectedId() == 2); };
+
+  // Said beside the choices while one of them will rebuild the cache: the
+  // question comes when the window closes, and the wait after it.
+  addChildComponent(rebuildNote_);
+  styleLabel(rebuildNote_, TRANS("The cache is rebuilt when this window closes. It can take several minutes."));
+  rebuildNote_.setColour(juce::Label::textColourId, juce::Colour(0xffe0b050));
+
   // Where that cache is written. It is as large as the organs played through
   // it, so a machine with a small fast disk and a large slow one needs to be
   // able to say which holds it.
@@ -402,6 +422,13 @@ void EnginePanel::fillPolyphony() {
   polyphony_.setSelectedId(current == 0 ? 1 : 1000 + current, juce::dontSendNotification);
 }
 
+bool EnginePanel::cacheRebuildPending() const {
+  // With an organ loaded, a cache in use, and a setting that changes what it
+  // holds differing from what the organ was loaded with.
+  return proc_.loadedOrganFile().getFullPathName().isNotEmpty() &&
+         proc_.cacheMode() != SampleLibrary::CacheMode::Off && proc_.cacheChoicesChangedSinceLoad();
+}
+
 void EnginePanel::revert() {
   proc_.setEngineSwitch(openSwitch_);
   proc_.setPreloadHeadFrames(openPreload_);
@@ -518,6 +545,7 @@ void EnginePanel::timerCallback() {
   const bool offer = onReload != nullptr && proc_.loadedOrganFile().getFullPathName().isNotEmpty();
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
   const bool pending = offer && loadingChanged();
+  if (rebuildNote_.isVisible() != cacheRebuildPending()) rebuildNote_.setVisible(cacheRebuildPending());
   const juce::String reloadText = pending ? TRANS("Load the organ again to apply") : TRANS("Load the organ again");
   if (reload_.getButtonText() != reloadText) {
     reload_.setButtonText(reloadText);
@@ -684,6 +712,11 @@ void EnginePanel::resized() {
   auto cacheRow = r.removeFromTop(kRow);
   cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
   cache_.setBounds(cacheRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  auto cacheWhenRow = r.removeFromTop(kRow);
+  cacheWhenLabel_.setBounds(cacheWhenRow.removeFromLeft(180));
+  cacheWhen_.setBounds(cacheWhenRow.removeFromLeft(300));
+  rebuildNote_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
   r.removeFromTop(6);
   auto cacheDirRow = r.removeFromTop(kRow);
   cacheDirLabel_.setBounds(cacheDirRow.removeFromLeft(180));
