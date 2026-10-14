@@ -10469,6 +10469,106 @@ public:
 static SampleLibraryTest g_sampleLibrary;
 static PublisherLicenceTest g_publisherLicence;
 static PartialLoadTest g_partialLoad;
+// The releases a player chooses to load (#310): the longest, the shortest
+// or none of each pipe's, and each kept up to a length, faded at its end.
+class ReleaseChoiceTest final : public mp::test::Test {
+public:
+  ReleaseChoiceTest() : Test("functional.samples.release-choice", Category::Functional) {}
+  static mp::OrganModel threeReleases() {
+    mp::OrganModel m;
+    mp::PipeLayer layer;
+    const std::pair<mp::Id, int64_t> rel[] = {{1, 600}, {2, 300}, {3, INT32_MAX}};
+    for (const auto& [id, hold] : rel) {
+      mp::ReleaseSample r;
+      r.sample.sampleId = id;
+      r.holdTimeMsHigh = hold;
+      layer.releases.push_back(r);
+    }
+    mp::Pipe pipe;
+    pipe.layers.push_back(layer);
+    mp::Rank rank;
+    rank.pipes.push_back(pipe);
+    m.ranks[1] = rank;
+    return m;
+  }
+  static const std::vector<mp::ReleaseSample>& releasesOf(const mp::OrganModel& m) {
+    return m.ranks.at(1).pipes[0].layers[0].releases;
+  }
+  void run() override {
+    using C = mp::SampleLibrary::ReleaseChoice;
+    {
+      auto m = threeReleases();
+      mp::SampleLibrary::pruneReleases(m, C::All);
+      MP_CHECK(releasesOf(m).size() == 3, "all releases are kept by default");
+    }
+    {
+      auto m = threeReleases();
+      mp::SampleLibrary::pruneReleases(m, C::Longest);
+      MP_CHECK(releasesOf(m).size() == 1 && releasesOf(m)[0].sample.sampleId == 3,
+               "the longest only keeps the release for a held note");
+    }
+    {
+      auto m = threeReleases();
+      mp::SampleLibrary::pruneReleases(m, C::Shortest);
+      MP_CHECK(releasesOf(m).size() == 1 && releasesOf(m)[0].sample.sampleId == 2,
+               "the shortest only keeps the release for a short note");
+      mp::NoteRelease held;
+      held.holdTimeMs = 5000;
+      MP_CHECK(mp::selectRelease(m.ranks.at(1).pipes[0].layers[0], held) == 0,
+               "and it answers a key held for any time");
+    }
+    {
+      auto m = threeReleases();
+      mp::SampleLibrary::pruneReleases(m, C::None);
+      MP_CHECK(releasesOf(m).empty(), "none keeps no release");
+    }
+
+    // A two-second release file, kept up to half a second.
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_release_length");
+    root.deleteRecursively();
+    root.createDirectory();
+    SampleLibraryTest::writeWav(root.getChildFile("rel.wav"), 96000, 1, 48000.0);
+    mp::OrganModel model;
+    mp::SampleRef ref;
+    ref.sampleId = 7;
+    ref.fileName = "rel.wav";
+    model.samples[7] = ref;
+    {
+      mp::PipeLayer layer;
+      mp::ReleaseSample r;
+      r.sample.sampleId = 7;
+      layer.releases.push_back(r);
+      mp::Pipe pipe;
+      pipe.layers.push_back(layer);
+      mp::Rank rank;
+      rank.pipes.push_back(pipe);
+      model.ranks[1] = rank;
+    }
+    for (const int ms : {0, 500}) {
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Off);
+      lib.setStreamReleases(true);
+      lib.setReleaseMaxMs(ms);
+      lib.loadAll(model, root.getFullPathName().toStdString(), 0);
+      const mp::SampleBuffer* b = lib.provider()(7);
+      MP_CHECK(b != nullptr, "the release is loaded");
+      if (b == nullptr) continue;
+      if (ms == 0) {
+        MP_CHECK(b->totalFrames() == 96000, "whole, it is the whole file");
+        continue;
+      }
+      MP_CHECK(b->numFrames == 24000 && !b->streams(),
+               "kept to half a second, it is read that far and held in memory (" +
+                   std::to_string(b->numFrames) + " frames)");
+      float early = 0.0f, last = std::abs(b->sample(b->numFrames - 1, 0));
+      for (int64_t f = 0; f < 12000; ++f) early = std::max(early, std::abs(b->sample(f, 0)));
+      MP_CHECK(early > 0.4f && last < 1.0e-3f, "it plays as recorded, then fades to silence at its end");
+    }
+    root.deleteRecursively();
+  }
+};
+static ReleaseChoiceTest g_releaseChoice;
 static MemoryDefaultsTest g_memoryDefaults;
 static OpenTailPoolTest g_openTailPool;
 #endif

@@ -109,6 +109,21 @@ public:
   void setLoadMono(bool on) { loadMono_ = on; }
   bool loadMono() const { return loadMono_; }
 
+  // Which of each pipe's releases are loaded. Many sets record a short and a
+  // long release per pipe, chosen by how long the key was held; one of them
+  // loads faster and holds less. None: a note fades from where it is.
+  enum class ReleaseChoice { All = 0, Longest = 1, Shortest = 2, None = 3 };
+  void setReleaseChoice(ReleaseChoice c) { releaseChoice_ = c; }
+  ReleaseChoice releaseChoice() const { return releaseChoice_; }
+  // Leaves in each layer only the releases `choice` keeps. The one kept
+  // answers a key held for any time, since the others are gone.
+  static void pruneReleases(OrganModel& model, ReleaseChoice choice);
+  // Each release kept up to this length after its start, in milliseconds,
+  // fading out over its last quarter; 0 keeps it whole. Read only that far:
+  // a shortened release is held in memory, never streamed.
+  void setReleaseMaxMs(int ms) { releaseMaxMs_ = std::max(0, ms); }
+  int releaseMaxMs() const { return releaseMaxMs_; }
+
   // Convert sample data to this rate as it is read. 0 keeps whatever rate
   // each file already has, which is what every set did before this existed.
   //
@@ -304,7 +319,8 @@ private:
   static bool readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                        int64_t maxFrames, LoopSelection selection,
                        SampleStorage storage, bool loadMono,
-                       double targetRate);
+                       double targetRate, bool releaseOnly = false,
+                       int releaseMaxMs = 0);
   // Attach a tail that reads the rest of `path` on demand. The reader is
   // opened lazily, on the streaming thread, and kept for the buffer's life.
   // `totalFrames` counts RESIDENT frames, not frames of the file: when the
@@ -340,6 +356,8 @@ private:
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
   bool loadMono_ = false;
+  ReleaseChoice releaseChoice_ = ReleaseChoice::All;
+  int releaseMaxMs_ = 0;
   double loadRate_ = 0.0;   // 0 = keep each file's own rate
   bool streamReleases_ = false;
   bool licenceConfirmed_ = false;

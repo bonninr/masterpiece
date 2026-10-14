@@ -29,6 +29,8 @@ public:
 
   bool hasImpulseResponse() const { return loaded_; }
   juce::String impulseResponseName() const { return irName_; }
+  // The file chosen, as the player picked it: saved with the organ.
+  juce::File impulseResponseFile() const { return irFile_; }
 
   void setEnabled(bool on) { enabled_ = on; }
   bool enabled() const { return enabled_; }
@@ -67,6 +69,7 @@ private:
   bool prepared_ = false;
   float mix_ = 0.25f;
   juce::String irName_;
+  juce::File irFile_;
 };
 
 } // namespace mp
