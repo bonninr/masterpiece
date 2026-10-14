@@ -830,13 +830,20 @@ public:
   // cleanly and says so, rather than running the machine out of memory.
   int memoryLimitSettingMB() const { return memoryLimitMB_; }
   void setMemoryLimitMB(int mb);
-  // The most voices that sound at once; 0 means every voice the engine has
-  // (maxPolyphony()). Past it a new pipe takes the place of one dying away,
-  // or of the quietest. For a machine that falls behind on full organ: fewer
-  // voices is a thinner tutti, more than it can render is a glitch.
+  // The most voices that sound at once: the size of the voice pool, chosen
+  // by the player; 0 means the default (defaultPolyphony()). Past it a new
+  // pipe takes the place of one dying away, or of the quietest. Fewer voices
+  // is a thinner tutti on a full organ, more than the machine can render is
+  // a glitch. The pool is made at the next load of the organ; a smaller
+  // number applies at once.
   int polyphonyLimit() const { return polyphony_; }
   void setPolyphonyLimit(int voices);
-  int maxPolyphony() const { return graph_.maxVoices; }
+  static int defaultPolyphony() { return 1536; }
+  static int maxPolyphonySetting() { return 16384; }
+  int voicePool() const { return polyphony_ > 0 ? polyphony_ : defaultPolyphony(); }
+  // What a pool of this many voices holds in memory with the streaming
+  // choice as it stands; part of the memory limit, with the samples.
+  int64_t voicePoolBytes(int voices) const;
   // The same ceiling for this session only, saved nowhere: for tools that
   // must not rewrite the player's settings.
   void overrideMemoryLimitMB(int mb) { memoryLimitOverrideMB_ = mb > 0 ? mb : 0; }

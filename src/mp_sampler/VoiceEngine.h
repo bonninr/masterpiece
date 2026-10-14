@@ -470,6 +470,12 @@ public:
   // is an enormous margin against a disk that stalls, and the memory is one
   // ring per VOICE rather than per sample.
   void setStreamSeconds(double seconds);
+  // Whether the next prepare() gives each voice a ring for a streamed
+  // release tail. Without streaming nothing ever reads one, and at 48 kHz a
+  // ring is three quarters of a megabyte a voice.
+  void setStreamRings(bool on) { streamRings_ = on; }
+  // What one voice of the pool holds in memory, with or without its ring.
+  static int64_t bytesPerVoice(double sampleRate, double streamSeconds, bool rings);
   double streamSeconds() const { return streamSeconds_; }
   // Underruns since prepare(): a voice reached material the streamer had not
   // fetched yet and played silence. Should be zero; anything else is a disk
@@ -630,6 +636,7 @@ private:
   std::condition_variable streamCv_;
   bool streamQuit_ = false;
   double streamSeconds_ = 2.0;
+  bool streamRings_ = true;
   // Counted from the read path, which is const because reading a sample does
   // not change the engine — but an underrun is exactly the thing a player must
   // be told about, so it is recorded rather than swallowed.

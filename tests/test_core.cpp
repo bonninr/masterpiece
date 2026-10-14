@@ -3386,6 +3386,43 @@ public:
       MP_CHECK(eng.streamerPasses() == rested,
                "it sleeps again when the last streaming voice ends");
     }
+
+    // A pool made without rings, as for an organ loaded whole: a voice of a
+    // streaming sample plays what is resident and goes quiet, and nothing is
+    // read from the disk. A voice without its ring costs a few hundred bytes;
+    // with one, at 48 kHz, three quarters of a megabyte.
+    {
+      MP_CHECK(mp::VoiceEngine::bytesPerVoice(48000.0, 2.0, false) < 4096,
+               "a voice without a ring is small (" +
+                   std::to_string(mp::VoiceEngine::bytesPerVoice(48000.0, 2.0, false)) + " bytes)");
+      MP_CHECK(mp::VoiceEngine::bytesPerVoice(48000.0, 2.0, true) > 700000,
+               "and a ring is the bulk of a streaming one");
+      voicetest::Fixture fx;
+      fx.attack = streamed;
+      mp::VoiceEngine eng;
+      eng.setStreamRings(false);
+      eng.prepare(48000.0, 4, 1, 256);
+      eng.setSampleProvider(fx.provider());
+      const int readsBefore = disk->reads.load();
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.ratio = 1.0;
+      st.gain = 1.0f;
+      st.oneShot = true;
+      eng.startVoice(st, 1);
+      std::vector<float> out(4000, 0.0f);
+      float* ptr[1] = {out.data()};
+      eng.render(ptr, 1, 4000);
+      double head = 0.0, after = 0.0;
+      for (size_t i = 0; i < out.size(); ++i)
+        if (i < 900) head += static_cast<double>(out[i]) * out[i];
+        else if (i >= 1010) after += static_cast<double>(out[i]) * out[i];  // past the head of 1000 frames
+      MP_CHECK(head > 1.0, "without rings the resident head still sounds");
+      MP_CHECK(after < 1e-9, "and the voice is quiet past it");
+      MP_CHECK(eng.streamingVoices() == 0 && disk->reads.load() == readsBefore,
+               "with nothing read from the disk");
+    }
   }
 };
 
@@ -12214,6 +12251,8 @@ public:
           reads.fetch_add(1);
         }
       });
+      // A fast machine can play all of it before the reader has run once.
+      while (reads.load() == 0) std::this_thread::yield();
       for (int i = 0; i < 400; ++i) {
         send(20, 127);
         send(20, 0);
