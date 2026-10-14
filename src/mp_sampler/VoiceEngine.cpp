@@ -105,6 +105,7 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   stealStage_ = 0;
   freeHint_ = 0;
   liveCount_ = 0;
+  scanEnd_ = 0;
   blockCounter_ = 0;
   stats_ = EngineStats{};
 
@@ -299,13 +300,14 @@ void VoiceEngine::reset() {
   stats_ = EngineStats{};
   freeHint_ = 0;
   liveCount_ = 0;
+  scanEnd_ = 0;
   stealStage_ = 0;
 }
 
 int VoiceEngine::activeVoiceCount() const {
   int n = 0;
-  for (const auto& v : voices_)
-    if (v.active()) ++n;
+  for (size_t i = 0; i < scanEnd_; ++i)
+    if (voices_[i].active()) ++n;
   return n;
 }
 
@@ -323,6 +325,7 @@ int VoiceEngine::allocateVoice() {
       if (voices_[i].active()) continue;
       freeHint_ = i + 1 < n ? i + 1 : 0;
       ++liveCount_;
+      if (i + 1 > scanEnd_) scanEnd_ = i + 1;
       return static_cast<int>(i);
     }
   }
@@ -483,7 +486,8 @@ void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
 // pipeId 0 means every pipe of the note; otherwise only that one.
 void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
                                 const NoteRelease& release) {
-  for (auto& v : voices_) {
+  for (size_t slot = 0; slot < scanEnd_; ++slot) {
+    Voice& v = voices_[slot];
     if (!v.active() || v.noteId != noteId) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
     if (v.phase == VoicePhase::Release) continue;
@@ -1070,6 +1074,101 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
 
+    // A key let go on a pipe with no release sample: the attack fades out
+    // over a tenth of a second where it is. And the last frames of a release
+    // sample, faded so a file cut dead at its end does not click. Both went
+    // frame by frame: in a fast passage, nine tenths of what still did. Each
+    // frame's level is worked out here as the per-frame path below works it
+    // out, and the vector code is given the levels.
+    if (canRun && v.phase == VoicePhase::Release && v.xfadeRemaining <= 0 &&
+        v.xfadeBuf == nullptr) {
+      const double endFade = static_cast<double>(total - kReleaseEndFadeFrames);
+      const bool fading = !v.releaseIsSample;
+      const bool ending = v.releaseIsSample && v.cursor >= endFade;
+      // Where the frames are read from: the resident sample, or this voice's
+      // ring for a streamed tail.
+      const VoiceStream* st = nullptr;
+      double base = 0.0;
+      double limit = static_cast<double>(runEnd);
+      if (ending && streaming && v.cursor >= static_cast<double>(runEnd) &&
+          voiceIndex < streams_.size()) {
+        st = streams_[voiceIndex].get();
+        if (st->armed.load(std::memory_order_acquire) && !st->ring.empty() &&
+            simd::runSupports(isa_, st->channels)) {
+          base = static_cast<double>(st->base);
+          limit = base + static_cast<double>(st->filled.load(std::memory_order_acquire) -
+                                             simd::kRunMargin);
+        } else {
+          st = nullptr;
+        }
+      }
+      if ((fading || ending) && v.cursor >= base + 1.0 && v.cursor < limit &&
+          (!streaming || st != nullptr || v.cursor < static_cast<double>(runEnd))) {
+        double ratios[kTremChunk];
+        float envs[kTremChunk];
+        const int want = std::min(numFrames - i, kTremChunk);
+        const float level = v.gain * wind.ampMul;
+        // The ring is in real units; the resident sample in storage counts.
+        const float scale = st != nullptr ? 1.0f : storeScale;
+        double p = v.cursor;
+        float phase = tremPhase;
+        double swing = tremRatio;
+        float gain = fading ? v.releaseGain : 1.0f;
+        bool ends = false;
+        int n = 0;
+        for (; n < want && p < limit; ++n) {
+          float e = level;
+          if (tremMoving) {
+            e *= 1.0f + v.tremAmpDepth * phase;
+            if (e < 0.0f) e = 0.0f;
+          }
+          if (fading) {
+            e *= gain;
+            const float next = gain - static_cast<float>(fadeStep);
+            // The frame whose fade reaches nothing is not played.
+            if (next <= 0.0f) {
+              ends = true;
+              break;
+            }
+            gain = next;
+          } else {
+            const double framesLeft = static_cast<double>(total) - p;
+            if (framesLeft < static_cast<double>(kReleaseEndFadeFrames))
+              e *= static_cast<float>(
+                  std::max(0.0, framesLeft / static_cast<double>(kReleaseEndFadeFrames)));
+          }
+          envs[n] = e * scale;
+          ratios[n] = tremMoving ? windRatio * swing : windRatio;
+          p += ratios[n];
+          phase += trem.ampStep;
+          swing *= tremRatioStep;
+        }
+        if (n >= kMinSimdRun || (ends && n > 0)) {
+          if (st != nullptr)
+            v.cursor = base + simd::renderRunPerFrame(isa_, st->ring.data(), st->channels,
+                                                      v.cursor - base, ratios, envs, out,
+                                                      numChannels, i, n);
+          else
+            v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios, envs,
+                                               out, numChannels, i, n);
+          if (fading) v.releaseGain = gain;
+          else v.releaseGain = 1.0f;
+          v.relXfadeLeft = 0;
+          tremPhase = phase;
+          tremRatio = swing;
+          simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+          if (ends) {
+            v.releaseGain -= static_cast<float>(fadeStep);
+            v.phase = VoicePhase::Idle;
+            if (streaming) disarmStream(voiceIndex);
+            return;
+          }
+          i += n - 1;
+          continue;
+        }
+      }
+    }
+
     // Loop handling: wrap inside the sustain loop while the key is held. The
     // loop is the voice's, not the buffer's, so a layer override applies.
     if (v.phase != VoicePhase::Release && v.loops()) {
@@ -1287,7 +1386,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
 void VoiceEngine::gatherWindDemand(float* out, int count) const {
   if (out == nullptr || count <= 0) return;
   for (int i = 0; i < count; ++i) out[i] = 0.0f;
-  for (const Voice& v : voices_) {
+  for (size_t slot = 0; slot < scanEnd_; ++slot) {
+    const Voice& v = voices_[slot];
     if (!v.active() || v.phase == VoicePhase::Release) continue;
     if (v.windIndex < 0 || v.windIndex >= count) continue;
     out[v.windIndex] += v.windFlow;
@@ -1436,20 +1536,24 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
   // with five pipes in it.
   int active = 0;
   size_t firstFree = voices_.size();
+  size_t lastActive = 0;
   jobList_.clear();
-  for (size_t i = 0; i < voices_.size(); ++i) {
+  for (size_t i = 0; i < scanEnd_; ++i) {
     const Voice& v = voices_[i];
     if (!v.active()) {
       if (firstFree == voices_.size()) firstFree = i;
       continue;
     }
     ++active;
+    lastActive = i + 1;
     if (v.buffer == nullptr) continue;
     if (busIndex >= 0 && v.busIndex != busIndex) continue;
     if (mixBus >= 0 && v.mixBus != mixBus) continue;
     jobList_.push_back(static_cast<uint32_t>(i));
   }
   stats_.activeVoices = active;
+  if (firstFree == voices_.size() && scanEnd_ < voices_.size()) firstFree = scanEnd_;
+  scanEnd_ = lastActive;
   // Where the next voice looks for a slot, and how many are in use: voices
   // end inside the render below, and are counted out at the next one.
   freeHint_ = firstFree < voices_.size() ? firstFree : 0;

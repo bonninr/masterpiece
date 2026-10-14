@@ -1267,7 +1267,11 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       const auto srcCount = static_cast<int>(srcTo - srcFrom + 1);
       if (srcCount <= 0) return 0;
 
-      juce::AudioBuffer<float> src(std::max(1, useCh), srcCount);
+      // Kept for the thread that streams, from one read to the next: made new
+      // for every read it was up to 128 KB, which the system hands out as
+      // fresh pages each time.
+      static thread_local juce::AudioBuffer<float> src;
+      src.setSize(std::max(1, useCh), srcCount, false, false, true);
       src.clear();
       // A block at the very start of the file asks for a frame before it;
       // that gap stays zero rather than reading off the front.
@@ -1312,7 +1316,9 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
     const int ch = (foldToMono && channels == 1)
                        ? fileCh
                        : std::min(channels, fileCh);
-    juce::AudioBuffer<float> scratch(std::max(1, ch), numFrames);
+    // See above: one for the thread, kept between reads.
+    static thread_local juce::AudioBuffer<float> scratch;
+    scratch.setSize(std::max(1, ch), numFrames, false, false, true);
     if (!shared->reader->read(&scratch, 0, numFrames, startFrame, true, ch > 1))
       return 0;
 
@@ -1321,11 +1327,13 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       scratch.applyGain(0, 0, numFrames, 1.0f / static_cast<float>(ch));
     }
 
-    // Interleave into the ring, the same layout the resident head uses.
-    for (int f = 0; f < numFrames; ++f)
-      for (int c = 0; c < channels; ++c)
-        dest[static_cast<size_t>(f) * static_cast<size_t>(channels) +
-             static_cast<size_t>(c)] = scratch.getSample(std::min(c, ch - 1), f);
+    // Interleave into the ring, the same layout the resident head uses: a
+    // channel at a time, through plain pointers.
+    for (int c = 0; c < channels; ++c) {
+      const float* from = scratch.getReadPointer(std::min(c, ch - 1));
+      float* to = dest + c;
+      for (int f = 0; f < numFrames; ++f) to[static_cast<size_t>(f) * static_cast<size_t>(channels)] = from[f];
+    }
     return numFrames;
   };
 

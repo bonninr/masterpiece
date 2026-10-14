@@ -437,6 +437,14 @@ std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
                                        const std::unordered_set<Id>& engagedStops,
                                        const std::unordered_set<Id>* engagedSwitches) {
   std::vector<ResolvedPipe> out;
+  resolvePipesInto(model, divisionId, midiNote, engagedStops, engagedSwitches, out);
+  return out;
+}
+
+void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
+                      const std::unordered_set<Id>& engagedStops,
+                      const std::unordered_set<Id>* engagedSwitches,
+                      std::vector<ResolvedPipe>& out) {
   for (const auto& [stopId, stop] : model.stops) {
     if (stop.divisionId != divisionId) continue;
     if (engagedStops.count(stopId) == 0) continue;
@@ -458,11 +466,11 @@ std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
         rp.rankId = rankId;
         rp.pipeId = pipe.pipeId;
         rp.pipeMidiNote = pipeNote;
+        rp.pipe = &pipe;
         out.push_back(rp);
       }
     }
   }
-  return out;
 }
 
 // ---------------------------------------------------- M2.4 continuous controls

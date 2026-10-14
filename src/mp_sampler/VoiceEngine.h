@@ -377,7 +377,7 @@ public:
   // motor noise, which would otherwise stay silent until the switch moved.
   template <class Keep>
   void releaseAll(Keep keep) {
-    for (size_t i = 0; i < voices_.size(); ++i) {
+    for (size_t i = 0; i < scanEnd_; ++i) {
       const Voice& v = voices_[i];
       if (!v.active() || v.phase == VoicePhase::Release || keep(v.noteId)) continue;
       releaseVoices(v.noteId, 0, NoteRelease{});
@@ -589,6 +589,12 @@ private:
   // given out since.
   size_t freeHint_ = 0;
   int liveCount_ = 0;
+  // One past the highest slot that may hold a voice. Voices are given the
+  // lowest free slots, so they sit together at the front of the pool, and
+  // every pass that looks for them -- each render, each note-off, the wind --
+  // stops here. They walked the whole pool: with ten thousand voices allowed,
+  // tens of thousands of empty slots a block for a few hundred sounding.
+  size_t scanEnd_ = 0;
   int polyphony_ = 0;
   // The voices to take when there is no free slot, in the order to take
   // them, made once a block: stage 1 is the voices dying away, 2 the rest.

@@ -2514,18 +2514,12 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
   for (const ExpandedNote& reached : expandScratch_) {
     const int divisionId = reached.divisionId;
     resolveScratch_.clear();
-    const auto pipes =
-        resolvePipes(model_, divisionId, reached.midiNote, stops, &engagedSwitches_);
-    for (const auto& rp : pipes) {
-      const auto rankIt = model_.ranks.find(rp.rankId);
-      if (rankIt == model_.ranks.end()) continue;
-      for (const auto& pipe : rankIt->second.pipes) {
-        if (pipe.pipeId != rp.pipeId) continue;
-        if (startPipeLayers(pipe, rp.rankId, reached.midiNote, velocity, noteId))
-          anyStarted = true;
-        break;
-      }
-    }
+    resolvePipesInto(model_, divisionId, reached.midiNote, stops, &engagedSwitches_,
+                     resolveScratch_);
+    for (const auto& rp : resolveScratch_)
+      if (rp.pipe != nullptr &&
+          startPipeLayers(*rp.pipe, rp.rankId, reached.midiNote, velocity, noteId))
+        anyStarted = true;
   }
 
   return anyStarted;

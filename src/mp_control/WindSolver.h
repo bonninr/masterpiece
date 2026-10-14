@@ -157,6 +157,11 @@ private:
     double fixedA = 0.0, fixedB = 0.0;
   };
   std::vector<ResolvedLink> resolved_;
+  // Whether each resolved link's valve is open, worked out once for a run of
+  // steps: the switches do not move inside a block, and looking each valve's
+  // switch up again on every step of it cost a hash lookup per link per step.
+  std::vector<char> valveOpen_;
+  void readValves(const std::unordered_set<Id>* engagedSwitches);
   void resolveLinks();
   // The largest step this system can be integrated at without ringing.
   // Derived from the organ's own numbers — a small chest fed by a fat pipe has
