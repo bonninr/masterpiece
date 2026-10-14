@@ -955,7 +955,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     e.numMappedNotes = fieldInt(row, "NumberOfMappedDivisionInputNodes", "i", 61);
     e.midiIncrement = fieldInt(row, "MIDINoteNumIncrementFromDivisionToRank", "j", 0);
     e.alternateRankId = fieldInt(row, "AlternateRankID", "p", 0);
-    e.alternateSwitchId = fieldInt(row, "SwitchIDToSwitchToAlternateRank", nullptr, 0);
+    // "m" in a compact definition: without it a set that offers its sampled
+    // tremulant as an alternate rank -- Ashton's real/artificial selection
+    // (#319) -- never switched to it.
+    e.alternateSwitchId = fieldInt(row, "SwitchIDToSwitchToAlternateRank", "m", 0);
     e.retriggerOnAlternate = fieldBool(
         row, "RetriggerNotesWhenSwitchingBetweenNormalAndAlternateRanks", "n", false);
     stopIt->second.ranks.push_back(e);

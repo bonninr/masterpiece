@@ -765,13 +765,21 @@ public:
         "<ObjectList ObjectType=\"Combination\">"
         "<o><a>1000</a><g>4</g><c>2</c><f>N</f><b>__Crescendo 0</b></o>"
         "<o><a>1537</a><c>100</c><f>N</f><b>General cancel</b></o>"
-        "</ObjectList></Hauptwerk>";
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><o><a>5</a><b>voix celestes 8</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\">"
+        "<o><a>5</a><d>50</d><m>2</m><p>56</p><n>Y</n></o></ObjectList></Hauptwerk>";
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
     mp::OrganModel m;
     mp::OdfDiagnostics d;
     MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d),
              "the definition loads");
+    MP_CHECK(m.stops.count(5) && m.stops.at(5).ranks.size() == 1 &&
+                 m.stops.at(5).ranks[0].alternateRankId == 56 &&
+                 m.stops.at(5).ranks[0].alternateSwitchId == 2 &&
+                 m.stops.at(5).ranks[0].retriggerOnAlternate,
+             "a compact stop rank names the switch to its alternate rank (#319)");
     MP_CHECK(m.switches.count(1) && !m.switches.at(1).clickable &&
                  m.switches.count(2) && m.switches.at(2).clickable,
              "a compact switch is clickable only when it says so");
