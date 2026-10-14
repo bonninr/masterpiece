@@ -180,6 +180,23 @@ inline void tapsSse(const float* data, int channels, int64_t k, __m128* ch) {
     ch[1] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(3, 1, 3, 1));
   }
 }
+// 16-bit samples, the resident format most players use: a frame's four taps
+// are 64 bits mono or 128 bits stereo, so one load takes them all, and each
+// count is widened in place (paired with itself, then shifted down, which
+// keeps its sign). Widening them one value at a time cost the SSE2 path as
+// much as its arithmetic.
+inline void tapsSse(const int16_t* data, int channels, int64_t k, __m128* ch) {
+  if (channels == 1) {
+    const __m128i v = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(data + (k - 1)));
+    ch[0] = _mm_cvtepi32_ps(_mm_srai_epi32(_mm_unpacklo_epi16(v, v), 16));
+  } else {
+    const __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + (k - 1) * 2));
+    const __m128 lo = _mm_cvtepi32_ps(_mm_srai_epi32(_mm_unpacklo_epi16(v, v), 16));  // L0 R0 L1 R1
+    const __m128 hi = _mm_cvtepi32_ps(_mm_srai_epi32(_mm_unpackhi_epi16(v, v), 16));  // L2 R2 L3 R3
+    ch[0] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(2, 0, 2, 0));
+    ch[1] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(3, 1, 3, 1));
+  }
+}
 template <typename T>
 inline void tapsSse(const T* data, int channels, int64_t k, __m128* ch) {
   // The integer formats are widened one value at a time; the arithmetic

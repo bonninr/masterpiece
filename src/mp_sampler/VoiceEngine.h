@@ -377,7 +377,7 @@ public:
   // motor noise, which would otherwise stay silent until the switch moved.
   template <class Keep>
   void releaseAll(Keep keep) {
-    for (size_t i = 0; i < voices_.size(); ++i) {
+    for (size_t i = 0; i < scanEnd_; ++i) {
       const Voice& v = voices_[i];
       if (!v.active() || v.phase == VoicePhase::Release || keep(v.noteId)) continue;
       releaseVoices(v.noteId, 0, NoteRelease{});
@@ -409,6 +409,17 @@ public:
   // Allocation-free and lock-free; safe on the audio thread.
   void render(float* const* out, int numChannels, int numFrames,
               int busIndex = -1, int mixBus = -1);
+  // Every enclosure bus of a block at once: busOut[b] is numChannels planar
+  // buffers for bus b, added into. One pass over the pool and one hand-off
+  // to the threads for the whole block, where render() per bus made one of
+  // each per bus. The voices, their shares and the order things are summed
+  // in are those of render() per bus, so the output is the same.
+  // More buses than setBusCount() prepared go bus by bus.
+  void renderBuses(float* const* const* busOut, int numBuses, int numChannels, int numFrames,
+                   int mixBus = -1);
+  // How many buses renderBuses() is given, so each thread has room for a
+  // share of every one. Off the audio thread; restarts the threads.
+  void setBusCount(int buses);
   // Advance the block counter once per audio block. render() does this itself
   // when called for all voices; a caller rendering bus by bus must call it
   // exactly once instead, or voice ages drift by the number of buses.
@@ -589,6 +600,12 @@ private:
   // given out since.
   size_t freeHint_ = 0;
   int liveCount_ = 0;
+  // One past the highest slot that may hold a voice. Voices are given the
+  // lowest free slots, so they sit together at the front of the pool, and
+  // every pass that looks for them -- each render, each note-off, the wind --
+  // stops here. They walked the whole pool: with ten thousand voices allowed,
+  // tens of thousands of empty slots a block for a few hundred sounding.
+  size_t scanEnd_ = 0;
   int polyphony_ = 0;
   // The voices to take when there is no free slot, in the order to take
   // them, made once a block: stage 1 is the voices dying away, 2 the rest.
@@ -679,9 +696,11 @@ private:
   std::vector<uint32_t> jobList_;
   struct Worker {
     std::thread thread;
-    std::vector<float> scratch; // numChannels * maxFrames, planar
+    std::vector<float> scratch; // buses * numChannels * maxFrames, planar
     std::vector<float*> planes;
     size_t begin = 0, end = 0;  // its share of jobList_
+    // Its share of each bus's list, for renderBuses().
+    std::vector<size_t> busBegin, busEnd;
     // Moved on by the audio thread to hand this worker a share, and only
     // this worker: a render that needs two threads wakes one.
     std::atomic<uint32_t> ticket{0};
@@ -701,6 +720,13 @@ private:
   std::atomic<bool> shuttingDown_{false};
   int jobChannels_ = 0;
   int jobFrames_ = 0;
+  // A renderBuses() job: how many buses, each with its own list.
+  int jobBuses_ = 0;
+  std::vector<std::vector<uint32_t>> busLists_;
+  int busCount_ = 1;
+  int lastThreads_ = 1;
+  // The audio thread's wait for its workers, shared by both kinds of job.
+  void waitForWorkers();
   // Whether the threads look before they sleep, and for how many more
   // renders they do not: see kSpinHoldoffRenders.
   std::atomic<bool> spinning_{true};

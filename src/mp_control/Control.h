@@ -25,6 +25,9 @@ struct ResolvedPipe {
   Id rankId = 0;
   Id pipeId = 0;
   int pipeMidiNote = 60;
+  // The pipe itself, in the model the resolver was given: the caller need
+  // not look for it by id in its rank a second time.
+  const Pipe* pipe = nullptr;
 };
 
 // M1.3 key-on path (no audio): division + key + engaged stop set -> pipes.
@@ -37,6 +40,12 @@ std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
                                        int midiNote,
                                        const std::unordered_set<Id>& engagedStops,
                                        const std::unordered_set<Id>* engagedSwitches = nullptr);
+// The same, appended to `out`: for the audio thread, which keeps one list and
+// its capacity from note to note and must not allocate.
+void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
+                      const std::unordered_set<Id>& engagedStops,
+                      const std::unordered_set<Id>* engagedSwitches,
+                      std::vector<ResolvedPipe>& out);
 
 // Key flow: which divisions a key press actually reaches, and at what pitch.
 //

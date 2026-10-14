@@ -177,6 +177,7 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
   // because the ripple was still going and the measurement caught its trough.
   std::vector<double> lo(order_.size(), 0.0), hi(order_.size(), 0.0);
   constexpr int kWindow = 1024;
+  readValves(engagedSwitches);
   for (int i = 0; i < steps; ++i) {
     const int phase = i % kWindow;
     for (size_t j = 0; j < order_.size(); ++j) {
@@ -356,8 +357,20 @@ bool WindSolver::advance(double dtSeconds, const EngineSwitch& sw,
   if (steps <= 0) return true;
   const double dt = maxStep_;
 
+  readValves(&engagedSwitches);
   for (int step = 0; step < steps; ++step) integrate(dt, &engagedSwitches);
   return true;
+}
+
+void WindSolver::readValves(const std::unordered_set<Id>* engagedSwitches) {
+  valveOpen_.assign(resolved_.size(), 1);
+  if (engagedSwitches == nullptr) return;
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const WindCompartmentLink& link = links_[resolved_[k].link];
+    if (link.valveSwitchId == 0) continue;
+    const bool on = engagedSwitches->count(link.valveSwitchId) != 0;
+    valveOpen_[k] = on == link.valveOpenWhenEngaged ? 1 : 0;
+  }
 }
 
 void WindSolver::integrate(double dt,
@@ -376,12 +389,11 @@ void WindSolver::integrate(double dt,
   // In through the links from other compartments. A null switch set means
   // "every valve open", which is how the system is settled at load: the
   // working pressure is the organ RUNNING, not the organ switched off.
-  for (const ResolvedLink& r : resolved_) {
+  (void)engagedSwitches;  // read once for the run of steps: readValves()
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const ResolvedLink& r = resolved_[k];
     const WindCompartmentLink& link = links_[r.link];
-    if (engagedSwitches != nullptr && link.valveSwitchId != 0) {
-      const bool on = engagedSwitches->count(link.valveSwitchId) != 0;
-      if (on != link.valveOpenWhenEngaged) continue; // valve shut
-    }
+    if (k < valveOpen_.size() && !valveOpen_[k]) continue; // valve shut
     // A valve driven by a continuous control is left OPEN. On a real organ
     // that control is the reservoir's own board extension closing the intake
     // as it fills — the mechanism by which a reservoir regulates itself — and

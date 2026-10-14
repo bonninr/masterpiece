@@ -105,6 +105,10 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
   busScratch_.setSize(juce::jmax(1, getTotalNumOutputChannels()),
                       juce::jmax(1, samplesPerBlock), false, true, false);
+  busScratchAll_.setSize(juce::jmax(1, getTotalNumOutputChannels()) * (unenclosedBus_ + 1),
+                         juce::jmax(1, samplesPerBlock), false, true, false);
+  busOuts_.assign(static_cast<size_t>(unenclosedBus_ + 1), nullptr);
+  voices_.setBusCount(unenclosedBus_ + 1);
 
   tremulantLfos_.clear();
   tremOrder_.clear();
@@ -485,6 +489,35 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
   }
 
   const int numBuses = unenclosedBus_ + 1;
+  // Every bus in one go: one pass over the voices and one hand-off to the
+  // render threads for the block, where each bus made its own (#356 follow-up).
+  const int perBus = busScratchAll_.getNumChannels() / juce::jmax(1, numBuses);
+  if (numCh <= perBus && numFrames <= busScratchAll_.getNumSamples() &&
+      static_cast<int>(busOuts_.size()) == numBuses) {
+    busScratchAll_.clear(0, numFrames);
+    float* const* all = busScratchAll_.getArrayOfWritePointers();
+    for (int bus = 0; bus < numBuses; ++bus) busOuts_[static_cast<size_t>(bus)] = all + bus * perBus;
+    voices_.renderBuses(busOuts_.data(), numBuses, numCh, numFrames, mixBusFilter);
+    for (int bus = 0; bus < numBuses; ++bus) {
+      float* const* planes = busOuts_[static_cast<size_t>(bus)];
+#if MP_ENABLE_DSP
+      if (bus < static_cast<int>(busEnclosures_.size())) {
+        const Id encId = busEnclosures_[static_cast<size_t>(bus)];
+        const auto filterIt = enclosureFilters_.find(encId);
+        const auto encIt = model_.enclosures.find(encId);
+        if (filterIt != enclosureFilters_.end() && encIt != model_.enclosures.end()) {
+          juce::dsp::AudioBlock<float> block(planes, static_cast<size_t>(numCh),
+                                             static_cast<size_t>(numFrames));
+          filterIt->second.processBlock(block, encIt->second,
+                                        controls_.shutterFor(encIt->second),
+                                        graph_.engineSwitch);
+        }
+      }
+#endif
+      for (int ch = 0; ch < numCh; ++ch) dest.addFrom(ch, 0, planes[ch], numFrames);
+    }
+    return;
+  }
   for (int bus = 0; bus < numBuses; ++bus) {
     busScratch_.clear(0, numFrames);
     voices_.render(busScratch_.getArrayOfWritePointers(), numCh, numFrames, bus,
@@ -2514,18 +2547,12 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
   for (const ExpandedNote& reached : expandScratch_) {
     const int divisionId = reached.divisionId;
     resolveScratch_.clear();
-    const auto pipes =
-        resolvePipes(model_, divisionId, reached.midiNote, stops, &engagedSwitches_);
-    for (const auto& rp : pipes) {
-      const auto rankIt = model_.ranks.find(rp.rankId);
-      if (rankIt == model_.ranks.end()) continue;
-      for (const auto& pipe : rankIt->second.pipes) {
-        if (pipe.pipeId != rp.pipeId) continue;
-        if (startPipeLayers(pipe, rp.rankId, reached.midiNote, velocity, noteId))
-          anyStarted = true;
-        break;
-      }
-    }
+    resolvePipesInto(model_, divisionId, reached.midiNote, stops, &engagedSwitches_,
+                     resolveScratch_);
+    for (const auto& rp : resolveScratch_)
+      if (rp.pipe != nullptr &&
+          startPipeLayers(*rp.pipe, rp.rankId, reached.midiNote, velocity, noteId))
+        anyStarted = true;
   }
 
   return anyStarted;

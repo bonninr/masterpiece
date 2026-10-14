@@ -1568,6 +1568,31 @@ public:
           MP_CHECK(worst == 0.0,
                    what + ": the same output either way (worst difference " + std::to_string(worst) + ")");
 #endif
+
+          // A pipe with no release sample: at the note-off the attack fades
+          // out over a tenth of a second where it is. That fade goes to the
+          // vector code as well, with the same samples.
+          fx.pipe.layers[0].releases.clear();
+          mp::VoiceEngine plainNone, fastNone;
+          const std::vector<float> an = render(plainNone, fx, mp::simd::Isa::None);
+          const std::vector<float> bn = render(fastNone, fx, isa);
+          double worstNone = 0.0;
+          for (size_t i = 0; i < an.size() && i < bn.size(); ++i)
+            worstNone = std::max(worstNone, static_cast<double>(std::abs(an[i] - bn[i])));
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          MP_CHECK(worstNone < 1e-6, what + ": the same fade within rounding (worst " +
+                                         std::to_string(worstNone) + ")");
+#else
+          MP_CHECK(worstNone == 0.0, what + ": the same fade either way (worst difference " +
+                                         std::to_string(worstNone) + ")");
+#endif
+          // Eight voices held 180 blocks of 256 frames, less their loop seams,
+          // then 5760 frames of fade each. With the fade frame by frame the
+          // vector code saw about 333,000 of them; with it, past 368,640.
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastNone.simdFrames() > 8u * 180u * 256u,
+                     what + ": the fade of a pipe without a release goes to the vector code (" +
+                         std::to_string(fastNone.simdFrames()) + " frames)");
         }
   }
 };

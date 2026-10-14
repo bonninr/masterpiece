@@ -1159,6 +1159,55 @@ void SampleLibrary::setOpenTailLimitForTesting(size_t limit) {
   openTails().limit = limit;
 }
 
+namespace {
+// Where a plain PCM WAV keeps its frames: what the streamer needs to read a
+// tail's frames straight into a voice's ring. 16- and 24-bit integer only,
+// the formats sample sets ship; anything else is read through JUCE.
+struct WavLayout {
+  int64_t dataOffset = 0;
+  int64_t frames = 0;
+  int channels = 0;
+  int bits = 0;
+};
+
+bool readWavLayout(juce::InputStream& in, WavLayout& out) {
+  char id[4];
+  if (in.read(id, 4) != 4 || std::memcmp(id, "RIFF", 4) != 0) return false;
+  in.readInt();
+  if (in.read(id, 4) != 4 || std::memcmp(id, "WAVE", 4) != 0) return false;
+  bool haveFormat = false;
+  while (!in.isExhausted()) {
+    if (in.read(id, 4) != 4) return false;
+    const auto size = static_cast<int64_t>(static_cast<uint32_t>(in.readInt()));
+    const int64_t body = in.getPosition();
+    if (std::memcmp(id, "fmt ", 4) == 0) {
+      const int tag = static_cast<uint16_t>(in.readShort());
+      out.channels = static_cast<uint16_t>(in.readShort());
+      in.readInt();    // rate
+      in.readInt();    // bytes per second
+      in.readShort();  // block align
+      out.bits = static_cast<uint16_t>(in.readShort());
+      int sub = tag;
+      if (tag == 0xFFFE && size >= 40) {
+        in.readShort();  // extension size
+        in.readShort();  // valid bits
+        in.readInt();    // channel mask
+        sub = static_cast<uint16_t>(in.readShort());  // the format GUID's first two bytes
+      }
+      haveFormat = sub == 1 && (out.bits == 16 || out.bits == 24) && out.channels > 0;
+      if (!haveFormat) return false;
+    } else if (std::memcmp(id, "data", 4) == 0) {
+      if (!haveFormat) return false;
+      out.dataOffset = body;
+      out.frames = size / (static_cast<int64_t>(out.channels) * (out.bits / 8));
+      return out.frames > 0;
+    }
+    if (!in.setPosition(body + size + (size & 1))) return false;
+  }
+  return false;
+}
+}  // namespace
+
 void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
                                int64_t totalFrames, double srcRate,
                                double dstRate) const {
@@ -1187,6 +1236,10 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
     std::unique_ptr<juce::AudioFormatManager> formats;
     std::unique_ptr<juce::AudioFormatReader> reader;
     std::string path;
+    // A plain PCM WAV is read straight from the file into the ring: one
+    // conversion, where JUCE's reader made two and then a planar copy.
+    std::unique_ptr<juce::FileInputStream> direct;
+    WavLayout layout;
     bool tried = false;
     // Its place in openTails() while the file is open.
     bool listed = false;
@@ -1207,7 +1260,7 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
     // One reader, one thread at a time. The streamer is single-threaded today;
     // the lock is what makes that a choice rather than an assumption.
     std::lock_guard<std::mutex> lock(shared->mutex);
-    if (shared->reader == nullptr) {
+    if (shared->reader == nullptr && shared->direct == nullptr) {
       if (shared->tried) return 0; // already failed once; do not retry per block
       // Room first, so this open is not the one that finds none.
       {
@@ -1225,6 +1278,21 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       shared->reader.reset(
           shared->formats->createReaderFor(juce::File(shared->path)));
       if (shared->reader == nullptr) return 0;
+      {
+        auto stream = std::make_unique<juce::FileInputStream>(juce::File(shared->path));
+        WavLayout layout;
+        if (stream->openedOk() && readWavLayout(*stream, layout) &&
+            layout.channels == static_cast<int>(shared->reader->numChannels)) {
+          shared->layout = layout;
+          shared->direct = std::move(stream);
+          // One file open per tail: the direct stream is all a tail at the
+          // organ's own rate reads, so JUCE's reader is let go.
+          if (rateRatio == 1.0) {
+            shared->reader.reset();
+            shared->formats.reset();
+          }
+        }
+      }
       // A plain pointer, not a shared one, so the list never keeps a tail
       // alive: ~Shared takes it off the list first.
       Shared* self = shared.get();
@@ -1237,6 +1305,7 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
         if (!own.owns_lock()) return false;
         self->reader.reset();
         self->formats.reset();
+        self->direct.reset();
         self->tried = false;  // open again when next played
         self->listed = false;
         return true;
@@ -1267,7 +1336,11 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       const auto srcCount = static_cast<int>(srcTo - srcFrom + 1);
       if (srcCount <= 0) return 0;
 
-      juce::AudioBuffer<float> src(std::max(1, useCh), srcCount);
+      // Kept for the thread that streams, from one read to the next: made new
+      // for every read it was up to 128 KB, which the system hands out as
+      // fresh pages each time.
+      static thread_local juce::AudioBuffer<float> src;
+      src.setSize(std::max(1, useCh), srcCount, false, false, true);
       src.clear();
       // A block at the very start of the file asks for a frame before it;
       // that gap stays zero rather than reading off the front.
@@ -1283,7 +1356,7 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
         src.applyGain(0, 0, srcCount, 1.0f / static_cast<float>(useCh));
       }
 
-      const auto at = [&src, srcCount](int c, int64_t i) {
+      const auto at = [srcCount](int c, int64_t i) {
         const auto k = static_cast<int>(std::clamp<int64_t>(i, 0, srcCount - 1));
         return src.getSample(c, k);
       };
@@ -1306,13 +1379,57 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       return numFrames;
     }
 
+    if (shared->direct != nullptr) {
+      // Straight from the file: frames [startFrame, startFrame + numFrames),
+      // each count divided by its full scale. JUCE reaches the same value
+      // exactly: it shifts a count up to 32 bits and scales by 2^-31.
+      const WavLayout& w = shared->layout;
+      const int bytes = w.bits / 8;
+      const int64_t bpf = static_cast<int64_t>(w.channels) * bytes;
+      const int64_t avail = std::max<int64_t>(0, std::min<int64_t>(numFrames, w.frames - startFrame));
+      static thread_local std::vector<uint8_t> raw;
+      raw.resize(static_cast<size_t>(avail * bpf));
+      int64_t got = 0;
+      if (avail > 0 && shared->direct->setPosition(w.dataOffset + startFrame * bpf))
+        got = std::max(0, shared->direct->read(raw.data(), static_cast<int>(avail * bpf))) / bpf;
+      const float scale = w.bits == 16 ? 1.0f / 32768.0f : 1.0f / 8388608.0f;
+      auto sampleAt = [&](int64_t f, int c) -> float {
+        const uint8_t* q = raw.data() + f * bpf + c * bytes;
+        if (bytes == 2) return static_cast<float>(static_cast<int16_t>(q[0] | (q[1] << 8))) * scale;
+        const int32_t v = (static_cast<int32_t>(static_cast<uint32_t>(q[0]) << 8 |
+                                                static_cast<uint32_t>(q[1]) << 16 |
+                                                static_cast<uint32_t>(q[2]) << 24)) >> 8;
+        return static_cast<float>(v) * scale;
+      };
+      const bool fold = foldToMono && channels == 1 && w.channels > 1;
+      const float foldGain = 1.0f / static_cast<float>(w.channels);
+      for (int64_t f = 0; f < numFrames; ++f) {
+        float* to = dest + static_cast<size_t>(f) * static_cast<size_t>(channels);
+        if (f >= got) {
+          for (int c = 0; c < channels; ++c) to[c] = 0.0f;
+          continue;
+        }
+        if (fold) {
+          // As JUCE's path folds: the channels added in order, then scaled.
+          float sum = sampleAt(f, 0);
+          for (int c = 1; c < w.channels; ++c) sum += sampleAt(f, c);
+          to[0] = sum * foldGain;
+        } else {
+          for (int c = 0; c < channels; ++c) to[c] = sampleAt(f, std::min(c, w.channels - 1));
+        }
+      }
+      return numFrames;
+    }
+
     const int fileCh = std::max(1, static_cast<int>(shared->reader->numChannels));
     // When folding, every channel of the file is needed to make the average,
     // even though only one comes out.
     const int ch = (foldToMono && channels == 1)
                        ? fileCh
                        : std::min(channels, fileCh);
-    juce::AudioBuffer<float> scratch(std::max(1, ch), numFrames);
+    // See above: one for the thread, kept between reads.
+    static thread_local juce::AudioBuffer<float> scratch;
+    scratch.setSize(std::max(1, ch), numFrames, false, false, true);
     if (!shared->reader->read(&scratch, 0, numFrames, startFrame, true, ch > 1))
       return 0;
 
@@ -1321,11 +1438,13 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
       scratch.applyGain(0, 0, numFrames, 1.0f / static_cast<float>(ch));
     }
 
-    // Interleave into the ring, the same layout the resident head uses.
-    for (int f = 0; f < numFrames; ++f)
-      for (int c = 0; c < channels; ++c)
-        dest[static_cast<size_t>(f) * static_cast<size_t>(channels) +
-             static_cast<size_t>(c)] = scratch.getSample(std::min(c, ch - 1), f);
+    // Interleave into the ring, the same layout the resident head uses: a
+    // channel at a time, through plain pointers.
+    for (int c = 0; c < channels; ++c) {
+      const float* from = scratch.getReadPointer(std::min(c, ch - 1));
+      float* to = dest + c;
+      for (int f = 0; f < numFrames; ++f) to[static_cast<size_t>(f) * static_cast<size_t>(channels)] = from[f];
+    }
     return numFrames;
   };
 
