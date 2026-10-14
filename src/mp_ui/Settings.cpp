@@ -161,6 +161,32 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                                   "last quarter. Shorter releases use less memory: for an organ "
                                   "played in a room with its own reverberation, or under an "
                                   "impulse response."));
+  // Where a tail stops: below what can be heard, it costs what a note costs.
+  addAndMakeVisible(releaseCutoffLabel_);
+  styleLabel(releaseCutoffLabel_, TRANS("Release tails end below"));
+  addAndMakeVisible(releaseCutoff_);
+  {
+    static const int kDb[] = {0, -80, -90, -100};
+    releaseCutoff_.addItem(TRANS("Never: every tail plays out"), 1);
+    for (int i = 1; i < 4; ++i)
+      releaseCutoff_.addItem(TRANS("%1 dB").replace("%1", juce::String(kDb[i])), i + 1);
+    int id = 3;
+    for (int i = 0; i < 4; ++i)
+      if (kDb[i] == proc_.releaseCutoffDb()) id = i + 1;
+    releaseCutoff_.setSelectedId(id, juce::dontSendNotification);
+    releaseCutoff_.setTooltip(TRANS("A release tail stops once it has stayed below this level for a "
+                                    "twentieth of a second. Tails only fade, and a fast passage on "
+                                    "many stops leaves hundreds of them sounding far below hearing, "
+                                    "each costing as much as a note. Each tail is judged on its "
+                                    "own: with many stops drawn, -80 dB can end the last decay of a "
+                                    "full chord audibly early, which is why -90 dB is the default."));
+    releaseCutoff_.onChange = [this] {
+      static const int kDbs[] = {0, -80, -90, -100};
+      const int i = releaseCutoff_.getSelectedId() - 1;
+      if (i >= 0 && i < 4) proc_.setReleaseCutoffDb(kDbs[i]);
+      proc_.markSettingsDirty();
+    };
+  }
   releaseLength_.onChange = [this] {
     static const int kMs[] = {0, 500, 1000, 1500, 2000, 3000, 4000};
     const int id = releaseLength_.getSelectedId();
@@ -779,6 +805,10 @@ void EnginePanel::resized() {
   auto releaseLengthRow = r.removeFromTop(kRow);
   releaseLengthLabel_.setBounds(releaseLengthRow.removeFromLeft(180));
   releaseLength_.setBounds(releaseLengthRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  auto releaseCutoffRow = r.removeFromTop(kRow);
+  releaseCutoffLabel_.setBounds(releaseCutoffRow.removeFromLeft(180));
+  releaseCutoff_.setBounds(releaseCutoffRow.removeFromLeft(300));
   r.removeFromTop(6);
   auto cacheRow = r.removeFromTop(kRow);
   cacheLabel_.setBounds(cacheRow.removeFromLeft(180));

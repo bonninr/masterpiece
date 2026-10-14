@@ -278,6 +278,8 @@ struct Voice {
   // cannot live only on the shared buffer.
   int64_t loopStart = -1;
   int64_t loopEnd = -1;
+  // Frames in a row this release has been heard below the engine's cutoff.
+  int quietFrames = 0;
 
   bool active() const { return phase != VoicePhase::Idle; }
   bool loops() const {
@@ -352,6 +354,17 @@ public:
   // what a comparison or a suspicion of the vector code wants.
   // Off unless asked for: the vector path is new, and the player turns it on
   // (Settings, "Faster audio engine") until it has proved itself.
+  // A release tail ends once it has stayed below this output level -- a
+  // linear amplitude, 0 for never -- for a twentieth of a second. A tail
+  // only fades, so one that is that far down stays there; and a passage on
+  // every stop leaves hundreds of them sounding at once, each costing what a
+  // note costs. Read at each block from sixteen of the frames the voice is
+  // about to play.
+  void setReleaseCutoff(float level) { releaseCutoff_ = level > 0.0f ? level : 0.0f; }
+  float releaseCutoff() const { return releaseCutoff_; }
+  // Release tails ended below the cutoff, since the engine was made.
+  uint64_t tailsEnded() const { return tailsEnded_.load(std::memory_order_relaxed); }
+
   void setSimd(bool on) {
     simdWanted_ = on;
     isa_ = on ? simd::detect() : simd::Isa::None;
@@ -606,6 +619,8 @@ private:
   // stops here. They walked the whole pool: with ten thousand voices allowed,
   // tens of thousands of empty slots a block for a few hundred sounding.
   size_t scanEnd_ = 0;
+  float releaseCutoff_ = 0.0f;
+  std::atomic<uint64_t> tailsEnded_{0};
   int polyphony_ = 0;
   // The voices to take when there is no free slot, in the order to take
   // them, made once a block: stage 1 is the voices dying away, 2 the rest.

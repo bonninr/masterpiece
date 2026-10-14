@@ -1598,6 +1598,76 @@ public:
 };
 static VoiceSimdRunTest g_voiceSimdRuns;
 
+// A release tail ends once it has stayed below the cutoff for a twentieth of
+// a second: in a passage on every stop, hundreds of them sound far below
+// hearing, each costing what a note costs. With no cutoff it plays out.
+class ReleaseCutoffTest final : public mp::test::Test {
+public:
+  ReleaseCutoffTest() : Test("functional.voice.release-cutoff", Category::Functional) {}
+  static mp::SampleBuffer tone(int frames, double decayPerSecond, bool loop) {
+    mp::SampleBuffer b;
+    b.numChannels = 1;
+    b.sampleRate = 48000.0;
+    b.numFrames = frames;
+    b.frames.resize(static_cast<size_t>(frames));
+    for (int i = 0; i < frames; ++i)
+      b.frames[static_cast<size_t>(i)] = static_cast<float>(
+          0.5 * std::sin(2.0 * 3.141592653589793 * 220.0 * i / 48000.0) *
+          std::exp(-decayPerSecond * i / 48000.0));
+    if (loop) {
+      b.loopStart = 1000;
+      b.loopEnd = frames - 1000;
+    }
+    return b;
+  }
+  // Frames from the note-off until the voice has ended.
+  static int playedAfterRelease(float cutoff) {
+    mp::SampleBuffer attack = tone(48000, 0.0, true);
+    // Four seconds, falling 60 dB a second: past -80 dB after about 1.3 s.
+    mp::SampleBuffer release = tone(192000, 6.9, false);
+    mp::Pipe pipe;
+    mp::PipeLayer layer;
+    mp::AttackSample a;
+    a.sample.sampleId = 1;
+    layer.attacks.push_back(a);
+    mp::ReleaseSample r;
+    r.sample.sampleId = 2;
+    r.releaseCrossfadeMs = 0.0;
+    layer.releases.push_back(r);
+    pipe.pipeId = 7;
+    pipe.layers.push_back(layer);
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 8, 1, 256);
+    eng.setReleaseCutoff(cutoff);
+    eng.setSampleProvider([&](mp::Id id) -> const mp::SampleBuffer* {
+      return id == 1 ? &attack : id == 2 ? &release : nullptr;
+    });
+    mp::VoiceStart st;
+    st.pipe = &pipe;
+    st.layer = &pipe.layers[0];
+    eng.startVoice(st, 1);
+    std::vector<float> out(256);
+    float* planes[1] = {out.data()};
+    for (int b = 0; b < 20; ++b) eng.render(planes, 1, 256);
+    eng.noteOff(1, mp::NoteRelease{});
+    int frames = 0;
+    for (int b = 0; b < 2000 && eng.activeVoiceCount() > 0; ++b) {
+      eng.render(planes, 1, 256);
+      frames += 256;
+    }
+    return frames;
+  }
+  void run() override {
+    const int never = playedAfterRelease(0.0f);
+    const int at80 = playedAfterRelease(1.0e-4f);  // -80 dB
+    MP_CHECK(never >= 191000, "with no cutoff the tail plays out (" + std::to_string(never) + " frames)");
+    MP_CHECK(at80 > 48000 * 12 / 10 && at80 < 48000 * 16 / 10,
+             "at -80 dB it ends a little after it passes -80 dB, about 1.3 s in (" +
+                 std::to_string(at80) + " frames)");
+  }
+};
+static ReleaseCutoffTest g_releaseCutoff;
+
 // A stop drawn, or pushed in, while the key is still down.
 //
 // On a real organ the slider admits wind to a rank the key is already asking
