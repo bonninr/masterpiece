@@ -10626,6 +10626,42 @@ public:
   }
 };
 static DrawnKeyboardInputTest g_drawnKeyboardInput;
+// #314: the GrandOrgue demo names all six of its generals "1", and the
+// panels listed six pistons called 1. A name shared by several generals is
+// replaced by the general's number; a name of its own is kept.
+class GrandOrgueGeneralNamesTest final : public mp::test::Test {
+public:
+  GrandOrgueGeneralNamesTest() : Test("functional.grandorgue.general-names", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=Test\nHasPedals=N\nNumberOfManuals=1\n"
+        "NumberOfWindchestGroups=1\nNumberOfRanks=1\nNumberOfGenerals=3\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Rank001]\nName=Principal 8\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\n"
+        "WindchestGroup=1\nPipe001=P8.wav\n"
+        "[Manual001]\nName=Great\nNumberOfLogicalKeys=1\nFirstAccessibleKeyMIDINoteNumber=36\n"
+        "NumberOfAccessibleKeys=1\nNumberOfStops=1\nStop001=1\n"
+        "[Stop001]\nName=Principal 8\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n"
+        "[General001]\nName=1\nNumberOfStops=1\nStopManual001=1\nStopNumber001=1\n"
+        "[General002]\nName=1\nNumberOfStops=0\n"
+        "[General003]\nName=Tutti\nNumberOfStops=1\nStopManual001=1\nStopNumber001=1\n";
+    const mp::GrandOrgueImportReport rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, "conversion failed: " + rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "test.organ", o, m, d), "converted definition must load");
+    std::set<std::string> names;
+    for (const auto& [id, sw] : m.switches) names.insert(sw.name);
+    MP_CHECK(names.count("General 1") && names.count("General 2"),
+             "two generals both named 1 are named by number");
+    MP_CHECK(names.count("Tutti"), "a general with a name of its own keeps it");
+    MP_CHECK(!names.count("1"), "and no piston is called 1");
+  }
+};
+static GrandOrgueGeneralNamesTest g_grandOrgueGeneralNames;
 // A GrandOrgue definition, converted in memory and loaded like any other:
 // the manuals become keyboards with their divisions, a stop that carries its
 // own pipes becomes a rank, a coupler keys the other division, and the
