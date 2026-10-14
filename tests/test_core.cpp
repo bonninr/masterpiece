@@ -3290,6 +3290,66 @@ public:
              "the head on its own goes silent past its end, so the match above "
              "could only have come from the streamed frames");
 
+    // A streamed release tail on the vector path: a key held and let go, its
+    // release streamed past a resident head of 1000 frames. Rendered on the
+    // per-frame path and on every vector unit, after giving the streamer time
+    // to fill the ring: the same samples, and the vector code does the tail.
+    {
+      auto releaseVoice = [&](mp::simd::Isa isa, uint64_t* simdFrames) {
+        voicetest::Fixture fx;
+        fx.release = streamed;
+        mp::VoiceEngine eng;
+        eng.prepare(48000.0, 4, 2, 256);
+        eng.setSimdIsa(isa);
+        eng.setSampleProvider(fx.provider());
+        mp::VoiceStart st;
+        st.pipe = &fx.pipe;
+        st.layer = &fx.pipe.layers[0];
+        st.ratio = 1.0;
+        st.gain = 0.5f;
+        eng.startVoice(st, 1);
+        std::vector<float> all, l(256), r(256);
+        float* out[2] = {l.data(), r.data()};
+        for (int b = 0; b < 40; ++b) {
+          if (b == 4) {
+            eng.noteOff(1, mp::NoteRelease{});
+            // Time for the streamer to read the whole tail into the ring.
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+          }
+          std::fill(l.begin(), l.end(), 0.0f);
+          std::fill(r.begin(), r.end(), 0.0f);
+          eng.render(out, 2, 256);
+          all.insert(all.end(), l.begin(), l.end());
+          all.insert(all.end(), r.begin(), r.end());
+        }
+        if (simdFrames != nullptr) *simdFrames = eng.simdFrames();
+        MP_CHECK(eng.streamUnderruns() == 0, "the streamer kept ahead of the release");
+        return all;
+      };
+      const auto plain = releaseVoice(mp::simd::Isa::None, nullptr);
+      double level = 0.0;
+      for (size_t i = 8 * 512; i < plain.size(); ++i)
+        level = std::max(level, static_cast<double>(std::fabs(plain[i])));
+      MP_CHECK(level > 0.05, "the streamed release sounds");
+      for (const auto isa : mp::simd::available()) {
+        uint64_t frames = 0;
+        const auto fast = releaseVoice(isa, &frames);
+        double worst = 0.0;
+        for (size_t i = 0; i < plain.size() && i < fast.size(); ++i)
+          worst = std::max(worst, static_cast<double>(std::fabs(plain[i] - fast[i])));
+        const std::string what = mp::simd::isaName(isa);
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+        MP_CHECK(worst < 1e-6, what + ": the streamed tail the same within rounding");
+#else
+        MP_CHECK(worst == 0.0, what + ": the streamed tail the same, sample for sample (worst " +
+                                   std::to_string(worst) + ")");
+#endif
+        // 7000 frames of tail past the head; most of them in runs.
+        MP_CHECK(frames > 5000, what + ": the streamed tail goes to the vector code (" +
+                                    std::to_string(frames) + " frames)");
+      }
+    }
+
     // The streamer sleeps while nothing streams, and wakes for a voice that
     // does. It used to go over every voice a hundred times a second.
     {
