@@ -1589,6 +1589,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
+  if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   // Written either way: on is the default since 0.7.11, and a player who
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
@@ -1676,6 +1677,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "setoffafterstore") {
       setOffAfterStore_ = val.getIntValue() != 0;
+    } else if (key == "showkeys") {
+      showPlayedKeys_.store(val.getIntValue() != 0);
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "midiinputoff") {

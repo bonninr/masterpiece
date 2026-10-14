@@ -222,6 +222,8 @@ private:
   static constexpr int kHiddenMs = 250;
   static constexpr int kQuietTicks = 60;
   int quietTicks_ = 0;
+  // Counts the timer's looks, for the keys' every other one.
+  unsigned keyTick_ = 0;
   // This many changes in one look are repainted as the whole console.
   static constexpr int kRepaintWhole = 24;
   // The control being learned when the timer last looked, -1 for none.

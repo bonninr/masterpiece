@@ -633,6 +633,7 @@ countries: fr be ca ch lu mc
 "Other versions of this organ" = "Autres versions de cet orgue"
 "Recorder..." = "Enregistreur..."
 "Swell faders" = "Curseurs d'expression"
+"Show played keys" = "Afficher les touches jouées"
 "Keyboard" = "Clavier"
 "A page in its own window" = "Une page dans sa propre fenêtre"
 "Organ settings..." = "Réglages de l'orgue..."

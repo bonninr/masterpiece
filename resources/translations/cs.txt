@@ -633,6 +633,7 @@ countries: cz
 "Other versions of this organ" = "Jiné verze těchto varhan"
 "Recorder..." = "Rekordér..."
 "Swell faders" = "Posuvníky žaluzií"
+"Show played keys" = "Zobrazovat stisknuté klávesy"
 "Keyboard" = "Klaviatura"
 "A page in its own window" = "Strana ve vlastním okně"
 "Organ settings..." = "Nastavení varhan..."

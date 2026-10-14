@@ -633,6 +633,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Other versions of this organ" = "Otras versiones de este órgano"
 "Recorder..." = "Grabador..."
 "Swell faders" = "Deslizadores de expresión"
+"Show played keys" = "Mostrar las teclas tocadas"
 "Keyboard" = "Teclado"
 "A page in its own window" = "Una página en su propia ventana"
 "Organ settings..." = "Ajustes del órgano..."

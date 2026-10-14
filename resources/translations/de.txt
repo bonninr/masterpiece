@@ -633,6 +633,7 @@ countries: de at ch li lu
 "Other versions of this organ" = "Andere Versionen dieser Orgel"
 "Recorder..." = "Rekorder..."
 "Swell faders" = "Schwellerregler"
+"Show played keys" = "Gespielte Tasten anzeigen"
 "Keyboard" = "Tastatur"
 "A page in its own window" = "Eine Seite in eigenem Fenster"
 "Organ settings..." = "Orgeleinstellungen..."
