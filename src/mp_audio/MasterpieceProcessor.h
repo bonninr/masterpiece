@@ -884,6 +884,15 @@ public:
   // starts (#251). Empty, or a folder that is gone: the system's default.
   juce::File openFolder() const { return openFolder_.isDirectory() ? openFolder_ : juce::File(); }
   void setOpenFolder(const juce::File& folder);
+  // Where each kind of file dialog was last used -- "ir", "midi",
+  // "recording", "scala" -- so the next one starts there (#323). Empty, or
+  // a folder that is gone: the system's default.
+  juce::File dialogFolder(const juce::String& kind) const {
+    const auto it = dialogFolders_.find(kind);
+    return it != dialogFolders_.end() && it->second.isDirectory() ? it->second : juce::File();
+  }
+  // The folder of `picked` (a file, or a folder chosen as one).
+  void rememberDialogFolder(const juce::String& kind, const juce::File& picked);
   // Raised whenever something a settings file holds is changed, so the message
   // thread can write it without the audio thread touching a disk.
   void markSettingsDirty() { settingsDirty_.store(true, std::memory_order_release); }
@@ -1659,6 +1668,7 @@ private:
   double loadTickCooldown_ = 0.0;
   juce::File lastOrgan_;
   juce::File openFolder_;
+  std::map<juce::String, juce::File> dialogFolders_;
   // One writer and one reader for the keys both settings tiers share, so the
   // global defaults and an organ's own file cannot drift apart.
   juce::String settingsBody() const;
