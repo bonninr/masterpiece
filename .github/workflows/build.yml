@@ -148,6 +148,20 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # What configure fetches and finds out: the dependencies' sources and
+      # CMake's answers to its feature tests (in CMakeCache.txt). On Windows
+      # those tests are some 550 small compiles, over three minutes; with the
+      # answers kept, configure takes seconds. Keyed on every CMake file, so a
+      # change to the build starts afresh. Saved where the compiler cache is.
+      - name: Configure cache (restore)
+        id: cfgcache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/CMakeCache.txt
+            build/${{ matrix.preset }}/_deps
+          key: cmake-${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'src/**/CMakeLists.txt', 'apps/**/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}
@@ -157,6 +171,15 @@ jobs:
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Configure cache (save)
+        if: steps.cfgcache.outputs.cache-hit != 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.ref == 'refs/heads/ci/windows-ccache-size')
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/CMakeCache.txt
+            build/${{ matrix.preset }}/_deps
+          key: ${{ steps.cfgcache.outputs.cache-primary-key }}
 
       # The suite needs no sample library and runs in about a second, so every
       # target that can execute its own build runs it. The cross-built ARM jobs
