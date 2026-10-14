@@ -85,6 +85,17 @@ bool isAudio(const std::string& path) {
   return false;
 }
 
+// The image editors' own files a set ships beside its pictures: the organ
+// never reads them. Ashton keeps its stops' Photoshop sources in
+// psd_zaloha folders, and three of them that did not unpack were reported
+// as a damaged organ (#321).
+bool isEditorSource(const std::string& path) {
+  const std::string p = lower(path);
+  for (const char* ext : {".psd", ".psb", ".xcf"})
+    if (endsWith(p, ext)) return true;
+  return false;
+}
+
 bool isDefinition(const std::string& path) {
   const std::string p = lower(path);
   // Version 3 of the format named its files with dots where later ones use
@@ -1179,7 +1190,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       for (const auto& e : entries_)
         if (e.archive == i) {
           ++count;
-          if (!isAudio(e.path) && !e.encrypted) last = count;
+          if (!isAudio(e.path) && !isEditorSource(e.path) && !e.encrypted) last = count;
         }
       total += last;
     }
@@ -1194,14 +1205,14 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
     // Nothing to take from an archive that is all audio.
     bool any = false;
     for (const auto& e : entries_)
-      if (e.archive == i && !isAudio(e.path)) any = true;
+      if (e.archive == i && !isAudio(e.path) && !isEditorSource(e.path)) any = true;
     if (!any) continue;
 
     // The last small file tells the walk where to stop: a set whose artwork
     // comes first need not decompress all of its samples to get at it.
     size_t remaining = 0;
     for (const auto& e : entries_)
-      if (e.archive == i && !isAudio(e.path) && !e.encrypted) ++remaining;
+      if (e.archive == i && !isAudio(e.path) && !isEditorSource(e.path) && !e.encrypted) ++remaining;
     auto pass = passFor(archives_[i]);
     std::string name;
     int64_t size = 0;
@@ -1212,7 +1223,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
       ++done;
       std::string rel = name;
       std::replace(rel.begin(), rel.end(), '\\', '/');
-      if (isAudio(rel) || encrypted) {
+      if (isAudio(rel) || isEditorSource(rel) || encrypted) {
         if (!pass->discard()) {
           // Past here the archive cannot be followed, so what is left of its
           // small files is lost; the other archives are still read.
@@ -1239,7 +1250,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
           pass = passFor(archives_[i]);
           remaining = 0;
           for (const auto& e : entries_)
-            if (e.archive == i && !isAudio(e.path) && !e.encrypted) ++remaining;
+            if (e.archive == i && !isAudio(e.path) && !isEditorSource(e.path) && !e.encrypted) ++remaining;
           bytes = {};
           continue;
         }
