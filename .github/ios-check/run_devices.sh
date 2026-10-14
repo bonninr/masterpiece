@@ -114,7 +114,10 @@ OSA
   sleep 3
 }
 
-for want in "iPad Pro 13" "iPad mini" "iPhone 1"; do
+# Every device unless MP_IOS_DEVICES names some, separated by semicolons: a
+# pull request runs the large iPad alone, main runs all three.
+IFS=';' read -r -a DEVICES <<< "${MP_IOS_DEVICES:-iPad Pro 13;iPad mini;iPhone 1}"
+for want in "${DEVICES[@]}"; do
   read -r DEV NAME < <(udid_for "$want")
   if [ -z "${DEV:-}" ]; then echo "no simulator like '$want'"; continue; fi
   # Each device starts upright and on its own window.
