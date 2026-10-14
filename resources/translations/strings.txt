@@ -639,6 +639,7 @@ countries: gb us
 "Other versions of this organ" = "Other versions of this organ"
 "Recorder..." = "Recorder..."
 "Swell faders" = "Swell faders"
+"Show played keys" = "Show played keys"
 "Keyboard" = "Keyboard"
 "A page in its own window" = "A page in its own window"
 "Organ settings..." = "Organ settings..."

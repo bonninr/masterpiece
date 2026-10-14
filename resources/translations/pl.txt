@@ -634,6 +634,7 @@ countries: pl
 "Other versions of this organ" = "Inne wersje tych organów"
 "Recorder..." = "Rejestrator..."
 "Swell faders" = "Suwaki ekspresji"
+"Show played keys" = "Pokazuj naciskane klawisze"
 "Keyboard" = "Klawiatura"
 "A page in its own window" = "Strona w osobnym oknie"
 "Organ settings..." = "Ustawienia organów..."
