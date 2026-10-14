@@ -1356,7 +1356,7 @@ void SampleLibrary::attachTail(SampleBuffer& out, const std::string& path,
         src.applyGain(0, 0, srcCount, 1.0f / static_cast<float>(useCh));
       }
 
-      const auto at = [&src, srcCount](int c, int64_t i) {
+      const auto at = [srcCount](int c, int64_t i) {
         const auto k = static_cast<int>(std::clamp<int64_t>(i, 0, srcCount - 1));
         return src.getSample(c, k);
       };
