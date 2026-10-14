@@ -12167,6 +12167,8 @@ public:
           reads.fetch_add(1);
         }
       });
+      // A fast machine can play all of it before the reader has run once.
+      while (reads.load() == 0) std::this_thread::yield();
       for (int i = 0; i < 400; ++i) {
         send(20, 127);
         send(20, 0);
