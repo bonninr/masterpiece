@@ -783,12 +783,13 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(load_);
   load_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        TRANS("Choose an impulse response"), juce::File(), "*.wav;*.aiff;*.aif;*.flac");
+        TRANS("Choose an impulse response"), proc_.dialogFolder("ir"), "*.wav;*.aiff;*.aif;*.flac");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
                             if (fc.getURLResults().isEmpty()) return;  // cancelled
                             const auto f = pickedFile(fc);
+                            proc_.rememberDialogFolder("ir", f);
                             juce::String why;
                             if (!f.existsAsFile())
                               why = TRANS("The file could not be read where it is.");
@@ -935,12 +936,13 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 
   save_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        TRANS("Save the performance"), juce::File(), "*.mid");
+        TRANS("Save the performance"), proc_.dialogFolder("midi"), "*.mid");
     chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                               juce::FileBrowserComponent::canSelectFiles |
                               juce::FileBrowserComponent::warnAboutOverwriting,
                           [this](const juce::FileChooser& fc) {
                             const auto f = fc.getResult();
+                            proc_.rememberDialogFolder("midi", f);
                             if (f.getFullPathName().isNotEmpty())
                               proc_.recorder().saveToFile(
                                   f.withFileExtension(".mid"));
@@ -948,11 +950,12 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   load_.onClick = [this] {
     chooser_ = std::make_unique<juce::FileChooser>(
-        TRANS("Load a performance"), juce::File(), "*.mid;*.midi");
+        TRANS("Load a performance"), proc_.dialogFolder("midi"), "*.mid;*.midi");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
                             const auto f = pickedFile(fc);
+                            proc_.rememberDialogFolder("midi", f);
                             if (f.existsAsFile()) proc_.recorder().loadFromFile(f);
                           });
   };
@@ -981,13 +984,14 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 
   audioRecord_.onClick = [this] {
     audioChooser_ = std::make_unique<juce::FileChooser>(
-        TRANS("Record the organ to"), juce::File(), "*.wav");
+        TRANS("Record the organ to"), proc_.dialogFolder("recording"), "*.wav");
     audioChooser_->launchAsync(
         juce::FileBrowserComponent::saveMode |
             juce::FileBrowserComponent::canSelectFiles |
             juce::FileBrowserComponent::warnAboutOverwriting,
         [this](const juce::FileChooser& fc) {
           const auto f = fc.getResult();
+          proc_.rememberDialogFolder("recording", f);
           if (f.getFullPathName().isEmpty()) return;
           // The device's rate, not the organ's: this is what is leaving.
           if (!proc_.audioRecorder().start(f.withFileExtension(".wav"),

@@ -1607,6 +1607,9 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "lastorgan " << lastOrgan_.getFullPathName() << "\n";
   if (openFolder_.getFullPathName().isNotEmpty())
     text << "openfolder " << openFolder_.getFullPathName() << "\n";
+  for (const auto& [kind, folder] : dialogFolders_)
+    if (folder.getFullPathName().isNotEmpty())
+      text << "dialogfolder " << kind << " " << folder.getFullPathName() << "\n";
 
   // Favourites are global by nature: the point of one is to get to a
   // DIFFERENT organ, so storing them inside the organ being left would be
@@ -1702,6 +1705,11 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       lastOrgan_ = juce::File(val);
     } else if (key == "openfolder") {
       openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
+    } else if (key == "dialogfolder") {
+      // "dialogfolder <kind> <path...>": the path last, it can hold spaces.
+      const auto kind = val.upToFirstOccurrenceOf(" ", false, false).trim();
+      const auto path = val.fromFirstOccurrenceOf(" ", false, false).trim();
+      if (kind.isNotEmpty() && path.isNotEmpty()) dialogFolders_[kind] = juce::File(path);
     } else if (key == "favourite") {
       // "favourite <kind> <slot> <name> | <target>". The bar separates them
       // because both halves are free text and the target can contain spaces;
@@ -1752,6 +1760,15 @@ int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
   favourites_.organs.set(use, std::move(fav));
   writeGlobalFile();
   return use;
+}
+
+void MasterpieceProcessor::rememberDialogFolder(const juce::String& kind, const juce::File& picked) {
+  if (picked.getFullPathName().isEmpty()) return;
+  const juce::File folder = picked.isDirectory() ? picked : picked.getParentDirectory();
+  auto& kept = dialogFolders_[kind];
+  if (kept == folder) return;
+  kept = folder;
+  writeGlobalFile();
 }
 
 void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {

@@ -12301,6 +12301,39 @@ public:
   }
 };
 static SpeakerKeepAliveTest g_speakerKeepAlive;
+// #323: each kind of file dialog starts where it was last used, and that is
+// kept for the next session.
+class DialogFolderTest final : public mp::test::Test {
+public:
+  DialogFolderTest() : Test("functional.settings.dialog-folders", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp dialog folder");
+    dir.createDirectory();
+    juce::File global;
+    juce::String before;
+    bool existed = false;
+    {
+      mp::MasterpieceProcessor p;
+      global = p.globalSettingsFile();
+      existed = global.existsAsFile();
+      before = existed ? global.loadFileAsString() : juce::String();
+      global.getParentDirectory().createDirectory();
+      MP_CHECK(p.dialogFolder("ir-test") == juce::File(), "a dialog never used starts at the default");
+      p.rememberDialogFolder("ir-test", dir.getChildFile("room.wav"));
+      MP_CHECK(p.dialogFolder("ir-test") == dir, "a file picked makes its folder the start");
+      MP_CHECK(p.dialogFolder("midi-test") == juce::File(), "and only for its own kind");
+    }
+    {
+      mp::MasterpieceProcessor p;
+      p.loadGlobalDefaults();
+      MP_CHECK(p.dialogFolder("ir-test") == dir, "kept for the next session, a folder with a space in it");
+    }
+    if (existed) global.replaceWithText(before);
+    else global.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static DialogFolderTest g_dialogFolder;
 
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the

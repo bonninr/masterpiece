@@ -49,12 +49,13 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(scala_);
   scala_.setTooltip(TRANS("A temperament from a Scala .scl file: twelve notes, repeating at the octave"));
   scala_.onClick = [this] {
-    chooser_ = std::make_unique<juce::FileChooser>(TRANS("A Scala temperament"), juce::File(), "*.scl");
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("A Scala temperament"), proc_.dialogFolder("scala"), "*.scl");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                               juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc) {
                             const auto f = pickedFile(fc);
                             if (!f.existsAsFile()) return;
+                            proc_.rememberDialogFolder("scala", f);
                             std::string why;
                             if (!proc_.setTemperament("scala:" + f.getFullPathName().toStdString(), &why))
                               note_.setText(TRANS("%1 was not loaded: %2")
