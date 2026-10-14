@@ -166,12 +166,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(releaseCutoffLabel_, TRANS("Release tails end below"));
   addAndMakeVisible(releaseCutoff_);
   {
-    static const int kDb[] = {0, -70, -80, -90, -100};
+    static const int kDb[] = {0, -80, -90, -100};
     releaseCutoff_.addItem(TRANS("Never: every tail plays out"), 1);
-    for (int i = 1; i < 5; ++i)
+    for (int i = 1; i < 4; ++i)
       releaseCutoff_.addItem(TRANS("%1 dB").replace("%1", juce::String(kDb[i])), i + 1);
     int id = 3;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 4; ++i)
       if (kDb[i] == proc_.releaseCutoffDb()) id = i + 1;
     releaseCutoff_.setSelectedId(id, juce::dontSendNotification);
     releaseCutoff_.setTooltip(TRANS("A release tail stops once it has stayed below this level for a "
@@ -179,9 +179,9 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                                     "many stops leaves hundreds of them sounding far below hearing, "
                                     "each costing as much as a note."));
     releaseCutoff_.onChange = [this] {
-      static const int kDbs[] = {0, -70, -80, -90, -100};
+      static const int kDbs[] = {0, -80, -90, -100};
       const int i = releaseCutoff_.getSelectedId() - 1;
-      if (i >= 0 && i < 5) proc_.setReleaseCutoffDb(kDbs[i]);
+      if (i >= 0 && i < 4) proc_.setReleaseCutoffDb(kDbs[i]);
       proc_.markSettingsDirty();
     };
   }

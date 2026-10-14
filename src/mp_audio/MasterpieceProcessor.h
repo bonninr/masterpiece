@@ -838,7 +838,8 @@ public:
   // number applies at once.
   int polyphonyLimit() const { return polyphony_; }
   // Where a release tail ends: decibels below full scale, 0 for never. Saved
-  // with the organ; -80 unless the player chose.
+  // with the organ; -90 unless the player chose: at -80 the tails of a
+  // final chord, each below it alone, ended together audibly.
   int releaseCutoffDb() const { return releaseCutoffDb_; }
   void setReleaseCutoffDb(int db) {
     releaseCutoffDb_ = db < 0 ? db : 0;
@@ -1755,7 +1756,7 @@ private:
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
   std::atomic<bool> cacheWhilePlaying_{false};
-  int releaseCutoffDb_ = -80;
+  int releaseCutoffDb_ = -90;
   // MASTERPIECE_BLOCKLOG=<file>: every block's stages timed, with its note-ons,
   // note-offs and voices, kept in memory made at start and written to the
   // file when the program closes. For finding what a late block spent its
