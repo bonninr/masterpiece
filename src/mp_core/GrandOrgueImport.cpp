@@ -1008,6 +1008,10 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
   };
   const int generalCount = ini.num("Organ", "NumberOfGenerals", 0);
+  // A name several generals share says nothing about which is which: the
+  // GrandOrgue demo names all six "1" (#314). Those are named by number.
+  std::map<std::string, int> generalNames;
+  for (int g = 1; g <= generalCount; ++g) ++generalNames[ini.str("General" + n3(g), "Name")];
   for (int g = 1; g <= generalCount; ++g) {
     const std::string sec = "General" + n3(g);
     std::vector<std::pair<int, bool>> el;
@@ -1030,7 +1034,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     }
     if (ini.num(sec, "NumberOfDivisionalCouplers", 0) > 0)
       note("divisional couplers inside generals are left out");
-    combination(sec, kGeneralBase + g, ini.str(sec, "Name", "General " + std::to_string(g)), el);
+    const std::string given = ini.str(sec, "Name");
+    combination(sec, kGeneralBase + g,
+                given.empty() || generalNames[given] > 1 ? "General " + std::to_string(g) : given, el);
   }
   for (int m = hasPedals ? 0 : 1; m <= manualCount; ++m) {
     const std::string msec = "Manual" + n3(m);
