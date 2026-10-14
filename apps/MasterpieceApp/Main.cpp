@@ -1081,6 +1081,7 @@ private:
       auto panel = std::make_unique<mp::ui::OrganSettingsWindow>(
           proc, [this] { editor_->reloadOrgan(); }, &devices_);
       panel->onClosed = std::move(onClosed);
+      panel->onReopen = [this, &proc] { showOrganSettings(proc); };
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = TRANS("Organ settings");

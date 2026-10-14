@@ -36,6 +36,10 @@ struct LoadProgress {
     // milliseconds (#133).
     FindingSamples,
     LoadingSamples,     // the long one: done/total are meaningful here
+    // The samples just read are written to the cache for the next load, with
+    // the organ not yet playable (unless the player chose to save in silence
+    // while it plays). archiveFraction carries how far the write has got.
+    SavingCache,
     Preparing,          // audio graph, MIDI map, combinations: after the samples
     BuildingConsole,    // artwork decode, back on the message thread
     Done,
@@ -116,7 +120,8 @@ struct LoadProgress {
   double fraction() const {
     const auto current = phase.load(std::memory_order_acquire);
     if (current == Phase::OpeningArchive) return -1.0;
-    if (current == Phase::ReadingArchive || current == Phase::ExtractingArchive)
+    if (current == Phase::ReadingArchive || current == Phase::ExtractingArchive ||
+        current == Phase::SavingCache)
       return archiveFraction.load(std::memory_order_relaxed);
     const int t = total.load(std::memory_order_relaxed);
     if (t <= 0) return -1.0;
@@ -135,6 +140,7 @@ struct LoadProgress {
       case Phase::WiringConsole:     return "Wiring the console";
       case Phase::FindingSamples:    return "Finding the samples";
       case Phase::LoadingSamples:    return "Loading samples";
+      case Phase::SavingCache:       return "Saving the samples for the next load";
       case Phase::Preparing:         return "Preparing to play";
       case Phase::BuildingConsole:   return "Building the console";
       case Phase::Done:              return "Ready";

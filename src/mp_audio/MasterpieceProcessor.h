@@ -1177,6 +1177,26 @@ public:
   int64_t cacheBytesWritten() const { return samples_.cacheBytesWritten(); }
   bool cacheWriting() const { return samples_.cacheWriting(); }
   double cacheWriteFraction() const { return samples_.cacheWriteFraction(); }
+  int64_t cacheBytesDone() const { return samples_.cacheBytesDone(); }
+  int64_t cacheBytesTotal() const { return samples_.cacheBytesTotal(); }
+  // When the sample cache of a new load is written. Off (the default): the
+  // load writes it before the organ can be played, as GrandOrgue does, and
+  // nothing competes with the sound. On: the organ plays at once and the
+  // cache is written whenever nothing sounds.
+  bool cacheWhilePlaying() const { return cacheWhilePlaying_.load(); }
+  void setCacheWhilePlaying(bool on) {
+    cacheWhilePlaying_.store(on);
+    writeGlobalFile();
+  }
+  // The player chose, in the load window, to open the organ without waiting
+  // for its cache: the write is stopped and the next load reads the samples.
+  void skipCacheSave() { skipCacheSave_.store(true); }
+  // Whether a choice that decides what the sample cache holds differs from
+  // the one the loaded organ was loaded with: closing Organ settings then
+  // asks to rebuild the cache and load the organ again.
+  bool cacheChoicesChangedSinceLoad() const {
+    return !cacheChoicesAtLoad_.empty() && cacheChoices() != cacheChoicesAtLoad_;
+  }
 
   // Convert sample data to this rate while loading; 0 keeps each file's own.
   // A 96 kHz set on a 48 kHz device is otherwise held at twice the size and
@@ -1697,6 +1717,15 @@ private:
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
+  std::atomic<bool> cacheWhilePlaying_{false};
+  std::atomic<bool> skipCacheSave_{false};
+  // The cache-deciding choices, as one string to compare, and what the
+  // loaded organ was loaded with.
+  std::string cacheChoices() const;
+  std::string cacheChoicesAtLoad_;
+  // How many voices sounded in the last block, for the cache write that waits
+  // for silence.
+  std::atomic<int> soundingVoices_{0};
   bool setOffAfterStore_ = false;
   std::atomic<bool> showPlayedKeys_{true};
   // See storeTarget(). Written where a piston or step is chosen, under the

@@ -66,6 +66,8 @@ MasterpieceProcessor::MasterpieceProcessor()
   // default allowance on macOS is 256.
   static const size_t tails = SampleLibrary::raiseOpenFileLimit();
   (void)tails;
+  // A cache written while the organ plays waits for silence.
+  samples_.setCacheBusy([this] { return soundingVoices_.load(std::memory_order_relaxed) > 0; });
 }
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -1588,6 +1590,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
+  if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   // Written either way: on is the default since 0.7.11, and a player who
@@ -1673,6 +1676,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
+    } else if (key == "cachewhileplaying") {
+      cacheWhilePlaying_.store(val.getIntValue() != 0);
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "setoffafterstore") {
@@ -2943,6 +2948,15 @@ void MasterpieceProcessor::setReleaseLogging(bool on) {
   juce::Logger::writeToLog("release: logging on. Every key release follows.");
 }
 
+std::string MasterpieceProcessor::cacheChoices() const {
+  return std::to_string(static_cast<int>(samples_.storage())) + "/" +
+         (samples_.loadMono() ? "m" : "s") + "/" + (samples_.streamReleases() ? "t" : "n") + "/" +
+         std::to_string(samples_.streamHeadPercent()) + "/" +
+         std::to_string(samples_.streamHeadFrames()) + "/" + std::to_string(preloadHead_) + "/" +
+         std::to_string(static_cast<int64_t>(samples_.loadSampleRate())) + "/" +
+         std::to_string(static_cast<int>(samples_.cacheMode()));
+}
+
 void MasterpieceProcessor::keepLoadingChoiceForSession() {
   if (loadedOdf_ == juce::File()) return;
   LoadingChoice c;
@@ -4143,6 +4157,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   }
   // A mono device must not leave the right lamp lit at whatever it last was.
   for (int c = chans; c < 2; ++c) outPeak_[c].store(0.0f, std::memory_order_relaxed);
+  soundingVoices_.store(voices_.stats().activeVoices, std::memory_order_relaxed);
 }
 
 void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
@@ -4893,6 +4908,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                     " that has not been confirmed; they are left out");
     }
 
+    samples_.setCacheWhilePlaying(cacheWhilePlaying_.load());
+    skipCacheSave_.store(false);
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
@@ -4973,6 +4990,25 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                                " release(s) named in their attack files, which hold none, left out");
   }
   phases.mark(graphicsOnly ? "samples (skipped)" : "samples");
+
+  // The cache for the next load, written now, before the organ can be played,
+  // unless the player chose to have it written while the organ plays. The
+  // engine is still suspended: nothing sounds, and nothing competes with the
+  // write. The load window shows its progress, and can skip it.
+  if (!graphicsOnly && !cacheWhilePlaying_.load() && samples_.cacheWriting()) {
+    loadProgress_.beginPhase(LoadProgress::Phase::SavingCache);
+    while (samples_.cacheWriting()) {
+      if (skipCacheSave_.load()) {
+        samples_.finishCacheWrite(true);
+        juce::Logger::writeToLog("cache: skipped by the player; the next load reads the samples");
+        break;
+      }
+      loadProgress_.archiveFraction.store(samples_.cacheWriteFraction(), std::memory_order_relaxed);
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    phases.mark("cache");
+  }
+  cacheChoicesAtLoad_ = graphicsOnly ? std::string() : cacheChoices();
 
   // Nearly six seconds on a large set, after the sample counter has reached
   // its total and stopped moving. Without a phase of its own the dialog sat
