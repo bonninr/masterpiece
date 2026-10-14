@@ -89,6 +89,7 @@ bool Convolver::loadImpulseResponse(const juce::File& chosen) {
   }
 
   irName_ = chosen.getFileNameWithoutExtension();
+  irFile_ = chosen;
   loaded_ = true;
   return true;
 }
@@ -99,6 +100,7 @@ void Convolver::clear() {
   loaded_ = false;
   trueStereo_ = false;
   irName_ = {};
+  irFile_ = juce::File();
 }
 
 void Convolver::process(juce::AudioBuffer<float>& buffer) {

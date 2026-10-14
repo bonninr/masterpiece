@@ -38,6 +38,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStreamPercent_ = proc_.streamHeadPercent();
   openMono_ = proc_.loadMono();
   openRate_ = proc_.loadSampleRate();
+  openReleases_ = proc_.releaseChoice();
+  openReleaseMs_ = proc_.releaseMaxMs();
   openCache_ = proc_.cacheMode();
   openLoadTicks_ = proc_.loadTicks();
   openReopen_ = proc_.reopenLastOrgan();
@@ -133,6 +135,36 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   rate_.onChange = [this] {
     const int id = rate_.getSelectedId();
     proc_.setLoadSampleRate(id == 2 ? 48000.0 : id == 3 ? 44100.0 : 0.0);
+  };
+
+  // Which releases, and how much of each: for a set played in a room with
+  // its own reverberation, under an impulse response, or on a small machine.
+  addAndMakeVisible(releasesLabel_);
+  styleLabel(releasesLabel_, TRANS("Releases"));
+  addAndMakeVisible(releases_);
+  releases_.addItem(TRANS("As the organ has them"), 1);
+  releases_.addItem(TRANS("The longest only"), 2);
+  releases_.addItem(TRANS("The shortest only"), 3);
+  releases_.addItem(TRANS("None: notes fade when let go"), 4);
+  releases_.setSelectedId(static_cast<int>(proc_.releaseChoice()) + 1, juce::dontSendNotification);
+  releases_.setTooltip(TRANS("Which of each pipe's releases are loaded. Many organs record a short "
+                             "and a long release for each pipe; one of them uses less memory and "
+                             "loads faster."));
+  releases_.onChange = [this] {
+    proc_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(releases_.getSelectedId() - 1));
+  };
+  addAndMakeVisible(releaseLengthLabel_);
+  styleLabel(releaseLengthLabel_, TRANS("Release length"));
+  addAndMakeVisible(releaseLength_);
+  showReleaseLength(proc_.releaseMaxMs());
+  releaseLength_.setTooltip(TRANS("Each release is kept up to this length and fades out over its "
+                                  "last quarter. Shorter releases use less memory: for an organ "
+                                  "played in a room with its own reverberation, or under an "
+                                  "impulse response."));
+  releaseLength_.onChange = [this] {
+    static const int kMs[] = {0, 500, 1000, 1500, 2000, 3000, 4000};
+    const int id = releaseLength_.getSelectedId();
+    if (id >= 1 && id <= 7) proc_.setReleaseMaxMs(kMs[id - 1]);
   };
 
   // Keeping the decoded samples, so the next load of the same organ is a read
@@ -449,6 +481,10 @@ void EnginePanel::revert() {
   proc_.setPolyphonyLimit(openPolyphony_);
   fillPolyphony();
   proc_.setLoadSampleRate(openRate_);
+  proc_.setReleaseChoice(openReleases_);
+  releases_.setSelectedId(static_cast<int>(openReleases_) + 1, juce::dontSendNotification);
+  proc_.setReleaseMaxMs(openReleaseMs_);
+  showReleaseLength(openReleaseMs_);
   proc_.setCacheMode(openCache_);
   cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
                        : openCache_ == SampleLibrary::CacheMode::PerOrgan ? 2
@@ -513,9 +549,27 @@ void EnginePanel::pushSwitches() {
     b->setEnabled(detailed);
 }
 
+void EnginePanel::showReleaseLength(int ms) {
+  static const int kMs[] = {0, 500, 1000, 1500, 2000, 3000, 4000};
+  releaseLength_.clear(juce::dontSendNotification);
+  releaseLength_.addItem(TRANS("Whole"), 1);
+  for (int i = 1; i < 7; ++i)
+    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", juce::String(kMs[i] / 1000.0, kMs[i] % 1000 ? 1 : 0)), i + 1);
+  int id = 1;
+  for (int i = 0; i < 7; ++i)
+    if (kMs[i] == ms) id = i + 1;
+  // A length set in the file and not in the list is shown as it is.
+  if (ms > 0 && id == 1) {
+    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", juce::String(ms / 1000.0, 2)), 8);
+    id = 8;
+  }
+  releaseLength_.setSelectedId(id, juce::dontSendNotification);
+}
+
 bool EnginePanel::loadingChanged() const {
   const auto sw = proc_.engineSwitch();
   return proc_.sampleStorage() != openStorage_ || proc_.streamReleases() != openStream_ ||
+         proc_.releaseChoice() != openReleases_ || proc_.releaseMaxMs() != openReleaseMs_ ||
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
@@ -709,6 +763,14 @@ void EnginePanel::resized() {
   rateLabel_.setBounds(rateRow.removeFromLeft(180));
   rate_.setBounds(rateRow.removeFromLeft(260));
   r.removeFromTop(6);
+  auto releasesRow = r.removeFromTop(kRow);
+  releasesLabel_.setBounds(releasesRow.removeFromLeft(180));
+  releases_.setBounds(releasesRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  auto releaseLengthRow = r.removeFromTop(kRow);
+  releaseLengthLabel_.setBounds(releaseLengthRow.removeFromLeft(180));
+  releaseLength_.setBounds(releaseLengthRow.removeFromLeft(300));
+  r.removeFromTop(6);
   auto cacheRow = r.removeFromTop(kRow);
   cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
   cache_.setBounds(cacheRow.removeFromLeft(300));
@@ -778,6 +840,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   enabled_.setToggleState(proc_.convolver().enabled(), juce::dontSendNotification);
   enabled_.onClick = [this] {
     proc_.convolver().setEnabled(enabled_.getToggleState());
+    proc_.markSettingsDirty();
   };
 
   addAndMakeVisible(load_);
@@ -805,6 +868,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
                             }
                             irName_.setText(TRANS("IR: %1").replace("%1", f.getFileName()), juce::dontSendNotification);
                             enabled_.setToggleState(true, juce::sendNotification);
+                            proc_.markSettingsDirty();
                           });
   };
 
@@ -812,6 +876,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   clear_.onClick = [this] {
     proc_.convolver().clear();
     irName_.setText(TRANS("No IR loaded"), juce::dontSendNotification);
+    proc_.markSettingsDirty();
   };
 
   addAndMakeVisible(irName_);
@@ -826,6 +891,7 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
   mix_.setValue(proc_.convolver().mix(), juce::dontSendNotification);
   mix_.onValueChange = [this] {
     proc_.convolver().setMix(static_cast<float>(mix_.getValue()));
+    proc_.markSettingsDirty();
   };
 
   addAndMakeVisible(note_);
@@ -833,7 +899,10 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
             TRANS("Most sample sets are recorded in the room they live in, and "
                   "several ship close / far / rear perspectives which ARE the room. "
                   "Convolution is for a dry set, or for headphones, and usually "
-                  "wants far less wet signal than a reverb plugin would suggest."));
+                  "wants far less wet signal than a reverb plugin would suggest.") +
+                "\n\n" +
+                TRANS("The room chosen here is kept with the organ that is loaded, and each "
+                      "organ opens with its own."));
 }
 
 void ReverbPanel::resized() {

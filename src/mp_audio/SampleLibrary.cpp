@@ -167,7 +167,7 @@ void SampleLibrary::retireOldGenerations() {
 bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                              int64_t maxFrames, LoopSelection selection,
                              SampleStorage storage, bool loadMono,
-                             double targetRate) {
+                             double targetRate, bool releaseOnly, int releaseMaxMs) {
   const int64_t total = static_cast<int64_t>(reader.lengthInSamples);
   if (total <= 0) return false;
 
@@ -194,12 +194,37 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   // marker counts in.
   const int64_t cueInFile = releaseCueInFile(reader, total, loopEnd);
   if (cueInFile > 0) want = total;
+
+  // A shortened release: read to its length after where it starts (the file's
+  // head, or its release marker), the last quarter faded to silence. An
+  // attack in the same file is untouched: its loop ends before the marker.
+  int64_t fadeFrom = -1;
+  const double fileRate = reader.sampleRate > 0.0 ? reader.sampleRate : 48000.0;
+  const auto releaseMax = static_cast<int64_t>(releaseMaxMs * fileRate / 1000.0);
+  if (releaseMax > 0 && (releaseOnly || cueInFile > 0)) {
+    const int64_t start = cueInFile > 0 ? cueInFile : 0;
+    const int64_t end = std::min(total, start + releaseMax);
+    if (end < total && end > start) {
+      want = end;
+      fadeFrom = std::max(start, end - std::max<int64_t>(1, releaseMax / 4));
+    }
+  }
   const int fileChannels = std::max(1, static_cast<int>(reader.numChannels));
 
   juce::AudioBuffer<float> scratch(fileChannels, static_cast<int>(want));
   if (!reader.read(&scratch, 0, static_cast<int>(want), 0, true,
                    fileChannels > 1))
     return false;
+  if (fadeFrom >= 0) {
+    const int64_t n = want - fadeFrom;
+    for (int c = 0; c < fileChannels; ++c) {
+      float* d = scratch.getWritePointer(c);
+      for (int64_t i = 0; i < n; ++i) {
+        const double x = static_cast<double>(i + 1) / static_cast<double>(n);
+        d[fadeFrom + i] *= static_cast<float>(0.5 * (1.0 + std::cos(3.141592653589793 * x)));
+      }
+    }
+  }
 
   // Fold to mono before anything else looks at the buffer, so quantising,
   // interleaving and the byte count all see one channel. The average, not the
@@ -577,6 +602,31 @@ bool readWavShape(const std::filesystem::path& path, WavShape& out) {
 
 }  // namespace
 
+void SampleLibrary::pruneReleases(OrganModel& model, ReleaseChoice choice) {
+  if (choice == ReleaseChoice::All) return;
+  for (auto& [rankId, rank] : model.ranks) {
+    (void)rankId;
+    for (auto& pipe : rank.pipes)
+      for (auto& layer : pipe.layers) {
+        auto& rel = layer.releases;
+        if (choice == ReleaseChoice::None || rel.empty()) {
+          rel.clear();
+          continue;
+        }
+        // The longest is the one written for a held note, with the most of the
+        // room in it; the shortest, for a short one.
+        int64_t keep = rel.front().holdTimeMsHigh;
+        for (const auto& r : rel)
+          keep = choice == ReleaseChoice::Longest ? std::max(keep, r.holdTimeMsHigh)
+                                                  : std::min(keep, r.holdTimeMsHigh);
+        rel.erase(std::remove_if(rel.begin(), rel.end(),
+                                 [keep](const ReleaseSample& r) { return r.holdTimeMsHigh != keep; }),
+                  rel.end());
+        for (auto& r : rel) r.holdTimeMsHigh = INT32_MAX;
+      }
+  }
+}
+
 std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     const OrganModel& model, const std::string& organRootDir, const OrganArchive* archive) const {
   // Which samples the pipework plays, and which of them only as releases --
@@ -650,7 +700,12 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)
     frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
-  if (shape.releaseOnly && streamReleases_) frames = std::min(frames, streamHeadFor(frames));
+  if (shape.releaseOnly && releaseMaxMs_ > 0) {
+    const double rate = loadRate_ > 0.0 ? loadRate_ : shape.rate > 0.0 ? shape.rate : 48000.0;
+    frames = std::min(frames, static_cast<int64_t>(releaseMaxMs_ * rate / 1000.0));
+  } else if (shape.releaseOnly && streamReleases_) {
+    frames = std::min(frames, streamHeadFor(frames));
+  }
   const int channels = loadMono_ ? 1 : shape.channels;
   return frames * channels * storeBytes;
 }
@@ -830,12 +885,12 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // (#120: Nancy's separate release files, with "Loop + 1 s"). Streaming
       // is the way to hold less of a release.
       const bool releaseOnly = releaseIds.count(refIt->first) != 0;
-      const bool stream = streamReleases_ && releaseOnly;
+      const bool stream = streamReleases_ && releaseOnly && releaseMaxMs_ == 0;
       const int64_t head = stream ? streamHeadFor(reader != nullptr ? static_cast<int64_t>(reader->lengthInSamples) : 0) : releaseOnly ? 0 : maxFramesPerSample;
       const bool ok =
           reader != nullptr &&
           readInto(*reader, *buffer, head, loopSelection, storage_, loadMono_,
-                   loadRate_);
+                   loadRate_, releaseOnly, releaseMaxMs_);
       if (ok && stream) {
         // Both sides of this comparison have to be in the same units. The
         // file's length is in ITS frames; the resident head may have been
@@ -971,7 +1026,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           auto buffer = std::make_shared<SampleBuffer>();
           const bool ok = reader != nullptr &&
                           readInto(*reader, *buffer, maxFramesPerSample, loopSelection, storage_,
-                                   loadMono_, loadRate_);
+                                   loadMono_, loadRate_, releaseIds.count(id) != 0, releaseMaxMs_);
           if (ok && progress != nullptr && !progress->charge(buffer->residentBytes())) {
             std::lock_guard<std::mutex> lock(queueMutex);
             stop = true;
@@ -1355,6 +1410,8 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|s" + std::to_string(streamReleases_ ? 1 : 0);
   s += "|t" + std::to_string(streamHead_);
   s += "|tp" + std::to_string(streamHeadPercent_);
+  s += "|rc" + std::to_string(static_cast<int>(releaseChoice_));
+  s += "|rl" + std::to_string(releaseMaxMs_);
   // Without the licensed samples a cache is not the organ with them.
   s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
   // Caches written before a read failure stopped being fatal may hold only

@@ -74,6 +74,8 @@ private:
   int openStreamPercent_ = 0;
   bool openMono_ = false;
   double openRate_ = 0.0;
+  SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
+  int openReleaseMs_ = 0;
   SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
   // General config rather than per-organ state, but shown here because this
   // is the panel about loading. Reverted like the rest; each change writes
@@ -112,6 +114,11 @@ private:
   juce::ComboBox storage_;
   juce::Label rateLabel_;
   juce::ComboBox rate_;
+  juce::Label releasesLabel_;
+  juce::ComboBox releases_;
+  juce::Label releaseLengthLabel_;
+  juce::ComboBox releaseLength_;
+  void showReleaseLength(int ms);
   juce::Label cacheLabel_;
   juce::ComboBox cache_;
   juce::Label cacheWhenLabel_;

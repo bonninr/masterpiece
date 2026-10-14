@@ -1097,6 +1097,12 @@ juce::String MasterpieceProcessor::settingsBody() const {
                                                         : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
+  text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
+  text << "releaselength " << samples_.releaseMaxMs() << "\n";
+  // The room this organ is played in: kept with the organ, the path last
+  // because it can hold spaces.
+  text << "reverb " << (convolver_.enabled() ? 1 : 0) << " " << juce::String(convolver_.mix(), 3)
+       << " " << convolver_.impulseResponseFile().getFullPathName() << "\n";
   text << "rate " << juce::String(samples_.loadSampleRate(), 0) << "\n";
   text << "cache " << static_cast<int>(samples_.cacheMode()) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
@@ -1169,6 +1175,25 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
+  else if (key == "releases")
+    samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
+  else if (key == "releaselength") samples_.setReleaseMaxMs(val.getIntValue());
+  else if (key == "reverb") {
+    // "reverb <enabled> <mix> <path...>"
+    auto rest = val.trim();
+    const bool wet = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue() != 0;
+    rest = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    const float mix = rest.upToFirstOccurrenceOf(" ", false, false).getFloatValue();
+    const juce::String path = rest.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (path.isEmpty()) {
+      if (convolver_.hasImpulseResponse()) convolver_.clear();
+    } else if (juce::File(path) != convolver_.impulseResponseFile()) {
+      if (!convolver_.loadImpulseResponse(juce::File(path)))
+        juce::Logger::writeToLog("reverb: the impulse response saved with this organ was not found: " + path);
+    }
+    convolver_.setMix(mix);
+    convolver_.setEnabled(wet && convolver_.hasImpulseResponse());
+  }
   else if (key == "rate") samples_.setLoadSampleRate(val.getDoubleValue());
   else if (key == "cache") {
     const int v = val.getIntValue();
@@ -2954,7 +2979,9 @@ std::string MasterpieceProcessor::cacheChoices() const {
          std::to_string(samples_.streamHeadPercent()) + "/" +
          std::to_string(samples_.streamHeadFrames()) + "/" + std::to_string(preloadHead_) + "/" +
          std::to_string(static_cast<int64_t>(samples_.loadSampleRate())) + "/" +
-         std::to_string(static_cast<int>(samples_.cacheMode()));
+         std::to_string(static_cast<int>(samples_.cacheMode())) + "/" +
+         std::to_string(static_cast<int>(samples_.releaseChoice())) + "/" +
+         std::to_string(samples_.releaseMaxMs());
 }
 
 void MasterpieceProcessor::keepLoadingChoiceForSession() {
@@ -4363,6 +4390,16 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
 
   model_ = std::move(loaded);
+  // The releases the player chose to load, before anything reads them.
+  if (samples_.releaseChoice() != SampleLibrary::ReleaseChoice::All) {
+    SampleLibrary::pruneReleases(model_, samples_.releaseChoice());
+    juce::Logger::writeToLog(juce::String("load: releases: ") +
+                             (samples_.releaseChoice() == SampleLibrary::ReleaseChoice::Longest  ? "the longest only"
+                              : samples_.releaseChoice() == SampleLibrary::ReleaseChoice::Shortest ? "the shortest only"
+                                                                                                    : "none"));
+  }
+  if (samples_.releaseMaxMs() > 0)
+    juce::Logger::writeToLog("load: releases kept up to " + juce::String(samples_.releaseMaxMs()) + " ms");
   organRootDir_ = opts.organRootDir;
   loadedOdf_ = effectiveOdf;
 

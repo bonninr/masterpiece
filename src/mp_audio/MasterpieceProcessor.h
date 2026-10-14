@@ -1166,6 +1166,11 @@ public:
   // Fold a stereo set to one channel while loading. Halves everything, and
   // gives up the recording's stereo image to do it. Applies to the next load.
   void setLoadMono(bool on) { samples_.setLoadMono(on); }
+  // Which releases are loaded, and how long each is kept: at the next load.
+  SampleLibrary::ReleaseChoice releaseChoice() const { return samples_.releaseChoice(); }
+  void setReleaseChoice(SampleLibrary::ReleaseChoice c) { samples_.setReleaseChoice(c); }
+  int releaseMaxMs() const { return samples_.releaseMaxMs(); }
+  void setReleaseMaxMs(int ms) { samples_.setReleaseMaxMs(ms); }
   bool loadMono() const { return samples_.loadMono(); }
 
   // The sample cache: a previous load of this organ at these settings, kept
