@@ -108,7 +108,7 @@ jobs:
           max-size: ${{ runner.os == 'Windows' && '1500M' || '500M' }}
           # Saved from main only; pull requests restore main's. Every run
           # saving its own filled the 10 GB cache allowance in a day.
-          save: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/windows-ccache-size') }}
+          save: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.ref == 'refs/heads/ci/windows-ccache-size' }}
 
       - name: Dependencies (Linux)
         if: runner.os == 'Linux' && !matrix.arm
