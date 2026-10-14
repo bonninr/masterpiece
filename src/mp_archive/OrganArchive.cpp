@@ -199,6 +199,12 @@ struct VolumeStream {
   FILE* file = nullptr;
   int64_t pos = 0;
   std::vector<char> buffer = std::vector<char>(1 << 20);
+  // How much the next read takes. Small after a skip: a header is a few
+  // hundred bytes, and libarchive skips what it has already read by using it
+  // up. A 1 MB read for every file of a set whose files average less than
+  // that read the whole set to list it -- Ashton, 51 GB, a quarter of an
+  // hour (#321). Reads in a row grow back to the full buffer.
+  size_t nextRead = 1 << 20;
 
   bool openCurrent() {
     if (file != nullptr) std::fclose(file);
@@ -219,10 +225,12 @@ struct VolumeStream {
         ++s->index;
         continue;
       }
-      const size_t want = static_cast<size_t>(std::min<int64_t>(left, static_cast<int64_t>(s->buffer.size())));
+      const size_t want = static_cast<size_t>(
+          std::min<int64_t>(left, static_cast<int64_t>(std::min(s->nextRead, s->buffer.size()))));
       const size_t got = std::fread(s->buffer.data(), 1, want, s->file);
       if (got == 0) return -1;
       s->pos += static_cast<int64_t>(got);
+      s->nextRead = std::min(s->nextRead * 2, s->buffer.size());
       *out = s->buffer.data();
       return static_cast<la_ssize_t>(got);
     }
@@ -233,6 +241,7 @@ struct VolumeStream {
     if (s->file == nullptr && !s->openCurrent()) return 0;
     const int64_t n = std::min<int64_t>(request, s->ends[s->index] - s->pos);
     if (n <= 0) return 0;
+    s->nextRead = 8192;
 #ifdef _WIN32
     if (_fseeki64(s->file, n, SEEK_CUR) != 0) return 0;
 #else
