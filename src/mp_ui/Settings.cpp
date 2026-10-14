@@ -177,7 +177,9 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     releaseCutoff_.setTooltip(TRANS("A release tail stops once it has stayed below this level for a "
                                     "twentieth of a second. Tails only fade, and a fast passage on "
                                     "many stops leaves hundreds of them sounding far below hearing, "
-                                    "each costing as much as a note."));
+                                    "each costing as much as a note. Each tail is judged on its "
+                                    "own: with many stops drawn, -80 dB can end the last decay of a "
+                                    "full chord audibly early, which is why -90 dB is the default."));
     releaseCutoff_.onChange = [this] {
       static const int kDbs[] = {0, -80, -90, -100};
       const int i = releaseCutoff_.getSelectedId() - 1;

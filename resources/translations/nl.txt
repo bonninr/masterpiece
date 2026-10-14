@@ -101,7 +101,7 @@ countries: nl be sr
 "Release tails end below" = "Releasestaarten eindigen onder"
 "Never: every tail plays out" = "Nooit: elke staart klinkt helemaal uit"
 "%1 dB" = "%1 dB"
-"A release tail stops once it has stayed below this level for a twentieth of a second. Tails only fade, and a fast passage on many stops leaves hundreds of them sounding far below hearing, each costing as much as a note." = "Een releasestaart stopt zodra hij een twintigste seconde onder dit niveau is gebleven. Staarten worden alleen zachter, en een snelle passage op veel registers laat er honderden klinken ver onder de gehoorgrens, elk zo duur als een noot."
+"A release tail stops once it has stayed below this level for a twentieth of a second. Tails only fade, and a fast passage on many stops leaves hundreds of them sounding far below hearing, each costing as much as a note. Each tail is judged on its own: with many stops drawn, -80 dB can end the last decay of a full chord audibly early, which is why -90 dB is the default." = "Een releasestaart stopt zodra hij een twintigste seconde onder dit niveau is gebleven. Staarten worden alleen zachter, en een snelle passage op veel registers laat er honderden klinken ver onder de gehoorgrens, elk zo duur als een noot. Elke staart wordt apart beoordeeld: met veel registers kan -80 dB de laatste nagalm van een vol akkoord hoorbaar te vroeg afbreken, daarom is -90 dB de standaard."
 "Releases" = "Releases"
 "As the organ has them" = "Zoals het orgel ze heeft"
 "The longest only" = "Alleen de langste"
