@@ -226,11 +226,11 @@ struct VolumeStream {
         continue;
       }
       const size_t want = static_cast<size_t>(
-          std::min<int64_t>(left, static_cast<int64_t>(std::min(s->nextRead, s->buffer.size()))));
+          (std::min<int64_t>)(left, static_cast<int64_t>((std::min)(s->nextRead, s->buffer.size()))));
       const size_t got = std::fread(s->buffer.data(), 1, want, s->file);
       if (got == 0) return -1;
       s->pos += static_cast<int64_t>(got);
-      s->nextRead = std::min(s->nextRead * 2, s->buffer.size());
+      s->nextRead = (std::min)(s->nextRead * 2, s->buffer.size());
       *out = s->buffer.data();
       return static_cast<la_ssize_t>(got);
     }
