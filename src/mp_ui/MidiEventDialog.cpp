@@ -1,4 +1,6 @@
 #include "MidiEventDialog.h"
+
+#include <unordered_set>
 #include "Mobile.h"
 
 namespace mp::ui {
@@ -38,13 +40,38 @@ bool pressable(MidiTargetKind k) {
          k != MidiTargetKind::None;
 }
 
+// The stop or tremulant a switch works: the switch itself, then what it
+// drives through the linkages, then what drives it, nearest first.
+juce::String workedBy(const OrganModel& m, Id switchId) {
+  auto named = [&m](Id sw) -> std::string {
+    for (const auto& [stopId, stop] : m.stops)
+      if (stop.controllingSwitchId == sw && !stop.name.empty()) return stop.name;
+    for (const auto& [tremId, trem] : m.tremulants)
+      if (trem.controllingSwitchId == sw && !trem.name.empty()) return trem.name;
+    return {};
+  };
+  for (const bool forward : {true, false}) {
+    std::vector<Id> ring{switchId};
+    std::unordered_set<Id> seen{switchId};
+    for (int depth = 0; depth < (forward ? 4 : 2) && !ring.empty(); ++depth) {
+      for (Id sw : ring)
+        if (const auto n = named(sw); !n.empty()) return readable(n);
+      std::vector<Id> next;
+      for (const auto& l : m.switchLinkages) {
+        const Id from = forward ? l.sourceSwitchId : l.destSwitchId;
+        const Id to = forward ? l.destSwitchId : l.sourceSwitchId;
+        for (Id sw : ring)
+          if (from == sw && seen.insert(to).second) next.push_back(to);
+      }
+      ring = std::move(next);
+    }
+  }
+  return {};
+}
+
 juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
   const auto& m = p.organModel();
-  if (kind == MidiTargetKind::Switch) {
-    const auto it = m.switches.find(id);
-    if (it != m.switches.end() && !it->second.name.empty()) return readable(it->second.name);
-    return TRANS("Switch %1").replace("%1", juce::String(static_cast<int>(id)));
-  }
+  if (kind == MidiTargetKind::Switch) return MidiEventDialog::switchName(m, id);
   if (kind == MidiTargetKind::ContinuousControl) {
     const auto it = m.continuousControls.find(id);
     if (it != m.continuousControls.end() && !it->second.name.empty())
@@ -843,6 +870,19 @@ private:
 };
 
 } // namespace
+
+juce::String MidiEventDialog::switchName(const OrganModel& m, Id id) {
+  const auto it = m.switches.find(id);
+  if (it != m.switches.end() && it->second.isCoupler && !it->second.name.empty())
+    return readable(it->second.name);
+  if (const auto worked = workedBy(m, id); worked.isNotEmpty()) return worked;
+  if (it != m.switches.end() && !it->second.name.empty()) return readable(it->second.name);
+  return TRANS("Switch %1").replace("%1", juce::String(static_cast<int>(id)));
+}
+
+juce::String MidiEventDialog::targetName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
+  return objectName(p, kind, id);
+}
 
 void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                            const juce::String& name) {

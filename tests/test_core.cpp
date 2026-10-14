@@ -14320,6 +14320,44 @@ static VoicingEqTest g_voicingEq;
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/Panels.h"
 #include "../src/mp_ui/Settings.h"
+#include "../src/mp_ui/MidiEventDialog.h"
+// #346: a switch behind a drawn knob is often named only by a number; the
+// right-click menu names the stop it works, followed through the linkages.
+class SwitchNameTest final : public mp::test::Test {
+public:
+  SwitchNameTest() : Test("functional.ui.switch-name", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    auto addSwitch = [&m](mp::Id id, const std::string& name) {
+      mp::Switch sw;
+      sw.switchId = id;
+      sw.name = name;
+      m.switches[id] = sw;
+    };
+    addSwitch(10, "CustPg1_Stop 2224");
+    addSwitch(11, "Internal 11");
+    addSwitch(12, "Internal 12");
+    addSwitch(20, "__Img_14. GO  Principale 8'");
+    mp::SwitchLinkage link;
+    link.sourceSwitchId = 10;
+    link.destSwitchId = 11;
+    m.switchLinkages.push_back(link);
+    link.sourceSwitchId = 11;
+    link.destSwitchId = 12;
+    m.switchLinkages.push_back(link);
+    mp::Stop stop;
+    stop.stopId = 1;
+    stop.name = "Open Diapason 8";
+    stop.controllingSwitchId = 12;
+    m.stops[1] = stop;
+    using D = mp::ui::MidiEventDialog;
+    MP_CHECK(D::switchName(m, 10) == "Open Diapason 8", "a drawn switch is named by the stop it reaches");
+    MP_CHECK(D::switchName(m, 12) == "Open Diapason 8", "and the stop's own switch by its stop");
+    MP_CHECK(D::switchName(m, 20) == "14. GO Principale 8'", "a switch working nothing keeps its own name, made readable");
+    MP_CHECK(D::switchName(m, 99) == "Switch 99", "and one the organ does not name says its number");
+  }
+};
+static SwitchNameTest g_switchName;
 
 // Panels (#237): the organ as sections, a footage on its own line, and a
 // layout that reads back as it was saved.
