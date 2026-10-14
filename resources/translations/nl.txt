@@ -633,6 +633,7 @@ countries: nl be sr
 "Other versions of this organ" = "Andere versies van dit orgel"
 "Recorder..." = "Recorder..."
 "Swell faders" = "Zwelschuiven"
+"Show played keys" = "Gespeelde toetsen tonen"
 "Keyboard" = "Toetsenbord"
 "A page in its own window" = "Een pagina in een eigen venster"
 "Organ settings..." = "Orgelinstellingen..."

@@ -650,11 +650,19 @@ void ConsoleView::timerCallback() {
   // The engine marks each key down on the manual it played, every block, so a
   // key lights up whether it was pressed on screen or on the player's own
   // console, and only on the manual it reached.
-  for (auto& k : keys_) {
-    const bool down = proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
-    if (down == k.shownDown) continue;
-    k.shownDown = down;
-    mark(k.bounds);
+  //
+  // Every other look, fifteen times a second: a key lit a fifteenth of a
+  // second late reads as played, and drawing keys was the window's largest
+  // cost in a fast passage. With the keys not shown (View menu) they are not
+  // looked at, and any still lit go dark once.
+  const bool showKeys = proc_.showPlayedKeys();
+  if (!showKeys || (++keyTick_ & 1) == 0) {
+    for (auto& k : keys_) {
+      const bool down = showKeys && proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
+      if (down == k.shownDown) continue;
+      k.shownDown = down;
+      mark(k.bounds);
+    }
   }
 
   // The drawstops are watched the same way, and for the same reason: a stop
@@ -947,7 +955,7 @@ void ConsoleView::paint(juce::Graphics& g) {
     // Lit from the manual's own keys, which the engine sets where it plays
     // a note on this manual: a key lights on the manual it reached, and a
     // key from another device on the same channel does not light this one.
-    const bool down = proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
+    const bool down = k.shownDown;
     const int frame = down ? k.engagedIndex : k.disengagedIndex;
     if (k.synthetic) {
       // Ivory and ebony, with the pressed key shaded rather than moved: the

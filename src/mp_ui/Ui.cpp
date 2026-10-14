@@ -1804,6 +1804,7 @@ void MasterpieceEditor::showViewMenu() {
                combinations_ != nullptr && combinations_->isVisible());
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
+  menu.addItem(13, TRANS("Show played keys"), true, proc_.showPlayedKeys());
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -1820,6 +1821,10 @@ void MasterpieceEditor::showViewMenu() {
                        if (c == 10) safe->toggleCombinations();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
+                       if (c == 13) {
+                         safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
+                         safe->console_.repaint();
+                       }
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);

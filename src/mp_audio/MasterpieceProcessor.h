@@ -754,6 +754,14 @@ public:
     setOffAfterStore_ = on;
     writeGlobalFile();
   }
+  // Whether the drawn manuals show the keys being played. Drawing them is
+  // the window's largest cost while the organ is played fast; off, the
+  // console neither looks at the keys nor draws them.
+  bool showPlayedKeys() const { return showPlayedKeys_.load(std::memory_order_relaxed); }
+  void setShowPlayedKeys(bool on) {
+    showPlayedKeys_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
   // the processor has them. Off by default while it is experimental; the
   // per-frame path is the one every earlier version used. Takes effect at
@@ -1690,6 +1698,7 @@ private:
   std::atomic<bool> cancelResetsKeyboards_{false};
   bool combinationsOnTop_ = false;
   bool setOffAfterStore_ = false;
+  std::atomic<bool> showPlayedKeys_{true};
   // See storeTarget(). Written where a piston or step is chosen, under the
   // audio lock or on the audio thread; read under the lock.
   StoreTarget storeTarget_;

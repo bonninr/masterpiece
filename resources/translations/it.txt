@@ -633,6 +633,7 @@ countries: it ch sm va
 "Other versions of this organ" = "Altre versioni di questo organo"
 "Recorder..." = "Registratore..."
 "Swell faders" = "Cursori delle staffe"
+"Show played keys" = "Mostra i tasti suonati"
 "Keyboard" = "Tastiera"
 "A page in its own window" = "Una pagina in una finestra propria"
 "Organ settings..." = "Impostazioni dell'organo..."
