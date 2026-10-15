@@ -469,7 +469,7 @@ void EnginePanel::fillPolyphony() {
   const auto mb = [this](int voices) {
     return juce::String(juce::jmax<int64_t>(1, proc_.voicePoolBytes(voices) / (1024 * 1024)));
   };
-  const int def = MasterpieceProcessor::defaultPolyphony();
+  const int def = proc_.defaultPolyphony();
   polyphony_.addItem(TRANS("Default: %1 voices (%2 MB)").replace("%1", juce::String(def)).replace("%2", mb(def)), 1);
   const int current = proc_.polyphonyLimit();
   bool listed = current == 0;

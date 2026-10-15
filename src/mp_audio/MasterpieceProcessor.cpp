@@ -35,12 +35,13 @@ static int usableCores() {
   return cores;
 }
 
-int MasterpieceProcessor::defaultPolyphony() {
-  const int threads = usableCores();
-  if (threads <= 2) return 512;
-  if (threads <= 4) return 768;
-  if (threads <= 8) return 1536;
-  return 2048;
+int MasterpieceProcessor::defaultPolyphony() const {
+  // GrandOrgue's 725 voices a processor thread, never below 0.7.11's 1,536:
+  // a full pool takes a sounding pipe's place, and 768 on four threads took a
+  // pedal release on every note of a Widor toccata (#320). Streamed releases
+  // hold a 2-second ring a voice, 768 KB, so they keep 1,536.
+  if (samples_.streamReleases()) return 1536;
+  return std::min(maxPolyphonySetting(), std::max(1536, 725 * usableCores()));
 }
 
 static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {

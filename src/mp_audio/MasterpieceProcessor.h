@@ -846,10 +846,9 @@ public:
     voices_.setReleaseCutoff(releaseCutoffDb_ < 0 ? std::pow(10.0f, releaseCutoffDb_ / 20.0f) : 0.0f);
   }
   void setPolyphonyLimit(int voices);
-  // What this computer is given when the player has chosen nothing: as many
-  // voices as its processor threads can render in time with every stop
-  // drawn. Two cores rendered 1,500 voices at a third of real time.
-  static int defaultPolyphony();
+  // What this computer is given when the player has chosen nothing: 725
+  // voices a processor thread, at least 1,536; 1,536 when releases stream.
+  int defaultPolyphony() const;
   static int maxPolyphonySetting() { return 16384; }
   int voicePool() const { return polyphony_ > 0 ? polyphony_ : defaultPolyphony(); }
   // What a pool of this many voices holds in memory with the streaming
