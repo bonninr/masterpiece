@@ -375,7 +375,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(polyphonyLabel_);
   styleLabel(polyphonyLabel_, TRANS("Polyphony limit"));
   addAndMakeVisible(polyphony_);
-  polyphony_.setTooltip(TRANS("The most pipes that sound at once, made at the next load of the organ. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
+  polyphony_.setTooltip(TRANS("The most pipes that sound at once, applied as soon as it is chosen. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
   fillPolyphony();
   polyphony_.onChange = [this] {
     const int id = polyphony_.getSelectedId();

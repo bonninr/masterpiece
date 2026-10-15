@@ -10124,6 +10124,31 @@ static ReleasePitchTest g_releasePitch;
 static VoiceReleaseTailTest g_voiceReleaseTail;
 static VoiceReleaseCrossfadeTest g_voiceReleaseCrossfade;
 static VoiceEngineStealingTest g_voiceStealing;
+
+// A larger polyphony is built when it is chosen (#320): the player who raised
+// it and played on heard the old pool, with no word that a reload was due.
+class PolyphonyAppliesAtOnceTest final : public mp::test::Test {
+public:
+  PolyphonyAppliesAtOnceTest()
+    : Test("functional.voice.polyphony-at-once", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const int saved = proc.polyphonyLimit();
+    proc.setPolyphonyLimit(256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.voicePoolSize() == 256, "the pool is built at the size chosen");
+    proc.setPolyphonyLimit(4096);
+    MP_CHECK(proc.voicePoolSize() == 4096, "a larger choice builds a larger pool at once, got " +
+                                               std::to_string(proc.voicePoolSize()));
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer midi;
+    proc.processBlock(buf, midi);
+    proc.setPolyphonyLimit(512);
+    MP_CHECK(proc.voicePoolSize() == 4096, "a smaller choice limits the pool it has");
+    proc.setPolyphonyLimit(saved);
+  }
+};
+static PolyphonyAppliesAtOnceTest g_polyphonyAtOnce;
 static VoiceRetriggerTest g_voiceRetrigger;
 static LoopCrossfadeTest g_loopCrossfade;
 static DetuningTest g_detuning;

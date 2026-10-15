@@ -99,6 +99,47 @@ void MasterpieceProcessor::writeBlockLog() {
   std::fclose(f);
 }
 
+// The voice pool and the threads that render it, at the pool size chosen.
+// prepareToPlay builds it, and a larger polyphony builds it again with the
+// organ loaded: the samples stay, only the voices are new.
+void MasterpieceProcessor::buildVoicePool(int blockFrames) {
+  // Voice pool is allocated once, here: render() must never allocate.
+  voices_.setSimd(fasterEngine_.load());
+  // The pool the player chose, with a ring per voice only when releases can
+  // stream.
+  graph_.maxVoices = voicePool();
+  // What is loaded may stream though the choice for the next load says
+  // otherwise: either way, rings.
+  voices_.setStreamRings(samples_.streamReleases() || samples_.streamedCount() > 0);
+  voices_.prepare(sampleRate_, graph_.maxVoices,
+                  juce::jmax(1, getTotalNumOutputChannels()),
+                  juce::jmax(1, blockFrames));
+  juce::Logger::writeToLog("voices: " + juce::String(graph_.maxVoices) + ", " +
+                           juce::String(voicePoolBytes(graph_.maxVoices) / (1024 * 1024)) +
+                           " MB" + (samples_.streamReleases() ? " with release streaming" : ""));
+  // Which path renders, for any report about the sound: the new engine is
+  // the first thing to rule in or out.
+  juce::Logger::writeToLog(juce::String("audio engine: ") +
+                           (voices_.simd() == simd::Isa::None
+                                ? "per-frame"
+                                : juce::String("faster (") + simd::isaName(voices_.simd()) + ")"));
+
+  // Worker pool (ADR-012). Auto means cores - 1, leaving one for the rest of
+  // the system; the audio thread renders a share itself, so the total doing
+  // voice work is that count. Threads are started here, never in the callback.
+  int threads = graph_.parallel.renderThreads;
+  if (threads <= 0) {
+    const int cores = usableCores();
+    threads = cores > 2 ? cores - 1 : 1;
+    // But not every core of a big machine: a block is shared out only above
+    // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
+    // Pro (#120) wait for over 700 voices before helping, and every worker
+    // woken is one more the audio thread waits on. Eight carry any console.
+    threads = std::min(threads, 8);
+  }
+  voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
+}
+
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   maxBlock_ = juce::jmax(1, samplesPerBlock);
@@ -189,41 +230,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     noiseRanksBySwitch_[rank.noiseTriggerSwitchId].push_back(rankId);
   }
 
-  // Voice pool is allocated once, here: render() must never allocate.
-  voices_.setSimd(fasterEngine_.load());
-  // The pool the player chose, with a ring per voice only when releases can
-  // stream.
-  graph_.maxVoices = voicePool();
-  // What is loaded may stream though the choice for the next load says
-  // otherwise: either way, rings.
-  voices_.setStreamRings(samples_.streamReleases() || samples_.streamedCount() > 0);
-  voices_.prepare(sampleRate_, graph_.maxVoices,
-                  juce::jmax(1, getTotalNumOutputChannels()),
-                  juce::jmax(1, samplesPerBlock));
-  juce::Logger::writeToLog("voices: " + juce::String(graph_.maxVoices) + ", " +
-                           juce::String(voicePoolBytes(graph_.maxVoices) / (1024 * 1024)) +
-                           " MB" + (samples_.streamReleases() ? " with release streaming" : ""));
-  // Which path renders, for any report about the sound: the new engine is
-  // the first thing to rule in or out.
-  juce::Logger::writeToLog(juce::String("audio engine: ") +
-                           (voices_.simd() == simd::Isa::None
-                                ? "per-frame"
-                                : juce::String("faster (") + simd::isaName(voices_.simd()) + ")"));
-
-  // Worker pool (ADR-012). Auto means cores - 1, leaving one for the rest of
-  // the system; the audio thread renders a share itself, so the total doing
-  // voice work is that count. Threads are started here, never in the callback.
-  int threads = graph_.parallel.renderThreads;
-  if (threads <= 0) {
-    const int cores = usableCores();
-    threads = cores > 2 ? cores - 1 : 1;
-    // But not every core of a big machine: a block is shared out only above
-    // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
-    // Pro (#120) wait for over 700 voices before helping, and every worker
-    // woken is one more the audio thread waits on. Eight carry any console.
-    threads = std::min(threads, 8);
-  }
-  voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
+  buildVoicePool(samplesPerBlock);
   // Worst case one pipe per rank sounding on a single key.
   resolveScratch_.reserve(model_.ranks.empty() ? 64 : model_.ranks.size());
   soundingNotes_.reserve(128);
@@ -1938,10 +1945,15 @@ void MasterpieceProcessor::setPolyphonyLimit(int voices) {
   if (voices == defaultPolyphony()) voices = 0;
   if (polyphony_ == voices) return;
   polyphony_ = voices;
-  // A smaller pool applies at once, as a limit on the one there is; a larger
-  // one is made at the next load.
+  // A smaller pool applies at once, as a limit on the one there is. A larger
+  // one is built now, the organ staying loaded: the player who raised it
+  // and played on heard the old pool, with no word that a reload was due
+  // (#320). What sounds as it is built stops.
   {
     const AudioLock lock(*this);
+    if (voicePool() > voices_.poolSize() && sampleRate_ > 0.0) {
+      buildVoicePool(getBlockSize());
+    }
     voices_.setPolyphony(voicePool() < voices_.poolSize() ? voicePool() : 0);
   }
   writeGlobalFile();

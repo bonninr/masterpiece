@@ -834,9 +834,11 @@ public:
   // by the player; 0 means the default (defaultPolyphony()). Past it a new
   // pipe takes the place of one dying away, or of the quietest. Fewer voices
   // is a thinner tutti on a full organ, more than the machine can render is
-  // a glitch. The pool is made at the next load of the organ; a smaller
+  // a glitch. A larger pool is built at once, the organ staying loaded; a smaller
   // number applies at once.
   int polyphonyLimit() const { return polyphony_; }
+  // The voices built now, which a larger choice rebuilds at once.
+  int voicePoolSize() const { return voices_.poolSize(); }
   // Where a release tail ends: decibels below full scale, 0 for never. Saved
   // with the organ; -90 unless the player chose: at -80 the tails of a
   // final chord, each below it alone, ended together audibly.
@@ -1356,6 +1358,7 @@ private:
   int mixBusForPipe(Id rankId, int midiNote) const;
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
+  void buildVoicePool(int blockFrames);
   void handleMidi(const juce::MidiBuffer& midi);
   // Resampling ratio for one pipe playing one recorded sample: the pitch we
   // want over the pitch the file actually holds.
