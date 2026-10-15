@@ -5570,7 +5570,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
       return !loadProgress_.isCancelled();
     };
     loadProgress_.beginPhase(LoadProgress::Phase::ReadingArchive);
-    if (!archive.index(why, progress)) {
+    if (!archive.index(why, progress, dir.getFullPathName().toStdString())) {
       dir.deleteRecursively();
       return fail(why);
     }

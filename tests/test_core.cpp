@@ -11579,6 +11579,26 @@ public:
       MP_CHECK(!fs::exists(out / "OrganInstallationPackages" / "000123" / "pipe1.wav"),
                label + "and the samples are not unpacked");
 
+      // One pass (#321): index() with a folder takes the definition and the
+      // artwork out as it lists, and unpackSmallFiles() has nothing left.
+      {
+        mp::OrganArchive b;
+        const fs::path one = dir / (solid ? "one-solid" : "one-plain");
+        MP_CHECK(b.discover(file.string(), error) && b.inspect(error) &&
+                     b.index(error, {}, one.string()),
+                 label + "listed and unpacked in one pass: " + error);
+        MP_CHECK(b.entries().size() == 4, label + "every file is still listed");
+        MP_CHECK(slurp(one / "OrganDefinitions" / "Tiny.Organ_Hauptwerk_xml") == xml &&
+                     slurp(one / "OrganInstallationPackages" / "000123" / "Images" / "console.png") ==
+                         pattern(3, 5000),
+                 label + "the definition and the artwork are out when the listing ends");
+        MP_CHECK(!fs::exists(one / "OrganInstallationPackages" / "000123" / "pipe1.wav"),
+                 label + "and no sample is");
+        std::vector<std::string> none;
+        MP_CHECK(b.unpackSmallFiles(one.string(), error, none) && none.empty(),
+                 label + "the second pass then finds nothing to do: " + error);
+      }
+
       std::string got;
       const std::unordered_set<std::string> wanted = {
           mp::OrganArchive::key("OrganInstallationPackages/000123/pipe2.wav")};
@@ -11678,6 +11698,94 @@ public:
   }
 };
 static SolidRar4Test g_solidRar4;
+
+// A split RAR 4 set is listed volume by volume, side by side, from each
+// volume's own headers, and its small files unpacked from the volume each
+// begins in (#321: Ashton's 11 volumes, one after another, took 451 s to list
+// and 458 s more to reach its last image). Three volumes; a sample runs from
+// the first into the second, so the second volume begins with the rest of a
+// file, which its own walk passes over.
+class SplitRar4Test final : public mp::test::Test {
+public:
+  SplitRar4Test() : Test("functional.archive.split-rar4-at-once", Category::Functional) {}
+  using T = SolidRar4Test;
+  static std::string file(const std::string& name, const std::string& part, uint32_t full,
+                          unsigned flags, uint32_t crc) {
+    return T::header(std::string("\x74", 1) + T::le(0x8000 | flags, 2) +
+                     T::le(32 + static_cast<uint32_t>(name.size()), 2) +
+                     T::le(static_cast<uint32_t>(part.size()), 4) + T::le(full, 4) +
+                     std::string("\x02", 1) + T::le(crc, 4) + T::le(0x5A2E0000u, 4) +
+                     std::string("\x14\x30", 2) + T::le(static_cast<uint32_t>(name.size()), 2) +
+                     T::le(0x20, 4) + name) +
+           part;
+  }
+  static std::string whole(const std::string& name, const std::string& data) {
+    return file(name, data, static_cast<uint32_t>(data.size()), 0, T::crc32(data));
+  }
+  static std::string volume(bool first, bool last, const std::string& files) {
+    return std::string("Rar!\x1a\x07\x00", 7) +
+           T::header(std::string("\x73", 1) + T::le(first ? 0x0101 : 0x0001, 2) + T::le(13, 2) +
+                     std::string(6, '\0')) +
+           files + T::header(std::string("\x7b", 1) + T::le(last ? 0x4000 : 0x4001, 2) + T::le(7, 2));
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-split-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string big = T::pattern(9, 60000), xml = "<Hauptwerk>split</Hauptwerk>\n";
+    const std::string a = T::pattern(1, 3000), b = T::pattern(2, 4000), c = T::pattern(3, 5000);
+    const std::string p = "OrganInstallationPackages\\000321\\";
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << volume(true, false,
+                  whole(p + "pipe1.wav", T::pattern(4, 20000)) + whole(p + "Images\\a.png", a) +
+                      file(p + "big.wav", big.substr(0, 25000), 60000, 0x0002, T::crc32(big.substr(0, 25000))));
+    std::ofstream(dir / "Set.r00", std::ios::binary)
+        << volume(false, false,
+                  file(p + "big.wav", big.substr(25000), 60000, 0x0001, T::crc32(big)) +
+                      whole(p + "Images\\b.png", b) + whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", xml));
+    std::ofstream(dir / "Set.r01", std::ios::binary)
+        << volume(false, true, whole(p + "pipe3.wav", T::pattern(5, 20000)) + whole(p + "Images\\c.png", c));
+
+    mp::OrganArchive arc;
+    std::string error;
+    const fs::path out = dir / "out";
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) &&
+                 arc.index(error, {}, out.string()),
+             "the set is listed: " + error);
+    bool atOnce = false;
+    for (const auto& line : arc.report())
+      if (line.find("volumes at a time") != std::string::npos) atOnce = true;
+    MP_CHECK(atOnce, "its volumes are listed side by side");
+    std::vector<std::string> names;
+    for (const auto& e : arc.entries()) names.push_back(e.path);
+    const std::string q = "OrganInstallationPackages/000321/";
+    MP_CHECK(names == std::vector<std::string>({q + "pipe1.wav", q + "Images/a.png", q + "big.wav",
+                                                q + "Images/b.png", "OrganDefinitions/Set.Organ_Hauptwerk_xml",
+                                                q + "pipe3.wav", q + "Images/c.png"}),
+             "every file once, in the set's order, the one across two volumes too");
+    MP_CHECK(arc.find(q + "big.wav") != nullptr && arc.find(q + "big.wav")->size == 60000,
+             "a file across two volumes has its whole size");
+    const fs::path early = out / "OrganInstallationPackages" / "000321" / "Images";
+    MP_CHECK(fs::exists(early / "a.png") && fs::exists(early / "b.png") && fs::exists(early / "c.png") &&
+                 fs::exists(out / "OrganDefinitions" / "Set.Organ_Hauptwerk_xml"),
+             "each volume's small files are out when the listing ends, the second's past the rest of a file");
+    std::vector<std::string> damaged;
+    MP_CHECK(arc.unpackSmallFiles(out.string(), error, damaged) && damaged.empty(), "unpacked: " + error);
+    auto slurp = [](const fs::path& f) {
+      std::ifstream in(f, std::ios::binary);
+      return std::string(std::istreambuf_iterator<char>(in), {});
+    };
+    const fs::path img = out / "OrganInstallationPackages" / "000321" / "Images";
+    MP_CHECK(slurp(img / "a.png") == a && slurp(img / "b.png") == b && slurp(img / "c.png") == c &&
+                 slurp(out / "OrganDefinitions" / "Set.Organ_Hauptwerk_xml") == xml,
+             "the artwork and the definition come out whole, from every volume");
+    MP_CHECK(!fs::exists(out / "OrganInstallationPackages" / "000321" / "big.wav"), "and no sample");
+    fs::remove_all(dir, ec);
+  }
+};
+static SplitRar4Test g_splitRar4;
 
 // A set opened once from one disk and later from a copy on another is read
 // from the copy: its saved index follows the volumes by name and size, not
