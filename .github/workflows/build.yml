@@ -162,18 +162,19 @@ jobs:
             build/${{ matrix.preset }}/_deps
           key: cmake-${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'src/**/CMakeLists.txt', 'apps/**/CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
-      # On Windows, link-time optimisation is 13 of the 14 minutes a build
-      # takes once the compiler cache hits: five programs re-optimise all of
-      # JUCE and the engine as they link. Only a release ships what it builds,
-      # so the others check the code without it, and share a cache built the
-      # same way. A release builds with it and runs the tests on that build.
+      # Link-time optimisation is most of a build once the compiler cache
+      # hits: five programs re-optimise all of JUCE and the engine as they
+      # link, 13 of 14 minutes on Windows, 5 of 8 on Linux. Only a release
+      # ships what it builds, so the others check the code without it, and
+      # share a cache built the same way. A release builds with it and runs
+      # the tests on that build.
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           ${{ matrix.cmake_extra }}
-          ${{ (runner.os == 'Windows' && github.workflow != 'release') && '-DMP_ENABLE_LTO=OFF' || '' }}
+          ${{ github.workflow != 'release' && '-DMP_ENABLE_LTO=OFF' || '' }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
