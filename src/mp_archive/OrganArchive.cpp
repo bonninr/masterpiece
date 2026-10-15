@@ -529,12 +529,12 @@ bool readAll(archive* a, int64_t size, std::vector<char>& out) {
 // in memory, which libarchive decompresses whole. libarchive reads a
 // compressed file that runs on into the next volume wrongly: four of Ashton's
 // samples failed with "File CRC error" or "Bad RAR file data", while the RAR
-// tools read them (#321, and #90's Buckeburg). `near` is the volume the
+// tools read them (#321, and #90's Buckeburg). `reached` is the volume the
 // reading had reached; the file begins there or in the one before.
-static bool readRar4Parts(const std::vector<std::string>& volumes, size_t near,
+static bool readRar4Parts(const std::vector<std::string>& volumes, size_t reached,
                           const std::string& wanted, std::vector<char>& out) {
   std::vector<size_t> order;
-  for (size_t v : {near, near > 0 ? near - 1 : near})
+  for (size_t v : {reached, reached > 0 ? reached - 1 : reached})
     if (v < volumes.size() && std::find(order.begin(), order.end(), v) == order.end()) order.push_back(v);
   struct Part {
     size_t volume;
