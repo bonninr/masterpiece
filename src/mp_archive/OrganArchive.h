@@ -77,7 +77,11 @@ public:
   // enough for identity(); index() reads every header, which for a solid
   // archive means decompressing all of it.
   bool discover(const std::string& path, std::string& error);
-  bool index(std::string& error, const Progress& progress = {});
+  // With `unpackDir`, the definitions and artwork are unpacked as their
+  // headers come by, and unpackSmallFiles() has only what failed here left to
+  // do: a split set's headers lie across all of it, so a second walk to its
+  // last image cost as long as the listing (#321, Ashton: 458 s after 451 s).
+  bool index(std::string& error, const Progress& progress = {}, const std::string& unpackDir = {});
   // Between the two: each archive's first header, which is where most
   // reasons it cannot be read are -- a solid RAR 4, a password, a volume
   // without its set. Cheap: a few kilobytes of each.
@@ -147,6 +151,15 @@ private:
   std::vector<std::vector<std::string>> archives_;
   std::vector<Entry> entries_;
   std::unordered_map<std::string, size_t> byKey_;
+  // Keys index() unpacked into its unpackDir.
+  std::unordered_set<std::string> unpacked_;
+
+  // index() for a split RAR 4 set that is not solid: its volumes listed side
+  // by side, and the small files unpacked from the volume each begins in.
+  // False, with entries_ untouched, when the set is not one or a volume does
+  // not follow; error is "cancelled" only when progress said stop.
+  bool indexVolumesAtOnce(size_t archive, const Progress& scanned, const std::string& unpackDir,
+                          std::string& error);
 };
 
 // The folder an organ was unpacked into records the archives it came from,
