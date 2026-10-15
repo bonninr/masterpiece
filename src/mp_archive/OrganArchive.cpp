@@ -1307,7 +1307,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
     sizes[v] = static_cast<int64_t>(fs::file_size(fs::u8path(volumes[v]), ec));
   }
   const size_t threads =
-      std::min<size_t>(volumes.size(), std::max(2u, std::thread::hardware_concurrency()));
+      std::min<size_t>(volumes.size(), (std::max)(2u, std::thread::hardware_concurrency()));
   // Runs `job` for 0..count-1 on the threads, and calls in on this one until
   // they are done: false from it stops them.
   std::atomic<bool> stop{false};
@@ -1315,7 +1315,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
   const auto runAll = [&](size_t count, const std::function<void(size_t)>& job) {
     std::atomic<size_t> next{0}, finished{0};
     std::vector<std::thread> pool;
-    for (size_t t = 0; t < std::min(threads, count); ++t)
+    for (size_t t = 0; t < (std::min)(threads, count); ++t)
       pool.emplace_back([&] {
         for (size_t k; (k = next.fetch_add(1)) < count;) {
           if (!stop.load()) job(k);
