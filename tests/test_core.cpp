@@ -11782,6 +11782,20 @@ public:
                  slurp(out / "OrganDefinitions" / "Set.Organ_Hauptwerk_xml") == xml,
              "the artwork and the definition come out whole, from every volume");
     MP_CHECK(!fs::exists(out / "OrganInstallationPackages" / "000321" / "big.wav"), "and no sample");
+
+    // The sample that runs from the first volume into the second reads whole
+    // (#321: Ashton's four unreadable samples each crossed a volume's end).
+    std::string got;
+    error.clear();
+    MP_CHECK(arc.read(0, {mp::OrganArchive::key(q + "big.wav")},
+                      [&got](const std::string&, std::vector<char>&& bytes) {
+                        got.assign(bytes.begin(), bytes.end());
+                        return true;
+                      },
+                      error) &&
+                 got == big,
+             "a sample across two volumes reads whole: " + error + ", " + std::to_string(got.size()) +
+                 " bytes");
     fs::remove_all(dir, ec);
   }
 };

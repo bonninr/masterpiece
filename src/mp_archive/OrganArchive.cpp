@@ -281,15 +281,23 @@ static bool decodeRarUnicode(const unsigned char* name, size_t nameSize, const u
   return true;
 }
 
-// The files that begin in one volume of a RAR 4 set, read from their headers
-// with a seek past each file's data. The libraries walk a set only from its
-// first volume; this reads any volume on its own, so the volumes of a set
-// can be listed side by side (#321: Ashton, 11 volumes, 68,578 files, 451 s
-// one after another). False for anything it does not follow -- a header
-// whose CRC is wrong, a password on the headers, a name in a code page it
-// would have to guess -- and the set is listed the old way.
-static bool listRar4Volume(const std::string& path, const std::atomic<bool>& stop,
-                           std::vector<Rar4File>& out) {
+// One file header of a RAR 4 volume, as stored, and where its data lies.
+struct Rar4Header {
+  std::vector<unsigned char> raw;  // the whole header, from its CRC to its end
+  unsigned flags = 0;
+  int64_t pack = 0;      // this part's data
+  int64_t unpacked = 0;  // the whole file's
+  size_t nameAt = 0, nameSize = 0;
+  int64_t dataAt = 0;  // in the volume
+};
+
+// Walks one volume of a RAR 4 set by its headers, seeking past each file's
+// data, and hands `file` each file header; `file` returns false to stop. The
+// libraries walk a set only from its first volume; this reads any volume on
+// its own. False for anything it does not follow: a header whose CRC is
+// wrong, a password on the headers, a cut file.
+static bool walkRar4(const std::string& path, const std::atomic<bool>* stop,
+                     const std::function<bool(const Rar4Header&)>& file) {
   std::FILE* in = openPackage(path);
   if (in == nullptr) return false;
   struct Closer {
@@ -301,13 +309,14 @@ static bool listRar4Volume(const std::string& path, const std::atomic<bool>& sto
     return false;
   const int64_t end = rarVolumeEnd(path);
   int64_t pos = 7;
-  std::vector<unsigned char> h;
+  Rar4Header f;
+  auto& h = f.raw;
   const auto u32 = [&h](size_t o) {
     return static_cast<uint32_t>(h[o]) | static_cast<uint32_t>(h[o + 1]) << 8 |
            static_cast<uint32_t>(h[o + 2]) << 16 | static_cast<uint32_t>(h[o + 3]) << 24;
   };
   while (pos < end) {
-    if (stop.load(std::memory_order_relaxed)) return false;
+    if (stop != nullptr && stop->load(std::memory_order_relaxed)) return false;
     if (!seekTo(in, pos, SEEK_SET)) return false;
     h.resize(7);
     if (std::fread(h.data(), 1, 7, in) != 7) return false;
@@ -323,38 +332,21 @@ static bool listRar4Volume(const std::string& path, const std::atomic<bool>& sto
       if (flags & 0x0080) return false;  // a password on the headers
     } else if (type == 0x74) {
       if (hsize < 32) return false;
-      int64_t pack = u32(7), unp = u32(11);
-      const size_t nameSize = h[26] | (h[27] << 8);
-      size_t o = 32;
+      f.flags = flags;
+      f.pack = u32(7);
+      f.unpacked = u32(11);
+      f.nameSize = h[26] | (h[27] << 8);
+      f.nameAt = 32;
       if (flags & 0x0100) {
-        if (hsize < o + 8) return false;
-        pack |= static_cast<int64_t>(u32(o)) << 32;
-        unp |= static_cast<int64_t>(u32(o + 4)) << 32;
-        o += 8;
+        if (hsize < 40) return false;
+        f.pack |= static_cast<int64_t>(u32(32)) << 32;
+        f.unpacked |= static_cast<int64_t>(u32(36)) << 32;
+        f.nameAt = 40;
       }
-      if (hsize < o + nameSize) return false;
-      data = pack;
-      const bool directory = (flags & 0x00E0) == 0x00E0;
-      const bool continued = (flags & 0x0001) != 0;  // the rest of a file begun before
-      if (!directory && !continued) {
-        const unsigned char* n = &h[o];
-        const auto zero = std::find(n, n + nameSize, static_cast<unsigned char>(0));
-        Rar4File f;
-        if ((flags & 0x0200) && zero != n + nameSize) {
-          const size_t ascii = static_cast<size_t>(zero - n);
-          if (!decodeRarUnicode(n, ascii, zero + 1, nameSize - ascii - 1, f.name)) return false;
-        } else {
-          // UTF-8 when flagged Unicode without a coded part; otherwise a code
-          // page, which only ASCII is safe to read without knowing it.
-          f.name.assign(reinterpret_cast<const char*>(n), nameSize);
-          if (!(flags & 0x0200))
-            for (unsigned char c : f.name)
-              if (c >= 0x80) return false;
-        }
-        f.size = unp;
-        f.encrypted = (flags & 0x0004) != 0;
-        out.push_back(std::move(f));
-      }
+      if (hsize < f.nameAt + f.nameSize) return false;
+      f.dataAt = pos + static_cast<int64_t>(hsize);
+      data = f.pack;
+      if (!file(f)) return true;
     } else if (type == 0x7b) {
       return true;
     } else if (flags & 0x8000) {
@@ -364,6 +356,46 @@ static bool listRar4Volume(const std::string& path, const std::atomic<bool>& sto
     pos += static_cast<int64_t>(hsize) + data;
   }
   return true;
+}
+
+// A file header's name as UTF-8. False for a name in a code page, which only
+// ASCII is safe to read without knowing.
+static bool rar4Name(const Rar4Header& f, std::string& name) {
+  const unsigned char* n = &f.raw[f.nameAt];
+  const auto zero = std::find(n, n + f.nameSize, static_cast<unsigned char>(0));
+  if ((f.flags & 0x0200) && zero != n + f.nameSize) {
+    const size_t ascii = static_cast<size_t>(zero - n);
+    return decodeRarUnicode(n, ascii, zero + 1, f.nameSize - ascii - 1, name);
+  }
+  // UTF-8 when flagged Unicode without a coded part.
+  name.assign(reinterpret_cast<const char*>(n), f.nameSize);
+  if (!(f.flags & 0x0200))
+    for (unsigned char c : name)
+      if (c >= 0x80) return false;
+  return true;
+}
+
+// The files that begin in one volume of a RAR 4 set, for listing the volumes
+// of a set side by side (#321: Ashton, 11 volumes, 68,578 files, 451 s one
+// after another).
+static bool listRar4Volume(const std::string& path, const std::atomic<bool>& stop,
+                           std::vector<Rar4File>& out) {
+  bool named = true;
+  const bool walked = walkRar4(path, &stop, [&](const Rar4Header& f) {
+    const bool directory = (f.flags & 0x00E0) == 0x00E0;
+    const bool continued = (f.flags & 0x0001) != 0;  // the rest of a file begun before
+    if (directory || continued) return true;
+    Rar4File r;
+    if (!rar4Name(f, r.name)) {
+      named = false;
+      return false;
+    }
+    r.size = f.unpacked;
+    r.encrypted = (f.flags & 0x0004) != 0;
+    out.push_back(std::move(r));
+    return true;
+  });
+  return walked && named;
 }
 
 // The volumes of a set, one after another, each only as far as its
@@ -491,6 +523,108 @@ bool readAll(archive* a, int64_t size, std::vector<char>& out) {
     out.insert(out.end(), buf, buf + n);
   }
 }
+
+// A file of a split RAR 4 set that is not solid, read by its parts: the
+// compressed data of each volume's part joined into one single-volume archive
+// in memory, which libarchive decompresses whole. libarchive reads a
+// compressed file that runs on into the next volume wrongly: four of Ashton's
+// samples failed with "File CRC error" or "Bad RAR file data", while the RAR
+// tools read them (#321, and #90's Buckeburg). `near` is the volume the
+// reading had reached; the file begins there or in the one before.
+static bool readRar4Parts(const std::vector<std::string>& volumes, size_t near,
+                          const std::string& wanted, std::vector<char>& out) {
+  std::vector<size_t> order;
+  for (size_t v : {near, near > 0 ? near - 1 : near})
+    if (v < volumes.size() && std::find(order.begin(), order.end(), v) == order.end()) order.push_back(v);
+  struct Part {
+    size_t volume;
+    Rar4Header header;
+  };
+  std::vector<Part> parts;
+  for (size_t v : order) {
+    walkRar4(volumes[v], nullptr, [&](const Rar4Header& f) {
+      std::string name;
+      if ((f.flags & 0x0001) || !rar4Name(f, name)) return true;
+      std::replace(name.begin(), name.end(), '\\', '/');
+      if (OrganArchive::key(name) != wanted) return true;
+      parts.push_back({v, f});
+      return false;
+    });
+    if (!parts.empty()) break;
+  }
+  if (parts.empty() || (parts.front().header.flags & 0x0010)) return false;  // solid: needs what came before
+  const auto sameName = [](const Rar4Header& a, const Rar4Header& b) {
+    return a.nameSize == b.nameSize &&
+           std::equal(a.raw.begin() + static_cast<std::ptrdiff_t>(a.nameAt),
+                      a.raw.begin() + static_cast<std::ptrdiff_t>(a.nameAt + a.nameSize),
+                      b.raw.begin() + static_cast<std::ptrdiff_t>(b.nameAt));
+  };
+  while (parts.back().header.flags & 0x0002) {
+    const size_t v = parts.back().volume + 1;
+    if (v >= volumes.size()) return false;
+    bool found = false;
+    walkRar4(volumes[v], nullptr, [&](const Rar4Header& f) {
+      if ((f.flags & 0x0001) && sameName(f, parts.front().header)) {
+        parts.push_back({v, f});
+        found = true;
+      }
+      return false;  // the rest of a file is the first in its volume
+    });
+    if (!found) return false;
+  }
+  if (parts.size() < 2) return false;
+
+  // The last part's header carries the whole file's CRC; its split flags go,
+  // and its size becomes that of all the parts.
+  Rar4Header h = parts.back().header;
+  int64_t total = 0;
+  for (const auto& part : parts) total += part.header.pack;
+  if (total > 0xffffffffLL && !(h.flags & 0x0100)) return false;
+  const unsigned flags = h.flags & ~0x0003u;
+  h.raw[3] = static_cast<unsigned char>(flags & 0xff);
+  h.raw[4] = static_cast<unsigned char>(flags >> 8);
+  for (int i = 0; i < 4; ++i) h.raw[7 + static_cast<size_t>(i)] = static_cast<unsigned char>(total >> (8 * i));
+  if (flags & 0x0100)
+    for (int i = 0; i < 4; ++i)
+      h.raw[32 + static_cast<size_t>(i)] = static_cast<unsigned char>(total >> (32 + 8 * i));
+  const auto sealed = [](std::vector<unsigned char>& b) {
+    const uint32_t crc = crc32Of(&b[2], b.size() - 2) & 0xffff;
+    b[0] = static_cast<unsigned char>(crc & 0xff);
+    b[1] = static_cast<unsigned char>(crc >> 8);
+  };
+  sealed(h.raw);
+  std::vector<unsigned char> mainHeader = {0, 0, 0x73, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<unsigned char> endHeader = {0, 0, 0x7b, 0x00, 0x40, 7, 0};
+  sealed(mainHeader);
+  sealed(endHeader);
+
+  std::vector<unsigned char> whole;
+  whole.reserve(static_cast<size_t>(7 + mainHeader.size() + h.raw.size() + total + endHeader.size()));
+  whole.insert(whole.end(), {'R', 'a', 'r', '!', 0x1a, 0x07, 0x00});
+  whole.insert(whole.end(), mainHeader.begin(), mainHeader.end());
+  whole.insert(whole.end(), h.raw.begin(), h.raw.end());
+  for (const auto& part : parts) {
+    std::FILE* in = openPackage(volumes[part.volume]);
+    if (in == nullptr) return false;
+    const size_t at = whole.size();
+    whole.resize(at + static_cast<size_t>(part.header.pack));
+    const bool ok = seekTo(in, part.header.dataAt, SEEK_SET) &&
+                    std::fread(whole.data() + at, 1, static_cast<size_t>(part.header.pack), in) ==
+                        static_cast<size_t>(part.header.pack);
+    std::fclose(in);
+    if (!ok) return false;
+  }
+  whole.insert(whole.end(), endHeader.begin(), endHeader.end());
+
+  archive* a = archive_read_new();
+  archive_read_support_format_rar(a);
+  bool ok = archive_read_open_memory(a, whole.data(), whole.size()) == ARCHIVE_OK;
+  archive_entry* entry = nullptr;
+  ok = ok && archive_read_next_header(a, &entry) == ARCHIVE_OK && readAll(a, h.unpacked, out);
+  archive_read_free(a);
+  return ok;
+}
+
 
 // One walk over an archive's files, front to back -- the only way RAR can be
 // read -- whichever library does the reading. Two do: libarchive for RAR 5,
@@ -1664,6 +1798,16 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
         if (switchedForFilters(volumes, *pass)) {
           // The same file again, with unarr: what was delivered is skipped.
           pass = passFor(volumes);
+          bytes = {};
+          continue;
+        }
+        // A compressed file that runs on into the next volume, read by its
+        // parts (#321).
+        if (volumes.size() > 1 && !needsUnarr(volumes) &&
+            readRar4Parts(volumes, from + pass->volume(), k, bytes)) {
+          finished.insert(k);
+          --remaining;
+          if (!deliver(k, std::move(bytes))) return error.empty();
           bytes = {};
           continue;
         }
