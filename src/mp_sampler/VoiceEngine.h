@@ -222,6 +222,11 @@ struct Voice {
   int relXfadeLength = 0;
 
   uint64_t startedAtBlock = 0; // for stealing (oldest first)
+  // The block its note-off came in. Releasing voices are stolen by this, the
+  // longest decayed first: by startedAtBlock, a pedal note held through a
+  // whole passage became the first one taken the moment it was let go, and
+  // its release was cut on every note-off while the pool was full (#320).
+  uint64_t releasedAtBlock = 0;
   // The frame the key went down, for how long it was held at the release:
   // the release a set recorded after a short note is not the one it recorded
   // after a held one.

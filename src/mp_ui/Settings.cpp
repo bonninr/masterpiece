@@ -375,7 +375,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(polyphonyLabel_);
   styleLabel(polyphonyLabel_, TRANS("Polyphony limit"));
   addAndMakeVisible(polyphony_);
-  polyphony_.setTooltip(TRANS("The most pipes that sound at once, made at the next load of the organ. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
+  polyphony_.setTooltip(TRANS("The most pipes that sound at once, applied as soon as it is chosen. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
   fillPolyphony();
   polyphony_.onChange = [this] {
     const int id = polyphony_.getSelectedId();
@@ -469,7 +469,7 @@ void EnginePanel::fillPolyphony() {
   const auto mb = [this](int voices) {
     return juce::String(juce::jmax<int64_t>(1, proc_.voicePoolBytes(voices) / (1024 * 1024)));
   };
-  const int def = MasterpieceProcessor::defaultPolyphony();
+  const int def = proc_.defaultPolyphony();
   polyphony_.addItem(TRANS("Default: %1 voices (%2 MB)").replace("%1", juce::String(def)).replace("%2", mb(def)), 1);
   const int current = proc_.polyphonyLimit();
   bool listed = current == 0;

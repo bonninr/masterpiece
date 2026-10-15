@@ -338,8 +338,9 @@ int VoiceEngine::allocateVoice() {
   }
 
   // 2. Otherwise steal, and steal musically. A voice already releasing is the
-  //    cheapest thing to lose — it is decaying anyway — so take the oldest of
-  //    those before touching anything still speaking.
+  //    cheapest thing to lose — it is decaying anyway — so take the one
+  //    released longest ago, the most decayed, before touching anything still
+  //    speaking.
   // 3. Nothing releasing: take the oldest quietest sounding voice. Never the
   //    newest — stealing the note the player just pressed is the one failure
   //    they always hear.
@@ -356,7 +357,7 @@ int VoiceEngine::allocateVoice() {
       std::sort(stealList_.begin(), stealList_.end(), [this](uint32_t a, uint32_t b) {
         const Voice& x = voices_[a];
         const Voice& y = voices_[b];
-        if (x.startedAtBlock != y.startedAtBlock) return x.startedAtBlock < y.startedAtBlock;
+        if (x.releasedAtBlock != y.releasedAtBlock) return x.releasedAtBlock < y.releasedAtBlock;
         return a < b;
       });
       stealStage_ = 1;
@@ -554,6 +555,7 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     const int64_t oldLoopEnd = v.loopEnd;
 
     v.phase = VoicePhase::Release;
+    v.releasedAtBlock = blockCounter_;
     v.releaseIsSample = (relBuf != nullptr && relBuf->numFrames > 0);
     if (v.releaseIsSample) {
       v.xfadeBuf = oldBuf;

@@ -68,7 +68,7 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
 - Wind model: chests, bellows and valves solved as a system; a full registration
   lowers the pressure, and pitch and level follow it
 - Tremulants per pipe and per chest; enclosures with level and filter per box
-- Hermite interpolation; 1536 voices, stealing releases first
+- Hermite interpolation; 725 voices a processor thread (at least 1,536), stealing the longest-fading releases first
 - Optional vectorized engine, AVX2, SSE2 or NEON, 3 to 5 times faster on 512
   voices (experimental, off by default)
 

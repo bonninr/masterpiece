@@ -2906,6 +2906,34 @@ public:
       MP_CHECK(v.noteId != 0, "an active voice always belongs to a note");
     }
 
+    // A pedal note held under a passage, then let go (#320). Its note began
+    // first, but its release began last: the release let go earlier has
+    // decayed longer, and that is the one a new note takes.
+    {
+      mp::VoiceEngine ped;
+      ped.prepare(48000.0, 4, 1);
+      ped.setSampleProvider(fx.provider());
+      for (int i = 0; i < 4; ++i) {
+        MP_CHECK(ped.startVoice(start, static_cast<uint64_t>(i + 1)) >= 0, "the pool fills");
+        ped.render(out, 1, 64);
+      }
+      ped.noteOff(2, rel); // a manual note, released first
+      ped.render(out, 1, 64);
+      ped.render(out, 1, 64);
+      ped.noteOff(1, rel); // the pedal note, held from the start
+      ped.render(out, 1, 64);
+      const int taken = ped.startVoice(start, 50);
+      MP_CHECK(taken >= 0, "the new note sounds");
+      bool pedalSounds = false;
+      for (int i = 0; i < ped.poolSize(); ++i)
+        if (ped.voice(i).active() && ped.voice(i).noteId == 1) pedalSounds = true;
+      MP_CHECK(pedalSounds, "the pedal note's release keeps sounding");
+      bool manualGone = true;
+      for (int i = 0; i < ped.poolSize(); ++i)
+        if (ped.voice(i).active() && ped.voice(i).noteId == 2) manualGone = false;
+      MP_CHECK(manualGone, "the release let go earlier is the one taken");
+    }
+
     // A pool of one, all voices brand new this block: the engine must refuse
     // rather than steal the note the player just pressed.
     mp::VoiceEngine tiny;
@@ -10096,6 +10124,31 @@ static ReleasePitchTest g_releasePitch;
 static VoiceReleaseTailTest g_voiceReleaseTail;
 static VoiceReleaseCrossfadeTest g_voiceReleaseCrossfade;
 static VoiceEngineStealingTest g_voiceStealing;
+
+// A larger polyphony is built when it is chosen (#320): the player who raised
+// it and played on heard the old pool, with no word that a reload was due.
+class PolyphonyAppliesAtOnceTest final : public mp::test::Test {
+public:
+  PolyphonyAppliesAtOnceTest()
+    : Test("functional.voice.polyphony-at-once", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    const int saved = proc.polyphonyLimit();
+    proc.setPolyphonyLimit(256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.voicePoolSize() == 256, "the pool is built at the size chosen");
+    proc.setPolyphonyLimit(4096);
+    MP_CHECK(proc.voicePoolSize() == 4096, "a larger choice builds a larger pool at once, got " +
+                                               std::to_string(proc.voicePoolSize()));
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer midi;
+    proc.processBlock(buf, midi);
+    proc.setPolyphonyLimit(512);
+    MP_CHECK(proc.voicePoolSize() == 4096, "a smaller choice limits the pool it has");
+    proc.setPolyphonyLimit(saved);
+  }
+};
+static PolyphonyAppliesAtOnceTest g_polyphonyAtOnce;
 static VoiceRetriggerTest g_voiceRetrigger;
 static LoopCrossfadeTest g_loopCrossfade;
 static DetuningTest g_detuning;
