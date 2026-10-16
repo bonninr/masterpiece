@@ -70,6 +70,8 @@ countries: cz
 "Set turns off after storing" = "Set se po uložení vypne"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 není k dispozici"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 není načten: volba v Nastavení varhan, Rejstříky"
 "Page %1" = "Strana %1"
 "This organ ships no console artwork on this page." = "Tyto varhany na této straně neobsahují grafiku hracího stolu."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Grafiku hracího stolu se nepodařilo načíst (počet obrázků: %1). Zkontrolujte OrganInstallationPackages."

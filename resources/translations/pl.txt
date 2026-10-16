@@ -70,6 +70,8 @@ countries: pl
 "Set turns off after storing" = "Set wyłącza się po zapisaniu"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 nie jest dostępny"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 nie jest wczytany: wybór w Ustawienia organów, Głosy"
 "Page %1" = "Strona %1"
 "This organ ships no console artwork on this page." = "Te organy nie zawierają na tej stronie grafiki kontuaru."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Nie udało się wczytać grafiki kontuaru (liczba obrazów: %1). Sprawdź OrganInstallationPackages."

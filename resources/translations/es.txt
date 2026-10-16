@@ -70,6 +70,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Set turns off after storing" = "Set se desactiva tras guardar"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 no está disponible"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 no está cargado: elegido en Ajustes del órgano, Registros"
 "Page %1" = "Página %1"
 "This organ ships no console artwork on this page." = "Este órgano no incluye imágenes de consola en esta página."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "No se pudieron cargar las imágenes de la consola (%1 imágenes). Revisa OrganInstallationPackages."

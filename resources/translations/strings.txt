@@ -73,6 +73,8 @@ countries: gb us
 "Set turns off after storing" = "Set turns off after storing"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 is not available"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 is not loaded: chosen in Organ settings, Stops"
 "Page %1" = "Page %1"
 "This organ ships no console artwork on this page." = "This organ ships no console artwork on this page."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages."

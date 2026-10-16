@@ -4117,6 +4117,38 @@ void MasterpieceProcessor::buildPalletIndex() {
   heldKeySwitches_.reserve(256);
 }
 
+void MasterpieceProcessor::findPalletStops() {
+  palletStops_.clear();
+  std::unordered_set<Id> reached;
+  std::vector<Id> todo;
+  for (const auto& [rankId, rank] : model_.ranks) {
+    (void)rankId;
+    for (const Pipe& pipe : rank.pipes)
+      if (pipe.palletSwitchId != 0 && reached.insert(pipe.palletSwitchId).second)
+        todo.push_back(pipe.palletSwitchId);
+  }
+  if (todo.empty()) return;
+  // Upstream: what moves a switch, as the source of a linkage or its condition.
+  std::unordered_map<Id, std::vector<Id>> feeders;
+  for (const auto& l : model_.switchLinkages) {
+    if (l.sourceSwitchId != 0 && l.sourceSwitchId != l.destSwitchId)
+      feeders[l.destSwitchId].push_back(l.sourceSwitchId);
+    if (l.conditionSwitchId != 0 && l.conditionSwitchId != l.destSwitchId)
+      feeders[l.destSwitchId].push_back(l.conditionSwitchId);
+  }
+  while (!todo.empty()) {
+    const Id at = todo.back();
+    todo.pop_back();
+    const auto it = feeders.find(at);
+    if (it == feeders.end()) continue;
+    for (Id up : it->second)
+      if (reached.insert(up).second) todo.push_back(up);
+  }
+  for (const auto& [stopId, stop] : model_.stops)
+    if (stop.controllingSwitchId != 0 && reached.count(stop.controllingSwitchId) != 0)
+      palletStops_.insert(stopId);
+}
+
 void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
   if (palletPipes_.empty() || !palletsLive_.load(std::memory_order_acquire))
     return;
@@ -5370,25 +5402,38 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   loadMidiMap();
   split_.organLoaded(organFile(loadedOdf_, "split", ".mpsplit"), &model_);
   unloadedSwitches_.clear();
+  unavailable_.clear();
   for (Id stopId : unloadedStops_) {
     const auto it = model_.stops.find(stopId);
-    if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
-      unloadedSwitches_.insert(playerSwitchFor(it->second.controllingSwitchId));
+    if (it != model_.stops.end() && it->second.controllingSwitchId != 0) {
+      const Id sw = playerSwitchFor(it->second.controllingSwitchId);
+      unloadedSwitches_.insert(sw);
+      unavailable_.emplace(sw, Unavailable{stopId, false});
+    }
     const auto knob = stopKnob_.find(stopId);
-    if (knob != stopKnob_.end()) unloadedSwitches_.insert(knob->second);
+    if (knob != stopKnob_.end()) {
+      unloadedSwitches_.insert(knob->second);
+      unavailable_.emplace(knob->second, Unavailable{stopId, false});
+    }
   }
   // A stop whose ranks ship no pipes (a demo set's locked stops) sounds no
-  // more than one left out. Its own knob is left alone: a set that ships
-  // locked stops draws them greyed in its own artwork, and a veil on top of
-  // that only darkens it. Its copies on other pages get the veil (below).
+  // more than one left out. It and its copies on other pages are drawn as
+  // the set draws them, with no veil: a click on one is refused, and a
+  // tooltip names it as not available.
+  findPalletStops();
   std::unordered_set<Id> silent;
   for (const auto& e : stopList()) {
     if (e.playable) continue;
     const auto it = model_.stops.find(e.stopId);
-    if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
-      silent.insert(playerSwitchFor(it->second.controllingSwitchId));
-    if (const auto knob = stopKnob_.find(e.stopId); knob != stopKnob_.end())
+    if (it != model_.stops.end() && it->second.controllingSwitchId != 0) {
+      const Id sw = playerSwitchFor(it->second.controllingSwitchId);
+      silent.insert(sw);
+      unavailable_.emplace(sw, Unavailable{e.stopId, true});
+    }
+    if (const auto knob = stopKnob_.find(e.stopId); knob != stopKnob_.end()) {
       silent.insert(knob->second);
+      unavailable_.emplace(knob->second, Unavailable{e.stopId, true});
+    }
   }
   // And every copy of those knobs on other pages: a set that draws a stop on
   // its console and again on a simple jamb links the two both ways, so each
@@ -5410,7 +5455,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       for (auto it = links.lower_bound({at, 0}); it != links.end() && it->first == at; ++it)
         if (links.count({it->second, at}) != 0 && seen.insert(it->second).second) {
           todo.push_back(it->second);
-          if (silent.count(it->second) == 0) unloadedSwitches_.insert(it->second);
+          // A copy is veiled when the stop was left out of the load. A stop
+          // with no pipes is left as drawn: a click on it is refused and a
+          // tooltip says why (ConsoleView).
+          const auto why = unavailable_.find(at);
+          if (why == unavailable_.end()) continue;
+          unavailable_.emplace(it->second, why->second);
+          if (!why->second.noPipes) unloadedSwitches_.insert(it->second);
         }
     }
   }
@@ -5571,7 +5622,9 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
     e.name = stop.name;
     // A stop whose ranks have no pipes cannot sound. Demo sets are full of
     // them, and a console that shows no difference between a stop that works
-    // and one that was never shipped is actively misleading.
+    // and one that was never shipped is actively misleading. A stop wired to
+    // its pipes' pallets plays them too.
+    e.playable = palletStops_.count(id) != 0;
     for (const auto& entry : stop.ranks) {
       const auto rit = model_.ranks.find(entry.rankId);
       if (rit != model_.ranks.end() && !rit->second.pipes.empty()) {

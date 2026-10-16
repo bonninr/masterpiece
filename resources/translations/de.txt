@@ -70,6 +70,8 @@ countries: de at ch li lu
 "Set turns off after storing" = "Set schaltet sich nach dem Speichern aus"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 ist nicht verfügbar"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 ist nicht geladen: in den Orgeleinstellungen unter „Register“ gewählt"
 "Page %1" = "Seite %1"
 "This organ ships no console artwork on this page." = "Dieses Instrument bringt auf dieser Seite keine Spieltischgrafik mit."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Die Spieltischgrafik konnte nicht geladen werden (%1 Bilder). Prüfen Sie OrganInstallationPackages."

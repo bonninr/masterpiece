@@ -70,6 +70,8 @@ countries: fr be ca ch lu mc
 "Set turns off after storing" = "Set se désactive après la mémorisation"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 n'est pas disponible"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 n'est pas chargé : choix dans Réglages de l'orgue, Jeux"
 "Page %1" = "Page %1"
 "This organ ships no console artwork on this page." = "Cet orgue ne fournit aucune image de console sur cette page."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Les images de la console n'ont pas pu être chargées (%1 images). Vérifiez OrganInstallationPackages."
