@@ -11849,6 +11849,65 @@ public:
 };
 static MismatchedRar4Test g_mismatchedRar4;
 
+// A volume of the right size with a bad stretch inside: its headers stop
+// making sense partway through. The files after that point are lost, and the
+// player is told which volume to download again (St Mary Portsea's demo,
+// whose .r00 was unreadable from 57.9 MB on).
+class DamagedRar4VolumeTest final : public mp::test::Test {
+public:
+  DamagedRar4VolumeTest() : Test("functional.archive.rar4-volume-damaged", Category::Functional) {}
+  using T = SolidRar4Test;
+  using S = SplitRar4Test;
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-damaged-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string big = T::pattern(9, 60000), xml = "<Hauptwerk>damaged</Hauptwerk>\n";
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << S::volume(true, false,
+                     S::whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", xml) +
+                         S::file("big.wav", big.substr(0, 25000), 60000, 0x0002, T::crc32(big.substr(0, 25000))));
+    // The second volume: the rest of big.wav, one whole file, then a run of
+    // zeros where the next header should be, as a download leaves a stretch
+    // it never wrote.
+    std::string second = S::volume(false, true,
+                                   S::file("big.wav", big.substr(25000), 60000, 0x0001, T::crc32(big)) +
+                                       S::whole("pipe2.wav", T::pattern(5, 20000)) +
+                                       S::whole("pipe3.wav", T::pattern(6, 20000)));
+    std::ofstream(dir / "Set.r00", std::ios::binary) << second;
+
+    // Listed whole, as from a saved index; then the bad stretch, same size.
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) && arc.index(error),
+             "the set is listed: " + error);
+    const size_t at = second.find("pipe3.wav") - 32;  // the header of pipe3.wav
+    std::fill(second.begin() + static_cast<std::ptrdiff_t>(at), second.end(), '\0');
+    std::ofstream(dir / "Set.r00", std::ios::binary | std::ios::trunc) << second;
+    error.clear();
+    bool got2 = false;
+    const bool read = arc.read(0,
+                               {mp::OrganArchive::key("big.wav"), mp::OrganArchive::key("pipe2.wav"),
+                                mp::OrganArchive::key("pipe3.wav")},
+                               [&got2](const std::string& k, std::vector<char>&&) {
+                                 if (k == mp::OrganArchive::key("pipe2.wav")) got2 = true;
+                                 return true;
+                               },
+                               error);
+    MP_CHECK(got2, "the files before the damage read");
+    MP_CHECK(!read, "the file after the damage does not");
+    char atMb[32];
+    std::snprintf(atMb, sizeof atMb, "%.1f MB", static_cast<double>(at) / 1e6);
+    MP_CHECK(error.find(std::string("Set.r00 is damaged from ") + atMb + " on") != std::string::npos &&
+                 error.find("Download that volume again.") != std::string::npos,
+             "the error names the volume and where it breaks: " + error);
+    fs::remove_all(dir, ec);
+  }
+};
+static DamagedRar4VolumeTest g_damagedRar4Volume;
+
 // A set opened once from one disk and later from a copy on another is read
 // from the copy: its saved index follows the volumes by name and size, not
 // by the place they were first opened (Buckeburg, copied from D to C, still
