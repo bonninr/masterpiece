@@ -1073,6 +1073,47 @@ static std::string firstPackageId(const std::vector<std::string>& volumes) {
   return {};
 }
 
+// The installation packages the definitions in an archive say they need
+// (RequiredInstallationPackage), as six-digit folder names: "002261". Read
+// only from an archive that is definitions alone, which is small; empty for
+// anything else.
+static std::set<std::string> requiredPackages(const std::vector<std::string>& volumes) {
+  std::set<std::string> out;
+  auto pass = passFor(volumes);
+  std::string name;
+  int64_t size = 0;
+  bool encrypted = false;
+  for (int n = 0; n < 200 && pass->next(name, size, encrypted); ++n) {
+    const std::string k = lower(name);
+    if (encrypted || size <= 0 || size > (int64_t{256} << 20) || !endsWith(k, ".organ_hauptwerk_xml")) {
+      pass->skip();
+      continue;
+    }
+    std::vector<char> data;
+    if (!pass->readData(data)) break;
+    const std::string text(data.begin(), data.end());
+    const auto at = text.find("ObjectType=\"RequiredInstallationPackage\"");
+    if (at == std::string::npos) continue;
+    const auto end = text.find("</ObjectList>", at);
+    const std::string list = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+    // The long form names the field, the compact one writes it as <a>.
+    static const std::regex id(R"(<(?:InstallationPackageID|a)>\s*(\d{1,6})\s*<)");
+    for (std::sregex_iterator it(list.begin(), list.end(), id), stop; it != stop; ++it) {
+      std::string digits = (*it)[1].str();
+      out.insert(std::string(6 - digits.size(), '0') + digits);
+    }
+  }
+  return out;
+}
+
+// How many letters two organ words share at the start: "burtonberlindemo"
+// and "burtonberlinsurround1" share twelve.
+static size_t sharedStart(const std::string& a, const std::string& b) {
+  size_t i = 0;
+  while (i < a.size() && i < b.size() && a[i] == b[i]) ++i;
+  return i;
+}
+
 // A part's number in front of its name: 2 for "02_Ada(dry)demo...", 0 for none.
 static int partNumber(const std::string& fileName) {
   size_t i = 0;
@@ -1275,6 +1316,55 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     for (const auto& part : parts) {
       archives_.push_back({part});
       report_.push_back("with " + fs::path(part).filename().string() + ": another part of the set");
+    }
+  }
+
+  // A definition published as a package of its own, beside the packages that
+  // hold its samples and artwork, under other names: Hill, Burton-Berlin
+  // comes as BurtonBerlinDemo_ODF beside BurtonBerlinSurround1 and 2 (#345).
+  // The definition names the packages it needs. The archives beside it whose
+  // names start as the organ's does (five letters or more) and that carry one
+  // of them belong with it, whichever of them was opened.
+  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(chosen.filename().string())) {
+    const std::string word = organWord(chosen.filename().string());
+    std::vector<std::pair<std::string, std::string>> beside;  // (path, its package)
+    if (word.size() >= 5)
+      for (const auto& e : fs::directory_iterator(dir, ec)) {
+        if (!e.is_regular_file(ec) || e.path() == chosen) continue;
+        const std::string name = e.path().filename().string();
+        if (!isOrganArchive(name) || !originalOf(name).empty()) continue;
+        std::string setName;
+        if (volumeNumber(name, setName) >= 0) continue;
+        if (sharedStart(organWord(name), word) < 5) continue;
+        beside.emplace_back(e.path().string(), firstPackageId({e.path().string()}));
+      }
+    std::vector<std::string> found;
+    std::set<std::string> needs;
+    std::string definition;  // the definitions-only archive, when it was not the one opened
+    if (!beside.empty()) {
+      const std::string ownPackage = firstPackageId(archives_.front());
+      if (ownPackage.empty()) {
+        needs = requiredPackages(archives_.front());
+      } else {
+        for (const auto& [path, package] : beside) {
+          if (!package.empty()) continue;
+          auto wanted = requiredPackages({path});
+          if (wanted.count(ownPackage) == 0) continue;
+          definition = path;
+          needs = std::move(wanted);
+          break;
+        }
+      }
+      if (!definition.empty()) found.push_back(definition);
+      for (const auto& [path, package] : beside)
+        if (!package.empty() && needs.count(package) != 0) found.push_back(path);
+    }
+    std::sort(found.begin(), found.end());
+    for (const auto& f : found) {
+      archives_.push_back({f});
+      report_.push_back("with " + fs::path(f).filename().string() +
+                        (f == definition ? ": the definition that needs this package"
+                                         : ": holds a package the definition needs"));
     }
   }
 
