@@ -12467,6 +12467,8 @@ public:
     mp::MasterpieceProcessor proc;
     PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
     PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    // The block size as a host reports it: the MIDI clock counts in blocks.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
     proc.prepareToPlay(48000.0, 256);
     MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
     juce::AudioBuffer<float> buf(2, 256);
