@@ -2020,6 +2020,15 @@ private:
   std::unordered_map<Id, uint64_t> palletNotes_;
   // The strike velocity of the key that is moving the network now.
   int palletVelocity_ = 100;
+  // Division inputs (#345): the notes a division plays while a switch is
+  // engaged, for the divisions the organ reaches that way from its keys.
+  // Built after the key flow, which is told which keyboards those are.
+  void buildDivisionInputs();
+  void divisionInputMoved(Id switchId, bool engaged);
+  std::unordered_map<Id, std::pair<int, int>> divisionInputBySwitch_;  // switch -> (division, note)
+  // Inputs held and the note id their pipes sound under; reserved at load.
+  std::unordered_map<Id, uint64_t> divisionInputNotes_;
+  std::vector<ResolvedPipe> divisionInputScratch_;
   // The keyboard an unassigned channel falls back to when the organ declares
   // no assignment code. Resolved once at load.
   Id fallbackKeyboard_ = 0;

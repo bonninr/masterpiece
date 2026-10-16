@@ -2979,7 +2979,7 @@ void MasterpieceProcessor::reflowHeldNotes() {
 // "if I'm playing a note and turn on a stop the pipe doesn't play until I play
 // the note again. The note doesn't stop when I turn the stop off."
 void MasterpieceProcessor::applyStopChangeToHeldNotes() {
-  if (soundingNotes_.empty()) {
+  if (soundingNotes_.empty() && divisionInputNotes_.empty()) {
     appliedStops_ = engagedStops_;
     return;
   }
@@ -2997,6 +2997,14 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
       (void)key;
       startVoicesForKey(held.keyboard, held.midiNote, held.velocity, held.id,
                         stopSetScratch_, held.extreme);
+    }
+    // And the division notes held through their inputs.
+    for (const auto& [switchId, noteId] : divisionInputNotes_) {
+      const auto [division, note] = divisionInputBySwitch_.at(switchId);
+      divisionInputScratch_.clear();
+      resolvePipesInto(model_, division, note, stopSetScratch_, &engagedSwitches_, divisionInputScratch_);
+      for (const auto& rp : divisionInputScratch_)
+        if (rp.pipe != nullptr) startPipeLayers(*rp.pipe, rp.rankId, note, palletVelocity_, noteId);
     }
   }
 
@@ -3020,6 +3028,12 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
         for (const auto& rp : pipes)
           voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
       }
+    }
+    for (const auto& [switchId, noteId] : divisionInputNotes_) {
+      const auto [division, note] = divisionInputBySwitch_.at(switchId);
+      divisionInputScratch_.clear();
+      resolvePipesInto(model_, division, note, stopSetScratch_, &engagedSwitches_, divisionInputScratch_);
+      for (const auto& rp : divisionInputScratch_) voices_.noteOffPipe(noteId, rp.pipeId, NoteRelease{});
     }
   }
 
@@ -3940,6 +3954,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     // The mechanical sound belongs to the switch that actually moved.
     triggerNoiseFor(movedId, nowEngaged);
     palletMoved(movedId, nowEngaged);
+    divisionInputMoved(movedId, nowEngaged);
   }
 
   // A piston fires on the way in, never on the way out, and then lets itself
@@ -4089,6 +4104,7 @@ void MasterpieceProcessor::buildPalletIndex() {
   heldKeySwitches_.clear();
   heldKeySwitchOrigin_.clear();
   palletNotes_.clear();
+  divisionInputNotes_.clear();
 
   std::unordered_set<Id> viaStops;
   for (const auto& [stopId, stop] : model_.stops) {
@@ -4147,6 +4163,99 @@ void MasterpieceProcessor::findPalletStops() {
   for (const auto& [stopId, stop] : model_.stops)
     if (stop.controllingSwitchId != 0 && reached.count(stop.controllingSwitchId) != 0)
       palletStops_.insert(stopId);
+}
+
+// A division the organ plays from its keys through switches: each key's
+// switch drives the input for its note, and a unison off is the condition on
+// that link (Hill, Burton-Berlin, #345). For each keyboard, the key switches
+// are followed down the linkages; a keyboard whose keys reach its own
+// division's inputs plays that division through them, and the key flow stops
+// sounding it directly. A division whose inputs no key reaches is left as it
+// was, so a set that declares inputs and plays its keys some other way is
+// unchanged.
+void MasterpieceProcessor::buildDivisionInputs() {
+  divisionInputBySwitch_.clear();
+  divisionInputNotes_.clear();
+  std::unordered_set<Id> fedKeyboards;
+  if (!model_.divisionInputs.empty() && !model_.keyboardKeys.empty()) {
+    std::unordered_map<Id, std::unordered_set<Id>> inputsOf;
+    for (const auto& in : model_.divisionInputs) inputsOf[in.divisionId].insert(in.switchId);
+    std::unordered_map<Id, std::vector<Id>> feeds;
+    for (const auto& l : model_.switchLinkages)
+      if (l.sourceSwitchId != l.destSwitchId) feeds[l.sourceSwitchId].push_back(l.destSwitchId);
+    std::unordered_map<Id, std::vector<Id>> keysOf;
+    for (const auto& [switchId, key] : model_.keyboardKeys) keysOf[key.keyboardId].push_back(switchId);
+
+    std::unordered_set<Id> fedDivisions;
+    for (const auto& [keyboardId, keys] : keysOf) {
+      Id division = 0;
+      if (const auto kb = model_.keyboards.find(keyboardId); kb != model_.keyboards.end())
+        division = kb->second.primaryDivisionHint;
+      if (division == 0) division = couplers_.primaryDivisionFor(keyboardId);
+      const auto inputs = inputsOf.find(division);
+      if (division == 0 || inputs == inputsOf.end()) continue;
+      std::unordered_set<Id> seen(keys.begin(), keys.end());
+      std::vector<Id> todo(keys.begin(), keys.end());
+      bool reaches = false;
+      while (!todo.empty() && !reaches && seen.size() < 200000) {
+        const Id at = todo.back();
+        todo.pop_back();
+        const auto next = feeds.find(at);
+        if (next == feeds.end()) continue;
+        for (Id to : next->second) {
+          if (inputs->second.count(to) != 0) { reaches = true; break; }
+          if (seen.insert(to).second) todo.push_back(to);
+        }
+      }
+      if (!reaches) continue;
+      fedKeyboards.insert(keyboardId);
+      fedDivisions.insert(division);
+    }
+    for (const auto& in : model_.divisionInputs)
+      if (fedDivisions.count(in.divisionId) != 0)
+        divisionInputBySwitch_[in.switchId] = {static_cast<int>(in.divisionId), in.midiNote};
+    if (!divisionInputBySwitch_.empty()) {
+      divisionInputNotes_.reserve(divisionInputBySwitch_.size());
+      divisionInputScratch_.reserve(64);
+      // The keys have to move their switches for the inputs to hear them.
+      if (keySwitchByKey_.empty()) {
+        keySwitchIds_.clear();
+        for (const auto& [switchId, key] : model_.keyboardKeys) {
+          keySwitchByKey_[static_cast<int>(key.keyboardId) * 256 + key.midiNote] = switchId;
+          keySwitchIds_.insert(switchId);
+        }
+        heldKeySwitches_.reserve(256);
+      }
+      juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(fedDivisions.size())) +
+                               " division(s) played from the keys through their division inputs");
+    }
+  }
+  couplers_.setSwitchFedKeyboards(std::move(fedKeyboards));
+}
+
+void MasterpieceProcessor::divisionInputMoved(Id switchId, bool engaged) {
+  if (divisionInputBySwitch_.empty() || !palletsLive_.load(std::memory_order_acquire)) return;
+  const auto it = divisionInputBySwitch_.find(switchId);
+  if (it == divisionInputBySwitch_.end()) return;
+  const auto open = divisionInputNotes_.find(switchId);
+  if (!engaged) {
+    if (open == divisionInputNotes_.end()) return;
+    NoteRelease rel;
+    rel.velocity = palletVelocity_;
+    voices_.noteOff(open->second, rel);
+    divisionInputNotes_.erase(open);
+    return;
+  }
+  if (open != divisionInputNotes_.end()) return;  // already sounding
+  const auto [division, note] = it->second;
+  const uint64_t noteId = nextNoteId_++;
+  divisionInputScratch_.clear();
+  resolvePipesInto(model_, division, note, engagedStops_, &engagedSwitches_, divisionInputScratch_);
+  for (const auto& rp : divisionInputScratch_)
+    if (rp.pipe != nullptr) startPipeLayers(*rp.pipe, rp.rankId, note, palletVelocity_, noteId);
+  // Kept whether or not a pipe spoke: a stop drawn while the key is down
+  // speaks under this id (applyStopChangeToHeldNotes).
+  divisionInputNotes_[switchId] = noteId;
 }
 
 void MasterpieceProcessor::palletMoved(Id switchId, bool engaged) {
@@ -5059,6 +5168,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // division sounds on every key, and drawing "Great to Pedal" changes
   // nothing because everything is already coupled to everything.
   couplers_.reset(model_);
+  buildDivisionInputs();
   // Channel assignments belong to the organ they were made for; loadMidiMap()
   // below brings back the ones saved for this one.
   midiMap_.clearKeyboardBindings();

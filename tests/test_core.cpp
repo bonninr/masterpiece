@@ -14149,6 +14149,163 @@ public:
 };
 static PalletStopAvailableTest g_palletStopAvailable;
 
+// A division played from its keys through division inputs, as Hill,
+// Burton-Berlin plays every manual (#345): the key's switch drives the input
+// for its note while the Unison Off is in. Drawn, the Unison Off silences the
+// manual's own division; an octave coupler off the same manual still sounds.
+class DivisionInputTest final : public mp::test::Test {
+public:
+  DivisionInputTest() : Test("functional.control.division-input-unison-off", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-division-input");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    auto pipe = [](int id, int note) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>201</RankID><NormalMIDINoteNumber>" +
+             std::to_string(note) + "</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+    };
+    auto layer = [](int id) {
+      return "<Pipe_SoundEngine01_Layer><LayerID>" + std::to_string(id + 100) + "</LayerID><PipeID>" + std::to_string(id) +
+             "</PipeID></Pipe_SoundEngine01_Layer>";
+    };
+    auto attack = [](int id) {
+      return "<Pipe_SoundEngine01_AttackSample><UniqueID>" + std::to_string(id + 200) + "</UniqueID><LayerID>" +
+             std::to_string(id + 100) + "</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>";
+    };
+    auto sw = [](int id, const char* name, bool latching) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name + "</Name><Latching>" +
+             (latching ? "Y" : "N") + "</Latching></Switch>";
+    };
+    const auto odf = defs.getChildFile("hill.Organ_Hauptwerk_xml");
+    odf.replaceWithText(juce::String(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Division inputs</Identification_Name>"
+        "<Identification_UniqueOrganID>345</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Open Diapason</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(301, 36) + pipe(302, 48) +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layer(301) + layer(302) +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attack(301) + attack(302) +
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>4</KeyboardID><Name>Swell manual</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>4</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>4</DivisionID><Name>Swell</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyboardKey\"><KeyboardKey><KeyboardID>4</KeyboardID><SwitchID>5036</SwitchID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></KeyboardKey></ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\"><DivisionInput><DivisionID>4</DivisionID><SwitchID>34036</SwitchID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></DivisionInput></ObjectList>"
+        // The octave coupler, a key action off the manual onto its own division.
+        "<ObjectList ObjectType=\"KeyAction\"><KeyAction><SourceKeyboardID>4</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>4</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
+        "<NumberOfKeys>61</NumberOfKeys><MIDINoteNumberIncrement>12</MIDINoteNumberIncrement>"
+        "<ConditionSwitchID>1104</ConditionSwitchID></KeyAction></ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>901</StopID><Name>Open Diapason 8</Name><DivisionID>4</DivisionID>"
+        "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>13</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(1101, "Open Diapason 8", true) + sw(1104, "SW. Octave", true) + sw(13074, "SW. Unison Off", true) +
+        sw(5036, "Manual key 36", false) + sw(34036, "Man4 DivInp36", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\"><SwitchLinkage><SourceSwitchID>5036</SourceSwitchID>"
+        "<DestSwitchID>34036</DestSwitchID><ConditionSwitchID>13074</ConditionSwitchID>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged><ConditionSwitchLinkIfEngaged>N</ConditionSwitchLinkIfEngaged>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList></Hauptwerk>"));
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 4);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    auto key = [&](bool down) {
+      juce::MidiBuffer m;
+      m.addEvent(down ? juce::MidiMessage::noteOn(1, 36, 0.8f) : juce::MidiMessage::noteOff(1, 36), 0);
+      block(m);
+      for (int i = 0; i < 4; ++i) block({});
+    };
+    auto quiet = [&] {
+      for (int i = 0; i < 400; ++i) block({});
+    };
+    auto voices = [&] { return proc.voiceStats().activeVoices; };
+
+    proc.setStopEngaged(901, true);
+    block({});
+    key(true);
+    MP_CHECK(voices() == 1, "the key sounds its division through the input, once: " + std::to_string(voices()));
+    key(false);
+    quiet();
+    MP_CHECK(voices() == 0, "and lets it go");
+
+    proc.setSwitchEngaged(13074, true);
+    block({});
+    key(true);
+    MP_CHECK(voices() == 0, "with the Unison Off drawn the manual's own division is silent: " + std::to_string(voices()));
+    key(false);
+    quiet();
+
+    proc.setSwitchEngaged(1104, true);
+    block({});
+    key(true);
+    MP_CHECK(voices() == 1, "the octave coupler still sounds with the Unison Off: " + std::to_string(voices()));
+    key(false);
+    quiet();
+
+    proc.setSwitchEngaged(13074, false);
+    block({});
+    key(true);
+    MP_CHECK(voices() == 2, "unison and octave together: " + std::to_string(voices()));
+    key(false);
+    quiet();
+
+    proc.setSwitchEngaged(1104, false);
+    proc.setStopEngaged(901, false);
+    block({});
+    key(true);
+    MP_CHECK(voices() == 0, "no stop drawn, nothing sounds");
+    proc.setStopEngaged(901, true);
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(voices() == 1, "a stop drawn while the key is down speaks at once: " + std::to_string(voices()));
+    key(false);
+    quiet();
+    MP_CHECK(voices() == 0, "and the key let go releases it");
+
+    settings.deleteFile();
+    root.deleteRecursively();
+  }
+};
+static DivisionInputTest g_divisionInput;
+
 // Which releases read from a file's marker hold nothing to play (#218). Only
 // a file whose loop runs to its last frame and that has no marker: 0.7.6 also
 // counted a file with no loop at all, which is what a separate release

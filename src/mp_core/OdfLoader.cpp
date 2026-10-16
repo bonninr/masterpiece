@@ -853,6 +853,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (switchId == 0 || k.keyboardId == 0 || k.midiNote < 0) return;
     outModel.keyboardKeys[switchId] = k;
   });
+  forEachRow(odfRoot, "DivisionInput", [&](pugi::xml_node row) {
+    DivisionInput in;
+    in.divisionId = fieldInt(row, "DivisionID", "a", 0);
+    in.switchId = fieldInt(row, "SwitchID", "b", 0);
+    in.midiNote = fieldInt(row, "NormalMIDINoteNumber", "c", -1);
+    if (in.divisionId == 0 || in.switchId == 0 || in.midiNote < 0 || in.midiNote > 127) return;
+    outModel.divisionInputs.push_back(in);
+  });
 
   // ---- M1.3: Division table ----
   forEachRow(odfRoot, "Division", [&](pugi::xml_node row) {

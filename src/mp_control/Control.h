@@ -147,6 +147,13 @@ public:
 
   void setMasterCoupler(int toDiv, int fromDiv, int pitchKind, bool engaged);
 
+  // Keyboards whose own division the organ reaches through its switches, key
+  // switch to division input (#345). A key played on one does not sound that
+  // division itself: the input does, while the wiring lets it through, which
+  // is what makes a unison off work. Couplers off the keyboard still walk.
+  // Set after reset(), so the fallback decided there is not affected.
+  void setSwitchFedKeyboards(std::unordered_set<Id> keyboards) { switchFed_ = std::move(keyboards); }
+
 private:
   bool conditionMet(const KeyAction& a,
                     const std::unordered_set<Id>& engaged) const;
@@ -171,6 +178,7 @@ private:
   // Keyboards whose key flow reaches no division at all, and which therefore
   // sound every division rather than nothing.
   std::unordered_set<Id> needsFallback_;
+  std::unordered_set<Id> switchFed_;
   bool master_[8][8][6] = {};
 };
 
