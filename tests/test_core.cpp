@@ -11801,6 +11801,58 @@ public:
 };
 static SplitRar4Test g_splitRar4;
 
+// A definition published as a package of its own, beside the packages that
+// hold its samples, under other names (#345: BurtonBerlinDemo_ODF beside
+// BurtonBerlinSurround1 and 2). Opened from either end, the definition and the
+// packages it names come together; a package it does not name, and an organ
+// with another name, stay out.
+class DefinitionPackageTest final : public mp::test::Test {
+public:
+  DefinitionPackageTest() : Test("functional.archive.definition-package", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    using T = SolidRar4Test;
+    const fs::path dir = fs::temp_directory_path() / "mp-definition-package";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    auto put = [&](const std::string& name, const std::vector<std::pair<std::string, std::string>>& files) {
+      std::ofstream(dir / name, std::ios::binary) << T::rar4(files, false);
+    };
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><o><a>2261</a></o><o><a>2262</a></o></ObjectList>"
+        "</Hauptwerk>";
+    put("HillBurtonDemo_ODF.CompPkg.Hauptwerk.rar", {{"OrganDefinitions\\Hill.Organ_Hauptwerk_xml", odf}});
+    put("HillBurtonSurround1.CompPkg.Hauptwerk.rar",
+        {{"OrganInstallationPackages\\002261\\a.wav", T::pattern(1, 100)}});
+    put("HillBurtonSurround2.CompPkg.Hauptwerk.rar",
+        {{"OrganInstallationPackages\\002262\\b.wav", T::pattern(2, 100)}});
+    put("HillBurtonOther.CompPkg.Hauptwerk.rar", {{"OrganInstallationPackages\\009999\\c.wav", T::pattern(3, 100)}});
+    put("Elsewhere.CompPkg.Hauptwerk.rar", {{"OrganInstallationPackages\\002261\\d.wav", T::pattern(4, 100)}});
+
+    auto opened = [&](const std::string& name) {
+      mp::OrganArchive a;
+      std::string error;
+      std::set<std::string> names;
+      if (!a.discover((dir / name).string(), error)) return names;
+      for (const auto& group : a.archives()) names.insert(fs::path(group.front()).filename().string());
+      return names;
+    };
+    const std::set<std::string> all = {"HillBurtonDemo_ODF.CompPkg.Hauptwerk.rar",
+                                       "HillBurtonSurround1.CompPkg.Hauptwerk.rar",
+                                       "HillBurtonSurround2.CompPkg.Hauptwerk.rar"};
+    MP_CHECK(opened("HillBurtonDemo_ODF.CompPkg.Hauptwerk.rar") == all,
+             "the definition package brings the two packages it names, and no others");
+    MP_CHECK(opened("HillBurtonSurround1.CompPkg.Hauptwerk.rar") == all,
+             "a sample package brings the definition that needs it, and the definition's other package");
+    MP_CHECK(opened("Elsewhere.CompPkg.Hauptwerk.rar").size() == 1,
+             "an organ under another name stays apart, though it carries the same package");
+    fs::remove_all(dir, ec);
+  }
+};
+static DefinitionPackageTest g_definitionPackage;
+
 // Two volumes from different copies of a set: the first ends partway through
 // one file and the second continues another. The file across them is lost,
 // and the player is told the volumes do not belong together (St Mary
