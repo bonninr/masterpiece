@@ -45,6 +45,8 @@ countries: pl
 "Go to a frame" = "Przejdź do kroku"
 "Go to frame %1" = "Przejdź do kroku %1"
 "Go to frame 10" = "Przejdź do kroku 10"
+"Save state" = "Zapisz stan"
+"Save the stops as they are now: the organ starts with them" = "Zapisz rejestry tak, jak są teraz: organy zaczną z nimi"
 "A frame number, 1 to %1:" = "Numer kroku, od 1 do %1:"
 "A frame number:" = "Numer kroku:"
 "Frame" = "Krok"

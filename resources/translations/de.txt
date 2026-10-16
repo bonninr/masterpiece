@@ -45,6 +45,8 @@ countries: de at ch li lu
 "Go to a frame" = "Zu einem Schritt springen"
 "Go to frame %1" = "Zu Schritt %1 springen"
 "Go to frame 10" = "Zu Schritt 10 springen"
+"Save state" = "Zustand speichern"
+"Save the stops as they are now: the organ starts with them" = "Register so speichern, wie sie jetzt stehen: Die Orgel startet damit"
 "A frame number, 1 to %1:" = "Eine Schrittnummer, 1 bis %1:"
 "A frame number:" = "Eine Schrittnummer:"
 "Frame" = "Schritt"

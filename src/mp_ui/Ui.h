@@ -325,6 +325,10 @@ private:
   // with no key to lift.
   IconButton panicButton_{Icon::Panic, TRANS("Panic"), TRANS("Panic: silence every note still sounding"),
                           juce::Colour(0xffe8a09a)};
+  // Records the stops as they are now as the organ's starting state.
+  IconButton saveStateButton_{Icon::Save, TRANS("Save state"),
+                              TRANS("Save the stops as they are now: the organ starts with them"),
+                              juce::Colour(0xffa8d8a0)};
   // The registration sequencer. Two thumb pistons and a frame number, which is
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —

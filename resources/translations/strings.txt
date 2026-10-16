@@ -50,6 +50,8 @@ countries: gb us
 "Go to a frame" = "Go to a frame"
 "Go to frame %1" = "Go to frame %1"
 "Go to frame 10" = "Go to frame 10"
+"Save state" = "Save state"
+"Save the stops as they are now: the organ starts with them" = "Save the stops as they are now: the organ starts with them"
 "A frame number, 1 to %1:" = "A frame number, 1 to %1:"
 "A frame number:" = "A frame number:"
 "Frame" = "Frame"

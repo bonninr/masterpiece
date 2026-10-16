@@ -45,6 +45,8 @@ countries: it ch sm va
 "Go to a frame" = "Vai a un passo"
 "Go to frame %1" = "Vai al passo %1"
 "Go to frame 10" = "Vai al passo 10"
+"Save state" = "Salva stato"
+"Save the stops as they are now: the organ starts with them" = "Salva i registri così come sono: l'organo parte con questi"
 "A frame number, 1 to %1:" = "Un numero di passo, da 1 a %1:"
 "A frame number:" = "Un numero di passo:"
 "Frame" = "Passo"

@@ -45,6 +45,8 @@ countries: cz
 "Go to a frame" = "Přejít na krok"
 "Go to frame %1" = "Přejít na krok %1"
 "Go to frame 10" = "Přejít na krok 10"
+"Save state" = "Uložit stav"
+"Save the stops as they are now: the organ starts with them" = "Uložit rejstříky tak, jak jsou: varhany začnou s nimi"
 "A frame number, 1 to %1:" = "Číslo kroku, 1 až %1:"
 "A frame number:" = "Číslo kroku:"
 "Frame" = "Krok"

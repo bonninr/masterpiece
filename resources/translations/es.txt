@@ -45,6 +45,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Go to a frame" = "Ir a un paso"
 "Go to frame %1" = "Ir al paso %1"
 "Go to frame 10" = "Ir al paso 10"
+"Save state" = "Guardar estado"
+"Save the stops as they are now: the organ starts with them" = "Guardar los registros tal como están: el órgano empieza con ellos"
 "A frame number, 1 to %1:" = "Un número de paso, de 1 a %1:"
 "A frame number:" = "Un número de paso:"
 "Frame" = "Paso"

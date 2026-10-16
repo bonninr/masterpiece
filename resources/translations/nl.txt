@@ -45,6 +45,8 @@ countries: nl be sr
 "Go to a frame" = "Ga naar een stap"
 "Go to frame %1" = "Ga naar stap %1"
 "Go to frame 10" = "Ga naar stap 10"
+"Save state" = "Stand opslaan"
+"Save the stops as they are now: the organ starts with them" = "Registers opslaan zoals ze nu staan: het orgel start ermee"
 "A frame number, 1 to %1:" = "Een stapnummer, 1 tot %1:"
 "A frame number:" = "Een stapnummer:"
 "Frame" = "Stap"

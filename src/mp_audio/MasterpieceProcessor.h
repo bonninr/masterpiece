@@ -719,6 +719,9 @@ public:
   // own data, never into the sample set.
   juce::File settingsFileFor(const juce::File& odf) const;
   bool saveSettings() const;
+  // Record every stop, coupler and switch that is not at its default as this
+  // organ's starting state, and save the organ's settings.
+  bool saveCurrentState();
   // Applies whatever the file holds. Call before reading any audio.
   bool loadSettingsFor(const juce::File& odf);
 
@@ -1701,6 +1704,13 @@ private:
   // The "control" and "switch" lines for the organ's remembered state.
   juce::String rememberedStateLines() const;
   bool saveRememberedState() const;
+  // The stops the player saved as this organ's starting state ("state" lines).
+  // Written by saveCurrentState(), read back on load and applied with the other
+  // remembered switches. An explicit snapshot, unlike the remembered switches,
+  // which only the organ's own marks decide.
+  std::vector<std::pair<Id, bool>> snapshotStates_;
+  // The stops drawn when the state was saved ("stopon" lines).
+  std::vector<Id> snapshotStops_;
   // Whether this organ remembers anything at all; most do not, and they never
   // pay for a write.
   bool hasRememberedState_ = false;
