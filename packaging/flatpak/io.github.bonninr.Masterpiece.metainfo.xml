@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bonninr.Masterpiece</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Masterpiece</name>
+  <summary>Pipe organ sample player for Hauptwerk-format and GrandOrgue sample sets</summary>
+  <developer id="io.github.bonninr">
+    <name>Bonni</name>
+  </developer>
+  <description>
+    <p>
+      Masterpiece plays virtual pipe organs: sample sets recorded pipe by pipe from real instruments.
+      It opens a sample set in its package, draws the organ's console, and plays it from MIDI keyboards
+      and pedalboards.
+    </p>
+    <ul>
+      <li>Consoles drawn from the sample set's own artwork, in every layout it ships</li>
+      <li>Combinations, a sequencer and the player's own panels</li>
+      <li>Perspectives, sample resolution and streaming chosen per organ, with a memory estimate before a load</li>
+      <li>MIDI learning for every stop, coupler, piston and expression pedal</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.bonninr.Masterpiece.desktop</launchable>
+  <url type="homepage">https://bonninr.github.io/masterpiece/</url>
+  <url type="bugtracker">https://github.com/bonninr/masterpiece/issues</url>
+  <url type="vcs-browser">https://github.com/bonninr/masterpiece</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Music</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.7.12" date="2026-10-14"/>
+  </releases>
+</component>
