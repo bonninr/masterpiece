@@ -505,6 +505,21 @@ void ContinuousControlBank::reset(const OrganModel& model) {
   for (const auto& l : model.controlLinkages)
     if (l.conditionSwitchId == 0) wires.insert({l.sourceControlId, l.destControlId});
 
+  // A control fed by two shoes or more that a player moves: Norwood draws its
+  // swell shoe on the console and again on the simple jamb, and both feed one
+  // hidden "Swell Expression" (#366). Recomputed from both on every pass, the
+  // one listed last won, and the console's shoe moved its own picture and
+  // nothing else. Each such feed carries a change, so the shoe moved last is
+  // the one the control follows.
+  auto movedByPlayer = [&model](Id controlId) {
+    const auto it = model.continuousControls.find(controlId);
+    return it != model.continuousControls.end() &&
+           (it->second.imageSetInstanceId != 0 || it->second.clickable);
+  };
+  std::unordered_map<Id, int> playerFeeds;
+  for (const auto& l : model.controlLinkages)
+    if (l.conditionSwitchId == 0 && movedByPlayer(l.sourceControlId)) ++playerFeeds[l.destControlId];
+
   links_.clear();
   links_.reserve(model.controlLinkages.size());
   for (const auto& l : model.controlLinkages) {
@@ -524,8 +539,10 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     // the linkages that moved it last. Azzio feeds its Sesquialtera's level
     // from a delay ramp and, under other conditions, from constants: holding
     // the constant on every pass pinned the first rank at nothing (#285).
+    const bool sharedByShoes = l.conditionSwitchId == 0 && movedByPlayer(l.sourceControlId) &&
+                               playerFeeds[l.destControlId] >= 2;
     k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin ||
-                      l.conditionSwitchId != 0;
+                      l.conditionSwitchId != 0 || sharedByShoes;
     k.link = &l;
     links_.push_back(k);
   }
