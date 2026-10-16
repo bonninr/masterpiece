@@ -16,6 +16,7 @@ void CouplerMatrix::reset(const OrganModel& m) {
   inputFor_.clear();
   divisionOfKeyboard_.clear();
   needsFallback_.clear();
+  switchFed_.clear();
   hasExtremeActions_ = false;
 
   std::unordered_set<Id> sources, destinations;
@@ -345,6 +346,13 @@ void CouplerMatrix::expandInto(int sourceKeyboardId, int midiNote,
                                KeyFlowScratch& scratch,
                                std::vector<ExpandedNote>& out, int extreme) const {
   const Id source = static_cast<Id>(sourceKeyboardId);
+  // A keyboard played through its division inputs reaches its own division
+  // by the switches alone; only its couplers walk here, and never the
+  // every-division fallback.
+  if (switchFed_.count(source) != 0) {
+    if (!edges_.empty()) walk(sourceKeyboardId, midiNote, velocity, engagedSwitches, scratch, out, extreme);
+    return;
+  }
   if (!edges_.empty() && needsFallback_.count(source) == 0) {
     walk(sourceKeyboardId, midiNote, velocity, engagedSwitches, scratch, out, extreme);
     return;
@@ -381,7 +389,8 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       // Hint_PrimaryAssociatedDivisionID is the only thing that names the link
       // without walking it.
       const auto divIt = divisionOfKeyboard_.find(step.first);
-      if (divIt != divisionOfKeyboard_.end()) {
+      const bool viaSwitches = depth == 0 && switchFed_.count(step.first) != 0;
+      if (divIt != divisionOfKeyboard_.end() && !viaSwitches) {
         const int div = static_cast<int>(divIt->second);
         if (insertUnique(scratch.emitted, std::pair<int, int>{div, step.second}))
           out.push_back({div, step.second, velocity});
