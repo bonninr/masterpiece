@@ -5086,6 +5086,47 @@ public:
   }
 };
 
+// One swell drawn twice, as Norwood draws it on the console and on the simple
+// jamb (#366): each shoe feeds one hidden control, which moves the shutters
+// and both pictures. The shoe moved last is the one it follows; the jamb's,
+// listed last, overwrote the console's on every pass.
+class TwoShoesTest final : public mp::test::Test {
+public:
+  TwoShoesTest() : Test("functional.control.two-shoes-one-swell", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {mp::Id(220), mp::Id(536), mp::Id(537), mp::Id(538), mp::Id(539), mp::Id(540)})
+      m.continuousControls[id] = DoubleLinkageTest::control(id, 127);
+    m.continuousControls[537].clickable = true;  // the console's shoe
+    m.continuousControls[539].clickable = true;  // the simple jamb's
+    auto wire = [&m](mp::Id from, mp::Id to) {
+      mp::ContinuousControlLinkage l;
+      l.sourceControlId = from;
+      l.destControlId = to;
+      m.controlLinkages.push_back(l);
+    };
+    wire(220, 536);  // the shutters
+    wire(537, 220);
+    wire(220, 538);  // the console's picture
+    wire(539, 220);
+    wire(220, 540);  // the jamb's picture
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    auto move = [&](mp::Id shoe, int v) {
+      bank.setValue(shoe, v);
+      bank.propagate(shoe);
+    };
+    move(537, 40);
+    MP_CHECK(bank.value(220) == 40 && bank.value(536) == 40 && bank.value(540) == 40,
+             "the console's shoe moves the swell and the jamb's picture: " + std::to_string(bank.value(220)));
+    move(539, 90);
+    MP_CHECK(bank.value(220) == 90 && bank.value(538) == 90, "and the jamb's shoe moves it back");
+    move(537, 20);
+    MP_CHECK(bank.value(220) == 20, "the console's again: the shoe moved last is followed");
+  }
+};
+static TwoShoesTest g_twoShoes;
+
 
 class StageSwitchTest final : public mp::test::Test {
 public:
