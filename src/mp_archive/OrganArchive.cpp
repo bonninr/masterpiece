@@ -295,9 +295,11 @@ struct Rar4Header {
 // data, and hands `file` each file header; `file` returns false to stop. The
 // libraries walk a set only from its first volume; this reads any volume on
 // its own. False for anything it does not follow: a header whose CRC is
-// wrong, a password on the headers, a cut file.
+// wrong, a password on the headers, a cut file. `brokenAt`, if given, is set
+// to where a header could not be read or its CRC was wrong.
 static bool walkRar4(const std::string& path, const std::atomic<bool>* stop,
-                     const std::function<bool(const Rar4Header&)>& file) {
+                     const std::function<bool(const Rar4Header&)>& file,
+                     int64_t* brokenAt = nullptr) {
   std::FILE* in = openPackage(path);
   if (in == nullptr) return false;
   struct Closer {
@@ -315,18 +317,22 @@ static bool walkRar4(const std::string& path, const std::atomic<bool>* stop,
     return static_cast<uint32_t>(h[o]) | static_cast<uint32_t>(h[o + 1]) << 8 |
            static_cast<uint32_t>(h[o + 2]) << 16 | static_cast<uint32_t>(h[o + 3]) << 24;
   };
+  const auto broken = [&]() {
+    if (brokenAt != nullptr) *brokenAt = pos;
+    return false;
+  };
   while (pos < end) {
     if (stop != nullptr && stop->load(std::memory_order_relaxed)) return false;
-    if (!seekTo(in, pos, SEEK_SET)) return false;
+    if (!seekTo(in, pos, SEEK_SET)) return broken();
     h.resize(7);
-    if (std::fread(h.data(), 1, 7, in) != 7) return false;
+    if (std::fread(h.data(), 1, 7, in) != 7) return broken();
     const unsigned type = h[2];
     const unsigned flags = h[3] | (h[4] << 8);
     const size_t hsize = h[5] | (h[6] << 8);
-    if (hsize < 7) return false;
+    if (hsize < 7) return broken();
     h.resize(hsize);
-    if (hsize > 7 && std::fread(h.data() + 7, 1, hsize - 7, in) != hsize - 7) return false;
-    if ((crc32Of(&h[2], hsize - 2) & 0xffff) != static_cast<uint32_t>(h[0] | (h[1] << 8))) return false;
+    if (hsize > 7 && std::fread(h.data() + 7, 1, hsize - 7, in) != hsize - 7) return broken();
+    if ((crc32Of(&h[2], hsize - 2) & 0xffff) != static_cast<uint32_t>(h[0] | (h[1] << 8))) return broken();
     int64_t data = 0;
     if (type == 0x73) {
       if (flags & 0x0080) return false;  // a password on the headers
@@ -373,6 +379,65 @@ static bool rar4Name(const Rar4Header& f, std::string& name) {
     for (unsigned char c : name)
       if (c >= 0x80) return false;
   return true;
+}
+
+// What is wrong with volume `v` of a split RAR 4 set, for the player, or
+// empty if its headers show nothing. To the libraries either fault is only a
+// damaged file.
+// - Its headers break partway through: a download with a bad stretch.
+//   St Mary Portsea's demo: its .r00 was whole in size and unreadable from
+//   57.9 MB on.
+// - It does not follow the volume before: the file the earlier one ends
+//   partway through must be the file it starts by continuing. Two volumes
+//   from different copies of a set.
+static std::string rar4VolumeTrouble(const std::vector<std::string>& volumes, size_t v) {
+  if (v >= volumes.size()) return {};
+  const std::string b = fs::u8path(volumes[v]).filename().string();
+  int64_t brokenAt = -1;
+  if (!walkRar4(volumes[v], nullptr, [](const Rar4Header&) { return true; }, &brokenAt) && brokenAt >= 0) {
+    std::error_code ec;
+    const auto size = static_cast<double>(fs::file_size(fs::u8path(volumes[v]), ec));
+    char at[64];
+    std::snprintf(at, sizeof at, "%.1f MB", static_cast<double>(brokenAt) / 1e6);
+    std::string share;
+    if (!ec && size > 0) {
+      char pct[32];
+      std::snprintf(pct, sizeof pct, " (%d%% of the file)",
+                    static_cast<int>(100.0 * static_cast<double>(brokenAt) / size));
+      share = pct;
+    }
+    return b + " is damaged from " + at + " on" + share +
+           ": the files after that point cannot be read. Download that volume again.";
+  }
+  if (v == 0) return {};
+  Rar4Header last, first;
+  bool any = false, started = false;
+  if (!walkRar4(volumes[v - 1], nullptr, [&](const Rar4Header& f) {
+        last = f;
+        any = true;
+        return true;
+      }) ||
+      !walkRar4(volumes[v], nullptr, [&](const Rar4Header& f) {
+        first = f;
+        started = true;
+        return false;
+      }) ||
+      !any || !started)
+    return {};
+  const bool split = (last.flags & 0x0002) != 0, continues = (first.flags & 0x0001) != 0;
+  std::string ends, goesOn;
+  if (!rar4Name(last, ends) || !rar4Name(first, goesOn)) return {};
+  if (split == continues && (!split || ends == goesOn)) return {};
+  const std::string a = fs::u8path(volumes[v - 1]).filename().string();
+  std::string why;
+  if (split && continues)
+    why = a + " ends partway through " + ends + ", and " + b + " continues " + goesOn;
+  else if (split)
+    why = a + " ends partway through " + ends + ", and " + b + " starts with a new file";
+  else
+    why = b + " continues " + goesOn + ", which " + a + " does not hold";
+  return b + " does not follow " + a + ": " + why +
+         ". Download all of the set's volumes again, from one source.";
 }
 
 // The files that begin in one volume of a RAR 4 set, for listing the volumes
@@ -1771,6 +1836,17 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
   // of `error`.
   const auto& volumes = archives_[archiveIndex];
   std::unordered_set<std::string> finished;  // delivered, or failed for good
+  // A damaged volume, or one that does not follow the one before, said once
+  // each.
+  std::unordered_set<size_t> broken;
+  const auto checkBreak = [&](size_t reached) {
+    if (volumes.size() < 2 || needsUnarr(volumes)) return;
+    for (size_t v : {reached > 0 ? reached - 1 : reached, reached, reached + 1}) {
+      if (v >= volumes.size() || !broken.insert(v).second) continue;
+      const std::string why = rar4VolumeTrouble(volumes, v);
+      if (!why.empty()) error += archiveName(archiveIndex) + ": " + why + "\n";
+    }
+  };
   size_t from = 0;
   auto pass = passFor(volumes);
   auto restart = [&]() -> bool {
@@ -1812,6 +1888,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
           continue;
         }
         error += archiveName(archiveIndex) + ": " + name + " is damaged (" + pass->error() + ")\n";
+        checkBreak(from + pass->volume());
         finished.insert(k);
         --remaining;
         bytes = {};
@@ -1826,6 +1903,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
     if (!restart()) {
       error += archiveName(archiveIndex) + ": damaged (" + pass->error() +
                "); the samples after this point could not be read\n";
+      checkBreak(from + pass->volume());
       break;
     }
   }
