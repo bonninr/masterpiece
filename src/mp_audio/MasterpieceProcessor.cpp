@@ -71,6 +71,9 @@ MasterpieceProcessor::MasterpieceProcessor()
   : juce::AudioProcessor(juce::AudioProcessor::BusesProperties()
       .withOutput("Out", juce::AudioChannelSet::stereo(), true)),
     apvts_(*this, nullptr, "MP", makeLayout()) {
+  // The split keyboard's input, before any saved mapping names it (#358).
+  split_.attach(registerMidiDevice(SplitKeyboardHost::kInputName),
+                [this] { midiMapDirty_.store(true, std::memory_order_release); });
   // Before any organ is opened: a streamed set keeps many files open, and the
   // default allowance on macOS is 256.
   static const size_t tails = SampleLibrary::raiseOpenFileLimit();
@@ -684,11 +687,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   }
   drainTaggedMidi(midiScratch_);
   midiOffsets_.resize(midiScratch_.size(), 0);
+  // One keyboard playing the whole organ (#358): its notes become the split
+  // keyboard's, which the mapping below sends to the manuals.
+  split_.process(midiScratch_, midiOffsets_, blockTimeMs_);
   // Console input reaches the recorder here: it is not in the host's buffer,
   // which is all the recorder saw.
   if (recorder_.isRecording())
     for (const auto& [deviceId, msg] : midiScratch_)
       if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg);
+  split_.retagReplay(midiScratch_);
 
   for (size_t m = 0; m < midiScratch_.size(); ++m) {
     const int deviceId = midiScratch_[m].first;
@@ -5356,6 +5363,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
   loadMidiMap();
+  split_.organLoaded(organFile(loadedOdf_, "split", ".mpsplit"), &model_);
   unloadedSwitches_.clear();
   for (Id stopId : unloadedStops_) {
     const auto it = model_.stops.find(stopId);

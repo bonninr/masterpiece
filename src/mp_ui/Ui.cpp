@@ -1238,6 +1238,15 @@ void MasterpieceEditor::toggleRecorder() {
                juce::Process::isForegroundProcess());
 }
 
+void MasterpieceEditor::toggleSplitKeyboard() {
+  if (splitWindow_ == nullptr) {
+    splitWindow_ = std::make_unique<SplitKeyboardWindow>(proc_);
+    const auto b = getScreenBounds();
+    if (!kMobile) splitWindow_->setTopLeftPosition(b.getX() + 40, b.getY() + 80);
+  }
+  showFloating(*splitWindow_, !splitWindow_->isVisible(), juce::Process::isForegroundProcess());
+}
+
 void MasterpieceEditor::reloadOrgan() {
   const juce::File odf = proc_.loadedOrganFile();
   if (odf.existsAsFile()) loadOrgan(odf);
@@ -1837,6 +1846,7 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Show played keys"), true, proc_.showPlayedKeys());
+  menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -1853,6 +1863,7 @@ void MasterpieceEditor::showViewMenu() {
                        if (c == 10) safe->toggleCombinations();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
+                       if (c == 14) safe->toggleSplitKeyboard();
                        if (c == 13) {
                          safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
                          safe->console_.repaint();
@@ -1979,6 +1990,7 @@ void MasterpieceEditor::timerCallback() {
   // The same for the per-organ settings and anything just learned: raised on
   // whichever thread changed it, written here, where a file write is allowed.
   proc_.saveSettingsIfDirty();
+  proc_.splitKeyboard().service();
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
   proc_.saveRememberedStateIfSettled();

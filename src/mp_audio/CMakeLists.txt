@@ -13,6 +13,7 @@ add_library(mp_audio STATIC
   Metronome.h Metronome.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
+  SplitKeyboardHost.h SplitKeyboardHost.cpp
   Convolver.h Convolver.cpp
   Translations.h Translations.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h
@@ -33,6 +34,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/OrganSettings.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TuningPanel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TuningPanel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Wizard.cpp
@@ -78,7 +81,7 @@ juce_add_binary_data(mp_translations
 
 target_link_libraries(mp_audio PUBLIC
   mp_assets mp_translations
-  mp_core mp_control mp_archive ${MP_WAVPACK_TARGET}
+  mp_core mp_control mp_split mp_archive ${MP_WAVPACK_TARGET}
   juce::juce_audio_processors juce::juce_audio_utils juce::juce_audio_devices
   juce::juce_audio_formats juce::juce_data_structures
   juce::juce_gui_basics juce::juce_graphics

@@ -25,6 +25,7 @@
 #include "Metronome.h"
 #include "AudioRecorder.h"
 #include "MidiRecorder.h"
+#include "SplitKeyboardHost.h"
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
@@ -212,7 +213,10 @@ public:
   // Asked for here, done on the audio thread: the MIDI path must not be fed
   // from the message thread, so this raises a flag that the next block acts
   // on.
-  void releaseAllKeys() { releaseAll_.store(true, std::memory_order_release); }
+  void releaseAllKeys() {
+    releaseAll_.store(true, std::memory_order_release);
+    split_.panic();
+  }
 
   // Stops in a stable order for the console: by division, then by id, so the
   // jamb does not reshuffle between loads.
@@ -673,6 +677,10 @@ public:
 
   MidiMap& midiMap() { return midiMap_; }
   const MidiMap& midiMap() const { return midiMap_; }
+  // One keyboard playing the whole organ (#358). Message thread, apart from
+  // the two calls in the MIDI handling.
+  SplitKeyboardHost& splitKeyboard() { return split_; }
+  const SplitKeyboardHost& splitKeyboard() const { return split_; }
   // Persisted next to the organ definition, per organ: a player's console
   // mapping is theirs, and must never be written into a licensed sample set.
   // --- which organ is this? ----------------------------------------------
@@ -1608,6 +1616,7 @@ private:
   std::vector<ExpandedNote> reflowBefore_, reflowAfter_;
   void reflowHeldNotes();
   MidiMap midiMap_;
+  SplitKeyboardHost split_{midiMap_};
   Metronome metronome_;
   MidiRecorder recorder_;
   AudioRecorder audioRecorder_;

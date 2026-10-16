@@ -11,6 +11,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_audio/MasterpieceProcessor.h"
 #include "CombinationsWindow.h"
+#include "SplitKeyboardWindow.h"
 #include "TuningPanel.h"
 #include "Console.h"
 #include "PageWindow.h"
@@ -315,6 +316,9 @@ private:
   // a settings dialog it took the console away while it recorded.
   std::unique_ptr<juce::DocumentWindow> recorderWindow_;
   void toggleRecorder();
+  // One keyboard playing the whole organ (#358).
+  void toggleSplitKeyboard();
+  std::unique_ptr<SplitKeyboardWindow> splitWindow_;
   void toggleCombinations();
   // Temperament, pitch and transposer. Labelled with what is in force, so the
   // panel behind it only has to open to change something.
