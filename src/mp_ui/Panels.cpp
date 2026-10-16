@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <map>
 #include <regex>
 #include <sstream>
@@ -162,6 +163,28 @@ Id tremulantDivision(const OrganModel& m, const std::string& name) {
 
 }  // namespace
 
+// A name the organ keeps for itself: "CustPg1_Coupler 1006",
+// "CustPg1_EnclIn_220". A player's name has no underscore in it.
+static bool technicalName(const std::string& name) { return name.find('_') != std::string::npos; }
+
+// The category words a set writes in front of its names, "Stop: Ped:
+// Principal 16", "Coupler: Swell to Great": each short word ending in a colon
+// at the start goes. A name that would be left empty keeps them.
+static std::string withoutCategory(const std::string& name) {
+  std::string out = name;
+  for (;;) {
+    const auto colon = out.find(':');
+    if (colon == std::string::npos || colon == 0 || colon > 12) break;
+    const std::string head = out.substr(0, colon);
+    if (head.find(' ') != std::string::npos) break;
+    size_t rest = colon + 1;
+    while (rest < out.size() && out[rest] == ' ') ++rest;
+    if (rest >= out.size()) break;
+    out.erase(0, rest);
+  }
+  return out;
+}
+
 std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   const auto& m = p.organModel();
   std::vector<PanelSection> divisions;
@@ -195,7 +218,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     PanelElement e;
     e.kind = PanelElement::Kind::Stop;
     e.id = st.stopId;
-    splitFootage(st.name, e.name, e.footage);
+    splitFootage(withoutCategory(st.name), e.name, e.footage);
     sectionFor(st.divisionId).elements.push_back(std::move(e));
   }
 
@@ -212,6 +235,41 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   std::set<Id> tremulantSwitches;
   for (const auto& [id, t] : m.tremulants)
     if (t.controllingSwitchId != 0) tremulantSwitches.insert(t.controllingSwitchId);
+
+  // Copies: switches wired to each other both ways, so each follows the
+  // other, are one control drawn in several places. Bethesda draws each
+  // coupler twice, "CustPg1_Coupler 1006" and "CustPg2_Coupler 1006", and
+  // the coupler itself, "Coupler: Great to Pedal 8", nowhere (#314). A group
+  // is one button, named for the member with a player's name; a group that
+  // holds a stop's knob is that stop, listed above.
+  std::map<Id, Id> parent;
+  std::function<Id(Id)> root = [&](Id x) -> Id {
+    const auto it = parent.find(x);
+    if (it == parent.end() || it->second == x) return x;
+    return it->second = root(it->second);
+  };
+  {
+    std::set<std::pair<Id, Id>> links;
+    for (const auto& l : m.switchLinkages)
+      if (l.conditionSwitchId == 0 && l.sourceWhenEngaged && l.engageAction == 1 && l.disengageAction == 2)
+        links.insert({l.sourceSwitchId, l.destSwitchId});
+    for (const auto& [a, b] : links)
+      if (a < b && links.count({b, a}) != 0) parent[root(b)] = root(a);
+  }
+  std::map<Id, std::string> groupName;
+  for (Id id : switchIds) {
+    const auto& name = m.switches.at(id).name;
+    auto& best = groupName[root(id)];
+    if (best.empty() || (technicalName(best) && !technicalName(name) && !name.empty())) best = name;
+  }
+  std::set<Id> stopGroups;
+  for (const auto& [sid, stop] : m.stops)
+    if (stop.controllingSwitchId != 0) {
+      stopGroups.insert(root(stop.controllingSwitchId));
+      stopGroups.insert(root(p.playerSwitchFor(stop.controllingSwitchId)));
+    }
+  std::set<Id> groupsShown;
+
   for (const bool tremulants : {false, true})
     for (Id id : switchIds) {
       const auto& sw = m.switches.at(id);
@@ -219,10 +277,12 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       const bool drawn = sw.dispInstanceId != 0 || sw.isCoupler || sw.isTremulant;
       // A leading underscore marks a switch the organ keeps to itself.
       if (!drawn || sw.name.empty() || sw.name[0] == '_') continue;
+      const Id group = root(id);
+      if (stopGroups.count(group) != 0 || groupsShown.count(group) != 0) continue;
       PanelElement e;
       e.kind = PanelElement::Kind::Switch;
       e.id = id;
-      splitFootage(sw.name, e.name, e.footage);
+      splitFootage(withoutCategory(groupName[group]), e.name, e.footage);
       const bool isTrem = sw.isTremulant || reaches(m, id, tremulantSwitches);
       Id coupled = isTrem ? 0 : couplerDivision(m, id);
       if (!isTrem && coupled == 0)
@@ -230,6 +290,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       const bool isCoupler = sw.isCoupler || coupled != 0;
       if (tremulants ? !isTrem : !isCoupler) continue;
       const Id div = tremulants ? tremulantDivision(m, sw.name) : coupled;
+      groupsShown.insert(group);
       if (div != 0 && m.divisions.count(div) != 0)
         sectionFor(div).elements.push_back(std::move(e));
       else
@@ -246,13 +307,25 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   std::sort(combos.begin(), combos.end(), [](const Combination* a, const Combination* b) {
     return a->type != b->type ? a->type < b->type : a->combinationId < b->combinationId;
   });
-  std::set<Id> pistons;
-  for (const Combination* c : combos) {
+  auto pistonSwitch = [&](const Combination* c) {
     Id sw = c->activatingSwitchId;
     if (sw == 0 && c->type >= 100)
       for (const auto& [id, s] : m.switches)
         if (s.asgnCode == c->type) { sw = id; break; }
-    if (sw == 0 || !pistons.insert(sw).second) continue;
+    return sw;
+  };
+  // An organ that draws its pistons has those: Bethesda declares 89 and
+  // draws 29, and the panel listed them all (#314).
+  auto drawnSwitch = [&](Id sw) {
+    const auto s = m.switches.find(sw);
+    return s != m.switches.end() && s->second.dispInstanceId != 0;
+  };
+  bool anyDrawn = false;
+  for (const Combination* c : combos) anyDrawn = anyDrawn || drawnSwitch(pistonSwitch(c));
+  std::set<Id> pistons;
+  for (const Combination* c : combos) {
+    const Id sw = pistonSwitch(c);
+    if (sw == 0 || (anyDrawn && !drawnSwitch(sw)) || !pistons.insert(sw).second) continue;
     PanelElement e;
     e.kind = PanelElement::Kind::Piston;
     e.id = sw;
@@ -275,7 +348,10 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     e.kind = PanelElement::Kind::Control;
     e.id = controlId;
     const auto c = m.continuousControls.find(controlId);
-    e.name = c != m.continuousControls.end() && !c->second.name.empty() ? c->second.name : fallback;
+    e.name = withoutCategory(c != m.continuousControls.end() && !c->second.name.empty() &&
+                                     !technicalName(c->second.name)
+                                 ? c->second.name
+                                 : fallback);
     controls.elements.push_back(std::move(e));
   };
   for (const auto& [id, enc] : m.enclosures) {
