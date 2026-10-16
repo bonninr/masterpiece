@@ -283,7 +283,9 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
   // can map their whole rig loosely and then pin one keyboard exactly, without
   // the loose mapping swallowing it.
   auto it = bySource_.end();
-  for (int step = 0; step < 4 && it == bySource_.end(); ++step) {
+  // The exclusive input is matched only by mappings that name it.
+  const int steps = exclusiveDevice_ != 0 && source.deviceId == exclusiveDevice_ ? 2 : 4;
+  for (int step = 0; step < steps && it == bySource_.end(); ++step) {
     MidiSource probe = source;
     if (step & 1) probe.channel = 0;
     if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
@@ -291,7 +293,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
   }
   // Then any note, last: a mapping for one note beats one for every note.
   if (it == bySource_.end() && source.kind == MidiSourceKind::Note)
-    for (int step = 0; step < 4 && it == bySource_.end(); ++step) {
+    for (int step = 0; step < steps && it == bySource_.end(); ++step) {
       MidiSource probe = source;
       probe.number = kAnyNote;
       if (step & 1) probe.channel = 0;
@@ -674,9 +676,11 @@ void MidiMap::addKeyboardBinding(const KeyboardBinding& b) {
 }
 
 bool MidiMap::hasChannelBinding(int deviceId, int channel) const {
+  const bool exclusive = exclusiveDevice_ != 0 && deviceId == exclusiveDevice_;
   for (const auto& b : keyboardBindings_) {
     if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId)
       continue;
+    if (exclusive && b.deviceId != deviceId) continue;
     // Channel 0 means any channel, which is what a fresh binding claims.
     if (b.channel != 0 && b.channel != channel) continue;
     return true;
@@ -740,10 +744,12 @@ int MidiMap::repairKeyboardBindings(const std::vector<Id>& playableKeyboards) {
 int MidiMap::matchKeyboards(int deviceId, int channel, int note, int velocity,
                             double timeMs, std::vector<KeyHit>& out) const {
   int added = 0;
+  const bool exclusive = exclusiveDevice_ != 0 && deviceId == exclusiveDevice_;
   for (size_t i = 0; i < keyboardBindings_.size(); ++i) {
     const KeyboardBinding& b = keyboardBindings_[i];
     if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId)
       continue;
+    if (exclusive && b.deviceId != deviceId) continue;
     if (b.channel != 0 && b.channel != channel) continue;
     if (note < b.lowKey || note > b.highKey) continue;
 

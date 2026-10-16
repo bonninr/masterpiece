@@ -442,6 +442,12 @@ public:
   // every binding in such a collision was dropped, which made the mapping
   // impossible to keep.
   int repairKeyboardBindings(const std::vector<Id>& playableKeyboards);
+  // An input only the mappings that name it may take: the split keyboard's
+  // (#358). Its notes are the player's keys already routed, on channels of its
+  // own, and a mapping made for any input would take them a second time.
+  void setExclusiveDevice(int deviceId) { exclusiveDevice_ = deviceId; }
+  int exclusiveDevice() const { return exclusiveDevice_; }
+
   const std::vector<KeyboardBinding>& keyboardBindings() const {
     return keyboardBindings_;
   }
@@ -458,6 +464,7 @@ public:
 private:
   MidiDeviceMap devices_;
   std::vector<KeyboardBinding> keyboardBindings_;
+  int exclusiveDevice_ = 0;
   // Last time each (binding, note) fired, for debouncing. Mutable because
   // matching is const from the caller's point of view — it asks a question —
   // but debouncing is inherently stateful.

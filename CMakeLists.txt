@@ -341,6 +341,7 @@ if(MP_ENABLE_DSP)
   add_subdirectory(src/mp_dsp)
 endif()
 add_subdirectory(src/mp_control)
+add_subdirectory(src/mp_split)
 # JUCE-dependent layers: only when JUCE targets are available
 # (core-only builds without JUCE still get mp_core/mp_control + validator + tests).
 if(TARGET juce::juce_audio_processors)
