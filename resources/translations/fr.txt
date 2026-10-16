@@ -717,3 +717,7 @@ countries: fr be ca ch lu mc
 "Choose an organ..." = "Choisir un orgue..."
 "Back" = "Retour"
 "Skip setup" = "Passer la configuration"
+
+# src/mp_ui/Settings.cpp
+"Noise filter: when learning, a key counts once held a quarter second" = "Filtre de bruit : à l'apprentissage, une touche compte une fois tenue un quart de seconde"
+"For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Pour une console dont les contacts envoient des notes parasites : une note plus courte n'est pas apprise. Les contrôleurs et les changements de programme sont appris aussitôt. Laissez-le désactivé pour les pistons qui n'envoient qu'une note brève."

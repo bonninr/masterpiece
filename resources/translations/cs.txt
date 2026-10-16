@@ -717,3 +717,7 @@ countries: cz
 "Choose an organ..." = "Zvolte varhany..."
 "Back" = "Zpět"
 "Skip setup" = "Přeskočit nastavení"
+
+# src/mp_ui/Settings.cpp
+"Noise filter: when learning, a key counts once held a quarter second" = "Filtr šumu: při učení se klávesa počítá po podržení čtvrt sekundy"
+"For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Pro hrací stůl, jehož kontakty posílají náhodné tóny: kratší tón se nenaučí. Ovladače a změny programu se naučí hned. Pro pistony, které posílají jen krátký tón, nechte vypnuté."

@@ -1240,6 +1240,12 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   cancelResets_.onClick = [this] {
     proc_.setCancelResetsKeyboards(cancelResets_.getToggleState());
   };
+  addAndMakeVisible(noiseFilter_);
+  noiseFilter_.setToggleState(proc_.learnNoiseFilter(), juce::dontSendNotification);
+  noiseFilter_.setTooltip(TRANS("For a console whose contacts send stray notes: a shorter note is not learned. "
+                                "Controllers and program changes are learned at once. Leave it off for pistons "
+                                "that send only a short note."));
+  noiseFilter_.onClick = [this] { proc_.setLearnNoiseFilter(noiseFilter_.getToggleState()); };
 
   addAndMakeVisible(stepperLabel_);
   styleLabel(stepperLabel_, TRANS("Sequencer"));
@@ -1550,6 +1556,7 @@ void MidiPanel::resized() {
   r.removeFromTop(4);
   feedback_.setBounds(r.removeFromTop(kRow));
   cancelResets_.setBounds(r.removeFromTop(kRow));
+  noiseFilter_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
   stepperLabel_.setBounds(row.removeFromLeft(120));
