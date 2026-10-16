@@ -43,6 +43,8 @@ countries: pl
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Przytrzymaj Set i naciśnij przycisk, aby zapamiętać włączone głosy. Przycisk, któremu nic nie przypisano, nic nie robi. Kliknij dowolny przycisk prawym przyciskiem myszy, aby przypisać go do kontuaru."
 "(default)" = "(domyślnie)"
 "Go to a frame" = "Przejdź do kroku"
+"Go to frame %1" = "Przejdź do kroku %1"
+"Go to frame 10" = "Przejdź do kroku 10"
 "A frame number, 1 to %1:" = "Numer kroku, od 1 do %1:"
 "A frame number:" = "Numer kroku:"
 "Frame" = "Krok"

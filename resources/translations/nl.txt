@@ -43,6 +43,8 @@ countries: nl be sr
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Houd Set ingedrukt en druk op een drukknop om op te slaan wat getrokken is. Een drukknop die nooit is ingesteld, doet niets. Klik met rechts op een drukknop om hem aan je speeltafel te koppelen."
 "(default)" = "(standaard)"
 "Go to a frame" = "Ga naar een stap"
+"Go to frame %1" = "Ga naar stap %1"
+"Go to frame 10" = "Ga naar stap 10"
 "A frame number, 1 to %1:" = "Een stapnummer, 1 tot %1:"
 "A frame number:" = "Een stapnummer:"
 "Frame" = "Stap"

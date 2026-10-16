@@ -124,6 +124,15 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   stepForward10_.onRightClick = [this] {
     showMidiMenu(stepForward10_, MidiTargetKind::StepperForward10, 0, false);
   };
+  for (int i = 0; i < 10; ++i) {
+    // Digit i+1 for 1 to 9; the last one is 0, which is frame 10.
+    const int digit = (i + 1) % 10;
+    digits_[static_cast<size_t>(i)] = std::make_unique<PistonButton>(juce::String(digit));
+    auto& b = *digits_[static_cast<size_t>(i)];
+    addAndMakeVisible(b);
+    b.setTooltip(digit == 0 ? TRANS("Go to frame 10") : TRANS("Go to frame %1").replace("%1", juce::String(digit)));
+    b.onClick = [this, digit] { proc_.stepperDigit(digit); };
+  }
   addAndMakeVisible(frame_);
   frame_.setJustificationType(juce::Justification::centred);
   frame_.setColour(juce::Label::textColourId, kText);
@@ -284,7 +293,7 @@ void CombinationsPanel::rebuild() {
 
 int CombinationsPanel::preferredHeight(int /*width*/) const {
   const auto& pc = proc_.playerCombinations();
-  int h = kMargin + kRow + kSection;
+  int h = kMargin + kRow + kGap + kRow + kSection;
   h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
   if (!divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
@@ -310,6 +319,11 @@ void CombinationsPanel::resized() {
   row.removeFromLeft(kGap * 2);
   insertFrame_.setBounds(row.removeFromLeft(56).reduced(1));
   deleteFrame_.setBounds(row.removeFromLeft(56).reduced(1));
+
+  // The digits take the row's width in ten equal cells.
+  row = r.removeFromTop(kRow);
+  const int cell = row.getWidth() / 10;
+  for (auto& b : digits_) b->setBounds(row.removeFromLeft(cell).reduced(1));
   r.removeFromTop(kSection);
 
   row = r.removeFromTop(kHeading);

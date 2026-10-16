@@ -72,6 +72,8 @@ private:
   PistonButton stepFirst_{"|<"};
   PistonButton stepLast_{">|"};
   PistonButton stepBack10_{"-10"};
+  // Frames 1 to 9 and 10 (the 0 key), in a row under the sequencer's own.
+  std::array<std::unique_ptr<PistonButton>, 10> digits_;
   PistonButton stepForward10_{"+10"};
   FrameLabel frame_;
   juce::TextButton insertFrame_{TRANS("Insert")};

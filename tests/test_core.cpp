@@ -12424,6 +12424,36 @@ public:
 };
 static SequencerJumpsTest g_sequencerJumps;
 
+// The digit buttons (#298): 1 to 9 go to that frame, 0 to the tenth, and a
+// digit past the last frame that holds anything goes nowhere.
+class SequencerDigitsTest final : public mp::test::Test {
+public:
+  SequencerDigitsTest() : Test("functional.control.sequencer-digits", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+
+    MP_CHECK(!proc.stepperDigit(3) && pc.frame() == 0, "an empty sequence has nowhere to go");
+
+    proc.setCaptureMode(true);
+    for (int f = 1; f <= 10; ++f) proc.stepperGoto(f);
+    proc.setCaptureMode(false);
+    MP_CHECK(pc.lastUsedFrame() == 10, "ten frames are stored");
+
+    MP_CHECK(proc.stepperDigit(4) && pc.frame() == 4, "digit 4 goes to frame 4");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 10, "digit 0 goes to frame 10");
+    MP_CHECK(!proc.stepperDigit(0), "a digit for the frame already shown does nothing");
+    MP_CHECK(proc.stepperDigit(1) && pc.frame() == 1, "digit 1 goes to frame 1");
+    MP_CHECK(!proc.stepperDigit(10) && !proc.stepperDigit(-1), "only 0 to 9 are digits");
+  }
+};
+static SequencerDigitsTest g_sequencerDigits;
+
 // The load dialog's stages are timed, so a slow load can say which stage was
 // slow, and the stage before the samples has a name of its own (#133).
 class LoadStageTimesTest final : public mp::test::Test {

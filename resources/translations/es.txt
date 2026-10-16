@@ -43,6 +43,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Mantén pulsado Set y pulsa un pistón para guardar lo que está registrado. Un pistón al que nunca se ha asignado nada no hace nada. Haz clic derecho en cualquier pistón para asignarlo a tu consola."
 "(default)" = "(predeterminado)"
 "Go to a frame" = "Ir a un paso"
+"Go to frame %1" = "Ir al paso %1"
+"Go to frame 10" = "Ir al paso 10"
 "A frame number, 1 to %1:" = "Un número de paso, de 1 a %1:"
 "A frame number:" = "Un número de paso:"
 "Frame" = "Paso"

@@ -48,6 +48,8 @@ countries: gb us
 "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console." = "Hold Set and press a piston to store what is drawn. A piston never set does nothing. Right-click any piston to map it to your console."
 "(default)" = "(default)"
 "Go to a frame" = "Go to a frame"
+"Go to frame %1" = "Go to frame %1"
+"Go to frame 10" = "Go to frame 10"
 "A frame number, 1 to %1:" = "A frame number, 1 to %1:"
 "A frame number:" = "A frame number:"
 "Frame" = "Frame"
