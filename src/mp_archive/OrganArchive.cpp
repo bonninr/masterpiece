@@ -375,6 +375,45 @@ static bool rar4Name(const Rar4Header& f, std::string& name) {
   return true;
 }
 
+// Whether volume `v` of a split RAR 4 set follows the one before: a file the
+// earlier one ends partway through is the file the later one starts by
+// continuing. Empty if it does, or if the headers cannot tell; else what is
+// wrong, for the player. Two volumes from different copies of a set look like
+// a damaged file to the libraries (St Mary Portsea's demo: the first volume
+// ends in 077-F.wav, the second continues 074-D.wav).
+static std::string rar4VolumeBreak(const std::vector<std::string>& volumes, size_t v) {
+  if (v == 0 || v >= volumes.size()) return {};
+  Rar4Header last, first;
+  bool any = false, started = false;
+  if (!walkRar4(volumes[v - 1], nullptr, [&](const Rar4Header& f) {
+        last = f;
+        any = true;
+        return true;
+      }) ||
+      !walkRar4(volumes[v], nullptr, [&](const Rar4Header& f) {
+        first = f;
+        started = true;
+        return false;
+      }) ||
+      !any || !started)
+    return {};
+  const bool split = (last.flags & 0x0002) != 0, continues = (first.flags & 0x0001) != 0;
+  std::string ends, goesOn;
+  if (!rar4Name(last, ends) || !rar4Name(first, goesOn)) return {};
+  if (split == continues && (!split || ends == goesOn)) return {};
+  const std::string a = fs::u8path(volumes[v - 1]).filename().string();
+  const std::string b = fs::u8path(volumes[v]).filename().string();
+  std::string why;
+  if (split && continues)
+    why = a + " ends partway through " + ends + ", and " + b + " continues " + goesOn;
+  else if (split)
+    why = a + " ends partway through " + ends + ", and " + b + " starts with a new file";
+  else
+    why = b + " continues " + goesOn + ", which " + a + " does not hold";
+  return b + " does not follow " + a + ": " + why +
+         ". Download all of the set's volumes again, from one source.";
+}
+
 // The files that begin in one volume of a RAR 4 set, for listing the volumes
 // of a set side by side (#321: Ashton, 11 volumes, 68,578 files, 451 s one
 // after another).
@@ -1771,6 +1810,16 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
   // of `error`.
   const auto& volumes = archives_[archiveIndex];
   std::unordered_set<std::string> finished;  // delivered, or failed for good
+  // Volumes that do not follow the one before, said once each.
+  std::unordered_set<size_t> broken;
+  const auto checkBreak = [&](size_t reached) {
+    if (volumes.size() < 2 || needsUnarr(volumes)) return;
+    for (size_t v : {reached, reached + 1}) {
+      if (v == 0 || v >= volumes.size() || !broken.insert(v).second) continue;
+      const std::string why = rar4VolumeBreak(volumes, v);
+      if (!why.empty()) error += archiveName(archiveIndex) + ": " + why + "\n";
+    }
+  };
   size_t from = 0;
   auto pass = passFor(volumes);
   auto restart = [&]() -> bool {
@@ -1812,6 +1861,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
           continue;
         }
         error += archiveName(archiveIndex) + ": " + name + " is damaged (" + pass->error() + ")\n";
+        checkBreak(from + pass->volume());
         finished.insert(k);
         --remaining;
         bytes = {};
@@ -1826,6 +1876,7 @@ bool OrganArchive::read(size_t archiveIndex, const std::unordered_set<std::strin
     if (!restart()) {
       error += archiveName(archiveIndex) + ": damaged (" + pass->error() +
                "); the samples after this point could not be read\n";
+      checkBreak(from + pass->volume());
       break;
     }
   }

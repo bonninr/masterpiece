@@ -11801,6 +11801,54 @@ public:
 };
 static SplitRar4Test g_splitRar4;
 
+// Two volumes from different copies of a set: the first ends partway through
+// one file and the second continues another. The file across them is lost,
+// and the player is told the volumes do not belong together (St Mary
+// Portsea's demo).
+class MismatchedRar4Test final : public mp::test::Test {
+public:
+  MismatchedRar4Test() : Test("functional.archive.rar4-volumes-mismatched", Category::Functional) {}
+  using T = SolidRar4Test;
+  using S = SplitRar4Test;
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-mismatched-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string big = T::pattern(9, 60000), other = T::pattern(7, 60000);
+    const std::string xml = "<Hauptwerk>mismatched</Hauptwerk>\n";
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << S::volume(true, false,
+                     S::whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", xml) +
+                         S::file("077-F.wav", big.substr(0, 25000), 60000, 0x0002, T::crc32(big.substr(0, 25000))));
+    std::ofstream(dir / "Set.r00", std::ios::binary)
+        << S::volume(false, true,
+                     S::file("074-D.wav", other.substr(25000), 60000, 0x0001, T::crc32(other)) +
+                         S::whole("pipe2.wav", T::pattern(5, 20000)));
+
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) && arc.index(error),
+             "the set is listed: " + error);
+    error.clear();
+    bool got2 = false;
+    const bool read = arc.read(0, {mp::OrganArchive::key("077-F.wav"), mp::OrganArchive::key("pipe2.wav")},
+                               [&got2](const std::string& k, std::vector<char>&&) {
+                                 if (k == mp::OrganArchive::key("pipe2.wav")) got2 = true;
+                                 return true;
+                               },
+                               error);
+    MP_CHECK(!read, "the file across the two volumes does not read");
+    MP_CHECK(error.find("Set.r00 does not follow Set.rar: Set.rar ends partway through 077-F.wav, "
+                        "and Set.r00 continues 074-D.wav") != std::string::npos,
+             "the error names both volumes and both files: " + error);
+    MP_CHECK(got2, "the next volume's own files still read");
+    fs::remove_all(dir, ec);
+  }
+};
+static MismatchedRar4Test g_mismatchedRar4;
+
 // A set opened once from one disk and later from a copy on another is read
 // from the copy: its saved index follows the volumes by name and size, not
 // by the place they were first opened (Buckeburg, copied from D to C, still
