@@ -770,3 +770,6 @@ countries: nl be sr
 "My layout" = "Mijn indeling"
 "Slot" = "Plaats"
 "Split keyboard" = "Gesplitst klavier"
+# src/mp_ui/Settings.cpp
+"Noise filter: when learning, a key counts once held a quarter second" = "Ruisfilter: bij het leren telt een toets als hij een kwart seconde is vastgehouden"
+"For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Voor een speeltafel waarvan de contacten losse noten sturen: een kortere noot wordt niet geleerd. Controllers en programmawissels worden meteen geleerd. Laat het uit voor pistons die alleen een korte noot sturen."

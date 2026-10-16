@@ -770,3 +770,6 @@ countries: de at ch li lu
 "My layout" = "Meine Aufteilung"
 "Slot" = "Platz"
 "Split keyboard" = "Geteilte Tastatur"
+# src/mp_ui/Settings.cpp
+"Noise filter: when learning, a key counts once held a quarter second" = "Rauschfilter: beim Lernen zählt eine Taste, wenn sie eine Viertelsekunde gehalten wird"
+"For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Für einen Spieltisch, dessen Kontakte verirrte Noten senden: eine kürzere Note wird nicht gelernt. Controller und Programmwechsel werden sofort gelernt. Für Pistons, die nur eine kurze Note senden, ausgeschaltet lassen."

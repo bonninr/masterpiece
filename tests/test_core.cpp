@@ -11801,6 +11801,113 @@ public:
 };
 static SplitRar4Test g_splitRar4;
 
+// Two volumes from different copies of a set: the first ends partway through
+// one file and the second continues another. The file across them is lost,
+// and the player is told the volumes do not belong together (St Mary
+// Portsea's demo).
+class MismatchedRar4Test final : public mp::test::Test {
+public:
+  MismatchedRar4Test() : Test("functional.archive.rar4-volumes-mismatched", Category::Functional) {}
+  using T = SolidRar4Test;
+  using S = SplitRar4Test;
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-mismatched-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string big = T::pattern(9, 60000), other = T::pattern(7, 60000);
+    const std::string xml = "<Hauptwerk>mismatched</Hauptwerk>\n";
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << S::volume(true, false,
+                     S::whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", xml) +
+                         S::file("077-F.wav", big.substr(0, 25000), 60000, 0x0002, T::crc32(big.substr(0, 25000))));
+    std::ofstream(dir / "Set.r00", std::ios::binary)
+        << S::volume(false, true,
+                     S::file("074-D.wav", other.substr(25000), 60000, 0x0001, T::crc32(other)) +
+                         S::whole("pipe2.wav", T::pattern(5, 20000)));
+
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) && arc.index(error),
+             "the set is listed: " + error);
+    error.clear();
+    bool got2 = false;
+    const bool read = arc.read(0, {mp::OrganArchive::key("077-F.wav"), mp::OrganArchive::key("pipe2.wav")},
+                               [&got2](const std::string& k, std::vector<char>&&) {
+                                 if (k == mp::OrganArchive::key("pipe2.wav")) got2 = true;
+                                 return true;
+                               },
+                               error);
+    MP_CHECK(!read, "the file across the two volumes does not read");
+    MP_CHECK(error.find("Set.r00 does not follow Set.rar: Set.rar ends partway through 077-F.wav, "
+                        "and Set.r00 continues 074-D.wav") != std::string::npos,
+             "the error names both volumes and both files: " + error);
+    MP_CHECK(got2, "the next volume's own files still read");
+    fs::remove_all(dir, ec);
+  }
+};
+static MismatchedRar4Test g_mismatchedRar4;
+
+// A volume of the right size with a bad stretch inside: its headers stop
+// making sense partway through. The files after that point are lost, and the
+// player is told which volume to download again (St Mary Portsea's demo,
+// whose .r00 was unreadable from 57.9 MB on).
+class DamagedRar4VolumeTest final : public mp::test::Test {
+public:
+  DamagedRar4VolumeTest() : Test("functional.archive.rar4-volume-damaged", Category::Functional) {}
+  using T = SolidRar4Test;
+  using S = SplitRar4Test;
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-damaged-rar4";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string big = T::pattern(9, 60000), xml = "<Hauptwerk>damaged</Hauptwerk>\n";
+    std::ofstream(dir / "Set.rar", std::ios::binary)
+        << S::volume(true, false,
+                     S::whole("OrganDefinitions\\Set.Organ_Hauptwerk_xml", xml) +
+                         S::file("big.wav", big.substr(0, 25000), 60000, 0x0002, T::crc32(big.substr(0, 25000))));
+    // The second volume: the rest of big.wav, one whole file, then a run of
+    // zeros where the next header should be, as a download leaves a stretch
+    // it never wrote.
+    std::string second = S::volume(false, true,
+                                   S::file("big.wav", big.substr(25000), 60000, 0x0001, T::crc32(big)) +
+                                       S::whole("pipe2.wav", T::pattern(5, 20000)) +
+                                       S::whole("pipe3.wav", T::pattern(6, 20000)));
+    std::ofstream(dir / "Set.r00", std::ios::binary) << second;
+
+    // Listed whole, as from a saved index; then the bad stretch, same size.
+    mp::OrganArchive arc;
+    std::string error;
+    MP_CHECK(arc.discover((dir / "Set.rar").string(), error) && arc.inspect(error) && arc.index(error),
+             "the set is listed: " + error);
+    const size_t at = second.find("pipe3.wav") - 32;  // the header of pipe3.wav
+    std::fill(second.begin() + static_cast<std::ptrdiff_t>(at), second.end(), '\0');
+    std::ofstream(dir / "Set.r00", std::ios::binary | std::ios::trunc) << second;
+    error.clear();
+    bool got2 = false;
+    const bool read = arc.read(0,
+                               {mp::OrganArchive::key("big.wav"), mp::OrganArchive::key("pipe2.wav"),
+                                mp::OrganArchive::key("pipe3.wav")},
+                               [&got2](const std::string& k, std::vector<char>&&) {
+                                 if (k == mp::OrganArchive::key("pipe2.wav")) got2 = true;
+                                 return true;
+                               },
+                               error);
+    MP_CHECK(got2, "the files before the damage read");
+    MP_CHECK(!read, "the file after the damage does not");
+    char atMb[32];
+    std::snprintf(atMb, sizeof atMb, "%.1f MB", static_cast<double>(at) / 1e6);
+    MP_CHECK(error.find(std::string("Set.r00 is damaged from ") + atMb + " on") != std::string::npos &&
+                 error.find("Download that volume again.") != std::string::npos,
+             "the error names the volume and where it breaks: " + error);
+    fs::remove_all(dir, ec);
+  }
+};
+static DamagedRar4VolumeTest g_damagedRar4Volume;
+
 // A set opened once from one disk and later from a copy on another is read
 // from the copy: its saved index follows the volumes by name and size, not
 // by the place they were first opened (Buckeburg, copied from D to C, still
@@ -12453,6 +12560,69 @@ public:
   }
 };
 static SequencerDigitsTest g_sequencerDigits;
+
+// The noise filter for learning: a failing pedalboard's stray notes of a few
+// milliseconds were learned in place of the key the player pressed. With the
+// filter on, a key counts once held a quarter second; a controller has no
+// length and is taken at once; with it off, the first press is taken as
+// before.
+class LearnNoiseFilterTest final : public mp::test::Test {
+public:
+  LearnNoiseFilterTest() : Test("functional.midi.learn-noise-filter", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    // The block size as a host reports it: the MIDI clock counts in blocks.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    juce::AudioBuffer<float> buf(2, 256);
+    // 256 frames at 48 kHz: a block is 5.3 ms, a quarter second 47 blocks.
+    auto blocks = [&](int n) {
+      for (int i = 0; i < n; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
+    };
+    mp::MidiSource heard;
+    int value = 0;
+
+    proc.setLearnNoiseFilter(true);
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 60, 0.8f));
+    blocks(1);
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 60));
+    blocks(60);
+    MP_CHECK(!proc.takeHeardMidi(heard, value) && proc.midiListening(), "a note of a few milliseconds is not learned");
+
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 62, 0.8f));
+    blocks(30);
+    MP_CHECK(!proc.takeHeardMidi(heard, value), "a key held less than a quarter second is not learned yet");
+    blocks(30);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::Note && heard.number == 62 &&
+                 heard.deviceId == 3,
+             "a key held a quarter second is");
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 62));
+    blocks(1);
+
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::controllerEvent(1, 7, 100));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ControlChange && heard.number == 7,
+             "a controller is learned at once");
+
+    proc.setLearnNoiseFilter(false);
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 64, 0.8f));
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 64));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.number == 64, "filter off: the first press, however short");
+  }
+};
+static LearnNoiseFilterTest g_learnNoiseFilter;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {

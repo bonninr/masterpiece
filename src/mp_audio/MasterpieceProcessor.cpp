@@ -678,6 +678,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // milliseconds and a block is a few.
   blockTimeMs_ += 1000.0 * static_cast<double>(getBlockSize()) /
                   (sampleRate_ > 0.0 ? sampleRate_ : 48000.0);
+  learnHeldKeys();
   midiScratch_.clear();
   midiOffsets_.clear();
   for (const auto meta : midi) {
@@ -777,6 +778,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                      " id=" + juce::String(source.number)
                : juce::String(msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
                      "=" + juce::String(source.number) + " val=" + juce::String(value)));
+
+    // The noise filter: while learning, a key is held back until it has been
+    // down a quarter second, and one let go sooner is dropped.
+    if (source.kind == MidiSourceKind::Note && learnNoiseFilter_.load(std::memory_order_acquire) &&
+        learningFrom(deviceId)) {
+      holdForLearn(source, value);
+      continue;
+    }
 
     // Listening for the MIDI window takes the press and keeps it; the
     // release that follows is swallowed too, while still listening.
@@ -1110,6 +1119,68 @@ bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
   keyboardLearn_ = 0;
   keyboardLearnLow_ = -1;
   return true;
+}
+
+bool MasterpieceProcessor::learningFrom(int deviceId) const {
+  return midiListen_.load(std::memory_order_acquire) || midiMap_.learning() || keyboardLearn_ != 0 ||
+         (deviceId > 0 && keyPick_.load(std::memory_order_acquire));
+}
+
+void MasterpieceProcessor::holdForLearn(const MidiSource& source, int value) {
+  const auto same = [&source](const HeldForLearn& h) {
+    return h.used && h.source.deviceId == source.deviceId && h.source.channel == source.channel &&
+           h.source.number == source.number;
+  };
+  if (value == 0) {
+    for (auto& h : heldForLearn_)
+      if (same(h)) h.used = false;
+    return;
+  }
+  HeldForLearn* slot = nullptr;
+  for (auto& h : heldForLearn_)
+    if (same(h)) slot = &h;
+  for (auto& h : heldForLearn_)
+    if (slot == nullptr && !h.used) slot = &h;
+  if (slot == nullptr) return;  // sixteen keys down at once is not a learn
+  *slot = {true, source, value, blockTimeMs_};
+}
+
+void MasterpieceProcessor::learnHeldKeys() {
+  const HeldForLearn* first = nullptr;
+  for (const auto& h : heldForLearn_)
+    if (h.used && blockTimeMs_ - h.sinceMs >= kLearnHoldMs && (first == nullptr || h.sinceMs < first->sinceMs))
+      first = &h;
+  if (first == nullptr) {
+    // Nothing learning any more: what was held is forgotten.
+    if (!learningFrom(1))
+      for (auto& h : heldForLearn_) h.used = false;
+    return;
+  }
+  const HeldForLearn chosen = *first;
+  for (auto& h : heldForLearn_) h.used = false;
+  if (learningFrom(chosen.source.deviceId)) learnFromPress(chosen.source, chosen.value);
+}
+
+// What a press does to whichever learn is waiting, in the order the MIDI
+// handling asks them.
+void MasterpieceProcessor::learnFromPress(const MidiSource& source, int value) {
+  if (midiListen_.load(std::memory_order_acquire)) {
+    heard_ = source;
+    heardValue_ = value;
+    midiListen_.store(false, std::memory_order_release);
+    heardReady_.store(true, std::memory_order_release);
+    return;
+  }
+  if (midiMap_.learning()) {
+    if (midiMap_.learnFrom(source)) midiMapDirty_.store(true, std::memory_order_release);
+    return;
+  }
+  if (source.deviceId > 0 && keyPick_.load(std::memory_order_acquire)) {
+    pickedChannel_.store(source.channel, std::memory_order_release);
+    keyPick_.store(false, std::memory_order_release);
+    return;
+  }
+  if (keyboardLearn_ != 0) learnKeyboardFrom(source.deviceId, source.channel, source.number);
 }
 
 int MasterpieceProcessor::registerOwnMidiInput(const juce::String& name) {
@@ -1752,6 +1823,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
+  if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
@@ -1842,6 +1914,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
+    } else if (key == "learnnoisefilter") {
+      learnNoiseFilter_.store(val.getIntValue() != 0);
     } else if (key == "cachewhileplaying") {
       cacheWhilePlaying_.store(val.getIntValue() != 0);
     } else if (key == "combinationsontop") {

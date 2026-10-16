@@ -276,6 +276,7 @@ private:
   juce::ToggleButton feedback_{TRANS("Send stop changes back to the console")};
   juce::ToggleButton cancelResets_{
       TRANS("General Cancel also puts the keyboards back on their own manuals")};
+  juce::ToggleButton noiseFilter_{TRANS("Noise filter: when learning, a key counts once held a quarter second")};
   juce::TextButton saveMap_{TRANS("Save mapping")};
   juce::TextButton clearMap_{TRANS("Clear mapping")};
   // The sequencer pistons have nothing on the console to right-click, because
