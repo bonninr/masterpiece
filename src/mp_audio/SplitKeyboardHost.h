@@ -77,6 +77,7 @@ public:
   // The keyboard read, by input name; empty: any input.
   void setSource(const std::string& inputName);
   void learn(int control) { engine_.learn(control); }
+  void panic() { engine_.panic(); }
   void clearControl(int control);
 
   // The manual a role plays on this organ, from the MIDI map; 0: none.

@@ -174,6 +174,8 @@ public:
   };
   void setPresets(const Presets& p) { presetsBox_.put(p); }
   void setTriggers(const std::array<Trigger, kControlCount>& t) { triggersBox_.put(t); }
+  // Everything the split holds let go: the Panic button.
+  void panic() { panicBox_.put(1); }
   // The next press on any input is learned for this control (-1: stop).
   void learn(int control) { learnBox_.put(control); }
   // Which input the split reads (0: any input but its own), and its own.
@@ -214,6 +216,7 @@ private:
   void setOn(bool on);
   void resoundHeld();
   void releaseAll();
+  void forgetKeys();
   void keyOn(int note, int velocity);
   void keyOff(int note);
   void sendOn(Role r, int note, int velocity);
@@ -239,6 +242,7 @@ private:
   Mailbox<Presets> presetsBox_;
   Mailbox<std::array<Trigger, kControlCount>> triggersBox_;
   Mailbox<int> learnBox_;
+  Mailbox<int> panicBox_;
   struct Devices {
     int source = 0, own = 0;
   };

@@ -501,7 +501,10 @@ public:
       x.removeFromLeft(20);
       follow_.setBounds(x);
     }
-    for (int i = 0; i < split::kMaxSplits; ++i) {
+    // Only the split points and zones in use take a row.
+    const int splits = host_.layout().splitCount;
+    laidOutSplits_ = splits;
+    for (int i = 0; i < splits; ++i) {
       auto x = row();
       x.removeFromLeft(110);
       splits_[static_cast<size_t>(i)].setBounds(x.removeFromLeft(130));
@@ -516,7 +519,7 @@ public:
       octaveHeader_.setBounds(x.removeFromLeft(110));
       semitoneHeader_.setBounds(x.removeFromLeft(110));
     }
-    for (int z = 0; z < split::kMaxZones; ++z) {
+    for (int z = 0; z <= splits; ++z) {
       const auto zi = static_cast<size_t>(z);
       auto x = row();
       zoneLabel_[zi].setBounds(x.removeFromLeft(150));
@@ -682,6 +685,7 @@ private:
 
     if (!force && l == shown_) return;
     shown_ = l;
+    if (l.splitCount != laidOutSplits_) resized();
     splitCount_.setSelectedId(l.splitCount + 1, juce::dontSendNotification);
     for (int i = 0; i < split::kMaxSplits; ++i) {
       auto& sl = splits_[static_cast<size_t>(i)];
@@ -758,6 +762,7 @@ private:
   Layout shown_;
   const OrganModel* shownModel_ = nullptr;
   int learningSplit_ = -1;
+  int laidOutSplits_ = -1;
   uint64_t learnBaseline_[2] = {};
   juce::StringArray sourceNames_;
   std::vector<Id> keyboardIds_;

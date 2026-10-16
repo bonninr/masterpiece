@@ -250,6 +250,17 @@ public:
     MP_CHECK(!r.taken, "nor the split's own input");
     r.send(0xB0, 7, 100);
     MP_CHECK(!r.taken, "the keyboard's controllers pass through");
+    o = r.send(0xB0, 123, 0);
+    MP_CHECK(!r.taken && o == std::vector<Out>({{kLower, 50, false}}),
+             "All Notes Off from the keyboard lets go of what the split holds, and passes on: " + show(o));
+    o = r.off(50);
+    MP_CHECK(o.empty(), "the key's own release then sends nothing: " + show(o));
+    r.on(48);
+    r.sk.panic();
+    o = r.block();
+    MP_CHECK(o == std::vector<Out>({{kLower, 48, false}}), "and so does the Panic button: " + show(o));
+    r.off(48);
+    r.on(50);
     r.on(72);
     r.sk.setEnabled(false);
     o = r.block();

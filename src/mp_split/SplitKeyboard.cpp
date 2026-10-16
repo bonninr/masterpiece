@@ -133,6 +133,16 @@ void SplitKeyboard::beginBlock(double nowMs) {
   }
   int on = 0;
   if (enabledBox_.take(on)) setOn(on != 0);
+  int panic = 0;
+  if (panicBox_.take(panic)) forgetKeys();
+}
+
+void SplitKeyboard::forgetKeys() {
+  releaseAll();
+  std::fill(std::begin(held_), std::end(held_), false);
+  std::fill(std::begin(raw_), std::end(raw_), false);
+  followedSplit_ = -1;
+  followUntilMs_ = -1.0;
 }
 
 void SplitKeyboard::endBlock() {
@@ -180,6 +190,13 @@ bool SplitKeyboard::feed(int device, const uint8_t* data, int size) {
 
   const bool fromSource = sourceDevice_ == 0 || device == sourceDevice_;
   const uint8_t kind = status & 0xF0;
+  // All Notes Off and All Sound Off from the keyboard let go of what the
+  // split holds too, and pass on.
+  if (fromSource && kind == 0xB0 && (d1 == 120 || d1 == 123)) {
+    if (enabled_) forgetKeys();
+    else std::fill(std::begin(raw_), std::end(raw_), false);
+    return false;
+  }
   if (!fromSource || (kind != 0x90 && kind != 0x80) || d1 > 127) return false;
   const bool press = kind == 0x90 && d2 > 0;
 

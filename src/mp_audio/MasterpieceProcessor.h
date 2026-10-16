@@ -213,7 +213,10 @@ public:
   // Asked for here, done on the audio thread: the MIDI path must not be fed
   // from the message thread, so this raises a flag that the next block acts
   // on.
-  void releaseAllKeys() { releaseAll_.store(true, std::memory_order_release); }
+  void releaseAllKeys() {
+    releaseAll_.store(true, std::memory_order_release);
+    split_.panic();
+  }
 
   // Stops in a stable order for the console: by division, then by id, so the
   // jamb does not reshuffle between loads.
