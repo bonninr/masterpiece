@@ -12560,6 +12560,69 @@ public:
   }
 };
 static SequencerDigitsTest g_sequencerDigits;
+
+// The noise filter for learning: a failing pedalboard's stray notes of a few
+// milliseconds were learned in place of the key the player pressed. With the
+// filter on, a key counts once held a quarter second; a controller has no
+// length and is taken at once; with it off, the first press is taken as
+// before.
+class LearnNoiseFilterTest final : public mp::test::Test {
+public:
+  LearnNoiseFilterTest() : Test("functional.midi.learn-noise-filter", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    // The block size as a host reports it: the MIDI clock counts in blocks.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    juce::AudioBuffer<float> buf(2, 256);
+    // 256 frames at 48 kHz: a block is 5.3 ms, a quarter second 47 blocks.
+    auto blocks = [&](int n) {
+      for (int i = 0; i < n; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
+    };
+    mp::MidiSource heard;
+    int value = 0;
+
+    proc.setLearnNoiseFilter(true);
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 60, 0.8f));
+    blocks(1);
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 60));
+    blocks(60);
+    MP_CHECK(!proc.takeHeardMidi(heard, value) && proc.midiListening(), "a note of a few milliseconds is not learned");
+
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 62, 0.8f));
+    blocks(30);
+    MP_CHECK(!proc.takeHeardMidi(heard, value), "a key held less than a quarter second is not learned yet");
+    blocks(30);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::Note && heard.number == 62 &&
+                 heard.deviceId == 3,
+             "a key held a quarter second is");
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 62));
+    blocks(1);
+
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::controllerEvent(1, 7, 100));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ControlChange && heard.number == 7,
+             "a controller is learned at once");
+
+    proc.setLearnNoiseFilter(false);
+    proc.beginMidiListen();
+    proc.pushMidi(3, juce::MidiMessage::noteOn(1, 64, 0.8f));
+    proc.pushMidi(3, juce::MidiMessage::noteOff(1, 64));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.number == 64, "filter off: the first press, however short");
+  }
+};
+static LearnNoiseFilterTest g_learnNoiseFilter;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {

@@ -797,6 +797,19 @@ public:
     cancelResetsKeyboards_.store(on);
     writeGlobalFile();
   }
+  // The noise filter for learning. A console with a failing contact sends
+  // notes of a few milliseconds that nobody played, and the first of them was
+  // learned in place of the key the player pressed. With this on, a key
+  // counts for a learn only once it has been held a quarter second; a shorter
+  // note is dropped. Controllers, program changes and system exclusive have
+  // no length and are taken at once. Off by default: some consoles' pistons
+  // send a note that lasts only a few milliseconds.
+  static constexpr double kLearnHoldMs = 250.0;
+  bool learnNoiseFilter() const { return learnNoiseFilter_.load(std::memory_order_acquire); }
+  void setLearnNoiseFilter(bool on) {
+    learnNoiseFilter_.store(on, std::memory_order_release);
+    writeGlobalFile();
+  }
   // Keep portable speakers from going to sleep (#55). A battery speaker on a
   // 3.5 mm cable switches its amplifier off after a few seconds of silence and
   // takes a second or two to wake on the next note, swallowing it. With this
@@ -1770,6 +1783,20 @@ private:
   // Keyboards moved by pistons, and where they were before (#90).
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
+  std::atomic<bool> learnNoiseFilter_{false};
+  // Keys held while learning with the noise filter on, until one has been
+  // held long enough. Audio thread only.
+  struct HeldForLearn {
+    bool used = false;
+    MidiSource source;
+    int value = 0;
+    double sinceMs = 0.0;
+  };
+  std::array<HeldForLearn, 16> heldForLearn_{};
+  bool learningFrom(int deviceId) const;
+  void holdForLearn(const MidiSource& source, int value);
+  void learnHeldKeys();
+  void learnFromPress(const MidiSource& source, int value);
   bool combinationsOnTop_ = false;
   std::atomic<bool> cacheWhilePlaying_{false};
   int releaseCutoffDb_ = -90;
