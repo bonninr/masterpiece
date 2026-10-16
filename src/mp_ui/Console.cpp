@@ -714,6 +714,19 @@ juce::String ConsoleView::pageName(int index) const {
   return juce::String(it->second.name);
 }
 
+bool ConsoleView::isPortrait(int layout) const {
+  const auto& m = proc_.organModel();
+  return layout >= 0 && layout < 4 && m.consoleWidthPx[layout] > 0 &&
+         m.consoleHeightPx[layout] > m.consoleWidthPx[layout];
+}
+
+int ConsoleView::layoutForShape(bool tall) const {
+  if (isPortrait(layout_) == tall) return layout_;
+  for (int l = 0; l < layoutCount_; ++l)
+    if (isPortrait(l) == tall) return l;
+  return layout_;
+}
+
 void ConsoleView::setLayout(int layout) {
   if (layout < 0 || layout == layout_) return;
   layout_ = layout;
