@@ -1333,11 +1333,14 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // A set that ships for several console sizes lets the player pick. Rebuilt
   // per organ, because the count is the organ's.
   layout_.clear(juce::dontSendNotification);
-  for (int i = 0; i < console_.layoutCount(); ++i)
-    layout_.addItem(i == 0 ? TRANS("Console: main")
-                           : TRANS("Console: alt %1").replace("%1", juce::String(i)),
-                    i + 1);
+  for (int i = 0; i < console_.layoutCount(); ++i) {
+    juce::String name = i == 0 ? TRANS("Console: main")
+                               : TRANS("Console: alt %1").replace("%1", juce::String(i));
+    if (console_.isPortrait(i)) name = TRANS("%1 (portrait)").replace("%1", name);
+    layout_.addItem(name, i + 1);
+  }
   layout_.setSelectedId(console_.layout() + 1, juce::dontSendNotification);
+  shapeTall_ = -1;  // the new organ's layout is chosen for the window's shape
 
   // Which manual the on-screen keys play. Named by division, because "Grand
   // Orgue" means something to a player and "channel 3" does not.
@@ -1504,6 +1507,10 @@ void MasterpieceEditor::resized() {
   // status line absorbs the difference.
   auto bar = r.removeFromTop(36);
   layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
+  // Wide enough to say "(portrait)" when the organ has a portrait layout.
+  int layoutW = 130;
+  for (int l = 1; l < console_.layoutCount(); ++l)
+    if (console_.isPortrait(l)) layoutW = 190;
   // On a narrow window -- a monitor stood on end is 1080 wide -- the buttons
   // on the right left the bar on the left too little room, and the volume
   // fader went with it (#53). Below that, the buttons take a row of their own.
@@ -1512,7 +1519,7 @@ void MasterpieceEditor::resized() {
   {
     constexpr int kFaderRowMin = 350;  // the menus, No DSP and the fader
     const int buttons = 70 + 140 + 96 + (kMobile ? 44 + 44 + 64 : 30 + 30 + 56) +
-                        (layout_.isVisible() ? 130 : 0);
+                        (layout_.isVisible() ? layoutW : 0);
     if (bar.getWidth() - buttons < kFaderRowMin) {
       auto row = bar;
       fileMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
@@ -1531,7 +1538,7 @@ void MasterpieceEditor::resized() {
   panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   saveStateButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   if (layout_.isVisible())
-    layout_.setBounds(bar.removeFromRight(130).reduced(2));
+    layout_.setBounds(bar.removeFromRight(layoutW).reduced(2));
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   // A fingertip wide on a phone or tablet.
@@ -1581,6 +1588,20 @@ void MasterpieceEditor::resized() {
   consoleView_.setVisible(showingConsole_);
   jambView_.setVisible(!showingConsole_);
   if (showingConsole_) {
+    // The layout follows the shape of the room the console has (#366): a
+    // portrait layout when it is taller than it is wide, the main one when
+    // it is wider. A layout chosen by hand holds until the shape turns.
+    if (console_.layoutCount() > 1 && !r.isEmpty()) {
+      const int tall = r.getHeight() > r.getWidth() ? 1 : 0;
+      if (tall != shapeTall_) {
+        shapeTall_ = tall;
+        const int chosen = console_.layoutForShape(tall == 1);
+        if (chosen != console_.layout()) {
+          console_.setLayout(chosen);
+          layout_.setSelectedId(chosen + 1, juce::dontSendNotification);
+        }
+      }
+    }
     // Scale the artwork to fit rather than scrolling a 1536x864 console
     // through a smaller window. JUCE routes mouse events back through the
     // transform, so drawstops stay clickable at any zoom.

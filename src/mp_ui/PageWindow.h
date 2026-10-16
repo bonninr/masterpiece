@@ -21,7 +21,9 @@ namespace mp::ui {
 // distort the case and the keys.
 class PageView : public juce::Component {
 public:
-  PageView(MasterpieceProcessor& p, int page, int layout);
+  // `followsShape`: the layout is chosen for the window's shape, a portrait
+  // one when it is taller than it is wide (#366).
+  PageView(MasterpieceProcessor& p, int page, int layout, bool followsShape);
   void resized() override;
   void paint(juce::Graphics& g) override;
   int page() const { return console_.currentPage(); }
@@ -31,6 +33,8 @@ public:
 private:
   ConsoleView console_;
   juce::Component holder_;
+  bool followsShape_ = false;
+  int shapeTall_ = -1;
 };
 
 class PageWindow : public juce::DocumentWindow {

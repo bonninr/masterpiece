@@ -59,6 +59,12 @@ public:
   int layout() const { return layout_; }
   // How many layouts this organ actually offers, counting the primary one.
   int layoutCount() const { return layoutCount_; }
+  // A layout drawn for a screen taller than it is wide: a set's portrait
+  // jambs. The definition names no layout; its size is all it says.
+  bool isPortrait(int layout) const;
+  // The layout for a view of this shape: the one shown when it suits,
+  // else the first that does, else the one shown.
+  int layoutForShape(bool tall) const;
 
   // Which display page to show, and how many there are.
   void setPage(int index);

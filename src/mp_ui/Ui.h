@@ -340,6 +340,9 @@ private:
   // Which console layout the set is drawn at. Only shown when the organ
   // declares more than one, which most do not.
   juce::ComboBox layout_;
+  // Whether the console last had a tall room (1), a wide one (0), or no
+  // shape yet (-1): the layout is chosen again only when this turns.
+  int shapeTall_ = -1;
   // Which manual the on-screen keyboard plays. It used to be hardcoded to
   // channel 1, which on an organ with separated key flow is the PEDAL — so on
   // Nancy the keys played the pedal division and the manuals were unreachable,

@@ -3,7 +3,8 @@
 
 namespace mp::ui {
 
-PageView::PageView(MasterpieceProcessor& p, int page, int layout) : console_(p) {
+PageView::PageView(MasterpieceProcessor& p, int page, int layout, bool followsShape)
+    : console_(p), followsShape_(followsShape) {
   addAndMakeVisible(holder_);
   holder_.addAndMakeVisible(console_);
   console_.setLayout(layout);
@@ -14,6 +15,17 @@ PageView::PageView(MasterpieceProcessor& p, int page, int layout) : console_(p) 
 void PageView::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff0d0f12)); }
 
 void PageView::resized() {
+  // As the main window does it: a window turned on end shows the portrait
+  // layout, and turned back the main one.
+  if (followsShape_ && console_.layoutCount() > 1 && !getLocalBounds().isEmpty()) {
+    const int tall = getHeight() > getWidth() ? 1 : 0;
+    if (tall != shapeTall_) {
+      shapeTall_ = tall;
+      const int page = console_.currentPage();
+      console_.setLayout(console_.layoutForShape(tall == 1));
+      console_.setPage(page);
+    }
+  }
   const auto art = console_.artworkBounds();
   if (art.getWidth() <= 0 || art.getHeight() <= 0) {
     holder_.setBounds(getLocalBounds());
@@ -38,7 +50,7 @@ PageWindow::PageWindow(MasterpieceProcessor& p, int page, int layout, const juce
                        int ownLayout)
     : juce::DocumentWindow(organName, juce::Colour(0xff15171c), juce::DocumentWindow::allButtons),
       layout_(ownLayout) {
-  auto* view = new PageView(p, page, ownLayout >= 0 ? ownLayout : layout);
+  auto* view = new PageView(p, page, ownLayout >= 0 ? ownLayout : layout, ownLayout < 0);
   view_ = view;
   setName(view->pageName() + " - " + organName);
   setUsingNativeTitleBar(true);
