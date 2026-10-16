@@ -15396,6 +15396,88 @@ public:
 };
 static PanelsTest g_panels;
 
+// A panel of an organ drawn as Bethesda is (#314): each coupler drawn twice,
+// on two custom pages, and itself nowhere; a stop's knob drawn as a copy;
+// names with categories in front; more pistons declared than drawn.
+class PanelCopiesTest final : public mp::test::Test {
+public:
+  PanelCopiesTest() : Test("functional.ui.panel-copies", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool drawn) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name +
+             "</Name><Latching>Y</Latching><Clickable>" + (drawn ? "Y" : "N") + "</Clickable>" +
+             (drawn ? "<Disp_ImageSetInstanceID>" + std::to_string(id) + "</Disp_ImageSetInstanceID>" : std::string()) +
+             "</Switch>";
+    };
+    auto both = [](int a, int b) {
+      std::string out;
+      for (auto [from, to] : {std::pair{a, b}, std::pair{b, a}})
+        out += "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+               std::to_string(to) + "</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+               "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>2</DisengageLinkActionCode>"
+               "</SwitchLinkage>";
+      return out;
+    };
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>314</Identification_UniqueOrganID>"
+        "<Identification_Name>Copies</Identification_Name></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>1</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\"><KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>1</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumberIncrement>12</MIDINoteNumberIncrement>"
+        "<ConditionSwitchID>1006</ConditionSwitchID></KeyAction></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(1006, "Coupler: Great 4", false) + sw(10266, "CustPg1_Coupler 1006", true) +
+        sw(10267, "CustPg2_Coupler 1006", true) + sw(12, "StopNode_2224", false) + sw(2224, "Stop: Grt: Principal 8", false) +
+        sw(10133, "CustPg1_Stop 2224", true) + sw(501, "Comb piston: General 01", true) +
+        sw(502, "Comb piston: General 02", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + both(10266, 1006) + both(10267, 1006) +
+        both(10133, 2224) +
+        "<SwitchLinkage><SourceSwitchID>2224</SourceSwitchID><DestSwitchID>12</DestSwitchID>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged><EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\"><Stop><StopID>1</StopID><Name>Stop: Grt: Principal 8</Name>"
+        "<DivisionID>1</DivisionID><ControllingSwitchID>12</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"Combination\">"
+        "<Combination><CombinationID>101</CombinationID><Name>General 01</Name><CombinationTypeCode>101</CombinationTypeCode>"
+        "<ActivatingSwitchID>501</ActivatingSwitchID></Combination>"
+        "<Combination><CombinationID>102</CombinationID><Name>General 02</Name><CombinationTypeCode>102</CombinationTypeCode>"
+        "<ActivatingSwitchID>502</ActivatingSwitchID></Combination>"
+        "</ObjectList></Hauptwerk>";
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-panel-copies");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("copies.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      std::vector<std::string> great, pistons;
+      for (const auto& s : mp::ui::panelSections(proc))
+        for (const auto& e : s.elements) {
+          const std::string label = e.name + (e.footage.empty() ? "" : " " + e.footage);
+          (s.kind == mp::ui::PanelSection::Kind::Presets ? pistons : great).push_back(label);
+        }
+      auto count = [&](const std::string& label) { return std::count(great.begin(), great.end(), label); };
+      std::string all;
+      for (const auto& g : great) all += " [" + g + "]";
+      MP_CHECK(count("Great 4") == 1, "the coupler drawn twice is one button, named as the organ names it:" + all);
+      MP_CHECK(count("Principal 8") == 1, "the stop is named without its categories, once:" + all);
+      MP_CHECK(all.find("CustPg") == std::string::npos, "and no copy shows its internal name:" + all);
+      MP_CHECK(pistons.size() == 1 && pistons[0] == "General 01",
+               "of two generals declared, the one drawn is listed: " + std::to_string(pistons.size()));
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static PanelCopiesTest g_panelCopies;
+
 // The Log tab's checks, the text a phone or tablet player sends with a report
 // (#197): the folders Masterpiece writes to, the audio, the organ.
 class DiagnosticsReportTest final : public mp::test::Test {
