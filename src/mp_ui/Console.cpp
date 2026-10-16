@@ -184,6 +184,7 @@ void ConsoleView::rebuild() {
     item.imageSetId = inst.imageSetFor(drawLayout_);
     item.defaultIndex = inst.defaultImageIndex > 0 ? inst.defaultImageIndex : 1;
     item.layer = inst.layer;
+    item.ownPlace = drawLayout_ == 0 || inst.hasLayout(drawLayout_);
 
     const auto sit = switchByInstance.find(inst.instanceId);
 
@@ -892,7 +893,10 @@ void ConsoleView::paint(juce::Graphics& g) {
   // they were at load keep their place in the order.
   for (int pass = 0; pass < 2; ++pass)
   for (const auto& item : items_) {
-    const bool moved = item.switchId != 0 && item.loadedIndex >= 0 &&
+    // A stop drawn at its primary place in an alternate layout keeps its
+    // place in the order: lifted, its primary picture showed through the
+    // portrait jamb of St John Upper Norwood beside the portrait one (#308).
+    const bool moved = item.switchId != 0 && item.ownPlace && item.loadedIndex >= 0 &&
                        frameIndexFor(item) != item.loadedIndex;
     if (moved != (pass == 1)) continue;
     const juce::Image* img = imageFor(item.imageSetId, frameIndexFor(item));

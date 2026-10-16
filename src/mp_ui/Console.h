@@ -104,6 +104,10 @@ private:
     // The frame shown when the organ came up. A control showing another one
     // is painted over everything else (see paint()); -1 before it is known.
     int loadedIndex = -1;
+    // Drawn where the layout shown puts it. An instance a set gives no place
+    // in an alternate layout is drawn at its primary place, under that
+    // layout's own artwork, and must stay there when its stop moves (#308).
+    bool ownPlace = true;
     // The frame last seen by the timer, which repaints this item alone when
     // it differs; -1 before the first look.
     int shownIndex = -1;
