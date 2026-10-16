@@ -4886,12 +4886,17 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Coral Pipes' sets wire their Tutti into every stop node beside the stop's
   // own switch, one level closer than the stop's knob: taken for that knob,
   // drawing any stop pulled the Tutti (#211).
+  // Each node counts once per switch: Portsea wires every knob into its
+  // stop's node twice, engaged and disengaged, around its stop delay, and
+  // counted per linkage every knob there passed for an aid (#366).
   std::unordered_map<Id, int> controlsOf;
   for (const auto& [sid, stop] : model_.stops)
     if (stop.controllingSwitchId != 0) ++controlsOf[stop.controllingSwitchId];
   std::unordered_map<Id, int> stopsFed;
+  std::set<std::pair<Id, Id>> wired;
   for (const auto& l : model_.switchLinkages)
-    if (l.sourceSwitchId != l.destSwitchId && controlsOf.count(l.destSwitchId) != 0)
+    if (l.sourceSwitchId != l.destSwitchId && controlsOf.count(l.destSwitchId) != 0 &&
+        wired.emplace(l.sourceSwitchId, l.destSwitchId).second)
       stopsFed[l.sourceSwitchId] += controlsOf[l.destSwitchId];
   auto isAid = [&stopsFed](Id id) {
     const auto it = stopsFed.find(id);

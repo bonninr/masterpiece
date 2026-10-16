@@ -13979,6 +13979,99 @@ public:
 };
 static TuttiBesideStopTest g_tuttiBesideStop;
 
+// A knob wired into its stop's node twice, as Portsea wires every stop around
+// its stop delay (#366): once to draw it while the delay is off, once to push
+// it in. Counted per linkage, each knob seemed to feed two stops and was taken
+// for a registration aid: no stop had a knob, the player's pistons held no
+// stops, and the General cancel pushed none in. The delay switch, wired into
+// every node, is still the aid.
+class KnobWiredTwiceTest final : public mp::test::Test {
+public:
+  KnobWiredTwiceTest() : Test("functional.control.knob-wired-twice", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool clickable, int image) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name +
+             "</Name><Latching>Y</Latching><Clickable>" + (clickable ? "Y" : "N") + "</Clickable>" +
+             (image ? "<Disp_ImageSetInstanceID>" + std::to_string(image) + "</Disp_ImageSetInstanceID>"
+                    : std::string()) +
+             "</Switch>";
+    };
+    auto link = [](int from, int to, int condition, bool fromEngaged, bool conditionEngaged, int engage,
+                   int disengage) {
+      return "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+             std::to_string(to) + "</DestSwitchID><ConditionSwitchID>" + std::to_string(condition) +
+             "</ConditionSwitchID><SourceSwitchLinkIfEngaged>" + (fromEngaged ? "Y" : "N") +
+             "</SourceSwitchLinkIfEngaged><ConditionSwitchLinkIfEngaged>" + (conditionEngaged ? "Y" : "N") +
+             "</ConditionSwitchLinkIfEngaged><EngageLinkActionCode>" + std::to_string(engage) +
+             "</EngageLinkActionCode><DisengageLinkActionCode>" + std::to_string(disengage) +
+             "</DisengageLinkActionCode></SwitchLinkage>";
+    };
+    // Per stop: knob, delay node, action node; Portsea's four linkages.
+    auto stop = [&](int knob, int delay, int node) {
+      return link(delay, node, 5016, true, true, 1, 2) + link(knob, node, 5016, true, false, 1, 2) +
+             link(5016, node, knob, true, true, 1, 7) + link(knob, node, delay, false, false, 2, 7);
+    };
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>366</Identification_UniqueOrganID>"
+        "<Identification_Name>Knob wired twice</Identification_Name>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID>"
+        "<Name>Choir</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(5016, "Stop Delay", true, 1) + sw(1037, "CH Harmonic Piccolo 2", true, 2) +
+        sw(980036, "Stop 37 delay node", false, 0) + sw(990036, "Stop 37 action node", false, 0) +
+        sw(1038, "CH Clarionet 8", true, 3) + sw(980037, "Stop 38 delay node", false, 0) +
+        sw(990037, "Stop 38 action node", false, 0) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + stop(1037, 980036, 990036) +
+        stop(1038, 980037, 990037) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1037</StopID><Name>1037_Harmonic Piccolo 2</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>990036</ControllingSwitchID></Stop>"
+        "<Stop><StopID>1038</StopID><Name>1038_Clarionet 8</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>990037</ControllingSwitchID></Stop>"
+        "</ObjectList></Hauptwerk>";
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-knob-wired-twice");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("portsea.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+
+      MP_CHECK(proc.playerSwitchFor(990037) == 1038 && proc.playerSwitchFor(990036) == 1037,
+               "each stop's node leads to its own knob");
+      int stops = 0;
+      for (const auto& e : proc.playerCombinations().elements())
+        if (e.kind == mp::PlayerCombinations::ElementKind::Stop) ++stops;
+      MP_CHECK(stops == 2, "both stops are registration");
+
+      proc.setStopEngaged(1038, true);
+      proc.processBlock(buf, none);
+      MP_CHECK(proc.stopEngaged(1038) && proc.switchEngaged(1038), "drawing the stop moves its knob");
+      MP_CHECK(!proc.switchEngaged(5016) && !proc.stopEngaged(1037), "and nothing else");
+
+      proc.pressGeneralCancel();
+      proc.processBlock(buf, none);
+      MP_CHECK(!proc.stopEngaged(1038) && !proc.switchEngaged(1038),
+               "the General cancel pushes the stop and its knob in");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static KnobWiredTwiceTest g_knobWiredTwice;
+
 // Which releases read from a file's marker hold nothing to play (#218). Only
 // a file whose loop runs to its last frame and that has no marker: 0.7.6 also
 // counted a file with no loop at all, which is what a separate release
