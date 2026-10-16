@@ -71,6 +71,7 @@ MasterpieceProcessor::MasterpieceProcessor()
   : juce::AudioProcessor(juce::AudioProcessor::BusesProperties()
       .withOutput("Out", juce::AudioChannelSet::stereo(), true)),
     apvts_(*this, nullptr, "MP", makeLayout()) {
+  extremesDue_.reserve(16);  // a manual each, at most
   // The split keyboard's input, before any saved mapping names it (#358).
   split_.attach(registerMidiDevice(SplitKeyboardHost::kInputName),
                 [this] { midiMapDirty_.store(true, std::memory_order_release); });
@@ -678,6 +679,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // milliseconds and a block is a few.
   blockTimeMs_ += 1000.0 * static_cast<double>(getBlockSize()) /
                   (sampleRate_ > 0.0 ? sampleRate_ : 48000.0);
+  // A chord that has settled: its top and bottom keys take the melody and
+  // bass couplers now.
+  if (!extremesDue_.empty()) settleExtremes();
   learnHeldKeys();
   midiScratch_.clear();
   midiOffsets_.clear();
@@ -2629,7 +2633,31 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   setKeyDown(it->second.keyboard, it->second.playedNote, false);
   const Id releasedOn = it->second.keyboard;
   soundingNotes_.erase(it);
-  reflowExtremes(releasedOn);
+  scheduleExtremes(releasedOn);
+}
+
+void MasterpieceProcessor::scheduleExtremes(Id keyboard) {
+  if (!couplers_.hasExtremeActions()) return;
+  const double due = blockTimeMs_ + kExtremeSettleMs;
+  for (auto& [kb, when] : extremesDue_)
+    if (kb == keyboard) {
+      when = due;
+      return;
+    }
+  extremesDue_.emplace_back(keyboard, due);  // reserved at construction
+}
+
+void MasterpieceProcessor::settleExtremes() {
+  for (size_t i = 0; i < extremesDue_.size();) {
+    if (extremesDue_[i].second > blockTimeMs_) {
+      ++i;
+      continue;
+    }
+    const Id keyboard = extremesDue_[i].first;
+    extremesDue_[i] = extremesDue_.back();
+    extremesDue_.pop_back();
+    reflowExtremes(keyboard);
+  }
 }
 
 int MasterpieceProcessor::extremeFor(Id keyboard, int midiNote) const {
@@ -2885,7 +2913,9 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
 
   const uint64_t noteId = nextNoteId_++;
 
-  const int extreme = extremeFor(keyboard, midiNote);
+  // Neither the top nor the bottom yet: that is decided once the chord has
+  // settled (settleExtremes), so a melody coupler takes the top note only.
+  const int extreme = 0;
   const bool anyStarted =
       !engagedStops_.empty() &&
       startVoicesForKey(keyboard, midiNote, velocity, noteId, engagedStops_, extreme);
@@ -2900,7 +2930,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   setKeyDown(keyboard, playedNote, true);
   // The keys already held on this manual: one of them was the top or the
   // bottom of the chord until now.
-  reflowExtremes(keyboard);
+  scheduleExtremes(keyboard);
 
   if (engagedStops_.empty()) {
     if (logMidi_.load(std::memory_order_acquire))

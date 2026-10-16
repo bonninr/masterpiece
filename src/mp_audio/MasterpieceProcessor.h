@@ -1931,6 +1931,14 @@ private:
   // A key went down or up on this keyboard: the keys still held there whose
   // standing changed gain or lose what the bass and melody couplers carry.
   void reflowExtremes(Id keyboard);
+  // A chord's keys arrive a few milliseconds apart, and each in turn was the
+  // top of it: a melody coupler played them one after the other, an arpeggio,
+  // and again on the way up (#355). The top and the bottom are taken again
+  // once a manual's keys have been still this long.
+  static constexpr double kExtremeSettleMs = 25.0;
+  void scheduleExtremes(Id keyboard);
+  void settleExtremes();
+  std::vector<std::pair<Id, double>> extremesDue_;  // keyboard, when
   std::unordered_map<int, HeldNote> soundingNotes_;
   // Which keys are down on which manual, by manual id (low six bits) and key.
   // Written on the audio thread where a note starts or stops on a manual,
