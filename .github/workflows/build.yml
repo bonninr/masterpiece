@@ -424,6 +424,38 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+  # Linux as a Flatpak (discussion #237): one bundle for every distribution,
+  # run in a sandbox. Built in the freedesktop SDK's own container from
+  # packaging/flatpak; the bundle installs with "flatpak install".
+  flatpak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/io.github.bonninr.Masterpiece.yml
+          bundle: masterpiece-linux-x86_64.flatpak
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/*.yml') }}
+          # Uploaded below, under the name the release looks for.
+          upload-artifact: false
+
+      - name: Check the bundle
+        run: |
+          test -s masterpiece-linux-x86_64.flatpak
+          ls -l masterpiece-linux-x86_64.flatpak
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masterpiece-linux-x86_64-flatpak
+          path: masterpiece-linux-x86_64.flatpak
+          if-no-files-found: error
+          retention-days: 3
+
   # iOS: the app for the simulator, unsigned. No release ships it yet, so a
   # tagged release skips it; on pull requests it keeps the iOS build honest.
   ios:
