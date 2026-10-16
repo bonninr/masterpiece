@@ -70,6 +70,8 @@ countries: nl be sr
 "Set turns off after storing" = "Set gaat uit na het opslaan"
 
 # src/mp_ui/Console.cpp
+"%1 is not available" = "%1 is niet beschikbaar"
+"%1 is not loaded: chosen in Organ settings, Stops" = "%1 is niet geladen: gekozen bij Orgelinstellingen, Registers"
 "Page %1" = "Pagina %1"
 "This organ ships no console artwork on this page." = "Dit orgel levert op deze pagina geen speeltafelafbeeldingen mee."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "De afbeeldingen van de speeltafel konden niet worden geladen (%1 afbeeldingen). Controleer OrganInstallationPackages."

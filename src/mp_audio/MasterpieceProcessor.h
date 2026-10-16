@@ -988,6 +988,17 @@ public:
   // console dims it so it is not taken for a broken one.
   bool stopLoaded(Id stopId) const { return unloadedStops_.count(stopId) == 0; }
   const std::unordered_set<Id>& unloadedSwitches() const { return unloadedSwitches_; }
+  // The stop a drawn switch stands for when that stop makes no sound, and
+  // why: its ranks ship no pipes in this set (a demo's locked stops), or the
+  // player left it out of the load. For the console to say so.
+  struct Unavailable {
+    Id stopId = 0;
+    bool noPipes = false;
+  };
+  const Unavailable* unavailableFor(Id switchId) const {
+    const auto it = unavailable_.find(switchId);
+    return it == unavailable_.end() ? nullptr : &it->second;
+  }
   // Memory figures before a load (SampleLibrary::shapeJobs and friends):
   // the jobs from the model on the message thread, readShape() on a worker,
   // and the bytes at whatever the engine settings are now.
@@ -1652,6 +1663,7 @@ private:
   std::set<Id> ranksLeftOut_;
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;
+  std::unordered_map<Id, Unavailable> unavailable_;
   std::vector<BusId> mixBusOrder_;              // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
@@ -1959,6 +1971,11 @@ private:
   // Only ranks that no StopRank reaches are indexed. A pipe reached both ways
   // would otherwise speak twice.
   void buildPalletIndex();
+  // The stops whose switch leads, through the wiring, to the pallet of a
+  // pipe the set ships (#304): Nowa Ruda names no rank under any stop, and
+  // its stops reach their pipes only that way.
+  void findPalletStops();
+  std::unordered_set<Id> palletStops_;
   void fireMovedStages();
   // False while a load is rebuilding the stage table; see loadOrgan().
   std::atomic<bool> stagesReady_{false};

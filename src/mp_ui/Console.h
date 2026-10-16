@@ -31,9 +31,11 @@ namespace mp::ui {
 void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                          juce::Rectangle<int> area, std::function<void()> after);
 
-class ConsoleView : public juce::Component, private juce::Timer {
+class ConsoleView : public juce::Component, public juce::TooltipClient, private juce::Timer {
 public:
   explicit ConsoleView(MasterpieceProcessor& p);
+  // Over a stop that makes no sound: its name, and why.
+  juce::String getTooltip() override;
 
   // Rebuild from the current model. Safe to call on every organ load.
   void rebuild();

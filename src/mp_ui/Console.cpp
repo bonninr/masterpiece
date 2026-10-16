@@ -933,10 +933,15 @@ void ConsoleView::paint(juce::Graphics& g) {
       g.drawImageAt(*img, item.bounds.getX(), item.bounds.getY(), false);
     }
     // A stop left out of the load still draws and moves, and makes no sound:
-    // veiled, so it is not taken for a broken one.
+    // veiled, so it is not taken for a broken one. In the picture's own
+    // shape: a veil over its whole rectangle laid a dark square around every
+    // round knob (#304). A tooltip says why (getTooltip).
     if (item.switchId != 0 && proc_.unloadedSwitches().count(item.switchId) != 0) {
       g.setColour(juce::Colours::black.withAlpha(0.55f));
-      g.fillRect(item.bounds);
+      if (item.tiled || generatedWood_.count(item.imageSetId) != 0)
+        g.fillRect(item.bounds);
+      else
+        g.drawImageAt(*img, item.bounds.getX(), item.bounds.getY(), true);
     }
     ++drawn;
   }
@@ -1064,6 +1069,13 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       return;
     }
 
+    // A stop with no pipes in this set is not drawn from the console: the
+    // click is refused, and its tooltip says it is not available. One drawn
+    // by other means can still be pushed in.
+    if (const auto* why = proc_.unavailableFor(it->switchId);
+        why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(it->switchId))
+      return;
+
     // A button the organ marks momentary -- Load, Save, Reset, a piston --
     // is pressed while the mouse is down and let go with it (#53). It used to
     // toggle like a drawstop and stay in, looking pressed until clicked again.
@@ -1088,6 +1100,24 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     proc_.midiMap().cancelLearn();
     repaint();
   }
+}
+
+// What a stop that makes no sound is, said over its knob: on a demo set the
+// locked stops are drawn and dimmed, and nothing else says why.
+juce::String ConsoleView::getTooltip() {
+  const auto p = getMouseXYRelative();
+  for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
+    if (it->switchId == 0 || !it->hitBounds.contains(p)) continue;
+    const auto* why = proc_.unavailableFor(it->switchId);
+    if (why == nullptr) return {};
+    juce::String name;
+    for (const auto& e : proc_.stopList())
+      if (e.stopId == why->stopId) name = juce::String::fromUTF8(e.name.c_str());
+    if (name.isEmpty()) return {};
+    return why->noPipes ? TRANS("%1 is not available").replace("%1", name)
+                        : TRANS("%1 is not loaded: chosen in Organ settings, Stops").replace("%1", name);
+  }
+  return {};
 }
 
 void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {

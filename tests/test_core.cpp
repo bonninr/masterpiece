@@ -14072,6 +14072,83 @@ public:
 };
 static KnobWiredTwiceTest g_knobWiredTwice;
 
+// A stop that names no rank and reaches its pipes through the pallet wiring,
+// as all of Nowa Ruda's do (#304), plays: it was counted as shipping no pipes,
+// and every copy of it on the jambs was veiled. A stop that reaches nothing
+// is not available: no veil, and the console refuses to draw it.
+class PalletStopAvailableTest final : public mp::test::Test {
+public:
+  PalletStopAvailableTest() : Test("functional.control.pallet-stop-available", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool latching) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name + "</Name><Latching>" +
+             (latching ? "Y" : "N") + "</Latching></Switch>";
+    };
+    auto link = [](int from, int to) {
+      return "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+             std::to_string(to) +
+             "</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+             "<EngageLinkActionCode>1</EngageLinkActionCode>"
+             "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>";
+    };
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>304</Identification_UniqueOrganID>"
+        "<Identification_Name>Pallet stops</Identification_Name>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID>"
+        "<Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(101, "Principal 8", true) + sw(102, "Piccolo 2", true) + sw(120, "Piccolo 2 (jamb)", true) +
+        sw(555, "Pallet C4", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + link(101, 555) + link(102, 120) +
+        link(120, 102) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Principal 8</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>2</StopID><Name>Piccolo 2</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>71</PipeID><RankID>7</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>555</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "</ObjectList></Hauptwerk>";
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-pallet-stop-available");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("pallet.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      bool principal = false, piccolo = true;
+      for (const auto& e : proc.stopList()) {
+        if (e.stopId == 1) principal = e.playable;
+        if (e.stopId == 2) piccolo = e.playable;
+      }
+      MP_CHECK(principal, "a stop wired to its pipe's pallet plays, with no rank named");
+      MP_CHECK(!piccolo, "a stop wired to no pipe does not");
+      MP_CHECK(proc.unavailableFor(101) == nullptr, "the playing stop is available");
+      const auto* own = proc.unavailableFor(102);
+      const auto* copy = proc.unavailableFor(120);
+      MP_CHECK(own != nullptr && own->noPipes && own->stopId == 2 && copy != nullptr && copy->noPipes &&
+                   copy->stopId == 2,
+               "the silent stop and its copy on the jamb are named as not available");
+      MP_CHECK(proc.unloadedSwitches().count(102) == 0 && proc.unloadedSwitches().count(120) == 0,
+               "and neither is veiled");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static PalletStopAvailableTest g_palletStopAvailable;
+
 // Which releases read from a file's marker hold nothing to play (#218). Only
 // a file whose loop runs to its last frame and that has no marker: 0.7.6 also
 // counted a file with no loop at all, which is what a separate release
