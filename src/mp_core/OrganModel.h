@@ -250,6 +250,17 @@ struct KeyboardKeyRef {
   int midiNote = 60;
 };
 
+// A note of a division played by a switch: while `switchId` is engaged the
+// division sounds `midiNote` through its drawn stops, as a key action would.
+// Hill, Burton-Berlin reaches its divisions only this way: each key's switch
+// drives its note's input, and a unison off is the condition on that link
+// (#345).
+struct DivisionInput {
+  Id divisionId = 0;
+  Id switchId = 0;
+  int midiNote = 60;
+};
+
 struct KeyAction {
   Id id = 0;
   int sourceDivision = 0, destDivision = 0;
@@ -847,6 +858,7 @@ struct OrganModel {
   // Switch id -> the key it is. Keyed by switch because that is what a console
   // click arrives as.
   std::unordered_map<Id, KeyboardKeyRef> keyboardKeys;
+  std::vector<DivisionInput> divisionInputs;
   std::unordered_map<Id, TextStyle> textStyles;
   std::unordered_map<Id, Combination> combinations;
   std::unordered_map<Id, Enclosure> enclosures;
