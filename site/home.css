@@ -251,6 +251,13 @@ pre code { font-size: 14px; }
 
 /* A gallery console, centred at half the screen, lifted off the page. */
 .zoom { padding: 0; border: 0; background: none; overflow: visible; max-width: none; max-height: none; }
+/* The dialog covers the screen and centres the picture both ways; a click on
+   the dialog itself is a click outside the picture. */
+.zoom[open] {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.zoom-frame { position: relative; }
 .zoom::backdrop { background: rgba(8, 9, 12, 0.5); backdrop-filter: blur(3px); }
 .zoom img {
   display: block; width: auto; height: auto; max-width: 50vw; max-height: 50vh; border-radius: 6px;
