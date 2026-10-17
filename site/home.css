@@ -113,10 +113,10 @@ section.deep { background: var(--surface-deep); }
 .frame img { width: 100%; height: auto; }
 .frame .bar {
   display: flex; justify-content: space-between; gap: 16px;
-  padding: 13px 18px; border-top: 1px solid var(--line);
-  font: 13px/1.4 var(--mono); color: var(--subtle);
+  padding: 12px 18px; border-top: 1px solid var(--line);
+  font: 14px/1.45 var(--sans); color: var(--muted);
 }
-.frame .bar a { white-space: nowrap; }
+.frame .bar a { white-space: nowrap; font-weight: 500; }
 .hero .frame { margin-right: -120px; }
 
 /* One organ in both formats, side by side, each labelled over its console. */
@@ -129,7 +129,7 @@ section.deep { background: var(--surface-deep); }
 }
 .duo .tag b { display: block; font-size: 15px; font-weight: 600; color: var(--accent); }
 .duo .tag code { font: 12px var(--mono); color: var(--muted); }
-.duo-caption { margin-top: 14px; font: 13px/1.5 var(--mono); color: var(--subtle); }
+.duo-caption { margin-top: 14px; font: 14px/1.5 var(--sans); color: var(--muted); }
 
 .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-top: 88px; padding: 32px 0 64px; border-top: 1px solid var(--line); }
 .step h3 { margin: 0 0 6px; }
@@ -182,7 +182,7 @@ a.row:hover .arrow { color: var(--accent); }
 .spec sup { font-size: 0.75em; color: var(--accent); margin-left: 2px; }
 .notes { margin: 18px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.55; color: var(--subtle); }
 .notes li { margin-top: 6px; padding-left: 4px; }
-.notes li::marker { font: 12px var(--mono); color: var(--accent); }
+.notes li::marker { font-size: 12px; color: var(--accent); }
 
 /* A comparison table: one measure per column, the best row lit. */
 .compare-wrap { margin-top: 40px; overflow-x: auto; }
