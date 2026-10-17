@@ -651,7 +651,7 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     ShapeJob job;
     job.sampleId = id;
     job.releaseOnly = releaseOnly;
-    const auto path = resolvePath(organRootDir, ref.fileName, ref.installationPackageId);
+    const auto path = resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId);
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
     job.wavpack = ext == ".wv";
@@ -852,7 +852,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       }
 
       const auto path = resolveIgnoringCase(
-          resolvePath(organRootDir, ref.fileName, ref.installationPackageId));
+          resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId));
       std::error_code ec;
       if (!std::filesystem::exists(path, ec)) {
         std::lock_guard<std::mutex> lock(resultMutex);

@@ -227,6 +227,10 @@ public:
   // Such samples are always resident -- there is no file to stream a tail
   // from. Null for an ordinary organ.
   void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
+  // Packages installed somewhere else: their samples are read from that
+  // folder's OrganInstallationPackages (a composite definition, #289). The
+  // others stay under the organ's own root.
+  void setPackageRoots(std::unordered_map<Id, std::string> roots) { packageRoots_ = std::move(roots); }
 
   // Memory figures BEFORE a load, from file sizes and WAV headers, without
   // decoding anything. In three steps so the slow one -- reading thousands of
@@ -298,6 +302,11 @@ private:
                  LoadProgress* progress = nullptr) const;
 
   std::shared_ptr<const OrganArchive> archive_;
+  std::unordered_map<Id, std::string> packageRoots_;
+  const std::string& rootFor(const std::string& organRoot, Id package) const {
+    const auto it = packageRoots_.find(package);
+    return it == packageRoots_.end() ? organRoot : it->second;
+  }
   std::string cacheDir_;
   std::string cacheOrganId_;
   std::string cacheOdfStamp_;

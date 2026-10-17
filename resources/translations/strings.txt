@@ -331,6 +331,9 @@ countries: gb us
 "Edit" = "Edit"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Package folder"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "A composite organ looks here, and in the folders directly in it, for the organs it plays."
+"Where are packages kept?" = "Where are packages kept?"
 "Memory profile" = "Memory profile"
 "Best quality - 24-bit, hold everything" = "Best quality - 24-bit, hold everything"
 "Recommended - 16-bit, stream releases" = "Recommended - 16-bit, stream releases"
@@ -642,6 +645,14 @@ countries: gb us
 "Scala file..." = "Scala file..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "A package this organ plays is missing"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading."
+"no name given" = "no name given"
+"Choose an archive..." = "Choose an archive..."
+"Choose a folder..." = "Choose a folder..."
+"Play without it" = "Play without it"
+"The folder that holds the package" = "The folder that holds the package"
+"The package's archive" = "The package's archive"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it."
 "Show the log" = "Show the log"
 "Not loaded: chosen in Organ settings, Stops" = "Not loaded: chosen in Organ settings, Stops"
