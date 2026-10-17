@@ -188,7 +188,7 @@ a.row:hover .arrow { color: var(--accent); }
 .compare-wrap { margin-top: 40px; overflow-x: auto; }
 .compare { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
 .compare caption { caption-side: top; text-align: left; padding-bottom: 14px; font-size: 14px; color: var(--muted); }
-.compare th { padding: 0 16px 12px 0; text-align: left; font: 12px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--subtle); border-bottom: 1px solid var(--line); }
+.compare th { padding: 0 16px 12px 0; text-align: left; font-size: 14px; font-weight: 500; color: var(--subtle); border-bottom: 1px solid var(--line); }
 .compare td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
 .compare .num { text-align: right; white-space: nowrap; }
 .compare td.num { color: var(--ink); }
@@ -197,7 +197,7 @@ a.row:hover .arrow { color: var(--accent); }
 
 .spec { width: 100%; border-collapse: collapse; font-size: 15px; }
 .spec td { padding: 13px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--muted); }
-.spec td:first-child { width: 34%; padding-right: 24px; font: 13px/1.9 var(--mono); color: var(--subtle); text-transform: uppercase; letter-spacing: 0.06em; }
+.spec td:first-child { width: 34%; padding-right: 24px; font-weight: 500; color: var(--subtle); }
 .spec tr:first-child td { border-top: 1px solid var(--line); }
 
 pre { margin: 28px 0 0; padding: 18px 22px; background: var(--surface-deep); border: 1px solid var(--line); border-radius: 3px; overflow-x: auto; }
