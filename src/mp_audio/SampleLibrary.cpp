@@ -125,6 +125,117 @@ std::filesystem::path resolveIgnoringCase(const std::filesystem::path& wanted) {
   return mp::resolvePathIgnoringCase(wanted);
 }
 
+// Stand-ins for the format's own standard components (installation package 1),
+// which come with the program that plays the format and with no sample set:
+// generic key-action clicks, stop-action thumps and a blower. A set that names
+// them -- a composite definition borrows them for its key and stop noises --
+// would otherwise make no mechanical sound at all. Each is made once, kept in
+// `dir`, and loaded as any sample is. A tremulant waveform in that package is
+// not a sound and is not asked for.
+//
+// Returns the file made, or an empty path when the name is not one of those.
+std::filesystem::path standardNoiseFor(const std::string& fileName, const juce::File& dir) {
+  std::string n = fileName;
+  std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return std::tolower(c); });
+  // Spaces, underscores and the like differ from set to set.
+  std::string squashed;
+  for (unsigned char c : n)
+    if (std::isalnum(c)) squashed.push_back(static_cast<char>(c));
+  enum class Kind { Blower, Stop, Key, None };
+  const Kind kind = squashed.find("blower") != std::string::npos      ? Kind::Blower
+                    : squashed.find("stopaction") != std::string::npos ? Kind::Stop
+                    : squashed.find("keyaction") != std::string::npos  ? Kind::Key
+                                                                       : Kind::None;
+  if (kind == Kind::None) return {};
+  // Each file its own noise, so the keys do not all click alike.
+  uint32_t seed = 2166136261u;
+  for (unsigned char c : n) seed = (seed ^ c) * 16777619u;
+  const char* stem = kind == Kind::Blower ? "blower" : kind == Kind::Stop ? "stop" : "key";
+  const juce::File out = dir.getChildFile(juce::String(stem) + "-" + juce::String::toHexString(static_cast<int>(seed)) + ".wav");
+
+  // One maker at a time: the loading threads may ask for the same file.
+  static std::mutex making;
+  std::lock_guard<std::mutex> lock(making);
+  if (out.existsAsFile()) return out.getFullPathName().toStdString();
+  if (!dir.createDirectory()) return {};
+
+  constexpr double rate = 48000.0;
+  const bool release = n.find("release") != std::string::npos || n.find("off") != std::string::npos ||
+                       n.find("disengage") != std::string::npos;
+  const int frames = kind == Kind::Blower ? 48000 : kind == Kind::Stop ? 4800 : 1440;
+  juce::AudioBuffer<float> b(2, frames);
+  juce::Random random(static_cast<juce::int64>(seed));
+  // One-pole filters over white noise: the blower a low rumble, the stop a
+  // thud with a little wood in it, the key a short tick.
+  double lowL = 0.0, lowR = 0.0, low2 = 0.0, prev = 0.0, brownL = 0.0, brownR = 0.0;
+  const double cutLow = kind == Kind::Blower ? 0.2 : kind == Kind::Stop ? 0.04 : 0.25;
+  for (int i = 0; i < frames; ++i) {
+    const double t = i / rate;
+    const double wl = random.nextFloat() * 2.0 - 1.0, wr = random.nextFloat() * 2.0 - 1.0;
+    lowL += cutLow * (wl - lowL);
+    lowR += cutLow * (wr - lowR);
+    double l = lowL, r = lowR;
+    if (kind == Kind::Blower) {
+      // Brown noise, a leaky sum of white, with a slow wobble in its level:
+      // three whole cycles in the second, so the loop's ends match.
+      brownL = 0.997 * brownL + 0.04 * wl;
+      brownR = 0.997 * brownR + 0.04 * wr;
+      const double env = 0.85 + 0.15 * std::sin(2.0 * 3.14159265358979 * 3.0 * t);
+      // And a little air: the low-passed white, far below the rumble.
+      l = (0.5 * brownL + 0.05 * lowL) * env;
+      r = (0.5 * brownR + 0.05 * lowR) * env;
+    } else if (kind == Kind::Stop) {
+      const double env = std::exp(-t / (release ? 0.012 : 0.02));
+      low2 += 0.3 * (wl - low2);
+      l = (2.5 * lowL + 0.25 * low2) * env;
+      r = (2.5 * lowR + 0.25 * low2) * env;
+    } else {
+      const double env = std::exp(-t / (release ? 0.003 : 0.005));
+      const double hp = wl - prev;  // a tick has no body
+      prev = wl;
+      l = r = 0.35 * hp * env;
+    }
+    b.setSample(0, i, static_cast<float>(juce::jlimit(-1.0, 1.0, l)));
+    b.setSample(1, i, static_cast<float>(juce::jlimit(-1.0, 1.0, r)));
+  }
+  // The loop's end fades into its start, so the seam is not heard.
+  if (kind == Kind::Blower) {
+    const int fade = 4800;
+    for (int ch = 0; ch < 2; ++ch)
+      for (int i = 0; i < fade; ++i) {
+        const float a = static_cast<float>(i) / fade;
+        const int at = frames - fade + i;
+        b.setSample(ch, i, b.getSample(ch, i) * a + b.getSample(ch, at) * (1.0f - a));
+      }
+    b.setSize(2, frames - fade, true);
+  }
+  const int written = b.getNumSamples();
+  // Written beside its name and moved into place, so a file that exists is whole.
+  const juce::File partial = out.withFileExtension("tmp");
+  partial.deleteFile();
+  {
+    juce::WavAudioFormat fmt;
+    std::unique_ptr<juce::FileOutputStream> os(partial.createOutputStream());
+    if (os == nullptr) return {};
+    juce::StringPairArray meta;
+    if (kind == Kind::Blower) {
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "0");
+      meta.set("Loop0End", juce::String(written - 1));
+      meta.set("Loop0Type", "0");
+    }
+    std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.get(), rate, 2, 16, meta, 0));
+    if (w == nullptr) return {};
+    os.release();
+    w->writeFromAudioSampleBuffer(b, 0, written);
+  }
+  if (!partial.moveFileTo(out)) {
+    partial.deleteFile();
+    return {};
+  }
+  return out.getFullPathName().toStdString();
+}
+
 } // namespace
 
 SampleLibrary::SampleLibrary() {
@@ -851,9 +962,28 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         continue;
       }
 
-      const auto path = resolveIgnoringCase(
+      auto path = resolveIgnoringCase(
           resolvePath(organRootDir, ref.fileName, ref.installationPackageId));
       std::error_code ec;
+      // The format's own standard components (package 1) come with the program
+      // that plays it and with no sample set, so a set that names them finds
+      // them missing, whether the package folder is there or not. Its key,
+      // stop and blower noises are made here instead.
+      if (ref.installationPackageId == 1 && !std::filesystem::exists(path, ec) &&
+          (archive_ == nullptr ||
+           archive_->find(std::filesystem::path(resolvePath("", ref.fileName, 1)).generic_string()) == nullptr)) {
+        const juce::File dir = standardNoiseDir_.empty()
+                                   ? juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                         .getChildFile("Masterpiece")
+                                         .getChildFile("Standard noises")
+                                   : juce::File(standardNoiseDir_);
+        const auto made = standardNoiseFor(ref.fileName, dir);
+        if (!made.empty()) {
+          path = made;
+          std::lock_guard<std::mutex> lock(resultMutex);
+          ++report.standIns;
+        }
+      }
       if (!std::filesystem::exists(path, ec)) {
         std::lock_guard<std::mutex> lock(resultMutex);
         if (archive_ != nullptr) {

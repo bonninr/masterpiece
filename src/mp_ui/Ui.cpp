@@ -1400,6 +1400,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                                " more missing");
     for (const auto& f : result.samples.failedFiles)
       juce::Logger::writeToLog("samples: unreadable " + juce::String(f));
+    if (result.samples.standIns > 0)
+      juce::Logger::writeToLog("samples: " + juce::String(result.samples.standIns) +
+                               " standard noises played as generated ones");
     if (result.samples.missing > 0)
       parts.add(TRANS("%1 missing (named in the log)").replace("%1", juce::String(result.samples.missing)));
     if (result.samples.failed > 0)

@@ -53,6 +53,7 @@ struct SampleLoadReport {
   int wanted = 0;     // what the pipework asked for, of which `loaded` arrived
   int licensed = 0;   // left out: the publisher's licence is not confirmed
   int failed = 0;     // present but unreadable
+  int standIns = 0;   // standard-component noises that were missing, played as generated ones
   std::vector<std::string> missingFiles;
   std::vector<std::string> failedFiles;
 };
@@ -228,6 +229,10 @@ public:
   // from. Null for an ordinary organ.
   void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
 
+  // Where the generated stand-ins for the standard components' noises are
+  // kept. Empty: a folder in the program's data folder.
+  void setStandardNoiseDir(const std::string& dir) { standardNoiseDir_ = dir; }
+
   // Memory figures BEFORE a load, from file sizes and WAV headers, without
   // decoding anything. In three steps so the slow one -- reading thousands of
   // headers, perhaps off a hard disk -- runs on a worker without touching the
@@ -299,6 +304,7 @@ private:
 
   std::shared_ptr<const OrganArchive> archive_;
   std::string cacheDir_;
+  std::string standardNoiseDir_;
   std::string cacheOrganId_;
   std::string cacheOdfStamp_;
   CacheMode cacheMode_ = CacheMode::Single;
