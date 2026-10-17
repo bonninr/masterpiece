@@ -1,4 +1,5 @@
 #include "Console.h"
+#include "../mp_core/Utf8Path.h"
 #include "ManualDialog.h"
 #include "MidiEventDialog.h"
 #include "PathCase.h"
@@ -28,14 +29,14 @@ std::filesystem::path resolveBitmap(const std::string& rootDir,
   std::replace(rel.begin(), rel.end(), '\\', '/');
   while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
 
-  std::filesystem::path base(rootDir);
+  std::filesystem::path base = mp::pathOf(rootDir);
   if (packageId > 0) {
     std::string digits = std::to_string(packageId);
     if (digits.size() < 6) digits.insert(0, 6 - digits.size(), '0');
     base /= "OrganInstallationPackages";
     base /= digits;
   }
-  return base / rel;
+  return base / mp::pathOf(rel);
 }
 
 // One of Masterpiece's own wood tiles, for a texture from "Hauptwerk Standard
@@ -810,7 +811,7 @@ const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
   const auto path = standardComponent(
       resolveIgnoringCase(resolveBitmap(organRoot_, element->bitmapFile, set.packageId)),
       element->bitmapFile, set.packageId);
-  juce::Image img = loadConsoleImage(juce::File(path.string()));
+  juce::Image img = loadConsoleImage(juce::File(juce::String::fromUTF8(mp::utf8Of(path).c_str())));
 
   // Hauptwerk predates transparent bitmaps: a set that ships BMPs carries a
   // separate mask image instead, black where the artwork shows and white where
@@ -819,7 +820,7 @@ const juce::Image* ConsoleView::imageFor(Id imageSetId, int index) {
   if (img.isValid() && !set.transparencyMaskFile.empty()) {
     const auto maskPath = resolveIgnoringCase(
         resolveBitmap(organRoot_, set.transparencyMaskFile, set.packageId));
-    juce::Image mask = loadConsoleImage(juce::File(maskPath.string()));
+    juce::Image mask = loadConsoleImage(juce::File(juce::String::fromUTF8(mp::utf8Of(maskPath).c_str())));
     if (mask.isValid()) {
       img = img.convertedToFormat(juce::Image::ARGB);
       const int w = std::min(img.getWidth(), mask.getWidth());

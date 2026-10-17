@@ -1,4 +1,5 @@
 #include "OrganArchive.h"
+#include "../mp_core/Utf8Path.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -392,7 +393,7 @@ static bool rar4Name(const Rar4Header& f, std::string& name) {
 //   from different copies of a set.
 static std::string rar4VolumeTrouble(const std::vector<std::string>& volumes, size_t v) {
   if (v >= volumes.size()) return {};
-  const std::string b = fs::u8path(volumes[v]).filename().string();
+  const std::string b = mp::utf8Of(fs::u8path(volumes[v]).filename());
   int64_t brokenAt = -1;
   if (!walkRar4(volumes[v], nullptr, [](const Rar4Header&) { return true; }, &brokenAt) && brokenAt >= 0) {
     std::error_code ec;
@@ -428,7 +429,7 @@ static std::string rar4VolumeTrouble(const std::vector<std::string>& volumes, si
   std::string ends, goesOn;
   if (!rar4Name(last, ends) || !rar4Name(first, goesOn)) return {};
   if (split == continues && (!split || ends == goesOn)) return {};
-  const std::string a = fs::u8path(volumes[v - 1]).filename().string();
+  const std::string a = mp::utf8Of(fs::u8path(volumes[v - 1]).filename());
   std::string why;
   if (split && continues)
     why = a + " ends partway through " + ends + ", and " + b + " continues " + goesOn;
@@ -547,6 +548,13 @@ struct Reader {
     // A package read through the hook goes the same way as a split set:
     // libarchive's own file opening would ask for it by name.
     bool hooked = false;
+#ifdef _WIN32
+    // libarchive opens a name in the system's code page; one outside ASCII
+    // goes through this stream, which opens it in UTF-8.
+    for (const auto& v : volumes)
+      if (std::any_of(v.begin(), v.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; }))
+        hooked = true;
+#endif
     for (const auto& v : volumes) {
       const int fd = hookedDescriptor(v);
       if (fd >= 0) {
@@ -923,7 +931,7 @@ std::string gigabytes(int64_t bytes) {
 ArchiveKind inspectArchive(const std::string& path) {
   ArchiveKind k;
   std::error_code ec;
-  k.bytes = static_cast<int64_t>(fs::file_size(path, ec));
+  k.bytes = static_cast<int64_t>(fs::file_size(mp::pathOf(path), ec));
   std::vector<unsigned char> b(1 << 16);
   if (std::FILE* in = openPackage(path)) {
     b.resize(std::fread(b.data(), 1, b.size(), in));
@@ -1177,13 +1185,6 @@ std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>
                                                   const std::set<std::string>& packages) {
   std::vector<std::string> out;
   if (packages.empty()) return out;
-  // Paths in UTF-8 both ways. On Windows path::string() is in the system's
-  // code page: "Vörösbereny" came back in it, and u8path() threw on it when
-  // the archive was opened, which stopped the load.
-  auto utf8 = [](const fs::path& p) {
-    const auto u = p.u8string();
-    return std::string(u.begin(), u.end());
-  };
   std::error_code ec;
   size_t looked = 0;
   for (const auto& dir : folders)
@@ -1191,7 +1192,7 @@ std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>
       const auto& e = *it;
       std::error_code fileEc;
       if (!e.is_regular_file(fileEc)) continue;
-      const std::string name = utf8(e.path().filename());
+      const std::string name = mp::utf8Of(e.path().filename());
       if (!isOrganArchive(name) || !originalOf(name).empty()) continue;
       // A later volume of a set: "Name.part2.rar", "Name.r00". "Name.part1.rar"
       // and the old scheme's "Name.rar" are first volumes.
@@ -1200,7 +1201,7 @@ std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>
       const int volume = volumeNumber(name, setName);
       if (volume > 1 || (volume == 1 && !std::regex_search(name, partOne))) continue;
       if (++looked > 2000) break;  // a folder of everything
-      const std::string path = utf8(e.path());
+      const std::string path = mp::utf8Of(e.path());
       if (packages.count(firstPackageId({path})) != 0) out.push_back(path);
     }
   std::sort(out.begin(), out.end());
@@ -1213,9 +1214,9 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   byKey_.clear();
   chosen_ = path;
 
-  const fs::path chosen(path);
+  const fs::path chosen = mp::pathOf(path);
   const fs::path dir = chosen.parent_path();
-  const std::string stem = stemOf(chosen.filename().string());
+  const std::string stem = stemOf(mp::utf8Of(chosen.filename()));
 
   // A GrandOrgue package names what else it needs by package id, and a
   // package is published with that id in its file name ("demo-4232D4....
@@ -1226,10 +1227,10 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     for (const auto& id : orgueDependencies(path)) {
       bool found = false;
       for (const auto& e : fs::directory_iterator(dir.empty() ? fs::path(".") : dir, ec)) {
-        const std::string name = lower(e.path().filename().string());
+        const std::string name = lower(mp::utf8Of(e.path().filename()));
         if (endsWith(name, ".orgue") && name.find(id) != std::string::npos &&
             e.path() != chosen) {
-          archives_.push_back({e.path().string()});
+          archives_.push_back({mp::utf8Of(e.path())});
           found = true;
           break;
         }
@@ -1252,13 +1253,13 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   std::error_code ec;
   for (const auto& e : fs::directory_iterator(dir.empty() ? fs::path(".") : dir, ec)) {
     if (!e.is_regular_file(ec)) continue;
-    const std::string name = e.path().filename().string();
+    const std::string name = mp::utf8Of(e.path().filename());
     // A second download of a file that is here already. Counted as another
     // package it would be read twice at best; as part of a volume set it
     // breaks the set -- the commonest reason a multi-part package will not
     // open (Sonus Paradisi's notes on it say the same).
     if (const std::string original = originalOf(name); !original.empty()) {
-      if (fs::exists(e.path().parent_path() / original, ec)) {
+      if (fs::exists(e.path().parent_path() / mp::pathOf(original), ec)) {
         if (stemOf(original) == stem)
           report_.push_back("ignored " + name + ": a second download of " + original);
         continue;
@@ -1269,13 +1270,13 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     const int vol = volumeNumber(name, setName);
     if (vol < 0 && !isOrganArchive(name)) continue;
     if (stemOf(name) != stem) continue;
-    if (vol >= 0) volumeSets[setName][vol] = e.path().string();
-    else singles.push_back(e.path().string());
+    if (vol >= 0) volumeSets[setName][vol] = mp::utf8Of(e.path());
+    else singles.push_back(mp::utf8Of(e.path()));
   }
   // The old scheme names its first volume plainly ("Name.rar"), which is
   // also how a single archive is named: it belongs to the set if one exists.
   for (auto it = singles.begin(); it != singles.end();) {
-    const std::string base = lower(fs::path(*it).stem().string());
+    const std::string base = lower(mp::utf8Of(mp::pathOf(*it).stem()));
     const auto set = volumeSets.find(base);
     if (set != volumeSets.end() && set->second.count(0) == 0) {
       set->second[0] = *it;
@@ -1292,7 +1293,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     // with "truncated data". The part scheme counts from 1, the old one from
     // the plain .rar (0).
     const bool partScheme =
-        lower(fs::path(vols.rbegin()->second).filename().string()).find(".part") != std::string::npos;
+        lower(mp::utf8Of(mp::pathOf(vols.rbegin()->second).filename())).find(".part") != std::string::npos;
     const int first = partScheme ? 1 : 0;
     std::vector<int> missing;
     for (int n = first; n <= vols.rbegin()->first; ++n)
@@ -1309,7 +1310,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
           list += suffix;
         }
       }
-      error = "\"" + fs::path(vols.begin()->second).filename().string() +
+      error = "\"" + mp::utf8Of(mp::pathOf(vols.begin()->second).filename()) +
               "\" is one volume of a multi-volume set, and " + list +
               (missing.size() == 1 ? " is" : " are") +
               " not in the same folder. Put every volume of the set beside it and open it again.";
@@ -1327,7 +1328,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   // A folder that may not be listed: on an iPhone or iPad a picked document
   // is lent on its own, and its folder stays closed (#197). The package then
   // stands alone; one that turns out to be a volume of a set says so below.
-  if (archives_.empty() && isOrganArchive(chosen.filename().string()) &&
+  if (archives_.empty() && isOrganArchive(mp::utf8Of(chosen.filename())) &&
       fs::is_regular_file(chosen, ec))
     archives_.push_back({path});
   if (archives_.empty()) {
@@ -1341,15 +1342,15 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   // three. An archive in the same folder belongs with the chosen one when its
   // name starts with the same organ word and it carries the same package;
   // two organs that share a word do not share a package.
-  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(chosen.filename().string())) {
-    const std::string word = organWord(chosen.filename().string());
+  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(mp::utf8Of(chosen.filename()))) {
+    const std::string word = organWord(mp::utf8Of(chosen.filename()));
     std::string packageId;
     bool looked = false;
     std::vector<std::string> parts;
     std::vector<std::string> candidates;
     for (const auto& e : fs::directory_iterator(dir, ec)) {
       if (!e.is_regular_file(ec)) continue;
-      const std::string name = e.path().filename().string();
+      const std::string name = mp::utf8Of(e.path().filename());
       if (!isOrganArchive(name) || word.size() < 3 || organWord(name) != word) continue;
       if (!originalOf(name).empty()) continue;  // a second download
       std::string setName;
@@ -1357,8 +1358,8 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
       bool already = false;
       for (const auto& group : archives_)
         for (const auto& file : group)
-          if (fs::equivalent(fs::path(file), e.path(), ec)) already = true;
-      if (!already) candidates.push_back(e.path().string());
+          if (fs::equivalent(mp::pathOf(file), e.path(), ec)) already = true;
+      if (!already) candidates.push_back(mp::utf8Of(e.path()));
     }
     // Numbered parts, "01_", "02_", "03_", each number once among them and
     // the chosen archive: one set, whatever packages its parts carry (Eule
@@ -1366,10 +1367,10 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     // surround definition plays all three). Two organs with the same word
     // number their parts from 1 each, and are told apart by package below.
     std::set<int> numbers;
-    bool numbered = partNumber(chosen.filename().string()) > 0;
-    if (numbered) numbers.insert(partNumber(chosen.filename().string()));
+    bool numbered = partNumber(mp::utf8Of(chosen.filename())) > 0;
+    if (numbered) numbers.insert(partNumber(mp::utf8Of(chosen.filename())));
     for (const auto& c : candidates) {
-      const int n = partNumber(fs::path(c).filename().string());
+      const int n = partNumber(mp::utf8Of(mp::pathOf(c).filename()));
       if (n <= 0 || !numbers.insert(n).second) numbered = false;
     }
     for (const auto& c : candidates) {
@@ -1387,7 +1388,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     std::sort(parts.begin(), parts.end());
     for (const auto& part : parts) {
       archives_.push_back({part});
-      report_.push_back("with " + fs::path(part).filename().string() + ": another part of the set");
+      report_.push_back("with " + mp::utf8Of(mp::pathOf(part).filename()) + ": another part of the set");
     }
   }
 
@@ -1397,18 +1398,18 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   // The definition names the packages it needs. The archives beside it whose
   // names start as the organ's does (five letters or more) and that carry one
   // of them belong with it, whichever of them was opened.
-  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(chosen.filename().string())) {
-    const std::string word = organWord(chosen.filename().string());
+  if (!dir.empty() && archives_.size() == 1 && isOrganArchive(mp::utf8Of(chosen.filename()))) {
+    const std::string word = organWord(mp::utf8Of(chosen.filename()));
     std::vector<std::pair<std::string, std::string>> beside;  // (path, its package)
     if (word.size() >= 5)
       for (const auto& e : fs::directory_iterator(dir, ec)) {
         if (!e.is_regular_file(ec) || e.path() == chosen) continue;
-        const std::string name = e.path().filename().string();
+        const std::string name = mp::utf8Of(e.path().filename());
         if (!isOrganArchive(name) || !originalOf(name).empty()) continue;
         std::string setName;
         if (volumeNumber(name, setName) >= 0) continue;
         if (sharedStart(organWord(name), word) < 5) continue;
-        beside.emplace_back(e.path().string(), firstPackageId({e.path().string()}));
+        beside.emplace_back(mp::utf8Of(e.path()), firstPackageId({mp::utf8Of(e.path())}));
       }
     std::vector<std::string> found;
     std::set<std::string> needs;
@@ -1434,7 +1435,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
     std::sort(found.begin(), found.end());
     for (const auto& f : found) {
       archives_.push_back({f});
-      report_.push_back("with " + fs::path(f).filename().string() +
+      report_.push_back("with " + mp::utf8Of(mp::pathOf(f).filename()) +
                         (f == definition ? ": the definition that needs this package"
                                          : ": holds a package the definition needs"));
     }
@@ -1445,9 +1446,9 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
   for (const auto& group : archives_)
     for (const auto& file : group)
       for (const char* partial : {".crdownload", ".part", ".download", ".opdownload"})
-        if (fs::exists(file + partial, ec)) {
-          error = "\"" + fs::path(file).filename().string() +
-                  "\" is still downloading (" + fs::path(file + partial).filename().string() +
+        if (fs::exists(mp::pathOf(file + partial), ec)) {
+          error = "\"" + mp::utf8Of(mp::pathOf(file).filename()) +
+                  "\" is still downloading (" + mp::utf8Of(mp::pathOf(file + partial).filename()) +
                   " is beside it). Open it again once the download has finished.";
           return false;
         }
@@ -1459,7 +1460,7 @@ bool OrganArchive::discover(const std::string& path, std::string& error) {
 bool OrganArchive::inspect(std::string& error) {
   for (const auto& group : archives_) {
     const ArchiveKind kind = inspectArchive(group.front());
-    const std::string name = fs::path(group.front()).filename().string();
+    const std::string name = mp::utf8Of(mp::pathOf(group.front()).filename());
     std::string line = name + " -- " + kind.describe();
     if (group.size() > 1) line += ", " + std::to_string(group.size()) + " volumes";
     report_.push_back(line);
@@ -1594,7 +1595,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
       byKey_[k] = entries_.size();
       entries_.push_back(std::move(e));
     }
-  report_.push_back(fs::path(volumes.front()).filename().string() + " -- " + std::to_string(count) +
+  report_.push_back(mp::utf8Of(mp::pathOf(volumes.front()).filename()) + " -- " + std::to_string(count) +
                     " files" + (locked ? ", " + std::to_string(locked) + " password-protected" : "") +
                     ", listed " + std::to_string(threads) + " volumes at a time");
   if (unpackDir.empty()) return true;
@@ -1729,14 +1730,14 @@ bool OrganArchive::index(std::string& error, const Progress& progress, const std
         }
         const fs::path target = smallFileTarget(unpackDir, rel);
         if (!writeWhole(target, data)) {
-          error = "cannot write " + target.string();
+          error = "cannot write " + mp::utf8Of(target);
           return false;
         }
         unpackedHere.push_back(k);
       }
     }
     unpacked_.insert(unpackedHere.begin(), unpackedHere.end());
-    const std::string file = fs::path(archives_[i].front()).filename().string();
+    const std::string file = mp::utf8Of(mp::pathOf(archives_[i].front()).filename());
     if (pass->failed()) {
       const std::string what =
           "\"" + file + "\" could not be read: " + pass->error() + " (" +
@@ -1898,7 +1899,7 @@ const OrganArchive::Entry* OrganArchive::find(const std::string& relativePath) c
 
 std::string OrganArchive::archiveName(size_t index) const {
   return index < archives_.size() && !archives_[index].empty()
-             ? fs::path(archives_[index].front()).filename().string()
+             ? mp::utf8Of(mp::pathOf(archives_[index].front()).filename())
              : std::string("the archive");
 }
 
@@ -1973,7 +1974,7 @@ bool OrganArchive::unpackSmallFiles(const std::string& dir, std::string& error,
         continue;
       }
       if (!writeWhole(target, bytes)) {
-        error = "cannot write " + target.string();
+        error = "cannot write " + mp::utf8Of(target);
         return false;
       }
     }
@@ -2083,9 +2084,9 @@ std::string OrganArchive::identity() const {
   };
   for (const auto& vols : archives_)
     for (const auto& v : vols) {
-      mix(lower(fs::path(v).filename().string()));
+      mix(lower(mp::utf8Of(mp::pathOf(v).filename())));
       std::error_code ec;
-      mix(std::to_string(fs::file_size(v, ec)));
+      mix(std::to_string(fs::file_size(mp::pathOf(v), ec)));
     }
   char buf[24];
   std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(h));

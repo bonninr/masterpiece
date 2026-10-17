@@ -1,4 +1,5 @@
 #include "DiskProbe.h"
+#include "../mp_core/Utf8Path.h"
 
 #include <algorithm>
 #include <chrono>
@@ -36,30 +37,34 @@ double probeSequentialMBps(const std::string& dir, int megabytes) {
   if (!path.empty() && path.back() != '/' && path.back() != '\\')
     path += '/';
   path += "mp-disk-probe.tmp";
+  auto drop = [&path] {
+    std::error_code ec;
+    std::filesystem::remove(mp::pathOf(path), ec);
+  };
 
   std::mt19937_64 rng(0x9E3779B97F4A7C15ull);
   std::vector<char> block(1024 * 1024);
   for (auto& b : block) b = static_cast<char>(rng());
 
   {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    std::ofstream out(mp::pathOf(path), std::ios::binary | std::ios::trunc);
     if (!out) return -1.0;
     for (int i = 0; i < megabytes; ++i) {
       out.write(block.data(), static_cast<std::streamsize>(block.size()));
-      if (!out) { std::remove(path.c_str()); return -1.0; }
+      if (!out) { drop(); return -1.0; }
     }
     out.flush();
-    if (!out) { std::remove(path.c_str()); return -1.0; }
+    if (!out) { drop(); return -1.0; }
   }
 
   std::vector<char> sink(block.size());
   const auto t0 = std::chrono::steady_clock::now();
   {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) { std::remove(path.c_str()); return -1.0; }
+    std::ifstream in(mp::pathOf(path), std::ios::binary);
+    if (!in) { drop(); return -1.0; }
     for (int i = 0; i < megabytes; ++i) {
       in.read(sink.data(), static_cast<std::streamsize>(sink.size()));
-      if (!in) { std::remove(path.c_str()); return -1.0; }
+      if (!in) { drop(); return -1.0; }
       // Touch every page so the read can't be optimised away.
       volatile char acc = 0;
       for (size_t k = 0; k < sink.size(); k += 4096) acc += sink[k];
@@ -67,7 +72,7 @@ double probeSequentialMBps(const std::string& dir, int megabytes) {
     }
   }
   const auto t1 = std::chrono::steady_clock::now();
-  std::remove(path.c_str());
+  drop();
 
   const double seconds =
       std::chrono::duration<double>(t1 - t0).count();

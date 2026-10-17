@@ -17,6 +17,7 @@
 // - No JUCE anywhere: plain std::ifstream file I/O, so the validator,
 //   tests and core-only builds never need an audio/UI stack.
 #include "OdfLoader.h"
+#include "Utf8Path.h"
 
 #include "CodmCompiler.h"
 #include "GrandOrgueImport.h"
@@ -208,7 +209,7 @@ public:
     if (root_.empty() || rel.empty()) return false;
     std::string p = rel;
     std::replace(p.begin(), p.end(), '\\', '/');
-    const std::filesystem::path full = std::filesystem::path(root_) / p;
+    const std::filesystem::path full = pathOf(root_) / pathOf(p);
     const std::filesystem::path name = full.filename();
     if (!name.empty() && name != "." && name != "..") {
       const std::filesystem::path dir = full.parent_path();
@@ -300,7 +301,7 @@ bool OdfLoader::load(const std::string& odfPath, const Options& opts,
     for (const auto& n : go.notes) outDiag.warnings.emplace_back("GrandOrgue import: " + n);
     return loadFromXmlString(go.xml, odfPath, opts, outModel, outDiag);
   }
-  std::ifstream f(odfPath, std::ios::binary);
+  std::ifstream f(pathOf(odfPath), std::ios::binary);
   if (!f) {
     outDiag.errors.emplace_back("cannot open ODF file: " + odfPath);
     return false;
@@ -496,7 +497,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // sit in there; read from where it is, the samples are under it.
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path root(opts.organRootDir);
+    const fs::path root = pathOf(opts.organRootDir);
     std::map<std::string, bool> movedFolder;  // first folder -> found under the packages
     for (auto& [id, s] : outModel.samples) {
       (void)id;
@@ -509,8 +510,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       const std::string first = rel.substr(0, slash);
       auto known = movedFolder.find(first);
       if (known == movedFolder.end())
-        known = movedFolder.emplace(first, !fs::exists(root / first, ec) &&
-                                               fs::is_directory(root / "OrganInstallationPackages" / first, ec))
+        known = movedFolder.emplace(first, !fs::exists(root / pathOf(first), ec) &&
+                                               fs::is_directory(root / "OrganInstallationPackages" / pathOf(first), ec))
                     .first;
       if (known->second) s.fileName = "OrganInstallationPackages/" + rel;
     }
@@ -1412,7 +1413,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (!opts.organRootDir.empty()) {
       std::error_code ec;
       pkg.presentOnDisk = std::filesystem::is_directory(
-          std::filesystem::path(opts.organRootDir) / "OrganInstallationPackages" /
+          pathOf(opts.organRootDir) / "OrganInstallationPackages" /
               packageDirName(pkg.packageId),
           ec);
       if (!pkg.presentOnDisk)
@@ -2300,7 +2301,7 @@ namespace {
 // falls back to its own containing directory.
 std::filesystem::path organRootFrom(const std::filesystem::path& odfPath) {
   std::filesystem::path root = odfPath.parent_path();
-  const std::string name = lower(root.filename().string());
+  const std::string name = lower(utf8Of(root.filename()));
   if (name == "organdefinitions") root = root.parent_path();
   return root;
 }
@@ -2319,13 +2320,13 @@ std::string restoreLogicalOdfPath(
 
   std::error_code ec;
   const fs::path selected =
-      fs::weakly_canonical(fs::path(odfPath), ec);
+      fs::weakly_canonical(pathOf(odfPath), ec);
 
   if (ec) return odfPath;
 
   for (const auto& root : libraryRoots) {
     const fs::path logicalDefinitions =
-        fs::path(root) / "OrganDefinitions";
+        pathOf(root) / "OrganDefinitions";
 
     ec.clear();
     if (!fs::is_directory(logicalDefinitions, ec))
@@ -2360,7 +2361,7 @@ std::string restoreLogicalOdfPath(
 
     ec.clear();
     if (fs::is_regular_file(candidate, ec))
-      return candidate.string();
+      return utf8Of(candidate);
   }
 
   return odfPath;
@@ -2381,7 +2382,7 @@ std::string findLibraryHolding(const std::vector<std::string>& roots,
   std::error_code ec;
   for (const auto& root : roots) {
     const std::filesystem::path packages =
-        std::filesystem::path(root) / "OrganInstallationPackages";
+        pathOf(root) / "OrganInstallationPackages";
     if (!std::filesystem::is_directory(packages, ec)) continue;
     bool all = true;
     for (Id id : wanted) {
@@ -2398,11 +2399,11 @@ std::string findLibraryHolding(const std::vector<std::string>& roots,
 }
 
 std::string deriveOrganRoot(const std::string& odfPath) {
-  const std::filesystem::path odf(odfPath);
+  const std::filesystem::path odf = pathOf(odfPath);
   // A GrandOrgue set's paths are relative to the .organ file's own folder.
-  if (isGrandOrgueDefinition(odfPath)) return odf.parent_path().string();
+  if (isGrandOrgueDefinition(odfPath)) return utf8Of(odf.parent_path());
   const std::filesystem::path logicalRoot = organRootFrom(odf);
-  if (hasInstallationPackages(logicalRoot)) return logicalRoot.string();
+  if (hasInstallationPackages(logicalRoot)) return utf8Of(logicalRoot);
 
   // The logical root has no OrganInstallationPackages sibling. A set whose
   // folders are linked in from elsewhere can hand back a path whose textual
@@ -2427,13 +2428,13 @@ std::string deriveOrganRoot(const std::string& odfPath) {
   for (const auto& start : starts) {
     std::filesystem::path dir = start;
     for (int up = 0; up <= kMaxAncestors; ++up) {
-      if (hasInstallationPackages(dir)) return dir.string();
+      if (hasInstallationPackages(dir)) return utf8Of(dir);
       const std::filesystem::path parent = dir.parent_path();
       if (parent.empty() || parent == dir) break;
       dir = parent;
     }
   }
-  return logicalRoot.string();
+  return utf8Of(logicalRoot);
 }
 
 } // namespace mp
