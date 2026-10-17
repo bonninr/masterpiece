@@ -255,8 +255,12 @@ pre code { font-size: 14px; }
    the dialog itself is a click outside the picture. */
 .zoom[open] {
   position: fixed; inset: 0; width: 100vw; height: 100vh; margin: 0;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center;
 }
+/* The free height split 35 / 65: the picture sits above the middle, its gap
+   overhead 30% smaller than centred. */
+.zoom[open]::before { content: ""; flex: 7; }
+.zoom[open]::after { content: ""; flex: 13; }
 .zoom-frame { position: relative; }
 .zoom-caption { margin: 22px 0 0; text-align: center; font-size: 17px; font-weight: 600; color: var(--ink); }
 .zoom-caption span { display: block; margin-top: 2px; font-size: 14px; font-weight: 400; color: var(--muted); }
