@@ -1,0 +1,22 @@
+# Masterpiece
+
+> Masterpiece is a free, open-source (GPL-3.0) pipe organ sample player. It plays Hauptwerk-format and GrandOrgue sample sets, each with its own console, wiring, wind and swell boxes, on Windows, macOS, Linux, Raspberry Pi, Android, iPhone and iPad, as a standalone program and as VST3, LV2 and AU plugins. It is part of OpenPipes (openpipes.org), an open-source virtual pipe organ platform.
+
+Key facts:
+
+- Formats: Hauptwerk-format organ definitions (full, compact and composite) and GrandOrgue organs (.organ definitions and .orgue packages), opened from an unpacked folder or straight from their packages, including solid, multi-part and multi-volume RAR sets. Samples in WAV or WavPack at any rate.
+- Composite organs: organs assembled from the pipework of several sample sets, each set read from its own archive.
+- Split mode: the whole organ from a single keyboard, with up to three split points.
+- Engine: hand-written AVX2, SSE2 and NEON vector code, 3 to 5 times the rendering speed with AVX2 at 512 voices; 725 voices per processor thread by default, up to 16,384.
+- Memory: samples held at 24 or 16 bits or folded to mono, release tails streamed from disk. Friesach (44 stops, 17 GB on disk) needs 21.6 GB as 32-bit float and 2.33 GB at 16 bits in mono with streamed releases.
+- Control: a MIDI channel per manual, MIDI learn for every stop, piston and swell shoe (SysEx included), generals, divisionals and a 999-frame stepper, temperaments, pitch and a transposer.
+- Tested with more than 100 organs, among them sets by Piotr Grabowski and Augustine's Virtual Organs.
+
+## Links
+
+- [Home page](https://masterpieceorgan.com/): features, figures, sound demos and a gallery of consoles
+- [Downloads](https://masterpieceorgan.com/#platforms): the latest release for every system
+- [Latest release notes](https://github.com/bonninr/masterpiece/releases/latest)
+- [Source code](https://github.com/bonninr/masterpiece): C++20 and JUCE
+- [Questions and discussions](https://github.com/bonninr/masterpiece/discussions)
+- [OpenPipes](https://openpipes.org): OpenPipes OS, Pipe2C hardware modules, console plans and the Organ Designer

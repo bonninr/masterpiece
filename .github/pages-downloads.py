@@ -1,6 +1,6 @@
 """Point the site's downloads at the latest release's files.
 
-Two things, each time the page is published (release.yml publishes it again
+Three things, each time the page is published (release.yml publishes it again
 after every release):
 
 - A link written as <a data-asset="windows-setup.exe" href=".../releases/latest">
@@ -8,6 +8,7 @@ after every release):
   release, so a click on the page downloads the file.
 - A short address per platform, masterpieceorgan.com/download/windows and the
   others in SHORT, is written as a page that sends the browser on to the file.
+- The page's structured data is given the release's version.
 
 Release files carry their version in the name, so no fixed address reaches
 them. A file the release does not have keeps its link to the release page, and
@@ -92,8 +93,11 @@ def main(site):
         print(f"  link {asset}: {url or 'not on this release, left on the release page'}")
         return re.sub(r'href="[^"]*"', f'href="{url}"', a, count=1) if url else a
 
-    page.write_text(re.sub(r'<a\b[^>]*\bdata-asset="[^"]+"[^>]*>', link, text),
-                    encoding="utf-8", newline="")
+    text = re.sub(r'<a\b[^>]*\bdata-asset="[^"]+"[^>]*>', link, text)
+    # The structured data names the version that the links lead to.
+    if version:
+        text = re.sub(r'"softwareVersion": "[^"]*"', f'"softwareVersion": "{version}"', text)
+    page.write_text(text, encoding="utf-8", newline="")
 
     for slug, (asset, what) in SHORT.items():
         url = url_of(asset) or LATEST

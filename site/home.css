@@ -249,6 +249,12 @@ pre code { font-size: 14px; }
 .gallery figcaption span a:hover { color: var(--accent); }
 .gallery img, .card .frame img { cursor: pointer; }
 
+/* Questions and answers, two to a row. */
+.faq { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; border-top: 1px solid var(--line); }
+.qa { padding: 24px 0; border-bottom: 1px solid var(--line); }
+.qa h3 { font-size: 17px; }
+.qa p { margin-top: 8px; font-size: 15px; line-height: 1.6; color: var(--muted); }
+
 /* A gallery console, centred at half the screen, lifted off the page. */
 .zoom { padding: 0; border: 0; background: none; overflow: visible; max-width: none; max-height: none; }
 /* The dialog covers the screen and centres the picture both ways; a click on
@@ -314,6 +320,7 @@ pre code { font-size: 14px; }
   .gallery { grid-template-columns: 1fr 1fr; }
   .figures { grid-template-columns: 1fr; }
   .duo { grid-template-columns: 1fr; margin-top: 40px; }
+  .faq { grid-template-columns: 1fr; }
   .platforms { grid-template-columns: 1fr 1fr; }
   .row { grid-template-columns: 40px 1fr 20px; }
   .row p { grid-column: 2 / 3; }
