@@ -9,8 +9,8 @@
 https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 
 <!-- hero: the demonstration clip goes on the next line, as a github.com/user-attachments URL -->
-**[Watch the demonstration](https://bonninr.github.io/masterpiece/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
-**[Watch "New tested instruments"](https://bonninr.github.io/masterpiece/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://bonninr.github.io/masterpiece/attribution-2.html)
+**[Watch the demonstration](https://masterpieceorgan.com/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
+**[Watch "New tested instruments"](https://masterpieceorgan.com/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://masterpieceorgan.com/attribution-2.html)
 
 [![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.0/masterpiece-0.8.0-windows-setup.exe)
 [![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.0/masterpiece-0.8.0-macos-arm64.zip)

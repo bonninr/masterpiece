@@ -9,6 +9,12 @@ on:
     paths:
       - 'site/**'
       - '.github/workflows/pages.yml'
+      - '.github/pages-downloads.py'
+  # The download links follow the latest release. release.yml runs this
+  # workflow after it publishes, since a release its own token creates
+  # starts no other workflow; this covers one published by hand.
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -64,6 +70,11 @@ jobs:
           fetch masterpiece-recital.mp4 recital.mp4
           fetch masterpiece-recital-2.mp4 recital-2.mp4
           ls -lh site/*.mp4 || true
+
+      - name: Point the download links at the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/pages-downloads.py site
 
       - uses: actions/upload-pages-artifact@v3
         with:

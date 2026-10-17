@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
 
@@ -97,3 +98,11 @@ jobs:
             --title "Masterpiece $tag" \
             --generate-notes \
             --verify-tag || gh release upload "$tag" dist/* --clobber
+
+      # The site's download links and /download/<platform> addresses point at
+      # the latest release's files; publishing the site again moves them on.
+      # A release this token creates starts no workflow by itself.
+      - name: Publish the site again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main

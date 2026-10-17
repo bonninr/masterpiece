@@ -22,6 +22,11 @@ on:
       - 'LICENCE'
       - '.gitignore'
       - 'screenshots/**'
+      # The project page builds nothing; pages.yml publishes it.
+      - 'site/**'
+      - 'ATTRIBUTION.md'
+      - '.github/pages-downloads.py'
+      - '.github/workflows/pages.yml'
   pull_request:
     paths-ignore:
       - 'README.md'
@@ -29,6 +34,10 @@ on:
       - 'LICENCE'
       - '.gitignore'
       - 'screenshots/**'
+      - 'site/**'
+      - 'ATTRIBUTION.md'
+      - '.github/pages-downloads.py'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
   # release.yml calls this rather than repeating the matrix, so a tagged
   # release is built by exactly the same steps as an ordinary push.
