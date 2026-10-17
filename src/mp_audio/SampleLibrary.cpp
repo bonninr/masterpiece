@@ -157,7 +157,8 @@ std::filesystem::path standardNoiseFor(const std::string& fileName, const juce::
   // One maker at a time: the loading threads may ask for the same file.
   static std::mutex making;
   std::lock_guard<std::mutex> lock(making);
-  if (out.existsAsFile()) return out.getFullPathName().toStdString();
+  // In UTF-8 both ways: a data folder under a user name with an accent (#377).
+  if (out.existsAsFile()) return mp::pathOf(out.getFullPathName().toStdString());
   if (!dir.createDirectory()) return {};
 
   constexpr double rate = 48000.0;
@@ -234,7 +235,7 @@ std::filesystem::path standardNoiseFor(const std::string& fileName, const juce::
     partial.deleteFile();
     return {};
   }
-  return out.getFullPathName().toStdString();
+  return mp::pathOf(out.getFullPathName().toStdString());
 }
 
 } // namespace
