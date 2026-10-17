@@ -14399,6 +14399,153 @@ public:
 };
 static DivisionInputTest g_divisionInput;
 
+// A chord played through a melody coupler couples its top note only (#355).
+// Its keys arrive a few milliseconds apart and each in turn was the top: the
+// coupler played them one after the other, an arpeggio, and again on release.
+// The top is taken once the keys have been still for kExtremeSettleMs.
+class MelodyCouplerChordTest final : public mp::test::Test {
+public:
+  MelodyCouplerChordTest() : Test("functional.control.melody-coupler-chord", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-melody-chord");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    std::string pipes, layers, attacks;
+    int id = 300;
+    for (int rank : {201, 202})
+      for (int note : {60, 64, 67}) {
+        ++id;
+        pipes += "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+                 "</RankID><NormalMIDINoteNumber>" + std::to_string(note) + "</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+        layers += "<Pipe_SoundEngine01_Layer><LayerID>" + std::to_string(id + 100) + "</LayerID><PipeID>" +
+                  std::to_string(id) + "</PipeID></Pipe_SoundEngine01_Layer>";
+        attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>" + std::to_string(id + 200) + "</UniqueID><LayerID>" +
+                   std::to_string(id + 100) + "</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>";
+      }
+    auto action = [](int dest, int type, int condition) {
+      return "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+             "<DestDivisionID>" + std::to_string(dest) + "</DestDivisionID><ActionTypeCode>" + std::to_string(type) +
+             "</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
+             "<NumberOfKeys>61</NumberOfKeys>" +
+             (condition ? "<ConditionSwitchID>" + std::to_string(condition) + "</ConditionSwitchID>" : std::string()) +
+             "</KeyAction>";
+    };
+    auto stopRank = [](int stop, int rank) {
+      return "<StopRank><StopID>" + std::to_string(stop) + "</StopID><RankID>" + std::to_string(rank) +
+             "</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+             "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>";
+    };
+    const auto odf = defs.getChildFile("melody.Organ_Hauptwerk_xml");
+    odf.replaceWithText(juce::String(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Melody coupler</Identification_Name>"
+        "<Identification_UniqueOrganID>355</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Great</Name></Rank>"
+        "<Rank><RankID>202</RankID><Name>Swell</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks +
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division>"
+        "<Division><DivisionID>802</DivisionID><Name>Swell</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">" + action(801, 1, 0) + action(802, 3, 1103) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>901</StopID><Name>Great</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>902</StopID><Name>Swell</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">" + stopRank(901, 201) + stopRank(902, 202) +
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>Great</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1102</SwitchID><Name>Swell</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1103</SwitchID><Name>Melody SW. to GT.</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList></Hauptwerk>"));
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+    proc.setStopEngaged(901, true);
+    proc.setStopEngaged(902, true);
+    proc.setSwitchEngaged(1103, true);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    auto voices = [&] { return proc.voiceStats().activeVoices; };
+    block({});
+
+    // C, E and G, two milliseconds apart.
+    juce::MidiBuffer chord;
+    chord.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    chord.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 96);
+    chord.addEvent(juce::MidiMessage::noteOn(1, 67, 0.8f), 192);
+    block(chord);
+    MP_CHECK(voices() == 3, "the chord sounds its three keys, and the coupler nothing yet: " + std::to_string(voices()));
+    for (int i = 0; i < 10; ++i) block({});  // past the settling
+    MP_CHECK(voices() == 4, "settled, the coupler takes the top note only: " + std::to_string(voices()));
+
+    // Let go together: nothing new speaks on the way up.
+    juce::MidiBuffer up;
+    up.addEvent(juce::MidiMessage::noteOff(1, 67), 0);
+    up.addEvent(juce::MidiMessage::noteOff(1, 64), 96);
+    up.addEvent(juce::MidiMessage::noteOff(1, 60), 192);
+    block(up);
+    MP_CHECK(voices() <= 4, "letting go starts no coupled note on the way up: " + std::to_string(voices()));
+    int most = voices();
+    for (int i = 0; i < 10; ++i) {
+      block({});
+      most = std::max(most, voices());
+    }
+    MP_CHECK(most <= 4, "nor once it has settled: " + std::to_string(most));
+    for (int i = 0; i < 400; ++i) block({});
+    MP_CHECK(voices() == 0, "released, everything ends: " + std::to_string(voices()));
+
+    // A melody played over a held note moves the coupler with it.
+    juce::MidiBuffer low;
+    low.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    block(low);
+    for (int i = 0; i < 10; ++i) block({});
+    MP_CHECK(voices() == 2, "one key held: it is the top, and couples: " + std::to_string(voices()));
+    juce::MidiBuffer high;
+    high.addEvent(juce::MidiMessage::noteOn(1, 67, 0.8f), 0);
+    block(high);
+    for (int i = 0; i < 10; ++i) block({});
+    for (int i = 0; i < 400; ++i) block({});  // the low key's coupled pipe has faded
+    MP_CHECK(voices() == 3, "a higher key takes the coupler over: " + std::to_string(voices()));
+
+    settings.deleteFile();
+    root.deleteRecursively();
+  }
+};
+static MelodyCouplerChordTest g_melodyCouplerChord;
+
 // Which releases read from a file's marker hold nothing to play (#218). Only
 // a file whose loop runs to its last frame and that has no marker: 0.7.6 also
 // counted a file with no loop at all, which is what a separate release
