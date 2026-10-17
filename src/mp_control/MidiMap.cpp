@@ -338,6 +338,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
         bool& state = latchState_[b.targetId];
         state = !state;
         action.engage = state;
+        action.toggled = true;
       } else {
         // Momentary: held is on, released is off. This is a piston.
         action.engage = pressed;
