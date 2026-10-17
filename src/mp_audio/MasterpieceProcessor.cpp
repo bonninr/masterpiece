@@ -2315,9 +2315,24 @@ void MasterpieceProcessor::applyConsoleMidi() {
   if (!cf.existsAsFile()) return;
   MidiMap console;
   if (!console.fromText(cf.loadFileAsString().toStdString())) return;
+  // An organ's own file can still hold the player's generals and the like,
+  // saved before they had a file of their own (#103). They stay beside the
+  // console's wherever the console does not use the same button: dropped,
+  // the generals mapped on that organ went silent and their notes played
+  // the keyboard, while its divisionals still worked (#366). The next save
+  // moves them to the console file.
+  MidiMap own;
+  for (const auto& b : midiMap_.bindings())
+    if (MidiMap::isConsoleTarget(b.targetKind)) own.bindFrom(midiMap_, b);
   midiMap_.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
+  std::unordered_set<MidiSource, MidiSourceHash> taken;
   for (const auto& b : console.bindings())
-    if (MidiMap::isConsoleTarget(b.targetKind)) midiMap_.bindFrom(console, b);
+    if (MidiMap::isConsoleTarget(b.targetKind)) {
+      midiMap_.bindFrom(console, b);
+      taken.insert(b.source);
+    }
+  for (const auto& b : own.bindings())
+    if (taken.count(b.source) == 0) midiMap_.bindFrom(own, b);
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {

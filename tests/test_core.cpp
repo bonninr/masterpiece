@@ -15382,6 +15382,28 @@ public:
                  proc.midiMap().actionFor(note(41), 127).kind == mp::MidiTargetKind::Switch,
              "it is still there on its own organ");
 
+    // The other organ's file from before the console had one of its own: a
+    // general on a note of its own, and one on the console's + button
+    // (#366). The first comes with the organ, the console keeps the second.
+    {
+      mp::MidiMap legacy;
+      mp::MidiBinding general;
+      general.source = note(42);
+      general.targetKind = mp::MidiTargetKind::PlayerGeneral;
+      general.targetId = 1;
+      general.trigger = mp::MidiTrigger::Momentary;
+      legacy.bind(general);
+      general.source = note(40);
+      general.targetId = 2;
+      legacy.bind(general);
+      proc.midiMapFileFor(b).replaceWithText(juce::String(legacy.toText()));
+    }
+    MP_CHECK(proc.loadOrgan(b, 0, false).ok, "the other organ loads again");
+    MP_CHECK(proc.midiMap().actionFor(note(42), 127).kind == mp::MidiTargetKind::PlayerGeneral,
+             "the general it was saved with comes with it");
+    MP_CHECK(proc.midiMap().actionFor(note(40), 127).kind == mp::MidiTargetKind::StepperNext,
+             "and the console's button keeps what the console gave it");
+
     for (auto& [f, text] : kept) {
       if (text == "\\u0001absent") f.deleteFile();
       else f.replaceWithText(text);
