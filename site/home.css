@@ -249,10 +249,18 @@ pre code { font-size: 14px; }
 .gallery figcaption span a:hover { color: var(--accent); }
 .gallery img { cursor: pointer; }
 
-/* A gallery console, centred at about 80% of the screen. */
+/* A gallery console, centred at half the screen, lifted off the page. */
 .zoom { padding: 0; border: 0; background: none; overflow: visible; max-width: none; max-height: none; }
-.zoom::backdrop { background: rgba(8, 9, 12, 0.86); }
-.zoom img { display: block; width: auto; height: auto; max-width: 80vw; max-height: 80vh; border-radius: 3px; }
+.zoom::backdrop { background: rgba(8, 9, 12, 0.5); backdrop-filter: blur(3px); }
+.zoom img {
+  display: block; width: auto; height: auto; max-width: 50vw; max-height: 50vh; border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(200, 169, 126, 0.35),
+              0 3px 8px rgba(0, 0, 0, 0.5),
+              0 24px 50px rgba(0, 0, 0, 0.7),
+              0 60px 140px rgba(0, 0, 0, 0.8),
+              0 0 90px rgba(200, 169, 126, 0.22);
+}
+@media (max-width: 900px) { .zoom img { max-width: 92vw; max-height: 70vh; } }
 .zoom-close {
   position: absolute; top: -16px; right: -16px; width: 36px; height: 36px;
   border: 1px solid var(--line); border-radius: 50%; background: var(--surface-strong);
