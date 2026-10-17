@@ -247,6 +247,18 @@ pre code { font-size: 14px; }
 .gallery figcaption span { display: block; font-size: 12px; color: var(--subtle); }
 .gallery figcaption span a { color: var(--subtle); }
 .gallery figcaption span a:hover { color: var(--accent); }
+.gallery img { cursor: pointer; }
+
+/* A gallery console, centred at about 80% of the screen. */
+.zoom { padding: 0; border: 0; background: none; overflow: visible; max-width: none; max-height: none; }
+.zoom::backdrop { background: rgba(8, 9, 12, 0.86); }
+.zoom img { display: block; width: auto; height: auto; max-width: 80vw; max-height: 80vh; border-radius: 3px; }
+.zoom-close {
+  position: absolute; top: -16px; right: -16px; width: 36px; height: 36px;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface-strong);
+  color: var(--ink); font-size: 22px; line-height: 1; cursor: pointer;
+}
+.zoom-close:hover { color: var(--accent); }
 
 .closing { text-align: left; padding: 112px 0; }
 .closing .buttons { margin-top: 28px; }
