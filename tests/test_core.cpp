@@ -14712,6 +14712,111 @@ public:
 };
 static CompositeDefinitionTest g_compositeDefinition;
 
+// A demo's definition names the whole organ's samples and ships a few stops'
+// worth. Whether its package was there was decided by one sample, whichever
+// the model listed first, so the Nancy demo was asked for its own package.
+// Any of its samples now says the package is here; a package folder with
+// none of them still counts as missing.
+class DemoPackageHereTest final : public mp::test::Test {
+public:
+  DemoPackageHereTest() : Test("functional.archive.demo-package-here", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-demo-package";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::create_directories(base / "OrganDefinitions");
+    fs::create_directories(base / "OrganInstallationPackages" / "900291" / "Principal");
+    fs::create_directories(base / "OrganInstallationPackages" / "900292" / "Other");
+    std::ofstream(base / "OrganInstallationPackages" / "900292" / "Other" / "readme.txt") << "not a sample";
+
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 261.63 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    // Sixty samples named, one shipped: middle C.
+    std::ofstream(base / "OrganInstallationPackages" / "900291" / "Principal" / "060.wav", std::ios::binary)
+        << std::string(static_cast<const char*>(wav.getData()), wav.getSize());
+
+    std::string samples, pipes, layers, attacks;
+    for (int note = 36; note < 96; ++note) {
+      const std::string n = std::to_string(note), s = std::to_string(100 + note), p = std::to_string(300 + note),
+                        l = std::to_string(400 + note), a = std::to_string(500 + note);
+      samples += "<Sample><SampleID>" + s + "</SampleID><InstallationPackageID>900291</InstallationPackageID>"
+                 "<SampleFilename>Principal\\0" + n + ".wav</SampleFilename></Sample>";
+      pipes += "<Pipe_SoundEngine01><PipeID>" + p + "</PipeID><RankID>201</RankID><NormalMIDINoteNumber>" + n +
+               "</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+      layers += "<Pipe_SoundEngine01_Layer><LayerID>" + l + "</LayerID><PipeID>" + p + "</PipeID></Pipe_SoundEngine01_Layer>";
+      attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>" + a + "</UniqueID><LayerID>" + l + "</LayerID><SampleID>" + s +
+                 "</SampleID></Pipe_SoundEngine01_AttackSample>";
+    }
+    samples += "<Sample><SampleID>99</SampleID><InstallationPackageID>900292</InstallationPackageID>"
+               "<SampleFilename>Other\\036.wav</SampleFilename></Sample>";
+    const fs::path odf = base / "OrganDefinitions" / "Demo.Organ_Hauptwerk_xml";
+    std::ofstream(odf) <<
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Demo</Identification_Name>"
+        "<Identification_UniqueOrganID>291</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\">" + samples + "</ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes + "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers + "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks + "</ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>901</StopID><Name>Principal 8</Name><DivisionID>801</DivisionID>"
+        "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name>"
+        "<Latching>Y</Latching></Switch></ObjectList></Hauptwerk>";
+
+    const juce::File odfFile(juce::String(odf.string()));
+    std::vector<std::string> asked;
+    mp::MasterpieceProcessor proc;
+    proc.packageAsker = [&](const std::string& package, const std::string&) {
+      asked.push_back(package);
+      return std::string();
+    };
+    proc.prepareToPlay(48000.0, 256);
+    const auto r = proc.loadOrgan(odfFile, 0, false);
+    proc.settingsFileFor(odfFile).deleteFile();
+    MP_CHECK(r.ok, "the demo loads");
+    std::string list;
+    for (const auto& p : asked) list += p + " ";
+    MP_CHECK(asked.size() == 1 && asked[0] == "900292",
+             "asked only for the package whose folder holds none of its samples: " + list);
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+    proc.setStopEngaged(901, true);
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    proc.processBlock(buf, on);
+    for (int i = 0; i < 4; ++i) {
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+    }
+    MP_CHECK(proc.voiceStats().activeVoices == 1, "and the shipped pipe sounds");
+    fs::remove_all(base, ec);
+  }
+};
+static DemoPackageHereTest g_demoPackageHere;
+
 // An organ whose folders and archive are named outside ASCII. On Windows a
 // path made from a UTF-8 string went through the system's code page: the
 // archive "AVO-Vörösbereny_IR" was "not found", and an organ under such a

@@ -4337,28 +4337,43 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
     return std::string(d.size() < 6 ? 6 - d.size() : 0, '0') + d;
   };
   auto file = [](const std::string& path) { return juce::File(juce::String::fromUTF8(path.c_str())); };
-  // A package is here when one of its samples is: under the organ's root, in
-  // its archive, or in the folder it was found in.
-  std::map<Id, std::string> sampleOf;
+  // A package is here when any of its samples is: under the organ's root, in
+  // its archive, or in the folder it was found in. One sample is not enough:
+  // a demo's definition names the whole organ's samples and ships a few
+  // stops' worth, and the Nancy demo was asked for its own package.
+  std::map<Id, std::vector<std::string>> samplesOf;
   for (const auto& [id, s] : model_.samples)
-    if (s.installationPackageId > 0 && !s.fileName.empty() && !s.encrypted)
-      sampleOf.emplace(s.installationPackageId, s.fileName);
+    if (s.installationPackageId > 0 && !s.fileName.empty() && !s.encrypted) {
+      std::string rel = s.fileName;
+      std::replace(rel.begin(), rel.end(), '\\', '/');
+      samplesOf[s.installationPackageId].push_back(std::move(rel));
+    }
   std::unordered_map<Id, std::string> roots;
-  auto relOf = [&](Id package) {
-    std::string rel = "OrganInstallationPackages/" + dirName(package) + "/" + sampleOf.at(package);
-    std::replace(rel.begin(), rel.end(), '\\', '/');
-    return rel;
-  };
+  auto packageRel = [&](Id package) { return "OrganInstallationPackages/" + dirName(package) + "/"; };
   auto installedIn = [&](const juce::File& dir, Id package) {
-    return dir.getChildFile(juce::String::fromUTF8(relOf(package).c_str())).existsAsFile();
+    const juce::File pkg = dir.getChildFile(juce::String::fromUTF8(packageRel(package).c_str()));
+    if (!pkg.isDirectory()) return false;
+    for (const auto& rel : samplesOf.at(package))
+      if (pkg.getChildFile(juce::String::fromUTF8(rel.c_str())).existsAsFile()) return true;
+    return false;
   };
+  auto inArchive = [&](Id package) {
+    if (archive == nullptr) return false;
+    for (const auto& rel : samplesOf.at(package))
+      if (archive->find(packageRel(package) + rel) != nullptr) return true;
+    return false;
+  };
+  // Found stays found: the roots and the archive only grow.
+  std::set<Id> present;
   auto here = [&](Id package) {
+    if (present.count(package) != 0) return true;
     const auto at = roots.find(package);
-    return installedIn(file(at != roots.end() ? at->second : root), package) ||
-           (archive != nullptr && archive->find(relOf(package)) != nullptr);
+    if (!installedIn(file(at != roots.end() ? at->second : root), package) && !inArchive(package)) return false;
+    present.insert(package);
+    return true;
   };
   std::set<Id> missing;
-  for (const auto& [package, sample] : sampleOf)
+  for (const auto& [package, samples] : samplesOf)
     if (!here(package)) missing.insert(package);
   std::set<std::string> found;
   if (missing.empty() || root.empty()) return found;
