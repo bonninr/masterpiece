@@ -1416,7 +1416,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
           pathOf(opts.organRootDir) / "OrganInstallationPackages" /
               packageDirName(pkg.packageId),
           ec);
-      if (!pkg.presentOnDisk)
+      if (!pkg.presentOnDisk && pkg.packageId == 1)
+        // The standard components come with the program that plays the format,
+        // with no sample set of their own: their key, stop and blower noises
+        // are generated here.
+        outDiag.warnings.emplace_back(
+            "the organ uses the standard components (package 000001), which come with no sample set: "
+            "its key action, stop action and blower noises are generated stand-ins");
+      else if (!pkg.presentOnDisk)
         outDiag.warnings.emplace_back(
             "the organ is played from package " + packageDirName(pkg.packageId) +
             " (\"" + pkg.name + "\"" +

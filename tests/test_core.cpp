@@ -10766,6 +10766,93 @@ public:
     root.deleteRecursively();
   }
 };
+// The format's standard components (installation package 1) come with the
+// program that plays it and with no sample set. A set that names them -- a
+// composite borrows them for its key and stop noises and its blower -- finds
+// every one missing; they are played as generated ones, picked by file name.
+class StandardNoisesTest final : public mp::test::Test {
+public:
+  StandardNoisesTest() : Test("functional.samples.standard-noises", Category::Functional) {}
+  void run() override {
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_standard_noises");
+    root.deleteRecursively();
+    const auto noises = root.getChildFile("noises");
+    auto add = [](mp::OrganModel& model, mp::Id id, const std::string& file, mp::Id package) {
+      mp::SampleRef ref;
+      ref.sampleId = id;
+      ref.fileName = file;
+      ref.installationPackageId = package;
+      model.samples[id] = ref;
+    };
+    auto peakOf = [](const mp::SampleBuffer& b) {
+      double peak = 0.0;
+      for (int64_t i = 0; i < b.numFrames; ++i)
+        peak = std::max(peak, std::fabs(static_cast<double>(b.sample(i, 0))));
+      return peak;
+    };
+    mp::OrganModel model;
+    add(model, 1, "Standard\\Key action noise 1 on.wav", 1);
+    add(model, 2, "Standard\\Key action noise 2 on.wav", 1);
+    add(model, 3, "Standard\\StopActionNoise\\Stop on.wav", 1);
+    add(model, 4, "Standard\\Blower.wav", 1);
+    add(model, 5, "Standard\\Tremulant\\Wave.wav", 1);        // not a sound: stays missing
+    add(model, 6, "Key action noise 1 on.wav", 2);            // another package's: stays missing
+    add(model, 7, "Key action noise real.wav", 1);            // there on disk: used as it is
+    SampleLibraryTest::writeWav(root.getChildFile("OrganInstallationPackages/000001/Key action noise real.wav"), 100, 1, 48000.0);
+    const std::string rootPath = root.getFullPathName().toStdString();
+
+    auto load = [&](mp::SampleLibrary& lib) {
+      lib.setLoadThreads(1);
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Off);
+      lib.setStandardNoiseDir(noises.getFullPathName().toStdString());
+      return lib.loadAll(model, rootPath);
+    };
+    mp::SampleLibrary lib;
+    const auto report = load(lib);
+    MP_CHECK(report.standIns == 4, "the two keys, the stop and the blower are made (" +
+                                       std::to_string(report.standIns) + ")");
+    MP_CHECK(report.missing == 2, "the tremulant wave and the other package's file stay missing (" +
+                                      std::to_string(report.missing) + ")");
+    MP_CHECK(report.loaded == 5, "the four made and the real file are loaded");
+
+    const auto provider = lib.provider();
+    const mp::SampleBuffer* key1 = provider(1);
+    const mp::SampleBuffer* key2 = provider(2);
+    const mp::SampleBuffer* stop = provider(3);
+    const mp::SampleBuffer* blower = provider(4);
+    MP_CHECK(key1 && key2 && stop && blower, "each made sound has a buffer");
+    MP_CHECK(provider(5) == nullptr && provider(6) == nullptr, "and the others have none");
+    if (!(key1 && key2 && stop && blower)) {
+      root.deleteRecursively();
+      return;
+    }
+    MP_CHECK(key1->numFrames > 0 && key1->numFrames <= 4800 && !key1->loops(), "a key click is short and plays once");
+    MP_CHECK(stop->numFrames > 0 && stop->numFrames <= 12000 && !stop->loops(), "a stop thump is short and plays once");
+    MP_CHECK(blower->numFrames >= 24000 && blower->numFrames <= 96000 && blower->loops(),
+             "the blower is a second or so, looped");
+    MP_CHECK(blower->loopStart == 0 && blower->loopEnd == blower->numFrames, "and loops over the whole of it");
+    MP_CHECK(peakOf(*key1) > 0.01 && peakOf(*stop) > 0.01 && peakOf(*blower) > 0.01, "none of them is silent");
+    MP_CHECK(peakOf(*key1) <= 1.0 && peakOf(*stop) <= 1.0 && peakOf(*blower) <= 1.0, "and none clips");
+    bool alike = true;
+    for (int64_t i = 0; i < std::min(key1->numFrames, key2->numFrames); ++i)
+      if (key1->sample(i, 0) != key2->sample(i, 0)) alike = false;
+    MP_CHECK(!alike, "two keys do not click alike");
+    const mp::SampleBuffer* real = provider(7);
+    MP_CHECK(real != nullptr && real->numFrames == 100, "a file that is there is played, not replaced");
+
+    MP_CHECK(noises.getNumberOfChildFiles(juce::File::findFiles) == 4, "four files are kept");
+    mp::SampleLibrary again;
+    const auto second = load(again);
+    MP_CHECK(second.standIns == 4 && noises.getNumberOfChildFiles(juce::File::findFiles) == 4,
+             "a second load plays the same files rather than making more");
+    const mp::SampleBuffer* key1Again = again.provider()(1);
+    MP_CHECK(key1Again != nullptr && key1Again->numFrames == key1->numFrames &&
+                 key1Again->sample(10, 0) == key1->sample(10, 0),
+             "and they sound the same");
+    root.deleteRecursively();
+  }
+};
+static StandardNoisesTest g_standardNoises;
 static ReleaseChoiceTest g_releaseChoice;
 static MemoryDefaultsTest g_memoryDefaults;
 static OpenTailPoolTest g_openTailPool;
