@@ -59,7 +59,7 @@ the property of its producer and is governed by that producer's terms.
 The second recording, *New tested instruments* (thirty works on fifteen
 organs, filmed from the running console), has its own programme and
 sequencer credits:
-[attribution for New tested instruments](https://bonninr.github.io/masterpiece/attribution-2.html).
+[attribution for New tested instruments](https://masterpieceorgan.com/attribution-2.html).
 
 ## Music
 

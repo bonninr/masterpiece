@@ -3,280 +3,412 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Masterpiece: play sampled pipe organs on any computer</title>
-<meta name="description" content="Masterpiece is a free, open-source player for Hauptwerk-format and GrandOrgue pipe organ sample sets. It draws each organ's own console and runs on Windows, macOS, Linux, Raspberry Pi, Android and iPad.">
-<link rel="stylesheet" href="style.css">
+<title>Masterpiece: pipe organ sample player</title>
+<meta name="description" content="Masterpiece, a free, open-source player for Hauptwerk-format and GrandOrgue pipe organ sample sets, with a vector-optimised engine, composite organs and a split keyboard, on Windows, macOS, Linux, Raspberry Pi, Android and iPad.">
+<link rel="icon" href="screenshots/mark.png">
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
 
-<header>
-  <div class="wrap masthead">
-    <h1>Masterpiece</h1>
-    <p class="tagline">Pipe organ sample player for Hauptwerk-format and GrandOrgue sample sets.</p>
-    <a class="cta" href="https://github.com/bonninr/masterpiece/releases/latest">Download Masterpiece</a>
-    <span class="cta-sub">Free and open source · Windows, macOS, Linux, Raspberry&nbsp;Pi, Android and iPad</span>
-    <div class="badges">
-      <span class="badge">Standalone · VST3 · LV2 · AU</span>
-      <span class="badge">C++20 · JUCE&nbsp;9</span>
-      <span class="badge">GPLv3</span>
-    </div>
-    <p class="kofi"><a href="https://ko-fi.com/openpipesorg"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="36"></a></p>
-    <nav class="topnav">
-      <a href="https://github.com/bonninr/masterpiece">Source</a>
-      <a href="https://github.com/bonninr/masterpiece/releases">Releases</a>
-      <a href="#hear">Recital</a>
-      <a href="#hear-2">New instruments</a>
-      <a href="#consoles">Consoles</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="screenshots/mark.png" alt=""><span>Masterpiece</span></a>
+    <nav class="site-nav">
+      <a href="#formats">Formats</a>
+      <a href="#engine">Engine</a>
+      <a href="#platforms">Platforms</a>
       <a href="#features">Features</a>
-      <a href="attribution.html">Attribution</a>
+      <a href="#action">Sound demos</a>
+      <a href="https://github.com/bonninr/masterpiece">GitHub</a>
     </nav>
+    <a class="btn primary" href="#platforms">Downloads</a>
+    <a class="btn ghost" href="https://ko-fi.com/openpipesorg">Ko-fi</a>
   </div>
 </header>
 
-<div class="wrap">
+<main id="top">
 
-  <section id="hear">
-    <h3>Recital</h3>
-    <p class="lead">Seventeen minutes, nine organs, recorded from Masterpiece's audio output.</p>
-    <video class="recital" controls preload="metadata"
-           controlsList="nodownload" disablepictureinpicture
-           poster="screenshots/recital-poster.jpg"
-           src="recital.mp4">
-      <p>Your browser cannot play this video.</p>
-    </video>
-    <p class="note">Programme and credits: <a href="attribution.html">attribution page</a>.</p>
-  </section>
-
-  <section id="hear-2">
-    <h3>Recital II</h3>
-    <p class="lead">Twelve minutes, fifteen organs, filmed from the running console.</p>
-    <video class="recital" controls preload="metadata"
-           controlsList="nodownload" disablepictureinpicture
-           poster="screenshots/recital-2-poster.jpg"
-           src="recital-2.mp4">
-      <p>Your browser cannot play this video.</p>
-    </video>
-    <p class="note">Programme and credits:
-      <a href="attribution-2.html">attribution page</a>.</p>
-  </section>
-
-  <section id="consoles">
-    <h3>Consoles</h3>
-    <p class="lead">Thirty-seven sample sets tested, from a nine-register Flentrop to Nancy's four manuals.</p>
-    <div class="grid">
-      <figure>
-        <img src="screenshots/Lipiny.jpg" alt="Lipiny console">
-        <figcaption>Lipiny — a historic case, drawstops lettered in Fraktur<br><span class="credit">A. Volkmann, 1898 · 25 stops · sample set by <a href="https://piotrgrabowski.pl/lipiny/">Piotr Grabowski</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/CracowStJohnCantius.jpg" alt="Kraków console">
-        <figcaption>Kraków, St. John Cantius<br><span class="credit">40 stops, three manuals · sample set by <a href="https://piotrgrabowski.pl/cracow-st-john-cantius/">Piotr Grabowski</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/MelcerChamberMusicHall.jpg" alt="Melcer console">
-        <figcaption>Melcer Chamber Music Hall<br><span class="credit">chamber organ · sample set by <a href="https://piotrgrabowski.pl/melcer-chamber-music-hall/">Piotr Grabowski</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/Raszczyce.jpg" alt="Raszczyce console">
-        <figcaption>Raszczyce<br><span class="credit">Vermeulen, 1965 · 21 stops · sample set by <a href="https://piotrgrabowski.pl/raszczyce/">Piotr Grabowski</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/Nancy.jpg" alt="Nancy console">
-        <figcaption>Nancy — four manuals, drawstops colour-coded by division<br><span class="credit">65 stops, four manuals · sample set by <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/Lemmer.jpg" alt="Lemmer console">
-        <figcaption>Lemmer — a Flentrop, with the recording perspective on the case<br><span class="credit">Flentrop, 1977–78 · 9 registers · sample set by <a href="https://hauptwerk-augustine.info/Lemmer.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/AngsterNagyrakos.jpg" alt="Nagyrákos console">
-        <figcaption>Nagyrákos — an Angster organ<br><span class="credit">Angster, 1938 · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Angster_Nagyrakos.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/HungarianVillage.jpg" alt="Hungarian village organs console">
-        <figcaption>Hungarian village organs — the organs of two village churches in one set<br><span class="credit">composite set · sample set by <a href="https://hauptwerk-augustine.info/Hungarian_village.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/Zalalovo.jpg" alt="Zalalövő console">
-        <figcaption>Zalalövő — a modern baroque organ<br><span class="credit">Aquincum · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Zalalovo.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/LuberCsaszar.jpg" alt="Császár console">
-        <figcaption>Császár — a Luber organ<br><span class="credit">F. X. Luber, 1793 · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Luber_Csaszar.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/Vasvar.jpg" alt="Vasvár, Dominican church console">
-        <figcaption>Vasvár, Dominican church<br><span class="credit">demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Vasvar.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/DutchHarmonium.jpg" alt="Kézdimartonfalva console">
-        <figcaption>Kézdimartonfalva — a Dutch harmonium<br><span class="credit">harmonium · sample set by <a href="https://hauptwerk-augustine.info/Dutch_harmonium.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/EuleSzombathely.jpg" alt="Szombathely console">
-        <figcaption>Szombathely — an Eule organ<br><span class="credit">Eule · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Eule_Szombathely.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/AngsterHajos.jpg" alt="Hajós console">
-        <figcaption>Hajós — an Angster organ<br><span class="credit">Angster · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Angster_Hajos.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/MauracherSzekesfehervar.jpg" alt="Székesfehérvár, Franciscan church console">
-        <figcaption>Székesfehérvár, Franciscan church — a Mauracher organ<br><span class="credit">Mauracher · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Mauracher_Fehervar.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/AngsterCistercian.jpg" alt="Székesfehérvár, Cistercian church console">
-        <figcaption>Székesfehérvár, Cistercian church — an Angster organ<br><span class="credit">Angster · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Angster__Cistercian.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/AngsterJak.jpg" alt="Ják Abbey console">
-        <figcaption>Ják Abbey — an Angster organ<br><span class="credit">Angster, 1902 · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Angster_Jak.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/RiegerMonor.jpg" alt="Monor, Reformed church console">
-        <figcaption>Monor, Reformed church — a Rieger organ<br><span class="credit">Rieger · demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Rieger_Monor.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-      <figure>
-        <img src="screenshots/HolySpiritBudapest.jpg" alt="Budapest, Church of the Holy Spirit console">
-        <figcaption>Budapest, Church of the Holy Spirit<br><span class="credit">demonstration set · sample set by <a href="https://hauptwerk-augustine.info/Holy_Spirit.php">Augustine’s Virtual Organs</a></span></figcaption>
-      </figure>
-    </div>
-    <p class="note" style="margin-top:26px">Each of these is a separately
-      published sample set, five by <a href="https://piotrgrabowski.pl/">Piotr
-      Grabowski</a> and fourteen by <a href="https://hauptwerk-augustine.info/">Augustine’s
-      Virtual Organs</a>. Full credits are on the
-      <a href="attribution.html">attribution page</a>.</p>
-  </section>
-
-  <section id="memory">
-    <h3>Memory</h3>
-    <p class="lead">Samples are held at 24 or 16 bits, optionally folded to mono, with release tails streamed from disk. Stops, perspectives and individual ranks can be excluded from a load.</p>
-    <p>Friesach, 44 stops, 17&nbsp;GB: 21.6&nbsp;GB as 32-bit float, 16.2&nbsp;GB at 24-bit, 4.65&nbsp;GB at 16-bit streamed, 2.33&nbsp;GB in mono. Opens in 77&nbsp;s at full size, 25.9&nbsp;s streamed, 18.9&nbsp;s from the sample cache.</p>
-  </section>
-
-  <section id="packages">
-    <h3>Packages</h3>
-    <p class="lead">Sets play straight from their RAR archives (RAR 4 and 5, solid and multi-volume) and GrandOrgue <code>.orgue</code> packages.</p>
-  </section>
-
-  <section id="using">
-    <h3>Setup</h3>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-console.jpg" alt="The console being played"></div>
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
       <div>
-        <h4>Wiring</h4>
-        <p>Couplers, octave couplers, reversibles, crescendo and alternate ranks are resolved through each set's own switch network.</p>
+        <h1>The king of instruments. <span class="tone">Free and open source.</span></h1>
+        <p class="lead">Masterpiece, the player for the two main sample-set formats, Hauptwerk and GrandOrgue: each organ's own console, wiring, wind and swell boxes on a vector-optimised engine, from Windows and macOS to a Raspberry Pi and an iPad.</p>
+        <div class="buttons">
+          <a class="btn primary" href="#platforms">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+            Downloads</a>
+          <a class="btn" href="https://github.com/bonninr/masterpiece">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></svg>
+            Source code</a>
+        </div>
+        <a class="more" href="https://github.com/bonninr/masterpiece/releases/latest">Release notes</a>
       </div>
+      <figure class="frame" style="margin:0">
+        <img src="screenshots/shot-console.jpg" alt="The Nancy console in Masterpiece, with seven stops drawn">
+        <figcaption class="bar"><span>Nancy · Cavaillé-Coll · 65 stops, four manuals · Piotr Grabowski</span><a href="https://piotrgrabowski.pl/nancy/">Sample set</a></figcaption>
+      </figure>
     </div>
 
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-midi.jpg" alt="MIDI settings: keyboards, channels and learning"></div>
-      <div>
-        <h4>Your keyboards</h4>
-        <p>Manuals are mapped by MIDI channel, with per-manual key range, transposition, velocity window, short octaves and debounce. Drawstops, pistons and shoes are assigned by MIDI learn, and a console mapping can serve as the default for every organ.</p>
-      </div>
+    <div class="steps">
+      <div class="step"><div class="num">01</div><h3>Hauptwerk-format and GrandOrgue sets.</h3><p>Definitions, consoles and packages of both formats, read as they ship.</p></div>
+      <div class="step"><div class="num">02</div><h3>AVX2, SSE2 and NEON vector code.</h3><p>Three to five times the rendering speed at 512 voices.</p></div>
+      <div class="step"><div class="num">03</div><h3>Six platforms, four plugin formats.</h3><p>Windows, macOS, Linux, Raspberry Pi, Android and iOS.</p></div>
+      <div class="step"><div class="num">04</div><h3>More than 100 organs tested.</h3><p>Each set loaded, played on every keyboard and its console pages checked.</p></div>
     </div>
+  </div>
+</section>
 
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-favourites.jpg" alt="Favourites and combination sets"></div>
-      <div>
-        <h4>Combinations</h4>
-        <p>Every organ gains up to 100 generals, divisionals per manual and a 999-frame stepper, with named combination sets and organ favourites assignable to thumb pistons.</p>
-      </div>
+<section class="alt" id="formats">
+  <div class="wrap">
+   <div class="split">
+    <div>
+      <h2>Two formats. <span class="tone">One player.</span></h2>
+      <p class="lead">Hauptwerk-format and GrandOrgue sample sets with their own consoles and wiring, read straight from the packages they ship in.</p>
     </div>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-voicing.jpg" alt="Voicing: per-rank and per-pipe level and tuning"></div>
-      <div>
-        <h4>Voicing</h4>
-        <p>Level and tuning adjustments per rank and per pipe, with two voicing sets for A/B comparison.</p>
-      </div>
+      <ul class="points" style="margin-top:0">
+        <li><span class="num">01</span><div><h3>Hauptwerk-format definitions.</h3><p>Full, compact and composite XML, with every console page, jamb and console size the set draws.</p></div></li>
+        <li><span class="num">02</span><div><h3>GrandOrgue organs.</h3><p><code>.organ</code> definitions converted as they load, console included, and <code>.orgue</code> packages.</p></div></li>
+        <li><span class="num">03</span><div><h3>Archives with no unpacking.</h3><p>RAR 4 and 5, solid, multi-part and multi-volume; WAV and WavPack samples at any rate.</p></div></li>
+        <li><span class="num">04</span><div><h3>Each set's own switch network.</h3><p>Couplers, sub- and super-octaves, unison off, reversibles, crescendo and alternate ranks.</p></div></li>
+      </ul>
+   </div>
+    <div class="duo">
+      <figure class="frame">
+        <img src="screenshots/shot-friesach-hw.jpg" alt="Friesach from its Hauptwerk-format definition in Masterpiece">
+        <figcaption class="tag"><b>Hauptwerk format</b><code>Friesach.Organ_Hauptwerk_xml</code></figcaption>
+      </figure>
+      <figure class="frame">
+        <img src="screenshots/shot-friesach-go.jpg" alt="Friesach from its GrandOrgue definition in Masterpiece">
+        <figcaption class="tag"><b>GrandOrgue format</b><code>Friesach.organ</code></figcaption>
+      </figure>
     </div>
+    <p class="duo-caption">Friesach · one organ, both of its releases, the same console · <a href="https://piotrgrabowski.pl/friesach/">Piotr Grabowski</a></p>
+  </div>
+</section>
 
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-engine.jpg" alt="Engine settings: DSP switches, preload and streaming"></div>
-      <div>
-        <h4>Loading</h4>
-        <p>Resident format, mono folding, sample rate, release streaming, sample cache and memory limit, saved per organ or as defaults.</p>
+<section id="engine">
+  <div class="wrap split flip">
+    <div>
+      <h2>A vector-optimised engine. <span class="tone">More pipes on every processor.</span></h2>
+      <p class="lead">Hand-written AVX2, SSE2 and NEON kernels for every voice, on by default on every processor that has them.</p>
+      <div class="figures">
+        <div class="figure"><div class="value">3&ndash;5&times;<sup>1</sup></div><p>AVX2 rendering speed</p></div>
+        <div class="figure"><div class="value">&minus;57%<sup>2</sup></div><p>Memory, releases streamed</p></div>
+        <div class="figure"><div class="value">5%<sup>3</sup></div><p>Of each audio block, virtuoso test</p></div>
       </div>
+      <ol class="notes">
+        <li>512 voices on an Intel i7, against the same engine without vector code; 1.7&ndash;3.3&times; with SSE2, about 3&times; with NEON on a Raspberry Pi 4.</li>
+        <li><a href="https://piotrgrabowski.pl/friesach/">Friesach</a>, 24-bit samples: 16.2 GB held in memory, 7.0 GB with release tails streamed. See the table below.</li>
+        <li><a href="https://hauptwerk-augustine.info/Lemmer.php">Lemmer</a> on an eight-core i7-9700, 16-bit samples, streamed releases. The virtuoso test: 1,518 notes in 33 seconds, up to 1,300 notes a second.</li>
+        <li>Release tail cutoff: tails end once they fall below &minus;90 dB, inaudible in every test, which frees their voices for the notes being played. At &minus;80 dB, the virtuoso test on a two-core i3 runs with 95% fewer late blocks, and a few release recordings with a late sound in them can end a little early.</li>
+      </ol>
     </div>
-
-    <div class="shot">
-      <div class="shot-img"><img src="screenshots/ui-mixer.jpg" alt="Mixer: routing ranks to output pairs"></div>
-      <div>
-        <h4>Routing</h4>
-        <p>Ranks are routed per organ to up to eight stereo output pairs.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="features">
-    <h3>Engine</h3>
-    <table class="credits">
-      <tr><td class="who">Release selection</td><td>By key hold time, crossfaded from the sustain loop</td></tr>
-      <tr><td class="who">Wind model</td><td>Chests, bellows and valves solved as a coupled system; pitch and level track pressure</td></tr>
-      <tr><td class="who">Enclosures</td><td>Per-box level and low-pass filtering</td></tr>
-      <tr><td class="who">Tremulants</td><td>Amplitude and pitch modulation per chest and per pipe</td></tr>
-      <tr><td class="who">Interpolation</td><td>Hermite (Catmull-Rom)</td></tr>
-      <tr><td class="who">Polyphony</td><td>1536 voices; release-first voice stealing</td></tr>
-      <tr><td class="who">SIMD</td><td>AVX2, SSE2, NEON (experimental, 3–5× at 512 voices)</td></tr>
-      <tr><td class="who">Temperaments</td><td>Organ's own, equal, Werckmeister III, Kirnberger III, Vallotti, Young II, ¼-comma meantone, Pythagorean, Silbermann; Scala <code>.scl</code></td></tr>
-      <tr><td class="who">Sample formats</td><td>WAV, WavPack; 16/24-bit resident, mono folding, rate conversion on load</td></tr>
-      <tr><td class="who">Definitions</td><td>Hauptwerk-format XML (full and compact), GrandOrgue <code>.organ</code></td></tr>
-      <tr><td class="who">Packages</td><td>RAR 4/5 (solid, multi-volume), GrandOrgue <code>.orgue</code></td></tr>
-      <tr><td class="who">MIDI</td><td>Multiple inputs, learn, drawstop lamp output, SysEx jamb displays, virtual input (macOS, Linux)</td></tr>
-      <tr><td class="who">Recording</td><td>MIDI with stop and shoe events; audio; metronome</td></tr>
+    <table class="spec">
+      <tr><td>Vector code</td><td>AVX2, SSE2 (x86), NEON (ARM, Raspberry Pi)</td></tr>
+      <tr><td>Release selection</td><td>By key hold time, crossfaded from the sustain loop</td></tr>
+      <tr><td>Wind model</td><td>Chests, bellows and valves as one coupled system; pitch and level follow the pressure</td></tr>
+      <tr><td>Enclosures</td><td>Level and treble shelf to the set's stated depth</td></tr>
+      <tr><td>Tremulants</td><td>Amplitude and pitch modulation per chest and per pipe</td></tr>
+      <tr><td>Interpolation</td><td>Hermite (Catmull-Rom)</td></tr>
+      <tr><td>Polyphony</td><td>725 voices a processor thread by default, up to 16,384; the longest-fading releases give way first</td></tr>
+      <tr><td>Release tails</td><td>Ended below hearing, &minus;90 dB by default<sup>4</sup></td></tr>
     </table>
-  </section>
+  </div>
+</section>
 
-  <section id="building">
-    <h3>Source</h3>
-    <table class="credits">
-      <tr><td class="who">Language</td><td>C++20</td></tr>
-      <tr><td class="who">Framework</td><td>JUCE 9</td></tr>
-      <tr><td class="who">Build system</td><td>CMake 3.22+, Ninja; dependencies fetched at configure time</td></tr>
-      <tr><td class="who">Compilers</td><td>MSVC 2022, GCC 12+, Clang 14+</td></tr>
-      <tr><td class="who">Targets</td><td>Windows x64; macOS arm64, x86_64; Linux x86_64, arm64, armhf; Android; iOS</td></tr>
-      <tr><td class="who">Formats</td><td>Standalone, VST3, LV2, AU</td></tr>
-      <tr><td class="who">Licence</td><td>GPL-3.0-only</td></tr>
-    </table>
+<section class="deep" id="platforms">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>One player. <span class="tone">Six platforms.</span></h2>
+      <a class="more" href="https://github.com/bonninr/masterpiece/releases">All releases on GitHub</a>
+    </div>
+    <!-- One tile per system; a click opens its files, and opening one closes the
+         others. Each data-asset link starts on the release page;
+         .github/pages-downloads.py points it at the latest release's file when
+         the site is published. -->
+    <div class="platforms">
+      <details class="platform" name="download"><summary>Windows</summary><div class="dl">
+        <a data-asset="windows-setup.exe" href="https://github.com/bonninr/masterpiece/releases/latest">Installer</a>
+        <a data-asset="windows.zip" href="https://github.com/bonninr/masterpiece/releases/latest">Zip</a>
+        <p>x64</p></div></details>
+      <details class="platform" name="download"><summary>macOS</summary><div class="dl">
+        <a data-asset="macos-arm64.zip" href="https://github.com/bonninr/masterpiece/releases/latest">Apple silicon</a>
+        <a data-asset="macos-x86_64.zip" href="https://github.com/bonninr/masterpiece/releases/latest">Intel</a></div></details>
+      <details class="platform" name="download"><summary>Linux</summary><div class="dl">
+        <a data-asset="linux-x86_64.flatpak" href="https://github.com/bonninr/masterpiece/releases/latest">Flatpak</a>
+        <a data-asset="linux-amd64.deb" href="https://github.com/bonninr/masterpiece/releases/latest">.deb</a>
+        <a data-asset="linux-x86_64.tar.gz" href="https://github.com/bonninr/masterpiece/releases/latest">tar.gz</a>
+        <p>x86-64</p></div></details>
+      <details class="platform" name="download"><summary>Raspberry Pi</summary><div class="dl">
+        <a data-asset="linux-arm64.deb" href="https://github.com/bonninr/masterpiece/releases/latest">64-bit</a>
+        <a data-asset="linux-armhf.deb" href="https://github.com/bonninr/masterpiece/releases/latest">32-bit</a>
+        <p>Raspberry Pi OS, .deb</p></div></details>
+      <details class="platform" name="download"><summary>Android</summary><div class="dl">
+        <a data-asset="android.apk" href="https://github.com/bonninr/masterpiece/releases/latest">.apk</a>
+        <p>Android 8 and later</p></div></details>
+      <details class="platform" name="download"><summary>iOS</summary><div class="dl">
+        <a data-asset="ios.ipa" href="https://github.com/bonninr/masterpiece/releases/latest">.ipa</a>
+        <p>iPhone and iPad, iOS 15 and later, sideloaded</p></div></details>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="composite">
+  <div class="wrap split">
+    <div>
+      <h2>Composite organs. <span class="tone">Several sample sets, one instrument.</span></h2>
+      <p class="lead">Organs assembled from the pipework of several sets, such as Augustine's <a href="https://hauptwerk-augustine.info/Jehmlich_composite.php">Jehmlich</a> and <a href="https://hauptwerk-augustine.info/Zam%C3%A1rdi-Buda_Hills_composite.php">Zamárdi-Buda</a> composites, each set read from its own archive.</p>
+      <ul class="points">
+        <li><span class="num">01</span><div><h3>Sets found where you keep them.</h3><p>The composite's folder, your package folder and your sample libraries.</p></div></li>
+        <li><span class="num">02</span><div><h3>One question per set kept elsewhere.</h3><p>An archive or folder chosen once, and remembered for every later load.</p></div></li>
+        <li><span class="num">03</span><div><h3>Standard component noises.</h3><p>Key action, stop action and blower noises made by Masterpiece.</p></div></li>
+      </ul>
+    </div>
+    <figure class="frame" style="margin:0">
+      <img src="screenshots/shot-composite.jpg" alt="The Jehmlich composite console">
+      <figcaption class="bar"><span>Jehmlich composite · 11,785 samples from five archives · reopened in 5.3 s</span><a href="https://hauptwerk-augustine.info/Jehmlich_composite.php">Sample set</a></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="split">
+  <div class="wrap split flip">
+    <div>
+      <h2>Split mode. <span class="tone">The whole organ from one keyboard.</span></h2>
+      <p class="lead">Up to three split points, each zone on a manual or the pedal, with a layered second manual, its own octave and transposition, and the pedal from the lowest key held.</p>
+    </div>
+    <figure class="frame" style="margin:0">
+      <img src="screenshots/shot-split.jpg" alt="The split keyboard window: three zones over one keyboard and bass from the hands">
+    </figure>
+  </div>
+</section>
+
+<section class="alt" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Everything around the keys.</h2>
+      <a class="more" href="https://github.com/bonninr/masterpiece#features">The full feature list</a>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-midi.jpg" alt="Organ settings, MIDI tab"></div>
+        <h3>Your keyboards and pedals.</h3>
+        <p>A channel per manual, key range, transposition, velocity window, short octaves and debounce; MIDI learn for every control, drawstop lamps and jamb displays.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-combinations.jpg" alt="Combinations window"></div>
+        <h3>Generals, divisionals and a stepper.</h3>
+        <p>Up to 100 generals, divisionals per manual, general cancel and a 999-frame sequencer, in named combination sets.</p>
+      </article>
+      <article class="card">
+        <div class="frame contain"><img src="screenshots/shot-panel.jpg" alt="Panel of the whole organ, stops grouped by division"></div>
+        <h3>The whole organ on one panel.</h3>
+        <p>Stops grouped by division, for sets drawn across many jambs, any page in its own window, and automatic portrait layouts.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-loading.jpg" alt="Organ settings, Loading tab"></div>
+        <h3>Memory and loading choices.</h3>
+        <p>24 or 16 bits, mono folding, streamed release tails, a sample cache and a memory limit, per organ or as defaults.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-stops.jpg" alt="Organ settings, Stops and perspectives tab"></div>
+        <h3>Stops, ranks and perspectives.</h3>
+        <p>Any stop, rank or microphone perspective left out of a load, for the largest sets on smaller computers.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-temperament.jpg" alt="Temperament, pitch and transposer"></div>
+        <h3>Temperaments, pitch and transposer.</h3>
+        <p>The organ's own tuning, nine historical temperaments, Scala files, any pitch for A and &plusmn;12 semitones.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-voicing.jpg" alt="Voicing tab"></div>
+        <h3>Voicing per rank and per pipe.</h3>
+        <p>Level and tuning for every rank and pipe, with two voicing sets for A/B comparison.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-mixer.jpg" alt="Mixer tab"></div>
+        <h3>Routing to eight output pairs.</h3>
+        <p>Ranks sent per organ to up to eight stereo outputs, and convolution reverb for sets recorded dry.</p>
+      </article>
+      <article class="card">
+        <div class="frame"><img src="screenshots/shot-recorder.jpg" alt="Recorder window"></div>
+        <h3>MIDI and audio recording.</h3>
+        <p>Performances with every stop and shoe movement, replayable under another registration; audio takes and a metronome.</p>
+      </article>
+    </div>
+    <p class="duo-caption">Windows shown with Nancy · <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></p>
+  </div>
+</section>
+
+<section class="deep" id="memory">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Cathedral-sized organs. <span class="tone">Laptop-sized memory.</span></h2>
+    </div>
+    <p class="lead" style="margin-top:-24px">Samples held at 24 or 16 bits or folded to mono, release tails streamed from disk, and a sample cache for every later opening.</p>
+    <div class="figures">
+      <div class="figure"><div class="value">Up to 9&times;</div><p>Less memory, at 16 bits and in mono with releases streamed</p></div>
+      <div class="figure"><div class="value">Up to 4&times;</div><p>Faster opening from the sample cache</p></div>
+      <div class="figure"><div class="value">Per organ</div><p>Loading settings kept with each set</p></div>
+    </div>
+    <div class="compare-wrap">
+      <table class="compare">
+        <caption>One organ, five ways to hold it: <a href="https://piotrgrabowski.pl/friesach/">Friesach</a>, 44 stops, 17 GB on disk</caption>
+        <thead><tr><th>Samples</th><th>Release tails</th><th class="num">In memory</th><th class="num">Streamed from disk</th><th class="num">Opening</th></tr></thead>
+        <tbody>
+          <tr><td>32-bit float</td><td>In memory</td><td class="num">21.6 GB</td><td class="num">&ndash;</td><td class="num">77 s</td></tr>
+          <tr><td>24-bit</td><td>In memory</td><td class="num">16.2 GB</td><td class="num">&ndash;</td><td class="num">56 s</td></tr>
+          <tr><td>24-bit</td><td>Streamed</td><td class="num">7.0 GB</td><td class="num">8.9 GB</td><td class="num">29 s</td></tr>
+          <tr><td>16-bit</td><td>Streamed</td><td class="num">4.65 GB</td><td class="num">5.9 GB</td><td class="num">28 s</td></tr>
+          <tr class="best"><td>16-bit, mono</td><td>Streamed</td><td class="num">2.33 GB</td><td class="num">3.0 GB</td><td class="num">26 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:14px">Measured on a 16 GB Windows PC. A streamed tail keeps its first second in memory and reads the rest from disk as it plays. From the sample cache, the organ reopens in 18.9 s.</p>
+  </div>
+</section>
+
+<section id="action">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Masterpiece in action.</h2>
+      <a class="more" href="attribution.html">Organs and programmes</a>
+    </div>
+    <div class="cards two">
+      <article class="card" id="hear">
+        <video controls preload="metadata" controlsList="nodownload" disablepictureinpicture poster="screenshots/recital-poster.jpg" src="recital.mp4"><p>Your browser cannot play this video.</p></video>
+        <h3>Sound demo.</h3>
+        <p>Seventeen minutes on nine organs, recorded from Masterpiece's audio output. <a href="attribution.html">Organs and programme</a></p>
+      </article>
+      <article class="card" id="hear-2">
+        <video controls preload="metadata" controlsList="nodownload" disablepictureinpicture poster="screenshots/recital-2-poster.jpg" src="recital-2.mp4"><p>Your browser cannot play this video.</p></video>
+        <h3>Sound demo II.</h3>
+        <p>Twelve minutes on fifteen organs, filmed from the running console. <a href="attribution-2.html">Organs and programme</a></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="consoles">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>More than 100 organs tested. <span class="tone">A gallery of their consoles.</span></h2>
+      <a class="more" href="attribution.html">Sample set credits</a>
+    </div>
+    <div class="gallery">
+      <figure><img loading="lazy" src="screenshots/Lipiny.jpg" alt="Lipiny console"><figcaption>Lipiny<span>A. Volkmann, 1898 · <a href="https://piotrgrabowski.pl/lipiny/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/CracowStJohnCantius.jpg" alt="Kraków console"><figcaption>Kraków, St. John Cantius<span>40 stops · <a href="https://piotrgrabowski.pl/cracow-st-john-cantius/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/MelcerChamberMusicHall.jpg" alt="Melcer console"><figcaption>Melcer Chamber Music Hall<span>Chamber organ · <a href="https://piotrgrabowski.pl/melcer-chamber-music-hall/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Raszczyce.jpg" alt="Raszczyce console"><figcaption>Raszczyce<span>Vermeulen, 1965 · <a href="https://piotrgrabowski.pl/raszczyce/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Nancy.jpg" alt="Nancy console"><figcaption>Nancy<span>65 stops, four manuals · <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Lemmer.jpg" alt="Lemmer console"><figcaption>Lemmer<span>Flentrop, 1977–78 · <a href="https://hauptwerk-augustine.info/Lemmer.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/AngsterNagyrakos.jpg" alt="Nagyrákos console"><figcaption>Nagyrákos<span>Angster, 1938 · <a href="https://hauptwerk-augustine.info/Angster_Nagyrakos.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/HungarianVillage.jpg" alt="Hungarian village organs console"><figcaption>Hungarian village organs<span>Composite set · <a href="https://hauptwerk-augustine.info/Hungarian_village.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Zalalovo.jpg" alt="Zalalövő console"><figcaption>Zalalövő<span>Modern baroque · <a href="https://hauptwerk-augustine.info/Zalalovo.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/LuberCsaszar.jpg" alt="Császár console"><figcaption>Császár<span>F. X. Luber, 1793 · <a href="https://hauptwerk-augustine.info/Luber_Csaszar.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Vasvar.jpg" alt="Vasvár console"><figcaption>Vasvár, Dominican church<span>Demonstration set · <a href="https://hauptwerk-augustine.info/Vasvar.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/DutchHarmonium.jpg" alt="Kézdimartonfalva console"><figcaption>Kézdimartonfalva<span>Dutch harmonium · <a href="https://hauptwerk-augustine.info/Dutch_harmonium.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/EuleSzombathely.jpg" alt="Szombathely console"><figcaption>Szombathely<span>Eule · <a href="https://hauptwerk-augustine.info/Eule_Szombathely.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/AngsterHajos.jpg" alt="Hajós console"><figcaption>Hajós<span>Angster · <a href="https://hauptwerk-augustine.info/Angster_Hajos.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/MauracherSzekesfehervar.jpg" alt="Székesfehérvár, Franciscan church console"><figcaption>Székesfehérvár, Franciscan church<span>Mauracher · <a href="https://hauptwerk-augustine.info/Mauracher_Fehervar.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/AngsterCistercian.jpg" alt="Székesfehérvár, Cistercian church console"><figcaption>Székesfehérvár, Cistercian church<span>Angster · <a href="https://hauptwerk-augustine.info/Angster__Cistercian.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/AngsterJak.jpg" alt="Ják Abbey console"><figcaption>Ják Abbey<span>Angster, 1902 · <a href="https://hauptwerk-augustine.info/Angster_Jak.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/RiegerMonor.jpg" alt="Monor console"><figcaption>Monor, Reformed church<span>Rieger · <a href="https://hauptwerk-augustine.info/Rieger_Monor.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/HolySpiritBudapest.jpg" alt="Budapest console"><figcaption>Budapest, Church of the Holy Spirit<span>Demonstration set · <a href="https://hauptwerk-augustine.info/Holy_Spirit.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Friesach.jpg" alt="Friesach console"><figcaption>Friesach<span>Three manuals · <a href="https://piotrgrabowski.pl/friesach/">Piotr Grabowski</a></span></figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="deep" id="source">
+  <div class="wrap split">
+    <div>
+      <h2>Open source, end to end. <span class="tone">C++20, JUCE and GPLv3.</span></h2>
+      <p class="lead">One code base for every platform and plugin format, built with CMake and tested on every pull request.</p>
 <pre><code>cmake --preset dev
 cmake --build --preset dev</code></pre>
-    <p class="note">Platform dependencies: <a href="https://github.com/bonninr/masterpiece#building">README</a>.</p>
-  </section>
-
-  <section id="credits">
-    <h3>Credits</h3>
-    <div class="features">
-      <div class="feature">
-        <h4><a href="https://github.com/GrandOrgue/GrandOrgue">GrandOrgue</a></h4>
-        <p>Voice engine, release crossfade.</p>
-      </div>
-      <div class="feature">
-        <h4><a href="https://github.com/GrandOrgue/OdfEdit">OdfEdit</a></h4>
-        <p>Organ definition format.</p>
-      </div>
-      <div class="feature">
-        <h4><a href="https://github.com/dividebysandwich/rusty-pipes">rusty-pipes</a></h4>
-        <p>Samples, loops, file formats.</p>
-      </div>
-      <div class="feature">
-        <h4><a href="https://github.com/christophhart/HISE">HISE</a></h4>
-        <p>Streaming through per-voice buffers.</p>
-      </div>
+      <a class="more" href="https://github.com/bonninr/masterpiece#building">Platform dependencies</a>
     </div>
-  </section>
+    <table class="spec">
+      <tr><td>Language</td><td>C++20</td></tr>
+      <tr><td>Framework</td><td>JUCE 9</td></tr>
+      <tr><td>Build system</td><td>CMake 3.22+, Ninja; dependencies fetched at configure time</td></tr>
+      <tr><td>Compilers</td><td>MSVC 2022, GCC 12+, Clang 14+</td></tr>
+      <tr><td>Targets</td><td>Windows x64; macOS arm64, x86_64; Linux x86_64, arm64, armhf, Flatpak; Android; iOS</td></tr>
+      <tr><td>Formats</td><td>Standalone, VST3, LV2, AU</td></tr>
+      <tr><td>Licence</td><td>GPL-3.0-only</td></tr>
+    </table>
+  </div>
+</section>
 
-</div>
-
-<footer>
+<section>
   <div class="wrap">
-    <p>GPLv3. Sample sets belong to their producers. Hauptwerk is a trademark of its owner.</p>
-    <p><a href="https://github.com/bonninr/masterpiece">Source</a> ·
-       <a href="https://github.com/bonninr/masterpiece/releases">Releases</a> ·
-       <a href="attribution.html">Attribution</a> ·
-       <a href="privacy.html">Privacy</a></p>
+    <div class="strip" style="padding:0">
+      <h2>The latest release.</h2>
+      <p>New features, improvements and fixes, with downloads for every platform and notes on every change.</p>
+      <a class="more" href="https://github.com/bonninr/masterpiece/releases/latest">Release notes</a>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="strip" style="padding:0">
+      <h2>Reports, sets and code, welcome.</h2>
+      <p>Bug reports, tested sample sets, translations and pull requests on GitHub; ideas and questions in Discussions.</p>
+      <a class="more" href="https://github.com/bonninr/masterpiece/issues">Issues</a>
+    </div>
+    <div class="credits-grid">
+      <div><h3><a href="https://github.com/GrandOrgue/GrandOrgue">GrandOrgue</a></h3><p>Voice engine, release crossfade.</p></div>
+      <div><h3><a href="https://github.com/GrandOrgue/OdfEdit">OdfEdit</a></h3><p>Organ definition format.</p></div>
+      <div><h3><a href="https://github.com/dividebysandwich/rusty-pipes">rusty-pipes</a></h3><p>Samples, loops, file formats.</p></div>
+      <div><h3><a href="https://github.com/christophhart/HISE">HISE</a></h3><p>Streaming through per-voice buffers.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="wrap">
+    <h2>Masterpiece, free for every organist.</h2>
+    <p class="lead">Windows, macOS, Linux, Raspberry Pi, Android and iPad, each a direct download.</p>
+    <div class="buttons">
+      <a class="btn primary" href="#platforms">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+        Downloads</a>
+      <a class="btn" href="https://ko-fi.com/openpipesorg">Ko-fi</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="#top"><img src="screenshots/mark.png" alt=""><span>Masterpiece</span></a>
+        <p class="small" style="margin-top:14px;max-width:22em">Pipe organ sample player for desktop, Raspberry Pi and tablet.</p>
+      </div>
+      <div><h2>Product</h2><ul>
+        <li><a href="#platforms">Downloads</a></li>
+        <li><a href="https://github.com/bonninr/masterpiece/releases">Release notes</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#consoles">Consoles</a></li></ul></div>
+      <div><h2>Project</h2><ul>
+        <li><a href="https://github.com/bonninr/masterpiece">Source</a></li>
+        <li><a href="https://github.com/bonninr/masterpiece/issues">Issues</a></li>
+        <li><a href="https://github.com/bonninr/masterpiece/discussions">Discussions</a></li>
+        <li><a href="https://ko-fi.com/openpipesorg">Ko-fi</a></li></ul></div>
+      <div><h2>Credits</h2><ul>
+        <li><a href="attribution.html">Sound demo</a></li>
+        <li><a href="attribution-2.html">Sound demo II</a></li>
+        <li><a href="privacy.html">Privacy</a></li></ul></div>
+    </div>
+    <div class="legal">
+      <span>GPLv3. Sample sets belong to their producers. Hauptwerk is a trademark of its owner.</span>
+      <span><a href="attribution.html">Attribution</a><a href="privacy.html">Privacy</a></span>
+    </div>
   </div>
 </footer>
 
