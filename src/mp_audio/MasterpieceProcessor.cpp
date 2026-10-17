@@ -4301,6 +4301,7 @@ void MasterpieceProcessor::divisionInputMoved(Id switchId, bool engaged) {
 std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
     std::shared_ptr<OrganArchive>& archive, const std::string& root, const std::string& archivePath) {
   samples_.setPackageRoots({});
+  samples_.setPackagesFromElsewhere({});
   auto dirName = [](Id id) {
     const std::string d = std::to_string(id);
     return std::string(d.size() < 6 ? 6 - d.size() : 0, '0') + d;
@@ -4474,6 +4475,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
     }
   }
   samples_.setPackageRoots(std::move(roots));
+  samples_.setPackagesFromElsewhere(found);
   return found;
 }
 

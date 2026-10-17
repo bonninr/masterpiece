@@ -26,6 +26,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -231,6 +232,9 @@ public:
   // folder's OrganInstallationPackages (a composite definition, #289). The
   // others stay under the organ's own root.
   void setPackageRoots(std::unordered_map<Id, std::string> roots) { packageRoots_ = std::move(roots); }
+  // The packages found with other organs, in their archives or folders: part
+  // of what a cache of this organ holds.
+  void setPackagesFromElsewhere(std::set<std::string> packages) { packagesFromElsewhere_ = std::move(packages); }
 
   // Memory figures BEFORE a load, from file sizes and WAV headers, without
   // decoding anything. In three steps so the slow one -- reading thousands of
@@ -303,6 +307,7 @@ private:
 
   std::shared_ptr<const OrganArchive> archive_;
   std::unordered_map<Id, std::string> packageRoots_;
+  std::set<std::string> packagesFromElsewhere_;
   const std::string& rootFor(const std::string& organRoot, Id package) const {
     const auto it = packageRoots_.find(package);
     return it == packageRoots_.end() ? organRoot : it->second;

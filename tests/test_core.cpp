@@ -14450,14 +14450,23 @@ public:
         "<InstallationPackageID>900289</InstallationPackageID><Name>Kecskemet</Name></RequiredInstallationPackage></ObjectList>"
         "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>900289</InstallationPackageID>"
         "<SampleFilename>Principal\\036-C.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
-        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
-        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample>"
+        "<Sample><SampleID>102</SampleID><InstallationPackageID>900288</InstallationPackageID>"
+        "<SampleFilename>Own\\037-C#.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>138.59</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>202</RankID><Name>Own</Name></Rank></ObjectList>"
         "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID>"
-        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID>"
+        "<NormalMIDINoteNumber>37</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
         "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><Pipe_SoundEngine01_Layer><LayerID>401</LayerID>"
-        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
+        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
         "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\"><Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID>"
-        "<LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample></ObjectList>"
+        "<LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>102</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample></ObjectList>"
         "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name>"
         "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
         "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
@@ -14467,10 +14476,17 @@ public:
         "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
         "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
         "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>901</StopID><RankID>202</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
         "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
         "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name>"
         "<Latching>Y</Latching></Switch></ObjectList></Hauptwerk>";
 
+    // The composite's own sample, in its own package beside the definition.
+    fs::create_directories(base / "Composite" / "OrganInstallationPackages" / "900288" / "Own");
+    std::ofstream(base / "Composite" / "OrganInstallationPackages" / "900288" / "Own" / "037-C#.wav", std::ios::binary)
+        << tone;
     const juce::File odfFile(juce::String(odf.string()));
     for (int round = 0; round < 2; ++round) {
       mp::MasterpieceProcessor proc;
@@ -14547,6 +14563,25 @@ public:
         << tone;
     MP_CHECK(load({}, [&] { return installed.string(); }) == 0 && asked == 3, "the folder the player chose plays");
     MP_CHECK(load({}, nullptr) == 0, "and is kept for the next load");
+
+    // A cache written while the package was missing holds the composite's own
+    // sample only; once the package is found the load reads it again.
+    fs::remove_all(installed);
+    fs::remove(base / "Composite" / "package-folders.txt");
+    fs::remove(base / "Composite" / "joined-packages.txt");
+    auto loaded = [&] {
+      mp::MasterpieceProcessor proc;
+      proc.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      return r.samples.loaded;
+    };
+    MP_CHECK(loaded() == 1, "without the package, its own sample");
+    std::ofstream(base / "Composite" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary)
+        << SolidRar4Test::rar4({{"OrganInstallationPackages\\900289\\Principal\\036-C.wav", tone}}, false);
+    const int both = loaded();
+    MP_CHECK(both == 2, "with it found, both samples, not the cache of one: " + std::to_string(both));
     fs::remove_all(base, ec);
   }
 };
