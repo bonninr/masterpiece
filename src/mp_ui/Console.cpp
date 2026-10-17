@@ -1084,8 +1084,8 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     }
 
     // A stop with no pipes in this set is not drawn from the console: the
-    // click is refused, and its tooltip says it is not available. One drawn
-    // by other means can still be pushed in.
+    // click is refused, and its tooltip says it is not available. Nothing else
+    // draws it either (SwitchNetwork::holdOff); one shown drawn can be pushed in.
     if (const auto* why = proc_.unavailableFor(it->switchId);
         why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(it->switchId))
       return;

@@ -79,6 +79,13 @@ public:
   // in lastChanges().
   void set(Id switchId, bool engaged);
 
+  // Switches nothing may engage: a demo set's locked stops, whose ranks have
+  // no pipes in this set. A piston, the crescendo, a wire or a click that
+  // would draw one leaves it in, as the set's own player does. Any of them
+  // engaged now is pushed in, and its wiring follows. reset() clears them.
+  void holdOff(std::unordered_set<Id> switches);
+  bool heldOff(Id switchId) const { return heldOff_.count(switchId) != 0; }
+
   bool engaged(Id switchId) const { return engaged_.count(switchId) != 0; }
   const std::unordered_set<Id>& engagedSwitches() const { return engaged_; }
 
@@ -136,6 +143,7 @@ private:
   std::vector<uint8_t> fired_;
 
   std::unordered_set<Id> engaged_;
+  std::unordered_set<Id> heldOff_;
   std::vector<std::pair<Id, bool>> changes_;
   std::deque<std::pair<Id, bool>> work_;
   bool ranAway_ = false;

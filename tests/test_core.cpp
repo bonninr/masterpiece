@@ -5582,6 +5582,39 @@ public:
       MP_CHECK(!net.engaged(2001) && !net.engaged(10103),
                "and cancelling the stop pushes the knob back out with it");
     }
+
+    // --- a demo's locked stop stays in, whatever draws it ------------------
+    // Its knob (10104) and its stop (2002) are held off. A general (300) wired
+    // to the knob, a click on it, and a tutti (301) drawing the stop all leave
+    // both in; the stop with pipes (2003) on the same general still draws.
+    {
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{10104}, mp::Id{2002}, mp::Id{2003}, mp::Id{300}, mp::Id{301}})
+        addSwitch(m, id);
+      m.switchLinkages.push_back(wire(10104, 2002));
+      m.switchLinkages.push_back(wire(2002, 10104));
+      m.switchLinkages.push_back(wire(300, 10104));
+      m.switchLinkages.push_back(wire(300, 2003));
+      m.switchLinkages.push_back(wire(301, 2002));
+
+      mp::SwitchNetwork net;
+      net.reset(m);
+      net.set(10104, true);
+      MP_CHECK(net.engaged(2002), "before the hold the knob draws the stop");
+      net.holdOff({10104, 2002});
+      MP_CHECK(!net.engaged(10104) && !net.engaged(2002), "the hold pushes both in");
+      net.set(300, true);
+      MP_CHECK(net.engaged(2003), "the general draws the stop with pipes");
+      MP_CHECK(!net.engaged(10104) && !net.engaged(2002), "and leaves the locked one in");
+      net.set(301, true);
+      MP_CHECK(!net.engaged(2002), "so does the tutti");
+      net.set(10104, true);
+      MP_CHECK(!net.engaged(10104) && !net.engaged(2002), "and so does a click");
+      MP_CHECK(net.heldOff(2002) && !net.heldOff(2003), "only the locked switches are held");
+      net.reset(m);
+      net.set(10104, true);
+      MP_CHECK(net.engaged(2002), "a reset, which a new organ brings, lets them go");
+    }
   }
 };
 
@@ -14366,6 +14399,98 @@ public:
   }
 };
 static PalletStopAvailableTest g_palletStopAvailable;
+
+// A demo keeps every stop's action noise: a pipe on a pallet the stop's own
+// switch opens, with no key. Nowa Ruda's 35 locked stops counted as playing
+// through those, and only the two without a noise were marked (#390). Only a
+// pallet a key opens holds pipework. And a locked stop stays in, whatever
+// draws it, except a switch the organ starts engaged (Alessandria's noises).
+class DemoStopNoiseTest final : public mp::test::Test {
+public:
+  DemoStopNoiseTest() : Test("functional.control.demo-stop-noise", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool latching, bool on = false) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name + "</Name><Latching>" +
+             (latching ? "Y" : "N") + "</Latching><DefaultToEngaged>" + (on ? "Y" : "N") +
+             "</DefaultToEngaged></Switch>";
+    };
+    auto link = [](int from, int to, int condition = 0) {
+      return "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+             std::to_string(to) + "</DestSwitchID>" +
+             (condition != 0 ? "<ConditionSwitchID>" + std::to_string(condition) +
+                                   "</ConditionSwitchID><ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+                             : std::string()) +
+             "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+             "<EngageLinkActionCode>1</EngageLinkActionCode>"
+             "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>";
+    };
+    auto pipe = [](int id, int rank, int pallet) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+             "</RankID><NormalMIDINoteNumber>60</NormalMIDINoteNumber><ControllingPalletSwitchID>" +
+             std::to_string(pallet) + "</ControllingPalletSwitchID></Pipe_SoundEngine01>";
+    };
+    auto stop = [](int id, const char* name, int sw) {
+      return "<Stop><StopID>" + std::to_string(id) + "</StopID><Name>" + name +
+             "</Name><DivisionID>1</DivisionID><ControllingSwitchID>" + std::to_string(sw) +
+             "</ControllingSwitchID></Stop>";
+    };
+    // 900 is the key; it opens the Principal's pallet (555) while 101 is
+    // drawn. Each stop's switch also opens its own noise pipe. The Tutti
+    // (130) draws both. 140, engaged from the start, runs the noises and
+    // controls a locked stop.
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>390</Identification_UniqueOrganID>"
+        "<Identification_Name>Demo noises</Identification_Name>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID>"
+        "<Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\"><DivisionInput><DivisionID>1</DivisionID>"
+        "<SwitchID>900</SwitchID><NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(900, "Key C4", false) + sw(101, "Principal 8", true) + sw(102, "Piccolo 2", true) +
+        sw(130, "Tutti", true) + sw(140, "Noises", true, true) + sw(555, "Pallet C4", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + link(900, 555, 101) + link(130, 101) +
+        link(130, 102) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">" + stop(1, "Principal 8", 101) +
+        stop(2, "Piccolo 2", 102) + stop(3, "Tuba 8", 140) +
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Stop action noises</Name></Rank>"
+        "<Rank><RankID>9</RankID><Name>Blower</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(71, 7, 555) + pipe(81, 8, 101) + pipe(82, 8, 102) + pipe(91, 9, 140) +
+        "</ObjectList></Hauptwerk>";
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-demo-stop-noise");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("noise.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      std::map<mp::Id, bool> playable;
+      for (const auto& e : proc.stopList()) playable[e.stopId] = e.playable;
+      MP_CHECK(playable[1], "the stop a key reaches plays");
+      MP_CHECK(!playable[2], "a stop with only its action noise is locked");
+      MP_CHECK(!playable[3], "and so is one on the noises' switch");
+
+      proc.setSwitchEngaged(130, true);
+      MP_CHECK(proc.stopEngaged(1) && proc.switchEngaged(101), "the Tutti draws the Principal");
+      MP_CHECK(!proc.switchEngaged(102) && !proc.stopEngaged(2), "and leaves the locked Piccolo in");
+      proc.setStopEngaged(2, true);
+      MP_CHECK(!proc.switchEngaged(102) && !proc.stopEngaged(2), "drawing it directly does too");
+      MP_CHECK(proc.switchEngaged(140), "the noises' switch is left running");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static DemoStopNoiseTest g_demoStopNoise;
 
 // A division played from its keys through division inputs, as Hill,
 // Burton-Berlin plays every manual (#345): the key's switch drives the input
