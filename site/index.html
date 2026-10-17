@@ -406,7 +406,7 @@
 
 <!-- A console from the gallery at full size: closed by the X, a click outside
      the picture, or Escape. -->
-<dialog class="zoom" aria-label="Console">
+<dialog class="zoom" aria-label="Enlarged picture">
   <div class="zoom-frame">
     <button class="zoom-close" type="button" aria-label="Close">&times;</button>
     <img alt="">
@@ -418,18 +418,26 @@
   const zoom = document.querySelector('dialog.zoom');
   const img = zoom.querySelector('img');
   const caption = zoom.querySelector('.zoom-caption');
-  for (const figure of document.querySelectorAll('.gallery figure')) {
-    const thumb = figure.querySelector('img');
+  // A picture that opens enlarged; fill() writes its caption.
+  const enlarge = (thumb, fill) => {
     thumb.tabIndex = 0;
     thumb.setAttribute('role', 'button');
     const open = () => {
       img.src = thumb.currentSrc || thumb.src;
       img.alt = thumb.alt;
-      caption.innerHTML = figure.querySelector('figcaption').innerHTML;
+      fill();
       zoom.showModal();
     };
     thumb.addEventListener('click', open);
     thumb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  };
+  // The consoles, with their gallery caption.
+  for (const figure of document.querySelectorAll('.gallery figure'))
+    enlarge(figure.querySelector('img'), () => { caption.innerHTML = figure.querySelector('figcaption').innerHTML; });
+  // The feature cards' screenshots, with the card's title.
+  for (const card of document.querySelectorAll('.card')) {
+    const thumb = card.querySelector('.frame img');
+    if (thumb) enlarge(thumb, () => { caption.textContent = card.querySelector('h3').textContent; });
   }
   zoom.querySelector('.zoom-close').addEventListener('click', () => zoom.close());
   // A click on the backdrop lands on the dialog itself, outside the figure.
