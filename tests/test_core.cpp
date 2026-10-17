@@ -5086,6 +5086,47 @@ public:
   }
 };
 
+// One swell drawn twice, as Norwood draws it on the console and on the simple
+// jamb (#366): each shoe feeds one hidden control, which moves the shutters
+// and both pictures. The shoe moved last is the one it follows; the jamb's,
+// listed last, overwrote the console's on every pass.
+class TwoShoesTest final : public mp::test::Test {
+public:
+  TwoShoesTest() : Test("functional.control.two-shoes-one-swell", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {mp::Id(220), mp::Id(536), mp::Id(537), mp::Id(538), mp::Id(539), mp::Id(540)})
+      m.continuousControls[id] = DoubleLinkageTest::control(id, 127);
+    m.continuousControls[537].clickable = true;  // the console's shoe
+    m.continuousControls[539].clickable = true;  // the simple jamb's
+    auto wire = [&m](mp::Id from, mp::Id to) {
+      mp::ContinuousControlLinkage l;
+      l.sourceControlId = from;
+      l.destControlId = to;
+      m.controlLinkages.push_back(l);
+    };
+    wire(220, 536);  // the shutters
+    wire(537, 220);
+    wire(220, 538);  // the console's picture
+    wire(539, 220);
+    wire(220, 540);  // the jamb's picture
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    auto move = [&](mp::Id shoe, int v) {
+      bank.setValue(shoe, v);
+      bank.propagate(shoe);
+    };
+    move(537, 40);
+    MP_CHECK(bank.value(220) == 40 && bank.value(536) == 40 && bank.value(540) == 40,
+             "the console's shoe moves the swell and the jamb's picture: " + std::to_string(bank.value(220)));
+    move(539, 90);
+    MP_CHECK(bank.value(220) == 90 && bank.value(538) == 90, "and the jamb's shoe moves it back");
+    move(537, 20);
+    MP_CHECK(bank.value(220) == 20, "the console's again: the shoe moved last is followed");
+  }
+};
+static TwoShoesTest g_twoShoes;
+
 
 class StageSwitchTest final : public mp::test::Test {
 public:
@@ -14510,6 +14551,153 @@ public:
 };
 static CompositeDefinitionTest g_compositeDefinition;
 
+// A chord played through a melody coupler couples its top note only (#355).
+// Its keys arrive a few milliseconds apart and each in turn was the top: the
+// coupler played them one after the other, an arpeggio, and again on release.
+// The top is taken once the keys have been still for kExtremeSettleMs.
+class MelodyCouplerChordTest final : public mp::test::Test {
+public:
+  MelodyCouplerChordTest() : Test("functional.control.melody-coupler-chord", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-melody-chord");
+    root.deleteRecursively();
+    const auto defs = root.getChildFile("OrganDefinitions");
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    std::string pipes, layers, attacks;
+    int id = 300;
+    for (int rank : {201, 202})
+      for (int note : {60, 64, 67}) {
+        ++id;
+        pipes += "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+                 "</RankID><NormalMIDINoteNumber>" + std::to_string(note) + "</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+        layers += "<Pipe_SoundEngine01_Layer><LayerID>" + std::to_string(id + 100) + "</LayerID><PipeID>" +
+                  std::to_string(id) + "</PipeID></Pipe_SoundEngine01_Layer>";
+        attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>" + std::to_string(id + 200) + "</UniqueID><LayerID>" +
+                   std::to_string(id + 100) + "</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>";
+      }
+    auto action = [](int dest, int type, int condition) {
+      return "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+             "<DestDivisionID>" + std::to_string(dest) + "</DestDivisionID><ActionTypeCode>" + std::to_string(type) +
+             "</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
+             "<NumberOfKeys>61</NumberOfKeys>" +
+             (condition ? "<ConditionSwitchID>" + std::to_string(condition) + "</ConditionSwitchID>" : std::string()) +
+             "</KeyAction>";
+    };
+    auto stopRank = [](int stop, int rank) {
+      return "<StopRank><StopID>" + std::to_string(stop) + "</StopID><RankID>" + std::to_string(rank) +
+             "</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+             "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>";
+    };
+    const auto odf = defs.getChildFile("melody.Organ_Hauptwerk_xml");
+    odf.replaceWithText(juce::String(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Melody coupler</Identification_Name>"
+        "<Identification_UniqueOrganID>355</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+        "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Great</Name></Rank>"
+        "<Rank><RankID>202</RankID><Name>Swell</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks +
+        "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name><DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+        "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division>"
+        "<Division><DivisionID>802</DivisionID><Name>Swell</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\">" + action(801, 1, 0) + action(802, 3, 1103) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>901</StopID><Name>Great</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+        "<Stop><StopID>902</StopID><Name>Swell</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">" + stopRank(901, 201) + stopRank(902, 202) +
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>Great</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1102</SwitchID><Name>Swell</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1103</SwitchID><Name>Melody SW. to GT.</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList></Hauptwerk>"));
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(1, 701);
+    proc.setStopEngaged(901, true);
+    proc.setStopEngaged(902, true);
+    proc.setSwitchEngaged(1103, true);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    auto voices = [&] { return proc.voiceStats().activeVoices; };
+    block({});
+
+    // C, E and G, two milliseconds apart.
+    juce::MidiBuffer chord;
+    chord.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    chord.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 96);
+    chord.addEvent(juce::MidiMessage::noteOn(1, 67, 0.8f), 192);
+    block(chord);
+    MP_CHECK(voices() == 3, "the chord sounds its three keys, and the coupler nothing yet: " + std::to_string(voices()));
+    for (int i = 0; i < 10; ++i) block({});  // past the settling
+    MP_CHECK(voices() == 4, "settled, the coupler takes the top note only: " + std::to_string(voices()));
+
+    // Let go together: nothing new speaks on the way up.
+    juce::MidiBuffer up;
+    up.addEvent(juce::MidiMessage::noteOff(1, 67), 0);
+    up.addEvent(juce::MidiMessage::noteOff(1, 64), 96);
+    up.addEvent(juce::MidiMessage::noteOff(1, 60), 192);
+    block(up);
+    MP_CHECK(voices() <= 4, "letting go starts no coupled note on the way up: " + std::to_string(voices()));
+    int most = voices();
+    for (int i = 0; i < 10; ++i) {
+      block({});
+      most = std::max(most, voices());
+    }
+    MP_CHECK(most <= 4, "nor once it has settled: " + std::to_string(most));
+    for (int i = 0; i < 400; ++i) block({});
+    MP_CHECK(voices() == 0, "released, everything ends: " + std::to_string(voices()));
+
+    // A melody played over a held note moves the coupler with it.
+    juce::MidiBuffer low;
+    low.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    block(low);
+    for (int i = 0; i < 10; ++i) block({});
+    MP_CHECK(voices() == 2, "one key held: it is the top, and couples: " + std::to_string(voices()));
+    juce::MidiBuffer high;
+    high.addEvent(juce::MidiMessage::noteOn(1, 67, 0.8f), 0);
+    block(high);
+    for (int i = 0; i < 10; ++i) block({});
+    for (int i = 0; i < 400; ++i) block({});  // the low key's coupled pipe has faded
+    MP_CHECK(voices() == 3, "a higher key takes the coupler over: " + std::to_string(voices()));
+
+    settings.deleteFile();
+    root.deleteRecursively();
+  }
+};
+static MelodyCouplerChordTest g_melodyCouplerChord;
+
 // Which releases read from a file's marker hold nothing to play (#218). Only
 // a file whose loop runs to its last frame and that has no marker: 0.7.6 also
 // counted a file with no loop at all, which is what a separate release
@@ -15547,6 +15735,88 @@ public:
   }
 };
 static PanelsTest g_panels;
+
+// A panel of an organ drawn as Bethesda is (#314): each coupler drawn twice,
+// on two custom pages, and itself nowhere; a stop's knob drawn as a copy;
+// names with categories in front; more pistons declared than drawn.
+class PanelCopiesTest final : public mp::test::Test {
+public:
+  PanelCopiesTest() : Test("functional.ui.panel-copies", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool drawn) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name +
+             "</Name><Latching>Y</Latching><Clickable>" + (drawn ? "Y" : "N") + "</Clickable>" +
+             (drawn ? "<Disp_ImageSetInstanceID>" + std::to_string(id) + "</Disp_ImageSetInstanceID>" : std::string()) +
+             "</Switch>";
+    };
+    auto both = [](int a, int b) {
+      std::string out;
+      for (auto [from, to] : {std::pair{a, b}, std::pair{b, a}})
+        out += "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+               std::to_string(to) + "</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+               "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>2</DisengageLinkActionCode>"
+               "</SwitchLinkage>";
+      return out;
+    };
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>314</Identification_UniqueOrganID>"
+        "<Identification_Name>Copies</Identification_Name></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>1</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\"><KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>1</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumberIncrement>12</MIDINoteNumberIncrement>"
+        "<ConditionSwitchID>1006</ConditionSwitchID></KeyAction></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(1006, "Coupler: Great 4", false) + sw(10266, "CustPg1_Coupler 1006", true) +
+        sw(10267, "CustPg2_Coupler 1006", true) + sw(12, "StopNode_2224", false) + sw(2224, "Stop: Grt: Principal 8", false) +
+        sw(10133, "CustPg1_Stop 2224", true) + sw(501, "Comb piston: General 01", true) +
+        sw(502, "Comb piston: General 02", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + both(10266, 1006) + both(10267, 1006) +
+        both(10133, 2224) +
+        "<SwitchLinkage><SourceSwitchID>2224</SourceSwitchID><DestSwitchID>12</DestSwitchID>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged><EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\"><Stop><StopID>1</StopID><Name>Stop: Grt: Principal 8</Name>"
+        "<DivisionID>1</DivisionID><ControllingSwitchID>12</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"Combination\">"
+        "<Combination><CombinationID>101</CombinationID><Name>General 01</Name><CombinationTypeCode>101</CombinationTypeCode>"
+        "<ActivatingSwitchID>501</ActivatingSwitchID></Combination>"
+        "<Combination><CombinationID>102</CombinationID><Name>General 02</Name><CombinationTypeCode>102</CombinationTypeCode>"
+        "<ActivatingSwitchID>502</ActivatingSwitchID></Combination>"
+        "</ObjectList></Hauptwerk>";
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-panel-copies");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("copies.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      std::vector<std::string> great, pistons;
+      for (const auto& s : mp::ui::panelSections(proc))
+        for (const auto& e : s.elements) {
+          const std::string label = e.name + (e.footage.empty() ? "" : " " + e.footage);
+          (s.kind == mp::ui::PanelSection::Kind::Presets ? pistons : great).push_back(label);
+        }
+      auto count = [&](const std::string& label) { return std::count(great.begin(), great.end(), label); };
+      std::string all;
+      for (const auto& g : great) all += " [" + g + "]";
+      MP_CHECK(count("Great 4") == 1, "the coupler drawn twice is one button, named as the organ names it:" + all);
+      MP_CHECK(count("Principal 8") == 1, "the stop is named without its categories, once:" + all);
+      MP_CHECK(all.find("CustPg") == std::string::npos, "and no copy shows its internal name:" + all);
+      MP_CHECK(pistons.size() == 1 && pistons[0] == "General 01",
+               "of two generals declared, the one drawn is listed: " + std::to_string(pistons.size()));
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static PanelCopiesTest g_panelCopies;
 
 // The Log tab's checks, the text a phone or tablet player sends with a report
 // (#197): the folders Masterpiece writes to, the audio, the organ.
