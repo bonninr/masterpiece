@@ -1,4 +1,5 @@
 #include "PathCase.h"
+#include "Utf8Path.h"
 
 #include <algorithm>
 #include <cctype>
@@ -23,11 +24,11 @@ const Listing& listingOf(const std::filesystem::path& dir) {
   static std::mutex lock;
   static std::unordered_map<std::string, Listing> cache;
   std::lock_guard<std::mutex> hold(lock);
-  auto [it, fresh] = cache.try_emplace(dir.string());
+  auto [it, fresh] = cache.try_emplace(utf8Of(dir));
   if (fresh) {
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
-      it->second.emplace(lowered(entry.path().filename().string()), entry.path());
+      it->second.emplace(lowered(utf8Of(entry.path().filename())), entry.path());
   }
   return it->second;
 }
@@ -51,7 +52,7 @@ std::filesystem::path resolvePathIgnoringCase(const std::filesystem::path& wante
   for (auto it = rest.rbegin(); it != rest.rend(); ++it) {
     if (!std::filesystem::is_directory(base, ec)) return wanted;
     const Listing& listing = listingOf(base);
-    const auto found = listing.find(lowered(it->string()));
+    const auto found = listing.find(lowered(utf8Of(*it)));
     if (found == listing.end()) return wanted;
     base = found->second;
   }

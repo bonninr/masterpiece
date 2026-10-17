@@ -1,6 +1,7 @@
 #include "GrandOrgueImport.h"
 #include "OrganModel.h"
 #include "GrandOrgueStockImages.h"
+#include "Utf8Path.h"
 
 #include <pugixml.hpp>
 
@@ -150,7 +151,7 @@ double levelDb(const Ini& ini, const std::string& section, const std::string& pr
 // when the file is missing or unreadable. GrandOrgue sizes and spaces keys by
 // their bitmaps, so the layout cannot be worked out without them.
 std::pair<int, int> imageSize(const std::string& path) {
-  std::ifstream f(path, std::ios::binary);
+  std::ifstream f(pathOf(path), std::ios::binary);
   if (!f) return {0, 0};
   unsigned char h[32] = {};
   f.read(reinterpret_cast<char*>(h), sizeof h);
@@ -2027,7 +2028,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
 }
 
 GrandOrgueImportReport convertGrandOrgue(const std::string& path) {
-  std::ifstream f(path, std::ios::binary);
+  std::ifstream f(pathOf(path), std::ios::binary);
   if (!f) {
     GrandOrgueImportReport rep;
     rep.error = "cannot open " + path;

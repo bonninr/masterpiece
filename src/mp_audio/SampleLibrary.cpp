@@ -1,4 +1,5 @@
 #include "SampleLibrary.h"
+#include "../mp_core/Utf8Path.h"
 #include "PathCase.h"
 #include "WavPackFormat.h"
 
@@ -107,14 +108,14 @@ std::filesystem::path resolvePath(const std::string& rootDir,
   std::replace(rel.begin(), rel.end(), '\\', '/');
   while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
 
-  std::filesystem::path base(rootDir);
+  std::filesystem::path base = mp::pathOf(rootDir);
   if (installationPackageId > 0) {
     std::string digits = std::to_string(installationPackageId);
     if (digits.size() < 6) digits.insert(0, 6 - digits.size(), '0');
     base /= "OrganInstallationPackages";
     base /= digits;
   }
-  return base / rel;
+  return base / mp::pathOf(rel);
 }
 
 // Windows-authored sets record whatever case the author had; the disk on Linux
@@ -655,7 +656,7 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
     job.wavpack = ext == ".wv";
-    job.path = path.string();
+    job.path = mp::utf8Of(path);
     if (archive != nullptr) {
       const auto rel = std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
                            .generic_string();
@@ -673,7 +674,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   SampleShape shape;
   shape.releaseOnly = job.releaseOnly;
   WavShape wav;
-  const std::filesystem::path path(job.path);
+  const std::filesystem::path path = mp::pathOf(job.path);
   std::error_code ec;
   int64_t fileBytes = job.packageBytes;
   if (std::filesystem::exists(path, ec)) {
@@ -871,7 +872,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       }
 
       std::unique_ptr<juce::AudioFormatReader> reader(
-          formats.createReaderFor(juce::File(path.string())));
+          formats.createReaderFor(juce::File(juce::String::fromUTF8(mp::utf8Of(path).c_str()))));
       auto buffer = std::make_shared<SampleBuffer>();
 
       // A streamed release keeps only its head resident. The head has to cover
@@ -903,14 +904,14 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         const auto totalResident = static_cast<int64_t>(
             std::llround(static_cast<double>(reader->lengthInSamples) * toResident));
         if (totalResident > buffer->numFrames)
-          attachTail(*buffer, path.string(), totalResident, srcRate, dstRate);
+          attachTail(*buffer, mp::utf8Of(path), totalResident, srcRate, dstRate);
       }
 
       // Read whole: its file's cached pages go (see dropFromFileCache). A
       // streamed release keeps them; its tail is read from the file again.
       if (ok && !stream) {
         reader.reset();
-        dropFromFileCache(path.string());
+        dropFromFileCache(mp::utf8Of(path));
       }
 
       // Against the memory ceiling, before it is kept: the sample that would
@@ -1078,7 +1079,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // Said when it ends: whether the next load reads the cache depends on
       // it, and a write cut short by quitting is otherwise invisible.
       std::error_code sizeError;
-      const auto bytes = std::filesystem::file_size(path, sizeError);
+      const auto bytes = std::filesystem::file_size(mp::pathOf(path), sizeError);
       if (saved)
         juce::Logger::writeToLog("cache: saved " +
                                  juce::String(sizeError ? 0.0 : bytes / 1048576.0, 1) +
@@ -1562,12 +1563,12 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
 
 std::string SampleLibrary::cachePath() const {
   if (cacheDir_.empty() || cacheMode_ == CacheMode::Off) return {};
-  std::filesystem::path dir(cacheDir_);
+  std::filesystem::path dir = mp::pathOf(cacheDir_);
   // One file, replaced as organs change, unless asked for one per organ.
   const std::string name = (cacheMode_ == CacheMode::PerOrgan && !cacheOrganId_.empty())
                                ? ("samples-" + cacheOrganId_ + ".mpcache")
                                : std::string("samples.mpcache");
-  return (dir / name).string();
+  return mp::utf8Of(dir / name);
 }
 
 bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprint,
@@ -1575,13 +1576,13 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   if (path.empty()) return false;
 
   std::error_code ec;
-  std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+  std::filesystem::create_directories(mp::pathOf(path).parent_path(), ec);
 
   // Written beside and moved into place, so an interrupted write leaves the
   // old cache rather than a half one that passes its own length checks.
   const std::string tmp = path + ".part";
   {
-    std::ofstream os(tmp, std::ios::binary | std::ios::trunc);
+    std::ofstream os(mp::pathOf(tmp), std::ios::binary | std::ios::trunc);
     if (!os) return false;
     os.write(kCacheMagic, 4);
     putPod(os, kCacheVersion);
@@ -1651,15 +1652,15 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
     }
     if (cacheStop_.load()) {
       os.close();
-      std::filesystem::remove(tmp, ec);
+      std::filesystem::remove(mp::pathOf(tmp), ec);
       return false;
     }
     cacheWritten_ = static_cast<int64_t>(os.tellp());
   }
 
-  std::filesystem::rename(tmp, path, ec);
+  std::filesystem::rename(mp::pathOf(tmp), mp::pathOf(path), ec);
   if (ec) {
-    std::filesystem::remove(tmp, ec);
+    std::filesystem::remove(mp::pathOf(tmp), ec);
     return false;
   }
   return true;
@@ -1669,7 +1670,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
                               LoadProgress* progress) const {
   const std::string path = cachePath();
   if (path.empty()) return false;
-  std::ifstream is(path, std::ios::binary);
+  std::ifstream is(mp::pathOf(path), std::ios::binary);
   if (!is) return false;
 
   char magic[4] = {};
@@ -1684,7 +1685,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   // out, so its size is what reading it back would cost. Past the memory
   // ceiling, stop before reading any of it.
   std::error_code sizeError;
-  const auto cacheBytes = std::filesystem::file_size(path, sizeError);
+  const auto cacheBytes = std::filesystem::file_size(mp::pathOf(path), sizeError);
   if (!sizeError && progress != nullptr &&
       !progress->charge(static_cast<int64_t>(cacheBytes)))
     return false;
