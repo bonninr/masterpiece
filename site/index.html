@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Masterpiece: pipe organ sample player</title>
+<title>Masterpiece: free pipe organ player for Hauptwerk-format and GrandOrgue sample sets</title>
 <meta name="description" content="Masterpiece, a free, open-source player for Hauptwerk-format and GrandOrgue pipe organ sample sets, with a vector-optimised engine, composite organs and a split keyboard, on Windows, macOS, Linux, Raspberry Pi, Android and iPad.">
 <link rel="canonical" href="https://masterpieceorgan.com/">
 <!-- The card a link to the page shows on Facebook, forums and messengers. -->
@@ -19,6 +19,124 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="screenshots/mark.png">
 <link rel="stylesheet" href="home.css">
+<!-- What the page is about, for search engines and AI assistants. softwareVersion
+     follows the latest release: .github/pages-downloads.py writes it when the site is published. -->
+<script type="application/ld+json">
+[
+ {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Masterpiece",
+  "description": "A free, open-source pipe organ sample player for Hauptwerk-format and GrandOrgue sample sets, with composite organs, a split keyboard and a vector-optimised engine.",
+  "url": "https://masterpieceorgan.com/",
+  "downloadUrl": "https://masterpieceorgan.com/#platforms",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "Virtual pipe organ",
+  "operatingSystem": "Windows, macOS, Linux, Raspberry Pi OS, Android, iOS",
+  "softwareVersion": "0.8.0",
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "isAccessibleForFree": true,
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  },
+  "image": "https://masterpieceorgan.com/screenshots/og.jpg",
+  "screenshot": [
+   "https://masterpieceorgan.com/screenshots/shot-console.jpg",
+   "https://masterpieceorgan.com/screenshots/shot-friesach-hw.jpg",
+   "https://masterpieceorgan.com/screenshots/shot-friesach-go.jpg",
+   "https://masterpieceorgan.com/screenshots/shot-split.jpg"
+  ],
+  "codeRepository": "https://github.com/bonninr/masterpiece",
+  "programmingLanguage": "C++",
+  "releaseNotes": "https://github.com/bonninr/masterpiece/releases/latest",
+  "publisher": {
+   "@type": "Organization",
+   "name": "OpenPipes",
+   "url": "https://openpipes.org"
+  }
+ },
+ {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+   {
+    "@type": "Question",
+    "name": "Is Masterpiece free?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Yes. Masterpiece is free and open source under the GPL-3.0 licence, with every feature included and nothing to register."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Which sample sets does it play?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher's own player."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Do the sets need unpacking first?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Does it run on a Raspberry Pi?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "How much memory does a large organ need?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "That depends on the loading settings. Friesach, 17 GB on disk, takes 21.6 GB as 32-bit float, 7.0 GB at 24 bits with streamed release tails, and 2.33 GB at 16 bits in mono. Stops and perspectives can also be left out."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Can it play my console?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Yes: a MIDI channel per manual, any keyboard or pedalboard, and MIDI learn for every stop, piston and swell shoe, consoles that send SysEx included."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Can I play with a single keyboard?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Split mode divides one keyboard into up to three zones, each on a manual or the pedal, with a layered second manual and the pedal from the lowest key held."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Is there a plugin version?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "VST3, LV2 and AU plugins come beside the standalone program, for playing the organ inside a digital audio workstation."
+    }
+   },
+   {
+    "@type": "Question",
+    "name": "Which systems does it run on?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Windows (x64), macOS (Apple silicon and Intel), Linux (Flatpak, .deb and tar.gz), Raspberry Pi, Android 8 and later, and iPhone and iPad with iOS 15 and later, sideloaded."
+    }
+   }
+  ]
+ }
+]
+</script>
 </head>
 <body>
 
@@ -355,6 +473,25 @@
       <tr><td>Formats</td><td>Standalone, VST3, LV2, AU</td></tr>
       <tr><td>Licence</td><td>GPL-3.0-only</td></tr>
     </table>
+  </div>
+</section>
+
+<section class="alt" id="questions">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Questions organists ask.</h2>
+    </div>
+    <div class="faq">
+      <div class="qa"><h3>Is Masterpiece free?</h3><p>Yes. Masterpiece is free and open source under the GPL-3.0 licence, with every feature included and nothing to register.</p></div>
+      <div class="qa"><h3>Which sample sets does it play?</h3><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></div>
+      <div class="qa"><h3>Do the sets need unpacking first?</h3><p>Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included.</p></div>
+      <div class="qa"><h3>Does it run on a Raspberry Pi?</h3><p>Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine.</p></div>
+      <div class="qa"><h3>How much memory does a large organ need?</h3><p>That depends on the loading settings. Friesach, 17 GB on disk, takes 21.6 GB as 32-bit float, 7.0 GB at 24 bits with streamed release tails, and 2.33 GB at 16 bits in mono. Stops and perspectives can also be left out.</p></div>
+      <div class="qa"><h3>Can it play my console?</h3><p>Yes: a MIDI channel per manual, any keyboard or pedalboard, and MIDI learn for every stop, piston and swell shoe, consoles that send SysEx included.</p></div>
+      <div class="qa"><h3>Can I play with a single keyboard?</h3><p>Split mode divides one keyboard into up to three zones, each on a manual or the pedal, with a layered second manual and the pedal from the lowest key held.</p></div>
+      <div class="qa"><h3>Is there a plugin version?</h3><p>VST3, LV2 and AU plugins come beside the standalone program, for playing the organ inside a digital audio workstation.</p></div>
+      <div class="qa"><h3>Which systems does it run on?</h3><p>Windows (x64), macOS (Apple silicon and Intel), Linux (Flatpak, .deb and tar.gz), Raspberry Pi, Android 8 and later, and iPhone and iPad with iOS 15 and later, sideloaded.</p></div>
+    </div>
   </div>
 </section>
 

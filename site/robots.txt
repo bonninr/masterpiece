@@ -1,0 +1,35 @@
+# Every crawler is welcome, search engines and AI assistants alike.
+# /download/ only forwards to release files, so it is left out.
+User-agent: *
+Allow: /
+Disallow: /download/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /download/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /download/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /download/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /download/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /download/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /download/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /download/
+
+Sitemap: https://masterpieceorgan.com/sitemap.xml
