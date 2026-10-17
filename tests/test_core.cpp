@@ -433,7 +433,9 @@ public:
       MP_CHECK(e != m.enclosures.end() && e->second.openFilterHz == mp::kOpenEnclosureHz,
                "an open box filters nothing, whatever its when-open figures (#205)");
       MP_CHECK(e != m.enclosures.end() && e->second.closedAttnDb == -10.0,
-               "the closed attenuation is insertion loss plus the extra at min");
+               "the closed level is the overall figure; the extra at min is the filter's depth");
+      MP_CHECK(e != m.enclosures.end() && e->second.closedFilterDepthDb == 0.0,
+               "a box that states no extra filters nothing");
       MP_CHECK(e != m.enclosures.end() && e->second.openAttnDb == 0.0,
                "an open box takes the insertion loss off");
     }
@@ -7530,6 +7532,29 @@ public:
     MP_CHECK(highShut < highOpen, "closing the box attenuates the treble");
     MP_CHECK((highShut / highOpen) < (lowShut / lowOpen),
              "a closed box rolls off treble more than bass");
+
+    // A box whose figures come from its pipes, stated as the format states
+    // them: 3 dB overall, 9 dB more at the far end of the filter's band
+    // (#366). Closed, the bass sinks by the overall figure and the treble by
+    // both; the extra used to land on the bass as well, and the treble went
+    // under a low-pass with no floor.
+    {
+      mp::Enclosure p{1, "Swell", 0, 500.0, mp::kOpenEnclosureHz, -3.0, 0.0};
+      p.filterParamsFromPipes = true;
+      p.closedFilterDepthDb = 9.0;
+      const double bassDb = 20.0 * std::log10(rmsAt(80.0, 0.0, p, full) / rmsAt(80.0, 1.0, p, full));
+      const double trebleDb = 20.0 * std::log10(rmsAt(8000.0, 0.0, p, full) / rmsAt(8000.0, 1.0, p, full));
+      MP_CHECK(bassDb < -2.0 && bassDb > -4.5,
+               "a closed box lowers the bass by its overall figure: " + std::to_string(bassDb) + " dB");
+      MP_CHECK(trebleDb < -10.5 && trebleDb > -13.5,
+               "and the treble by the overall figure and the extra: " + std::to_string(trebleDb) + " dB");
+      const double openTreble = 20.0 * std::log10(rmsAt(8000.0, 1.0, p, full) / std::sqrt(0.5));
+      MP_CHECK(std::fabs(openTreble) < 1.0, "an open box leaves the treble: " + std::to_string(openTreble) + " dB");
+      p.closedFilterDepthDb = 0.0;
+      const double flatDb = 20.0 * std::log10(rmsAt(8000.0, 0.0, p, full) / rmsAt(8000.0, 1.0, p, full));
+      MP_CHECK(flatDb < -2.0 && flatDb > -4.0,
+               "a box that states no extra only lowers the level: " + std::to_string(flatDb) + " dB");
+    }
 
     // The closed attenuation must land near the declared closedAttnDb at a
     // frequency well inside the closed passband (so the filter is not the

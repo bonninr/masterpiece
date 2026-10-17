@@ -1534,8 +1534,11 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       // to its lowest figure: Klais Szikszó's open boxes sat at 100 Hz, and
       // the shoe moved the sound between 100 and 200 Hz (#205).
       e.openFilterHz = kOpenEnclosureHz;
-      // Closed attenuation is the insertion loss plus the extra at the bottom
-      // of the band; an open box takes the insertion loss off entirely.
+      // The overall figure is the box's level, across the spectrum; the extra
+      // is the depth of the filter, below that level at the far end of its
+      // band. Added together, a closed box sank by the extra at every
+      // frequency as well: 9 dB too quiet on sets that state 3 and 9 (#366).
+      // An open box takes the level off entirely.
       auto meanPositive = [&rows](size_t i) {
         double sum = 0.0;
         size_t n = 0;
@@ -1544,7 +1547,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         }
         return n > 0 ? sum / static_cast<double>(n) : 0.0;
       };
-      e.closedAttnDb = -(meanPositive(0) + meanPositive(3));
+      e.closedAttnDb = -meanPositive(0);
+      e.closedFilterDepthDb = meanPositive(3);
       e.openAttnDb = 0.0;
       e.filterParamsFromPipes = true;
     }

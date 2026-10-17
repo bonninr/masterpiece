@@ -107,6 +107,8 @@ void EnclosureFilter::prepare(const juce::dsp::ProcessSpec& spec) {
   smoothShutter_.setCurrentAndTargetValue(1.0);
   gain_.reset(sampleRate_, kShutterRampSeconds);
   gain_.setCurrentAndTargetValue(1.0f);
+  floor_.reset(sampleRate_, kShutterRampSeconds);
+  floor_.setCurrentAndTargetValue(0.0f);
   cutoffHz_ = 0.0;
 }
 
@@ -134,6 +136,16 @@ void EnclosureFilter::updateFor(const Enclosure& e) {
   // specified, and it is what the ear tracks.
   const double db = e.closedAttnDb + s * (e.openAttnDb - e.closedAttnDb);
   gain_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(db), -100.0f));
+
+  // The filter's depth, from the set's own figure, shallower as the shades
+  // open and gone when open: a shelf, the shape the format describes. The
+  // fallback box, with no figures of its own, keeps the full low-pass.
+  if (e.filterParamsFromPipes) {
+    const double depthDb = std::max(0.0, e.closedFilterDepthDb) * (1.0 - s);
+    floor_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(-depthDb), -100.0f));
+  } else {
+    floor_.setTargetValue(0.0f);
+  }
 }
 
 float EnclosureFilter::process(float x, const Enclosure& e, double shutter01,
@@ -143,7 +155,9 @@ float EnclosureFilter::process(float x, const Enclosure& e, double shutter01,
   smoothShutter_.setTargetValue(clamp01(shutter01));
   smoothShutter_.getNextValue();
   updateFor(e);
-  return svf_.processSample(0, x) * gain_.getNextValue();
+  const float low = svf_.processSample(0, x);
+  const float f = floor_.getNextValue();
+  return (low + f * (x - low)) * gain_.getNextValue();
 }
 
 void EnclosureFilter::processBlock(juce::dsp::AudioBlock<float> block,
@@ -161,16 +175,30 @@ void EnclosureFilter::processBlock(juce::dsp::AudioBlock<float> block,
   smoothShutter_.skip(numSamples);
   updateFor(e);
 
-  juce::dsp::ProcessContextReplacing<float> ctx(block);
-  svf_.process(ctx);
-
   const auto numCh = block.getNumChannels();
+  if (!floor_.isSmoothing() && floor_.getTargetValue() == 0.0f) {
+    // The full low-pass: the filter over the block, then the level.
+    juce::dsp::ProcessContextReplacing<float> ctx(block);
+    svf_.process(ctx);
+    for (int i = 0; i < numSamples; ++i) {
+      const float g = gain_.getNextValue();
+      for (size_t ch = 0; ch < numCh; ++ch)
+        block.setSample(static_cast<int>(ch), i,
+                        block.getSample(static_cast<int>(ch), i) * g);
+    }
+    return;
+  }
+  // A shelf: each sample's filtered part, with the floor of the dry one.
   for (int i = 0; i < numSamples; ++i) {
     const float g = gain_.getNextValue();
-    for (size_t ch = 0; ch < numCh; ++ch)
-      block.setSample(static_cast<int>(ch), i,
-                      block.getSample(static_cast<int>(ch), i) * g);
+    const float f = floor_.getNextValue();
+    for (size_t ch = 0; ch < numCh; ++ch) {
+      const float x = block.getSample(static_cast<int>(ch), i);
+      const float low = svf_.processSample(static_cast<int>(ch), x);
+      block.setSample(static_cast<int>(ch), i, (low + f * (x - low)) * g);
+    }
   }
+  svf_.snapToZero();
 }
 
 } // namespace mp::dsp
