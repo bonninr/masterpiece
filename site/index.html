@@ -95,12 +95,12 @@
       <div class="figures">
         <div class="figure"><div class="value">3&ndash;5&times;<sup>1</sup></div><p>AVX2 rendering speed</p></div>
         <div class="figure"><div class="value">&minus;57%<sup>2</sup></div><p>Memory, releases streamed</p></div>
-        <div class="figure"><div class="value">5%<sup>3</sup></div><p>Of each audio block, virtuoso test</p></div>
+        <div class="figure"><div class="value">18&times;<sup>3</sup></div><p>Faster than real time, virtuoso test</p></div>
       </div>
       <ol class="notes">
         <li>512 voices on an Intel i7, against the same engine without vector code; 1.7&ndash;3.3&times; with SSE2, about 3&times; with NEON on a Raspberry Pi 4.</li>
         <li><a href="https://piotrgrabowski.pl/friesach/">Friesach</a>, 24-bit samples: 16.2 GB held in memory, 7.0 GB with release tails streamed. See the table below.</li>
-        <li><a href="https://hauptwerk-augustine.info/Lemmer.php">Lemmer</a> on an eight-core i7-9700, 16-bit samples, streamed releases. The virtuoso test: 1,518 notes in 33 seconds, up to 1,300 notes a second.</li>
+        <li><a href="https://hauptwerk-augustine.info/Lemmer.php">Lemmer</a> on an eight-core i7-9700, 16-bit samples, streamed releases: each audio block computed in 5.4% of its own length on average, and the slowest 1% still 10&times; faster than real time. The virtuoso test: 1,518 notes in 33 seconds, up to 1,300 notes a second.</li>
         <li>Release tail cutoff: tails end once they fall below &minus;90 dB, inaudible in every test, which frees their voices for the notes being played. At &minus;80 dB, the virtuoso test on a two-core i3 runs with 95% fewer late blocks, and a few release recordings with a late sound in them can end a little early.</li>
       </ol>
     </div>
