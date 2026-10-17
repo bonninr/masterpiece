@@ -247,7 +247,7 @@ pre code { font-size: 14px; }
 .gallery figcaption span { display: block; font-size: 12px; color: var(--subtle); }
 .gallery figcaption span a { color: var(--subtle); }
 .gallery figcaption span a:hover { color: var(--accent); }
-.gallery img { cursor: pointer; }
+.gallery img, .card .frame img { cursor: pointer; }
 
 /* A gallery console, centred at half the screen, lifted off the page. */
 .zoom { padding: 0; border: 0; background: none; overflow: visible; max-width: none; max-height: none; }
