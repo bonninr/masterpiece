@@ -10,6 +10,7 @@
 #include "../src/mp_archive/OrganArchive.h"
 #include "../src/mp_core/Perspectives.h"
 #include "../src/mp_core/PathCase.h"
+#include "../src/mp_core/Utf8Path.h"
 #include "../src/mp_core/KeyboardLayout.h"
 #include "../src/mp_core/OdfLoader.h"
 #include "../src/mp_core/Temperament.h"
@@ -14525,7 +14526,7 @@ public:
         << SolidRar4Test::rar4({{"OrganInstallationPackages\\900289\\Principal\\036-C.wav", tone}}, false);
     // An organ carrying another package stays out, its name outside ASCII:
     // on Windows a name in the system's code page stopped the search.
-    std::ofstream(base / "Composite" / "Elsewhere" / fs::path(u8"Vörösbereny.CompPkg.Hauptwerk.rar"), std::ios::binary)
+    std::ofstream(base / "Composite" / "Elsewhere" / mp::pathOf("V\xc3\xb6r\xc3\xb6sbereny.CompPkg.Hauptwerk.rar"), std::ios::binary)
         << SolidRar4Test::rar4({{"OrganInstallationPackages\\009999\\x.wav", tone}}, false);
 
     const fs::path odf = base / "Composite" / "OrganDefinitions" / "Composite.Organ_Hauptwerk_xml";
@@ -14673,6 +14674,113 @@ public:
   }
 };
 static CompositeDefinitionTest g_compositeDefinition;
+
+// An organ whose folders and archive are named outside ASCII. On Windows a
+// path made from a UTF-8 string went through the system's code page: the
+// archive "AVO-Vörösbereny_IR" was "not found", and an organ under such a
+// folder would have found none of its samples. On Linux and macOS the names
+// were already right; this holds them there and checks them on Windows.
+class PathsOutsideAsciiTest final : public mp::test::Test {
+public:
+  PathsOutsideAsciiTest() : Test("functional.paths.outside-ascii", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-utf8";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    // Names spelt in UTF-8 bytes: MSVC reads a source file in the system's
+    // code page, and a letter written as itself would arrive as two.
+    const fs::path folder = base / mp::pathOf("V\xc3\xb6r\xc3\xb6sbereny");
+    const fs::path samples = folder / "OrganInstallationPackages" / "900290" / mp::pathOf("Princip\xc3\xa1l");
+    fs::create_directories(folder / "OrganDefinitions");
+    fs::create_directories(samples);
+
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
+    std::ofstream(samples / "036-C.wav", std::ios::binary) << tone;
+
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>V\xc3\xb6r\xc3\xb6sbereny</Identification_Name>"
+        "<Identification_UniqueOrganID>290</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>900290</InstallationPackageID>"
+        "<SampleFilename>Princip\xc3\xa1l\\036-C.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><Pipe_SoundEngine01_Layer><LayerID>401</LayerID>"
+        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\"><Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID>"
+        "<LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>901</StopID><Name>Principal 8</Name><DivisionID>801</DivisionID>"
+        "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name>"
+        "<Latching>Y</Latching></Switch></ObjectList></Hauptwerk>";
+    const fs::path definition = folder / "OrganDefinitions" / mp::pathOf("V\xc3\xb6r\xc3\xb6sbereny.Organ_Hauptwerk_xml");
+    std::ofstream(definition, std::ios::binary) << odf;
+
+
+    auto fileOf = [](const fs::path& p) { return juce::File(juce::String::fromUTF8(mp::utf8Of(p).c_str())); };
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File odfFile = fileOf(definition);
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      MP_CHECK(r.ok, "an organ in a folder named outside ASCII loads: " + r.error);
+      MP_CHECK(r.samples.loaded == 1 && r.samples.missing == 0,
+               "and finds its sample: " + std::to_string(r.samples.loaded) + " loaded, " +
+                   std::to_string(r.samples.missing) + " missing");
+    }
+
+    // The same organ in an archive named outside ASCII.
+    const fs::path archive = base / mp::pathOf("AVO-V\xc3\xb6r\xc3\xb6sbereny_demo.Organ.CompPkg.Hauptwerk.rar");
+    std::ofstream(archive, std::ios::binary) << SolidRar4Test::rar4(
+        {{"OrganDefinitions\\Vorosbereny.Organ_Hauptwerk_xml", odf},
+         {"OrganInstallationPackages\\900290\\Princip\xc3\xa1l\\036-C.wav", tone}},
+        false);
+    mp::OrganArchive opened;
+    std::string error;
+    MP_CHECK(opened.discover(mp::utf8Of(archive), error), "an archive named outside ASCII is found: " + error);
+    {
+      mp::MasterpieceProcessor proc;
+      juce::String openError;
+      const auto definitions = proc.openPackagedOrgan(fileOf(archive), openError);
+      MP_CHECK(definitions.size() == 1, "and opens: " + openError.toStdString());
+      if (definitions.size() == 1) {
+        proc.prepareToPlay(48000.0, 256);
+        const auto r = proc.loadOrgan(definitions[0], 0, false);
+        proc.settingsFileFor(definitions[0]).deleteFile();
+        MP_CHECK(r.ok && r.samples.loaded == 1, "and plays its sample from the archive: " +
+                                                    std::to_string(r.samples.loaded) + " loaded");
+      }
+    }
+    fs::remove_all(base, ec);
+  }
+};
+static PathsOutsideAsciiTest g_pathsOutsideAscii;
 
 // A chord played through a melody coupler couples its top note only (#355).
 // Its keys arrive a few milliseconds apart and each in turn was the top: the
