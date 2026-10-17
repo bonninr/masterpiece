@@ -1177,12 +1177,21 @@ std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>
                                                   const std::set<std::string>& packages) {
   std::vector<std::string> out;
   if (packages.empty()) return out;
+  // Paths in UTF-8 both ways. On Windows path::string() is in the system's
+  // code page: "Vörösbereny" came back in it, and u8path() threw on it when
+  // the archive was opened, which stopped the load.
+  auto utf8 = [](const fs::path& p) {
+    const auto u = p.u8string();
+    return std::string(u.begin(), u.end());
+  };
   std::error_code ec;
   size_t looked = 0;
   for (const auto& dir : folders)
-    for (const auto& e : fs::directory_iterator(fs::path(dir), ec)) {
-      if (!e.is_regular_file(ec)) continue;
-      const std::string name = e.path().filename().string();
+    for (fs::directory_iterator it(fs::u8path(dir), ec), end; !ec && it != end; it.increment(ec)) {
+      const auto& e = *it;
+      std::error_code fileEc;
+      if (!e.is_regular_file(fileEc)) continue;
+      const std::string name = utf8(e.path().filename());
       if (!isOrganArchive(name) || !originalOf(name).empty()) continue;
       // A later volume of a set: "Name.part2.rar", "Name.r00". "Name.part1.rar"
       // and the old scheme's "Name.rar" are first volumes.
@@ -1191,7 +1200,8 @@ std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>
       const int volume = volumeNumber(name, setName);
       if (volume > 1 || (volume == 1 && !std::regex_search(name, partOne))) continue;
       if (++looked > 2000) break;  // a folder of everything
-      if (packages.count(firstPackageId({e.path().string()})) != 0) out.push_back(e.path().string());
+      const std::string path = utf8(e.path());
+      if (packages.count(firstPackageId({path})) != 0) out.push_back(path);
     }
   std::sort(out.begin(), out.end());
   return out;

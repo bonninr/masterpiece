@@ -14436,8 +14436,9 @@ public:
     const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
     std::ofstream(base / "Composite" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary)
         << SolidRar4Test::rar4({{"OrganInstallationPackages\\900289\\Principal\\036-C.wav", tone}}, false);
-    // An organ carrying another package stays out.
-    std::ofstream(base / "Composite" / "Elsewhere" / "Other.CompPkg.Hauptwerk.rar", std::ios::binary)
+    // An organ carrying another package stays out, its name outside ASCII:
+    // on Windows a name in the system's code page stopped the search.
+    std::ofstream(base / "Composite" / "Elsewhere" / fs::path(u8"Vörösbereny.CompPkg.Hauptwerk.rar"), std::ios::binary)
         << SolidRar4Test::rar4({{"OrganInstallationPackages\\009999\\x.wav", tone}}, false);
 
     const fs::path odf = base / "Composite" / "OrganDefinitions" / "Composite.Organ_Hauptwerk_xml";

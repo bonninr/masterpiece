@@ -5588,7 +5588,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
       // A package found beside the organ is installed as far as the player is
       // concerned: the loader's warning that it is not goes.
-      const auto joined = joinPackagesFromElsewhere(packaged, opts.organRootDir, archivePath);
+      // A search that fails is logged, and the organ loads without them.
+      std::set<std::string> joined;
+      try {
+        joined = joinPackagesFromElsewhere(packaged, opts.organRootDir, archivePath);
+      } catch (const std::exception& e) {
+        juce::Logger::writeToLog("load: the search for the packages the organ plays stopped: " +
+                                 juce::String::fromUTF8(e.what()));
+      }
       auto& warnings = result.diagnostics.warnings;
       for (const auto& package : joined)
         warnings.erase(std::remove_if(warnings.begin(), warnings.end(),

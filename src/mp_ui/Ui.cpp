@@ -958,7 +958,16 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   showLoadingDialog(odf);
 
   juce::Thread::launch([this, odf, graphicsOnly] {
-    const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+    // A load that throws ends as a failed one. JUCE catches what leaves this
+    // thread, and the loading dialog then stayed open for good.
+    MasterpieceProcessor::LoadResult result;
+    try {
+      result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+    } catch (const std::exception& e) {
+      result.ok = false;
+      result.error = e.what();
+      juce::Logger::writeToLog("load: stopped: " + juce::String::fromUTF8(e.what()));
+    }
     // Everything past here touches components, so it belongs to the message
     // thread. The lambda copies what it needs; the loader thread ends here.
     juce::MessageManager::callAsync(
