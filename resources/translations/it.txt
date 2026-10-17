@@ -348,6 +348,9 @@ countries: it ch sm va
 "Edit" = "Modifica"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Cartella dei pacchetti"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Un organo composito cerca qui, e nelle cartelle direttamente al suo interno, gli organi che suona."
+"Where are packages kept?" = "Dove sono conservati i pacchetti?"
 "Memory profile" = "Profilo di memoria"
 "Best quality - 24-bit, hold everything" = "Qualità massima - 24 bit, tutto in memoria"
 "Recommended - 16-bit, stream releases" = "Consigliato - 16 bit, rilasci in streaming"
@@ -584,6 +587,14 @@ countries: it ch sm va
 "Scala file..." = "File Scala..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Manca un pacchetto che questo organo suona"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Questo organo suona il pacchetto %1, \"%2\", che non è nella sua cartella, in una cartella al suo interno né nella cartella dei pacchetti.\n\nScegliete l'archivio di quel pacchetto, o la cartella che lo contiene. La scelta viene conservata per questo organo. La cartella dei pacchetti per tutti gli organi si imposta in Impostazioni dell'organo, Caricamento."
+"no name given" = "senza nome"
+"Choose an archive..." = "Scegli un archivio..."
+"Choose a folder..." = "Scegli una cartella..."
+"Play without it" = "Suona senza"
+"The folder that holds the package" = "La cartella che contiene il pacchetto"
+"The package's archive" = "L'archivio del pacchetto"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "I dettagli sono nel log, %1. Se da allora Masterpiece è stato riavviato, sono in masterpiece.previous.log accanto."
 "Show the log" = "Mostra il log"
 "Not loaded: chosen in Organ settings, Stops" = "Non caricato: scelta in Impostazioni dell'organo, Registri"

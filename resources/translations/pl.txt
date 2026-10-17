@@ -348,6 +348,9 @@ countries: pl
 "Edit" = "Edytuj"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Folder pakietów"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Organy złożone szukają tutaj, oraz w folderach bezpośrednio w nim, organów, z których grają."
+"Where are packages kept?" = "Gdzie są przechowywane pakiety?"
 "Memory profile" = "Profil pamięci"
 "Best quality - 24-bit, hold everything" = "Najlepsza jakość - 24 bity, wszystko w pamięci"
 "Recommended - 16-bit, stream releases" = "Zalecane - 16 bitów, wybrzmiewanie ze streamingu"
@@ -584,6 +587,14 @@ countries: pl
 "Scala file..." = "Plik Scala..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Brakuje pakietu, z którego grają te organy"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Te organy grają z pakietu %1, \"%2\", którego nie ma w ich folderze, w folderze w nim ani w folderze pakietów.\n\nWybierz archiwum tego pakietu albo folder, który go zawiera. Wybór zostanie zapamiętany dla tych organów. Folder pakietów dla wszystkich organów ustawisz w Ustawieniach organów, Wczytywanie."
+"no name given" = "bez nazwy"
+"Choose an archive..." = "Wybierz archiwum..."
+"Choose a folder..." = "Wybierz folder..."
+"Play without it" = "Graj bez niego"
+"The folder that holds the package" = "Folder z pakietem"
+"The package's archive" = "Archiwum pakietu"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Szczegóły są w dzienniku, %1. Jeśli Masterpiece uruchomiono od tego czasu ponownie, są w masterpiece.previous.log obok."
 "Show the log" = "Pokaż dziennik"
 "Not loaded: chosen in Organ settings, Stops" = "Niewczytane: wybór w Ustawienia organów, Głosy"

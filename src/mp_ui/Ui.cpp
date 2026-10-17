@@ -633,6 +633,26 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       return false;
     }
   };
+  // The package question, asked the same way: a composite plays a package
+  // that was not found beside it, and the player may point to it.
+  proc_.packageAsker = [this](const std::string& package, const std::string& name) -> std::string {
+    auto answer = std::make_shared<std::promise<std::string>>();
+    auto future = answer->get_future();
+    juce::Component::SafePointer<MasterpieceEditor> self(this);
+    juce::MessageManager::callAsync([self, answer, package, name] {
+      if (self == nullptr) {
+        answer->set_value({});
+        return;
+      }
+      self->askForPackage(juce::String(package), juce::String::fromUTF8(name.c_str()),
+                          [answer](const juce::String& path) { answer->set_value(path.toStdString()); });
+    });
+    try {
+      return future.get();
+    } catch (const std::future_error&) {
+      return {};
+    }
+  };
   addAndMakeVisible(top_);
   // A thin line along the bottom, the whole width of the window, instead of
   // whatever the top bar's buttons left of it.
@@ -788,6 +808,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 MasterpieceEditor::~MasterpieceEditor() {
   stopTimer();
   proc_.licenceAsker = nullptr;
+  proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
   // Where the page windows are, for the next time; then they go, before the
   // console they share a processor with.
@@ -937,7 +958,16 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
   showLoadingDialog(odf);
 
   juce::Thread::launch([this, odf, graphicsOnly] {
-    const auto result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+    // A load that throws ends as a failed one. JUCE catches what leaves this
+    // thread, and the loading dialog then stayed open for good.
+    MasterpieceProcessor::LoadResult result;
+    try {
+      result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+    } catch (const std::exception& e) {
+      result.ok = false;
+      result.error = e.what();
+      juce::Logger::writeToLog("load: stopped: " + juce::String::fromUTF8(e.what()));
+    }
     // Everything past here touches components, so it belongs to the message
     // thread. The lambda copies what it needs; the loader thread ends here.
     juce::MessageManager::callAsync(
@@ -992,6 +1022,40 @@ void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const 
                          answered(result == 1);
                        }),
                        true);  // deleted when dismissed
+}
+
+void MasterpieceEditor::askForPackage(const juce::String& package, const juce::String& name,
+                                      std::function<void(const juce::String&)> answered) {
+  auto* box = new juce::AlertWindow(
+      TRANS("A package this organ plays is missing"),
+      TRANS("This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package "
+            "folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept "
+            "for this organ. A package folder for every organ is set in Organ settings, Loading.")
+          .replace("%1", package)
+          .replace("%2", name.isEmpty() ? TRANS("no name given") : name),
+      juce::MessageBoxIconType::QuestionIcon, this);
+  box->addButton(TRANS("Choose an archive..."), 1);
+  box->addButton(TRANS("Choose a folder..."), 2);
+  box->addButton(TRANS("Play without it"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  box->enterModalState(
+      true, juce::ModalCallbackFunction::create([self, answered](int result) {
+        if (result == 0 || self == nullptr) {
+          answered({});
+          return;
+        }
+        const bool folder = result == 2;
+        self->packageChooser_ = std::make_unique<juce::FileChooser>(
+            folder ? TRANS("The folder that holds the package") : TRANS("The package's archive"),
+            juce::File::getSpecialLocation(juce::File::userHomeDirectory), folder ? juce::String() : "*.rar;*.zip;*.7z");
+        const int flags = juce::FileBrowserComponent::openMode |
+                          (folder ? juce::FileBrowserComponent::canSelectDirectories
+                                  : juce::FileBrowserComponent::canSelectFiles);
+        self->packageChooser_->launchAsync(flags, [answered](const juce::FileChooser& chooser) {
+          answered(chooser.getResult() == juce::File() ? juce::String() : chooser.getResult().getFullPathName());
+        });
+      }),
+      true);  // deleted when dismissed
 }
 
 // The message-thread half of a load: close the dialog, then either report the

@@ -262,6 +262,38 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     showCacheDir();
   };
 
+  // Where the player keeps packages: a composite looks here, and in the
+  // folders directly in it, for the organs it plays (#289).
+  addAndMakeVisible(packageDirLabel_);
+  styleLabel(packageDirLabel_, TRANS("Package folder"));
+  packageDirLabel_.setTooltip(TRANS("A composite organ looks here, and in the folders directly in it, for the "
+                                    "organs it plays."));
+  addAndMakeVisible(packageDirValue_);
+  packageDirValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  showPackageDir();
+  addAndMakeVisible(packageDirChoose_);
+  packageDirChoose_.onClick = [this] {
+    packageDirChooser_ = std::make_unique<juce::FileChooser>(
+        TRANS("Where are packages kept?"),
+        proc_.packageDirectory().getFullPathName().isNotEmpty()
+            ? proc_.packageDirectory()
+            : juce::File::getSpecialLocation(juce::File::userHomeDirectory));
+    packageDirChooser_->launchAsync(
+        juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectDirectories,
+        [this](const juce::FileChooser& fc) {
+          const auto dir = pickedFile(fc);
+          if (dir.getFullPathName().isEmpty()) return;
+          proc_.setPackageDirectory(dir);
+          showPackageDir();
+        });
+  };
+  addAndMakeVisible(packageDirClear_);
+  packageDirClear_.onClick = [this] {
+    proc_.setPackageDirectory(juce::File());
+    showPackageDir();
+  };
+
   // Where this organ's OrganInstallationPackages is. Normally worked out
   // from the definition's path; a set whose folders are linked in from
   // another tree can leave that path pointing nowhere near the audio, and
@@ -727,6 +759,14 @@ void EnginePanel::showCacheDir() {
   cacheDirValue_.setTooltip(proc_.cacheDirectory().getFullPathName());
 }
 
+void EnginePanel::showPackageDir() {
+  const auto dir = proc_.packageDirectory();
+  packageDirValue_.setText(dir.getFullPathName().isEmpty() ? TRANS("None") : dir.getFullPathName(),
+                           juce::dontSendNotification);
+  packageDirValue_.setTooltip(dir.getFullPathName());
+  packageDirClear_.setEnabled(dir.getFullPathName().isNotEmpty());
+}
+
 // The folder as the player sees it: the one they named, or the one derived
 // from the definition's path, marked as derived so the two cannot be
 // confused.
@@ -826,6 +866,14 @@ void EnginePanel::resized() {
   cacheDirDefault_.setBounds(cacheDirRow.removeFromRight(80).reduced(0, 2));
   cacheDirRow.removeFromRight(8);
   cacheDirValue_.setBounds(cacheDirRow);
+  r.removeFromTop(6);
+  auto packageDirRow = r.removeFromTop(kRow);
+  packageDirLabel_.setBounds(packageDirRow.removeFromLeft(180));
+  packageDirChoose_.setBounds(packageDirRow.removeFromRight(90).reduced(0, 2));
+  packageDirRow.removeFromRight(6);
+  packageDirClear_.setBounds(packageDirRow.removeFromRight(80).reduced(0, 2));
+  packageDirRow.removeFromRight(8);
+  packageDirValue_.setBounds(packageDirRow);
   r.removeFromTop(6);
   auto organRootRow = r.removeFromTop(kRow);
   organRootLabel_.setBounds(organRootRow.removeFromLeft(180));

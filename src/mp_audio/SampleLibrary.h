@@ -26,6 +26,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -228,6 +229,13 @@ public:
   // Such samples are always resident -- there is no file to stream a tail
   // from. Null for an ordinary organ.
   void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
+  // Packages installed somewhere else: their samples are read from that
+  // folder's OrganInstallationPackages (a composite definition, #289). The
+  // others stay under the organ's own root.
+  void setPackageRoots(std::unordered_map<Id, std::string> roots) { packageRoots_ = std::move(roots); }
+  // The packages found with other organs, in their archives or folders: part
+  // of what a cache of this organ holds.
+  void setPackagesFromElsewhere(std::set<std::string> packages) { packagesFromElsewhere_ = std::move(packages); }
 
   // Where the generated stand-ins for the standard components' noises are
   // kept. Empty: a folder in the program's data folder.
@@ -303,6 +311,12 @@ private:
                  LoadProgress* progress = nullptr) const;
 
   std::shared_ptr<const OrganArchive> archive_;
+  std::unordered_map<Id, std::string> packageRoots_;
+  std::set<std::string> packagesFromElsewhere_;
+  const std::string& rootFor(const std::string& organRoot, Id package) const {
+    const auto it = packageRoots_.find(package);
+    return it == packageRoots_.end() ? organRoot : it->second;
+  }
   std::string cacheDir_;
   std::string standardNoiseDir_;
   std::string cacheOrganId_;
