@@ -432,18 +432,22 @@ cmake --build --preset dev</code></pre>
   <div class="zoom-frame">
     <button class="zoom-close" type="button" aria-label="Close">&times;</button>
     <img alt="">
+    <p class="zoom-caption"></p>
   </div>
 </dialog>
 <script>
 (() => {
   const zoom = document.querySelector('dialog.zoom');
   const img = zoom.querySelector('img');
-  for (const thumb of document.querySelectorAll('.gallery img')) {
+  const caption = zoom.querySelector('.zoom-caption');
+  for (const figure of document.querySelectorAll('.gallery figure')) {
+    const thumb = figure.querySelector('img');
     thumb.tabIndex = 0;
     thumb.setAttribute('role', 'button');
     const open = () => {
       img.src = thumb.currentSrc || thumb.src;
       img.alt = thumb.alt;
+      caption.innerHTML = figure.querySelector('figcaption').innerHTML;
       zoom.showModal();
     };
     thumb.addEventListener('click', open);

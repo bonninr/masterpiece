@@ -258,6 +258,9 @@ pre code { font-size: 14px; }
   display: flex; align-items: center; justify-content: center;
 }
 .zoom-frame { position: relative; }
+.zoom-caption { margin: 22px 0 0; text-align: center; font-size: 17px; font-weight: 600; color: var(--ink); }
+.zoom-caption span { display: block; margin-top: 2px; font-size: 14px; font-weight: 400; color: var(--muted); }
+.zoom-caption a { color: var(--accent); }
 .zoom::backdrop { background: rgba(8, 9, 12, 0.5); backdrop-filter: blur(3px); }
 .zoom img {
   display: block; width: auto; height: auto; max-width: 50vw; max-height: 50vh; border-radius: 6px;
