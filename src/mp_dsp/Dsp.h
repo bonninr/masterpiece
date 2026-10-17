@@ -84,6 +84,9 @@ private:
   juce::dsp::StateVariableTPTFilter<float> svf_;
   juce::SmoothedValue<double, juce::ValueSmoothingTypes::Linear> smoothShutter_{1.0};
   juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> gain_{1.0f};
+  // The share of the unfiltered signal mixed back in: what turns the
+  // low-pass into a shelf of the box's stated depth. 0 is the full low-pass.
+  juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> floor_{0.0f};
   double sampleRate_ = 48000.0;
   double cutoffHz_ = 0.0;
 };

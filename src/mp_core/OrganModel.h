@@ -488,6 +488,13 @@ struct Enclosure {
   // enclosure with none is inert — the validator reports it rather than
   // silently swallowing the swell pedal (query enclosure-without-shades).
   int numShades = 0;
+  // How far below its passband the closed filter reaches, in dB: the pipes'
+  // ExtraAttnAtMinDb, "the extra attenuation at the minimum frequency
+  // response relative to that at the maximum". The filter is a shelf of that
+  // depth, gone when the box is open, and a box that states none filters
+  // nothing. Used only when filterParamsFromPipes; the fallback filters at
+  // full depth.
+  double closedFilterDepthDb = 0.0;
 };
 
 // M2.4: a console input that sweeps rather than switches — swell shoes,
