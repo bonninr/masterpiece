@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -142,6 +143,17 @@ public:
   // A stable name for this set of archives: their names and sizes. Used for
   // the folder its small files are unpacked into.
   std::string identity() const;
+
+  // Composite definitions (#289) play packages that come with other organs:
+  // the Jehmlich composite plays the Kecskemet and the Szombathely sets'
+  // samples. join() adds another set's archives, opened on their own, to
+  // these; a file already here keeps its place.
+  void join(const OrganArchive& other);
+  // The archives in these folders that carry one of `packages` (six-digit
+  // folder names, "001745"), read from their first headers: the first volume
+  // of each set, a second download passed over.
+  static std::vector<std::string> carryingIn(const std::vector<std::string>& folders,
+                                             const std::set<std::string>& packages);
 
 private:
   bool readIndex(const std::string& file, bool checkVolumes);

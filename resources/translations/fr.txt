@@ -348,6 +348,9 @@ countries: fr be ca ch lu mc
 "Edit" = "Modifier"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Dossier des paquets"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Un orgue composite cherche ici, et dans les dossiers directement dedans, les orgues qu'il joue."
+"Where are packages kept?" = "Où sont gardés les paquets ?"
 "Memory profile" = "Profil de mémoire"
 "Best quality - 24-bit, hold everything" = "Meilleure qualité - 24 bits, tout en mémoire"
 "Recommended - 16-bit, stream releases" = "Recommandé - 16 bits, relâchements en streaming"
@@ -584,6 +587,14 @@ countries: fr be ca ch lu mc
 "Scala file..." = "Fichier Scala..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Un paquet que joue cet orgue est absent"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Cet orgue joue le paquet %1, \"%2\", qui n'est ni dans son dossier, ni dans un dossier de celui-ci, ni dans le dossier des paquets.\n\nChoisissez l'archive de ce paquet, ou le dossier qui le contient. Le choix est gardé pour cet orgue. Le dossier des paquets de tous les orgues se choisit dans Réglages de l'orgue, Chargement."
+"no name given" = "sans nom"
+"Choose an archive..." = "Choisir une archive..."
+"Choose a folder..." = "Choisir un dossier..."
+"Play without it" = "Jouer sans lui"
+"The folder that holds the package" = "Le dossier qui contient le paquet"
+"The package's archive" = "L'archive du paquet"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Les détails sont dans le journal, %1. Si Masterpiece a été relancé depuis, ils sont dans masterpiece.previous.log à côté."
 "Show the log" = "Afficher le journal"
 "Not loaded: chosen in Organ settings, Stops" = "Non chargé : choix dans Réglages de l'orgue, Jeux"

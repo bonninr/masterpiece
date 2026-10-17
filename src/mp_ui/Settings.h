@@ -137,6 +137,12 @@ private:
   juce::TextButton cacheDirDefault_{TRANS("Default")};
   std::unique_ptr<juce::FileChooser> cacheDirChooser_;
   void showCacheDir();
+  juce::Label packageDirLabel_;
+  juce::Label packageDirValue_;
+  juce::TextButton packageDirChoose_{TRANS("Choose...")};
+  juce::TextButton packageDirClear_{TRANS("Clear")};
+  std::unique_ptr<juce::FileChooser> packageDirChooser_;
+  void showPackageDir();
   juce::Label organRootLabel_;
   juce::Label organRootValue_;
   juce::TextButton organRootChoose_{TRANS("Choose...")};

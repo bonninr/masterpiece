@@ -651,7 +651,7 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     ShapeJob job;
     job.sampleId = id;
     job.releaseOnly = releaseOnly;
-    const auto path = resolvePath(organRootDir, ref.fileName, ref.installationPackageId);
+    const auto path = resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId);
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
     job.wavpack = ext == ".wv";
@@ -852,7 +852,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       }
 
       const auto path = resolveIgnoringCase(
-          resolvePath(organRootDir, ref.fileName, ref.installationPackageId));
+          resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId));
       std::error_code ec;
       if (!std::filesystem::exists(path, ec)) {
         std::lock_guard<std::mutex> lock(resultMutex);
@@ -1536,6 +1536,11 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   // Caches written before a read failure stopped being fatal may hold only
   // part of an organ (Buckeburg: 5639 of its samples); this retires them.
   s += "|r2";
+  // The packages a composite found with other organs (#289): a cache written
+  // before they were found held only the composite's own samples, and came
+  // back after they were (Zamardi-Buda: 263 of 5228). Only when there are
+  // any, so every other organ keeps the cache it has.
+  for (const auto& package : packagesFromElsewhere_) s += "|k" + package;
   // A partial load holds a different set of samples from a full one, and the
   // two must never be mistaken for each other: a cache written by
   // --preload-drawn would otherwise come back as a whole organ with most of

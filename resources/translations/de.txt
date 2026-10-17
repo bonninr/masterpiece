@@ -348,6 +348,9 @@ countries: de at ch li lu
 "Edit" = "Bearbeiten"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Paketordner"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Eine zusammengesetzte Orgel sucht hier und in den Ordnern direkt darin nach den Orgeln, die sie spielt."
+"Where are packages kept?" = "Wo liegen die Pakete?"
 "Memory profile" = "Speicherprofil"
 "Best quality - 24-bit, hold everything" = "Beste Qualität - 24 Bit, alles im Speicher"
 "Recommended - 16-bit, stream releases" = "Empfohlen - 16 Bit, Release-Samples streamen"
@@ -584,6 +587,14 @@ countries: de at ch li lu
 "Scala file..." = "Scala-Datei..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Ein Paket, das diese Orgel spielt, fehlt"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Diese Orgel spielt das Paket %1, \"%2\", das weder in ihrem Ordner, in einem Ordner darin noch im Paketordner liegt.\n\nWählen Sie das Archiv dieses Pakets oder den Ordner, der es enthält. Die Wahl wird für diese Orgel gespeichert. Einen Paketordner für alle Orgeln legen Sie in Orgeleinstellungen, Laden fest."
+"no name given" = "ohne Namen"
+"Choose an archive..." = "Archiv wählen..."
+"Choose a folder..." = "Ordner wählen..."
+"Play without it" = "Ohne es spielen"
+"The folder that holds the package" = "Der Ordner mit dem Paket"
+"The package's archive" = "Das Archiv des Pakets"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Die Einzelheiten stehen im Protokoll, %1. Wurde Masterpiece seitdem neu gestartet, stehen sie in masterpiece.previous.log daneben."
 "Show the log" = "Protokoll anzeigen"
 "Not loaded: chosen in Organ settings, Stops" = "Nicht geladen: in den Orgeleinstellungen unter „Register“ gewählt"

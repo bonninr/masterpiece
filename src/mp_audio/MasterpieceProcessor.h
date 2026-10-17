@@ -129,6 +129,12 @@ public:
   // -- the licensed samples are left out, as before (#164: asking after the
   // load and then loading again read the organ twice).
   std::function<bool(const std::string& organ, const std::string& publisher)> licenceAsker;
+  // Asked on the loading thread for a package a composite plays that is not
+  // in the organ's folder nor a folder in it (#289): the player may point to
+  // its archive, or the folder that holds it, and the choice is kept for the
+  // organ. Returns that path, or nothing to play without it. Blocks until
+  // answered. Unset -- the renderer, the tests -- nothing is asked.
+  std::function<std::string(const std::string& package, const std::string& name)> packageAsker;
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
   // all come from the ODF, and only `loadAll` touches the sample tree. It is
@@ -901,6 +907,13 @@ public:
   void setCacheDirectory(const juce::File& dir);
   static juce::File defaultCacheDirectory();
   juce::File cacheDirectorySetting() const { return cacheDir_; }
+  // A folder the player keeps packages in, for a composite that plays other
+  // organs' packages (#289): searched, with the folders directly in it, after
+  // the organ's own folder. Empty: none. Set is written at once; use is for
+  // this session only, so the tests leave the machine's settings alone.
+  juce::File packageDirectory() const { return packageDir_; }
+  void setPackageDirectory(const juce::File& dir);
+  void usePackageDirectory(const juce::File& dir) { packageDir_ = dir; }
   void setLoadTicks(bool on);
   // The language the program speaks: "" follows the system, "en" is English,
   // anything else is a code from availableLanguages(). The windows are built
@@ -1708,6 +1721,7 @@ private:
   std::atomic<bool> loadTicks_{false};
   juce::String language_;  // empty: the system's
   juce::File cacheDir_; // empty: the default place
+  juce::File packageDir_; // empty: none
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
   // load and advanced by the audio thread, so both sides use an atomic and
   // neither waits on the other.
@@ -1979,6 +1993,12 @@ private:
   // Only ranks that no StopRank reaches are indexed. A pipe reached both ways
   // would otherwise speak twice.
   void buildPalletIndex();
+  // A composite definition's packages that come with other organs (#289):
+  // looked for among the archives beside the organ, joined to its archive,
+  // and remembered beside its files. Returns the packages found this way.
+  std::set<std::string> joinPackagesFromElsewhere(std::shared_ptr<OrganArchive>& archive,
+                                                  const std::string& root,
+                                                  const std::string& archivePath);
   // The stops whose switch leads, through the wiring, to the pallet of a
   // pipe the set ships (#304): Nowa Ruda names no rank under any stop, and
   // its stops reach their pipes only that way.

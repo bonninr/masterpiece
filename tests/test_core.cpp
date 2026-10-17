@@ -14399,6 +14399,194 @@ public:
 };
 static DivisionInputTest g_divisionInput;
 
+// A composite definition plays a package that comes with another organ
+// (#289): the Jehmlich composite plays the Kecskemet set's samples, which are
+// in that set's archive in the folder beside it. The archive is found by the
+// package in its headers, joined, and the pipe sounds; the place is kept for
+// the next load.
+class CompositeDefinitionTest final : public mp::test::Test {
+public:
+  CompositeDefinitionTest() : Test("functional.archive.composite-definition", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-composite";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::create_directories(base / "Composite" / "OrganDefinitions");
+    fs::create_directories(base / "Composite" / "Kecskemet");
+    fs::create_directories(base / "Composite" / "Elsewhere");
+    fs::create_directories(base / "Beside");
+
+    // The other organ's archive: one looping tone, in a package no real set
+    // uses, so only this archive carries it, whatever this machine has opened.
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
+    std::ofstream(base / "Composite" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary)
+        << SolidRar4Test::rar4({{"OrganInstallationPackages\\900289\\Principal\\036-C.wav", tone}}, false);
+    // An organ carrying another package stays out, its name outside ASCII:
+    // on Windows a name in the system's code page stopped the search.
+    std::ofstream(base / "Composite" / "Elsewhere" / fs::path(u8"Vörösbereny.CompPkg.Hauptwerk.rar"), std::ios::binary)
+        << SolidRar4Test::rar4({{"OrganInstallationPackages\\009999\\x.wav", tone}}, false);
+
+    const fs::path odf = base / "Composite" / "OrganDefinitions" / "Composite.Organ_Hauptwerk_xml";
+    std::ofstream(odf) <<
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Composite</Identification_Name>"
+        "<Identification_UniqueOrganID>289</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>900289</InstallationPackageID><Name>Kecskemet</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>900289</InstallationPackageID>"
+        "<SampleFilename>Principal\\036-C.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample>"
+        "<Sample><SampleID>102</SampleID><InstallationPackageID>900288</InstallationPackageID>"
+        "<SampleFilename>Own\\037-C#.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+        "<Pitch_ExactSamplePitch>138.59</Pitch_ExactSamplePitch></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>202</RankID><Name>Own</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID>"
+        "<NormalMIDINoteNumber>37</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><Pipe_SoundEngine01_Layer><LayerID>401</LayerID>"
+        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\"><Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID>"
+        "<LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>102</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>901</StopID><Name>Principal 8</Name><DivisionID>801</DivisionID>"
+        "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>901</StopID><RankID>202</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name>"
+        "<Latching>Y</Latching></Switch></ObjectList></Hauptwerk>";
+
+    // The composite's own sample, in its own package beside the definition.
+    fs::create_directories(base / "Composite" / "OrganInstallationPackages" / "900288" / "Own");
+    std::ofstream(base / "Composite" / "OrganInstallationPackages" / "900288" / "Own" / "037-C#.wav", std::ios::binary)
+        << tone;
+    const juce::File odfFile(juce::String(odf.string()));
+    for (int round = 0; round < 2; ++round) {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(odfFile);
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      MP_CHECK(r.ok, "the composite loads");
+      MP_CHECK(r.samples.missing == 0, "its sample comes from the other organ's archive, round " + std::to_string(round) +
+                                           ": " + std::to_string(r.samples.missing) + " missing");
+      bool warned = false;
+      for (const auto& w : r.diagnostics.warnings) warned = warned || w.find("900289") != std::string::npos;
+      MP_CHECK(!warned, "and the package is not reported as missing");
+      proc.clearChannelAssignments();
+      proc.setKeyboardForChannel(1, 701);
+      proc.setStopEngaged(901, true);
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer on;
+      on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+      proc.processBlock(buf, on);
+      for (int i = 0; i < 4; ++i) {
+        juce::MidiBuffer none;
+        proc.processBlock(buf, none);
+      }
+      MP_CHECK(proc.voiceStats().activeVoices == 1, "and the pipe sounds");
+      settings.deleteFile();
+    }
+    std::string record;
+    std::getline(std::ifstream(base / "Composite" / "joined-packages.txt"), record);
+    MP_CHECK(record.find("01_Kecskemet_demo") != std::string::npos, "the place is kept for the next load: " + record);
+
+    // Elsewhere: in the package folder, then where the player points to.
+    int asked = 0;
+    std::string askedFor;
+    bool unreported = true;
+    auto load = [&](const fs::path& packageFolder, std::function<std::string()> answer) {
+      mp::MasterpieceProcessor proc;
+      proc.usePackageDirectory(juce::File(juce::String(packageFolder.string())));
+      if (answer)
+        proc.packageAsker = [&, answer](const std::string& package, const std::string& name) {
+          ++asked;
+          askedFor = package + " " + name;
+          return answer();
+        };
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      MP_CHECK(r.ok, "the composite loads");
+      unreported = true;
+      for (const auto& w : r.diagnostics.warnings) unreported = unreported && w.find("900289") == std::string::npos;
+      return r.samples.missing;
+    };
+    const fs::path stored = base / "Store" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar";
+    fs::create_directories(stored.parent_path());
+    fs::rename(base / "Composite" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar", stored);
+    fs::remove(base / "Composite" / "joined-packages.txt");
+    MP_CHECK(load(base / "Store", nullptr) == 0, "a folder in the package folder holds the other organ");
+
+    const fs::path far = base / "Beside" / "deep" / "far" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar";
+    fs::create_directories(far.parent_path());
+    fs::rename(stored, far);
+    fs::remove(base / "Composite" / "joined-packages.txt");
+    MP_CHECK(load(base / "Store", [&] { return far.string(); }) == 0, "the archive the player chose plays");
+    MP_CHECK(asked == 1 && askedFor == "900289 Kecskemet", "asked once, by number and name: " + askedFor);
+    MP_CHECK(load({}, [&] { return std::string(); }) == 0 && asked == 1, "and kept: not asked again");
+
+    fs::remove(far);
+    fs::remove(base / "Composite" / "joined-packages.txt");
+    load({}, [&] { return std::string(); });
+    MP_CHECK(asked == 2 && !unreported, "played without it when the player says so, and the package reported");
+
+    const fs::path installed = base / "Installed";
+    fs::create_directories(installed / "OrganInstallationPackages" / "900289" / "Principal");
+    std::ofstream(installed / "OrganInstallationPackages" / "900289" / "Principal" / "036-C.wav", std::ios::binary)
+        << tone;
+    MP_CHECK(load({}, [&] { return installed.string(); }) == 0 && asked == 3, "the folder the player chose plays");
+    MP_CHECK(load({}, nullptr) == 0, "and is kept for the next load");
+
+    // A cache written while the package was missing holds the composite's own
+    // sample only; once the package is found the load reads it again.
+    fs::remove_all(installed);
+    fs::remove(base / "Composite" / "package-folders.txt");
+    fs::remove(base / "Composite" / "joined-packages.txt");
+    auto loaded = [&] {
+      mp::MasterpieceProcessor proc;
+      proc.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      return r.samples.loaded;
+    };
+    MP_CHECK(loaded() == 1, "without the package, its own sample");
+    std::ofstream(base / "Composite" / "Kecskemet" / "01_Kecskemet_demo.Organ.CompPkg.Hauptwerk.rar", std::ios::binary)
+        << SolidRar4Test::rar4({{"OrganInstallationPackages\\900289\\Principal\\036-C.wav", tone}}, false);
+    const int both = loaded();
+    MP_CHECK(both == 2, "with it found, both samples, not the cache of one: " + std::to_string(both));
+    fs::remove_all(base, ec);
+  }
+};
+static CompositeDefinitionTest g_compositeDefinition;
+
 // A chord played through a melody coupler couples its top note only (#355).
 // Its keys arrive a few milliseconds apart and each in turn was the top: the
 // coupler played them one after the other, an arpeggio, and again on release.

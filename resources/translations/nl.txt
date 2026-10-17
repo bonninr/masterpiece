@@ -348,6 +348,9 @@ countries: nl be sr
 "Edit" = "Bewerken"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Pakkettenmap"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Een samengesteld orgel zoekt hier, en in de mappen direct daarin, naar de orgels die het speelt."
+"Where are packages kept?" = "Waar staan de pakketten?"
 "Memory profile" = "Geheugenprofiel"
 "Best quality - 24-bit, hold everything" = "Beste kwaliteit - 24 bit, alles in het geheugen"
 "Recommended - 16-bit, stream releases" = "Aanbevolen - 16 bit, releases streamen"
@@ -584,6 +587,14 @@ countries: nl be sr
 "Scala file..." = "Scala-bestand..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Een pakket dat dit orgel speelt ontbreekt"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Dit orgel speelt pakket %1, \"%2\", dat niet in zijn map staat, niet in een map daarin en niet in de pakkettenmap.\n\nKies het archief van dat pakket, of de map die het bevat. De keuze wordt voor dit orgel bewaard. Een pakkettenmap voor alle orgels stelt u in bij Orgelinstellingen, Laden."
+"no name given" = "zonder naam"
+"Choose an archive..." = "Archief kiezen..."
+"Choose a folder..." = "Map kiezen..."
+"Play without it" = "Zonder spelen"
+"The folder that holds the package" = "De map met het pakket"
+"The package's archive" = "Het archief van het pakket"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "De details staan in het logboek, %1. Als Masterpiece sindsdien opnieuw is gestart, staan ze in masterpiece.previous.log ernaast."
 "Show the log" = "Logboek tonen"
 "Not loaded: chosen in Organ settings, Stops" = "Niet geladen: gekozen bij Orgelinstellingen, Registers"

@@ -348,6 +348,9 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Edit" = "Editar"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Carpeta de paquetes"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Un órgano compuesto busca aquí, y en las carpetas directamente dentro, los órganos que usa."
+"Where are packages kept?" = "¿Dónde se guardan los paquetes?"
 "Memory profile" = "Perfil de memoria"
 "Best quality - 24-bit, hold everything" = "Máxima calidad - 24 bits, todo en memoria"
 "Recommended - 16-bit, stream releases" = "Recomendado - 16 bits, colas en streaming"
@@ -584,6 +587,14 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Scala file..." = "Archivo Scala..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Falta un paquete que este órgano usa"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Este órgano usa el paquete %1, \"%2\", que no está en su carpeta, en una carpeta dentro de ella ni en la carpeta de paquetes.\n\nElija el archivo comprimido de ese paquete, o la carpeta que lo contiene. La elección se guarda para este órgano. La carpeta de paquetes para todos los órganos se elige en Ajustes del órgano, Carga."
+"no name given" = "sin nombre"
+"Choose an archive..." = "Elegir un archivo..."
+"Choose a folder..." = "Elegir una carpeta..."
+"Play without it" = "Tocar sin él"
+"The folder that holds the package" = "La carpeta que contiene el paquete"
+"The package's archive" = "El archivo comprimido del paquete"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Los detalles están en el log, %1. Si Masterpiece se ha vuelto a iniciar desde entonces, están en masterpiece.previous.log, a su lado."
 "Show the log" = "Mostrar el log"
 "Not loaded: chosen in Organ settings, Stops" = "No cargado: elegido en Ajustes del órgano, Registros"

@@ -348,6 +348,9 @@ countries: cz
 "Edit" = "Upravit"
 
 # src/mp_ui/Settings.cpp
+"Package folder" = "Složka balíčků"
+"A composite organ looks here, and in the folders directly in it, for the organs it plays." = "Složené varhany zde a ve složkách přímo v ní hledají varhany, které hrají."
+"Where are packages kept?" = "Kde jsou balíčky uloženy?"
 "Memory profile" = "Profil paměti"
 "Best quality - 24-bit, hold everything" = "Nejlepší kvalita - 24 bitů, vše v paměti"
 "Recommended - 16-bit, stream releases" = "Doporučeno - 16 bitů, dozvuky ze streamu"
@@ -584,6 +587,14 @@ countries: cz
 "Scala file..." = "Soubor Scala..."
 
 # src/mp_ui/Ui.cpp
+"A package this organ plays is missing" = "Chybí balíček, který tyto varhany hrají"
+"This organ plays package %1, \"%2\", which is not in its folder, a folder in it, nor the package folder.\n\nChoose the archive of that package, or the folder that holds it. The choice is kept for this organ. A package folder for every organ is set in Organ settings, Loading." = "Tyto varhany hrají balíček %1, \"%2\", který není v jejich složce, ve složce v ní ani ve složce balíčků.\n\nVyberte archiv tohoto balíčku, nebo složku, která ho obsahuje. Volba se uloží pro tyto varhany. Složku balíčků pro všechny varhany nastavíte v Nastavení varhan, Načítání."
+"no name given" = "bez názvu"
+"Choose an archive..." = "Vybrat archiv..."
+"Choose a folder..." = "Vybrat složku..."
+"Play without it" = "Hrát bez něj"
+"The folder that holds the package" = "Složka s balíčkem"
+"The package's archive" = "Archiv balíčku"
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "Podrobnosti jsou v protokolu, %1. Pokud byl Masterpiece mezitím spuštěn znovu, jsou v masterpiece.previous.log vedle něj."
 "Show the log" = "Zobrazit protokol"
 "Not loaded: chosen in Organ settings, Stops" = "Nenačteno: volba v Nastavení varhan, Rejstříky"

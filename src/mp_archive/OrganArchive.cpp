@@ -1053,21 +1053,47 @@ bool OrganArchive::open(const std::string& path, std::string& error) {
 // OrganInstallationPackages/<six digits>/ folder in its headers. Read until
 // it is found, which is seldom past the first few files; empty when there is
 // none (a definitions-only archive, or another kind of file).
+static std::string packageInPath(const std::string& name) {
+  std::string k = lower(name);
+  std::replace(k.begin(), k.end(), '\\', '/');
+  const std::string folder = "organinstallationpackages/";
+  const auto at = k.find(folder);
+  if (at != std::string::npos && k.size() >= at + folder.size() + 6) {
+    const std::string id = k.substr(at + folder.size(), 6);
+    if (std::all_of(id.begin(), id.end(), [](unsigned char c) { return std::isdigit(c); })) return id;
+  }
+  return {};
+}
+
 static std::string firstPackageId(const std::vector<std::string>& volumes) {
+  if (volumes.empty()) return {};
+  // A RAR 4 volume by its headers alone, which are never compressed: a solid
+  // archive need not be unpacked file by file to reach its first package
+  // folder. Asking every archive in a download folder that way took minutes
+  // when one began with a large definition.
+  std::string id;
+  int seen = 0;
+  const bool walked = walkRar4(volumes.front(), nullptr, [&](const Rar4Header& f) {
+    std::string name(reinterpret_cast<const char*>(f.raw.data() + f.nameAt), f.nameSize);
+    if (const auto zero = name.find('\0'); zero != std::string::npos) name.resize(zero);
+    id = packageInPath(name);
+    // A package's files lie under its folder from the first entries; an
+    // archive that has not reached one in 60 headers carries none. Each
+    // header is a seek, which on a hard disk added up to minutes.
+    return id.empty() && ++seen < 60;
+  });
+  if (!id.empty() || walked) return id;
+  // Another kind of archive: its first entries, as the libraries list them.
+  // Few, and little skipped: passing an entry of a solid archive means
+  // decompressing it, and a large definition first would cost its whole size.
   auto pass = passFor(volumes);
   std::string name;
-  int64_t size = 0;
+  int64_t size = 0, skipped = 0;
   bool encrypted = false;
-  for (int n = 0; n < 4000 && pass->next(name, size, encrypted); ++n) {
-    std::string k = lower(name);
-    std::replace(k.begin(), k.end(), '\\', '/');
-    const std::string folder = "organinstallationpackages/";
-    const auto at = k.find(folder);
-    if (at != std::string::npos && k.size() >= at + folder.size() + 6) {
-      const std::string id = k.substr(at + folder.size(), 6);
-      if (std::all_of(id.begin(), id.end(), [](unsigned char c) { return std::isdigit(c); }))
-        return id;
-    }
+  for (int n = 0; n < 20 && pass->next(name, size, encrypted); ++n) {
+    if (const auto found = packageInPath(name); !found.empty()) return found;
+    skipped += size;
+    if (skipped > (int64_t{64} << 20)) break;
     pass->skip();
   }
   return {};
@@ -1133,6 +1159,52 @@ static std::string organWord(const std::string& fileName) {
   size_t e = 0;
   while (e < n.size() && std::isalnum(static_cast<unsigned char>(n[e]))) ++e;
   return n.substr(0, e);
+}
+
+void OrganArchive::join(const OrganArchive& other) {
+  const size_t base = archives_.size();
+  for (const auto& group : other.archives_) archives_.push_back(group);
+  for (const Entry& e : other.entries_) {
+    Entry n = e;
+    n.archive += base;
+    entries_.push_back(n);
+    byKey_.emplace(key(n.path), entries_.size() - 1);
+  }
+  for (const auto& line : other.report_) report_.push_back(line);
+}
+
+std::vector<std::string> OrganArchive::carryingIn(const std::vector<std::string>& folders,
+                                                  const std::set<std::string>& packages) {
+  std::vector<std::string> out;
+  if (packages.empty()) return out;
+  // Paths in UTF-8 both ways. On Windows path::string() is in the system's
+  // code page: "Vörösbereny" came back in it, and u8path() threw on it when
+  // the archive was opened, which stopped the load.
+  auto utf8 = [](const fs::path& p) {
+    const auto u = p.u8string();
+    return std::string(u.begin(), u.end());
+  };
+  std::error_code ec;
+  size_t looked = 0;
+  for (const auto& dir : folders)
+    for (fs::directory_iterator it(fs::u8path(dir), ec), end; !ec && it != end; it.increment(ec)) {
+      const auto& e = *it;
+      std::error_code fileEc;
+      if (!e.is_regular_file(fileEc)) continue;
+      const std::string name = utf8(e.path().filename());
+      if (!isOrganArchive(name) || !originalOf(name).empty()) continue;
+      // A later volume of a set: "Name.part2.rar", "Name.r00". "Name.part1.rar"
+      // and the old scheme's "Name.rar" are first volumes.
+      static const std::regex partOne(R"(\.part0*1\.rar$)", std::regex::icase);
+      std::string setName;
+      const int volume = volumeNumber(name, setName);
+      if (volume > 1 || (volume == 1 && !std::regex_search(name, partOne))) continue;
+      if (++looked > 2000) break;  // a folder of everything
+      const std::string path = utf8(e.path());
+      if (packages.count(firstPackageId({path})) != 0) out.push_back(path);
+    }
+  std::sort(out.begin(), out.end());
+  return out;
 }
 
 bool OrganArchive::discover(const std::string& path, std::string& error) {
