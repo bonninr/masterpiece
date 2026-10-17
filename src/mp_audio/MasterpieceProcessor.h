@@ -1677,7 +1677,9 @@ private:
   std::unordered_set<Id> unloadedStops_;
   std::unordered_set<Id> unloadedSwitches_;
   std::unordered_map<Id, Unavailable> unavailable_;
-  std::vector<BusId> mixBusOrder_;              // dense index -> BusId
+  // The stops whose ranks have no pipes in this set: held in (holdOff).
+  std::unordered_set<Id> lockedStops_;
+  std::vector<BusId> mixBusOrder_;             // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
   // One convolver per dense bus index, built only for buses that declare an

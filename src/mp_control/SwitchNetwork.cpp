@@ -10,6 +10,7 @@ void SwitchNetwork::reset(const OrganModel& model) {
   byDest_.clear();
   mirrors_.clear();
   engaged_.clear();
+  heldOff_.clear();
   changes_.clear();
   work_.clear();
   ranAway_ = false;
@@ -103,6 +104,16 @@ void SwitchNetwork::set(Id switchId, bool engaged) {
   propagate(switchId, engaged);
 }
 
+void SwitchNetwork::holdOff(std::unordered_set<Id> switches) {
+  heldOff_ = std::move(switches);
+  changes_.clear();
+  ranAway_ = false;
+  work_.clear();
+  for (Id id : heldOff_)
+    if (engaged_.count(id) != 0) work_.emplace_back(id, false);
+  drain();
+}
+
 void SwitchNetwork::propagate(Id switchId, bool engaged) {
   work_.clear();
   work_.emplace_back(switchId, engaged);
@@ -127,6 +138,8 @@ void SwitchNetwork::drain() {
     // the drawn knob and the logical switch driving each other — settle
     // instead of ringing.
     if ((engaged_.count(id) != 0) == want) continue;
+    // A locked stop stays in, whatever asks for it.
+    if (want && heldOff_.count(id) != 0) continue;
 
     if (want) engaged_.insert(id);
     else engaged_.erase(id);

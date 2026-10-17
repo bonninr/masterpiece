@@ -3112,6 +3112,7 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
 
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
   const AudioLock audio(*this);
+  if (engaged && lockedStops_.count(stopId) != 0) return;  // held in: holdOff
   if (!applyingPistons_) player_.registrationMoved();
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
@@ -4205,23 +4206,45 @@ void MasterpieceProcessor::buildPalletIndex() {
 
 void MasterpieceProcessor::findPalletStops() {
   palletStops_.clear();
-  std::unordered_set<Id> reached;
-  std::vector<Id> todo;
+  std::unordered_set<Id> pallets;
   for (const auto& [rankId, rank] : model_.ranks) {
     (void)rankId;
     for (const Pipe& pipe : rank.pipes)
-      if (pipe.palletSwitchId != 0 && reached.insert(pipe.palletSwitchId).second)
-        todo.push_back(pipe.palletSwitchId);
+      if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
   }
-  if (todo.empty()) return;
-  // Upstream: what moves a switch, as the source of a linkage or its condition.
-  std::unordered_map<Id, std::vector<Id>> feeders;
-  for (const auto& l : model_.switchLinkages) {
-    if (l.sourceSwitchId != 0 && l.sourceSwitchId != l.destSwitchId)
-      feeders[l.destSwitchId].push_back(l.sourceSwitchId);
-    if (l.conditionSwitchId != 0 && l.conditionSwitchId != l.destSwitchId)
-      feeders[l.destSwitchId].push_back(l.conditionSwitchId);
+  if (pallets.empty()) return;
+  // Each wire both ways: what moves a switch, as the source of a linkage or
+  // its condition, and what that switch moves in turn.
+  std::unordered_map<Id, std::vector<Id>> feeders, fed;
+  for (const auto& l : model_.switchLinkages)
+    for (Id from : {l.sourceSwitchId, l.conditionSwitchId})
+      if (from != 0 && from != l.destSwitchId) {
+        feeders[l.destSwitchId].push_back(from);
+        fed[from].push_back(l.destSwitchId);
+      }
+  // Only a pallet a key opens holds pipework. A demo keeps every stop's
+  // action noise, a pipe on a pallet the stop's own switch opens with no key,
+  // and counting those took Nowa Ruda's 35 locked stops for playing ones
+  // (#390). An organ that names no key switches keeps every pallet.
+  std::unordered_set<Id> keys;
+  for (const auto& [switchId, key] : model_.keyboardKeys) keys.insert(switchId);
+  for (const auto& input : model_.divisionInputs)
+    if (input.switchId != 0) keys.insert(input.switchId);
+  if (!keys.empty()) {
+    std::unordered_set<Id> opened(keys.begin(), keys.end());
+    std::vector<Id> down(keys.begin(), keys.end());
+    while (!down.empty()) {
+      const Id at = down.back();
+      down.pop_back();
+      if (const auto it = fed.find(at); it != fed.end())
+        for (Id next : it->second)
+          if (opened.insert(next).second) down.push_back(next);
+    }
+    for (auto it = pallets.begin(); it != pallets.end();)
+      it = opened.count(*it) != 0 ? std::next(it) : pallets.erase(it);
   }
+  std::unordered_set<Id> reached(pallets.begin(), pallets.end());
+  std::vector<Id> todo(pallets.begin(), pallets.end());
   while (!todo.empty()) {
     const Id at = todo.back();
     todo.pop_back();
@@ -5815,8 +5838,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // tooltip names it as not available.
   findPalletStops();
   std::unordered_set<Id> silent;
+  lockedStops_.clear();
   for (const auto& e : stopList()) {
     if (e.playable) continue;
+    lockedStops_.insert(e.stopId);
     const auto it = model_.stops.find(e.stopId);
     if (it != model_.stops.end() && it->second.controllingSwitchId != 0) {
       const Id sw = playerSwitchFor(it->second.controllingSwitchId);
@@ -5857,6 +5882,40 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
           if (!why->second.noPipes) unloadedSwitches_.insert(it->second);
         }
     }
+  }
+  // And held in, whatever would draw them. Only the click was refused: a
+  // general, the crescendo, a tutti, a MIDI message or the organ's own wiring
+  // still drew a locked stop, which then showed drawn and sounded nothing,
+  // where the set's own player keeps it in. A switch that also draws a stop
+  // with pipes stays free, and an organ with no pipes at all is no demo:
+  // its stops are left as they are.
+  if (lockedStops_.size() == model_.stops.size()) lockedStops_.clear();
+  if (!lockedStops_.empty()) {
+    auto drawsPlayable = [&](Id sw) {
+      for (const auto* map : {&stopBySwitch_, &stopsBySwitch_})
+        if (const auto it = map->find(sw); it != map->end())
+          for (Id stopId : it->second)
+            if (lockedStops_.count(stopId) == 0) return true;
+      return false;
+    };
+    // Nor a switch the organ starts engaged: the Alessandria demo controls its
+    // locked Tuba with the switch that runs the organ's noises.
+    std::unordered_set<Id> held;
+    auto hold = [&](Id sw) {
+      if (sw == 0 || drawsPlayable(sw)) return;
+      if (const auto s = model_.switches.find(sw); s != model_.switches.end() && s->second.defaultEngaged) return;
+      held.insert(sw);
+    };
+    for (const auto& [sw, why] : unavailable_)
+      if (why.noPipes) hold(sw);
+    for (Id stopId : lockedStops_)
+      if (const auto it = model_.stops.find(stopId); it != model_.stops.end())
+        hold(it->second.controllingSwitchId);
+    switches_.holdOff(std::move(held));
+    for (Id stopId : lockedStops_) engagedStops_.erase(stopId);
+    engagedSwitches_ = switches_.engagedSwitches();
+    shownStale_ = true;
+    stopsChanged_.store(true, std::memory_order_release);
   }
   resetPlayerCombinations();
   loadCombinations();
