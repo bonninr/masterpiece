@@ -823,6 +823,21 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     if (action.valid()) {
       switch (action.kind) {
         case MidiTargetKind::Switch:
+          // A button that toggles flips the switch as it is now: a stop a
+          // cancel or a piston pushed in draws on the next press, where the
+          // button's own memory said it was still out and took one press to
+          // agree. A piston on such a button is pressed and let go each time,
+          // so every press fires it (#366).
+          if (action.toggled) {
+            const auto sw = model_.switches.find(action.targetId);
+            if (sw != model_.switches.end() && !sw->second.latching) {
+              setSwitchEngaged(action.targetId, true);
+              setSwitchEngaged(action.targetId, false);
+            } else {
+              setSwitchEngaged(action.targetId, !switches_.engaged(action.targetId));
+            }
+            continue;
+          }
           setSwitchEngaged(action.targetId, action.engage);
           continue;
         case MidiTargetKind::ContinuousControl:
@@ -867,7 +882,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           pressDivisionalCancel(action.targetId);
           continue;
         case MidiTargetKind::Setter:
-          setCaptureMode(action.engage);
+          setCaptureMode(action.toggled ? !captureMode() : action.engage);
           continue;
         case MidiTargetKind::RouteKeyboard:
           routeFromControl(action);

@@ -192,6 +192,10 @@ struct MidiAction {
   MidiTargetKind kind = MidiTargetKind::None;
   Id targetId = 0;
   bool engage = false;  // for Switch
+  // A press on a binding that toggles: the switch flips from where it is
+  // now, which the map cannot know -- a cancel or the mouse may have moved
+  // it since this button last did.
+  bool toggled = false;
   int value = 0;        // for ContinuousControl, 0..127
   // Further continuous controls the same controller drives -- one pedal for
   // two swell boxes -- each with its own window; or further manuals one

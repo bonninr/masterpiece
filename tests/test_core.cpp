@@ -13085,6 +13085,18 @@ public:
     MP_CHECK(!proc.stopEngaged(stop), "a CC on the GC cancels it");
     MP_CHECK(!proc.shownStopEngaged(stop), "and the window's copy has that too");
 
+    // The GC on a button that toggles, as a map from before triggers reads
+    // (#366): every press cancels, the second as the first.
+    bindCc(22, gc, mp::MidiTrigger::Toggle);
+    for (int press = 1; press <= 3; ++press) {
+      send(20, 127);
+      send(20, 0);
+      MP_CHECK(proc.stopEngaged(stop), "the stop is drawn again, press " + std::to_string(press));
+      send(22, 127);
+      send(22, 0);
+      MP_CHECK(!proc.stopEngaged(stop), "a toggling button on the GC cancels, press " + std::to_string(press));
+    }
+
     // The window asking while the audio thread draws and cancels: its answers
     // come from the copy, so the sets being rewritten are never read from
     // here. A block the window was reading through leaves the copy a block
