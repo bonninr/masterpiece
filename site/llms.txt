@@ -16,6 +16,7 @@ Key facts:
 
 - [Home page](https://masterpieceorgan.com/): features, figures, sound demos and a gallery of consoles
 - [Downloads](https://masterpieceorgan.com/#platforms): the latest release for every system
+- [Manual](https://masterpieceorgan.com/docs/): installing, opening sample sets, MIDI, audio, memory and streaming, every setting, and the developer guide
 - [Latest release notes](https://github.com/bonninr/masterpiece/releases/latest)
 - [Source code](https://github.com/bonninr/masterpiece): C++20 and JUCE
 - [Questions and discussions](https://github.com/bonninr/masterpiece/discussions)

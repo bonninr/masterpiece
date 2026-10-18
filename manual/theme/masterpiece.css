@@ -1,0 +1,83 @@
+/* The site's colours on mdBook's themes: charcoal and the warm oak of an
+   organ case in the dark theme (coal, the default), a deeper oak on light. */
+.coal {
+  --bg: #15171c;
+  --fg: #e8e6e1;
+  --sidebar-bg: #1b1e24;
+  --sidebar-fg: #c9c6c0;
+  --sidebar-non-existant: #6b727d;
+  --sidebar-active: #c8a97e;
+  --sidebar-spacer: #2a2f3a;
+  --scrollbar: #2a2f3a;
+  --icons: #9aa0aa;
+  --icons-hover: #e8e6e1;
+  --links: #c8a97e;
+  --inline-code-color: #e0c9a4;
+  --theme-popup-bg: #1b1e24;
+  --theme-popup-border: #2a2f3a;
+  --theme-hover: #2a2f3a;
+  --quote-bg: #1b1e24;
+  --quote-border: #2a2f3a;
+  --table-border-color: #2a2f3a;
+  --table-header-bg: #1b1e24;
+  --table-alternate-bg: #181a20;
+  --searchbar-border-color: #2a2f3a;
+  --searchbar-bg: #1b1e24;
+  --searchbar-fg: #e8e6e1;
+  --searchresults-header-fg: #9aa0aa;
+  --searchresults-border-color: #2a2f3a;
+  --searchresults-li-bg: #1b1e24;
+  --search-mark-bg: #8a7a5e;
+}
+
+.light {
+  --links: #8a6a3e;
+  --sidebar-active: #8a6a3e;
+  --inline-code-color: #6b4f2a;
+}
+
+html {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.content main {
+  max-width: 820px;
+}
+
+.content img {
+  display: block;
+  max-width: 100%;
+  margin: 1.2em 0;
+  border: 1px solid var(--table-border-color);
+  border-radius: 6px;
+}
+
+.menu-title {
+  font-weight: 600;
+}
+
+/* The way back to the project page, added to the top bar. */
+.mp-home {
+  font-size: 1.4rem;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 0 10px;
+  color: var(--icons);
+  text-decoration: none;
+}
+.mp-home:hover {
+  color: var(--icons-hover);
+}
+
+/* On a phone the title and the icons fill the bar: the link stays in the
+   introduction's text, and a wide table scrolls in its own box. */
+@media (max-width: 620px) {
+  .mp-home {
+    display: none;
+  }
+}
+.content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}

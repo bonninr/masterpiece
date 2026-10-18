@@ -24,6 +24,7 @@ on:
       - 'screenshots/**'
       # The project page builds nothing; pages.yml publishes it.
       - 'site/**'
+      - 'manual/**'
       - 'ATTRIBUTION.md'
       - '.github/pages-downloads.py'
       - '.github/workflows/pages.yml'
@@ -35,6 +36,7 @@ on:
       - '.gitignore'
       - 'screenshots/**'
       - 'site/**'
+      - 'manual/**'
       - 'ATTRIBUTION.md'
       - '.github/pages-downloads.py'
       - '.github/workflows/pages.yml'
