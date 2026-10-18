@@ -1839,6 +1839,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   if (language_.isNotEmpty()) text << "language " << language_ << "\n";
+  text << "metronome " << juce::String(metronome_.tempo(), 1) << " " << metronome_.beatsPerBar() << " "
+       << juce::String(metronome_.level(), 2) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
@@ -1963,6 +1965,13 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       packageDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "metronome") {
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() >= 3) {
+        metronome_.setTempo(parts[0].getDoubleValue());
+        metronome_.setBeatsPerBar(parts[1].getIntValue());
+        metronome_.setLevel(static_cast<float>(parts[2].getDoubleValue()));
+      }
     } else if (key == "openfolder") {
       openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "dialogfolder") {

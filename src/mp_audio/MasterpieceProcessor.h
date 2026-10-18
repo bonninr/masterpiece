@@ -1122,6 +1122,9 @@ public:
   // All three run inside the audio callback, because anything that has to
   // stay in time with the organ cannot live outside it.
   Metronome& metronome() { return metronome_; }
+  // The metronome's tempo, beats and level, kept in the general settings when
+  // its tab closes. Whether it ticks is not kept: it starts silent.
+  void rememberMetronome() { writeGlobalFile(); }
   MidiRecorder& recorder() { return recorder_; }
   // Captures what leaves, minus the metronome. See AudioRecorder.
   AudioRecorder& audioRecorder() { return audioRecorder_; }
