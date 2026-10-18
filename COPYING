@@ -38,6 +38,15 @@ JUCE 9 — audio, GUI and plugin wrappers.
 pugixml — XML parsing for the organ-definition loader.
   MIT.  https://github.com/zeux/pugixml
 
+libarchive — reading sample sets straight from their RAR packages.
+  BSD-2-Clause.  https://github.com/libarchive/libarchive
+
+unarr — reading solid RAR 4 packages; only its RAR 4 reader is built.
+  LGPL-3.0.  https://github.com/selmf/unarr
+
+WavPack — decoding compressed samples.
+  BSD-3-Clause.  https://github.com/dbry/WavPack
+
 
 READ, BUT NOT COMPILED IN
 -------------------------
