@@ -2913,8 +2913,9 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     //
     // The empty() guard is the point of the whole lookup: an organ
     // nobody has voiced must not pay two hash lookups for every pipe of
-    // every chord.
-    if (!voicing_.live().empty()) {
+    // every chord. The Voicing box (Organ settings, Loading) turns it off,
+    // to hear the set as recorded against the voicing (#399).
+    if (graph_.engineSwitch.enableVoicing && !voicing_.live().empty()) {
       const PipeVoicing pv =
           voicing_.live().effective(rankId, pipe.pipeId);
       if (pv.gainDb != 0.0f)
