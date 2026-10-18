@@ -309,7 +309,6 @@ private:
   juce::TextButton learnTemperamentNext_{TRANS("Learn temperament +")};
   juce::Label mapStatus_;
   juce::Label note_;
-  std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
 // Combination sets: the registration books of the organ loaded. The favourite

@@ -412,6 +412,11 @@ public:
     // Read the global file first in any case: it is also what says whether
     // the last session ended cleanly.
     proc_->loadGlobalDefaults();
+    // The console's output, as the player left it: its lamps and displays
+    // follow the organ from the start.
+    if (const auto out = proc_->midiOutputName(); out.isNotEmpty() && !proc_->openMidiOutput(out))
+      juce::Logger::writeToLog("midi: the output " + out + " is not connected; choose it again in "
+                               "Settings, MIDI once it is");
     const juce::File crashed = proc_->crashedOrgan();
     proc_->forgetCrash();
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
