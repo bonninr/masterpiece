@@ -92,7 +92,7 @@ A Raspberry Pi with 16 GB of RAM follows the 16 GB row for memory; its processor
 
 **Phones and tablets.** The memory limit follows the device's RAM. Advice: choose the 50% entry of **Memory limit for samples**, because the device keeps its system and other apps in the rest. Load a small or medium organ, or load a part of a large one. The sample files are read where they are, and an iPhone or iPad lends the Files app's folder to Masterpiece. See [Phones and tablets](mobile.md).
 
-**Plugins.** Each plugin instance holds its own organ, so two instances take twice the memory. Choose the loading settings in the standalone program and save them for the organ; the plugin loads the organ with the saved settings from the same folder. The plugin editor cannot open the Organ settings window.
+**Plugins.** Each plugin instance holds its own organ, so two instances take twice the memory. Choose the loading settings in the standalone program and save them for the organ; the plugin loads the organ with the saved settings from the same folder. In the plugin editor, **Settings > Organ settings...** opens the Organ settings window without its **MIDI** tab.
 
 ## Checking a choice
 

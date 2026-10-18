@@ -20,7 +20,7 @@ The window is titled **General settings**, opens at 660 x 560 pixels and can be 
 General settings hold the program and the player's console. Four tabs hold choices that belong to the organ that is loaded and are saved with it: **Room**, **Mixer** (the rank routing), **Voicing** and **Combination sets**. The **MIDI** tab keeps the keyboard channels and learned controls per organ and the rest for every organ. [Where settings are kept](#where-settings-are-kept) lists the files.
 
 > [!NOTE]
-> In the plugin editor, **Organ settings...** and **General settings...** do nothing and **Audio and MIDI...** is absent. Only the standalone application opens these windows. **Licence confirmed for this organ** works in both.
+> In the VST3, LV2 and AU plugins, **General settings...** opens this window without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Audio and MIDI...** is absent. **Licence confirmed for this organ** works in both.
 
 ## Audio
 
@@ -81,7 +81,7 @@ A click track for practice. It is generated inside the audio callback so that it
 | **Level** | The loudness of the click. | 0.5 | 0 to 1 in steps of 0.01 | At once |
 | Beat readout | Shows **Beat N** for the beat just played while the metronome runs. | Empty | | |
 
-**Stored.** Nowhere. The metronome starts switched off at the defaults in every session.
+**Stored.** The tempo, the beats per bar and the level are the key `metronome <bpm> <beats> <level>` in the global file, written when the Metronome tab closes, and they return at the next start. The click starts silent at each start; the **Metronome** box shows whether it is running each time the tab opens.
 
 ## MIDI
 
@@ -108,13 +108,13 @@ When a default exists, the line beside the buttons reads **Default for organs wi
 
 | Control | What it does | Default | Range or options | Takes effect and storage |
 |---|---|---|---|---|
-| **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Held while the window stays open; see the note below. |
-| **Send stop changes back to the console** | Sends each stop change to the output so that a console with lit stops follows the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Not stored. |
+| **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
+| **Send stop changes back to the console** | Sends each stop change to the output so that a console with lit stops follows the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
 | **Noise filter: when learning, a key counts once held a quarter second** | For a console whose contacts send stray notes: a shorter note is dropped. Controllers, program changes and system exclusive messages are learned at once. Leave it off for pistons that send only a short note. | Off | On, off | At once. Global file key `learnnoisefilter`, written only while on. |
 
 > [!NOTE]
-> The MIDI output works while the settings window is open. The port is opened by this panel and released when the window closes; the box shows **None** each time the window opens, so the stop feedback and the console display need the port chosen again.
+> The processor holds the MIDI output port, so lamps, key echo and the console display work with any window open or none. The port opens again at the next start. A port that is not plugged in keeps its name, and the box shows that name until the port is chosen again or **None** is chosen.
 
 ### Learning
 
@@ -154,7 +154,7 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 
 ![The Voicing tab](../images/general-voicing.png)
 
-The player's adjustments of level and tuning, for a whole rank or for one pipe, in the way a voicer goes round an organ. A rank adjustment and a pipe adjustment add. Level and tuning are applied when a note starts, so they cost nothing while it sounds, and they work with the DSP switched off. Notes already sounding keep what they began with.
+The player's adjustments of level and tuning, for a whole rank or for one pipe, in the way a voicer goes round an organ. A rank adjustment and a pipe adjustment add. Level and tuning are applied when a note starts, so they cost nothing while it sounds, and they work with the DSP switched off. Notes already sounding keep what they began with. The **Voicing** box on the Loading tab of [Organ settings](organ-settings.md#engine-switches) turns every adjustment off while it is cleared; the organ then plays as recorded.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -205,9 +205,9 @@ This tab drives the text display on a console's jamb, such as a 32-character pan
 | **Lines** (four boxes) | The content of line 1 to line 4. | **Organ**, **Temperament**, **Pitch**, **Crescendo** | **(blank)**, **Organ**, **Temperament**, **Pitch**, **Transpose**, **Stops drawn**, **Crescendo**, **Combination set** | At once |
 | **What the display reads** | A preview of the lines as the hardware shows them, between bars that mark where the panel ends. A value longer than the width is cut and a shorter one is padded with spaces. | | | Twice a second |
 
-The fields show: the organ's name; the temperament's name; the pitch as `A=440.0 Hz`; the transposition as `+2`, `0` or `-3`; the number of stops drawn; the crescendo step (0 with the shoe closed); and the name of the combination set. A message is `F0`, the prefix, the display number, the line number (0 to 3), the text as 7-bit ASCII, `F7`. Accented Latin letters lose their accents; other characters above 7F become `?`. Only lines whose text changed since the last send go out, checked twice a second.
+The fields show: the organ's name; the temperament's name; the pitch as `A=440.0 Hz`; the transposition as `+2`, `0` or `-3`; the number of stops drawn; the crescendo step (0 with the shoe closed); and the name of the combination set (`(default)` for the default set). A message is `F0`, the prefix, the display number, the line number (0 to 3), the text as 7-bit ASCII, `F7`. Accented Latin letters lose their accents; other characters above 7F become `?`. Only lines whose text changed since the last send go out, checked four times a second.
 
-**Stored.** Nowhere. The display works while the General settings window is open: the tab's own timer sends the lines, so sending stops when the window closes, and each time the window opens the display starts switched off.
+**Stored.** In the global file as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: `<on>` is 1 or 0, `<display>` the display number, `<width>` the characters per line, each `<line>` the number of the choice in its box (1 for **(blank)** to 8 for **Combination set**, in the order of the table above) and `<prefix>` the hexadecimal bytes, which run to the end of the line. The setup is read again at the next start. The main window sends the display four times a second whether or not this tab is open, so the display follows the organ with any window open or none. The **MIDI output** must be chosen.
 
 ## Language
 
@@ -298,6 +298,11 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `fasterengine` | `1` or `0`. Always written. | **Faster audio engine** on the Loading tab |
 | `midiinputoff` | A device name. One line per unticked input. | **MIDI inputs** |
 | `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Use as default for all organs** |
+| `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |
+| `midifeedback` | `1`. Written only while on. | **Send stop changes back to the console** |
+| `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
+| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Display** tab |
+| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`. Written only while the default EQ is on or not flat. | **Save as default** on the **Voicing EQ** tab of Organ settings |
 | `library` | A folder holding a sample library (an `OrganInstallationPackages` folder beside it). Added when an organ is loaded from such a folder, and for the standard library folder of a Hauptwerk-format installation when it exists. | Opening organs |
 | `cachedir` | The cache folder. Absent for the default. | **Cache folder** on the Loading tab |
 | `packagedir` | The package folder. Absent for none. | **Package folder** on the Loading tab |

@@ -74,6 +74,11 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `cachewhileplaying` | `1` saves the cache in silence while the organ plays. | **Save the sample cache** |
 | `midiinputoff` | Name of a MIDI input that is switched off; one line per input. | The inputs list in **General settings > MIDI** |
 | `consolechannel` | A console role and its MIDI channel, set as the player's own console. | **General settings > MIDI** |
+| `midioutput` | Name of the MIDI output port. The port opens again at the next start; a port that is not plugged in keeps its name. | **MIDI output** in **General settings > MIDI** |
+| `midifeedback` | `1` when on. | **Send stop changes back to the console** |
+| `metronome` | `<bpm> <beats> <level>`: tempo, beats per bar and level. Written when the Metronome tab closes. The click itself starts silent. | **General settings > Metronome** |
+| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: the console display setup. | **General settings > Display** |
+| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`: the EQ that every organ without an EQ of its own starts with. Absent while the default is off and flat. | **Save as default** in **Organ settings > Voicing EQ** |
 | `library` | A folder of sample sets Masterpiece has seen or been given; one line each. The standard library folder of Hauptwerk-format installations in the home folder, `~/Hauptwerk/HauptwerkSampleSetsAndComponents`, is added when it exists. | Automatic |
 | `cachedir` | Folder of the sample cache. Absent: the `cache` folder here. | **Cache folder** |
 | `packagedir` | Package folder where composites look for the organs they play. | **Package folder** |
@@ -107,7 +112,7 @@ All files below are in the settings folder, named `<organ>` as described above.
 
 | File | Holds | Written |
 |---|---|---|
-| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and voicing EQ, mixer routes, stops and perspectives left out, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
+| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and the organ's own voicing EQ (the `eq` line, present once **Save for this organ** has been pressed on the **Voicing EQ** tab), mixer routes, stops and perspectives left out, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
 | `organs/<organ>.mppanels` | The organ's panels (**View** menu panels). | When a panel changes |
 | `midi/<organ>.mpmidi` | The organ's MIDI mapping: manuals, stops, shoes, divisionals. | When the mapping changes |
 | `midi/console.mpmidi` | The player's console on every organ: stepper, generals, setter. | With the organ's MIDI mapping |
@@ -188,7 +193,7 @@ Masterpiece writes these where the player says.
 | Output | Format | Chosen in |
 |---|---|---|
 | Audio recording | 24-bit WAV of the output after the master fader and before the metronome | **File > Recorder...**, Audio |
-| MIDI performance | Standard MIDI file with notes, stops and shoes | **File > Recorder...**, **Save MIDI...** |
+| MIDI performance | Standard MIDI file with notes, stops and shoes, with a tempo of 60 bpm (one quarter note per second), so that a take keeps its length | **File > Recorder...**, **Save MIDI...** |
 | `--record-audio`, `--record-midi` | The same formats | The command line |
 
 An existing file with the chosen name is replaced. The file dialogs reopen in the folder last used for each kind.

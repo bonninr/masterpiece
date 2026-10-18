@@ -385,9 +385,11 @@ with what is heard. It is in **Settings > General settings**, tab **Metronome**.
 The click is a short decaying sine, 1000 Hz on an ordinary beat and 1500 Hz and
 louder on the accented beat. The tab shows the beat as **Beat 2**. The click
 comes after the master fader, so the fader leaves it at its level, and it is
-absent from an audio recording. The settings apply at once. No settings file
-holds them, so they start at the defaults in the table each time the program
-starts.
+absent from an audio recording. The settings apply at once. The tempo, the
+beats per bar and the level are written to the global settings file as
+`metronome <bpm> <beats> <level>` when the Metronome tab closes, and return at
+the next start. The click itself starts silent at each start; the **Metronome**
+box shows whether it is running each time the tab opens.
 
 ## Recorder
 
@@ -405,7 +407,7 @@ it records. Its close button hides it.
 | **Play** | Plays the take from the start through the organ. Pressed again, it starts over. Disabled with an empty take. |
 | **Stop** | Stops recording and playback. |
 | **Save MIDI...** | Writes the take to a `.mid` file; asks before overwriting. Disabled with an empty take. |
-| **Load MIDI...** | Reads a `.mid` or `.midi` file and replaces the take. Meta events (tempo, names) are skipped. |
+| **Load MIDI...** | Reads a `.mid` or `.midi` file and replaces the take. The file's tempo events time the notes; meta events (tempo, names) are not kept in the take. |
 | **Clear** | Discards the take. |
 
 The status reads **Nothing recorded**, **Recording - 12.3 s, 450 events**,
@@ -424,10 +426,10 @@ that the player holds stay held. Playback stops at the end of the take and does
 not loop.
 
 A saved file is a single track with a time base of 960 ticks per quarter note.
-Each event is stamped at 960 ticks per second of the take, and the file holds no
-tempo event. A reader that assumes the default of 120 bpm counts 960 ticks as
-half a second, so the saved take reads, in Masterpiece's own **Load MIDI...** as
-well, at half its recorded length.
+Each event is stamped at 960 ticks per second of the take, and the file opens
+with a tempo event of 60 bpm, one quarter note per second. A reader that follows
+the tempo event, Masterpiece's own **Load MIDI...** included, reads the saved
+take at its recorded length.
 
 The take is kept in memory until it is saved or replaced. The folder of the last
 file dialog is remembered for MIDI files.
@@ -469,7 +471,8 @@ identity, so a set moved to another drive or renamed keeps its settings.
 | Panels | Yes, per organ | `organs/<organ>.mppanels` | See [Panels](window.md#panels) |
 | Show played keys, **Always on top**, **Set turns off after storing** | Yes, for every organ | The global settings file | When changed |
 | Swell faders and on-screen keyboard shown | No; both are off at each start | | |
-| Metronome, recorded take | No | | |
+| Metronome tempo, beats per bar and level | Yes, for every organ | The global settings file, `metronome` line | When the Metronome tab closes |
+| Metronome running, recorded take | No; the metronome starts silent | | |
 
 ### Save state
 

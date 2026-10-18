@@ -19,7 +19,7 @@ The window is titled **Organ settings**, opens at 660 x 560 pixels and can be re
 | **Voicing EQ** | A ten-band equaliser for the whole organ. |
 | **MIDI** | The channels and devices of the organ's keyboards. Present in the standalone application. |
 
-The **MIDI** tab is present whenever the window is opened by the standalone application, which always passes its audio device manager to it. The window opens only in the standalone application: in the plugin editor the menu entry does nothing.
+The **MIDI** tab is present whenever the window is opened by the standalone application, which always passes its audio device manager to it. In the VST3, LV2 and AU plugins the menu entry opens the window with the three other tabs and without **MIDI**, because the host owns the MIDI ports.
 
 ## One organ, one set of settings
 
@@ -43,7 +43,7 @@ The tab scrolls when the window is shorter than its contents. Changes here act o
 | **Wind model** | Simulates the wind supply. Off uses the constant-volume fast path. | On | On, off | At once |
 | **Tremulants** | Applies the organ's tremulants. | On | On, off | At once |
 | **Enclosures (swell shades)** | Applies the organ's enclosures. | On | On, off | At once |
-| **Voicing** | Applies the voicing data of the definition. | On | On, off | At once |
+| **Voicing** | Applies the per-rank and per-pipe level and tuning of **Settings > General settings > Voicing**. With the box off the organ plays as recorded; the adjustments stay in the voicing sets and apply again when the box is ticked. | On | On, off | At once, for the notes that start afterwards |
 | **Play at the original organ's pitch** | Plays each pipe at the pitch it had on the original instrument; with the box off, each pipe takes a tempered pitch derived from the keyboard. Pipes without that data always use the tempered pitch. | Off | On, off | At once, for the notes that start afterwards |
 
 ### Memory
@@ -160,11 +160,15 @@ A correction for the room and the speakers, applied to the whole organ. The orga
 |---|---|---|---|---|
 | **On** | Switches the equaliser on. | Off | On, off | At once |
 | **Flat** | Returns every band and the gain to 0 dB. | | | At once |
-| **Save for this organ** | Keeps the equaliser with the organ for its next load. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
+| **Reset** | Brings the default EQ back, the one kept with **Save as default** (off and flat when none is kept), and forgets the EQ saved for this organ. The organ then starts from the default at its next load. | | | At once |
+| **Save as default** | Keeps the EQ as it is now for every organ that has none of its own: a correction for the speakers and the room. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
+| **Save for this organ** | Keeps the EQ as it is now with this organ, whatever it is, the **On** box included, for its next load. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
 | Ten band sliders, labelled **31.5**, **63**, **125**, **250**, **500**, **1k**, **2k**, **4k**, **8k**, **16k** | One slider for each octave band, in Hz. The lowest and highest bands are shelves; the other eight are peaks (Q 1.4). A double-click returns a slider to 0. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 | **Gain** | The output gain, to make up for what the bands add or take. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 
-**Stored.** In the organ file as `eq <on> <gain> <band 1> ... <band 10>`, written when the equaliser is on or not flat, by **Save for this organ** and by any other change that makes Masterpiece rewrite the organ file.
+Every organ starts from the default EQ, which is off and flat until **Save as default** keeps another. An organ gets an EQ of its own only from **Save for this organ**; other saves of the organ file leave it on the default. Changes on the tab are live and are kept only by these buttons.
+
+**Stored.** The default is the key `defaulteq <on> <gain> <band 1> ... <band 10>` in the global file, written while the default is on or not flat. The organ's own EQ is the key `eq <on> <gain> <band 1> ... <band 10>` in the organ file, written whatever it is, off and flat included, once **Save for this organ** has been pressed. **Reset** removes the `eq` line from the organ file.
 
 ## MIDI
 
@@ -198,7 +202,7 @@ The organ file is `organs/<organ key>.mporgan` in the data folder (see [General 
 | `buses`, `busir`, `groups` | The mixer's pairs, per-pair rooms and groups | The **Mixer** tab |
 | `route <rank> bus <n>` | The pair of one rank | The **Mixer** tab |
 | `voicingadj`, `voicingslot` | The voicing sets A and B and the live slot | The **Voicing** tab |
-| `eq` | The equaliser | The **Voicing EQ** tab |
+| `eq` | The organ's own equaliser, written whatever it is, off and flat included; absent while the organ plays the default EQ (`defaulteq` in the [global file](general-settings.md#the-global-file)) | **Save for this organ** on the **Voicing EQ** tab |
 | `skipstop`, `skipperspective`, `skiprank` | One item left out | The **Stops and perspectives** tab |
 | `portable` | `1` | **Keep this organ playable without its installation files** |
 | `combset` | The combination set in use | The **Combination sets** tab |
