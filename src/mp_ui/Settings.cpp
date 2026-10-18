@@ -1015,6 +1015,7 @@ void ReverbPanel::resized() {
 
 MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(enabled_);
+  enabled_.setToggleState(proc_.metronome().enabled(), juce::dontSendNotification);
   enabled_.onClick = [this] {
     proc_.metronome().setEnabled(enabled_.getToggleState());
   };
@@ -1050,7 +1051,10 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   startTimerHz(12);
 }
 
-MetronomePanel::~MetronomePanel() { stopTimer(); }
+MetronomePanel::~MetronomePanel() {
+  stopTimer();
+  proc_.rememberMetronome();
+}
 
 void MetronomePanel::timerCallback() {
   // A tab of the settings window that is not the one on show.

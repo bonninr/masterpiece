@@ -13451,6 +13451,36 @@ public:
   }
 };
 static SpeakerKeepAliveTest g_speakerKeepAlive;
+
+// The metronome's tempo, beats and level are kept (#397).
+class MetronomeKeptTest final : public mp::test::Test {
+public:
+  MetronomeKeptTest() : Test("functional.settings.metronome-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.metronome().setTempo(72.0);
+      proc.metronome().setBeatsPerBar(3);
+      proc.metronome().setLevel(0.25f);
+      proc.rememberMetronome();
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.metronome().tempo() == 72.0 && proc.metronome().beatsPerBar() == 3 &&
+                   std::abs(proc.metronome().level() - 0.25f) < 0.01f,
+               "the metronome comes back as it was left");
+      MP_CHECK(!proc.metronome().enabled(), "and silent");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MetronomeKeptTest g_metronomeKept;
 // #323: each kind of file dialog starts where it was last used, and that is
 // kept for the next session.
 class DialogFolderTest final : public mp::test::Test {
