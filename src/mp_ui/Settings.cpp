@@ -2594,15 +2594,22 @@ SettingsWindow::~SettingsWindow() {
 }
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
-                               juce::AudioDeviceManager& devices)
-    : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
+                               juce::AudioDeviceManager* devices)
+    : reverb_(p), metronome_(p), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
-  audio_ = std::make_unique<AudioSettingsPanel>(devices, p);
-  tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+  // Without a device manager -- a plugin, whose host owns the audio device
+  // and the MIDI ports -- the Audio and MIDI tabs are left out.
+  if (devices != nullptr) {
+    audio_ = std::make_unique<AudioSettingsPanel>(*devices, p);
+    tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+  }
   tabs_.addTab(TRANS("Room"), bg, &reverb_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
-  tabs_.addTab(TRANS("MIDI"), bg, &midi_, false);
+  if (devices != nullptr) {
+    midi_ = std::make_unique<MidiPanel>(p, *devices);
+    tabs_.addTab(TRANS("MIDI"), bg, midi_.get(), false);
+  }
   tabs_.addTab(TRANS("Mixer"), bg, &mixer_, false);
   tabs_.addTab(TRANS("Voicing"), bg, &voicing_, false);
   tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);

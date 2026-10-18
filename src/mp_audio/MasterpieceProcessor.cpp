@@ -2091,6 +2091,29 @@ void MasterpieceProcessor::rememberDialogFolder(const juce::String& kind, const 
   writeGlobalFile();
 }
 
+void MasterpieceProcessor::getStateInformation(juce::MemoryBlock& destData) {
+  juce::XmlElement state("MasterpieceState");
+  state.setAttribute("version", 1);
+  if (loadedOdf_.getFullPathName().isNotEmpty()) state.setAttribute("organ", loadedOdf_.getFullPathName());
+  copyXmlToBinary(state, destData);
+}
+
+void MasterpieceProcessor::setStateInformation(const void* data, int sizeInBytes) {
+  const auto state = getXmlFromBinary(data, sizeInBytes);
+  if (state == nullptr || !state->hasTagName("MasterpieceState")) return;
+  const juce::File organ(state->getStringAttribute("organ"));
+  if (organ.getFullPathName().isEmpty() || organ == loadedOdf_) return;
+  // Hosts call this from any thread; the load starts on the message thread.
+  std::weak_ptr<std::atomic<bool>> alive = alive_;
+  juce::MessageManager::callAsync([this, alive, organ] {
+    const auto token = alive.lock();
+    if (token == nullptr || !token->load()) return;
+    if (editorLoader && editorLoader(organ)) return;
+    juce::Logger::writeToLog("state: the project's organ " + organ.getFullPathName() + " loads");
+    loadOrgan(organ);
+  });
+}
+
 void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
   if (openFolder_ == folder) return;
   openFolder_ = folder;

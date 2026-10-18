@@ -13515,6 +13515,34 @@ public:
 };
 static DialogFolderTest g_dialogFolder;
 
+// A plugin's project keeps the organ it played (#398).
+class PluginStateTest final : public mp::test::Test {
+public:
+  PluginStateTest() : Test("functional.plugin.state-keeps-organ", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-plugin-state");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File odf = dir.getChildFile("state.Organ_Hauptwerk_xml");
+    odf.replaceWithText("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>3981"
+                        "</Identification_UniqueOrganID><Identification_Name>State</Identification_Name>"
+                        "</_General></ObjectList></Hauptwerk>");
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    juce::MemoryBlock state;
+    proc.getStateInformation(state);
+    MP_CHECK(state.getSize() > 0, "the project gets a state");
+    const auto xml = juce::AudioProcessor::getXmlFromBinary(state.getData(), static_cast<int>(state.getSize()));
+    MP_CHECK(xml != nullptr && juce::File(xml->getStringAttribute("organ")) == odf, "naming the organ it played");
+    proc.setStateInformation(state.getData(), static_cast<int>(state.getSize()));  // the same organ: nothing to do
+    proc.settingsFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static PluginStateTest g_pluginState;
+
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the
 // organ's own, saved for the organ and shown on the console's displays.
