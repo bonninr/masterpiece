@@ -490,7 +490,8 @@ private:
 
 class SettingsWindow : public juce::Component {
 public:
-  SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  // Without a device manager (a plugin) there are no Audio and MIDI tabs.
+  SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager* devices);
   ~SettingsWindow() override;
   // Open on the tab of this name ("Audio"), when there is one.
   void showTab(const juce::String& name);
@@ -512,7 +513,7 @@ private:
   std::unique_ptr<juce::Component> audio_;
   ReverbPanel reverb_;
   MetronomePanel metronome_;
-  MidiPanel midi_;
+  std::unique_ptr<MidiPanel> midi_;
   MixerPanel mixer_;
   VoicingPanel voicing_;
   FavouritesPanel favourites_;

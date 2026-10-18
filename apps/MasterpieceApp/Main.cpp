@@ -1063,7 +1063,7 @@ private:
 
     void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {},
                       const juce::String& tab = {}) {
-      auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
+      auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, &devices_);
       panel->onClosed = std::move(onClosed);
       if (tab.isNotEmpty()) panel->showTab(tab);
       panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });

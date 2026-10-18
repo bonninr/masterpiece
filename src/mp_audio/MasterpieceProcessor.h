@@ -80,7 +80,10 @@ public:
   };
 
   MasterpieceProcessor();
-  ~MasterpieceProcessor() override { writeBlockLog(); }
+  ~MasterpieceProcessor() override {
+    alive_->store(false);
+    writeBlockLog();
+  }
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   // The device is stopping, most often to change its buffer size: the engine
@@ -102,8 +105,13 @@ public:
   void setCurrentProgram(int) override {}
   const juce::String getProgramName(int) override { return "Default"; }
   void changeProgramName(int, const juce::String&) override {}
-  void getStateInformation(juce::MemoryBlock&) override {}
-  void setStateInformation(const void*, int) override {}
+  // A plugin's project keeps the organ it played, and reopens it: through
+  // the editor's load, with its dialog, while the plugin's window is open
+  // (editorLoader), or on the message thread before the window exists.
+  void getStateInformation(juce::MemoryBlock& destData) override;
+  void setStateInformation(const void* data, int sizeInBytes) override;
+  // Set by the plugin's editor. False when the editor is gone.
+  std::function<bool(const juce::File&)> editorLoader;
 
   // Organ loading. `loadOrgan` is synchronous and is what the headless
   // renderer and the tests use; `loadOrganAsync` runs the same work off the
@@ -1907,6 +1915,9 @@ private:
   // Wall clock for the current block, for debouncing chattering contacts.
   double blockTimeMs_ = 0.0;
   juce::File loadedOdf_;
+  // Cleared on destruction: a project's organ load, queued on the message
+  // thread, runs only while the processor is there.
+  std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
   struct LoadingChoice {
     juce::File organ;
     SampleStorage storage = SampleStorage::Float32;
