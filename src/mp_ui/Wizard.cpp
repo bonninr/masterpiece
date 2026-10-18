@@ -115,11 +115,12 @@ void WizardPanel::showStep(int step) {
     default:
       title_.setText(TRANS("An organ"), juce::dontSendNotification);
       body_.setText(
-          TRANS("Choose the organ definition file of a sample set you have "
-                "installed. A large set takes a while to load the first time; the "
-                "console appears as soon as it is ready.\n\n"
-                "Afterwards you can put it on a numbered slot from the Favourites "
-                "page, so getting back to it never means finding it again."),
+          TRANS("Choose an organ: its definition file, or the package it came in. "
+                "A large set takes a while to load the first time; the console "
+                "appears as soon as it is ready.\n\n"
+                "Afterwards, File > Open... keeps it among your favourites with Add "
+                "the organ now loaded, so getting back to it never means finding it "
+                "again."),
           juce::dontSendNotification);
       organStatus_.setText(
           proc_.organModel().organName.empty()

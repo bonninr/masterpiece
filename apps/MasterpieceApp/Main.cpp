@@ -191,6 +191,10 @@ public:
           "  --preload-drawn          load only the ranks the drawn stops use\n"
           "  --draw-only              draw the stops, then hand over the console\n"
           "  --stay-open              stay open after --play-midi has played\n"
+          "  --preload-ranks <ids>    load only these ranks (comma-separated ids)\n"
+          "  --organ-root <dir>       the folder that holds the organ's\n"
+          "                           OrganInstallationPackages\n"
+          "  --log-touches            log every press and what took it\n"
           "  --version                print the version and quit\n"
           "  -h, --help               print this and quit\n";
       std::cout.flush();
