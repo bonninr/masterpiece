@@ -322,8 +322,8 @@ loops, file formats) and [HISE](https://github.com/christophhart/HISE)
 
 ## Licence
 
-GPL-3.0-only, with an additional permission for combining it with JUCE and
-UnRAR under their own licences: [`LICENCE`](LICENCE), [`COPYING`](COPYING).
+GPL-3.0-only, with an additional permission for combining it with JUCE under
+its own licence: [`LICENCE`](LICENCE), [`COPYING`](COPYING).
 Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 The Windows build includes ASIO support, used under the GPL option of the
