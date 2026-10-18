@@ -207,7 +207,8 @@ in [ATTRIBUTION.md](ATTRIBUTION.md).
 ## Installing
 
 **Windows.** `masterpiece-<version>-windows-setup.exe` installs with a Start
-menu entry; the portable `.zip` runs from any folder and includes the VST3 plugin.
+menu entry; the portable `.zip` runs from any folder and holds the VST3 and LV2
+plugins in its `VST3` and `LV2` folders.
 
 **Debian, Ubuntu, Raspberry Pi OS.**
 
@@ -229,7 +230,8 @@ flatpak install --user ./masterpiece-0.8.0-linux-x86_64.flatpak
 flatpak run io.github.bonninr.Masterpiece
 ```
 
-The `.tar.gz` archives hold the same program as loose files.
+The `.tar.gz` archives hold the same program in a `Masterpiece` folder, with the
+plugins in its `VST3` and `LV2` folders.
 
 **macOS.** Move `Masterpiece.app` to Applications. The build is unsigned; if
 Gatekeeper reports it as damaged, run

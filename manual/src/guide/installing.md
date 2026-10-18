@@ -9,16 +9,16 @@ Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bon
 | File | System | What it holds |
 |---|---|---|
 | `masterpiece-<version>-windows-setup.exe` | Windows, 64-bit | Installer for the standalone program |
-| `masterpiece-<version>-windows.zip` | Windows, 64-bit | The program and the VST3 plugin as loose files |
+| `masterpiece-<version>-windows.zip` | Windows, 64-bit | A `Masterpiece` folder: the program, and the VST3 and LV2 plugins |
 | `masterpiece-<version>-macos-arm64.zip` | macOS, Apple silicon | `Masterpiece.app` and the Audio Unit and VST3 plugins |
 | `masterpiece-<version>-macos-x86_64.zip` | macOS, Intel | `Masterpiece.app` and the Audio Unit and VST3 plugins |
 | `masterpiece-<version>-linux-x86_64.flatpak` | Linux, x86-64 | Flatpak bundle of the standalone program |
 | `masterpiece-<version>-linux-amd64.deb` | Debian, Ubuntu and relatives, x86-64 | The program, the VST3 and LV2 plugins, the menu entry and the file types |
-| `masterpiece-<version>-linux-x86_64.tar.gz` | Linux, x86-64 | The program and the plugins as loose files |
+| `masterpiece-<version>-linux-x86_64.tar.gz` | Linux, x86-64 | A `Masterpiece` folder: the program, and the VST3 and LV2 plugins |
 | `masterpiece-<version>-linux-arm64.deb` | Raspberry Pi OS, 64-bit | The program, the menu entry and the file types |
 | `masterpiece-<version>-linux-armhf.deb` | Raspberry Pi OS, 32-bit | The program, the menu entry and the file types |
-| `masterpiece-<version>-linux-arm64.tar.gz` | Raspberry Pi OS, 64-bit | The program as loose files |
-| `masterpiece-<version>-linux-armhf.tar.gz` | Raspberry Pi OS, 32-bit | The program as loose files |
+| `masterpiece-<version>-linux-arm64.tar.gz` | Raspberry Pi OS, 64-bit | A `Masterpiece` folder with the program |
+| `masterpiece-<version>-linux-armhf.tar.gz` | Raspberry Pi OS, 32-bit | A `Masterpiece` folder with the program |
 | `masterpiece-<version>-android.apk` | Android | The app |
 | `masterpiece-<version>-ios.ipa` | iPhone and iPad | The app, unsigned |
 
@@ -101,7 +101,7 @@ masterpiece-<version>-windows-setup.exe /S /D=C:\Path\To\Masterpiece
 
 ### Zip
 
-`masterpiece-<version>-windows.zip` runs from any folder and installs nothing. Extract it and start `Masterpiece.exe`. The archive also holds the VST3 plugin `Masterpiece.vst3`; copy it to a folder the DAW scans (see [Plugins](#plugins)).
+`masterpiece-<version>-windows.zip` runs from any folder and installs nothing. It holds one folder, `Masterpiece`, with `Masterpiece.exe` and the plugins in `VST3\Masterpiece.vst3` and `LV2\Masterpiece.lv2`. Extract it and start `Masterpiece.exe`. For the VST3 plugin, copy `Masterpiece.vst3` to `C:\Program Files\Common Files\VST3`, the folder DAWs scan (see [Plugins](#plugins)). In 0.8.0 and earlier the zip holds the build folders, and the plugin is in `MasterpiecePlugin\MasterpiecePlugin_artefacts\Release\VST3\Masterpiece.vst3`.
 
 ## macOS
 
@@ -166,11 +166,11 @@ Remove it with `sudo apt remove masterpiece`.
 
 ### Tar archive
 
-`masterpiece-<version>-linux-x86_64.tar.gz` holds the program and the VST3 and LV2 plugins as loose files. The files are packed from build artifacts, which carry no executable bit; the build's own launch check runs `chmod +x` on the binary. Set the bit on the `Masterpiece` file before the first start:
+`masterpiece-<version>-linux-x86_64.tar.gz` holds one folder, `Masterpiece`, with the program and the plugins in `VST3/Masterpiece.vst3` and `LV2/Masterpiece.lv2`. The files are packed from build artifacts, which carry no executable bit; the build's own launch check runs `chmod +x` on the binary. Set the bit on the `Masterpiece` file before the first start:
 
 ```
 tar -xzf masterpiece-<version>-linux-x86_64.tar.gz
-chmod +x path/to/Masterpiece
+chmod +x Masterpiece/Masterpiece
 ```
 
 The libraries listed for the `.deb` have to be present on the system.
@@ -184,7 +184,7 @@ sudo apt install ./masterpiece-<version>-linux-arm64.deb     # Raspberry Pi OS, 
 sudo apt install ./masterpiece-<version>-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
-Both install the program as `masterpiece`, with the menu entry and the file types. They contain no plugins. The tarballs `linux-arm64.tar.gz` and `linux-armhf.tar.gz` hold the same program as loose files, with the same `chmod +x` step as above.
+Both install the program as `masterpiece`, with the menu entry and the file types. They contain no plugins. The tarballs `linux-arm64.tar.gz` and `linux-armhf.tar.gz` hold the same program in a `Masterpiece` folder, with the same `chmod +x` step as above.
 
 The 64-bit build targets plain ARMv8-A, which covers the Raspberry Pi 3 to the Raspberry Pi 5. The 32-bit build is compiled for ARMv7-A with NEON and VFPv4 (`-march=armv7-a -mfpu=neon-vfpv4`, hard-float) and needs a processor with those.
 
@@ -237,9 +237,9 @@ The plugin formats are VST3 (Windows, macOS, Linux), Audio Unit (macOS) and LV2 
 
 | Format | Windows | macOS | Linux |
 |---|---|---|---|
-| VST3 | `Masterpiece.vst3` in the zip | `Masterpiece.vst3` in the zip | `/usr/lib/vst3/Masterpiece.vst3` from the amd64 `.deb`; loose in the tar.gz |
+| VST3 | `VST3\Masterpiece.vst3` in the zip | `Masterpiece.vst3` in the zip | `/usr/lib/vst3/Masterpiece.vst3` from the amd64 `.deb`; `VST3/` in the tar.gz |
 | Audio Unit | none | `Masterpiece.component` in the zip | none |
-| LV2 | none | none | `/usr/lib/lv2/Masterpiece.lv2` from the amd64 `.deb`; loose in the tar.gz |
+| LV2 | `LV2\Masterpiece.lv2` in the zip | none | `/usr/lib/lv2/Masterpiece.lv2` from the amd64 `.deb`; `LV2/` in the tar.gz |
 
 There are no separate plugin downloads. Windows and macOS ship the plugins as bundles inside the zips; copy them into a folder that the host scans.
 

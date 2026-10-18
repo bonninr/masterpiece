@@ -424,15 +424,33 @@ jobs:
           # fills the account's storage on its own.
           retention-days: 3
 
+      # The Windows zip and the Linux tarballs as one folder, the way the Mac
+      # zip is: the program, and the plugins in VST3 and LV2 folders beside it.
+      # They used to carry the build tree, and the VST3 was five folders down.
+      - name: Package (Windows and Linux)
+        if: '!matrix.mac'
+        shell: bash
+        run: |
+          apps=build/${{ matrix.preset }}/apps
+          stage=dist/portable/Masterpiece
+          mkdir -p "$stage"
+          for f in Masterpiece.exe Masterpiece; do
+            src=$apps/MasterpieceApp/MasterpieceApp_artefacts/Release/$f
+            if [ -f "$src" ]; then cp "$src" "$stage/"; fi
+          done
+          for kind in VST3 LV2; do
+            src=$apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release/$kind/Masterpiece.$(echo "$kind" | tr 'A-Z' 'a-z')
+            if [ -e "$src" ]; then mkdir -p "$stage/$kind" && cp -R "$src" "$stage/$kind/"; fi
+          done
+          find dist/portable -maxdepth 3 | sort
+          ls "$stage"/Masterpiece* > /dev/null
+
       - uses: actions/upload-artifact@v4
         if: '!matrix.mac'
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/**/*Masterpiece*
-            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.vst3
-            build/${{ matrix.preset }}/apps/MasterpiecePlugin/**/*.lv2
-          if-no-files-found: warn
+          path: dist/portable/
+          if-no-files-found: error
           retention-days: 3
 
   # Linux as a Flatpak (discussion #237): one bundle for every distribution,
