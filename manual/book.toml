@@ -1,0 +1,21 @@
+[book]
+title = "Masterpiece manual"
+authors = ["OpenPipes"]
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/docs/"
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/bonninr/masterpiece"
+edit-url-template = "https://github.com/bonninr/masterpiece/edit/main/manual/{path}"
+additional-css = ["theme/masterpiece.css"]
+additional-js = ["theme/masterpiece.js"]
+no-section-label = true
+
+[output.html.search]
+enable = true
+
+[output.html.print]
+enable = true
