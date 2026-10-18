@@ -2012,6 +2012,9 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // The model is the loader's until the load ends: nothing reads it here.
   if (loading_) return;
+  // The console's display, set up on the Display tab: only lines whose text
+  // changed go out, so a steady display costs nothing.
+  proc_.pumpLcdPanels();
   // The console follows the engine by itself, and repaints what changed. The
   // stop list follows the console, pistons and MIDI the same way (#56): it
   // used to show only what was clicked in it.

@@ -1139,6 +1139,19 @@ public:
   // Console LCD panels. Configured by the player, because the framing belongs
   // to their hardware and not to the organ — see LcdPanel.h.
   LcdPanels& lcdPanels() { return lcd_; }
+  // The console display as the player set it up on the Display tab, kept in
+  // the general settings: what a line shows is the box's item number, 1 for
+  // blank to 8 for the combination set. The display follows the organ with
+  // any window open or none (the main window pumps it).
+  struct LcdSetup {
+    bool on = false;
+    int displayNumber = 0;
+    int width = 32;
+    juce::String prefix = "7D";
+    std::array<int, 4> lines{2, 3, 4, 7};  // organ, temperament, pitch, crescendo
+  };
+  const LcdSetup& lcdSetup() const { return lcdSetup_; }
+  void setLcdSetup(const LcdSetup& setup);
   // What the panels are showing. Shared with the settings preview rather than
   // reassembled there: a preview that computes its own idea of the state will
   // eventually disagree with the hardware, and then it is worse than none.
@@ -1654,6 +1667,9 @@ private:
   juce::MidiOutput* midiOut_ = nullptr; // owned by the application
   bool midiFeedback_ = false;
   LcdPanels lcd_;
+  LcdSetup lcdSetup_;
+  // lcd_ built from lcdSetup_; the setter and the settings reader both use it.
+  void applyLcdSetup();
   // The player's mixer. Defaults to one stereo bus, which makes the whole
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
