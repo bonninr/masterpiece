@@ -134,7 +134,10 @@ bool MidiRecorder::saveToFile(const juce::File& file) const {
   const short ticksPerQuarter = 960;
   mf.setTicksPerQuarterNote(ticksPerQuarter);
 
+  // A quarter lasts a second, said in the file: with no tempo event every
+  // reader takes 120 bpm, and a take played back at half its length.
   juce::MidiMessageSequence ticked;
+  ticked.addEvent(juce::MidiMessage::tempoMetaEvent(1000000), 0.0);
   for (int i = 0; i < seq.getNumEvents(); ++i) {
     juce::MidiMessage m = seq.getEventPointer(i)->message;
     m.setTimeStamp(m.getTimeStamp() * ticksPerQuarter);
