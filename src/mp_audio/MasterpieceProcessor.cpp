@@ -1631,8 +1631,9 @@ bool MasterpieceProcessor::saveSettings() const {
     if (masterPitchSetting() > 0.0)
       text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
-    if (voicingEqSettings_.on || !voicingEqSettings_.flat())
-      text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
+    // Written whatever it is, off and flat too: an organ with a line keeps
+    // it, and one without plays the default EQ.
+    if (organOwnsEq_) text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1653,7 +1654,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
-  voicingEqSettings_ = {};
+  voicingEqSettings_ = defaultEq_;
+  organOwnsEq_ = false;
   voicingEq_.configure(voicingEqSettings_, sampleRate_);
   excludedStops_.clear();
   excludedPerspectives_.clear();
@@ -1753,6 +1755,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       VoicingEqSettings eq;
       if (eq.fromLine(val.toStdString())) {
         voicingEqSettings_ = eq;
+        organOwnsEq_ = true;
         voicingEq_.configure(eq, sampleRate_);
       }
       continue;
@@ -1835,6 +1838,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
+  if (defaultEq_.on || !defaultEq_.flat()) text << "defaulteq " << juce::String(defaultEq_.toLine()) << "\n";
   if (polyphony_ > 0) text << "polyphony " << polyphony_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
@@ -1984,6 +1988,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // with a small fast disk and a large slow one wants to choose which of
       // them holds it.
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
+    } else if (key == "defaulteq") {
+      VoicingEqSettings eq;
+      if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
     } else if (key == "packagedir") {
       packageDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
@@ -2022,6 +2029,25 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   if (!globalsReadOnce_) applyLanguage(language_);
   globalsReadOnce_ = true;
   return true;
+}
+
+bool MasterpieceProcessor::saveVoicingEqForOrgan() {
+  organOwnsEq_ = true;
+  return saveSettings();
+}
+
+bool MasterpieceProcessor::saveVoicingEqAsDefault() {
+  defaultEq_ = voicingEqSettings_;
+  return writeGlobalFile();
+}
+
+bool MasterpieceProcessor::resetVoicingEqToDefault() {
+  setVoicingEq(defaultEq_);
+  const bool owned = organOwnsEq_;
+  organOwnsEq_ = false;
+  // The organ's own line goes from its file, so the next load plays the
+  // default too; an organ that had none has nothing to write.
+  return !owned || saveSettings();
 }
 
 int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {

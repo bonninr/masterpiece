@@ -1194,6 +1194,16 @@ public:
     voicingEqSettings_ = s;
     voicingEq_.configure(s, sampleRate_);
   }
+  // Every organ starts from the default EQ -- the speakers and the room are
+  // the same whatever is played -- until one is saved for it. Saved for the
+  // organ, the EQ is its own, On box included, whatever it is.
+  bool saveVoicingEqForOrgan();
+  // The EQ as it is now, for every organ that has none of its own.
+  bool saveVoicingEqAsDefault();
+  // This organ back to the default EQ, its own one forgotten.
+  bool resetVoicingEqToDefault();
+  const VoicingEqSettings& defaultVoicingEq() const { return defaultEq_; }
+  bool organHasOwnVoicingEq() const { return organOwnsEq_; }
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -1689,6 +1699,8 @@ private:
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
   VoicingEqSettings voicingEqSettings_;
+  VoicingEqSettings defaultEq_;  // the general settings' `defaulteq`
+  bool organOwnsEq_ = false;     // the organ's file has an `eq` line
   VoicingEq voicingEq_;
   Favourites favourites_;
   // Empty means the organ's default set.
