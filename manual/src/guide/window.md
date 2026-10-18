@@ -73,8 +73,10 @@ sections below. **Show played keys** is described under
 | **Audio and MIDI...** | Opens the audio device and MIDI input selector. Present in the standalone application. See [Audio, room and mixer](audio.md). |
 
 The standalone application supplies the three settings windows. In the VST3,
-LV2 and AU plugins the editor has no handler for **Organ settings...** and
-**General settings...**, and **Audio and MIDI...** is absent.
+LV2 and AU plugins **General settings...** opens General settings without the
+**Audio** and **MIDI** tabs, **Organ settings...** opens Organ settings without
+its **MIDI** tab (the host owns the audio device and the MIDI ports), and
+**Audio and MIDI...** is absent.
 
 ### Controls in the bar
 

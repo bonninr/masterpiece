@@ -69,15 +69,15 @@ Masterpiece opens a JACK client named `Masterpiece MIDI` with one input port, `m
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **MIDI output** | The port Masterpiece sends to: lamp and fader messages, key echo to a sound module, and text displays. | **None** | **None** and every output the system reports. | At once. |
+| **MIDI output** | The port Masterpiece sends to: lamp and fader messages, key echo to a sound module, and text displays. | **None** | **None** and every output the system reports. | At once; kept as `midioutput <name>` in `settings.mpglobal`. |
 
-The MIDI tab opens the output and closes it again when its window closes. Lamps, motorised faders, key echo and console displays therefore work while General settings (or Organ settings) is open. The choice is not kept between sessions: choose the output again after each start.
+The processor holds the output port, so lamps, motorised faders, key echo and console displays work with any window open or none. The choice is kept in the general settings and the port opens again at the next start. A port that is not plugged in keeps its name and the box shows that name; the log records `midi: the output <name> is not connected; choose it again in Settings, MIDI once it is`.
 
 ### Feedback and learn options
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **Send stop changes back to the console** | For a stop, coupler or piston that has no row on its **Send** tab, sends the stop's state back on the message that operates it, so a console that echoes the message lights the lamp. A note binding sends note on at velocity 127 and note off; a controller binding sends 127 and 0. The channel is the binding's, or 1 when the binding listens on any channel. | Off | On, off | At once. Not saved; off at each start. A console that echoes what it receives can latch itself into a loop, which is why the option starts off. |
+| **Send stop changes back to the console** | For a stop, coupler or piston that has no row on its **Send** tab, sends the stop's state back on the message that operates it, so a console that echoes the message lights the lamp. A note binding sends note on at velocity 127 and note off; a controller binding sends 127 and 0. The channel is the binding's, or 1 when the binding listens on any channel. | Off | On, off | At once; saved in `settings.mpglobal` (`midifeedback 1`, written only while on) and restored at the next start. A console that echoes what it receives can latch itself into a loop, which is why the option is off until it is switched on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After manual buttons have moved a keyboard to another manual (see [Pistons tab](#pistons-tab)), General Cancel restores the keyboards to the assignment the player set by hand. | Off | On, off | At once; saved in `settings.mpglobal` (`cancelresetskeyboards`). |
 | **Noise filter: when learning, a key counts once held a quarter second** | While learning, a note counts only after it has been held 250 ms; a shorter note is dropped. Controllers, program changes and system exclusive messages have no length and count at once. | Off | On, off | At once; saved in `settings.mpglobal` (`learnnoisefilter`). Switch it on for a console whose contacts send stray short notes. Leave it off for pistons that send only a brief note. |
 
@@ -331,9 +331,9 @@ Each message is `F0 <prefix> <display number> <line number> <text> F7`: the pref
 | **Send to display** | Sends all four lines again, changed or not. Use it after connecting a console during a session. | | |
 | **What the display reads** | A preview of the four lines, with bars at the line width so a cut is visible. | | |
 
-`7D` is the manufacturer id that the MIDI specification reserves for non-commercial use; it is the default because a console's own prefix is not known. Only lines whose text changed are sent, twice a second at most. Letters with accents are written with the accent removed (`ä` as `ae`, `ß` as `ss`, `Kraków` as `Krakow`), because system exclusive carries seven bits per byte and a byte above 7F would end the message. Characters with no Latin equivalent become `?`.
+`7D` is the manufacturer id that the MIDI specification reserves for non-commercial use; it is the default because a console's own prefix is not known. Only lines whose text changed are sent, checked four times a second. Letters with accents are written with the accent removed (`ä` as `ae`, `ß` as `ss`, `Kraków` as `Krakow`), because system exclusive carries seven bits per byte and a byte above 7F would end the message. Characters with no Latin equivalent become `?`.
 
-Changes in this tab take effect at once. The setup is not saved and starts switched off each time General settings opens. The display is updated while General settings is open, and the **MIDI output** must be chosen first. The **Combination set** line currently shows a blank line.
+Changes in this tab take effect at once. The setup is kept in `settings.mpglobal` as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>` and is read again at the next start. The main window sends the display four times a second whether or not the tab is open, so the display follows the organ with any window open or none; the **MIDI output** must be chosen. The **Transpose** line shows the transposition as `+2`, `0` or `-3`, and the **Combination set** line shows the name of the combination set in use (`(default)` for the default set).
 
 ## The MIDI map files
 

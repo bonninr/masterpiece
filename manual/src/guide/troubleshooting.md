@@ -179,7 +179,7 @@ Tap the progress by ear with **Tap at each 10% while loading an organ** in **Org
 Masterpiece stops a load at the memory limit (default: 80% of the computer's memory, at least 512 MB; the voice pool counts against it). Two dialogs follow.
 
 - **Not enough memory for this organ**: nothing loaded. The console shows silent so that **Organ settings** can be opened from the **Settings** menu.
-- **Only part of this organ fits**: the samples read so far play, other stops or notes are silent, and the status line shows **INCOMPLETE (memory limit)**.
+- **Only part of this organ fits**: the samples read so far play, other stops or notes are silent, and the status line shows **INCOMPLETE (memory limit)**. The message ends by pointing to the limit on the same tab, the Loading tab of Organ settings.
 
 Remedies, in the order of their effect:
 
@@ -252,8 +252,8 @@ Platforms:
 
 Plugins:
 
-- A host project does not store the organ, the stops drawn or any plugin state.
-- The **Settings** menu does not open the settings windows in a plugin.
+- A host project stores the path of the organ the instance played and reopens it when the project opens. The stops drawn come from the files in the settings folder.
+- In a plugin, **Settings > General settings...** opens without the **Audio** and **MIDI** tabs and **Settings > Organ settings...** without its **MIDI** tab, because the host owns the audio device and the MIDI ports.
 - The plugin has no MIDI output, no log and no crash guard.
 - Each instance holds its own copy of the samples.
 

@@ -144,7 +144,7 @@ cmake --build --preset dev-fast
 | LV2 URI | `https://masterpiece.audio/plugins/masterpiece` |
 | Type | Synthesizer, MIDI input, no MIDI output |
 
-The products are in `build/<preset>/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/<Configuration>/`, in the subfolders `VST3` (`Masterpiece.vst3`), `AU` (`Masterpiece.component`, macOS) and `LV2` (`Masterpiece.lv2`). The plugin's `getStateInformation` and `setStateInformation` are empty; the organ and its settings are kept in Masterpiece's own files.
+The products are in `build/<preset>/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/<Configuration>/`, in the subfolders `VST3` (`Masterpiece.vst3`), `AU` (`Masterpiece.component`, macOS) and `LV2` (`Masterpiece.lv2`). The plugin's `getStateInformation` stores the path of the organ definition that is loaded, and `setStateInformation` loads that organ again; the organ's settings are kept in Masterpiece's own files.
 
 The plugin entry point (`apps/MasterpiecePlugin/PluginEntry.cpp`) returns the same `MasterpieceProcessor` the standalone app drives. See [Architecture](architecture.md).
 

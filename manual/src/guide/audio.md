@@ -18,7 +18,7 @@ Each audio block passes through these stages, in this order.
 | Metronome, load-progress taps, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
 
-The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (also the **No DSP** box in the top bar) switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe voicing of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts.
+The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (also the **No DSP** box in the top bar) switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe voicing of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
 
 ## The audio device
 
@@ -118,7 +118,7 @@ The engine has one switch. **Organ settings > Loading > Faster audio engine** re
 | **Output pairs** | **1 (stereo)** and **2 pairs** to **8 pairs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
 | Status line | `N rank(s), M pair(s)`; when something is wrong it adds `X unrouted, Y stale` | | |
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
-| **All to bus 1** | Puts every rank on **Pair 1** | | At once |
+| **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
 | Rank list | One row per rank, labelled with its number and name, with a **Pair** box | **Pair 1** | At once |
 
@@ -189,9 +189,9 @@ The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  t
 
 ### Relation to Voicing EQ
 
-The **Voicing EQ** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), off by default and stored per organ, applied before the room. The **Voicing** tab of General settings changes single ranks and pipes in level and pitch. Both are per organ. See [Organ settings](organ-settings.md) for the equaliser.
+The **Voicing EQ** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The **Voicing** tab of General settings changes single ranks and pipes in level and pitch and is stored per organ. See [Organ settings](organ-settings.md#voicing-eq) for the equaliser.
 
-The **Voicing** box among the switches of **Organ settings > Loading** is saved with the organ and does not change the sound; the adjustments of the **Voicing** tab apply whatever it says.
+The **Voicing** box among the switches of **Organ settings > Loading** is saved with the organ. With the box off, the organ plays as recorded: the per-rank and per-pipe level and tuning of the **Voicing** tab are not applied. The adjustments stay in the voicing sets and apply again when the box is ticked. A change reaches the notes that start afterwards.
 
 ## Level
 
@@ -218,12 +218,12 @@ The wind model's depth has no control in the program; the engine uses the physic
 | **Beats per bar** | The bar length; the first beat of each bar is accented | 4 | 0 to 12 in steps of 1; 0 gives no accent |
 | **Level** | The click volume | 0.5 | 0 to 1 in steps of 0.01 |
 
-A label below the sliders reads **Beat** and the number of the beat in the bar while the click runs. All four controls act at once. Their settings last for the session; each start begins with the defaults above.
+A label below the sliders reads **Beat** and the number of the beat in the bar while the click runs. All four controls act at once. The tempo, the beats per bar and the level are kept in the global settings file as `metronome <bpm> <beats> <level>`, written when the Metronome tab closes, and return at the next start. The click starts silent at each start.
 
 The click is a short decaying sine (a time constant of about 9 ms): 1000 Hz on ordinary beats and 1500 Hz at 100% strength on the accented first beat, with ordinary beats at 70% strength. It is added after the master fader, so the master level does not change it, and after the audio recorder, so recordings do not contain it. It sounds on both channels.
 
 > [!NOTE]
-> The **Metronome** box starts unticked each time the window opens, whether or not the click is running. Tick it and clear it again to stop a click that was started earlier.
+> The **Metronome** box shows whether the click is running each time the tab opens. Clear it to stop the click.
 
 ## Audio dropouts
 
@@ -264,6 +264,6 @@ The sample cache writing "in silence, while it plays" waits for silence and take
 
 ## Platform notes
 
-- **Plug-ins.** The host owns the audio device and the MIDI ports. The **General settings** and **Organ settings** items of the Settings menu do nothing in the plug-in editor, so the tabs on this page are not available there. See [Plugins in a DAW](plugins.md).
+- **Plug-ins.** The host owns the audio device and the MIDI ports. **Settings > General settings...** in the plug-in editor opens General settings without the **Audio** and **MIDI** tabs, so the device selector of this page is not available there. See [Plugins in a DAW](plugins.md).
 - **Phones and tablets.** The same selector is used with the driver types above; see [Phones and tablets](mobile.md).
 - **Raspberry Pi.** The faster audio engine uses the NEON unit.

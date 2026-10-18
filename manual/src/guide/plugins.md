@@ -47,7 +47,7 @@ When an organ has several definitions beside it (perspectives, or full and light
 
 While an organ loads, the load dialog is on screen and the plugin outputs silence. MIDI notes that reach the plugin during the load are dropped, because they were played on the organ being replaced.
 
-The plugin does not reopen the last organ when a project opens. Load the organ again with **File > Open...** in each instance.
+A host project reopens the organ that its instance played; see [What the plugin saves in the host's project](#what-the-plugin-saves-in-the-hosts-project). An instance in a new track starts with no organ and never reopens the last organ used elsewhere.
 
 ### Prepare the organ in the standalone program
 
@@ -57,11 +57,18 @@ The plugin has no first-load settings step. The standalone program opens **Organ
 
 ## What the plugin saves in the host's project
 
-Nothing. The plugin returns an empty state to the host and ignores any state a host hands back. A saved project stores no organ, no stops drawn and no parameter values. After a project opens, choose the organ again in each instance.
+The state that the plugin hands to the host holds one item: the full path of the definition file of the organ the instance has loaded. An instance with no organ stores no path.
+
+When the project opens, the host hands the state back and the instance loads that organ again:
+
+- With the plugin window open, the load runs through the window, as **File > Open...** does, with its load dialog.
+- With no plugin window open, the load starts straight away without it.
+
+An instance that already holds that organ does not load it again. A state with no path, or one that does not belong to Masterpiece, changes nothing.
 
 | Item | Where it is kept |
 |---|---|
-| The organ's path | Not kept. Open the organ again after loading a project. |
+| The organ's path | In the host's project. The organ opens again when the project opens. |
 | Master gain | In the organ's file `organs/<organ>.mporgan`, line `gain`. It returns when the organ is opened again. |
 | Stops drawn, couplers, pistons | Combinations in `combinations/<organ>.mpcomb`; the starting registration with the **Save state** button, which writes the organ's file. |
 | MIDI mapping | `midi/<organ>.mpmidi` and `midi/console.mpmidi` |
@@ -111,9 +118,9 @@ The plugin takes the sample rate and the block size from the host. A rate change
 | Audio device, rate, buffer | Chosen in **Settings > General settings > Audio** | Owned by the host |
 | MIDI inputs | All enabled by default; selectable in **General settings > MIDI** | The host's MIDI stream only |
 | MIDI output | Chosen in **General settings > MIDI** | None |
-| Settings windows | **Organ settings...**, **General settings...** and **Audio and MIDI...** in the **Settings** menu | The **Settings** menu lists **Organ settings...** and **General settings...**, and they do nothing. **Audio and MIDI...** is absent. |
+| Settings windows | **Organ settings...**, **General settings...** and **Audio and MIDI...** in the **Settings** menu | The **Settings** menu lists **Organ settings...** and **General settings...**. **General settings...** opens General settings without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Audio and MIDI...** is absent. |
 | First-run wizard | Shown at the first start | Not shown |
-| Startup | Opens the last organ when **Reopen the last organ when Masterpiece starts** is on | Never opens an organ by itself |
+| Startup | Opens the last organ when **Reopen the last organ when Masterpiece starts** is on | Opens the organ stored in the host's project when a project opens, and no organ otherwise |
 | Crash guard | Remembers the organ being loaded and writes a note to the log after a crash | Absent |
 | Log | `masterpiece.log` and `masterpiece.previous.log` | No log file is written |
 | Command-line options | All | None |
@@ -131,8 +138,7 @@ All instances share the files in the settings folder. Set **Sample cache** to **
 
 ## Limitations
 
-- The plugin saves no state in the host's project; the organ is chosen again after a project opens.
-- The Settings menu items do nothing in the plugin. Messages from the program that point to **Organ settings** (for example after a load stops at the memory limit) refer to windows that only the standalone program opens.
-- The host owns the audio and MIDI devices.
+- The host's project stores the organ's path and nothing else; the stops drawn and the settings come from the files in the settings folder.
+- General settings has no **Audio** or **MIDI** tab and Organ settings has no **MIDI** tab, because the host owns the audio and MIDI devices.
 - No log is written, so a fault inside a host leaves no `masterpiece.log`. Reproduce it in the standalone program and attach that log, as described in [Troubleshooting and caveats](troubleshooting.md).
 - A console's lights and displays need the standalone program, which opens the MIDI output.

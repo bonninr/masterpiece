@@ -23,7 +23,7 @@ When a change decides what the sample cache holds and the window closes before t
 
 ## What an organ costs in memory
 
-A sample set is the audio of every pipe: an attack with a sustain loop, and one or more releases, for each pipe of each rank, in some sets for several microphone positions. Masterpiece reads the files once, converts them, and holds the result in memory. Drawing a stop changes nothing in memory: every loaded rank is resident whether its stop is drawn or not. In the measurement on Friesach with Masterpiece 0.3.3, peak process memory with one stop drawn and with all 44 stops drawn differed by 2 MB at 24-bit and by 12 MB at 16-bit, both with streamed releases.
+A sample set is the audio of every pipe: an attack with a sustain loop, and one or more releases, for each pipe of each rank, in some sets for several microphone positions. Masterpiece reads the files once, converts them, and holds the result in memory. Drawing a stop changes nothing in memory: every loaded rank is resident whether its stop is drawn or not. A rank whose samples are nowhere (not on disk, not in the archive, not held from the cache) counts as having no pipes, and its stops are shown as not available. In the measurement on Friesach with Masterpiece 0.3.3, peak process memory with one stop drawn and with all 44 stops drawn differed by 2 MB at 24-bit and by 12 MB at 16-bit, both with streamed releases.
 
 The memory an organ takes follows from these choices, in this order of effect:
 
@@ -360,7 +360,7 @@ The budget of a load is the limit minus the memory of the voice pool, because bo
 
 When the budget is exceeded the load stops at the sample that crosses it.
 
-- If some samples were read, the organ is kept as it stands. The status line ends with **INCOMPLETE (memory limit)** and a window titled **Only part of this organ fits** states how many of the samples (and what percentage) were loaded. The organ plays, and some stops or notes are silent. No cache is written for it.
+- If some samples were read, the organ is kept as it stands. The status line ends with **INCOMPLETE (memory limit)** and a window titled **Only part of this organ fits** states how many of the samples (and what percentage) were loaded. The window lists the ways to load all of it and ends by naming the limit: raise it on the same tab, the Loading tab of Organ settings, if the computer has the memory to spare. The organ plays, and some stops or notes are silent. No cache is written for it.
 - If no sample was read, the load fails. A window titled **Not enough memory for this organ** names the limit. The console is drawn without sound so that **Settings > Organ settings** can be opened from it.
 
 The ways to make an organ fit, in order of cost to the sound: leave out perspectives, stops or ranks on the Stops and perspectives tab; stream release tails; load 16-bit; load in mono; raise **Memory limit for samples**, on the Loading tab of **Settings > Organ settings**, when the computer has the memory.
@@ -454,7 +454,7 @@ Streaming leaves unread the part of each release that stays on disk, which is mo
 - **16-bit.** The quantisation step is set by the file's peak, so the signal to noise ratio of a passage falls with its level. The measured ratios (78.1 dB median, 75.2 dB lowest, over 60 files) are for whole files.
 - **Release length and the cutoff.** A shortened release and a release cutoff end a tail before the recording does, and can be heard as a decay that stops short.
 - **Cache disk space.** The cache has the size of the resident memory. A cache per organ for several large organs fills a disk; keep the cache folder on a drive with the room.
-- **Plugins.** Each plugin instance holds its own copy of the organ's samples, and the plugin editor cannot open the settings windows: the standalone application alone connects the **Organ settings...** and **General settings...** entries of the Settings menu to their windows. A plugin loads an organ with the settings files in the same folder as the standalone application, so choose the loading settings in the standalone application and save them for the organ.
+- **Plugins.** Each plugin instance holds its own copy of the organ's samples. In the plugin editor, **Settings > Organ settings...** opens Organ settings without its **MIDI** tab, so the Loading tab is there. A plugin loads an organ with the settings files in the same folder as the standalone application, so choose the loading settings in either and save them for the organ.
 - **Phones and tablets.** The memory limit follows the device's RAM, 80% by default, and the **Memory limit for samples** box offers 50%, 60%, 70% and 90% as well. The sample files are read where they are, from the Files app on iPhone and iPad. [Phones and tablets](mobile.md) covers the platform details.
 - **Process memory.** The memory figures are those of the sample library. The process takes more: the voice pool and its rings, the console artwork and the program itself.
 

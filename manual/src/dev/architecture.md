@@ -201,7 +201,7 @@ Resident audio is held as `Pcm24` (three bytes, little-endian), `int16_t` with a
 | Front end | Notes |
 |---|---|
 | Standalone app | Owns the audio device (WASAPI and ASIO on Windows, ALSA and JACK on Linux, CoreAudio on macOS) and the MIDI inputs |
-| Plugins | VST3, AU and LV2; the processor's `getStateInformation` and `setStateInformation` are empty, so state lives in Masterpiece's own per-organ files |
+| Plugins | VST3, AU and LV2; the processor's `getStateInformation` stores the path of the loaded organ definition and `setStateInformation` loads it again, so the rest of the state lives in Masterpiece's own per-organ files |
 | Phones and tablets | The app only. `mp_ui/Mobile.*` provides full-screen windows for touch; on iOS, `IosAccess.mm` reads picked documents in place |
 
 The plugin and the app create the same editor through `MasterpieceProcessor::createEditor()`, and that editor (`mp_ui/Ui.cpp`) calls `openPackagedOrgan` to open RAR and `.orgue` packages.
