@@ -78,7 +78,8 @@ jobs:
         run: python3 .github/pages-downloads.py site
 
       # The manual is an mdBook in manual/, served at /docs. The tool is the
-      # release binary of a fixed version, checked against its checksum.
+      # release binary of a fixed version, checked against its checksum. Its
+      # --dest-dir is relative to the working directory, the repository root.
       - name: Build the manual
         env:
           MDBOOK: v0.5.4
@@ -89,7 +90,8 @@ jobs:
             "https://github.com/rust-lang/mdBook/releases/download/$MDBOOK/$archive"
           echo "$MDBOOK_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
-          "$RUNNER_TEMP/mdbook" build manual --dest-dir ../site/docs
+          "$RUNNER_TEMP/mdbook" build manual --dest-dir site/docs
+          test -f site/docs/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
