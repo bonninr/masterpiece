@@ -23,7 +23,7 @@ When a change decides what the sample cache holds and the window closes before t
 
 ## What an organ costs in memory
 
-A sample set is the audio of every pipe: an attack with a sustain loop, and one or more releases, for each pipe of each rank, in some sets for several microphone positions. Masterpiece reads the files once, converts them, and holds the result in memory. Drawing a stop changes nothing in memory: every loaded rank is resident whether its stop is drawn or not. In the measurement on Friesach with Masterpiece 0.3.3, peak process memory with one stop drawn and with all 44 stops drawn differed by 2 MB at 24-bit and by 12 MB at 16-bit, both with streamed releases.
+A sample set is the audio of every pipe: an attack with a sustain loop, and one or more releases, for each pipe of each rank, in some sets for several microphone positions. Masterpiece reads the files once, converts them, and holds the result in memory. Drawing a stop changes nothing in memory: every loaded rank is resident whether its stop is drawn or not. A rank whose samples are nowhere (not on disk, not in the archive, not held from the cache) counts as having no pipes, and its stops are shown as not available. In the measurement on Friesach with Masterpiece 0.3.3, peak process memory with one stop drawn and with all 44 stops drawn differed by 2 MB at 24-bit and by 12 MB at 16-bit, both with streamed releases.
 
 The memory an organ takes follows from these choices, in this order of effect:
 

@@ -210,7 +210,8 @@ A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` 
 
 A demonstration set ships the definition of the whole organ and the samples of some stops. The stops it leaves out are shown as not available and stay off.
 
-- A stop counts as playing when its ranks have pipes in the definition, or when its switch leads, through the wiring, to the pallet of a pipe that a key opens. A demo keeps every stop's action noise, a pipe on a pallet that the stop's own switch opens with no key; those pipes do not count as playing.
+- A stop counts as playing when its ranks have pipes in the definition, or when its switch leads, through the wiring, to the pallet of a pipe that a key opens.
+- A rank whose pipes name samples that are nowhere counts as having no pipes: a sample is there when it is on disk under its package, in the organ's archive, or held from the organ's sample cache. Some demos list the pipes of every stop and ship the samples of a few; the others are not available. The log says `load: N rank(s) list pipes and ship no samples; their stops are not available`. A load with **--gui-only** reads no samples and leaves this check out. A demo keeps every stop's action noise, a pipe on a pallet that the stop's own switch opens with no key; those pipes do not count as playing.
 - An organ that names no key switches keeps every pallet.
 - Locked stops are drawn as the set draws them. A click on one is refused, and its tooltip reads **`<stop>` is not available**.
 - Locked stops also stay in when anything else would draw them: a general, a piston, the crescendo, a tutti, a MIDI message or the organ's own wiring. The switch network holds their switches off. A switch that also draws a stop with pipes stays free, and so does a switch the organ starts engaged.
