@@ -4208,7 +4208,7 @@ void MasterpieceProcessor::findPalletStops() {
   palletStops_.clear();
   std::unordered_set<Id> pallets;
   for (const auto& [rankId, rank] : model_.ranks) {
-    (void)rankId;
+    if (unshippedRanks_.count(rankId) != 0) continue;
     for (const Pipe& pipe : rank.pipes)
       if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
   }
@@ -5836,6 +5836,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // more than one left out. It and its copies on other pages are drawn as
   // the set draws them, with no veil: a click on one is refused, and a
   // tooltip names it as not available.
+  // Only a load that reads samples can tell: a graphics-only one has no
+  // archive and holds nothing, and every rank would look unshipped.
+  unshippedRanks_.clear();
+  if (!graphicsOnly)
+    for (const auto& [rankId, rank] : model_.ranks)
+      if (!rank.pipes.empty() && !samples_.rankShipped(rank, model_, organRootDir_)) unshippedRanks_.insert(rankId);
+  if (!unshippedRanks_.empty())
+    juce::Logger::writeToLog("load: " + juce::String((int)unshippedRanks_.size()) +
+                             " rank(s) list pipes and ship no samples; their stops are not available");
   findPalletStops();
   std::unordered_set<Id> silent;
   lockedStops_.clear();
@@ -6079,7 +6088,7 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
     e.playable = palletStops_.count(id) != 0;
     for (const auto& entry : stop.ranks) {
       const auto rit = model_.ranks.find(entry.rankId);
-      if (rit != model_.ranks.end() && !rit->second.pipes.empty()) {
+      if (rit != model_.ranks.end() && !rit->second.pipes.empty() && unshippedRanks_.count(entry.rankId) == 0) {
         e.playable = true;
         break;
       }
