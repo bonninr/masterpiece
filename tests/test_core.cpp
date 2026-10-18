@@ -10176,6 +10176,52 @@ public:
 static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
 static PlaybackStopReleasesTest g_playbackStopReleases;
+
+// A saved take keeps its length. The file had no tempo event, every reader
+// took 120 bpm, and a key held for a second came back held for half of one
+// (#394).
+class RecordingKeepsLengthTest final : public mp::test::Test {
+public:
+  RecordingKeepsLengthTest() : Test("functional.midi.recording-keeps-length", Category::Functional) {}
+  void run() override {
+    mp::MidiRecorder rec;
+    rec.prepare(48000.0);
+    rec.startRecording();
+    juce::MidiBuffer b;
+    b.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    rec.process(b, 480);
+    for (int i = 1; i < 100; ++i) {  // a second at 48 kHz, in blocks of 480
+      b.clear();
+      rec.process(b, 480);
+    }
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+    rec.process(b, 480);
+    rec.stopRecording();
+
+    const juce::File file = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-recording-length.mid");
+    MP_CHECK(rec.saveToFile(file), "the take is saved");
+    juce::FileInputStream in(file);
+    juce::MidiFile mf;
+    MP_CHECK(in.openedOk() && mf.readFrom(in), "and reads back as a MIDI file");
+    mf.convertTimestampTicksToSeconds();
+    double on = -1.0, off = -1.0;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+      for (const auto* e : *mf.getTrack(t)) {
+        if (e->message.isNoteOn()) on = e->message.getTimeStamp();
+        if (e->message.isNoteOff()) off = e->message.getTimeStamp();
+      }
+    MP_CHECK(on >= 0.0 && std::abs((off - on) - 1.0) < 0.01,
+             "a key held for a second is held for a second in the file, got " + std::to_string(off - on));
+
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(back.loadFromFile(file) && back.eventCount() == 2, "and loads back into the recorder");
+    file.deleteFile();
+  }
+};
+static RecordingKeepsLengthTest g_recordingKeepsLength;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
