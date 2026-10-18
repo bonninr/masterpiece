@@ -563,7 +563,7 @@ countries: cz
 "Reset this" = "Obnovit tento"
 "Reset everything" = "Obnovit vše"
 "Spread ranks evenly" = "Rozdělit řady rovnoměrně"
-"All to bus 1" = "Vše na sběrnici 1"
+"All to pair 1" = "Vše na pár 1"
 "Open the log folder" = "Otevřít složku protokolu"
 "Run the checks" = "Spustit kontroly"
 "Copy the report" = "Zkopírovat hlášení"

@@ -563,7 +563,7 @@ countries: fr be ca ch lu mc
 "Reset this" = "Réinitialiser celui-ci"
 "Reset everything" = "Tout réinitialiser"
 "Spread ranks evenly" = "Répartir les rangs uniformément"
-"All to bus 1" = "Tout sur le bus 1"
+"All to pair 1" = "Tout sur la paire 1"
 "Open the log folder" = "Ouvrir le dossier du journal"
 "Run the checks" = "Lancer les vérifications"
 "Copy the report" = "Copier le rapport"

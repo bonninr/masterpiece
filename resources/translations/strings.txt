@@ -568,7 +568,7 @@ countries: gb us
 "Reset this" = "Reset this"
 "Reset everything" = "Reset everything"
 "Spread ranks evenly" = "Spread ranks evenly"
-"All to bus 1" = "All to bus 1"
+"All to pair 1" = "All to pair 1"
 "Open the log folder" = "Open the log folder"
 "Run the checks" = "Run the checks"
 "Copy the report" = "Copy the report"

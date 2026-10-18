@@ -563,7 +563,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Reset this" = "Restablecer este"
 "Reset everything" = "Restablecer todo"
 "Spread ranks evenly" = "Repartir las hileras por igual"
-"All to bus 1" = "Todo al bus 1"
+"All to pair 1" = "Todo al par 1"
 "Open the log folder" = "Abrir la carpeta de logs"
 "Run the checks" = "Ejecutar las comprobaciones"
 "Copy the report" = "Copiar el informe"
