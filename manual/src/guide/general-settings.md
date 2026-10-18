@@ -286,7 +286,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `speakerkeepalive` | The level in dB, -80 to -40. Written only while on. | **Keep portable speakers awake** |
 | `memlimit` | The sample memory limit in MB. Written only when set. | **Memory limit for samples** on the Loading tab |
 | `polyphony` | The voice limit. Written only when set. | **Polyphony limit** on the Loading tab |
-| `running` | The path of the organ being loaded or played. Removed at a clean exit; one still present at the next start means the last session ended unexpectedly, and that organ is not reopened. | The crash guard |
+| `running` | The path of the organ being loaded or played. Removed at a clean exit; one still present at the next start means the last session ended unexpectedly, which the log records. | The crash guard |
 | `language` | The language code. Written only when a language is chosen. | **Language** |
 | `loadticks` | `1` or `0`. Always written. | **Tap at each 10% while loading an organ** on the Loading tab |
 | `cancelresetskeyboards` | `1`. Written only while on. | **General Cancel also puts the keyboards back on their own manuals** |

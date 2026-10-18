@@ -184,7 +184,7 @@ of a piece: one press, no looking.
 - Stepping forward stops after the last frame that holds anything, and stepping
   back stops at frame 1. It never wraps. Stepping from frame 0 goes to frame 1.
 - With **Set** on, stepping captures what is drawn into the frame it lands on,
-  and may run past the last frame to frame 999. Hold **Set**, walk forwards and
+  and may run past the last frame to frame 999. Keep **Set** on, walk forwards and
   set each frame as you go: that is how a sequence for a piece is built.
 - **\|<** goes to frame 1, **>\|** to the last frame that holds anything, **-10**
   and **+10** move by ten frames and stop at the ends. The digit buttons go to a
