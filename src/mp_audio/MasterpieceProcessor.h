@@ -1732,6 +1732,9 @@ private:
   std::unordered_map<Id, Unavailable> unavailable_;
   // The stops whose ranks have no pipes in this set: held in (holdOff).
   std::unordered_set<Id> lockedStops_;
+  // Ranks that list pipes and ship none of their samples: a demo's, for the
+  // stops it leaves out. They count as having no pipes.
+  std::unordered_set<Id> unshippedRanks_;
   std::vector<BusId> mixBusOrder_;             // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;

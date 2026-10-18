@@ -271,6 +271,14 @@ public:
   int64_t residentBytes(const SampleShape& shape) const;
   const std::shared_ptr<const OrganArchive>& archive() const { return archive_; }
 
+  // Whether any pipe of the rank has an attack sample that can be read: held
+  // already (this load's, or the sample cache's), on disk under its package's
+  // root, or in the organ's archive. A demo lists
+  // pipes for stops it ships no samples of (#390). A rank whose pipes name no
+  // sample file counts as there. Stops at the first file found, so a shipped
+  // rank costs one look.
+  bool rankShipped(const Rank& rank, const OrganModel& model, const std::string& organRootDir) const;
+
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
   SampleProvider provider() const;

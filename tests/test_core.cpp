@@ -14721,6 +14721,93 @@ public:
 };
 static DemoStopNoiseTest g_demoStopNoise;
 
+// A demo can list pipes for every stop and ship the samples of a few: Brasov
+// far lists 35 stops and ships 8 (#390). A rank none of whose samples is on
+// disk or in the archive counts as having no pipes, and its stop is not
+// available. A rank whose pipes name no sample file is left as it was.
+class DemoUnshippedRankTest final : public mp::test::Test {
+public:
+  DemoUnshippedRankTest() : Test("functional.control.demo-unshipped-rank", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-demo-unshipped-rank");
+    root.deleteRecursively();
+    const juce::File defs = root.getChildFile("OrganDefinitions");
+    const juce::File pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000002");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      // A real file: this load reads its samples.
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::OutputStream> os(pkg.getChildFile("shipped.wav").createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      tone.clear();
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    auto stop = [](int id, const char* name, int rank) {
+      return "<Stop><StopID>" + std::to_string(id) + "</StopID><Name>" + name +
+             "</Name><DivisionID>1</DivisionID><ControllingSwitchID>" + std::to_string(100 + id) +
+             "</ControllingSwitchID></Stop>";
+    };
+    auto pipe = [](int id, int rank) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+             "</RankID><NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+    };
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Unshipped</Identification_Name>"
+        "<Identification_UniqueOrganID>391</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Great</Name></Division>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>101</SwitchID><Name>Principal 8</Name></Switch>"
+        "<Switch><SwitchID>102</SwitchID><Name>Trumpet 8</Name></Switch>"
+        "<Switch><SwitchID>103</SwitchID><Name>Bourdon 8</Name></Switch>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">" +
+        stop(1, "Principal 8", 7) + stop(2, "Trumpet 8", 8) + stop(3, "Bourdon 8", 9) +
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>1</StopID><RankID>7</RankID></StopRank>"
+        "<StopRank><StopID>2</StopID><RankID>8</RankID></StopRank>"
+        "<StopRank><StopID>3</StopID><RankID>9</RankID></StopRank>"
+        "</ObjectList><ObjectList ObjectType=\"Sample\">"
+        "<Sample><SampleID>71</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>shipped.wav</SampleFilename></Sample>"
+        "<Sample><SampleID>81</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>Trumpet\\060.wav</SampleFilename></Sample>"
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Trumpet</Name></Rank><Rank><RankID>9</RankID><Name>Bourdon</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>7011</LayerID><PipeID>701</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>8011</LayerID><PipeID>801</PipeID></Pipe_SoundEngine01_Layer>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>1</UniqueID><LayerID>7011</LayerID><SampleID>71</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>2</UniqueID><LayerID>8011</LayerID><SampleID>81</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList></Hauptwerk>";
+    const juce::File file = defs.getChildFile("unshipped.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, false).ok, "the organ loads");
+      std::map<mp::Id, bool> playable;
+      for (const auto& e : proc.stopList()) playable[e.stopId] = e.playable;
+      MP_CHECK(playable[1], "a rank whose sample is on disk plays");
+      MP_CHECK(!playable[2], "a rank whose samples are nowhere is not available");
+      MP_CHECK(playable[3], "a rank whose pipes name no sample is left as it was");
+      const auto* why = proc.unavailableFor(102);
+      MP_CHECK(why != nullptr && why->noPipes && why->stopId == 2, "the console names the unshipped stop");
+      settings.deleteFile();
+    }
+    root.deleteRecursively();
+  }
+};
+static DemoUnshippedRankTest g_demoUnshippedRank;
+
 // A division played from its keys through division inputs, as Hill,
 // Burton-Berlin plays every manual (#345): the key's switch drives the input
 // for its note while the Unison Off is in. Drawn, the Unison Off silences the
