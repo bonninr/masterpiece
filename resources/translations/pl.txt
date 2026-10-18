@@ -570,6 +570,8 @@ countries: pl
 "Send the report and the log" = "Wyślij raport i dziennik"
 "Log every MIDI message and what became of it" = "Zapisuj w dzienniku każdy komunikat MIDI i jego los"
 "Log every key release: the release played, its length and start" = "Zapisuj każde puszczenie klawisza: odtworzone wybrzmiewanie, jego długość i początek"
+"Check once a day for a newer version" = "Raz dziennie sprawdzaj, czy jest nowsza wersja"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Odczytuje numer najnowszej wersji z masterpieceorgan.com, kilka bajtów, i proponuje stronę pobierania, gdy jest nowsza. Nic o tobie nie jest wysyłane."
 "Drive a console display" = "Steruj wyświetlaczem kontuaru"
 "Send to display" = "Wyślij na wyświetlacz"
 
@@ -789,3 +791,11 @@ countries: pl
 # src/mp_ui/Settings.cpp
 "Noise filter: when learning, a key counts once held a quarter second" = "Filtr zakłóceń: podczas uczenia klawisz liczy się po przytrzymaniu przez ćwierć sekundy"
 "For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Dla konsoli, której styki wysyłają przypadkowe nuty: krótsza nuta nie jest zapamiętywana. Kontrolery i zmiany programu są zapamiętywane od razu. Pozostaw wyłączone dla pistonów, które wysyłają tylko krótką nutę."
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Pobierz"
+"Never check again" = "Nie sprawdzaj więcej"
+"Opens the download page in the browser" = "Otwiera stronę pobierania w przeglądarce"
+"No more checks; General settings, Log turns them on again" = "Bez dalszego sprawdzania; Ustawienia ogólne, Dziennik włącza je ponownie"
+"Close" = "Zamknij"
+"Masterpiece %1 is out" = "Jest już Masterpiece %1"

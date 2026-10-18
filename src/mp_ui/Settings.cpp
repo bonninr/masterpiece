@@ -2371,6 +2371,11 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
                              "Until Masterpiece is closed."));
   releases_.onClick = [this] { proc_.setReleaseLogging(releases_.getToggleState()); };
   addAndMakeVisible(releases_);
+  updates_.setToggleState(proc_.updateCheckEnabled(), juce::dontSendNotification);
+  updates_.setTooltip(TRANS("Reads the newest version's number from masterpieceorgan.com, a few bytes, "
+                            "and offers the download page when it is newer. Nothing about you is sent."));
+  updates_.onClick = [this] { proc_.setUpdateCheckEnabled(updates_.getToggleState()); };
+  addAndMakeVisible(updates_);
 }
 
 void LogPanel::resized() {
@@ -2387,6 +2392,7 @@ void LogPanel::resized() {
   r.removeFromTop(12);
   midi_.setBounds(r.removeFromTop(28));
   releases_.setBounds(r.removeFromTop(28));
+  updates_.setBounds(r.removeFromTop(28));
   r.removeFromTop(8);
   report_.setBounds(r);
 }

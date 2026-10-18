@@ -15,6 +15,10 @@
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
 
+  <!-- The once-a-day check for a newer version: one short file from
+       masterpieceorgan.com, and nothing else. Off in General settings, Log. -->
+  <uses-permission android:name="android.permission.INTERNET"/>
+
   <!-- Sample sets on shared storage, on the Android versions that still allow
        reading it by path. -->
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>

@@ -575,6 +575,8 @@ countries: gb us
 "Send the report and the log" = "Send the report and the log"
 "Log every MIDI message and what became of it" = "Log every MIDI message and what became of it"
 "Log every key release: the release played, its length and start" = "Log every key release: the release played, its length and start"
+"Check once a day for a newer version" = "Check once a day for a newer version"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent."
 "Drive a console display" = "Drive a console display"
 "Send to display" = "Send to display"
 
@@ -793,3 +795,11 @@ countries: gb us
 "Choose an organ..." = "Choose an organ..."
 "Back" = "Back"
 "Skip setup" = "Skip setup"
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Download"
+"Never check again" = "Never check again"
+"Opens the download page in the browser" = "Opens the download page in the browser"
+"No more checks; General settings, Log turns them on again" = "No more checks; General settings, Log turns them on again"
+"Close" = "Close"
+"Masterpiece %1 is out" = "Masterpiece %1 is out"

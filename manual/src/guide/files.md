@@ -1,6 +1,6 @@
 # Files and folders
 
-Masterpiece keeps its own files in one settings folder in the user's profile and writes a few files next to an organ's installation. This page lists every file and folder the program reads or writes, where each lives on each system, what it holds, and what happens when it is deleted. It ends with what the program sends over a network, which is nothing.
+Masterpiece keeps its own files in one settings folder in the user's profile and writes a few files next to an organ's installation. This page lists every file and folder the program reads or writes, where each lives on each system, what it holds, and what happens when it is deleted. It ends with what the program sends over a network: the once-a-day update check, and nothing else.
 
 ## The settings folder
 
@@ -60,6 +60,8 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | Key | Holds | Set with |
 |---|---|---|
 | `reopenlastorgan` | `1` to reopen the last organ at startup. Default off. | **Reopen the last organ when Masterpiece starts** |
+| `updatecheck` | `0` turns the once-a-day update check off; written only then. | **Check once a day for a newer version** |
+| `updatecheckedat` | The time of the last update check, in seconds since 1970. | The update check |
 | `lastorgan` | Path of the last organ that loaded completely. | Automatic, after each load |
 | `running` | Path of the organ being loaded or loaded; the crash guard's mark. Removed at a clean exit. | Automatic (standalone program) |
 | `memlimit` | Memory limit for samples, in MB. Absent: 80% of the computer's memory. | **Memory limit for samples** |
@@ -202,11 +204,14 @@ Masterpiece reads the organs the player opens, the MIDI files the player loads, 
 
 ## Privacy
 
-Masterpiece sends nothing over a network.
+Masterpiece's one connection is the update check, from version 0.8.1.
 
-- The code contains no network access: no update check, no account, no analytics, no crash reporting. The build switches off JUCE's web browser and network (`curl`) features.
-- The Android app declares no internet permission. Its permissions are Bluetooth (to find Bluetooth MIDI devices), location up to Android 11 (a platform requirement for Bluetooth scanning, never read) and storage up to Android 12 (to open organ files).
-- The Flatpak bundle asks for no network access at run time.
+- **The update check.** Once a day, ten seconds after the program starts, it reads `https://masterpieceorgan.com/version.txt`: the number of the newest version, a few bytes, which the site's publishing writes at every release. When that number is newer, the right of the status bar reads **Masterpiece 0.8.1 is out** (with the number) until 30 seconds after the organ has loaded, or for 30 seconds when no organ is loading, with **Download**, which opens the download page, **Never check again** and a close button. Nothing takes the focus or waits for an answer. The request carries nothing about the player or the organs; like any request for a web page, it reaches GitHub Pages, which hosts the site, with the computer's IP address. Masterpiece keeps only the time of the last check (`updatecheckedat`). A check that gets no answer within 5 seconds says nothing and is tried again the next day. The plugins never check, and neither does a scripted run (`--play-midi`, `--gui-only`, `--draw-only`, or the environment variable `MASTERPIECE_UPDATE_CHECK=0`). `MASTERPIECE_UPDATE_URL` reads another address, for a test server.
+- **Turning it off.** **Check once a day for a newer version** on the Log tab of General settings, or **Never check again** in the notice (`updatecheck 0` in `settings.mpglobal`).
+- **On Linux** the file is read with the system's `curl` command; without one, the check does nothing. The build switches off JUCE's web browser and `curl` features.
+- **On Android** the app asks for the internet permission for this check, besides Bluetooth (to find Bluetooth MIDI devices), location up to Android 11 (a platform requirement for Bluetooth scanning, never read) and storage up to Android 12 (to open organ files).
+- **The Flatpak bundle** has network access for this check.
+- There is no account, no analytics and no crash reporting.
 - The log records what the program did, such as the organ that loaded and the devices found. It leaves the computer only when the player attaches it to a report. On a phone, **Send the report and the log** opens the system's share sheet, and the player chooses the destination.
 - The LV2 identifier `https://masterpiece.audio/plugins/masterpiece` is a name that hosts compare. No program opens it.
 

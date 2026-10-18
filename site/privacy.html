@@ -24,12 +24,23 @@
 
 <main class="wrap">
   <p>This policy covers the Masterpiece app on every platform: Windows, macOS,
-    Linux, Android, iPhone and iPad. Last updated 4 October 2026.</p>
+    Linux, Android, iPhone and iPad. Last updated 18 October 2026.</p>
 
   <h2>What Masterpiece collects</h2>
   <p>Nothing. Masterpiece has no accounts, no analytics, no advertising and no
-    crash reporting. It does not connect to the internet: the Android app does
-    not even ask for permission to.</p>
+    crash reporting. Its one connection to the internet is the update check
+    below.</p>
+
+  <h2>The update check</h2>
+  <p>From version 0.8.1, Masterpiece reads one short file from
+    masterpieceorgan.com once a day: the number of the newest version, a few
+    bytes. When that version is newer than yours, the status bar says so until
+    30 seconds after the organ has loaded, with a button for the download page. The request carries nothing about you or your organs. Like
+    any request for a web page, it reaches GitHub Pages, which hosts the site,
+    with your IP address. Masterpiece keeps only the time of its last check.</p>
+  <p>Turn it off in <strong>Settings &gt; General settings &gt; Log</strong>, or
+    with <strong>Never check again</strong> beside the notice. The plugins in a
+    DAW never check.</p>
 
   <h2>What stays on your device</h2>
   <p>Masterpiece keeps its own files on your device only: your settings, MIDI
@@ -56,6 +67,7 @@
       you choose.</li>
     <li><strong>MIDI devices</strong>: to play from a USB or Bluetooth MIDI
       keyboard or console.</li>
+    <li><strong>Internet</strong> (Android): for the update check only.</li>
   </ul>
 
   <h2>Children</h2>

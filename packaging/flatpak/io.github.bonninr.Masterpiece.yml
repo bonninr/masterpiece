@@ -12,6 +12,9 @@ rename-desktop-file: masterpiece.desktop
 rename-icon: masterpiece
 finish-args:
   - --share=ipc
+  # The once-a-day check for a newer version reads one short file from
+  # masterpieceorgan.com; off in General settings, Log.
+  - --share=network
   - --socket=x11
   # Sound through PulseAudio or PipeWire, and JACK through PipeWire's socket.
   - --socket=pulseaudio

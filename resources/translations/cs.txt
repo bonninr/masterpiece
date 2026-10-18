@@ -570,6 +570,8 @@ countries: cz
 "Send the report and the log" = "Odeslat hlášení a protokol"
 "Log every MIDI message and what became of it" = "Zaznamenávat každou zprávu MIDI a co se s ní stalo"
 "Log every key release: the release played, its length and start" = "Zaznamenávat každé uvolnění klávesy: přehraný dozvuk, jeho délku a začátek"
+"Check once a day for a newer version" = "Jednou denně hledat novější verzi"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Načte číslo nejnovější verze z masterpieceorgan.com, pár bajtů, a nabídne stránku ke stažení, když je novější. O vás se nic neodesílá."
 "Drive a console display" = "Ovládat displej hracího stolu"
 "Send to display" = "Odeslat na displej"
 
@@ -789,3 +791,11 @@ countries: cz
 # src/mp_ui/Settings.cpp
 "Noise filter: when learning, a key counts once held a quarter second" = "Filtr šumu: při učení se klávesa počítá po podržení čtvrt sekundy"
 "For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Pro hrací stůl, jehož kontakty posílají náhodné tóny: kratší tón se nenaučí. Ovladače a změny programu se naučí hned. Pro pistony, které posílají jen krátký tón, nechte vypnuté."
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Stáhnout"
+"Never check again" = "Už nehledat"
+"Opens the download page in the browser" = "Otevře stránku ke stažení v prohlížeči"
+"No more checks; General settings, Log turns them on again" = "Žádné další hledání; Obecná nastavení, Protokol ho znovu zapne"
+"Close" = "Zavřít"
+"Masterpiece %1 is out" = "Vyšel Masterpiece %1"

@@ -1835,6 +1835,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // A new key: the old one was written on every save, whether or not anyone
   // chose it, so it cannot tell a choice from a default. Only this one counts.
   text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
+  if (!updateCheck_) text << "updatecheck 0\n";
+  if (updateCheckedAt_ > 0) text << "updatecheckedat " << updateCheckedAt_ << "\n";
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
@@ -1923,6 +1925,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // reopen off and turns it on only by choosing to.
     } else if (key == "reopenlastorgan") {
       reopenLastOrgan_ = val.getIntValue() != 0;
+    } else if (key == "updatecheck") {
+      updateCheck_ = val.getIntValue() != 0;
+    } else if (key == "updatecheckedat") {
+      updateCheckedAt_ = val.getLargeIntValue();
     } else if (key == "speakerkeepalive") {
       const float db = val.getFloatValue();
       keepAliveDb_.store(db < 0.0f ? juce::jlimit(-80.0f, -40.0f, db) : 0.0f,
@@ -2232,6 +2238,23 @@ void MasterpieceProcessor::addKeepAlive(juce::AudioBuffer<float>& buffer) {
       keepAlivePhase_ -= juce::MathConstants<double>::twoPi;
     for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.addSample(c, i, v);
   }
+}
+
+void MasterpieceProcessor::setUpdateCheckEnabled(bool on) {
+  if (updateCheck_ == on) return;
+  updateCheck_ = on;
+  writeGlobalFile();
+}
+
+bool MasterpieceProcessor::updateCheckDue() const {
+  const juce::int64 now = juce::Time::currentTimeMillis() / 1000;
+  // A clock set back makes the last check look in the future: due as well.
+  return updateCheck_ && (now - updateCheckedAt_ >= 24 * 60 * 60 || now < updateCheckedAt_);
+}
+
+void MasterpieceProcessor::markUpdateChecked() {
+  updateCheckedAt_ = juce::Time::currentTimeMillis() / 1000;
+  writeGlobalFile();
 }
 
 void MasterpieceProcessor::setReopenLastOrgan(bool on) {

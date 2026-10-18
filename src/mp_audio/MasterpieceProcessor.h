@@ -843,6 +843,16 @@ public:
   void setSpeakerKeepAlive(float levelDb);
   float speakerKeepAlive() const { return keepAliveDb_.load(std::memory_order_relaxed); }
   void setReopenLastOrgan(bool on);
+  // Once a day the application reads the newest version's number from the
+  // project's site and offers it when it is newer (ui::checkForUpdate). On
+  // unless the player turns it off, here or in the offer itself.
+  bool updateCheckEnabled() const { return updateCheck_; }
+  void setUpdateCheckEnabled(bool on);
+  // Whether a day has passed since the last check, and its time noted.
+  bool updateCheckDue() const;
+  void markUpdateChecked();
+  // Cleared when the processor goes: for work queued on the message thread.
+  std::weak_ptr<std::atomic<bool>> aliveToken() const { return alive_; }
 
   // Crash guard. While the guard is on, a load writes the organ into the
   // global file as "running", and only a clean exit takes it out again. An
@@ -1766,6 +1776,8 @@ private:
   // Off unless asked for: reopening at start is what turns one crash into a
   // loop of them.
   bool reopenLastOrgan_ = false;
+  bool updateCheck_ = true;
+  juce::int64 updateCheckedAt_ = 0;  // seconds since 1970, of the last check
   std::atomic<float> keepAliveDb_{0.0f};
   double keepAlivePhase_ = 0.0;  // audio thread only
   void addKeepAlive(juce::AudioBuffer<float>& buffer);

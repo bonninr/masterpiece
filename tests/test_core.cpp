@@ -485,6 +485,7 @@ public:
 
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_ui/BmpImage.h"
+#include "../src/mp_ui/UpdateCheck.h"
 #include "../src/mp_ui/Console.h"
 #include "../src/mp_audio/Convolver.h"
 
@@ -13451,6 +13452,42 @@ public:
   }
 };
 static SpeakerKeepAliveTest g_speakerKeepAlive;
+
+// The update check: versions compared part by part, at most once a day, and
+// off for good once the player says so.
+class UpdateCheckTest final : public mp::test::Test {
+public:
+  UpdateCheckTest() : Test("functional.settings.update-check", Category::Functional) {}
+  void run() override {
+    using mp::ui::isNewerVersion;
+    MP_CHECK(isNewerVersion("0.8.1", "0.8.0") && isNewerVersion("0.10.0", "0.9.2") &&
+                 isNewerVersion("1.0", "0.99.9") && isNewerVersion("0.8.0.1", "0.8.0"),
+             "a higher number in any place is newer");
+    MP_CHECK(!isNewerVersion("0.8.0", "0.8.0") && !isNewerVersion("0.7.12", "0.8.0") &&
+                 !isNewerVersion("0.8", "0.8.0"),
+             "the same version, or an older one, is not");
+
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(proc.updateCheckEnabled(), "the check is on out of the box");
+      proc.markUpdateChecked();
+      MP_CHECK(!proc.updateCheckDue(), "and done once a day: not again straight after");
+      proc.setUpdateCheckEnabled(false);
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(!proc.updateCheckEnabled() && !proc.updateCheckDue(), "turned off, it stays off");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static UpdateCheckTest g_updateCheck;
 
 // The metronome's tempo, beats and level are kept (#397).
 class MetronomeKeptTest final : public mp::test::Test {
