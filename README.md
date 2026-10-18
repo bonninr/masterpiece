@@ -20,8 +20,10 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 [![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.0/masterpiece-0.8.0-linux-armhf.deb)
 [![Flatpak](https://img.shields.io/badge/Download-Linux%20Flatpak-4A86CF?logo=flatpak&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.0/masterpiece-0.8.0-linux-x86_64.flatpak)
 
-Portable archives for every platform, and the plugins on their own, are on the
-[releases page](https://github.com/bonninr/masterpiece/releases/latest).
+Portable archives for every platform are on the
+[releases page](https://github.com/bonninr/masterpiece/releases/latest); the
+plugins come in the archives and in the 64-bit Debian package. The
+[manual](https://masterpieceorgan.com/docs/) covers installing and every setting.
 
 [![build](https://github.com/bonninr/masterpiece/actions/workflows/build.yml/badge.svg)](https://github.com/bonninr/masterpiece/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/bonninr/masterpiece?include_prereleases&label=release&color=c8a97e)](https://github.com/bonninr/masterpiece/releases)
@@ -42,8 +44,8 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
 - Standalone application, VST3 and LV2 plugins, and an Audio Unit on macOS
 - Windows, macOS (Apple silicon and Intel), Linux, Raspberry Pi (64- and 32-bit),
   Android and iPhone/iPad
-- Tested on 37 published sample sets, from a 9-register Flentrop to Nancy's
-  65 stops on four manuals
+- Tested with more than 100 published sample sets, from a 9-register Flentrop
+  to Nancy's 65 stops on four manuals
 
 ## Features
 
@@ -70,8 +72,8 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
   lowers the pressure, and pitch and level follow it
 - Tremulants per pipe and per chest; enclosures with level and filter per box
 - Hermite interpolation; 725 voices a processor thread (at least 1,536), stealing the longest-fading releases first
-- Optional vectorized engine, AVX2, SSE2 or NEON, 3 to 5 times faster on 512
-  voices (experimental, off by default)
+- Vectorized engine, AVX2, SSE2 or NEON, 3 to 5 times faster on 512 voices,
+  on by default
 
 **Memory and loading**
 - 24-bit resident (bit-identical to the files) or 16-bit; stereo can be folded
