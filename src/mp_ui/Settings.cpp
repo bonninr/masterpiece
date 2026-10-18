@@ -367,8 +367,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(reopen_);
   reopen_.setToggleState(proc_.reopenLastOrgan(), juce::dontSendNotification);
   reopen_.setTooltip(
-      TRANS("Off by default. Even when on, an organ that was loaded when Masterpiece "
-            "last closed unexpectedly is not reopened."));
+      TRANS("Off by default. On, the organ last loaded completely opens at start, "
+            "after an unexpected close too."));
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
   // The vector engine, on unless the player turns it off. It changes at
   // once, so the same chord can be heard both ways.
@@ -1015,6 +1015,7 @@ void ReverbPanel::resized() {
 
 MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(enabled_);
+  enabled_.setToggleState(proc_.metronome().enabled(), juce::dontSendNotification);
   enabled_.onClick = [this] {
     proc_.metronome().setEnabled(enabled_.getToggleState());
   };
@@ -1050,7 +1051,10 @@ MetronomePanel::MetronomePanel(MasterpieceProcessor& p) : proc_(p) {
   startTimerHz(12);
 }
 
-MetronomePanel::~MetronomePanel() { stopTimer(); }
+MetronomePanel::~MetronomePanel() {
+  stopTimer();
+  proc_.rememberMetronome();
+}
 
 void MetronomePanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
@@ -1266,16 +1270,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
 
   addAndMakeVisible(output_);
   output_.onChange = [this] {
-    // Opening the port here rather than in the engine: the device belongs to
-    // the application, and the engine only ever borrows a pointer to it.
-    proc_.setMidiOutput(nullptr);
-    openedOutput_.reset();
-    const int idx = output_.getSelectedId() - 2; // id 1 is "None"
-    const auto devs = juce::MidiOutput::getAvailableDevices();
-    if (idx >= 0 && idx < devs.size()) {
-      openedOutput_ = juce::MidiOutput::openDevice(devs[idx].identifier);
-      proc_.setMidiOutput(openedOutput_.get());
-    }
+    // The processor holds the port and keeps the choice: the console's lamps
+    // and displays follow it after this window closes, and at the next start.
+    const int id = output_.getSelectedId();
+    proc_.openMidiOutput(id > 1 ? output_.getItemText(output_.indexOfItemId(id)) : juce::String());
   };
 
   addAndMakeVisible(feedback_);
@@ -1387,10 +1385,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   startTimerHz(2);
 }
 
-MidiPanel::~MidiPanel() {
-  stopTimer();
-  proc_.setMidiOutput(nullptr);
-}
+MidiPanel::~MidiPanel() { stopTimer(); }
 
 // Manuals that answer the same channel, named. Sharing one is a way of
 // playing two divisions from one keyboard; doing it unawares is how a manual
@@ -1504,9 +1499,10 @@ void MidiPanel::refresh() {
       // manual, and one keyboard playing two divisions is a coupler a player
       // can build for themselves. The line under the row says who else is on
       // it, so nothing is hidden.
-      if (raw->getSelectedId() > 1)
-        proc_.keepRouting();
-        proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
+      // A channel chosen keeps the player's routing. Default is channel 0,
+      // which removes this manual's own binding and leaves the organ's.
+      if (raw->getSelectedId() > 1) proc_.keepRouting();
+      proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
       proc_.saveMidiMap();
       showSharedChannels();
     };
@@ -1545,10 +1541,18 @@ void MidiPanel::refresh() {
 
   output_.clear(juce::dontSendNotification);
   output_.addItem(TRANS("None"), 1);
-  int id = 2;
-  for (const auto& out : juce::MidiOutput::getAvailableDevices())
+  int id = 2, chosen = 1;
+  for (const auto& out : juce::MidiOutput::getAvailableDevices()) {
+    if (out.name == proc_.midiOutputName()) chosen = id;
     output_.addItem(out.name, id++);
-  output_.setSelectedId(1, juce::dontSendNotification);
+  }
+  // The port chosen before, though it is not plugged in now: the choice is
+  // kept, and shown as it is.
+  if (chosen == 1 && proc_.midiOutputName().isNotEmpty()) {
+    chosen = id;
+    output_.addItem(proc_.midiOutputName(), id++);
+  }
+  output_.setSelectedId(chosen, juce::dontSendNotification);
   resized();
 }
 
@@ -2430,12 +2434,17 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
     for (const auto& f : fields) lines_[i]->addItem(f, id++);
     lines_[i]->onChange = [this] { rebuild(); };
   }
-  // Something useful out of the box, so the first send shows the player it is
-  // working rather than four blank lines.
-  lines_[0]->setSelectedId(2, juce::dontSendNotification); // Organ
-  lines_[1]->setSelectedId(3, juce::dontSendNotification); // Temperament
-  lines_[2]->setSelectedId(4, juce::dontSendNotification); // Pitch
-  lines_[3]->setSelectedId(7, juce::dontSendNotification); // Crescendo
+  // The setup as it was left, kept by the processor; out of the box the organ,
+  // temperament, pitch and crescendo, so the first send shows it working.
+  const auto& setup = proc_.lcdSetup();
+  enable_.setToggleState(setup.on, juce::dontSendNotification);
+  id_.setValue(setup.displayNumber, juce::dontSendNotification);
+  for (int w = 0, item = 1; w < 4; ++w, ++item)
+    if (const int widths[] = {16, 20, 32, 40}; widths[w] == setup.width)
+      width_.setSelectedId(item, juce::dontSendNotification);
+  header_.setText(setup.prefix, juce::dontSendNotification);
+  for (size_t i = 0; i < lines_.size(); ++i)
+    lines_[i]->setSelectedId(setup.lines[i], juce::dontSendNotification);
 
   addAndMakeVisible(previewLabel_);
   styleLabel(previewLabel_, TRANS("What the display reads"));
@@ -2465,52 +2474,27 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
                   "transliterated, because system exclusive carries seven bits and a "
                   "high byte would end the message rather than draw a character."));
 
-  rebuild();
   startTimerHz(2);
 }
 
 DisplayPanel::~DisplayPanel() { stopTimer(); }
 
-// The panel description belongs to the engine, which owns the state a line
-// shows; this only assembles it from the boxes.
+// The setup belongs to the processor, which owns the state a line shows and
+// keeps the setup; this only reads it off the boxes.
 void DisplayPanel::rebuild() {
-  auto& panels = proc_.lcdPanels();
-  panels.clear();
-  if (!enable_.getToggleState()) return;
-
-  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
-  // non-commercial id rather than to silence, so a typo leaves something on
-  // the wire to see instead of looking like a dead feature.
-  std::vector<uint8_t> header;
-  for (const auto& tok :
-       juce::StringArray::fromTokens(header_.getText(), " ", "")) {
-    if (tok.isEmpty()) continue;
-    header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
-  }
-  if (!panels.setHeader(header)) panels.setHeader({0x7D});
-
-  LcdPanel p;
-  p.hardwareId = static_cast<int>(id_.getValue());
+  MasterpieceProcessor::LcdSetup s;
+  s.on = enable_.getToggleState();
+  s.displayNumber = static_cast<int>(id_.getValue());
   const int widths[] = {16, 20, 32, 40};
-  p.lineWidth = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
-  const LcdField byId[] = {LcdField::Literal,       LcdField::OrganName,
-                           LcdField::Temperament,   LcdField::PitchHz,
-                           LcdField::Transpose,     LcdField::StopsDrawn,
-                           LcdField::CrescendoStep, LcdField::CombinationSet};
-  for (auto& box : lines_) {
-    const int sel = juce::jlimit(1, 8, box->getSelectedId());
-    p.lines.push_back({byId[sel - 1], ""});
-  }
-  panels.addPanel(std::move(p));
-  proc_.refreshLcdPanels();
+  s.width = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
+  s.prefix = header_.getText().trim();
+  for (size_t i = 0; i < lines_.size(); ++i) s.lines[i] = juce::jlimit(1, 8, lines_[i]->getSelectedId());
+  proc_.setLcdSetup(s);
 }
 
 void DisplayPanel::timerCallback() {
-  // The display's own refresh. Twice a second is far faster than anyone reads
-  // a jamb panel and far slower than the wire, and nothing goes out unless a
-  // line's text actually changed.
-  proc_.pumpLcdPanels();
-
+  // The preview. The display itself is sent from the main window, four times
+  // a second, whether or not this tab is open.
   if (!enable_.getToggleState()) {
     preview_.setText("", juce::dontSendNotification);
     return;
@@ -2610,15 +2594,22 @@ SettingsWindow::~SettingsWindow() {
 }
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
-                               juce::AudioDeviceManager& devices)
-    : reverb_(p), metronome_(p), midi_(p, devices), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
+                               juce::AudioDeviceManager* devices)
+    : reverb_(p), metronome_(p), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
-  audio_ = std::make_unique<AudioSettingsPanel>(devices, p);
-  tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+  // Without a device manager -- a plugin, whose host owns the audio device
+  // and the MIDI ports -- the Audio and MIDI tabs are left out.
+  if (devices != nullptr) {
+    audio_ = std::make_unique<AudioSettingsPanel>(*devices, p);
+    tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+  }
   tabs_.addTab(TRANS("Room"), bg, &reverb_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
-  tabs_.addTab(TRANS("MIDI"), bg, &midi_, false);
+  if (devices != nullptr) {
+    midi_ = std::make_unique<MidiPanel>(p, *devices);
+    tabs_.addTab(TRANS("MIDI"), bg, midi_.get(), false);
+  }
   tabs_.addTab(TRANS("Mixer"), bg, &mixer_, false);
   tabs_.addTab(TRANS("Voicing"), bg, &voicing_, false);
   tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);

@@ -191,6 +191,10 @@ public:
           "  --preload-drawn          load only the ranks the drawn stops use\n"
           "  --draw-only              draw the stops, then hand over the console\n"
           "  --stay-open              stay open after --play-midi has played\n"
+          "  --preload-ranks <ids>    load only these ranks (comma-separated ids)\n"
+          "  --organ-root <dir>       the folder that holds the organ's\n"
+          "                           OrganInstallationPackages\n"
+          "  --log-touches            log every press and what took it\n"
           "  --version                print the version and quit\n"
           "  -h, --help               print this and quit\n";
       std::cout.flush();
@@ -412,6 +416,11 @@ public:
     // Read the global file first in any case: it is also what says whether
     // the last session ended cleanly.
     proc_->loadGlobalDefaults();
+    // The console's output, as the player left it: its lamps and displays
+    // follow the organ from the start.
+    if (const auto out = proc_->midiOutputName(); out.isNotEmpty() && !proc_->openMidiOutput(out))
+      juce::Logger::writeToLog("midi: the output " + out + " is not connected; choose it again in "
+                               "Settings, MIDI once it is");
     const juce::File crashed = proc_->crashedOrgan();
     proc_->forgetCrash();
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
@@ -1063,7 +1072,7 @@ private:
 
     void showSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {},
                       const juce::String& tab = {}) {
-      auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, devices_);
+      auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, &devices_);
       panel->onClosed = std::move(onClosed);
       if (tab.isNotEmpty()) panel->showTab(tab);
       panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });

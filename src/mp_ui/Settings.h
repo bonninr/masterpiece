@@ -309,7 +309,6 @@ private:
   juce::TextButton learnTemperamentNext_{TRANS("Learn temperament +")};
   juce::Label mapStatus_;
   juce::Label note_;
-  std::unique_ptr<juce::MidiOutput> openedOutput_;
 };
 
 // Combination sets: the registration books of the organ loaded. The favourite
@@ -396,7 +395,7 @@ private:
   juce::Label status_;
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
-  juce::TextButton reset_{TRANS("All to bus 1")};
+  juce::TextButton reset_{TRANS("All to pair 1")};
   // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
   juce::Viewport viewport_;
   juce::Component rankHolder_;
@@ -490,7 +489,8 @@ private:
 
 class SettingsWindow : public juce::Component {
 public:
-  SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  // Without a device manager (a plugin) there are no Audio and MIDI tabs.
+  SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager* devices);
   ~SettingsWindow() override;
   // Open on the tab of this name ("Audio"), when there is one.
   void showTab(const juce::String& name);
@@ -512,7 +512,7 @@ private:
   std::unique_ptr<juce::Component> audio_;
   ReverbPanel reverb_;
   MetronomePanel metronome_;
-  MidiPanel midi_;
+  std::unique_ptr<MidiPanel> midi_;
   MixerPanel mixer_;
   VoicingPanel voicing_;
   FavouritesPanel favourites_;

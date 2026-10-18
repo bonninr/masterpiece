@@ -10176,6 +10176,52 @@ public:
 static SmallPageScaleTest g_smallPageScale;
 static RecordConsoleTest g_recordConsole;
 static PlaybackStopReleasesTest g_playbackStopReleases;
+
+// A saved take keeps its length. The file had no tempo event, every reader
+// took 120 bpm, and a key held for a second came back held for half of one
+// (#394).
+class RecordingKeepsLengthTest final : public mp::test::Test {
+public:
+  RecordingKeepsLengthTest() : Test("functional.midi.recording-keeps-length", Category::Functional) {}
+  void run() override {
+    mp::MidiRecorder rec;
+    rec.prepare(48000.0);
+    rec.startRecording();
+    juce::MidiBuffer b;
+    b.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    rec.process(b, 480);
+    for (int i = 1; i < 100; ++i) {  // a second at 48 kHz, in blocks of 480
+      b.clear();
+      rec.process(b, 480);
+    }
+    b.clear();
+    b.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+    rec.process(b, 480);
+    rec.stopRecording();
+
+    const juce::File file = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-recording-length.mid");
+    MP_CHECK(rec.saveToFile(file), "the take is saved");
+    juce::FileInputStream in(file);
+    juce::MidiFile mf;
+    MP_CHECK(in.openedOk() && mf.readFrom(in), "and reads back as a MIDI file");
+    mf.convertTimestampTicksToSeconds();
+    double on = -1.0, off = -1.0;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+      for (const auto* e : *mf.getTrack(t)) {
+        if (e->message.isNoteOn()) on = e->message.getTimeStamp();
+        if (e->message.isNoteOff()) off = e->message.getTimeStamp();
+      }
+    MP_CHECK(on >= 0.0 && std::abs((off - on) - 1.0) < 0.01,
+             "a key held for a second is held for a second in the file, got " + std::to_string(off - on));
+
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(back.loadFromFile(file) && back.eventCount() == 2, "and loads back into the recorder");
+    file.deleteFile();
+  }
+};
+static RecordingKeepsLengthTest g_recordingKeepsLength;
 static AllNotesOffChannelTest g_allNotesOffChannel;
 static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
@@ -13405,6 +13451,36 @@ public:
   }
 };
 static SpeakerKeepAliveTest g_speakerKeepAlive;
+
+// The metronome's tempo, beats and level are kept (#397).
+class MetronomeKeptTest final : public mp::test::Test {
+public:
+  MetronomeKeptTest() : Test("functional.settings.metronome-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.metronome().setTempo(72.0);
+      proc.metronome().setBeatsPerBar(3);
+      proc.metronome().setLevel(0.25f);
+      proc.rememberMetronome();
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.metronome().tempo() == 72.0 && proc.metronome().beatsPerBar() == 3 &&
+                   std::abs(proc.metronome().level() - 0.25f) < 0.01f,
+               "the metronome comes back as it was left");
+      MP_CHECK(!proc.metronome().enabled(), "and silent");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MetronomeKeptTest g_metronomeKept;
 // #323: each kind of file dialog starts where it was last used, and that is
 // kept for the next session.
 class DialogFolderTest final : public mp::test::Test {
@@ -13438,6 +13514,34 @@ public:
   }
 };
 static DialogFolderTest g_dialogFolder;
+
+// A plugin's project keeps the organ it played (#398).
+class PluginStateTest final : public mp::test::Test {
+public:
+  PluginStateTest() : Test("functional.plugin.state-keeps-organ", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-plugin-state");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File odf = dir.getChildFile("state.Organ_Hauptwerk_xml");
+    odf.replaceWithText("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>3981"
+                        "</Identification_UniqueOrganID><Identification_Name>State</Identification_Name>"
+                        "</_General></ObjectList></Hauptwerk>");
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    juce::MemoryBlock state;
+    proc.getStateInformation(state);
+    MP_CHECK(state.getSize() > 0, "the project gets a state");
+    const auto xml = juce::AudioProcessor::getXmlFromBinary(state.getData(), static_cast<int>(state.getSize()));
+    MP_CHECK(xml != nullptr && juce::File(xml->getStringAttribute("organ")) == odf, "naming the organ it played");
+    proc.setStateInformation(state.getData(), static_cast<int>(state.getSize()));  // the same organ: nothing to do
+    proc.settingsFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static PluginStateTest g_pluginState;
 
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the
@@ -13495,6 +13599,63 @@ public:
   }
 };
 static TuningControlsTest g_tuningControls;
+
+// A default voicing EQ for the speakers, which every organ plays until one is
+// saved for it; an organ's own EQ is kept as saved, off and flat too (#401).
+class VoicingEqDefaultTest final : public mp::test::Test {
+public:
+  VoicingEqDefaultTest() : Test("functional.settings.voicing-eq-default", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-eq-default");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    auto organ = [&dir](const char* name, int id) {
+      const juce::File f = dir.getChildFile(juce::String(name) + ".Organ_Hauptwerk_xml");
+      f.replaceWithText("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>" +
+                        juce::String(id) + "</Identification_UniqueOrganID><Identification_Name>" + name +
+                        "</Identification_Name></_General></ObjectList></Hauptwerk>");
+      return f;
+    };
+    const juce::File a = organ("EQ A", 3911), b = organ("EQ B", 3912);
+    {
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(a, 0, true).ok, "the first organ loads");
+      mp::VoicingEqSettings eq;
+      eq.on = true;
+      eq.gainDb = -3.0;
+      proc.setVoicingEq(eq);
+      MP_CHECK(proc.saveVoicingEqAsDefault(), "the EQ is saved as the default");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok, "the second organ loads");
+      MP_CHECK(proc.voicingEq().on && proc.voicingEq().gainDb == -3.0 && !proc.organHasOwnVoicingEq(),
+               "an organ with no EQ of its own plays the default");
+      proc.setVoicingEq({});  // off and flat, saved for this organ
+      MP_CHECK(proc.saveVoicingEqForOrgan(), "the organ's own EQ is saved");
+      MP_CHECK(proc.loadOrgan(a, 0, true).ok && proc.voicingEq().on, "the other organ still plays the default");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok && !proc.voicingEq().on && proc.organHasOwnVoicingEq(),
+               "and this one keeps its own, off as it was saved");
+      MP_CHECK(proc.resetVoicingEqToDefault() && proc.voicingEq().on, "Reset brings the default back");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok && proc.voicingEq().on && !proc.organHasOwnVoicingEq(),
+               "and the organ's own is forgotten");
+      proc.settingsFileFor(a).deleteFile();
+      proc.settingsFileFor(b).deleteFile();
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.defaultVoicingEq().on && proc.defaultVoicingEq().gainDb == -3.0, "the default EQ is kept");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static VoicingEqDefaultTest g_voicingEqDefault;
 
 // #53: a level set on the organ's own settings page was back at its default
 // after a restart. Moving a control the organ marks RememberStateFromLastLoad
@@ -13912,6 +14073,45 @@ public:
 };
 static DeviceSysExReloadTest g_deviceSysExReload;
 
+// The console display's setup is kept: it was the settings tab's, cleared
+// each time the tab opened (#396).
+class ConsoleDisplayKeptTest final : public mp::test::Test {
+public:
+  ConsoleDisplayKeptTest() : Test("functional.midi.console-display-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      mp::MasterpieceProcessor::LcdSetup lcd;
+      lcd.on = true;
+      lcd.displayNumber = 3;
+      lcd.width = 20;
+      lcd.prefix = "00 21 7F";
+      lcd.lines = {2, 5, 6, 8};
+      proc.setLcdSetup(lcd);
+      MP_CHECK(proc.lcdPanels().panels().size() == 1 && proc.lcdPanels().panels()[0].lines.size() == 4,
+               "the setup builds the display");
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      const auto& lcd = proc.lcdSetup();
+      const std::array<int, 4> lines{2, 5, 6, 8};
+      MP_CHECK(lcd.on && lcd.displayNumber == 3 && lcd.width == 20 && lcd.prefix == "00 21 7F" &&
+                   lcd.lines == lines,
+               "the console display comes back as it was set up");
+      MP_CHECK(proc.lcdPanels().panels().size() == 1, "and drives the display at once");
+      MP_CHECK(!proc.lcdState().combinationSet.empty(), "the combination set line has its name");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static ConsoleDisplayKeptTest g_consoleDisplayKept;
+
 // Telling consoles apart across runs, as GrandOrgue does (MidiDevices.h).
 class MidiDeviceMatchTest final : public mp::test::Test {
 public:
@@ -14138,6 +14338,35 @@ public:
   }
 };
 static MidiInputKeptOffTest g_midiInputKeptOff;
+
+// The console's MIDI output and the echo to it are kept: the output was the
+// settings window's, and closed with it (#395). A port that is not plugged
+// in keeps its name for when it is.
+class MidiOutputKeptTest final : public mp::test::Test {
+public:
+  MidiOutputKeptTest() : Test("functional.midi.output-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(!proc.openMidiOutput("A console that is not plugged in"), "a port that is not there does not open");
+      proc.setMidiFeedbackEnabled(true);
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
+      MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
+      MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiOutputKeptTest g_midiOutputKept;
 
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
@@ -14491,6 +14720,93 @@ public:
   }
 };
 static DemoStopNoiseTest g_demoStopNoise;
+
+// A demo can list pipes for every stop and ship the samples of a few: Brasov
+// far lists 35 stops and ships 8 (#390). A rank none of whose samples is on
+// disk or in the archive counts as having no pipes, and its stop is not
+// available. A rank whose pipes name no sample file is left as it was.
+class DemoUnshippedRankTest final : public mp::test::Test {
+public:
+  DemoUnshippedRankTest() : Test("functional.control.demo-unshipped-rank", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-demo-unshipped-rank");
+    root.deleteRecursively();
+    const juce::File defs = root.getChildFile("OrganDefinitions");
+    const juce::File pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000002");
+    defs.createDirectory();
+    pkg.createDirectory();
+    {
+      // A real file: this load reads its samples.
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::OutputStream> os(pkg.getChildFile("shipped.wav").createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      tone.clear();
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    auto stop = [](int id, const char* name, int rank) {
+      return "<Stop><StopID>" + std::to_string(id) + "</StopID><Name>" + name +
+             "</Name><DivisionID>1</DivisionID><ControllingSwitchID>" + std::to_string(100 + id) +
+             "</ControllingSwitchID></Stop>";
+    };
+    auto pipe = [](int id, int rank) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+             "</RankID><NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+    };
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Unshipped</Identification_Name>"
+        "<Identification_UniqueOrganID>391</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Great</Name></Division>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>101</SwitchID><Name>Principal 8</Name></Switch>"
+        "<Switch><SwitchID>102</SwitchID><Name>Trumpet 8</Name></Switch>"
+        "<Switch><SwitchID>103</SwitchID><Name>Bourdon 8</Name></Switch>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">" +
+        stop(1, "Principal 8", 7) + stop(2, "Trumpet 8", 8) + stop(3, "Bourdon 8", 9) +
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>1</StopID><RankID>7</RankID></StopRank>"
+        "<StopRank><StopID>2</StopID><RankID>8</RankID></StopRank>"
+        "<StopRank><StopID>3</StopID><RankID>9</RankID></StopRank>"
+        "</ObjectList><ObjectList ObjectType=\"Sample\">"
+        "<Sample><SampleID>71</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>shipped.wav</SampleFilename></Sample>"
+        "<Sample><SampleID>81</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>Trumpet\\060.wav</SampleFilename></Sample>"
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Trumpet</Name></Rank><Rank><RankID>9</RankID><Name>Bourdon</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>7011</LayerID><PipeID>701</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>8011</LayerID><PipeID>801</PipeID></Pipe_SoundEngine01_Layer>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>1</UniqueID><LayerID>7011</LayerID><SampleID>71</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>2</UniqueID><LayerID>8011</LayerID><SampleID>81</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList></Hauptwerk>";
+    const juce::File file = defs.getChildFile("unshipped.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, false).ok, "the organ loads");
+      std::map<mp::Id, bool> playable;
+      for (const auto& e : proc.stopList()) playable[e.stopId] = e.playable;
+      MP_CHECK(playable[1], "a rank whose sample is on disk plays");
+      MP_CHECK(!playable[2], "a rank whose samples are nowhere is not available");
+      MP_CHECK(playable[3], "a rank whose pipes name no sample is left as it was");
+      const auto* why = proc.unavailableFor(102);
+      MP_CHECK(why != nullptr && why->noPipes && why->stopId == 2, "the console names the unshipped stop");
+      settings.deleteFile();
+    }
+    root.deleteRecursively();
+  }
+};
+static DemoUnshippedRankTest g_demoUnshippedRank;
 
 // A division played from its keys through division inputs, as Hill,
 // Burton-Berlin plays every manual (#345): the key's switch drives the input

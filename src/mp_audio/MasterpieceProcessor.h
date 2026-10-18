@@ -80,7 +80,10 @@ public:
   };
 
   MasterpieceProcessor();
-  ~MasterpieceProcessor() override { writeBlockLog(); }
+  ~MasterpieceProcessor() override {
+    alive_->store(false);
+    writeBlockLog();
+  }
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   // The device is stopping, most often to change its buffer size: the engine
@@ -102,8 +105,13 @@ public:
   void setCurrentProgram(int) override {}
   const juce::String getProgramName(int) override { return "Default"; }
   void changeProgramName(int, const juce::String&) override {}
-  void getStateInformation(juce::MemoryBlock&) override {}
-  void setStateInformation(const void*, int) override {}
+  // A plugin's project keeps the organ it played, and reopens it: through
+  // the editor's load, with its dialog, while the plugin's window is open
+  // (editorLoader), or on the message thread before the window exists.
+  void getStateInformation(juce::MemoryBlock& destData) override;
+  void setStateInformation(const void* data, int sizeInBytes) override;
+  // Set by the plugin's editor. False when the editor is gone.
+  std::function<bool(const juce::File&)> editorLoader;
 
   // Organ loading. `loadOrgan` is synchronous and is what the headless
   // renderer and the tests use; `loadOrganAsync` runs the same work off the
@@ -784,9 +792,9 @@ public:
     writeGlobalFile();
   }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
-  // the processor has them. Off by default while it is experimental; the
-  // per-frame path is the one every earlier version used. Takes effect at
-  // once. MASTERPIECE_SIMD=0 in the environment still forces it off.
+  // the processor has them. On by default since 0.7.11; off, the per-frame
+  // path of the earlier versions plays. Takes effect at once.
+  // MASTERPIECE_SIMD=0 in the environment still forces it off.
   bool fasterEngine() const { return fasterEngine_.load(); }
   // What a program that has never been told starts with.
   static bool fasterEngineByDefault() { return true; }
@@ -1122,6 +1130,9 @@ public:
   // All three run inside the audio callback, because anything that has to
   // stay in time with the organ cannot live outside it.
   Metronome& metronome() { return metronome_; }
+  // The metronome's tempo, beats and level, kept in the general settings when
+  // its tab closes. Whether it ticks is not kept: it starts silent.
+  void rememberMetronome() { writeGlobalFile(); }
   MidiRecorder& recorder() { return recorder_; }
   // Captures what leaves, minus the metronome. See AudioRecorder.
   AudioRecorder& audioRecorder() { return audioRecorder_; }
@@ -1131,14 +1142,39 @@ public:
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
   juce::MidiOutput* midiOutput() const { return midiOut_; }
+  // The console's output port, opened by name and kept in the general
+  // settings: lamps, displays and key echo reach the console with any window
+  // open or none, and the port opens again at the next start (Main.cpp). An
+  // empty name closes it. False when no port of that name is there; the name
+  // is kept for when the console is plugged in.
+  bool openMidiOutput(const juce::String& name);
+  const juce::String& midiOutputName() const { return midiOutputName_; }
   // Echo switch changes to the console. Off by default: a console that echoes
-  // what it just sent can latch itself into a loop.
-  void setMidiFeedbackEnabled(bool on) { midiFeedback_ = on; }
+  // what it just sent can latch itself into a loop. Kept in the general
+  // settings.
+  void setMidiFeedbackEnabled(bool on) {
+    if (midiFeedback_ == on) return;
+    midiFeedback_ = on;
+    writeGlobalFile();
+  }
   bool midiFeedbackEnabled() const { return midiFeedback_; }
 
   // Console LCD panels. Configured by the player, because the framing belongs
   // to their hardware and not to the organ — see LcdPanel.h.
   LcdPanels& lcdPanels() { return lcd_; }
+  // The console display as the player set it up on the Display tab, kept in
+  // the general settings: what a line shows is the box's item number, 1 for
+  // blank to 8 for the combination set. The display follows the organ with
+  // any window open or none (the main window pumps it).
+  struct LcdSetup {
+    bool on = false;
+    int displayNumber = 0;
+    int width = 32;
+    juce::String prefix = "7D";
+    std::array<int, 4> lines{2, 3, 4, 7};  // organ, temperament, pitch, crescendo
+  };
+  const LcdSetup& lcdSetup() const { return lcdSetup_; }
+  void setLcdSetup(const LcdSetup& setup);
   // What the panels are showing. Shared with the settings preview rather than
   // reassembled there: a preview that computes its own idea of the state will
   // eventually disagree with the hardware, and then it is worse than none.
@@ -1169,6 +1205,16 @@ public:
     voicingEqSettings_ = s;
     voicingEq_.configure(s, sampleRate_);
   }
+  // Every organ starts from the default EQ -- the speakers and the room are
+  // the same whatever is played -- until one is saved for it. Saved for the
+  // organ, the EQ is its own, On box included, whatever it is.
+  bool saveVoicingEqForOrgan();
+  // The EQ as it is now, for every organ that has none of its own.
+  bool saveVoicingEqAsDefault();
+  // This organ back to the default EQ, its own one forgotten.
+  bool resetVoicingEqToDefault();
+  const VoicingEqSettings& defaultVoicingEq() const { return defaultEq_; }
+  bool organHasOwnVoicingEq() const { return organOwnsEq_; }
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -1651,14 +1697,21 @@ private:
   double windDepth_ = 1.0;
   LoadProgress loadProgress_;
   bool applyOrganTrim_ = true;
-  juce::MidiOutput* midiOut_ = nullptr; // owned by the application
+  juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
+  std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
+  juce::String midiOutputName_;
   bool midiFeedback_ = false;
   LcdPanels lcd_;
+  LcdSetup lcdSetup_;
+  // lcd_ built from lcdSetup_; the setter and the settings reader both use it.
+  void applyLcdSetup();
   // The player's mixer. Defaults to one stereo bus, which makes the whole
   // routing path a no-op until someone configures something.
   MixerConfig mixer_ = MixerConfig::stereoDefault();
   VoicingAB voicing_;
   VoicingEqSettings voicingEqSettings_;
+  VoicingEqSettings defaultEq_;  // the general settings' `defaulteq`
+  bool organOwnsEq_ = false;     // the organ's file has an `eq` line
   VoicingEq voicingEq_;
   Favourites favourites_;
   // Empty means the organ's default set.
@@ -1679,6 +1732,9 @@ private:
   std::unordered_map<Id, Unavailable> unavailable_;
   // The stops whose ranks have no pipes in this set: held in (holdOff).
   std::unordered_set<Id> lockedStops_;
+  // Ranks that list pipes and ship none of their samples: a demo's, for the
+  // stops it leaves out. They count as having no pipes.
+  std::unordered_set<Id> unshippedRanks_;
   std::vector<BusId> mixBusOrder_;             // dense index -> BusId
   std::unordered_map<int, int> mixBusIndexOf_;  // BusId.value -> dense index
   std::vector<juce::AudioBuffer<float>>* mixBusCapture_ = nullptr;
@@ -1907,6 +1963,9 @@ private:
   // Wall clock for the current block, for debouncing chattering contacts.
   double blockTimeMs_ = 0.0;
   juce::File loadedOdf_;
+  // Cleared on destruction: a project's organ load, queued on the message
+  // thread, runs only while the processor is there.
+  std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
   struct LoadingChoice {
     juce::File organ;
     SampleStorage storage = SampleStorage::Float32;

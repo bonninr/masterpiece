@@ -591,7 +591,21 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(save_);
   save_.setTooltip(TRANS("Keep this EQ with this organ for the next time it is loaded"));
   save_.onClick = [this] {
-    save_.setButtonText(proc_.saveSettings() ? TRANS("Saved") : TRANS("Could not save"));
+    save_.setButtonText(proc_.saveVoicingEqForOrgan() ? TRANS("Saved") : TRANS("Could not save"));
+  };
+  addAndMakeVisible(saveDefault_);
+  saveDefault_.setTooltip(TRANS("Start every organ with this EQ, unless one is saved for it: "
+                                "a correction for your speakers and room"));
+  saveDefault_.onClick = [this] {
+    saveDefault_.setButtonText(proc_.saveVoicingEqAsDefault() ? TRANS("Saved") : TRANS("Could not save"));
+  };
+  addAndMakeVisible(reset_);
+  reset_.setTooltip(TRANS("Back to the default EQ, and forget the one saved for this organ"));
+  reset_.onClick = [this] {
+    proc_.resetVoicingEqToDefault();
+    showValues();
+    save_.setButtonText(TRANS("Save for this organ"));
+    repaint(curveArea_);
   };
   addAndMakeVisible(note_);
   note_.setText(TRANS("A correction for the room and the speakers, on the whole organ. "
@@ -636,6 +650,7 @@ void VoicingEqPanel::apply() {
   eq.gainDb = gain_.getValue();
   proc_.setVoicingEq(eq);
   save_.setButtonText(TRANS("Save for this organ"));
+  saveDefault_.setButtonText(TRANS("Save as default"));
   repaint(curveArea_);
 }
 
@@ -644,7 +659,9 @@ void VoicingEqPanel::resized() {
   auto top = r.removeFromTop(28);
   on_.setBounds(top.removeFromLeft(70));
   save_.setBounds(top.removeFromRight(150).reduced(2, 0));
-  flat_.setBounds(top.removeFromRight(70).reduced(2, 0));
+  saveDefault_.setBounds(top.removeFromRight(120).reduced(2, 0));
+  reset_.setBounds(top.removeFromRight(70).reduced(2, 0));
+  flat_.setBounds(top.removeFromRight(60).reduced(2, 0));
   note_.setBounds(r.removeFromTop(36));
   curveArea_ = r.removeFromTop(130).reduced(0, 4);
   r.removeFromTop(6);

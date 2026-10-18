@@ -823,6 +823,34 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   return frames * channels * storeBytes;
 }
 
+bool SampleLibrary::rankShipped(const Rank& rank, const OrganModel& model, const std::string& organRootDir) const {
+  // Held already: read at this load, or from a sample cache, which opens the
+  // organ when its installation files are gone.
+  const Store* held = live_.load(std::memory_order_acquire);
+  bool named = false;
+  for (const auto& pipe : rank.pipes)
+    for (const auto& layer : pipe.layers)
+      for (const auto& a : layer.attacks) {
+        const auto it = model.samples.find(a.sample.sampleId);
+        if (it == model.samples.end() || it->second.fileName.empty()) continue;
+        const SampleRef& ref = it->second;
+        named = true;
+        if (held != nullptr && held->count(a.sample.sampleId) != 0) return true;
+        // The format's standard components are generated when they are missing.
+        if (ref.installationPackageId == 1) return true;
+        std::error_code ec;
+        if (std::filesystem::exists(resolveIgnoringCase(resolvePath(rootFor(organRootDir, ref.installationPackageId),
+                                                                    ref.fileName, ref.installationPackageId)),
+                                    ec))
+          return true;
+        if (archive_ != nullptr &&
+            archive_->find(std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
+                               .generic_string()) != nullptr)
+          return true;
+      }
+  return !named;
+}
+
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                         const std::string& organRootDir,
                                         int64_t maxFramesPerSample,

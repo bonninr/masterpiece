@@ -2,6 +2,7 @@
 
 #include <map>
 #include "Settings.h"
+#include "OrganSettings.h"
 #include "../mp_archive/OrganArchive.h"
 
 #include "LoadingDialog.h"
@@ -1489,7 +1490,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
               "reached. The organ plays, but some stops or notes will be silent.\n\n"
               "To load all of it: leave out perspectives or stops in Organ settings, load "
               "16-bit samples or stream the release tails on its Loading tab, or raise the "
-              "limit in General settings if this computer has the memory to spare.")
+              "limit on the same tab if this computer has the memory to spare.")
             .replace("%1", juce::String(result.samples.loaded))
             .replace("%2", juce::String(result.samples.wanted))
             .replace("%3", juce::String(percent))
@@ -2012,6 +2013,9 @@ void MasterpieceEditor::changeListenerCallback(juce::ChangeBroadcaster* src) {
 void MasterpieceEditor::timerCallback() {
   // The model is the loader's until the load ends: nothing reads it here.
   if (loading_) return;
+  // The console's display, set up on the Display tab: only lines whose text
+  // changed go out, so a steady display costs nothing.
+  proc_.pumpLcdPanels();
   // The console follows the engine by itself, and repaints what changed. The
   // stop list follows the console, pistons and MIDI the same way (#56): it
   // used to show only what was clicked in it.
@@ -2195,6 +2199,43 @@ void MasterpieceEditor::timerCallback() {
 // Processor -> editor hook (kept here to keep mp_audio UI-free).
 namespace mp {
 juce::AudioProcessorEditor* MasterpieceProcessor::createEditor() {
-  return new ui::MasterpieceEditor(*this);
+  // The plugins' editor. The application builds its own and gives it the
+  // device manager; here the host owns the devices, so General settings has
+  // no Audio or MIDI tab and Organ settings no MIDI tab.
+  auto* ed = new ui::MasterpieceEditor(*this);
+  auto launch = [](std::unique_ptr<juce::Component> panel, const juce::String& title) {
+    juce::DialogWindow::LaunchOptions opts;
+    opts.content.setOwned(panel.release());
+    opts.dialogTitle = title;
+    opts.dialogBackgroundColour = juce::Colour(0xff15171c);
+    opts.escapeKeyTriggersCloseButton = true;
+    opts.useNativeTitleBar = true;
+    opts.resizable = true;
+    ui::launchDialog(opts);
+  };
+  // A host can close the editor while a settings window stays open.
+  const juce::Component::SafePointer<ui::MasterpieceEditor> safe(ed);
+  // A project's organ, restored while this window is open, loads through it.
+  editorLoader = [safe](const juce::File& organ) {
+    auto* e = safe.getComponent();
+    if (e == nullptr) return false;
+    e->loadOrgan(organ, false);
+    return true;
+  };
+  ed->onSettings = [this, safe, launch] {
+    auto panel = std::make_unique<ui::SettingsWindow>(*this, nullptr);
+    panel->setOrganLoader([safe](const juce::File& f) {
+      if (auto* e = safe.getComponent()) e->loadOrgan(f, false);
+    });
+    launch(std::move(panel), TRANS("General settings"));
+  };
+  ed->onOrganSettings = [this, safe, launch] {
+    launch(std::make_unique<ui::OrganSettingsWindow>(*this,
+                                                     [safe] {
+                                                       if (auto* e = safe.getComponent()) e->reloadOrgan();
+                                                     }),
+           TRANS("Organ settings"));
+  };
+  return ed;
 }
 } // namespace mp

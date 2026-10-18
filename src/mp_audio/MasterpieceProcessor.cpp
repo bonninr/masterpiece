@@ -1631,8 +1631,9 @@ bool MasterpieceProcessor::saveSettings() const {
     if (masterPitchSetting() > 0.0)
       text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
-    if (voicingEqSettings_.on || !voicingEqSettings_.flat())
-      text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
+    // Written whatever it is, off and flat too: an organ with a line keeps
+    // it, and one without plays the default EQ.
+    if (organOwnsEq_) text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
   }
 
   return f.replaceWithText(text);
@@ -1653,7 +1654,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   pageWindows_.clear();
   combinationSet_.clear();
   combWindow_ = {};
-  voicingEqSettings_ = {};
+  voicingEqSettings_ = defaultEq_;
+  organOwnsEq_ = false;
   voicingEq_.configure(voicingEqSettings_, sampleRate_);
   excludedStops_.clear();
   excludedPerspectives_.clear();
@@ -1753,6 +1755,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       VoicingEqSettings eq;
       if (eq.fromLine(val.toStdString())) {
         voicingEqSettings_ = eq;
+        organOwnsEq_ = true;
         voicingEq_.configure(eq, sampleRate_);
       }
       continue;
@@ -1835,10 +1838,13 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
+  if (defaultEq_.on || !defaultEq_.flat()) text << "defaulteq " << juce::String(defaultEq_.toLine()) << "\n";
   if (polyphony_ > 0) text << "polyphony " << polyphony_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   if (language_.isNotEmpty()) text << "language " << language_ << "\n";
+  text << "metronome " << juce::String(metronome_.tempo(), 1) << " " << metronome_.beatsPerBar() << " "
+       << juce::String(metronome_.level(), 2) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
@@ -1851,10 +1857,16 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
+  if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
+  if (midiFeedback_) text << "midifeedback 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
     text << "library " << lib.getFullPathName() << "\n";
+  // The prefix last: it is hex bytes with spaces between them.
+  text << "lcd " << (lcdSetup_.on ? 1 : 0) << " " << lcdSetup_.displayNumber << " " << lcdSetup_.width;
+  for (int item : lcdSetup_.lines) text << " " << item;
+  text << " " << lcdSetup_.prefix << "\n";
   if (cacheDir_.getFullPathName().isNotEmpty())
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (packageDir_.getFullPathName().isNotEmpty())
@@ -1949,20 +1961,49 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "midiinputoff") {
       if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
+    } else if (key == "midioutput") {
+      midiOutputName_ = val;  // opened by the application at start
+    } else if (key == "midifeedback") {
+      midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
           std::find(libraries_.begin(), libraries_.end(), dir) == libraries_.end())
         libraries_.push_back(dir);
+    } else if (key == "lcd") {
+      // "lcd <on> <display> <width> <line1..line4> <prefix bytes...>"
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() >= 8) {
+        LcdSetup s;
+        s.on = parts[0].getIntValue() != 0;
+        s.displayNumber = parts[1].getIntValue();
+        s.width = parts[2].getIntValue();
+        for (size_t i = 0; i < s.lines.size(); ++i) s.lines[i] = parts[3 + static_cast<int>(i)].getIntValue();
+        juce::StringArray prefix;
+        for (int i = 7; i < parts.size(); ++i) prefix.add(parts[i]);
+        s.prefix = prefix.joinIntoString(" ");
+        lcdSetup_ = s;
+        applyLcdSetup();
+      }
     } else if (key == "cachedir") {
       // A path, taken whole: the sample cache can be gigabytes, and a player
       // with a small fast disk and a large slow one wants to choose which of
       // them holds it.
       cacheDir_ = val.isEmpty() ? juce::File() : juce::File(val);
+    } else if (key == "defaulteq") {
+      VoicingEqSettings eq;
+      if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
     } else if (key == "packagedir") {
       packageDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
       lastOrgan_ = juce::File(val);
+    } else if (key == "metronome") {
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() >= 3) {
+        metronome_.setTempo(parts[0].getDoubleValue());
+        metronome_.setBeatsPerBar(parts[1].getIntValue());
+        metronome_.setLevel(static_cast<float>(parts[2].getDoubleValue()));
+      }
     } else if (key == "openfolder") {
       openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "dialogfolder") {
@@ -1999,6 +2040,25 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   return true;
 }
 
+bool MasterpieceProcessor::saveVoicingEqForOrgan() {
+  organOwnsEq_ = true;
+  return saveSettings();
+}
+
+bool MasterpieceProcessor::saveVoicingEqAsDefault() {
+  defaultEq_ = voicingEqSettings_;
+  return writeGlobalFile();
+}
+
+bool MasterpieceProcessor::resetVoicingEqToDefault() {
+  setVoicingEq(defaultEq_);
+  const bool owned = organOwnsEq_;
+  organOwnsEq_ = false;
+  // The organ's own line goes from its file, so the next load plays the
+  // default too; an organ that had none has nothing to write.
+  return !owned || saveSettings();
+}
+
 int MasterpieceProcessor::addCurrentOrganToFavourites(int slot) {
   if (loadedOdf_.getFullPathName().isEmpty()) return 0;
   const std::string target = loadedOdf_.getFullPathName().toStdString();
@@ -2031,10 +2091,55 @@ void MasterpieceProcessor::rememberDialogFolder(const juce::String& kind, const 
   writeGlobalFile();
 }
 
+void MasterpieceProcessor::getStateInformation(juce::MemoryBlock& destData) {
+  juce::XmlElement state("MasterpieceState");
+  state.setAttribute("version", 1);
+  if (loadedOdf_.getFullPathName().isNotEmpty()) state.setAttribute("organ", loadedOdf_.getFullPathName());
+  copyXmlToBinary(state, destData);
+}
+
+void MasterpieceProcessor::setStateInformation(const void* data, int sizeInBytes) {
+  const auto state = getXmlFromBinary(data, sizeInBytes);
+  if (state == nullptr || !state->hasTagName("MasterpieceState")) return;
+  const juce::File organ(state->getStringAttribute("organ"));
+  if (organ.getFullPathName().isEmpty() || organ == loadedOdf_) return;
+  // Hosts call this from any thread; the load starts on the message thread.
+  std::weak_ptr<std::atomic<bool>> alive = alive_;
+  juce::MessageManager::callAsync([this, alive, organ] {
+    const auto token = alive.lock();
+    if (token == nullptr || !token->load()) return;
+    if (editorLoader && editorLoader(organ)) return;
+    juce::Logger::writeToLog("state: the project's organ " + organ.getFullPathName() + " loads");
+    loadOrgan(organ);
+  });
+}
+
 void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
   if (openFolder_ == folder) return;
   openFolder_ = folder;
   writeGlobalFile();
+}
+
+bool MasterpieceProcessor::openMidiOutput(const juce::String& name) {
+  std::unique_ptr<juce::MidiOutput> opened;
+  if (name.isNotEmpty())
+    for (const auto& d : juce::MidiOutput::getAvailableDevices())
+      if (d.name == name) {
+        opened = juce::MidiOutput::openDevice(d.identifier);
+        break;
+      }
+  {
+    // The audio thread sends through it: swapped between blocks.
+    const AudioLock audio(*this);
+    midiOut_ = opened.get();
+    ownedMidiOut_.swap(opened);
+  }
+  opened.reset();  // the old port closes outside the lock
+  if (midiOutputName_ != name) {
+    midiOutputName_ = name;
+    writeGlobalFile();
+  }
+  return name.isEmpty() || midiOut_ != nullptr;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -2840,8 +2945,9 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     //
     // The empty() guard is the point of the whole lookup: an organ
     // nobody has voiced must not pay two hash lookups for every pipe of
-    // every chord.
-    if (!voicing_.live().empty()) {
+    // every chord. The Voicing box (Organ settings, Loading) turns it off,
+    // to hear the set as recorded against the voicing (#399).
+    if (graph_.engineSwitch.enableVoicing && !voicing_.live().empty()) {
       const PipeVoicing pv =
           voicing_.live().effective(rankId, pipe.pipeId);
       if (pv.gainDb != 0.0f)
@@ -3863,9 +3969,36 @@ LcdState MasterpieceProcessor::lcdState() const {
   s.stopsDrawn = static_cast<int>(engagedStops_.size());
   if (const Id cres = stages_.crescendoControl())
     s.crescendoStep = static_cast<int>(stages_.currentStep(cres));
-  // Transpose and combination-set name have no engine-side owner yet; a panel
-  // asking for them reads the default rather than a made-up value.
+  s.transpose = transpose();
+  s.combinationSet = combinationSet_.empty() ? std::string("(default)") : combinationSet_;
   return s;
+}
+
+void MasterpieceProcessor::applyLcdSetup() {
+  lcd_.clear();
+  if (!lcdSetup_.on) return;
+  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
+  // non-commercial id: a typo leaves something on the wire to see.
+  std::vector<uint8_t> header;
+  for (const auto& tok : juce::StringArray::fromTokens(lcdSetup_.prefix, " ", ""))
+    if (tok.isNotEmpty()) header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
+  if (!lcd_.setHeader(header)) lcd_.setHeader({0x7D});
+  LcdPanel p;
+  p.hardwareId = juce::jlimit(0, 15, lcdSetup_.displayNumber);
+  p.lineWidth = lcdSetup_.width;
+  const LcdField byItem[] = {LcdField::Literal,     LcdField::OrganName,  LcdField::Temperament,
+                             LcdField::PitchHz,     LcdField::Transpose,  LcdField::StopsDrawn,
+                             LcdField::CrescendoStep, LcdField::CombinationSet};
+  for (int item : lcdSetup_.lines) p.lines.push_back({byItem[juce::jlimit(1, 8, item) - 1], ""});
+  lcd_.addPanel(std::move(p));
+}
+
+void MasterpieceProcessor::setLcdSetup(const LcdSetup& setup) {
+  lcdSetup_ = setup;
+  if (lcdSetup_.prefix.trim().isEmpty()) lcdSetup_.prefix = "7D";
+  applyLcdSetup();
+  refreshLcdPanels();
+  writeGlobalFile();
 }
 
 int MasterpieceProcessor::pumpLcdPanels() {
@@ -4208,7 +4341,7 @@ void MasterpieceProcessor::findPalletStops() {
   palletStops_.clear();
   std::unordered_set<Id> pallets;
   for (const auto& [rankId, rank] : model_.ranks) {
-    (void)rankId;
+    if (unshippedRanks_.count(rankId) != 0) continue;
     for (const Pipe& pipe : rank.pipes)
       if (pipe.palletSwitchId != 0) pallets.insert(pipe.palletSwitchId);
   }
@@ -5836,6 +5969,15 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // more than one left out. It and its copies on other pages are drawn as
   // the set draws them, with no veil: a click on one is refused, and a
   // tooltip names it as not available.
+  // Only a load that reads samples can tell: a graphics-only one has no
+  // archive and holds nothing, and every rank would look unshipped.
+  unshippedRanks_.clear();
+  if (!graphicsOnly)
+    for (const auto& [rankId, rank] : model_.ranks)
+      if (!rank.pipes.empty() && !samples_.rankShipped(rank, model_, organRootDir_)) unshippedRanks_.insert(rankId);
+  if (!unshippedRanks_.empty())
+    juce::Logger::writeToLog("load: " + juce::String((int)unshippedRanks_.size()) +
+                             " rank(s) list pipes and ship no samples; their stops are not available");
   findPalletStops();
   std::unordered_set<Id> silent;
   lockedStops_.clear();
@@ -6079,7 +6221,7 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
     e.playable = palletStops_.count(id) != 0;
     for (const auto& entry : stop.ranks) {
       const auto rit = model_.ranks.find(entry.rankId);
-      if (rit != model_.ranks.end() && !rit->second.pipes.empty()) {
+      if (rit != model_.ranks.end() && !rit->second.pipes.empty() && unshippedRanks_.count(entry.rankId) == 0) {
         e.playable = true;
         break;
       }
