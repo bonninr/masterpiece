@@ -144,7 +144,7 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 | **Output pairs** | The number of stereo pairs, mixed to the stereo output. Pair N is assigned device channels 2N-1 and 2N. | **1 (stereo)** | **1 (stereo)**, **2 pairs** to **8 pairs** | At once |
 | Status line | Reads **N rank(s), N pair(s)**, and **N unrouted, N stale** when a rank has no pair or points at a pair that no longer exists. | | | |
 | **Spread ranks evenly** | Assigns the ranks to the pairs in turn, so the routing is audible at once. | | | At once |
-| **All to bus 1** | Sends every rank to the first pair. | | | At once |
+| **All to pair 1** | Sends every rank to the first pair. | | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routing. | | | At once |
 | Rank list | One row per rank, labelled with the rank number and name, with a **Pair N** box. A rank that points at a pair removed by lowering **Output pairs** returns to **Pair 1**. | **Pair 1** | **Pair 1** to the chosen number of pairs | At once |
 

@@ -118,7 +118,7 @@ The engine has one switch. **Organ settings > Loading > Faster audio engine** re
 | **Output pairs** | **1 (stereo)** and **2 pairs** to **8 pairs**. Lowering the count folds ranks that pointed at a removed pair back to **Pair 1**. | 1 | At once for notes started afterwards |
 | Status line | `N rank(s), M pair(s)`; when something is wrong it adds `X unrouted, Y stale` | | |
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
-| **All to bus 1** | Puts every rank on **Pair 1** | | At once |
+| **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
 | Rank list | One row per rank, labelled with its number and name, with a **Pair** box | **Pair 1** | At once |
 
