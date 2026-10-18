@@ -784,9 +784,9 @@ public:
     writeGlobalFile();
   }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
-  // the processor has them. Off by default while it is experimental; the
-  // per-frame path is the one every earlier version used. Takes effect at
-  // once. MASTERPIECE_SIMD=0 in the environment still forces it off.
+  // the processor has them. On by default since 0.7.11; off, the per-frame
+  // path of the earlier versions plays. Takes effect at once.
+  // MASTERPIECE_SIMD=0 in the environment still forces it off.
   bool fasterEngine() const { return fasterEngine_.load(); }
   // What a program that has never been told starts with.
   static bool fasterEngineByDefault() { return true; }
