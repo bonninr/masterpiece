@@ -367,8 +367,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(reopen_);
   reopen_.setToggleState(proc_.reopenLastOrgan(), juce::dontSendNotification);
   reopen_.setTooltip(
-      TRANS("Off by default. Even when on, an organ that was loaded when Masterpiece "
-            "last closed unexpectedly is not reopened."));
+      TRANS("Off by default. On, the organ last loaded completely opens at start, "
+            "after an unexpected close too."));
   reopen_.onClick = [this] { proc_.setReopenLastOrgan(reopen_.getToggleState()); };
   // The vector engine, on unless the player turns it off. It changes at
   // once, so the same chord can be heard both ways.

@@ -440,7 +440,7 @@ void CombinationsPanel::refreshState() {
   note_.setText(map.learning()
                     ? TRANS("Now press the control on your console that should do "
                             "this. Right-click the piston again to cancel.")
-                    : TRANS("Hold Set and press a piston to store what is drawn. "
+                    : TRANS("Press Set, then a piston, to store what is drawn. "
                             "A piston never set does nothing. Right-click any piston "
                             "to map it to your console."),
                 juce::dontSendNotification);
