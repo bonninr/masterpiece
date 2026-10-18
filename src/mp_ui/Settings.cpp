@@ -1266,16 +1266,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
 
   addAndMakeVisible(output_);
   output_.onChange = [this] {
-    // Opening the port here rather than in the engine: the device belongs to
-    // the application, and the engine only ever borrows a pointer to it.
-    proc_.setMidiOutput(nullptr);
-    openedOutput_.reset();
-    const int idx = output_.getSelectedId() - 2; // id 1 is "None"
-    const auto devs = juce::MidiOutput::getAvailableDevices();
-    if (idx >= 0 && idx < devs.size()) {
-      openedOutput_ = juce::MidiOutput::openDevice(devs[idx].identifier);
-      proc_.setMidiOutput(openedOutput_.get());
-    }
+    // The processor holds the port and keeps the choice: the console's lamps
+    // and displays follow it after this window closes, and at the next start.
+    const int id = output_.getSelectedId();
+    proc_.openMidiOutput(id > 1 ? output_.getItemText(output_.indexOfItemId(id)) : juce::String());
   };
 
   addAndMakeVisible(feedback_);
@@ -1387,10 +1381,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   startTimerHz(2);
 }
 
-MidiPanel::~MidiPanel() {
-  stopTimer();
-  proc_.setMidiOutput(nullptr);
-}
+MidiPanel::~MidiPanel() { stopTimer(); }
 
 // Manuals that answer the same channel, named. Sharing one is a way of
 // playing two divisions from one keyboard; doing it unawares is how a manual
@@ -1504,9 +1495,10 @@ void MidiPanel::refresh() {
       // manual, and one keyboard playing two divisions is a coupler a player
       // can build for themselves. The line under the row says who else is on
       // it, so nothing is hidden.
-      if (raw->getSelectedId() > 1)
-        proc_.keepRouting();
-        proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
+      // A channel chosen keeps the player's routing. Default is channel 0,
+      // which removes this manual's own binding and leaves the organ's.
+      if (raw->getSelectedId() > 1) proc_.keepRouting();
+      proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
       proc_.saveMidiMap();
       showSharedChannels();
     };
@@ -1545,10 +1537,18 @@ void MidiPanel::refresh() {
 
   output_.clear(juce::dontSendNotification);
   output_.addItem(TRANS("None"), 1);
-  int id = 2;
-  for (const auto& out : juce::MidiOutput::getAvailableDevices())
+  int id = 2, chosen = 1;
+  for (const auto& out : juce::MidiOutput::getAvailableDevices()) {
+    if (out.name == proc_.midiOutputName()) chosen = id;
     output_.addItem(out.name, id++);
-  output_.setSelectedId(1, juce::dontSendNotification);
+  }
+  // The port chosen before, though it is not plugged in now: the choice is
+  // kept, and shown as it is.
+  if (chosen == 1 && proc_.midiOutputName().isNotEmpty()) {
+    chosen = id;
+    output_.addItem(proc_.midiOutputName(), id++);
+  }
+  output_.setSelectedId(chosen, juce::dontSendNotification);
   resized();
 }
 

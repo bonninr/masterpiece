@@ -14139,6 +14139,35 @@ public:
 };
 static MidiInputKeptOffTest g_midiInputKeptOff;
 
+// The console's MIDI output and the echo to it are kept: the output was the
+// settings window's, and closed with it (#395). A port that is not plugged
+// in keeps its name for when it is.
+class MidiOutputKeptTest final : public mp::test::Test {
+public:
+  MidiOutputKeptTest() : Test("functional.midi.output-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(!proc.openMidiOutput("A console that is not plugged in"), "a port that is not there does not open");
+      proc.setMidiFeedbackEnabled(true);
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
+      MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
+      MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiOutputKeptTest g_midiOutputKept;
+
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
 // is one level further up. Drawing a stop from the stop list or a combination

@@ -1851,6 +1851,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
+  if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
+  if (midiFeedback_) text << "midifeedback 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -1949,6 +1951,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "midiinputoff") {
       if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
+    } else if (key == "midioutput") {
+      midiOutputName_ = val;  // opened by the application at start
+    } else if (key == "midifeedback") {
+      midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -2035,6 +2041,28 @@ void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
   if (openFolder_ == folder) return;
   openFolder_ = folder;
   writeGlobalFile();
+}
+
+bool MasterpieceProcessor::openMidiOutput(const juce::String& name) {
+  std::unique_ptr<juce::MidiOutput> opened;
+  if (name.isNotEmpty())
+    for (const auto& d : juce::MidiOutput::getAvailableDevices())
+      if (d.name == name) {
+        opened = juce::MidiOutput::openDevice(d.identifier);
+        break;
+      }
+  {
+    // The audio thread sends through it: swapped between blocks.
+    const AudioLock audio(*this);
+    midiOut_ = opened.get();
+    ownedMidiOut_.swap(opened);
+  }
+  opened.reset();  // the old port closes outside the lock
+  if (midiOutputName_ != name) {
+    midiOutputName_ = name;
+    writeGlobalFile();
+  }
+  return name.isEmpty() || midiOut_ != nullptr;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {

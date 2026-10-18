@@ -1131,9 +1131,21 @@ public:
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
   juce::MidiOutput* midiOutput() const { return midiOut_; }
+  // The console's output port, opened by name and kept in the general
+  // settings: lamps, displays and key echo reach the console with any window
+  // open or none, and the port opens again at the next start (Main.cpp). An
+  // empty name closes it. False when no port of that name is there; the name
+  // is kept for when the console is plugged in.
+  bool openMidiOutput(const juce::String& name);
+  const juce::String& midiOutputName() const { return midiOutputName_; }
   // Echo switch changes to the console. Off by default: a console that echoes
-  // what it just sent can latch itself into a loop.
-  void setMidiFeedbackEnabled(bool on) { midiFeedback_ = on; }
+  // what it just sent can latch itself into a loop. Kept in the general
+  // settings.
+  void setMidiFeedbackEnabled(bool on) {
+    if (midiFeedback_ == on) return;
+    midiFeedback_ = on;
+    writeGlobalFile();
+  }
   bool midiFeedbackEnabled() const { return midiFeedback_; }
 
   // Console LCD panels. Configured by the player, because the framing belongs
@@ -1651,7 +1663,9 @@ private:
   double windDepth_ = 1.0;
   LoadProgress loadProgress_;
   bool applyOrganTrim_ = true;
-  juce::MidiOutput* midiOut_ = nullptr; // owned by the application
+  juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
+  std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
+  juce::String midiOutputName_;
   bool midiFeedback_ = false;
   LcdPanels lcd_;
   // The player's mixer. Defaults to one stereo bus, which makes the whole
