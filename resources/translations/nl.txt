@@ -560,7 +560,7 @@ countries: nl be sr
 "Reset this" = "Deze terugzetten"
 "Reset everything" = "Alles terugzetten"
 "Spread ranks evenly" = "Pijpenrijen gelijkmatig verdelen"
-"All to bus 1" = "Alles naar bus 1"
+"All to pair 1" = "Alles naar paar 1"
 "Open the log folder" = "Logboekmap openen"
 "Run the checks" = "Controles uitvoeren"
 "Copy the report" = "Rapport kopiëren"

@@ -560,7 +560,7 @@ countries: pl
 "Reset this" = "Zresetuj ten"
 "Reset everything" = "Zresetuj wszystko"
 "Spread ranks evenly" = "Rozłóż szeregi równomiernie"
-"All to bus 1" = "Wszystko na szynę 1"
+"All to pair 1" = "Wszystko na parę 1"
 "Open the log folder" = "Otwórz folder dziennika"
 "Run the checks" = "Uruchom sprawdzanie"
 "Copy the report" = "Kopiuj raport"

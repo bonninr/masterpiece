@@ -396,7 +396,7 @@ private:
   juce::Label status_;
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
-  juce::TextButton reset_{TRANS("All to bus 1")};
+  juce::TextButton reset_{TRANS("All to pair 1")};
   // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
   juce::Viewport viewport_;
   juce::Component rankHolder_;

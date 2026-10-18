@@ -560,7 +560,7 @@ countries: it ch sm va
 "Reset this" = "Ripristina questo"
 "Reset everything" = "Ripristina tutto"
 "Spread ranks evenly" = "Distribuisci le file in modo uniforme"
-"All to bus 1" = "Tutto sul bus 1"
+"All to pair 1" = "Tutto sulla coppia 1"
 "Open the log folder" = "Apri la cartella dei log"
 "Run the checks" = "Esegui i controlli"
 "Copy the report" = "Copia il rapporto"

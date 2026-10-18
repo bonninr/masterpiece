@@ -560,7 +560,7 @@ countries: de at ch li lu
 "Reset this" = "Diesen zurücksetzen"
 "Reset everything" = "Alles zurücksetzen"
 "Spread ranks evenly" = "Reihen gleichmäßig verteilen"
-"All to bus 1" = "Alle auf Bus 1"
+"All to pair 1" = "Alle auf Paar 1"
 "Open the log folder" = "Protokollordner öffnen"
 "Run the checks" = "Prüfungen ausführen"
 "Copy the report" = "Bericht kopieren"
