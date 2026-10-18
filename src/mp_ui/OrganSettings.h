@@ -137,7 +137,8 @@ private:
   void showValues();
   MasterpieceProcessor& proc_;
   juce::ToggleButton on_{TRANS("On")};
-  juce::TextButton flat_{TRANS("Flat")}, save_{TRANS("Save for this organ")};
+  juce::TextButton flat_{TRANS("Flat")}, reset_{TRANS("Reset")}, saveDefault_{TRANS("Save as default")},
+      save_{TRANS("Save for this organ")};
   juce::Label note_;
   std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
   std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;

@@ -13496,6 +13496,63 @@ public:
 };
 static TuningControlsTest g_tuningControls;
 
+// A default voicing EQ for the speakers, which every organ plays until one is
+// saved for it; an organ's own EQ is kept as saved, off and flat too (#401).
+class VoicingEqDefaultTest final : public mp::test::Test {
+public:
+  VoicingEqDefaultTest() : Test("functional.settings.voicing-eq-default", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-eq-default");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    auto organ = [&dir](const char* name, int id) {
+      const juce::File f = dir.getChildFile(juce::String(name) + ".Organ_Hauptwerk_xml");
+      f.replaceWithText("<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>" +
+                        juce::String(id) + "</Identification_UniqueOrganID><Identification_Name>" + name +
+                        "</Identification_Name></_General></ObjectList></Hauptwerk>");
+      return f;
+    };
+    const juce::File a = organ("EQ A", 3911), b = organ("EQ B", 3912);
+    {
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(a, 0, true).ok, "the first organ loads");
+      mp::VoicingEqSettings eq;
+      eq.on = true;
+      eq.gainDb = -3.0;
+      proc.setVoicingEq(eq);
+      MP_CHECK(proc.saveVoicingEqAsDefault(), "the EQ is saved as the default");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok, "the second organ loads");
+      MP_CHECK(proc.voicingEq().on && proc.voicingEq().gainDb == -3.0 && !proc.organHasOwnVoicingEq(),
+               "an organ with no EQ of its own plays the default");
+      proc.setVoicingEq({});  // off and flat, saved for this organ
+      MP_CHECK(proc.saveVoicingEqForOrgan(), "the organ's own EQ is saved");
+      MP_CHECK(proc.loadOrgan(a, 0, true).ok && proc.voicingEq().on, "the other organ still plays the default");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok && !proc.voicingEq().on && proc.organHasOwnVoicingEq(),
+               "and this one keeps its own, off as it was saved");
+      MP_CHECK(proc.resetVoicingEqToDefault() && proc.voicingEq().on, "Reset brings the default back");
+      MP_CHECK(proc.loadOrgan(b, 0, true).ok && proc.voicingEq().on && !proc.organHasOwnVoicingEq(),
+               "and the organ's own is forgotten");
+      proc.settingsFileFor(a).deleteFile();
+      proc.settingsFileFor(b).deleteFile();
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.defaultVoicingEq().on && proc.defaultVoicingEq().gainDb == -3.0, "the default EQ is kept");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static VoicingEqDefaultTest g_voicingEqDefault;
+
 // #53: a level set on the organ's own settings page was back at its default
 // after a restart. Moving a control the organ marks RememberStateFromLastLoad
 // wrote nothing unless something else saved the file later, and remembered
