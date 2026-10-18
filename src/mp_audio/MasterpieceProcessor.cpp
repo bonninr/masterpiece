@@ -1855,6 +1855,10 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
     text << "library " << lib.getFullPathName() << "\n";
+  // The prefix last: it is hex bytes with spaces between them.
+  text << "lcd " << (lcdSetup_.on ? 1 : 0) << " " << lcdSetup_.displayNumber << " " << lcdSetup_.width;
+  for (int item : lcdSetup_.lines) text << " " << item;
+  text << " " << lcdSetup_.prefix << "\n";
   if (cacheDir_.getFullPathName().isNotEmpty())
     text << "cachedir " << cacheDir_.getFullPathName() << "\n";
   if (packageDir_.getFullPathName().isNotEmpty())
@@ -1954,6 +1958,21 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (val.isNotEmpty() &&
           std::find(libraries_.begin(), libraries_.end(), dir) == libraries_.end())
         libraries_.push_back(dir);
+    } else if (key == "lcd") {
+      // "lcd <on> <display> <width> <line1..line4> <prefix bytes...>"
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() >= 8) {
+        LcdSetup s;
+        s.on = parts[0].getIntValue() != 0;
+        s.displayNumber = parts[1].getIntValue();
+        s.width = parts[2].getIntValue();
+        for (size_t i = 0; i < s.lines.size(); ++i) s.lines[i] = parts[3 + static_cast<int>(i)].getIntValue();
+        juce::StringArray prefix;
+        for (int i = 7; i < parts.size(); ++i) prefix.add(parts[i]);
+        s.prefix = prefix.joinIntoString(" ");
+        lcdSetup_ = s;
+        applyLcdSetup();
+      }
     } else if (key == "cachedir") {
       // A path, taken whole: the sample cache can be gigabytes, and a player
       // with a small fast disk and a large slow one wants to choose which of
@@ -3863,9 +3882,36 @@ LcdState MasterpieceProcessor::lcdState() const {
   s.stopsDrawn = static_cast<int>(engagedStops_.size());
   if (const Id cres = stages_.crescendoControl())
     s.crescendoStep = static_cast<int>(stages_.currentStep(cres));
-  // Transpose and combination-set name have no engine-side owner yet; a panel
-  // asking for them reads the default rather than a made-up value.
+  s.transpose = transpose();
+  s.combinationSet = combinationSet_.empty() ? std::string("(default)") : combinationSet_;
   return s;
+}
+
+void MasterpieceProcessor::applyLcdSetup() {
+  lcd_.clear();
+  if (!lcdSetup_.on) return;
+  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
+  // non-commercial id: a typo leaves something on the wire to see.
+  std::vector<uint8_t> header;
+  for (const auto& tok : juce::StringArray::fromTokens(lcdSetup_.prefix, " ", ""))
+    if (tok.isNotEmpty()) header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
+  if (!lcd_.setHeader(header)) lcd_.setHeader({0x7D});
+  LcdPanel p;
+  p.hardwareId = juce::jlimit(0, 15, lcdSetup_.displayNumber);
+  p.lineWidth = lcdSetup_.width;
+  const LcdField byItem[] = {LcdField::Literal,     LcdField::OrganName,  LcdField::Temperament,
+                             LcdField::PitchHz,     LcdField::Transpose,  LcdField::StopsDrawn,
+                             LcdField::CrescendoStep, LcdField::CombinationSet};
+  for (int item : lcdSetup_.lines) p.lines.push_back({byItem[juce::jlimit(1, 8, item) - 1], ""});
+  lcd_.addPanel(std::move(p));
+}
+
+void MasterpieceProcessor::setLcdSetup(const LcdSetup& setup) {
+  lcdSetup_ = setup;
+  if (lcdSetup_.prefix.trim().isEmpty()) lcdSetup_.prefix = "7D";
+  applyLcdSetup();
+  refreshLcdPanels();
+  writeGlobalFile();
 }
 
 int MasterpieceProcessor::pumpLcdPanels() {

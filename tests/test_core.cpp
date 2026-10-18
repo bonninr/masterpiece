@@ -13912,6 +13912,45 @@ public:
 };
 static DeviceSysExReloadTest g_deviceSysExReload;
 
+// The console display's setup is kept: it was the settings tab's, cleared
+// each time the tab opened (#396).
+class ConsoleDisplayKeptTest final : public mp::test::Test {
+public:
+  ConsoleDisplayKeptTest() : Test("functional.midi.console-display-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      mp::MasterpieceProcessor::LcdSetup lcd;
+      lcd.on = true;
+      lcd.displayNumber = 3;
+      lcd.width = 20;
+      lcd.prefix = "00 21 7F";
+      lcd.lines = {2, 5, 6, 8};
+      proc.setLcdSetup(lcd);
+      MP_CHECK(proc.lcdPanels().panels().size() == 1 && proc.lcdPanels().panels()[0].lines.size() == 4,
+               "the setup builds the display");
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      const auto& lcd = proc.lcdSetup();
+      const std::array<int, 4> lines{2, 5, 6, 8};
+      MP_CHECK(lcd.on && lcd.displayNumber == 3 && lcd.width == 20 && lcd.prefix == "00 21 7F" &&
+                   lcd.lines == lines,
+               "the console display comes back as it was set up");
+      MP_CHECK(proc.lcdPanels().panels().size() == 1, "and drives the display at once");
+      MP_CHECK(!proc.lcdState().combinationSet.empty(), "the combination set line has its name");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static ConsoleDisplayKeptTest g_consoleDisplayKept;
+
 // Telling consoles apart across runs, as GrandOrgue does (MidiDevices.h).
 class MidiDeviceMatchTest final : public mp::test::Test {
 public:

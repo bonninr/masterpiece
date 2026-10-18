@@ -2430,12 +2430,17 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
     for (const auto& f : fields) lines_[i]->addItem(f, id++);
     lines_[i]->onChange = [this] { rebuild(); };
   }
-  // Something useful out of the box, so the first send shows the player it is
-  // working rather than four blank lines.
-  lines_[0]->setSelectedId(2, juce::dontSendNotification); // Organ
-  lines_[1]->setSelectedId(3, juce::dontSendNotification); // Temperament
-  lines_[2]->setSelectedId(4, juce::dontSendNotification); // Pitch
-  lines_[3]->setSelectedId(7, juce::dontSendNotification); // Crescendo
+  // The setup as it was left, kept by the processor; out of the box the organ,
+  // temperament, pitch and crescendo, so the first send shows it working.
+  const auto& setup = proc_.lcdSetup();
+  enable_.setToggleState(setup.on, juce::dontSendNotification);
+  id_.setValue(setup.displayNumber, juce::dontSendNotification);
+  for (int w = 0, item = 1; w < 4; ++w, ++item)
+    if (const int widths[] = {16, 20, 32, 40}; widths[w] == setup.width)
+      width_.setSelectedId(item, juce::dontSendNotification);
+  header_.setText(setup.prefix, juce::dontSendNotification);
+  for (size_t i = 0; i < lines_.size(); ++i)
+    lines_[i]->setSelectedId(setup.lines[i], juce::dontSendNotification);
 
   addAndMakeVisible(previewLabel_);
   styleLabel(previewLabel_, TRANS("What the display reads"));
@@ -2465,52 +2470,27 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
                   "transliterated, because system exclusive carries seven bits and a "
                   "high byte would end the message rather than draw a character."));
 
-  rebuild();
   startTimerHz(2);
 }
 
 DisplayPanel::~DisplayPanel() { stopTimer(); }
 
-// The panel description belongs to the engine, which owns the state a line
-// shows; this only assembles it from the boxes.
+// The setup belongs to the processor, which owns the state a line shows and
+// keeps the setup; this only reads it off the boxes.
 void DisplayPanel::rebuild() {
-  auto& panels = proc_.lcdPanels();
-  panels.clear();
-  if (!enable_.getToggleState()) return;
-
-  // The prefix, as hex bytes. Anything unparseable falls back to the reserved
-  // non-commercial id rather than to silence, so a typo leaves something on
-  // the wire to see instead of looking like a dead feature.
-  std::vector<uint8_t> header;
-  for (const auto& tok :
-       juce::StringArray::fromTokens(header_.getText(), " ", "")) {
-    if (tok.isEmpty()) continue;
-    header.push_back(static_cast<uint8_t>(tok.getHexValue32() & 0xFF));
-  }
-  if (!panels.setHeader(header)) panels.setHeader({0x7D});
-
-  LcdPanel p;
-  p.hardwareId = static_cast<int>(id_.getValue());
+  MasterpieceProcessor::LcdSetup s;
+  s.on = enable_.getToggleState();
+  s.displayNumber = static_cast<int>(id_.getValue());
   const int widths[] = {16, 20, 32, 40};
-  p.lineWidth = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
-  const LcdField byId[] = {LcdField::Literal,       LcdField::OrganName,
-                           LcdField::Temperament,   LcdField::PitchHz,
-                           LcdField::Transpose,     LcdField::StopsDrawn,
-                           LcdField::CrescendoStep, LcdField::CombinationSet};
-  for (auto& box : lines_) {
-    const int sel = juce::jlimit(1, 8, box->getSelectedId());
-    p.lines.push_back({byId[sel - 1], ""});
-  }
-  panels.addPanel(std::move(p));
-  proc_.refreshLcdPanels();
+  s.width = widths[juce::jlimit(0, 3, width_.getSelectedId() - 1)];
+  s.prefix = header_.getText().trim();
+  for (size_t i = 0; i < lines_.size(); ++i) s.lines[i] = juce::jlimit(1, 8, lines_[i]->getSelectedId());
+  proc_.setLcdSetup(s);
 }
 
 void DisplayPanel::timerCallback() {
-  // The display's own refresh. Twice a second is far faster than anyone reads
-  // a jamb panel and far slower than the wire, and nothing goes out unless a
-  // line's text actually changed.
-  proc_.pumpLcdPanels();
-
+  // The preview. The display itself is sent from the main window, four times
+  // a second, whether or not this tab is open.
   if (!enable_.getToggleState()) {
     preview_.setText("", juce::dontSendNotification);
     return;
