@@ -40,7 +40,7 @@ A pull request that touches only `README.md`, `COPYING`, `LICENCE`, `.gitignore`
 
 By contributing to Masterpiece you agree that your contribution is licensed under the GPL-3.0-only with the additional permission stated in `COPYING`, and that it may be distributed as part of Masterpiece through app stores and other channels, including under their terms.
 
-The additional permission in `COPYING` covers combining a modified version with the JUCE framework under a JUCE licence other than the GPL or AGPL, or with the UnRAR library by RARLAB under its own licence.
+The additional permission in `COPYING` covers combining a modified version with the JUCE framework under a JUCE licence other than the GPL or AGPL.
 
 ## Translating
 
