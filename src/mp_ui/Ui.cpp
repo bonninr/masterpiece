@@ -1489,7 +1489,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
               "reached. The organ plays, but some stops or notes will be silent.\n\n"
               "To load all of it: leave out perspectives or stops in Organ settings, load "
               "16-bit samples or stream the release tails on its Loading tab, or raise the "
-              "limit in General settings if this computer has the memory to spare.")
+              "limit on the same tab if this computer has the memory to spare.")
             .replace("%1", juce::String(result.samples.loaded))
             .replace("%2", juce::String(result.samples.wanted))
             .replace("%3", juce::String(percent))
