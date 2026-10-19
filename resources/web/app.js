@@ -6,7 +6,8 @@
 const api = "api/v1";
 const $ = (id) => document.getElementById(id);
 const state = { session: -1, divisions: [], switches: [], controls: [], generals: [], divisionals: [],
-  eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] } };
+  eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
+  all: { switch: [], control: [] } };
 
 function headers() {
   const h = { "Content-Type": "application/json" };
@@ -71,6 +72,7 @@ function build() {
   const main = $("panels");
   main.replaceChildren();
   state.el = { switch: [], control: [], general: [], divisional: [] };
+  state.all = { switch: [], control: [] };
   if (!state.switches.length && !state.controls.length) {
     main.append(el("div", { class: "empty" }, state.program.organState === 1 ? "Loading the organ..." : "No organ loaded."));
     fillSelects();
@@ -94,8 +96,55 @@ function build() {
     p.classList.add("wide");
     main.append(p);
   }
+  main.append(allPanel());
   fillSelects();
   refreshAll();
+}
+
+// Every switch and control the organ has, its internal ones too, loaded when
+// opened: a large set has thousands. With a filter, and the keyboards.
+function allPanel() {
+  const det = el("details", { class: "all" }, el("summary", {}, "Every switch and control"));
+  const sec = el("section", { class: "wide" }, det);
+  let loaded = false;
+  det.addEventListener("toggle", async () => {
+    if (!det.open || loaded) return;
+    loaded = true;
+    const [sw, ctl, kb] = await Promise.all([get("switches?all=1"), get("controls?all=1"), get("keyboards")]);
+    const filter = el("input", { type: "search", placeholder: "Filter by name or number" });
+    const swBox = el("div", { class: "stops" });
+    const ctlBox = el("div", { class: "controls" });
+    for (const s of sw.items) {
+      const b = el("button", { class: s.role, "data-name": `${s.index} ${s.name}`.toLowerCase(),
+        title: `#${s.index}, file id ${s.odfId}, ${s.role}` }, s.name || `#${s.index}`);
+      b.addEventListener("click", () => s.latching ? setValue("switches", s.index, "toggle") : press("switches", s.index));
+      b.classList.toggle("on", s.value === 1);
+      state.all.switch[s.index] = b;
+      swBox.append(b);
+    }
+    for (const c of ctl.items) {
+      const out = el("span", { class: "dim" }, String(c.value));
+      const r = el("input", { type: "range", min: 0, max: 127, value: c.value });
+      r.addEventListener("input", () => { out.textContent = r.value; setValue("controls", c.index, Number(r.value)); });
+      state.all.control[c.index] = { r, out };
+      const label = el("label", { class: "control", "data-name": `${c.index} ${c.name}`.toLowerCase() },
+        el("span", {}, c.name || `#${c.index}`), r, out);
+      ctlBox.append(label);
+    }
+    filter.addEventListener("input", () => {
+      const q = filter.value.trim().toLowerCase();
+      for (const e of [...swBox.children, ...ctlBox.children])
+        e.style.display = !q || e.dataset.name.includes(q) ? "" : "none";
+    });
+    const keys = el("div", { class: "dim" }, kb.items.map((k) => `${k.name}: MIDI channel ${k.channel}`).join(" · "));
+    det.append(filter,
+      el("h2", {}, `Switches (${sw.count})`), swBox,
+      el("h2", {}, `Controls (${ctl.count})`), ctlBox,
+      el("h2", {}, "Keyboards"), keys);
+  });
+  // ?openall opens it at once, for a screenshot.
+  if (location.search.includes("openall")) setTimeout(() => { det.open = true; }, 0);
+  return sec;
 }
 
 function switchPanel(title, items, kind = "stops") {
@@ -177,12 +226,11 @@ function fillSelects() {
 // ---- showing values -------------------------------------------------------
 
 function showSwitch(i, v) {
-  const b = state.el.switch[i];
-  if (b) b.classList.toggle("on", v === 1);
+  for (const b of [state.el.switch[i], state.all.switch[i]]) if (b) b.classList.toggle("on", v === 1);
 }
 function showControl(i, v) {
-  const c = state.el.control[i];
-  if (c && document.activeElement !== c.r) { c.r.value = v; c.out.textContent = v; }
+  for (const c of [state.el.control[i], state.all.control[i]])
+    if (c && document.activeElement !== c.r) { c.r.value = v; c.out.textContent = v; }
 }
 function showPiston(kind, i, v) {
   const b = state.el[kind][i];
