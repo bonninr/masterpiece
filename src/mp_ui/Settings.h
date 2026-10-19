@@ -444,6 +444,27 @@ private:
   juce::ToggleButton updates_{TRANS("Check once a day for a newer version")};
 };
 
+// The control API and the web console it serves (src/mp_api): on or off, the
+// port, whether the network may change anything, and a token.
+class RemotePanel : public juce::Component, private juce::Timer {
+public:
+  explicit RemotePanel(MasterpieceProcessor& p);
+  void resized() override;
+
+private:
+  void apply();
+  void timerCallback() override;
+  MasterpieceProcessor& proc_;
+  juce::Label heading_, portLabel_, tokenLabel_, status_, note_, oscPortLabel_;
+  juce::ToggleButton enable_{TRANS("Serve the web console and the control API on this network")};
+  juce::ToggleButton write_{TRANS("Allow changes from the network")};
+  juce::ToggleButton power_{TRANS("Allow quitting Masterpiece and shutting the computer down")};
+  juce::ToggleButton sysex_{TRANS("Answer the same requests over MIDI (System Exclusive)")};
+  juce::ToggleButton osc_{TRANS("Answer the same requests over OSC")};
+  juce::TextEditor port_, token_, oscPort_;
+  juce::TextButton open_{TRANS("Open in the browser")};
+};
+
 class DisplayPanel : public juce::Component, private juce::Timer {
 public:
   explicit DisplayPanel(MasterpieceProcessor& p);
@@ -523,6 +544,7 @@ private:
   DisplayPanel display_;
   LanguagePanel language_;
   LogPanel log_;
+  std::unique_ptr<RemotePanel> remote_;
 };
 
 } // namespace mp::ui

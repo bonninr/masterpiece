@@ -194,6 +194,16 @@ public:
   // by a UI timer while the loader's worker threads write it, which is why
   // everything in it is atomic.
   const LoadProgress& loadProgress() const { return loadProgress_; }
+  // True while loadOrgan() runs, on whatever thread; the model is the
+  // loader's then. organLoads() moves on each time one ends.
+  bool organLoading() const { return organLoading_.load(std::memory_order_acquire); }
+  int organLoads() const { return organLoads_.load(std::memory_order_acquire); }
+  // Late blocks since the program started, without taking the worst block
+  // as takeAudioLoad() does.
+  int64_t lateBlocksTotal() const { return lateBlocks_.load(std::memory_order_relaxed); }
+  int soundingVoices() const { return soundingVoices_.load(std::memory_order_relaxed); }
+  // A stop held off because a demo ships no pipework for it. Set at load.
+  bool stopLocked(Id stopId) const { return lockedStops_.count(stopId) > 0; }
   // Ask the running load to stop. Returns immediately; the load ends at the
   // next file boundary and reports itself cancelled.
   void cancelLoad() {
@@ -867,6 +877,37 @@ public:
   // unless the player turns it off, here or in the offer itself.
   bool updateCheckEnabled() const { return updateCheck_; }
   void setUpdateCheckEnabled(bool on);
+
+  // The control API and web console (src/mp_api, protocol/control.yaml),
+  // run by the standalone program. Off by default; the settings live here so
+  // they are kept with the others, and the program is told when they change.
+  struct RemoteSettings {
+    bool enabled = false;
+    int port = 8080;
+    bool allowChanges = true;
+    std::string token;
+    // The quit and power-off commands; off by default.
+    bool allowPowerOff = false;
+    // The same protocol over MIDI System Exclusive, on the MIDI inputs and
+    // the console's output, as this unit number (0-126).
+    bool sysex = false;
+    int sysexUnit = 0;
+    // And over OSC, on this UDP port.
+    bool osc = false;
+    int oscPort = 9000;
+  };
+  const RemoteSettings& remoteSettings() const { return remote_; }
+  void setRemoteSettings(const RemoteSettings& s) {
+    remote_ = s;
+    writeGlobalFile();
+    if (onRemoteSettingsChanged) onRemoteSettingsChanged();
+  }
+  // Set by the program that runs the server: told of a change, and asked for
+  // the server's state and its addresses for the settings.
+  std::function<void()> onRemoteSettingsChanged;
+  std::function<juce::String()> remoteStatus;
+  // Set by the program: save and quit, and with true shut the computer down.
+  std::function<void(bool powerOff)> onPowerRequest;
   // Whether a day has passed since the last check, and its time noted.
   bool updateCheckDue() const;
   void markUpdateChecked();
@@ -1312,6 +1353,9 @@ public:
   // the audio thread, and nothing a panel shows moves faster than a person
   // can read it anyway. Returns how many messages were queued.
   int pumpLcdPanels();
+  // A System Exclusive message to the console's output, sent with the next
+  // audio block as the LCD lines are. Dropped when no output is open.
+  void sendSysexOut(std::vector<uint8_t> bytes);
   // Re-sends every line regardless, for a console plugged in mid-session and
   // for the settings page's test button.
   int refreshLcdPanels();
@@ -1755,6 +1799,8 @@ private:
   float organTrimGain_ = 1.0f;
   double windDepth_ = 1.0;
   LoadProgress loadProgress_;
+  std::atomic<bool> organLoading_{false};
+  std::atomic<int> organLoads_{0};
   bool applyOrganTrim_ = true;
   juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
   std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
@@ -1830,6 +1876,7 @@ private:
   // loop of them.
   bool reopenLastOrgan_ = false;
   bool updateCheck_ = true;
+  RemoteSettings remote_;
   juce::int64 updateCheckedAt_ = 0;  // seconds since 1970, of the last check
   std::atomic<float> keepAliveDb_{0.0f};
   double keepAlivePhase_ = 0.0;  // audio thread only

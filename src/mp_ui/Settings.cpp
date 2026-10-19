@@ -2433,6 +2433,122 @@ void LogPanel::resized() {
   report_.setBounds(r);
 }
 
+RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
+  const auto& s = proc_.remoteSettings();
+  addAndMakeVisible(heading_);
+  styleLabel(heading_, TRANS("Remote control"));
+  addAndMakeVisible(enable_);
+  enable_.setToggleState(s.enabled, juce::dontSendNotification);
+  enable_.setTooltip(TRANS("A page any browser on this network can open to draw stops, press pistons and move "
+                           "the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default."));
+  enable_.onClick = [this] { apply(); };
+  addAndMakeVisible(write_);
+  write_.setToggleState(s.allowChanges, juce::dontSendNotification);
+  write_.setTooltip(TRANS("Off, the network can only read: the stops drawn, the levels, the organ loaded."));
+  write_.onClick = [this] { apply(); };
+  addAndMakeVisible(power_);
+  power_.setToggleState(s.allowPowerOff, juce::dontSendNotification);
+  power_.setTooltip(TRANS("The quit and power-off commands, for a console with no screen. Refused in the first "
+                          "two minutes after Masterpiece starts, so a faulty button cannot shut the computer down "
+                          "at every start. Masterpiece saves before it quits."));
+  power_.onClick = [this] { apply(); };
+  addAndMakeVisible(sysex_);
+  sysex_.setToggleState(s.sysex, juce::dontSendNotification);
+  sysex_.setTooltip(TRANS("For a console with a MIDI cable and no network: requests read on the MIDI inputs, "
+                          "replies and changes sent on the console's MIDI output."));
+  sysex_.onClick = [this] { apply(); };
+  addAndMakeVisible(osc_);
+  osc_.setToggleState(s.osc, juce::dontSendNotification);
+  osc_.setTooltip(TRANS("For control surfaces and apps that speak OSC, such as TouchOSC, on the UDP port "
+                        "beside it."));
+  osc_.onClick = [this] { apply(); };
+  addAndMakeVisible(oscPortLabel_);
+  oscPortLabel_.setText(TRANS("Port"), juce::dontSendNotification);
+  addAndMakeVisible(oscPort_);
+  oscPort_.setInputRestrictions(5, "0123456789");
+  oscPort_.setText(juce::String(s.oscPort), juce::dontSendNotification);
+  oscPort_.onReturnKey = oscPort_.onFocusLost = [this] { apply(); };
+  addAndMakeVisible(portLabel_);
+  portLabel_.setText(TRANS("Port"), juce::dontSendNotification);
+  addAndMakeVisible(port_);
+  port_.setInputRestrictions(5, "0123456789");
+  port_.setText(juce::String(s.port), juce::dontSendNotification);
+  port_.onReturnKey = port_.onFocusLost = [this] { apply(); };
+  addAndMakeVisible(tokenLabel_);
+  tokenLabel_.setText(TRANS("Token"), juce::dontSendNotification);
+  addAndMakeVisible(token_);
+  token_.setPasswordCharacter(0x2022);
+  token_.setText(juce::String::fromUTF8(s.token.c_str()), juce::dontSendNotification);
+  token_.setTooltip(TRANS("When set, a change needs it: the web page asks for it under Access, a console "
+                          "sends it as Authorization: Bearer and the token. Reading needs none."));
+  token_.onReturnKey = token_.onFocusLost = [this] { apply(); };
+  addAndMakeVisible(status_);
+  status_.setJustificationType(juce::Justification::topLeft);
+  addAndMakeVisible(open_);
+  open_.onClick = [this] {
+    juce::URL("http://localhost:" + juce::String(proc_.remoteSettings().port) + "/").launchInDefaultBrowser();
+  };
+  addAndMakeVisible(note_);
+  styleNote(note_, TRANS("While it is on, anyone on this network can open the page. Without a token, anyone can "
+                          "also change the registration from it; with one, only those who know it."));
+  timerCallback();
+  startTimerHz(1);
+}
+
+void RemotePanel::apply() {
+  MasterpieceProcessor::RemoteSettings s;
+  s.enabled = enable_.getToggleState();
+  s.allowChanges = write_.getToggleState();
+  s.allowPowerOff = power_.getToggleState();
+  s.port = juce::jlimit(1, 65535, port_.getText().getIntValue() > 0 ? port_.getText().getIntValue() : 8080);
+  port_.setText(juce::String(s.port), juce::dontSendNotification);
+  s.token = token_.getText().trim().toStdString();
+  const auto& now = proc_.remoteSettings();
+  s.sysex = sysex_.getToggleState();
+  s.sysexUnit = now.sysexUnit;
+  s.osc = osc_.getToggleState();
+  s.oscPort = juce::jlimit(1, 65535, oscPort_.getText().getIntValue() > 0 ? oscPort_.getText().getIntValue() : 9000);
+  oscPort_.setText(juce::String(s.oscPort), juce::dontSendNotification);
+  if (s.enabled == now.enabled && s.allowChanges == now.allowChanges && s.port == now.port && s.token == now.token &&
+      s.allowPowerOff == now.allowPowerOff && s.sysex == now.sysex && s.osc == now.osc && s.oscPort == now.oscPort)
+    return;
+  proc_.setRemoteSettings(s);
+  timerCallback();
+}
+
+void RemotePanel::timerCallback() {
+  status_.setText(proc_.remoteStatus ? proc_.remoteStatus() : juce::String(), juce::dontSendNotification);
+  open_.setEnabled(proc_.remoteSettings().enabled);
+}
+
+void RemotePanel::resized() {
+  auto r = getLocalBounds().reduced(16);
+  heading_.setBounds(r.removeFromTop(28));
+  r.removeFromTop(6);
+  enable_.setBounds(r.removeFromTop(28));
+  write_.setBounds(r.removeFromTop(28));
+  power_.setBounds(r.removeFromTop(28));
+  sysex_.setBounds(r.removeFromTop(28));
+  {
+    auto oscRow = r.removeFromTop(28);
+    oscPort_.setBounds(oscRow.removeFromRight(90).reduced(0, 2));
+    oscPortLabel_.setBounds(oscRow.removeFromRight(50));
+    osc_.setBounds(oscRow);
+  }
+  r.removeFromTop(6);
+  auto row = r.removeFromTop(28);
+  portLabel_.setBounds(row.removeFromLeft(60));
+  port_.setBounds(row.removeFromLeft(90).reduced(0, 2));
+  row.removeFromLeft(20);
+  tokenLabel_.setBounds(row.removeFromLeft(60));
+  token_.setBounds(row.removeFromLeft(220).reduced(0, 2));
+  r.removeFromTop(10);
+  status_.setBounds(r.removeFromTop(70));
+  open_.setBounds(r.removeFromTop(30).removeFromLeft(200).reduced(0, 1));
+  r.removeFromTop(12);
+  note_.setBounds(r.removeFromTop(60));
+}
+
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Console display"));
@@ -2657,6 +2773,12 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);
   tabs_.addTab(TRANS("Display"), bg, &display_, false);
   tabs_.addTab(TRANS("Language"), bg, &language_, false);
+  // Only where the program runs the server: the standalone program sets
+  // remoteStatus; a plugin does not.
+  if (p.remoteStatus) {
+    remote_ = std::make_unique<RemotePanel>(p);
+    tabs_.addTab(TRANS("Remote"), bg, remote_.get(), false);
+  }
   tabs_.addTab(TRANS("Log"), bg, &log_, false);
   // The Engine tab is the tallest: six switches, five memory controls, a
   // readout and a footer. Adding a row without adding height pushes the

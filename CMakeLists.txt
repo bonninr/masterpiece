@@ -117,6 +117,31 @@ else()
   find_package(pugixml CONFIG REQUIRED)
 endif()
 
+# ---- cpp-httplib (the control API's HTTP server, src/mp_api) ----
+# One header, MIT-licensed, no TLS and no compression: the server answers on
+# the local network only. Not on phones and tablets, whose systems stop a
+# server in the background anyway.
+if(ANDROID OR IOS OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(MP_ENABLE_API_DEFAULT OFF)
+else()
+  set(MP_ENABLE_API_DEFAULT ON)
+endif()
+option(MP_ENABLE_API "The control API and web console (HTTP)" ${MP_ENABLE_API_DEFAULT})
+set(MP_HTTPLIB_TAG "v0.18.1" CACHE STRING "cpp-httplib git tag for FetchContent")
+if(MP_ENABLE_API)
+  include(FetchContent)
+  # Only the header: its own CMake project would look for OpenSSL, zlib and
+  # brotli, none of which this needs.
+  FetchContent_Declare(
+    httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG ${MP_HTTPLIB_TAG}
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR do-not-build
+  )
+  FetchContent_MakeAvailable(httplib)
+endif()
+
 # ---- libarchive (organs played straight from their RAR packages) ----
 # Read-only, and only for RAR: its own RAR and RAR5 decoders need no other
 # library, so every optional codec, crypto backend and tool is switched off.
