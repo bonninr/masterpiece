@@ -11,6 +11,10 @@
 
 #include <juce_core/juce_core.h>
 
+#include "../mp_control/PlayerCombinations.h"
+
+#include <unordered_map>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -74,6 +78,9 @@ private:
     bool console = true;
   };
   bool consoleObject(Type type, int index) const;
+  // The switches a stored piston would draw, as indices into switches_.
+  juce::var holds(const std::vector<PlayerCombinations::Change>& changes) const;
+  std::unordered_map<int64_t, int> switchIndex_;  // switch id -> index
   Error quitOrPowerOff(bool powerOff);
   // Builds the lists for the organ now loaded; nothing while one loads.
   bool ensure(Error& error);

@@ -59,7 +59,7 @@ types:
     value: {min: 0, max: 1}
     access: press
     dump: bits
-    properties: [name, set]
+    properties: [name, set, holds]
   - code: 6
     name: divisional
     plural: divisionals
@@ -67,7 +67,7 @@ types:
     value: {min: 0, max: 1}
     access: press
     dump: bits
-    properties: [name, division, set]
+    properties: [name, division, set, holds]
   - code: 7
     name: eqpreset
     plural: eqpresets
@@ -120,6 +120,7 @@ properties:
   - {code: 9, name: set, kind: bool, doc: 1 when the piston holds a registration}
   - {code: 10, name: console, kind: bool, doc: 1 for what the organ's console shows; a list gives only these unless asked for all}
   - {code: 11, name: tuning, kind: int, doc: A rank's voicing tuning in tenths of a cent}
+  - {code: 12, name: holds, kind: list, doc: The switches a stored piston draws when recalled - indices into switches}
 
 # The program object's properties (type 0). `index` never changes.
 program:

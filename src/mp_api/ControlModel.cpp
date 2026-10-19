@@ -67,6 +67,7 @@ void ControlModel::rebuild() {
   divisionals_.clear();
   temperaments_.clear();
   ranks_.clear();
+  switchIndex_.clear();
 
   for (int64_t id : sortedIds(m.divisions)) {
     const auto& d = m.divisions.at(static_cast<Id>(id));
@@ -151,6 +152,7 @@ void ControlModel::rebuild() {
       e.available = !proc_.stopLocked(stop.stopId);
       if (e.name.empty()) e.name = stop.name;
     }
+    switchIndex_[id] = static_cast<int>(switches_.size());
     switches_.push_back(std::move(e));
   }
 
@@ -308,15 +310,22 @@ juce::var ControlModel::object(Type type, int index) {
       o->setProperty("channel", proc_.channelForKeyboard(static_cast<Id>(k.id)));
       break;
     }
-    case Type::General:
+    case Type::General: {
       o->setProperty("name", juce::String(index + 1));
       o->setProperty("set", proc_.playerCombinations().generalSet(index + 1));
+      std::vector<PlayerCombinations::Change> changes;
+      proc_.playerCombinations().recallGeneral(index + 1, changes);
+      o->setProperty("holds", holds(changes));
       break;
+    }
     case Type::Divisional: {
       const auto& d = divisionals_[static_cast<size_t>(index)];
       o->setProperty("name", text(d.name) + " " + juce::String(d.division));
       o->setProperty("division", divisionIndex(d.id));
       o->setProperty("set", proc_.playerCombinations().divisionalSet(static_cast<Id>(d.id), d.division));
+      std::vector<PlayerCombinations::Change> changes;
+      proc_.playerCombinations().recallDivisional(static_cast<Id>(d.id), d.division, changes);
+      o->setProperty("holds", holds(changes));
       break;
     }
     case Type::Eqpreset: {
@@ -353,6 +362,24 @@ juce::var ControlModel::object(Type type, int index) {
   }
   if (info != nullptr && info->hasValue) o->setProperty("value", valueOf(type, index));
   return v;
+}
+
+// What a recall would draw, without recalling it: a stop by the switch the
+// player moves for it, a coupler or tremulant by its own switch.
+juce::var ControlModel::holds(const std::vector<PlayerCombinations::Change>& changes) const {
+  juce::Array<juce::var> out;
+  const OrganModel& m = proc_.organModel();
+  for (const auto& c : changes) {
+    if (!c.engage) continue;
+    Id sid = c.id;
+    if (c.kind == PlayerCombinations::ElementKind::Stop) {
+      const auto it = m.stops.find(c.id);
+      if (it == m.stops.end() || it->second.controllingSwitchId == 0) continue;
+      sid = proc_.playerSwitchFor(it->second.controllingSwitchId);
+    }
+    if (const auto at = switchIndex_.find(static_cast<int64_t>(sid)); at != switchIndex_.end()) out.add(at->second);
+  }
+  return out;
 }
 
 bool ControlModel::consoleObject(Type type, int index) const {

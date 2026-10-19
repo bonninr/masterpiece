@@ -46,6 +46,9 @@ The API is HTTP with JSON on the same port. Every object of the organ has a type
 | `PUT /api/v1/switches/12/value` with `{"value": 1}` | Draws switch 12; `0` retires it, `"toggle"` toggles it |
 | `PUT /api/v1/controls/0/value` with `{"value": 90}` | Moves a shoe, 0 to 127 |
 | `POST /api/v1/generals/2/press` | Recalls general 3 |
+| `GET /api/v1/generals/2` | General 3, with `holds`: the switches it draws |
+| `PUT /api/v1/ranks/4/value` with `{"value": -30}` | Rank 4's voicing level to -3 dB, heard from the next note |
+| `PUT /api/v1/notes/188/value` with `{"value": 1}` | Plays MIDI note 60 on the second keyboard (1 × 128 + 60); `0` releases it |
 | `PUT /api/v1/program/transpose` with `{"value": -2}` | Transposes two semitones down |
 | `POST /api/v1/commands/9/press` | Saves, quits and shuts the computer down, when allowed |
 | `GET /api/v1/events` | A stream of every change, as server-sent events |

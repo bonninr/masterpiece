@@ -33,6 +33,8 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 7 | `eqpreset` | 0 to presets - 1 | 1 while the EQ is this preset | press | The program's ten, then the player's own |
 | 8 | `temperament` | 0 to temperaments - 1 | 1 while chosen | press | |
 | 9 | `command` | the list below | none | press | Buttons that are no object of the organ |
+| 10 | `rank` | 0 to ranks - 1 | voicing level in tenths of a dB, -240 to +120 | yes | Every rank of pipes; heard from the next note, as on the Voicing tab |
+| 11 | `note` | keyboard index × 128 + MIDI note | 1 while the key is down | yes | 1 plays the key, 0 releases it, on the keyboard's channel |
 
 A `press` acts like a thumb piston: it does what the object does, once.
 
@@ -90,6 +92,9 @@ Asked for with **Describe**, one object at a time.
 | `available` | switch | 0 for a stop a demo does not ship |
 | `channel` | keyboard | The MIDI channel it plays on, 1 to 16 |
 | `own` | eqpreset | 1 for the player's own |
+| `set` | general, divisional | 1 when the piston holds a registration |
+| `holds` | general, divisional | The switches it draws when recalled, as indices into `switch` |
+| `tuning` | rank | Its voicing tuning, in tenths of a cent |
 | `console` | switch, control | 1 for what the organ's console shows: its stops, couplers and tremulants, and what else is drawn and can be clicked. A list gives only these unless asked for all (`?all=1`); every object keeps its index either way |
 
 ## Operations

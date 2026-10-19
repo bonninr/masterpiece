@@ -78,6 +78,7 @@ enum class Prop : uint8_t {
   Set = 9,
   Console = 10,
   Tuning = 11,
+  Holds = 12,
 };
 
 enum class Role : uint8_t {

@@ -101,6 +101,22 @@ public:
     }
     MP_CHECK(m.count(Type::Note) == m.count(Type::Keyboard) * 128, "every key of every keyboard");
 
+    // What a general holds: the tremulant drawn, stored in general 1.
+    if (m.count(Type::General) > 0) {
+      v = 1;
+      m.set(Type::Switch, trem, v);
+      proc.setCaptureMode(true);
+      proc.pressGeneral(1);
+      proc.setCaptureMode(false);
+      const juce::var general = m.describe(Type::General, 0, e);
+      bool holdsTrem = false;
+      if (const auto* list = general["holds"].getArray())
+        for (const auto& i : *list) holdsTrem = holdsTrem || static_cast<int>(i) == trem;
+      MP_CHECK(static_cast<bool>(general["set"]) && holdsTrem, "a stored general says which switches it draws");
+      v = 0;
+      m.set(Type::Switch, trem, v);
+    }
+
     // Changes, whatever made them.
     std::vector<ControlModel::Change> changes;
     m.poll(changes, true);  // the first look after a load
