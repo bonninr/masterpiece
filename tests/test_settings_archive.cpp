@@ -37,6 +37,12 @@ void put(const juce::File& root, const juce::String& rel, const juce::String& te
 // A set name with an accent, as a player types one.
 const juce::String kSet = juce::String::fromUTF8("R\xc3\xa9" "cital");
 
+// Organ B's own settings, with the mixer and voicing lines the copy below
+// takes from it.
+const juce::String kOrganB =
+    "# Masterpiece per-organ settings\r\nstorage float\r\nroute 201 bus 1\r\n"
+    "voicingadj a rank 201 2.000 0.000 0.000 0.000\r\nvoicingslot b\r\n";
+
 juce::File freshRoot(const char* name) {
   const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile(name);
   root.deleteRecursively();
@@ -52,9 +58,7 @@ juce::File freshRoot(const char* name) {
   put(root, "combinations/Organ-A-12.mpcomb", "general 1 9\n");
   put(root, "combinations/Organ-A-12." + kSet + ".mpcomb", "general 1 10\n");
   put(root, "split/Organ-A-12.mpsplit", "layout 2\n");
-  put(root, "organs/Organ-B-7.mporgan",
-      "# Masterpiece per-organ settings\r\nstorage float\r\nroute 201 bus 1\r\nvoicingadj a rank 201 2.000 0.000 0.000 0.000\r\n"
-      "voicingslot b\r\n");
+  put(root, "organs/Organ-B-7.mporgan", kOrganB);
   put(root, "midi/Organ-B-7.mpmidi", "# organ B\r\nbind note 2 40 switch 12\r\n");
   put(root, "combinations/Organ-B-7.mpcomb", "general 2 12\n");
   return root;
@@ -171,6 +175,10 @@ public:
     MP_CHECK(!root.getChildFile("../escape.txt").existsAsFile(), "nothing written outside the folder");
 
     // Parts of organ B copied to organ A.
+    // B's own settings were changed above, to prove that restoring A's
+    // archive leaves B alone. The copy takes B's mixer and voicing lines, so
+    // they are given back first: there is nothing to copy from "# B changed".
+    put(root, "organs/Organ-B-7.mporgan", kOrganB);
     MP_CHECK(sa::copy(root, "Organ-B-7", "Organ-A-12", sa::MidiMap | sa::MixerAndVoicing, "9.9.9", backup, error),
              "copied: " + error.toStdString());
     now = snapshot(root);
