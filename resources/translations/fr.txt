@@ -853,3 +853,4 @@ countries: fr be ca ch lu mc
 "No more checks; General settings, Log turns them on again" = "Plus de recherche ; Réglages généraux, Journal la réactive"
 "Close" = "Fermer"
 "Masterpiece %1 is out" = "Masterpiece %1 est sorti"
+"The two shortest end a note quickly, as a tracker action does: for fast repeated notes." = "Les deux plus courtes terminent la note aussitôt, comme une traction mécanique : pour les notes répétées rapidement."

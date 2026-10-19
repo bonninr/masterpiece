@@ -853,3 +853,4 @@ countries: nl be sr
 "No more checks; General settings, Log turns them on again" = "Niet meer zoeken; Algemene instellingen, Logboek zet het weer aan"
 "Close" = "Sluiten"
 "Masterpiece %1 is out" = "Masterpiece %1 is uit"
+"The two shortest end a note quickly, as a tracker action does: for fast repeated notes." = "De twee kortste beëindigen een noot snel, zoals een mechanische tractuur: voor snel herhaalde noten."

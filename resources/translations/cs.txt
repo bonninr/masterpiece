@@ -853,3 +853,4 @@ countries: cz
 "No more checks; General settings, Log turns them on again" = "Žádné další hledání; Obecná nastavení, Protokol ho znovu zapne"
 "Close" = "Zavřít"
 "Masterpiece %1 is out" = "Vyšel Masterpiece %1"
+"The two shortest end a note quickly, as a tracker action does: for fast repeated notes." = "Dvě nejkratší ukončí tón rychle, jako mechanická traktura: pro rychle opakované tóny."

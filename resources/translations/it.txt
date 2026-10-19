@@ -853,3 +853,4 @@ countries: it ch sm va
 "No more checks; General settings, Log turns them on again" = "Nessun'altra ricerca; Impostazioni generali, Log la riattiva"
 "Close" = "Chiudi"
 "Masterpiece %1 is out" = "È uscito Masterpiece %1"
+"The two shortest end a note quickly, as a tracker action does: for fast repeated notes." = "Le due più corte chiudono subito la nota, come una trasmissione meccanica: per note ribattute veloci."
