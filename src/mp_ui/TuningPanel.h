@@ -40,6 +40,11 @@ private:
   juce::TextButton down_{"-"}, up_{"+"}, zero_{"0"};
   juce::Label transposeValue_;
 
+  // Unevenness: pipe detune and wind sway, in cents.
+  juce::Label unevennessLabel_, detuneLabel_, swayLabel_;
+  juce::Slider detune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider sway_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+
   juce::Label note_;
 };
 

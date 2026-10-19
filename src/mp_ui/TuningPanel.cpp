@@ -96,6 +96,29 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   transposeValue_.setJustificationType(juce::Justification::centred);
   transposeValue_.setColour(juce::Label::textColourId, kText);
 
+  styleHeading(unevennessLabel_, TRANS("Unevenness"));
+  addAndMakeVisible(unevennessLabel_);
+  for (auto* l : {&detuneLabel_, &swayLabel_}) {
+    addAndMakeVisible(*l);
+    l->setColour(juce::Label::textColourId, kText);
+  }
+  detuneLabel_.setText(TRANS("Pipe detune"), juce::dontSendNotification);
+  swayLabel_.setText(TRANS("Wind sway"), juce::dontSendNotification);
+  for (auto* s : {&detune_, &sway_}) {
+    addAndMakeVisible(*s);
+    s->setRange(0.0, MasterpieceProcessor::kMaxUnevennessCents, 0.1);
+    s->setDoubleClickReturnValue(true, 0.0);
+    s->textFromValueFunction = [](double v) {
+      return v <= 0.0 ? TRANS("Off") : TRANS("%1 cents").replace("%1", juce::String(v, 1));
+    };
+  }
+  detune_.setTooltip(TRANS("Each pipe a little out of tune, by up to this much: the same pipe by the "
+                           "same amount at every note. Heard from the next note; off, it costs nothing."));
+  sway_.setTooltip(TRANS("A slow, small movement in the pitch of each division, as an organ's wind gives "
+                         "it. Heard on the notes started while it is on; off, it costs nothing."));
+  detune_.onValueChange = [this] { proc_.setPipeDetuneCents(static_cast<float>(detune_.getValue())); };
+  sway_.onValueChange = [this] { proc_.setWindSwayCents(static_cast<float>(sway_.getValue())); };
+
   addAndMakeVisible(note_);
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
@@ -104,7 +127,7 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
                       "not the samples. Map any of these to your console in Settings, MIDI."),
                 juce::dontSendNotification);
 
-  setSize(460, 262);
+  setSize(460, 340);
   refresh();
   startTimerHz(4);
 }
@@ -142,6 +165,10 @@ void TuningPanel::refresh() {
                                             : TRANS("%1 cents from the organ's own").replace("%1", juce::String(cents, 1)),
                      juce::dontSendNotification);
   transposeValue_.setText(signedSemitones(proc_.transpose()), juce::dontSendNotification);
+  if (!detune_.isMouseButtonDown())
+    detune_.setValue(proc_.pipeDetuneCents(), juce::dontSendNotification);
+  if (!sway_.isMouseButtonDown())
+    sway_.setValue(proc_.windSwayCents(), juce::dontSendNotification);
   down_.setEnabled(proc_.transpose() > -12);
   up_.setEnabled(proc_.transpose() < 12);
 }
@@ -192,6 +219,14 @@ void TuningPanel::resized() {
   up_.setBounds(row.removeFromLeft(32).reduced(0, 2));
   row.removeFromLeft(8);
   zero_.setBounds(row.removeFromLeft(32).reduced(0, 2));
+  r.removeFromTop(kGap);
+
+  unevennessLabel_.setBounds(r.removeFromTop(kRow));
+  for (auto [label, slider] : {std::pair{&detuneLabel_, &detune_}, std::pair{&swayLabel_, &sway_}}) {
+    row = r.removeFromTop(kRow);
+    label->setBounds(row.removeFromLeft(kLabel));
+    slider->setBounds(row.reduced(0, 2));
+  }
   r.removeFromTop(kGap);
 
   note_.setBounds(r);

@@ -35,6 +35,7 @@ if(TARGET mp_audio)
   target_sources(mp_tests PRIVATE test_midi_power.cpp)
   # The recorder's window: its buttons are sized from their own text (#429).
   target_sources(mp_tests PRIVATE test_recorder_layout.cpp)
+  target_sources(mp_tests PRIVATE test_unevenness.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)

@@ -127,6 +127,8 @@ enum class ProgramProp : uint8_t {
   MetronomeTempo = 17,
   RoomOn = 18,
   RoomWet = 19,
+  PipeDetune = 20,
+  WindSway = 21,
 };
 
 struct ProgramPropInfo {
@@ -157,8 +159,10 @@ constexpr ProgramPropInfo kProgram[] = {
   {ProgramProp::MetronomeTempo, "metronomeTempo", 20, 300, true, "Beats a minute"},
   {ProgramProp::RoomOn, "roomOn", 0, 1, true, "The room - the convolution reverb"},
   {ProgramProp::RoomWet, "roomWet", 0, 100, true, "The room's wet share"},
+  {ProgramProp::PipeDetune, "pipeDetune", 0, 100, true, "Each pipe up to this far off true in tenths of a cent - 0 off"},
+  {ProgramProp::WindSway, "windSway", 0, 100, true, "The wind's slow pitch sway in tenths of a cent - 0 off"},
 };
-constexpr int kProgramCount = 20;
+constexpr int kProgramCount = 22;
 
 enum class Command : uint8_t {
   Panic = 0,

@@ -264,6 +264,9 @@ struct Voice {
   int tremIndex = -1;
   float tremAmpDepth = 0.0f;   // linear gain swing, already out of decibels
   double tremPitchDepth = 0.0; // semitones
+  // Which wind sway moves this pipe's pitch, as an index into the table
+  // setSwayRatios() hands over; -1 for none.
+  int swayIndex = -1;
 
   // Loop crossfade. On a wrap the outgoing stream keeps reading PAST the loop
   // end (that material is still in the file) while the incoming stream starts
@@ -324,6 +327,7 @@ struct VoiceStart {
   bool oneShot = false;
   int busIndex = 0;  // enclosure
   int mixBus = 0;    // mixer output
+  int swayIndex = -1;  // wind sway; see Voice::swayIndex
 };
 
 struct EngineStats {
@@ -499,6 +503,12 @@ public:
     windMods_ = mods;
     windCount_ = count;
   }
+  // The wind sway for the next block: a pitch ratio per sway, multiplied on
+  // once per voice per block like the wind's. Null while the sway is off.
+  void setSwayRatios(const double* ratios, int count) {
+    swayRatios_ = ratios;
+    swayCount_ = count;
+  }
   // --- streaming --------------------------------------------------------
   // How far ahead of each voice the streamer keeps, in seconds. Generous: a
   // voice consumes one frame per output frame, so a couple of seconds of slack
@@ -655,6 +665,8 @@ private:
   int windCount_ = 0;
   const TremMod* tremMods_ = nullptr;
   int tremCount_ = 0;
+  const double* swayRatios_ = nullptr;
+  int swayCount_ = 0;
 
   // --- streaming --------------------------------------------------------
   // One ring per voice, parallel to `voices_`. Per voice and not per sample

@@ -450,6 +450,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremIndex = start.tremIndex;
   v.tremAmpDepth = start.tremAmpDepth;
   v.tremPitchDepth = start.tremPitchDepth;
+  v.swayIndex = start.swayIndex;
   v.startedAtBlock = blockCounter_;
   v.startedAtFrame = framesRendered_;
   // If only this sample's head is resident, tell the streamer to start
@@ -724,6 +725,11 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     wind.ampMul = v.heldWindAmp;
     wind.pitchRatio = v.heldWindPitch;
   } else {
+    // The wind sway rides on the wind's own pitch, and a tail keeps where it
+    // was as it does that. Constant across the block, so the voice keeps its
+    // straight runs.
+    if (swayRatios_ != nullptr && v.swayIndex >= 0 && v.swayIndex < swayCount_)
+      wind.pitchRatio *= swayRatios_[v.swayIndex];
     v.heldWindAmp = wind.ampMul;
     v.heldWindPitch = wind.pitchRatio;
   }

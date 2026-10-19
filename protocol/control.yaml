@@ -190,6 +190,8 @@ program:
   - {index: 17, name: metronomeTempo, min: 20, max: 300, access: set, doc: Beats a minute}
   - {index: 18, name: roomOn, min: 0, max: 1, access: set, doc: The room - the convolution reverb}
   - {index: 19, name: roomWet, min: 0, max: 100, access: set, doc: The room's wet share, in percent}
+  - {index: 20, name: pipeDetune, min: 0, max: 100, access: set, doc: Each pipe up to this far off true in tenths of a cent - 0 off}
+  - {index: 21, name: windSway, min: 0, max: 100, access: set, doc: The wind's slow pitch sway in tenths of a cent - 0 off}
 
 # Commands (type 9), pressed.
 commands:

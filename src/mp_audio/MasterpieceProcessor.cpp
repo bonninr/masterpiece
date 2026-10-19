@@ -698,6 +698,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
   const juce::int64 w0 = blockLog_.empty() ? 0 : juce::Time::getHighResolutionTicks();
   advanceWind(numFrames);
   advanceTremulants(numFrames);
+  advanceSway(numFrames);
   if (!blockLog_.empty())
     blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
 
@@ -1756,6 +1757,8 @@ bool MasterpieceProcessor::saveSettings() const {
     if (masterPitchSetting() > 0.0)
       text << "pitchhz " << juce::String(masterPitchSetting(), 2) << "\n";
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
+    if (pipeDetuneCents() > 0.0f) text << "pipedetune " << juce::String(pipeDetuneCents(), 1) << "\n";
+    if (windSwayCents() > 0.0f) text << "windsway " << juce::String(windSwayCents(), 1) << "\n";
     // Written whatever it is, off and flat too: an organ with a line keeps
     // it, and one without plays the default EQ.
     if (organOwnsEq_) text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
@@ -1792,6 +1795,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   playerTuning_.store(nullptr, std::memory_order_release);
   masterPitchHz_.store(0.0, std::memory_order_relaxed);
   transpose_.store(0, std::memory_order_relaxed);
+  pipeDetuneCents_.store(0.0f, std::memory_order_relaxed);
+  windSwayCents_.store(0.0f, std::memory_order_relaxed);
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -1888,6 +1893,14 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "transpose") {
       transpose_.store(juce::jlimit(-12, 12, val.getIntValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "pipedetune") {
+      pipeDetuneCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, val.getFloatValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "windsway") {
+      windSwayCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, val.getFloatValue()), std::memory_order_relaxed);
       continue;
     }
     if (key == "skipstop") {
@@ -3251,6 +3264,14 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     // A layer may declare its own loop, overriding the audio file's.
     vs.loopStartOverride = layer.loopStartFrames;
     vs.loopEndOverride = layer.loopEndFrames;
+    // Unevenness: each pipe a little off true, and the wind's slow sway.
+    // Neither is looked at while it is off.
+    if (const float d = pipeDetuneCents_.load(std::memory_order_relaxed); d > 0.0f)
+      vs.ratio *= centsRatio(d * pipeDetuneOffset(pipe.pipeId));
+    if (windSwayCents_.load(std::memory_order_relaxed) > 0.0f && swayChannels_ > 0) {
+      const auto s = rankSwayIndex_.find(rankId);
+      vs.swayIndex = s != rankSwayIndex_.end() ? s->second : swayChannels_ - 1;
+    }
     vs.busIndex = busForPipe(pipe.pipeId);
     vs.mixBus = mixBusForPipe(rankId, midiNote);
     {
@@ -3854,6 +3875,50 @@ void MasterpieceProcessor::setTranspose(int semitones) {
   const AudioLock audio(*this);
   transpose_.store(juce::jlimit(-12, 12, semitones), std::memory_order_relaxed);
   markSettingsDirty();
+}
+
+void MasterpieceProcessor::setPipeDetuneCents(float cents) {
+  pipeDetuneCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, cents), std::memory_order_relaxed);
+  markSettingsDirty();
+}
+
+void MasterpieceProcessor::setWindSwayCents(float cents) {
+  windSwayCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, cents), std::memory_order_relaxed);
+  markSettingsDirty();
+}
+
+// A pipe's place, -1 to 1, from its id alone: the same on every run and
+// every computer, so a pipe that is sharp stays sharp.
+double MasterpieceProcessor::pipeDetuneOffset(Id pipeId) {
+  uint64_t x = static_cast<uint64_t>(pipeId) * 0x9E3779B97F4A7C15ull;
+  x ^= x >> 31;
+  x *= 0xBF58476D1CE4E5B9ull;
+  x ^= x >> 29;
+  x *= 0x94D049BB133111EBull;
+  x ^= x >> 32;
+  return static_cast<double>(x >> 11) / 9007199254740992.0 * 2.0 - 1.0;
+}
+
+void MasterpieceProcessor::advanceSway(int numFrames) {
+  const float cents = windSwayCents_.load(std::memory_order_relaxed);
+  if (cents <= 0.0f || swayChannels_ <= 0 || sampleRate_ <= 0.0) {
+    voices_.setSwayRatios(nullptr, 0);
+    return;
+  }
+  // Two slow waves per division at rates of their own, between about one in
+  // ten seconds and one in three, so the divisions drift apart and the
+  // movement never quite repeats.
+  constexpr double kTwoPi = 6.283185307179586;
+  const double dt = static_cast<double>(numFrames) / sampleRate_;
+  for (int i = 0; i < swayChannels_; ++i) {
+    const auto k = static_cast<size_t>(i);
+    const double rate = 0.11 + 0.17 * (pipeDetuneOffset(Id(3000 + i)) * 0.5 + 0.5);
+    swayPhaseA_[k] = std::fmod(swayPhaseA_[k] + kTwoPi * rate * dt, kTwoPi);
+    swayPhaseB_[k] = std::fmod(swayPhaseB_[k] + kTwoPi * rate * 1.73 * dt, kTwoPi);
+    const double wave = 0.65 * std::sin(swayPhaseA_[k]) + 0.35 * std::sin(swayPhaseB_[k]);
+    swayRatios_[k] = centsRatio(static_cast<double>(cents) * wave);
+  }
+  voices_.setSwayRatios(swayRatios_.data(), swayChannels_);
 }
 
 // ------------------------------------------------ the player's own pistons
@@ -5825,6 +5890,33 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   for (size_t i = 0; i < windOrder_.size(); ++i)
     windIndexOf_[windOrder_[i]] = static_cast<int>(i);
   windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});
+  // The wind sway's waves: one per division, in id order, each rank under the
+  // division of the first stop (by id) that draws it, and the last wave for
+  // ranks in none. Each starts at a phase of its own.
+  {
+    rankSwayIndex_.clear();
+    std::vector<Id> divisions, stops;
+    for (const auto& [id, d] : model_.divisions) divisions.push_back(id);
+    for (const auto& [id, s] : model_.stops) stops.push_back(id);
+    std::sort(divisions.begin(), divisions.end());
+    std::sort(stops.begin(), stops.end());
+    std::unordered_map<Id, int> divisionIndex;
+    for (size_t i = 0; i < divisions.size(); ++i) divisionIndex[divisions[i]] = static_cast<int>(i);
+    for (Id stopId : stops) {
+      const Stop& stop = model_.stops.at(stopId);
+      const auto d = divisionIndex.find(stop.divisionId);
+      if (d == divisionIndex.end()) continue;
+      for (const auto& e : stop.ranks) rankSwayIndex_.emplace(e.rankId, d->second);
+    }
+    swayChannels_ = static_cast<int>(divisions.size()) + 1;
+    swayPhaseA_.assign(static_cast<size_t>(swayChannels_), 0.0);
+    swayPhaseB_.assign(static_cast<size_t>(swayChannels_), 0.0);
+    for (int i = 0; i < swayChannels_; ++i) {
+      swayPhaseA_[static_cast<size_t>(i)] = 6.283185307179586 * (pipeDetuneOffset(Id(1000 + i)) * 0.5 + 0.5);
+      swayPhaseB_[static_cast<size_t>(i)] = 6.283185307179586 * (pipeDetuneOffset(Id(2000 + i)) * 0.5 + 0.5);
+    }
+    swayRatios_.assign(static_cast<size_t>(swayChannels_), 1.0);
+  }
   for (const auto& [rankId, rank] : model_.ranks) {
     (void)rankId;
     for (const Pipe& pipe : rank.pipes) {
