@@ -1411,6 +1411,12 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
                               "what they started with, and only the keys pressed afterwards play the new "
                               "registration."));
   leaveHeld_.onClick = [this] { proc_.setStopsLeaveHeldNotes(leaveHeld_.getToggleState()); };
+  addAndMakeVisible(sustain_);
+  sustain_.setToggleState(proc_.sustainPedal(), juce::dontSendNotification);
+  sustain_.setTooltip(TRANS("For directing a choir: while a sustain pedal is down, the keys let go keep "
+                            "sounding until it is lifted. Controller 64 on any channel. A controller 64 "
+                            "learned for something else keeps doing that."));
+  sustain_.onClick = [this] { proc_.setSustainPedal(sustain_.getToggleState()); };
   addAndMakeVisible(noiseFilter_);
   noiseFilter_.setToggleState(proc_.learnNoiseFilter(), juce::dontSendNotification);
   noiseFilter_.setTooltip(TRANS("For a console whose contacts send stray notes: a shorter note is not learned. "
@@ -1797,6 +1803,7 @@ void MidiPanel::resized() {
   feedback_.setBounds(r.removeFromTop(kRow));
   cancelResets_.setBounds(r.removeFromTop(kRow));
   leaveHeld_.setBounds(r.removeFromTop(kRow));
+  sustain_.setBounds(r.removeFromTop(kRow));
   noiseFilter_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);

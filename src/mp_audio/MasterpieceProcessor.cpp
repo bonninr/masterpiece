@@ -362,6 +362,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                    : 0.5f;
   recorder_.prepare(sampleRate_);
   outgoing_.ensureSize(1024);
+  sustainedKeys_.reserve(256);
 }
 
 void MasterpieceProcessor::releaseResources() {
@@ -369,6 +370,8 @@ void MasterpieceProcessor::releaseResources() {
   voices_.quiesce();
   soundingNotes_.clear();
   releaseAllCoupledInputs();
+  sustainedKeys_.clear();
+  sustainDown_ = false;
 }
 
 void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
@@ -1092,7 +1095,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           startNoteOnKeyboard(hit.keyboardId, key, transposed(hit.midiNote), hit.velocity,
                               hit.midiNote);
         else
-          stopNoteByKey(key, hit.velocity);
+          keyUp(key, hit.velocity);
       }
       continue;
     }
@@ -1101,6 +1104,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                                juce::String(msg.getChannel()) + " is " +
                                juce::String(static_cast<int>(
                                    keyboardForChannel(msg.getChannel(), deviceId))));
+    // The sustain pedal, when the player has turned it on and nothing is
+    // learned for controller 64: a learned one was taken above.
+    if (msg.isController() && msg.getControllerNumber() == 64 && sustainPedal()) {
+      setSustainDown(msg.getControllerValue() >= 64);
+      continue;
+    }
     if (msg.isNoteOn())
       startNote(msg.getChannel(), msg.getNoteNumber(), msg.getVelocity());
     else if (msg.isNoteOff())
@@ -2040,6 +2049,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (stopsLeaveHeldNotes_.load()) text << "stopsleaveheldnotes 1\n";
+  if (sustainPedal_.load()) text << "sustainpedal 1\n";
   if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
@@ -2190,6 +2200,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
     } else if (key == "stopsleaveheldnotes") {
       stopsLeaveHeldNotes_.store(val.getIntValue() != 0);
+    } else if (key == "sustainpedal") {
+      sustainPedal_.store(val.getIntValue() != 0);
     } else if (key == "learnnoisefilter") {
       learnNoiseFilter_.store(val.getIntValue() != 0);
     } else if (key == "cachewhileplaying") {
@@ -3116,7 +3128,28 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
-  stopNoteByKey(noteKey(channel, midiNote), velocity);
+  keyUp(noteKey(channel, midiNote), velocity);
+}
+
+void MasterpieceProcessor::keyUp(int key, int velocity) {
+  // The option turned off with the pedal down: let go of what it held.
+  if (sustainDown_ && !sustainPedal()) setSustainDown(false);
+  if (sustainDown_ && (soundingNotes_.count(key) != 0 || heldKeySwitches_.count(key) != 0)) {
+    if (std::find(sustainedKeys_.begin(), sustainedKeys_.end(), key) == sustainedKeys_.end())
+      sustainedKeys_.push_back(key);
+    return;
+  }
+  stopNoteByKey(key, velocity);
+}
+
+void MasterpieceProcessor::setSustainDown(bool down) {
+  sustainDown_ = down;
+  if (down) return;
+  // Released in the order they were let go; a copy, since releasing can
+  // reach back here through the switch network.
+  const std::vector<int> keys(sustainedKeys_.begin(), sustainedKeys_.end());
+  sustainedKeys_.clear();
+  for (int key : keys) stopNoteByKey(key, 0);
 }
 
 void MasterpieceProcessor::releaseChannel(int channel, int deviceId) {
@@ -3410,6 +3443,10 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int playedNote) {
   const CoupledScope coupled(*this);
   if (playedNote < 0) playedNote = midiNote;
+  // Struck again under the pedal: the hand holds it now.
+  if (!sustainedKeys_.empty())
+    sustainedKeys_.erase(std::remove(sustainedKeys_.begin(), sustainedKeys_.end(), noteKeyId),
+                         sustainedKeys_.end());
   // A manual that sends its keys on: before anything else, so a key played
   // with no stop drawn still reaches the module it drives.
   if (midiOut_ != nullptr && midiMap_.hasSends(MidiTargetKind::Keyboard, keyboard)) {
@@ -5605,6 +5642,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     });
     soundingNotes_.clear();
     releaseAllCoupledInputs();
+    sustainedKeys_.clear();
   }
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();

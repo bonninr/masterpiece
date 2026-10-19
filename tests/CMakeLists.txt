@@ -39,6 +39,7 @@ if(TARGET mp_audio)
   target_sources(mp_tests PRIVATE test_unevenness.cpp)
   target_sources(mp_tests PRIVATE test_settings_archive.cpp)
   target_sources(mp_tests PRIVATE test_held_notes.cpp)
+  target_sources(mp_tests PRIVATE test_sustain.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)
