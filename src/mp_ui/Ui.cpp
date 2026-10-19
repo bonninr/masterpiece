@@ -2246,6 +2246,8 @@ void MasterpieceEditor::timerCallback() {
   // whichever thread changed it, written here, where a file write is allowed.
   proc_.saveSettingsIfDirty();
   proc_.splitKeyboard().service();
+  // A temperament, a quit or a power-off a MIDI button asked for.
+  proc_.serviceMidiRequests();
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
   proc_.saveRememberedStateIfSettled();

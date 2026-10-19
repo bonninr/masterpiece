@@ -100,6 +100,9 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::VoicingEqPreset: return "eq-preset";
     case MidiTargetKind::VoicingEqPresetNext: return "eq-preset-next";
     case MidiTargetKind::VoicingEqPresetPrev: return "eq-preset-prev";
+    case MidiTargetKind::QuitProgram: return "quit";
+    case MidiTargetKind::PowerOffComputer: return "power-off";
+    case MidiTargetKind::Temperament: return "temperament";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -134,6 +137,9 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "eq-preset") return MidiTargetKind::VoicingEqPreset;
   if (s == "eq-preset-next") return MidiTargetKind::VoicingEqPresetNext;
   if (s == "eq-preset-prev") return MidiTargetKind::VoicingEqPresetPrev;
+  if (s == "quit") return MidiTargetKind::QuitProgram;
+  if (s == "power-off") return MidiTargetKind::PowerOffComputer;
+  if (s == "temperament") return MidiTargetKind::Temperament;
   return MidiTargetKind::None;
 }
 
@@ -402,10 +408,16 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::VoicingEqPreset:
     case MidiTargetKind::VoicingEqPresetNext:
     case MidiTargetKind::VoicingEqPresetPrev:
+    case MidiTargetKind::Temperament:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
       if (value <= 0) action.kind = MidiTargetKind::None;
+      break;
+    case MidiTargetKind::QuitProgram:
+    case MidiTargetKind::PowerOffComputer:
+      // The press and the release both: how long it is held is the point.
+      action.engage = b.isOn(value);
       break;
     case MidiTargetKind::None:
       break;

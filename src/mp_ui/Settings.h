@@ -310,6 +310,19 @@ private:
   juce::TextButton learnTransposeUp_{TRANS("Learn transpose +")};
   juce::TextButton learnTemperamentPrev_{TRANS("Learn temperament -")};
   juce::TextButton learnTemperamentNext_{TRANS("Learn temperament +")};
+  // One temperament on a button of its own.
+  juce::Label temperamentLabel_;
+  juce::ComboBox temperamentPick_;
+  std::vector<std::string> temperamentNames_;
+  juce::TextButton learnTemperament_{TRANS("Learn")};
+  // A console with no screen: buttons that quit the program or shut the
+  // computer down, and a lamp that lights when the organ is ready.
+  juce::Label powerHeading_;
+  juce::TextButton learnQuit_{TRANS("Learn quit")};
+  juce::TextButton learnPowerOff_{TRANS("Learn power off")};
+  juce::Label lampLabel_;
+  juce::ComboBox lampKind_, lampChannel_, lampNumber_;
+  void pushReadyLamp();
   juce::Label mapStatus_;
   juce::Label note_;
 };

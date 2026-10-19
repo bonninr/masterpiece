@@ -1021,6 +1021,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::VoicingEqPresetPrev:
           pendingEqPreset_.store(-2, std::memory_order_release);
           continue;
+        // A temperament waits for the message thread, as the EQ presets do.
+        case MidiTargetKind::Temperament:
+          pendingTemperament_.store(action.targetId + 1, std::memory_order_release);
+          continue;
+        case MidiTargetKind::QuitProgram:
+        case MidiTargetKind::PowerOffComputer:
+          powerButton(action.kind, action.engage,
+                      source.kind == MidiSourceKind::Note || source.kind == MidiSourceKind::ControlChange);
+          continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
           break;
@@ -1958,6 +1967,9 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (!remote_.allowChanges) text << "apiwrite 0\n";
   if (!remote_.token.empty()) text << "apitoken " << juce::String::fromUTF8(remote_.token.c_str()) << "\n";
   if (remote_.allowPowerOff) text << "apipoweroff 1\n";
+  if (const auto lamp = readyLamp(); lamp.kind != MidiSourceKind::None)
+    text << "readylamp " << (lamp.kind == MidiSourceKind::Note ? "note" : "cc") << " " << lamp.channel << " "
+         << lamp.number << "\n";
   if (remote_.sysex) text << "apisysex 1\n";
   if (remote_.sysexUnit != 0) text << "apisysexunit " << remote_.sysexUnit << "\n";
   if (remote_.osc) text << "apiosc 1\n";
@@ -2075,6 +2087,17 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       remote_.token = val.toStdString();
     } else if (key == "apipoweroff") {
       remote_.allowPowerOff = val.getIntValue() != 0;
+    } else if (key == "readylamp") {
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      ReadyLamp lamp;
+      if (parts.size() >= 3 && (parts[0] == "note" || parts[0] == "cc")) {
+        lamp.kind = parts[0] == "note" ? MidiSourceKind::Note : MidiSourceKind::ControlChange;
+        lamp.channel = juce::jlimit(1, 16, parts[1].getIntValue());
+        lamp.number = juce::jlimit(0, 127, parts[2].getIntValue());
+      }
+      lampKind_.store(static_cast<int>(lamp.kind), std::memory_order_relaxed);
+      lampChannel_.store(lamp.channel, std::memory_order_relaxed);
+      lampNumber_.store(lamp.number, std::memory_order_relaxed);
     } else if (key == "apisysex") {
       remote_.sysex = val.getIntValue() != 0;
     } else if (key == "apisysexunit") {
@@ -5256,6 +5279,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                                                           std::memory_order_relaxed)) {}
     }
   } timed(*this, getSampleRate() > 0.0 ? buffer.getNumSamples() / getSampleRate() : 0.0);
+  // The ready lamp, every block: it blinks through a load, when nothing
+  // else runs.
+  pumpReadyLamp(buffer.getNumSamples());
   // An organ is being loaded: the engine is being rebuilt under us. Silence,
   // and the notes that arrive meanwhile are dropped -- the organ they were
   // played on is the one being replaced.
@@ -5518,6 +5544,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     MasterpieceProcessor& p;
     explicit Loading(MasterpieceProcessor& proc) : p(proc) { p.organLoading_.store(true, std::memory_order_release); }
     ~Loading() {
+      p.organReady_.store(p.loadedOdf_ != juce::File(), std::memory_order_release);
       p.organLoads_.fetch_add(1, std::memory_order_acq_rel);
       p.organLoading_.store(false, std::memory_order_release);
     }
@@ -6844,6 +6871,138 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
     error = "Some of its files could not be read, so parts of the console may be missing.\n\n" +
             damage;
   return definitions;
+}
+
+// ------------------------------------------------- ready lamp and power
+
+MasterpieceProcessor::ReadyLamp MasterpieceProcessor::readyLamp() const {
+  ReadyLamp lamp;
+  lamp.kind = static_cast<MidiSourceKind>(lampKind_.load(std::memory_order_relaxed));
+  lamp.channel = lampChannel_.load(std::memory_order_relaxed);
+  lamp.number = lampNumber_.load(std::memory_order_relaxed);
+  return lamp;
+}
+
+void MasterpieceProcessor::setReadyLamp(const ReadyLamp& lamp) {
+  const bool usable = lamp.kind == MidiSourceKind::Note || lamp.kind == MidiSourceKind::ControlChange;
+  lampKind_.store(static_cast<int>(usable ? lamp.kind : MidiSourceKind::None), std::memory_order_relaxed);
+  lampChannel_.store(juce::jlimit(1, 16, lamp.channel), std::memory_order_relaxed);
+  lampNumber_.store(juce::jlimit(0, 127, lamp.number), std::memory_order_relaxed);
+  writeGlobalFile();
+}
+
+bool MasterpieceProcessor::readyLampMessage(const ReadyLamp& lamp, bool lit, RawMidi& out) {
+  const int ch = juce::jlimit(1, 16, lamp.channel) - 1;
+  const auto n = static_cast<uint8_t>(juce::jlimit(0, 127, lamp.number));
+  if (lamp.kind == MidiSourceKind::Note) {
+    out.bytes[0] = static_cast<uint8_t>((lit ? 0x90 : 0x80) | ch);
+    out.bytes[1] = n;
+    out.bytes[2] = lit ? 127 : 0;
+  } else if (lamp.kind == MidiSourceKind::ControlChange) {
+    out.bytes[0] = static_cast<uint8_t>(0xB0 | ch);
+    out.bytes[1] = n;
+    out.bytes[2] = lit ? 127 : 0;
+  } else {
+    return false;
+  }
+  out.size = 3;
+  return true;
+}
+
+// Lit with an organ ready, dark with none; blinking once a second while one
+// loads, and four times a second while a quit or power-off button is held,
+// so a player who lets go in time knows nothing will happen.
+void MasterpieceProcessor::pumpReadyLamp(int numFrames) {
+  const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  lampFrames_ += static_cast<uint64_t>(juce::jmax(0, numFrames));
+  const double t = static_cast<double>(lampFrames_) / rate;
+  int lit;
+  if (powerHeld_ != MidiTargetKind::None)
+    lit = static_cast<int>(t * 8.0) % 2 == 0 ? 1 : 0;
+  else if (organLoading())
+    lit = static_cast<int>(t * 2.0) % 2 == 0 ? 1 : 0;
+  else
+    lit = organReady_.load(std::memory_order_acquire) ? 1 : 0;
+  lampState_.store(lit, std::memory_order_relaxed);
+
+  // The quit and power-off buttons count their time here too, so a held one
+  // fires even in a block with no MIDI.
+  powerClockFrames_ += static_cast<uint64_t>(juce::jmax(0, numFrames));
+  if (powerHeld_ != MidiTargetKind::None &&
+      static_cast<double>(powerClockFrames_ - powerHeldSince_) >= kPowerHoldSeconds * rate) {
+    pendingPower_.store(powerHeld_ == MidiTargetKind::PowerOffComputer ? 2 : 1, std::memory_order_release);
+    powerHeld_ = MidiTargetKind::None;
+  }
+
+  const ReadyLamp lamp = readyLamp();
+  if (lamp.kind == MidiSourceKind::None || midiOut_ == nullptr) {
+    lampSent_ = -1;
+    return;
+  }
+  if (lit == lampSent_) return;
+  RawMidi raw;
+  if (readyLampMessage(lamp, lit == 1, raw)) {
+    midiOut_->sendMessageNow(juce::MidiMessage(raw.bytes, raw.size));
+    lampSent_ = lit;
+  }
+}
+
+void MasterpieceProcessor::powerButton(MidiTargetKind kind, bool pressed, bool hasRelease) {
+  const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  const double ran = static_cast<double>(powerClockFrames_) / rate;
+  if (ran < kPowerArmSeconds) {
+    // Before it is armed nothing counts, not even the start of a hold.
+    powerHeld_ = MidiTargetKind::None;
+    powerLastPress_ = MidiTargetKind::None;
+    if (pressed)
+      powerNotArmedSeconds_.store(juce::jmax(1, static_cast<int>(kPowerArmSeconds - ran + 0.999)),
+                                  std::memory_order_release);
+    return;
+  }
+  if (!hasRelease) {
+    // A program change or a system exclusive message says nothing when the
+    // button is let go, so it is pressed twice.
+    if (!pressed) return;
+    if (powerLastPress_ == kind &&
+        static_cast<double>(powerClockFrames_ - powerLastPressAt_) <= kPowerTwiceSeconds * rate) {
+      pendingPower_.store(kind == MidiTargetKind::PowerOffComputer ? 2 : 1, std::memory_order_release);
+      powerLastPress_ = MidiTargetKind::None;
+      return;
+    }
+    powerLastPress_ = kind;
+    powerLastPressAt_ = powerClockFrames_;
+    return;
+  }
+  if (pressed) {
+    if (powerHeld_ != kind) {
+      powerHeld_ = kind;
+      powerHeldSince_ = powerClockFrames_;
+    }
+  } else if (powerHeld_ == kind) {
+    powerHeld_ = MidiTargetKind::None;  // let go in time: nothing happens
+  }
+}
+
+void MasterpieceProcessor::serviceMidiRequests() {
+  if (const int left = powerNotArmedSeconds_.exchange(0, std::memory_order_acq_rel); left > 0)
+    juce::Logger::writeToLog("midi: quit/power-off button ignored, armed in " + juce::String(left) + " s");
+  if (const int64_t t = pendingTemperament_.exchange(0, std::memory_order_acq_rel); t > 0) {
+    const Id target = static_cast<Id>(t - 1);
+    if (target == 0) {
+      setTemperament("");
+    } else {
+      for (const auto& lib : temperamentLibrary())
+        if (temperamentTarget(lib.name) == target) {
+          setTemperament(lib.name);
+          break;
+        }
+    }
+  }
+  if (const int p = pendingPower_.exchange(0, std::memory_order_acq_rel); p != 0) {
+    juce::Logger::writeToLog(p == 2 ? "midi: power-off button held, shutting down"
+                                    : "midi: quit button held, quitting");
+    if (onPowerRequest) onPowerRequest(p == 2);
+  }
 }
 
 void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {
