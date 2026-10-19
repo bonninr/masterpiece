@@ -124,9 +124,30 @@ public:
     MP_CHECK(changes >= 4, "the lamp blinks during the hold: " + std::to_string(changes) + " changes");
     MP_CHECK(asked.empty(), "two seconds held: not yet");
     seconds(1.5);
-    MP_CHECK(asked.size() == 1 && asked[0], "three seconds held: power off asked");
+    MP_CHECK(asked.empty(), "three seconds held, shutting down not allowed: refused");
     block(up);
     MP_CHECK(proc.readyLampState() == 1, "and the lamp lit again");
+
+    // Allowed (General settings, Remote), as the control API's powerOff needs:
+    // three seconds held asks for power off. The global file this writes is
+    // put back as it was.
+    const juce::File global = proc.globalSettingsFile();
+    const bool hadGlobal = global.existsAsFile();
+    juce::MemoryBlock savedGlobal;
+    if (hadGlobal) global.loadFileAsData(savedGlobal);
+    auto remote = proc.remoteSettings();
+    remote.allowPowerOff = true;
+    proc.setRemoteSettings(remote);
+    block(down);
+    seconds(3.5);
+    block(up);
+    MP_CHECK(asked.size() == 1 && asked[0], "allowed: three seconds held, power off asked");
+    remote.allowPowerOff = false;
+    proc.setRemoteSettings(remote);
+    if (hadGlobal)
+      global.replaceWithData(savedGlobal.getData(), savedGlobal.getSize());
+    else
+      global.deleteFile();
 
     // A program change has no release: two presses within two seconds.
     block(pc);
