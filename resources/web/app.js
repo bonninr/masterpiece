@@ -14,13 +14,14 @@ function headers() {
   if (t) h.Authorization = "Bearer " + t;
   return h;
 }
+const url = (path) => (path ? `${api}/${path}` : api);
 async function get(path) {
-  const r = await fetch(`${api}/${path}`);
+  const r = await fetch(url(path));
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
   return r.json();
 }
 async function send(method, path, body) {
-  const r = await fetch(`${api}/${path}`, { method, headers: headers(), body: body ? JSON.stringify(body) : "{}" });
+  const r = await fetch(url(path), { method, headers: headers(), body: body ? JSON.stringify(body) : "{}" });
   if (!r.ok) {
     const e = (await r.json().catch(() => ({}))).error || r.status;
     flash(e === "not-allowed" ? "Changes are not allowed, or the token is wrong (Access, below)" : `Refused: ${e}`);
@@ -257,4 +258,6 @@ $("panic").addEventListener("click", () => press("commands", 0));
 $("token").value = localStorage.getItem("mp-token") || "";
 $("token").addEventListener("change", (e) => localStorage.setItem("mp-token", e.target.value));
 
-reload().then(connect);
+// ?snapshot draws the page once and leaves the stream closed, for a
+// screenshot taken by a browser that waits for the network to go quiet.
+reload().then(() => { if (!location.search.includes("snapshot")) connect(); });

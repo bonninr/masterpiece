@@ -613,6 +613,8 @@ countries: cz
 "Remote" = "Dálkové"
 "Serve the web console and the control API on this network" = "Poskytovat webový hrací stůl a ovládací API v této síti"
 "Allow changes from the network" = "Povolit změny ze sítě"
+"Allow quitting Masterpiece and shutting the computer down" = "Povolit ukončení Masterpiece a vypnutí počítače"
+"The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "Příkazy pro ukončení a vypnutí, pro hrací stůl bez obrazovky. V prvních dvou minutách po spuštění Masterpiece jsou odmítnuty, aby vadné tlačítko nemohlo vypnout počítač při každém startu. Masterpiece před ukončením vše uloží."
 "Open in the browser" = "Otevřít v prohlížeči"
 "Not running: %1" = "Neběží: %1"
 "Running. Open on this network:" = "Běží. Otevřete v této síti:"

@@ -82,6 +82,12 @@ public:
     MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::EqPreset), eqPreset, e) && eqPreset == 2,
              "and the program says which");
     MP_CHECK(m.press(Type::Command, static_cast<int>(Command::Panic)) == Error::None, "panic");
+    MP_CHECK(m.press(Type::Command, static_cast<int>(Command::PowerOff)) == Error::NotAllowed &&
+                 m.press(Type::Command, static_cast<int>(Command::Quit)) == Error::NotAllowed,
+             "quitting and shutting down are refused unless the player allowed them");
+    MP_CHECK(static_cast<int>(m.list(Type::Switch, e, true)["listed"]) == 3 &&
+                 static_cast<int>(m.list(Type::Switch, e)["listed"]) == 3,
+             "an organ with no console pictures shows every switch either way");
     MP_CHECK(m.count(Type::Temperament) > 1, "the organ's own temperament and the library's");
 
     // Changes, whatever made them.

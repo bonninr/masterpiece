@@ -886,6 +886,8 @@ public:
     int port = 8080;
     bool allowChanges = true;
     std::string token;
+    // The quit and power-off commands; off by default.
+    bool allowPowerOff = false;
   };
   const RemoteSettings& remoteSettings() const { return remote_; }
   void setRemoteSettings(const RemoteSettings& s) {
@@ -897,6 +899,8 @@ public:
   // the server's state and its addresses for the settings.
   std::function<void()> onRemoteSettingsChanged;
   std::function<juce::String()> remoteStatus;
+  // Set by the program: save and quit, and with true shut the computer down.
+  std::function<void(bool powerOff)> onPowerRequest;
   // Whether a day has passed since the last check, and its time noted.
   bool updateCheckDue() const;
   void markUpdateChecked();

@@ -25,6 +25,22 @@ std::vector<int64_t> sortedIds(const Map& m) {
 
 juce::String text(const std::string& s) { return juce::String::fromUTF8(s.c_str()); }
 
+// A name as a player reads it: sets mark a helper with "__" and often a short
+// tag after it ("__Img_14. GO  Principale 8"); both go, and doubled spaces.
+std::string readable(const std::string& raw) {
+  std::string n = raw;
+  if (n.rfind("__", 0) == 0) {
+    n.erase(0, n.find_first_not_of('_'));
+    const auto cut = n.find('_');
+    if (cut != std::string::npos && cut > 0 && cut < 8 && n.substr(0, cut).find(' ') == std::string::npos)
+      n.erase(0, cut + 1);
+  }
+  std::string out;
+  for (char c : n)
+    if (!(c == ' ' && !out.empty() && out.back() == ' ')) out += c;
+  return out;
+}
+
 }  // namespace
 
 ControlModel::ControlModel(MasterpieceProcessor& p) : proc_(p) {}
@@ -72,6 +88,38 @@ void ControlModel::rebuild() {
     const auto top = static_cast<int64_t>(proc_.playerSwitchFor(trem.controllingSwitchId));
     if (!roles.count(top)) roles[top] = Role::Tremulant;
   }
+  // A coupler is no object of its own in the organ file: it is the switch a
+  // key action waits on. It belongs where the keys are played that it
+  // couples from, as on a console: a tirasse with the pedal.
+  std::unordered_map<int64_t, int64_t> couplerInto;  // player switch -> division id
+  auto divisionOfKeyboard = [&m](Id keyboard) -> int64_t {
+    for (const auto& [did, d] : m.divisions)
+      for (Id k : d.keyboardIds)
+        if (k == keyboard) return static_cast<int64_t>(did);
+    return 0;
+  };
+  auto noteCoupler = [&](const KeyAction& a) {
+    if (a.conditionSwitchId == 0) return;
+    const auto top = static_cast<int64_t>(proc_.playerSwitchFor(a.conditionSwitchId));
+    if (roles.count(top)) return;
+    roles[top] = Role::Coupler;
+    couplerInto.emplace(top, a.sourceKeyboard != 0 ? divisionOfKeyboard(static_cast<Id>(a.sourceKeyboard))
+                                                   : static_cast<int64_t>(a.sourceDivision));
+  };
+  for (const auto& a : m.keyActions) noteCoupler(a);
+  for (const auto& [did, d] : m.divisions) {
+    (void)did;
+    for (const auto& a : d.keyActions) noteCoupler(a);
+  }
+
+  // What the console shows. A large set has thousands of switches the player
+  // never touches -- pallets, noises, the wiring between drawn knobs -- so an
+  // organ with console pictures lists its stops, couplers and tremulants and
+  // whatever else is drawn and can be clicked. One with no pictures lists
+  // every switch the player could move.
+  bool anyDrawn = false;
+  for (const auto& [sid, s] : m.switches)
+    if (s.dispInstanceId != 0) anyDrawn = true;
 
   for (int64_t id : sortedIds(m.switches)) {
     const Id sid = static_cast<Id>(id);
@@ -80,14 +128,22 @@ void ControlModel::rebuild() {
     // Only the switch the player moves; one the wiring drives follows it.
     if (proc_.playerSwitchFor(sid) != sid) continue;
     const Switch& s = m.switches.at(sid);
+    const bool musical = roles.count(id) > 0 || s.isCoupler || s.isTremulant;
     SwitchEntry e;
+    // Every switch is reachable; `console` marks what the console shows.
+    // "__" is how sets mark a helper the player never sees as such: the click
+    // target behind a drawn knob ("__Img_14. GO  Principale 8"), a jamb page's
+    // copy. The switch it works is shown in its place.
+    e.console = musical || !anyDrawn || (s.dispInstanceId != 0 && s.clickable && s.name.rfind("__", 0) != 0);
     e.id = id;
-    e.name = s.name;
+    e.name = readable(s.name);
     e.latching = s.latching;
     if (auto it = roles.find(id); it != roles.end()) e.role = it->second;
     else if (s.isCoupler) e.role = Role::Coupler;
     else if (s.isTremulant) e.role = Role::Tremulant;
     else if (!s.latching) e.role = Role::Piston;
+    if (auto it = couplerInto.find(id); it != couplerInto.end() && e.role == Role::Coupler)
+      e.division = divisionIndex(it->second);
     if (auto it = stopOf.find(id); it != stopOf.end()) {
       const Stop& stop = m.stops.at(static_cast<Id>(it->second));
       e.division = divisionIndex(static_cast<int64_t>(stop.divisionId));
@@ -97,10 +153,17 @@ void ControlModel::rebuild() {
     switches_.push_back(std::move(e));
   }
 
+  // The same for the shoes and wheels: those drawn and clickable, or every one
+  // the player could move on an organ with no pictures.
+  bool anyControlDrawn = false;
+  for (const auto& [cid, c] : m.continuousControls)
+    if (c.imageSetInstanceId != 0) anyControlDrawn = true;
   for (int64_t id : sortedIds(m.continuousControls)) {
     const Id cid = static_cast<Id>(id);
     if (proc_.playerControlFor(cid) != cid) continue;
-    controls_.push_back({id, m.continuousControls.at(cid).name, -1});
+    const ContinuousControl& c = m.continuousControls.at(cid);
+    controls_.push_back({id, readable(c.name), -1,
+                         !anyControlDrawn || (c.imageSetInstanceId != 0 && c.clickable)});
   }
   for (int64_t id : sortedIds(m.keyboards)) keyboards_.push_back({id, m.keyboards.at(static_cast<Id>(id)).name, -1});
 
@@ -216,12 +279,14 @@ juce::var ControlModel::object(Type type, int index) {
       o->setProperty("latching", s.latching);
       o->setProperty("division", s.division);
       o->setProperty("available", s.available);
+      o->setProperty("console", s.console);
       break;
     }
     case Type::Control: {
       const auto& c = controls_[static_cast<size_t>(index)];
       o->setProperty("name", text(c.name));
       o->setProperty("odfId", static_cast<juce::int64>(c.id));
+      o->setProperty("console", c.console);
       break;
     }
     case Type::Division:
@@ -268,7 +333,13 @@ juce::var ControlModel::object(Type type, int index) {
   return v;
 }
 
-juce::var ControlModel::list(Type type, Error& error) {
+bool ControlModel::consoleObject(Type type, int index) const {
+  if (type == Type::Switch) return switches_[static_cast<size_t>(index)].console;
+  if (type == Type::Control) return controls_[static_cast<size_t>(index)].console;
+  return true;
+}
+
+juce::var ControlModel::list(Type type, Error& error, bool all) {
   if (!ensure(error)) return {};
   if (type == Type::Program) return program();
   auto* o = new juce::DynamicObject();
@@ -277,8 +348,11 @@ juce::var ControlModel::list(Type type, Error& error) {
   o->setProperty("type", juce::String(std::string(typeInfo(type)->name)));
   juce::Array<juce::var> items;
   const int n = count(type);
-  for (int i = 0; i < n; ++i) items.add(object(type, i));
+  for (int i = 0; i < n; ++i)
+    if (all || consoleObject(type, i)) items.add(object(type, i));
+  // `count` is every object, so indices run 0 to count - 1 whatever is listed.
   o->setProperty("count", n);
+  o->setProperty("listed", items.size());
   o->setProperty("items", items);
   return v;
 }
@@ -393,11 +467,25 @@ Error ControlModel::press(Type type, int index) {
         case Command::StepperLast: proc_.stepperLast(); break;
         case Command::EqPresetNext: proc_.stepVoicingEqPreset(1); break;
         case Command::EqPresetPrevious: proc_.stepVoicingEqPreset(-1); break;
+        case Command::Quit: return quitOrPowerOff(false);
+        case Command::PowerOff: return quitOrPowerOff(true);
       }
       return Error::None;
     default:
       return Error::ReadOnly;
   }
+}
+
+// Off unless the player allowed it, and never in the first two minutes: a
+// noisy input learned for this would otherwise shut a console down at every
+// power-on, before anyone could reach it.
+Error ControlModel::quitOrPowerOff(bool powerOff) {
+  if (!proc_.remoteSettings().allowPowerOff || !proc_.onPowerRequest) return Error::NotAllowed;
+  if (juce::Time::getMillisecondCounter() - startedMs_ < 120000) return Error::Busy;
+  // After this request has been answered.
+  auto request = proc_.onPowerRequest;
+  juce::Timer::callAfterDelay(300, [request, powerOff] { request(powerOff); });
+  return Error::None;
 }
 
 Error ControlModel::setProgram(ProgramProp prop, int value) {

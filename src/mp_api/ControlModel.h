@@ -27,8 +27,10 @@ public:
 
   // The session: moves on at each organ load. 0 before the first.
   int session();
-  // Every object of a type, with its properties and value, as JSON.
-  juce::var list(Type type, Error& error);
+  // Every object of a type, with its properties and value, as JSON. Switches
+  // and controls as the console shows them, unless `all`: the organ's
+  // internal ones too.
+  juce::var list(Type type, Error& error, bool all = false);
   juce::var describe(Type type, int index, Error& error);
   // A value; false with the error when there is none.
   bool get(Type type, int index, int& value, Error& error);
@@ -63,12 +65,16 @@ private:
     int division = -1;
     bool latching = true;
     bool available = true;
+    bool console = true;
   };
   struct NamedEntry {
     int64_t id = 0;
     std::string name;
     int division = -1;
+    bool console = true;
   };
+  bool consoleObject(Type type, int index) const;
+  Error quitOrPowerOff(bool powerOff);
   // Builds the lists for the organ now loaded; nothing while one loads.
   bool ensure(Error& error);
   void rebuild();
@@ -79,6 +85,9 @@ private:
 
   MasterpieceProcessor& proc_;
   int builtFor_ = -1;  // organLoads() the lists were built for
+  // When this model was made, which is when the program started: quitting and
+  // shutting down are refused for the first two minutes.
+  const juce::uint32 startedMs_ = juce::Time::getMillisecondCounter();
   std::vector<SwitchEntry> switches_;
   std::vector<NamedEntry> controls_, divisions_, keyboards_;
   std::vector<NamedEntry> divisionals_;  // id = the division's id, division = piston number

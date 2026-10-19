@@ -73,6 +73,8 @@ New properties are added at the end; an index is never reused.
 | 5 | Stepper last |
 | 6 | Voicing EQ next preset |
 | 7 | Voicing EQ previous preset |
+| 8 | Quit: saves and quits Masterpiece. Needs the setting **Allow quitting Masterpiece and shutting the computer down**, and is refused (`busy`) in the first two minutes after the program starts |
+| 9 | Power off: the same, then the computer shuts down |
 
 ### Properties of an object
 
@@ -88,6 +90,7 @@ Asked for with **Describe**, one object at a time.
 | `available` | switch | 0 for a stop a demo does not ship |
 | `channel` | keyboard | The MIDI channel it plays on, 1 to 16 |
 | `own` | eqpreset | 1 for the player's own |
+| `console` | switch, control | 1 for what the organ's console shows: its stops, couplers and tremulants, and what else is drawn and can be clicked. A list gives only these unless asked for all (`?all=1`); every object keeps its index either way |
 
 ## Operations
 

@@ -618,6 +618,8 @@ countries: gb us
 "Remote" = "Remote"
 "Serve the web console and the control API on this network" = "Serve the web console and the control API on this network"
 "Allow changes from the network" = "Allow changes from the network"
+"Allow quitting Masterpiece and shutting the computer down" = "Allow quitting Masterpiece and shutting the computer down"
+"The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits."
 "Open in the browser" = "Open in the browser"
 "Not running: %1" = "Not running: %1"
 "Running. Open on this network:" = "Running. Open on this network:"

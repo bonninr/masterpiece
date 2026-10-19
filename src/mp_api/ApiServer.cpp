@@ -49,7 +49,7 @@ juce::var errorBody(Error e) {
 }
 
 void reply(httplib::Response& res, const juce::var& body) {
-  res.set_content(json(body), "application/json");
+  res.set_content(json(body), "application/json; charset=utf-8");
 }
 
 void fail(httplib::Response& res, Error e) {
@@ -81,12 +81,28 @@ std::string eventText(const ControlModel::Change& c, int session) {
 // The web console's files, built into the program.
 bool webFile(const std::string& path, std::string& body, std::string& type) {
   std::string name = path == "/" ? "index.html" : path.substr(1);
-  for (int i = 0; i < MpWeb::namedResourceListSize; ++i) {
+  // MASTERPIECE_WEB_DIR serves the files from a folder, for working on the
+  // page without building the program again.
+  const juce::String dir = juce::SystemStats::getEnvironmentVariable("MASTERPIECE_WEB_DIR", {});
+  bool found = false;
+  if (dir.isNotEmpty() && name.find("..") == std::string::npos) {
+    const juce::File f = juce::File(dir).getChildFile(juce::String(name));
+    juce::MemoryBlock mb;
+    if (f.existsAsFile() && f.loadFileAsData(mb)) {
+      body.assign(static_cast<const char*>(mb.getData()), mb.getSize());
+      found = true;
+    }
+  }
+  for (int i = 0; !found && i < MpWeb::namedResourceListSize; ++i) {
     if (name != MpWeb::originalFilenames[i]) continue;
     int size = 0;
     const char* data = MpWeb::getNamedResource(MpWeb::namedResourceList[i], size);
     if (data == nullptr) return false;
     body.assign(data, static_cast<size_t>(size));
+    found = true;
+  }
+  if (!found) return false;
+  {
     const auto ends = [&name](const char* ext) {
       const std::string e(ext);
       return name.size() >= e.size() && name.compare(name.size() - e.size(), e.size(), e) == 0;
@@ -385,7 +401,8 @@ void ApiServer::routes() {
     if (info == nullptr) return fail(res, Error::UnknownType);
     juce::var v;
     Error e = Error::None;
-    if (!onMessageThread([&] { v = model_.list(info->type, e); })) return fail(res, Error::Busy);
+    const bool all = req.get_param_value("all") == "1";
+    if (!onMessageThread([&] { v = model_.list(info->type, e, all); })) return fail(res, Error::Busy);
     if (e != Error::None) return fail(res, e);
     reply(res, v);
   });

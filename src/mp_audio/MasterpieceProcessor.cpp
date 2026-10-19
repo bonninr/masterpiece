@@ -1956,6 +1956,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (remote_.port != RemoteSettings{}.port) text << "apiport " << remote_.port << "\n";
   if (!remote_.allowChanges) text << "apiwrite 0\n";
   if (!remote_.token.empty()) text << "apitoken " << juce::String::fromUTF8(remote_.token.c_str()) << "\n";
+  if (remote_.allowPowerOff) text << "apipoweroff 1\n";
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
@@ -2058,6 +2059,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       remote_.allowChanges = val.getIntValue() != 0;
     } else if (key == "apitoken") {
       remote_.token = val.toStdString();
+    } else if (key == "apipoweroff") {
+      remote_.allowPowerOff = val.getIntValue() != 0;
     } else if (key == "updatecheckedat") {
       updateCheckedAt_ = val.getLargeIntValue();
     } else if (key == "speakerkeepalive") {

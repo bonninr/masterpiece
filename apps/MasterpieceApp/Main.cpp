@@ -446,6 +446,24 @@ public:
              mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
     };
     proc_->onRemoteSettingsChanged = [this] { applyRemoteSettings(); };
+    // The quit and power-off commands: the program closes as by its own menu,
+    // which saves everything, and the computer is told to shut down a few
+    // seconds later, once it has.
+    proc_->onPowerRequest = [this](bool powerOff) {
+      juce::Logger::writeToLog(powerOff ? "control API: shutting the computer down" : "control API: quitting");
+      if (powerOff) {
+#if JUCE_WINDOWS
+        juce::ChildProcess().start("shutdown /s /t 10");
+#elif JUCE_MAC
+        juce::ChildProcess().start(juce::StringArray{
+            "/bin/sh", "-c", "(sleep 5; osascript -e 'tell application \"System Events\" to shut down') &"});
+#elif JUCE_LINUX
+        juce::ChildProcess().start(
+            juce::StringArray{"/bin/sh", "-c", "(sleep 5; systemctl poweroff) >/dev/null 2>&1 &"});
+#endif
+      }
+      systemRequestedQuit();
+    };
     applyRemoteSettings();
 #endif
     const juce::File crashed = proc_->crashedOrgan();
@@ -887,6 +905,7 @@ public:
     if (proc_) {
       proc_->onRemoteSettingsChanged = nullptr;
       proc_->remoteStatus = nullptr;
+      proc_->onPowerRequest = nullptr;
     }
     api_.reset();
 #endif

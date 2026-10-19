@@ -613,6 +613,8 @@ countries: fr be ca ch lu mc
 "Remote" = "À distance"
 "Serve the web console and the control API on this network" = "Servir la console web et l'API de commande sur ce réseau"
 "Allow changes from the network" = "Autoriser les modifications depuis le réseau"
+"Allow quitting Masterpiece and shutting the computer down" = "Autoriser à quitter Masterpiece et à éteindre l'ordinateur"
+"The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "Les commandes pour quitter et éteindre, pour une console sans écran. Refusées pendant les deux premières minutes après le démarrage de Masterpiece, pour qu'un bouton défectueux ne puisse pas éteindre l'ordinateur à chaque démarrage. Masterpiece enregistre avant de quitter."
 "Open in the browser" = "Ouvrir dans le navigateur"
 "Not running: %1" = "Arrêté : %1"
 "Running. Open on this network:" = "En marche. Ouvrir sur ce réseau :"

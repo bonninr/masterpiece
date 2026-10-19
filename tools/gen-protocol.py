@@ -219,8 +219,11 @@ def openapi(spec):
             "responses": {"200": {"description": "The value now", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Value"}}}},
                           **error_responses()}}},
         "/api/v1/{type}": {"get": {
-            "summary": "Count and describe every object of a type", "operationId": "list",
-            "parameters": [type_param],
+            "summary": "Count and describe every object of a type; switches and controls as the console shows them unless all=1",
+            "operationId": "list",
+            "parameters": [type_param, {"name": "all", "in": "query", "required": False,
+                                        "schema": {"type": "integer", "enum": [0, 1]},
+                                        "description": "1 lists every switch or control the player could move, the organ's internal ones too"}],
             "responses": {"200": {"description": "The objects, with their properties and values",
                                   "content": {"application/json": {"schema": {"$ref": "#/components/schemas/List"}}}},
                           **error_responses()}}},

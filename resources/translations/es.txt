@@ -613,6 +613,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Remote" = "Remoto"
 "Serve the web console and the control API on this network" = "Servir la consola web y la API de control en esta red"
 "Allow changes from the network" = "Permitir cambios desde la red"
+"Allow quitting Masterpiece and shutting the computer down" = "Permitir cerrar Masterpiece y apagar el ordenador"
+"The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "Las órdenes de cerrar y apagar, para una consola sin pantalla. Se rechazan durante los dos primeros minutos tras iniciar Masterpiece, para que un botón defectuoso no apague el ordenador en cada arranque. Masterpiece guarda antes de cerrarse."
 "Open in the browser" = "Abrir en el navegador"
 "Not running: %1" = "No está en marcha: %1"
 "Running. Open on this network:" = "En marcha. Abrir en esta red:"

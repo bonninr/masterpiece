@@ -164,7 +164,7 @@
   },
   "/api/v1/{type}": {
    "get": {
-    "summary": "Count and describe every object of a type",
+    "summary": "Count and describe every object of a type; switches and controls as the console shows them unless all=1",
     "operationId": "list",
     "parameters": [
      {
@@ -185,6 +185,19 @@
         "commands"
        ]
       }
+     },
+     {
+      "name": "all",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "enum": [
+        0,
+        1
+       ]
+      },
+      "description": "1 lists every switch or control the player could move, the organ's internal ones too"
      }
     ],
     "responses": {

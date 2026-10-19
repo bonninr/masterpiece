@@ -613,6 +613,8 @@ countries: nl be sr
 "Remote" = "Op afstand"
 "Serve the web console and the control API on this network" = "De webspeeltafel en de bedienings-API in dit netwerk aanbieden"
 "Allow changes from the network" = "Wijzigingen vanuit het netwerk toestaan"
+"Allow quitting Masterpiece and shutting the computer down" = "Masterpiece afsluiten en de computer uitzetten toestaan"
+"The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "De opdrachten om af te sluiten en uit te zetten, voor een speeltafel zonder scherm. Geweigerd in de eerste twee minuten na het starten van Masterpiece, zodat een defecte knop de computer niet bij elke start kan uitzetten. Masterpiece slaat alles op voordat het afsluit."
 "Open in the browser" = "Openen in de browser"
 "Not running: %1" = "Draait niet: %1"
 "Running. Open on this network:" = "Draait. Openen in dit netwerk:"

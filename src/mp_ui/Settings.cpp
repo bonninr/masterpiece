@@ -2446,6 +2446,12 @@ RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
   write_.setToggleState(s.allowChanges, juce::dontSendNotification);
   write_.setTooltip(TRANS("Off, the network can only read: the stops drawn, the levels, the organ loaded."));
   write_.onClick = [this] { apply(); };
+  addAndMakeVisible(power_);
+  power_.setToggleState(s.allowPowerOff, juce::dontSendNotification);
+  power_.setTooltip(TRANS("The quit and power-off commands, for a console with no screen. Refused in the first "
+                          "two minutes after Masterpiece starts, so a faulty button cannot shut the computer down "
+                          "at every start. Masterpiece saves before it quits."));
+  power_.onClick = [this] { apply(); };
   addAndMakeVisible(portLabel_);
   portLabel_.setText(TRANS("Port"), juce::dontSendNotification);
   addAndMakeVisible(port_);
@@ -2477,11 +2483,13 @@ void RemotePanel::apply() {
   MasterpieceProcessor::RemoteSettings s;
   s.enabled = enable_.getToggleState();
   s.allowChanges = write_.getToggleState();
+  s.allowPowerOff = power_.getToggleState();
   s.port = juce::jlimit(1, 65535, port_.getText().getIntValue() > 0 ? port_.getText().getIntValue() : 8080);
   port_.setText(juce::String(s.port), juce::dontSendNotification);
   s.token = token_.getText().trim().toStdString();
   const auto& now = proc_.remoteSettings();
-  if (s.enabled == now.enabled && s.allowChanges == now.allowChanges && s.port == now.port && s.token == now.token)
+  if (s.enabled == now.enabled && s.allowChanges == now.allowChanges && s.port == now.port && s.token == now.token &&
+      s.allowPowerOff == now.allowPowerOff)
     return;
   proc_.setRemoteSettings(s);
   timerCallback();
@@ -2498,6 +2506,7 @@ void RemotePanel::resized() {
   r.removeFromTop(6);
   enable_.setBounds(r.removeFromTop(28));
   write_.setBounds(r.removeFromTop(28));
+  power_.setBounds(r.removeFromTop(28));
   r.removeFromTop(6);
   auto row = r.removeFromTop(28);
   portLabel_.setBounds(row.removeFromLeft(60));

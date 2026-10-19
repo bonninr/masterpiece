@@ -72,6 +72,7 @@ enum class Prop : uint8_t {
   Channel = 7,
   Own = 8,
   Set = 9,
+  Console = 10,
 };
 
 enum class Role : uint8_t {
@@ -142,9 +143,11 @@ enum class Command : uint8_t {
   StepperLast = 5,
   EqPresetNext = 6,
   EqPresetPrevious = 7,
+  Quit = 8,
+  PowerOff = 9,
 };
-constexpr std::string_view kCommandNames[] = {"panic", "generalCancel", "stepperNext", "stepperPrevious", "stepperFirst", "stepperLast", "eqPresetNext", "eqPresetPrevious"};
-constexpr int kCommandCount = 8;
+constexpr std::string_view kCommandNames[] = {"panic", "generalCancel", "stepperNext", "stepperPrevious", "stepperFirst", "stepperLast", "eqPresetNext", "eqPresetPrevious", "quit", "powerOff"};
+constexpr int kCommandCount = 10;
 
 enum class Op : uint8_t {
   Identify = 1,
