@@ -117,6 +117,18 @@ public:
       m.set(Type::Tremulant, 0, v);
     }
     MP_CHECK(m.count(Type::Windchest) == static_cast<int>(proc.organModel().wind.size()), "every windchest");
+    MP_CHECK(m.count(Type::Route) == m.count(Type::Rank), "a route per rank");
+    if (m.count(Type::Route) > 0) {
+      int pair = 0;
+      MP_CHECK(m.get(Type::Route, 0, pair, e) && pair >= 1, "a rank plays through a pair, from 1");
+      v = proc.mixBusCount() + 1;
+      MP_CHECK(m.set(Type::Route, 0, v) == Error::BadValue, "only to a pair the mixer has");
+      v = juce::jmax(1, proc.mixBusCount());
+      int now = 0;
+      MP_CHECK(m.set(Type::Route, 0, v) == Error::None && m.get(Type::Route, 0, now, e) && now == v,
+               "routed to the last pair and read back");
+      MP_CHECK(m.describe(Type::Route, 0, e)["rank"].toString() == "0", "the route names its rank");
+    }
     MP_CHECK(m.setProgram(ProgramProp::RoomWet, 40) == Error::None, "the room's wet share");
     int wet = 0;
     MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::RoomWet), wet, e) && wet == 40, "read back");

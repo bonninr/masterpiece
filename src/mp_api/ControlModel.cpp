@@ -272,9 +272,13 @@ int ControlModel::valueOf(Type type, int index) {
       return sw != 0 && proc_.switchEngaged(static_cast<Id>(sw)) ? 1 : 0;
     }
     case Type::Route: {
-      const auto& dest =
-          proc_.mixer().routingFor(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)).perspectives[0].dest;
-      return std::holds_alternative<BusId>(dest) ? static_cast<int>(std::get<BusId>(dest).value) : 1;
+      // The pair as the Mixer tab lists them, from 1.
+      const RankRouting r = proc_.mixer().routingFor(static_cast<Id>(ranks_[static_cast<size_t>(index)].id));
+      const auto& dest = r.perspectives[0].dest;
+      if (std::holds_alternative<BusId>(dest))
+        for (int i = 0; i < proc_.mixBusCount(); ++i)
+          if (proc_.mixBusAt(i) == std::get<BusId>(dest)) return i + 1;
+      return 1;
     }
     case Type::Windchest: {
       const auto id = static_cast<Id>(windchests_[static_cast<size_t>(index)].id);
@@ -585,11 +589,12 @@ Error ControlModel::set(Type type, int index, int& value) {
   } else if (type == Type::Route) {
     // As the Mixer tab does: the rank's main perspective to that pair, heard
     // from the next note.
-    if (value < 1 || value > juce::jmax(1, proc_.mixBusCount())) return Error::BadValue;
+    // Its other perspectives stay where they were.
+    if (value < 1 || value > proc_.mixBusCount()) return Error::BadValue;
     const auto id = static_cast<Id>(ranks_[static_cast<size_t>(index)].id);
-    RankRouting r;
+    RankRouting r = proc_.mixer().routingFor(id);
     r.rankId = id;
-    r.perspectives[0].dest = BusId{value};
+    r.perspectives[0].dest = proc_.mixBusAt(value - 1);
     proc_.mixer().rankRoutings[id] = r;
     proc_.markSettingsDirty();
   } else if (type == Type::Tremulant) {
