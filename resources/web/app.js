@@ -7,7 +7,7 @@ const api = "api/v1";
 const $ = (id) => document.getElementById(id);
 const state = { session: -1, divisions: [], switches: [], controls: [], generals: [], divisionals: [],
   eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
-  all: { switch: [], control: [] } };
+  all: { switch: [], control: [], rank: [] } };
 
 function headers() {
   const h = { "Content-Type": "application/json" };
@@ -72,7 +72,7 @@ function build() {
   const main = $("panels");
   main.replaceChildren();
   state.el = { switch: [], control: [], general: [], divisional: [] };
-  state.all = { switch: [], control: [] };
+  state.all = { switch: [], control: [], rank: [] };
   if (!state.switches.length && !state.controls.length) {
     main.append(el("div", { class: "empty" }, state.program.organState === 1 ? "Loading the organ..." : "No organ loaded."));
     fillSelects();
@@ -110,7 +110,7 @@ function allPanel() {
   det.addEventListener("toggle", async () => {
     if (!det.open || loaded) return;
     loaded = true;
-    const [sw, ctl, kb] = await Promise.all([get("switches?all=1"), get("controls?all=1"), get("keyboards")]);
+    const [sw, ctl, kb, rk] = await Promise.all([get("switches?all=1"), get("controls?all=1"), get("keyboards"), get("ranks")]);
     const filter = el("input", { type: "search", placeholder: "Filter by name or number" });
     const swBox = el("div", { class: "stops" });
     const ctlBox = el("div", { class: "controls" });
@@ -131,15 +131,25 @@ function allPanel() {
         el("span", {}, c.name || `#${c.index}`), r, out);
       ctlBox.append(label);
     }
+    const rankBox = el("div", { class: "controls" });
+    for (const r of rk.items) {
+      const out = el("span", { class: "dim" }, `${(r.value / 10).toFixed(1)} dB`);
+      const s = el("input", { type: "range", min: -240, max: 120, step: 5, value: r.value });
+      s.addEventListener("input", () => { out.textContent = `${(s.value / 10).toFixed(1)} dB`; setValue("ranks", r.index, Number(s.value)); });
+      state.all.rank[r.index] = { r: s, out, db: true };
+      rankBox.append(el("label", { class: "control", "data-name": `${r.index} ${r.name}`.toLowerCase() },
+        el("span", {}, r.name || `#${r.index}`), s, out));
+    }
     filter.addEventListener("input", () => {
       const q = filter.value.trim().toLowerCase();
-      for (const e of [...swBox.children, ...ctlBox.children])
+      for (const e of [...swBox.children, ...ctlBox.children, ...rankBox.children])
         e.style.display = !q || e.dataset.name.includes(q) ? "" : "none";
     });
     const keys = el("div", { class: "dim" }, kb.items.map((k) => `${k.name}: MIDI channel ${k.channel}`).join(" · "));
     det.append(filter,
       el("h2", {}, `Switches (${sw.count})`), swBox,
       el("h2", {}, `Controls (${ctl.count})`), ctlBox,
+      el("h2", {}, `Rank levels (${rk.count}), heard from the next note`), rankBox,
       el("h2", {}, "Keyboards"), keys);
   });
   // ?openall opens it at once, for a screenshot.
@@ -288,6 +298,7 @@ function connect() {
     if (c.session !== state.session) return reload();
     if (c.type === "switch") showSwitch(c.index, c.value);
     else if (c.type === "control") showControl(c.index, c.value);
+    else if (c.type === "rank") { const r = state.all.rank[c.index]; if (r && document.activeElement !== r.r) { r.r.value = c.value; r.out.textContent = `${(c.value / 10).toFixed(1)} dB`; } }
     else if (c.type === "general") showPiston("general", c.index, c.value);
     else if (c.type === "divisional") showPiston("divisional", c.index, c.value);
     else if (c.type === "eqpreset" && c.value === 1) $("eqpreset").value = c.index;

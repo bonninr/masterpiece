@@ -89,7 +89,7 @@ private:
   // shutting down are refused for the first two minutes.
   const juce::uint32 startedMs_ = juce::Time::getMillisecondCounter();
   std::vector<SwitchEntry> switches_;
-  std::vector<NamedEntry> controls_, divisions_, keyboards_;
+  std::vector<NamedEntry> controls_, divisions_, keyboards_, ranks_;
   std::vector<NamedEntry> divisionals_;  // id = the division's id, division = piston number
   std::vector<std::string> temperaments_;  // "" is the organ's own
 

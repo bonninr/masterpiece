@@ -90,6 +90,22 @@ types:
     doc: Buttons that are no object of the organ.
     access: press
     properties: [name]
+  - code: 10
+    name: rank
+    plural: ranks
+    doc: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings.
+    value: {min: -240, max: 120}
+    access: set
+    dump: values
+    properties: [name, odfId, tuning]
+  - code: 11
+    name: note
+    plural: notes
+    doc: Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel.
+    value: {min: 0, max: 1}
+    access: set
+    dump: bits
+    properties: [name]
 
 # Properties an object can have, returned by Describe.
 properties:
@@ -103,6 +119,7 @@ properties:
   - {code: 8, name: own, kind: bool, doc: 1 for the player's own preset}
   - {code: 9, name: set, kind: bool, doc: 1 when the piston holds a registration}
   - {code: 10, name: console, kind: bool, doc: 1 for what the organ's console shows; a list gives only these unless asked for all}
+  - {code: 11, name: tuning, kind: int, doc: A rank's voicing tuning in tenths of a cent}
 
 # The program object's properties (type 0). `index` never changes.
 program:

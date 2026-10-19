@@ -3,7 +3,7 @@
  "info": {
   "title": "Masterpiece control",
   "version": "0.1",
-  "description": "Generated from protocol/control.yaml. Object types: switches: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.; controls: Continuous controls - swell shoes, crescendo and the like.; divisions: The organ's divisions, for names and grouping.; keyboards: Manuals and pedal. Notes are played over MIDI.; generals: The player's general pistons. Value 1 while it is the last recalled.; divisionals: The player's divisional pistons. Value 1 while it is the last recalled in its division.; eqpresets: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.; temperaments: The temperaments to choose from. Value 1 while chosen.; commands: Buttons that are no object of the organ."
+  "description": "Generated from protocol/control.yaml. Object types: switches: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.; controls: Continuous controls - swell shoes, crescendo and the like.; divisions: The organ's divisions, for names and grouping.; keyboards: Manuals and pedal. Notes are played over MIDI.; generals: The player's general pistons. Value 1 while it is the last recalled.; divisionals: The player's divisional pistons. Value 1 while it is the last recalled in its division.; eqpresets: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.; temperaments: The temperaments to choose from. Value 1 while chosen.; commands: Buttons that are no object of the organ.; ranks: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings.; notes: Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel."
  },
  "paths": {
   "/api/v1": {
@@ -182,7 +182,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      },
@@ -294,7 +296,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      }
@@ -393,7 +397,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      },
@@ -501,7 +507,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      },
@@ -607,7 +615,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      },
@@ -734,7 +744,9 @@
         "divisionals",
         "eqpresets",
         "temperaments",
-        "commands"
+        "commands",
+        "ranks",
+        "notes"
        ]
       }
      },

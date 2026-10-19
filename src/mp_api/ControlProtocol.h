@@ -21,6 +21,8 @@ enum class Type : uint8_t {
   Eqpreset = 7,
   Temperament = 8,
   Command = 9,
+  Rank = 10,
+  Note = 11,
 };
 
 enum class Access : uint8_t { Read, Set, Press };
@@ -49,6 +51,8 @@ constexpr TypeInfo kTypes[] = {
   {Type::Eqpreset, "eqpreset", "eqpresets", Access::Press, Dump::Bits, true, 0, 1, false, "Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset."},
   {Type::Temperament, "temperament", "temperaments", Access::Press, Dump::Bits, true, 0, 1, false, "The temperaments to choose from. Value 1 while chosen."},
   {Type::Command, "command", "commands", Access::Press, Dump::None, false, 0, 0, false, "Buttons that are no object of the organ."},
+  {Type::Rank, "rank", "ranks", Access::Set, Dump::Values, true, -240, 120, false, "Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings."},
+  {Type::Note, "note", "notes", Access::Set, Dump::Bits, true, 0, 1, false, "Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel."},
 };
 
 constexpr const TypeInfo* typeInfo(Type t) {
@@ -73,6 +77,7 @@ enum class Prop : uint8_t {
   Own = 8,
   Set = 9,
   Console = 10,
+  Tuning = 11,
 };
 
 enum class Role : uint8_t {

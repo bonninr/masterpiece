@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <thread>
 
@@ -89,6 +90,16 @@ public:
                  static_cast<int>(m.list(Type::Switch, e)["listed"]) == 3,
              "an organ with no console pictures shows every switch either way");
     MP_CHECK(m.count(Type::Temperament) > 1, "the organ's own temperament and the library's");
+    MP_CHECK(m.count(Type::Rank) == static_cast<int>(proc.organModel().ranks.size()), "every rank");
+    if (m.count(Type::Rank) > 0) {
+      v = -35;
+      MP_CHECK(m.set(Type::Rank, 0, v) == Error::None && v == -35, "a rank's level set");
+      const auto rankId = static_cast<mp::Id>(static_cast<juce::int64>(m.describe(Type::Rank, 0, e)["odfId"]));
+      MP_CHECK(std::fabs(proc.voicing().live().rank(rankId).gainDb + 3.5f) < 0.01f, "and the voicing has it");
+      v = 500;
+      MP_CHECK(m.set(Type::Rank, 0, v) == Error::BadValue, "within -24 and +12 dB");
+    }
+    MP_CHECK(m.count(Type::Note) == m.count(Type::Keyboard) * 128, "every key of every keyboard");
 
     // Changes, whatever made them.
     std::vector<ControlModel::Change> changes;

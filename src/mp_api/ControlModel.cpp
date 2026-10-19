@@ -66,6 +66,7 @@ void ControlModel::rebuild() {
   keyboards_.clear();
   divisionals_.clear();
   temperaments_.clear();
+  ranks_.clear();
 
   for (int64_t id : sortedIds(m.divisions)) {
     const auto& d = m.divisions.at(static_cast<Id>(id));
@@ -166,6 +167,7 @@ void ControlModel::rebuild() {
                          !anyControlDrawn || (c.imageSetInstanceId != 0 && c.clickable)});
   }
   for (int64_t id : sortedIds(m.keyboards)) keyboards_.push_back({id, m.keyboards.at(static_cast<Id>(id)).name, -1});
+  for (int64_t id : sortedIds(m.ranks)) ranks_.push_back({id, readable(m.ranks.at(static_cast<Id>(id)).name), -1});
 
   const auto& player = proc_.playerCombinations();
   for (const auto& d : player.divisions())
@@ -196,6 +198,8 @@ int ControlModel::count(Type type) {
     case Type::Eqpreset: return static_cast<int>(proc_.voicingEqPresets().all().size());
     case Type::Temperament: return static_cast<int>(temperaments_.size());
     case Type::Command: return kCommandCount;
+    case Type::Rank: return static_cast<int>(ranks_.size());
+    case Type::Note: return static_cast<int>(keyboards_.size()) * 128;
   }
   return 0;
 }
@@ -217,6 +221,10 @@ int ControlModel::valueOf(Type type, int index) {
     }
     case Type::Temperament:
       return proc_.temperamentChoice() == temperaments_[static_cast<size_t>(index)] ? 1 : 0;
+    case Type::Rank:
+      return juce::roundToInt(proc_.voicing().live().rank(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)).gainDb * 10.0f);
+    case Type::Note:
+      return proc_.keyDownOnKeyboard(static_cast<Id>(keyboards_[static_cast<size_t>(index / 128)].id), index % 128) ? 1 : 0;
     default:
       return 0;
   }
@@ -326,6 +334,20 @@ juce::var ControlModel::object(Type type, int index) {
     case Type::Command:
       o->setProperty("name", juce::String(std::string(kCommandNames[index])));
       break;
+    case Type::Rank: {
+      const auto& r = ranks_[static_cast<size_t>(index)];
+      o->setProperty("name", text(r.name));
+      o->setProperty("odfId", static_cast<juce::int64>(r.id));
+      o->setProperty("tuning", juce::roundToInt(proc_.voicing().live().rank(static_cast<Id>(r.id)).tuningCents * 10.0f));
+      break;
+    }
+    case Type::Note: {
+      static const char* kNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+      const int note = index % 128;
+      o->setProperty("name", text(keyboards_[static_cast<size_t>(index / 128)].name) + " " + kNames[note % 12] +
+                                 juce::String(note / 12 - 1));
+      break;
+    }
     case Type::Program:
       break;
   }
@@ -427,6 +449,23 @@ Error ControlModel::set(Type type, int index, int& value) {
   } else if (type == Type::Control) {
     if (value < info->min || value > info->max) return Error::BadValue;
     proc_.setControlValue(static_cast<Id>(controls_[static_cast<size_t>(index)].id), value);
+  } else if (type == Type::Rank) {
+    if (value < info->min || value > info->max) return Error::BadValue;
+    // As the Voicing tab does: heard from the next note.
+    const auto id = static_cast<Id>(ranks_[static_cast<size_t>(index)].id);
+    PipeVoicing pv = proc_.voicing().live().rank(id);
+    pv.gainDb = static_cast<float>(value) / 10.0f;
+    proc_.voicing().live().setRank(id, pv);
+  } else if (type == Type::Note) {
+    if (value < 0 || value > 1) return Error::BadValue;
+    // Through the on-screen keyboard's path, on the keyboard's channel.
+    const int channel = proc_.channelForKeyboard(static_cast<Id>(keyboards_[static_cast<size_t>(index / 128)].id));
+    if (channel < 1 || channel > 16) return Error::NotAllowed;
+    if (value == 1)
+      proc_.keyboardState().noteOn(channel, index % 128, 0.8f);
+    else
+      proc_.keyboardState().noteOff(channel, index % 128, 0.0f);
+    return Error::None;  // the key is down from the next audio block
   }
   value = valueOf(type, index);
   return Error::None;
