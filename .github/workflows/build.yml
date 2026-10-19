@@ -127,7 +127,14 @@ jobs:
             libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
             libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev \
-            libjack-jackd2-dev
+            libjack-jackd2-dev python3-yaml
+
+      # The control protocol's code and API description are generated from
+      # protocol/control.yaml and committed; a change to one without the
+      # others fails here.
+      - name: Control protocol is current
+        if: runner.os == 'Linux' && !matrix.arm
+        run: python3 tools/gen-protocol.py --check
 
       # In a script rather than inline, so the setup this job depends on can be
       # rehearsed off the runner. These two jobs produce a binary that cannot

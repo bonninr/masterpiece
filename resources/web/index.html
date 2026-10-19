@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masterpiece</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="title"><span id="organ">Masterpiece</span><span id="state" class="dim"></span></div>
+  <div class="bar">
+    <label>Volume <input id="gain" type="range" min="-400" max="240" step="5"><span id="gainText" class="dim"></span></label>
+    <span class="group">Transpose
+      <button id="transDown" title="A semitone down">&minus;</button><span id="trans">0</span><button id="transUp" title="A semitone up">+</button></span>
+    <label>Temperament <select id="temperament"></select></label>
+    <label>EQ <select id="eqpreset"></select></label>
+    <button id="panic" class="warn" title="Every note off">Panic</button>
+  </div>
+</header>
+<main id="panels"></main>
+<footer>
+  <span id="conn" class="off">connecting</span>
+  <span id="voices" class="dim"></span>
+  <span id="late" class="dim"></span>
+  <details id="access"><summary>Access</summary>
+    <label>Token <input id="token" type="password" autocomplete="off" placeholder="only if one is set"></label>
+    <a href="api/v1/openapi.json">API description</a>
+  </details>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

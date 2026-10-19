@@ -1952,6 +1952,10 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "reopenlastorgan " << (reopenLastOrgan_ ? 1 : 0) << "\n";
   if (!updateCheck_) text << "updatecheck 0\n";
   if (updateCheckedAt_ > 0) text << "updatecheckedat " << updateCheckedAt_ << "\n";
+  if (remote_.enabled) text << "api 1\n";
+  if (remote_.port != RemoteSettings{}.port) text << "apiport " << remote_.port << "\n";
+  if (!remote_.allowChanges) text << "apiwrite 0\n";
+  if (!remote_.token.empty()) text << "apitoken " << juce::String::fromUTF8(remote_.token.c_str()) << "\n";
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
@@ -2046,6 +2050,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       reopenLastOrgan_ = val.getIntValue() != 0;
     } else if (key == "updatecheck") {
       updateCheck_ = val.getIntValue() != 0;
+    } else if (key == "api") {
+      remote_.enabled = val.getIntValue() != 0;
+    } else if (key == "apiport") {
+      remote_.port = juce::jlimit(1, 65535, val.getIntValue());
+    } else if (key == "apiwrite") {
+      remote_.allowChanges = val.getIntValue() != 0;
+    } else if (key == "apitoken") {
+      remote_.token = val.toStdString();
     } else if (key == "updatecheckedat") {
       updateCheckedAt_ = val.getLargeIntValue();
     } else if (key == "speakerkeepalive") {
@@ -5293,6 +5305,16 @@ struct LoadPhases {
 
 MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
+  // For anything that reads the model from another thread (the control API):
+  // hands off while this runs, and a new session once it has.
+  struct Loading {
+    MasterpieceProcessor& p;
+    explicit Loading(MasterpieceProcessor& proc) : p(proc) { p.organLoading_.store(true, std::memory_order_release); }
+    ~Loading() {
+      p.organLoads_.fetch_add(1, std::memory_order_acq_rel);
+      p.organLoading_.store(false, std::memory_order_release);
+    }
+  } loading(*this);
   LoadResult result;
   LoadPhases phases;
   // The organ being left keeps what the player just set on it: the file is

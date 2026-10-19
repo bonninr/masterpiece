@@ -1,0 +1,918 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Masterpiece control",
+  "version": "0.1",
+  "description": "Generated from protocol/control.yaml. Object types: switches: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.; controls: Continuous controls - swell shoes, crescendo and the like.; divisions: The organ's divisions, for names and grouping.; keyboards: Manuals and pedal. Notes are played over MIDI.; generals: The player's general pistons. Value 1 while it is the last recalled.; divisionals: The player's divisional pistons. Value 1 while it is the last recalled in its division.; eqpresets: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.; temperaments: The temperaments to choose from. Value 1 while chosen.; commands: Buttons that are no object of the organ."
+ },
+ "paths": {
+  "/api/v1": {
+   "get": {
+    "summary": "Identify",
+    "operationId": "identify",
+    "responses": {
+     "200": {
+      "description": "The program, the protocol and the session",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Identity"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/program": {
+   "get": {
+    "summary": "The program's properties",
+    "operationId": "getProgram",
+    "responses": {
+     "200": {
+      "description": "Every property with its value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/program/{property}": {
+   "put": {
+    "summary": "Set a program property",
+    "operationId": "setProgram",
+    "parameters": [
+     {
+      "name": "property",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "masterGain",
+        "transpose",
+        "temperament",
+        "stepperFrame",
+        "setter",
+        "eqOn",
+        "eqPreset",
+        "polyphony",
+        "realtimeThreads",
+        "metronome",
+        "metronomeTempo"
+       ]
+      }
+     },
+     {
+      "name": "X-Session",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Refused with stale-session when another organ has loaded since."
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Value"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The value now",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Value"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{type}": {
+   "get": {
+    "summary": "Count and describe every object of a type",
+    "operationId": "list",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The objects, with their properties and values",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/List"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{type}/values": {
+   "get": {
+    "summary": "Dump every value of a type",
+    "operationId": "dump",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The values in index order",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Dump"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{type}/{index}": {
+   "get": {
+    "summary": "Describe one object",
+    "operationId": "describe",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     },
+     {
+      "name": "index",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Its properties and value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Object"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{type}/{index}/value": {
+   "get": {
+    "summary": "Get a value",
+    "operationId": "get",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     },
+     {
+      "name": "index",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Value"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Set a value; for a switch, 2 or \"toggle\" toggles",
+    "operationId": "set",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     },
+     {
+      "name": "index",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "X-Session",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Refused with stale-session when another organ has loaded since."
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Value"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The value now",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Value"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{type}/{index}/press": {
+   "post": {
+    "summary": "Press: a piston, a preset, a temperament or a command",
+    "operationId": "press",
+    "parameters": [
+     {
+      "name": "type",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "switches",
+        "controls",
+        "divisions",
+        "keyboards",
+        "generals",
+        "divisionals",
+        "eqpresets",
+        "temperaments",
+        "commands"
+       ]
+      }
+     },
+     {
+      "name": "index",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "X-Session",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Refused with stale-session when another organ has loaded since."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Done",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/events": {
+   "get": {
+    "summary": "Every change, as server-sent events",
+    "operationId": "events",
+    "parameters": [
+     {
+      "name": "types",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Comma-separated plurals to receive; all when absent"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "event: change, data: {type, index, value, session}",
+      "content": {
+       "text/event-stream": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "token": {
+    "type": "http",
+    "scheme": "bearer"
+   }
+  },
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "error": {
+      "type": "string",
+      "enum": [
+       "unknown-operation",
+       "unknown-type",
+       "out-of-range",
+       "bad-value",
+       "read-only",
+       "not-allowed",
+       "no-organ",
+       "stale-session",
+       "busy",
+       "bad-message",
+       "unsupported-version"
+      ]
+     }
+    }
+   },
+   "Value": {
+    "type": "object",
+    "properties": {
+     "value": {
+      "oneOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "string",
+        "enum": [
+         "toggle"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "Identity": {
+    "type": "object"
+   },
+   "Object": {
+    "type": "object"
+   },
+   "List": {
+    "type": "object"
+   },
+   "Dump": {
+    "type": "object"
+   }
+  }
+ },
+ "security": [
+  {},
+  {
+   "token": []
+  }
+ ]
+}

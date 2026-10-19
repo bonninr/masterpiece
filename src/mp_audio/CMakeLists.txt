@@ -96,6 +96,29 @@ endif()
 if(WIN32)
   target_link_libraries(mp_audio PRIVATE avrt)
 endif()
+# The control API (protocol/control.yaml) and the web console it serves.
+if(MP_ENABLE_API)
+  target_sources(mp_audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlProtocol.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.cpp)
+  target_include_directories(mp_audio PRIVATE ${httplib_SOURCE_DIR})
+  target_compile_definitions(mp_audio PUBLIC MP_ENABLE_API=1)
+  # Identify answers with the program's version.
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.cpp PROPERTIES
+    COMPILE_DEFINITIONS MP_VERSION="${PROJECT_VERSION}")
+  file(GLOB MP_WEB_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/web/*)
+  juce_add_binary_data(mp_web
+    HEADER_NAME MpWeb.h
+    NAMESPACE MpWeb
+    SOURCES ${MP_WEB_FILES})
+  target_link_libraries(mp_audio PUBLIC mp_web)
+  if(WIN32)
+    target_link_libraries(mp_audio PRIVATE ws2_32)
+  endif()
+endif()
 if(TARGET mp_dsp)
   target_link_libraries(mp_audio PUBLIC mp_dsp)
   target_compile_definitions(mp_audio PUBLIC MP_ENABLE_DSP=1)

@@ -15,6 +15,7 @@
 - [Small, medium and large organs](guide/sizing.md)
 - [Organ settings](guide/organ-settings.md)
 - [General settings](guide/general-settings.md)
+- [Remote control and the web console](guide/remote.md)
 - [Plugins in a DAW](guide/plugins.md)
 - [Phones and tablets](guide/mobile.md)
 - [Command line](guide/command-line.md)
@@ -25,6 +26,7 @@
 
 - [Building from source](dev/building.md)
 - [Architecture](dev/architecture.md)
+- [Control protocol](dev/control-protocol.md)
 - [Testing](dev/testing.md)
 - [Performance](dev/performance.md)
 - [Contributing](dev/contributing.md)

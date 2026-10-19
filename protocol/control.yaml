@@ -1,0 +1,183 @@
+# The Masterpiece control protocol: the one definition.
+#
+# Everything a client can read or change in a running Masterpiece, and how
+# each transport writes it. tools/gen-protocol.py turns this file into
+#   src/mp_api/ControlProtocol.h   codes, names and ranges for the program
+#   resources/web/openapi.json     the HTTP API, for any OpenAPI tool
+# and fails with --check when either is out of date. Change this file, run
+# the generator, commit all three.
+#
+# Rules: codes and indices are never reused; a minor version only adds at the
+# end of a list. See manual/src/dev/control-protocol.md.
+
+protocol:
+  name: Masterpiece control
+  major: 0
+  minor: 1
+
+# Object types. `value` is the range of an object's value; `access` is what a
+# client may do: read, set, press. `dump` is how many values travel at once:
+# bits for 0/1 values, values otherwise.
+types:
+  - code: 0
+    name: program
+    plural: program
+    doc: The running program, one object whose properties are listed under program.
+    access: set
+  - code: 1
+    name: switch
+    plural: switches
+    doc: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.
+    value: {min: 0, max: 1, toggle: 2}
+    access: set
+    dump: bits
+    properties: [name, odfId, role, latching, division, available]
+  - code: 2
+    name: control
+    plural: controls
+    doc: Continuous controls - swell shoes, crescendo and the like.
+    value: {min: 0, max: 127}
+    access: set
+    dump: values
+    properties: [name, odfId]
+  - code: 3
+    name: division
+    plural: divisions
+    doc: The organ's divisions, for names and grouping.
+    access: read
+    properties: [name, odfId]
+  - code: 4
+    name: keyboard
+    plural: keyboards
+    doc: Manuals and pedal. Notes are played over MIDI.
+    access: read
+    properties: [name, odfId, channel]
+  - code: 5
+    name: general
+    plural: generals
+    doc: The player's general pistons. Value 1 while it is the last recalled.
+    value: {min: 0, max: 1}
+    access: press
+    dump: bits
+    properties: [name, set]
+  - code: 6
+    name: divisional
+    plural: divisionals
+    doc: The player's divisional pistons. Value 1 while it is the last recalled in its division.
+    value: {min: 0, max: 1}
+    access: press
+    dump: bits
+    properties: [name, division, set]
+  - code: 7
+    name: eqpreset
+    plural: eqpresets
+    doc: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.
+    value: {min: 0, max: 1}
+    access: press
+    dump: bits
+    properties: [name, own]
+  - code: 8
+    name: temperament
+    plural: temperaments
+    doc: The temperaments to choose from. Value 1 while chosen.
+    value: {min: 0, max: 1}
+    access: press
+    dump: bits
+    properties: [name]
+  - code: 9
+    name: command
+    plural: commands
+    doc: Buttons that are no object of the organ.
+    access: press
+    properties: [name]
+
+# Properties an object can have, returned by Describe.
+properties:
+  - {code: 1, name: name, kind: text, doc: The name the organ file or the program gives}
+  - {code: 2, name: odfId, kind: int, doc: The organ file's own id}
+  - {code: 3, name: role, kind: enum, values: [stop, coupler, tremulant, piston, other]}
+  - {code: 4, name: latching, kind: bool, doc: 1 for a drawstop, 0 for a piston}
+  - {code: 5, name: division, kind: int, doc: Index into divisions, or -1}
+  - {code: 6, name: available, kind: bool, doc: 0 for a stop a demo does not ship}
+  - {code: 7, name: channel, kind: int, doc: The MIDI channel a keyboard plays on, 1 to 16}
+  - {code: 8, name: own, kind: bool, doc: 1 for the player's own preset}
+  - {code: 9, name: set, kind: bool, doc: 1 when the piston holds a registration}
+
+# The program object's properties (type 0). `index` never changes.
+program:
+  - {index: 0, name: session, min: 0, max: 2097151, access: read, doc: Moves on at each organ load}
+  - {index: 1, name: organState, min: 0, max: 2, access: read, doc: 0 none, 1 loading, 2 ready}
+  - {index: 2, name: loadProgress, min: 0, max: 1000, access: read, doc: Tenths of a percent}
+  - {index: 3, name: masterGain, min: -400, max: 240, access: set, doc: Tenths of a dB}
+  - {index: 4, name: transpose, min: -12, max: 12, access: set, doc: Semitones}
+  - {index: 5, name: temperament, min: 0, max: 2097151, access: set, doc: Index into temperaments}
+  - {index: 6, name: stepperFrame, min: 0, max: 2097151, access: set, doc: The sequencer's frame, from 1; 0 before the first}
+  - {index: 7, name: setter, min: 0, max: 1, access: set, doc: While 1, pistons store}
+  - {index: 8, name: eqOn, min: 0, max: 1, access: set, doc: The voicing EQ}
+  - {index: 9, name: eqPreset, min: -1, max: 2097151, access: set, doc: Index into eqpresets, or -1 when none matches}
+  - {index: 10, name: polyphony, min: 64, max: 65536, access: set, doc: The polyphony limit, in voices}
+  - {index: 11, name: soundingVoices, min: 0, max: 2097151, access: read}
+  - {index: 12, name: lateBlocks, min: 0, max: 2097151, access: read, doc: Since the program started}
+  - {index: 13, name: realtimeThreads, min: 0, max: 1, access: set}
+  - {index: 14, name: midiRecorder, min: 0, max: 1, access: read, doc: 1 while recording}
+  - {index: 15, name: audioRecorder, min: 0, max: 1, access: read, doc: 1 while recording}
+  - {index: 16, name: metronome, min: 0, max: 1, access: set}
+  - {index: 17, name: metronomeTempo, min: 20, max: 300, access: set, doc: Beats a minute}
+
+# Commands (type 9), pressed.
+commands:
+  - {index: 0, name: panic, doc: Every note off}
+  - {index: 1, name: generalCancel}
+  - {index: 2, name: stepperNext}
+  - {index: 3, name: stepperPrevious}
+  - {index: 4, name: stepperFirst}
+  - {index: 5, name: stepperLast}
+  - {index: 6, name: eqPresetNext}
+  - {index: 7, name: eqPresetPrevious}
+
+operations:
+  - {code: 1, name: identify, request: [], reply: [protocol, program, session],
+     http: {method: GET, path: /api/v1}, osc: /mp/identify}
+  - {code: 2, name: count, request: [type], reply: [type, count],
+     http: {method: GET, path: "/api/v1/{type}"}, osc: "/mp/{type}/count"}
+  - {code: 3, name: describe, request: [type, index], reply: [type, index, properties],
+     http: {method: GET, path: "/api/v1/{type}/{index}"}}
+  - {code: 4, name: get, request: [type, index], reply: [type, index, value],
+     http: {method: GET, path: "/api/v1/{type}/{index}/value"}, osc: "/mp/{type}/{index}"}
+  - {code: 5, name: set, request: [type, index, value], reply: [type, index, value],
+     http: {method: PUT, path: "/api/v1/{type}/{index}/value"}, osc: "/mp/{type}/{index} i"}
+  - {code: 6, name: press, request: [type, index], reply: [type, index],
+     http: {method: POST, path: "/api/v1/{type}/{index}/press"}, osc: "/mp/{type}/{index}/press"}
+  - {code: 7, name: dump, request: [type, first, count], reply: [type, first, count, values],
+     http: {method: GET, path: "/api/v1/{type}/values"}}
+  - {code: 8, name: subscribe, request: [types], reply: [types],
+     http: {method: GET, path: /api/v1/events}, osc: /mp/subscribe}
+  - {code: 9, name: unsubscribe, request: [types], reply: [types], osc: /mp/unsubscribe}
+  - {code: 10, name: event, reply: [type, index, value], osc: "/mp/{type}/{index} i"}
+  - {code: 11, name: error, reply: [operation, error], osc: /mp/error}
+
+errors:
+  - {code: 1, name: unknown-operation, http: 404}
+  - {code: 2, name: unknown-type, http: 404}
+  - {code: 3, name: out-of-range, http: 404}
+  - {code: 4, name: bad-value, http: 400}
+  - {code: 5, name: read-only, http: 405}
+  - {code: 6, name: not-allowed, http: 403}
+  - {code: 7, name: no-organ, http: 409}
+  - {code: 8, name: stale-session, http: 409}
+  - {code: 9, name: busy, http: 503}
+  - {code: 10, name: bad-message, http: 400}
+  - {code: 11, name: unsupported-version, http: 400}
+
+encodings:
+  sysex:
+    header: [0x7D, 0x4D, 0x50]   # experimental ID, then "MP"; a registered ID before 1.0
+    unitAll: 127
+    fields:
+      type: 1
+      index: 2       # 14 bits, low 7 first
+      value: 3       # 21 bits, two's complement, low 7 first
+      count: 2
+    maxMessage: 64
+    dumpBits: 280    # switches per Dump message
+    dumpValues: 16

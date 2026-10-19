@@ -24,6 +24,9 @@
 #include "JackMidi.h"
 #include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
+#if MP_ENABLE_API
+#include "../../src/mp_api/ApiServer.h"
+#endif
 
 #if JUCE_LINUX
  #include <alsa/asoundlib.h>
@@ -432,6 +435,19 @@ public:
           if (win_ != nullptr) win_->editor().showUpdateNotice(latest);
         });
       });
+#if MP_ENABLE_API
+    // The control API and the web console, when the player turned them on.
+    api_ = std::make_unique<mp::api::ApiServer>(*proc_);
+    proc_->remoteStatus = [this]() -> juce::String {
+      if (api_ == nullptr) return {};
+      if (!api_->running())
+        return remoteError_.isNotEmpty() ? TRANS("Not running: %1").replace("%1", remoteError_) : TRANS("Off");
+      return TRANS("Running. Open on this network:") + "\nhttp://" +
+             mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
+    };
+    proc_->onRemoteSettingsChanged = [this] { applyRemoteSettings(); };
+    applyRemoteSettings();
+#endif
     const juce::File crashed = proc_->crashedOrgan();
     proc_->forgetCrash();
     if (odf == juce::File() && proc_->reopenLastOrgan()) {
@@ -850,7 +866,30 @@ public:
         .getChildFile("audio.xml");
   }
 
+#if MP_ENABLE_API
+  void applyRemoteSettings() {
+    if (api_ == nullptr || proc_ == nullptr) return;
+    const auto& r = proc_->remoteSettings();
+    mp::api::ServerSettings s;
+    s.enabled = r.enabled;
+    s.port = r.port;
+    s.allowChanges = r.allowChanges;
+    s.token = r.token;
+    remoteError_.clear();
+    if (!api_->apply(s, remoteError_)) juce::Logger::writeToLog("control API: " + remoteError_);
+  }
+#endif
+
   void shutdown() override {
+#if MP_ENABLE_API
+    // First: its requests are carried out on the message thread, against the
+    // processor, and neither may be gone under it.
+    if (proc_) {
+      proc_->onRemoteSettingsChanged = nullptr;
+      proc_->remoteStatus = nullptr;
+    }
+    api_.reset();
+#endif
     if (touchLog_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(touchLog_.get());
     // The device state is written on the way out rather than on every change:
     // a player dragging a buffer-size slider would otherwise rewrite the file
@@ -1137,6 +1176,10 @@ private:
   };
 
   std::unique_ptr<mp::MasterpieceProcessor> proc_;
+#if MP_ENABLE_API
+  std::unique_ptr<mp::api::ApiServer> api_;
+  juce::String remoteError_;
+#endif
   std::unique_ptr<juce::AudioDeviceManager> devices_;
   // One per physical input, so every message arrives knowing where it came
   // from. Runs on the driver's MIDI thread: it does nothing but tag and hand
