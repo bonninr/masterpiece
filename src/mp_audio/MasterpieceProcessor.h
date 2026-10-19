@@ -888,6 +888,13 @@ public:
     std::string token;
     // The quit and power-off commands; off by default.
     bool allowPowerOff = false;
+    // The same protocol over MIDI System Exclusive, on the MIDI inputs and
+    // the console's output, as this unit number (0-126).
+    bool sysex = false;
+    int sysexUnit = 0;
+    // And over OSC, on this UDP port.
+    bool osc = false;
+    int oscPort = 9000;
   };
   const RemoteSettings& remoteSettings() const { return remote_; }
   void setRemoteSettings(const RemoteSettings& s) {
@@ -1346,6 +1353,9 @@ public:
   // the audio thread, and nothing a panel shows moves faster than a person
   // can read it anyway. Returns how many messages were queued.
   int pumpLcdPanels();
+  // A System Exclusive message to the console's output, sent with the next
+  // audio block as the LCD lines are. Dropped when no output is open.
+  void sendSysexOut(std::vector<uint8_t> bytes);
   // Re-sends every line regardless, for a console plugged in mid-session and
   // for the settings page's test button.
   int refreshLcdPanels();

@@ -26,6 +26,8 @@
 #include "../../src/mp_control/Registration.h"
 #if MP_ENABLE_API
 #include "../../src/mp_api/ApiServer.h"
+#include "../../src/mp_api/OscTransport.h"
+#include "../../src/mp_api/SysexTransport.h"
 #endif
 
 #if JUCE_LINUX
@@ -359,7 +361,7 @@ public:
         juce::Logger::writeToLog("midi: " + in.name + " could not be opened (another program may "
                                  "be using it); it is tried again every few seconds");
       auto route = std::make_unique<DeviceRoute>(
-          *proc_, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
+          *this, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
       devices_->addMidiInputDeviceCallback(in.identifier, route.get());
       routes_.push_back({in.identifier, std::move(route)});
     }
@@ -378,7 +380,7 @@ public:
                               ? args[i + 1].unquoted()
                               : juce::String("Masterpiece");
         virtualRoute_ = std::make_unique<DeviceRoute>(
-            *proc_, proc_->registerOwnMidiInput(name));
+            *this, proc_->registerOwnMidiInput(name));
         virtualInput_ = juce::MidiInput::createNewDevice(name, virtualRoute_.get());
         if (virtualInput_ != nullptr) {
           virtualInput_->start();
@@ -442,8 +444,10 @@ public:
       if (api_ == nullptr) return {};
       if (!api_->running())
         return remoteError_.isNotEmpty() ? TRANS("Not running: %1").replace("%1", remoteError_) : TRANS("Off");
-      return TRANS("Running. Open on this network:") + "\nhttp://" +
-             mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
+      juce::String status = TRANS("Running. Open on this network:") + "\nhttp://" +
+                            mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
+      if (oscError_.isNotEmpty()) status << "\nOSC: " << oscError_;
+      return status;
     };
     proc_->onRemoteSettingsChanged = [this] { applyRemoteSettings(); };
     // The quit and power-off commands: the program closes as by its own menu,
@@ -895,6 +899,33 @@ public:
     s.token = r.token;
     remoteError_.clear();
     if (!api_->apply(s, remoteError_)) juce::Logger::writeToLog("control API: " + remoteError_);
+
+    // SysEx: the MIDI inputs hand this protocol's messages over while it is
+    // on, and replies join the console's output.
+    sysexOn_ = false;
+    if (r.sysex) {
+      if (sysex_ == nullptr)
+        sysex_ = std::make_unique<mp::api::SysexTransport>(*proc_, [this](const juce::MidiMessage& m) {
+          if (proc_ != nullptr)
+            proc_->sendSysexOut(std::vector<uint8_t>(m.getRawData(), m.getRawData() + m.getRawDataSize()));
+        });
+      sysex_->setUnit(r.sysexUnit);
+      sysexOn_ = true;
+    } else {
+      sysex_.reset();
+    }
+
+    oscError_.clear();
+    if (r.osc) {
+      if (osc_ == nullptr) osc_ = std::make_unique<mp::api::OscTransport>(*proc_);
+      osc_->setAllowChanges(r.allowChanges);
+      if (osc_->port() != r.oscPort && !osc_->start(r.oscPort, oscError_)) {
+        juce::Logger::writeToLog("control API, OSC: " + oscError_);
+        osc_.reset();
+      }
+    } else {
+      osc_.reset();
+    }
   }
 #endif
 
@@ -907,6 +938,9 @@ public:
       proc_->remoteStatus = nullptr;
       proc_->onPowerRequest = nullptr;
     }
+    sysexOn_ = false;
+    sysex_.reset();
+    osc_.reset();
     api_.reset();
 #endif
     if (touchLog_ != nullptr) juce::Desktop::getInstance().removeGlobalMouseListener(touchLog_.get());
@@ -1197,19 +1231,34 @@ private:
   std::unique_ptr<mp::MasterpieceProcessor> proc_;
 #if MP_ENABLE_API
   std::unique_ptr<mp::api::ApiServer> api_;
-  juce::String remoteError_;
+  juce::String remoteError_, oscError_;
+  std::unique_ptr<mp::api::SysexTransport> sysex_;
+  std::unique_ptr<mp::api::OscTransport> osc_;
+  // Read on the MIDI threads: whether this protocol's System Exclusive
+  // messages are taken off the inputs.
+  std::atomic<bool> sysexOn_{false};
 #endif
   std::unique_ptr<juce::AudioDeviceManager> devices_;
   // One per physical input, so every message arrives knowing where it came
   // from. Runs on the driver's MIDI thread: it does nothing but tag and hand
   // over, and the processor's queue is allocation-free for the same reason.
   struct DeviceRoute : juce::MidiInputCallback {
-    DeviceRoute(mp::MasterpieceProcessor& p, int id) : proc(p), deviceId(id) {}
+    DeviceRoute(MasterpieceApp& a, int id) : app(a), deviceId(id) {}
     void handleIncomingMidiMessage(juce::MidiInput*,
                                    const juce::MidiMessage& msg) override {
-      proc.pushMidi(deviceId, msg);
+#if MP_ENABLE_API
+      // A control request: carried out on the message thread, and kept away
+      // from the organ.
+      if (app.sysexOn_.load(std::memory_order_relaxed) && mp::api::SysexTransport::isOurs(msg)) {
+        juce::MessageManager::callAsync([a = &app, msg] {
+          if (a->sysex_ != nullptr) a->sysex_->handle(msg);
+        });
+        return;
+      }
+#endif
+      app.proc_->pushMidi(deviceId, msg);
     }
-    mp::MasterpieceProcessor& proc;
+    MasterpieceApp& app;
     int deviceId;
   };
   struct Routed {

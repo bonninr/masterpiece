@@ -1957,6 +1957,10 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (!remote_.allowChanges) text << "apiwrite 0\n";
   if (!remote_.token.empty()) text << "apitoken " << juce::String::fromUTF8(remote_.token.c_str()) << "\n";
   if (remote_.allowPowerOff) text << "apipoweroff 1\n";
+  if (remote_.sysex) text << "apisysex 1\n";
+  if (remote_.sysexUnit != 0) text << "apisysexunit " << remote_.sysexUnit << "\n";
+  if (remote_.osc) text << "apiosc 1\n";
+  if (remote_.oscPort != RemoteSettings{}.oscPort) text << "apioscport " << remote_.oscPort << "\n";
   if (const float db = keepAliveDb_.load(std::memory_order_relaxed); db < 0.0f)
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
@@ -2061,6 +2065,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       remote_.token = val.toStdString();
     } else if (key == "apipoweroff") {
       remote_.allowPowerOff = val.getIntValue() != 0;
+    } else if (key == "apisysex") {
+      remote_.sysex = val.getIntValue() != 0;
+    } else if (key == "apisysexunit") {
+      remote_.sysexUnit = juce::jlimit(0, 126, val.getIntValue());
+    } else if (key == "apiosc") {
+      remote_.osc = val.getIntValue() != 0;
+    } else if (key == "apioscport") {
+      remote_.oscPort = juce::jlimit(1, 65535, val.getIntValue());
     } else if (key == "updatecheckedat") {
       updateCheckedAt_ = val.getLargeIntValue();
     } else if (key == "speakerkeepalive") {
@@ -4226,6 +4238,12 @@ int MasterpieceProcessor::pumpLcdPanels() {
     for (auto& m : msgs) lcdQueue_.push_back(std::move(m));
   }
   return static_cast<int>(msgs.size());
+}
+
+void MasterpieceProcessor::sendSysexOut(std::vector<uint8_t> bytes) {
+  if (midiOut_ == nullptr) return;
+  std::lock_guard<std::mutex> lk(lcdQueueLock_);
+  lcdQueue_.push_back(std::move(bytes));
 }
 
 int MasterpieceProcessor::refreshLcdPanels() {

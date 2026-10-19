@@ -2452,6 +2452,22 @@ RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
                           "two minutes after Masterpiece starts, so a faulty button cannot shut the computer down "
                           "at every start. Masterpiece saves before it quits."));
   power_.onClick = [this] { apply(); };
+  addAndMakeVisible(sysex_);
+  sysex_.setToggleState(s.sysex, juce::dontSendNotification);
+  sysex_.setTooltip(TRANS("For a console with a MIDI cable and no network: requests read on the MIDI inputs, "
+                          "replies and changes sent on the console's MIDI output."));
+  sysex_.onClick = [this] { apply(); };
+  addAndMakeVisible(osc_);
+  osc_.setToggleState(s.osc, juce::dontSendNotification);
+  osc_.setTooltip(TRANS("For control surfaces and apps that speak OSC, such as TouchOSC, on the UDP port "
+                        "beside it."));
+  osc_.onClick = [this] { apply(); };
+  addAndMakeVisible(oscPortLabel_);
+  oscPortLabel_.setText(TRANS("Port"), juce::dontSendNotification);
+  addAndMakeVisible(oscPort_);
+  oscPort_.setInputRestrictions(5, "0123456789");
+  oscPort_.setText(juce::String(s.oscPort), juce::dontSendNotification);
+  oscPort_.onReturnKey = oscPort_.onFocusLost = [this] { apply(); };
   addAndMakeVisible(portLabel_);
   portLabel_.setText(TRANS("Port"), juce::dontSendNotification);
   addAndMakeVisible(port_);
@@ -2488,8 +2504,13 @@ void RemotePanel::apply() {
   port_.setText(juce::String(s.port), juce::dontSendNotification);
   s.token = token_.getText().trim().toStdString();
   const auto& now = proc_.remoteSettings();
+  s.sysex = sysex_.getToggleState();
+  s.sysexUnit = now.sysexUnit;
+  s.osc = osc_.getToggleState();
+  s.oscPort = juce::jlimit(1, 65535, oscPort_.getText().getIntValue() > 0 ? oscPort_.getText().getIntValue() : 9000);
+  oscPort_.setText(juce::String(s.oscPort), juce::dontSendNotification);
   if (s.enabled == now.enabled && s.allowChanges == now.allowChanges && s.port == now.port && s.token == now.token &&
-      s.allowPowerOff == now.allowPowerOff)
+      s.allowPowerOff == now.allowPowerOff && s.sysex == now.sysex && s.osc == now.osc && s.oscPort == now.oscPort)
     return;
   proc_.setRemoteSettings(s);
   timerCallback();
@@ -2507,6 +2528,13 @@ void RemotePanel::resized() {
   enable_.setBounds(r.removeFromTop(28));
   write_.setBounds(r.removeFromTop(28));
   power_.setBounds(r.removeFromTop(28));
+  sysex_.setBounds(r.removeFromTop(28));
+  {
+    auto oscRow = r.removeFromTop(28);
+    oscPort_.setBounds(oscRow.removeFromRight(90).reduced(0, 2));
+    oscPortLabel_.setBounds(oscRow.removeFromRight(50));
+    osc_.setBounds(oscRow);
+  }
   r.removeFromTop(6);
   auto row = r.removeFromTop(28);
   portLabel_.setBounds(row.removeFromLeft(60));

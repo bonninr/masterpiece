@@ -180,7 +180,7 @@ A Dump of switches:
 
 ## MIDI System Exclusive
 
-Read on the MIDI inputs allowed in General settings, answered on the MIDI output chosen there.
+Turned on in General settings, Remote. Read on the MIDI inputs allowed in General settings, answered on the MIDI output chosen there; this protocol's messages are kept from the organ. A message is at most 64 bytes, F0 and F7 included.
 
 ### Message layout
 
@@ -192,7 +192,7 @@ F0 7D 4D 50 <unit> <major> <operation> <sequence> <payload ...> F7
 |---|---|
 | `7D` | The ID for non-commercial and experimental use, while the protocol is tried. A registered manufacturer ID replaces it before version 1.0 |
 | `4D 50` | `M` `P` |
-| `unit` | 0 to 126, set in General settings, for several programs on one MIDI network; 127 addresses all |
+| `unit` | 0 to 126, for several programs on one MIDI network: 0 unless the settings file sets `apisysexunit`; 127 addresses all |
 | `major` | the protocol's major version |
 | `operation` | the code from the operations table |
 | `sequence` | 0 to 127, chosen by the client and repeated in the reply, to pair them; 0 in events |
@@ -213,12 +213,12 @@ Every data byte is 7 bits, as MIDI requires.
 |---|---|---|
 | Identify | none | minor, program version (3 bytes), session (value), unit, then name (text) |
 | Count | type | type, count |
-| Describe | type, index | type, index, then property code (1 byte) and its value or text, repeated; names chunked across messages with a part number |
+| Describe | type, index | type, index, then property code (1 byte) and its value, repeated, and the name last, cut to fit the message; the whole name over HTTP or OSC |
 | Get | type, index | type, index, value |
 | Set | type, index, value | type, index, value now |
 | Press | type, index | type, index |
 | Dump | type, first, count (up to 280 for bits, 16 for values) | type, first, count, then bits 7 to a byte, low bit first, or values |
-| Subscribe | a type mask (2 bytes: bit n for type n) | the mask |
+| Subscribe, Unsubscribe | a type mask (3 bytes, as a value: bit n for type n) | the mask now |
 | Event | | type, index, value |
 | Error | | operation, error code |
 
@@ -252,18 +252,26 @@ F0 7D 4D 50 00 00 0A 00 01 0C 00 01 00 00 F7
 
 ## OSC
 
-UDP on the port chosen in General settings. Replies and events go to the address and port the request came from.
+UDP on the port chosen in General settings (9000 by default). A client first says where replies and events go, with `/mp/replyto`; until then the program listens and answers nothing. `{type}` is the plural name, as in the HTTP paths.
 
-| Operation | Address and arguments |
-|---|---|
-| Identify | `/mp/identify` |
-| Count | `/mp/{type}/count` |
-| Get | `/mp/{type}/{index}` with no argument |
-| Set | `/mp/{type}/{index}` with an integer |
-| Press | `/mp/{type}/{index}/press` |
-| Subscribe | `/mp/subscribe` with the type names as strings |
-| Event | `/mp/{type}/{index}` with the integer value, sent by the program |
-| Error | `/mp/error` with the address and the error name |
+| Operation | Address and arguments | Reply |
+|---|---|---|
+| Reply to | `/mp/replyto` with the host as a string (the computer itself when left out) and the port | the same, as confirmation |
+| Identify | `/mp/identify` | protocol, version, program version, session, organ |
+| Count | `/mp/{type}/count` | the count |
+| Describe | `/mp/{type}/{index}/describe` | each property's name, then its value |
+| Get | `/mp/{type}/{index}` with no argument | the value |
+| Set | `/mp/{type}/{index}` with an integer, or a float, rounded | the value now |
+| Press | `/mp/{type}/{index}/press` | the address |
+| Dump | `/mp/{type}/dump` with the first index and a count, both optional | the first index, then up to 1,000 values |
+| Subscribe | `/mp/subscribe` with the type names as strings; none for every type | the type mask now |
+| Unsubscribe | `/mp/unsubscribe`, the same | the type mask now |
+| Event | | `/mp/{type}/{index}` with the value, sent by the program |
+| Error | | `/mp/error` with the address, the error code and its name |
+
+A reply uses the address of its request, and an event the address of a Get, so a fader in TouchOSC or Open Stage Control bound to `/mp/controls/0` moves the shoe and follows it.
+
+The program's properties go by name, `/mp/program/masterGain`, and commands may too, `/mp/commands/panic/press`. With changes from the network turned off, a Set or Press is refused with `not-allowed`, as over HTTP.
 
 ## MIDI-CI Property Exchange
 

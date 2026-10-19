@@ -138,6 +138,14 @@ types:
     access: read
     dump: values
     properties: [name, odfId]
+  - code: 16
+    name: route
+    plural: routes
+    doc: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.
+    value: {min: 1, max: 8}
+    access: set
+    dump: values
+    properties: [name, rank]
 
 # Properties an object can have, returned by Describe.
 properties:

@@ -229,6 +229,7 @@ int ControlModel::count(Type type) {
     case Type::Enclosure: return static_cast<int>(enclosures_.size());
     case Type::Tremulant: return static_cast<int>(tremulants_.size());
     case Type::Windchest: return static_cast<int>(windchests_.size());
+    case Type::Route: return static_cast<int>(ranks_.size());
   }
   return 0;
 }
@@ -269,6 +270,11 @@ int ControlModel::valueOf(Type type, int index) {
     case Type::Tremulant: {
       const auto sw = tremulants_[static_cast<size_t>(index)].switchId;
       return sw != 0 && proc_.switchEngaged(static_cast<Id>(sw)) ? 1 : 0;
+    }
+    case Type::Route: {
+      const auto& dest =
+          proc_.mixer().routingFor(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)).perspectives[0].dest;
+      return std::holds_alternative<BusId>(dest) ? static_cast<int>(std::get<BusId>(dest).value) : 1;
     }
     case Type::Windchest: {
       const auto id = static_cast<Id>(windchests_[static_cast<size_t>(index)].id);
@@ -429,6 +435,10 @@ juce::var ControlModel::object(Type type, int index) {
       o->setProperty("depth", t.depth);
       break;
     }
+    case Type::Route:
+      o->setProperty("name", text(ranks_[static_cast<size_t>(index)].name));
+      o->setProperty("rank", index);
+      break;
     case Type::Windchest:
       o->setProperty("name", text(windchests_[static_cast<size_t>(index)].name));
       o->setProperty("odfId", static_cast<juce::int64>(windchests_[static_cast<size_t>(index)].id));
@@ -572,6 +582,16 @@ Error ControlModel::set(Type type, int index, int& value) {
     PipeVoicing pv = proc_.voicing().live().pipe(id);
     pv.gainDb = static_cast<float>(value) / 10.0f;
     proc_.voicing().live().setPipe(id, pv);
+  } else if (type == Type::Route) {
+    // As the Mixer tab does: the rank's main perspective to that pair, heard
+    // from the next note.
+    if (value < 1 || value > juce::jmax(1, proc_.mixBusCount())) return Error::BadValue;
+    const auto id = static_cast<Id>(ranks_[static_cast<size_t>(index)].id);
+    RankRouting r;
+    r.rankId = id;
+    r.perspectives[0].dest = BusId{value};
+    proc_.mixer().rankRoutings[id] = r;
+    proc_.markSettingsDirty();
   } else if (type == Type::Tremulant) {
     if (value < 0 || value > 1) return Error::BadValue;
     const auto sw = tremulants_[static_cast<size_t>(index)].switchId;

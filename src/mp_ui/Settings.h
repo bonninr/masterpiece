@@ -455,11 +455,13 @@ private:
   void apply();
   void timerCallback() override;
   MasterpieceProcessor& proc_;
-  juce::Label heading_, portLabel_, tokenLabel_, status_, note_;
+  juce::Label heading_, portLabel_, tokenLabel_, status_, note_, oscPortLabel_;
   juce::ToggleButton enable_{TRANS("Serve the web console and the control API on this network")};
   juce::ToggleButton write_{TRANS("Allow changes from the network")};
   juce::ToggleButton power_{TRANS("Allow quitting Masterpiece and shutting the computer down")};
-  juce::TextEditor port_, token_;
+  juce::ToggleButton sysex_{TRANS("Answer the same requests over MIDI (System Exclusive)")};
+  juce::ToggleButton osc_{TRANS("Answer the same requests over OSC")};
+  juce::TextEditor port_, token_, oscPort_;
   juce::TextButton open_{TRANS("Open in the browser")};
 };
 

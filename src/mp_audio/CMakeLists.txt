@@ -103,7 +103,13 @@ if(MP_ENABLE_API)
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexCodec.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexTransport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/OscTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/OscTransport.cpp)
+  target_link_libraries(mp_audio PUBLIC juce::juce_osc)
   target_include_directories(mp_audio PRIVATE ${httplib_SOURCE_DIR})
   target_compile_definitions(mp_audio PUBLIC MP_ENABLE_API=1)
   # Identify answers with the program's version.

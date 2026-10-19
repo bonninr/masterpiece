@@ -13,7 +13,9 @@ Available in the standalone program on Windows, macOS, Linux and the Raspberry P
 | **Serve the web console and the control API on this network** | Starts the server; off stops it. Kept for the next start. | Off |
 | **Allow changes from the network** | Off, the network can only read: the stops drawn, the levels, the organ loaded. | On |
 | **Allow quitting Masterpiece and shutting the computer down** | The `quit` and `powerOff` commands, for a console with no screen. Masterpiece saves and quits; `powerOff` then shuts the computer down a few seconds later. Both are refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. | Off |
-| **Port** | The TCP port. Another program already using it shows **Not running** with the reason. | 8080 |
+| **Port** | The TCP port of the page and the API. Another program already using it shows **Not running** with the reason. | 8080 |
+| **Answer the same requests over MIDI (System Exclusive)** | For a console with a MIDI cable and no network: requests are read on the MIDI inputs, and replies and changes go out on the console's MIDI output, chosen under MIDI. | Off |
+| **Answer the same requests over OSC** | For control surfaces and apps that speak OSC, such as TouchOSC and Open Stage Control, on the UDP port beside it. | Off, port 9000 |
 | **Token** | When set, every change needs it. Reading needs none. | Empty |
 | **Open in the browser** | Opens the page on this computer. | |
 
@@ -56,3 +58,12 @@ The API is HTTP with JSON on the same port. Every object of the organ has a type
 A request that changes something is sent with `Content-Type: application/json`, and with `Authorization: Bearer <token>` when a token is set. The full description is served at `/api/v1/openapi.json` and can be opened in any OpenAPI tool. The protocol, its object types, properties and errors are described in [Control protocol](../dev/control-protocol.md).
 
 A microcontroller on Wi-Fi, such as an ESP32, sends these requests directly. It should keep the Wi-Fi power saving off, which otherwise delays each request by up to a tenth of a second. Notes are played over MIDI as before.
+
+### Over MIDI and OSC
+
+The same objects, with the same types and indexes, can be read and changed without HTTP:
+
+- **MIDI System Exclusive**, for a console whose microcontroller has a MIDI port and no network, such as an Arduino with USB MIDI. A Set of switch 12 to 1 is the 15 bytes `F0 7D 4D 50 00 00 05 05 01 0C 00 01 00 00 F7`, and the reply comes back on the console's MIDI output. Several programs on one MIDI network are told apart by a unit number, 0 by default, set with the line `apisysexunit 1` in the settings file.
+- **OSC**, for TouchOSC, Open Stage Control and similar apps. Send `/mp/replyto` with the app's port first, then `/mp/subscribe`; a fader bound to `/mp/controls/0` moves the first shoe and follows it, and a button bound to `/mp/switches/12` draws switch 12 and lights while it is drawn.
+
+**Allow changes from the network** applies to OSC as to HTTP. Each message and its replies are described in [Control protocol](../dev/control-protocol.md).

@@ -28,7 +28,7 @@ if(TARGET mp_audio)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_AUDIO=1)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
-    target_sources(mp_tests PRIVATE test_api.cpp)
+    target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)
     target_include_directories(mp_tests PRIVATE ${httplib_SOURCE_DIR})
     if(WIN32)
       target_link_libraries(mp_tests PRIVATE ws2_32)
