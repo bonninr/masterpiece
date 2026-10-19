@@ -73,6 +73,7 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `language` | Language code. Absent: the system language. | **Settings > General settings > Language** |
 | `cancelresetskeyboards`, `learnnoisefilter` | `1` when on. | **Settings > General settings > MIDI** |
 | `combinationsontop`, `setoffafterstore` | `1` when on. | **Always on top**, **Set turns off after storing** in the Combinations window |
+| `pistonsleavebass` | `1` when on. | **Pistons leave the bass coupler** in the Combinations window |
 | `showkeys` | `0` when played keys are hidden. | **View > Show played keys** |
 | `cachewhileplaying` | `1` saves the cache in silence while the organ plays. | **Save the sample cache** |
 | `midiinputoff` | Name of a MIDI input that is switched off; one line per input. | The inputs list in **General settings > MIDI** |

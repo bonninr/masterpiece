@@ -154,6 +154,7 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   }
 
   std::map<Id, Vote> couplers;
+  std::unordered_set<Id> bassOrMelody;
   auto addActions = [&](const std::vector<KeyAction>& actions, Id fallbackDivision) {
     for (const KeyAction& ka : actions) {
       if (ka.conditionSwitchId == 0) continue;
@@ -166,9 +167,14 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
                                       : divisionOfKeyboard(model, ka.sourceKeyboard);
       if (div == 0) div = fallbackDivision;
       couplers[sw].add(div);
+      const bool extreme = ka.actionType == 2 || ka.actionType == 3;
+      if (extreme) bassOrMelody.insert(sw);
       if (const auto k = knobsInto.find(condition); k != knobsInto.end())
         for (Id knob : k->second)
-          if (knob != sw && notRegistration.count(knob) == 0) couplers[knob].add(div);
+          if (knob != sw && notRegistration.count(knob) == 0) {
+            couplers[knob].add(div);
+            if (extreme) bassOrMelody.insert(knob);
+          }
     }
   };
   addActions(model.keyActions, 0);
@@ -211,6 +217,7 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     e.divisionId = div;
     const auto it = model.switches.find(sw);
     e.name = it != model.switches.end() ? it->second.name : std::string();
+    e.bassOrMelody = bassOrMelody.count(sw) != 0;
     out.push_back(std::move(e));
   };
   for (const auto& [sw, vote] : couplers) addSwitch(sw, vote.result());
@@ -305,7 +312,7 @@ void PlayerCombinations::captureInto(Registration& r, Id divisionScope, bool all
   for (size_t i = 0; i < elements_.size(); ++i) {
     const Element& e = elements_[i];
     const bool inScope = all || e.divisionId == divisionScope;
-    r.drawn[i] = inScope && isEngaged && isEngaged(e) ? 1 : 0;
+    r.drawn[i] = inScope && !left(e) && isEngaged && isEngaged(e) ? 1 : 0;
   }
 }
 
@@ -315,6 +322,7 @@ void PlayerCombinations::recallInto(const Registration& r, Id divisionScope,
   for (size_t i = 0; i < elements_.size(); ++i) {
     const Element& e = elements_[i];
     if (!all && e.divisionId != divisionScope) continue;
+    if (left(e)) continue;
     out.push_back({e.kind, e.id, r.drawn[i] != 0});
   }
 }

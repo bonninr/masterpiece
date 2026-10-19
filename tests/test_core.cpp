@@ -10546,6 +10546,76 @@ static TuningTableTest g_tuningTable;
 static KeyboardLayoutTest g_keyboardLayout;
 static WindSolverTest g_windSolver;
 static PlayerCombinationsTest g_playerCombinations;
+
+// The bass and melody couplers left out of the player's pistons, as on
+// consoles where they belong to the hands (GrandOrgue #2487; asked of
+// Hauptwerk too): with the option on, a general neither stores nor recalls
+// them, and a general cancel still pushes them in. Off, they are
+// registration like any coupler.
+class PistonsLeaveBassTest final : public mp::test::Test {
+public:
+  PistonsLeaveBassTest() : Test("functional.control.pistons-leave-bass-coupler", Category::Functional) {}
+  void run() override {
+    using PC = mp::PlayerCombinations;
+    mp::OrganModel m = PlayerCombinationsTest::organ();
+    mp::Switch bass;
+    bass.switchId = 310;
+    bass.name = "Bass coupler";
+    m.switches[310] = bass;
+    mp::KeyAction a;
+    a.sourceKeyboard = 2;
+    a.destKeyboard = 1;
+    a.conditionSwitchId = 310;
+    a.actionType = 2;  // the lowest key held
+    m.keyActions.push_back(a);
+
+    const auto elements = PC::collect(m, nullptr);
+    PC pc;
+    pc.reset(elements, PC::divisionsOf(m, elements));
+    bool flagged = false, plainFlagged = false;
+    for (const auto& e : pc.elements()) {
+      if (e.id == 310) flagged = e.bassOrMelody;
+      if (e.id == 300) plainFlagged = e.bassOrMelody;
+    }
+    MP_CHECK(flagged && !plainFlagged, "the bass coupler is known as one; Pedal to Great is not");
+
+    std::unordered_set<mp::Id> drawn{310, 300};
+    const PC::Reader reader = [&](const PC::Element& e) { return drawn.count(e.id) != 0; };
+    std::vector<PC::Change> out;
+
+    // Off: stored and recalled like any coupler.
+    MP_CHECK(pc.captureGeneral(1, reader), "general 1 stored");
+    pc.recallGeneral(1, out);
+    MP_CHECK(PlayerCombinationsTest::has(out, PC::ElementKind::Switch, 310, true), "off: recalled");
+
+    // On: left alone by store and recall, still cancelled.
+    pc.setLeaveBassAndMelody(true);
+    MP_CHECK(pc.captureGeneral(2, reader), "general 2 stored");
+    out.clear();
+    pc.recallGeneral(2, out);
+    bool touched = false;
+    for (const auto& c : out) touched = touched || c.id == 310;
+    MP_CHECK(!touched, "on: the bass coupler is not recalled");
+    MP_CHECK(PlayerCombinationsTest::has(out, PC::ElementKind::Switch, 300, true), "and Pedal to Great is");
+    out.clear();
+    pc.recallGeneral(1, out);
+    touched = false;
+    for (const auto& c : out) touched = touched || c.id == 310;
+    MP_CHECK(!touched, "on: not recalled from a general stored before either");
+    out.clear();
+    pc.generalCancel(out);
+    MP_CHECK(PlayerCombinationsTest::has(out, PC::ElementKind::Switch, 310, false), "the cancel still pushes it in");
+
+    // What general 2 stored for it: nothing drawn, so turning the option off
+    // again recalls it pushed in.
+    pc.setLeaveBassAndMelody(false);
+    out.clear();
+    pc.recallGeneral(2, out);
+    MP_CHECK(PlayerCombinationsTest::has(out, PC::ElementKind::Switch, 310, false),
+             "a general stored while it was left holds it pushed in");
+  }
+};
+static PistonsLeaveBassTest g_pistonsLeaveBass;
 static DoubleLinkageTest g_doubleLinkage;
 static StageSwitchTest g_stageSwitches;
 static CombinationTest g_combinationPistons;

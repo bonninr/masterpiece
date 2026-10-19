@@ -2029,6 +2029,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
+  if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
   // Written either way: on is the default since 0.7.11, and a player who
@@ -2180,6 +2181,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "setoffafterstore") {
       setOffAfterStore_ = val.getIntValue() != 0;
+    } else if (key == "pistonsleavebass") {
+      leaveBassAndMelody_ = val.getIntValue() != 0;
+      player_.setLeaveBassAndMelody(leaveBassAndMelody_);
     } else if (key == "showkeys") {
       showPlayedKeys_.store(val.getIntValue() != 0);
     } else if (key == "smallpagesfill") {
@@ -4252,6 +4256,12 @@ bool MasterpieceProcessor::stepperDeleteFrame() {
 
 // What the organ offers a player to register, worked out once the console's
 // wiring is known: which switch a player moves is what gets captured.
+bool MasterpieceProcessor::hasBassOrMelodyCoupler() const {
+  for (const auto& e : player_.elements())
+    if (e.bassOrMelody) return true;
+  return false;
+}
+
 void MasterpieceProcessor::resetPlayerCombinations() {
   auto drawn = [this](Id sw) {
     const auto it = model_.switches.find(sw);

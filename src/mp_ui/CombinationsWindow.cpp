@@ -573,12 +573,21 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
                            "so the next click recalls it instead of overwriting it"));
   setOff_.onClick = [this] { proc_.setSetOffAfterStore(setOff_.getToggleState()); };
   content_.addAndMakeVisible(setOff_);
+  // On consoles where the bass and melody couplers belong to the hands, the
+  // pistons neither store nor recall them.
+  leaveBass_.setToggleState(p.leaveBassAndMelody(), juce::dontSendNotification);
+  leaveBass_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
+  leaveBass_.setTooltip(TRANS("The pistons and the sequencer neither store nor recall the bass and melody "
+                              "couplers, which stay as the player set them. The cancels still push them in."));
+  leaveBass_.onClick = [this] { proc_.setLeaveBassAndMelody(leaveBass_.getToggleState()); };
+  content_.addAndMakeVisible(leaveBass_);
   content_.addAndMakeVisible(viewport_);
   content_.layout = [this] {
     auto r = content_.getLocalBounds();
     auto row = r.removeFromTop(26).reduced(8, 2);
     onTop_.setBounds(row.removeFromRight(150));
     setOff_.setBounds(row.removeFromRight(260));
+    leaveBass_.setBounds(row);
     viewport_.setBounds(r);
   };
   setContentNonOwned(&content_, false);

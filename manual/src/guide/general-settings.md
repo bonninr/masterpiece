@@ -314,6 +314,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `combinationsontop` | `1`. Written only while on. | **Always on top** in the combinations window |
 | `cachewhileplaying` | `1`. Written only while on. | **Save the sample cache** on the Loading tab, set to **In silence, while it plays** |
 | `setoffafterstore` | `1`. Written only while on. | **Set turns off after storing** in the combinations window |
+| `pistonsleavebass` | `1`. Written only while on. | **Pistons leave the bass coupler** in the combinations window |
 | `showkeys` | `0`. Written only while off. | **View > Show played keys** |
 | `fasterengine` | `1` or `0`. Always written. | **Faster audio engine** on the Loading tab |
 | `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** on the Loading tab |
