@@ -18,9 +18,12 @@
 #include <mach/thread_policy.h>
 #include <pthread.h>
 #elif defined(__linux__) && !defined(__ANDROID__)
+#include <dlfcn.h>
+#include <mutex>
 #include <pthread.h>
 #include <sched.h>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #endif
 
@@ -127,18 +130,141 @@ static int priority() {
   return static_cast<int>(std::min<rlim_t>(limit.rlim_cur, kWanted));
 }
 
+// rtkit, the service desktops run to hand out real-time priority on request
+// (PipeWire takes its own that way), for a user the limits give none; inside
+// the Flatpak, the desktop portal in front of it. Reached over D-Bus with
+// sd-bus, loaded when first needed, so the program does not depend on it and
+// runs as before where it is missing.
+struct BusError {
+  const char* name = nullptr;
+  const char* message = nullptr;
+  int needFree = 0;
+};
+using BusOpen = int (*)(void**);
+using BusCall = int (*)(void*, const char*, const char*, const char*, const char*, BusError*, void**,
+                        const char*, ...);
+using BusGet = int (*)(void*, const char*, const char*, const char*, const char*, BusError*, char, void*);
+using BusUnref = void* (*)(void*);
+using BusErrorFree = void (*)(BusError*);
+
+struct Kit {
+  bool tried = false;
+  void* bus = nullptr;
+  const char* destination = nullptr;
+  const char* path = nullptr;
+  const char* interface = nullptr;
+  const char* name = nullptr;
+  int maxPriority = 0;
+  int64_t rttimeMax = 0; // microseconds
+  BusCall call = nullptr;
+  BusUnref unrefMessage = nullptr;
+  BusErrorFree freeError = nullptr;
+};
+// One bus connection for every thread, and sd-bus wants one caller at a time.
+static std::mutex kitMutex;
+static Kit kit;
+
+// Found once; nullptr when there is none, or it gives nothing.
+static Kit* findKit() {
+  if (kit.tried) return kit.bus != nullptr ? &kit : nullptr;
+  kit.tried = true;
+  void* lib = dlopen("libsystemd.so.0", RTLD_NOW | RTLD_LOCAL);
+  if (lib == nullptr) return nullptr;
+  const auto openSystem = reinterpret_cast<BusOpen>(dlsym(lib, "sd_bus_open_system"));
+  const auto openUser = reinterpret_cast<BusOpen>(dlsym(lib, "sd_bus_open_user"));
+  const auto get = reinterpret_cast<BusGet>(dlsym(lib, "sd_bus_get_property_trivial"));
+  const auto unrefBus = reinterpret_cast<BusUnref>(dlsym(lib, "sd_bus_unref"));
+  kit.call = reinterpret_cast<BusCall>(dlsym(lib, "sd_bus_call_method"));
+  kit.unrefMessage = reinterpret_cast<BusUnref>(dlsym(lib, "sd_bus_message_unref"));
+  kit.freeError = reinterpret_cast<BusErrorFree>(dlsym(lib, "sd_bus_error_free"));
+  if (openSystem == nullptr || openUser == nullptr || get == nullptr || unrefBus == nullptr ||
+      kit.call == nullptr || kit.unrefMessage == nullptr || kit.freeError == nullptr)
+    return nullptr;
+
+  const bool sandboxed = access("/.flatpak-info", F_OK) == 0;
+  if (sandboxed) {
+    kit.destination = "org.freedesktop.portal.Desktop";
+    kit.path = "/org/freedesktop/portal/desktop";
+    kit.interface = "org.freedesktop.portal.Realtime";
+    kit.name = "the realtime portal";
+  } else {
+    kit.destination = "org.freedesktop.RealtimeKit1";
+    kit.path = "/org/freedesktop/RealtimeKit1";
+    kit.interface = "org.freedesktop.RealtimeKit1";
+    kit.name = "rtkit";
+  }
+  void* bus = nullptr;
+  if ((sandboxed ? openUser : openSystem)(&bus) < 0 || bus == nullptr) return nullptr;
+  int32_t maxPriority = 0;
+  int64_t rttimeMax = 0;
+  BusError e1, e2;
+  const bool read = get(bus, kit.destination, kit.path, kit.interface, "MaxRealtimePriority", &e1, 'i',
+                        &maxPriority) >= 0 &&
+                    get(bus, kit.destination, kit.path, kit.interface, "RTTimeUSecMax", &e2, 'x',
+                        &rttimeMax) >= 0;
+  kit.freeError(&e1);
+  kit.freeError(&e2);
+  if (!read || maxPriority <= 0 || rttimeMax <= 0) {
+    unrefBus(bus);
+    return nullptr;
+  }
+  kit.bus = bus;
+  kit.maxPriority = maxPriority;
+  kit.rttimeMax = rttimeMax;
+  return &kit;
+}
+
+// The calling thread, real-time through the kit. Its condition: a limit on
+// the CPU time a real-time thread may take without sleeping, no more than it
+// allows (200 ms by default; the kernel stops a program that passes it). A
+// render thread sleeps between blocks, and the ALSA thread in its wait for the
+// device, so neither comes near it.
+static bool askKit(int wanted) {
+  const std::lock_guard<std::mutex> lock(kitMutex);
+  Kit* const k = findKit();
+  if (k == nullptr) return false;
+  rlimit rttime{};
+  if (getrlimit(RLIMIT_RTTIME, &rttime) != 0) return false;
+  const auto allowed = static_cast<rlim_t>(k->rttimeMax);
+  if (rttime.rlim_max == RLIM_INFINITY || rttime.rlim_max > allowed) {
+    const rlimit limit{allowed, allowed};
+    if (setrlimit(RLIMIT_RTTIME, &limit) != 0) return false;
+  }
+  BusError error;
+  void* reply = nullptr;
+  const auto pid = static_cast<uint64_t>(getpid());
+  const auto tid = static_cast<uint64_t>(syscall(SYS_gettid));
+  const auto priority = static_cast<uint32_t>(std::min(wanted, k->maxPriority));
+  const int r = k->call(k->bus, k->destination, k->path, k->interface, "MakeThreadRealtimeWithPID", &error,
+                        &reply, "ttu", pid, tid, priority);
+  if (reply != nullptr) k->unrefMessage(reply);
+  k->freeError(&error);
+  return r >= 0;
+}
+
 bool supported() { return true; }
-const char* method() { return "SCHED_FIFO"; }
+
+const char* method() {
+  if (priority() > 0) return "SCHED_FIFO";
+  const std::lock_guard<std::mutex> lock(kitMutex);
+  const Kit* const k = findKit();
+  return k != nullptr ? k->name : "";
+}
 
 bool makeRealtime(double) {
-  const int p = priority();
-  if (p <= 0) return false;
   Saved before;
   if (!saved.changed && pthread_getschedparam(pthread_self(), &before.policy, &before.param) != 0)
     return false;
-  sched_param param{};
-  param.sched_priority = p;
-  if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) return false;
+  const int p = priority();
+  bool done = false;
+  if (p > 0) {
+    sched_param param{};
+    param.sched_priority = p;
+    done = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) == 0;
+  } else {
+    done = askKit(40);
+  }
+  if (!done) return false;
   if (!saved.changed) {
     saved = before;
     saved.changed = true;

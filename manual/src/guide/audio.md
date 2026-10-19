@@ -114,7 +114,7 @@ A large organ is rendered by the audio thread and several render threads that sh
 | System | What the box does |
 |---|---|
 | Windows | Registers each render thread with MMCSS as "Pro Audio", the class Windows gives audio threads, and asks the system never to slow it down to save power. On Intel processors since the 12th generation, that keeps it off the efficiency cores. |
-| Linux, Raspberry Pi | SCHED_FIFO at priority 40, or the highest the user may have, for the render threads and for the audio thread when it is an ordinary thread (ALSA). A thread JACK has made real-time keeps the priority JACK gave it. Needs real-time rights: membership of the `audio` group with an `rtprio` limit, as most audio distributions set up. Without them nothing changes. |
+| Linux, Raspberry Pi | SCHED_FIFO at priority 40, or the highest the user may have, for the render threads and for the audio thread when it is an ordinary thread (ALSA). A thread JACK has made real-time keeps the priority JACK gave it. When the user has no real-time rights, the program asks rtkit, the service most desktops run for this (priority 20 by default); in the Flatpak it asks the desktop's realtime portal. |
 | macOS, iOS | The time-constraint policy for each render thread, and a place in the audio device's workgroup, so the system runs them with the audio thread, to its deadline, on the performance cores of Apple silicon. |
 | Android | Not available; the box is hidden. |
 
@@ -123,8 +123,20 @@ A large organ is rendered by the audio thread and several render threads that sh
 | Default | Off, while it is tried |
 | Takes effect | At once: each thread changes at its next share. The state is written to `settings.mpglobal` as `realtimethreads` |
 | Stored | Program-wide |
-| Log | `real-time render threads: on (MMCSS Pro Audio)` and the like when it is turned on; each **late blocks** line adds how many render threads are real-time and how many are in the audio workgroup |
+| Label | With the box on, it says what it found: **Real-time render threads (trial): using SCHED_FIFO** (or MMCSS Pro Audio, rtkit, the realtime portal, Mach time constraint), or **no real-time rights on this system** |
+| Log | `real-time render threads: on (MMCSS Pro Audio)` and the like at load and when it is turned on; each **late blocks** line adds how many render threads are real-time and how many are in the audio workgroup |
 | Advice | Try it with a heavy registration and compare the **late blocks** count in the status bar with the box on and off. Reports are collected in the discussion on GitHub. |
+
+It helps when another program gets in the way of the organ. A registration too large for the processor stays too large: on a 2-core i3 with every stop of a large organ drawn, half the blocks were late with the box on or off.
+
+**Real-time rights on Linux.** The label reads **no real-time rights on this system** when the user may not have SCHED_FIFO and no rtkit answers. `ulimit -r` in a terminal prints the user's limit; 0 means none. Most audio distributions give the `audio` group a limit in `/etc/security/limits.d/audio.conf`:
+
+```
+@audio   -  rtprio     95
+@audio   -  memlock    unlimited
+```
+
+On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled` when its question about real-time priority is answered no; `sudo dpkg-reconfigure jackd2` asks again, or the file can be renamed. Add the user to the group with `sudo usermod -aG audio $USER`, then log out and in again.
 
 ## Output routing and the mixer
 

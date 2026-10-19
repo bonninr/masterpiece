@@ -60,6 +60,7 @@ private:
   void revert();
   void closeDialog();
   void showFasterUnit();
+  void showRealtimeUnit();
   void layoutFooter(juce::Rectangle<int> footer);
 
   MasterpieceProcessor& proc_;
