@@ -1,4 +1,5 @@
 #include "OrganSettings.h"
+#include "MidiEventDialog.h"
 
 #include <algorithm>
 #include <cmath>
@@ -578,16 +579,100 @@ void StopsLoadPanel::resized() {
 
 // ------------------------------------------------------------ VoicingEqPanel
 
+juce::String voicingEqPresetName(const VoicingEqPreset& p) {
+  if (!p.factory()) return juce::String::fromUTF8(p.name.c_str());
+  // Spelt out, so the translation tool finds each.
+  switch (p.id) {
+    case 1: return TRANS("Flat");
+    case 2: return TRANS("Brighter");
+    case 3: return TRANS("Chiff");
+    case 4: return TRANS("Warm");
+    case 5: return TRANS("Less boom");
+    case 6: return TRANS("Small speakers");
+    case 7: return TRANS("Softer treble");
+    case 8: return TRANS("Clarity");
+    case 9: return TRANS("Quiet listening");
+    case 10: return TRANS("Headphones");
+    default: return juce::String::fromUTF8(p.name.c_str());
+  }
+}
+
+namespace {
+
+// A mapping's message, for the MIDI menu's header.
+juce::String describeBinding(const MidiBinding& b) {
+  juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
+                      : b.source.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
+                      : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
+                                                                       : TRANS("CC %1");
+  what = what.replace("%1", juce::String(b.source.number));
+  if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
+  return what;
+}
+
+}  // namespace
+
 VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(on_);
   on_.onClick = [this] { apply(); };
-  addAndMakeVisible(flat_);
-  flat_.setTooltip(TRANS("Every band and the gain back to 0 dB"));
-  flat_.onClick = [this] {
-    for (auto& b : bands_) b.setValue(0.0, juce::dontSendNotification);
-    gain_.setValue(0.0, juce::dontSendNotification);
-    apply();
+  addAndMakeVisible(presetLabel_);
+  presetLabel_.setText(TRANS("Preset"), juce::dontSendNotification);
+  presetLabel_.setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+  addAndMakeVisible(presets_);
+  presets_.setTooltip(TRANS("The program's ten presets, then your own. Choosing one sets the EQ at once "
+                            "and turns it on; Save for this organ or Save as default keeps it."));
+  presets_.onChange = [this] {
+    const int id = presets_.getSelectedId();
+    if (id <= 0 || id == proc_.currentVoicingEqPreset()) return;
+    proc_.recallVoicingEqPreset(id);
+    showValues();
+    save_.setButtonText(TRANS("Save for this organ"));
+    saveDefault_.setButtonText(TRANS("Save as default"));
+    repaint(curveArea_);
   };
+  addAndMakeVisible(savePreset_);
+  savePreset_.setTooltip(TRANS("Keep the EQ as it is now as a preset of your own, for every organ"));
+  savePreset_.onClick = [this] {
+    askName(TRANS("Save as preset"), {}, [this](const juce::String& name) {
+      proc_.saveVoicingEqPreset(name);
+      fillPresets();
+    });
+  };
+  addAndMakeVisible(updatePreset_);
+  updatePreset_.setTooltip(TRANS("Store the EQ as it is now in the preset of your own last chosen"));
+  updatePreset_.onClick = [this] {
+    proc_.updateVoicingEqPreset(proc_.lastVoicingEqPreset());
+    fillPresets();
+  };
+  addAndMakeVisible(renamePreset_);
+  renamePreset_.onClick = [this] {
+    const auto* p = proc_.voicingEqPresets().find(proc_.lastVoicingEqPreset());
+    if (p == nullptr || p->factory()) return;
+    const int id = p->id;
+    askName(TRANS("Rename preset"), voicingEqPresetName(*p), [this, id](const juce::String& name) {
+      proc_.renameVoicingEqPreset(id, name);
+      fillPresets();
+    });
+  };
+  addAndMakeVisible(deletePreset_);
+  deletePreset_.onClick = [this] {
+    const auto* p = proc_.voicingEqPresets().find(proc_.lastVoicingEqPreset());
+    if (p == nullptr || p->factory()) return;
+    const int id = p->id;
+    juce::Component::SafePointer<VoicingEqPanel> self(this);
+    juce::AlertWindow::showOkCancelBox(
+        juce::MessageBoxIconType::QuestionIcon, TRANS("Delete preset"),
+        TRANS("Delete the preset %1? Its MIDI mapping goes with it.").replace("%1", voicingEqPresetName(*p)),
+        TRANS("Delete"), TRANS("Cancel"), this,
+        juce::ModalCallbackFunction::create([self, id](int result) {
+          if (result != 1 || self == nullptr) return;
+          self->proc_.deleteVoicingEqPreset(id);
+          self->fillPresets();
+        }));
+  };
+  addAndMakeVisible(midiPreset_);
+  midiPreset_.setTooltip(TRANS("Map a MIDI button to this preset, or to the next and the previous one"));
+  midiPreset_.onClick = [this] { presetMidiMenu(); };
   addAndMakeVisible(save_);
   save_.setTooltip(TRANS("Keep this EQ with this organ for the next time it is loaded"));
   save_.onClick = [this] {
@@ -633,6 +718,8 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   }
   style(gain_, gainName_, TRANS("Gain"));
   showValues();
+  // A preset recalled from MIDI while the panel is open.
+  startTimerHz(4);
 }
 
 void VoicingEqPanel::showValues() {
@@ -641,6 +728,8 @@ void VoicingEqPanel::showValues() {
   for (size_t i = 0; i < bands_.size(); ++i)
     bands_[i].setValue(eq.bandsDb[i], juce::dontSendNotification);
   gain_.setValue(eq.gainDb, juce::dontSendNotification);
+  fillPresets();
+  seenChanges_ = proc_.voicingEqChanges();
 }
 
 void VoicingEqPanel::apply() {
@@ -649,9 +738,117 @@ void VoicingEqPanel::apply() {
   for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
   eq.gainDb = gain_.getValue();
   proc_.setVoicingEq(eq);
+  seenChanges_ = proc_.voicingEqChanges();
+  fillPresets();
   save_.setButtonText(TRANS("Save for this organ"));
   saveDefault_.setButtonText(TRANS("Save as default"));
   repaint(curveArea_);
+}
+
+// The list, with the preset the EQ is now chosen; "Edited" when the sliders
+// have moved away from every preset. Update, Rename and Delete act on the
+// player's preset last chosen.
+void VoicingEqPanel::fillPresets() {
+  const auto& bank = proc_.voicingEqPresets();
+  presets_.clear(juce::dontSendNotification);
+  presets_.addSectionHeading(TRANS("Presets"));
+  for (const auto& p : VoicingEqPresets::factory()) presets_.addItem(voicingEqPresetName(p), p.id);
+  if (!bank.own().empty()) {
+    presets_.addSeparator();
+    presets_.addSectionHeading(TRANS("Your presets"));
+    for (const auto& p : bank.own()) presets_.addItem(voicingEqPresetName(p), p.id);
+  }
+  const int now = proc_.currentVoicingEqPreset();
+  if (now != 0)
+    presets_.setSelectedId(now, juce::dontSendNotification);
+  else
+    presets_.setText(proc_.voicingEq().on ? TRANS("Edited") : TRANS("Off"), juce::dontSendNotification);
+
+  const auto* last = bank.find(proc_.lastVoicingEqPreset());
+  const bool own = last != nullptr && !last->factory();
+  updatePreset_.setEnabled(own && now != last->id);
+  renamePreset_.setEnabled(own);
+  deletePreset_.setEnabled(own);
+  updatePreset_.setTooltip(own ? TRANS("Store the EQ as it is now in %1").replace("%1", voicingEqPresetName(*last))
+                               : TRANS("Store the EQ as it is now in the preset of your own last chosen"));
+}
+
+void VoicingEqPanel::timerCallback() {
+  if (proc_.voicingEqChanges() == seenChanges_) return;
+  showValues();
+  repaint(curveArea_);
+}
+
+void VoicingEqPanel::askName(const juce::String& title, const juce::String& initial,
+                             std::function<void(const juce::String&)> then) {
+  auto* w = new juce::AlertWindow(title, TRANS("A name for the preset"), juce::MessageBoxIconType::NoIcon, this);
+  w->addTextEditor("name", initial);
+  w->addButton(TRANS("OK"), 1, juce::KeyPress(juce::KeyPress::returnKey));
+  w->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  juce::Component::SafePointer<VoicingEqPanel> self(this);
+  w->enterModalState(true, juce::ModalCallbackFunction::create([self, w, then](int result) {
+                       const juce::String name = w->getTextEditorContents("name").trim();
+                       if (result == 1 && self != nullptr) then(name);
+                     }),
+                     true);
+}
+
+// Learn a MIDI button for the preset chosen, or for the next and the previous
+// one; the mapping is the console's, the same on every organ.
+void VoicingEqPanel::presetMidiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  const int id = proc_.currentVoicingEqPreset() != 0 ? proc_.currentVoicingEqPreset() : proc_.lastVoicingEqPreset();
+  const auto* preset = proc_.voicingEqPresets().find(id);
+  struct Target {
+    MidiTargetKind kind;
+    Id id;
+    juce::String name;
+  };
+  std::vector<Target> targets;
+  if (preset != nullptr)
+    targets.push_back({MidiTargetKind::VoicingEqPreset, static_cast<Id>(preset->id),
+                       TRANS("Voicing EQ: %1").replace("%1", voicingEqPresetName(*preset))});
+  targets.push_back({MidiTargetKind::VoicingEqPresetNext, 0, TRANS("Voicing EQ: next preset")});
+  targets.push_back({MidiTargetKind::VoicingEqPresetPrev, 0, TRANS("Voicing EQ: previous preset")});
+
+  juce::PopupMenu menu;
+  int item = 1;
+  for (const auto& t : targets) {
+    juce::PopupMenu sub;
+    const auto existing = map.bindingsFor(t.kind, t.id);
+    if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(describeBinding(*b));
+    sub.addItem(item, TRANS("Learn"));
+    sub.addItem(item + 1, TRANS("MIDI window..."));
+    sub.addItem(item + 2, TRANS("Clear mapping"), !existing.empty());
+    menu.addSubMenu(t.name, sub);
+    item += 10;
+  }
+  juce::Component::SafePointer<VoicingEqPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midiPreset_),
+                     [self, targets](int choice) {
+                       if (self == nullptr || choice <= 0) return;
+                       const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
+                       auto& m = self->proc_.midiMap();
+                       switch ((choice - 1) % 10) {
+                         case 0:
+                           m.beginLearnAs(t.kind, t.id, MidiTrigger::Momentary);
+                           break;
+                         case 1:
+                           MidiEventDialog::show(self->proc_, t.kind, t.id, t.name);
+                           break;
+                         case 2:
+                           m.unbindTarget(t.kind, t.id);
+                           self->proc_.saveMidiMap();
+                           break;
+                         default:
+                           break;
+                       }
+                     });
 }
 
 void VoicingEqPanel::resized() {
@@ -661,7 +858,15 @@ void VoicingEqPanel::resized() {
   save_.setBounds(top.removeFromRight(150).reduced(2, 0));
   saveDefault_.setBounds(top.removeFromRight(120).reduced(2, 0));
   reset_.setBounds(top.removeFromRight(70).reduced(2, 0));
-  flat_.setBounds(top.removeFromRight(60).reduced(2, 0));
+  r.removeFromTop(4);
+  auto row = r.removeFromTop(28);
+  presetLabel_.setBounds(row.removeFromLeft(60));
+  midiPreset_.setBounds(row.removeFromRight(70).reduced(2, 0));
+  deletePreset_.setBounds(row.removeFromRight(70).reduced(2, 0));
+  renamePreset_.setBounds(row.removeFromRight(90).reduced(2, 0));
+  updatePreset_.setBounds(row.removeFromRight(80).reduced(2, 0));
+  savePreset_.setBounds(row.removeFromRight(130).reduced(2, 0));
+  presets_.setBounds(row.reduced(2, 0));
   note_.setBounds(r.removeFromTop(36));
   curveArea_ = r.removeFromTop(130).reduced(0, 4);
   r.removeFromTop(6);

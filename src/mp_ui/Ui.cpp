@@ -2090,6 +2090,15 @@ void MasterpieceEditor::timerCallback() {
       break;
   }
 
+  // A voicing EQ preset asked for from MIDI, set here where its filters are
+  // worked out, and named in the status line.
+  if (const int asked = proc_.takeVoicingEqPresetRequest(); asked != 0) {
+    const int id = asked > 0 ? (proc_.recallVoicingEqPreset(asked) ? asked : 0)
+                             : proc_.stepVoicingEqPreset(asked == -1 ? 1 : -1);
+    if (const auto* p = proc_.voicingEqPresets().find(id))
+      top_.setStatus(TRANS("Voicing EQ: %1").replace("%1", voicingEqPresetName(*p)));
+  }
+
   // A piston captured on the audio thread only raised a flag; the writing
   // happens here, where a file write is allowed. Combinations are the
   // player's own work and losing them to a crash would be unforgivable, so

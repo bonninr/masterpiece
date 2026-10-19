@@ -82,6 +82,8 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `metronome` | `<bpm> <beats> <level>`: tempo, beats per bar and level. Written when the Metronome tab closes. The click itself starts silent. | **General settings > Metronome** |
 | `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: the console display setup. | **General settings > Display** |
 | `defaulteq` | `<on> <gain> <band 1> ... <band 10>`: the EQ that every organ without an EQ of its own starts with. Absent while the default is off and flat. | **Save as default** in **Organ settings > Voicing EQ** |
+| `eqpreset` | `<id> <gain> <band 1> ... <band 10> <name>`: one of the player's EQ presets, numbered from 101. One line per preset. | **Save as preset...**, **Update**, **Rename...** in **Organ settings > Voicing EQ** |
+| `eqpresetnext` | The number the next EQ preset gets, so a deleted one's is not given again. | The same |
 | `library` | A folder of sample sets Masterpiece has seen or been given; one line each. The standard library folder of Hauptwerk-format installations in the home folder, `~/Hauptwerk/HauptwerkSampleSetsAndComponents`, is added when it exists. | Automatic |
 | `cachedir` | Folder of the sample cache. Absent: the `cache` folder here. | **Cache folder** |
 | `packagedir` | Package folder where composites look for the organs they play. | **Package folder** |

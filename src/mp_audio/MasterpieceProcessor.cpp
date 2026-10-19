@@ -1008,6 +1008,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           pendingConsoleAction_.store(static_cast<int>(action.kind),
                                       std::memory_order_release);
           continue;
+        // The EQ's filters are worked out on the message thread, so the
+        // preset waits there too: its id, or -1 and -2 for the next and the
+        // one before.
+        case MidiTargetKind::VoicingEqPreset:
+          pendingEqPreset_.store(static_cast<int>(action.targetId), std::memory_order_release);
+          continue;
+        case MidiTargetKind::VoicingEqPresetNext:
+          pendingEqPreset_.store(-1, std::memory_order_release);
+          continue;
+        case MidiTargetKind::VoicingEqPresetPrev:
+          pendingEqPreset_.store(-2, std::memory_order_release);
+          continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
           break;
@@ -1944,6 +1956,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "speakerkeepalive " << juce::String(db, 1) << "\n";
   if (memoryLimitMB_ > 0) text << "memlimit " << memoryLimitMB_ << "\n";
   if (defaultEq_.on || !defaultEq_.flat()) text << "defaulteq " << juce::String(defaultEq_.toLine()) << "\n";
+  for (const auto& line : eqPresets_.toLines()) text << juce::String::fromUTF8(line.c_str()) << "\n";
   if (polyphony_ > 0) text << "polyphony " << polyphony_ << "\n";
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
@@ -2019,6 +2032,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
 
   juce::String body;
   auto sw = graph_.engineSwitch;
+  // The file holds them all, so a second read must not add them twice.
+  eqPresets_.clearOwn();
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
     const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
@@ -2109,6 +2124,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "defaulteq") {
       VoicingEqSettings eq;
       if (eq.fromLine(val.toStdString())) defaultEq_ = eq;
+    } else if (key == "eqpreset") {
+      eqPresets_.readLine(val.toStdString());
+    } else if (key == "eqpresetnext") {
+      eqPresets_.readNext(val.getIntValue());
     } else if (key == "packagedir") {
       packageDir_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "lastorgan") {
@@ -2163,6 +2182,55 @@ bool MasterpieceProcessor::saveVoicingEqForOrgan() {
 
 bool MasterpieceProcessor::saveVoicingEqAsDefault() {
   defaultEq_ = voicingEqSettings_;
+  return writeGlobalFile();
+}
+
+bool MasterpieceProcessor::recallVoicingEqPreset(int id) {
+  const VoicingEqPreset* p = eqPresets_.find(id);
+  if (p == nullptr) return false;
+  setVoicingEq(p->eq);
+  lastEqPreset_ = id;
+  juce::Logger::writeToLog("voicing EQ: preset " + juce::String(id) + " (" +
+                           juce::String::fromUTF8(p->name.c_str()) + ")");
+  return true;
+}
+
+bool MasterpieceProcessor::recallVoicingEqPresetNamed(const juce::String& name) {
+  const VoicingEqPreset* p = eqPresets_.findNamed(name.toStdString());
+  return p != nullptr && recallVoicingEqPreset(p->id);
+}
+
+int MasterpieceProcessor::stepVoicingEqPreset(int step) {
+  const int now = currentVoicingEqPreset();
+  const int to = eqPresets_.step(now != 0 ? now : lastEqPreset_, step);
+  return recallVoicingEqPreset(to) ? to : 0;
+}
+
+int MasterpieceProcessor::currentVoicingEqPreset() const {
+  return voicingEqSettings_.on ? eqPresets_.matching(voicingEqSettings_) : 0;
+}
+
+int MasterpieceProcessor::saveVoicingEqPreset(const juce::String& name) {
+  const int id = eqPresets_.add(name.trim().toStdString(), voicingEqSettings_);
+  lastEqPreset_ = id;
+  writeGlobalFile();
+  return id;
+}
+
+bool MasterpieceProcessor::updateVoicingEqPreset(int id) {
+  return eqPresets_.update(id, voicingEqSettings_) && writeGlobalFile();
+}
+
+bool MasterpieceProcessor::renameVoicingEqPreset(int id, const juce::String& name) {
+  return eqPresets_.rename(id, name.trim().toStdString()) && writeGlobalFile();
+}
+
+bool MasterpieceProcessor::deleteVoicingEqPreset(int id) {
+  if (!eqPresets_.remove(id)) return false;
+  // A mapping to it would now do nothing, and its button says so: the
+  // mapping goes with it.
+  midiMap_.unbindTarget(MidiTargetKind::VoicingEqPreset, static_cast<Id>(id));
+  saveMidiMap();
   return writeGlobalFile();
 }
 

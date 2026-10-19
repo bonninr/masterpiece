@@ -30,6 +30,7 @@
 #include "MixerConfig.h"
 #include "VoicingSet.h"
 #include "VoicingEq.h"
+#include "VoicingEqPresets.h"
 #include "Favourites.h"
 #include "../mp_core/OdfLoader.h"
 #include "../mp_sampler/StreamingEngine.h" // ParallelConfig
@@ -1232,7 +1233,11 @@ public:
   void setVoicingEq(const VoicingEqSettings& s) {
     voicingEqSettings_ = s;
     voicingEq_.configure(s, sampleRate_);
+    ++voicingEqChanges_;
   }
+  // Moves on with every change, so a panel open on it can follow a preset
+  // recalled from MIDI.
+  int voicingEqChanges() const { return voicingEqChanges_; }
   // Every organ starts from the default EQ -- the speakers and the room are
   // the same whatever is played -- until one is saved for it. Saved for the
   // organ, the EQ is its own, On box included, whatever it is.
@@ -1243,6 +1248,32 @@ public:
   bool resetVoicingEqToDefault();
   const VoicingEqSettings& defaultVoicingEq() const { return defaultEq_; }
   bool organHasOwnVoicingEq() const { return organOwnsEq_; }
+
+  // The EQ's presets, program-wide: ten of the program's and the player's own
+  // (VoicingEqPresets.h). Recalling one sets the EQ at once and turns it on,
+  // as moving the sliders does; Save for this organ and Save as default keep
+  // it as before. Each has an id that never changes, for MIDI and for any
+  // control from outside.
+  const VoicingEqPresets& voicingEqPresets() const { return eqPresets_; }
+  bool recallVoicingEqPreset(int id);
+  bool recallVoicingEqPresetNamed(const juce::String& name);
+  // The next (1) or the one before (-1); returns the id recalled, or 0.
+  int stepVoicingEqPreset(int step);
+  // The preset the EQ is now, or 0 when it is none of them or it is off.
+  int currentVoicingEqPreset() const;
+  // The last one recalled or saved, which Update, Rename and Delete act on.
+  int lastVoicingEqPreset() const { return lastEqPreset_; }
+  // The player's own: a new one from the EQ as it is now (returns its id),
+  // the EQ as it is now stored into one, a new name, or gone. The program's
+  // ten cannot be changed.
+  int saveVoicingEqPreset(const juce::String& name);
+  bool updateVoicingEqPreset(int id);
+  bool renameVoicingEqPreset(int id, const juce::String& name);
+  bool deleteVoicingEqPreset(int id);
+  // A preset a MIDI button asked for, collected on the message thread: an id,
+  // -1 for the next, -2 for the one before, or 0 when none is waiting. Reading
+  // takes it.
+  int takeVoicingEqPresetRequest() { return pendingEqPreset_.exchange(0, std::memory_order_acq_rel); }
   VoicingAB& voicing() { return voicing_; }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -1739,6 +1770,10 @@ private:
   VoicingAB voicing_;
   VoicingEqSettings voicingEqSettings_;
   VoicingEqSettings defaultEq_;  // the general settings' `defaulteq`
+  VoicingEqPresets eqPresets_;   // the general settings' `eqpreset` lines
+  int lastEqPreset_ = 0;         // the last recalled, where Next goes on from
+  int voicingEqChanges_ = 0;     // message thread only
+  std::atomic<int> pendingEqPreset_{0};
   bool organOwnsEq_ = false;     // the organ's file has an `eq` line
   VoicingEq voicingEq_;
   Favourites favourites_;

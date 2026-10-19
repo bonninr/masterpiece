@@ -159,16 +159,41 @@ A correction for the room and the speakers, applied to the whole organ. The orga
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **On** | Switches the equaliser on. | Off | On, off | At once |
-| **Flat** | Returns every band and the gain to 0 dB. | | | At once |
+| **Preset** | Sets the EQ to a preset at once and turns it on, as moving the sliders does: the program's ten, then the player's own. Reads **Edited** when the sliders no longer match any preset, and **Off** while the equaliser is off. | | The ten below and the player's own | At once |
+| **Save as preset...** | Keeps the EQ as it is now as a preset of the player's own, under a name, for every organ. | | | At once |
+| **Update** | Stores the EQ as it is now in the player's preset last chosen. The program's ten cannot be changed. | | | At once |
+| **Rename...**, **Delete** | Rename or delete the player's preset last chosen. A deleted preset's MIDI mapping goes with it. | | | At once |
+| **MIDI...** | Maps a MIDI button to the preset chosen, or to **next preset** and **previous preset**, which go round the whole list. **Learn**, **MIDI window...** and **Clear mapping**, as on a piston. The mapping is the console's, the same on every organ. | | | At once |
 | **Reset** | Brings the default EQ back, the one kept with **Save as default** (off and flat when none is kept), and forgets the EQ saved for this organ. The organ then starts from the default at its next load. | | | At once |
 | **Save as default** | Keeps the EQ as it is now for every organ that has none of its own: a correction for the speakers and the room. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
 | **Save for this organ** | Keeps the EQ as it is now with this organ, whatever it is, the **On** box included, for its next load. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
 | Ten band sliders, labelled **31.5**, **63**, **125**, **250**, **500**, **1k**, **2k**, **4k**, **8k**, **16k** | One slider for each octave band, in Hz. The lowest and highest bands are shelves; the other eight are peaks (Q 1.4). A double-click returns a slider to 0. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 | **Gain** | The output gain, to make up for what the bands add or take. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 
-Every organ starts from the default EQ, which is off and flat until **Save as default** keeps another. An organ gets an EQ of its own only from **Save for this organ**; other saves of the organ file leave it on the default. Changes on the tab are live and are kept only by these buttons.
+Every organ starts from the default EQ, which is off and flat until **Save as default** keeps another. An organ gets an EQ of its own only from **Save for this organ**; other saves of the organ file leave it on the default. Changes on the tab are live and are kept only by these buttons. A preset changes the live EQ the same way: **Save for this organ** or **Save as default** keeps it.
 
-**Stored.** The default is the key `defaulteq <on> <gain> <band 1> ... <band 10>` in the global file, written while the default is on or not flat. The organ's own EQ is the key `eq <on> <gain> <band 1> ... <band 10>` in the organ file, written whatever it is, off and flat included, once **Save for this organ** has been pressed. **Reset** removes the `eq` line from the organ file.
+### Presets
+
+The program's ten presets, in dB for the bands from 31.5 Hz to 16 kHz:
+
+| Preset | 31.5 | 63 | 125 | 250 | 500 | 1k | 2k | 4k | 8k | 16k | Gain | For |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Flat** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | The organ as recorded |
+| **Brighter** | 0 | 0 | 0 | 0 | 0 | 0 | +1 | +2 | +3 | +3 | -1 | Upper harmonics, for a set that sounds dull through the speakers |
+| **Chiff** | 0 | 0 | 0 | 0 | 0 | +1 | +2 | +3 | +2 | +1 | -1.5 | The speaking attack of flue pipes |
+| **Warm** | +1 | +2 | +2 | +1 | 0 | 0 | 0 | -1 | -2 | -3 | -1 | A fuller, rounder sound |
+| **Less boom** | -3 | -3 | -2 | -1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | A room whose bass booms, or speakers close to a wall |
+| **Small speakers** | +5 | +4 | +2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | -3 | Speakers that cannot reach the pedal's fundamentals |
+| **Softer treble** | 0 | 0 | 0 | 0 | 0 | 0 | -1 | -2 | -3 | -3 | 0 | Mixtures and reeds that sound harsh in a small room |
+| **Clarity** | 0 | 0 | -1 | -2 | -2 | 0 | +1 | +1 | 0 | 0 | 0 | Less of the low middle that makes a full registration muddy |
+| **Quiet listening** | +5 | +4 | +2 | 0 | 0 | 0 | 0 | +1 | +2 | +3 | -3 | Playing at a low level, where the ear hears less bass and treble |
+| **Headphones** | +1 | +1 | 0 | 0 | 0 | 0 | -1 | -1.5 | -1 | 0 | 0 | Headphones |
+
+A preset of the player's own can start from any of them: choose it, move the sliders, then **Save as preset...**.
+
+**MIDI.** A button learned for a preset recalls it, and **next preset** and **previous preset** step through the list; the status line names the preset recalled. The mapping is kept with the console mapping (`eq-preset <id>`, `eq-preset-next`, `eq-preset-prev` in the `.mpmidi` files), so the same buttons work on every organ.
+
+**Stored.** The default is the key `defaulteq <on> <gain> <band 1> ... <band 10>` in the global file, written while the default is on or not flat. The organ's own EQ is the key `eq <on> <gain> <band 1> ... <band 10>` in the organ file, written whatever it is, off and flat included, once **Save for this organ** has been pressed. **Reset** removes the `eq` line from the organ file. The player's presets are the keys `eqpreset <id> <gain> <band 1> ... <band 10> <name>` in the global file, one per preset, numbered from 101, and `eqpresetnext <id>`, the number the next one gets; a number is never given twice. The program's ten are numbered 1 to 10 and are not written.
 
 ## MIDI
 
