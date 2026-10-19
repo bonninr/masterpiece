@@ -104,6 +104,8 @@ void MasterpieceProcessor::writeBlockLog() {
   std::fclose(f);
 }
 
+static juce::String realtimeState(bool on);
+
 // The voice pool and the threads that render it, at the pool size chosen.
 // prepareToPlay builds it, and a larger polyphony builds it again with the
 // organ loaded: the samples stay, only the voices are new.
@@ -149,9 +151,20 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
   realtimeGeneration_.fetch_add(1);
   if (realtimeThreads_.load()) {
     voices_.setWorkerHook([this] { realtimeHere(); });
-    juce::Logger::writeToLog(juce::String("real-time render threads: on (") + realtime::method() + ")");
+    juce::Logger::writeToLog("real-time render threads: " + realtimeState(true));
   }
 }
+
+// For the log: how the switch works here, or that the system will not let it.
+static juce::String realtimeState(bool on) {
+  if (!on) return "off";
+  const juce::String how = realtime::method();
+  return how.isEmpty() ? juce::String("on, but this system gives the user no real-time rights (the manual's "
+                                      "Real-time render threads says how to get them)")
+                       : "on (" + how + ")";
+}
+
+juce::String MasterpieceProcessor::realtimeMethod() { return realtime::method(); }
 
 // Render workers real-time now, and of those in an audio workgroup: up when
 // one is, down when it stops or its thread ends.
@@ -215,8 +228,7 @@ void MasterpieceProcessor::setRealtimeThreads(bool on) {
   // thread at its next block.
   voices_.setWorkerHook([this] { realtimeHere(); });
   realtimeGeneration_.fetch_add(1);
-  juce::Logger::writeToLog(juce::String("real-time render threads: ") +
-                           (on ? juce::String("on (") + realtime::method() + ")" : juce::String("off")));
+  juce::Logger::writeToLog("real-time render threads: " + realtimeState(on));
   writeGlobalFile();
 }
 

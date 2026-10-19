@@ -391,11 +391,15 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     addChildComponent(realtime_);
   realtime_.setToggleState(proc_.realtimeThreads(), juce::dontSendNotification);
   realtime_.setTooltip(TRANS("Makes the threads that render the organ real-time threads, so the system runs "
-                             "them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO on Linux (with "
-                             "real-time rights, as for the audio group), the audio workgroup on macOS. Off by "
-                             "default while it is tried. If the late blocks in the status bar go down or up "
-                             "with it on, please tell us in the discussion on GitHub."));
-  realtime_.onClick = [this] { proc_.setRealtimeThreads(realtime_.getToggleState()); };
+                             "them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO or rtkit on Linux, "
+                             "the audio workgroup on macOS. Off by default while it is tried. If the late blocks "
+                             "in the status bar go down or up with it on, please tell us in the discussion on "
+                             "GitHub."));
+  realtime_.onClick = [this] {
+    proc_.setRealtimeThreads(realtime_.getToggleState());
+    showRealtimeUnit();
+  };
+  showRealtimeUnit();
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
   portable_.setTooltip(TRANS("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
@@ -555,6 +559,7 @@ void EnginePanel::revert() {
   showFasterUnit();
   if (proc_.realtimeThreads() != openRealtime_) proc_.setRealtimeThreads(openRealtime_);
   realtime_.setToggleState(openRealtime_, juce::dontSendNotification);
+  showRealtimeUnit();
   proc_.setMemoryLimitMB(openMemLimit_);
   fillMemLimit();
   proc_.setPolyphonyLimit(openPolyphony_);
@@ -604,6 +609,17 @@ void EnginePanel::showFasterUnit() {
                         : unit.isNotEmpty()   ? TRANS("Faster audio engine: using %1").replace("%1", unit)
                                               : TRANS("Faster audio engine: not available on this "
                                                       "processor"));
+}
+
+// Says how real-time threads are had here, or that the system gives none, so a
+// player on Linux without the rights sees it where the box is.
+void EnginePanel::showRealtimeUnit() {
+  const juce::String base = TRANS("Real-time render threads (trial)");
+  const juce::String how = MasterpieceProcessor::realtimeMethod();
+  realtime_.setButtonText(!proc_.realtimeThreads() ? base
+                          : how.isNotEmpty()       ? TRANS("Real-time render threads (trial): using %1").replace("%1", how)
+                                                   : TRANS("Real-time render threads (trial): no real-time rights "
+                                                           "on this system"));
 }
 
 void EnginePanel::closeDialog() {

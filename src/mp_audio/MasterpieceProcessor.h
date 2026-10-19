@@ -825,6 +825,10 @@ public:
   void setRealtimeThreads(bool on);
   // False on Android, which gives an app none.
   static bool realtimeThreadsSupported();
+  // How it is done here: "MMCSS Pro Audio", "SCHED_FIFO", "rtkit", "the
+  // realtime portal", "Mach time constraint"; empty where the system gives
+  // this user no real-time rights (Linux without them).
+  static juce::String realtimeMethod();
   // How many render workers are real-time now, and how many in a workgroup.
   static int realtimeWorkers();
   static int workgroupWorkers();
