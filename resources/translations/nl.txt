@@ -932,3 +932,9 @@ countries: nl be sr
 
 # src/mp_ui/Ui.cpp (score)
 "Score" = "Partituur"
+"Score app" = "Bladmuziek-app"
+"The message a page turn sends on the MIDI output; teach it to the score app" = "Het bericht dat een paginawissel op de MIDI-uitgang stuurt; leer het aan de bladmuziek-app"
+"The number sent for the next page" = "Het nummer dat voor de volgende pagina wordt gestuurd"
+"The number sent for the page before" = "Het nummer dat voor de vorige pagina wordt gestuurd"
+"Learn score page -" = "Bladmuziekpagina - leren"
+"Learn score page +" = "Bladmuziekpagina + leren"

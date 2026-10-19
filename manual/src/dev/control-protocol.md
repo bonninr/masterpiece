@@ -85,6 +85,8 @@ New properties are added at the end; an index is never reused.
 | 7 | Voicing EQ previous preset |
 | 8 | Quit: saves and quits Masterpiece. Needs the setting **Allow quitting Masterpiece and shutting the computer down**, and is refused (`busy`) in the first two minutes after the program starts |
 | 9 | Power off: the same, then the computer shuts down |
+| 10 | Score page forward: the page-turn message on the MIDI output, for a score app |
+| 11 | Score page back |
 
 ### Properties of an object
 

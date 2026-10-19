@@ -210,6 +210,8 @@ commands:
   # power-on.
   - {index: 8, name: quit, doc: Saves and quits Masterpiece}
   - {index: 9, name: powerOff, doc: Saves, quits and shuts the computer down}
+  - {index: 10, name: scorePageForward, doc: Sends the page-turn message to a score app}
+  - {index: 11, name: scorePageBack, doc: Sends the page-back message to a score app}
 
 operations:
   - {code: 1, name: identify, request: [], reply: [protocol, program, session],

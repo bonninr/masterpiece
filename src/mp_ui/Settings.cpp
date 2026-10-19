@@ -1503,6 +1503,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
       {&learnTransposeUp_, MidiTargetKind::TransposeUp},
       {&learnTemperamentPrev_, MidiTargetKind::TemperamentPrev},
       {&learnTemperamentNext_, MidiTargetKind::TemperamentNext},
+      {&learnScoreBack_, MidiTargetKind::ScorePageBack},
+      {&learnScoreForward_, MidiTargetKind::ScorePageForward},
   };
   for (auto& e : consoleLearn) {
     addAndMakeVisible(*e.b);
@@ -1565,6 +1567,28 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   lampKind_.setTooltip(TRANS("A message on the MIDI output that lights a lamp once the organ is ready, blinks "
                              "while one loads and while a quit or power-off button is held, and goes out "
                              "with no organ"));
+  addAndMakeVisible(scoreHeading_);
+  styleLabel(scoreHeading_, TRANS("Score app"));
+  const ScorePageMessage page = proc_.scorePageMessage();
+  addAndMakeVisible(scoreKind_);
+  scoreKind_.addItem(TRANS("Note"), 1);
+  scoreKind_.addItem(TRANS("Controller"), 2);
+  scoreKind_.addItem(TRANS("Program change"), 3);
+  scoreKind_.setSelectedId(page.kind + 1, juce::dontSendNotification);
+  scoreKind_.setTooltip(TRANS("The message a page turn sends on the MIDI output; teach it to the score app"));
+  addAndMakeVisible(scoreChannel_);
+  for (int ch = 1; ch <= 16; ++ch) scoreChannel_.addItem(TRANS("ch %1").replace("%1", juce::String(ch)), ch);
+  scoreChannel_.setSelectedId(page.channel, juce::dontSendNotification);
+  for (auto* e : {&scoreForward_, &scoreBack_}) {
+    addAndMakeVisible(*e);
+    e->setInputRestrictions(3, "0123456789");
+    e->onReturnKey = e->onFocusLost = [this] { pushScorePage(); };
+  }
+  scoreForward_.setText(juce::String(page.forward), juce::dontSendNotification);
+  scoreBack_.setText(juce::String(page.back), juce::dontSendNotification);
+  scoreForward_.setTooltip(TRANS("The number sent for the next page"));
+  scoreBack_.setTooltip(TRANS("The number sent for the page before"));
+  scoreKind_.onChange = scoreChannel_.onChange = [this] { pushScorePage(); };
 
   refresh();
   startTimerHz(2);
@@ -1760,6 +1784,17 @@ void MidiPanel::timerCallback() {
 
 }
 
+void MidiPanel::pushScorePage() {
+  ScorePageMessage m;
+  m.kind = juce::jmax(0, scoreKind_.getSelectedId() - 1);
+  m.channel = juce::jlimit(1, 16, scoreChannel_.getSelectedId());
+  m.forward = juce::jlimit(0, 127, scoreForward_.getText().getIntValue());
+  m.back = juce::jlimit(0, 127, scoreBack_.getText().getIntValue());
+  scoreForward_.setText(juce::String(m.forward), juce::dontSendNotification);
+  scoreBack_.setText(juce::String(m.back), juce::dontSendNotification);
+  if (!(m == proc_.scorePageMessage())) proc_.setScorePageMessage(m);
+}
+
 void MidiPanel::resized() {
   auto r = getLocalBounds().reduced(12);
   inputsLabel_.setBounds(r.removeFromTop(kRow));
@@ -1864,6 +1899,21 @@ void MidiPanel::resized() {
   lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
   row.removeFromLeft(6);
   lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
+
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  scoreHeading_.setBounds(row.removeFromLeft(120));
+  for (auto* b : {&learnScoreBack_, &learnScoreForward_}) {
+    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+  }
+  scoreKind_.setBounds(row.removeFromLeft(130).reduced(0, 1));
+  row.removeFromLeft(4);
+  scoreChannel_.setBounds(row.removeFromLeft(80).reduced(0, 1));
+  row.removeFromLeft(4);
+  scoreForward_.setBounds(row.removeFromLeft(48).reduced(0, 2));
+  row.removeFromLeft(4);
+  scoreBack_.setBounds(row.removeFromLeft(48).reduced(0, 2));
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);

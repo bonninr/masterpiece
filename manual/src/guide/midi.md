@@ -206,8 +206,11 @@ The program's own buttons have no object on the console to right-click. Use the 
 | **Learn temperament -**, **Learn temperament +** | The previous and next temperament |
 | **Temperament** with **Learn** | The temperament chosen in the box beside it, directly |
 | **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
+| **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI output as the message chosen beside them (see below) |
 
 Each of these learns a button that fires on the press and ignores the release. A console may have several buttons for one action (two + and two - thumb pistons): each further learn adds a button. The sequencer's first, last, ten-back and ten-forward moves, the generals and the setter are mapped from the Combinations window.
+
+**Score app.** Score apps such as forScore and MobileSheets turn pages on a MIDI message they have learned. The row beside the score-page buttons sets the message Masterpiece sends: a note (struck and let go), a controller (127, then 0) or a program change, on one channel, with one number for the next page and one for the page before. The default is notes 127 and 126 on channel 16, where no keyboard plays. Connect the MIDI output to the device running the app, then let the app learn each page turn. The control API sends the same turns with the commands `scorePageForward` and `scorePageBack`. The message is kept in the global settings as `scorepage <kind> <channel> <forward> <back>`.
 
 The line at the bottom of the MIDI tab reads `N binding(s)`, followed by `LEARNING: move a control now` while a learn is armed.
 

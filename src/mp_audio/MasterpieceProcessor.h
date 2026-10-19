@@ -1319,6 +1319,17 @@ public:
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
+  // Page turns for a score app (ScorePageMessage): sent on the MIDI output
+  // with the next audio block, from any thread. The message is kept in the
+  // global settings.
+  void turnScorePage(bool forward) {
+    (forward ? scorePagesForward_ : scorePagesBack_).fetch_add(1, std::memory_order_acq_rel);
+  }
+  ScorePageMessage scorePageMessage() const { return unpackScorePage(scorePage_.load(std::memory_order_acquire)); }
+  void setScorePageMessage(const ScorePageMessage& m);
+  // How many page turns have gone out since the program started; for tests,
+  // which have no MIDI output to read.
+  int scorePagesTurned() const { return scorePagesTurned_.load(std::memory_order_acquire); }
   juce::MidiOutput* midiOutput() const { return midiOut_; }
   // The console's output port, opened by name and kept in the general
   // settings: lamps, displays and key echo reach the console with any window
@@ -2127,6 +2138,23 @@ private:
   bool writeGlobalFile() const;
   // Reused every block so the audio thread never allocates one.
   juce::MidiBuffer outgoing_;
+  // Page turns asked for and not yet sent, and the message, packed so the
+  // audio thread reads it in one load.
+  std::atomic<int> scorePagesForward_{0}, scorePagesBack_{0}, scorePagesTurned_{0};
+  std::atomic<uint32_t> scorePage_{packScorePage(ScorePageMessage{})};
+  static uint32_t packScorePage(const ScorePageMessage& m) {
+    return static_cast<uint32_t>(m.kind & 3) | static_cast<uint32_t>(m.channel & 31) << 2 |
+           static_cast<uint32_t>(m.forward & 127) << 7 | static_cast<uint32_t>(m.back & 127) << 14;
+  }
+  static ScorePageMessage unpackScorePage(uint32_t v) {
+    ScorePageMessage m;
+    m.kind = static_cast<int>(v & 3);
+    m.channel = static_cast<int>(v >> 2 & 31);
+    m.forward = static_cast<int>(v >> 7 & 127);
+    m.back = static_cast<int>(v >> 14 & 127);
+    return m;
+  }
+  void emitScorePageTurns();
   // Tagged input, filled by the device callbacks and drained by the audio
   // thread. A fixed ring so neither side allocates; a single producer per slot
   // is not guaranteed (several devices push), so the write index is atomic and

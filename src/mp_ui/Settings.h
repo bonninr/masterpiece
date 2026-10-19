@@ -338,6 +338,14 @@ private:
   juce::Label lampLabel_;
   juce::ComboBox lampKind_, lampChannel_, lampNumber_;
   void pushReadyLamp();
+  // Page turns for a score app on a tablet or another program: a piston
+  // learned here sends the message chosen beside it on the MIDI output.
+  juce::Label scoreHeading_;
+  juce::TextButton learnScoreBack_{TRANS("Learn score page -")};
+  juce::TextButton learnScoreForward_{TRANS("Learn score page +")};
+  juce::ComboBox scoreKind_, scoreChannel_;
+  juce::TextEditor scoreForward_, scoreBack_;
+  void pushScorePage();
   juce::Label mapStatus_;
   juce::Label note_;
 };

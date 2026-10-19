@@ -932,3 +932,9 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 
 # src/mp_ui/Ui.cpp (score)
 "Score" = "Partitura"
+"Score app" = "App de partituras"
+"The message a page turn sends on the MIDI output; teach it to the score app" = "El mensaje que envía un cambio de página por la salida MIDI; enséñeselo a la app de partituras"
+"The number sent for the next page" = "El número enviado para la página siguiente"
+"The number sent for the page before" = "El número enviado para la página anterior"
+"Learn score page -" = "Aprender página de partitura -"
+"Learn score page +" = "Aprender página de partitura +"

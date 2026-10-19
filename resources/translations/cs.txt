@@ -932,3 +932,9 @@ countries: cz
 
 # src/mp_ui/Ui.cpp (score)
 "Score" = "Noty"
+"Score app" = "Aplikace s notami"
+"The message a page turn sends on the MIDI output; teach it to the score app" = "Zpráva, kterou otočení stránky pošle na výstup MIDI; naučte ji aplikaci s notami"
+"The number sent for the next page" = "Číslo posílané pro další stránku"
+"The number sent for the page before" = "Číslo posílané pro předchozí stránku"
+"Learn score page -" = "Naučit stránku not -"
+"Learn score page +" = "Naučit stránku not +"
