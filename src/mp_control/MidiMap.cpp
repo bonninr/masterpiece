@@ -96,6 +96,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::PlayerDivisional: return "divisional";
     case MidiTargetKind::PlayerDivisionalCancel: return "divisional-cancel";
     case MidiTargetKind::Setter: return "setter";
+    case MidiTargetKind::PedalCombinationsCoupled: return "pedal-combinations-coupled";
     case MidiTargetKind::RouteKeyboard: return "route-keyboard";
     case MidiTargetKind::VoicingEqPreset: return "eq-preset";
     case MidiTargetKind::VoicingEqPresetNext: return "eq-preset-next";
@@ -136,6 +137,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "divisional") return MidiTargetKind::PlayerDivisional;
   if (s == "divisional-cancel") return MidiTargetKind::PlayerDivisionalCancel;
   if (s == "setter") return MidiTargetKind::Setter;
+  if (s == "pedal-combinations-coupled") return MidiTargetKind::PedalCombinationsCoupled;
   if (s == "eq-preset") return MidiTargetKind::VoicingEqPreset;
   if (s == "eq-preset-next") return MidiTargetKind::VoicingEqPresetNext;
   if (s == "eq-preset-prev") return MidiTargetKind::VoicingEqPresetPrev;
@@ -327,6 +329,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     // The setter is held or toggled exactly like a drawstop. Its latch is
     // kept under an id no switch can have.
     case MidiTargetKind::Setter:
+    case MidiTargetKind::PedalCombinationsCoupled:
     case MidiTargetKind::Switch: {
       // A console that sends 64 for a press, or whose button only travels part
       // of the range, still has to register.

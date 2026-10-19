@@ -69,7 +69,8 @@
         "roomWet",
         "pipeDetune",
         "windSway",
-        "sparseLoading"
+        "sparseLoading",
+        "pedalCombinationsCoupled"
        ]
       }
      },

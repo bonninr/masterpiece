@@ -47,7 +47,7 @@ juce::String describe(const MidiBinding& b) {
                                                                        : TRANS("CC %1");
   what = what.replace("%1", juce::String(b.source.number));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
-  if (b.targetKind == MidiTargetKind::Setter)
+  if (b.targetKind == MidiTargetKind::Setter || b.targetKind == MidiTargetKind::PedalCombinationsCoupled)
     what << "  " << (b.trigger == MidiTrigger::Momentary ? TRANS("(held)") : TRANS("(toggles)"));
   return what;
 }
@@ -81,6 +81,15 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   setter_.onClick = [this] { proc_.setCaptureMode(setter_.getToggleState()); };
   setter_.onRightClick = [this] {
     showMidiMenu(setter_, MidiTargetKind::Setter, kSetterTarget, true);
+  };
+
+  addChildComponent(pedalCoupler_);
+  pedalCoupler_.setClickingTogglesState(true);
+  pedalCoupler_.setTooltip(TRANS("While on, each divisional of this manual also recalls, stores and "
+                                 "cancels the Pedal divisional of the same number"));
+  pedalCoupler_.onClick = [this] { proc_.setPedalCombinationsCoupled(pedalCoupler_.getToggleState()); };
+  pedalCoupler_.onRightClick = [this] {
+    showMidiMenu(pedalCoupler_, MidiTargetKind::PedalCombinationsCoupled, kPedalCouplerTarget, true);
   };
 
   addAndMakeVisible(generalCancel_);
@@ -284,6 +293,14 @@ void CombinationsPanel::rebuild() {
   divisionalsLabel_.setVisible(!divisions_.empty());
   fewerDivisionals_.setVisible(!divisions_.empty());
   moreDivisionals_.setVisible(!divisions_.empty());
+  {
+    const CoupledDivisions cd = proc_.coupledDivisions();
+    juce::String manual;
+    for (const auto& d : proc_.playerCombinations().divisions())
+      if (d.divisionId == cd.manual) manual = juce::String::fromUTF8(d.name.c_str());
+    pedalCoupler_.setButtonText(TRANS("Pedal with %1").replace("%1", manual));
+    pedalCoupler_.setVisible(cd.valid() && !divisions_.empty());
+  }
 
   refreshSets();
   refreshState();
@@ -345,6 +362,8 @@ void CombinationsPanel::resized() {
     divisionalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
     fewerDivisionals_.setBounds(row.removeFromLeft(26).reduced(1));
     moreDivisionals_.setBounds(row.removeFromLeft(26).reduced(1));
+    row.removeFromLeft(kGap * 2);
+    pedalCoupler_.setBounds(row.removeFromLeft(juce::jmin(row.getWidth(), 170)).reduced(1));
     r.removeFromTop(kGap);
     for (auto& d : divisions_) {
       row = r.removeFromTop(kRow);
@@ -407,6 +426,7 @@ void CombinationsPanel::refreshState() {
   const bool capturing = proc_.captureMode();
   setter_.setToggleState(capturing, juce::dontSendNotification);
   setter_.setColour(juce::TextButton::buttonOnColourId, kCapture);
+  pedalCoupler_.setToggleState(proc_.pedalCombinationsCoupled(), juce::dontSendNotification);
 
   for (size_t i = 0; i < generals_.size(); ++i) {
     const int n = static_cast<int>(i) + 1;

@@ -334,6 +334,7 @@ int ControlModel::programValue(ProgramProp prop) {
     case ProgramProp::PipeDetune: return juce::roundToInt(proc_.pipeDetuneCents() * 10.0f);
     case ProgramProp::WindSway: return juce::roundToInt(proc_.windSwayCents() * 10.0f);
     case ProgramProp::SparseLoading: return proc_.sparseEvery();
+    case ProgramProp::PedalCombinationsCoupled: return proc_.pedalCombinationsCoupled() ? 1 : 0;
   }
   return 0;
 }
@@ -720,6 +721,7 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
     case ProgramProp::PipeDetune: proc_.setPipeDetuneCents(static_cast<float>(value) / 10.0f); break;
     case ProgramProp::WindSway: proc_.setWindSwayCents(static_cast<float>(value) / 10.0f); break;
     case ProgramProp::SparseLoading: proc_.setSparseEvery(value); break;
+    case ProgramProp::PedalCombinationsCoupled: proc_.setPedalCombinationsCoupled(value == 1); break;
     default: return Error::ReadOnly;
   }
   return Error::None;

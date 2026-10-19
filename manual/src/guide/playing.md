@@ -125,6 +125,7 @@ bottom right of the main window.
 | Digits **1** to **9**, **0** | Go to frame 1 to 9, and frame 10 for **0**. |
 | **Generals** with **-** and **+** | One button per general, 10 to a row. **-** and **+** show 10 fewer or 10 more. |
 | **Divisionals** with **-** and **+** | One row per division, with one button per divisional and a **0** at the end of the row that cancels the division. **-** and **+** show one fewer or one more on every division. |
+| **Pedal with** *manual* | The Pedal combinations coupler, the French *combinaison* coupler. While it is lit, each divisional of the first manual also recalls the Pedal divisional of the same number, **Set** stores both, and the manual's **0** cancels the Pedal too. Shown when the organ has a Pedal and a manual with divisionals. Off by default; kept for every organ in the global settings file (`pedalcombinationscoupled 1`). A right-click maps it to a console button, held or toggling, like **Set**. |
 | **Set in use**, **Save as...**, **Delete** | The combination sets. See [Combination sets](#combination-sets). |
 
 | Quantity | Default | Range |

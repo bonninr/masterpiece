@@ -68,6 +68,8 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 19 | Room wet share | percent, 0 to 100 | yes |
 | 20 | Pipe detune | tenths of a cent, 0 (off) to 100 | yes |
 | 21 | Wind sway | tenths of a cent, 0 (off) to 100 | yes |
+| 22 | Sparse loading | 1 every note, 2 every second, 3 every third | yes |
+| 23 | Pedal combinations coupled | 0, 1 | yes |
 
 New properties are added at the end; an index is never reused.
 

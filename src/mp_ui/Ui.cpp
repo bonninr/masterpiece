@@ -2458,6 +2458,7 @@ void MasterpieceEditor::timerCallback() {
   proc_.serviceMidiRequests();
   proc_.saveMidiMapIfDirty();
   proc_.saveMasterGainIfDirty();
+  proc_.saveGlobalIfDirty();
   proc_.saveRememberedStateIfSettled();
 
   // The sequencer's frame, out of the frames holding anything. With Set on
