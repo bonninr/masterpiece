@@ -4,7 +4,7 @@ This page lists every file a Masterpiece release offers, the systems each file r
 
 ## Release files
 
-Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.8.0`. Every file name starts with `masterpiece-<version>-`.
+Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.8.1`. Every file name starts with `masterpiece-<version>-`.
 
 | File | System | What it holds |
 |---|---|---|
