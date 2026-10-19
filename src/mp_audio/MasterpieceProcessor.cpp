@@ -147,7 +147,10 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
   // again, and the audio thread with them.
   blockSeconds_.store(juce::jmax(1, blockFrames) / sampleRate_);
   realtimeGeneration_.fetch_add(1);
-  if (realtimeThreads_.load()) voices_.setWorkerHook([this] { realtimeHere(); });
+  if (realtimeThreads_.load()) {
+    voices_.setWorkerHook([this] { realtimeHere(); });
+    juce::Logger::writeToLog(juce::String("real-time render threads: on (") + realtime::method() + ")");
+  }
 }
 
 // Render workers real-time now, and of those in an audio workgroup: up when
