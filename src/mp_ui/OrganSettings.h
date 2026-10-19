@@ -124,9 +124,14 @@ private:
   std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 };
 
+// A voicing EQ preset's name as shown: the program's translated, the
+// player's as they typed it.
+juce::String voicingEqPresetName(const VoicingEqPreset& p);
+
 // The organ's voicing EQ: ten octave bands and an output gain, off by
-// default, applied as the sliders move and saved with the organ.
-class VoicingEqPanel : public juce::Component {
+// default, applied as the sliders move and saved with the organ. Above them,
+// the presets: the program's ten and the player's own.
+class VoicingEqPanel : public juce::Component, private juce::Timer {
 public:
   explicit VoicingEqPanel(MasterpieceProcessor& p);
   void resized() override;
@@ -135,10 +140,21 @@ public:
 private:
   void apply();
   void showValues();
+  void fillPresets();
+  void presetMidiMenu();
+  // Asks for a name, then calls back with it; nothing when cancelled.
+  void askName(const juce::String& title, const juce::String& initial,
+               std::function<void(const juce::String&)> then);
+  void timerCallback() override;
   MasterpieceProcessor& proc_;
+  int seenChanges_ = -1;
   juce::ToggleButton on_{TRANS("On")};
-  juce::TextButton flat_{TRANS("Flat")}, reset_{TRANS("Reset")}, saveDefault_{TRANS("Save as default")},
+  juce::TextButton reset_{TRANS("Reset")}, saveDefault_{TRANS("Save as default")},
       save_{TRANS("Save for this organ")};
+  juce::Label presetLabel_;
+  juce::ComboBox presets_;
+  juce::TextButton savePreset_{TRANS("Save as preset...")}, updatePreset_{TRANS("Update")},
+      renamePreset_{TRANS("Rename...")}, deletePreset_{TRANS("Delete")}, midiPreset_{TRANS("MIDI...")};
   juce::Label note_;
   std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
   std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;

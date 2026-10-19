@@ -13761,6 +13761,95 @@ public:
 };
 static VoicingEqDefaultTest g_voicingEqDefault;
 
+// The voicing EQ's presets: the program's ten fixed, the player's own kept in
+// the general settings, a preset recalled by id, by name and in turn, and a
+// MIDI button for each.
+class VoicingEqPresetsTest final : public mp::test::Test {
+public:
+  VoicingEqPresetsTest() : Test("functional.settings.voicing-eq-presets", Category::Functional) {}
+  void run() override {
+    using mp::VoicingEqPresets;
+    MP_CHECK(VoicingEqPresets::factory().size() == 10, "ten presets come with the program");
+    for (size_t i = 0; i < VoicingEqPresets::factory().size(); ++i) {
+      const auto& p = VoicingEqPresets::factory()[i];
+      MP_CHECK(p.id == static_cast<int>(i) + 1 && p.factory() && p.eq.on, "numbered 1 to 10, and they turn the EQ on");
+      for (double b : p.eq.bandsDb) MP_CHECK(std::fabs(b) <= 6.0, "gentle: no band past 6 dB");
+    }
+
+    VoicingEqPresets bank;
+    mp::VoicingEqSettings eq;
+    eq.bandsDb[7] = 4.0;  // 4 kHz
+    eq.gainDb = -2.0;
+    MP_CHECK(bank.matching(eq) == 0, "an EQ that is no preset matches none");
+    const int mine = bank.add("Living room", eq);
+    MP_CHECK(mine == VoicingEqPresets::kFirstOwn && bank.matching(eq) == mine, "the player's own from 101, and found");
+    MP_CHECK(bank.matching(VoicingEqPresets::factory()[1].eq) == 2, "Brighter is found by its curve");
+    MP_CHECK(!bank.update(2, eq) && !bank.rename(2, "x") && !bank.remove(2), "the program's cannot be changed");
+    MP_CHECK(bank.findNamed("Living room") != nullptr && bank.findNamed("Chiff")->id == 3, "found by name");
+    MP_CHECK(bank.step(10, 1) == mine && bank.step(mine, 1) == 1 && bank.step(1, -1) == mine,
+             "next and previous go round the whole list");
+    const int second = bank.add("Church", {});
+    MP_CHECK(bank.remove(mine) && bank.add("Again", {}) == second + 1, "an id is not given twice");
+
+    // The settings file's lines read back as they were.
+    VoicingEqPresets read;
+    for (const auto& line : bank.toLines()) {
+      const auto key = line.substr(0, line.find(' '));
+      const auto value = line.substr(line.find(' ') + 1);
+      if (key == "eqpreset") MP_CHECK(read.readLine(value), "a preset's line reads");
+      else if (key == "eqpresetnext") read.readNext(std::stoi(value));
+    }
+    MP_CHECK(read.own().size() == 2 && read.own()[0].name == "Church" && read.own()[1].name == "Again",
+             "names with their spaces and order come back");
+    MP_CHECK(read.add("Next", {}) == second + 2, "and so does the next id");
+    MP_CHECK(!read.readLine("5 0 0 0 0 0 0 0 0 0 0 0 Not mine"), "an id of the program's is not taken from the file");
+
+    // Through the processor and the general settings file.
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    int id = 0;
+    {
+      mp::MasterpieceProcessor proc;
+      proc.prepareToPlay(48000.0, 256);
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.recallVoicingEqPreset(3) && proc.voicingEq().on && proc.currentVoicingEqPreset() == 3,
+               "Chiff is recalled and turns the EQ on");
+      MP_CHECK(proc.recallVoicingEqPresetNamed("Warm") && proc.currentVoicingEqPreset() == 4, "and Warm by name");
+      MP_CHECK(proc.stepVoicingEqPreset(1) == 5, "Next goes on to Less boom");
+      auto edited = proc.voicingEq();
+      edited.bandsDb[9] = 1.5;
+      proc.setVoicingEq(edited);
+      MP_CHECK(proc.currentVoicingEqPreset() == 0, "moving a slider leaves every preset");
+      id = proc.saveVoicingEqPreset("My speakers");
+      MP_CHECK(id >= VoicingEqPresets::kFirstOwn && proc.currentVoicingEqPreset() == id, "saved as the player's own");
+      MP_CHECK(proc.renameVoicingEqPreset(id, "Study"), "and renamed");
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      const auto* p = proc.voicingEqPresets().find(id);
+      MP_CHECK(p != nullptr && p->name == "Study" && std::fabs(p->eq.bandsDb[9] - 1.5) < 0.01,
+               "the player's preset is kept with its name and curve");
+      MP_CHECK(proc.deleteVoicingEqPreset(id), "and can be deleted");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.voicingEqPresets().find(id) == nullptr, "and stays deleted");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+
+    // A MIDI button for a preset is the console's, and fires on the press.
+    MP_CHECK(mp::MidiMap::isConsoleTarget(mp::MidiTargetKind::VoicingEqPreset) &&
+                 mp::MidiMap::isConsoleTarget(mp::MidiTargetKind::VoicingEqPresetNext),
+             "the same button on every organ");
+  }
+};
+static VoicingEqPresetsTest g_voicingEqPresets;
+
 // #53: a level set on the organ's own settings page was back at its default
 // after a restart. Moving a control the organ marks RememberStateFromLastLoad
 // wrote nothing unless something else saved the file later, and remembered

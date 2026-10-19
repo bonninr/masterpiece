@@ -74,6 +74,11 @@ enum class MidiTargetKind {
   StepperLast,
   StepperForward10,
   StepperBack10,
+  // The voicing EQ's presets (VoicingEqPresets): one by its id, and the next
+  // or the one before, round the list.
+  VoicingEqPreset,
+  VoicingEqPresetNext,
+  VoicingEqPresetPrev,
 };
 
 inline Id routeKeyboardTarget(Id keyboardId, int channel) { return keyboardId * 32 + channel; }
@@ -296,6 +301,9 @@ public:
       case MidiTargetKind::PlayerGeneral:
       case MidiTargetKind::PlayerGeneralCancel:
       case MidiTargetKind::Setter:
+      case MidiTargetKind::VoicingEqPreset:
+      case MidiTargetKind::VoicingEqPresetNext:
+      case MidiTargetKind::VoicingEqPresetPrev:
         return true;
       default:
         return false;

@@ -97,6 +97,9 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::PlayerDivisionalCancel: return "divisional-cancel";
     case MidiTargetKind::Setter: return "setter";
     case MidiTargetKind::RouteKeyboard: return "route-keyboard";
+    case MidiTargetKind::VoicingEqPreset: return "eq-preset";
+    case MidiTargetKind::VoicingEqPresetNext: return "eq-preset-next";
+    case MidiTargetKind::VoicingEqPresetPrev: return "eq-preset-prev";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -128,6 +131,9 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "divisional") return MidiTargetKind::PlayerDivisional;
   if (s == "divisional-cancel") return MidiTargetKind::PlayerDivisionalCancel;
   if (s == "setter") return MidiTargetKind::Setter;
+  if (s == "eq-preset") return MidiTargetKind::VoicingEqPreset;
+  if (s == "eq-preset-next") return MidiTargetKind::VoicingEqPresetNext;
+  if (s == "eq-preset-prev") return MidiTargetKind::VoicingEqPresetPrev;
   return MidiTargetKind::None;
 }
 
@@ -393,6 +399,9 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::PlayerGeneralCancel:
     case MidiTargetKind::PlayerDivisional:
     case MidiTargetKind::PlayerDivisionalCancel:
+    case MidiTargetKind::VoicingEqPreset:
+    case MidiTargetKind::VoicingEqPresetNext:
+    case MidiTargetKind::VoicingEqPresetPrev:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
