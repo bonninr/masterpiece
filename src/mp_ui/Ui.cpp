@@ -659,6 +659,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // whatever the top bar's buttons left of it.
   auto& statusLine = top_.statusLabel();
   addAndMakeVisible(statusLine);
+  // A newer version, said at the right of that line for 30 s (UpdateCheck).
+  addChildComponent(updateNotice_);
+  updateNotice_.onShownOrHidden = [this] { resized(); };
+  updateNotice_.isLoading = [this] { return loading_; };
   statusLine.setFont(juce::Font(juce::FontOptions(13.0f)));
   statusLine.setColour(juce::Label::backgroundColourId, juce::Colour(0xff15171c));
   statusLine.setBorderSize(juce::BorderSize<int>(0, 8, 0, 8));
@@ -1320,6 +1324,7 @@ void MasterpieceEditor::reloadOrgan() {
 void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                                    const MasterpieceProcessor::LoadResult& result) {
   loading_ = false;
+  updateNotice_.loadFinished();
   // Taken now so a failed load does not leave it waiting for the next one.
   auto then = std::move(afterLoad_);
   afterLoad_ = nullptr;
@@ -1565,9 +1570,20 @@ void MasterpieceEditor::paint(juce::Graphics& g) {
   g.fillAll(juce::Colour(0xff15171c));
 }
 
+void MasterpieceEditor::showUpdateNotice(const juce::String& latest) { updateNotice_.show(latest); }
+
 void MasterpieceEditor::resized() {
   auto r = getLocalBounds();
-  top_.statusLabel().setBounds(r.removeFromBottom(20));
+  auto statusStrip = r.removeFromBottom(20);
+  if (updateNotice_.isVisible()) {
+    // Clear of the window's resize corner, which covers the strip's last
+    // pixels and would hide the notice's close button.
+    auto noticeArea = statusStrip;
+    noticeArea.removeFromRight(20);
+    updateNotice_.setBounds(noticeArea.removeFromRight(std::min(updateNotice_.preferredWidth(), noticeArea.getWidth())));
+    statusStrip.setRight(updateNotice_.getX());
+  }
+  top_.statusLabel().setBounds(statusStrip);
 
   // One band for every control. These are the editor's own children rather
   // than the bar's, so they are placed into the right of the same strip and

@@ -17,6 +17,7 @@
 #include "PageWindow.h"
 #include "Panels.h"
 #include "Icons.h"
+#include "UpdateCheck.h"
 
 #include <memory>
 #include <vector>
@@ -173,6 +174,8 @@ public:
   // draws the console without reading any audio — see
   // MasterpieceProcessor::loadOrgan.
   void loadOrgan(const juce::File& odf, bool graphicsOnly = false);
+  // "Masterpiece 0.8.1 is out", at the right of the status bar for 30 s.
+  void showUpdateNotice(const juce::String& latest);
   // The load itself, past the first-time settings.
   void startLoad(const juce::File& odf, bool graphicsOnly);
   // Ask for an organ file and load it. Shared with the first-run wizard.
@@ -251,6 +254,7 @@ private:
 
   MasterpieceProcessor& proc_;
   TopBar top_;
+  UpdateNotice updateNotice_{proc_};
   ConsoleView console_;
   juce::Viewport consoleView_;
   PageTabs pageTabs_;

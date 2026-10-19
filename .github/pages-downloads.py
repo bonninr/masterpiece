@@ -1,6 +1,6 @@
 """Point the site's downloads at the latest release's files.
 
-Three things, each time the page is published (release.yml publishes it again
+Four things, each time the page is published (release.yml publishes it again
 after every release):
 
 - A link written as <a data-asset="windows-setup.exe" href=".../releases/latest">
@@ -9,6 +9,7 @@ after every release):
 - A short address per platform, masterpieceorgan.com/download/windows and the
   others in SHORT, is written as a page that sends the browser on to the file.
 - The page's structured data is given the release's version.
+- version.txt holds that version, for the program's once-a-day update check.
 
 Release files carry their version in the name, so no fixed address reaches
 them. A file the release does not have keeps its link to the release page, and
@@ -98,6 +99,12 @@ def main(site):
     if version:
         text = re.sub(r'"softwareVersion": "[^"]*"', f'"softwareVersion": "{version}"', text)
     page.write_text(text, encoding="utf-8", newline="")
+    # The number the program's once-a-day check reads (src/mp_ui/UpdateCheck),
+    # and nothing else: a few bytes. Left out when the release cannot be read,
+    # so a failed lookup never tells anyone an older version is the newest.
+    if version:
+        (site / "version.txt").write_text(version + "\n", encoding="utf-8", newline="")
+        print(f"  version.txt: {version}")
 
     for slug, (asset, what) in SHORT.items():
         url = url_of(asset) or LATEST

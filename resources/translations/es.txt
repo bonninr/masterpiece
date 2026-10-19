@@ -570,6 +570,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Send the report and the log" = "Enviar el informe y el log"
 "Log every MIDI message and what became of it" = "Registrar en el log cada mensaje MIDI y lo que se hizo con él"
 "Log every key release: the release played, its length and start" = "Registrar en el log cada suelta de tecla: la cola reproducida, su duración y su inicio"
+"Check once a day for a newer version" = "Buscar una versión nueva una vez al día"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Lee el número de la versión más reciente en masterpieceorgan.com, unos pocos bytes, y ofrece la página de descarga cuando es más nueva. No se envía nada sobre ti."
 "Drive a console display" = "Controlar una pantalla de consola"
 "Send to display" = "Enviar a la pantalla"
 
@@ -789,3 +791,11 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 # src/mp_ui/Settings.cpp
 "Noise filter: when learning, a key counts once held a quarter second" = "Filtro de ruido: al aprender, una tecla cuenta tras mantenerla un cuarto de segundo"
 "For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Para una consola cuyos contactos envían notas sueltas: una nota más corta no se aprende. Los controladores y los cambios de programa se aprenden al momento. Déjelo apagado para pistones que solo envían una nota corta."
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Descargar"
+"Never check again" = "No volver a buscar"
+"Opens the download page in the browser" = "Abre la página de descarga en el navegador"
+"No more checks; General settings, Log turns them on again" = "No se busca más; Ajustes generales, Log lo vuelve a activar"
+"Close" = "Cerrar"
+"Masterpiece %1 is out" = "Ya está Masterpiece %1"

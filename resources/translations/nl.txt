@@ -570,6 +570,8 @@ countries: nl be sr
 "Send the report and the log" = "Rapport en logboek verzenden"
 "Log every MIDI message and what became of it" = "Elk MIDI-bericht en de afloop ervan loggen"
 "Log every key release: the release played, its length and start" = "Elke toetsloslating loggen: de gespeelde release, de lengte en het begin"
+"Check once a day for a newer version" = "Eén keer per dag naar een nieuwere versie zoeken"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Leest het nummer van de nieuwste versie van masterpieceorgan.com, een paar bytes, en biedt de downloadpagina aan als die nieuwer is. Er wordt niets over jou verstuurd."
 "Drive a console display" = "Een speeltafeldisplay aansturen"
 "Send to display" = "Naar display sturen"
 
@@ -789,3 +791,11 @@ countries: nl be sr
 # src/mp_ui/Settings.cpp
 "Noise filter: when learning, a key counts once held a quarter second" = "Ruisfilter: bij het leren telt een toets als hij een kwart seconde is vastgehouden"
 "For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Voor een speeltafel waarvan de contacten losse noten sturen: een kortere noot wordt niet geleerd. Controllers en programmawissels worden meteen geleerd. Laat het uit voor pistons die alleen een korte noot sturen."
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Downloaden"
+"Never check again" = "Nooit meer zoeken"
+"Opens the download page in the browser" = "Opent de downloadpagina in de browser"
+"No more checks; General settings, Log turns them on again" = "Niet meer zoeken; Algemene instellingen, Logboek zet het weer aan"
+"Close" = "Sluiten"
+"Masterpiece %1 is out" = "Masterpiece %1 is uit"

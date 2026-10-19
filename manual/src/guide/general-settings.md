@@ -235,6 +235,7 @@ Masterpiece always keeps a log of the session and the previous one beside it. Th
 | **Send the report and the log** | Shares the report, the log and the previous log through the share sheet. Present only on phones and tablets. | | At once |
 | **Log every MIDI message and what became of it** | The same as `--log-midi`: which manual, stop or control each message reached and, when nothing sounded, why. | Off | At once; lasts until Masterpiece closes |
 | **Log every key release: the release played, its length and start** | The same as `--log-releases`: the release chosen for each key release, its length and where it started. | Off | At once; lasts until Masterpiece closes |
+| **Check once a day for a newer version** | Reads the newest version's number from masterpieceorgan.com, a few bytes, once a day, and offers the download page when it is newer. See [Files and folders](files.md#privacy). | On | At the next start; `updatecheck` in the global file |
 
 The report box is read-only and shows **Run the checks to see what Masterpiece finds on this device.** until the checks have run. See [Command line](command-line.md) for the log and its options.
 
@@ -283,6 +284,8 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | Key | Value | Written by |
 |---|---|---|
 | `reopenlastorgan` | `1` or `0`. Always written. | **Reopen the last organ when Masterpiece starts** on the Loading tab |
+| `updatecheck` | `0` when the update check is off; absent while it is on. | **Check once a day for a newer version** on the Log tab |
+| `updatecheckedat` | Seconds since 1970 of the last update check. | The update check |
 | `speakerkeepalive` | The level in dB, -80 to -40. Written only while on. | **Keep portable speakers awake** |
 | `memlimit` | The sample memory limit in MB. Written only when set. | **Memory limit for samples** on the Loading tab |
 | `polyphony` | The voice limit. Written only when set. | **Polyphony limit** on the Loading tab |

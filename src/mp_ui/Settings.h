@@ -438,6 +438,7 @@ private:
   juce::ScopedMessageBox sending_;
   juce::ToggleButton midi_{TRANS("Log every MIDI message and what became of it")};
   juce::ToggleButton releases_{TRANS("Log every key release: the release played, its length and start")};
+  juce::ToggleButton updates_{TRANS("Check once a day for a newer version")};
 };
 
 class DisplayPanel : public juce::Component, private juce::Timer {

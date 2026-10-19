@@ -570,6 +570,8 @@ countries: de at ch li lu
 "Send the report and the log" = "Bericht und Protokoll senden"
 "Log every MIDI message and what became of it" = "Jede MIDI-Nachricht und ihren Verbleib protokollieren"
 "Log every key release: the release played, its length and start" = "Jedes Loslassen einer Taste protokollieren: das gespielte Release, seine Länge und seinen Beginn"
+"Check once a day for a newer version" = "Einmal täglich nach einer neueren Version suchen"
+"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Liest die Nummer der neuesten Version von masterpieceorgan.com, wenige Bytes, und bietet die Download-Seite an, wenn sie neuer ist. Über Sie wird nichts gesendet."
 "Drive a console display" = "Spieltisch-Anzeige ansteuern"
 "Send to display" = "An Anzeige senden"
 
@@ -789,3 +791,11 @@ countries: de at ch li lu
 # src/mp_ui/Settings.cpp
 "Noise filter: when learning, a key counts once held a quarter second" = "Rauschfilter: beim Lernen zählt eine Taste, wenn sie eine Viertelsekunde gehalten wird"
 "For a console whose contacts send stray notes: a shorter note is not learned. Controllers and program changes are learned at once. Leave it off for pistons that send only a short note." = "Für einen Spieltisch, dessen Kontakte verirrte Noten senden: eine kürzere Note wird nicht gelernt. Controller und Programmwechsel werden sofort gelernt. Für Pistons, die nur eine kurze Note senden, ausgeschaltet lassen."
+
+# src/mp_ui/UpdateCheck.cpp
+"Download" = "Herunterladen"
+"Never check again" = "Nie wieder suchen"
+"Opens the download page in the browser" = "Öffnet die Download-Seite im Browser"
+"No more checks; General settings, Log turns them on again" = "Keine Suche mehr; Allgemeine Einstellungen, Protokoll schaltet sie wieder ein"
+"Close" = "Schließen"
+"Masterpiece %1 is out" = "Masterpiece %1 ist erschienen"
