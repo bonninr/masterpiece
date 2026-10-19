@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 
 namespace mp::api {
 
@@ -68,6 +69,10 @@ void ControlModel::rebuild() {
   temperaments_.clear();
   ranks_.clear();
   switchIndex_.clear();
+  pipes_.clear();
+  enclosures_.clear();
+  tremulants_.clear();
+  windchests_.clear();
 
   for (int64_t id : sortedIds(m.divisions)) {
     const auto& d = m.divisions.at(static_cast<Id>(id));
@@ -170,6 +175,24 @@ void ControlModel::rebuild() {
   }
   for (int64_t id : sortedIds(m.keyboards)) keyboards_.push_back({id, m.keyboards.at(static_cast<Id>(id)).name, -1});
   for (int64_t id : sortedIds(m.ranks)) ranks_.push_back({id, readable(m.ranks.at(static_cast<Id>(id)).name), -1});
+  for (size_t r = 0; r < ranks_.size(); ++r) {
+    std::vector<PipeEntry> rankPipes;
+    for (const Pipe& p : m.ranks.at(static_cast<Id>(ranks_[r].id)).pipes)
+      rankPipes.push_back({static_cast<int64_t>(p.pipeId), static_cast<int>(r), p.midiNote});
+    std::sort(rankPipes.begin(), rankPipes.end(), [](const PipeEntry& a, const PipeEntry& b) { return a.key < b.key; });
+    pipes_.insert(pipes_.end(), rankPipes.begin(), rankPipes.end());
+  }
+  for (int64_t id : sortedIds(m.enclosures)) {
+    const Enclosure& e = m.enclosures.at(static_cast<Id>(id));
+    enclosures_.push_back({id, static_cast<int64_t>(e.continuousControlId), readable(e.name)});
+  }
+  for (int64_t id : sortedIds(m.tremulants)) {
+    const Tremulant& t = m.tremulants.at(static_cast<Id>(id));
+    const int64_t sw = t.controllingSwitchId != 0 ? static_cast<int64_t>(proc_.playerSwitchFor(t.controllingSwitchId)) : 0;
+    tremulants_.push_back({id, sw, readable(t.name), juce::roundToInt(t.engagedHz * 100.0),
+                           juce::roundToInt(t.depthPercent * 10.0)});
+  }
+  for (int64_t id : sortedIds(m.wind)) windchests_.push_back({id, readable(m.wind.at(static_cast<Id>(id)).name), -1});
 
   const auto& player = proc_.playerCombinations();
   for (const auto& d : player.divisions())
@@ -202,8 +225,18 @@ int ControlModel::count(Type type) {
     case Type::Command: return kCommandCount;
     case Type::Rank: return static_cast<int>(ranks_.size());
     case Type::Note: return static_cast<int>(keyboards_.size()) * 128;
+    case Type::Pipe: return static_cast<int>(pipes_.size());
+    case Type::Enclosure: return static_cast<int>(enclosures_.size());
+    case Type::Tremulant: return static_cast<int>(tremulants_.size());
+    case Type::Windchest: return static_cast<int>(windchests_.size());
   }
   return 0;
+}
+
+int ControlModel::controlIndex(int64_t controlId) const {
+  for (size_t i = 0; i < controls_.size(); ++i)
+    if (controls_[i].id == controlId) return static_cast<int>(i);
+  return -1;
 }
 
 int ControlModel::valueOf(Type type, int index) {
@@ -227,6 +260,21 @@ int ControlModel::valueOf(Type type, int index) {
       return juce::roundToInt(proc_.voicing().live().rank(static_cast<Id>(ranks_[static_cast<size_t>(index)].id)).gainDb * 10.0f);
     case Type::Note:
       return proc_.keyDownOnKeyboard(static_cast<Id>(keyboards_[static_cast<size_t>(index / 128)].id), index % 128) ? 1 : 0;
+    case Type::Pipe:
+      return juce::roundToInt(proc_.voicing().live().pipe(static_cast<Id>(pipes_[static_cast<size_t>(index)].id)).gainDb * 10.0f);
+    case Type::Enclosure: {
+      const auto c = enclosures_[static_cast<size_t>(index)].controlId;
+      return c != 0 ? proc_.continuousControlValue(static_cast<Id>(c)) : 127;
+    }
+    case Type::Tremulant: {
+      const auto sw = tremulants_[static_cast<size_t>(index)].switchId;
+      return sw != 0 && proc_.switchEngaged(static_cast<Id>(sw)) ? 1 : 0;
+    }
+    case Type::Windchest: {
+      const auto id = static_cast<Id>(windchests_[static_cast<size_t>(index)].id);
+      const double nominal = proc_.wind().nominalFor(id);
+      return nominal > 0.0 ? juce::roundToInt(proc_.wind().pressureFor(id) / nominal * 1000.0) : 1000;
+    }
     default:
       return 0;
   }
@@ -271,6 +319,8 @@ int ControlModel::programValue(ProgramProp prop) {
     case ProgramProp::AudioRecorder: return proc_.audioRecorder().isRecording() ? 1 : 0;
     case ProgramProp::Metronome: return proc_.metronome().enabled() ? 1 : 0;
     case ProgramProp::MetronomeTempo: return juce::roundToInt(proc_.metronome().tempo());
+    case ProgramProp::RoomOn: return proc_.convolver().enabled() ? 1 : 0;
+    case ProgramProp::RoomWet: return juce::roundToInt(proc_.convolver().mix() * 100.0f);
   }
   return 0;
 }
@@ -348,8 +398,41 @@ juce::var ControlModel::object(Type type, int index) {
       o->setProperty("name", text(r.name));
       o->setProperty("odfId", static_cast<juce::int64>(r.id));
       o->setProperty("tuning", juce::roundToInt(proc_.voicing().live().rank(static_cast<Id>(r.id)).tuningCents * 10.0f));
+      // Where its main perspective plays; the routing itself is the Mixer tab's.
+      const auto routing = proc_.mixer().routingFor(static_cast<Id>(r.id));
+      const auto& dest = routing.perspectives[0].dest;
+      o->setProperty("bus", std::holds_alternative<BusId>(dest) ? static_cast<int>(std::get<BusId>(dest).value) : -1);
       break;
     }
+    case Type::Pipe: {
+      static const char* kPipeNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+      const auto& p = pipes_[static_cast<size_t>(index)];
+      o->setProperty("name", text(ranks_[static_cast<size_t>(p.rank)].name) + " " + kPipeNames[((p.key % 12) + 12) % 12] +
+                                 juce::String(p.key / 12 - 1));
+      o->setProperty("rank", p.rank);
+      o->setProperty("key", p.key);
+      o->setProperty("tuning", juce::roundToInt(proc_.voicing().live().pipe(static_cast<Id>(p.id)).tuningCents * 10.0f));
+      break;
+    }
+    case Type::Enclosure: {
+      const auto& e = enclosures_[static_cast<size_t>(index)];
+      o->setProperty("name", text(e.name));
+      o->setProperty("odfId", static_cast<juce::int64>(e.id));
+      o->setProperty("control", controlIndex(e.controlId));
+      break;
+    }
+    case Type::Tremulant: {
+      const auto& t = tremulants_[static_cast<size_t>(index)];
+      o->setProperty("name", text(t.name));
+      o->setProperty("odfId", static_cast<juce::int64>(t.id));
+      o->setProperty("rate", t.rate);
+      o->setProperty("depth", t.depth);
+      break;
+    }
+    case Type::Windchest:
+      o->setProperty("name", text(windchests_[static_cast<size_t>(index)].name));
+      o->setProperty("odfId", static_cast<juce::int64>(windchests_[static_cast<size_t>(index)].id));
+      break;
     case Type::Note: {
       static const char* kNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
       const int note = index % 128;
@@ -483,6 +566,17 @@ Error ControlModel::set(Type type, int index, int& value) {
     PipeVoicing pv = proc_.voicing().live().rank(id);
     pv.gainDb = static_cast<float>(value) / 10.0f;
     proc_.voicing().live().setRank(id, pv);
+  } else if (type == Type::Pipe) {
+    if (value < info->min || value > info->max) return Error::BadValue;
+    const auto id = static_cast<Id>(pipes_[static_cast<size_t>(index)].id);
+    PipeVoicing pv = proc_.voicing().live().pipe(id);
+    pv.gainDb = static_cast<float>(value) / 10.0f;
+    proc_.voicing().live().setPipe(id, pv);
+  } else if (type == Type::Tremulant) {
+    if (value < 0 || value > 1) return Error::BadValue;
+    const auto sw = tremulants_[static_cast<size_t>(index)].switchId;
+    if (sw == 0) return Error::ReadOnly;
+    proc_.setSwitchEngaged(static_cast<Id>(sw), value == 1);
   } else if (type == Type::Note) {
     if (value < 0 || value > 1) return Error::BadValue;
     // Through the on-screen keyboard's path, on the keyboard's channel.
@@ -591,6 +685,8 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
     case ProgramProp::RealtimeThreads: proc_.setRealtimeThreads(value == 1); break;
     case ProgramProp::Metronome: proc_.metronome().setEnabled(value == 1); break;
     case ProgramProp::MetronomeTempo: proc_.metronome().setTempo(value); break;
+    case ProgramProp::RoomOn: proc_.convolver().setEnabled(value == 1); break;
+    case ProgramProp::RoomWet: proc_.convolver().setMix(static_cast<float>(value) / 100.0f); break;
     default: return Error::ReadOnly;
   }
   return Error::None;

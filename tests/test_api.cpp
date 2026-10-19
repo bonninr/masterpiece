@@ -100,6 +100,26 @@ public:
       MP_CHECK(m.set(Type::Rank, 0, v) == Error::BadValue, "within -24 and +12 dB");
     }
     MP_CHECK(m.count(Type::Note) == m.count(Type::Keyboard) * 128, "every key of every keyboard");
+    size_t pipes = 0;
+    for (const auto& [id, rank] : proc.organModel().ranks) pipes += rank.pipes.size();
+    MP_CHECK(m.count(Type::Pipe) == static_cast<int>(pipes), "every pipe of every rank");
+    MP_CHECK(m.count(Type::Enclosure) == static_cast<int>(proc.organModel().enclosures.size()) &&
+                 m.count(Type::Enclosure) == 2,
+             "the swell box and the empty box");
+    MP_CHECK(m.count(Type::Tremulant) == static_cast<int>(proc.organModel().tremulants.size()),
+             "every tremulant");
+    if (m.count(Type::Tremulant) > 0) {
+      v = 1;
+      int now = 0;
+      MP_CHECK(m.set(Type::Tremulant, 0, v) == Error::None && m.get(Type::Tremulant, 0, now, e) && now == 1,
+               "a tremulant started from its own object");
+      v = 0;
+      m.set(Type::Tremulant, 0, v);
+    }
+    MP_CHECK(m.count(Type::Windchest) == static_cast<int>(proc.organModel().wind.size()), "every windchest");
+    MP_CHECK(m.setProgram(ProgramProp::RoomWet, 40) == Error::None, "the room's wet share");
+    int wet = 0;
+    MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::RoomWet), wet, e) && wet == 40, "read back");
 
     // What a general holds: the tremulant drawn, stored in general 1.
     if (m.count(Type::General) > 0) {

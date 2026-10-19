@@ -23,6 +23,10 @@ enum class Type : uint8_t {
   Command = 9,
   Rank = 10,
   Note = 11,
+  Pipe = 12,
+  Enclosure = 13,
+  Tremulant = 14,
+  Windchest = 15,
 };
 
 enum class Access : uint8_t { Read, Set, Press };
@@ -53,6 +57,10 @@ constexpr TypeInfo kTypes[] = {
   {Type::Command, "command", "commands", Access::Press, Dump::None, false, 0, 0, false, "Buttons that are no object of the organ."},
   {Type::Rank, "rank", "ranks", Access::Set, Dump::Values, true, -240, 120, false, "Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings."},
   {Type::Note, "note", "notes", Access::Set, Dump::Bits, true, 0, 1, false, "Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel."},
+  {Type::Pipe, "pipe", "pipes", Access::Set, Dump::Values, true, -240, 120, false, "Every pipe of every rank, with its own voicing level in tenths of a dB on top of its rank's, heard from the next note. In rank order, then by key."},
+  {Type::Enclosure, "enclosure", "enclosures", Access::Read, Dump::Values, true, 0, 127, false, "Swell boxes and other enclosures. Value - how open its shades are, 0 to 127, as the control that moves them reads."},
+  {Type::Tremulant, "tremulant", "tremulants", Access::Set, Dump::Bits, true, 0, 1, false, "The organ's tremulants. Value 1 while it runs; setting it moves the switch the player would."},
+  {Type::Windchest, "windchest", "windchests", Access::Read, Dump::Values, true, 0, 2097151, false, "The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure."},
 };
 
 constexpr const TypeInfo* typeInfo(Type t) {
@@ -79,6 +87,12 @@ enum class Prop : uint8_t {
   Console = 10,
   Tuning = 11,
   Holds = 12,
+  Rank = 13,
+  Key = 14,
+  Control = 15,
+  Rate = 16,
+  Depth = 17,
+  Bus = 18,
 };
 
 enum class Role : uint8_t {
@@ -109,6 +123,8 @@ enum class ProgramProp : uint8_t {
   AudioRecorder = 15,
   Metronome = 16,
   MetronomeTempo = 17,
+  RoomOn = 18,
+  RoomWet = 19,
 };
 
 struct ProgramPropInfo {
@@ -137,8 +153,10 @@ constexpr ProgramPropInfo kProgram[] = {
   {ProgramProp::AudioRecorder, "audioRecorder", 0, 1, false, "1 while recording"},
   {ProgramProp::Metronome, "metronome", 0, 1, true, ""},
   {ProgramProp::MetronomeTempo, "metronomeTempo", 20, 300, true, "Beats a minute"},
+  {ProgramProp::RoomOn, "roomOn", 0, 1, true, "The room - the convolution reverb"},
+  {ProgramProp::RoomWet, "roomWet", 0, 100, true, "The room's wet share"},
 };
-constexpr int kProgramCount = 18;
+constexpr int kProgramCount = 20;
 
 enum class Command : uint8_t {
   Panic = 0,

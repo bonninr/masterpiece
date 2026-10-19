@@ -56,9 +56,10 @@ function el(tag, attrs = {}, ...children) {
 // ---- building the panels -------------------------------------------------
 
 async function load() {
-  const [id, prog, divs, sw, ctl, gen, divl, eq, tem] = await Promise.all([
+  const [id, prog, divs, sw, ctl, gen, divl, eq, tem, trem, encl, wind] = await Promise.all([
     get(""), get("program"), get("divisions"), get("switches"), get("controls"), get("generals"),
-    get("divisionals"), get("eqpresets"), get("temperaments")]);
+    get("divisionals"), get("eqpresets"), get("temperaments"), get("tremulants"), get("enclosures"), get("windchests")]);
+  state.tremulants = trem.items; state.enclosures = encl.items; state.windchests = wind.items;
   state.session = id.session;
   state.program = prog;
   state.divisions = divs.items; state.switches = sw.items; state.controls = ctl.items;
@@ -71,7 +72,7 @@ async function load() {
 function build() {
   const main = $("panels");
   main.replaceChildren();
-  state.el = { switch: [], control: [], general: [], divisional: [] };
+  state.el = { switch: [], control: [], general: [], divisional: [], tremulant: [], enclosure: [], windchest: [] };
   state.all = { switch: [], control: [], rank: [] };
   if (!state.switches.length && !state.controls.length) {
     main.append(el("div", { class: "empty" }, state.program.organState === 1 ? "Loading the organ..." : "No organ loaded."));
@@ -90,6 +91,7 @@ function build() {
   for (const g of [...groups, none]) if (g.items.length) main.append(switchPanel(g.name, g.items));
   if (pistons.length) main.append(switchPanel("The organ's pistons", pistons, "pistons"));
   if (state.controls.length) main.append(controlPanel());
+  main.append(organPanel());
   main.append(combinationPanel());
   if (others.length) {
     const p = switchPanel("Other switches", others);
@@ -182,6 +184,43 @@ function controlPanel() {
   return el("section", {}, el("h2", {}, "Shoes and controls"), box);
 }
 
+// The tremulants, the swell boxes' shades, the wind and the room.
+function organPanel() {
+  const sec = el("section", {}, el("h2", {}, "Tremulants, enclosures, wind and room"));
+  if (state.tremulants.length) {
+    const row = el("div", { class: "stops" });
+    for (const t of state.tremulants) {
+      const b = el("button", { class: "tremulant", title: `${(t.rate / 100).toFixed(2)} Hz, depth ${(t.depth / 10).toFixed(1)}%` }, t.name);
+      b.addEventListener("click", () => setValue("tremulants", t.index, t.value === 1 ? 0 : 1));
+      b.classList.toggle("on", t.value === 1);
+      state.el.tremulant[t.index] = { b, t };
+      row.append(b);
+    }
+    sec.append(row);
+  }
+  for (const e of state.enclosures) {
+    const m = el("meter", { min: 0, max: 127, value: e.value });
+    const out = el("span", { class: "dim" }, `${Math.round(e.value / 1.27)}% open`);
+    state.el.enclosure[e.index] = { m, out };
+    sec.append(el("label", { class: "control" }, el("span", {}, e.name), m, out));
+  }
+  if (state.windchests.length) {
+    const box = el("div", { class: "dim" });
+    for (const w of state.windchests) {
+      const v = el("span", {}, `${(w.value / 10).toFixed(1)}%`);
+      state.el.windchest[w.index] = v;
+      box.append(el("div", {}, `${w.name}: `, v));
+    }
+    sec.append(el("div", { class: "dim" }, "Wind, of nominal pressure"), box);
+  }
+  const room = el("button", { id: "roomOn", title: "The room: the convolution reverb" }, "Room");
+  room.addEventListener("click", () => setProgram("roomOn", state.program.roomOn ? 0 : 1));
+  const wet = el("input", { id: "roomWet", type: "range", min: 0, max: 100 });
+  wet.addEventListener("input", () => setProgram("roomWet", Number(wet.value)));
+  sec.append(el("div", { class: "stepper" }, room, el("span", { class: "dim" }, "wet"), wet));
+  return sec;
+}
+
 function combinationPanel() {
   const sec = el("section", { class: "wide" }, el("h2", {}, "Combinations"));
   const gen = el("div", { class: "stops pistons" });
@@ -260,6 +299,8 @@ function showProgram(p) {
   if (p === undefined || p === "soundingVoices") $("voices").textContent = `${s.soundingVoices ?? 0} voices`;
   if (p === undefined || p === "lateBlocks") $("late").textContent = s.lateBlocks ? `${s.lateBlocks} late blocks` : "";
   if (p === undefined || p === "organState" || p === "loadProgress") showState();
+  if (p === undefined || p === "roomOn") { const b = $("roomOn"); if (b) b.classList.toggle("lit", s.roomOn === 1); }
+  if (p === undefined || p === "roomWet") { const w = $("roomWet"); if (w && document.activeElement !== w) w.value = s.roomWet; }
 }
 
 async function refreshAll() {
@@ -298,6 +339,9 @@ function connect() {
     if (c.session !== state.session) return reload();
     if (c.type === "switch") showSwitch(c.index, c.value);
     else if (c.type === "control") showControl(c.index, c.value);
+    else if (c.type === "tremulant") { const t = state.el.tremulant[c.index]; if (t) { t.t.value = c.value; t.b.classList.toggle("on", c.value === 1); } }
+    else if (c.type === "enclosure") { const e = state.el.enclosure[c.index]; if (e) { e.m.value = c.value; e.out.textContent = `${Math.round(c.value / 1.27)}% open`; } }
+    else if (c.type === "windchest") { const w = state.el.windchest[c.index]; if (w) w.textContent = `${(c.value / 10).toFixed(1)}%`; }
     else if (c.type === "rank") { const r = state.all.rank[c.index]; if (r && document.activeElement !== r.r) { r.r.value = c.value; r.out.textContent = `${(c.value / 10).toFixed(1)} dB`; } }
     else if (c.type === "general") showPiston("general", c.index, c.value);
     else if (c.type === "divisional") showPiston("divisional", c.index, c.value);

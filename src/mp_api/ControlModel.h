@@ -96,7 +96,25 @@ private:
   // shutting down are refused for the first two minutes.
   const juce::uint32 startedMs_ = juce::Time::getMillisecondCounter();
   std::vector<SwitchEntry> switches_;
-  std::vector<NamedEntry> controls_, divisions_, keyboards_, ranks_;
+  std::vector<NamedEntry> controls_, divisions_, keyboards_, ranks_, windchests_;
+  struct PipeEntry {
+    int64_t id = 0;
+    int rank = 0;  // index into ranks_
+    int key = 0;
+  };
+  std::vector<PipeEntry> pipes_;
+  struct EnclosureEntry {
+    int64_t id = 0, controlId = 0;
+    std::string name;
+  };
+  std::vector<EnclosureEntry> enclosures_;
+  struct TremulantEntry {
+    int64_t id = 0, switchId = 0;  // the switch the player moves for it
+    std::string name;
+    int rate = 0, depth = 0;
+  };
+  std::vector<TremulantEntry> tremulants_;
+  int controlIndex(int64_t controlId) const;
   std::vector<NamedEntry> divisionals_;  // id = the division's id, division = piston number
   std::vector<std::string> temperaments_;  // "" is the organ's own
 

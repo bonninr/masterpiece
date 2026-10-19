@@ -35,6 +35,10 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 9 | `command` | the list below | none | press | Buttons that are no object of the organ |
 | 10 | `rank` | 0 to ranks - 1 | voicing level in tenths of a dB, -240 to +120 | yes | Every rank of pipes; heard from the next note, as on the Voicing tab |
 | 11 | `note` | keyboard index × 128 + MIDI note | 1 while the key is down | yes | 1 plays the key, 0 releases it, on the keyboard's channel |
+| 12 | `pipe` | 0 to pipes - 1, in rank order then by key | its own voicing level in tenths of a dB, on top of its rank's | yes | Heard from the next note |
+| 13 | `enclosure` | 0 to enclosures - 1 | how open its shades are, 0 to 127 | no | Moved by its control |
+| 14 | `tremulant` | 0 to tremulants - 1 | 1 while it runs | yes | Moves the switch the player would |
+| 15 | `windchest` | 0 to compartments - 1 | pressure now, in tenths of a percent of nominal | no | Reservoirs and chests of the wind model |
 
 A `press` acts like a thumb piston: it does what the object does, once.
 
@@ -60,6 +64,8 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 15 | Audio recorder | 0 stopped, 1 recording | yes |
 | 16 | Metronome | 0 off, 1 on | yes |
 | 17 | Metronome tempo | beats a minute, 20 to 300 | yes |
+| 18 | Room | 0, 1 | yes |
+| 19 | Room wet share | percent, 0 to 100 | yes |
 
 New properties are added at the end; an index is never reused.
 
@@ -94,7 +100,11 @@ Asked for with **Describe**, one object at a time.
 | `own` | eqpreset | 1 for the player's own |
 | `set` | general, divisional | 1 when the piston holds a registration |
 | `holds` | general, divisional | The switches it draws when recalled, as indices into `switch` |
-| `tuning` | rank | Its voicing tuning, in tenths of a cent |
+| `tuning` | rank, pipe | Its voicing tuning, in tenths of a cent |
+| `rank`, `key` | pipe | Its rank (an index into `rank`) and the MIDI note it sounds for |
+| `control` | enclosure | The control that moves it, an index into `control`, or -1 |
+| `rate`, `depth` | tremulant | Its rate in hundredths of a hertz, its depth in tenths of a percent |
+| `bus` | rank | The mixer bus its main perspective plays through; routing is changed in the Mixer tab |
 | `console` | switch, control | 1 for what the organ's console shows: its stops, couplers and tremulants, and what else is drawn and can be clicked. A list gives only these unless asked for all (`?all=1`); every object keeps its index either way |
 
 ## Operations

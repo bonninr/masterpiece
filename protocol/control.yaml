@@ -97,7 +97,7 @@ types:
     value: {min: -240, max: 120}
     access: set
     dump: values
-    properties: [name, odfId, tuning]
+    properties: [name, odfId, tuning, bus]
   - code: 11
     name: note
     plural: notes
@@ -106,6 +106,38 @@ types:
     access: set
     dump: bits
     properties: [name]
+  - code: 12
+    name: pipe
+    plural: pipes
+    doc: Every pipe of every rank, with its own voicing level in tenths of a dB on top of its rank's, heard from the next note. In rank order, then by key.
+    value: {min: -240, max: 120}
+    access: set
+    dump: values
+    properties: [name, rank, key, tuning]
+  - code: 13
+    name: enclosure
+    plural: enclosures
+    doc: Swell boxes and other enclosures. Value - how open its shades are, 0 to 127, as the control that moves them reads.
+    value: {min: 0, max: 127}
+    access: read
+    dump: values
+    properties: [name, odfId, control]
+  - code: 14
+    name: tremulant
+    plural: tremulants
+    doc: The organ's tremulants. Value 1 while it runs; setting it moves the switch the player would.
+    value: {min: 0, max: 1}
+    access: set
+    dump: bits
+    properties: [name, odfId, rate, depth]
+  - code: 15
+    name: windchest
+    plural: windchests
+    doc: The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure.
+    value: {min: 0, max: 2097151}
+    access: read
+    dump: values
+    properties: [name, odfId]
 
 # Properties an object can have, returned by Describe.
 properties:
@@ -121,6 +153,12 @@ properties:
   - {code: 10, name: console, kind: bool, doc: 1 for what the organ's console shows; a list gives only these unless asked for all}
   - {code: 11, name: tuning, kind: int, doc: A rank's voicing tuning in tenths of a cent}
   - {code: 12, name: holds, kind: list, doc: The switches a stored piston draws when recalled - indices into switches}
+  - {code: 13, name: rank, kind: int, doc: Index into ranks}
+  - {code: 14, name: key, kind: int, doc: The MIDI note a pipe sounds for}
+  - {code: 15, name: control, kind: int, doc: Index into controls of the control that moves it, or -1}
+  - {code: 16, name: rate, kind: int, doc: A tremulant's rate while it runs, in hundredths of a hertz}
+  - {code: 17, name: depth, kind: int, doc: A tremulant's depth, in tenths of a percent}
+  - {code: 18, name: bus, kind: int, doc: The mixer bus a rank's main perspective plays through; routing is changed in the Mixer tab}
 
 # The program object's properties (type 0). `index` never changes.
 program:
@@ -142,6 +180,8 @@ program:
   - {index: 15, name: audioRecorder, min: 0, max: 1, access: read, doc: 1 while recording}
   - {index: 16, name: metronome, min: 0, max: 1, access: set}
   - {index: 17, name: metronomeTempo, min: 20, max: 300, access: set, doc: Beats a minute}
+  - {index: 18, name: roomOn, min: 0, max: 1, access: set, doc: The room - the convolution reverb}
+  - {index: 19, name: roomWet, min: 0, max: 100, access: set, doc: The room's wet share, in percent}
 
 # Commands (type 9), pressed.
 commands:
