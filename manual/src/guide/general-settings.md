@@ -111,6 +111,7 @@ When a default exists, the line beside the buttons reads **Default for organs wi
 | **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
 | **Send stop changes back to the console** | Sends each stop change to the output so that a console with lit stops follows the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
+| **Stop changes leave the notes already held alone** | Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep the pipes they started with until their keys are let go, and only keys pressed afterwards play the new registration. | Off | On, off | At once. Global file key `stopsleaveheldnotes`, written only while on. |
 | **Noise filter: when learning, a key counts once held a quarter second** | For a console whose contacts send stray notes: a shorter note is dropped. Controllers, program changes and system exclusive messages are learned at once. Leave it off for pistons that send only a short note. | Off | On, off | At once. Global file key `learnnoisefilter`, written only while on. |
 
 > [!NOTE]
@@ -308,6 +309,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `language` | The language code. Written only when a language is chosen. | **Language** |
 | `loadticks` | `1` or `0`. Always written. | **Tap at each 10% while loading an organ** on the Loading tab |
 | `cancelresetskeyboards` | `1`. Written only while on. | **General Cancel also puts the keyboards back on their own manuals** |
+| `stopsleaveheldnotes` | `1`. Written only while on. | **Stop changes leave the notes already held alone** |
 | `learnnoisefilter` | `1`. Written only while on. | **Noise filter: when learning, a key counts once held a quarter second** |
 | `combinationsontop` | `1`. Written only while on. | **Always on top** in the combinations window |
 | `cachewhileplaying` | `1`. Written only while on. | **Save the sample cache** on the Loading tab, set to **In silence, while it plays** |

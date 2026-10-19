@@ -1381,6 +1381,13 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   cancelResets_.onClick = [this] {
     proc_.setCancelResetsKeyboards(cancelResets_.getToggleState());
   };
+  addAndMakeVisible(leaveHeld_);
+  leaveHeld_.setToggleState(proc_.stopsLeaveHeldNotes(), juce::dontSendNotification);
+  leaveHeld_.setTooltip(TRANS("Off, a stop or coupler moved while keys are held sounds or stops on those "
+                              "notes at once, as on a console with electric action. On, the held notes keep "
+                              "what they started with, and only the keys pressed afterwards play the new "
+                              "registration."));
+  leaveHeld_.onClick = [this] { proc_.setStopsLeaveHeldNotes(leaveHeld_.getToggleState()); };
   addAndMakeVisible(noiseFilter_);
   noiseFilter_.setToggleState(proc_.learnNoiseFilter(), juce::dontSendNotification);
   noiseFilter_.setTooltip(TRANS("For a console whose contacts send stray notes: a shorter note is not learned. "
@@ -1766,6 +1773,7 @@ void MidiPanel::resized() {
   r.removeFromTop(4);
   feedback_.setBounds(r.removeFromTop(kRow));
   cancelResets_.setBounds(r.removeFromTop(kRow));
+  leaveHeld_.setBounds(r.removeFromTop(kRow));
   noiseFilter_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
