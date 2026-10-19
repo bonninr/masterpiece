@@ -1252,6 +1252,17 @@ public:
   }
   // A mapping learned on the audio thread, written here.
   bool saveMidiMapIfDirty();
+  // Every save that is waiting, now: before an export, so the archive holds
+  // what the player sees.
+  void saveEverythingPending();
+  // Settings were restored or copied into the settings folder
+  // (SettingsArchive.h), and what is in memory is older. Nothing is saved
+  // until the next organ load has read them; the saves waiting are dropped.
+  void holdSavesUntilReload();
+  void releaseSaves() { holdSaves_.store(false, std::memory_order_release); }
+  bool savesHeld() const { return holdSaves_.load(std::memory_order_acquire); }
+  // The folder the player's settings live in.
+  static juce::File settingsRoot();
   bool saveMidiMap() const;
   bool loadMidiMap();
 
@@ -1691,6 +1702,7 @@ private:
   std::atomic<bool> settingsDirty_{false};
   std::atomic<bool> midiMapDirty_{false};
   std::atomic<bool> masterGainDirty_{false};
+  std::atomic<bool> holdSaves_{false};
   // Shoe positions that move switches: the crescendo, the blower, enclosure
   // noises. Needs the previous position, because each row is a crossing.
   PlayerCombinations player_;

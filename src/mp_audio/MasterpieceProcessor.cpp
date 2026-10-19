@@ -1629,6 +1629,7 @@ juce::String MasterpieceProcessor::rememberedStateLines() const {
 }
 
 bool MasterpieceProcessor::saveRememberedState() const {
+  if (savesHeld()) return false;
   const auto f = organFileForSaving("organs", ".mporgan");
   if (f.getFullPathName().isEmpty()) return false;
   // Every line but these, exactly as it was; see markRememberedStateMoved.
@@ -1682,6 +1683,7 @@ bool MasterpieceProcessor::saveCurrentState() {
 }
 
 bool MasterpieceProcessor::saveSettings() const {
+  if (savesHeld()) return false;
   const auto f = organFileForSaving("organs", ".mporgan");
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
@@ -1960,12 +1962,32 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
 }
 
 juce::File MasterpieceProcessor::globalSettingsFile() const {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
-      .getChildFile("settings.mpglobal");
+  return settingsRoot().getChildFile("settings.mpglobal");
+}
+
+juce::File MasterpieceProcessor::settingsRoot() {
+  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Masterpiece");
+}
+
+void MasterpieceProcessor::saveEverythingPending() {
+  saveCombinationsIfDirty();
+  saveSettingsIfDirty();
+  saveMidiMapIfDirty();
+  saveMasterGainIfDirty();
+  saveRememberedStateIfPending();
+}
+
+void MasterpieceProcessor::holdSavesUntilReload() {
+  holdSaves_.store(true, std::memory_order_release);
+  combinationsDirty_.store(false, std::memory_order_release);
+  settingsDirty_.store(false, std::memory_order_release);
+  midiMapDirty_.store(false, std::memory_order_release);
+  masterGainDirty_.store(false, std::memory_order_release);
+  rememberedMovedAtMs_.store(0u, std::memory_order_release);
 }
 
 bool MasterpieceProcessor::writeGlobalFile() const {
+  if (savesHeld()) return false;
   const auto f = globalSettingsFile();
   f.getParentDirectory().createDirectory();
   juce::String text;
@@ -2624,6 +2646,7 @@ bool MasterpieceProcessor::saveSettingsIfDirty() {
 }
 
 bool MasterpieceProcessor::saveMasterGain() const {
+  if (savesHeld()) return false;
   const auto f = organFileForSaving("organs", ".mporgan");
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
@@ -2675,6 +2698,7 @@ juce::File MasterpieceProcessor::consoleMidiFile() {
 }
 
 bool MasterpieceProcessor::saveMidiMap() const {
+  if (savesHeld()) return false;
   // Two files: what belongs to this organ -- its stops, shoes, manuals,
   // divisionals -- and what belongs to the player's console on every organ:
   // the stepper, the generals, the setter (a Buckeburg report asked for the
@@ -4609,6 +4633,7 @@ bool MasterpieceProcessor::switchCombinationSet(const std::string& name) {
 }
 
 bool MasterpieceProcessor::copyCombinationSetTo(const std::string& name) const {
+  if (savesHeld()) return false;
   const std::string clean = sanitiseSetName(name);
   if (clean == sanitiseSetName(combinationSet_)) return false;  // itself
   const auto f = organFileForSaving("combinations", setExtension(clean));
@@ -4641,6 +4666,7 @@ std::string MasterpieceProcessor::combinationFileText() const {
 }
 
 bool MasterpieceProcessor::saveCombinations() const {
+  if (savesHeld()) return false;
   const auto f = organFileForSaving("combinations", setExtension(combinationSet_));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
@@ -5623,6 +5649,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // The organ being left keeps what the player just set on it: the file is
   // named after the organ that is loaded, which is about to change.
   saveRememberedStateIfPending();
+  // Settings restored from an archive are what this load reads; from here
+  // on the program saves again.
+  releaseSaves();
   // The audio thread keeps running through a load; keep it off the stage
   // table until it has been rebuilt for the new organ.
   stagesReady_.store(false, std::memory_order_release);

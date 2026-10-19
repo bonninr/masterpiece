@@ -487,7 +487,7 @@ std::vector<PanelLayout> loadPanelLayouts(const MasterpieceProcessor& p) {
 
 bool savePanelLayouts(const MasterpieceProcessor& p, const std::vector<PanelLayout>& panels) {
   const auto f = panelsFile(p);
-  if (f == juce::File()) return false;
+  if (f == juce::File() || p.savesHeld()) return false;
   std::string text = "# Masterpiece panels\n";
   for (const auto& l : panels) text += "panel\n" + l.toText();
   f.getParentDirectory().createDirectory();
