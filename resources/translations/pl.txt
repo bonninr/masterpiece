@@ -400,6 +400,8 @@ countries: pl
 "Faster audio engine" = "Szybszy silnik audio"
 "Faster audio engine: using %1" = "Szybszy silnik audio: używa %1"
 "Faster audio engine: not available on this processor" = "Szybszy silnik audio: niedostępny na tym procesorze"
+"Real-time render threads (trial)" = "Wątki renderowania w czasie rzeczywistym (próbnie)"
+"Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO on Linux (with real-time rights, as for the audio group), the audio workgroup on macOS. Off by default while it is tried. If the late blocks in the status bar go down or up with it on, please tell us in the discussion on GitHub." = "Zamienia wątki, które renderują organy, w wątki czasu rzeczywistego, dzięki czemu system uruchamia je w pierwszej kolejności, na najszybszych rdzeniach: MMCSS w Windows, SCHED_FIFO w Linuksie (z uprawnieniami czasu rzeczywistego, jak dla grupy audio), grupa robocza audio w macOS. Domyślnie wyłączone na czas prób. Jeśli po włączeniu liczba spóźnionych bloków na pasku stanu spadnie lub wzrośnie, napisz nam o tym w dyskusji na GitHubie."
 "Save as default" = "Zapisz jako domyślne"
 "Load the organ again to apply" = "Wczytaj organy ponownie, aby zastosować"
 "32-bit float" = "32 bity zmiennoprzecinkowe"

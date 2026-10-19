@@ -67,6 +67,7 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `memlimit` | Memory limit for samples, in MB. Absent: 80% of the computer's memory. | **Memory limit for samples** |
 | `polyphony` | Polyphony limit in voices. Absent: the default. | **Polyphony limit** |
 | `fasterengine` | `1` or `0`. Default `1`. | **Faster audio engine** |
+| `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** |
 | `loadticks` | `1` for a tap at each 10% of a load. | **Tap at each 10% while loading an organ** |
 | `speakerkeepalive` | Level in dB, -80 to -40, of the 20 Hz tone. Absent: off. | **Keep portable speakers awake** |
 | `language` | Language code. Absent: the system language. | **Settings > General settings > Language** |

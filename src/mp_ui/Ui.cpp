@@ -2202,7 +2202,13 @@ void MasterpieceEditor::timerCallback() {
     juce::Logger::writeToLog("audio: " + juce::String(load.late - lateBlocksLogged_) +
                              " late block(s) of " + juce::String(load.blocks) +
                              "; the slowest took " + juce::String(worstBlockSinceLog_, 0) +
-                             "% of its time");
+                             "% of its time" +
+                             (proc_.realtimeThreads()
+                                  ? "; " + juce::String(MasterpieceProcessor::realtimeWorkers()) +
+                                        " render thread(s) real-time, " +
+                                        juce::String(MasterpieceProcessor::workgroupWorkers()) +
+                                        " in the audio workgroup"
+                                  : juce::String()));
     lateBlocksLogged_ = load.late;
     lateLoggedAt_ = now;
     worstBlockSinceLog_ = 0.0;

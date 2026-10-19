@@ -400,6 +400,8 @@ countries: nl be sr
 "Faster audio engine" = "Snellere audio-engine"
 "Faster audio engine: using %1" = "Snellere audio-engine: gebruikt %1"
 "Faster audio engine: not available on this processor" = "Snellere audio-engine: niet beschikbaar op deze processor"
+"Real-time render threads (trial)" = "Realtime renderthreads (proef)"
+"Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO on Linux (with real-time rights, as for the audio group), the audio workgroup on macOS. Off by default while it is tried. If the late blocks in the status bar go down or up with it on, please tell us in the discussion on GitHub." = "Maakt van de threads die het orgel berekenen realtime-threads, zodat het systeem ze als eerste uitvoert, op de snelste kernen: MMCSS op Windows, SCHED_FIFO op Linux (met realtime-rechten, zoals voor de groep audio), de audiowerkgroep op macOS. Standaard uit zolang het wordt uitgeprobeerd. Als de late blokken in de statusbalk ermee dalen of stijgen, laat het ons dan weten in de discussie op GitHub."
 "Save as default" = "Als standaard opslaan"
 "Load the organ again to apply" = "Laad het orgel opnieuw om toe te passen"
 "32-bit float" = "32 bit float"
