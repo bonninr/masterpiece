@@ -815,6 +815,20 @@ public:
   juce::String fasterEngineUnit() const {
     return voices_.simd() == simd::Isa::None ? juce::String() : juce::String(simd::isaName(voices_.simd()));
   }
+  // Real-time render threads, off by default while it is tried. The render
+  // workers that share each block with the audio thread are ordinary threads
+  // otherwise; on, each becomes real-time the way its system offers it (see
+  // RealtimeThread.h), and on macOS and iOS joins the audio device's
+  // workgroup. On Linux the audio thread itself too, where JUCE's ALSA
+  // thread is an ordinary one. Takes effect at each thread's next share.
+  bool realtimeThreads() const { return realtimeThreads_.load(); }
+  void setRealtimeThreads(bool on);
+  // False on Android, which gives an app none.
+  static bool realtimeThreadsSupported();
+  // How many render workers are real-time now, and how many in a workgroup.
+  static int realtimeWorkers();
+  static int workgroupWorkers();
+  void audioWorkgroupContextChanged(const juce::AudioWorkgroup& workgroup) override;
   void setCancelResetsKeyboards(bool on) {
     cancelResetsKeyboards_.store(on);
     writeGlobalFile();
@@ -1920,6 +1934,16 @@ private:
   // audio lock or on the audio thread; read under the lock.
   StoreTarget storeTarget_;
   std::atomic<bool> fasterEngine_{fasterEngineByDefault()};
+  // setRealtimeThreads(): the switch, the device's workgroup, the length of a
+  // block, which the scheduler is told a share may take, and a count moved on
+  // each change, which the audio thread compares with the one it last saw.
+  std::atomic<bool> realtimeThreads_{false};
+  std::mutex workgroupMutex_;
+  juce::AudioWorkgroup workgroup_;
+  std::atomic<double> blockSeconds_{0.0};
+  std::atomic<uint32_t> realtimeGeneration_{0};
+  uint32_t audioThreadGeneration_ = 0; // the audio thread's own
+  void realtimeHere(); // on a render worker, from the engine's hook
   juce::StringArray ownInputs_, inputsOff_;
   // Per device id, whether its messages are dropped: read on MIDI threads.
   static constexpr int kMaxMutedDevices = 64;

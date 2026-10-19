@@ -1494,6 +1494,14 @@ void VoiceEngine::setBusCount(int buses) {
   if (!workers_.empty()) setRenderThreads(lastThreads_, minVoicesPerThread_);
 }
 
+void VoiceEngine::setWorkerHook(std::function<void()> hook) {
+  {
+    std::lock_guard<std::mutex> lock(workerHookMutex_);
+    workerHook_ = std::move(hook);
+  }
+  workerHookGeneration_.fetch_add(1, std::memory_order_acq_rel);
+}
+
 void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   stopWorkers();
   minVoicesPerThread_ = minVoicesPerThread > 0 ? minVoicesPerThread : 1;
@@ -1528,6 +1536,7 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
     Worker* const wk = owned.get();
     wk->thread = std::thread([this, wk, scratchFrames]() {
       uint32_t seen = 0;
+      uint32_t hookSeen = 0;
       const auto called = [&] {
         return wk->ticket.load(std::memory_order_acquire) != seen ||
                shuttingDown_.load(std::memory_order_acquire);
@@ -1540,6 +1549,18 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
         }
         if (shuttingDown_.load(std::memory_order_acquire)) return;
         seen = wk->ticket.load(std::memory_order_acquire);
+        // setWorkerHook() was called since this worker last looked: run the
+        // hook here, on this thread.
+        const uint32_t hookNow = workerHookGeneration_.load(std::memory_order_acquire);
+        if (hookNow != hookSeen) {
+          hookSeen = hookNow;
+          std::function<void()> hook;
+          {
+            std::lock_guard<std::mutex> lock(workerHookMutex_);
+            hook = workerHook_;
+          }
+          if (hook) hook();
+        }
         // Never more than the scratch holds, whatever the job says.
         const int channels = std::min(jobChannels_, numChannels_);
         const int frames = std::min(jobFrames_, scratchFrames);

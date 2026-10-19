@@ -3,6 +3,7 @@
 
 #include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/Temperament.h"
+#include "RealtimeThread.h"
 #include "Translations.h"
 #include <algorithm>
 #include <cmath>
@@ -142,6 +143,93 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
     threads = std::min(threads, 8);
   }
   voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
+  // New workers, and the length of a block may be new: each sets itself
+  // again, and the audio thread with them.
+  blockSeconds_.store(juce::jmax(1, blockFrames) / sampleRate_);
+  realtimeGeneration_.fetch_add(1);
+  if (realtimeThreads_.load()) voices_.setWorkerHook([this] { realtimeHere(); });
+}
+
+// Render workers real-time now, and of those in an audio workgroup: up when
+// one is, down when it stops or its thread ends.
+static std::atomic<int> realtimeWorkersNow{0};
+static std::atomic<int> workgroupWorkersNow{0};
+
+int MasterpieceProcessor::realtimeWorkers() { return realtimeWorkersNow.load(); }
+int MasterpieceProcessor::workgroupWorkers() { return workgroupWorkersNow.load(); }
+
+void MasterpieceProcessor::realtimeHere() {
+  // The thread's own: the workgroup token is left on the thread that joined,
+  // and everything is undone when the thread ends.
+  struct State {
+    juce::WorkgroupToken token;
+    bool inGroup = false;
+    bool realtime = false;
+    void leaveGroup() {
+      token.reset();
+      if (inGroup) workgroupWorkersNow.fetch_sub(1);
+      inGroup = false;
+    }
+    void normal() {
+      leaveGroup();
+      if (realtime) {
+        realtime::makeNormal();
+        realtimeWorkersNow.fetch_sub(1);
+      }
+      realtime = false;
+    }
+    ~State() { normal(); }
+  };
+  thread_local State here;
+
+  if (!realtimeThreads_.load()) {
+    here.normal();
+    return;
+  }
+  here.leaveGroup();
+  const bool was = here.realtime;
+  here.realtime = realtime::makeRealtime(blockSeconds_.load());
+  if (here.realtime != was) realtimeWorkersNow.fetch_add(here.realtime ? 1 : -1);
+  if (!here.realtime) return;
+
+  // macOS and iOS: with the audio thread, to its deadline.
+  juce::AudioWorkgroup workgroup;
+  {
+    const std::lock_guard<std::mutex> lock(workgroupMutex_);
+    workgroup = workgroup_;
+  }
+  if (!workgroup) return;
+  workgroup.join(here.token);
+  if (here.token) {
+    workgroupWorkersNow.fetch_add(1);
+    here.inGroup = true;
+  }
+}
+
+void MasterpieceProcessor::setRealtimeThreads(bool on) {
+  realtimeThreads_.store(on);
+  // Run on every worker, to become real-time or to stop, and on the audio
+  // thread at its next block.
+  voices_.setWorkerHook([this] { realtimeHere(); });
+  realtimeGeneration_.fetch_add(1);
+  juce::Logger::writeToLog(juce::String("real-time render threads: ") +
+                           (on ? juce::String("on (") + realtime::method() + ")" : juce::String("off")));
+  writeGlobalFile();
+}
+
+bool MasterpieceProcessor::realtimeThreadsSupported() { return realtime::supported(); }
+
+void MasterpieceProcessor::audioWorkgroupContextChanged(const juce::AudioWorkgroup& workgroup) {
+  {
+    const std::lock_guard<std::mutex> lock(workgroupMutex_);
+    workgroup_ = workgroup;
+  }
+  juce::Logger::writeToLog(
+      workgroup ? "audio workgroup: the device has one, for up to " +
+                      juce::String(static_cast<int>(workgroup.getMaxParallelThreadCount())) +
+                      " threads"
+                : juce::String("audio workgroup: the device has none"));
+  if (realtimeThreads_.load()) voices_.setWorkerHook([this] { realtimeHere(); });
 }
 
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -1856,6 +1944,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // Written either way: on is the default since 0.7.11, and a player who
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
+  if (realtimeThreads_.load()) text << "realtimethreads 1\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
@@ -1959,6 +2048,12 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       showPlayedKeys_.store(val.getIntValue() != 0);
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
+    } else if (key == "realtimethreads") {
+      realtimeThreads_.store(val.getIntValue() != 0 && realtime::supported());
+      if (realtimeThreads_.load()) {
+        voices_.setWorkerHook([this] { realtimeHere(); });
+        realtimeGeneration_.fetch_add(1);
+      }
     } else if (key == "midiinputoff") {
       if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
     } else if (key == "midioutput") {
@@ -4796,6 +4891,13 @@ bool MasterpieceProcessor::stopSourcesEngaged(Id stopId) const {
 void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
   juce::ScopedNoDenormals noDenormals;
   buffer.clear();
+
+  // Real-time render threads turned on or off, or a new device: the audio
+  // thread follows, once (it does anything only on Linux).
+  if (const uint32_t g = realtimeGeneration_.load(std::memory_order_relaxed); g != audioThreadGeneration_) {
+    audioThreadGeneration_ = g;
+    realtime::setAudioThread(realtimeThreads_.load(), blockSeconds_.load());
+  }
 
   // Counted in before looking at the flag, counted out on every way out.
   inAudioCallback_.fetch_add(1);

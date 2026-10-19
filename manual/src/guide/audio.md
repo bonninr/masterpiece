@@ -91,7 +91,7 @@ The program renders at the device's sample rate. A sample set recorded at anothe
 
 ### The audio engine
 
-The engine has one switch. **Organ settings > Loading > Faster audio engine** renders several samples per instruction with the processor's vector unit. The box label shows what was found: **Faster audio engine: using AVX2**, **using SSE2** or **using NEON**, or **not available on this processor**.
+**Organ settings > Loading > Faster audio engine** renders several samples per instruction with the processor's vector unit. The box label shows what was found: **Faster audio engine: using AVX2**, **using SSE2** or **using NEON**, or **not available on this processor**.
 
 | Unit | Processors |
 |---|---|
@@ -106,6 +106,25 @@ The engine has one switch. **Organ settings > Loading > Faster audio engine** re
 | Stored | Program-wide |
 | Environment | `MASTERPIECE_SIMD=0` forces the per-frame path whatever the box says |
 | Advice | Leave it on. It gives more polyphony for the same CPU. Turn it off to rule it out when something sounds wrong. The log records the active path as `audio engine: faster (AVX2)` or `audio engine: per-frame`. |
+
+### Real-time render threads
+
+A large organ is rendered by the audio thread and several render threads that share each block. The audio thread is a real-time thread; the render threads are ordinary threads, and the system may run other work first, or put them on slower cores, while the audio thread waits for them. **Organ settings > Loading > Real-time render threads (trial)**, beside **Faster audio engine**, makes them real-time threads the way each system offers it.
+
+| System | What the box does |
+|---|---|
+| Windows | Registers each render thread with MMCSS as "Pro Audio", the class Windows gives audio threads, and asks the system never to slow it down to save power. On Intel processors since the 12th generation, that keeps it off the efficiency cores. |
+| Linux, Raspberry Pi | SCHED_FIFO at priority 40, or the highest the user may have, for the render threads and for the audio thread when it is an ordinary thread (ALSA). A thread JACK has made real-time keeps the priority JACK gave it. Needs real-time rights: membership of the `audio` group with an `rtprio` limit, as most audio distributions set up. Without them nothing changes. |
+| macOS, iOS | The time-constraint policy for each render thread, and a place in the audio device's workgroup, so the system runs them with the audio thread, to its deadline, on the performance cores of Apple silicon. |
+| Android | Not available; the box is hidden. |
+
+| Field | Value |
+|---|---|
+| Default | Off, while it is tried |
+| Takes effect | At once: each thread changes at its next share. The state is written to `settings.mpglobal` as `realtimethreads` |
+| Stored | Program-wide |
+| Log | `real-time render threads: on (MMCSS Pro Audio)` and the like when it is turned on; each **late blocks** line adds how many render threads are real-time and how many are in the audio workgroup |
+| Advice | Try it with a heavy registration and compare the **late blocks** count in the status bar with the box on and off. Reports are collected in the discussion on GitHub. |
 
 ## Output routing and the mixer
 

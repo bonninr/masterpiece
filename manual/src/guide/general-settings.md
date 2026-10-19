@@ -296,6 +296,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `setoffafterstore` | `1`. Written only while on. | **Set turns off after storing** in the combinations window |
 | `showkeys` | `0`. Written only while off. | **View > Show played keys** |
 | `fasterengine` | `1` or `0`. Always written. | **Faster audio engine** on the Loading tab |
+| `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** on the Loading tab |
 | `midiinputoff` | A device name. One line per unticked input. | **MIDI inputs** |
 | `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Use as default for all organs** |
 | `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |

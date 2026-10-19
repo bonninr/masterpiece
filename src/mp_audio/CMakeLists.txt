@@ -9,6 +9,7 @@
 add_library(mp_audio STATIC
   MasterpieceProcessor.h MasterpieceProcessor.cpp
   SampleLibrary.h SampleLibrary.cpp
+  RealtimeThread.h RealtimeThread.cpp
   WavPackFormat.h WavPackFormat.cpp
   Metronome.h Metronome.cpp
   AudioRecorder.h AudioRecorder.cpp
@@ -88,6 +89,10 @@ target_link_libraries(mp_audio PUBLIC
 )
 if(TARGET mp_sampler)
   target_link_libraries(mp_audio PUBLIC mp_sampler)
+endif()
+# MMCSS, for real-time render threads (RealtimeThread.cpp).
+if(WIN32)
+  target_link_libraries(mp_audio PRIVATE avrt)
 endif()
 if(TARGET mp_dsp)
   target_link_libraries(mp_audio PUBLIC mp_dsp)

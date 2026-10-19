@@ -44,6 +44,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openLoadTicks_ = proc_.loadTicks();
   openReopen_ = proc_.reopenLastOrgan();
   openFaster_ = proc_.fasterEngine();
+  openRealtime_ = proc_.realtimeThreads();
   openMemLimit_ = proc_.memoryLimitSettingMB();
   openPolyphony_ = proc_.polyphonyLimit();
 
@@ -382,6 +383,19 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     showFasterUnit();
   };
   showFasterUnit();
+  // Real-time render threads, off until players have tried it. Android gives
+  // an app no way to have them.
+  if (MasterpieceProcessor::realtimeThreadsSupported())
+    addAndMakeVisible(realtime_);
+  else
+    addChildComponent(realtime_);
+  realtime_.setToggleState(proc_.realtimeThreads(), juce::dontSendNotification);
+  realtime_.setTooltip(TRANS("Makes the threads that render the organ real-time threads, so the system runs "
+                             "them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO on Linux (with "
+                             "real-time rights, as for the audio group), the audio workgroup on macOS. Off by "
+                             "default while it is tried. If the late blocks in the status bar go down or up "
+                             "with it on, please tell us in the discussion on GitHub."));
+  realtime_.onClick = [this] { proc_.setRealtimeThreads(realtime_.getToggleState()); };
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
   portable_.setTooltip(TRANS("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
@@ -539,6 +553,8 @@ void EnginePanel::revert() {
   if (proc_.fasterEngine() != openFaster_) proc_.setFasterEngine(openFaster_);
   faster_.setToggleState(openFaster_, juce::dontSendNotification);
   showFasterUnit();
+  if (proc_.realtimeThreads() != openRealtime_) proc_.setRealtimeThreads(openRealtime_);
+  realtime_.setToggleState(openRealtime_, juce::dontSendNotification);
   proc_.setMemoryLimitMB(openMemLimit_);
   fillMemLimit();
   proc_.setPolyphonyLimit(openPolyphony_);
@@ -895,7 +911,11 @@ void EnginePanel::resized() {
   r.removeFromTop(2);
   reopen_.setBounds(r.removeFromTop(kRow));
   portable_.setBounds(r.removeFromTop(kRow));
-  faster_.setBounds(r.removeFromTop(kRow));
+  {
+    auto fasterRow = r.removeFromTop(kRow);
+    if (realtime_.isVisible()) realtime_.setBounds(fasterRow.removeFromRight(fasterRow.getWidth() / 2));
+    faster_.setBounds(fasterRow);
+  }
   r.removeFromTop(6);
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));

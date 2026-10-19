@@ -582,6 +582,14 @@ public:
   void setRenderThreads(int numThreads, int minVoicesPerThread = 32);
   int renderThreads() const { return static_cast<int>(workers_.size()) + 1; }
 
+  // Run on each render worker, on its own thread, before the next share it
+  // renders: what the platform asks of a thread that works to the audio
+  // deadline (on Apple, joining the audio device's workgroup, so the
+  // scheduler keeps it on a performance core). Set again to run it again, on
+  // every worker; empty does nothing. The engine knows nothing of what it
+  // does. One atomic load per share while nothing changes.
+  void setWorkerHook(std::function<void()> hook);
+
   const EngineStats& stats() const { return stats_; }
   int activeVoiceCount() const;
   const Voice& voice(int index) const { return voices_[static_cast<size_t>(index)]; }
@@ -727,6 +735,11 @@ private:
     std::condition_variable wake;
   };
   std::vector<std::unique_ptr<Worker>> workers_;
+  // setWorkerHook(): the hook, and how many times it was set. A worker takes
+  // the lock only when the count moved.
+  std::mutex workerHookMutex_;
+  std::function<void()> workerHook_;
+  std::atomic<uint32_t> workerHookGeneration_{0};
   int minVoicesPerThread_ = 32;
   int maxFrames_ = 0;
 

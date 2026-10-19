@@ -3910,6 +3910,73 @@ public:
   }
 };
 
+// setWorkerHook(): what joins the render workers to Apple's audio workgroup
+// runs once on each worker, on that worker, and again each time it is set.
+class VoiceEngineWorkerHookTest final : public mp::test::Test {
+public:
+  VoiceEngineWorkerHookTest()
+    : Test("functional.voice.worker-hook", Category::Functional) {}
+
+  void run() override {
+    constexpr int kVoices = 128;
+    constexpr int kFrames = 128;
+    voicetest::Fixture fx;
+    mp::VoiceEngine e;
+    e.prepare(48000.0, kVoices, 2, kFrames);
+    e.setSampleProvider(fx.provider());
+    e.setRenderThreads(4, 8);
+    for (int i = 0; i < kVoices; ++i) {
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      st.gain = 0.05f;
+      e.startVoice(st, static_cast<uint64_t>(i + 1));
+    }
+
+    std::mutex m;
+    std::vector<std::thread::id> ran;
+    const auto audioThread = std::this_thread::get_id();
+    const std::function<void()> hook = [&] {
+      const std::lock_guard<std::mutex> lock(m);
+      ran.push_back(std::this_thread::get_id());
+    };
+    e.setWorkerHook(hook);
+    std::vector<float> l(kFrames, 0.0f), r(kFrames, 0.0f);
+    float* out[2] = {l.data(), r.data()};
+    const auto renderSome = [&] {
+      for (int block = 0; block < 4; ++block) e.render(out, 2, kFrames);
+    };
+    const auto runs = [&] {
+      const std::lock_guard<std::mutex> lock(m);
+      return ran;
+    };
+
+    renderSome();
+    auto seen = runs();
+    MP_CHECK(seen.size() == 3, "the hook runs once on each of the three workers");
+    const std::set<std::thread::id> distinct(seen.begin(), seen.end());
+    MP_CHECK(distinct.size() == 3, "each worker runs it on its own thread");
+    MP_CHECK(distinct.count(audioThread) == 0, "the audio thread does not run it");
+
+    renderSome();
+    MP_CHECK(runs().size() == 3, "blocks after it do not run it again");
+
+    e.setWorkerHook(hook);
+    renderSome();
+    MP_CHECK(runs().size() == 6, "set again, it runs again on every worker");
+
+    // A new pool: its workers run the hook set before it.
+    e.setRenderThreads(3, 8);
+    renderSome();
+    MP_CHECK(runs().size() == 8, "the workers of a new pool run it too");
+
+    e.setWorkerHook({});
+    renderSome();
+    MP_CHECK(runs().size() == 8, "an empty hook does nothing");
+  }
+};
+static VoiceEngineWorkerHookTest g_voiceWorkerHook;
+
 class VoiceEngineThreadingTest final : public mp::test::Test {
 public:
   VoiceEngineThreadingTest()

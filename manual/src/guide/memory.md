@@ -13,7 +13,7 @@ The Loading tab applies its choices in three ways.
 | Group | Takes effect |
 |---|---|
 | Resident format, **Preloaded per sample**, **Sample rate**, **Releases**, **Release length**, release streaming and its hold, **Load in mono**, stops, perspectives and ranks left out | At the next organ load. The button **Load the organ again to apply** loads the organ at once. |
-| **Release tails end below**, **Polyphony limit**, **Faster audio engine** | At once. |
+| **Release tails end below**, **Polyphony limit**, **Faster audio engine**, **Real-time render threads (trial)** | At once. |
 | **Memory limit for samples** | Written at once to the general settings file; checked at every load. |
 | **Sample cache**, **Save the sample cache**, **Cache folder** | Used at the next load. The cache folder and the time of saving are general settings; the cache mode is saved with the organ. |
 
