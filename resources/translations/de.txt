@@ -850,3 +850,5 @@ countries: de at ch li lu
 "No more checks; General settings, Log turns them on again" = "Keine Suche mehr; Allgemeine Einstellungen, Protokoll schaltet sie wieder ein"
 "Close" = "Schließen"
 "Masterpiece %1 is out" = "Masterpiece %1 ist erschienen"
+"The crescendo keeps the stops drawn by hand" = "Der Crescendotritt lässt von Hand gezogene Register stehen"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Wie an einem Spieltisch: Der Crescendotritt zieht, was noch nicht gezogen ist, und nimmt beim Zurückgehen nur ab, was er selbst gezogen hat. Aus: Jede Stufe ruft ihre Registrierung vollständig ab."

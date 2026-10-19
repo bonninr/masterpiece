@@ -850,3 +850,5 @@ countries: cz
 "No more checks; General settings, Log turns them on again" = "Žádné další hledání; Obecná nastavení, Protokol ho znovu zapne"
 "Close" = "Zavřít"
 "Masterpiece %1 is out" = "Vyšel Masterpiece %1"
+"The crescendo keeps the stops drawn by hand" = "Crescendo ponechá rejstříky vytažené rukou"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Jako na hracím stole: crescendo vytáhne, co ještě není vytažené, a při návratu zasune jen to, co samo vytáhlo. Vypnuto: každý stupeň vyvolá celou svou registraci."

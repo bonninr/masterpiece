@@ -850,3 +850,5 @@ countries: nl be sr
 "No more checks; General settings, Log turns them on again" = "Niet meer zoeken; Algemene instellingen, Logboek zet het weer aan"
 "Close" = "Sluiten"
 "Masterpiece %1 is out" = "Masterpiece %1 is uit"
+"The crescendo keeps the stops drawn by hand" = "De crescendowals laat met de hand getrokken registers staan"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Zoals op een speeltafel: de crescendowals trekt wat nog niet getrokken is en schuift bij het terugdraaien alleen af wat hij zelf trok. Uit: elke stap roept zijn hele registratie op."

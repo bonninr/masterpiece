@@ -1317,6 +1317,11 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
   feedback_.onClick = [this] {
     proc_.setMidiFeedbackEnabled(feedback_.getToggleState());
   };
+  addAndMakeVisible(crescendoKeeps_);
+  crescendoKeeps_.setToggleState(proc_.crescendoKeepsHandDrawn(), juce::dontSendNotification);
+  crescendoKeeps_.setTooltip(TRANS("As on a console: the crescendo draws what is not drawn yet, and stepping back "
+                                   "pushes in only what it drew. Off, each step recalls its registration whole."));
+  crescendoKeeps_.onClick = [this] { proc_.setCrescendoKeepsHandDrawn(crescendoKeeps_.getToggleState()); };
   addAndMakeVisible(cancelResets_);
   cancelResets_.setToggleState(proc_.cancelResetsKeyboards(), juce::dontSendNotification);
   cancelResets_.onClick = [this] {
@@ -1644,6 +1649,7 @@ void MidiPanel::resized() {
   r.removeFromTop(4);
   feedback_.setBounds(r.removeFromTop(kRow));
   cancelResets_.setBounds(r.removeFromTop(kRow));
+  crescendoKeeps_.setBounds(r.removeFromTop(kRow));
   noiseFilter_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);

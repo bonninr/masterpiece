@@ -850,3 +850,5 @@ countries: fr be ca ch lu mc
 "No more checks; General settings, Log turns them on again" = "Plus de recherche ; Réglages généraux, Journal la réactive"
 "Close" = "Fermer"
 "Masterpiece %1 is out" = "Masterpiece %1 est sorti"
+"The crescendo keeps the stops drawn by hand" = "La boîte à rouleau garde les jeux tirés à la main"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Comme sur une console : la boîte à rouleau tire ce qui n'est pas encore tiré et, en revenant, ne repousse que ce qu'elle a tiré. Désactivé, chaque palier rappelle sa registration entière."

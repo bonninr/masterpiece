@@ -850,3 +850,5 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "No more checks; General settings, Log turns them on again" = "No se busca más; Ajustes generales, Log lo vuelve a activar"
 "Close" = "Cerrar"
 "Masterpiece %1 is out" = "Ya está Masterpiece %1"
+"The crescendo keeps the stops drawn by hand" = "El crescendo conserva los registros sacados a mano"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Como en una consola: el crescendo saca lo que aún no está sacado y, al retroceder, solo retira lo que él mismo sacó. Desactivado, cada paso recupera su registración completa."

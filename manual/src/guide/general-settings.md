@@ -111,6 +111,7 @@ When a default exists, the line beside the buttons reads **Default for organs wi
 | **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
 | **Send stop changes back to the console** | Sends each stop change to the output so that a console with lit stops follows the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
+| **The crescendo keeps the stops drawn by hand** | As on a console: each crescendo step draws what is not drawn yet, and stepping back pushes in only what the crescendo drew. Off, each step recalls its registration whole, and a stop drawn by hand that a lower step leaves out is pushed in. | On | On, off | At once. Global file key `crescendokeepshand`, written only while off. |
 | **Noise filter: when learning, a key counts once held a quarter second** | For a console whose contacts send stray notes: a shorter note is dropped. Controllers, program changes and system exclusive messages are learned at once. Leave it off for pistons that send only a short note. | Off | On, off | At once. Global file key `learnnoisefilter`, written only while on. |
 
 > [!NOTE]
@@ -293,6 +294,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `language` | The language code. Written only when a language is chosen. | **Language** |
 | `loadticks` | `1` or `0`. Always written. | **Tap at each 10% while loading an organ** on the Loading tab |
 | `cancelresetskeyboards` | `1`. Written only while on. | **General Cancel also puts the keyboards back on their own manuals** |
+| `crescendokeepshand` | `0`. Written only while off. | **The crescendo keeps the stops drawn by hand** |
 | `learnnoisefilter` | `1`. Written only while on. | **Noise filter: when learning, a key counts once held a quarter second** |
 | `combinationsontop` | `1`. Written only while on. | **Always on top** in the combinations window |
 | `cachewhileplaying` | `1`. Written only while on. | **Save the sample cache** on the Loading tab, set to **In silence, while it plays** |

@@ -850,3 +850,5 @@ countries: it ch sm va
 "No more checks; General settings, Log turns them on again" = "Nessun'altra ricerca; Impostazioni generali, Log la riattiva"
 "Close" = "Chiudi"
 "Masterpiece %1 is out" = "È uscito Masterpiece %1"
+"The crescendo keeps the stops drawn by hand" = "Il crescendo mantiene i registri inseriti a mano"
+"As on a console: the crescendo draws what is not drawn yet, and stepping back pushes in only what it drew. Off, each step recalls its registration whole." = "Come su una consolle: il crescendo inserisce ciò che non è ancora inserito e, tornando indietro, esclude solo ciò che ha inserito lui. Disattivato, ogni passo richiama la sua registrazione intera."

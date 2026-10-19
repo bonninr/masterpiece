@@ -778,6 +778,16 @@ public:
   // started on, after pistons moved it (#90). Off by default, as in Hauptwerk
   // and GrandOrgue, whose General Cancel leaves the master couplers alone.
   bool cancelResetsKeyboards() const { return cancelResetsKeyboards_.load(); }
+  // Whether the crescendo adds to what is drawn by hand, as on a console:
+  // its steps draw what is not drawn yet, and stepping back pushes in only
+  // what the crescendo itself drew. Off, each step's registration is
+  // recalled whole, and a stop drawn by hand that a lower step leaves out is
+  // pushed in with it. On by default.
+  bool crescendoKeepsHandDrawn() const { return crescendoKeeps_.load(); }
+  void setCrescendoKeepsHandDrawn(bool on) {
+    crescendoKeeps_.store(on);
+    writeGlobalFile();
+  }
   // Whether the combinations window stays above every other program's
   // windows, not only above the console (#130). The program's, not an organ's.
   bool combinationsOnTop() const { return combinationsOnTop_; }
@@ -1638,6 +1648,7 @@ private:
   // Sized at load, like recallScratch_: a piston pressed on the audio thread
   // must not allocate.
   std::vector<PlayerCombinations::Change> playerScratch_;
+  std::vector<CombinationSystem::Change> stepScratch_;
   // The switches a player's registration is made of. Moving one by hand
   // means no piston describes what is drawn any more, so it unlights them.
   std::unordered_set<Id> registrationSwitches_;
@@ -1988,6 +1999,13 @@ private:
   // Keyboards moved by pistons, and where they were before (#90).
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
+  std::atomic<bool> crescendoKeeps_{true};
+  // The crescendo's control, worked out at load, and while it moves, the
+  // switches it drew: stepping back pushes in those and no others. A switch
+  // moved by hand or by a piston leaves the list, being the player's again.
+  Id crescendoControl_ = 0;
+  bool crescendoMoving_ = false;
+  std::unordered_set<Id> crescendoDrawn_;
   std::atomic<bool> learnNoiseFilter_{false};
   // Keys held while learning with the noise filter on, until one has been
   // held long enough. Audio thread only.

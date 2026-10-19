@@ -1975,6 +1975,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
+  if (!crescendoKeeps_.load()) text << "crescendokeepshand 0\n";
   if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
@@ -2099,6 +2100,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
+    } else if (key == "crescendokeepshand") {
+      crescendoKeeps_.store(val.getIntValue() != 0);
     } else if (key == "learnnoisefilter") {
       learnNoiseFilter_.store(val.getIntValue() != 0);
     } else if (key == "cachewhileplaying") {
@@ -4148,6 +4151,27 @@ void MasterpieceProcessor::fireCombination(Id comboId) {
     if (cancelResetsKeyboards_.load()) restoreRouting();
   recallScratch_.clear();
   combinations_.recall(comboId, recallScratch_);
+  if (crescendoMoving_) {
+    // A crescendo step, on top of what is drawn: it draws what is not drawn
+    // yet and remembers it, and pushes in only what it drew itself. A stop
+    // drawn by hand stays drawn however the shoe moves (Magle, 2012, 2014).
+    // Collected first: drawing one switch can move others through the
+    // wiring, and only the step's own decisions count.
+    stepScratch_.clear();
+    for (const auto& change : recallScratch_) {
+      if (change.engage) {
+        if (!switches_.engaged(change.switchId)) stepScratch_.push_back(change);
+      } else if (crescendoDrawn_.count(change.switchId) != 0) {
+        stepScratch_.push_back(change);
+      }
+    }
+    for (const auto& change : stepScratch_) {
+      setSwitchEngaged(change.switchId, change.engage);
+      if (change.engage) crescendoDrawn_.insert(change.switchId);
+      else crescendoDrawn_.erase(change.switchId);
+    }
+    return;
+  }
   for (const auto& change : recallScratch_)
     setSwitchEngaged(change.switchId, change.engage);
 }
@@ -4181,8 +4205,11 @@ void MasterpieceProcessor::fireMovedStages() {
     stageScratch_.clear();
     stages_.moveControl(id, previous, now, stageScratch_);
     previous = now;
+    const bool crescendo = id == crescendoControl_ && crescendoKeeps_.load(std::memory_order_relaxed);
+    crescendoMoving_ = crescendo;
     for (const auto& change : stageScratch_)
       setSwitchEngaged(change.switchId, change.engage);
+    crescendoMoving_ = false;
   }
 }
 
@@ -4283,6 +4310,8 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
   if (!applyingPistons_ && registrationSwitches_.count(switchId) != 0)
     player_.registrationMoved();
+  // Moved by the player or a piston: the crescendo no longer owns it.
+  if (!crescendoMoving_ && !crescendoDrawn_.empty()) crescendoDrawn_.erase(switchId);
 
   // The organ's own setter. Holding it turns every piston press into a
   // capture, which is how a console works and how a player expects it to.
@@ -5616,6 +5645,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
   phases.mark("model: wind");
   stages_.reset(model_);
+  crescendoControl_ = stages_.crescendoControl();
+  crescendoDrawn_.clear();
+  // Sized now: a crescendo moved from a console pedal draws on the audio
+  // thread, which must not allocate.
+  crescendoDrawn_.reserve(model_.switches.size() + 16);
+  stepScratch_.reserve(256);
   stageScratch_.reserve(64);
   stageValues_.clear();
   for (Id id : stages_.stagedControls())
