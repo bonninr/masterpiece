@@ -861,3 +861,6 @@ countries: cz
 "A message on the MIDI output that lights a lamp once the organ is ready, blinks while one loads and while a quit or power-off button is held, and goes out with no organ" = "Zpráva na výstupu MIDI, která rozsvítí kontrolku, když jsou varhany připravené, bliká během načítání a když je drženo tlačítko ukončení nebo vypnutí, a zhasne bez varhan"
 "Learn quit" = "Učit ukončení"
 "Learn power off" = "Učit vypnutí"
+"Small pages fill the window" = "Malé stránky vyplní okno"
+"Fit window to page" = "Přizpůsobit okno stránce"
+"Borderless" = "Bez okraje"

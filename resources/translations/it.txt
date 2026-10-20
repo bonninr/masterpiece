@@ -861,3 +861,6 @@ countries: it ch sm va
 "A message on the MIDI output that lights a lamp once the organ is ready, blinks while one loads and while a quit or power-off button is held, and goes out with no organ" = "Un messaggio sull'uscita MIDI che accende una spia quando l'organo è pronto, lampeggia durante un caricamento e mentre un pulsante di uscita o spegnimento è tenuto premuto, e si spegne senza organo"
 "Learn quit" = "Impara uscita"
 "Learn power off" = "Impara spegnimento"
+"Small pages fill the window" = "Le pagine piccole riempiono la finestra"
+"Fit window to page" = "Adatta la finestra alla pagina"
+"Borderless" = "Senza bordi"

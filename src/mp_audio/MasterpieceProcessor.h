@@ -805,6 +805,14 @@ public:
     showPlayedKeys_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
+  // Whether a page smaller than half the first one fills the window in the
+  // main window, as it does in a window of its own. Off as it has always
+  // been: a console drawn small sat at its own size beside the first page.
+  bool smallPagesFill() const { return smallPagesFill_.load(std::memory_order_relaxed); }
+  void setSmallPagesFill(bool on) {
+    smallPagesFill_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
   // the processor has them. On by default since 0.7.11; off, the per-frame
   // path of the earlier versions plays. Takes effect at once.
@@ -1160,6 +1168,8 @@ public:
     // The console layout the window shows -- a set's portrait jambs on a
     // portrait screen -- or -1 to follow the main window's.
     int layout = -1;
+    // Whether the window was without a title bar.
+    bool borderless = false;
     bool operator==(const PagePlace&) const = default;
   };
   const std::vector<PagePlace>& pageWindowPlaces() const { return pageWindows_; }
@@ -2086,6 +2096,7 @@ private:
   std::atomic<int> soundingVoices_{0};
   bool setOffAfterStore_ = false;
   std::atomic<bool> showPlayedKeys_{true};
+  std::atomic<bool> smallPagesFill_{false};
   // See storeTarget(). Written where a piston or step is chosen, under the
   // audio lock or on the audio thread; read under the lock.
   StoreTarget storeTarget_;

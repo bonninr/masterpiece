@@ -1750,7 +1750,7 @@ bool MasterpieceProcessor::saveSettings() const {
            << (combWindow_.open ? 1 : 0) << "\n";
     for (const auto& p : pageWindows_)
       text << "pagewindow " << p.page << " " << p.x << " " << p.y << " " << p.w << " " << p.h << " "
-           << p.layout << "\n";
+           << p.layout << " " << (p.borderless ? 1 : 0) << "\n";
     if (!temperamentChoice_.empty())
       text << "temperament " << juce::String(temperamentChoice_) << "\n";
     if (masterPitchSetting() > 0.0)
@@ -1873,7 +1873,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       if (tok.size() >= 5 && tok[3].getIntValue() > 0 && tok[4].getIntValue() > 0)
         pageWindows_.push_back({tok[0].getIntValue(), tok[1].getIntValue(), tok[2].getIntValue(),
                                 tok[3].getIntValue(), tok[4].getIntValue(),
-                                tok.size() >= 6 ? tok[5].getIntValue() : -1});
+                                tok.size() >= 6 ? tok[5].getIntValue() : -1,
+                                tok.size() >= 7 ? tok[6].getIntValue() != 0 : false});
       continue;
     }
     if (key == "eq") {
@@ -1993,6 +1994,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
+  if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
   // Written either way: on is the default since 0.7.11, and a player who
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
@@ -2142,6 +2144,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       setOffAfterStore_ = val.getIntValue() != 0;
     } else if (key == "showkeys") {
       showPlayedKeys_.store(val.getIntValue() != 0);
+    } else if (key == "smallpagesfill") {
+      smallPagesFill_.store(val.getIntValue() != 0);
+    } else if (key == "smallpagesfill") {
+      smallPagesFill_.store(val.getIntValue() != 0);
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "realtimethreads") {

@@ -140,8 +140,14 @@ public:
   // The scale at which this page fits an area. A page far smaller than the
   // organ's first page (the GrandOrgue demo's Noises panel is 300 by 160) is
   // magnified as the first page is, and no further (#299).
-  float fitScale(juce::Rectangle<int> area) const { return fitScale(extent_, firstExtent_, area); }
-  static float fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first, juce::Rectangle<int> area);
+  // The scale that fits the artwork in the area. `fillSmall` lets a page
+  // smaller than half the first one fill the window, as it does in a
+  // window of its own.
+  float fitScale(juce::Rectangle<int> area, bool fillSmall = false) const {
+    return fitScale(extent_, firstExtent_, area, fillSmall);
+  }
+  static float fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first,
+                       juce::Rectangle<int> area, bool fillSmall = false);
 
 private:
   // One drawn thing: an instance, the switch that owns it (if any), and where.

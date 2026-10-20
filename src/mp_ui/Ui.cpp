@@ -1268,7 +1268,8 @@ juce::String MasterpieceEditor::layoutName(int layout) const {
   return name;
 }
 
-void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, int layout) {
+void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, int layout,
+                                       bool borderless) {
   if (auto* open = pageWindowFor(page)) {
     open->toFront(true);
     return;
@@ -1310,6 +1311,7 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
     const int offset = other != nullptr ? 0 : 40 * static_cast<int>(pageWindows_.size() + 1);
     window->setBounds(area.getX() + offset, area.getY() + offset, w, h);
   }
+  if (borderless) window->setBorderless(true);
   window->onClosed = [this](PageWindow* w) {
     // Not from inside the window's own callback.
     juce::Component::SafePointer<MasterpieceEditor> self(this);
@@ -1345,7 +1347,8 @@ void MasterpieceEditor::rememberPageWindows() {
   std::vector<MasterpieceProcessor::PagePlace> places;
   for (const auto& w : pageWindows_) {
     const auto b = w->getBounds();
-    places.push_back({w->page(), b.getX(), b.getY(), b.getWidth(), b.getHeight(), w->layout()});
+    places.push_back({w->page(), b.getX(), b.getY(), b.getWidth(), b.getHeight(), w->layout(),
+                       w->borderless()});
   }
   proc_.setPageWindowPlaces(std::move(places));
 }
@@ -1373,7 +1376,7 @@ void MasterpieceEditor::restorePageWindows() {
   const auto places = proc_.pageWindowPlaces();
   for (const auto& p : places)
     if (p.page >= 0 && p.page < console_.pageCount())
-      openPageWindow(p.page, {p.x, p.y, p.w, p.h}, p.layout);
+      openPageWindow(p.page, {p.x, p.y, p.w, p.h}, p.layout, p.borderless);
 }
 
 namespace {
@@ -1809,7 +1812,7 @@ void MasterpieceEditor::resized() {
       consoleView_.setBounds(r);
     } else {
       console_.setTransform({});
-      console_.setBounds(0, 0, art.getRight(), art.getBottom());
+      console_.setBounds(0, 0, art.getWidth(), art.getHeight());
       // Scale UP as well as down. The old cap at 1.0 meant a console drawn
       // smaller than the window sat at its native size with a band of dead
       // background beside it, which read as part of the program rather than
@@ -1820,16 +1823,19 @@ void MasterpieceEditor::resized() {
       // aspect would visibly distort the case and the keys. Whichever
       // dimension runs out first sets the size. A small panel of its own is
       // magnified as the console is, and no further.
-      const float scale = console_.fitScale(r);
-      console_.setTransform(juce::AffineTransform::scale(scale));
+      const float scale = console_.fitScale(r, proc_.smallPagesFill());
+      // The artwork is drawn from its own top-left, so a page whose drawing
+      // does not start at the origin keeps no band of nothing beside it.
+      console_.setTransform(
+          juce::AffineTransform::scale(scale).translated(-art.getX(), -art.getY()));
 
       // Centre by moving the VIEWPORT, not the console inside it: a viewport
       // positions its own viewed component, so a translation applied to the
       // console is overwritten the moment the viewport lays out. Sizing the
       // viewport to the scaled artwork and centring that leaves the spare
       // width split evenly either side instead of banked in one strip.
-      const int w = juce::roundToInt(static_cast<float>(art.getRight()) * scale);
-      const int h = juce::roundToInt(static_cast<float>(art.getBottom()) * scale);
+      const int w = juce::roundToInt(static_cast<float>(art.getWidth()) * scale);
+      const int h = juce::roundToInt(static_cast<float>(art.getHeight()) * scale);
       consoleView_.setBounds(
           r.withSizeKeepingCentre(juce::jmin(w, r.getWidth()),
                                   juce::jmin(h, r.getHeight())));
@@ -2082,6 +2088,29 @@ void MasterpieceEditor::showFileMenu() {
                      });
 }
 
+void MasterpieceEditor::fitWindowToPage() {
+  const auto art = console_.artworkBounds();
+  if (art.getWidth() <= 0 || art.getHeight() <= 0) return;
+  // The largest size the page can be drawn at and still fit the screen.
+  const auto displays = juce::Desktop::getInstance().getDisplays();
+  const auto* screen = displays.getDisplayForRect(getScreenBounds());
+  const auto usable = (screen != nullptr ? screen->userArea : getScreenBounds()).reduced(40);
+  const float scale =
+      juce::jmin(1.0f, static_cast<float>(usable.getWidth()) / static_cast<float>(art.getWidth()),
+                 static_cast<float>(usable.getHeight()) / static_cast<float>(art.getHeight()));
+  // The window keeps the room it gives to everything else.
+  const auto area = consoleView_.getBounds();
+  const int w = juce::roundToInt(static_cast<float>(art.getWidth()) * scale);
+  const int h = juce::roundToInt(static_cast<float>(art.getHeight()) * scale);
+  setSize(getWidth() - area.getWidth() + w, getHeight() - area.getHeight() + h);
+  if (screen != nullptr) {
+    const auto s = screen->userArea;
+    setBounds(s.getCentreX() - getWidth() / 2, s.getCentreY() - getHeight() / 2,
+              getWidth(), getHeight());
+  }
+  resized();
+}
+
 void MasterpieceEditor::showViewMenu() {
   juce::PopupMenu menu;
   addPanelItems(menu);
@@ -2091,6 +2120,8 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Show played keys"), true, proc_.showPlayedKeys());
+  menu.addItem(15, TRANS("Small pages fill the window"), true, proc_.smallPagesFill());
+  menu.addItem(16, TRANS("Fit window to page"));
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
@@ -2114,6 +2145,11 @@ void MasterpieceEditor::showViewMenu() {
                          safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
                          safe->console_.repaint();
                        }
+                       if (c == 15) {
+                         safe->proc_.setSmallPagesFill(!safe->proc_.smallPagesFill());
+                         safe->resized();
+                       }
+                       if (c == 16) safe->fitWindowToPage();
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);

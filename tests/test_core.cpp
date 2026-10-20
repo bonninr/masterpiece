@@ -14461,6 +14461,44 @@ static DeviceSysExReloadTest g_deviceSysExReload;
 
 // The console display's setup is kept: it was the settings tab's, cleared
 // each time the tab opened (#396).
+// A small page fills the window (#451): the artwork is measured by its
+// own bounds, a small page may fill the window, and a full-size page is
+// fitted as it always was.
+class PageFitTest final : public mp::test::Test {
+public:
+  PageFitTest() : Test("functional.ui.page-fit", Category::Functional) {}
+  void run() override {
+    // A page drawn on a sheet with a margin: it starts at (40, 30).
+    const juce::Rectangle<int> art(40, 30, 640, 360);
+    const juce::Rectangle<int> first(0, 0, 1280, 720);
+    const juce::Rectangle<int> area(0, 0, 1000, 700);
+
+    // A small panel of its own: magnified as the console is, and no
+    // further, so it keeps its own size beside the first page.
+    const float capped = mp::ui::ConsoleView::fitScale(art, first, area);
+    MP_CHECK(std::abs(capped - std::min(1000.0f / 1280.0f, 700.0f / 720.0f)) < 0.001f,
+             "a small page is not magnified beyond the first page's fit");
+
+    // The player can ask for the small pages to fill the window.
+    const float filled = mp::ui::ConsoleView::fitScale(art, first, area, true);
+    MP_CHECK(std::abs(filled - std::min(1000.0f / 640.0f, 700.0f / 360.0f)) < 0.001f,
+             "and then it fills the window, measured by its own bounds");
+
+    // Where the page is drawn does not change its size: the artwork is
+    // measured from where it starts, not from the origin.
+    const juce::Rectangle<int> atOrigin(0, 0, 640, 360);
+    MP_CHECK(std::abs(mp::ui::ConsoleView::fitScale(art, art, area, true) -
+                      mp::ui::ConsoleView::fitScale(atOrigin, atOrigin, area, true)) < 0.001f,
+             "a page drawn away from the origin is the same size");
+
+    // A page of the first page's own size: as it was before.
+    const float whole = mp::ui::ConsoleView::fitScale(first, first, area);
+    MP_CHECK(std::abs(whole - std::min(1000.0f / 1280.0f, 700.0f / 720.0f)) < 0.001f,
+             "a full-size page is fitted as before");
+  }
+};
+static PageFitTest g_pageFit;
+
 class ConsoleDisplayKeptTest final : public mp::test::Test {
 public:
   ConsoleDisplayKeptTest() : Test("functional.midi.console-display-kept", Category::Functional) {}

@@ -26,7 +26,10 @@ public:
   PageView(MasterpieceProcessor& p, int page, int layout, bool followsShape);
   void resized() override;
   void paint(juce::Graphics& g) override;
+  void mouseDown(const juce::MouseEvent& e) override;
   int page() const { return console_.currentPage(); }
+  // The window's own menu, on a right click.
+  std::function<void()> onMenu;
   juce::String pageName() const { return console_.pageName(console_.currentPage()); }
   juce::Rectangle<int> artworkBounds() const { return console_.artworkBounds(); }
 
@@ -49,6 +52,13 @@ public:
   int page() const { return view_->page(); }
   // The layout it was opened in, or -1 when it follows the main window's.
   int layout() const { return layout_; }
+  // Size the window so the page fills it, with no margin.
+  void fitWindowToPage();
+  // Without a title bar, for a screen of its own.
+  bool borderless() const { return borderless_; }
+  void setBorderless(bool on);
+  // The window's own menu.
+  void showMenu();
 
   // Closed by the player: the owner drops the window. Moved or resized: the
   // owner writes down where it is, so it comes back there.
@@ -58,6 +68,7 @@ public:
 private:
   PageView* view_ = nullptr;  // owned by the window as its content
   int layout_ = -1;
+  bool borderless_ = false;
 };
 
 }  // namespace mp::ui

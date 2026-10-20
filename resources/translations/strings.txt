@@ -339,6 +339,11 @@ countries: gb us
 "Rename..." = "Rename..."
 "MIDI..." = "MIDI..."
 
+# src/mp_ui/PageWindow.cpp
+"Fit window to page" = "Fit window to page"
+"Borderless" = "Borderless"
+"Close" = "Close"
+
 # src/mp_ui/Panels.cpp
 "Other" = "Other"
 "Piston" = "Piston"
@@ -807,6 +812,7 @@ countries: gb us
 "Recorder..." = "Recorder..."
 "Swell faders" = "Swell faders"
 "Show played keys" = "Show played keys"
+"Small pages fill the window" = "Small pages fill the window"
 "A page in its own window" = "A page in its own window"
 "Organ settings..." = "Organ settings..."
 "Licence confirmed for this organ" = "Licence confirmed for this organ"
@@ -841,7 +847,6 @@ countries: gb us
 # src/mp_ui/UpdateCheck.cpp
 "Opens the download page in the browser" = "Opens the download page in the browser"
 "No more checks; General settings, Log turns them on again" = "No more checks; General settings, Log turns them on again"
-"Close" = "Close"
 "Masterpiece %1 is out" = "Masterpiece %1 is out"
 
 # src/mp_ui/UpdateCheck.h
