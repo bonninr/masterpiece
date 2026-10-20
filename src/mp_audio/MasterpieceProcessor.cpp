@@ -2006,6 +2006,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const auto lamp = readyLamp(); lamp.kind != MidiSourceKind::None)
     text << "readylamp " << (lamp.kind == MidiSourceKind::Note ? "note" : "cc") << " " << lamp.channel << " "
          << lamp.number << "\n";
+  if (remote_.thisComputerOnly) text << "apilocal 1\n";
   if (remote_.sysex) text << "apisysex 1\n";
   if (remote_.sysexUnit != 0) text << "apisysexunit " << remote_.sysexUnit << "\n";
   if (remote_.osc) text << "apiosc 1\n";
@@ -2137,6 +2138,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       lampKind_.store(static_cast<int>(lamp.kind), std::memory_order_relaxed);
       lampChannel_.store(lamp.channel, std::memory_order_relaxed);
       lampNumber_.store(lamp.number, std::memory_order_relaxed);
+    } else if (key == "apilocal") {
+      remote_.thisComputerOnly = val.getIntValue() != 0;
     } else if (key == "apisysex") {
       remote_.sysex = val.getIntValue() != 0;
     } else if (key == "apisysexunit") {

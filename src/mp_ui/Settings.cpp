@@ -2603,6 +2603,11 @@ RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
                           "two minutes after Masterpiece starts, so a faulty button cannot shut the computer down "
                           "at every start. Masterpiece saves before it quits."));
   power_.onClick = [this] { apply(); };
+  addAndMakeVisible(local_);
+  local_.setToggleState(s.thisComputerOnly, juce::dontSendNotification);
+  local_.setTooltip(TRANS("The page, the API and OSC answer on this computer only, at 127.0.0.1. No other "
+                          "device on the network reaches them, and Windows asks for no firewall rule."));
+  local_.onClick = [this] { apply(); };
   addAndMakeVisible(sysex_);
   sysex_.setToggleState(s.sysex, juce::dontSendNotification);
   sysex_.setTooltip(TRANS("For a console with a MIDI cable and no network: requests read on the MIDI inputs, "
@@ -2651,6 +2656,7 @@ void RemotePanel::apply() {
   s.enabled = enable_.getToggleState();
   s.allowChanges = write_.getToggleState();
   s.allowPowerOff = power_.getToggleState();
+  s.thisComputerOnly = local_.getToggleState();
   s.port = juce::jlimit(1, 65535, port_.getText().getIntValue() > 0 ? port_.getText().getIntValue() : 8080);
   port_.setText(juce::String(s.port), juce::dontSendNotification);
   s.token = token_.getText().trim().toStdString();
@@ -2661,7 +2667,8 @@ void RemotePanel::apply() {
   s.oscPort = juce::jlimit(1, 65535, oscPort_.getText().getIntValue() > 0 ? oscPort_.getText().getIntValue() : 9000);
   oscPort_.setText(juce::String(s.oscPort), juce::dontSendNotification);
   if (s.enabled == now.enabled && s.allowChanges == now.allowChanges && s.port == now.port && s.token == now.token &&
-      s.allowPowerOff == now.allowPowerOff && s.sysex == now.sysex && s.osc == now.osc && s.oscPort == now.oscPort)
+      s.allowPowerOff == now.allowPowerOff && s.thisComputerOnly == now.thisComputerOnly && s.sysex == now.sysex &&
+      s.osc == now.osc && s.oscPort == now.oscPort)
     return;
   proc_.setRemoteSettings(s);
   timerCallback();
@@ -2679,6 +2686,7 @@ void RemotePanel::resized() {
   enable_.setBounds(r.removeFromTop(28));
   write_.setBounds(r.removeFromTop(28));
   power_.setBounds(r.removeFromTop(28));
+  local_.setBounds(r.removeFromTop(28));
   sysex_.setBounds(r.removeFromTop(28));
   {
     auto oscRow = r.removeFromTop(28);

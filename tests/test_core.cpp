@@ -13848,6 +13848,36 @@ public:
   }
 };
 static MetronomeKeptTest g_metronomeKept;
+
+// "This computer only" on the Remote tab is kept for the next start, and off
+// out of the box.
+class RemoteLocalKeptTest final : public mp::test::Test {
+public:
+  RemoteLocalKeptTest() : Test("functional.settings.remote-local-kept", Category::Functional) {}
+  void run() override {
+    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      MP_CHECK(!mp::MasterpieceProcessor::RemoteSettings{}.thisComputerOnly, "off out of the box");
+      auto s = proc.remoteSettings();
+      s.thisComputerOnly = true;
+      s.port = 18123;
+      proc.setRemoteSettings(s);
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.remoteSettings().thisComputerOnly && proc.remoteSettings().port == 18123,
+               "turned on, it comes back on with the port beside it");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static RemoteLocalKeptTest g_remoteLocalKept;
 // #323: each kind of file dialog starts where it was last used, and that is
 // kept for the next session.
 class DialogFolderTest final : public mp::test::Test {

@@ -482,6 +482,7 @@ private:
   juce::ToggleButton enable_{TRANS("Serve the web console and the control API on this network")};
   juce::ToggleButton write_{TRANS("Allow changes from the network")};
   juce::ToggleButton power_{TRANS("Allow quitting Masterpiece and shutting the computer down")};
+  juce::ToggleButton local_{TRANS("This computer only")};
   juce::ToggleButton sysex_{TRANS("Answer the same requests over MIDI (System Exclusive)")};
   juce::ToggleButton osc_{TRANS("Answer the same requests over OSC")};
   juce::TextEditor port_, token_, oscPort_;
