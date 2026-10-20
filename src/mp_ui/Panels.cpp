@@ -567,18 +567,44 @@ public:
     g.setColour(c.border);
     g.drawRoundedRectangle(r, 5.0f, 1.2f);
     g.setColour(on ? c.textOn : c.textOff);
-    // The name, shrinking to fit; the footage on a line of its own.
+    // The name, wrapped inside the button; the footage on a line of its own.
+    //
+    // A name too long for the button breaks onto two or more lines, as
+    // GrandOrgue breaks it, rather than being shrunk until it fits on one.
+    // The size drops only when the wrapped text still does not fit.
     const PanelElement e = owner_.shown(e_);
     auto text = r.reduced(6.0f, 4.0f);
     const float h = std::min(20.0f, text.getHeight() * (e.footage.empty() ? 0.42f : 0.34f));
-    g.setFont(juce::Font(juce::FontOptions(h, juce::Font::bold)));
+    juce::Font font(juce::FontOptions(h, juce::Font::bold));
     if (!e.footage.empty()) {
       auto foot = text.removeFromBottom(text.getHeight() * 0.36f);
+      g.setFont(font);
       g.drawFittedText(juce::String::fromUTF8(e.footage.c_str()), foot.toNearestInt(),
                        juce::Justification::centredTop, 1, 0.7f);
     }
-    g.drawFittedText(juce::String::fromUTF8(e.name.c_str()), text.toNearestInt(),
-                     juce::Justification::centred, 2, 0.6f);
+    {
+      // The name, wrapped inside the button: a name too long for it breaks
+      // onto two or more lines, as GrandOrgue breaks it, rather than being
+      // shrunk until it fits on one line and runs over the button.
+      juce::AttributedString as(juce::String::fromUTF8(e.name.c_str()));
+      as.setJustification(juce::Justification::centred);
+      as.setFont(font);
+      juce::TextLayout layout;
+      layout.createLayout(as, text.getWidth());
+      if (layout.getNumLines() > 1) {
+        // The lines are kept; the size drops so that they fit the button.
+        const float needed = font.getHeight() * 1.05f * layout.getNumLines();
+        if (needed > text.getHeight() && font.getHeight() > 7.0f) {
+          font.setHeight(font.getHeight() * text.getHeight() / needed);
+          as.setFont(font);
+          layout.createLayout(as, text.getWidth());
+        }
+      }
+      g.setFont(font);
+      auto area = text.withHeight(std::min(text.getHeight(), layout.getHeight()));
+      area = area.withY(text.getY() + (text.getHeight() - area.getHeight()) * 0.5f);
+      layout.draw(g, area);
+    }
     if (owner_.editing_) {
       // The tick: shown, or hidden from the panel.
       auto box = tickArea().withSizeKeepingCentre(16.0f, 16.0f);
