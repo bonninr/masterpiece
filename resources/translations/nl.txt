@@ -938,3 +938,4 @@ countries: nl be sr
 "The number sent for the page before" = "Het nummer dat voor de vorige pagina wordt gestuurd"
 "Learn score page -" = "Bladmuziekpagina - leren"
 "Learn score page +" = "Bladmuziekpagina + leren"
+"Program couplers" = "Programmakoppels"

@@ -81,6 +81,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStream_ = proc_.streamReleases();
   openStreamPercent_ = proc_.streamHeadPercent();
   openMono_ = proc_.loadMono();
+  openProgramCouplers_ = proc_.programCouplers();
+  addAndMakeVisible(programCouplers_);
+  programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
+  programCouplers_.onClick = [this] {
+    proc_.setProgramCouplers(programCouplers_.getToggleState());
+  };
   openRate_ = proc_.loadSampleRate();
   openReleases_ = proc_.releaseChoice();
   openReleaseMs_ = proc_.releaseMaxMs();
@@ -612,6 +618,8 @@ void EnginePanel::revert() {
   proc_.setStreamHeadPercent(openStreamPercent_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
+  proc_.setProgramCouplers(openProgramCouplers_);
+  programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
   proc_.setLoadTicks(openLoadTicks_);
   loadTicks_.setToggleState(openLoadTicks_, juce::dontSendNotification);
   proc_.setReopenLastOrgan(openReopen_);
@@ -732,6 +740,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.sparseEvery() != openSparse_ ||
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
+         proc_.programCouplers() != openProgramCouplers_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
          proc_.polyphonyLimit() != openPolyphony_ ||
          sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
@@ -958,6 +967,8 @@ void EnginePanel::resized() {
   auto cacheWhenRow = r.removeFromTop(kRow);
   cacheWhenLabel_.setBounds(cacheWhenRow.removeFromLeft(180));
   cacheWhen_.setBounds(cacheWhenRow.removeFromLeft(300));
+  r.removeFromTop(6);
+  programCouplers_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
   rebuildNote_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
   r.removeFromTop(6);
   auto cacheDirRow = r.removeFromTop(kRow);

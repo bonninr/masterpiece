@@ -1512,6 +1512,127 @@ public:
   }
 };
 
+// The program couplers: the ones the player draws, between the manuals at
+// 16', 8' and 4'. They do not chain, they do not reach past the end of the
+// compass, and a pipe already sounding is not sounded twice.
+class ProgramCouplerTest final : public mp::test::Test {
+public:
+  ProgramCouplerTest()
+      : Test("functional.control.program-couplers", Category::Functional) {}
+  void run() override {
+    // Three manuals: the Pedal (1), the Great (2) and the Swell (3).
+    mp::OrganModel m;
+    for (int d = 1; d <= 3; ++d) {
+      mp::Division div;
+      div.divisionId = d;
+      div.name = d == 1 ? "Pedal" : (d == 2 ? "Great" : "Swell");
+      m.divisions[d] = div;
+    }
+    for (int k = 1; k <= 3; ++k) {
+      mp::Keyboard kb;
+      kb.keyboardId = k;
+      kb.assignmentCode = k;
+      kb.primaryDivisionHint = k;
+      kb.numKeys = k == 1 ? 32 : 61;
+      kb.firstMidiNote = 36;
+      m.keyboards[k] = kb;
+    }
+    // Each manual sounds its own division.
+    for (int k = 1; k <= 3; ++k) {
+      mp::KeyAction a;
+      a.sourceKeyboard = k;
+      a.destIsKeyboard = false;
+      a.destDivision = k;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    }
+    // The organ's own couplers: the Swell to the Great, while switch 500 is
+    // drawn, and the Swell to the Pedal, while switch 501 is.
+    {
+      mp::KeyAction a;
+      a.sourceKeyboard = 2;
+      a.destIsKeyboard = false;
+      a.destDivision = 3;
+      a.conditionSwitchId = 500;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    }
+    {
+      mp::KeyAction a;
+      a.sourceKeyboard = 3;
+      a.destIsKeyboard = false;
+      a.destDivision = 1;
+      a.conditionSwitchId = 501;
+      a.actionType = 1;
+      m.keyActions.push_back(a);
+    }
+
+    mp::CouplerMatrix flow;
+    flow.reset(m);
+    // The program couplers the player may draw: the Swell to the Great at
+    // 8' and 4', and the Great to the Swell at 8'.
+    std::vector<mp::CouplerMatrix::ProgramCoupler> program;
+    program.push_back({600, 2, 3, 0});   // Swell to Great 8'
+    program.push_back({601, 2, 3, 12});  // Swell to Great 4'
+    program.push_back({602, 3, 2, 0});   // Great to Swell 8'
+    flow.setProgramCouplers(program);
+
+    const auto reaches = [](const std::vector<mp::ExpandedNote>& v, int div,
+                            int note) {
+      for (const auto& n : v)
+        if (n.divisionId == div && n.midiNote == note) return true;
+      return false;
+    };
+
+    const std::unordered_set<mp::Id> nothing;
+    auto great = flow.expand(2, 60, 1.0f, nothing);
+    MP_CHECK(great.size() == 1 && reaches(great, 2, 60),
+             "with no program coupler drawn, a key sounds its own division only");
+
+    // The Swell to the Great at 8': a Great key sounds the Swell as well.
+    auto at8 = flow.expand(2, 60, 1.0f, {600});
+    MP_CHECK(at8.size() == 2 && reaches(at8, 2, 60) && reaches(at8, 3, 60),
+             "drawing the program coupler at 8' adds the other division");
+
+    // The same at 4': the Swell an octave up.
+    auto at4 = flow.expand(2, 60, 1.0f, {601});
+    MP_CHECK(at4.size() == 2 && reaches(at4, 2, 60) && reaches(at4, 3, 72),
+             "at 4' the other division sounds an octave up");
+
+    // The other way round: a Swell key sounds the Great.
+    auto back = flow.expand(3, 60, 1.0f, {602});
+    MP_CHECK(back.size() == 2 && reaches(back, 3, 60) && reaches(back, 2, 60),
+             "and the coupler works the other way round as well");
+
+    // No chaining: a program coupler does not reach through the organ's own
+    // couplers. The program coupler brings the Swell to the Great at 4', and
+    // the Swell is coupled to the Pedal: the Pedal must stay silent.
+    auto chained = flow.expand(2, 60, 1.0f, {501, 601});
+    MP_CHECK(chained.size() == 2 && reaches(chained, 2, 60) && reaches(chained, 3, 72),
+             "a program coupler brings the other division and nothing more");
+    MP_CHECK(!reaches(chained, 1, 60),
+             "and it does not chain through the organ's own couplers");
+
+    // The organ's own couplers are untouched by the program ones.
+    auto own = flow.expand(3, 60, 1.0f, {501});
+    MP_CHECK(own.size() == 2 && reaches(own, 3, 60) && reaches(own, 1, 60),
+             "the organ's own coupler still works as it did");
+
+    // A pipe already sounding is not sounded twice: the program coupler and
+    // the organ's own one, both at 8'.
+    auto twice = flow.expand(2, 60, 1.0f, {500, 600});
+    MP_CHECK(twice.size() == 2 && reaches(twice, 2, 60) && reaches(twice, 3, 60),
+             "the organ's own coupler and the program one sound the pipe once");
+
+    // The top of the compass: a 4' coupler has nowhere to go and the key
+    // simply does not sound there.
+    auto top = flow.expand(2, 127, 1.0f, {601});
+    MP_CHECK(top.size() == 1 && reaches(top, 2, 127),
+             "a coupler past the end of the compass sounds nothing, and no error");
+  }
+};
+static ProgramCouplerTest g_programCoupler;
+
 // Panic's last word (#276): every voice still sounding is released, whatever
 // note it belongs to, a note whose note-off never came included.
 class ReleaseAllTest final : public mp::test::Test {

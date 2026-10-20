@@ -938,3 +938,4 @@ countries: de at ch li lu
 "The number sent for the page before" = "Die Nummer, die für die vorige Seite gesendet wird"
 "Learn score page -" = "Notenseite - anlernen"
 "Learn score page +" = "Notenseite + anlernen"
+"Program couplers" = "Programmkoppler"

@@ -938,3 +938,4 @@ countries: it ch sm va
 "The number sent for the page before" = "Il numero inviato per la pagina precedente"
 "Learn score page -" = "Apprendi pagina spartito -"
 "Learn score page +" = "Apprendi pagina spartito +"
+"Program couplers" = "Accoppiamenti di programma"

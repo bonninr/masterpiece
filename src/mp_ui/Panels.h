@@ -40,7 +40,7 @@ struct PanelElement {
 
 // One column of the panel: a division, the pistons, or the controls.
 struct PanelSection {
-  enum class Kind { Division, Presets, Controls, Other };
+  enum class Kind { Division, Presets, Controls, Other, Program };
   Kind kind = Kind::Division;
   Id divisionId = 0;
   std::string key;    // "d801", "presets", "controls", "other"

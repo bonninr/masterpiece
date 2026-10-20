@@ -87,6 +87,9 @@ private:
   bool openStream_ = false;
   int openStreamPercent_ = 0;
   bool openMono_ = false;
+  // Whether the program couplers are offered. Off by default.
+  bool openProgramCouplers_ = false;
+  juce::ToggleButton programCouplers_{TRANS("Program couplers")};
   double openRate_ = 0.0;
   SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
   int openReleaseMs_ = 0;

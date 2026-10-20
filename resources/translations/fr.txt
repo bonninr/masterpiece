@@ -938,3 +938,4 @@ countries: fr be ca ch lu mc
 "The number sent for the page before" = "Le numéro envoyé pour la page précédente"
 "Learn score page -" = "Apprendre page de partition -"
 "Learn score page +" = "Apprendre page de partition +"
+"Program couplers" = "Accouplements de programme"
