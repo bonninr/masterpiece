@@ -15,6 +15,10 @@ void MidiRecorder::startRecording(Take take) {
     // thread. A busy organist produces perhaps 50 events a second.
     events_.reserve(16384);
     writePos_ = 0;
+  } else {
+    // The same room after the take that is kept: a take read from a file
+    // holds exactly what it needs, and the audio thread must not grow it.
+    events_.reserve(events_.size() + 16384);
   }
   // Append keeps the take and the write head where they are: the new events
   // land after the old ones on the same clock, so the take plays back as one
