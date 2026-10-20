@@ -24,6 +24,42 @@
 
 namespace mp::ui {
 
+// One stop in the stop list: a tile a screen reader can read, whose state
+// says whether the stop is drawn, and that the keyboard moves through.
+//
+// The tile carries the stop's own name; what a screen reader reads is the
+// stop and the division it is in, "Principal 8, Great". The state is the
+// stop's own: drawn or not.
+class StopButton : public juce::TextButton {
+public:
+  explicit StopButton(const juce::String& text) : juce::TextButton(text) {}
+
+  // What a screen reader reads: the stop's own name and the division it is
+  // in.
+  void setStopName(const juce::String& name, const juce::String& division);
+  // The same, for the announcement when the stop changes.
+  const juce::String& accessibleName() const { return accessibleName_; }
+
+  // Space and Enter draw and retire the stop, as a click does. The arrow
+  // keys move through the list; the jamb tells the tile where the next stop
+  // lies.
+  bool keyPressed(const juce::KeyPress& key) override;
+  std::function<void(StopButton&, const juce::KeyPress&)> onArrowKey;
+
+  // The handler the accessibility layer talks to. The component hands this
+  // out when the stop is on screen, which needs a window; this asks for it
+  // without one.
+  std::unique_ptr<juce::AccessibilityHandler> makeAccessibilityHandler() {
+    return createAccessibilityHandler();
+  }
+
+protected:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+private:
+  juce::String accessibleName_;
+};
+
 // One division's stops, as a column of latching buttons. A stop whose ranks
 // ship no pipes is drawn dimmed and cannot be drawn: demo sets are full of
 // them, and a jamb that hides that is lying to the player.
@@ -38,17 +74,28 @@ public:
   int heightFor(int width) const;
   void resized() override;
   void paint(juce::Graphics& g) override;
+  // Put the keyboard focus on the first stop: where a player who cannot see
+  // the console starts reading the list.
+  void focusFirstStop();
+  // The stops in the order they are shown, for the keyboard and for the
+  // tests.
+  int stopCount() const { return static_cast<int>(entries_.size()); }
+  StopButton* stopButtonAt(int index);
 
 private:
   struct Entry {
-    std::unique_ptr<juce::TextButton> button;
+    std::unique_ptr<StopButton> button;
     Id stopId = 0;
     Id divisionId = 0;
     bool playable = false;
+    juce::String name;      // the stop's own name
+    juce::String division;  // the division it is in
   };
   MasterpieceProcessor& proc_;
   std::vector<Entry> entries_;
   std::vector<std::unique_ptr<juce::Label>> headers_;
+  // Move the keyboard focus from one stop to the next.
+  void moveFocus(StopButton& from, const juce::KeyPress& key);
 };
 
 // One shoe per enclosure, plus whatever else the organ exposes as a
@@ -287,6 +334,10 @@ private:
   void showSettingsMenu();
   void toggleKeyboard();
   void toggleSwell();
+  // The plain stop list, for a player who cannot see the console: every stop
+  // by division, as buttons a screen reader can read. The key that opens it
+  // is named in the View menu.
+  void toggleStopList();
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
   // window's are shown too.
@@ -368,6 +419,9 @@ private:
   // there for a machine with no MIDI console attached.
   bool showingKeyboard_ = false;
   bool showingConsole_ = true;
+  // The plain stop list is on screen, over the console. An organ that ships
+  // no console artwork shows it anyway, and then this is never set.
+  bool showingStopList_ = false;
   // The expression shoes as a strip of faders down the side. Off by default:
   // it took 120px of console width permanently, and on a set that draws its
   // own shoes it was showing the same control twice. Kept because a set whose
