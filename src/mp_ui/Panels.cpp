@@ -583,24 +583,23 @@ public:
                        juce::Justification::centredTop, 1, 0.7f);
     }
     {
-      // The name, wrapped inside the button: a name too long for it breaks
-      // onto two or more lines, as GrandOrgue breaks it, rather than being
-      // shrunk until it fits on one line and runs over the button.
       juce::AttributedString as(juce::String::fromUTF8(e.name.c_str()));
       as.setJustification(juce::Justification::centred);
+      // The layout draws in its own colour, black unless told: the button's.
+      as.setColour(on ? c.textOn : c.textOff);
       as.setFont(font);
       juce::TextLayout layout;
       layout.createLayout(as, text.getWidth());
-      if (layout.getNumLines() > 1) {
-        // The lines are kept; the size drops so that they fit the button.
-        const float needed = font.getHeight() * 1.05f * layout.getNumLines();
-        if (needed > text.getHeight() && font.getHeight() > 7.0f) {
-          font.setHeight(font.getHeight() * text.getHeight() / needed);
-          as.setFont(font);
-          layout.createLayout(as, text.getWidth());
-        }
+      // Smaller until the lines fit the button's height, and until a single
+      // word longer than the button ("Rohrschalmei" on a narrow one) fits its
+      // width; never below 7 px.
+      for (int i = 0; i < 8 && font.getHeight() > 7.0f &&
+                      (layout.getHeight() > text.getHeight() || layout.getWidth() > text.getWidth() + 0.5f);
+           ++i) {
+        font.setHeight(std::max(7.0f, font.getHeight() * 0.88f));
+        as.setFont(font);
+        layout.createLayout(as, text.getWidth());
       }
-      g.setFont(font);
       auto area = text.withHeight(std::min(text.getHeight(), layout.getHeight()));
       area = area.withY(text.getY() + (text.getHeight() - area.getHeight()) * 0.5f);
       layout.draw(g, area);
