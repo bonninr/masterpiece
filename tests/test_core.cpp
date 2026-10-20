@@ -1091,6 +1091,28 @@ public:
     for (int i = 0; i < 4; ++i) block({});
     MP_CHECK(!proc.switchEngaged(900), "and lets it go again");
 
+    // Drawn again with the key still down: the held note reaches the coupled
+    // division, the way a key already held reaches a stop drawn under it.
+    proc.setSwitchEngaged(300, true);
+    block({});
+    MP_CHECK(proc.switchEngaged(900), "drawn under a held key: the coupled input closes");
+    block(off);
+    MP_CHECK(!proc.switchEngaged(900), "the key let go: the coupled input opens");
+
+    // A key struck twice with one release between: the second note-on lets go
+    // of the first note, and what the couplers opened for it goes with it.
+    block(on);
+    block(on);
+    block(off);
+    MP_CHECK(!proc.switchEngaged(900), "struck twice, released once: nothing left held");
+    MP_CHECK(!proc.switchEngaged(9001), "and the coupled pipe's pallet shut");
+
+    // Every key released at once.
+    block(on);
+    MP_CHECK(proc.switchEngaged(900), "held again");
+    proc.releaseResources();
+    MP_CHECK(!proc.switchEngaged(900), "the audio stopping lets the coupled input go");
+
     if (!hadSettings) settings.deleteFile();
     dir.deleteRecursively();
   }
