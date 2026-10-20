@@ -177,6 +177,7 @@ public:
     ServerSettings s;
     s.enabled = true;
     s.port = 0;
+    s.loopbackOnly = true;
     juce::String error;
     MP_CHECK(server.apply(s, error) && server.running() && server.port() > 0, "the server starts on a free port");
 

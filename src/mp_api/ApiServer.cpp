@@ -164,11 +164,12 @@ bool ApiServer::apply(const ServerSettings& s, juce::String& error) {
   // Each open event stream holds a thread of the pool.
   server_->new_task_queue = [] { return new httplib::ThreadPool(16); };
   routes();
+  const char* host = s.loopbackOnly ? "127.0.0.1" : "0.0.0.0";
   if (s.port == 0) {
-    const int any = server_->bind_to_any_port("0.0.0.0");
+    const int any = server_->bind_to_any_port(host);
     const std::lock_guard<std::mutex> lock(settingsMutex_);
     settings_.port = any;
-  } else if (!server_->bind_to_port("0.0.0.0", s.port)) {
+  } else if (!server_->bind_to_port(host, s.port)) {
     error = "port " + juce::String(s.port) + " is in use or not allowed";
     server_.reset();
     return false;

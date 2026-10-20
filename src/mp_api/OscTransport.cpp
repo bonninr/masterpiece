@@ -46,9 +46,16 @@ OscTransport::~OscTransport() {
   receiver_.removeListener(this);
 }
 
-bool OscTransport::start(int port, juce::String& error) {
+bool OscTransport::start(int port, juce::String& error, bool loopbackOnly) {
   stop();
-  if (!receiver_.connect(port)) {
+  if (loopbackOnly) {
+    socket_ = std::make_unique<juce::DatagramSocket>(false);
+    if (!socket_->bindToPort(port, "127.0.0.1") || !receiver_.connectToSocket(*socket_)) {
+      socket_.reset();
+      error = "UDP port " + juce::String(port) + " is in use";
+      return false;
+    }
+  } else if (!receiver_.connect(port)) {
     error = "UDP port " + juce::String(port) + " is in use";
     return false;
   }
@@ -58,6 +65,7 @@ bool OscTransport::start(int port, juce::String& error) {
 
 void OscTransport::stop() {
   if (port_ != 0) receiver_.disconnect();
+  socket_.reset();
   port_ = 0;
 }
 

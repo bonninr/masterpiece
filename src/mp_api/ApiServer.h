@@ -29,6 +29,9 @@ struct ServerSettings {
   bool allowChanges = true;
   // When set, a change needs "Authorization: Bearer <token>".
   std::string token;
+  // On the loopback address only, for the tests: listening on every address
+  // makes Windows ask for a firewall rule on each new build.
+  bool loopbackOnly = false;
 };
 
 class ApiServer : private juce::Timer {

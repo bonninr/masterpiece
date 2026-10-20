@@ -18,6 +18,7 @@
 // i code s name. Everything runs on the message thread.
 #pragma once
 
+#include <memory>
 #include "ControlModel.h"
 
 #include <juce_events/juce_events.h>
@@ -34,7 +35,9 @@ public:
   ~OscTransport() override;
 
   // Listens on a UDP port; false with the reason when it cannot.
-  bool start(int port, juce::String& error);
+  // On every address, so a tablet on the network reaches it; the tests ask for
+  // the loopback address only, which needs no firewall rule.
+  bool start(int port, juce::String& error, bool loopbackOnly = false);
   void stop();
   bool running() const { return port_ != 0; }
   int port() const { return port_; }
@@ -60,6 +63,9 @@ private:
 
   ControlModel model_;
   juce::OSCReceiver receiver_;
+  // The socket of a loopback-only start; the receiver reads it but does not
+  // own it.
+  std::unique_ptr<juce::DatagramSocket> socket_;
   juce::OSCSender sender_;
   bool hasTarget_ = false;
   int port_ = 0;
