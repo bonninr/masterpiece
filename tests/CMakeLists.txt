@@ -3,6 +3,7 @@ add_executable(mp_tests
   test_core.cpp
   test_split.cpp
   test_sparse_loading.cpp
+  test_storage20.cpp
 )
 target_compile_features(mp_tests PRIVATE cxx_std_20)
 # mp_control supplies resolvePipes() and the coupler/combination systems the

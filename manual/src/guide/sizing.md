@@ -22,13 +22,15 @@ The ratios were measured on Friesach (44 stops, 17.0 GB on disk) with Masterpiec
 |---|---:|---:|---:|---:|
 | 32-bit float, resident | 1.33 | 4.0 GB | 16.0 GB | 40.0 GB |
 | 24-bit, resident | 1.00 | 3.0 GB | 12.0 GB | 30.0 GB |
+| 20-bit, resident | 0.83 | 2.5 GB | 10.0 GB | 25.0 GB |
 | 16-bit, resident | 0.67 | 2.0 GB | 8.0 GB | 20.0 GB |
 | 24-bit, releases streamed | 0.43 | 1.3 GB | 5.2 GB | 12.9 GB |
 | 16-bit, releases streamed | 0.29 | 0.9 GB | 3.4 GB | 8.6 GB |
 | 16-bit mono, resident | 0.33 | 1.0 GB | 4.0 GB | 10.0 GB |
 | 16-bit mono, releases streamed | 0.14 | 0.4 GB | 1.7 GB | 4.3 GB |
+| 20-bit mono, resident | 0.42 | 1.2 GB | 5.0 GB | 12.5 GB |
 
-The 16-bit resident and the 16-bit mono resident rows follow from the exact ratios 0.667 (24-bit to 16-bit) and 0.500 (stereo to mono). Those figures are the samples only. The voice pool adds to them, and streaming makes the pool larger, because every voice carries a ring of 768,000 bytes at 48 kHz.
+The 20-bit resident and the 16-bit resident rows follow from the exact ratios 0.833 (24-bit to 20-bit) and 0.667 (24-bit to 16-bit), and the mono rows from 0.500 (stereo to mono). Those figures are the samples only. The voice pool adds to them, and streaming makes the pool larger, because every voice carries a ring of 768,000 bytes at 48 kHz.
 
 | Polyphony | Rings with release streaming on |
 |---:|---:|

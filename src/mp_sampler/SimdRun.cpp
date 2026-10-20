@@ -3,6 +3,7 @@
 #include "VoiceEngine.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 #if defined(_M_X64) || defined(__x86_64__)
@@ -47,6 +48,22 @@ inline void scalarFrame(const T* data, int channels, int64_t k, float t, float e
     out[ch][i] += hermite(static_cast<float>(p[0]), static_cast<float>(p[channels]),
                           static_cast<float>(p[2 * channels]),
                           static_cast<float>(p[3 * channels]), t) *
+                  env;
+  }
+}
+
+// Twenty-bit samples are packed, so a frame's four taps are four decoded
+// values rather than four neighbours in an array.
+inline void scalarFrame(const Pcm20* data, int channels, int64_t k, float t, float env,
+                        float* const* out, int numChannels, int i) {
+  for (int ch = 0; ch < numChannels; ++ch) {
+    const int srcCh = ch < channels ? ch : channels - 1;
+    const size_t base = static_cast<size_t>((k - 1) * channels + srcCh);
+    const size_t step = static_cast<size_t>(channels);
+    out[ch][i] += hermite(static_cast<float>(pcm20At(data, base)),
+                          static_cast<float>(pcm20At(data, base + step)),
+                          static_cast<float>(pcm20At(data, base + 2 * step)),
+                          static_cast<float>(pcm20At(data, base + 3 * step)), t) *
                   env;
   }
 }
@@ -103,6 +120,22 @@ MP_AVX2 inline __m256 gather8(const Pcm24* data, __m256i e) {
   const __m256i bytes = _mm256_add_epi32(_mm256_add_epi32(e, e), e);
   const __m256i g = _mm256_i32gather_epi32(reinterpret_cast<const int*>(data), bytes, 1);
   return _mm256_cvtepi32_ps(_mm256_srai_epi32(_mm256_slli_epi32(g, 8), 8));
+}
+// Packed twenty-bit samples: sample i lives at byte (i*5)>>1, at bit
+// (i&1)*4 of the little-endian word there. The gather reads four bytes and
+// the shift brings the sample to the bottom of the word; twenty bits are
+// then sign-extended, which is what the two shifts do.
+//
+// The byte offset and the shift come out of one shift of the index: i*5 is
+// (i<<2)+i, and the bit the sample starts at is the low bit of i, which the
+// same (i<<2) carries.
+MP_AVX2 inline __m256 gather8(const Pcm20* data, __m256i e) {
+  const __m256i four = _mm256_slli_epi32(e, 2);
+  const __m256i bytes = _mm256_srli_epi32(_mm256_add_epi32(four, e), 1);
+  const __m256i shift = _mm256_and_si256(four, _mm256_set1_epi32(4));
+  const __m256i g = _mm256_i32gather_epi32(reinterpret_cast<const int*>(data), bytes, 1);
+  const __m256i v = _mm256_srlv_epi32(g, shift);
+  return _mm256_cvtepi32_ps(_mm256_srai_epi32(_mm256_slli_epi32(v, 12), 12));
 }
 
 template <typename T>
@@ -207,6 +240,17 @@ inline void tapsSse(const T* data, int channels, int64_t k, __m128* ch) {
     ch[c] = _mm_load_ps(f);
   }
 }
+// Packed twenty-bit samples have no vector load either: each tap is decoded
+// on its own, and the arithmetic still runs four frames wide.
+inline void tapsSse(const Pcm20* data, int channels, int64_t k, __m128* ch) {
+  for (int c = 0; c < channels; ++c) {
+    alignas(16) float f[4];
+    for (int m = 0; m < 4; ++m)
+      f[m] = static_cast<float>(
+          pcm20At(data, static_cast<size_t>((k - 1 + m) * channels + c)));
+    ch[c] = _mm_load_ps(f);
+  }
+}
 
 template <typename T>
 double runSse2(const T* data, int channels, double cursor, double ratio, float env,
@@ -308,6 +352,16 @@ inline void taps(const Pcm24* data, int channels, int64_t k, float32x4_t* ch) {
     ch[c] = vld1q_f32(f);
   }
 }
+// Packed twenty-bit samples: each tap is decoded on its own.
+inline void taps(const Pcm20* data, int channels, int64_t k, float32x4_t* ch) {
+  for (int c = 0; c < channels; ++c) {
+    float f[4];
+    for (int m = 0; m < 4; ++m)
+      f[m] = static_cast<float>(
+          pcm20At(data, static_cast<size_t>((k - 1 + m) * channels + c)));
+    ch[c] = vld1q_f32(f);
+  }
+}
 
 template <typename T>
 double runNeon(const T* data, int channels, double cursor, double ratio, float env,
@@ -365,6 +419,30 @@ double run(Isa isa, const T* data, int channels, double cursor, double ratio, fl
 #endif
   (void)isa;
   return runScalar(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
+}
+
+// How far the twenty-bit index may run: the byte offset of a sample is
+// (i*5)>>1, so the product i*5 has to fit in an int. Past this the vector
+// path would wrap round, and the scalar path takes over.
+constexpr int64_t kPcm20IndexLimit = 400000000;
+
+// The twenty-bit run. As every other width's, except that the index range is
+// checked first: the packed layout costs an address computation per sample,
+// and that computation has to fit.
+double runPcm20(Isa isa, const Pcm20* data, int channels, double cursor, double ratio,
+                float env, float* const* out, int numChannels, int start, int frames,
+                PerFrame pf = {}) {
+  // How far the run reads: the cursor plus the steps it takes.
+  double span = std::abs(ratio) * static_cast<double>(frames);
+  if (pf.ratios != nullptr) {
+    double worst = 0.0;
+    for (int j = 0; j < frames; ++j) worst = std::max(worst, std::abs(pf.ratios[j]));
+    span = worst * static_cast<double>(frames);
+  }
+  const double last = cursor + span + 4.0;
+  if (last * static_cast<double>(channels) > static_cast<double>(kPcm20IndexLimit))
+    return runScalar(data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
+  return run(isa, data, channels, cursor, ratio, env, out, numChannels, start, frames, pf);
 }
 
 }  // namespace
@@ -432,6 +510,10 @@ double renderRun(Isa isa, const Pcm24* data, int bufChannels, double cursor, dou
                  float env, float* const* out, int numChannels, int start, int frames) {
   return run(isa, data, bufChannels, cursor, ratio, env, out, numChannels, start, frames);
 }
+double renderRun(Isa isa, const Pcm20* data, int bufChannels, double cursor, double ratio,
+                 float env, float* const* out, int numChannels, int start, int frames) {
+  return runPcm20(isa, data, bufChannels, cursor, ratio, env, out, numChannels, start, frames);
+}
 
 double renderRunPerFrame(Isa isa, const float* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
@@ -450,6 +532,12 @@ double renderRunPerFrame(Isa isa, const Pcm24* data, int bufChannels, double cur
                          int numChannels, int start, int frames) {
   return run(isa, data, bufChannels, cursor, 0.0, 0.0f, out, numChannels, start, frames,
              PerFrame{ratios, envs});
+}
+double renderRunPerFrame(Isa isa, const Pcm20* data, int bufChannels, double cursor,
+                         const double* ratios, const float* envs, float* const* out,
+                         int numChannels, int start, int frames) {
+  return runPcm20(isa, data, bufChannels, cursor, 0.0, 0.0f, out, numChannels, start, frames,
+                  PerFrame{ratios, envs});
 }
 
 }  // namespace mp::simd

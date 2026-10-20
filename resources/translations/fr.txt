@@ -397,6 +397,7 @@ countries: fr be ca ch lu mc
 "Up to the loop (less memory)" = "Jusqu'à la boucle (moins de mémoire)"
 "Resident format" = "Format résident"
 "24-bit - what the samples are" = "24 bits - le format des échantillons"
+"20-bit - a sixth less than the source" = "20 bits - un sixième de moins que la source"
 "16-bit - two thirds of that, inaudible" = "16 bits - les deux tiers, inaudible"
 "32-bit float - larger than the source" = "32 bits flottants - plus gros que la source"
 "Sample rate" = "Fréquence d'échantillonnage"

@@ -22,6 +22,7 @@
 namespace mp {
 
 struct Pcm24;
+struct Pcm20;
 
 namespace simd {
 
@@ -57,6 +58,8 @@ double renderRun(Isa isa, const int16_t* data, int bufChannels, double cursor, d
                  float env, float* const* out, int numChannels, int start, int frames);
 double renderRun(Isa isa, const Pcm24* data, int bufChannels, double cursor, double ratio,
                  float env, float* const* out, int numChannels, int start, int frames);
+double renderRun(Isa isa, const Pcm20* data, int bufChannels, double cursor, double ratio,
+                 float env, float* const* out, int numChannels, int start, int frames);
 
 // The same run with the step and the level given for every frame, for a voice
 // a tremulant is moving: ratios[j] is how far the cursor moves after frame j,
@@ -70,6 +73,9 @@ double renderRunPerFrame(Isa isa, const int16_t* data, int bufChannels, double c
                          const double* ratios, const float* envs, float* const* out,
                          int numChannels, int start, int frames);
 double renderRunPerFrame(Isa isa, const Pcm24* data, int bufChannels, double cursor,
+                         const double* ratios, const float* envs, float* const* out,
+                         int numChannels, int start, int frames);
+double renderRunPerFrame(Isa isa, const Pcm20* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
                          int numChannels, int start, int frames);
 

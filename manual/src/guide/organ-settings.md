@@ -60,7 +60,7 @@ The tab scrolls when the window is shorter than its contents. Changes here act o
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **Preloaded per sample** | How much of each sample is held in memory. An attack is always held to the end of its sustain loop, which in an organ sample lies close to the end of the file. | **Whole samples (most memory)** | **Whole samples (most memory)**, **Up to the loop (less memory)**. A file written by an earlier version may show **Loop + 1 s (earlier choice)** or **Loop + 2 s (earlier choice)**, which stay as they are. A sample whose release is in the same file is always held whole. | Next load |
-| **Resident format** | What a held frame costs in memory. 16-bit scales each sample by its own peak first, so a quiet stop keeps the full sixteen bits. | **24-bit - what the samples are** | **24-bit - what the samples are**, **16-bit - two thirds of that, inaudible**, **32-bit float - larger than the source** | Next load |
+| **Resident format** | What a held frame costs in memory. 16-bit scales each sample by its own peak first, so a quiet stop keeps the full sixteen bits. | **24-bit - what the samples are** | **24-bit - what the samples are**, **20-bit - a sixth less than the source**, **16-bit - two thirds of that, inaudible**, **32-bit float - larger than the source** | Next load |
 | **Sample rate** | Converts samples to this rate while loading. A 96 kHz set on a 48 kHz device is held at twice the size it needs otherwise. Only the two lower rates are offered. | **As recorded** | **As recorded**, **48 kHz**, **44.1 kHz** | Next load |
 | **Notes loaded** | How many notes of a rank are loaded. A note that is not loaded plays the samples of its nearest loaded neighbour, retuned to its own pitch. A noise, a percussive rank, a rank recorded with a tremulant and a rank of fewer than eight pipes keep every note. | **All** | **All**, **Every second note**, **Every third note** | Next load |
 | **Stream release tails from disk** | Holds only the start of each release in memory and reads the rest from disk while it plays. Releases are the only samples worth streaming: they run several seconds and play once from the start, straight through. Needs a disk that keeps up. | Off | On, off | Next load |
@@ -210,7 +210,7 @@ The organ file is `organs/<organ key>.mporgan` in the data folder (see [General 
 
 | Key | Value | Set by |
 |---|---|---|
-| `storage` | `16`, `24` or `32` (32 is float) | **Resident format** |
+| `storage` | `16`, `20`, `24` or `32` (32 is float) | **Resident format** |
 | `mono` | `1` or `0` | **Load in mono** |
 | `releases` | `0` all, `1` longest, `2` shortest, `3` none | **Releases** |
 | `releaselength` | Milliseconds, `0` for whole | **Release length** |

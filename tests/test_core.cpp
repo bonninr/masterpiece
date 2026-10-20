@@ -1706,6 +1706,22 @@ public:
     b.pcmScale = 1.0f / 8388607.0f;
     b.frames.clear();
   }
+  // Twenty bits a sample, packed two to five bytes. Quantised against the
+  // buffer's own peak, as the loader does.
+  static void toInt20(mp::SampleBuffer& b) {
+    float peak = 0.0f;
+    for (float v : b.frames) peak = std::max(peak, std::fabs(v));
+    constexpr float full = 524287.0f;
+    b.pcmScale = peak > 0.0f ? peak / full : 1.0f;
+    const float toCounts = peak > 0.0f ? full / peak : 0.0f;
+    b.pcm20.assign(mp::pcm20Bytes(b.frames.size()), mp::Pcm20{});
+    for (size_t i = 0; i < b.frames.size(); ++i) {
+      const int v = static_cast<int>(std::lround(b.frames[i] * toCounts));
+      mp::pcm20Put(b.pcm20.data(), i, static_cast<int32_t>(
+                                         std::clamp(v, -524288, 524287)));
+    }
+    b.frames.clear();
+  }
 
   // Each channel at its own level, so a run that mixed them up would show.
   static void spreadChannels(mp::SampleBuffer& b) {
@@ -1757,9 +1773,9 @@ public:
     for (const auto isa : units) std::printf("        vector unit: %s\n", mp::simd::isaName(isa));
     if (units.empty()) return;  // nothing to compare against
 
-    const char* formats[] = {"float", "16-bit", "24-bit"};
+    const char* formats[] = {"float", "16-bit", "24-bit", "20-bit"};
     for (const auto isa : units)
-      for (int format = 0; format < 3; ++format)
+      for (int format = 0; format < 4; ++format)
         for (int channels = 1; channels <= 4; ++channels) {
           voicetest::Fixture fx;
           fx.attack = voicetest::makeTone(440.0, 48000.0, 6000, channels);
@@ -1768,6 +1784,7 @@ public:
           spreadChannels(fx.release);
           if (format == 1) { toInt16(fx.attack); toInt16(fx.release); }
           if (format == 2) { toInt24(fx.attack); toInt24(fx.release); }
+          if (format == 3) { toInt20(fx.attack); toInt20(fx.release); }
 
           mp::VoiceEngine plain, fast;
           const std::vector<float> a = render(plain, fx, mp::simd::Isa::None);
@@ -10920,11 +10937,14 @@ public:
     // The enum has exactly the widths that survived measurement. An
     // 8-bit member was built and withdrawn -- it held about 32 dB of signal
     // to quantisation noise against 16-bit's 78 -- so this pins the list
-    // rather than letting it quietly grow a third member again.
+    // rather than letting it quietly grow a third member again. A width
+    // added later goes at the END: the ordinal is written into the sample
+    // cache's fingerprint.
     MP_CHECK(static_cast<int>(mp::SampleStorage::Float32) == 0 &&
                  static_cast<int>(mp::SampleStorage::Int24) == 1 &&
-                 static_cast<int>(mp::SampleStorage::Int16) == 2,
-             "three resident formats, in the order the tests assume");
+                 static_cast<int>(mp::SampleStorage::Int16) == 2 &&
+                 static_cast<int>(mp::SampleStorage::Int20) == 3,
+             "four resident formats, in the order the tests assume");
   }
 };
 // A streamed release tail opened its file the first time it played and kept it

@@ -179,7 +179,7 @@ public:
           "  --odf <file>             open this organ\n"
           "  --gui-only               draw its console without reading any audio\n"
           "  --console-page <n>       show this console page once the organ is up (from 1)\n"
-          "  --storage <format>       int16, int24 or float32 samples in memory\n"
+          "  --storage <format>       int16, int20, int24 or float32 samples in memory\n"
           "  --load-mono <on|off>     load samples as mono\n"
           "  --stream-releases <on|off>  stream release tails from disk\n"
           "  --preload-head <frames>  minimum head of every sample (0 = whole file)\n"
@@ -722,7 +722,7 @@ public:
     // from a script rather than from the settings page. All three apply to
     // the NEXT load, which is why they are read before loadOrgan below.
     //
-    //   --storage int24|int16    what a resident frame costs
+    //   --storage int24|int20|int16    what a resident frame costs
     //   --program-couplers on    the couplers between the manuals at 16', 8' and 4'
     //   --load-mono on           fold a stereo set to one channel
     //   --load-rate 48000        convert as it loads (0 = as recorded)
@@ -734,13 +734,15 @@ public:
         const auto v = args[++i].unquoted().trim().toLowerCase();
         if (v == "int24") {
           proc_->setSampleStorage(mp::SampleStorage::Int24);
+        } else if (v == "int20") {
+          proc_->setSampleStorage(mp::SampleStorage::Int20);
         } else if (v == "int16") {
           proc_->setSampleStorage(mp::SampleStorage::Int16);
         } else if (v == "float32") {
           proc_->setSampleStorage(mp::SampleStorage::Float32);
         } else {
           juce::Logger::writeToLog(
-              "--storage: expected int24, int16 or float32, got " + v);
+              "--storage: expected int24, int20, int16 or float32, got " + v);
         }
         proc_->overrideSetting("storage");
       } else if (args[i] == "--program-couplers" && i + 1 < args.size()) {
@@ -771,6 +773,7 @@ public:
     juce::Logger::writeToLog(
         juce::String("memory config: storage=") +
         (proc_->sampleStorage() == mp::SampleStorage::Int16   ? "int16"
+         : proc_->sampleStorage() == mp::SampleStorage::Int20 ? "int20"
          : proc_->sampleStorage() == mp::SampleStorage::Int24 ? "int24"
                                                               : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
