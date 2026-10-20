@@ -99,9 +99,24 @@ struct TestOrgan {
         "<StopRank><StopID>903</StopID><RankID>203</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
         "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
         "</ObjectList><ObjectList ObjectType=\"Switch\">"
-        "<Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name><Latching>Y</Latching>"
+        "<Disp_ImageSetInstanceID>20</Disp_ImageSetInstanceID>"
+        "<Disp_ImageSetIndexEngaged>2</Disp_ImageSetIndexEngaged>"
+        "<Disp_ImageSetIndexDisengaged>1</Disp_ImageSetIndexDisengaged></Switch>"
         "<Switch><SwitchID>1102</SwitchID><Name>Gedackt 8</Name><Latching>Y</Latching></Switch>"
         "<Switch><SwitchID>1103</SwitchID><Name>Flute 4</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList>"
+        // A console with one drawstop on it: the knob a screen reader finds.
+        "<ObjectList ObjectType=\"DisplayPage\">"
+        "<DisplayPage><PageID>1</PageID><Name>Console</Name></DisplayPage></ObjectList>"
+        "<ObjectList ObjectType=\"ImageSet\">"
+        "<ImageSet><ImageSetID>10</ImageSetID><Name>Knob</Name><InstallationPackageID>1</InstallationPackageID>"
+        "<ImageWidthPixels>40</ImageWidthPixels><ImageHeightPixels>60</ImageHeightPixels></ImageSet></ObjectList>"
+        "<ObjectList ObjectType=\"ImageSetInstance\">"
+        "<ImageSetInstance><ImageSetInstanceID>20</ImageSetInstanceID><Name>Principal knob</Name>"
+        "<ImageSetID>10</ImageSetID><DefaultImageIndexWithinSet>1</DefaultImageIndexWithinSet>"
+        "<DisplayPageID>1</DisplayPageID><ScreenLayerNumber>5</ScreenLayerNumber>"
+        "<LeftXPosPixels>100</LeftXPosPixels><TopYPosPixels>200</TopYPosPixels></ImageSetInstance>"
         "</ObjectList></Hauptwerk>");
   }
 
@@ -203,6 +218,71 @@ public:
   }
 };
 
+// The drawn console: an invisible component over each drawn control, so a
+// screen reader finds the stop the console draws.
+class ConsoleAccessibilityTest final : public mp::test::Test {
+public:
+  ConsoleAccessibilityTest()
+      : Test("functional.ui.console-accessibility", Category::Functional) {}
+
+  void run() override {
+    TestOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    const auto loaded = proc.loadOrgan(organ.odf, 0, false);
+    MP_CHECK(loaded.ok, "the organ loads");
+
+    mp::ui::ConsoleView console(proc);
+    MP_CHECK(console.hasArtwork(), "the console is drawn");
+
+    // The controls the screen reader finds, over the drawn ones.
+    std::vector<mp::ui::ConsoleControl*> controls;
+    for (auto* child : console.getChildren())
+      if (auto* control = dynamic_cast<mp::ui::ConsoleControl*>(child))
+        controls.push_back(control);
+    MP_CHECK(controls.size() == 1,
+             "the console has one control over its drawstop, got " +
+                 std::to_string(controls.size()));
+    if (controls.empty()) return;
+
+    auto* control = controls.front();
+    // It takes no clicks: the console paints and clicks as it always did.
+    bool takesClicks = true, takesChildClicks = true;
+    control->getInterceptsMouseClicks(takesClicks, takesChildClicks);
+    MP_CHECK(!takesClicks && !takesChildClicks,
+             "the control over the knob takes no clicks");
+    MP_CHECK(control->getBounds() == juce::Rectangle<int>(100, 200, 40, 60),
+             "the control is where the knob is drawn, got " +
+                 control->getBounds().toString().toStdString());
+
+    auto handler = control->makeAccessibilityHandler();
+    MP_CHECK(handler->getTitle() == "Principal 8, Great",
+             "the console names the stop and its division, got \"" +
+                 handler->getTitle().toStdString() + "\"");
+    MP_CHECK(handler->getRole() == juce::AccessibilityRole::toggleButton,
+             "the drawn stop is a toggle button to the accessibility layer");
+    MP_CHECK(handler->getCurrentState().isCheckable(),
+             "the state says the stop can be drawn or retired");
+    MP_CHECK(!handler->getCurrentState().isChecked(), "and it is not drawn yet");
+
+    // The accessibility layer draws the stop, and the console follows.
+    handler->getActions().invoke(juce::AccessibilityActionType::toggle);
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "the toggle action draws the stop");
+    console.refreshControlStates();
+    MP_CHECK(handler->getCurrentState().isChecked(),
+             "and the console's control shows the stop drawn");
+
+    // And the state follows the engine, so a piston is announced too.
+    proc.setStopEngaged(901, false);
+    runOneBlock(proc);
+    console.refreshControlStates();
+    MP_CHECK(!handler->getCurrentState().isChecked(),
+             "the console's control shows the stop retired");
+  }
+};
+
 static StopListAccessibilityTest g_stopListAccessibility;
+static ConsoleAccessibilityTest g_consoleAccessibility;
 
 #endif  // MP_TEST_HAS_AUDIO

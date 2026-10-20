@@ -245,6 +245,21 @@ themselves are described on [MIDI and consoles](midi.md).
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |
 
+### The console without sight
+
+Every drawn stop, coupler and piston carries an invisible component over it,
+where the picture is. A screen reader finds the control there, reads its
+name, and reads whether it is drawn. A stop's name carries its division,
+**Principal 8, Great**; a stop that ships no pipes reads as **not available**.
+
+| Key | What it does |
+|---|---|
+| Tab | Moves to the next control, and back with Shift and Tab. |
+| Space or Enter | Draws the stop or retires it. A piston is fired. |
+
+The console keeps its painting and its clicks: the components over the
+controls take no clicks of their own.
+
 ## A page in its own window
 
 A console surrounds the player: jambs to either side, the key desk in front, a
