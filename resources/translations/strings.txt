@@ -73,6 +73,7 @@ countries: gb us
 "Set turns off after storing" = "Set turns off after storing"
 
 # src/mp_ui/Console.cpp
+"Not available" = "Not available"
 "Page %1" = "Page %1"
 "This organ ships no console artwork on this page." = "This organ ships no console artwork on this page."
 "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages." = "Console artwork could not be loaded (%1 images). Check OrganInstallationPackages."
@@ -703,7 +704,6 @@ countries: gb us
 "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it." = "The details are in the log, %1. If Masterpiece has been started again since, they are in masterpiece.previous.log beside it."
 "Show the log" = "Show the log"
 "Not loaded: chosen in Organ settings, Stops" = "Not loaded: chosen in Organ settings, Stops"
-"Not available" = "Not available"
 "%1 drawn" = "%1 drawn"
 "%1 not drawn" = "%1 not drawn"
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading."
