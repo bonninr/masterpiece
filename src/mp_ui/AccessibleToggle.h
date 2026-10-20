@@ -54,6 +54,16 @@ public:
   juce::String getDescription() const override {
     return getComponent().getDescription();
   }
+  // The help a screen reader offers: the tooltip, as a button's own help is.
+  juce::String getHelp() const override {
+    const auto& help = getComponent().getHelpText();
+    if (help.isNotEmpty()) return help;
+    // The component behind the handler is not itself const.
+    auto& component = const_cast<juce::Component&>(getComponent());
+    if (auto* tip = dynamic_cast<juce::TooltipClient*>(&component))
+      return tip->getTooltip();
+    return {};
+  }
 
 private:
   AccessibleToggle& control_;

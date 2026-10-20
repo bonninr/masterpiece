@@ -106,7 +106,8 @@ public:
   void setControlFromMouse(juce::Point<int> p);
   // Keeps the drawn controls in step with the engine: a piston, a
   // combination or MIDI moves a switch, and the screen reader is told.
-  void refreshControlStates();  void resized() override;
+  void refreshControlStates();
+  void resized() override;
 
   // Which console layout to draw. A set that ships for more than one console
   // size gives every drawn thing up to three alternate positions, and often
