@@ -420,7 +420,7 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
         } else if (a->destDivision != 0) {
           if (insertUnique(scratch.emitted,
                            std::pair<int, int>{a->destDivision, note}))
-            out.push_back({a->destDivision, note, velocity});
+            out.push_back({a->destDivision, note, velocity, a->conditionSwitchId});
         }
       }
     }

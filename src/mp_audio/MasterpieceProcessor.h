@@ -2231,6 +2231,42 @@ private:
   std::unordered_map<Id, uint64_t> palletNotes_;
   // The strike velocity of the key that is moving the network now.
   int palletVelocity_ = 100;
+  // A coupler carries a note to a division (or a keyboard) whose own key was
+  // never pressed, so nothing opens the pipe there: the organ reaches its
+  // pipework by pressing the key, and no key was pressed. The organ's own
+  // answer is the switch that carries that note in - the division's input
+  // switch, or the destination keyboard's key - and the coupler closes it the
+  // way a key does.
+  //
+  // It closes it through a switch of the engine's own, wired to the organ's
+  // switch the way the key is. The wiring then decides what opens, as it
+  // does for a key, and a key and a coupler can hold the same input at once:
+  // the network releases a destination only when no other wire into it is
+  // still holding it.
+  struct CoupledInputKey {
+    Id couplerSwitch = 0;
+    Id destination = 0;
+    int midiNote = 60;
+    bool operator<(const CoupledInputKey& other) const {
+      if (couplerSwitch != other.couplerSwitch) return couplerSwitch < other.couplerSwitch;
+      if (destination != other.destination) return destination < other.destination;
+      return midiNote < other.midiNote;
+    }
+  };
+  std::map<CoupledInputKey, Id> coupledInput_;
+  // The engine's own switch -> the notes holding it, and the notes -> the
+  // switches they hold, so the last note out closes what it opened.
+  std::unordered_map<Id, std::vector<uint64_t>> coupledInputHolds_;
+  std::unordered_map<uint64_t, std::vector<Id>> noteCoupledInputs_;
+  // The engine's own switches start well above the ids an organ uses.
+  static constexpr Id kCoupledSwitchBase = 0x40000000ull;
+  void buildCouplerInputs();
+  // True when a coupler carried the note and the engine's own switch closed
+  // the division's input for it: the organ's wiring opens the pipe from
+  // there, so the caller must not open it a second time.
+  bool engageCoupledInput(const ExpandedNote& reached, uint64_t noteId);
+  void releaseCoupledInput(const ExpandedNote& reached, uint64_t noteId);
+  void releaseCoupledInputs(uint64_t noteId);
   // Division inputs (#345): the notes a division plays while a switch is
   // engaged, for the divisions the organ reaches that way from its keys.
   // Built after the key flow, which is told which keyboards those are.

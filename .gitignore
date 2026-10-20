@@ -20,6 +20,7 @@ docs/
 build-scripts/
 apps/mp-render/
 apps/mp-validate-odf/
+AGENTS.md
 PROJECT_SUMMARY.md
 README_BUILD.md
 ROADMAP_M1-M4.md
