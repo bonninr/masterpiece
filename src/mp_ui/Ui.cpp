@@ -1384,9 +1384,12 @@ public:
   explicit RecorderWindow(MasterpieceProcessor& p)
       : juce::DocumentWindow(TRANS("Recorder"), juce::Colour(0xff15171c), juce::DocumentWindow::closeButton) {
     setUsingNativeTitleBar(true);
-    setContentOwned(new RecorderPanel(p), false);
+    auto* panel = new RecorderPanel(p);
+    setContentOwned(panel, false);
     setResizable(false, false);
-    setSize(420, 420);
+    // The window is as wide as the buttons ask for: the labels are longer in
+    // some languages than in others (#429).
+    setSize(juce::jmax(420, panel->preferredWidth()), 420);
     fitToScreen(*this);
   }
   void closeButtonPressed() override { showFloating(*this, false, false); }
