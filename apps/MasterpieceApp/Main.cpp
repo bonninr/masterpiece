@@ -723,6 +723,7 @@ public:
     // the NEXT load, which is why they are read before loadOrgan below.
     //
     //   --storage int24|int16    what a resident frame costs
+    //   --program-couplers on    the couplers between the manuals at 16', 8' and 4'
     //   --load-mono on           fold a stereo set to one channel
     //   --load-rate 48000        convert as it loads (0 = as recorded)
     //   --cache single|off       keep the decoded samples for the next load
@@ -742,6 +743,10 @@ public:
               "--storage: expected int24, int16 or float32, got " + v);
         }
         proc_->overrideSetting("storage");
+      } else if (args[i] == "--program-couplers" && i + 1 < args.size()) {
+        const auto v = args[++i].unquoted().trim().toLowerCase();
+        proc_->setProgramCouplers(v == "on" || v == "1" || v == "true" || v == "yes");
+        proc_->overrideSetting("programcouplers");
       } else if (args[i] == "--load-mono" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setLoadMono(v == "on" || v == "1" || v == "true" || v == "yes");
