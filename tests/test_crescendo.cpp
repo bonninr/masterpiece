@@ -66,9 +66,19 @@ juce::File writeOrgan(const juce::File& root) {
   for (int s = 1; s <= 4; ++s) {
     const juce::String n(s);
     switches << "<Switch><SwitchID>200" << n << "</SwitchID><Name>Step " << n << "</Name><Latching>N</Latching></Switch>";
+    // A real organ writes all four flags on every stage row, a crescendo's
+    // included: Nancy's crescendo rows say Y four times over, so the step
+    // engages as the shoe rises and lets itself out as it falls. A row
+    // without them is crossed and nothing happens, and the loader reads the
+    // missing ones as N.
     stages << "<ContinuousControlStageSwitch><ContinuousControlID>50</ContinuousControlID><ContinuousControlValue>"
            << at[s - 1] << "</ContinuousControlValue><ControlledSwitchID>200" << n
-           << "</ControlledSwitchID></ContinuousControlStageSwitch>";
+           << "</ControlledSwitchID>"
+              "<EngageWhenValueIncreasing>Y</EngageWhenValueIncreasing>"
+              "<EngageWhenValueDecreasing>Y</EngageWhenValueDecreasing>"
+              "<DisengageWhenValueIncreasing>Y</DisengageWhenValueIncreasing>"
+              "<DisengageWhenValueDecreasing>Y</DisengageWhenValueDecreasing>"
+           << "</ContinuousControlStageSwitch>";
     combos << "<Combination><CombinationID>300" << n << "</CombinationID><Name>Step " << n
            << "</Name><CombinationTypeCode>4</CombinationTypeCode><ActivatingSwitchID>200" << n
            << "</ActivatingSwitchID></Combination>";
@@ -124,24 +134,33 @@ public:
     for (mp::Id sw : {mp::Id(1101), mp::Id(1102), mp::Id(1103)}) proc.setSwitchEngaged(sw, false);
 
     // On: C drawn by hand; the crescendo to step 3 and back to nothing.
+    // The steps sit at 10, 40, 70 and 100. Rising, the shoe lands on the
+    // highest threshold it passed; falling, on the lowest one it passed, so
+    // the way down needs a value under the step it is going to.
     proc.setCrescendoKeepsHandDrawn(true);
     proc.setSwitchEngaged(1103, true);
     proc.setControlValue(50, 20);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 1, "the shoe is on step 1");
     MP_CHECK(names() == "A-C", "step 1 draws A and leaves C drawn by hand: " + names());
     proc.setControlValue(50, 75);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 3, "the shoe is on step 3");
     MP_CHECK(names() == "ABC", "step 3 holds all three: " + names());
-    proc.setControlValue(50, 45);
+    proc.setControlValue(50, 39);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 2, "the shoe is back on step 2");
     MP_CHECK(names() == "ABC", "back to step 2: C, drawn by hand, stays: " + names());
-    proc.setControlValue(50, 15);
+    proc.setControlValue(50, 5);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 1, "the shoe is back on step 1");
     MP_CHECK(names() == "A-C", "back to step 1: B, drawn by the crescendo, goes: " + names());
 
     // A stop the crescendo drew and the player then pushed in and drew again
     // is the player's: stepping back leaves it.
     proc.setControlValue(50, 45);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 2, "the shoe is on step 2 again");
     MP_CHECK(drawn(1102), "step 2 draws B again");
     proc.setSwitchEngaged(1102, false);
     proc.setSwitchEngaged(1102, true);
-    proc.setControlValue(50, 15);
+    proc.setControlValue(50, 5);
+    MP_CHECK(proc.stageSwitches().currentStep(50) == 1, "the shoe is back on step 1");
     MP_CHECK(drawn(1102), "B, taken over by hand, stays at step 1: " + names());
 
     // Off: each step recalls its registration whole, as before.
@@ -150,7 +169,7 @@ public:
     proc.setCrescendoKeepsHandDrawn(false);
     proc.setSwitchEngaged(1103, true);
     proc.setControlValue(50, 75);
-    proc.setControlValue(50, 45);
+    proc.setControlValue(50, 39);
     MP_CHECK(!drawn(1103), "off: step 2 recalled whole pushes C in: " + names());
 
     proc.setCrescendoKeepsHandDrawn(keepWas);
