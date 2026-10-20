@@ -1696,7 +1696,10 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
-constexpr uint32_t kCacheVersion = 6; // 6 adds the 20-bit width; 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
+// The 20-bit width (code 3) needs no new version: a cache holds it only under a
+// fingerprint with that width in it, which no earlier build can ask for, so
+// the caches players already have stay valid.
+constexpr uint32_t kCacheVersion = 5; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
 
 // A checksum of one sample's audio in the cache, so audio damaged on the
 // disk is found as it is read back: a flipped bit there plays as a click or
