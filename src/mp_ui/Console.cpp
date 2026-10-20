@@ -430,6 +430,15 @@ void ConsoleView::refreshControlStates() {
   }
 }
 
+// The screen reader is offered the console's controls only while the console
+// is on the screen: the plain stop list under it would otherwise be read
+// twice.
+void ConsoleView::setControlsAccessible(bool accessible) {
+  if (controlsAccessible_ == accessible) return;
+  controlsAccessible_ = accessible;
+  for (auto& control : controls_) control->setAccessible(accessible);
+}
+
 // Draw the control or retire it, as a click on it does.
 void ConsoleView::toggleDrawnSwitch(Id switchId) {
   // A stop with no pipes in this set is not drawn from the console: the
@@ -693,9 +702,13 @@ void ConsoleView::timerCallback() {
   // it was hidden is found on the first look after it is shown again. Four
   // looks a second until then: every look of a timer wakes two threads.
   if (!isShowing()) {
+    // The console is off the screen: its controls are not offered to a screen
+    // reader either, or the plain stop list under it would be read twice.
+    setControlsAccessible(false);
     if (getTimerInterval() != kHiddenMs) startTimer(kHiddenMs);
     return;
   }
+  setControlsAccessible(true);
 
   // The player may have moved a manual to another channel in Settings since
   // the console was built; the drawn keys follow without a reload. Routing is

@@ -106,8 +106,7 @@ public:
   void setControlFromMouse(juce::Point<int> p);
   // Keeps the drawn controls in step with the engine: a piston, a
   // combination or MIDI moves a switch, and the screen reader is told.
-  void refreshControlStates();
-  void resized() override;
+  void refreshControlStates();  void resized() override;
 
   // Which console layout to draw. A set that ships for more than one console
   // size gives every drawn thing up to three alternate positions, and often
@@ -225,6 +224,9 @@ private:
   // The invisible components over the drawn controls, so a screen reader
   // finds them.
   void buildControls(const OrganModel& model);
+  // The screen reader is offered the console's controls only while the
+  // console is on the screen.
+  void setControlsAccessible(bool accessible);
   // Draw the control or retire it, as a click on it does.
   void toggleDrawnSwitch(Id switchId);
 
@@ -255,6 +257,9 @@ private:
   std::vector<TextItem> texts_;  // drawn over the artwork, under the keys
   // The invisible components over the drawn controls, for the screen reader.
   std::vector<std::unique_ptr<ConsoleControl>> controls_;
+  // Whether the screen reader is offered the controls: only while the console
+  // is on the screen.
+  bool controlsAccessible_ = true;
   std::vector<Id> pageIds_;
   int pageIndex_ = 0;
   int layout_ = 0;
