@@ -118,6 +118,7 @@ public:
     nbits_ -= bits;
     value = static_cast<uint32_t>((acc_ >> nbits_) & ((1ull << bits) - 1ull));
     acc_ &= (1ull << nbits_) - 1ull;
+    read_ += static_cast<uint64_t>(bits);
     return true;
   }
 
@@ -138,6 +139,7 @@ public:
           count += 8;
           nbits_ -= 8;
           acc_ &= (1ull << nbits_) - 1ull;
+          read_ += 8;
           continue;
         }
         int ones = 0;
@@ -146,17 +148,20 @@ public:
         count += static_cast<uint32_t>(ones);
         nbits_ -= ones + 1;
         acc_ &= (1ull << nbits_) - 1ull;
+        read_ += static_cast<uint64_t>(ones + 1);
         return true;
       }
       if ((acc_ & (1ull << (nbits_ - 1))) != 0) {
         ++count;
         --nbits_;
-      } else {
-        --nbits_;
         acc_ &= (1ull << nbits_) - 1ull;
-        return true;
+        ++read_;
+        continue;
       }
+      --nbits_;
       acc_ &= (1ull << nbits_) - 1ull;
+      ++read_;
+      return true;
     }
   }
 
@@ -173,9 +178,11 @@ public:
     return true;
   }
 
-  // The bytes fully consumed. The writer pads every stream to a byte
+  // The bytes the stream used. The writer pads every stream to a byte
   // boundary, so this is where the next stream starts.
-  size_t bytesConsumed() const { return pos_ - nbits_ / 8; }
+  size_t bytesConsumed() const {
+    return static_cast<size_t>((read_ + 7) / 8);
+  }
 
 private:
   bool fill(int want) {
@@ -195,6 +202,7 @@ private:
   size_t pos_ = 0;
   uint64_t acc_ = 0;
   int nbits_ = 0;
+  uint64_t read_ = 0; // the bits consumed
 };
 
 // ------------------------------------------------------------------ values
@@ -514,32 +522,34 @@ uint32_t readU32(const unsigned char* p) {
 // Codes one block: the header and the payload, appended to `out`.
 void encodeBlockInto(const int32_t* src, size_t frames, int channels,
                      int bitDepth, std::vector<unsigned char>& out) {
-  // The channels, taken apart.
-  std::vector<std::vector<int32_t>> lane(channels);
-  for (int c = 0; c < channels; ++c)
-    lane[c].resize(frames);
+  // The channels, taken apart. One buffer, the channels side by side.
+  const size_t laneFrames = frames;
+  std::vector<int32_t> lane(static_cast<size_t>(channels) * laneFrames);
   for (size_t f = 0; f < frames; ++f)
     for (int c = 0; c < channels; ++c)
-      lane[c][f] = src[f * static_cast<size_t>(channels) + c];
+      lane[static_cast<size_t>(c) * laneFrames + f] =
+          src[f * static_cast<size_t>(channels) + c];
 
   // The side channel of a stereo pair: the difference.
   const int maxOrder =
       frames > 2 ? 2 : (frames > 1 ? 1 : 0);
   std::vector<ChannelCost> cost(channels);
   for (int c = 0; c < channels; ++c)
-    cost[c] = estimateChannel(lane[c].data(), frames, maxOrder, bitDepth);
+    cost[c] = estimateChannel(lane.data() + static_cast<size_t>(c) * laneFrames,
+                               frames, maxOrder, bitDepth);
 
   bool leftSide = false;
   if (channels == 2) {
     std::vector<int32_t> side(frames);
     for (size_t f = 0; f < frames; ++f)
-      side[f] = static_cast<int32_t>(static_cast<int64_t>(lane[1][f]) -
-                                     lane[0][f]);
+      side[f] = static_cast<int32_t>(
+          static_cast<int64_t>(lane[laneFrames + f]) - lane[f]);
     const ChannelCost sideCost =
         estimateChannel(side.data(), frames, maxOrder, bitDepth);
     leftSide = sideCost.bits < cost[1].bits;
     if (leftSide) {
-      lane[1] = side;
+      for (size_t f = 0; f < frames; ++f)
+        lane[laneFrames + f] = side[f];
       cost[1] = sideCost;
     }
   }
@@ -549,8 +559,8 @@ void encodeBlockInto(const int32_t* src, size_t frames, int channels,
     // The side channel is the difference of two channels: it is stored one
     // bit wider than the block.
     const bool wide = leftSide && c == 1;
-    encodeChannel(lane[c].data(), frames, cost[c].order, bitDepth, wide,
-                  payload);
+    encodeChannel(lane.data() + static_cast<size_t>(c) * laneFrames, frames,
+                  cost[c].order, bitDepth, wide, payload);
   }
 
   const size_t start = out.size();
@@ -572,10 +582,11 @@ void encodeBlockInto(const int32_t* src, size_t frames, int channels,
 }
 
 // Reads one block from a byte range. `out` receives frames * channels
-// interleaved values.
+// interleaved values. A block that claims more frames than it may hold is
+// refused before anything is written.
 bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
-                   int32_t* out, uint16_t* framesOut, int* channelsOut,
-                   int* bitDepthOut, LosslessError* error) {
+                   size_t maxFrames, int32_t* out, uint16_t* framesOut,
+                   int* channelsOut, int* bitDepthOut, LosslessError* error) {
   if (offset > size || size - offset < kHeaderBytes) {
     *error = LosslessError::Truncated;
     return false;
@@ -593,7 +604,7 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
   const uint32_t payloadBytes = readU32(header + 12);
   const uint32_t check = readU32(header + kCheckOffset);
 
-  if (frames == 0) {
+  if (frames == 0 || frames > maxFrames) {
     *error = LosslessError::BadHeader;
     return false;
   }
@@ -632,13 +643,14 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
     return false;
   }
 
-  std::vector<std::vector<int32_t>> lane(channels);
-  for (int c = 0; c < channels; ++c)
-    lane[c].resize(frames);
+  // The channels, one after another, each with its own samples.
+  std::vector<int32_t> lane(static_cast<size_t>(channels) * frames);
   size_t pos = 0;
   for (int c = 0; c < channels; ++c) {
     if (!decodeChannelStream(data + payloadStart, payloadBytes, pos, bitDepth,
-                              frames, lane[c].data(), error))
+                              frames,
+                              lane.data() + static_cast<size_t>(c) * frames,
+                              error))
       return false;
   }
   if (pos != payloadBytes) {
@@ -648,9 +660,9 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
 
   for (size_t f = 0; f < frames; ++f) {
     for (int c = 0; c < channels; ++c) {
-      int64_t value = lane[c][f];
+      int64_t value = lane[static_cast<size_t>(c) * frames + f];
       if (leftSide && c == 1)
-        value += lane[0][f];
+        value += lane[f];
       if (value < minSample(bitDepth) || value > maxSample(bitDepth)) {
         *error = LosslessError::CorruptData;
         return false;
@@ -783,8 +795,8 @@ bool decodeLosslessBlock(const LosslessStream& stream, size_t blockIndex,
     return false;
   }
   return decodeBlockAt(stream.data.data(), stream.data.size(),
-                        static_cast<size_t>(offset), out, frames, nullptr,
-                        nullptr, error);
+                        static_cast<size_t>(offset), stream.blockFrames, out,
+                        frames, nullptr, nullptr, error);
 }
 
 bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
@@ -825,10 +837,6 @@ bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
     if (!decodeLosslessBlock(stream, static_cast<size_t>(b), scratch.data(),
                              &frames, error))
       return false;
-    if (frames > stream.blockFrames) {
-      *error = LosslessError::BadStream;
-      return false;
-    }
     const uint64_t blockStart = b * stream.blockFrames;
     const uint64_t from = std::max(firstFrame, blockStart);
     const uint64_t to = std::min(firstFrame + count,
