@@ -72,6 +72,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openRate_ = proc_.loadSampleRate();
   openReleases_ = proc_.releaseChoice();
   openReleaseMs_ = proc_.releaseMaxMs();
+  openSparse_ = proc_.sparseEvery();
   openCache_ = proc_.cacheMode();
   openLoadTicks_ = proc_.loadTicks();
   openReopen_ = proc_.reopenLastOrgan();
@@ -227,6 +228,21 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     const int id = releaseLength_.getSelectedId();
     if (id >= 1 && id <= kReleaseLengthCount) proc_.setReleaseMaxMs(kReleaseLengthsMs[id - 1]);
   };
+
+  // How many notes of a rank are loaded. A note that is not loaded plays its
+  // nearest loaded neighbour's samples, retuned to its own pitch, so the
+  // samples it would have played are never read.
+  addAndMakeVisible(sparseLabel_);
+  styleLabel(sparseLabel_, TRANS("Notes loaded"));
+  addAndMakeVisible(sparse_);
+  sparse_.addItem(TRANS("All"), 1);
+  sparse_.addItem(TRANS("Every second note"), 2);
+  sparse_.addItem(TRANS("Every third note"), 3);
+  sparse_.setSelectedId(proc_.sparseEvery(), juce::dontSendNotification);
+  sparse_.setTooltip(TRANS("Saves memory: a note that is not loaded plays its nearest loaded "
+                            "neighbour's samples, retuned to its own pitch. Applies when the "
+                            "organ is loaded again."));
+  sparse_.onChange = [this] { proc_.setSparseEvery(sparse_.getSelectedId()); };
 
   // Keeping the decoded samples, so the next load of the same organ is a read
   // rather than twelve thousand decodes. One file by default: these run to
@@ -603,6 +619,8 @@ void EnginePanel::revert() {
   releases_.setSelectedId(static_cast<int>(openReleases_) + 1, juce::dontSendNotification);
   proc_.setReleaseMaxMs(openReleaseMs_);
   showReleaseLength(openReleaseMs_);
+  proc_.setSparseEvery(openSparse_);
+  sparse_.setSelectedId(openSparse_, juce::dontSendNotification);
   proc_.setCacheMode(openCache_);
   cache_.setSelectedId(openCache_ == SampleLibrary::CacheMode::Off        ? 3
                        : openCache_ == SampleLibrary::CacheMode::PerOrgan ? 2
@@ -699,6 +717,7 @@ bool EnginePanel::loadingChanged() const {
   const auto sw = proc_.engineSwitch();
   return proc_.sampleStorage() != openStorage_ || proc_.streamReleases() != openStream_ ||
          proc_.releaseChoice() != openReleases_ || proc_.releaseMaxMs() != openReleaseMs_ ||
+         proc_.sparseEvery() != openSparse_ ||
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
@@ -903,6 +922,10 @@ void EnginePanel::resized() {
   auto rateRow = r.removeFromTop(kRow);
   rateLabel_.setBounds(rateRow.removeFromLeft(180));
   rate_.setBounds(rateRow.removeFromLeft(260));
+  r.removeFromTop(6);
+  auto sparseRow = r.removeFromTop(kRow);
+  sparseLabel_.setBounds(sparseRow.removeFromLeft(180));
+  sparse_.setBounds(sparseRow.removeFromLeft(300));
   r.removeFromTop(6);
   auto releasesRow = r.removeFromTop(kRow);
   releasesLabel_.setBounds(releasesRow.removeFromLeft(180));

@@ -1496,6 +1496,22 @@ public:
   void setReleaseMaxMs(int ms) { samples_.setReleaseMaxMs(ms); }
   bool loadMono() const { return samples_.loadMono(); }
 
+  // --- sparse loading -----------------------------------------------------
+  // How many notes of a rank are loaded: 1 for every note, 2 for every second
+  // note, 3 for every third. A note that is not loaded plays its nearest
+  // loaded neighbour's samples, retuned to its own pitch, so the samples it
+  // would have played are never read.
+  //
+  // Saved with the organ, and it takes effect at the next load.
+  void setSparseEvery(int every) {
+    const int v = every < 1 ? 1 : (every > 3 ? 3 : every);
+    if (v == sparseEvery_) return;
+    sparseEvery_ = v;
+    samples_.setSparseEvery(v);
+    markSettingsDirty();
+  }
+  int sparseEvery() const { return sparseEvery_; }
+
   // The sample cache: a previous load of this organ at these settings, kept
   // so the next one is a read instead of twelve thousand decodes. One file by
   // default, replaced as organs change, because these run to gigabytes.
@@ -1666,6 +1682,23 @@ private:
   void resolveSamplePitches();
   double playbackRatioFor(const Pipe& pipe, const SampleRef& sample,
                           const PipeLayer& layer) const;
+  // What a pipe must sound at, in the mode the organ plays in: at the
+  // original instrument's own pitch, or at a tempered pitch from the
+  // keyboard. `originalPitch` says whether the original pitch may be used:
+  // a pipe that plays a neighbour's samples needs both pipes measured the
+  // same way, and the mode needs both of them to say what they sounded at.
+  double pipeTargetHzFor(const Pipe& pipe, const PipeLayer& layer,
+                          bool originalPitch) const;
+  // The pipe whose samples this one plays, when it plays a neighbour's
+  // because its own were left out of the load. Null when it plays its own.
+  const Pipe* borrowedNeighbour(const Pipe& pipe) const;
+  // The pipes by id, for the sparse loading. Built at load, read on the
+  // audio thread.
+  void buildPipeIndex();
+  // The sparse loading, worked out and put into the model: the pipes that are
+  // not kept take a neighbour's layers, and the samples they would have
+  // played are then read by nobody.
+  void applySparseLoadingToModel();
 
   // Where this layer's detuning currently stands. Zero unless the organ
   // declares detuning AND a player has asked for some — and zero flat out
@@ -1757,6 +1790,13 @@ private:
   // Which windchest each pipe stands on, resolved at load so a note-on does
   // not search for it.
   std::unordered_map<Id, int> pipeWindIndex_;
+  // The pipes by id, resolved at load like the wind chests: a pipe that plays
+  // a neighbour's samples has to find that neighbour when it sounds, and a
+  // note-on must not search.
+  std::unordered_map<Id, const Pipe*> pipeById_;
+  // How many notes of a rank are loaded: 1 for every note, 2 for every second
+  // note, 3 for every third. Saved with the organ.
+  int sparseEvery_ = 1;
   // Tremulants, in a stable order, and which one reaches each pipe. Both
   // resolved at load: a note-on must not search, and a voice started in one
   // block must still point at the right tremulant in the next.
@@ -2223,6 +2263,9 @@ private:
     bool mono = false, stream = false;
     int64_t streamHead = 0, preload = 0;
     int streamHeadPercent = 0;
+    // How many notes of a rank are loaded: 1 for every note, 2 for every
+    // second, 3 for every third.
+    int sparse = 1;
     EngineSwitch engine;
   };
   std::optional<LoadingChoice> sessionLoading_;

@@ -2,6 +2,7 @@
 #include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/GrandOrgueImport.h"
+#include "../mp_core/SparseLoading.h"
 #include "../mp_core/Temperament.h"
 #include "RealtimeThread.h"
 #include "Translations.h"
@@ -1741,6 +1742,8 @@ bool MasterpieceProcessor::saveSettings() const {
     // coming back and finding the recital registrations instead of the service
     // ones is a nasty surprise to meet mid-piece.
     if (licenceConfirmed_) text << "licenceconfirmed 1\n";
+    // How many notes of a rank are loaded. Absent means every note.
+    if (sparseEvery_ > 1) text << "sparse " << juce::String(sparseEvery_) << "\n";
     if (!combinationSet_.empty())
       text << "combset " << juce::String(combinationSet_) << "\n";
     for (Id stop : excludedStops_) text << "skipstop " << juce::String(stop) << "\n";
@@ -1787,6 +1790,10 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicingEqSettings_ = defaultEq_;
   organOwnsEq_ = false;
   voicingEq_.configure(voicingEqSettings_, sampleRate_);
+  // Sparse loading belongs to the organ: another organ starts with every
+  // note, and this one's own file says which notes it keeps.
+  sparseEvery_ = 1;
+  samples_.setSparseEvery(1);
   excludedStops_.clear();
   excludedPerspectives_.clear();
   excludedRanks_.clear();
@@ -1915,6 +1922,13 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "skiprank") {
       excludedRanks_.insert(static_cast<Id>(val.getLargeIntValue()));
+      continue;
+    }
+    if (key == "sparse") {
+      // How many notes are loaded: 1 for every note, 2 for every second, 3 for
+      // every third. Absent means every note.
+      sparseEvery_ = juce::jlimit(1, 3, val.getIntValue());
+      samples_.setSparseEvery(sparseEvery_);
       continue;
     }
     if (key == "skipperspective") {
@@ -2881,13 +2895,21 @@ void MasterpieceProcessor::resolveSamplePitches() {
   for (auto& [id, ref] : model_.samples) resolveOne(ref);
   for (auto& [rankId, rank] : model_.ranks)
     for (auto& pipe : rank.pipes) {
+      // A pipe that plays a neighbour's samples is judged by the pipe they
+      // were recorded for: the shared sample is resolved as if it were
+      // recorded for the wrong pipe otherwise.
+      const Pipe* judge = &pipe;
+      if (pipe.borrowedFromPipeId != 0) {
+        const auto it = pipeById_.find(pipe.borrowedFromPipeId);
+        if (it != pipeById_.end()) judge = it->second;
+      }
       // The pitch the pipe is keyed to, untempered: enough to tell a real
       // declaration of the base pitch from a placeholder.
       const double base = model_.basePitchHz > 0.0 ? model_.basePitchHz : 440.0;
-      const int harm = pipe.basePitch64ftHarmonicNum > 0 ? pipe.basePitch64ftHarmonicNum : 8;
-      const double pipeHz = rank.isNoise || pipe.midiNote < 0
+      const int harm = judge->basePitch64ftHarmonicNum > 0 ? judge->basePitch64ftHarmonicNum : 8;
+      const double pipeHz = rank.isNoise || judge->midiNote < 0
                                 ? 0.0
-                                : base * std::pow(2.0, (pipe.midiNote - 69) / 12.0) * harm / 8.0;
+                                : base * std::pow(2.0, (judge->midiNote - 69) / 12.0) * harm / 8.0;
       for (auto& layer : pipe.layers) {
         for (auto& a : layer.attacks) resolveOne(a.sample, pipeHz);
         for (auto& rel : layer.releases) resolveOne(rel.sample, pipeHz);
@@ -2906,16 +2928,14 @@ void MasterpieceProcessor::resolveSamplePitches() {
   juce::Logger::writeToLog(line);
 }
 
-double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
-                                             const SampleRef& sample,
-                                             const PipeLayer& layer) const {
+double MasterpieceProcessor::pipeTargetHzFor(const Pipe& pipe, const PipeLayer& layer,
+                                              bool originalPitch) const {
   // What this pipe must sound at. Two modes: at the original instrument's own
   // pitch (which is why anyone samples a particular organ), or at a tempered
   // pitch derived from the keyboard. A pipe with no declared original pitch
   // falls back to the tempered path rather than going silent.
   double targetHz = 0.0;
-  if (graph_.engineSwitch.playAtOriginalOrganPitch &&
-      pipe.originalOrganPitchHz > 0.0) {
+  if (originalPitch && pipe.originalOrganPitchHz > 0.0) {
     targetHz = pipe.originalOrganPitchHz;
   } else {
     targetHz = pipeTargetHz(pipe.midiNote, pipe.basePitch64ftHarmonicNum,
@@ -2935,6 +2955,27 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
     targetHz = detunedTargetHz(targetHz, detuneControlValue(layer),
                                detuneCentre(layer),
                                layer.pitchSensitivityHzPerUnit);
+  return targetHz;
+}
+
+const Pipe* MasterpieceProcessor::borrowedNeighbour(const Pipe& pipe) const {
+  if (pipe.borrowedFromPipeId == 0) return nullptr;
+  const auto it = pipeById_.find(pipe.borrowedFromPipeId);
+  return it == pipeById_.end() ? nullptr : it->second;
+}
+
+double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
+                                             const SampleRef& sample,
+                                             const PipeLayer& layer) const {
+  // A pipe that plays a neighbour's samples, because its own were left out of
+  // the load. The samples were recorded for the neighbour.
+  const Pipe* neighbour = borrowedNeighbour(pipe);
+  // In the original-pitch mode the two pipes are measured the same way: the
+  // mode needs both of them to say what they sounded at.
+  const bool originalPitch =
+      graph_.engineSwitch.playAtOriginalOrganPitch && pipe.originalOrganPitchHz > 0.0 &&
+      (neighbour == nullptr || neighbour->originalOrganPitchHz > 0.0);
+  double targetHz = pipeTargetHzFor(pipe, layer, originalPitch);
 
   // What the file actually holds. An organ sample is recorded from its own
   // pipe, so this is normally close to targetHz and the ratio near 1.0 —
@@ -2949,7 +2990,14 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
     // Nothing declares a pitch: assume the sample was recorded at the pipe's
     // own nominal pitch, which makes the ratio 1.0 and is what an untagged
     // organ sample set means.
-    return 1.0;
+    //
+    // A pipe that plays a neighbour's samples is the exception: its recording
+    // was made for the neighbour, at the neighbour's pitch, so the ratio is
+    // the two pipes' targets.
+    if (neighbour == nullptr) return 1.0;
+    const double neighbourHz = pipeTargetHzFor(*neighbour, layer, originalPitch);
+    if (neighbourHz <= 0.0) return 1.0;
+    return targetHz / neighbourHz;
   }
   return playbackRatio(targetHz, recordedHz);
 }
@@ -3608,6 +3656,46 @@ void MasterpieceProcessor::publishShown() {
 
 // ------------------------------------------------------ load estimates
 
+void MasterpieceProcessor::buildPipeIndex() {
+  // The pipes by id, for the sparse loading: a pipe that plays a neighbour's
+  // samples has to find that neighbour, both when the samples' pitch is
+  // resolved and when the pipe sounds.
+  pipeById_.clear();
+  pipeById_.reserve(model_.ranks.size() * 8);
+  for (const auto& [rankId, rank] : model_.ranks) {
+    (void)rankId;
+    for (const auto& pipe : rank.pipes) pipeById_[pipe.pipeId] = &pipe;
+  }
+}
+
+void MasterpieceProcessor::applySparseLoadingToModel() {
+  // The ranks left alone: the sampled tremulant ranks. A rank recorded with a
+  // tremulant running is played against the switch that runs it, and its pipes
+  // are the ones the tremulant reaches, so they keep their own samples.
+  std::unordered_set<Id> protectedRanks;
+  for (const auto& [stopId, stop] : model_.stops) {
+    (void)stopId;
+    for (const StopRankEntry& e : stop.ranks)
+      if (e.alternateRankId != 0) protectedRanks.insert(e.alternateRankId);
+  }
+  // Whether a sample can be read: on disk, in the organ's archive, or already
+  // held. Asked once per sample: a set asks about thousands of them.
+  std::unordered_map<Id, bool> presence;
+  const auto present = [&](Id id) {
+    const auto it = presence.find(id);
+    if (it != presence.end()) return it->second;
+    const bool yes = samples_.samplePresent(id, model_, organRootDir_);
+    presence.emplace(id, yes);
+    return yes;
+  };
+  const auto plan = mp::planSparseLoading(model_, sparseEvery_, protectedRanks, present);
+  const int borrowed = mp::applySparsePlan(model_, plan);
+  if (borrowed > 0)
+    juce::Logger::writeToLog(
+        "load: notes loaded: every " + juce::String(sparseEvery_) + " - " +
+        juce::String(borrowed) + " pipe(s) play a neighbour's samples, retuned to their own");
+}
+
 std::vector<SampleLibrary::ShapeJob> MasterpieceProcessor::sampleShapeJobs() const {
   // A packaged organ's samples are in its archives; their saved index is
   // enough to know each file's size.
@@ -3621,7 +3709,29 @@ std::vector<SampleLibrary::ShapeJob> MasterpieceProcessor::sampleShapeJobs() con
                                   .toStdString();
     if (!archive->loadIndex(index)) archive.reset();
   }
-  return samples_.shapeJobs(model_, organRootDir_, archive.get());
+  // A sparse load reads fewer samples than the model names: the pipes that
+  // play a neighbour's samples do not read their own. The figure has to show
+  // that, so the plan is worked out here as well as at the load.
+  std::unique_ptr<mp::SparseSamples> wanted;
+  if (sparseEvery_ > 1) {
+    std::unordered_set<Id> protectedRanks;
+    for (const auto& [stopId, stop] : model_.stops) {
+      (void)stopId;
+      for (const StopRankEntry& e : stop.ranks)
+        if (e.alternateRankId != 0) protectedRanks.insert(e.alternateRankId);
+    }
+    std::unordered_map<Id, bool> presence;
+    const auto present = [&](Id id) {
+      const auto it = presence.find(id);
+      if (it != presence.end()) return it->second;
+      const bool yes = samples_.samplePresent(id, model_, organRootDir_);
+      presence.emplace(id, yes);
+      return yes;
+    };
+    const auto plan = mp::planSparseLoading(model_, sparseEvery_, protectedRanks, present);
+    wanted = std::make_unique<mp::SparseSamples>(mp::sparseSampleIds(model_, plan));
+  }
+  return samples_.shapeJobs(model_, organRootDir_, archive.get(), wanted.get());
 }
 
 bool MasterpieceProcessor::stopDrawn(Id stopId) const {
@@ -3762,7 +3872,8 @@ std::string MasterpieceProcessor::cacheChoices() const {
          std::to_string(static_cast<int64_t>(samples_.loadSampleRate())) + "/" +
          std::to_string(static_cast<int>(samples_.cacheMode())) + "/" +
          std::to_string(static_cast<int>(samples_.releaseChoice())) + "/" +
-         std::to_string(samples_.releaseMaxMs());
+         std::to_string(samples_.releaseMaxMs()) + "/" +
+         std::to_string(sparseEvery_);
 }
 
 void MasterpieceProcessor::keepLoadingChoiceForSession() {
@@ -3775,6 +3886,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.streamHead = samples_.streamHeadFrames();
   c.streamHeadPercent = samples_.streamHeadPercent();
   c.preload = preloadHead_;
+  c.sparse = sparseEvery_;
   c.engine = graph_.engineSwitch;
   sessionLoading_ = c;
 }
@@ -5771,6 +5883,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setStreamHeadFrames(c.streamHead);
     samples_.setStreamHeadPercent(c.streamHeadPercent);
     preloadHead_ = c.preload;
+    sparseEvery_ = c.sparse;
+    samples_.setSparseEvery(c.sparse);
     graph_.engineSwitch = c.engine;
     juce::Logger::writeToLog("load: using the Loading choices kept for this session");
   } else {
@@ -5825,6 +5939,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
 
   model_ = std::move(loaded);
+  // The pipes by id, for the sparse loading. Rebuilt here because the pipes
+  // are new: the old ones belong to the organ being left.
+  buildPipeIndex();
   // The releases the player chose to load, before anything reads them.
   if (samples_.releaseChoice() != SampleLibrary::ReleaseChoice::All) {
     SampleLibrary::pruneReleases(model_, samples_.releaseChoice());
@@ -6440,6 +6557,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 
     samples_.setCacheWhilePlaying(cacheWhilePlaying_.load());
     skipCacheSave_.store(false);
+    // Sparse loading: the pipes that are not kept play a neighbour's samples,
+    // so the samples they would have played are never read. The model is
+    // changed first, and the load follows it.
+    samples_.setSparseEvery(sparseEvery_);
+    if (sparseEvery_ > 1 && !graphicsOnly) applySparseLoadingToModel();
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() ? nullptr : &onlyRanks);
@@ -6475,6 +6597,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                                  : "load: cancelled, discarding partial organ");
     samples_.clear();
     model_ = OrganModel{};
+    pipeById_.clear();
     // The organ is not loaded, so nothing may name its files after it: with
     // loadedOdf_ still set, organFile() took the name from this empty model,
     // the next load read its settings from a file that does not exist, and

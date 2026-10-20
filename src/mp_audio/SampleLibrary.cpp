@@ -741,19 +741,25 @@ void SampleLibrary::pruneReleases(OrganModel& model, ReleaseChoice choice) {
 }
 
 std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
-    const OrganModel& model, const std::string& organRootDir, const OrganArchive* archive) const {
+    const OrganModel& model, const std::string& organRootDir, const OrganArchive* archive,
+    const SparseSamples* wanted) const {
   // Which samples the pipework plays, and which of them only as releases --
   // the same two lists loadAll() builds, for the same reasons.
   std::unordered_set<Id> attacks, releases;
-  for (const auto& [rankId, rank] : model.ranks) {
-    (void)rankId;
-    for (const auto& pipe : rank.pipes)
-      for (const auto& layer : pipe.layers) {
-        for (const auto& a : layer.attacks)
-          if (a.sample.sampleId != 0) attacks.insert(a.sample.sampleId);
-        for (const auto& r : layer.releases)
-          if (r.sample.sampleId != 0) releases.insert(r.sample.sampleId);
-      }
+  if (wanted != nullptr) {
+    attacks = wanted->attacks;
+    releases = wanted->releases;
+  } else {
+    for (const auto& [rankId, rank] : model.ranks) {
+      (void)rankId;
+      for (const auto& pipe : rank.pipes)
+        for (const auto& layer : pipe.layers) {
+          for (const auto& a : layer.attacks)
+            if (a.sample.sampleId != 0) attacks.insert(a.sample.sampleId);
+          for (const auto& r : layer.releases)
+            if (r.sample.sampleId != 0) releases.insert(r.sample.sampleId);
+        }
+    }
   }
   std::vector<ShapeJob> jobs;
   jobs.reserve(attacks.size() + releases.size());
@@ -849,6 +855,34 @@ bool SampleLibrary::rankShipped(const Rank& rank, const OrganModel& model, const
           return true;
       }
   return !named;
+}
+
+bool SampleLibrary::samplePresent(Id sampleId, const OrganModel& model,
+                                   const std::string& organRootDir) const {
+  const auto it = model.samples.find(sampleId);
+  if (it == model.samples.end()) return false;
+  const SampleRef& ref = it->second;
+  if (ref.fileName.empty()) return false;
+  // An encrypted file is never decoded, and a licensed one waits for the
+  // player's licence. Neither is there to be read.
+  if (ref.encrypted) return false;
+  if (ref.licenceRequired && !licenceConfirmed_) return false;
+  // Held already: read at this load, or from the sample cache, which opens the
+  // organ when its installation files are gone.
+  const Store* held = live_.load(std::memory_order_acquire);
+  if (held != nullptr && held->count(sampleId) != 0) return true;
+  // The format's standard components are generated when they are missing.
+  if (ref.installationPackageId == 1) return true;
+  std::error_code ec;
+  if (std::filesystem::exists(resolveIgnoringCase(resolvePath(rootFor(organRootDir, ref.installationPackageId),
+                                                                ref.fileName, ref.installationPackageId)),
+                              ec))
+    return true;
+  if (archive_ != nullptr &&
+      archive_->find(std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
+                         .generic_string()) != nullptr)
+    return true;
+  return false;
 }
 
 SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
@@ -1691,6 +1725,10 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|tp" + std::to_string(streamHeadPercent_);
   s += "|rc" + std::to_string(static_cast<int>(releaseChoice_));
   s += "|rl" + std::to_string(releaseMaxMs_);
+  // How many notes are loaded. A sparse load reads fewer samples than a full
+  // one, so the two caches hold different things and must never be mistaken
+  // for each other.
+  s += "|sp" + std::to_string(sparseEvery_);
   // Without the licensed samples a cache is not the organ with them.
   s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
   // Caches written before a read failure stopped being fatal may hold only

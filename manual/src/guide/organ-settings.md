@@ -62,6 +62,7 @@ The tab scrolls when the window is shorter than its contents. Changes here act o
 | **Preloaded per sample** | How much of each sample is held in memory. An attack is always held to the end of its sustain loop, which in an organ sample lies close to the end of the file. | **Whole samples (most memory)** | **Whole samples (most memory)**, **Up to the loop (less memory)**. A file written by an earlier version may show **Loop + 1 s (earlier choice)** or **Loop + 2 s (earlier choice)**, which stay as they are. A sample whose release is in the same file is always held whole. | Next load |
 | **Resident format** | What a held frame costs in memory. 16-bit scales each sample by its own peak first, so a quiet stop keeps the full sixteen bits. | **24-bit - what the samples are** | **24-bit - what the samples are**, **16-bit - two thirds of that, inaudible**, **32-bit float - larger than the source** | Next load |
 | **Sample rate** | Converts samples to this rate while loading. A 96 kHz set on a 48 kHz device is held at twice the size it needs otherwise. Only the two lower rates are offered. | **As recorded** | **As recorded**, **48 kHz**, **44.1 kHz** | Next load |
+| **Notes loaded** | How many notes of a rank are loaded. A note that is not loaded plays the samples of its nearest loaded neighbour, retuned to its own pitch. A noise, a percussive rank, a rank recorded with a tremulant and a rank of fewer than eight pipes keep every note. | **All** | **All**, **Every second note**, **Every third note** | Next load |
 | **Stream release tails from disk** | Holds only the start of each release in memory and reads the rest from disk while it plays. Releases are the only samples worth streaming: they run several seconds and play once from the start, straight through. Needs a disk that keeps up. | Off | On, off | Next load |
 | Stream box (beside the tick) | How much of each release stays in memory when streaming is on. A larger share gives a slow disk longer to catch up. Greyed out while streaming is off. | **Hold the first second** | **Hold the first second**, **Hold 25% of each release**, **Hold 50% of each release**, **Hold 75% of each release** | Next load |
 | **Load in mono (halves memory, gives up the stereo image)** | Folds each stereo sample to one channel. | Off | On, off | Next load |
@@ -78,7 +79,7 @@ The tab scrolls when the window is shorter than its contents. Changes here act o
 
 ### Sample cache
 
-The sample cache keeps the decoded samples on disk, so the next load of the same organ is a read. A change to a setting that decides what the cache holds (resident format, mono, streaming, preload, sample rate, releases, release length, cache mode) rebuilds it at the next load. While such a change is pending the tab shows **The cache is rebuilt when this window closes. It can take several minutes.**
+The sample cache keeps the decoded samples on disk, so the next load of the same organ is a read. A change to a setting that decides what the cache holds (resident format, mono, streaming, preload, sample rate, notes loaded, releases, release length, cache mode) rebuilds it at the next load. While such a change is pending the tab shows **The cache is rebuilt when this window closes. It can take several minutes.**
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -216,6 +217,7 @@ The organ file is `organs/<organ key>.mporgan` in the data folder (see [General 
 | `releasecutoff` | dB, `0` for never | **Release tails end below** |
 | `reverb` | `<on> <wet> <path>` | The **Room** tab |
 | `rate` | Hz, `0` as recorded | **Sample rate** |
+| `sparse` | `1` every note, `2` every second note, `3` every third note; absent means every note | **Notes loaded** |
 | `cache` | `0` off, `1` one cache, `2` one per organ | **Sample cache** |
 | `stream` | `1` or `0` | **Stream release tails from disk** |
 | `streamhead` | Frames of a release held when streaming | Set by Masterpiece |

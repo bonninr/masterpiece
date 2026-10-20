@@ -129,6 +129,7 @@ enum class ProgramProp : uint8_t {
   RoomWet = 19,
   PipeDetune = 20,
   WindSway = 21,
+  SparseLoading = 22,
 };
 
 struct ProgramPropInfo {
@@ -161,8 +162,9 @@ constexpr ProgramPropInfo kProgram[] = {
   {ProgramProp::RoomWet, "roomWet", 0, 100, true, "The room's wet share"},
   {ProgramProp::PipeDetune, "pipeDetune", 0, 100, true, "Each pipe up to this far off true in tenths of a cent - 0 off"},
   {ProgramProp::WindSway, "windSway", 0, 100, true, "The wind's slow pitch sway in tenths of a cent - 0 off"},
+  {ProgramProp::SparseLoading, "sparseLoading", 1, 3, true, "How many notes of a rank are loaded: 1 every note, 2 every second, 3 every third"},
 };
-constexpr int kProgramCount = 22;
+constexpr int kProgramCount = 23;
 
 enum class Command : uint8_t {
   Panic = 0,
