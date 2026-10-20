@@ -6,8 +6,20 @@
 #include "LosslessBlocks.h"
 
 #include <algorithm>
-#include <cstring>
 #include <limits>
+
+// The block decoder stays out of its callers' lines. With the link-time
+// optimisation on, MSVC 19.51 folds the window decoder into the test and
+// then reads a block wrongly: the window decode failed while the same block
+// decoded when it was asked for on its own. One copy of the decoder, called
+// the same way from both paths, keeps them in step.
+#if defined(_MSC_VER)
+#define MP_LOSSLESS_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define MP_LOSSLESS_NOINLINE __attribute__((noinline))
+#else
+#define MP_LOSSLESS_NOINLINE
+#endif
 
 namespace mp {
 namespace {
@@ -581,12 +593,17 @@ void encodeBlockInto(const int32_t* src, size_t frames, int channels,
   writeU32(out.data() + start + kCheckOffset, crc);
 }
 
-// Reads one block from a byte range. `out` receives frames * channels
-// interleaved values. A block that claims more frames than it may hold is
+// The whole of a block: a range may ask for part of it.
+constexpr size_t kAllFrames = static_cast<size_t>(-1);
+
+// Reads one block from a byte range. `out` receives the frames from `from`
+// to `to` of the block, interleaved and frame-major, so (to - from) *
+// channels values. A block that claims more frames than it may hold is
 // refused before anything is written.
 bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
-                   size_t maxFrames, int32_t* out, uint16_t* framesOut,
-                   int* channelsOut, int* bitDepthOut, LosslessError* error) {
+                   size_t maxFrames, int32_t* out, size_t from, size_t to,
+                   uint16_t* framesOut, int* channelsOut, int* bitDepthOut,
+                   LosslessError* error) {
   if (offset > size || size - offset < kHeaderBytes) {
     *error = LosslessError::Truncated;
     return false;
@@ -658,7 +675,12 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
     return false;
   }
 
-  for (size_t f = 0; f < frames; ++f) {
+  const size_t last = (to == kAllFrames) ? frames : to;
+  if (from > frames || last > frames || from > last) {
+    *error = LosslessError::BadHeader;
+    return false;
+  }
+  for (size_t f = from; f < last; ++f) {
     for (int c = 0; c < channels; ++c) {
       int64_t value = lane[static_cast<size_t>(c) * frames + f];
       if (leftSide && c == 1)
@@ -667,7 +689,8 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
         *error = LosslessError::CorruptData;
         return false;
       }
-      out[f * static_cast<size_t>(channels) + c] = static_cast<int32_t>(value);
+      out[(f - from) * static_cast<size_t>(channels) + c] =
+          static_cast<int32_t>(value);
     }
   }
 
@@ -678,6 +701,24 @@ bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
   if (bitDepthOut != nullptr)
     *bitDepthOut = bitDepth;
   return true;
+}
+
+// Decodes the frames from `from` to `to` of one block straight into `out`.
+bool decodeBlockRange(const LosslessStream& stream, size_t blockIndex,
+                      int32_t* out, size_t from, size_t to,
+                      LosslessError* error) {
+  if (blockIndex >= stream.blockOffsets.size()) {
+    *error = LosslessError::OutOfRange;
+    return false;
+  }
+  const uint64_t offset = stream.blockOffsets[blockIndex];
+  if (offset > stream.data.size()) {
+    *error = LosslessError::BadStream;
+    return false;
+  }
+  return decodeBlockAt(stream.data.data(), stream.data.size(),
+                       static_cast<size_t>(offset), stream.blockFrames, out,
+                       from, to, nullptr, nullptr, nullptr, error);
 }
 
 } // namespace
@@ -779,20 +820,6 @@ bool encodeLosslessBlocks(const int32_t* samples, uint64_t numFrames,
   return true;
 }
 
-// The block decoder stays out of its callers' lines. With the link-time
-// optimisation on, MSVC 19.51 folds it into the window decoder and then
-// reads the block's offset from the wrong place, so a window decode reports
-// a block table that does not match the data while the same block decodes
-// when it is asked for on its own. One copy of the decoder, called the same
-// way from both paths, keeps them in step.
-#if defined(_MSC_VER)
-#define MP_LOSSLESS_NOINLINE __declspec(noinline)
-#elif defined(__GNUC__) || defined(__clang__)
-#define MP_LOSSLESS_NOINLINE __attribute__((noinline))
-#else
-#define MP_LOSSLESS_NOINLINE
-#endif
-
 MP_LOSSLESS_NOINLINE bool decodeLosslessBlock(const LosslessStream& stream,
                                                size_t blockIndex, int32_t* out,
                                                uint16_t* frames,
@@ -811,8 +838,8 @@ MP_LOSSLESS_NOINLINE bool decodeLosslessBlock(const LosslessStream& stream,
     return false;
   }
   return decodeBlockAt(stream.data.data(), stream.data.size(),
-                        static_cast<size_t>(offset), stream.blockFrames, out,
-                        frames, nullptr, nullptr, error);
+                        static_cast<size_t>(offset), stream.blockFrames, out, 0,
+                        kAllFrames, frames, nullptr, nullptr, error);
 }
 
 bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
@@ -846,22 +873,20 @@ bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
   }
 
   const size_t channels = static_cast<size_t>(stream.channels);
-  std::vector<int32_t> scratch(
-      static_cast<size_t>(stream.blockFrames) * channels);
+  const uint64_t blockFrames = stream.blockFrames;
   for (uint64_t b = first; b <= last; ++b) {
-    uint16_t frames = 0;
-    if (!decodeLosslessBlock(stream, static_cast<size_t>(b), scratch.data(),
-                             &frames, error))
-      return false;
-    const uint64_t blockStart = b * stream.blockFrames;
+    const uint64_t blockStart = b * blockFrames;
     const uint64_t from = std::max(firstFrame, blockStart);
-    const uint64_t to = std::min(firstFrame + count,
-                                 blockStart + stream.blockFrames);
-    for (uint64_t f = from; f < to; ++f) {
-      const size_t src = static_cast<size_t>(f - blockStart) * channels;
-      const size_t dst = static_cast<size_t>(f - firstFrame) * channels;
-      std::memcpy(out + dst, scratch.data() + src, channels * sizeof(int32_t));
-    }
+    const uint64_t to = std::min(firstFrame + count, blockStart + blockFrames);
+    if (from >= to)
+      continue;
+    // The frames of this block that the window covers, written straight into
+    // the caller's buffer: no scratch block, no copy.
+    const size_t outIndex = static_cast<size_t>(from - firstFrame) * channels;
+    if (!decodeBlockRange(stream, static_cast<size_t>(b), out + outIndex,
+                          static_cast<size_t>(from - blockStart),
+                          static_cast<size_t>(to - blockStart), error))
+      return false;
   }
   return true;
 }
