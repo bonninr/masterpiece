@@ -811,6 +811,10 @@ bool decodeLosslessBlock(const LosslessStream& stream, size_t blockIndex,
     return false;
   }
   const uint64_t offset = stream.blockOffsets[blockIndex];
+  std::fprintf(stderr,
+               "[codec] block lookup index=%zu table=%zu data=%zu offset=%llu\n",
+               blockIndex, stream.blockOffsets.size(), stream.data.size(),
+               (unsigned long long)offset);
   if (offset > stream.data.size()) {
     *error = LosslessError::BadStream;
     return false;

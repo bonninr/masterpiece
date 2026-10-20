@@ -139,6 +139,16 @@ void roundTrip(Signal signal, int bitDepth, int channels, size_t frames) {
                                     stream, &error),
            "encode of " + what + " failed: " + mp::losslessErrorText(error));
 
+  std::fprintf(stderr,
+               "[test] stream data=%zu table=%zu frames=%llu ch=%d depth=%d "
+               "blockFrames=%u first=%llu\n",
+               stream.data.size(), stream.blockOffsets.size(),
+               (unsigned long long)stream.numFrames, stream.channels,
+               stream.bitDepth, stream.blockFrames,
+               stream.blockOffsets.empty()
+                   ? 0ULL
+                   : (unsigned long long)stream.blockOffsets[0]);
+
   // The block table covers the stream, and every block holds what it should.
   MP_CHECK(stream.blockCount() == (frames + mp::kLosslessBlockFrames - 1) /
                                      mp::kLosslessBlockFrames,
