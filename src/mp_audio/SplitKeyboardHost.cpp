@@ -77,7 +77,12 @@ void SplitKeyboardHost::process(Tagged& messages, std::vector<int>& offsets, dou
 }
 
 void SplitKeyboardHost::retagReplay(Tagged& messages) const {
-  if (ownDevice_ == 0) return;
+  // Only while the split keyboard is on. Its own device is the MIDI map's
+  // exclusive input, and a message from the exclusive input is matched only
+  // by mappings that name it: retagging a live note would take away every
+  // mapping that names no device, which is most of them. The role channels
+  // mean nothing while the split keyboard is off, so nothing is retagged.
+  if (ownDevice_ == 0 || !engine_.enabled()) return;
   for (auto& [device, msg] : messages)
     if (device == MidiDeviceMap::kAnyDevice && msg.isNoteOnOrOff() &&
         split::roleOfChannel(msg.getChannel()) != split::Role::None)

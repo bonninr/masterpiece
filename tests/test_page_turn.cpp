@@ -51,6 +51,11 @@ public:
     const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/m24.expression.Organ_Hauptwerk_xml");
     MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
 
+    // Channel 14 on purpose: it is one of the split keyboard's role channels
+    // (11 to 14). A note on one of those, arriving in the host's buffer, was
+    // retagged with the split keyboard's own device, which is the MIDI map's
+    // exclusive input, and a mapping that names no device then stopped
+    // matching it. The page turn is the first thing that showed it.
     mp::MidiBinding b;
     b.source.kind = mp::MidiSourceKind::Note;
     b.source.channel = 14;
