@@ -10242,6 +10242,89 @@ public:
   }
 };
 static SmallPageScaleTest g_smallPageScale;
+
+// #445: a stop whose pipework is not in the set cannot be drawn - the network
+// holds it off - so a click that got through would move a knob the network
+// immediately took back out, and the stop jumped back as soon as it was
+// clicked. The console refuses the click instead, and the tooltip says why.
+class UnavailableStopClickTest final : public mp::test::Test {
+public:
+  UnavailableStopClickTest()
+      : Test("functional.ui.unavailable-stop-click", Category::Functional) {}
+
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-unavailable-stop");
+    dir.getChildFile("OrganDefinitions").createDirectory();
+    const juce::File odf =
+        dir.getChildFile("OrganDefinitions").getChildFile("us.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\"><Sample>"
+        "<SampleID>1</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>not-in-this-set.wav</SampleFilename>"
+        "</Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>1</KeyboardID><Name>Manual</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Division\">"
+        "<Division><DivisionID>1</DivisionID><Name>Great</Name></Division>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Silent 8</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>101</ControllingSwitchID></Stop>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\">"
+        "<StopRank><StopID>1</StopID><RankID>7</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Rank\">"
+        "<Rank><RankID>7</RankID><Name>R</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>201</PipeID><RankID>7</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<Pipe_SoundEngine01_Layer><LayerID>301</LayerID><PipeID>201</PipeID>"
+        "</Pipe_SoundEngine01_Layer>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>401</UniqueID><LayerID>301</LayerID>"
+        "<SampleID>1</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>101</SwitchID><Name>Silent 8</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList>"
+        "</Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool hadSettings = settings.existsAsFile();
+    proc.prepareToPlay(48000.0, 256);
+    auto r = proc.loadOrgan(odf, 0, false);
+    MP_CHECK(r.ok, "the organ loads");
+    // The stop's pipework is not in this set, so the stop cannot be drawn.
+    const auto* why = proc.unavailableFor(101);
+    MP_CHECK(why != nullptr && why->noPipes,
+             "the stop whose pipes are missing is not available");
+    MP_CHECK(mp::ui::ConsoleView::clickRefused(proc, 101),
+             "a click on it is refused, so the knob cannot snap back");
+    // A stop that is here is not refused.
+    MP_CHECK(!mp::ui::ConsoleView::clickRefused(proc, 999),
+             "a switch that is not held off is not refused");
+    if (!hadSettings) settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static UnavailableStopClickTest g_unavailableStopClick;
 static RecordConsoleTest g_recordConsole;
 static PlaybackStopReleasesTest g_playbackStopReleases;
 

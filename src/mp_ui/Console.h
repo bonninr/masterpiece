@@ -37,6 +37,15 @@ public:
   // Over a stop that makes no sound: its name, and why.
   juce::String getTooltip() override;
 
+  // Whether a click on this switch must be refused. A stop whose pipework is
+  // not in this set cannot be drawn: the network holds it off, so letting the
+  // click through moves a knob that snaps straight back, which is what the
+  // reporter of #445 saw. The click is refused and the tooltip says why.
+  static bool clickRefused(const MasterpieceProcessor& proc, Id switchId) {
+    const auto* why = proc.unavailableFor(switchId);
+    return why != nullptr && why->noPipes;
+  }
+
   // Rebuild from the current model. Safe to call on every organ load.
   void rebuild();
   // Held as a picture of itself until the next rebuild: an organ being loaded
