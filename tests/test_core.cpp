@@ -11374,6 +11374,31 @@ public:
     MP_CHECK(labelled(""), "with no label given, the switch's name is printed");
     MP_CHECK(!labelled("TextBreakWidth=0\n"), "TextBreakWidth=0 prints nothing");
     MP_CHECK(labelled("TextBreakWidth=60\n"), "any other width still prints it");
+
+    // Where the label breaks (#452): as GrandOrgue breaks a button's text, at
+    // the rectangle less 14 px, or at the TextBreakWidth the set gives, the
+    // lines centred in the rectangle.
+    auto box = [&](const std::string& lines, int& x, int& w) {
+      std::string text = organ;
+      text.replace(text.find("DispLabelText=\n"), 15, "TextRectWidth=60\nTextRectHeight=20\n" + lines);
+      mp::OdfLoader ll;
+      mp::OrganModel mm;
+      mp::OdfDiagnostics dd;
+      if (!ll.loadFromXmlString(mp::convertGrandOrgueText(text).xml, "t.organ", o, mm, dd)) return false;
+      for (const auto& [id, page] : mm.displayPages)
+        for (const auto& t : page.texts)
+          if (t.text == "Principal") {
+            x = t.xPx;
+            w = t.boxWidthPx;
+            return true;
+          }
+      return false;
+    };
+    int x0 = 0, w0 = 0, x1 = 0, w1 = 0;
+    MP_CHECK(box("", x0, w0) && w0 == 46, "a 60 px button breaks its text at 46 px, got " + std::to_string(w0));
+    MP_CHECK(box("TextBreakWidth=40\n", x1, w1) && w1 == 40 && x1 == x0 + 3,
+             "the set's own break width, centred in the rectangle: " + std::to_string(w1) + " at " +
+                 std::to_string(x1) + ", the default at " + std::to_string(x0));
   }
 };
 static GrandOrgueSwitchesTest g_grandOrgueSwitches;

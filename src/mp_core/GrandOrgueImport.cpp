@@ -1294,6 +1294,19 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     auto textWidth = [&](const std::string& sec, int width) {
       return ini.hasKey(sec, "TextBreakWidth") && ini.num(sec, "TextBreakWidth", 1) == 0 ? 0 : width;
     };
+    // Where GrandOrgue breaks a label's lines (#452): TextBreakWidth when the
+    // set gives it, otherwise, for a button, the text rectangle less a margin
+    // (4 px under 50 px, 14 px from there), and for anything else the whole
+    // rectangle. The lines are centred in the rectangle, so a narrower break
+    // is a box of that width in the middle of it.
+    auto breakBox = [&](const std::string& sec, bool button, int& x, int& w) {
+      if (w <= 0) return;
+      int wrap = button ? w - (w < 50 ? 4 : 14) : w;
+      if (ini.hasKey(sec, "TextBreakWidth")) wrap = ini.num(sec, "TextBreakWidth", wrap);
+      wrap = std::clamp(wrap, 1, w);
+      x += (w - wrap) / 2;
+      w = wrap;
+    };
     auto text = [&](int page, int inst, const std::string& words, int r, int g, int b, int px,
                     const std::string& face, int x, int y, int w, int h) {
       if (words.empty() || w <= 0 || h <= 0) return;
@@ -1835,10 +1848,13 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           attach(e.switchId, inst, !e.readOnly);
           int r = 0x80, g = 0, b = 0;
           parseColour(ini.str(sec, "DispLabelColour", "Dark Red"), r, g, b);
-          const int tl = ini.num(sec, "TextRectLeft", 1), tt = ini.num(sec, "TextRectTop", 1);
+          int tl = ini.num(sec, "TextRectLeft", 1);
+          const int tt = ini.num(sec, "TextRectTop", 1);
+          int tw = textWidth(sec, ini.num(sec, "TextRectWidth", w - tl));
+          breakBox(sec, true, tl, tw);
           text(page, inst, ini.hasKey(sec, "DispLabelText") ? ini.str(sec, "DispLabelText") : e.name, r, g, b,
                fontPx(sec, "DispLabelFontSize", "normal"), ini.str(sec, "DispLabelFontName", m.controlFont),
-               tl, tt, textWidth(sec, ini.num(sec, "TextRectWidth", w - tl)), ini.num(sec, "TextRectHeight", h - tt));
+               tl, tt, tw, ini.num(sec, "TextRectHeight", h - tt));
           ++drawn;
         } else if (e.kind == Kind::Enclosure) {
           if (!enclosureControls.count(e.enclosure)) continue;
@@ -1874,10 +1890,12 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           }
           int r = 0x80, g = 0, b = 0;
           parseColour(ini.str(sec, "DispLabelColour", "Dark Red"), r, g, b);
+          int tl = ini.num(sec, "TextRectLeft", 0);
+          int tw = textWidth(sec, ini.num(sec, "TextRectWidth", w));
+          breakBox(sec, false, tl, tw);
           text(page, inst, ini.str(sec, "DispLabelText", ini.str(esec, "Name")), r, g, b,
                fontPx(sec, "DispLabelFontSize", "normal"), ini.str(sec, "DispLabelFontName", m.controlFont),
-               ini.num(sec, "TextRectLeft", 0), ini.num(sec, "TextRectTop", 0),
-               textWidth(sec, ini.num(sec, "TextRectWidth", w)), ini.num(sec, "TextRectHeight", h));
+               tl, ini.num(sec, "TextRectTop", 0), tw, ini.num(sec, "TextRectHeight", h));
           ++drawn;
         } else if (e.kind == Kind::Manual) {
           const auto mi = manualInfo.find(e.manual);
@@ -1988,10 +2006,13 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           if (!image.empty()) inst = instance(page, imageSet({image}, 0, 0, 0, 0), x, y, kPanelLayer);
           int r = 0, g = 0, b = 0;
           parseColour(ini.str(sec, "DispLabelColour", "BLACK"), r, g, b);
-          const int tl = ini.num(sec, "TextRectLeft", 1), tt = ini.num(sec, "TextRectTop", 1);
+          int tl = ini.num(sec, "TextRectLeft", 1);
+          const int tt = ini.num(sec, "TextRectTop", 1);
+          int tw = textWidth(sec, ini.num(sec, "TextRectWidth", w - tl));
+          breakBox(sec, false, tl, tw);
           text(page, inst, ini.str(sec, "Name"), r, g, b, fontPx(sec, "DispLabelFontSize", "normal"),
                ini.str(sec, "DispLabelFontName", m.controlFont), inst ? tl : x + tl, inst ? tt : y + tt,
-               textWidth(sec, ini.num(sec, "TextRectWidth", w - tl)), ini.num(sec, "TextRectHeight", h - tt));
+               tw, ini.num(sec, "TextRectHeight", h - tt));
           ++drawn;
         }
       }
