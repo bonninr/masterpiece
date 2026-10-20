@@ -5168,7 +5168,10 @@ void MasterpieceProcessor::buildProgramCouplers() {
   // fixed order, so that the same organ gives the same ids at every load and
   // a MIDI mapping saved for one keeps working.
   Id highest = 0;
-  for (const auto& [id, s] : model_.switches) highest = std::max(highest, id);
+  // The organ's own switches only: the engine numbers switches of its own
+  // from 0x40000000, and counting those would move these ids.
+  for (const auto& [id, s] : model_.switches)
+    if (id < 0x40000000 && !s.programProvided) highest = std::max(highest, id);
   Id nextId = ((highest / 100000) + 1) * 100000;
 
   // The name a player knows a division by.
