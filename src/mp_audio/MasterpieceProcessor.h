@@ -984,6 +984,10 @@ public:
   juce::File cacheDirectory() const;
   void setCacheDirectory(const juce::File& dir);
   static juce::File defaultCacheDirectory();
+  // The test suite's own cache folder, set before any processor is made. The
+  // cache is one file per folder, replaced as organs change, so a test organ
+  // loaded through the player's folder replaced the player's cache.
+  static void setCacheDirectoryForTests(const juce::File& dir);
   juce::File cacheDirectorySetting() const { return cacheDir_; }
   // A folder the player keeps packages in, for a composite that plays other
   // organs' packages (#289): searched, with the folders directly in it, after

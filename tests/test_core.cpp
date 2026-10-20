@@ -16231,6 +16231,22 @@ public:
   }
 };
 static OrganVersionsTest g_organVersions;
+
+// The suite's sample cache is its own: the cache is one file per folder, and
+// a test organ loaded through the player's folder replaced the player's cache.
+class TestCacheApartTest final : public mp::test::Test {
+public:
+  TestCacheApartTest() : Test("functional.cache.tests-apart", Category::Functional) {}
+  void run() override {
+    const auto player = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                            .getChildFile("Masterpiece")
+                            .getChildFile("cache");
+    mp::MasterpieceProcessor p;
+    MP_CHECK(p.cacheDirectory() != player && !p.cacheDirectory().isAChildOf(player),
+             "the suite writes its cache in " + p.cacheDirectory().getFullPathName().toStdString());
+  }
+};
+static TestCacheApartTest g_testCacheApart;
 #endif // MP_TEST_HAS_AUDIO
 
 int main(int argc, char** argv) {
@@ -16242,6 +16258,12 @@ int main(int argc, char** argv) {
     else if (arg == "--no-perf")
       filter = mp::test::Category::Functional;
   }
+#ifdef MP_TEST_HAS_AUDIO
+  // The suite's sample cache, apart from the player's.
+  const auto cache = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-tests-cache");
+  cache.createDirectory();
+  mp::MasterpieceProcessor::setCacheDirectoryForTests(cache);
+#endif
   return mp::test::runAll(filter) == 0 ? 0 : 1;
 }
 
