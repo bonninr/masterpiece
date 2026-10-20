@@ -410,6 +410,8 @@ std::string PanelLayout::toText() const {
   o << "detached " << (detached ? 1 : 0) << "\n";
   o << "window " << x << " " << y << " " << w << " " << h << "\n";
   o << "scheme " << scheme << "\n";
+  o << "scale " << scale << "\n";
+  o << "fit " << (fitToWindow ? 1 : 0) << "\n";
   // A name runs to the end of its line; a line break in it would end it.
   auto oneLine = [](std::string v) {
     for (char& ch : v)
@@ -434,6 +436,8 @@ bool PanelLayout::fromText(const std::string& text) {
     else if (key == "detached") { int v = 0; l >> v; detached = v != 0; }
     else if (key == "window") { l >> x >> y >> w >> h; }
     else if (key == "scheme") { l >> scheme; scheme = std::clamp(scheme, 0, 3); }
+    else if (key == "scale") { l >> scale; scale = std::clamp(scale, 50, 250); }
+    else if (key == "fit") { int v = 0; l >> v; fitToWindow = v != 0; }
     else if (key == "name") {
       std::string k, v;
       if (l >> k && std::getline(l >> std::ws, v) && !v.empty()) names[k] = v;
@@ -448,7 +452,8 @@ bool PanelLayout::fromText(const std::string& text) {
 bool PanelLayout::operator==(const PanelLayout& o) const {
   return sectionsOff == o.sectionsOff && hidden == o.hidden && detached == o.detached &&
          x == o.x && y == o.y && w == o.w && h == o.h && scheme == o.scheme &&
-         names == o.names && title == o.title;
+         scale == o.scale && fitToWindow == o.fitToWindow && names == o.names &&
+         title == o.title;
 }
 
 namespace {
@@ -574,7 +579,8 @@ public:
     // The size drops only when the wrapped text still does not fit.
     const PanelElement e = owner_.shown(e_);
     auto text = r.reduced(6.0f, 4.0f);
-    const float h = std::min(20.0f, text.getHeight() * (e.footage.empty() ? 0.42f : 0.34f));
+    const float h = std::min(20.0f * owner_.scale() / 100.0f,
+                           text.getHeight() * (e.footage.empty() ? 0.42f : 0.34f));
     juce::Font font(juce::FontOptions(h, juce::Font::bold));
     if (!e.footage.empty()) {
       auto foot = text.removeFromBottom(text.getHeight() * 0.36f);
@@ -715,7 +721,7 @@ public:
     g.setColour(c.cellOn);
     g.fillRoundedRectangle(track.withTop(track.getBottom() - track.getHeight() * frac), 4.0f);
     g.setColour(c.textOff);
-    g.setFont(juce::Font(juce::FontOptions(14.0f, juce::Font::bold)));
+    g.setFont(juce::Font(juce::FontOptions(14.0f * owner_.scale() / 100.0f, juce::Font::bold)));
     g.drawFittedText(juce::String::fromUTF8(owner_.shown(e_).name.c_str()), title.toNearestInt(),
                      juce::Justification::centred, 1, 0.6f);
     if (owner_.editing_ && owner_.layout_.hidden.count(e_.key()) != 0) {
@@ -784,11 +790,50 @@ PanelView::PanelView(MasterpieceProcessor& p, int index, PanelLayout layout)
     for (auto* c : cells_) c->repaint();
     changed();
   };
+  // The size, by hand or to fit.
+  addAndMakeVisible(smaller_);
+  smaller_.setTooltip(TRANS("Make the stops smaller"));
+  smaller_.onClick = [this] { setScale(layout_.scale - 10); };
+  addAndMakeVisible(bigger_);
+  bigger_.setTooltip(TRANS("Make the stops bigger"));
+  bigger_.onClick = [this] { setScale(layout_.scale + 10); };
+  addAndMakeVisible(size_);
+  size_.setJustificationType(juce::Justification::centred);
+  addAndMakeVisible(fit_);
+  fit_.setTooltip(TRANS("Fit the stops to the window"));
+  fit_.onClick = [this] {
+    layout_.fitToWindow = fit_.getToggleState();
+    changed();
+    refreshSizeControls();
+    layoutSections();
+  };
+  refreshSizeControls();
+  setWantsKeyboardFocus(true);
   viewport_.setViewedComponent(&body_, false);
   viewport_.setScrollBarsShown(true, true);
   addAndMakeVisible(viewport_);
   rebuild();
   startTimerHz(15);
+}
+
+bool PanelView::keyPressed(const juce::KeyPress& key) {
+  // Ctrl and +, Ctrl and -, Ctrl and 0, as a browser zooms. The + is on the =
+  // key of most keyboards, so either counts, with or without Shift.
+  if (!key.getModifiers().isCommandDown()) return false;
+  const int code = key.getKeyCode();
+  if (code == '+' || code == '=' || code == juce::KeyPress::numberPadAdd) {
+    setScale(scale() + 10);
+    return true;
+  }
+  if (code == '-' || code == '_' || code == juce::KeyPress::numberPadSubtract) {
+    setScale(scale() - 10);
+    return true;
+  }
+  if (code == '0' || code == juce::KeyPress::numberPad0) {
+    setScale(100);
+    return true;
+  }
+  return false;
 }
 
 PanelView::~PanelView() { stopTimer(); }
@@ -904,13 +949,95 @@ void PanelView::resized() {
   rename_.setBounds(bar.removeFromRight(76).reduced(2));
   if (detach_.isVisible()) detach_.setBounds(bar.removeFromRight(76).reduced(2));
   scheme_.setBounds(bar.removeFromRight(130).reduced(2));
+  // The size, before the section toggles: the smaller and the bigger, the
+  // size between them, and the fit.
+  fit_.setBounds(bar.removeFromRight(60).reduced(2));
+  size_.setBounds(bar.removeFromRight(52).reduced(2));
+  bigger_.setBounds(bar.removeFromRight(30).reduced(2));
+  smaller_.setBounds(bar.removeFromRight(30).reduced(2));
   // The section toggles share what is left.
   if (!sectionButtons_.isEmpty()) {
     const int w = std::max(60, bar.getWidth() / sectionButtons_.size());
     for (auto* b : sectionButtons_) b->setBounds(bar.removeFromLeft(w).reduced(2));
   }
   viewport_.setBounds(r);
+  refreshSizeControls();
   layoutSections();
+}
+
+int PanelView::scale() const {
+  return layout_.fitToWindow ? fittedScale() : layout_.scale;
+}
+
+void PanelView::extentAt(int at, int& width, int& height) const {
+  const Geometry g = geometryAt(at);
+  int tallest = 0;
+  for (size_t si : shownSections()) {
+    const auto& s = sections_[si];
+    const bool faders = s.kind == PanelSection::Kind::Controls;
+    const int cols = g.columnsFor(faders);
+    int k = 0;
+    for (const auto& e : s.elements)
+      if (editing_ || layout_.hidden.count(e.key()) == 0) ++k;
+    if (k == 0) continue;
+    const int rows = (k + cols - 1) / cols;
+    tallest = std::max(tallest, g.top + rows * (faders ? g.faderH : g.cellH) + 6);
+  }
+  width = g.columnW * static_cast<int>(std::max<size_t>(1, shownSections().size()));
+  height = tallest;
+}
+
+std::vector<size_t> PanelView::shownSections() const {
+  std::vector<size_t> shown;
+  for (size_t i = 0; i < sections_.size(); ++i)
+    if (layout_.sectionsOff.count(sections_[i].key) == 0) shown.push_back(i);
+  return shown;
+}
+
+PanelView::Geometry PanelView::geometryAt(int at) const {
+  // Every size of the panel at `at` per cent; at 100 these are the sizes the
+  // panel always had, to the pixel.
+  Geometry g;
+  const int viewW = std::max(1, viewport_.getMaximumVisibleWidth());
+  const int n = std::max<int>(1, static_cast<int>(shownSections().size()));
+  g.columnW = std::max((kMobile ? 150 : 170) * at / 100, viewW / n);
+  g.cellH = (kMobile ? 64 : 58) * at / 100;
+  g.faderH = 220 * at / 100;
+  g.cellMinW = 104 * at / 100;
+  g.faderMinW = 90 * at / 100;
+  g.top = 30 * at / 100;
+  g.titleH = 22 * at / 100;
+  return g;
+}
+
+int PanelView::fittedScale() const {
+  const int viewW = std::max(1, viewport_.getMaximumVisibleWidth());
+  const int viewH = std::max(1, viewport_.getMaximumVisibleHeight());
+  int best = 50;
+  for (int candidate = 50; candidate <= 250; candidate += 5) {
+    int w = 0, h = 0;
+    extentAt(candidate, w, h);
+    if (w > viewW || h > viewH) break;
+    best = candidate;
+  }
+  return best;
+}
+
+void PanelView::setScale(int at) {
+  // A size chosen by hand ends the fit: the keys step from the size on show.
+  layout_.fitToWindow = false;
+  layout_.scale = std::clamp(at, 50, 250);
+  changed();
+  refreshSizeControls();
+  layoutSections();
+}
+
+void PanelView::refreshSizeControls() {
+  const int now = scale();
+  size_.setText(juce::String(now) + "%", juce::dontSendNotification);
+  smaller_.setEnabled(!layout_.fitToWindow && layout_.scale > 50);
+  bigger_.setEnabled(!layout_.fitToWindow && layout_.scale < 250);
+  fit_.setToggleState(layout_.fitToWindow, juce::dontSendNotification);
 }
 
 void PanelView::layoutSections() {
@@ -920,25 +1047,25 @@ void PanelView::layoutSections() {
   for (size_t i = 0; i < sections_.size(); ++i)
     if (layout_.sectionsOff.count(sections_[i].key) == 0) shown.push_back(i);
 
+  const int at = scale();
+  const Geometry g = geometryAt(at);
   const int viewW = std::max(1, viewport_.getMaximumVisibleWidth());
-  const int minColumn = kMobile ? 150 : 170;
-  const int n = std::max<int>(1, static_cast<int>(shown.size()));
-  const int columnW = std::max(minColumn, viewW / n);
-  const int cellH = kMobile ? 64 : 58;
-  const int faderH = 220;
+  const int columnW = g.columnW;
+  const int cellH = g.cellH;
+  const int faderH = g.faderH;
   int tallest = 0;
   int x = 0;
   for (size_t si : shown) {
     const auto& s = sections_[si];
     auto* t = titles_.add(new juce::Label({}, juce::String::fromUTF8(s.title.c_str())));
-    t->setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
+    t->setFont(juce::Font(juce::FontOptions(15.0f * at / 100.0f, juce::Font::bold)));
     t->setColour(juce::Label::textColourId, juce::Colour(0xffe0a050));
     t->setJustificationType(juce::Justification::centredLeft);
-    t->setBounds(x + 6, 4, columnW - 12, 22);
+    t->setBounds(x + 6, 4 * at / 100, columnW - 12, g.titleH);
     body_.addAndMakeVisible(t);
 
     const bool faders = s.kind == PanelSection::Kind::Controls;
-    const int cols = std::max(1, (columnW - 8) / (faders ? 90 : 104));
+    const int cols = g.columnsFor(faders);
     const int cellW = (columnW - 8) / cols;
     int k = 0;
     for (const auto& e : s.elements) {
@@ -947,10 +1074,10 @@ void PanelView::layoutSections() {
       const int h = faders ? faderH : cellH;
       juce::Component* c = faders ? static_cast<juce::Component*>(new Fader(*this, e, si))
                                   : static_cast<juce::Component*>(new Cell(*this, e, si));
-      c->setBounds(x + 4 + col * cellW, 30 + row * h, cellW, h);
+      c->setBounds(x + 4 + col * cellW, g.top + row * h, cellW, h);
       body_.addAndMakeVisible(c);
       cells_.add(c);
-      tallest = std::max(tallest, 30 + (row + 1) * h + 6);
+      tallest = std::max(tallest, g.top + (row + 1) * h + 6);
       ++k;
     }
     x += columnW;

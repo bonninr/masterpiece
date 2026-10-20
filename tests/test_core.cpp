@@ -17037,6 +17037,8 @@ public:
     l.names["w340"] = "Tremulant Great";
     l.names["s901"] = "Trumpet 8'";
     l.title = "Recital set";
+    l.scale = 140;
+    l.fitToWindow = true;
     mp::ui::PanelLayout back;
     back.fromText(l.toText());
     MP_CHECK(back == l, "a panel's layout reads back as it was saved");
@@ -17123,6 +17125,40 @@ public:
                "each division holds its own stop");
       MP_CHECK(sections[1].elements.size() == 1 && sections[1].elements[0].id == 902,
                "and the other division its own");
+    }
+    {
+      // The panel's size (#465). At 100 per cent the cells are where they
+      // always were; at 200 twice as tall, lower by twice the title; the keys
+      // step by ten; Fit picks the largest size at which everything shows.
+      juce::MessageManager::getInstance();
+      mp::ui::PanelView at100(proc, 0, mp::ui::PanelLayout{});
+      at100.setSize(1240, 660);
+      const auto a = at100.cellBoundsForTest();
+      MP_CHECK(!a.empty() && a[0].getY() == 30 && a[0].getHeight() == 58,
+               "at 100 per cent a cell is 58 high, 30 from the top");
+      mp::ui::PanelLayout big;
+      big.scale = 200;
+      mp::ui::PanelView at200(proc, 0, big);
+      at200.setSize(1240, 660);
+      const auto b = at200.cellBoundsForTest();
+      MP_CHECK(!b.empty() && b[0].getY() == 60 && b[0].getHeight() == 116,
+               "at 200 per cent a cell is 116 high, 60 from the top");
+      at100.keyPressed(juce::KeyPress('=', juce::ModifierKeys::commandModifier, 0));
+      MP_CHECK(at100.layout().scale == 110, "Ctrl and + makes the stops bigger by ten per cent");
+      at100.keyPressed(juce::KeyPress('0', juce::ModifierKeys::commandModifier, 0));
+      MP_CHECK(at100.layout().scale == 100, "Ctrl and 0 puts them back at 100 per cent");
+      mp::ui::PanelLayout fit;
+      fit.fitToWindow = true;
+      mp::ui::PanelView fitted(proc, 0, fit);
+      fitted.setSize(1240, 660);
+      const auto f = fitted.cellBoundsForTest();
+      const auto view = fitted.viewAreaForTest();
+      bool inside = !f.empty();
+      for (const auto& r : f) inside = inside && r.getRight() <= view.getWidth() && r.getBottom() <= view.getHeight();
+      MP_CHECK(inside, "Fit: every cell inside the window");
+      MP_CHECK(!f.empty() && f[0].getHeight() > 58, "Fit: two stops are drawn larger than at 100 per cent");
+      fitted.keyPressed(juce::KeyPress('-', juce::ModifierKeys::commandModifier, 0));
+      MP_CHECK(!fitted.layout().fitToWindow, "a size chosen by hand ends the fit");
     }
     proc.releaseResources();
     root.deleteRecursively();

@@ -913,3 +913,7 @@ countries: cz
 "Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep what they started with, and only the keys pressed afterwards play the new registration." = "Vypnuto: rejstřík nebo spojka přepnutá při držených klávesách na těchto tónech hned zazní nebo umlkne, jako u hracího stolu s elektrickou trakturou. Zapnuto: držené tóny si ponechají to, s čím začaly, a novou registraci hrají až klávesy stisknuté potom."
 "Pistons leave the bass coupler" = "Kombinace ponechají basovou spojku"
 "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in." = "Kombinace a sekvencer neukládají ani nevyvolávají basovou a melodickou spojku; zůstávají tak, jak je hráč nastavil. Rušení je stále vypíná."
+"Make the stops smaller" = "Zmenšit rejstříky"
+"Make the stops bigger" = "Zvětšit rejstříky"
+"Fit the stops to the window" = "Přizpůsobit rejstříky oknu"
+"Fit" = "Přizpůsobit"
