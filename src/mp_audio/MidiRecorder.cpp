@@ -8,12 +8,18 @@ void MidiRecorder::prepare(double sampleRate) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
 }
 
-void MidiRecorder::startRecording() {
-  events_.clear();
-  // Reserve enough that a few minutes of playing never allocates on the audio
-  // thread. A busy organist produces perhaps 50 events a second.
-  events_.reserve(16384);
-  writePos_ = 0;
+void MidiRecorder::startRecording(Take take) {
+  if (take == Take::Replace) {
+    events_.clear();
+    // Reserve enough that a few minutes of playing never allocates on the audio
+    // thread. A busy organist produces perhaps 50 events a second.
+    events_.reserve(16384);
+    writePos_ = 0;
+  }
+  // Append keeps the take and the write head where they are: the new events
+  // land after the old ones on the same clock, so the take plays back as one
+  // performance with no gap in it.
+  saved_ = false;
   state_ = State::Recording;
 }
 
@@ -36,6 +42,7 @@ void MidiRecorder::stopPlayback() {
 void MidiRecorder::clear() {
   events_.clear();
   state_ = State::Idle;
+  saved_ = false;
   writePos_ = playPos_ = 0;
   playIndex_ = 0;
 }
@@ -117,7 +124,7 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
   }
 }
 
-bool MidiRecorder::saveToFile(const juce::File& file) const {
+bool MidiRecorder::saveToFile(const juce::File& file) {
   if (events_.empty()) return false;
 
   juce::MidiMessageSequence seq;
@@ -149,7 +156,10 @@ bool MidiRecorder::saveToFile(const juce::File& file) const {
   file.deleteFile();
   std::unique_ptr<juce::FileOutputStream> out(file.createOutputStream());
   if (out == nullptr) return false;
-  return mf.writeTo(*out);
+  if (!mf.writeTo(*out)) return false;
+  // The take is on disk now, so a new recording may replace it without asking.
+  saved_ = true;
+  return true;
 }
 
 bool MidiRecorder::loadFromFile(const juce::File& file) {
@@ -174,6 +184,12 @@ bool MidiRecorder::loadFromFile(const juce::File& file) {
                    [](const Event& a, const Event& b) {
                      return a.samplePos < b.samplePos;
                    });
+  // The take came from a file, so it is on disk: a new recording may replace
+  // it without asking.
+  saved_ = !events_.empty();
+  // The write head sits at the end of the take, so that recording on from here
+  // carries on after what the file holds.
+  writePos_ = events_.empty() ? 0 : events_.back().samplePos + 1;
   return !events_.empty();
 }
 

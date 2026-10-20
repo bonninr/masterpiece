@@ -1217,7 +1217,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
   for (auto* b : {&record_, &play_, &stop_, &save_, &load_, &clear_})
     addAndMakeVisible(*b);
 
-  record_.onClick = [this] { proc_.recorder().startRecording(); };
+  record_.onClick = [this] { askBeforeRecording(); };
   play_.onClick = [this] { proc_.recorder().startPlayback(); };
   stop_.onClick = [this] {
     proc_.recorder().stopRecording();
@@ -1298,6 +1298,37 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 }
 
 RecorderPanel::~RecorderPanel() { stopTimer(); }
+
+void RecorderPanel::askBeforeRecording() {
+  auto& rec = proc_.recorder();
+  // Nothing to lose: there is no take, or the take is on disk and the file
+  // still holds it.
+  if (!rec.hasUnsavedTake()) {
+    rec.startRecording();
+    return;
+  }
+  // The take is not on disk yet. The box is built by hand: the stock box has
+  // two buttons, and this question has three answers.
+  auto* box = new juce::AlertWindow(
+      TRANS("Replace the recording?"),
+      TRANS("This recording has not been saved. Replace it, or append to it and "
+            "carry on from where it stopped."),
+      juce::MessageBoxIconType::QuestionIcon, this);
+  box->addButton(TRANS("Replace"), 1);
+  box->addButton(TRANS("Append"), 2);
+  box->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
+  juce::Component::SafePointer<RecorderPanel> self(this);
+  // The box is deleted when it is dismissed and the answer comes after that.
+  // Nothing waits here: the organ keeps playing while the player decides.
+  box->enterModalState(
+      true, juce::ModalCallbackFunction::create([self](int result) {
+        if (self == nullptr) return;
+        if (result == 1) self->proc_.recorder().startRecording();
+        else if (result == 2)
+          self->proc_.recorder().startRecording(MidiRecorder::Take::Append);
+      }),
+      true);
+}
 
 void RecorderPanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
