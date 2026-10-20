@@ -140,7 +140,7 @@ struct LoadProgress {
       case Phase::WiringConsole:     return "Wiring the console";
       case Phase::FindingSamples:    return "Finding the samples";
       case Phase::LoadingSamples:    return "Loading samples";
-      case Phase::SavingCache:       return "Saving the samples for the next load";
+      case Phase::SavingCache:       return "Creating the sample cache";
       case Phase::Preparing:         return "Preparing to play";
       case Phase::BuildingConsole:   return "Building the console";
       case Phase::Done:              return "Ready";

@@ -159,7 +159,7 @@ Phones and tablets open `.rar` and `.orgue` packages only. On iPhone and iPad, a
 
 ![The load progress dialog](../images/loading-dialog.png)
 
-The dialog shows the phase (**Opening the archive**, **Reading the archive**, **Extracting definitions and artwork**, **Reading the organ definition**, **Building the wind model**, **Wiring the console**, **Finding the samples**, **Loading samples**, **Saving the samples for the next load**, **Preparing to play**, **Building the console**) and, for samples, the count and the time left. **Cancel** stops the load. During **Saving the samples for the next load** the button reads **Skip saving** and opens the organ without the cache.
+The dialog shows the phase (**Opening the archive**, **Reading the archive**, **Extracting definitions and artwork**, **Reading the organ definition**, **Building the wind model**, **Wiring the console**, **Finding the samples**, **Loading samples**, **Creating the sample cache**, **Preparing to play**, **Building the console**) and, for samples, the count and the time left. **Cancel** stops the load. During **Creating the sample cache** the button reads **Skip the cache** and opens the organ without the cache.
 
 | Cause | Remedy |
 |---|---|

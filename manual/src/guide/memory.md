@@ -283,8 +283,8 @@ The rest of a load (reading the definition, building the wind model, wiring the 
 
 | Option | What it does |
 |---|---|
-| **Before the organ plays** | The load writes the cache before the organ can be played. The first load of an organ takes longer, and nothing competes with the sound. The loading dialog shows **Saving the samples for the next load** with the bytes written, the rate and the time left. The button **Skip saving** opens the organ at once and stops the write; the next load reads the samples again. |
-| **In silence, while it plays** | The organ plays at once. The write runs on its own thread at the system's lowest scheduling class and waits while any voice sounds. The status line shows **saving the samples for the next load: N%** with the time left. Until the write finishes, the next load reads the samples again. |
+| **Before the organ plays** | The load writes the cache before the organ can be played. The first load of an organ takes longer, and nothing competes with the sound. The loading dialog shows **Creating the sample cache** with the bytes written, the rate and the time left. The button **Skip the cache** opens the organ at once and stops the write; the next load reads the samples again. |
+| **In silence, while it plays** | The organ plays at once. The write runs on its own thread at the system's lowest scheduling class and waits while any voice sounds. The status line shows **creating the sample cache: N%** with the time left. Until the write finishes, the next load reads the samples again. |
 
 **Default:** **Before the organ plays**. **Takes effect:** at the next load. General setting, stored as `cachewhileplaying` in `settings.mpglobal`.
 
@@ -427,7 +427,7 @@ The loading dialog names each phase and shows its progress.
 | **Wiring the console** | Linkages, couplers and the key-flow walk. |
 | **Finding the samples** | The previous organ's audio is released, then the samples the pipework plays are listed and looked for on disk and in the cache. |
 | **Loading samples** | The long phase, with a count of samples and an estimate of the time left. |
-| **Saving the samples for the next load** | The cache is written, when **Before the organ plays** is chosen and no valid cache existed. |
+| **Creating the sample cache** | The cache is written, when **Before the organ plays** is chosen and no valid cache existed. |
 | **Preparing to play** | The audio graph, MIDI map and combinations. |
 | **Building the console** | The console artwork is decoded. |
 
