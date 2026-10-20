@@ -10,6 +10,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "AccessibleToggle.h"
 #include "CombinationsWindow.h"
 #include "SplitKeyboardWindow.h"
 #include "TuningPanel.h"
@@ -30,21 +31,25 @@ namespace mp::ui {
 // The tile carries the stop's own name; what a screen reader reads is the
 // stop and the division it is in, "Principal 8, Great". The state is the
 // stop's own: drawn or not.
-class StopButton : public juce::TextButton {
+class StopButton : public juce::TextButton, public AccessibleToggle {
 public:
   explicit StopButton(const juce::String& text) : juce::TextButton(text) {}
 
   // What a screen reader reads: the stop's own name and the division it is
   // in.
   void setStopName(const juce::String& name, const juce::String& division);
-  // The same, for the announcement when the stop changes.
-  const juce::String& accessibleName() const { return accessibleName_; }
 
   // Space and Enter draw and retire the stop, as a click does. The arrow
   // keys move through the list; the jamb tells the tile where the next stop
   // lies.
   bool keyPressed(const juce::KeyPress& key) override;
   std::function<void(StopButton&, const juce::KeyPress&)> onArrowKey;
+
+  // What the accessibility layer reads: the stop's name, and whether it is
+  // drawn.
+  juce::String accessibleName() const override { return accessibleName_; }
+  bool accessibleDrawn() const override { return getToggleState(); }
+  void accessibleToggle() override;
 
   // The handler the accessibility layer talks to. The component hands this
   // out when the stop is on screen, which needs a window; this asks for it

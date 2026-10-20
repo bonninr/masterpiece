@@ -19,6 +19,7 @@ add_library(mp_audio STATIC
   Translations.h Translations.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/AccessibleToggle.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/BmpImage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Console.h

@@ -90,6 +90,10 @@ constexpr int64_t cacheKey(Id setId, int index) {
 
 } // namespace
 
+void ConsoleControl::accessibleToggle() {
+  if (onToggle) onToggle();
+}
+
 ConsoleView::ConsoleView(MasterpieceProcessor& p) : proc_(p) {
   // paint() covers every pixel, so nothing behind the console is drawn for
   // it. And the console is kept as a picture at the size it is shown: it is
@@ -108,6 +112,9 @@ void ConsoleView::freeze() {
   heldKey_ = -1;
   heldButton_ = 0;
   heldControl_ = 0;
+  // The model is about to be replaced: the controls that named its stops
+  // would say the wrong thing.
+  controls_.clear();
   // Painted now, while the model is still the one these items came from.
   frozen_ = getWidth() > 0 && getHeight() > 0
                 ? createComponentSnapshot(getLocalBounds(), false)
@@ -362,6 +369,85 @@ void ConsoleView::rebuild() {
     startTimer(kPlayingMs);
   else
     stopTimer();
+
+  buildControls(model);
+}
+
+// The invisible components over the drawn controls: what a screen reader
+// finds. The console paints its controls and takes their clicks as it always
+// did; these carry the name, the state and the action only.
+void ConsoleView::buildControls(const OrganModel& model) {
+  controls_.clear();
+
+  // The stops' drawstops, and the division each is in: the name a screen
+  // reader reads.
+  std::unordered_map<Id, juce::String> stopNames;
+  for (const auto& [stopId, stop] : model.stops) {
+    (void)stopId;
+    const Id knob = proc_.playerSwitchFor(stop.controllingSwitchId);
+    if (knob == 0) continue;
+    const auto div = model.divisions.find(stop.divisionId);
+    const juce::String division =
+        div != model.divisions.end() ? juce::String(div->second.name) : juce::String();
+    stopNames[knob] = juce::String(stop.name) +
+                      (division.isNotEmpty() ? ", " + division : juce::String());
+  }
+
+  for (const auto& item : items_) {
+    if (item.switchId == 0) continue;
+    const auto sit = model.switches.find(item.switchId);
+    if (sit == model.switches.end()) continue;
+
+    juce::String name = stopNames.count(item.switchId) != 0
+                             ? stopNames[item.switchId]
+                             : juce::String(sit->second.name);
+    if (name.isEmpty()) continue;
+
+    auto control = std::make_unique<ConsoleControl>(name, item.switchId);
+    control->setBounds(item.bounds);
+    // The console takes the clicks; this is only there to be read.
+    control->setInterceptsMouseClicks(false, false);
+    control->setMomentary(!sit->second.latching);
+    control->setDrawn(proc_.shownSwitchEngaged(item.switchId));
+    // A stop with no pipes in this set cannot be drawn: say so, as the
+    // tooltip over the knob does.
+    if (const auto* why = proc_.unavailableFor(item.switchId);
+        why != nullptr && why->noPipes)
+      control->setDescription(TRANS("Not available"));
+    const Id switchId = item.switchId;
+    control->onToggle = [this, switchId] { toggleDrawnSwitch(switchId); };
+    addAndMakeVisible(*control);
+    controls_.push_back(std::move(control));
+  }
+}
+
+// Keeps the drawn controls in step with the engine: a piston, a combination
+// or MIDI moves a switch, and the screen reader is told.
+void ConsoleView::refreshControlStates() {
+  for (auto& control : controls_) {
+    const bool drawn = proc_.shownSwitchEngaged(control->switchId());
+    if (drawn != control->accessibleDrawn()) control->setDrawn(drawn);
+  }
+}
+
+// Draw the control or retire it, as a click on it does.
+void ConsoleView::toggleDrawnSwitch(Id switchId) {
+  // A stop with no pipes in this set is not drawn from the console: the
+  // click is refused, and its tooltip says it is not available.
+  if (const auto* why = proc_.unavailableFor(switchId);
+      why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(switchId))
+    return;
+
+  // A button the organ marks momentary -- Load, Save, Reset, a piston -- is
+  // pressed and let go at once.
+  const auto sw = proc_.organModel().switches.find(switchId);
+  const bool momentary = sw != proc_.organModel().switches.end() && !sw->second.latching;
+  if (momentary) {
+    proc_.setSwitchEngaged(switchId, true);
+    proc_.setSwitchEngaged(switchId, false);
+  } else {
+    proc_.setSwitchEngaged(switchId, !proc_.shownSwitchEngaged(switchId));
+  }
 }
 
 void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
@@ -679,6 +765,11 @@ void ConsoleView::timerCallback() {
     item.shownIndex = frame;
     mark(item.bounds);
   }
+
+  // The screen reader is told the state of the drawn controls as well: the
+  // control it is reading changes when a piston, a combination or MIDI moves
+  // it.
+  refreshControlStates();
 
   // The frame round the control being learned, which comes and goes without
   // any control changing its picture.

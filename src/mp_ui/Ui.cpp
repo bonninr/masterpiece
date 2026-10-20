@@ -72,46 +72,6 @@ void showWithLog(const juce::String& title, const juce::String& message) {
 
 // ------------------------------------------------------------------ jamb
 
-namespace {
-
-// The accessibility handler of a stop: a toggle button that reads the stop's
-// name and the division it is in, and whose state says whether the stop is
-// drawn.
-class StopButtonHandler final : public juce::AccessibilityHandler {
-public:
-  explicit StopButtonHandler(StopButton& toWrap)
-      : juce::AccessibilityHandler(
-            toWrap, juce::AccessibilityRole::toggleButton,
-            juce::AccessibilityActions()
-                .addAction(juce::AccessibilityActionType::press,
-                           [this] { button().triggerClick(); })
-                .addAction(juce::AccessibilityActionType::toggle, [this] {
-                  if (!button().isEnabled()) return;
-                  // The state changes and the click follows, so the stop is
-                  // drawn the way a click on the tile draws it.
-                  button().setToggleState(!button().getToggleState(),
-                                          juce::sendNotification);
-                })) {}
-
-  juce::AccessibleState getCurrentState() const override {
-    auto state = juce::AccessibilityHandler::getCurrentState();
-    state = state.withCheckable();
-    if (button().getToggleState()) state = state.withChecked();
-    return state;
-  }
-
-  juce::String getTitle() const override { return button().getTitle(); }
-  juce::String getDescription() const override { return button().getDescription(); }
-
-private:
-  StopButton& button() { return *static_cast<StopButton*>(&getComponent()); }
-  const StopButton& button() const {
-    return *static_cast<const StopButton*>(&getComponent());
-  }
-};
-
-} // namespace
-
 void StopButton::setStopName(const juce::String& name, const juce::String& division) {
   accessibleName_ = division.isNotEmpty() ? name + ", " + division : name;
   // The title is what the accessibility layer reads; the tile keeps the
@@ -119,12 +79,19 @@ void StopButton::setStopName(const juce::String& name, const juce::String& divis
   setTitle(accessibleName_);
 }
 
+void StopButton::accessibleToggle() {
+  if (!isEnabled()) return;
+  // The state changes and the click follows, so the stop is drawn the way a
+  // click on the tile draws it.
+  setToggleState(!getToggleState(), juce::sendNotification);
+}
+
 bool StopButton::keyPressed(const juce::KeyPress& key) {
   if (isEnabled() && (key.isKeyCode(juce::KeyPress::spaceKey) ||
                       key.isKeyCode(juce::KeyPress::returnKey))) {
     // As a click on the tile, and at once: the stop is drawn before the key
     // comes up.
-    setToggleState(!getToggleState(), juce::sendNotification);
+    accessibleToggle();
     return true;
   }
   if (onArrowKey && (key.isKeyCode(juce::KeyPress::leftKey) ||
@@ -138,7 +105,7 @@ bool StopButton::keyPressed(const juce::KeyPress& key) {
 }
 
 std::unique_ptr<juce::AccessibilityHandler> StopButton::createAccessibilityHandler() {
-  return std::make_unique<StopButtonHandler>(*this);
+  return std::make_unique<ToggleAccessibilityHandler>(*this, *this);
 }
 
 StopJamb::StopJamb(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
