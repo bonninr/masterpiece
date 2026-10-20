@@ -48,9 +48,12 @@ public:
 
   // The switch the control draws.
   Id switchId() const { return switchId_; }
-  void setDrawn(bool drawn) {
+  // The state as it is now. `tell` is false when the control is made: the
+  // screen reader is told of a change, not of the state a control starts in.
+  void setDrawn(bool drawn, bool tell = true) {
     if (drawn == drawn_) return;
     drawn_ = drawn;
+    if (!tell) return;
     // The screen reader is told that the control moved.
     if (auto* handler = getAccessibilityHandler())
       handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);

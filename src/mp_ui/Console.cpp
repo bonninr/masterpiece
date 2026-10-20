@@ -408,7 +408,7 @@ void ConsoleView::buildControls(const OrganModel& model) {
     // The console takes the clicks; this is only there to be read.
     control->setInterceptsMouseClicks(false, false);
     control->setMomentary(!sit->second.latching);
-    control->setDrawn(proc_.shownSwitchEngaged(item.switchId));
+    control->setDrawn(proc_.shownSwitchEngaged(item.switchId), false);
     // A stop with no pipes in this set cannot be drawn: say so, as the
     // tooltip over the knob does.
     if (const auto* why = proc_.unavailableFor(item.switchId);
