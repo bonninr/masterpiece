@@ -17281,6 +17281,16 @@ public:
       fitted.keyPressed(juce::KeyPress('-', juce::ModifierKeys::commandModifier, 0));
       MP_CHECK(!fitted.layout().fitToWindow, "a size chosen by hand ends the fit");
     }
+    // The program couplers, ticked on the Loading tab and applied by loading
+    // the organ again: the organ's own settings are read at that load, and
+    // the choice has to survive them as the other Loading choices do.
+    MP_CHECK(proc.programCouplerList().empty(), "no program couplers until they are asked for");
+    proc.setProgramCouplers(true);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    MP_CHECK(!proc.programCouplerList().empty(),
+             "the program couplers are there after the load: " +
+                 std::to_string(proc.programCouplerList().size()));
     proc.releaseResources();
     root.deleteRecursively();
   }

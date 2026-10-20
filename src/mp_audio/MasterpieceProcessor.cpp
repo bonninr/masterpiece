@@ -3943,6 +3943,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.streamHeadPercent = samples_.streamHeadPercent();
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
+  c.programCouplers = programCouplers_;
   c.engine = graph_.engineSwitch;
   sessionLoading_ = c;
 }
@@ -6035,6 +6036,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     preloadHead_ = c.preload;
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
+    programCouplers_ = c.programCouplers;
     graph_.engineSwitch = c.engine;
     juce::Logger::writeToLog("load: using the Loading choices kept for this session");
   } else {

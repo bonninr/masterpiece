@@ -2332,6 +2332,9 @@ private:
     // How many notes of a rank are loaded: 1 for every note, 2 for every
     // second, 3 for every third.
     int sparse = 1;
+    // The program couplers: chosen on the same tab, and lost with the rest
+    // when the organ's own settings are read again at the load.
+    bool programCouplers = false;
     EngineSwitch engine;
   };
   std::optional<LoadingChoice> sessionLoading_;
