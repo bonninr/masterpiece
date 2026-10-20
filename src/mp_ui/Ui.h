@@ -309,6 +309,8 @@ private:
   UpdateNotice updateNotice_{proc_};
   ConsoleView console_;
   juce::Viewport consoleView_;
+  // The room the console page is given in the window, for "Fit window to page".
+  juce::Rectangle<int> consoleArea_;
   PageTabs pageTabs_;
   // Pages in windows of their own, to spread a console over several screens.
   std::vector<std::unique_ptr<PageWindow>> pageWindows_;

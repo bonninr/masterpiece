@@ -148,6 +148,16 @@ public:
   }
   static float fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first,
                        juce::Rectangle<int> area, bool fillSmall = false);
+  // Where the console is drawn in its holder: moved so the artwork's top-left
+  // is the holder's, then scaled. The console itself keeps the coordinates
+  // the organ gives, so it reaches out to the artwork's far edge.
+  // A right-click on nothing on the page: the window's own menu, when the
+  // window that shows the page has one.
+  std::function<void()> onBackgroundMenu;
+  static juce::AffineTransform artworkTransform(juce::Rectangle<int> art, float scale) {
+    return juce::AffineTransform::translation(static_cast<float>(-art.getX()), static_cast<float>(-art.getY()))
+        .scaled(scale);
+  }
 
 private:
   // One drawn thing: an instance, the switch that owns it (if any), and where.

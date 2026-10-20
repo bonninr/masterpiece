@@ -10,12 +10,15 @@ PageView::PageView(MasterpieceProcessor& p, int page, int layout, bool followsSh
   console_.setLayout(layout);
   console_.rebuild();
   console_.setPage(page);
+  console_.onBackgroundMenu = [this] {
+    if (onMenu != nullptr) onMenu();
+  };
 }
 
 void PageView::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff0d0f12)); }
 
 void PageView::mouseDown(const juce::MouseEvent& e) {
-  if (e.mods.isRightButtonDown() && onMenu != nullptr) onMenu();
+  if (e.mods.isPopupMenu() && onMenu != nullptr) onMenu();
 }
 
 void PageView::resized() {
@@ -43,10 +46,10 @@ void PageView::resized() {
   // A window of its own shows its page whole, however small the page is.
   const float scale = ConsoleView::fitScale(art, {}, area);
   console_.setTransform({});
-  console_.setBounds(0, 0, art.getWidth(), art.getHeight());
-  // The artwork is drawn from its own top-left.
-  console_.setTransform(
-      juce::AffineTransform::scale(scale).translated(-art.getX(), -art.getY()));
+  // The console keeps its own coordinates, out to the artwork's far edge, and
+  // is moved so the artwork's top-left is the window's, then scaled.
+  console_.setBounds(0, 0, art.getRight(), art.getBottom());
+  console_.setTransform(ConsoleView::artworkTransform(art, scale));
   const int w = juce::roundToInt(static_cast<float>(art.getWidth()) * scale);
   const int h = juce::roundToInt(static_cast<float>(art.getHeight()) * scale);
   holder_.setBounds(area.withSizeKeepingCentre(w, h));
@@ -80,8 +83,9 @@ PageWindow::PageWindow(MasterpieceProcessor& p, int page, int layout, const juce
 void PageWindow::setBorderless(bool on) {
   borderless_ = on;
   // A title bar of no height: the window is the page and nothing else.
-  setUsingNativeTitleBar(false);
-  setTitleBarHeight(on ? 0 : 30);
+  // Turned off again, the system's own title bar comes back.
+  setUsingNativeTitleBar(!on);
+  if (on) setTitleBarHeight(0);
   if (on) {
     // Nothing to click: the window is closed from its own menu.
     setResizable(true, true);

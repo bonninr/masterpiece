@@ -347,6 +347,11 @@ void ConsoleView::rebuild() {
     for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
   }
 
+  // What can be drawn: a GrandOrgue panel laid out for a screen smaller than
+  // its rows puts its top rows above the origin, as GrandOrgue's own layout
+  // does, and nothing is painted there. The page is measured from the origin
+  // at the least, so no band of nothing is kept for them.
+  extent_ = extent_.getIntersection({0, 0, 1 << 24, 1 << 24});
   hasArtwork_ = !items_.empty() || !keys_.empty() || !texts_.empty();
   const std::string firstOf = organRoot_ + "#" + std::to_string(layout_);
   if (pageIndex_ == 0) {
@@ -356,7 +361,7 @@ void ConsoleView::rebuild() {
     firstExtent_ = {};
     firstOf_.clear();
   }
-  setSize(std::max(extent_.getWidth(), 320), std::max(extent_.getHeight(), 240));
+  setSize(std::max(extent_.getRight(), 320), std::max(extent_.getBottom(), 240));
 
   // Only poll while there is something on screen whose picture can change
   // under the player's hands -- or by itself: a wind gauge moves with the
@@ -1225,7 +1230,11 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   if (e.mods.isPopupMenu() && proc_.midiMap().learning()) {
     proc_.midiMap().cancelLearn();
     repaint();
+    return;
   }
+  // Otherwise it is the window's own menu, where the window has one: a page
+  // window that the page fills has no other place to be right-clicked.
+  if (e.mods.isPopupMenu() && onBackgroundMenu) onBackgroundMenu();
 }
 
 // What a stop that makes no sound is, said over its knob: on a demo set the

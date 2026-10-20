@@ -2146,8 +2146,6 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       showPlayedKeys_.store(val.getIntValue() != 0);
     } else if (key == "smallpagesfill") {
       smallPagesFill_.store(val.getIntValue() != 0);
-    } else if (key == "smallpagesfill") {
-      smallPagesFill_.store(val.getIntValue() != 0);
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "realtimethreads") {

@@ -1808,11 +1808,12 @@ void MasterpieceEditor::resized() {
     // through a smaller window. JUCE routes mouse events back through the
     // transform, so drawstops stay clickable at any zoom.
     const auto art = console_.artworkBounds();
+    consoleArea_ = r;
     if (art.getWidth() <= 0 || art.getHeight() <= 0) {
       consoleView_.setBounds(r);
     } else {
       console_.setTransform({});
-      console_.setBounds(0, 0, art.getWidth(), art.getHeight());
+      console_.setBounds(0, 0, art.getRight(), art.getBottom());
       // Scale UP as well as down. The old cap at 1.0 meant a console drawn
       // smaller than the window sat at its native size with a band of dead
       // background beside it, which read as part of the program rather than
@@ -1826,8 +1827,7 @@ void MasterpieceEditor::resized() {
       const float scale = console_.fitScale(r, proc_.smallPagesFill());
       // The artwork is drawn from its own top-left, so a page whose drawing
       // does not start at the origin keeps no band of nothing beside it.
-      console_.setTransform(
-          juce::AffineTransform::scale(scale).translated(-art.getX(), -art.getY()));
+      console_.setTransform(ConsoleView::artworkTransform(art, scale));
 
       // Centre by moving the VIEWPORT, not the console inside it: a viewport
       // positions its own viewed component, so a translation applied to the
@@ -2090,25 +2090,27 @@ void MasterpieceEditor::showFileMenu() {
 
 void MasterpieceEditor::fitWindowToPage() {
   const auto art = console_.artworkBounds();
-  if (art.getWidth() <= 0 || art.getHeight() <= 0) return;
-  // The largest size the page can be drawn at and still fit the screen.
-  const auto displays = juce::Desktop::getInstance().getDisplays();
-  const auto* screen = displays.getDisplayForRect(getScreenBounds());
-  const auto usable = (screen != nullptr ? screen->userArea : getScreenBounds()).reduced(40);
-  const float scale =
-      juce::jmin(1.0f, static_cast<float>(usable.getWidth()) / static_cast<float>(art.getWidth()),
-                 static_cast<float>(usable.getHeight()) / static_cast<float>(art.getHeight()));
-  // The window keeps the room it gives to everything else.
-  const auto area = consoleView_.getBounds();
+  auto* top = getTopLevelComponent();
+  if (art.getWidth() <= 0 || art.getHeight() <= 0 || consoleArea_.isEmpty() || top == nullptr) return;
+  // Everything the window shows besides the page: its bars and strips, the
+  // frame the system draws around it, and the window's own edges.
+  const auto frame = top->getPeer() != nullptr ? top->getPeer()->getFrameSize() : juce::BorderSize<int>();
+  const int besideW = top->getWidth() - consoleArea_.getWidth() + frame.getLeftAndRight();
+  const int besideH = top->getHeight() - consoleArea_.getHeight() + frame.getTopAndBottom();
+  // The page at 100%, or at the largest size that fits the screen it is on.
+  const auto* screen = juce::Desktop::getInstance().getDisplays().getDisplayForRect(top->getScreenBounds());
+  const auto usable = screen != nullptr ? screen->userArea : top->getScreenBounds();
+  const float scale = juce::jmin(
+      1.0f, static_cast<float>(usable.getWidth() - besideW) / static_cast<float>(art.getWidth()),
+      static_cast<float>(usable.getHeight() - besideH) / static_cast<float>(art.getHeight()));
   const int w = juce::roundToInt(static_cast<float>(art.getWidth()) * scale);
   const int h = juce::roundToInt(static_cast<float>(art.getHeight()) * scale);
-  setSize(getWidth() - area.getWidth() + w, getHeight() - area.getHeight() + h);
-  if (screen != nullptr) {
-    const auto s = screen->userArea;
-    setBounds(s.getCentreX() - getWidth() / 2, s.getCentreY() - getHeight() / 2,
-              getWidth(), getHeight());
-  }
-  resized();
+  // The window is sized and placed, in the middle of its screen; the
+  // editor follows it.
+  const int outerW = besideW + w, outerH = besideH + h;
+  top->setBounds(usable.getCentreX() - outerW / 2 + frame.getLeft(),
+                 usable.getCentreY() - outerH / 2 + frame.getTop(),
+                 outerW - frame.getLeftAndRight(), outerH - frame.getTopAndBottom());
 }
 
 void MasterpieceEditor::showViewMenu() {
