@@ -14,7 +14,9 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <random>
+#include <string>
 #include <vector>
 
 using mp::test::Category;
@@ -96,21 +98,46 @@ std::vector<int32_t> makeSignal(Signal signal, size_t frames, int channels,
   return out;
 }
 
+// The header of a block, and the first bytes of its payload, as text. A
+// failure that prints this says what the encoder wrote.
+std::string describeBlock(const mp::LosslessStream& stream, size_t index) {
+  const size_t at = static_cast<size_t>(stream.blockOffsets[index]);
+  std::string out = "block " + std::to_string(index) + " at " +
+                    std::to_string(at);
+  if (at + 20 > stream.data.size())
+    return out + ": the block table points outside the data";
+  const unsigned char* h = stream.data.data() + at;
+  const uint32_t payload =
+      static_cast<uint32_t>(h[12]) | (static_cast<uint32_t>(h[13]) << 8) |
+      (static_cast<uint32_t>(h[14]) << 16) |
+      (static_cast<uint32_t>(h[15]) << 24);
+  out += ": frames " + std::to_string(h[4] | (h[5] << 8)) + ", channels " +
+         std::to_string(h[6]) + ", depth " + std::to_string(h[7]) +
+         ", flags " + std::to_string(h[8]) + ", payload " +
+         std::to_string(payload) + " bytes, bytes:";
+  for (size_t i = 0; i < 24 && at + 20 + i < stream.data.size(); ++i) {
+    char byte[4] = {0, 0, 0, 0};
+    std::snprintf(byte, sizeof(byte), "%02x", stream.data[at + 20 + i]);
+    out += byte;
+  }
+  return out;
+}
+
 // Encodes, decodes and compares. The failure names the case.
 void roundTrip(Signal signal, int bitDepth, int channels, size_t frames) {
   const std::vector<int32_t> input =
       makeSignal(signal, frames, channels, bitDepth,
                  static_cast<uint32_t>(frames * 31u + channels * 7u +
                                        bitDepth));
+  const std::string what = std::string(signalName(signal)) + " at " +
+                           std::to_string(bitDepth) + " bits, " +
+                           std::to_string(channels) + " channel(s), " +
+                           std::to_string(frames) + " frames";
   mp::LosslessStream stream;
   mp::LosslessError error = mp::LosslessError::None;
   MP_CHECK(mp::encodeLosslessBlocks(input.data(), frames, channels, bitDepth,
                                     stream, &error),
-           std::string("encode of ") + signalName(signal) + " at " +
-               std::to_string(bitDepth) + " bits, " +
-               std::to_string(channels) + " channel(s), " +
-               std::to_string(frames) + " frames failed: " +
-               mp::losslessErrorText(error));
+           "encode of " + what + " failed: " + mp::losslessErrorText(error));
 
   // The block table covers the stream, and every block holds what it should.
   MP_CHECK(stream.blockCount() == (frames + mp::kLosslessBlockFrames - 1) /
@@ -123,15 +150,25 @@ void roundTrip(Signal signal, int bitDepth, int channels, size_t frames) {
             "a block holds the wrong number of frames");
 
   std::vector<int32_t> output(input.size(), 0);
-  MP_CHECK(mp::decodeLosslessFrames(stream, 0, frames, output.data(), &error),
-           std::string("decode of ") + signalName(signal) + " at " +
-               std::to_string(bitDepth) + " bits failed: " +
-               mp::losslessErrorText(error));
+  if (!mp::decodeLosslessFrames(stream, 0, frames, output.data(), &error)) {
+    // Name the block that failed, so a report says where the fault is.
+    std::vector<int32_t> one(
+        static_cast<size_t>(mp::kLosslessBlockFrames) * channels);
+    for (size_t b = 0; b < stream.blockCount(); ++b) {
+      uint16_t got = 0;
+      mp::LosslessError blockError = mp::LosslessError::None;
+      if (!mp::decodeLosslessBlock(stream, b, one.data(), &got, &blockError))
+        MP_CHECK(false, "decode of " + what + " failed in " +
+                            describeBlock(stream, b) + ": " +
+                            mp::losslessErrorText(blockError));
+    }
+    MP_CHECK(false, "decode of " + what + " failed: " +
+                        mp::losslessErrorText(error));
+  }
   for (size_t i = 0; i < input.size(); ++i)
     MP_CHECK(output[i] == input[i],
-             std::string("the round trip changed sample ") +
-                 std::to_string(i) + " of " + signalName(signal) + " at " +
-                 std::to_string(bitDepth) + " bits");
+             "the round trip changed sample " + std::to_string(i) + " of " +
+                 what);
 }
 
 class LosslessRoundTripTest final : public mp::test::Test {
