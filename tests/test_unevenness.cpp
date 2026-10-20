@@ -72,12 +72,14 @@ juce::File writeOrgan(const juce::File& root) {
 }
 
 struct Rig {
-  mp::MasterpieceProcessor proc;
+  // The processor is 168 KB, and the stack of a thread on Windows is 1 MB:
+  // this test holds six of them at once, so they belong on the heap.
+  std::unique_ptr<mp::MasterpieceProcessor> proc;
   bool loaded = false;
-  explicit Rig(const juce::File& odf) {
-    proc.prepareToPlay(48000.0, 256);
-    loaded = proc.loadOrgan(odf, 0, false).ok;
-    proc.setStopEngaged(901, true);
+  explicit Rig(const juce::File& odf) : proc(std::make_unique<mp::MasterpieceProcessor>()) {
+    proc->prepareToPlay(48000.0, 256);
+    loaded = proc->loadOrgan(odf, 0, false).ok;
+    proc->setStopEngaged(901, true);
   }
   // `blocks` blocks of the left channel, the note struck at the first when
   // `strike`.
@@ -88,7 +90,7 @@ struct Rig {
       juce::MidiBuffer m;
       if (strike && b == 0) m.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
       buf.clear();
-      proc.processBlock(buf, m);
+      proc->processBlock(buf, m);
       for (int s = 0; s < 256; ++s) out.push_back(buf.getSample(0, s));
     }
     return out;
@@ -125,18 +127,18 @@ public:
     // after both were turned up and back down.
     Rig plain(odf), touched(odf);
     MP_CHECK(plain.loaded && touched.loaded, "the organ loads");
-    touched.proc.setPipeDetuneCents(8.0f);
-    touched.proc.setWindSwayCents(8.0f);
+    touched.proc->setPipeDetuneCents(8.0f);
+    touched.proc->setWindSwayCents(8.0f);
     plain.play(40, false);
     touched.play(40, false);
-    touched.proc.setPipeDetuneCents(0.0f);
-    touched.proc.setWindSwayCents(0.0f);
+    touched.proc->setPipeDetuneCents(0.0f);
+    touched.proc->setWindSwayCents(0.0f);
     MP_CHECK(plain.play(160, true) == touched.play(160, true),
              "both off: the output is bit-identical to an organ never touched");
 
     // Pipe detune: this pipe's own amount, every time.
     Rig straight(odf), detuned(odf);
-    detuned.proc.setPipeDetuneCents(8.0f);
+    detuned.proc->setPipeDetuneCents(8.0f);
     const auto a = straight.play(170, true);
     const auto b = detuned.play(170, true);
     const double fa = frequency(a, 4800, 43000);
@@ -151,7 +153,7 @@ public:
 
     // Wind sway: the pitch of a held note moves, within its depth.
     Rig swaying(odf);
-    swaying.proc.setWindSwayCents(10.0f);
+    swaying.proc->setWindSwayCents(10.0f);
     const auto c = swaying.play(360, true);
     double lo = 1.0e9, hi = -1.0e9;
     for (size_t at = 4800; at + 9600 < 90000; at += 9600) {
@@ -163,15 +165,16 @@ public:
     MP_CHECK(lo > -10.5 && hi < 10.5, "within the depth: " + std::to_string(lo) + " to " + std::to_string(hi));
 
     // Saved with the organ.
-    swaying.proc.setPipeDetuneCents(3.5f);
-    MP_CHECK(swaying.proc.saveSettings(), "saved");
-    mp::MasterpieceProcessor again;
-    again.prepareToPlay(48000.0, 256);
-    MP_CHECK(again.loadOrgan(odf, 0, false).ok, "loads again");
-    MP_CHECK(std::fabs(again.pipeDetuneCents() - 3.5f) < 0.01f && std::fabs(again.windSwayCents() - 10.0f) < 0.01f,
+    swaying.proc->setPipeDetuneCents(3.5f);
+    MP_CHECK(swaying.proc->saveSettings(), "saved");
+    auto again = std::make_unique<mp::MasterpieceProcessor>();
+    again->prepareToPlay(48000.0, 256);
+    MP_CHECK(again->loadOrgan(odf, 0, false).ok, "loads again");
+    MP_CHECK(std::fabs(again->pipeDetuneCents() - 3.5f) < 0.01f &&
+                  std::fabs(again->windSwayCents() - 10.0f) < 0.01f,
              "both read back from the organ's settings");
 
-    plain.proc.settingsFileFor(odf).deleteFile();
+    plain.proc->settingsFileFor(odf).deleteFile();
     root.deleteRecursively();
   }
 };
