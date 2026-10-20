@@ -152,18 +152,19 @@ void roundTrip(Signal signal, int bitDepth, int channels, size_t frames) {
   std::vector<int32_t> output(input.size(), 0);
   if (!mp::decodeLosslessFrames(stream, 0, frames, output.data(), &error)) {
     // Name the block that failed, so a report says where the fault is.
+    std::string blocks;
     std::vector<int32_t> one(
         static_cast<size_t>(mp::kLosslessBlockFrames) * channels);
     for (size_t b = 0; b < stream.blockCount(); ++b) {
       uint16_t got = 0;
       mp::LosslessError blockError = mp::LosslessError::None;
       if (!mp::decodeLosslessBlock(stream, b, one.data(), &got, &blockError))
-        MP_CHECK(false, "decode of " + what + " failed in " +
-                            describeBlock(stream, b) + ": " +
-                            mp::losslessErrorText(blockError));
+        blocks += " block " + std::to_string(b) + ": " +
+                  mp::losslessErrorText(blockError) + " [" +
+                  describeBlock(stream, b) + "]";
     }
     MP_CHECK(false, "decode of " + what + " failed: " +
-                        mp::losslessErrorText(error));
+                        mp::losslessErrorText(error) + "; per block:" + blocks);
   }
   for (size_t i = 0; i < input.size(); ++i)
     MP_CHECK(output[i] == input[i],

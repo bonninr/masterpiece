@@ -600,6 +600,8 @@ void encodeBlockInto(const int32_t* src, size_t frames, int channels,
 bool decodeBlockAt(const unsigned char* data, size_t size, size_t offset,
                    size_t maxFrames, int32_t* out, uint16_t* framesOut,
                    int* channelsOut, int* bitDepthOut, LosslessError* error) {
+  std::fprintf(stderr, "[codec] blockAt offset=%zu size=%zu maxFrames=%zu\n",
+               offset, size, maxFrames);
   if (offset > size || size - offset < kHeaderBytes) {
     *error = LosslessError::Truncated;
     return false;
@@ -813,9 +815,13 @@ bool decodeLosslessBlock(const LosslessStream& stream, size_t blockIndex,
     *error = LosslessError::BadStream;
     return false;
   }
-  return decodeBlockAt(stream.data.data(), stream.data.size(),
-                        static_cast<size_t>(offset), stream.blockFrames, out,
-                        frames, nullptr, nullptr, error);
+  const bool ok = decodeBlockAt(stream.data.data(), stream.data.size(),
+                                static_cast<size_t>(offset),
+                                stream.blockFrames, out, frames, nullptr,
+                                nullptr, error);
+  std::fprintf(stderr, "[codec] block done ok=%d error=%d\n", (int)ok,
+               (int)*error);
+  return ok;
 }
 
 bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
@@ -857,8 +863,11 @@ bool decodeLosslessFrames(const LosslessStream& stream, uint64_t firstFrame,
   for (uint64_t b = first; b <= last; ++b) {
     uint16_t frames = 0;
     if (!decodeLosslessBlock(stream, static_cast<size_t>(b), scratch.data(),
-                             &frames, error))
+                             &frames, error)) {
+      std::fprintf(stderr, "[codec] window block %llu failed error=%d\n",
+                   (unsigned long long)b, (int)*error);
       return false;
+    }
     const uint64_t blockStart = b * stream.blockFrames;
     const uint64_t from = std::max(firstFrame, blockStart);
     const uint64_t to = std::min(firstFrame + count,
