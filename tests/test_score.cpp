@@ -380,12 +380,13 @@ public:
     const auto page = mp::ui::parseScorePage(eng.renderPage(1), geo);
     MP_CHECK(page != nullptr, "JUCE reads the page");
     juce::String titleFont, noteFont;
-    std::function<void(const juce::Component&)> walk = [&](const juce::Component& c) {
-      if (auto* t = dynamic_cast<const juce::DrawableText*>(&c)) {
+    std::function<void(const juce::Drawable&)> walk = [&](const juce::Drawable& d) {
+      if (auto* t = dynamic_cast<const juce::DrawableText*>(&d)) {
         if (t->getText().contains("Short Prelude")) titleFont = t->getFont().getTypefaceName();
         if (t->getText().containsChar(static_cast<juce::juce_wchar>(0xECA5))) noteFont = t->getFont().getTypefaceName();
       }
-      for (auto* child : c.getChildren()) walk(*child);
+      if (auto* g = dynamic_cast<const juce::DrawableComposite*>(&d))
+        for (int i = 0; i < g->getNumChildren(); ++i) walk(g->getChild(i));
     };
     if (page != nullptr) walk(*page);
     MP_CHECK(titleFont == mp::ui::kScoreTextFont, "the title is drawn in the serif, got " + titleFont.toStdString());
