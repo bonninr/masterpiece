@@ -567,18 +567,51 @@ public:
     g.setColour(c.border);
     g.drawRoundedRectangle(r, 5.0f, 1.2f);
     g.setColour(on ? c.textOn : c.textOff);
-    // The name, shrinking to fit; the footage on a line of its own.
+    // The name, wrapped inside the button; the footage on a line of its own.
+    //
+    // A name too long for the button breaks onto two or more lines, as
+    // GrandOrgue breaks it, rather than being shrunk until it fits on one.
+    // The size drops only when the wrapped text still does not fit.
     const PanelElement e = owner_.shown(e_);
     auto text = r.reduced(6.0f, 4.0f);
     const float h = std::min(20.0f, text.getHeight() * (e.footage.empty() ? 0.42f : 0.34f));
-    g.setFont(juce::Font(juce::FontOptions(h, juce::Font::bold)));
+    juce::Font font(juce::FontOptions(h, juce::Font::bold));
     if (!e.footage.empty()) {
       auto foot = text.removeFromBottom(text.getHeight() * 0.36f);
+      g.setFont(font);
       g.drawFittedText(juce::String::fromUTF8(e.footage.c_str()), foot.toNearestInt(),
                        juce::Justification::centredTop, 1, 0.7f);
     }
-    g.drawFittedText(juce::String::fromUTF8(e.name.c_str()), text.toNearestInt(),
-                     juce::Justification::centred, 2, 0.6f);
+    {
+      juce::AttributedString as(juce::String::fromUTF8(e.name.c_str()));
+      as.setJustification(juce::Justification::centred);
+      // The layout draws in its own colour, black unless told: the button's.
+      as.setColour(on ? c.textOn : c.textOff);
+      as.setFont(font);
+      juce::TextLayout layout;
+      layout.createLayout(as, text.getWidth());
+      // Smaller until the lines fit the button's height, and until a single
+      // word longer than the button ("Geigenprincipal" on a narrow one) fits
+      // its width; never below 7 px. The layout breaks such a word inside
+      // itself and stays within the width, so the word is measured alone, with
+      // a margin: the layout breaks a word a little before the measure ends.
+      const auto words = juce::StringArray::fromTokens(as.getText(), " ", "");
+      const auto widestWord = [&words](const juce::Font& f) {
+        float w = 0.0f;
+        for (const auto& word : words) w = std::max(w, juce::GlyphArrangement::getStringWidth(f, word));
+        return w;
+      };
+      for (int i = 0; i < 12 && font.getHeight() > 7.0f &&
+                      (layout.getHeight() > text.getHeight() || widestWord(font) * 1.06f > text.getWidth());
+           ++i) {
+        font.setHeight(std::max(7.0f, font.getHeight() * 0.88f));
+        as.setFont(font);
+        layout.createLayout(as, text.getWidth());
+      }
+      auto area = text.withHeight(std::min(text.getHeight(), layout.getHeight()));
+      area = area.withY(text.getY() + (text.getHeight() - area.getHeight()) * 0.5f);
+      layout.draw(g, area);
+    }
     if (owner_.editing_) {
       // The tick: shown, or hidden from the panel.
       auto box = tickArea().withSizeKeepingCentre(16.0f, 16.0f);
