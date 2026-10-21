@@ -725,6 +725,11 @@ countries: de at ch li lu
 "%1 not drawn" = "%1 nicht gezogen"
 "For a battery speaker that switches itself off after a few seconds of silence and swallows the first notes while it wakes. Plays a 20 Hz tone too low and too quiet to hear under the organ, so the line is never silent." = "Für einen Akkulautsprecher, der sich nach einigen Sekunden Stille selbst ausschaltet und beim Aufwachen die ersten Noten verschluckt. Spielt einen 20-Hz-Ton, der zu tief und zu leise ist, um unter der Orgel gehört zu werden, sodass die Leitung nie ganz still ist."
 "Raise it if the speaker still goes to sleep; lower it if you can hear it." = "Erhöhen, wenn der Lautsprecher trotzdem einschläft; senken, wenn man es hört."
+"Holds the output below the ceiling. It works on the signal after the master fader and adds no delay." = "Hält den Ausgang unter der Grenze. Es arbeitet mit dem Signal hinter dem Hauptregler und fügt keine Verzögerung hinzu."
+"Ceiling" = "Grenze"
+"The level the output is held under. A little below full scale leaves the converters something to work with." = "Die Ebene, unter der der Ausgang gehalten wird. Ein wenig unter Vollaussteuerung lässt den Wandlern noch etwas zu arbeiten."
+"Release" = "Release"
+"How long the gain takes to come back after a peak. A short one lets the level come back at once, a long one holds it down for longer." = "Wie lange sich die Verstärkung nach einer Spitze erholt. Eine kurze Zeit lässt den Pegel sofort zurückkehren, eine lange hält ihn länger unten."
 "The rest of %1" = "Der Rest von %1"
 "%1 is one part of a set of several files. Choose the folder that holds all of them, and Masterpiece reads the set from there." = "%1 ist ein Teil eines Satzes aus mehreren Dateien. Wählen Sie den Ordner, der alle enthält, dann liest Masterpiece den Satz von dort."
 "Choose the folder" = "Ordner wählen"
@@ -827,6 +832,7 @@ countries: de at ch li lu
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Tragbare Lautsprecher wach halten"
+"Output limiter" = "Ausgangs-Limiter"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Taste bis Lautsprecher: etwa %1 ms, davon %2 ms Puffer und %3 ms Ausgang, wie das Gerät es meldet."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "Die Puffergröße bestimmt die Verzögerung zwischen Taste und Klang. Wie viele Pfeifen klingen können, legt die Polyphonie fest, unter Orgeleinstellungen, Laden."
 "No DSP" = "Ohne DSP"

@@ -725,6 +725,11 @@ countries: cz
 "%1 not drawn" = "%1 není zapnut"
 "For a battery speaker that switches itself off after a few seconds of silence and swallows the first notes while it wakes. Plays a 20 Hz tone too low and too quiet to hear under the organ, so the line is never silent." = "Pro reproduktor na baterie, který se po několika sekundách ticha sám vypne a při probouzení spolkne první noty. Přehrává tón 20 Hz příliš hluboký a příliš tichý na to, aby byl slyšet pod varhanami, takže linka nikdy není ticho."
 "Raise it if the speaker still goes to sleep; lower it if you can hear it." = "Zvyšte, pokud reproduktor stále usíná; snižte, pokud to slyšíte."
+"Holds the output below the ceiling. It works on the signal after the master fader and adds no delay." = "Drží výstup pod stropem. Pracuje se signálem za hlavním ovladačem hlasitosti a žádnou prodlevu nepřidává."
+"Ceiling" = "Strop"
+"The level the output is held under. A little below full scale leaves the converters something to work with." = "Úroveň, pod kterou je výstup držen. Trochu pod plnou stupnicí ponechá převodníkům něco k práci."
+"Release" = "Uvolnění"
+"How long the gain takes to come back after a peak. A short one lets the level come back at once, a long one holds it down for longer." = "Jak dlouho se zisk vrací po vrcholu. Krátká doba nechá úroveň vrátit se hned, dlouhá drží úroveň níže déle."
 "The rest of %1" = "Zbytek: %1"
 "%1 is one part of a set of several files. Choose the folder that holds all of them, and Masterpiece reads the set from there." = "%1 je jedna část sady z několika souborů. Zvolte složku, která je obsahuje všechny, a Masterpiece sadu přečte odtud."
 "Choose the folder" = "Zvolte složku"
@@ -827,6 +832,7 @@ countries: cz
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Udržovat přenosné reproduktory vzhůru"
+"Output limiter" = "Omezovač výstupu"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Od klávesy k reproduktoru: asi %1 ms, z toho vyrovnávací paměť %2 ms a výstup %3 ms, jak je hlásí zařízení."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "Velikost vyrovnávací paměti určuje zpoždění mezi klávesou a zvukem. Kolik píšťal může znít, určuje polyfonie, v Nastavení varhan, Načítání."
 "No DSP" = "Bez DSP"

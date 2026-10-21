@@ -160,7 +160,16 @@ private:
   juce::Label latency_;
   juce::ToggleButton keepAwake_{TRANS("Keep portable speakers awake")};
   juce::Slider level_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  // The peak limiter on the output: the switch, the ceiling it holds the
+  // signal under and the rate the gain comes back at.
+  juce::ToggleButton limiterOn_{TRANS("Output limiter")};
+  juce::Label ceilingLabel_;
+  juce::Slider ceiling_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Label releaseLabel_;
+  juce::Slider release_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   void apply();
+  // The limiter's two settings are only in use while it is on.
+  void updateLimiterControls();
 };
 
 // Organ name, load button, audio settings, and what the load actually found.

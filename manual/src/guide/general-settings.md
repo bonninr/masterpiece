@@ -45,7 +45,15 @@ Below the selector, a line reads **Key to speaker: about N ms, of which the buff
 | **Keep portable speakers awake** | Plays a 20 Hz tone, too low and too quiet to hear under the organ, so that a battery speaker does not switch itself off during silence and swallow the first notes. | Off | On, off | At once |
 | Level slider (beside the box) | The level of the tone. Raise it if the speaker still sleeps; lower it if the tone is audible. Active while the box is ticked. | -60 dB when first switched on | -80 to -40 dB in steps of 1 dB | At once |
 
-**Stored.** The device, rate, buffer size and channel choices are written to `audio.xml` when Masterpiece quits. A saved setup that no longer matches the hardware, or that opens with no live output, is replaced by the defaults. A device that opens below 44.1 kHz is moved to 48 kHz, or to 44.1 kHz where 48 kHz is unavailable. The speaker setting is the key `speakerkeepalive` in the global file, written only while it is on.
+Under them, the peak limiter on the output. It holds the level that leaves the program under a ceiling, and it adds no delay. [Audio, room and mixer](audio.md#the-output-limiter) describes how it works.
+
+| Control | What it does | Default | Range or options | Takes effect |
+|---|---|---|---|---|
+| **Output limiter** | Switches the limiter on or off. | Off | On, off | At once |
+| Ceiling slider | The level the output is held under. | -1 dBFS | -0.1 to -12 dBFS in steps of 0.1 dB | At once |
+| Release slider | How long the gain takes to come back after a peak. | 100 ms | 50 to 1000 ms in steps of 10 ms | At once |
+
+**Stored.** The device, rate, buffer size and channel choices are written to `audio.xml` when Masterpiece quits. A saved setup that no longer matches the hardware, or that opens with no live output, is replaced by the defaults. A device that opens below 44.1 kHz is moved to 48 kHz, or to 44.1 kHz where 48 kHz is unavailable. The speaker setting is the key `speakerkeepalive` in the global file, written only while it is on. The limiter's three settings are the key `limiter <on> <ceiling> <release>` in the global file.
 
 [Audio, room and mixer](audio.md) explains choosing a buffer size and a driver.
 
@@ -326,6 +334,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |
 | `midifeedback` | `1`. Written only while on. | **Send stop changes back to the console** |
 | `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
+| `limiter` | `<on> <ceilingDb> <releaseMs>`: the switch, the ceiling in dBFS and the release in ms. | The **Output limiter** on the **Audio** tab |
 | `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Display** tab |
 | `defaulteq` | `<on> <gain> <band 1> ... <band 10>`. Written only while the default EQ is on or not flat. | **Save as default** on the **Voicing EQ** tab of Organ settings |
 | `library` | A folder holding a sample library (an `OrganInstallationPackages` folder beside it). Added when an organ is loaded from such a folder, and for the standard library folder of a Hauptwerk-format installation when it exists. | Opening organs |

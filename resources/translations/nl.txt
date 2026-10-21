@@ -725,6 +725,11 @@ countries: nl be sr
 "%1 not drawn" = "%1 niet getrokken"
 "For a battery speaker that switches itself off after a few seconds of silence and swallows the first notes while it wakes. Plays a 20 Hz tone too low and too quiet to hear under the organ, so the line is never silent." = "Voor een luidspreker op batterijen die zichzelf na enkele seconden stilte uitschakelt en de eerste noten opslokt terwijl hij wakker wordt. Speelt een toon van 20 Hz die te laag en te zacht is om onder het orgel te horen, zodat de lijn nooit stil is."
 "Raise it if the speaker still goes to sleep; lower it if you can hear it." = "Verhoog het als de luidspreker toch in slaap valt; verlaag het als je het kunt horen."
+"Holds the output below the ceiling. It works on the signal after the master fader and adds no delay." = "Houdt de uitgang onder het plafond. Het werkt op het signaal na de hoofdfader en voegt geen vertraging toe."
+"Ceiling" = "Plafond"
+"The level the output is held under. A little below full scale leaves the converters something to work with." = "Het niveau waaronder de uitgang wordt gehouden. Een beetje onder volle schaal laat de omzetters nog wat ruimte."
+"Release" = "Release"
+"How long the gain takes to come back after a peak. A short one lets the level come back at once, a long one holds it down for longer." = "Hoe lang het aanpassingsvermogen terugkomt na een piek. Een korte tijd laat het niveau meteen terugkomen, een lange houdt het langer laag."
 "The rest of %1" = "De rest van %1"
 "%1 is one part of a set of several files. Choose the folder that holds all of them, and Masterpiece reads the set from there." = "%1 is een deel van een set van meerdere bestanden. Kies de map die ze allemaal bevat, dan leest Masterpiece de set vanaf daar."
 "Choose the folder" = "Kies de map"
@@ -827,6 +832,7 @@ countries: nl be sr
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Draagbare luidsprekers wakker houden"
+"Output limiter" = "Uitgangslimiter"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Van toets tot luidspreker: ongeveer %1 ms, waarvan %2 ms buffer en %3 ms uitvoer, zoals het apparaat het meldt."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "De buffergrootte bepaalt de vertraging tussen een toets en zijn klank. Hoeveel pijpen kunnen klinken bepaalt de polyfonie, in Orgelinstellingen, Laden."
 "No DSP" = "Geen DSP"
