@@ -154,5 +154,9 @@ It is built on [JUCE](https://juce.com/), [pugixml](https://pugixml.org/),
 packages, and [WavPack](https://www.wavpack.com/), which decodes compressed samples
 (both BSD licence).
 
+The score panel engraves with [Verovio](https://www.verovio.org/) (LGPL-3.0) in
+the [Bravura](https://github.com/steinbergmedia/bravura) music font (SIL Open
+Font License 1.1).
+
 Masterpiece is not affiliated with, nor endorsed by, any sample library
 producer or any other organ software.

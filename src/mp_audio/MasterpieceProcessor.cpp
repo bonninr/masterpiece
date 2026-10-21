@@ -361,6 +361,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                               static_cast<float>(sampleRate_ * 0.3))
                    : 0.5f;
   recorder_.prepare(sampleRate_);
+  scorePlayer_.prepare(sampleRate_);
   outgoing_.ensureSize(1024);
   sustainedKeys_.reserve(256);
 }
@@ -5582,6 +5583,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Recording captures what arrived; playback merges its events into the same
   // buffer, so a recorded performance drives exactly the live path.
   recorder_.process(midi, buffer.getNumSamples());
+  // The score panel's playing, the same way. One atomic load while idle.
+  scorePlayer_.process(midi, buffer.getNumSamples());
 
   // Then fold the playback back into the keyboard state.
   //

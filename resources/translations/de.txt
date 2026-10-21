@@ -919,3 +919,16 @@ countries: de at ch li lu
 "Make the stops bigger" = "Register vergrößern"
 "Fit the stops to the window" = "Register an das Fenster anpassen"
 "Fit" = "Anpassen"
+
+# src/mp_ui/ScorePanel.cpp
+"The score fonts could not be prepared." = "Die Notenschriften konnten nicht vorbereitet werden."
+"Open a MusicXML score (.musicxml, .xml or .mxl)." = "Eine MusicXML-Partitur öffnen (.musicxml, .xml oder .mxl)."
+"Open score..." = "Noten öffnen..."
+"The file could not be read." = "Die Datei konnte nicht gelesen werden."
+"No score was found in this file." = "In dieser Datei wurden keine Noten gefunden."
+"Staff" = "Notenzeile"
+"Two pages" = "Zwei Seiten"
+"Manuals..." = "Manuale..."
+
+# src/mp_ui/Ui.cpp (score)
+"Score" = "Noten"

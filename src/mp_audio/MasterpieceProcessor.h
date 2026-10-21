@@ -25,6 +25,7 @@
 #include "Metronome.h"
 #include "AudioRecorder.h"
 #include "MidiRecorder.h"
+#include "ScorePlayer.h"
 #include "SplitKeyboardHost.h"
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
@@ -241,6 +242,8 @@ public:
   void releaseAllKeys() {
     releaseAll_.store(true, std::memory_order_release);
     split_.panic();
+    // A score being played would put the next chord straight back down.
+    scorePlayer_.stop();
   }
 
   // Stops in a stable order for the console: by division, then by id, so the
@@ -1307,6 +1310,8 @@ public:
   // its tab closes. Whether it ticks is not kept: it starts silent.
   void rememberMetronome() { writeGlobalFile(); }
   MidiRecorder& recorder() { return recorder_; }
+  // The score panel's playing, merged in where the recorder's is.
+  ScorePlayer& scorePlayer() { return scorePlayer_; }
   // Captures what leaves, minus the metronome. See AudioRecorder.
   AudioRecorder& audioRecorder() { return audioRecorder_; }
   Convolver& convolver() { return convolver_; }
@@ -1949,6 +1954,7 @@ private:
   SplitKeyboardHost split_{midiMap_};
   Metronome metronome_;
   MidiRecorder recorder_;
+  ScorePlayer scorePlayer_;
   AudioRecorder audioRecorder_;
   Convolver convolver_;
   // The organ's declared output trim as a linear gain, resolved once at

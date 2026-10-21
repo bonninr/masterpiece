@@ -919,3 +919,16 @@ countries: fr be ca ch lu mc
 "Make the stops bigger" = "Jeux plus grands"
 "Fit the stops to the window" = "Ajuster les jeux à la fenêtre"
 "Fit" = "Ajuster"
+
+# src/mp_ui/ScorePanel.cpp
+"The score fonts could not be prepared." = "Les polices de la partition n'ont pas pu être préparées."
+"Open a MusicXML score (.musicxml, .xml or .mxl)." = "Ouvrez une partition MusicXML (.musicxml, .xml ou .mxl)."
+"Open score..." = "Ouvrir une partition..."
+"The file could not be read." = "Le fichier n'a pas pu être lu."
+"No score was found in this file." = "Aucune partition n'a été trouvée dans ce fichier."
+"Staff" = "Portée"
+"Two pages" = "Deux pages"
+"Manuals..." = "Claviers..."
+
+# src/mp_ui/Ui.cpp (score)
+"Score" = "Partition"

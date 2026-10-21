@@ -102,7 +102,7 @@ endif()
 
 # ---- pugixml (ODF XML parsing in mp_core, ADR-014) ----
 option(MP_FETCH_PUGIXML "Fetch pugixml via FetchContent" ON)
-set(MP_PUGIXML_TAG "v1.14" CACHE STRING "pugixml git tag for FetchContent")
+set(MP_PUGIXML_TAG "v1.16" CACHE STRING "pugixml git tag for FetchContent")
 if(MP_FETCH_PUGIXML)
   include(FetchContent)
   FetchContent_Declare(
@@ -349,8 +349,18 @@ if(TARGET juce::juce_core)
   endif()
 endif()
 
+# ---- Verovio (MusicXML engraving for the score panel) ----
+# Only where the program itself is built: the panel is part of its window.
+option(MP_ENABLE_SCORE "Compile the score panel (Verovio engraves MusicXML)" ON)
+if(MP_ENABLE_SCORE AND TARGET juce::juce_gui_basics)
+  include(cmake/MpVerovio.cmake)
+endif()
+
 add_subdirectory(src/mp_core)
 add_subdirectory(src/mp_archive)
+if(TARGET mp_verovio)
+  add_subdirectory(src/mp_score)
+endif()
 if(MP_ENABLE_STREAMING)
   add_subdirectory(src/mp_sampler)
 endif()
