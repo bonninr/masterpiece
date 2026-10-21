@@ -3,6 +3,8 @@ add_library(mp_sampler STATIC
   DiskProbe.h DiskProbe.cpp
   VoiceEngine.h VoiceEngine.cpp
   SimdRun.h SimdRun.cpp
+  SampleCodec.h SampleCodec.cpp
+  SampleCodecBuiltins.h SampleCodecBuiltins.cpp
 )
 # The per-frame reader and the vector runs must compute the same numbers.
 # Clang (Apple's, by default on arm64) and GCC may fuse a multiply and an add
