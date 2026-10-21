@@ -579,6 +579,60 @@ public:
 };
 static ScorePanelTest g_scorePanel;
 
+// The cursor stays in sight when the lines break again: after two pages, a
+// zoom or a new size, the page shown holds the notes the cursor marks. A
+// start inside the last notes of a page, held while the next page's first
+// note waits, showed the next page and left the cursor behind.
+class ScoreCursorPageTest final : public mp::test::Test {
+public:
+  ScoreCursorPageTest() : Test("functional.score.cursor-page", Category::Functional) {}
+
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    ScoreOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    mp::ui::ScorePanel panel(proc, fonts);
+    // Sixteen bars of one whole note, a second each: every moment but a
+    // bar's first is inside a held note, the last bars of a page included.
+    const std::string xml = readScoreFixture("whole-notes.musicxml");
+    MP_CHECK(panel.openData(juce::MemoryBlock(xml.data(), xml.size()), "whole-notes.musicxml"), "the score opens");
+    // Small pages, so the score runs over several of them.
+    panel.setSize(700, 420);
+    panel.setZoom(200);
+    panel.render();
+    MP_CHECK(panel.pageCount() >= 4, "the score over several pages, got " + std::to_string(panel.pageCount()));
+
+    int checked = 0, lost = 0;
+    std::string first;
+    for (int quarters = 1; quarters < 64; ++quarters) {
+      const double seconds = quarters / 4.0;
+      panel.setStart(seconds);
+      if (panel.cursorNotes().empty()) continue;
+      for (const bool two : {false, true}) {
+        panel.setTwoPages(two);
+        ++checked;
+        bool seen = false;
+        for (const int shown : {panel.page(), panel.page() + 1}) {
+          const auto* geo = panel.geometryOf(shown);
+          if (geo == nullptr) continue;
+          for (const auto& id : panel.cursorNotes())
+            if (geo->notes.count(id) != 0) seen = true;
+        }
+        if (!seen && ++lost == 1)
+          first = std::to_string(seconds) + " s, " + (two ? "two pages" : "one page") + ", page " +
+                  std::to_string(panel.page());
+      }
+    }
+    MP_CHECK(checked > 100, "starts checked: " + std::to_string(checked));
+    MP_CHECK(lost == 0, "the cursor is on a page shown, lost " + std::to_string(lost) + " times, first at " + first);
+    panel.setTwoPages(false);
+  }
+};
+static ScoreCursorPageTest g_scoreCursorPage;
+
 // A score drives the organ exactly as live MIDI does: the same notes at the
 // same samples, from the player or from the block's input, give the same
 // output to the bit. And with the player idle the output is the organ's

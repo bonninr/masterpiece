@@ -478,7 +478,7 @@ void ScorePanel::requestEngrave() {
 }
 
 // The lines break again to the page's new width; the page shown is then the
-// one holding the note the cursor is at.
+// one holding the notes the cursor marks, so it stays in sight.
 void ScorePanel::engrave() {
   needsEngrave_ = false;
   if (!loaded_ || engraver_ == nullptr) return;
@@ -500,13 +500,28 @@ void ScorePanel::engrave() {
     engraver_->setPage(area.getWidth(), area.getHeight(), scale);
   }
   drawnZoom_ = (scale * 100 + kScale / 2) / kScale;
+  // The cursor's notes sound at the start, or at the playing position while
+  // it plays; the one that began last is nearest that point. Inside a page's
+  // last held notes, the next note to sound is on the next page, and showing
+  // it would leave the cursor out of sight. With the cursor on a rest, the
+  // next note to sound.
   std::string at;
-  double best = std::numeric_limits<double>::max();
-  for (const auto& [id, ms] : noteStartMs_)
-    if (ms >= startMs_ - 1 && ms < best) {
-      best = ms;
+  double latest = -1;
+  for (const auto& id : cursorNotes_) {
+    const auto it = noteStartMs_.find(id);
+    if (it != noteStartMs_.end() && it->second > latest) {
+      latest = it->second;
       at = id;
     }
+  }
+  if (at.empty()) {
+    double best = std::numeric_limits<double>::max();
+    for (const auto& [id, ms] : noteStartMs_)
+      if (ms >= startMs_ - 1 && ms < best) {
+        best = ms;
+        at = id;
+      }
+  }
   const int p = at.empty() ? 1 : engraver_->pageWithElement(at);
   page_ = std::clamp(p > 0 ? p : page_, 1, std::max(1, pageCount()));
   if (twoPages_ && page_ > 1 && page_ == pageCount() && pageCount() % 2 == 0) --page_;
