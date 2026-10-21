@@ -468,6 +468,29 @@ public:
     // Half a second on, the right hand's second quarter: D5.
     for (int b = 0; b < 48000 / 2 / kBlock + 4; ++b) runBlock(proc);
     MP_CHECK(proc.keyDownOnKeyboard(702, 74) && !proc.keyDownOnKeyboard(702, 72), "the melody moves on to D5");
+    // The band stands on the beat: at D5, struck last, and away from the
+    // pedal's whole note and the G3, held from beat 1.
+    {
+      page = panel.render();
+      float first = 1.0e9f, last = -1.0e9f;
+      for (const auto& id : panel.cursorNotes()) {
+        first = std::min(first, panel.notePosition(id).x);
+        last = std::max(last, panel.notePosition(id).x);
+      }
+      MP_CHECK(last - first > 20.0f, "the notes sounding span two beats, " + std::to_string(first) + " to " +
+                                         std::to_string(last));
+      const auto tinted = [&page](int x) {
+        int n = 0;
+        for (int y = 0; y < page.getHeight(); ++y) {
+          const auto c = page.getPixelAt(x, y);
+          if (c.getBlue() > c.getRed() + 25) ++n;
+        }
+        return n;
+      };
+      const int atLast = tinted(juce::roundToInt(last)), atFirst = tinted(juce::roundToInt(first));
+      MP_CHECK(atLast > 100 && atFirst < 40, "the band is at the newest note: " + std::to_string(atLast) +
+                                                 " tinted pixels there, " + std::to_string(atFirst) + " at the held ones");
+    }
     // Another half second: beat 3, the left hand's chord in place of the G3.
     for (int b = 0; b < 48000 / 2 / kBlock; ++b) runBlock(proc);
     MP_CHECK(proc.keyDownOnKeyboard(702, 60) && proc.keyDownOnKeyboard(702, 64) && !proc.keyDownOnKeyboard(702, 55),
