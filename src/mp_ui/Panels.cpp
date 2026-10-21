@@ -593,7 +593,8 @@ public:
       // Smaller until the lines fit the button's height, and until a single
       // word longer than the button ("Geigenprincipal" on a narrow one) fits
       // its width; never below 7 px. The layout breaks such a word inside
-      // itself and stays within the width, so the word is measured alone.
+      // itself and stays within the width, so the word is measured alone, with
+      // a margin: the layout breaks a word a little before the measure ends.
       const auto words = juce::StringArray::fromTokens(as.getText(), " ", "");
       const auto widestWord = [&words](const juce::Font& f) {
         float w = 0.0f;
@@ -601,7 +602,7 @@ public:
         return w;
       };
       for (int i = 0; i < 12 && font.getHeight() > 7.0f &&
-                      (layout.getHeight() > text.getHeight() || widestWord(font) > text.getWidth());
+                      (layout.getHeight() > text.getHeight() || widestWord(font) * 1.06f > text.getWidth());
            ++i) {
         font.setHeight(std::max(7.0f, font.getHeight() * 0.88f));
         as.setFont(font);
