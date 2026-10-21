@@ -370,6 +370,19 @@ with **Learn transpose -** and **Learn transpose +**.
 The temperament, pitch and transposition are saved per organ and apply again
 when the organ is next opened.
 
+### Unevenness
+
+Two sliders under **Unevenness** make an organ sound less exact, as pipes and
+wind do. Both are off by default, saved per organ, and cost nothing while off.
+
+| Control | What it does | Range |
+|---|---|---|
+| **Pipe detune** | Puts each pipe up to this many cents off true. A pipe keeps its own amount, sharp or flat, at every note and on every computer, so a chord beats the same way each time it is played. Heard from the next note. | Off to 10 cents |
+| **Wind sway** | Moves the pitch of each division slowly, by up to this many cents, as an organ's wind does: two slow waves per division, between about one in ten seconds and one in three, so the divisions drift apart. Heard on the notes started while it is on. | Off to 10 cents |
+
+The control API sets them as the program properties `pipeDetune` and
+`windSway`, in tenths of a cent.
+
 ## Metronome
 
 The metronome is a click generated inside the audio callback, so it keeps time

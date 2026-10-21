@@ -434,6 +434,20 @@ public:
   // either way.
   void setTranspose(int semitones);
   int transpose() const { return transpose_.load(std::memory_order_relaxed); }
+
+  // Unevenness, saved for the organ and off by default. Pipe detune puts each
+  // pipe up to this many cents off true, the same pipe by the same amount at
+  // every note: heard from the next note, nothing done while it is 0. Wind
+  // sway moves the pitch of each division slowly by up to this many cents,
+  // as an organ's wind does: heard on the pipes started while it is on,
+  // nothing done while it is 0. 0 to 10 cents each.
+  static constexpr float kMaxUnevennessCents = 10.0f;
+  void setPipeDetuneCents(float cents);
+  float pipeDetuneCents() const { return pipeDetuneCents_.load(std::memory_order_relaxed); }
+  void setWindSwayCents(float cents);
+  float windSwayCents() const { return windSwayCents_.load(std::memory_order_relaxed); }
+  // How far, -1 to 1, a pipe stands off true under pipe detune.
+  static double pipeDetuneOffset(Id pipeId);
   bool captureMode() const { return combinations_.captureMode(); }
 
   // --- the crescendo, and everything else a shoe position moves -----------
@@ -1714,6 +1728,12 @@ private:
   std::unordered_map<Id, int> tremIndexOf_;
   std::vector<VoiceEngine::TremMod> tremMods_;
   void advanceTremulants(int numFrames);
+  // The wind sway: one slow wave per division and one for ranks in none,
+  // with each rank's place resolved at load; advanced once a block.
+  void advanceSway(int numFrames);
+  std::unordered_map<Id, int> rankSwayIndex_;
+  int swayChannels_ = 0;
+  std::vector<double> swayPhaseA_, swayPhaseB_, swayRatios_;
   std::vector<float> windDemand_;
   // Advance the wind by one block: ask the engine what is drawing air, solve,
   // and hand the result back for the voices to sound through.
@@ -1765,6 +1785,8 @@ private:
   std::string temperamentChoice_;
   std::atomic<double> masterPitchHz_{0.0};
   std::atomic<int> transpose_{0};
+  std::atomic<float> pipeDetuneCents_{0.0f};
+  std::atomic<float> windSwayCents_{0.0f};
   const Temperament& activeTuning() const {
     const Temperament* t = playerTuning_.load(std::memory_order_acquire);
     return t != nullptr ? *t : organTuning_;
