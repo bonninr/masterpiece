@@ -24,6 +24,7 @@
 
 #include "Convolver.h"
 #include "Metronome.h"
+#include "OutputLimiter.h"
 #include "AudioRecorder.h"
 #include "MidiArchive.h"
 #include "MidiRecorder.h"
@@ -1382,6 +1383,19 @@ public:
   AudioRecorder& audioRecorder() { return audioRecorder_; }
   Convolver& convolver() { return convolver_; }
 
+  // The peak limiter on the final output: after the master fader, before
+  // the device. Off by default, and while it is off the audio thread does
+  // not call it at all, so the output is what the engine made. The three
+  // settings are kept in the general settings.
+  bool limiterEnabled() const { return limiter_.enabled(); }
+  void setLimiterEnabled(bool on);
+  float limiterCeilingDb() const { return limiter_.ceilingDb(); }
+  void setLimiterCeilingDb(float db);
+  float limiterReleaseMs() const { return limiter_.releaseMs(); }
+  void setLimiterReleaseMs(float ms);
+  // The limiter itself, for a test and for a readout.
+  OutputLimiter& limiter() { return limiter_; }
+
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
@@ -2049,6 +2063,9 @@ private:
   MidiMap midiMap_;
   SplitKeyboardHost split_{midiMap_};
   Metronome metronome_;
+  // The peak limiter on the final output. Off until the player turns it on;
+  // while it is off the audio thread does not call it at all.
+  OutputLimiter limiter_;
   MidiRecorder recorder_;
   ScorePlayer scorePlayer_;
   MidiArchive archive_;

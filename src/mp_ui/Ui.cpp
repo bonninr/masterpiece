@@ -543,6 +543,59 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   level_.onValueChange = [this] {
     if (!level_.isMouseButtonDown()) apply();
   };
+
+  // The peak limiter on the output, under the device.
+  addAndMakeVisible(limiterOn_);
+  limiterOn_.setToggleState(proc_.limiterEnabled(), juce::dontSendNotification);
+  limiterOn_.setTooltip(
+      TRANS("Holds the output below the ceiling. It works on the signal "
+            "after the master fader and adds no delay."));
+  limiterOn_.onClick = [this] {
+    proc_.setLimiterEnabled(limiterOn_.getToggleState());
+    updateLimiterControls();
+  };
+
+  addAndMakeVisible(ceilingLabel_);
+  ceilingLabel_.setText(TRANS("Ceiling"), juce::dontSendNotification);
+  ceilingLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(ceiling_);
+  ceiling_.setRange(-12.0, -0.1, 0.1);
+  ceiling_.setValue(proc_.limiterCeilingDb(), juce::dontSendNotification);
+  ceiling_.setTextValueSuffix(" dBFS");
+  ceiling_.setTooltip(TRANS("The level the output is held under. A little "
+                             "below full scale leaves the converters something "
+                             "to work with."));
+  ceiling_.onValueChange = [this] {
+    // The value reaches the limiter at once, so the player hears it while it
+    // moves; the settings file is written when the drag ends.
+    proc_.limiter().setCeilingDb(static_cast<float>(ceiling_.getValue()));
+    if (!ceiling_.isMouseButtonDown())
+      proc_.setLimiterCeilingDb(static_cast<float>(ceiling_.getValue()));
+  };
+  ceiling_.onDragEnd = [this] {
+    proc_.setLimiterCeilingDb(static_cast<float>(ceiling_.getValue()));
+  };
+
+  addAndMakeVisible(releaseLabel_);
+  releaseLabel_.setText(TRANS("Release"), juce::dontSendNotification);
+  releaseLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(release_);
+  release_.setRange(50.0, 1000.0, 10.0);
+  release_.setValue(proc_.limiterReleaseMs(), juce::dontSendNotification);
+  release_.setTextValueSuffix(" ms");
+  release_.setTooltip(TRANS("How long the gain takes to come back after a "
+                             "peak. A short one lets the level come back at "
+                             "once, a long one holds it down for longer."));
+  release_.onValueChange = [this] {
+    proc_.limiter().setReleaseMs(static_cast<float>(release_.getValue()));
+    if (!release_.isMouseButtonDown())
+      proc_.setLimiterReleaseMs(static_cast<float>(release_.getValue()));
+  };
+  release_.onDragEnd = [this] {
+    proc_.setLimiterReleaseMs(static_cast<float>(release_.getValue()));
+  };
+  updateLimiterControls();
+
   setSize(500, 510);
 }
 
@@ -575,11 +628,34 @@ void AudioSettingsPanel::apply() {
                                 : 0.0f);
 }
 
+void AudioSettingsPanel::updateLimiterControls() {
+  // The two settings belong to the limiter, so they are greyed out while it
+  // is off. Their values are kept either way.
+  const bool on = limiterOn_.getToggleState();
+  ceiling_.setEnabled(on);
+  release_.setEnabled(on);
+}
+
 void AudioSettingsPanel::resized() {
   auto r = getLocalBounds();
-  auto row = r.removeFromBottom(40).reduced(12, 6);
-  keepAwake_.setBounds(row.removeFromLeft(240));
-  level_.setBounds(row);
+
+  // The limiter block at the foot of the tab: the switch, then the ceiling
+  // and the release on a row each.
+  auto block = r.removeFromBottom(96).reduced(12, 0);
+  limiterOn_.setBounds(block.removeFromTop(26));
+  block.removeFromTop(6);
+  auto row = block.removeFromTop(26);
+  ceilingLabel_.setBounds(row.removeFromLeft(90));
+  row.removeFromLeft(6);
+  ceiling_.setBounds(row.removeFromLeft(240));
+  row = block.removeFromTop(26);
+  releaseLabel_.setBounds(row.removeFromLeft(90));
+  row.removeFromLeft(6);
+  release_.setBounds(row.removeFromLeft(240));
+
+  auto keep = r.removeFromBottom(40).reduced(12, 6);
+  keepAwake_.setBounds(keep.removeFromLeft(240));
+  level_.setBounds(keep);
   latency_.setBounds(r.removeFromBottom(28).reduced(12, 2));
   selector_.setBounds(r);
 }

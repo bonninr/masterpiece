@@ -14,6 +14,7 @@ Each audio block passes through these stages, in this order.
 | Voicing EQ | The ten-band equaliser of **Organ settings > Voicing EQ** | Yes |
 | Room | The impulse-response convolution of the **Room** tab | Yes |
 | Organ trim and master level | The organ's own output trim and the master fader, applied as one multiplication | No |
+| Output limiter | Holds the output under a ceiling, where the limiter is switched on | No |
 | Audio recorder | Captures the signal at this point, so a recording does not contain the metronome | No |
 | Metronome, load-progress taps, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
@@ -235,6 +236,22 @@ The **Voicing** box among the switches of **Organ settings > Loading** is saved 
 The organ trim is the producer's calibration, which brings sets recorded at different levels to comparable loudness. It is applied under Simple WAV as well. The meter shows the finished output, metronome included; it rises instantly and falls with a time constant of 0.3 s.
 
 The wind model's depth has no control in the program; the engine uses the physics as solved (depth 1).
+
+## The output limiter
+
+**Settings > General settings > Audio** holds a peak limiter for the output. It is off until it is switched on, and while it is off the engine does not touch the signal at all.
+
+| Control | What it does | Default | Range |
+|---|---|---|---|
+| **Output limiter** | Switches the limiter on | Off | On, off |
+| Ceiling | The level the output is held under | -1 dBFS | -0.1 to -12 dBFS in steps of 0.1 dB |
+| Release | How long the gain takes to come back after a peak | 100 ms | 50 to 1000 ms in steps of 10 ms |
+
+The limiter sits after the master fader and before the recorder, so a recording carries it as well. It watches the two channels of a pair together: the louder of them sets the gain and both channels get it, so a loud left channel does not leave the right one to clip on its own.
+
+The gain that holds a sample down is the one that sample asks for, so no part of the signal is delayed and the limiter needs no look-ahead. The knee is 3 dB wide: a level just under the ceiling is barely touched, and the reduction grows smoothly to the full amount. Once the loud passage is over the gain comes back at the release rate; after one release time it has closed about two thirds of the distance back to where it was.
+
+With the limiter off the output is bit for bit what the engine made.
 
 ## The metronome
 

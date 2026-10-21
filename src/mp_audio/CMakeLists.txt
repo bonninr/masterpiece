@@ -12,6 +12,7 @@ add_library(mp_audio STATIC
   RealtimeThread.h RealtimeThread.cpp
   WavPackFormat.h WavPackFormat.cpp
   Metronome.h Metronome.cpp
+  OutputLimiter.h OutputLimiter.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
   ScorePlayer.h ScorePlayer.cpp

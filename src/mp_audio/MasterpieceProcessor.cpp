@@ -356,6 +356,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   // SIMDNativeOps<unsigned long>, which the SSE header does not define.
   expandScratch_.reserve(std::max<size_t>(16, model_.divisions.size() * 4));
   metronome_.prepare(sampleRate_);
+  limiter_.prepare(sampleRate_);
 
   // Meter fall: 0.3 s to decay by 1/e. Computed here so the audio thread
   // never calls a transcendental function for the sake of a lamp.
@@ -2119,6 +2120,11 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (language_.isNotEmpty()) text << "language " << language_ << "\n";
   text << "metronome " << juce::String(metronome_.tempo(), 1) << " " << metronome_.beatsPerBar() << " "
        << juce::String(metronome_.level(), 2) << "\n";
+  // The limiter's three settings on one line: it is on or off, it holds the
+  // output under a ceiling, and it lets the gain come back at a rate.
+  text << "limiter " << (limiter_.enabled() ? 1 : 0) << " "
+       << juce::String(limiter_.ceilingDb(), 1) << " "
+       << juce::String(limiter_.releaseMs(), 0) << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
@@ -2375,6 +2381,16 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         metronome_.setBeatsPerBar(parts[1].getIntValue());
         metronome_.setLevel(static_cast<float>(parts[2].getDoubleValue()));
       }
+    } else if (key == "limiter") {
+      // "limiter <on> <ceilingDb> <releaseMs>". The two settings are read
+      // whatever the switch says, so a player who turned the limiter off
+      // and on again finds the ceiling and the rate they had chosen.
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() >= 3) {
+        limiter_.setCeilingDb(static_cast<float>(parts[1].getDoubleValue()));
+        limiter_.setReleaseMs(static_cast<float>(parts[2].getDoubleValue()));
+        limiter_.setEnabled(parts[0].getIntValue() != 0);
+      }
     } else if (key == "openfolder") {
       openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "dialogfolder") {
@@ -2565,6 +2581,24 @@ bool MasterpieceProcessor::openMidiOutput(const juce::String& name) {
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
   if (lastOrgan_ == odf) return;
   lastOrgan_ = odf;
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLimiterEnabled(bool on) {
+  if (limiter_.enabled() == on) return;
+  limiter_.setEnabled(on);
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLimiterCeilingDb(float db) {
+  if (limiter_.ceilingDb() == db) return;
+  limiter_.setCeilingDb(db);
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLimiterReleaseMs(float ms) {
+  if (limiter_.releaseMs() == ms) return;
+  limiter_.setReleaseMs(ms);
   writeGlobalFile();
 }
 
@@ -5944,6 +5978,13 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   buffer.applyGain(organTrimGain_ *
                    *apvts_.getRawParameterValue("masterGain"));
 
+  // The peak limiter, on the final output: after the master fader and
+  // before everything that leaves the program. Off by default, and while it
+  // is off the call is not made at all, so the output is bit for bit what
+  // the engine made.
+  if (limiter_.enabled())
+    limiter_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
+                     buffer.getNumSamples());
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.

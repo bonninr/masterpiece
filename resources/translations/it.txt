@@ -725,6 +725,11 @@ countries: it ch sm va
 "%1 not drawn" = "%1 non inserito"
 "For a battery speaker that switches itself off after a few seconds of silence and swallows the first notes while it wakes. Plays a 20 Hz tone too low and too quiet to hear under the organ, so the line is never silent." = "Per un altoparlante a batteria che si spegne da solo dopo pochi secondi di silenzio e inghiotte le prime note mentre si risveglia. Riproduce un tono a 20 Hz troppo grave e troppo debole per essere udito sotto l'organo, così la linea non è mai silenziosa."
 "Raise it if the speaker still goes to sleep; lower it if you can hear it." = "Alzalo se l'altoparlante si addormenta ancora; abbassalo se lo senti."
+"Holds the output below the ceiling. It works on the signal after the master fader and adds no delay." = "Mantiene l\'uscita sotto il soffitto. Opera sul segnale dopo il fader principale e non aggiunge ritardo."
+"Ceiling" = "Soffitto"
+"The level the output is held under. A little below full scale leaves the converters something to work with." = "Il livello sotto il quale l\'uscita viene mantenuta. Poco sotto il fondo scala lascia ai convertitori un margine."
+"Release" = "Rilascio"
+"How long the gain takes to come back after a peak. A short one lets the level come back at once, a long one holds it down for longer." = "Quanto tempo impiega il guadagno a recuperarsi dopo un picco. Un tempo breve lascia tornare subito il livello, uno lungo lo tiene più in basso."
 "The rest of %1" = "Il resto di %1"
 "%1 is one part of a set of several files. Choose the folder that holds all of them, and Masterpiece reads the set from there." = "%1 è una parte di un set di più file. Scegli la cartella che li contiene tutti e Masterpiece leggerà il set da lì."
 "Choose the folder" = "Scegli la cartella"
@@ -827,6 +832,7 @@ countries: it ch sm va
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Mantieni svegli gli altoparlanti portatili"
+"Output limiter" = "Limitatore di uscita"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Dal tasto all'altoparlante: circa %1 ms, di cui %2 ms di buffer e %3 ms di uscita, come li indica il dispositivo."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "La dimensione del buffer stabilisce il ritardo tra un tasto e il suo suono. Quante canne possono suonare lo stabilisce la polifonia, in Impostazioni dell'organo, Caricamento."
 "No DSP" = "Senza DSP"
