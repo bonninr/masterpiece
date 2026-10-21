@@ -16,6 +16,8 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace mp {
@@ -70,8 +72,12 @@ public:
   // at the start of the block they were read in.
   void captureLive(const juce::MidiMessage& message, int deviceId);
 
-  bool saveToFile(const juce::File& file);
-  bool loadFromFile(const juce::File& file);
+  // A console's name for its id, and back: a file holds the name, since ids
+  // mean nothing in another session.
+  using DeviceName = std::function<std::string(int)>;
+  using DeviceId = std::function<int(const std::string&)>;
+  bool saveToFile(const juce::File& file, const DeviceName& nameOf = {});
+  bool loadFromFile(const juce::File& file, const DeviceId& idOf = {});
 
   // The take, for a file written elsewhere: each message with its time in
   // seconds from the start of the take and the console it came from.
@@ -81,6 +87,11 @@ public:
     int deviceId = 0;
   };
   std::vector<TakeEvent> takeEvents() const;
+  // The file a take is kept in: format 1, the tempo alone in the first track
+  // (a quarter note a second, 960 ticks), then a track per console opening
+  // with its name as a Device Name event (FF 09); what came from no console is
+  // in a track with no name. Times are seconds from the start of the take.
+  static bool writeTake(const juce::File& file, const std::vector<TakeEvent>& events, const DeviceName& nameOf);
   // Where the take ends: where recording stopped, or just after the last event
   // of a take read from a file.
   double endSeconds() const { return static_cast<double>(writePos_) / sampleRate_; }

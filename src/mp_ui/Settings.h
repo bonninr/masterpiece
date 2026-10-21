@@ -331,6 +331,9 @@ private:
   juce::ToggleButton leaveHeld_{TRANS("Stop changes leave the notes already held alone")};
   juce::ToggleButton sustain_{TRANS("Sustain pedal: controller 64 holds the notes let go")};
   juce::ToggleButton noiseFilter_{TRANS("Noise filter: when learning, a key counts once held a quarter second")};
+  juce::ToggleButton archive_{TRANS("Keep everything played")};
+  juce::ComboBox archiveSilence_, archiveSize_, archiveAge_;
+  void applyArchive();
   juce::TextButton saveMap_{TRANS("Save mapping")};
   juce::TextButton clearMap_{TRANS("Clear mapping")};
   // The sequencer pistons have nothing on the console to right-click, because

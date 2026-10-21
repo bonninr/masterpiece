@@ -443,11 +443,18 @@ or restarted with keys still down, they are released in the next block, and keys
 that the player holds stay held. Playback stops at the end of the take and does
 not loop.
 
-A saved file is a single track with a time base of 960 ticks per quarter note.
-Each event is stamped at 960 ticks per second of the take, and the file opens
-with a tempo event of 60 bpm, one quarter note per second. A reader that follows
-the tempo event, Masterpiece's own **Load MIDI...** included, reads the saved
-take at its recorded length.
+A saved file has a time base of 960 ticks per quarter note. Each event is
+stamped at 960 ticks per second of the take, and the first track holds a tempo
+event of 60 bpm, one quarter note per second. A reader that follows the tempo
+event, Masterpiece's own **Load MIDI...** included, reads the saved take at its
+recorded length.
+
+Each MIDI device has a track of its own, opening with the device's name (a
+Device Name event); the on-screen keys and the host's MIDI are in a track with
+no name. **Load MIDI...** gives each track back to the device of that name, so
+two consoles that share a channel play their own keyboards again. A track with
+no name, or the name of a device this computer does not know, plays by the
+organ's own channels.
 
 ### A file for other programs
 
@@ -486,6 +493,31 @@ and they are the console's, the same on every organ.
 Each can light a lamp: a MIDI send for **recorder-record** or **recorder-play**,
 lit while the recorder records or plays. The buttons' own messages are not
 recorded into a take, and a take played back never presses them.
+
+### Everything played
+
+**Keep everything played** on the MIDI tab of **Settings > General settings**
+records all the time, in the background, apart from the Recorder window. Off by
+default.
+
+| Setting | Choices | Default |
+|---|---|---|
+| **ends after ... of silence** | 10 s, 30 s, 1 min, 2 min, 5 min, 10 min | 30 s |
+| **up to ...** (the folder's size) | 100 MB, 250 MB, 500 MB, 1 GB, 2 GB, 5 GB | 500 MB |
+| **kept ... days** | 7, 30, 90, 365 | 90 |
+
+A take begins with the first note and ends after the silence chosen. Each take
+is a file, `Documents/Masterpiece/Recordings/Archive/<yyyy-mm-dd>/<hh-mm-ss> <organ>.mid`,
+in the same format as **Save MIDI...**, with a track per device, and opens with
+**Load MIDI...**. A take longer than two hours is saved and the next note begins
+a new one. Closing Masterpiece, or switching the setting off, saves the take in
+progress.
+
+After each take the oldest files go first until the folder is under its size
+and every file is younger than its age. The archive lists the files it writes in
+`archive-index.txt` and deletes only those: a file put in the folder by hand
+stays, and the newest take is always kept. Clock and active sensing messages are
+left out.
 
 ### Audio recording
 

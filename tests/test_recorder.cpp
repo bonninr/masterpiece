@@ -13,6 +13,7 @@
 #include "../src/mp_audio/MidiRecorder.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -314,6 +315,177 @@ public:
   }
 };
 static RecorderSequencerFileTest g_recorderSequencer;
+
+// The consoles in the file (E2): a track per console, named with its Device
+// Name event, read back to the console of that name. Two consoles on the same
+// channel each play their own keyboard again from the file.
+class RecorderDevicesInTheFileTest final : public mp::test::Test {
+public:
+  RecorderDevicesInTheFileTest()
+      : Test("functional.audio.recorder-devices-in-the-file", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    proc.clearChannelAssignments();
+    proc.midiMap().removeBindings([](const mp::MidiBinding&) { return true; });
+    const Id pedal = proc.keyboardForChannel(1, 0);
+    const Id manual = proc.keyboardForChannel(2, 0);
+    const int a = proc.midiMap().devices().claim("Console A");
+    const int b = proc.midiMap().devices().claim("Console B");
+    MP_CHECK(a != 0 && b != 0 && a != b, "two consoles");
+    proc.setKeyboardForChannel(1, manual, a, true);
+    proc.setKeyboardForChannel(1, pedal, b, true);
+    MP_CHECK(proc.keyboardForChannel(1, a) == manual && proc.keyboardForChannel(1, b) == pedal,
+             "the channel 1 of each plays its own keyboard");
+
+    proc.recorder().startRecording();
+    proc.pushMidi(a, juce::MidiMessage::noteOn(1, 48, 100.0f));
+    proc.pushMidi(b, juce::MidiMessage::noteOn(1, 50, 100.0f));
+    render(proc);
+    proc.recorder().stopRecording();
+    const juce::File file =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-recorder-devices.mid");
+    MP_CHECK(proc.saveTake(file), "the take is saved");
+    {
+      juce::FileInputStream in(file);
+      juce::MidiFile mf;
+      juce::StringArray names;
+      if (in.openedOk() && mf.readFrom(in))
+        for (int t = 0; t < mf.getNumTracks(); ++t)
+          for (const auto* e : *mf.getTrack(t))
+            if (e->message.isMetaEvent() && e->message.getMetaEventType() == 9)
+              names.add(e->message.getTextFromTextMetaEvent());
+      MP_CHECK(mf.getNumTracks() == 3 && names.size() == 2 && names.contains("Console A") && names.contains("Console B"),
+               "the tempo track and one per console, named: " + names.joinIntoString("|").toStdString());
+    }
+
+    proc.recorder().clear();
+    MP_CHECK(proc.loadTake(file), "and read back");
+    int fromA = 0, fromB = 0;
+    for (const auto& e : proc.recorder().takeEvents()) {
+      if (e.message.isNoteOn() && e.message.getNoteNumber() == 48 && e.deviceId == a) ++fromA;
+      if (e.message.isNoteOn() && e.message.getNoteNumber() == 50 && e.deviceId == b) ++fromB;
+    }
+    MP_CHECK(fromA == 1 && fromB == 1, "each note with the console it was played on");
+    proc.recorder().startPlayback();
+    render(proc);
+    MP_CHECK(proc.keyDownOnKeyboard(manual, 48) && proc.keyDownOnKeyboard(pedal, 50),
+             "played back, each on its own keyboard");
+    MP_CHECK(!proc.keyDownOnKeyboard(pedal, 48) && !proc.keyDownOnKeyboard(manual, 50), "and on no other");
+    file.deleteFile();
+  }
+};
+static RecorderDevicesInTheFileTest g_recorderDevices;
+
+// Everything played, kept (E2): a take begins with the first note, ends after
+// the silence, and is written to a dated file the folder's index lists; the
+// take in progress is written when asked, as on quitting.
+class MidiArchiveTest final : public mp::test::Test {
+public:
+  MidiArchiveTest() : Test("functional.audio.midi-archive", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    proc.midiMap().removeBindings([](const mp::MidiBinding&) { return true; });
+    const juce::File folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-archive");
+    folder.deleteRecursively();
+    proc.setArchiveFolderForTests(folder);
+    mp::MasterpieceProcessor::ArchiveSettings on;
+    on.on = true;
+    on.silenceSeconds = 10;
+    proc.setArchiveSettings(on, false);
+    auto seconds = [&](double s) {
+      for (int i = 0; i < static_cast<int>(s * 48000.0 / 256.0); ++i) render(proc);
+    };
+
+    proc.pushMidi(kConsole, juce::MidiMessage::controllerEvent(1, 7, 100));
+    render(proc);
+    MP_CHECK(proc.serviceArchive(true) == juce::File(), "a controller alone begins no take");
+    seconds(1.0);
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOn(1, 48, 100.0f));
+    render(proc);
+    seconds(0.5);
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOff(1, 48));
+    render(proc);
+    seconds(5.0);
+    MP_CHECK(proc.serviceArchive() == juce::File(), "after 5 s of silence the take goes on");
+    seconds(5.5);
+    const juce::File file = proc.serviceArchive();
+    MP_CHECK(file.existsAsFile() && file.isAChildOf(folder) && file.hasFileExtension(".mid"),
+             "after 10 s it is written: " + file.getFullPathName().toStdString());
+    MP_CHECK(file.getParentDirectory().getFileName() == juce::Time::getCurrentTime().formatted("%Y-%m-%d"),
+             "in the day's folder");
+    MP_CHECK(folder.getChildFile(mp::MidiArchive::kIndexName).loadFileAsString().contains(file.getFileName()),
+             "and listed in the index");
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(back.loadFromFile(file) && back.eventCount() == 2, "the note and its release");
+    const auto events = back.takeEvents();
+    MP_CHECK(!events.empty() && events.front().seconds == 0.0 && std::abs(events.back().seconds - 0.5) < 0.01,
+             "from 0, the release half a second on");
+    MP_CHECK(proc.serviceArchive() == juce::File(), "and nothing more until a note");
+
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOn(1, 50, 100.0f));
+    render(proc);
+    const juce::File quit = proc.serviceArchive(true);
+    MP_CHECK(quit.existsAsFile() && quit != file, "the take in progress is written when asked, as on quitting");
+    proc.setArchiveSettings({}, false);
+    folder.deleteRecursively();
+  }
+};
+static MidiArchiveTest g_midiArchive;
+
+// The archive's limits: the oldest listed files go first, for age and then
+// for size; a file the index does not list, a listed file that is not a
+// `.mid`, one outside the folder and the newest are never deleted.
+class MidiArchiveLimitsTest final : public mp::test::Test {
+public:
+  MidiArchiveLimitsTest() : Test("functional.audio.midi-archive-limits", Category::Functional) {}
+  void run() override {
+    const juce::File temp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    const juce::File folder = temp.getChildFile("mp-archive-limits");
+    const juce::File outside = temp.getChildFile("mp-archive-outside.mid");
+    folder.deleteRecursively();
+    folder.createDirectory();
+    const juce::Time now = juce::Time::getCurrentTime();
+    const juce::int64 day = 24LL * 60 * 60 * 1000;
+    juce::String index;
+    auto file = [&](const juce::String& rel, int ageDays, bool listed) {
+      const juce::File f = rel.startsWith("..") ? outside : folder.getChildFile(rel);
+      f.getParentDirectory().createDirectory();
+      juce::MemoryBlock bytes(1000, true);
+      f.replaceWithData(bytes.getData(), bytes.getSize());
+      if (listed) index << juce::String(now.toMilliseconds() - ageDays * day) << "\t" << rel << "\n";
+      return f;
+    };
+    const auto a = file("2026-01-01/a.mid", 100, true);
+    const auto mine = file("2026-01-01/mine.mid", 300, false);
+    const auto b = file("2026-06-01/b.mid", 50, true);
+    const auto c = file("2026-09-01/c.mid", 20, true);
+    const auto d = file("2026-10-01/d.mid", 1, true);
+    const auto notes = file("notes.txt", 200, true);
+    file("../mp-archive-outside.mid", 300, true);
+    folder.getChildFile(mp::MidiArchive::kIndexName).replaceWithText(index);
+
+    MP_CHECK(mp::MidiArchive::prune(folder, 1000000000, 90, now) == 1, "the age: one file older than 90 days");
+    MP_CHECK(!a.existsAsFile() && mine.existsAsFile() && a.getParentDirectory().isDirectory(),
+             "the old listed file goes; the unlisted one beside it and its folder stay");
+    MP_CHECK(notes.existsAsFile() && outside.existsAsFile(), "a listed file that is not a take, and one outside, stay");
+    MP_CHECK(mp::MidiArchive::prune(folder, 2500, 90, now) == 1, "the size: the oldest goes until under 2500 bytes");
+    MP_CHECK(!b.existsAsFile() && !b.getParentDirectory().exists() && c.existsAsFile() && d.existsAsFile(),
+             "b went, and its emptied day folder with it");
+    MP_CHECK(mp::MidiArchive::prune(folder, 10, 90, now) == 1 && !c.existsAsFile() && d.existsAsFile(),
+             "the newest is never deleted");
+    const auto left = folder.getChildFile(mp::MidiArchive::kIndexName).loadFileAsString();
+    MP_CHECK(left.contains("d.mid") && !left.contains("c.mid") && !left.contains("a.mid"),
+             "the index lists what is left");
+    folder.deleteRecursively();
+    outside.deleteFile();
+  }
+};
+static MidiArchiveLimitsTest g_midiArchiveLimits;
 
 }  // namespace
 

@@ -365,6 +365,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                    : 0.5f;
   recorder_.prepare(sampleRate_);
   scorePlayer_.prepare(sampleRate_);
+  archive_.prepare(sampleRate_);
   // A block of a take, and Panic's 2048 releases, without allocating on the
   // audio thread.
   recordedPlayback_.reserve(4096);
@@ -838,6 +839,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     for (const auto& [deviceId, msg] : midiScratch_)
       if (deviceId != MidiDeviceMap::kAnyDevice && !recorderButton(deviceId, msg))
         recorder_.captureLive(msg, deviceId);
+  // The archive takes all of it, the host's buffer and the on-screen keys
+  // included; a take being played back is added below and stays out.
+  if (archiveOn_.load(std::memory_order_relaxed)) {
+    for (const auto& [deviceId, msg] : midiScratch_)
+      if (!recorderButton(deviceId, msg)) archive_.capture(msg, deviceId);
+  }
   // A take being played back: each event with the console it came from, so it
   // is routed the way it was when it was played. They go in after the split
   // keyboard, which has already had its say over what was recorded.
@@ -2119,6 +2126,10 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (sustainPedal_.load()) text << "sustainpedal 1\n";
   if (pedalCoupled_.load()) text << "pedalcombinationscoupled 1\n";
   if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
+  if (archiveOn_.load()) text << "archive 1\n";
+  if (archiveSilence_ != 30) text << "archivesilence " << archiveSilence_ << "\n";
+  if (archiveMegabytes_ != 500) text << "archivemb " << archiveMegabytes_ << "\n";
+  if (archiveDays_ != 90) text << "archivedays " << archiveDays_ << "\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   if (setOffAfterStore_) text << "setoffafterstore 1\n";
@@ -2276,6 +2287,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       pedalCoupled_.store(val.getIntValue() != 0);
     } else if (key == "learnnoisefilter") {
       learnNoiseFilter_.store(val.getIntValue() != 0);
+    } else if (key == "archive") {
+      archiveOn_.store(val.getIntValue() != 0);
+    } else if (key == "archivesilence") {
+      archiveSilence_ = juce::jlimit(10, 600, val.getIntValue());
+    } else if (key == "archivemb") {
+      archiveMegabytes_ = juce::jmax(1, val.getIntValue());
+    } else if (key == "archivedays") {
+      archiveDays_ = juce::jmax(1, val.getIntValue());
     } else if (key == "cachewhileplaying") {
       cacheWhilePlaying_.store(val.getIntValue() != 0);
     } else if (key == "combinationsontop") {
@@ -5832,6 +5851,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   }
   handleMidi(midi);
   emitScorePageTurns();
+  if (archiveOn_.load(std::memory_order_relaxed)) archive_.advance(buffer.getNumSamples());
   if (logBlocks) t2 = tick();
   // And every voice still sounding, once the note-offs above have been dealt
   // with: a note stuck because its note-off was lost, or arrived where the
@@ -7685,6 +7705,47 @@ bool MasterpieceProcessor::saveTakeForSequencer(const juce::File& file, bool mar
   return stream != nullptr && out.writeTo(*stream, 1);
 }
 
+bool MasterpieceProcessor::saveTake(const juce::File& file) {
+  return recorder_.saveToFile(file, [this](int id) { return midiMap_.devices().nameFor(id); });
+}
+
+bool MasterpieceProcessor::loadTake(const juce::File& file) {
+  return recorder_.loadFromFile(file, [this](const std::string& name) { return midiMap_.devices().idFor(name); });
+}
+
+void MasterpieceProcessor::setArchiveSettings(const ArchiveSettings& s, bool save) {
+  archiveSilence_ = juce::jlimit(10, 600, s.silenceSeconds);
+  archiveMegabytes_ = juce::jmax(1, s.maxMegabytes);
+  archiveDays_ = juce::jmax(1, s.maxDays);
+  archiveOn_.store(s.on, std::memory_order_release);
+  if (!s.on) serviceArchive(true);  // switched off: the take in progress is kept
+  if (save) writeGlobalFile();
+}
+
+juce::File MasterpieceProcessor::archiveFolder() const {
+  return archiveFolder_ != juce::File() ? archiveFolder_ : recordingsFolder().getChildFile("Archive");
+}
+
+juce::File MasterpieceProcessor::serviceArchive(bool now) {
+  std::vector<MidiRecorder::TakeEvent> take;
+  double startedAgo = 0.0;
+  if (!archive_.takeEnded(static_cast<double>(archiveSilence_), now, take, startedAgo)) return {};
+  const juce::File folder = archiveFolder();
+  const juce::Time started = juce::Time::getCurrentTime() - juce::RelativeTime::seconds(startedAgo);
+  const juce::File file = MidiArchive::save(folder, take, juce::String::fromUTF8(model_.organName.c_str()), started,
+                                            [this](int id) { return midiMap_.devices().nameFor(id); });
+  if (file == juce::File()) {
+    juce::Logger::writeToLog("archive: the take could not be written in " + folder.getFullPathName());
+    return {};
+  }
+  const int gone = MidiArchive::prune(folder, static_cast<int64_t>(archiveMegabytes_) * 1024 * 1024, archiveDays_,
+                                      juce::Time::getCurrentTime());
+  juce::Logger::writeToLog("archive: " + juce::String(static_cast<int>(take.size())) + " events saved as " +
+                           file.getFullPathName() +
+                           (gone > 0 ? "; " + juce::String(gone) + " older file(s) deleted" : juce::String()));
+  return file;
+}
+
 juce::File MasterpieceProcessor::recordingsFolder() {
   return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
       .getChildFile("Masterpiece")
@@ -7711,7 +7772,7 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
     folder.createDirectory();
     saved = folder.getChildFile(organ + " " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S") + ".mid")
                 .getNonexistentSibling();
-    if (!recorder_.saveToFile(saved)) {
+    if (!saveTake(saved)) {
       // Kept in memory and not replaced: a take is never thrown away.
       juce::Logger::writeToLog("recorder: the take could not be saved in " + folder.getFullPathName() +
                                "; it is kept and no new one begins");

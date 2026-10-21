@@ -2442,6 +2442,8 @@ void MasterpieceEditor::timerCallback() {
     if (saved != juce::File())
       top_.setStatus(TRANS("The take was saved as %1").replace("%1", saved.getFileName()));
   }
+  // The archive's take, written once it has ended.
+  proc_.serviceArchive();
 
   // A voicing EQ preset asked for from MIDI, set here where its filters are
   // worked out, and named in the status line.
