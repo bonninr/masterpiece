@@ -992,3 +992,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Learn a knob or a pedal for this level" = "Aprender una perilla o un pedal para este nivel"
 "Learn: move the knob or pedal" = "Aprender: mueva la perilla o el pedal"
 "Move it..." = "Muévalo..."
+"Attack" = "Ataque"
+"over" = "durante"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Cada tubo empieza así de más fuerte, o más suave, y llega a su propio nivel: más o menos chiff. 0 dB es apagado. Se oye desde la próxima nota; se guarda con el órgano."
+"How long the attack's emphasis lasts" = "Cuánto dura el énfasis del ataque"

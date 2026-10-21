@@ -1506,6 +1506,18 @@ public:
   const VoicingEqSettings& defaultVoicingEq() const { return defaultEq_; }
   bool organHasOwnVoicingEq() const { return organOwnsEq_; }
 
+  // The attack's emphasis (Organ settings, Voicing EQ): each pipe begins
+  // `db` louder, or softer when negative, and comes to its own level in a
+  // straight line over `ms`. 0 dB is off, and then no voice does anything
+  // for it. Saved with the organ; heard from the next note.
+  float attackDb() const { return attackDb_.load(std::memory_order_relaxed); }
+  int attackMs() const { return attackMs_.load(std::memory_order_relaxed); }
+  void setAttack(float db, int ms) {
+    attackDb_.store(juce::jlimit(-12.0f, 12.0f, db), std::memory_order_relaxed);
+    attackMs_.store(juce::jlimit(5, 300, ms), std::memory_order_relaxed);
+    markSettingsDirty();
+  }
+
   // The EQ's presets, program-wide: ten of the program's and the player's own
   // (VoicingEqPresets.h). Recalling one sets the EQ at once and turns it on,
   // as moving the sliders does; Save for this organ and Save as default keep
@@ -2162,6 +2174,8 @@ private:
   int voicingEqChanges_ = 0;     // message thread only
   std::atomic<int> pendingEqPreset_{0};
   bool organOwnsEq_ = false;     // the organ's file has an `eq` line
+  std::atomic<float> attackDb_{0.0f};
+  std::atomic<int> attackMs_{40};
   VoicingEq voicingEq_;
   Favourites favourites_;
   // Empty means the organ's default set.

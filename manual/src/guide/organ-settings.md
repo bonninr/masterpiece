@@ -170,6 +170,7 @@ A correction for the room and the speakers, applied to the whole organ. The orga
 | **Save for this organ** | Keeps the EQ as it is now with this organ, whatever it is, the **On** box included, for its next load. Reads **Saved** or **Could not save** afterwards, and returns to its label at the next change. | | | At once |
 | Ten band sliders, labelled **31.5**, **63**, **125**, **250**, **500**, **1k**, **2k**, **4k**, **8k**, **16k** | One slider for each octave band, in Hz. The lowest and highest bands are shelves; the other eight are peaks (Q 1.4). A double-click returns a slider to 0. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 | **Gain** | The output gain, to make up for what the bands add or take. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
+| **Attack** and **over** | The attack's emphasis: each pipe begins this much louder, or softer when negative, and comes to its own level in a straight line over the time given. More or less chiff, on the pipes' own speech; noises and releases start as recorded. Applies whether the EQ is on or off. | 0 dB (off), 40 ms | -12 to +12 dB in steps of 0.5; 5 to 300 ms | From the next note |
 
 Every organ starts from the default EQ, which is off and flat until **Save as default** keeps another. An organ gets an EQ of its own only from **Save for this organ**; other saves of the organ file leave it on the default. Changes on the tab are live and are kept only by these buttons. A preset changes the live EQ the same way: **Save for this organ** or **Save as default** keeps it.
 
@@ -229,6 +230,7 @@ The organ file is `organs/<organ key>.mporgan` in the data folder (see [General 
 | `buses`, `busir`, `groups` | The mixer's pairs, per-pair rooms and groups | The **Mixer** tab |
 | `route <rank> bus <n>` | The pair of one rank | The **Mixer** tab |
 | `voicingadj`, `voicingslot` | The voicing sets A and B and the live slot | The **Voicing** tab |
+| `attack` | The attack's emphasis in dB and its length in ms, as `attack 4.0 60`; absent while it is off | Any write of the organ file after it is set |
 | `eq` | The organ's own equaliser, written whatever it is, off and flat included; absent while the organ plays the default EQ (`defaulteq` in the [global file](general-settings.md#the-global-file)) | **Save for this organ** on the **Voicing EQ** tab |
 | `skipstop`, `skipperspective`, `skiprank` | One item left out | The **Stops and perspectives** tab |
 | `portable` | `1` | **Keep this organ playable without its installation files** |

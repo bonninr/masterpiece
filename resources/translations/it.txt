@@ -992,3 +992,7 @@ countries: it ch sm va
 "Learn a knob or a pedal for this level" = "Apprendere una manopola o un pedale per questo livello"
 "Learn: move the knob or pedal" = "Apprendi: muovi la manopola o il pedale"
 "Move it..." = "Muovilo..."
+"Attack" = "Attacco"
+"over" = "in"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Ogni canna inizia di tanto più forte, o più piano, e poi torna al suo livello: più o meno chiff. 0 dB è spento. Udito dalla nota successiva; salvato con l'organo."
+"How long the attack's emphasis lasts" = "Quanto dura l'enfasi dell'attacco"

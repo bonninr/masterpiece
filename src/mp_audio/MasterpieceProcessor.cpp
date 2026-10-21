@@ -2096,6 +2096,7 @@ bool MasterpieceProcessor::saveSettings() const {
     // Written whatever it is, off and flat too: an organ with a line keeps
     // it, and one without plays the default EQ.
     if (organOwnsEq_) text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
+    if (attackDb() != 0.0f) text << "attack " << juce::String(attackDb(), 1) << " " << attackMs() << "\n";
   }
 
   return f.replaceWithText(text);
@@ -2123,6 +2124,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   // note, and this one's own file says which notes it keeps.
   sparseEvery_ = 1;
   samples_.setSparseEvery(1);
+  attackDb_.store(0.0f, std::memory_order_relaxed);
+  attackMs_.store(40, std::memory_order_relaxed);
   excludedStops_.clear();
   excludedPerspectives_.clear();
   excludedRanks_.clear();
@@ -2256,6 +2259,14 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "windsway") {
       windSwayCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, val.getFloatValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "attack") {
+      const auto tok = juce::StringArray::fromTokens(val, " ", "");
+      if (tok.size() >= 2) {
+        attackDb_.store(juce::jlimit(-12.0f, 12.0f, tok[0].getFloatValue()), std::memory_order_relaxed);
+        attackMs_.store(juce::jlimit(5, 300, tok[1].getIntValue()), std::memory_order_relaxed);
+      }
       continue;
     }
     if (key == "skipstop") {
@@ -3792,6 +3803,12 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     }
     vs.mixBus = mixBusForPipe(rankId, midiNote);
     vs.rankIndex = liveRankIndexOf(rankId);
+    // The attack's emphasis, for a pipe's own speech only: a noise and a
+    // release start as they were recorded.
+    if (const float db = attackDb(); db != 0.0f) {
+      vs.attackBoost = juce::Decibels::decibelsToGain(db) - 1.0f;
+      vs.attackFrames = static_cast<int>(attackMs() * 0.001 * sampleRate_);
+    }
     {
       const auto wIt = pipeWindIndex_.find(pipe.pipeId);
       vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;

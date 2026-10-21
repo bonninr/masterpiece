@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -255,6 +256,64 @@ public:
   }
 };
 static LiveLevelsOrganTest g_organ;
+
+// The attack's emphasis: each pipe begins louder, or softer, and comes to
+// its own level in a straight line. Off, the organ sounds as without it.
+class AttackEmphasisTest final : public mp::test::Test {
+public:
+  AttackEmphasisTest() : Test("functional.voicing.attack", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-attack-emphasis");
+    const juce::File odf = writeOrgan(root);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    const auto mean = [](const std::vector<float>& v, size_t from, size_t to) {
+      double sum = 0.0;
+      for (size_t i = from; i < to; ++i) sum += static_cast<double>(v[i]) * v[i];
+      return static_cast<float>(std::sqrt(sum / static_cast<double>(to - from)));
+    };
+
+    Rig plain(odf), off(odf), louder(odf), softer(odf);
+    MP_CHECK(plain.loaded && off.loaded && louder.loaded && softer.loaded, "the organ loads");
+    off.proc.setAttack(6.0f, 100);
+    off.proc.setAttack(0.0f, 100);
+    louder.proc.setAttack(6.0f, 100);
+    softer.proc.setAttack(-12.0f, 100);
+    MP_CHECK(louder.proc.attackDb() == 6.0f && louder.proc.attackMs() == 100, "set");
+
+    bool same = true;
+    std::vector<float> ref, more, less;
+    for (int i = 0; i < 80; ++i) {
+      const juce::MidiBuffer m = i == 0 ? on : juce::MidiBuffer();
+      ref.push_back(plain.block(m));
+      off.block(m);
+      more.push_back(louder.block(m));
+      less.push_back(softer.block(m));
+      for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < 256; ++s) same = same && plain.buf.getSample(ch, s) == off.buf.getSample(ch, s);
+    }
+    MP_CHECK(same, "set and put back to 0 dB: bit-identical to an organ never touched");
+    // The first 50 ms against the plain organ, and after the attack.
+    const float r0 = mean(ref, 1, 10), m0 = mean(more, 1, 10), l0 = mean(less, 1, 10);
+    MP_CHECK(m0 > r0 * 1.2f, "+6 dB: the start is louder, " + std::to_string(m0) + " against " + std::to_string(r0));
+    MP_CHECK(l0 < r0 * 0.8f, "-12 dB: the start is softer, " + std::to_string(l0) + " against " + std::to_string(r0));
+    const float r1 = mean(ref, 40, 80), m1 = mean(more, 40, 80), l1 = mean(less, 40, 80);
+    MP_CHECK(std::fabs(m1 - r1) < r1 * 0.01f && std::fabs(l1 - r1) < r1 * 0.01f,
+             "after the attack, the pipe at its own level");
+
+    // Saved with the organ and read back; a new organ without it starts off.
+    MP_CHECK(louder.proc.saveSettings(), "saved");
+    Rig again(odf);
+    MP_CHECK(again.proc.attackDb() == 6.0f && again.proc.attackMs() == 100, "read back with the organ");
+    again.proc.setAttack(0.0f, 40);
+    MP_CHECK(again.proc.saveSettings(), "saved off");
+
+    plain.proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static AttackEmphasisTest g_attack;
 
 }  // namespace
 

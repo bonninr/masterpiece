@@ -992,3 +992,7 @@ countries: fr be ca ch lu mc
 "Learn a knob or a pedal for this level" = "Apprendre un bouton ou une pédale pour ce niveau"
 "Learn: move the knob or pedal" = "Apprendre : bougez le bouton ou la pédale"
 "Move it..." = "Bougez-le..."
+"Attack" = "Attaque"
+"over" = "sur"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Chaque tuyau commence d'autant plus fort, ou plus doux, puis rejoint son propre niveau : plus ou moins de chiff. 0 dB, c'est désactivé. Entendu dès la note suivante ; enregistré avec l'orgue."
+"How long the attack's emphasis lasts" = "Durée de l'accentuation de l'attaque"

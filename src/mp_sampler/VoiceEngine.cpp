@@ -466,6 +466,8 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremPitchDepth = start.tremPitchDepth;
   v.swayIndex = start.swayIndex;
   v.rankIndex = start.rankIndex;
+  v.attackBoost = start.attackBoost;
+  v.attackTotal = v.attackLeft = start.attackBoost != 0.0f && start.attackFrames > 0 ? start.attackFrames : 0;
   v.startedAtBlock = blockCounter_;
   v.startedAtFrame = framesRendered_;
   // If only this sample's head is resident, tell the streamer to start
@@ -779,7 +781,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // no tremulant. Treating it as one keeps it on the straight runs and spares
   // a pow() per frame. Before this, every such voice took the per-frame path
   // for as long as it sounded.
-  const bool tremMoving = v.tremIndex >= 0 &&
+  bool tremMoving = v.tremIndex >= 0 &&
                           (trem.ampStart != 0.0f || trem.ampStep != 0.0f ||
                            trem.pitchStart != 0.0 || trem.pitchStep != 0.0);
   // The pitch the tremulant gives this pipe, as a ratio that is multiplied on
@@ -792,6 +794,30 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   if (tremMoving) {
     tremRatio = std::pow(2.0, v.tremPitchDepth * trem.pitchStart / 12.0);
     tremRatioStep = std::pow(2.0, v.tremPitchDepth * trem.pitchStep / 12.0);
+  }
+  // The level the tremulant swings this pipe by, frame by frame: 1 + depth x
+  // phase, the phase moving by a step a frame.
+  float ampDepth = v.tremAmpDepth;
+  float ampStep = trem.ampStep;
+  // The attack's emphasis, while it lasts: folded into that same ramp, so
+  // every path that follows a tremulant's level follows it too. Over the
+  // block the level goes in a straight line from what the tremulant and the
+  // emphasis make together at its start to what they make at its end. A
+  // pipe with none takes none of this, and sounds as before to the bit.
+  if (v.attackLeft > 0 && numFrames > 0) {
+    const float total = static_cast<float>(v.attackTotal);
+    const int after = std::max(0, v.attackLeft - numFrames);
+    const float e0 = 1.0f + v.attackBoost * static_cast<float>(v.attackLeft) / total;
+    const float e1 = 1.0f + v.attackBoost * static_cast<float>(after) / total;
+    const float t0 = 1.0f + v.tremAmpDepth * tremPhase;
+    const float t1 = 1.0f + v.tremAmpDepth * (tremPhase + trem.ampStep * static_cast<float>(numFrames));
+    const float f0 = t0 * e0;
+    const float f1 = t1 * e1;
+    ampDepth = 1.0f;
+    tremPhase = f0 - 1.0f;
+    ampStep = (f1 - f0) / static_cast<float>(numFrames);
+    tremMoving = true;
+    v.attackLeft = after;
   }
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
@@ -951,14 +977,14 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         // Every frame of the run reads short of both limits.
         for (; n < want && p < newLimit && q < oldLimit; ++n) {
           float e = base;
-          e *= 1.0f + v.tremAmpDepth * phase;
+          e *= 1.0f + ampDepth * phase;
           if (e < 0.0f) e = 0.0f;
           levels[n] = e;
           ratios[n] = windRatio * swing;
           oldRatios[n] = ratios[n] * v.xfadeRatioScale;
           p += ratios[n];
           q += oldRatios[n];
-          phase += trem.ampStep;
+          phase += ampStep;
           swing *= tremRatioStep;
         }
         if (n >= kMinSimdRun) {
@@ -1051,12 +1077,12 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           // Every frame of the run reads short of the limit.
           for (; n < want && p < limit; ++n) {
             float e = base;
-            e *= 1.0f + v.tremAmpDepth * phase;
+            e *= 1.0f + ampDepth * phase;
             if (e < 0.0f) e = 0.0f;
             envs[n] = e * storeScale;
             ratios[n] = windRatio * swing;
             p += ratios[n];
-            phase += trem.ampStep;
+            phase += ampStep;
             swing *= tremRatioStep;
           }
           if (n >= kMinSimdRun) {
@@ -1126,12 +1152,12 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
             int n = 0;
             for (; n < want && p < limit; ++n) {
               float e = level;
-              e *= 1.0f + v.tremAmpDepth * phase;
+              e *= 1.0f + ampDepth * phase;
               if (e < 0.0f) e = 0.0f;
               envs[n] = e;
               ratios[n] = windRatio * swing;
               p += ratios[n];
-              phase += trem.ampStep;
+              phase += ampStep;
               swing *= tremRatioStep;
             }
             if (n >= kMinSimdRun) {
@@ -1195,7 +1221,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         for (; n < want && p < limit; ++n) {
           float e = level;
           if (tremMoving) {
-            e *= 1.0f + v.tremAmpDepth * phase;
+            e *= 1.0f + ampDepth * phase;
             if (e < 0.0f) e = 0.0f;
           }
           if (fading) {
@@ -1216,7 +1242,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           envs[n] = e * scale;
           ratios[n] = tremMoving ? windRatio * swing : windRatio;
           p += ratios[n];
-          phase += trem.ampStep;
+          phase += ampStep;
           swing *= tremRatioStep;
         }
         if (n >= kMinSimdRun || (ends && n > 0)) {
@@ -1279,7 +1305,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     // it sound like wind rather than like a volume pedal. Shared by both
     // sides of a release crossfade: the wind does not jump at note-off.
     if (tremMoving) {
-      envReal *= 1.0f + v.tremAmpDepth * tremPhase;
+      envReal *= 1.0f + ampDepth * tremPhase;
       if (envReal < 0.0f) envReal = 0.0f;
     }
     // The attack side of a release crossfade sounds through this level while
@@ -1454,7 +1480,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     }
 
     v.cursor += ratio;
-    tremPhase += trem.ampStep;
+    tremPhase += ampStep;
     tremRatio *= tremRatioStep;
   }
 }

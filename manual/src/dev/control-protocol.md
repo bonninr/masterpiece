@@ -77,6 +77,8 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 21 | Wind sway | tenths of a cent, 0 (off) to 100 | yes |
 | 22 | Sparse loading | 1 every note, 2 every second, 3 every third | yes |
 | 23 | Pedal combinations coupled | 0, 1 | yes |
+| 24 | Attack emphasis | tenths of a dB, -120 to +120, 0 off | yes |
+| 25 | Attack length | milliseconds, 5 to 300 | yes |
 
 New properties are added at the end; an index is never reused.
 
