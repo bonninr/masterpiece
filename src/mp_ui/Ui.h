@@ -275,6 +275,16 @@ public:
   std::function<void()> onOrganSettings;
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
+  // Back up and restore (SettingsBackup.cpp): the organ's settings or all of
+  // them to one file and back, and parts of another organ's copied to this one.
+  void addBackupItems(juce::PopupMenu& menu, int firstId);
+  void backupItemChosen(int item);
+  void exportSettings(bool all);
+  void importSettings();
+  void copySettingsFrom();
+  // After settings were written behind the program's back: read them in.
+  void adoptRestoredSettings(bool loadedOrganTouched, bool globalTouched);
+  std::unique_ptr<juce::FileChooser> backupChooser_;
   // Ask whether the player holds the publisher's licence for this organ.
   void askForLicence();
   // The question itself; `answered` gets the player's answer.

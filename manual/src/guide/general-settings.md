@@ -265,6 +265,21 @@ Each line of the report starts with `ok` for a passed test, `FAILED` for a faile
 
 **Stored.** The log is `masterpiece.log` in the data folder, and the run before it is `masterpiece.previous.log`. The two logging switches return to off at every start.
 
+## Back up and restore
+
+The **Settings** menu has a **Back up and restore** submenu, with four items.
+
+| Item | What it does |
+|---|---|
+| **Export this organ's settings...** | Writes a zip file holding the loaded organ's own settings: its MIDI map, its combinations, its split keyboard and its organ settings. |
+| **Export all settings...** | Writes a zip file holding every setting, the program's own and each organ's. The audio device stays with the computer. |
+| **Import settings...** | Reads a zip file written by one of the export items and puts the settings back. A file that is not one of ours is refused, and nothing changes. |
+| **Copy settings from another organ...** | Takes the MIDI map, the combinations, or the mixer and voicing from another organ, each on its own toggle. |
+
+Every import and every copy saves what was there first, in the `backups` folder, and says where.
+
+The mixer and voicing of one organ mean something only between versions of the same organ, a demo and the full set: the ids of stops, ranks and pipes must be the same. The dialog says how many of the ranks and pipes the other organ names are in this one.
+
 ## Where settings are kept
 
 Masterpiece keeps everything in text files in its data folder.

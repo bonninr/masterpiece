@@ -17,6 +17,7 @@ add_library(mp_audio STATIC
   SplitKeyboardHost.h SplitKeyboardHost.cpp
   Convolver.h Convolver.cpp
   Translations.h Translations.cpp
+  SettingsArchive.h SettingsArchive.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Ui.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/AccessibleToggle.h
@@ -49,7 +50,10 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/MidiEventDialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/Mobile.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SettingsBackup.cpp
 )
+# An exported settings archive says which version wrote it.
+set_property(SOURCE SettingsArchive.cpp APPEND PROPERTY COMPILE_DEFINITIONS MP_VERSION="${PROJECT_VERSION}")
 # iPhone and iPad: picked documents read in place (#197).
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_sources(mp_audio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/IosAccess.mm)
