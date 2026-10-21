@@ -69,6 +69,15 @@ constexpr bool kLiveOnTop = true;
 // screen on a phone or tablet. Every dialog opens through here.
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
 
+// macOS: an open or save panel hides while another program is in front, and
+// comes back with this one (#492; MacWindows.mm). The application calls it
+// once at startup; a plug-in leaves the host's panels alone. Nothing elsewhere.
+#if JUCE_MAC
+void keepFileDialogsWithProgram();
+#else
+inline void keepFileDialogsWithProgram() {}
+#endif
+
 // Closes the front-most window other than `mainWindow`, as its own close
 // button would: Android's back button. False when there was none, so the
 // system's own back behaviour applies. A window whose properties set

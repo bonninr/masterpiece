@@ -406,6 +406,7 @@ public:
     // language comes first.
     proc_->applyChosenLanguage();
     mp::ui::installTouchLook();
+    mp::ui::keepFileDialogsWithProgram();
     mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
     win_->setVisible(true);

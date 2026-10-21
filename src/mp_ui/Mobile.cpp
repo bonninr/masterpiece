@@ -519,6 +519,31 @@ public:
 private:
   juce::String kind_;
 };
+
+// JUCE makes a new dialog always on top whenever another of the program's
+// windows is, and the Recorder and Combinations windows are while the
+// program is in front: such a dialog then stayed above every other
+// program's windows (#492). It follows the program in and out of the front,
+// as those windows do. Owned by nobody but itself: it goes with the dialog.
+class FrontFollower : public juce::ComponentListener, private juce::Timer {
+public:
+  explicit FrontFollower(juce::Component& dialog) : dialog_(&dialog) {
+    dialog.addComponentListener(this);
+    startTimer(250);
+  }
+  void componentBeingDeleted(juce::Component& c) override {
+    stopTimer();
+    c.removeComponentListener(this);
+    delete this;
+  }
+
+private:
+  void timerCallback() override {
+    const bool front = juce::Process::isForegroundProcess();
+    if (dialog_ != nullptr && dialog_->isAlwaysOnTop() != front) dialog_->setAlwaysOnTop(front);
+  }
+  juce::Component::SafePointer<juce::Component> dialog_;
+};
 }  // namespace
 
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
@@ -548,6 +573,7 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     }
     dialog->addComponentListener(new SizeKeeper(kind));
   }
+  if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
   return dialog;
 }
 
