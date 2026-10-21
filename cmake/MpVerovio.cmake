@@ -100,7 +100,10 @@ if(MP_VEROVIO_CCACHE_DIR)
 endif()
 # Third-party code: its warnings are not ours to act on.
 if(MSVC)
-  target_compile_options(mp_verovio PRIVATE /W0 /bigobj /O1 /Gy /Gw)
+  # /utf-8: its sources hold UTF-8 text, such as the dashes round a page
+  # number and the accidentals of a chord symbol, which MSVC otherwise reads
+  # in the system code page.
+  target_compile_options(mp_verovio PRIVATE /W0 /bigobj /O1 /Gy /Gw /utf-8)
   # Unused functions and data left out, and identical ones folded. The
   # release default already, unless a configuration asks for debug
   # information; stated so that one does too.
