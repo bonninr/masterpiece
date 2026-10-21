@@ -468,6 +468,10 @@ struct Combination {
   bool canDisengage = true;
   bool allowsCapture = true;
   std::vector<CombinationElement> elements;
+  // The division a divisional belongs to, when the definition says (a
+  // GrandOrgue manual's divisionals), or 0. The generated panel draws the
+  // piston in that division's column.
+  Id divisionId = 0;
 
   // Cancels every stop rather than recalling a registration.
   bool isCancel() const {

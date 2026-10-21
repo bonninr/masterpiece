@@ -351,7 +351,12 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     e.name = !c->name.empty() ? c->name
              : s != m.switches.end() && !s->second.name.empty() ? s->second.name
                                                                : TRANS("Piston").toStdString();
-    presets.elements.push_back(std::move(e));
+    // A divisional sits with its division's stops: several divisions' "1"
+    // to "5" in one column could not be told apart (#489).
+    if (c->divisionId != 0 && m.divisions.count(c->divisionId) != 0)
+      sectionFor(c->divisionId).elements.push_back(std::move(e));
+    else
+      presets.elements.push_back(std::move(e));
   }
 
   // Expression: the shoe each enclosure is worked by, and the crescendo.
