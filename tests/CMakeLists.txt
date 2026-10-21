@@ -1,9 +1,15 @@
+# Every test_*.cpp here is part of the suite: a new test file needs no line
+# in this file. A test that needs a module only some builds have guards
+# itself with the MP_TEST_HAS_* definition below, and compiles to nothing
+# where that module is absent.
+file(GLOB MP_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp)
 add_executable(mp_tests
   MpTest.h MpTest.cpp
   test_core.cpp
   test_split.cpp
   test_sparse_loading.cpp
   test_storage20.cpp
+  ${MP_TEST_SOURCES}
 )
 target_compile_features(mp_tests PRIVATE cxx_std_20)
 # mp_control supplies resolvePipes() and the coupler/combination systems the
@@ -54,7 +60,7 @@ if(TARGET mp_audio)
   target_sources(mp_tests PRIVATE test_pedal_coupling.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
-    target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)
+    target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_API=1)
     target_include_directories(mp_tests PRIVATE ${httplib_SOURCE_DIR})
     if(WIN32)
       target_link_libraries(mp_tests PRIVATE ws2_32)

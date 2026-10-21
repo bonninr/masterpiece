@@ -6,13 +6,15 @@ script finds those strings and compares them with the language files in
 resources/translations/.
 
   python tools/i18n.py            report what each language lacks
-  python tools/i18n.py --write    rewrite resources/translations/strings.txt
+  python tools/i18n.py --write    write resources/translations/strings.txt
   python tools/i18n.py --check    as the report, and exit 1 if anything is
                                           missing, stale or inconsistent
 
 strings.txt is the list translators start from: a copy of it, with the
 language: and countries: lines filled in and the right-hand side of each line
-translated, is a new language. It is never read by the program.
+translated, is a new language. It is made on demand and kept out of the tree
+(.gitignore): the sources are the list, so two changes that each add a string
+never collide on it. The program never reads it.
 
 Placeholders are written %1, %2 ... in the English text. A translation must
 use the same ones, in whatever order its language wants.
@@ -189,9 +191,6 @@ def main(argv):
     if write:
         TEMPLATE.write_bytes(text.encode("utf-8"))
         print(f"wrote {TEMPLATE.relative_to(ROOT)}: {len(keys)} strings")
-    elif not TEMPLATE.exists() or TEMPLATE.read_bytes().decode("utf-8").replace("\r\n", "\n") != text:
-        print(f"{TEMPLATE.relative_to(ROOT)} is out of date: run with --write")
-        ok = False
 
     print(f"{len(keys)} strings in the sources")
     for path in sorted(TRANSLATIONS.glob("*.txt")):

@@ -1,5 +1,6 @@
 // The control API (protocol/control.yaml): the model on a small organ, then
 // the same over HTTP, with the event stream and the permissions.
+#ifdef MP_TEST_HAS_API
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -254,3 +255,4 @@ public:
 static ApiHttpTest g_apiHttp;
 
 }  // namespace
+#endif  // MP_TEST_HAS_API

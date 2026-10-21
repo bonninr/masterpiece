@@ -67,3 +67,7 @@ Thumbs.db
 
 # The demonstration recording is fetched from the release at deploy time.
 site/recital.mp4
+
+# The translators' list, made on demand by tools/i18n.py --write from the
+# sources. Kept out of the tree so changes that add strings never collide on it.
+resources/translations/strings.txt
