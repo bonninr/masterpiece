@@ -992,3 +992,7 @@ countries: pl
 "Learn a knob or a pedal for this level" = "Naucz pokrętło lub pedał dla tego poziomu"
 "Learn: move the knob or pedal" = "Nauka: porusz pokrętłem lub pedałem"
 "Move it..." = "Porusz nim..."
+"Attack" = "Atak"
+"over" = "przez"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Każda piszczałka zaczyna o tyle głośniej lub ciszej i dochodzi do własnego poziomu: więcej lub mniej chiffu. 0 dB to wyłączone. Słychać od następnej nuty; zapisywane z organami."
+"How long the attack's emphasis lasts" = "Jak długo trwa podkreślenie ataku"

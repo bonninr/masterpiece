@@ -992,3 +992,7 @@ countries: cz
 "Learn a knob or a pedal for this level" = "Naučit otočný ovladač nebo pedál pro tuto úroveň"
 "Learn: move the knob or pedal" = "Učení: pohněte ovladačem nebo pedálem"
 "Move it..." = "Pohněte jím..."
+"Attack" = "Nasazení"
+"over" = "během"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Každá píšťala začne o tolik hlasitěji nebo tišeji a pak dojde na svou vlastní úroveň: více nebo méně chiffu. 0 dB je vypnuto. Slyšet od další noty; ukládá se s varhanami."
+"How long the attack's emphasis lasts" = "Jak dlouho trvá zdůraznění nasazení"

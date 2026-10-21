@@ -144,6 +144,8 @@ enum class ProgramProp : uint8_t {
   WindSway = 21,
   SparseLoading = 22,
   PedalCombinationsCoupled = 23,
+  AttackDb = 24,
+  AttackMs = 25,
 };
 
 struct ProgramPropInfo {
@@ -178,8 +180,10 @@ constexpr ProgramPropInfo kProgram[] = {
   {ProgramProp::WindSway, "windSway", 0, 100, true, "The wind's slow pitch sway in tenths of a cent - 0 off"},
   {ProgramProp::SparseLoading, "sparseLoading", 1, 3, true, "How many notes of a rank are loaded: 1 every note, 2 every second, 3 every third"},
   {ProgramProp::PedalCombinationsCoupled, "pedalCombinationsCoupled", 0, 1, true, "The first manual's divisionals also recall the Pedal's of the same number"},
+  {ProgramProp::AttackDb, "attackDb", -120, 120, true, "The attack's emphasis in tenths of a dB: each pipe begins this much louder, or softer, and comes to its own level over attackMs. 0 is off"},
+  {ProgramProp::AttackMs, "attackMs", 5, 300, true, "How long the attack's emphasis lasts"},
 };
-constexpr int kProgramCount = 24;
+constexpr int kProgramCount = 26;
 
 enum class Command : uint8_t {
   Panic = 0,

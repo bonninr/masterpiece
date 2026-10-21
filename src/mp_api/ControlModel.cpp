@@ -350,6 +350,8 @@ int ControlModel::programValue(ProgramProp prop) {
     case ProgramProp::WindSway: return juce::roundToInt(proc_.windSwayCents() * 10.0f);
     case ProgramProp::SparseLoading: return proc_.sparseEvery();
     case ProgramProp::PedalCombinationsCoupled: return proc_.pedalCombinationsCoupled() ? 1 : 0;
+    case ProgramProp::AttackDb: return juce::roundToInt(proc_.attackDb() * 10.0f);
+    case ProgramProp::AttackMs: return proc_.attackMs();
   }
   return 0;
 }
@@ -778,6 +780,8 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
     case ProgramProp::WindSway: proc_.setWindSwayCents(static_cast<float>(value) / 10.0f); break;
     case ProgramProp::SparseLoading: proc_.setSparseEvery(value); break;
     case ProgramProp::PedalCombinationsCoupled: proc_.setPedalCombinationsCoupled(value == 1); break;
+    case ProgramProp::AttackDb: proc_.setAttack(static_cast<float>(value) / 10.0f, proc_.attackMs()); break;
+    case ProgramProp::AttackMs: proc_.setAttack(proc_.attackDb(), value); break;
     default: return Error::ReadOnly;
   }
   return Error::None;

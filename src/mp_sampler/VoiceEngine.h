@@ -331,6 +331,12 @@ struct Voice {
   // Which rank's live level reaches this pipe, as an index into the table
   // setLiveGains() hands over; -1 for none (a noise). See LiveLevels.
   int rankIndex = -1;
+  // The attack's emphasis: a level that starts at 1 + attackBoost and falls
+  // in a straight line to 1 over attackTotal frames, attackLeft of them to
+  // go. 0 left is no emphasis, and then nothing is done for it.
+  float attackBoost = 0.0f;
+  int attackTotal = 0;
+  int attackLeft = 0;
 
   // Loop crossfade. On a wrap the outgoing stream keeps reading PAST the loop
   // end (that material is still in the file) while the incoming stream starts
@@ -393,6 +399,9 @@ struct VoiceStart {
   int mixBus = 0;    // mixer output
   int swayIndex = -1;  // wind sway; see Voice::swayIndex
   int rankIndex = -1;  // live level; see Voice::rankIndex
+  // The attack's emphasis; see Voice::attackBoost. 0 frames is none.
+  float attackBoost = 0.0f;
+  int attackFrames = 0;
 };
 
 struct EngineStats {

@@ -702,6 +702,27 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
           f >= 1000.0 ? juce::String(f / 1000.0, 0) + "k" : juce::String(f, f < 40 ? 1 : 0).upToFirstOccurrenceOf(".0", false, false));
   }
   style(gain_, gainName_, TRANS("Gain"));
+  for (auto* l : {&attackName_, &attackOver_}) {
+    l->setColour(juce::Label::textColourId, juce::Colour(0xffb9c2d0));
+    addAndMakeVisible(*l);
+  }
+  attackName_.setText(TRANS("Attack"), juce::dontSendNotification);
+  attackOver_.setText(TRANS("over"), juce::dontSendNotification);
+  attack_.setRange(-12.0, 12.0, 0.5);
+  attack_.setTextValueSuffix(" dB");
+  attack_.setDoubleClickReturnValue(true, 0.0);
+  attack_.setTooltip(TRANS("Each pipe begins this much louder, or softer, and comes to its own level: "
+                           "more or less chiff. 0 dB is off. Heard from the next note; saved with the organ."));
+  attackMs_.setRange(5.0, 300.0, 1.0);
+  attackMs_.setTextValueSuffix(" ms");
+  attackMs_.setSkewFactorFromMidPoint(60.0);
+  attackMs_.setTooltip(TRANS("How long the attack's emphasis lasts"));
+  for (auto* sl : {&attack_, &attackMs_}) {
+    sl->onValueChange = [this] {
+      proc_.setAttack(static_cast<float>(attack_.getValue()), juce::roundToInt(attackMs_.getValue()));
+    };
+    addAndMakeVisible(*sl);
+  }
   showValues();
   // A preset recalled from MIDI while the panel is open.
   startTimerHz(4);
@@ -713,6 +734,8 @@ void VoicingEqPanel::showValues() {
   for (size_t i = 0; i < bands_.size(); ++i)
     bands_[i].setValue(eq.bandsDb[i], juce::dontSendNotification);
   gain_.setValue(eq.gainDb, juce::dontSendNotification);
+  attack_.setValue(proc_.attackDb(), juce::dontSendNotification);
+  attackMs_.setValue(proc_.attackMs(), juce::dontSendNotification);
   fillPresets();
   seenChanges_ = proc_.voicingEqChanges();
 }
@@ -855,6 +878,14 @@ void VoicingEqPanel::resized() {
   note_.setBounds(r.removeFromTop(36));
   curveArea_ = r.removeFromTop(130).reduced(0, 4);
   r.removeFromTop(6);
+  {
+    auto attackRow = r.removeFromBottom(28);
+    r.removeFromBottom(6);
+    attackName_.setBounds(attackRow.removeFromLeft(60));
+    attack_.setBounds(attackRow.removeFromLeft(attackRow.getWidth() / 2).reduced(2, 2));
+    attackOver_.setBounds(attackRow.removeFromLeft(44));
+    attackMs_.setBounds(attackRow.reduced(2, 2));
+  }
   const int columns = VoicingEqSettings::kBands + 1;
   const int w = r.getWidth() / columns;
   auto names = r.removeFromTop(20);

@@ -161,6 +161,11 @@ private:
   juce::Slider gain_;
   juce::Label gainName_;
   juce::Rectangle<int> curveArea_;
+  // The attack's emphasis: how much louder, or softer, each pipe begins,
+  // and over how long it comes to its own level.
+  juce::Label attackName_, attackOver_;
+  juce::Slider attack_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider attackMs_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
 };
 
 class OrganSettingsWindow : public juce::Component {

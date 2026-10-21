@@ -992,3 +992,7 @@ countries: de at ch li lu
 "Learn a knob or a pedal for this level" = "Einen Drehregler oder ein Pedal für diesen Pegel anlernen"
 "Learn: move the knob or pedal" = "Anlernen: Drehregler oder Pedal bewegen"
 "Move it..." = "Jetzt bewegen..."
+"Attack" = "Ansprache"
+"over" = "über"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Jede Pfeife setzt um so viel lauter oder leiser ein und kommt dann auf ihren eigenen Pegel: mehr oder weniger Vorläuferton. 0 dB ist aus. Ab dem nächsten Ton zu hören; mit der Orgel gespeichert."
+"How long the attack's emphasis lasts" = "Wie lange die Betonung der Ansprache dauert"

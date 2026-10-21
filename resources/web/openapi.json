@@ -70,7 +70,9 @@
         "pipeDetune",
         "windSway",
         "sparseLoading",
-        "pedalCombinationsCoupled"
+        "pedalCombinationsCoupled",
+        "attackDb",
+        "attackMs"
        ]
       }
      },

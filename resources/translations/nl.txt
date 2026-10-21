@@ -992,3 +992,7 @@ countries: nl be sr
 "Learn a knob or a pedal for this level" = "Een draaiknop of pedaal voor dit niveau leren"
 "Learn: move the knob or pedal" = "Leren: beweeg de draaiknop of het pedaal"
 "Move it..." = "Beweeg hem..."
+"Attack" = "Aanspraak"
+"over" = "over"
+"Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Elke pijp begint zoveel luider of zachter en komt dan op zijn eigen niveau: meer of minder chiff. 0 dB is uit. Te horen vanaf de volgende noot; opgeslagen met het orgel."
+"How long the attack's emphasis lasts" = "Hoe lang de nadruk op de aanspraak duurt"
