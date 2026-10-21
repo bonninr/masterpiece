@@ -38,6 +38,9 @@ public:
     Id id = 0;
     Id divisionId = 0;  // 0: reached by generals only
     std::string name;
+    // A bass or a melody coupler: a key action that carries the lowest or
+    // the highest key held.
+    bool bassOrMelody = false;
   };
   struct Division {
     Id divisionId = 0;
@@ -91,6 +94,12 @@ public:
   void reset(std::vector<Element> elements, std::vector<Division> divisions);
   const std::vector<Element>& elements() const { return elements_; }
   const std::vector<Division>& divisions() const { return divisions_; }
+
+  // Whether pistons and sequencer steps leave the bass and melody couplers
+  // as they are: not stored, not recalled, as on consoles where these belong
+  // to the player's hands. The cancels still push them in. Off by default.
+  void setLeaveBassAndMelody(bool on) { leaveBassAndMelody_ = on; }
+  bool leaveBassAndMelody() const { return leaveBassAndMelody_; }
 
   int generalCount() const { return generalCount_; }
   int divisionalCount() const { return divisionalCount_; }
@@ -158,6 +167,8 @@ private:
   std::vector<int> litDivisional_;  // by division index
   int frame_ = 0;
   int litGeneral_ = 0;
+  bool leaveBassAndMelody_ = false;
+  bool left(const Element& e) const { return leaveBassAndMelody_ && e.bassOrMelody; }
 
   int divisionIndex(Id divisionId) const;
   Registration* divisional(Id divisionId, int n);

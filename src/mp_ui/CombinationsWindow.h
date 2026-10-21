@@ -137,6 +137,7 @@ private:
   } content_;
   juce::ToggleButton onTop_{TRANS("Always on top")};
   juce::ToggleButton setOff_{TRANS("Set turns off after storing")};
+  juce::ToggleButton leaveBass_{TRANS("Pistons leave the bass coupler")};
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it

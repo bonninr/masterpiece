@@ -117,6 +117,7 @@ bottom right of the main window.
 |---|---|
 | **Always on top** | Keeps the window above every other program's windows. Off, the window stays above the console while Masterpiece is in front. Off by default; kept for every organ. On Linux the stacking is fixed when the window opens. |
 | **Set turns off after storing** | After a piston clicked in this window has stored a combination, **Set** turns off, so the next click recalls it. Off by default; kept for every organ. A console's own Set stays down until pressed again. |
+| **Pistons leave the bass coupler** | The generals, divisionals and sequencer steps neither store nor recall the organ's bass and melody couplers, which stay as the player set them, as on consoles where they belong to the hands. The cancels still push them in. Off by default; kept for every organ. |
 | **Set** | A toggle. While on, a piston stores what is drawn and recalls nothing. It is lit red while capture is on. |
 | **GC** | The general cancel: pushes in every stop, coupler and tremulant of the registration. |
 | **\|<**, **-10**, **<**, readout, **>**, **+10**, **>\|** | The sequencer: first frame, ten frames back, previous, the frame readout, next, ten frames on, last frame that holds anything. |

@@ -62,6 +62,7 @@ countries: gb us
 "Clear mapping" = "Clear mapping"
 "Combinations" = "Combinations"
 "After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it" = "After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it"
+"The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in." = "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in."
 
 # src/mp_ui/CombinationsWindow.h
 "Set" = "Set"
@@ -71,6 +72,7 @@ countries: gb us
 "Save as..." = "Save as..."
 "Always on top" = "Always on top"
 "Set turns off after storing" = "Set turns off after storing"
+"Pistons leave the bass coupler" = "Pistons leave the bass coupler"
 
 # src/mp_ui/Console.cpp
 "Not available" = "Not available"

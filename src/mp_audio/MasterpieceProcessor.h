@@ -811,6 +811,18 @@ public:
     setOffAfterStore_ = on;
     writeGlobalFile();
   }
+  // Whether the player's pistons and sequencer leave the bass and melody
+  // couplers alone: not stored, not recalled (PlayerCombinations). Off by
+  // default. The program's, for every organ.
+  bool leaveBassAndMelody() const { return leaveBassAndMelody_; }
+  void setLeaveBassAndMelody(bool on) {
+    const AudioLock audio(*this);
+    leaveBassAndMelody_ = on;
+    player_.setLeaveBassAndMelody(on);
+    writeGlobalFile();
+  }
+  // Whether the organ loaded has a bass or melody coupler a player moves.
+  bool hasBassOrMelodyCoupler() const;
   // Whether the drawn manuals show the keys being played. Drawing them is
   // the window's largest cost while the organ is played fast; off, the
   // console neither looks at the keys nor draws them.
@@ -2140,6 +2152,7 @@ private:
   // for silence.
   std::atomic<int> soundingVoices_{0};
   bool setOffAfterStore_ = false;
+  bool leaveBassAndMelody_ = false;
   std::atomic<bool> showPlayedKeys_{true};
   std::atomic<bool> smallPagesFill_{false};
   // See storeTarget(). Written where a piston or step is chosen, under the
