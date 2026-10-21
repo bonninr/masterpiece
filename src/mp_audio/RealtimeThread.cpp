@@ -37,13 +37,35 @@ static thread_local HANDLE mmcss = nullptr;
 // Hybrid processors (Intel since the 12th generation) put a thread the
 // system judges unimportant on the efficiency cores, at a lower clock.
 // Asked for, never: a render thread that runs slow makes the block late.
+// Thread power throttling came with Windows 10 1709 (build 16299). Before it
+// SetThreadInformation does not know the request, and Windows 7 has no
+// SetThreadInformation at all: a layer that lends Windows 7 the newer
+// functions crashed on it as the switch was turned on. So it is looked up
+// when first needed, and asked only of a Windows that has the request.
+// RtlGetVersion gives the real version, whatever the program's manifest says.
+static bool hasPowerThrottling() {
+  using GetVersion = LONG(WINAPI*)(OSVERSIONINFOW*);
+  const auto getVersion = reinterpret_cast<GetVersion>(
+      reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion")));
+  if (getVersion == nullptr) return false;
+  OSVERSIONINFOW v{};
+  v.dwOSVersionInfoSize = sizeof(v);
+  return getVersion(&v) == 0 && (v.dwMajorVersion > 10 || (v.dwMajorVersion == 10 && v.dwBuildNumber >= 16299));
+}
+
 static void throttleForPower(bool allowed) {
 #ifdef THREAD_POWER_THROTTLING_CURRENT_VERSION
+  using SetInfo = BOOL(WINAPI*)(HANDLE, THREAD_INFORMATION_CLASS, LPVOID, DWORD);
+  static const auto setInfo = hasPowerThrottling()
+      ? reinterpret_cast<SetInfo>(reinterpret_cast<void*>(
+            GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "SetThreadInformation")))
+      : nullptr;
+  if (setInfo == nullptr) return;
   THREAD_POWER_THROTTLING_STATE state{};
   state.Version = THREAD_POWER_THROTTLING_CURRENT_VERSION;
   state.ControlMask = allowed ? 0 : THREAD_POWER_THROTTLING_EXECUTION_SPEED;
   state.StateMask = 0;
-  SetThreadInformation(GetCurrentThread(), ThreadPowerThrottling, &state, sizeof(state));
+  setInfo(GetCurrentThread(), ThreadPowerThrottling, &state, sizeof(state));
 #else
   (void)allowed;
 #endif
