@@ -822,6 +822,13 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       expression_(p),
       keyboard_(p.keyboardState(),
                 juce::MidiKeyboardComponent::horizontalKeyboard) {
+  // A slider's value is drawn in its track colour, which JUCE's dark scheme
+  // makes a near-black that vanishes into the track (#486). The thumb's blue,
+  // dimmed, shows how far each slider is set. On the default look, so every
+  // window's sliders have it.
+  juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
+                                                       juce::Colour(0xff42a2c8).withAlpha(0.55f));
+
   // The licence question, asked from the loading thread before a sample is
   // read (#164). The box belongs to the message thread, so it is shown there
   // and the load waits for the answer. A window gone, or a question never
