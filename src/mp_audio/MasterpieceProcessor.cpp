@@ -1023,8 +1023,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // Console input reaches the recorder here: it is not in the host's buffer,
   // which is all the recorder saw.
   // The console's own recorder buttons are not part of the performance: a
-  // take that held its Record press would press it again when played.
-  const auto recorderButton = [this](int deviceId, const juce::MidiMessage& msg) {
+  // take that held its Record press would press it again when played. The
+  // learned Quit and Power-off buttons stay out for the same reason: a take
+  // played back would quit the program or turn the computer off.
+  const auto consoleCommand = [this](int deviceId, const juce::MidiMessage& msg) {
     MidiSource source;
     if (msg.isNoteOn()) {
       source.kind = MidiSourceKind::Note;
@@ -1041,17 +1043,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     source.channel = msg.getChannel();
     source.deviceId = deviceId;
     const auto kind = midiMap_.actionFor(source, 127).kind;
-    return kind == MidiTargetKind::RecorderRecord || kind == MidiTargetKind::RecorderPlay;
+    return kind == MidiTargetKind::RecorderRecord || kind == MidiTargetKind::RecorderPlay ||
+           kind == MidiTargetKind::QuitProgram || kind == MidiTargetKind::PowerOffComputer;
   };
   if (recorder_.isRecording())
     for (const auto& [deviceId, msg] : midiScratch_)
-      if (deviceId != MidiDeviceMap::kAnyDevice && !recorderButton(deviceId, msg))
+      if (deviceId != MidiDeviceMap::kAnyDevice && !consoleCommand(deviceId, msg))
         recorder_.captureLive(msg, deviceId);
   // The archive takes all of it, the host's buffer and the on-screen keys
   // included; a take being played back is added below and stays out.
   if (archiveOn_.load(std::memory_order_relaxed)) {
     for (const auto& [deviceId, msg] : midiScratch_)
-      if (!recorderButton(deviceId, msg)) archive_.capture(msg, deviceId);
+      if (!consoleCommand(deviceId, msg)) archive_.capture(msg, deviceId);
   }
   // A take being played back: each event with the console it came from, so it
   // is routed the way it was when it was played. They go in after the split

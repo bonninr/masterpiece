@@ -180,6 +180,76 @@ public:
 };
 static RecorderMidiButtonsTest g_recorderButtons;
 
+// The learned Quit and Power-off buttons are left out of a take and of the
+// archive: a take played back would press them again. The presses here raise
+// nothing: no program is listening, and the buttons arm only after two
+// minutes.
+class RecorderLeavesOutQuitTest final : public mp::test::Test {
+public:
+  RecorderLeavesOutQuitTest()
+      : Test("functional.audio.recorder-leaves-out-quit", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    proc.midiMap().removeBindings([](const mp::MidiBinding&) { return true; });
+    auto button = [&](int cc, mp::MidiTargetKind kind) {
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::ControlChange;
+      b.source.channel = 16;
+      b.source.number = cc;
+      b.targetKind = kind;
+      b.trigger = mp::MidiTrigger::Momentary;
+      b.latching = false;
+      proc.midiMap().setBindingsFor(kind, 0, {b});
+    };
+    button(22, mp::MidiTargetKind::QuitProgram);
+    button(23, mp::MidiTargetKind::PowerOffComputer);
+    const juce::File folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-recorder-quit");
+    folder.deleteRecursively();
+    proc.setArchiveFolderForTests(folder);
+    mp::MasterpieceProcessor::ArchiveSettings on;
+    on.on = true;
+    proc.setArchiveSettings(on, false);
+
+    proc.recorder().startRecording();
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOn(1, 48, 100.0f));
+    render(proc);
+    for (const int cc : {22, 23, 24}) {
+      proc.pushMidi(kConsole, juce::MidiMessage::controllerEvent(16, cc, 127));
+      render(proc);
+      proc.pushMidi(kConsole, juce::MidiMessage::controllerEvent(16, cc, 0));
+      render(proc);
+    }
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOff(1, 48));
+    render(proc);
+    proc.recorder().stopRecording();
+
+    auto count = [](const std::vector<mp::MidiRecorder::TakeEvent>& events, int cc) {
+      return std::count_if(events.begin(), events.end(),
+                           [cc](const auto& e) { return e.message.isControllerOfType(cc); });
+    };
+    const auto take = proc.recorder().takeEvents();
+    MP_CHECK(count(take, 22) == 0 && count(take, 23) == 0,
+             "the take holds no Quit or Power-off press");
+    MP_CHECK(count(take, 24) == 2, "and keeps a controller that is learned for nothing: " +
+                                       std::to_string(count(take, 24)));
+
+    const juce::File file = proc.serviceArchive(true);
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(file.existsAsFile() && back.loadFromFile(file), "the archive writes the take");
+    const auto kept = back.takeEvents();
+    MP_CHECK(count(kept, 22) == 0 && count(kept, 23) == 0,
+             "and it holds no Quit or Power-off press either");
+    MP_CHECK(count(kept, 24) == 2, "with the other controller: " + std::to_string(count(kept, 24)));
+    proc.setArchiveSettings({}, false);
+    folder.deleteRecursively();
+  }
+};
+static RecorderLeavesOutQuitTest g_recorderLeavesOutQuit;
+
 // The take saved for a sequencer (5.2): a track per keyboard, the console's
 // own messages left out, every note-on with its note-off, the stops as
 // markers, and times from the first note exact to the tick. The plain save
