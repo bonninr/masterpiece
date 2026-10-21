@@ -366,17 +366,12 @@ public:
     // Every one except those the player switched off (#230): a console
     // plugged in for the first time plays at once.
     proc_->readMidiInputSwitches();
-    for (const auto& in : juce::MidiInput::getAvailableDevices()) {
-      devices_->setMidiInputDeviceEnabled(in.identifier, proc_->midiInputEnabled(in.name));
-      if (proc_->midiInputEnabled(in.name) && !devices_->isMidiInputDeviceEnabled(in.identifier))
-        juce::Logger::writeToLog("midi: " + in.name + " could not be opened (another program may "
-                                 "be using it); it is tried again every few seconds");
-      auto route = std::make_unique<DeviceRoute>(
-          *this, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
-      devices_->addMidiInputDeviceCallback(in.identifier, route.get());
-      routes_.push_back({in.identifier, std::move(route)});
-    }
+    for (const auto& in : juce::MidiInput::getAvailableDevices()) routeMidiInput(in);
     midiRetry_ = std::make_unique<MidiRetry>(*devices_, *proc_);
+    // A device that appears later -- plugged in, or on Android listed only
+    // once the player allows it -- gets its route as it appears. Without one
+    // it was opened and its notes went nowhere (#474).
+    midiRetry_->routeNew = [this](const juce::MidiDeviceInfo& in) { routeMidiInput(in); };
     // And JACK's MIDI, which the inputs above do not include (#198).
     jackMidi_ = JackMidiInput::open(*proc_);
 
@@ -1063,6 +1058,7 @@ private:
     }
     void timerCallback() override {
       for (const auto& in : juce::MidiInput::getAvailableDevices()) {
+        if (routeNew) routeNew(in);
         if (!proc.midiInputEnabled(in.name) || devices.isMidiInputDeviceEnabled(in.identifier)) continue;
         devices.setMidiInputDeviceEnabled(in.identifier, true);
         if (devices.isMidiInputDeviceEnabled(in.identifier))
@@ -1071,8 +1067,29 @@ private:
     }
     juce::AudioDeviceManager& devices;
     mp::MasterpieceProcessor& proc;
+    // Gives a device seen for the first time its route (routeMidiInput).
+    std::function<void(const juce::MidiDeviceInfo&)> routeNew;
   };
   std::unique_ptr<MidiRetry> midiRetry_;
+
+  // An input's own callback, so its messages arrive tagged with the device
+  // they came from, opened unless the player switched it off. Once per
+  // device: a device already routed is left as it is.
+  void routeMidiInput(const juce::MidiDeviceInfo& in) {
+    for (const auto& r : routes_)
+      if (r.identifier == in.identifier) return;
+    const bool later = midiRetry_ != nullptr;  // after startup
+    devices_->setMidiInputDeviceEnabled(in.identifier, proc_->midiInputEnabled(in.name));
+    if (proc_->midiInputEnabled(in.name) && !devices_->isMidiInputDeviceEnabled(in.identifier))
+      juce::Logger::writeToLog("midi: " + in.name + " could not be opened (another program may "
+                               "be using it); it is tried again every few seconds");
+    else if (later && proc_->midiInputEnabled(in.name))
+      juce::Logger::writeToLog("midi: " + in.name + " appeared and has been opened");
+    auto route = std::make_unique<DeviceRoute>(
+        *this, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
+    devices_->addMidiInputDeviceCallback(in.identifier, route.get());
+    routes_.push_back({in.identifier, std::move(route)});
+  }
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
         : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
