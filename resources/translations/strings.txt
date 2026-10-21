@@ -361,6 +361,9 @@ countries: gb us
 "Give this panel a name of its own" = "Give this panel a name of its own"
 "Keep the sections, hidden elements, window and colours" = "Keep the sections, hidden elements, window and colours"
 "Show this panel in a window of its own, or back among the tabs" = "Show this panel in a window of its own, or back among the tabs"
+"Make the stops smaller" = "Make the stops smaller"
+"Make the stops bigger" = "Make the stops bigger"
+"Fit the stops to the window" = "Fit the stops to the window"
 "Attach" = "Attach"
 "Detach" = "Detach"
 "Organ's name" = "Organ's name"
@@ -372,6 +375,7 @@ countries: gb us
 
 # src/mp_ui/Panels.h
 "Edit" = "Edit"
+"Fit" = "Fit"
 
 # src/mp_ui/Settings.cpp
 "Memory profile" = "Memory profile"

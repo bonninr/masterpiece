@@ -913,3 +913,7 @@ countries: fr be ca ch lu mc
 "Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep what they started with, and only the keys pressed afterwards play the new registration." = "Désactivé, un jeu ou un accouplement manœuvré pendant que des touches sont tenues parle ou se tait aussitôt sur ces notes, comme sur une console à traction électrique. Activé, les notes tenues gardent ce avec quoi elles ont commencé, et seules les touches enfoncées ensuite jouent la nouvelle registration."
 "Pistons leave the bass coupler" = "Les combinaisons laissent l'accouplement de basse"
 "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in." = "Les combinaisons et le séquenceur ne mémorisent ni ne rappellent les accouplements de basse et de mélodie, qui restent comme l'organiste les a mis. Les annulateurs les repoussent toujours."
+"Make the stops smaller" = "Jeux plus petits"
+"Make the stops bigger" = "Jeux plus grands"
+"Fit the stops to the window" = "Ajuster les jeux à la fenêtre"
+"Fit" = "Ajuster"

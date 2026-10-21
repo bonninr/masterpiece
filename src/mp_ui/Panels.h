@@ -19,6 +19,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <algorithm>
 #include <vector>
 
 namespace mp::ui {
@@ -72,6 +73,13 @@ struct PanelLayout {
   bool detached = false;
   int x = 0, y = 0, w = 0, h = 0;  // the detached window, when it is one
   int scheme = 0;                  // PanelScheme, as a number
+  // The panel's size, as a percentage of the sizes it had before: 100 is
+  // today's sizes exactly, and the player may choose from 50 to 250 in
+  // steps of ten.
+  int scale = 100;
+  // Whether the panel fits itself to the window instead, whatever size the
+  // player chose.
+  bool fitToWindow = false;
 
   std::string toText() const;
   bool fromText(const std::string& text);
@@ -96,6 +104,16 @@ public:
   // Build again from the organ, after a load.
   void rebuild();
   const PanelLayout& layout() const { return layout_; }
+  // For the tests: where the cells are, in the panel's body, and the size of
+  // the part of it the window shows.
+  std::vector<juce::Rectangle<int>> cellBoundsForTest() const {
+    std::vector<juce::Rectangle<int>> out;
+    for (auto* c : cells_) out.push_back(c->getBounds());
+    return out;
+  }
+  juce::Rectangle<int> viewAreaForTest() const {
+    return {viewport_.getMaximumVisibleWidth(), viewport_.getMaximumVisibleHeight()};
+  }
   bool hasUnsavedChanges() const { return !(layout_ == saved_); }
   // Keep the current setup as saved (after the editor wrote it).
   void markSaved() { saved_ = layout_; }
@@ -119,6 +137,7 @@ public:
 
   void resized() override;
   void paint(juce::Graphics& g) override;
+  bool keyPressed(const juce::KeyPress& key) override;
 
 private:
   class Cell;
@@ -145,6 +164,34 @@ private:
   juce::Component body_;
   juce::OwnedArray<juce::Label> titles_;
   juce::OwnedArray<juce::Component> cells_;
+
+  // The size the panel is drawn at, as a percentage of today's sizes.
+  int scale() const;
+  // The largest size at which the panel's cells fit the window, in steps of
+  // five per cent.
+  int fittedScale() const;
+  // How far the panel's cells reach at a size: the width and the height
+  // they need.
+  void extentAt(int scale, int& width, int& height) const;
+  // Every size of the panel at a scale, shared by the layout and the fit so
+  // the two can never disagree.
+  struct Geometry {
+    int columnW = 170, cellH = 58, faderH = 220, cellMinW = 104, faderMinW = 90;
+    int top = 30, titleH = 22;
+    int columnsFor(bool faders) const {
+      return std::max(1, (columnW - 8) / std::max(1, faders ? faderMinW : cellMinW));
+    }
+  };
+  Geometry geometryAt(int scale) const;
+  std::vector<size_t> shownSections() const;
+  // The size the player chose, one step up or down, or as it was.
+  void setScale(int scale);
+  // The size, in the bar, and what it is now.
+  void refreshSizeControls();
+
+  juce::TextButton smaller_{"-"}, bigger_{"+"};
+  juce::Label size_{};
+  juce::ToggleButton fit_{TRANS("Fit")};
 };
 
 // A panel in a window of its own.
