@@ -138,3 +138,6 @@ if(NOT EXISTS ${MP_SCORE_FONTS_DIR}/.complete OR NOT EXISTS ${MP_SCORE_FONTS_ZIP
 endif()
 set(MP_SCORE_FONTS_DIR ${MP_SCORE_FONTS_DIR} CACHE INTERNAL "")
 set(MP_SCORE_FONTS_ZIP ${MP_SCORE_FONTS_ZIP} CACHE INTERNAL "")
+# Bravura itself, for the text the page draws with it: the note in a metronome
+# mark and the other music symbols inside text. 513 KB, SIL OFL.
+set(MP_SCORE_MUSIC_FONT ${_vrv}/fonts/Bravura/Bravura.otf CACHE INTERNAL "")

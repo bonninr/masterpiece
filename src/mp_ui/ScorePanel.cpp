@@ -139,7 +139,8 @@ std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePage
   // SVG reader gives such a page no bounds and draws nothing, and does the
   // same for a font-family list on a group. The nested element is turned
   // into a plain group and its viewBox moved to the root, which JUCE draws
-  // correctly.
+  // correctly, and its "Times, serif" becomes the one serif the program
+  // carries, whose widths are the ones the text was laid out with.
   auto toPixels = juce::AffineTransform();
   if (auto* inner = doc->getChildByName("svg")) {
     const auto box = inner->getStringAttribute("viewBox");
@@ -152,7 +153,7 @@ std::unique_ptr<juce::Drawable> parseScorePage(const std::string& svg, ScorePage
     doc->setAttribute("viewBox", box);
     inner->setTagName("g");
     inner->removeAttribute("viewBox");
-    inner->removeAttribute("font-family");
+    inner->setAttribute("font-family", kScoreTextFont);
     GeometryWalk walk{geometry, {}};
     walk.walk(*inner, toPixels, -1, {});
     for (const auto& l : walk.lines) {
@@ -174,6 +175,27 @@ bool unpackScoreFonts(const juce::File& folder) {
   // The marker is written last: a folder without it was cut short and is
   // unpacked again.
   return folder.getChildFile(".complete").create().wasOk();
+}
+
+bool registerScoreFonts() {
+  static const bool loaded = [] {
+    // JUCE finds a typeface made this way by name only while it is alive.
+    static std::vector<juce::Typeface::Ptr> faces;
+    bool all = true;
+    for (int i = 0; i < MpScoreFonts::namedResourceListSize; ++i) {
+      const juce::String file = MpScoreFonts::originalFilenames[i];
+      if (!file.endsWithIgnoreCase(".otf") && !file.endsWithIgnoreCase(".ttf")) continue;
+      int size = 0;
+      const char* data = MpScoreFonts::getNamedResource(MpScoreFonts::namedResourceList[i], size);
+      auto face = data != nullptr ? juce::Typeface::createSystemTypefaceFor(
+                                        {reinterpret_cast<const std::byte*>(data), static_cast<size_t>(size)})
+                                  : nullptr;
+      if (face != nullptr) faces.push_back(face);
+      else all = false;
+    }
+    return all && !faces.empty();
+  }();
+  return loaded;
 }
 
 juce::File scoreResourceFolder() {
@@ -236,7 +258,8 @@ private:
 }  // namespace
 
 ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : proc_(proc) {
-  fonts_ = fonts != juce::File() ? fonts : scoreResourceFolder();
+  registerScoreFonts();
+  fonts_ =fonts != juce::File() ? fonts : scoreResourceFolder();
   if (fonts_ != juce::File())
     engraver_ = std::make_unique<mp::ScoreEngraver>(fonts_.getFullPathName().toStdString());
   if (engraver_ == nullptr || !engraver_->ready()) {
