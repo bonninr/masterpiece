@@ -2275,8 +2275,10 @@ void MasterpieceEditor::showViewMenu() {
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
   menu.addItem(13, TRANS("Show played keys"), true, proc_.showPlayedKeys());
-  menu.addItem(15, TRANS("Small pages fill the window"), true, proc_.smallPagesFill());
-  menu.addItem(16, TRANS("Fit window to page"));
+  // Each item its own number: the handler below runs every branch that
+  // matches, so a shared number does two things at once. 15 is the stop list.
+  menu.addItem(17, TRANS("Small pages fill the window"), true, proc_.smallPagesFill());
+  menu.addItem(18, TRANS("Fit window to page"));
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
 #if MP_HAS_SCORE
   menu.addItem(16, TRANS("Score"), true,
@@ -2307,11 +2309,11 @@ void MasterpieceEditor::showViewMenu() {
                          safe->proc_.setShowPlayedKeys(!safe->proc_.showPlayedKeys());
                          safe->console_.repaint();
                        }
-                       if (c == 15) {
+                       if (c == 17) {
                          safe->proc_.setSmallPagesFill(!safe->proc_.smallPagesFill());
                          safe->resized();
                        }
-                       if (c == 16) safe->fitWindowToPage();
+                       if (c == 18) safe->fitWindowToPage();
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);
