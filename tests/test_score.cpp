@@ -208,6 +208,16 @@ public:
     size_t notes = 0;
     for (int p = 1; p <= eng.pageCount(); ++p) notes += countOf(eng.renderPage(p), "class=\"note\"");
     MP_CHECK(notes == 6, "no note is lost when the page narrows");
+    // The second page's number sits between two en dashes, U+2013.
+    {
+      mp::ScoreEngraver trio(MP_TEST_SCORE_DATA_DIR);
+      trio.setPage(300, 300, 100);
+      MP_CHECK(trio.load(readScoreFixture("organ-trio.musicxml")) && trio.pageCount() >= 2,
+               "the trio on a small page takes several pages, got " + std::to_string(trio.pageCount()));
+      const std::string second = trio.renderPage(2);
+      MP_CHECK(second.find("\xe2\x80\x93") != std::string::npos && second.find("\xc3\xa2") == std::string::npos,
+               "the page number's dashes are en dashes");
+    }
 
     MP_CHECK(!eng.midiBase64().empty(), "the score is given as MIDI");
     MP_CHECK(eng.timemapJson().find("tstamp") != std::string::npos, "and as a time map");
