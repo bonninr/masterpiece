@@ -35,6 +35,7 @@
 #include "MixerConfig.h"
 #include "VoicingSet.h"
 #include "RankEq.h"
+#include "LiveLevels.h"
 #include "VoicingEq.h"
 #include "VoicingEqPresets.h"
 #include "Favourites.h"
@@ -1511,6 +1512,34 @@ public:
   // it as before. Each has an id that never changes, for MIDI and for any
   // control from outside.
   const VoicingEqPresets& voicingEqPresets() const { return eqPresets_; }
+
+  // Live levels (LiveLevels.h): a fader for each rank and each division of
+  // the organ loaded, both in id order as the control API lists them, and
+  // one for each output pair. 0..127, 127 as voiced; all at full after a
+  // load. Set from any thread; ignored while an organ loads.
+  int liveRankLevel(int index) const { return liveLevels_.rank(index); }
+  int liveDivisionLevel(int index) const { return liveLevels_.division(index); }
+  int livePairLevel(int index) const { return liveLevels_.pair(index); }
+  void setLiveRankLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setRank(index, value);
+  }
+  void setLiveDivisionLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setDivision(index, value);
+  }
+  void setLivePairLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setPair(index, value);
+  }
+  int liveRankCount() const { return liveLevels_.rankCount(); }
+  int liveDivisionCount() const { return liveLevels_.divisionCount(); }
+  // A rank's or a division's place in those lists; -1 for none.
+  int liveRankIndexOf(Id rankId) const {
+    const auto it = liveRankIndex_.find(rankId);
+    return it == liveRankIndex_.end() ? -1 : it->second;
+  }
+  int liveDivisionIndexOf(Id divisionId) const {
+    const auto it = liveDivisionIndex_.find(divisionId);
+    return it == liveDivisionIndex_.end() ? -1 : it->second;
+  }
   bool recallVoicingEqPreset(int id);
   bool recallVoicingEqPresetNamed(const juce::String& name);
   // The next (1) or the one before (-1); returns the id recalled, or 0.
@@ -1956,6 +1985,14 @@ private:
   std::vector<Id> tremOrder_;
   std::unordered_map<Id, int> tremIndexOf_;
   std::vector<VoiceEngine::TremMod> tremMods_;
+  // The live levels, and each rank's and division's place in them, resolved
+  // at load like the wind.
+  LiveLevels liveLevels_;
+  std::unordered_map<Id, int> liveRankIndex_;
+  std::unordered_map<Id, int> liveDivisionIndex_;
+  // Sets a live level from a MIDI control: a rank or division by its id, a
+  // pair by its number from 1.
+  void setLiveLevelFromMidi(MidiTargetKind kind, Id targetId, int value);
   void advanceTremulants(int numFrames);
   // The wind sway: one slow wave per division and one for ranks in none,
   // with each rank's place resolved at load; advanced once a block.

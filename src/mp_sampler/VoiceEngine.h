@@ -328,6 +328,9 @@ struct Voice {
   // Which wind sway moves this pipe's pitch, as an index into the table
   // setSwayRatios() hands over; -1 for none.
   int swayIndex = -1;
+  // Which rank's live level reaches this pipe, as an index into the table
+  // setLiveGains() hands over; -1 for none (a noise). See LiveLevels.
+  int rankIndex = -1;
 
   // Loop crossfade. On a wrap the outgoing stream keeps reading PAST the loop
   // end (that material is still in the file) while the incoming stream starts
@@ -389,6 +392,7 @@ struct VoiceStart {
   int busIndex = 0;  // enclosure
   int mixBus = 0;    // mixer output
   int swayIndex = -1;  // wind sway; see Voice::swayIndex
+  int rankIndex = -1;  // live level; see Voice::rankIndex
 };
 
 struct EngineStats {
@@ -570,6 +574,21 @@ public:
     swayRatios_ = ratios;
     swayCount_ = count;
   }
+  // The live levels for the next block: a gain per rank and per output pair,
+  // multiplied on once per voice per block. Null while every fader is at
+  // full, and then no voice does anything for them.
+  void setLiveGains(const float* rankGains, int rankCount, const float* pairGains, int pairCount) {
+    liveRankGains_ = rankGains;
+    liveRankCount_ = rankCount;
+    livePairGains_ = pairGains;
+    livePairCount_ = pairCount;
+  }
+  float liveGainFor(const Voice& v) const {
+    float g = 1.0f;
+    if (v.rankIndex >= 0 && v.rankIndex < liveRankCount_) g = liveRankGains_[v.rankIndex];
+    if (v.mixBus >= 0 && v.mixBus < livePairCount_) g *= livePairGains_[v.mixBus];
+    return g;
+  }
   // --- streaming --------------------------------------------------------
   // How far ahead of each voice the streamer keeps, in seconds. Generous: a
   // voice consumes one frame per output frame, so a couple of seconds of slack
@@ -735,6 +754,10 @@ private:
   int tremCount_ = 0;
   const double* swayRatios_ = nullptr;
   int swayCount_ = 0;
+  const float* liveRankGains_ = nullptr;
+  int liveRankCount_ = 0;
+  const float* livePairGains_ = nullptr;
+  int livePairCount_ = 0;
 
   // --- streaming --------------------------------------------------------
   // One ring per voice, parallel to `voices_`. Per voice and not per sample

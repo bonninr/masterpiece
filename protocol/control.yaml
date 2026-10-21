@@ -43,8 +43,10 @@ types:
   - code: 3
     name: division
     plural: divisions
-    doc: The organ's divisions, for names and grouping.
-    access: read
+    doc: The organ's divisions, for names and grouping. Value - the division's live level, a fader over every rank in it, 0 to 127 with 127 as voiced and 0 silent; heard at once, and back at 127 with each organ.
+    value: {min: 0, max: 127}
+    access: set
+    dump: values
     properties: [name, odfId]
   - code: 4
     name: keyboard
@@ -143,6 +145,22 @@ types:
     plural: routes
     doc: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.
     value: {min: 1, max: 8}
+    access: set
+    dump: values
+    properties: [name, rank]
+  - code: 17
+    name: pair
+    plural: pairs
+    doc: The mixer's output pairs, as the Mixer tab of General settings counts them. Value - the pair's live level, 0 to 127 with 127 as voiced and 0 silent; heard at once, and back at 127 with each organ.
+    value: {min: 0, max: 127}
+    access: set
+    dump: values
+    properties: [name]
+  - code: 18
+    name: ranklevel
+    plural: ranklevels
+    doc: A live level for each rank, one per rank in the order of ranks - a fader on top of the rank's voicing, 0 to 127 with 127 as voiced and 0 silent; heard at once, and back at 127 with each organ.
+    value: {min: 0, max: 127}
     access: set
     dump: values
     properties: [name, rank]

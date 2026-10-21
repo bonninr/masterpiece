@@ -36,6 +36,8 @@ public:
   // the top of the right-click menu and in the MIDI window's title.
   static juce::String targetName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id);
   static juce::String switchName(const OrganModel& m, Id switchId);
+  // A mapping's message, for a MIDI menu's header: "CC 7 ch 1".
+  static juce::String describeBinding(const MidiBinding& b);
 
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,

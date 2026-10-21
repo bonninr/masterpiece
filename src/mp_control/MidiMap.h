@@ -100,6 +100,11 @@ enum class MidiTargetKind {
   // one being made; Play plays the take, or stops it.
   RecorderRecord,
   RecorderPlay,
+  // Live levels (LiveLevels.h), driven like a shoe: a rank by its id, a
+  // division by its id, an output pair by its number from 1.
+  RankLevel,
+  DivisionLevel,
+  PairLevel,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -378,10 +383,17 @@ public:
       case MidiTargetKind::ScorePageBack:
       case MidiTargetKind::RecorderRecord:
       case MidiTargetKind::RecorderPlay:
+      case MidiTargetKind::PairLevel:
         return true;
       default:
         return false;
     }
+  }
+  // Targets moved across a range, as a shoe is: a learned controller sets
+  // them from its value, and one controller can drive several.
+  static bool isContinuousTarget(MidiTargetKind k) {
+    return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
+           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel;
   }
   // A raw controller value through a binding's window and sense, 0..127.
   static int controlValue(const MidiBinding& b, int raw) {

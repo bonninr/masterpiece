@@ -877,6 +877,12 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   advanceWind(numFrames);
   advanceTremulants(numFrames);
   advanceSway(numFrames);
+  // The live levels: handed to the voices only while a fader is down.
+  if (liveLevels_.advance(numFrames, sampleRate_))
+    voices_.setLiveGains(liveLevels_.rankGains(), liveLevels_.rankCount(), liveLevels_.pairGains(),
+                         LiveLevels::kMaxPairs);
+  else
+    voices_.setLiveGains(nullptr, 0, nullptr, 0);
   if (!blockLog_.empty())
     blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
 
@@ -1306,6 +1312,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         case MidiTargetKind::RecorderPlay:
           if (m < takeFrom || m >= takeTo) pendingRecorder_.store(2, std::memory_order_release);
+          continue;
+        case MidiTargetKind::RankLevel:
+        case MidiTargetKind::DivisionLevel:
+        case MidiTargetKind::PairLevel:
+          setLiveLevelFromMidi(action.kind, action.targetId, action.value);
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              setLiveLevelFromMidi(b.targetKind, b.targetId, MidiMap::controlValue(b, value));
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
@@ -3777,6 +3791,7 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
       if (eq != rankEqIndex_.end()) vs.busIndex = rankEq_.busFor(eq->second, vs.busIndex);
     }
     vs.mixBus = mixBusForPipe(rankId, midiNote);
+    vs.rankIndex = liveRankIndexOf(rankId);
     {
       const auto wIt = pipeWindIndex_.find(pipe.pipeId);
       vs.windIndex = wIt == pipeWindIndex_.end() ? -1 : wIt->second;
@@ -4998,6 +5013,15 @@ void MasterpieceProcessor::setScorePageMessage(const ScorePageMessage& m) {
   held.back = juce::jlimit(0, 127, held.back);
   scorePage_.store(packScorePage(held), std::memory_order_release);
   writeGlobalFile();
+}
+
+void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId, int value) {
+  switch (kind) {
+    case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
+    case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
+    case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
+    default: break;
+  }
 }
 
 int MasterpieceProcessor::refreshLcdPanels() {
@@ -6669,6 +6693,35 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       const auto it = windIndexOf_.find(wind_.compartmentForPipe(pipe));
       if (it != windIndexOf_.end()) pipeWindIndex_[pipe.pipeId] = it->second;
     }
+  }
+  // The live levels: a fader per rank and per division, in id order as the
+  // control API lists them, each rank under the division of the first stop
+  // (by id) that draws it. All at full.
+  {
+    liveRankIndex_.clear();
+    liveDivisionIndex_.clear();
+    std::vector<Id> divisions, ranks, stops;
+    for (const auto& [id, d] : model_.divisions) divisions.push_back(id);
+    for (const auto& [id, r] : model_.ranks) ranks.push_back(id);
+    for (const auto& [id, s] : model_.stops) stops.push_back(id);
+    std::sort(divisions.begin(), divisions.end());
+    std::sort(ranks.begin(), ranks.end());
+    std::sort(stops.begin(), stops.end());
+    for (size_t i = 0; i < divisions.size(); ++i) liveDivisionIndex_[divisions[i]] = static_cast<int>(i);
+    std::unordered_map<Id, int> rankDivision;
+    for (Id stopId : stops) {
+      const Stop& stop = model_.stops.at(stopId);
+      const auto d = liveDivisionIndex_.find(stop.divisionId);
+      if (d == liveDivisionIndex_.end()) continue;
+      for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+    }
+    std::vector<int> divisionOfRank;
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      liveRankIndex_[ranks[i]] = static_cast<int>(i);
+      const auto d = rankDivision.find(ranks[i]);
+      divisionOfRank.push_back(d == rankDivision.end() ? -1 : d->second);
+    }
+    liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()));
   }
   phases.mark("model: wind");
   stages_.reset(model_);

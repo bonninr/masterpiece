@@ -160,7 +160,11 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 | **All to pair 1** | Sends every rank to the first pair. | | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routing. | | | At once |
 | **Bass management...** | Per pair, the lows under a crossover to a subwoofer channel of the device, and the rest to the pair. | **Off** | **Off**, **40 Hz** to **200 Hz**; **Subwoofer on 1** to **Subwoofer on N** | At once |
-| Rank list | One row per rank, labelled with the rank number and name, with a **Pair N** box. A rank that points at a pair removed by lowering **Output pairs** returns to **Pair 1**. | **Pair 1** | **Pair 1** to the chosen number of pairs | At once |
+| Rank list | One row per rank, labelled with the rank number and name, with a **Pair N** box, a level fader and a **MIDI** button. A rank that points at a pair removed by lowering **Output pairs** returns to **Pair 1**. | **Pair 1** | **Pair 1** to the chosen number of pairs | At once |
+| Level faders | A live level for each output pair, each division and each rank, heard at once on the pipes sounding. Full is the level as voiced; the steps are even in decibels over the lower 40 dB, and the bottom is silence. A division's fader acts on every rank in it. | Full | **Off** to 0 dB | At once |
+| **MIDI** | Shows the knob or pedal learned for that level. **Learn: move the knob or pedal** waits for a controller to move; a key played meanwhile plays. **Clear mapping** removes it. | | | At once |
+
+The level faders are a performance's balance and are not saved: every fader is full again when an organ loads. The knobs learned for them are kept with the organ's MIDI mapping; a pair's knob is kept for every organ. The control API reads and sets the same faders as `divisions`, `pairs` and `ranklevels`, and the web console shows the division and pair faders under **Levels**.
 
 **Stored.** The number of pairs and their device channels are the key `buses` in the organ file, and in the global file when **Save as default** is used on the Loading tab. Bass management is the key `busbass <pair> <Hz> <channel>` beside `buses`, the channel counted from 0. The rank routes are the keys `route <rank> bus <n>` in the organ file; they are written by **Save for this organ**, and by any other change that makes Masterpiece rewrite the organ file.
 
