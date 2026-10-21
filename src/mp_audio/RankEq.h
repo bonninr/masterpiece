@@ -1,5 +1,8 @@
 // EQ per rank and per division: a bass shelf and a brightness shelf, set on
-// the Voicing tab and saved with the voicing.
+// the Voicing tab and saved with the voicing; and where the rank stands, its
+// pan and its stereo width, applied to the same groups after the shelves.
+// A rank's and its division's add: the shelves and the pans add (the pan
+// held to -1..+1), the widths multiply.
 //
 // A filter per voice would cost a full organ thousands of filters. Instead,
 // the ranks that have an EQ play into buses of their own, one per EQ group
@@ -34,8 +37,12 @@ namespace mp {
 struct ShelfEq {
   float bassDb = 0.0f;    // a low shelf at kBassHz
   float brightDb = 0.0f;  // a high shelf at kBrightHz
-  bool flat() const { return bassDb == 0.0f && brightDb == 0.0f; }
-  bool operator==(const ShelfEq& o) const { return bassDb == o.bassDb && brightDb == o.brightDb; }
+  float pan = 0.0f;       // -1 left, +1 right
+  float width = 1.0f;     // 0 mono, 1 as recorded, 2 twice as wide
+  bool flat() const { return bassDb == 0.0f && brightDb == 0.0f && pan == 0.0f && width == 1.0f; }
+  bool operator==(const ShelfEq& o) const {
+    return bassDb == o.bassDb && brightDb == o.brightDb && pan == o.pan && width == o.width;
+  }
   bool operator!=(const ShelfEq& o) const { return !(*this == o); }
 };
 
@@ -47,6 +54,7 @@ public:
   static constexpr double kBassHz = 200.0;
   static constexpr double kBrightHz = 3000.0;
   static constexpr float kMaxDb = 12.0f;
+  static constexpr float kMaxWidth = 2.0f;
 
   // The organ's ranks, each with its division's index or -1, how many
   // divisions, how many enclosure buses there are, and the rate. Clears
@@ -161,6 +169,26 @@ public:
         z[1] = z2;
       }
     }
+    // Where it stands: the width by mid and side, then the pan, on the first
+    // two channels. At a width of 100% and the pan in the middle nothing is
+    // done, so the samples are the shelves' own.
+    if (channels < 2 || (g.width == 1.0f && g.pan == 0.0f)) return;
+    float* left = planes[0];
+    float* right = planes[1];
+    if (g.width != 1.0f) {
+      const float w = g.width;
+      for (int i = 0; i < numFrames; ++i) {
+        const float mid = (left[i] + right[i]) * 0.5f;
+        const float side = (left[i] - right[i]) * 0.5f * w;
+        left[i] = mid + side;
+        right[i] = mid - side;
+      }
+    }
+    if (g.pan != 0.0f)
+      for (int i = 0; i < numFrames; ++i) {
+        left[i] *= g.gainLeft;
+        right[i] *= g.gainRight;
+      }
   }
 
 private:
@@ -174,6 +202,8 @@ private:
     int parent = 0;   // the enclosure bus it adds into
     bool bypass = true;
     std::array<Biquad, 2> filter{};
+    float pan = 0.0f, width = 1.0f;
+    float gainLeft = 1.0f, gainRight = 1.0f;
     // Transposed direct form II memory: [pair][channel][filter][2].
     std::array<std::array<std::array<std::array<float, 2>, 2>, kMaxChannels>, kMaxPairs> state{};
   };
@@ -181,6 +211,8 @@ private:
   static ShelfEq clamp(ShelfEq e) {
     e.bassDb = std::clamp(e.bassDb, -kMaxDb, kMaxDb);
     e.brightDb = std::clamp(e.brightDb, -kMaxDb, kMaxDb);
+    e.pan = std::clamp(e.pan, -1.0f, 1.0f);
+    e.width = std::clamp(e.width, 0.0f, kMaxWidth);
     return e;
   }
   int ownerFor(int r) const {
@@ -204,8 +236,11 @@ private:
       e = ranks_[static_cast<size_t>(owner)];
       const int d = rankDivision_[static_cast<size_t>(owner)];
       if (d >= 0) {
-        e.bassDb += divisions_[static_cast<size_t>(d)].bassDb;
-        e.brightDb += divisions_[static_cast<size_t>(d)].brightDb;
+        const ShelfEq& div = divisions_[static_cast<size_t>(d)];
+        e.bassDb += div.bassDb;
+        e.brightDb += div.brightDb;
+        e.pan = std::clamp(e.pan + div.pan, -1.0f, 1.0f);
+        e.width = std::clamp(e.width * div.width, 0.0f, kMaxWidth);
       }
       return e;
     }
@@ -217,7 +252,17 @@ private:
   void design(Group& g, const ShelfEq& e) const {
     g.filter[0] = shelf(false, kBassHz, e.bassDb);
     g.filter[1] = shelf(true, kBrightHz, e.brightDb);
-    g.bypass = g.filter[0].unity && g.filter[1].unity;
+    g.pan = e.pan;
+    g.width = e.width;
+    // A constant-power law, cos and sin of (pan + 1) pi/4, scaled so the
+    // middle is unity and neither side is lifted: hard left is the left
+    // channel as it was and the right one silent.
+    const double theta = (static_cast<double>(e.pan) + 1.0) * 3.14159265358979323846 / 4.0;
+    g.gainLeft = static_cast<float>(std::min(1.0, std::sqrt(2.0) * std::cos(theta)));
+    g.gainRight = static_cast<float>(std::min(1.0, std::sqrt(2.0) * std::sin(theta)));
+    if (e.pan <= -1.0f) g.gainRight = 0.0f;
+    if (e.pan >= 1.0f) g.gainLeft = 0.0f;
+    g.bypass = g.filter[0].unity && g.filter[1].unity && g.pan == 0.0f && g.width == 1.0f;
   }
   Biquad shelf(bool high, double hz, float db) const {
     Biquad f;

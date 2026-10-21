@@ -30,6 +30,8 @@ enum class Type : uint8_t {
   Route = 16,
   Brightness = 19,
   Bass = 20,
+  Pan = 21,
+  Width = 22,
 };
 
 enum class Access : uint8_t { Read, Set, Press };
@@ -67,8 +69,10 @@ constexpr TypeInfo kTypes[] = {
   {Type::Route, "route", "routes", Access::Set, Dump::Values, true, 1, 8, false, "Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note."},
   {Type::Brightness, "brightness", "brightnesses", Access::Set, Dump::Values, true, -120, 120, false, "The voicing EQ's high shelf, above 3 kHz - one per rank in the order of ranks, then one per division in the order of divisions; a rank hears its division's added to its own. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing."},
   {Type::Bass, "bass", "basses", Access::Set, Dump::Values, true, -120, 120, false, "The voicing EQ's low shelf, below 200 Hz - one per rank in the order of ranks, then one per division in the order of divisions, as brightnesses. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing."},
+  {Type::Pan, "pan", "pans", Access::Set, Dump::Values, true, -100, 100, false, "Where a rank or a division stands - one per rank, then one per division, as brightnesses; a rank's and its division's add. Value - -100 full left, 0 the middle, 100 full right; heard at once, and saved with the voicing."},
+  {Type::Width, "width", "widths", Access::Set, Dump::Values, true, 0, 200, false, "The stereo width of a rank or a division - one per rank, then one per division, as brightnesses; a rank's and its division's multiply. Value - percent, 0 mono, 100 as recorded, 200 twice as wide; heard at once, and saved with the voicing."},
 };
-constexpr int kTypeCount = 21;
+constexpr int kTypeCount = 23;
 
 constexpr const TypeInfo* typeInfo(Type t) {
   for (const auto& i : kTypes)

@@ -162,6 +162,22 @@ types:
     access: set
     dump: values
     properties: [name, rank, division]
+  - code: 21
+    name: pan
+    plural: pans
+    doc: Where a rank or a division stands - one per rank, then one per division, as brightnesses; a rank's and its division's add. Value - -100 full left, 0 the middle, 100 full right; heard at once, and saved with the voicing.
+    value: {min: -100, max: 100}
+    access: set
+    dump: values
+    properties: [name, rank, division]
+  - code: 22
+    name: width
+    plural: widths
+    doc: The stereo width of a rank or a division - one per rank, then one per division, as brightnesses; a rank's and its division's multiply. Value - percent, 0 mono, 100 as recorded, 200 twice as wide; heard at once, and saved with the voicing.
+    value: {min: 0, max: 200}
+    access: set
+    dump: values
+    properties: [name, rank, division]
 
 # Properties an object can have, returned by Describe.
 properties:

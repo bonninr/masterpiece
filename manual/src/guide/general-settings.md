@@ -194,8 +194,11 @@ A shelf for the treble and one for the bass, for each rank and for each division
 |---|---|---|---|---|
 | **Brightness** | The treble shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 | **Bass** | The bass shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
+| **Pan** | Where the selected rank stands, from full left to full right. Active when **Applies to** is **The whole rank**. | 0 | -100 to +100 | At once |
+| **Width** | The selected rank's stereo width: 0% mono, 100% as recorded, 200% twice as wide. Active when **Applies to** is **The whole rank**. | 100% | 0 to 200% | At once |
 | **Division EQ** | The division whose shelves are set below. | The first division | The divisions of the loaded organ | At once |
 | Division **Brightness** and **Bass** | The treble and bass shelves of the chosen division. Every rank in it hears them added to its own. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
+| Division **Pan** and **Width** | Where the chosen division stands and its width. Every rank in it hears them: the pans add, held to full left and full right, and the widths multiply. | 0 and 100% | -100 to +100; 0 to 200% | At once |
 
 ## Combination sets
 

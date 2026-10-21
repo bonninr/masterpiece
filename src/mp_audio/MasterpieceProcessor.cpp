@@ -744,11 +744,11 @@ void MasterpieceProcessor::pushVoicingEq() {
     const VoicingSet& v = voicing_.live();
     for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
       const PipeVoicing pv = v.rank(rankEqRanks_[i]);
-      ranks[i] = {pv.bassDb, pv.brightnessDb};
+      ranks[i] = {pv.bassDb, pv.brightnessDb, pv.balance, pv.width};
     }
     for (size_t i = 0; i < rankEqDivisions_.size(); ++i) {
       const PipeVoicing pv = v.division(rankEqDivisions_[i]);
-      divisions[i] = {pv.bassDb, pv.brightnessDb};
+      divisions[i] = {pv.bassDb, pv.brightnessDb, pv.balance, pv.width};
     }
   }
   rankEq_.setParams(ranks, divisions);
@@ -2036,7 +2036,8 @@ bool MasterpieceProcessor::saveSettings() const {
              << juce::String(pv.tuningCents, 3) << " "
              << juce::String(pv.brightnessDb, 3) << " "
              << juce::String(pv.balance, 3) << " "
-             << juce::String(pv.bassDb, 3) << "\n";
+             << juce::String(pv.bassDb, 3) << " "
+             << juce::String(pv.width, 3) << "\n";
       };
       for (Id id : v.rankIds()) line("rank", id, v.rank(id));
       for (Id id : v.pipeIds()) line("pipe", id, v.pipe(id));
@@ -2045,7 +2046,8 @@ bool MasterpieceProcessor::saveSettings() const {
       for (Id id : v.divisionIds()) {
         const PipeVoicing pv = v.division(id);
         text << "voicingdiv " << slot << " " << juce::String(id) << " " << juce::String(pv.brightnessDb, 3)
-             << " " << juce::String(pv.bassDb, 3) << "\n";
+             << " " << juce::String(pv.bassDb, 3) << " " << juce::String(pv.balance, 3) << " "
+             << juce::String(pv.width, 3) << "\n";
       }
     };
     writeSet("a", voicing_.a);
@@ -2159,7 +2161,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       continue;
     }
     if (key == "voicingadj") {
-      // "voicingadj a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance>"
+      // "voicingadj a|b rank|pipe <id> <gainDb> <cents> <brightness> <balance> [<bass> [<width>]]"
       //
       // NOT "voicing": settingsBody already writes `voicing 0|1` for the DSP
       // engine switch, and this handler runs BEFORE applySettingsLine. Sharing
@@ -2174,6 +2176,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pv.brightnessDb = tok[5].getFloatValue();
       pv.balance = tok[6].getFloatValue();
       if (tok.size() >= 8) pv.bassDb = tok[7].getFloatValue();
+      if (tok.size() >= 9) pv.width = tok[8].getFloatValue();
       VoicingSet& set = tok[0] == "b" ? voicing_.b : voicing_.a;
       const Id id = static_cast<Id>(tok[2].getLargeIntValue());
       if (tok[1] == "pipe") set.setPipe(id, pv);
@@ -2181,13 +2184,17 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       continue;
     }
     if (key == "voicingdiv") {
-      // "voicingdiv a|b <divisionId> <brightness> <bass>"
+      // "voicingdiv a|b <divisionId> <brightness> <bass> [<pan> <width>]"
       auto tok = juce::StringArray::fromTokens(val, " ", "");
       tok.removeEmptyStrings();
       if (tok.size() < 4) continue;
       PipeVoicing pv;
       pv.brightnessDb = tok[2].getFloatValue();
       pv.bassDb = tok[3].getFloatValue();
+      if (tok.size() >= 6) {
+        pv.balance = tok[4].getFloatValue();
+        pv.width = tok[5].getFloatValue();
+      }
       (tok[0] == "b" ? voicing_.b : voicing_.a).setDivision(static_cast<Id>(tok[1].getLargeIntValue()), pv);
       continue;
     }
@@ -3736,8 +3743,8 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     // The player's own voicing, on top of what the organ declares.
     // Gain and tuning only: they are a multiply and a ratio at note-on
     // and cost nothing per sample, so they apply even with the DSP
-    // switch off. Brightness and balance need per-voice filtering and
-    // are stored but NOT applied — see PipeVoicing.
+    // switch off. The EQ, the pan and the width are a rank's and a
+    // division's, applied to its group's bus (RankEq.h), not here.
     //
     // The empty() guard is the point of the whole lookup: an organ
     // nobody has voiced must not pay two hash lookups for every pipe of

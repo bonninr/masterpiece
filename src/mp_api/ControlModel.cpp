@@ -231,7 +231,9 @@ int ControlModel::count(Type type) {
     case Type::Windchest: return static_cast<int>(windchests_.size());
     case Type::Route: return static_cast<int>(ranks_.size());
     case Type::Brightness:
-    case Type::Bass: return static_cast<int>(ranks_.size() + divisions_.size());
+    case Type::Bass:
+    case Type::Pan:
+    case Type::Width: return static_cast<int>(ranks_.size() + divisions_.size());
   }
   return 0;
 }
@@ -275,6 +277,8 @@ int ControlModel::valueOf(Type type, int index) {
     }
     case Type::Brightness: return juce::roundToInt(eqVoicing(index).brightnessDb * 10.0f);
     case Type::Bass: return juce::roundToInt(eqVoicing(index).bassDb * 10.0f);
+    case Type::Pan: return juce::roundToInt(eqVoicing(index).balance * 100.0f);
+    case Type::Width: return juce::roundToInt(eqVoicing(index).width * 100.0f);
     case Type::Route: {
       // The pair as the Mixer tab lists them, from 1.
       const RankRouting r = proc_.mixer().routingFor(static_cast<Id>(ranks_[static_cast<size_t>(index)].id));
@@ -453,6 +457,8 @@ juce::var ControlModel::object(Type type, int index) {
       break;
     case Type::Brightness:
     case Type::Bass:
+    case Type::Pan:
+    case Type::Width:
       if (index < static_cast<int>(ranks_.size())) {
         o->setProperty("name", text(ranks_[static_cast<size_t>(index)].name));
         o->setProperty("rank", index);
@@ -610,6 +616,12 @@ Error ControlModel::set(Type type, int index, int& value) {
     if (value < info->min || value > info->max) return Error::BadValue;
     PipeVoicing pv = eqVoicing(index);
     (type == Type::Brightness ? pv.brightnessDb : pv.bassDb) = static_cast<float>(value) / 10.0f;
+    setEqVoicing(index, pv);
+    proc_.applyVoicingEq();
+  } else if (type == Type::Pan || type == Type::Width) {
+    if (value < info->min || value > info->max) return Error::BadValue;
+    PipeVoicing pv = eqVoicing(index);
+    (type == Type::Pan ? pv.balance : pv.width) = static_cast<float>(value) / 100.0f;
     setEqVoicing(index, pv);
     proc_.applyVoicingEq();
   } else if (type == Type::Route) {

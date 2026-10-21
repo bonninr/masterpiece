@@ -3,7 +3,7 @@
  "info": {
   "title": "Masterpiece control",
   "version": "0.1",
-  "description": "Generated from protocol/control.yaml. Object types: switches: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.; controls: Continuous controls - swell shoes, crescendo and the like.; divisions: The organ's divisions, for names and grouping.; keyboards: Manuals and pedal. Notes are played over MIDI.; generals: The player's general pistons. Value 1 while it is the last recalled.; divisionals: The player's divisional pistons. Value 1 while it is the last recalled in its division.; eqpresets: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.; temperaments: The temperaments to choose from. Value 1 while chosen.; commands: Buttons that are no object of the organ.; ranks: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings.; notes: Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel.; pipes: Every pipe of every rank, with its own voicing level in tenths of a dB on top of its rank's, heard from the next note. In rank order, then by key.; enclosures: Swell boxes and other enclosures. Value - how open its shades are, 0 to 127, as the control that moves them reads.; tremulants: The organ's tremulants. Value 1 while it runs; setting it moves the switch the player would.; windchests: The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure.; routes: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.; brightnesses: The voicing EQ's high shelf, above 3 kHz - one per rank in the order of ranks, then one per division in the order of divisions; a rank hears its division's added to its own. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing.; basses: The voicing EQ's low shelf, below 200 Hz - one per rank in the order of ranks, then one per division in the order of divisions, as brightnesses. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing."
+  "description": "Generated from protocol/control.yaml. Object types: switches: Every switch of the organ file - drawstops, couplers, tremulants, pistons and the rest.; controls: Continuous controls - swell shoes, crescendo and the like.; divisions: The organ's divisions, for names and grouping.; keyboards: Manuals and pedal. Notes are played over MIDI.; generals: The player's general pistons. Value 1 while it is the last recalled.; divisionals: The player's divisional pistons. Value 1 while it is the last recalled in its division.; eqpresets: Voicing EQ presets - the program's ten, then the player's own. Value 1 while the EQ is this preset.; temperaments: The temperaments to choose from. Value 1 while chosen.; commands: Buttons that are no object of the organ.; ranks: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings.; notes: Every key of every keyboard - index = keyboard index * 128 + MIDI note. Value 1 while the key is down; 1 plays it, 0 releases it, on the keyboard's channel.; pipes: Every pipe of every rank, with its own voicing level in tenths of a dB on top of its rank's, heard from the next note. In rank order, then by key.; enclosures: Swell boxes and other enclosures. Value - how open its shades are, 0 to 127, as the control that moves them reads.; tremulants: The organ's tremulants. Value 1 while it runs; setting it moves the switch the player would.; windchests: The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure.; routes: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.; brightnesses: The voicing EQ's high shelf, above 3 kHz - one per rank in the order of ranks, then one per division in the order of divisions; a rank hears its division's added to its own. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing.; basses: The voicing EQ's low shelf, below 200 Hz - one per rank in the order of ranks, then one per division in the order of divisions, as brightnesses. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing.; pans: Where a rank or a division stands - one per rank, then one per division, as brightnesses; a rank's and its division's add. Value - -100 full left, 0 the middle, 100 full right; heard at once, and saved with the voicing.; widths: The stereo width of a rank or a division - one per rank, then one per division, as brightnesses; a rank's and its division's multiply. Value - percent, 0 mono, 100 as recorded, 200 twice as wide; heard at once, and saved with the voicing."
  },
  "paths": {
   "/api/v1": {
@@ -197,7 +197,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      },
@@ -318,7 +320,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      }
@@ -426,7 +430,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      },
@@ -543,7 +549,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      },
@@ -658,7 +666,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      },
@@ -794,7 +804,9 @@
         "windchests",
         "routes",
         "brightnesses",
-        "basses"
+        "basses",
+        "pans",
+        "widths"
        ]
       }
      },

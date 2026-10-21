@@ -32,12 +32,14 @@ struct PipeVoicing {
   // own.
   float brightnessDb = 0.0f;
   float bassDb = 0.0f;
-  // Stored and shown, and NOT applied yet.
+  // Where it stands, heard for a rank and a division as the EQ is: the pan,
+  // and the stereo width (1 as recorded, 0 mono, 2 twice as wide).
   float balance = 0.0f;  // -1 left, +1 right
+  float width = 1.0f;
 
   bool isNeutral() const {
     return gainDb == 0.0f && tuningCents == 0.0f && brightnessDb == 0.0f &&
-           bassDb == 0.0f && balance == 0.0f;
+           bassDb == 0.0f && balance == 0.0f && width == 1.0f;
   }
   void add(const PipeVoicing& o) {
     gainDb += o.gainDb;
@@ -45,6 +47,7 @@ struct PipeVoicing {
     brightnessDb += o.brightnessDb;
     bassDb += o.bassDb;
     balance += o.balance;
+    width *= o.width;
   }
 };
 
