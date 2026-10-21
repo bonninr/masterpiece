@@ -159,6 +159,20 @@ public:
 
   void setMasterCoupler(int toDiv, int fromDiv, int pitchKind, bool engaged);
 
+  // A program coupler: the player draws it, and a key on the destination's
+  // keyboard sounds the source's division at the key's note plus the shift.
+  // The program couplers do not chain: they are not part of the organ's own
+  // key flow, and a real console's couplers do not chain either.
+  struct ProgramCoupler {
+    Id switchId = 0;
+    Id destDivision = 0;
+    Id srcDivision = 0;
+    int shift = 0;  // -12 for 16', 0 for 8', +12 for 4'
+  };
+  // The program couplers, built at load. With none, walk() does no extra
+  // work at all beyond the check.
+  void setProgramCouplers(std::vector<ProgramCoupler> couplers);
+
   // Keyboards whose own division the organ reaches through its switches, key
   // switch to division input (#345). A key played on one does not sound that
   // division itself: the input does, while the wiring lets it through, which
@@ -192,6 +206,9 @@ private:
   std::unordered_set<Id> needsFallback_;
   std::unordered_set<Id> switchFed_;
   bool master_[8][8][6] = {};
+  // The program couplers by their destination division.
+  std::unordered_map<Id, std::vector<ProgramCoupler>> programByDest_;
+  bool hasProgramCouplers_ = false;
 };
 
 // Which keyboard the on-screen fallback piano (and an unmapped MIDI channel)

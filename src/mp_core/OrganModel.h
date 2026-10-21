@@ -421,6 +421,10 @@ struct Switch {
   int asgnCode = 0;
   bool rememberState = false;
   bool clickable = true;
+  // A switch the program provides rather than the organ: a program coupler
+  // between two manuals, which the organ's own definition does not name.
+  // The editor and the stop counts tell them apart from the organ's own.
+  bool programProvided = false;
   // How this switch appears on the console: which drawn instance it owns, and
   // which frame of that instance's image set means on and off. This is the
   // whole mechanism behind a drawstop that moves when you click it.

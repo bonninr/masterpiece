@@ -1483,6 +1483,16 @@ public:
   // How much of each sample is preloaded. The head is a MINIMUM: it is always
   // extended to cover the sustain loop, because a sample whose loop is missing
   // does not sustain. 0 loads whole files.
+  // Whether the program couplers are offered: the ones the player asks
+  // for, between the manuals at 16', 8' and 4'. Off by default; when on,
+  // they are real switches and everything else works with them.
+  void setProgramCouplers(bool on) { programCouplers_ = on; }
+  bool programCouplers() const { return programCouplers_; }
+  // The program couplers this organ has, in the order they were numbered.
+  const std::vector<CouplerMatrix::ProgramCoupler>& programCouplerList() const {
+    return programCouplersList_;
+  }
+
   void setPreloadHeadFrames(int64_t frames) {
     preloadHead_ = frames;
   }
@@ -2069,6 +2079,10 @@ private:
   float meterFall_ = 0.5f;
 
   int64_t preloadHead_ = 0;
+  // Whether the program couplers are offered. Off by default.
+  bool programCouplers_ = false;
+  // The program couplers this organ has, in the order they were numbered.
+  std::vector<CouplerMatrix::ProgramCoupler> programCouplersList_;
   // Off unless asked for: reopening at start is what turns one crash into a
   // loop of them.
   bool reopenLastOrgan_ = false;
@@ -2318,6 +2332,9 @@ private:
     // How many notes of a rank are loaded: 1 for every note, 2 for every
     // second, 3 for every third.
     int sparse = 1;
+    // The program couplers: chosen on the same tab, and lost with the rest
+    // when the organ's own settings are read again at the load.
+    bool programCouplers = false;
     EngineSwitch engine;
   };
   std::optional<LoadingChoice> sessionLoading_;
@@ -2523,6 +2540,8 @@ private:
   // engaged, for the divisions the organ reaches that way from its keys.
   // Built after the key flow, which is told which keyboards those are.
   void buildDivisionInputs();
+  // The program couplers: the switches, and what the matrix does with them.
+  void buildProgramCouplers();
   void divisionInputMoved(Id switchId, bool engaged);
   std::unordered_map<Id, std::pair<int, int>> divisionInputBySwitch_;  // switch -> (division, note)
   // Inputs held and the note id their pipes sound under; reserved at load.

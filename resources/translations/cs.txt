@@ -938,3 +938,4 @@ countries: cz
 "The number sent for the page before" = "Číslo posílané pro předchozí stránku"
 "Learn score page -" = "Naučit stránku not -"
 "Learn score page +" = "Naučit stránku not +"
+"Program couplers" = "Programové spojky"

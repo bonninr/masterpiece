@@ -94,6 +94,8 @@ private:
   struct Entry {
     std::unique_ptr<StopButton> button;
     Id stopId = 0;
+    // The switch a program coupler is. Zero for a stop.
+    Id switchId = 0;
     Id divisionId = 0;
     bool playable = false;
     juce::String name;      // the stop's own name

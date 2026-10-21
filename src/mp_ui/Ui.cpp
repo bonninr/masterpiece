@@ -169,6 +169,47 @@ void StopJamb::rebuild() {
     entries_.push_back(std::move(e));
   }
 
+  // The program couplers, in a section of their own after the organ's own.
+  if (!proc_.programCouplerList().empty()) {
+    auto header = std::make_unique<juce::Label>();
+    header->setText(TRANS("Program couplers"), juce::dontSendNotification);
+    header->setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
+    header->setColour(juce::Label::textColourId, juce::Colours::orange);
+    addAndMakeVisible(*header);
+    headers_.push_back(std::move(header));
+    for (const auto& pc : proc_.programCouplerList()) {
+      const auto& model = proc_.organModel();
+      const auto it = model.switches.find(pc.switchId);
+      Entry e;
+      e.stopId = 0;
+      e.switchId = pc.switchId;
+      e.divisionId = 0;  // a group of its own
+      e.playable = true;
+      e.name = juce::String(it != model.switches.end() ? it->second.name : std::string());
+      e.division = TRANS("Program couplers");
+      e.button = std::make_unique<StopButton>(e.name);
+      e.button->setClickingTogglesState(true);
+      e.button->setToggleState(proc_.shownSwitchEngaged(pc.switchId),
+                               juce::dontSendNotification);
+      // Read by a screen reader as the stops are: the coupler and its section.
+      e.button->setStopName(e.name, e.division);
+      e.button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f3a));
+      e.button->setColour(juce::TextButton::textColourOffId, juce::Colour(0xffb9c2d0));
+      e.button->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffeee3c6));
+      e.button->setColour(juce::TextButton::textColourOnId, juce::Colour(0xff1b1e24));
+      const Id id = pc.switchId;
+      auto* raw = e.button.get();
+      e.button->onClick = [this, id, raw] {
+        proc_.setSwitchEngaged(id, raw->getToggleState());
+      };
+      e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
+        moveFocus(from, key);
+      };
+      addAndMakeVisible(*e.button);
+      entries_.push_back(std::move(e));
+    }
+  }
+
   // Height is content-driven; the Viewport scrolls it.
   const int width = getWidth() > 0 ? getWidth() : kJambWidth;
   setSize(width, heightFor(width));
@@ -177,7 +218,8 @@ void StopJamb::rebuild() {
 
 void StopJamb::refresh() {
   for (auto& e : entries_) {
-    const bool on = proc_.shownStopEngaged(e.stopId);
+    const bool on = e.switchId != 0 ? proc_.shownSwitchEngaged(e.switchId)
+                                    : proc_.shownStopEngaged(e.stopId);
     if (e.button->getToggleState() == on) continue;
     e.button->setToggleState(on, juce::dontSendNotification);
     // A stop changed by a piston, a combination or MIDI: the screen reader

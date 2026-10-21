@@ -348,6 +348,7 @@ countries: gb us
 "Close" = "Close"
 
 # src/mp_ui/Panels.cpp
+"Program couplers" = "Program couplers"
 "Other" = "Other"
 "Piston" = "Piston"
 "Expression" = "Expression"

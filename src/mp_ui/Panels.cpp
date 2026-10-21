@@ -222,6 +222,24 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     sectionFor(st.divisionId).elements.push_back(std::move(e));
   }
 
+  // The program couplers, in a section of their own after the organ's own.
+  if (!p.programCouplerList().empty()) {
+    PanelSection program;
+    program.kind = PanelSection::Kind::Program;
+    program.key = "program";
+    program.title = TRANS("Program couplers").toStdString();
+    for (const auto& pc : p.programCouplerList()) {
+      PanelElement e;
+      e.kind = PanelElement::Kind::Switch;
+      e.id = pc.switchId;
+      const auto sw = m.switches.find(pc.switchId);
+      e.name = sw != m.switches.end() ? sw->second.name : std::string();
+      splitFootage(withoutCategory(e.name), e.name, e.footage);
+      program.elements.push_back(std::move(e));
+    }
+    divisions.push_back(std::move(program));
+  }
+
   // Couplers, then tremulants, each in the division it belongs to.
   std::vector<Id> switchIds;
   for (const auto& [id, sw] : m.switches) switchIds.push_back(id);

@@ -938,3 +938,4 @@ countries: pl
 "The number sent for the page before" = "Numer wysyłany dla poprzedniej strony"
 "Learn score page -" = "Naucz stronę nut -"
 "Learn score page +" = "Naucz stronę nut +"
+"Program couplers" = "Połączenia programowe"

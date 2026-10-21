@@ -1432,6 +1432,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
                                                         : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
+  text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
   text << "releasecutoff " << releaseCutoffDb_ << "\n";
@@ -1511,6 +1512,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
+  else if (key == "programcouplers") programCouplers_ = on;
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
   else if (key == "releaselength") samples_.setReleaseMaxMs(val.getIntValue());
@@ -3941,6 +3943,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.streamHeadPercent = samples_.streamHeadPercent();
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
+  c.programCouplers = programCouplers_;
   c.engine = graph_.engineSwitch;
   sessionLoading_ = c;
 }
@@ -5147,6 +5150,70 @@ void MasterpieceProcessor::findPalletStops() {
 // sounding it directly. A division whose inputs no key reaches is left as it
 // was, so a set that declares inputs and plays its keys some other way is
 // unchanged.
+void MasterpieceProcessor::buildProgramCouplers() {
+  programCouplersList_.clear();
+  couplers_.setProgramCouplers({});
+  if (!programCouplers_) return;
+
+  // The divisions a player can play: the ones the playable keyboards reach.
+  std::vector<Id> divisions;
+  for (Id kb : couplers_.inputKeyboards()) {
+    const Id div = couplers_.primaryDivisionFor(kb);
+    if (div == 0) continue;
+    if (std::find(divisions.begin(), divisions.end(), div) == divisions.end())
+      divisions.push_back(div);
+  }
+  if (divisions.empty()) return;
+
+  // The ids: from the next multiple of 100000 above the organ's own, in a
+  // fixed order, so that the same organ gives the same ids at every load and
+  // a MIDI mapping saved for one keeps working.
+  Id highest = 0;
+  // The organ's own switches only: the engine numbers switches of its own
+  // from 0x40000000, and counting those would move these ids.
+  for (const auto& [id, s] : model_.switches)
+    if (id < 0x40000000 && !s.programProvided) highest = std::max(highest, id);
+  Id nextId = ((highest / 100000) + 1) * 100000;
+
+  // The name a player knows a division by.
+  const auto nameOf = [&](Id div) {
+    const auto it = model_.divisions.find(div);
+    return it != model_.divisions.end() ? it->second.name : std::string();
+  };
+
+  // For every ordered pair of different divisions: 16', 8' and 4'.
+  for (Id dest : divisions)
+    for (Id src : divisions) {
+      if (dest == src) continue;
+      for (const int shift : {-12, 0, 12}) {
+        const char* pitch = shift == -12 ? "16'" : shift == 0 ? "8'" : "4'";
+        Switch sw;
+        sw.switchId = nextId++;
+        sw.name = nameOf(src) + " to " + nameOf(dest) + " " + pitch;
+        sw.isCoupler = true;
+        sw.programProvided = true;
+        model_.switches[sw.switchId] = sw;
+        programCouplersList_.push_back({sw.switchId, dest, src, shift});
+      }
+    }
+
+  // For every division with itself: 16' and 4'. A manual coupled to itself
+  // an octave down or up, which is what a sub and a super coupler are.
+  for (Id div : divisions)
+    for (const int shift : {-12, 12}) {
+      const char* pitch = shift == -12 ? "16'" : "4'";
+      Switch sw;
+      sw.switchId = nextId++;
+      sw.name = nameOf(div) + " " + pitch;
+      sw.isCoupler = true;
+      sw.programProvided = true;
+      model_.switches[sw.switchId] = sw;
+      programCouplersList_.push_back({sw.switchId, div, div, shift});
+    }
+
+  couplers_.setProgramCouplers(programCouplersList_);
+}
+
 void MasterpieceProcessor::buildDivisionInputs() {
   divisionInputBySwitch_.clear();
   divisionInputNotes_.clear();
@@ -5969,6 +6036,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     preloadHead_ = c.preload;
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
+    programCouplers_ = c.programCouplers;
     graph_.engineSwitch = c.engine;
     juce::Logger::writeToLog("load: using the Loading choices kept for this session");
   } else {
@@ -6057,6 +6125,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // them about.
   phases.mark("model: stop map");
   buildCouplerInputs();
+  // The key flow is walked before the switches are wired, because the
+  // program couplers are switches of the organ's own, and the coupler
+  // matrix has to know which divisions a player can play before it can
+  // offer the couplers between them.
+  couplers_.reset(model_);
+  buildProgramCouplers();
   switches_.reset(model_);
   // Where the player left the switches the organ remembers, set as the player
   // would so their wiring follows: Nancy's "start blower on organ load" is
@@ -6399,7 +6473,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Key flow. This is what makes couplers work at all: without it every
   // division sounds on every key, and drawing "Great to Pedal" changes
   // nothing because everything is already coupled to everything.
-  couplers_.reset(model_);
   buildDivisionInputs();
   // Channel assignments belong to the organ they were made for; loadMidiMap()
   // below brings back the ones saved for this one.

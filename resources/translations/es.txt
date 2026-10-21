@@ -938,3 +938,4 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "The number sent for the page before" = "El número enviado para la página anterior"
 "Learn score page -" = "Aprender página de partitura -"
 "Learn score page +" = "Aprender página de partitura +"
+"Program couplers" = "Acoplamientos de programa"

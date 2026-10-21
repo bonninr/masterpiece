@@ -395,6 +395,23 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
         if (insertUnique(scratch.emitted, std::pair<int, int>{div, step.second}))
           out.push_back({div, step.second, velocity});
       }
+      // The program couplers into the played keyboard's own division: the key
+      // sounds the source's division at the key's note plus the shift. Only
+      // from the key itself, so they do not chain, through each other or
+      // through the organ's own couplers; and on a keyboard whose division is
+      // reached through switches as well, where the walk does not emit it.
+      if (hasProgramCouplers_ && depth == 0 && divIt != divisionOfKeyboard_.end()) {
+        const auto pc = programByDest_.find(divIt->second);
+        if (pc != programByDest_.end())
+          for (const ProgramCoupler& c : pc->second) {
+            if (engagedSwitches.count(c.switchId) == 0) continue;
+            const int note = step.second + c.shift;
+            if (note < 0 || note > 127) continue;
+            const int src = static_cast<int>(c.srcDivision);
+            if (insertUnique(scratch.emitted, std::pair<int, int>{src, note}))
+              out.push_back({src, note, velocity});
+          }
+      }
 
       const auto it = edges_.find(step.first);
       if (it == edges_.end()) continue;
@@ -439,6 +456,12 @@ std::vector<ExpandedNote> CouplerMatrix::expand(
 
 void CouplerMatrix::setMasterCoupler(int t, int f, int k, bool e) {
   master_[t][f][k] = e;
+}
+
+void CouplerMatrix::setProgramCouplers(std::vector<ProgramCoupler> couplers) {
+  programByDest_.clear();
+  for (const ProgramCoupler& c : couplers) programByDest_[c.destDivision].push_back(c);
+  hasProgramCouplers_ = !programByDest_.empty();
 }
 
 std::vector<ResolvedPipe> resolvePipes(const OrganModel& model, int divisionId,
