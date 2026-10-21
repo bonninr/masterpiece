@@ -1,6 +1,7 @@
 // The control protocol over MIDI System Exclusive and over OSC: the byte
 // encoding against the manual's example, then each transport on a small
 // organ, with replies captured where they would be sent.
+#ifdef MP_TEST_HAS_API
 #include "MpTest.h"
 #include "../src/mp_api/OscTransport.h"
 #include "../src/mp_api/SysexCodec.h"
@@ -293,3 +294,4 @@ public:
 static OscTransportTest g_oscTransport;
 
 }  // namespace
+#endif  // MP_TEST_HAS_API

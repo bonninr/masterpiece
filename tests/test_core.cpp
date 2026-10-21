@@ -17635,22 +17635,35 @@ std::vector<juce::String> transStringsIn(const juce::File& f) {
   return out;
 }
 
-juce::LocalisedStrings loadTemplate() {
-  return juce::LocalisedStrings(juce::File(MP_TEST_TRANSLATIONS_DIR).getChildFile("strings.txt"), false);
+// Every string the program passes through TRANS(), read from the sources the
+// way tools/i18n.py reads them. The sources are the list: nothing generated
+// from them is kept in the tree, so two changes that each add a string do not
+// collide on a shared file.
+juce::StringArray sourceStrings() {
+  const juce::File root(MP_TEST_SOURCE_DIR);
+  juce::StringArray out;
+  for (const char* dir : {"src", "apps"}) {
+    juce::Array<juce::File> files;
+    root.getChildFile(dir).findChildFiles(files, juce::File::findFiles, true, "*.cpp;*.h;*.mm");
+    files.sort();
+    for (const auto& f : files)
+      for (const auto& s : transStringsIn(f)) out.addIfNotAlreadyThere(s);
+  }
+  return out;
 }
 
 }  // namespace
 
 // The program speaks the player's language (#290). Each language file ships
-// inside the program, so each has to read, leave nothing empty and cover every
-// string in the template.
+// inside the program, so each has to read, leave nothing empty, cover every
+// string in the sources and hold none the sources no longer have. Fixed with
+// tools/i18n.py, which lists what each language lacks.
 class LanguageFilesTest final : public mp::test::Test {
 public:
   LanguageFilesTest() : Test("functional.i18n.language-files", Category::Functional) {}
   void run() override {
-    const auto tmpl = loadTemplate();
-    const auto keys = tmpl.getMappings().getAllKeys();
-    MP_CHECK(keys.size() > 300, "the template lists the program's strings");
+    const auto keys = sourceStrings();
+    MP_CHECK(keys.size() > 300, "the sources were scanned");
 
     const auto languages = mp::availableLanguages();
     for (const char* wanted : {"es", "de", "nl", "pl", "cs", "fr", "it"}) {
@@ -17681,35 +17694,11 @@ public:
                  code + ": the placeholders differ: " + utf8(key));
       }
       for (const auto& key : file.getMappings().getAllKeys())
-        MP_CHECK(tmpl.getMappings().containsKey(key), code + ": not in the template: " + utf8(key));
+        MP_CHECK(keys.contains(key), code + ": not in the sources: " + utf8(key));
     }
   }
 };
 static LanguageFilesTest g_languageFiles;
-
-// Every string the window code passes through TRANS() is in the template, so a
-// new string cannot be added without the translators' list growing. Fixed by
-// running tools/i18n.py --write.
-class TemplateCoversSourcesTest final : public mp::test::Test {
-public:
-  TemplateCoversSourcesTest() : Test("functional.i18n.template-covers-sources", Category::Functional) {}
-  void run() override {
-    const auto tmpl = loadTemplate();
-    const juce::File root(MP_TEST_SOURCE_DIR);
-    juce::Array<juce::File> files;
-    root.getChildFile("src/mp_ui").findChildFiles(files, juce::File::findFiles, false, "*.cpp;*.h");
-    files.add(root.getChildFile("apps/MasterpieceApp/Main.cpp"));
-    int found = 0;
-    for (const auto& f : files)
-      for (const auto& s : transStringsIn(f)) {
-        ++found;
-        MP_CHECK(tmpl.getMappings().containsKey(s),
-                 utf8(f.getFileName()) + ": not in resources/translations/strings.txt: " + utf8(s));
-      }
-    MP_CHECK(found > 300, "the sources were scanned");
-  }
-};
-static TemplateCoversSourcesTest g_templateCoversSources;
 
 // Choosing a language makes TRANS() answer in it, a string the file lacks stays
 // English, and a placeholder survives the trip.
