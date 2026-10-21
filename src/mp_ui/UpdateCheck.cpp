@@ -6,7 +6,11 @@ namespace mp::ui {
 
 namespace {
 
-const char* const kVersionUrl = "https://masterpieceorgan.com/version.txt";
+// GitHub's own record of the newest release: drafts and pre-releases are
+// left out of "latest". Asked once a day, well inside the hourly allowance
+// GitHub gives a request that carries no account.
+const char* const kVersionUrl = "https://api.github.com/repos/bonninr/masterpiece/releases/latest";
+const char* const kRequestHeaders = "User-Agent: Masterpiece\r\nAccept: application/vnd.github+json";
 const char* const kDownloadUrl = "https://masterpieceorgan.com/#platforms";
 constexpr int kShownMs = 30000;
 
@@ -19,7 +23,8 @@ juce::String fetchLatest() {
   juce::String text;
 #if JUCE_LINUX
   juce::ChildProcess curl;
-  if (curl.start(juce::StringArray{"curl", "-fsSL", "--max-time", "5", url},
+  if (curl.start(juce::StringArray{"curl", "-fsSL", "--max-time", "5", "-H", "User-Agent: Masterpiece", "-H",
+                                   "Accept: application/vnd.github+json", url},
                  juce::ChildProcess::wantStdOut)) {
     text = curl.readAllProcessOutput();  // returns when curl ends, in 5 s at most
     if (curl.getExitCode() != 0) text.clear();
@@ -27,12 +32,11 @@ juce::String fetchLatest() {
 #else
   const auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
                            .withConnectionTimeoutMs(5000)
-                           .withNumRedirectsToFollow(3);
+                           .withNumRedirectsToFollow(3)
+                           .withExtraHeaders(kRequestHeaders);
   if (auto in = juce::URL(url).createInputStream(options)) text = in->readEntireStreamAsString();
 #endif
-  // A version, and nothing else: a captive portal's page is not one.
-  text = text.trim();
-  return text.containsOnly("0123456789.") && text.contains(".") && text.length() <= 20 ? text : juce::String();
+  return versionFromAnswer(text);
 }
 
 std::vector<int> parts(const juce::String& v) {
@@ -42,6 +46,17 @@ std::vector<int> parts(const juce::String& v) {
 }
 
 } // namespace
+
+juce::String versionFromAnswer(const juce::String& answer) {
+  auto text = answer.trim();
+  // GitHub's release record names the release by its tag, "v0.9.0". A plain
+  // number is read as it is: a test server, or a copy given by
+  // MASTERPIECE_UPDATE_URL.
+  if (text.startsWithChar('{')) text = juce::JSON::parse(text)["tag_name"].toString().trim();
+  if (text.startsWithIgnoreCase("v")) text = text.substring(1);
+  // A version, and nothing else: a captive portal's page is not one.
+  return text.containsOnly("0123456789.") && text.contains(".") && text.length() <= 20 ? text : juce::String();
+}
 
 bool isNewerVersion(const juce::String& latest, const juce::String& current) {
   const auto a = parts(latest), b = parts(current);

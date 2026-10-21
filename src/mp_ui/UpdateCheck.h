@@ -1,7 +1,7 @@
 // Whether a newer Masterpiece is out, asked once a day.
 //
-// The application reads one short file, masterpieceorgan.com/version.txt,
-// which the site's publishing writes with the newest release's number. It
+// The application reads GitHub's record of the project's newest release,
+// over HTTPS from api.github.com, and takes the number from its tag. It
 // sends nothing about the player beyond what any request for a web page
 // carries. When the number is newer than this program's, a notice at the
 // right of the status bar offers the download page until 30 seconds after
@@ -24,6 +24,10 @@ namespace ui {
 // Whether `latest` is a newer version than `current`: dotted numbers,
 // compared part by part ("0.10.0" is newer than "0.9.2").
 bool isNewerVersion(const juce::String& latest, const juce::String& current);
+
+// The version an answer names: GitHub's release record by its tag ("v0.9.0"
+// gives "0.9.0"), or a plain number. Empty for anything else.
+juce::String versionFromAnswer(const juce::String& answer);
 
 // The check, when the player has it on and a day has passed since the last.
 // The file is read on a thread of its own; `onNewer` is called on the message
