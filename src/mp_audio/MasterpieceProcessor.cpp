@@ -2512,13 +2512,28 @@ void MasterpieceProcessor::rememberSampleLibrary(const juce::File& root) {
   writeGlobalFile();
 }
 
+namespace {
+juce::File& testCacheDirectory() {
+  static juce::File dir;
+  return dir;
+}
+}  // namespace
+
+void MasterpieceProcessor::setCacheDirectoryForTests(const juce::File& dir) { testCacheDirectory() = dir; }
+
 juce::File MasterpieceProcessor::defaultCacheDirectory() {
+  if (testCacheDirectory().getFullPathName().isNotEmpty()) return testCacheDirectory();
   return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
       .getChildFile("Masterpiece")
       .getChildFile("cache");
 }
 
 juce::File MasterpieceProcessor::cacheDirectory() const {
+  // Under the test suite, its own folder, whatever folder the player chose.
+  if (testCacheDirectory().getFullPathName().isNotEmpty()) {
+    testCacheDirectory().createDirectory();
+    return testCacheDirectory();
+  }
   // The folder the player chose, as long as it can be created: a cache on a
   // drive that is not plugged in must not stop an organ from loading. It only
   // means this load is not cached.
