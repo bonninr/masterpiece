@@ -1989,8 +1989,11 @@ void MidiPanel::resized() {
     keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150));
     keyboardChannels_[i]->setBounds(kbRow.removeFromLeft(170));
     kbRow.removeFromLeft(6);
+    // In a narrow window the device box gives way first: the range button's
+    // text shrank to a few pixels when it took the remainder (#493).
+    const int deviceWidth = juce::jlimit(140, 200, kbRow.getWidth() - 6 - 160);
     if (i < keyboardDevices_.size())
-      keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(200));
+      keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(deviceWidth));
     kbRow.removeFromLeft(6);
     if (i < keyboardMore_.size())
       keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
