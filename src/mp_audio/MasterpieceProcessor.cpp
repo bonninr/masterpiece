@@ -994,6 +994,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::Setter:
           setCaptureMode(action.toggled ? !captureMode() : action.engage);
           continue;
+        // On the audio thread, so the file is written later, by the message
+        // thread's next save of the global settings.
+        case MidiTargetKind::PedalCombinationsCoupled:
+          pedalCoupled_.store(action.toggled ? !pedalCoupled_.load() : action.engage);
+          globalDirty_.store(true, std::memory_order_release);
+          continue;
         case MidiTargetKind::RouteKeyboard:
           routeFromControl(action);
           continue;
@@ -2059,6 +2065,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
   if (stopsLeaveHeldNotes_.load()) text << "stopsleaveheldnotes 1\n";
   if (sustainPedal_.load()) text << "sustainpedal 1\n";
+  if (pedalCoupled_.load()) text << "pedalcombinationscoupled 1\n";
   if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
@@ -2213,6 +2220,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       stopsLeaveHeldNotes_.store(val.getIntValue() != 0);
     } else if (key == "sustainpedal") {
       sustainPedal_.store(val.getIntValue() != 0);
+    } else if (key == "pedalcombinationscoupled") {
+      pedalCoupled_.store(val.getIntValue() != 0);
     } else if (key == "learnnoisefilter") {
       learnNoiseFilter_.store(val.getIntValue() != 0);
     } else if (key == "cachewhileplaying") {
@@ -4201,6 +4210,9 @@ bool MasterpieceProcessor::storeIntoTarget() {
     case StoreTarget::Kind::Divisional:
       stored = player_.captureDivisional(storeTarget_.divisionId, storeTarget_.n, read);
       if (stored) player_.lightDivisional(storeTarget_.divisionId, storeTarget_.n);
+      if (const Id pedal = coupledPedalFor(storeTarget_.divisionId);
+          stored && pedal != 0 && player_.captureDivisional(pedal, storeTarget_.n, read))
+        player_.lightDivisional(pedal, storeTarget_.n);
       break;
     case StoreTarget::Kind::Step:
       // Into the step the sequencer is on; the frames after it stay as they are.
@@ -4219,16 +4231,24 @@ void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
     return playerElementEngaged(e);
   };
   storeTarget_ = {StoreTarget::Kind::Divisional, divisionId, n};
+  // While the Pedal combinations are coupled, the Pedal's piston of the same
+  // number goes with this one, stored and recalled together.
+  const Id pedal = coupledPedalFor(divisionId);
   if (captureMode()) {
-    if (player_.captureDivisional(divisionId, n, read))
-      combinationsDirty_.store(true, std::memory_order_release);
+    bool stored = player_.captureDivisional(divisionId, n, read);
+    if (pedal != 0) stored = player_.captureDivisional(pedal, n, read) || stored;
+    if (stored) combinationsDirty_.store(true, std::memory_order_release);
     return;
   }
-  if (!player_.divisionalSet(divisionId, n)) return;
+  const bool own = player_.divisionalSet(divisionId, n);
+  const bool coupled = pedal != 0 && player_.divisionalSet(pedal, n);
+  if (!own && !coupled) return;
   playerScratch_.clear();
-  player_.recallDivisional(divisionId, n, playerScratch_);
+  if (own) player_.recallDivisional(divisionId, n, playerScratch_);
+  if (coupled) player_.recallDivisional(pedal, n, playerScratch_);
   applyPlayerChanges();
-  player_.lightDivisional(divisionId, n);
+  if (own) player_.lightDivisional(divisionId, n);
+  if (coupled) player_.lightDivisional(pedal, n);
 }
 
 void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
@@ -4331,10 +4351,13 @@ void MasterpieceProcessor::pressGeneralCancel() {
 
 void MasterpieceProcessor::pressDivisionalCancel(Id divisionId) {
   const AudioLock audio(*this);
+  const Id pedal = coupledPedalFor(divisionId);
   playerScratch_.clear();
   player_.divisionalCancel(divisionId, playerScratch_);
+  if (pedal != 0) player_.divisionalCancel(pedal, playerScratch_);
   applyPlayerChanges();
   player_.lightDivisional(divisionId, 0);
+  if (pedal != 0) player_.lightDivisional(pedal, 0);
 }
 
 void MasterpieceProcessor::setPlayerPistonCounts(int generals, int divisionals) {
@@ -4477,6 +4500,7 @@ void MasterpieceProcessor::resetPlayerCombinations() {
   playerScratch_.clear();
   playerScratch_.reserve(elements.size() + 16);
   rerouteScratch_.reserve(128);
+  coupledDivisions_ = mp::coupledDivisions(model_, divisions);
   player_.reset(std::move(elements), std::move(divisions));
 }
 

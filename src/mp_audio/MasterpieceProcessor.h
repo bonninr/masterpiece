@@ -12,6 +12,7 @@
 #include "../mp_control/Combinations.h"
 #include "../mp_control/StageSwitches.h"
 #include "../mp_control/PlayerCombinations.h"
+#include "../mp_control/PedalCoupling.h"
 #include "../mp_control/LcdPanel.h"
 #include "../mp_control/WindSolver.h"
 #include "../mp_control/SwitchNetwork.h"
@@ -494,6 +495,24 @@ public:
   void pressGeneralCancel();
   void pressDivisional(Id divisionId, int n);
   void pressDivisionalCancel(Id divisionId);
+  // "Pedal combinations coupled" (PedalCoupling.h): while on, the coupled
+  // manual's divisionals recall, store and cancel the Pedal's of the same
+  // number with their own. The program's, kept for every organ; off by
+  // default. The two divisions it ties are worked out at each load; both 0
+  // when the organ has no pedal or no manual with divisionals.
+  bool pedalCombinationsCoupled() const { return pedalCoupled_.load(); }
+  void setPedalCombinationsCoupled(bool on) {
+    pedalCoupled_.store(on);
+    writeGlobalFile();
+  }
+  CoupledDivisions coupledDivisions() const { return coupledDivisions_; }
+  // A change made on the audio thread (a MIDI button) raises a flag; the
+  // window's save tick writes the global file.
+  bool saveGlobalIfDirty() {
+    if (!globalDirty_.exchange(false, std::memory_order_acq_rel)) return false;
+    writeGlobalFile();
+    return true;
+  }
   // How many generals, and divisionals per division, the window shows.
   // Saved with the combination set.
   void setPlayerPistonCounts(int generals, int divisionals);
@@ -1812,6 +1831,15 @@ private:
   // True while a piston applies its registration, so the switches it moves do
   // not count as the player moving them.
   bool applyingPistons_ = false;
+  std::atomic<bool> pedalCoupled_{false};
+  std::atomic<bool> globalDirty_{false};
+  CoupledDivisions coupledDivisions_;
+  // The Pedal's divisional that goes with this one, while coupled; 0 for none.
+  Id coupledPedalFor(Id divisionId) const {
+    return pedalCoupled_.load() && coupledDivisions_.valid() && divisionId == coupledDivisions_.manual
+               ? coupledDivisions_.pedal
+               : 0;
+  }
   void resetPlayerCombinations();
   void applyPlayerChanges();
   bool playerElementEngaged(const PlayerCombinations::Element& e) const;

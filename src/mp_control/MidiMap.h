@@ -93,6 +93,9 @@ enum class MidiTargetKind {
   // output, where the app has learned it in turn.
   ScorePageForward,
   ScorePageBack,
+  // "Pedal combinations coupled" (PedalCoupling.h): held or toggled like the
+  // setter, under its own id.
+  PedalCombinationsCoupled,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -114,6 +117,8 @@ inline int routedChannel(Id target) { return static_cast<int>(target % 32); }
 // The setter's id: one no switch can have, so its latch never shares a slot
 // with a drawstop's.
 constexpr Id kSetterTarget = -1;
+// The same for the Pedal combinations coupler's latch.
+constexpr Id kPedalCouplerTarget = -2;
 
 // PlayerDivisional's id, both ways.
 inline Id playerDivisionalTarget(Id divisionId, int piston) {
@@ -358,6 +363,7 @@ public:
       case MidiTargetKind::PlayerGeneral:
       case MidiTargetKind::PlayerGeneralCancel:
       case MidiTargetKind::Setter:
+      case MidiTargetKind::PedalCombinationsCoupled:
       case MidiTargetKind::VoicingEqPreset:
       case MidiTargetKind::VoicingEqPresetNext:
       case MidiTargetKind::VoicingEqPresetPrev:

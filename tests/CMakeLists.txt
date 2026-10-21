@@ -51,6 +51,7 @@ if(TARGET mp_audio)
       MP_TEST_HAS_SCORE=1
       MP_TEST_SCORE_DATA_DIR="${MP_SCORE_FONTS_DIR}")
   endif()
+  target_sources(mp_tests PRIVATE test_pedal_coupling.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)
