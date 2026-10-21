@@ -119,6 +119,15 @@ jobs:
           # saving its own filled the 10 GB cache allowance in a day.
           save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
+      # Verovio (the score panel's engraver) in a compiler cache of its own,
+      # kept until its tag or its build file changes: the cache above is full
+      # with JUCE and the program, and Verovio is as large again.
+      - name: Verovio compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache-verovio
+          key: verovio-${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}-${{ hashFiles('cmake/MpVerovio.cmake', 'cmake/MpVerovioStubs.cpp') }}
+
       - name: Dependencies (Linux)
         if: runner.os == 'Linux' && !matrix.arm
         run: |
@@ -169,6 +178,7 @@ jobs:
           cmake --preset ${{ matrix.preset }}
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
           ${{ matrix.cmake_extra }}
 
       - name: Build
@@ -674,6 +684,15 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" > /dev/null
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          sudo apt-get install -y ccache > /dev/null
+
+      # Verovio's objects for both ABIs, kept as in the desktop jobs. Read by
+      # its CMake file from the environment, which Gradle passes on.
+      - name: Verovio compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache-verovio
+          key: verovio-android-${{ hashFiles('cmake/MpVerovio.cmake', 'cmake/MpVerovioStubs.cpp') }}
 
       - name: Release key
         run: |
@@ -690,6 +709,8 @@ jobs:
 
       - name: Build
         working-directory: android
+        env:
+          MP_VEROVIO_CCACHE_DIR: ${{ github.workspace }}/.ccache-verovio
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Check output
@@ -704,6 +725,8 @@ jobs:
       # phone cannot install a bundle directly.
       - name: Play bundle
         working-directory: android
+        env:
+          MP_VEROVIO_CCACHE_DIR: ${{ github.workspace }}/.ccache-verovio
         run: |
           ./gradlew bundleRelease --no-daemon
           ls -la app/build/outputs/bundle/release/app-release.aab

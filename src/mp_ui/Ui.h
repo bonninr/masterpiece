@@ -17,6 +17,9 @@
 #include "Console.h"
 #include "PageWindow.h"
 #include "Panels.h"
+#if MP_HAS_SCORE
+#include "ScorePanel.h"
+#endif
 #include "Icons.h"
 #include "UpdateCheck.h"
 
@@ -373,6 +376,19 @@ private:
   std::vector<std::unique_ptr<PanelWindow>> panelWindows_;
   std::vector<int> panelTabs_;
   int showingPanel_ = -1;
+#if MP_HAS_SCORE
+  // The score panel: made when it is first opened from the View menu, then
+  // kept for the session, a tab after the panels' or a window of its own.
+  // Never a window on phones and tablets. The window is declared after the
+  // panel so it goes first.
+  std::unique_ptr<ScorePanel> score_;
+  std::unique_ptr<juce::DocumentWindow> scoreWindow_;
+  juce::Rectangle<int> scoreWindowBounds_;
+  bool showingScore_ = false;
+  int scoreTab_ = -1;  // its tab, -1 while it has none
+  void showScore();
+  void setScoreDetached(bool detached);
+#endif
 
   void loadPanels();
   void savePanels();

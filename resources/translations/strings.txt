@@ -377,6 +377,20 @@ countries: gb us
 "Edit" = "Edit"
 "Fit" = "Fit"
 
+# src/mp_ui/ScorePanel.cpp
+"The score fonts could not be prepared." = "The score fonts could not be prepared."
+"Open a MusicXML score (.musicxml, .xml or .mxl)." = "Open a MusicXML score (.musicxml, .xml or .mxl)."
+"Open score..." = "Open score..."
+"The file could not be read." = "The file could not be read."
+"No score was found in this file." = "No score was found in this file."
+"Staff" = "Staff"
+"Stop" = "Stop"
+"Play" = "Play"
+
+# src/mp_ui/ScorePanel.h
+"Two pages" = "Two pages"
+"Manuals..." = "Manuals..."
+
 # src/mp_ui/Settings.cpp
 "Memory profile" = "Memory profile"
 "Best quality - 24-bit, hold everything" = "Best quality - 24-bit, hold everything"
@@ -611,8 +625,6 @@ countries: gb us
 "Impulse-response reverb" = "Impulse-response reverb"
 "Load IR..." = "Load IR..."
 "Record" = "Record"
-"Play" = "Play"
-"Stop" = "Stop"
 "Save MIDI..." = "Save MIDI..."
 "Load MIDI..." = "Load MIDI..."
 "Record audio..." = "Record audio..."
@@ -859,6 +871,7 @@ countries: gb us
 "1 conflicting assignment was removed, and each manual now uses the organ's own channel." = "1 conflicting assignment was removed, and each manual now uses the organ's own channel."
 "%1 conflicting assignments were removed, and each manual now uses the organ's own channel." = "%1 conflicting assignments were removed, and each manual now uses the organ's own channel."
 "Your previous mapping was saved next to the new one with the ending \".before-repair\". You can reassign manuals in Settings > MIDI." = "Your previous mapping was saved next to the new one with the ending \".before-repair\". You can reassign manuals in Settings > MIDI."
+"Score" = "Score"
 "Stop list" = "Stop list"
 "Panel of the whole organ" = "Panel of the whole organ"
 "New panel" = "New panel"

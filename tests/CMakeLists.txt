@@ -40,6 +40,15 @@ if(TARGET mp_audio)
   target_sources(mp_tests PRIVATE test_settings_archive.cpp)
   target_sources(mp_tests PRIVATE test_held_notes.cpp)
   target_sources(mp_tests PRIVATE test_sustain.cpp)
+  # The score panel: the engraving, the page geometry, the player and the
+  # panel playing through a small organ. The engraver reads the font folder
+  # the configure step prepared.
+  if(TARGET mp_score)
+    target_sources(mp_tests PRIVATE test_score.cpp)
+    target_compile_definitions(mp_tests PRIVATE
+      MP_TEST_HAS_SCORE=1
+      MP_TEST_SCORE_DATA_DIR="${MP_SCORE_FONTS_DIR}")
+  endif()
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)

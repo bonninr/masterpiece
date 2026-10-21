@@ -919,3 +919,16 @@ countries: cz
 "Make the stops bigger" = "Zvětšit rejstříky"
 "Fit the stops to the window" = "Přizpůsobit rejstříky oknu"
 "Fit" = "Přizpůsobit"
+
+# src/mp_ui/ScorePanel.cpp
+"The score fonts could not be prepared." = "Písma pro noty nebylo možné připravit."
+"Open a MusicXML score (.musicxml, .xml or .mxl)." = "Otevřete partituru MusicXML (.musicxml, .xml nebo .mxl)."
+"Open score..." = "Otevřít noty..."
+"The file could not be read." = "Soubor nelze přečíst."
+"No score was found in this file." = "V tomto souboru nebyly nalezeny žádné noty."
+"Staff" = "Osnova"
+"Two pages" = "Dvě strany"
+"Manuals..." = "Manuály..."
+
+# src/mp_ui/Ui.cpp (score)
+"Score" = "Noty"

@@ -14,6 +14,7 @@ add_library(mp_audio STATIC
   Metronome.h Metronome.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp
+  ScorePlayer.h ScorePlayer.cpp
   SplitKeyboardHost.h SplitKeyboardHost.cpp
   Convolver.h Convolver.cpp
   Translations.h Translations.cpp
@@ -54,6 +55,19 @@ add_library(mp_audio STATIC
 )
 # An exported settings archive says which version wrote it.
 set_property(SOURCE SettingsArchive.cpp APPEND PROPERTY COMPILE_DEFINITIONS MP_VERSION="${PROJECT_VERSION}")
+# The score panel (Verovio) is compiled in like the rest of the window; the
+# fonts it reads are carried as one zip and unpacked at first use.
+if(TARGET mp_score)
+  target_sources(mp_audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.cpp)
+  juce_add_binary_data(mp_score_fonts
+    HEADER_NAME MpScoreFonts.h
+    NAMESPACE MpScoreFonts
+    SOURCES ${MP_SCORE_FONTS_ZIP})
+  target_link_libraries(mp_audio PUBLIC mp_score mp_score_fonts)
+  target_compile_definitions(mp_audio PUBLIC MP_HAS_SCORE=1)
+endif()
 # iPhone and iPad: picked documents read in place (#197).
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_sources(mp_audio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/IosAccess.mm)

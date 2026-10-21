@@ -919,3 +919,16 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Make the stops bigger" = "Registros más grandes"
 "Fit the stops to the window" = "Ajustar los registros a la ventana"
 "Fit" = "Ajustar"
+
+# src/mp_ui/ScorePanel.cpp
+"The score fonts could not be prepared." = "No se pudieron preparar las fuentes de la partitura."
+"Open a MusicXML score (.musicxml, .xml or .mxl)." = "Abra una partitura MusicXML (.musicxml, .xml o .mxl)."
+"Open score..." = "Abrir partitura..."
+"The file could not be read." = "No se pudo leer el archivo."
+"No score was found in this file." = "No se encontró ninguna partitura en este archivo."
+"Staff" = "Pentagrama"
+"Two pages" = "Dos páginas"
+"Manuals..." = "Manuales..."
+
+# src/mp_ui/Ui.cpp (score)
+"Score" = "Partitura"
