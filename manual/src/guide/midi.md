@@ -203,6 +203,8 @@ The program's own buttons have no object on the console to right-click. Use the 
 | **Learn combinations** | The Combinations window on and off |
 | **Learn transpose -**, **Learn transpose +** | The transposer, one semitone down or up |
 | **Learn temperament -**, **Learn temperament +** | The previous and next temperament |
+| **Temperament** with **Learn** | The temperament chosen in the box beside it, directly |
+| **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
 
 Each of these learns a button that fires on the press and ignores the release. A console may have several buttons for one action (two + and two - thumb pistons): each further learn adds a button. The sequencer's first, last, ten-back and ten-forward moves, the generals and the setter are mapped from the Combinations window.
 
@@ -334,6 +336,14 @@ Each message is `F0 <prefix> <display number> <line number> <text> F7`: the pref
 `7D` is the manufacturer id that the MIDI specification reserves for non-commercial use; it is the default because a console's own prefix is not known. Only lines whose text changed are sent, checked four times a second. Letters with accents are written with the accent removed (`ä` as `ae`, `ß` as `ss`, `Kraków` as `Krakow`), because system exclusive carries seven bits per byte and a byte above 7F would end the message. Characters with no Latin equivalent become `?`.
 
 Changes in this tab take effect at once. The setup is kept in `settings.mpglobal` as `lcd <on> <display> <width> <line1> <line2> <line3> <line4> <prefix>` and is read again at the next start. The main window sends the display four times a second whether or not the tab is open, so the display follows the organ with any window open or none; the **MIDI output** must be chosen. The **Transpose** line shows the transposition as `+2`, `0` or `-3`, and the **Combination set** line shows the name of the combination set in use (`(default)` for the default set).
+
+### A console with no screen
+
+The MIDI tab has three things for a console that is turned on and played without a monitor.
+
+- **Ready lamp**: a note or a controller, on a channel, sent to the **MIDI output**. The lamp is lit (note on at velocity 127, or the controller at 127) once an organ is loaded and playable, blinks once a second while an organ loads, blinks four times a second while a quit or power-off button is held, and is dark with no organ (note off, or the controller at 0). Kept in `settings.mpglobal` as `readylamp <note|cc> <channel> <number>`.
+- **Learn quit** and **Learn power off**: buttons that save and quit Masterpiece, or save, quit and shut the computer down. So that a noisy input learned for one cannot turn a console off at every start, a button is obeyed only once Masterpiece has run two minutes, and only when it is held three seconds; letting go sooner does nothing. A button whose message has no release (a program change or a system exclusive message) is pressed twice within two seconds. A press before the two minutes is written to the log with the time left. The power-off button also needs **Allow quitting Masterpiece and shutting the computer down** on the Remote tab, as the control API's power-off does; without it the hold is written to the log and nothing happens. Quitting needs no permission.
+- **Temperament** with **Learn**: a button for one temperament of the list.
 
 ## The MIDI map files
 

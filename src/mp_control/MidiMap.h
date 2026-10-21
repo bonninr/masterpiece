@@ -79,7 +79,28 @@ enum class MidiTargetKind {
   VoicingEqPreset,
   VoicingEqPresetNext,
   VoicingEqPresetPrev,
+  // A console with no screen: quit the program, or shut the computer down.
+  // Armed only once the program has run two minutes, and only for a press
+  // held three seconds (or, from a message with no release, two presses
+  // within two seconds): a noisy input learned for one cannot turn a console
+  // off at every start.
+  QuitProgram,
+  PowerOffComputer,
+  // One temperament, chosen directly: id = temperamentTarget(its name).
+  Temperament,
 };
+
+// A temperament's MIDI target id: 0 for the organ's own, else a hash of the
+// library name, so a mapping survives entries added to the library.
+inline Id temperamentTarget(const std::string& name) {
+  if (name.empty()) return 0;
+  uint32_t h = 2166136261u;
+  for (unsigned char c : name) {
+    h ^= c;
+    h *= 16777619u;
+  }
+  return static_cast<Id>(h & 0x7fffffffu) + 1;
+}
 
 inline Id routeKeyboardTarget(Id keyboardId, int channel) { return keyboardId * 32 + channel; }
 inline Id routedKeyboard(Id target) { return target / 32; }
@@ -304,6 +325,9 @@ public:
       case MidiTargetKind::VoicingEqPreset:
       case MidiTargetKind::VoicingEqPresetNext:
       case MidiTargetKind::VoicingEqPresetPrev:
+      case MidiTargetKind::QuitProgram:
+      case MidiTargetKind::PowerOffComputer:
+      case MidiTargetKind::Temperament:
         return true;
       default:
         return false;

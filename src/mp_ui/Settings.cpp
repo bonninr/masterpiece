@@ -1424,8 +1424,71 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
     };
   }
 
+  addAndMakeVisible(temperamentLabel_);
+  styleLabel(temperamentLabel_, TRANS("Temperament"));
+  addAndMakeVisible(temperamentPick_);
+  temperamentNames_.push_back("");
+  temperamentPick_.addItem(TRANS("The organ's own"), 1);
+  for (const auto& t : temperamentLibrary()) {
+    temperamentNames_.push_back(t.name);
+    temperamentPick_.addItem(juce::String(t.name), static_cast<int>(temperamentNames_.size()));
+  }
+  temperamentPick_.setSelectedId(1, juce::dontSendNotification);
+  addAndMakeVisible(learnTemperament_);
+  learnTemperament_.setTooltip(TRANS("A button that chooses this temperament: press Learn, then the button"));
+  learnTemperament_.onClick = [this] {
+    const int i = temperamentPick_.getSelectedId() - 1;
+    if (i < 0 || i >= static_cast<int>(temperamentNames_.size())) return;
+    proc_.midiMap().beginLearn(MidiTargetKind::Temperament,
+                               temperamentTarget(temperamentNames_[static_cast<size_t>(i)]), false);
+  };
+
+  addAndMakeVisible(powerHeading_);
+  styleLabel(powerHeading_, TRANS("Power"));
+  for (auto* b : {&learnQuit_, &learnPowerOff_}) {
+    addAndMakeVisible(*b);
+    b->setTooltip(TRANS("For a console with no screen. Obeyed once Masterpiece has run two minutes, and "
+                        "only when the button is held three seconds; a button whose message has no "
+                        "release is pressed twice within two seconds. Masterpiece saves before it quits."));
+  }
+  learnQuit_.onClick = [this] { proc_.midiMap().beginLearn(MidiTargetKind::QuitProgram, 0, false); };
+  learnPowerOff_.onClick = [this] { proc_.midiMap().beginLearn(MidiTargetKind::PowerOffComputer, 0, false); };
+
+  addAndMakeVisible(lampLabel_);
+  styleLabel(lampLabel_, TRANS("Ready lamp"));
+  lampKind_.addItem(TRANS("Off"), 1);
+  lampKind_.addItem(TRANS("Note"), 2);
+  lampKind_.addItem(TRANS("Controller"), 3);
+  for (int ch = 1; ch <= 16; ++ch) lampChannel_.addItem(TRANS("Channel %1").replace("%1", juce::String(ch)), ch);
+  for (int n = 0; n < 128; ++n) lampNumber_.addItem(juce::String(n), n + 1);
+  {
+    const auto lamp = proc_.readyLamp();
+    lampKind_.setSelectedId(lamp.kind == MidiSourceKind::Note             ? 2
+                            : lamp.kind == MidiSourceKind::ControlChange ? 3
+                                                                          : 1,
+                            juce::dontSendNotification);
+    lampChannel_.setSelectedId(lamp.channel, juce::dontSendNotification);
+    lampNumber_.setSelectedId(lamp.number + 1, juce::dontSendNotification);
+  }
+  for (auto* box : {&lampKind_, &lampChannel_, &lampNumber_}) {
+    addAndMakeVisible(*box);
+    box->onChange = [this] { pushReadyLamp(); };
+  }
+  lampKind_.setTooltip(TRANS("A message on the MIDI output that lights a lamp once the organ is ready, blinks "
+                             "while one loads and while a quit or power-off button is held, and goes out "
+                             "with no organ"));
+
   refresh();
   startTimerHz(2);
+}
+
+void MidiPanel::pushReadyLamp() {
+  MasterpieceProcessor::ReadyLamp lamp;
+  const int k = lampKind_.getSelectedId();
+  lamp.kind = k == 2 ? MidiSourceKind::Note : k == 3 ? MidiSourceKind::ControlChange : MidiSourceKind::None;
+  lamp.channel = juce::jmax(1, lampChannel_.getSelectedId());
+  lamp.number = juce::jmax(0, lampNumber_.getSelectedId() - 1);
+  proc_.setReadyLamp(lamp);
 }
 
 MidiPanel::~MidiPanel() { stopTimer(); }
@@ -1690,6 +1753,27 @@ void MidiPanel::resized() {
     b->setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
   }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  temperamentLabel_.setBounds(row.removeFromLeft(120));
+  temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
+  row.removeFromLeft(6);
+  learnTemperament_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  powerHeading_.setBounds(row.removeFromLeft(120));
+  learnQuit_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  learnPowerOff_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  lampLabel_.setBounds(row.removeFromLeft(120));
+  lampKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);

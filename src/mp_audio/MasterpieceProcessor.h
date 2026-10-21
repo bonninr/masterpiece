@@ -911,6 +911,34 @@ public:
   std::function<juce::String()> remoteStatus;
   // Set by the program: save and quit, and with true shut the computer down.
   std::function<void(bool powerOff)> onPowerRequest;
+
+  // The ready lamp: a message on the console's MIDI output that lights a lamp
+  // once an organ is loaded and playable, blinks while one loads and while a
+  // quit or power-off button is held, and goes out with no organ. For a
+  // console with no screen. Off by default; kept with the global settings.
+  struct ReadyLamp {
+    MidiSourceKind kind = MidiSourceKind::None;  // Note or ControlChange
+    int channel = 1;                             // 1..16
+    int number = 0;                              // the note or the controller
+  };
+  ReadyLamp readyLamp() const;
+  void setReadyLamp(const ReadyLamp& lamp);
+  // What the lamp shows this block: 1 lit, 0 dark.
+  int readyLampState() const { return lampState_.load(std::memory_order_relaxed); }
+  // The message that sets it: a note on at velocity 127 or off, a controller
+  // at 127 or 0. False when the lamp is off.
+  static bool readyLampMessage(const ReadyLamp& lamp, bool lit, RawMidi& out);
+  // How long the program must have run before a quit or power-off button is
+  // obeyed, how long it is held, and the window for two presses of a button
+  // whose message has no release.
+  static constexpr double kPowerArmSeconds = 120.0;
+  static constexpr double kPowerHoldSeconds = 3.0;
+  static constexpr double kPowerTwiceSeconds = 2.0;
+  // On the message thread, from the window's timer: carries out what a MIDI
+  // button asked for on the audio thread -- a temperament, a quit or a power
+  // off (through onPowerRequest) -- and logs a button pressed before it was
+  // armed.
+  void serviceMidiRequests();
   // Whether a day has passed since the last check, and its time noted.
   bool updateCheckDue() const;
   void markUpdateChecked();
@@ -1871,6 +1899,29 @@ private:
   // audio thread's own running value and needs no synchronisation; the atomic
   // is the copy the UI is allowed to see.
   std::atomic<int> pendingConsoleAction_{0};
+  // The ready lamp's setting, as atomics the audio thread reads every block,
+  // and what it sent last (-1 nothing yet).
+  std::atomic<int> lampKind_{0}, lampChannel_{1}, lampNumber_{0};
+  std::atomic<int> lampState_{0};
+  int lampSent_ = -1;
+  uint64_t lampFrames_ = 0;
+  // Whether an organ is loaded and playable, for the lamp.
+  std::atomic<bool> organReady_{false};
+  // The quit and power-off buttons, audio thread only: frames since the
+  // program started rendering, the button held now and for how long, and
+  // the last press of a button with no release.
+  uint64_t powerClockFrames_ = 0;
+  MidiTargetKind powerHeld_ = MidiTargetKind::None;
+  uint64_t powerHeldSince_ = 0;
+  MidiTargetKind powerLastPress_ = MidiTargetKind::None;
+  uint64_t powerLastPressAt_ = 0;
+  // Handed to the message thread: 1 quit, 2 power off; a temperament target
+  // + 1; seconds left before the buttons are armed, for the log.
+  std::atomic<int> pendingPower_{0};
+  std::atomic<int64_t> pendingTemperament_{0};
+  std::atomic<int> powerNotArmedSeconds_{0};
+  void powerButton(MidiTargetKind kind, bool pressed, bool hasRelease);
+  void pumpReadyLamp(int numFrames);
   std::atomic<float> outPeak_[2]{{0.0f}, {0.0f}};
   float peakHeld_[2] = {0.0f, 0.0f};
   // Per-block decay, worked out once in prepareToPlay. A host that varies its
