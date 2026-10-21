@@ -2,6 +2,8 @@
 // own: an organ's settings and all of them exported and restored byte for
 // byte, one organ restored without touching another, archives that are not
 // ours refused without a change, and parts copied between organs.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/SettingsArchive.h"
 
@@ -214,3 +216,5 @@ public:
 static SettingsArchiveTest g_settingsArchive;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO

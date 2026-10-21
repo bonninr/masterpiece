@@ -1,6 +1,8 @@
 // The sustain pedal: controller 64 holds the keys let go while it is down,
 // when the player has turned it on, and a controller 64 learned for something
 // else keeps doing that.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
@@ -157,3 +159,5 @@ public:
 static SustainPedalTest g_sustain;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO

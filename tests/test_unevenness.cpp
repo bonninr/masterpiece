@@ -2,6 +2,8 @@
 // output is bit-identical to an organ never touched; pipe detune puts a
 // pipe off true by its own amount; wind sway moves the pitch of a note
 // while it sounds, within its depth.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/VoicingSet.h"
@@ -181,3 +183,5 @@ public:
 static UnevennessTest g_unevenness;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO

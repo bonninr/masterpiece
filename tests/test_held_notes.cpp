@@ -3,6 +3,8 @@
 // go of it, as on a console with electric action; with "Stop changes leave
 // the notes already held alone" the held note keeps what it started with, and
 // only keys pressed afterwards play the new registration.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
@@ -144,3 +146,5 @@ public:
 static HeldNotesTest g_heldNotes;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO
