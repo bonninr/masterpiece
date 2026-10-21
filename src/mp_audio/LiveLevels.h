@@ -39,9 +39,11 @@ public:
     if (value >= kFull) return 1.0f;
     return std::pow(10.0f, dbOf(value) / 20.0f);
   }
-  // The level in dB; -inf is not representable, so 0 reads as -100.
+  // The level in dB; -inf is not representable, so 0 reads as -100. Full is
+  // exactly 0 dB: the law below gives -0 there, which prints as "-0.0".
   static float dbOf(int value) {
     if (value <= 0) return -100.0f;
+    if (value >= kFull) return 0.0f;
     return -40.0f * (1.0f - static_cast<float>(std::min(value, kFull)) / static_cast<float>(kFull));
   }
 

@@ -28,6 +28,9 @@ public:
     using mp::LiveLevels;
     MP_CHECK(LiveLevels::gainOf(127) == 1.0f && LiveLevels::gainOf(0) == 0.0f, "full is unity, 0 is silence");
     MP_CHECK(std::fabs(LiveLevels::dbOf(1) + 40.0f * 126.0f / 127.0f) < 1.0e-3f, "the lowest step near -40 dB");
+    MP_CHECK(LiveLevels::dbOf(127) == 0.0f && !std::signbit(LiveLevels::dbOf(127)) &&
+                 !std::signbit(LiveLevels::dbOf(200)),
+             "full reads 0 dB, with no minus sign");
     MP_CHECK(LiveLevels::gainOf(64) < LiveLevels::gainOf(65) && LiveLevels::gainOf(65) < 1.0f, "rising");
 
     LiveLevels l;
