@@ -2024,6 +2024,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
+  if (stopsLeaveHeldNotes_.load()) text << "stopsleaveheldnotes 1\n";
   if (learnNoiseFilter_.load()) text << "learnnoisefilter 1\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
@@ -2169,6 +2170,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
       cancelResetsKeyboards_.store(val.getIntValue() != 0);
+    } else if (key == "stopsleaveheldnotes") {
+      stopsLeaveHeldNotes_.store(val.getIntValue() != 0);
     } else if (key == "learnnoisefilter") {
       learnNoiseFilter_.store(val.getIntValue() != 0);
     } else if (key == "cachewhileplaying") {
@@ -3496,7 +3499,9 @@ void MasterpieceProcessor::reflowHeldNotes() {
 // "if I'm playing a note and turn on a stop the pipe doesn't play until I play
 // the note again. The note doesn't stop when I turn the stop off."
 void MasterpieceProcessor::applyStopChangeToHeldNotes() {
-  if (soundingNotes_.empty() && divisionInputNotes_.empty()) {
+  // Left alone when the player asks: a held note keeps the pipes it started
+  // with until its key is let go.
+  if ((soundingNotes_.empty() && divisionInputNotes_.empty()) || stopsLeaveHeldNotes()) {
     appliedStops_ = engagedStops_;
     return;
   }
@@ -4477,8 +4482,9 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   shownStale_ = true;
   // A coupler drawn or pushed in while keys are down reaches, or stops
   // reaching, the divisions it couples at once, as on a console with
-  // electric action (#131). Only what the switch changed moves.
-  if (keysHeld) reflowHeldNotes();
+  // electric action (#131). Only what the switch changed moves. Unless the
+  // player has asked for held notes to be left alone.
+  if (keysHeld && !stopsLeaveHeldNotes()) reflowHeldNotes();
   // A switch that swaps a stop's rank for its alternate -- a tremulant whose
   // pipes were also recorded with it running -- re-sounds the notes held on
   // those stops, when the organ asks for that: what was sounding lets go and

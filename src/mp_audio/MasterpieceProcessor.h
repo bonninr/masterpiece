@@ -873,6 +873,16 @@ public:
     cancelResetsKeyboards_.store(on);
     writeGlobalFile();
   }
+  // Stops and couplers moved while keys are held leave those notes as they
+  // are: only the keys pressed afterwards play the new registration. Off,
+  // the default, a held note gains and loses pipes as on a console with
+  // electric action. For a player who changes registration on a held chord
+  // the way a key switch changes a sound (GrandOrgue #1833).
+  bool stopsLeaveHeldNotes() const { return stopsLeaveHeldNotes_.load(std::memory_order_relaxed); }
+  void setStopsLeaveHeldNotes(bool on) {
+    stopsLeaveHeldNotes_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   // The noise filter for learning. A console with a failing contact sends
   // notes of a few milliseconds that nobody played, and the first of them was
   // learned in place of the key the player pressed. With this on, a key
@@ -2090,6 +2100,7 @@ private:
   // Keyboards moved by pistons, and where they were before (#90).
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
+  std::atomic<bool> stopsLeaveHeldNotes_{false};
   std::atomic<bool> learnNoiseFilter_{false};
   // Keys held while learning with the noise filter on, until one has been
   // held long enough. Audio thread only.
