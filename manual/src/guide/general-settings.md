@@ -159,9 +159,10 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 | **Spread ranks evenly** | Assigns the ranks to the pairs in turn, so the routing is audible at once. | | | At once |
 | **All to pair 1** | Sends every rank to the first pair. | | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routing. | | | At once |
+| **Bass management...** | Per pair, the lows under a crossover to a subwoofer channel of the device, and the rest to the pair. | **Off** | **Off**, **40 Hz** to **200 Hz**; **Subwoofer on 1** to **Subwoofer on N** | At once |
 | Rank list | One row per rank, labelled with the rank number and name, with a **Pair N** box. A rank that points at a pair removed by lowering **Output pairs** returns to **Pair 1**. | **Pair 1** | **Pair 1** to the chosen number of pairs | At once |
 
-**Stored.** The number of pairs and their device channels are the key `buses` in the organ file, and in the global file when **Save as default** is used on the Loading tab. The rank routes are the keys `route <rank> bus <n>` in the organ file; they are written by **Save for this organ**, and by any other change that makes Masterpiece rewrite the organ file.
+**Stored.** The number of pairs and their device channels are the key `buses` in the organ file, and in the global file when **Save as default** is used on the Loading tab. Bass management is the key `busbass <pair> <Hz> <channel>` beside `buses`, the channel counted from 0. The rank routes are the keys `route <rank> bus <n>` in the organ file; they are written by **Save for this organ**, and by any other change that makes Masterpiece rewrite the organ file.
 
 ## Voicing
 

@@ -25,6 +25,7 @@
 #include "Convolver.h"
 #include "Metronome.h"
 #include "OutputLimiter.h"
+#include "BassManager.h"
 #include "AudioRecorder.h"
 #include "MidiArchive.h"
 #include "MidiRecorder.h"
@@ -105,6 +106,10 @@ public:
   // The output channels the mixer asks for: one past the highest device
   // channel a bus names, and two at the least.
   int outputChannelsWanted() const;
+  // A pair's bass management: the crossover frequency (40-200 Hz, 0 for
+  // off) and the device channel of the subwoofer, counted from 0. Kept with
+  // the pairs, in the organ's settings and in the saved defaults.
+  void setBusBass(int busId, float crossoverHz, int subChannel);
   // Told on the message thread's side when that number changes, so the
   // program that owns the device can open the channels.
   std::function<void()> onOutputChannelsWanted;
@@ -2152,6 +2157,12 @@ private:
   juce::AudioBuffer<float> pairScratch_;
   juce::AudioBuffer<float> recordScratch_;
   int lastOutputChannelsWanted_ = 2;
+  // Bass management per dense bus, built for the buses that have it on.
+  std::vector<std::unique_ptr<BassManager>> busBass_;
+  void refreshBusBass();
+  // Whether any bus has its own channels, or bass managed to a channel the
+  // output has: then the buses are rendered one by one to where they go.
+  bool needsRoutedOutput(int numCh) const;
   // The channels of bus `index` on an output of `numCh` channels: its own
   // when the output has them, otherwise the first pair.
   std::pair<int, int> busOutputFor(int index, int numCh) const;
