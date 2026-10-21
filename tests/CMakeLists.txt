@@ -16,6 +16,9 @@ target_compile_definitions(mp_tests PRIVATE
 if(TARGET mp_sampler)
   target_link_libraries(mp_tests PRIVATE mp_sampler)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_SAMPLER=1)
+  # The codec interface, and the tests that loop over every codec in the
+  # registry.
+  target_sources(mp_tests PRIVATE test_sample_codec.cpp)
 endif()
 if(TARGET mp_dsp)
   target_link_libraries(mp_tests PRIVATE mp_dsp)
