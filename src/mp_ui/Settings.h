@@ -244,6 +244,9 @@ public:
 
 private:
   void timerCallback() override;
+  // The Record button. A take that was never saved is worth keeping, so the
+  // player is asked what to do with it before it is thrown away.
+  void askBeforeRecording();
 
   // One row of buttons, each as wide as its own text. A row that is wider
   // than the panel wraps to a second line; the height it took is returned.

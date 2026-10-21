@@ -18,10 +18,14 @@ namespace mp {
 class MidiRecorder {
 public:
   enum class State { Idle, Recording, Playing };
+  // What a new recording does with the take that is already there.
+  enum class Take { Replace, Append };
 
   void prepare(double sampleRate);
 
-  void startRecording();
+  // Starts a recording. Replace throws the take that is there away; Append
+  // keeps it and carries on from the end of it.
+  void startRecording(Take take = Take::Replace);
   void stopRecording();
   void startPlayback();
   void stopPlayback();
@@ -31,6 +35,9 @@ public:
   bool isRecording() const { return state_ == State::Recording; }
   bool isPlaying() const { return state_ == State::Playing; }
   bool empty() const { return events_.empty(); }
+  // True when a take is there that has never been written to a file. A new
+  // recording over it would throw it away, so the player is asked first.
+  bool hasUnsavedTake() const { return !events_.empty() && !saved_; }
   int eventCount() const { return static_cast<int>(events_.size()); }
   double lengthSeconds() const;
   double positionSeconds() const;
@@ -47,7 +54,7 @@ public:
   // at the start of the block they were read in.
   void captureLive(const juce::MidiMessage& message);
 
-  bool saveToFile(const juce::File& file) const;
+  bool saveToFile(const juce::File& file);
   bool loadFromFile(const juce::File& file);
 
 private:
@@ -58,6 +65,9 @@ private:
 
   std::vector<Event> events_;
   State state_ = State::Idle;
+  // The take is on disk: it was written to a file, or loaded from one. A new
+  // recording may replace it without asking, because the file still holds it.
+  bool saved_ = false;
   double sampleRate_ = 48000.0;
   int64_t writePos_ = 0;   // recording head
   int64_t blockStart_ = 0; // where the block being recorded began
