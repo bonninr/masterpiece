@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <set>
 #include <tuple>
+#include <utility>
 
 namespace mp::ui {
 namespace {
@@ -1145,28 +1146,32 @@ void ConsoleView::paint(juce::Graphics& g) {
 
 void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   if (frozen_.isValid()) return;
+  // A second finger ends the first one's wait: Set held while a piston is
+  // pressed is two presses, and neither is a long press.
+  longPress_.end();
+  tappedStop_ = 0;
+  if (e.mods.isPopupMenu()) {
+    openMenuAt(e.getPosition(), true);
+    return;
+  }
   // A drawn manual is playable: clicking a key sounds it. The click goes
   // through MidiKeyboardState, which is the same path a physical console
-  // takes, so stops and couplers apply to it identically.
-  // Right-click a manual: its MIDI window, the way GrandOrgue opens one --
-  // which keyboard plays it, and the pistons that bring it to a keyboard.
-  if (e.mods.isPopupMenu()) {
-    for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
-      if (it->bounds.contains(e.getPosition()) && it->keyboardId != 0) {
-        ManualDialog::show(proc_, it->keyboardId);
-        return;
-      }
+  // takes, so stops and couplers apply to it identically. A key held is a
+  // note held, on a touch screen too.
+  int channel = 1;
+  const int note = keyAt(e.getPosition(), &channel);
+  if (note >= 0) {
+    heldKey_ = note;
+    heldChannel_ = channel;
+    proc_.keyboardState().noteOn(channel, note, 0.8f);
+    repaint(keysBounds());
+    return;
   }
-  if (!e.mods.isPopupMenu()) {
-    int channel = 1;
-    const int note = keyAt(e.getPosition(), &channel);
-    if (note >= 0) {
-      heldKey_ = note;
-      heldChannel_ = channel;
-      proc_.keyboardState().noteOn(channel, note, 0.8f);
-      repaint(keysBounds());
-      return;
-    }
+
+  // Touch: a finger held still opens the menu.
+  if (touch_) {
+    if (!longPress_.onHeld) longPress_.onHeld = [this] { onLongPress(); };
+    longPress_.begin(e.getPosition());
   }
 
   // Topmost first: the controls are painted last, so they are hit first.
@@ -1174,17 +1179,6 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     if (!it->clickable) continue;
     if (it->switchId == 0 && it->controlId == 0) continue;
     if (!it->hitBounds.contains(e.getPosition())) continue;
-
-    if (e.mods.isPopupMenu()) {
-      if (it->switchId != 0) {
-        showMidiMenu(it->switchId, it->bounds);
-      } else {
-        const auto bounds = it->bounds;
-        showControlMidiMenu(proc_, it->controlId, localAreaToGlobal(bounds),
-                            [this, bounds] { repaint(bounds); });
-      }
-      return;
-    }
 
     // A shoe or slider. The press only takes hold of it — the value does not
     // move until the mouse does, which is what "click it, hold, and drag"
@@ -1200,13 +1194,6 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       return;
     }
 
-    // A stop with no pipes in this set is not drawn from the console: the
-    // click is refused, and its tooltip says it is not available. Nothing else
-    // draws it either (SwitchNetwork::holdOff); one shown drawn can be pushed in.
-    if (const auto* why = proc_.unavailableFor(it->switchId);
-        why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(it->switchId))
-      return;
-
     // A button the organ marks momentary -- Load, Save, Reset, a piston --
     // is pressed while the mouse is down and let go with it (#53). It used to
     // toggle like a drawstop and stay in, looking pressed until clicked again.
@@ -1215,26 +1202,81 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
     const auto sw = proc_.organModel().switches.find(it->switchId);
     const bool momentary = sw != proc_.organModel().switches.end() && !sw->second.latching;
     if (momentary) {
+      if (const auto* why = proc_.unavailableFor(it->switchId);
+          why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(it->switchId))
+        return;
       heldButton_ = it->switchId;
       heldButtonBounds_ = it->bounds;
       proc_.setSwitchEngaged(it->switchId, true);
+      repaint(it->bounds);
+    } else if (touch_) {
+      // Drawn as the finger lifts, so a finger held on it opens its menu
+      // and leaves it as it was.
+      tappedStop_ = it->switchId;
+      tappedStopBounds_ = it->bounds.getUnion(it->hitBounds);
     } else {
-      proc_.setSwitchEngaged(it->switchId, !proc_.shownSwitchEngaged(it->switchId));
+      toggleStop(it->switchId, it->bounds);
     }
-    repaint(it->bounds);
     return;
   }
+}
 
+void ConsoleView::toggleStop(Id switchId, juce::Rectangle<int> bounds) {
+  // A stop with no pipes in this set is not drawn from the console: the
+  // click is refused, and its tooltip says it is not available. Nothing else
+  // draws it either (SwitchNetwork::holdOff); one shown drawn can be pushed in.
+  if (const auto* why = proc_.unavailableFor(switchId);
+      why != nullptr && why->noPipes && !proc_.shownSwitchEngaged(switchId))
+    return;
+  proc_.setSwitchEngaged(switchId, !proc_.shownSwitchEngaged(switchId));
+  repaint(bounds);
+}
+
+void ConsoleView::onLongPress() {
+  // The finger stays where it pressed: what it holds is let go, a stop is
+  // left as it was, and the menu opens.
+  tappedStop_ = 0;
+  heldControl_ = 0;
+  if (heldButton_ != 0) {
+    proc_.setSwitchEngaged(heldButton_, false);
+    repaint(heldButtonBounds_);
+    heldButton_ = 0;
+  }
+  openMenuAt(longPress_.where(), false);
+}
+
+void ConsoleView::openMenuAt(juce::Point<int> p, bool keys) {
+  // Right-click a manual: its MIDI window, the way GrandOrgue opens one --
+  // which keyboard plays it, and the pistons that bring it to a keyboard.
+  if (keys)
+    for (auto it = keys_.rbegin(); it != keys_.rend(); ++it)
+      if (it->bounds.contains(p) && it->keyboardId != 0) {
+        ManualDialog::show(proc_, it->keyboardId);
+        return;
+      }
+  for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
+    if (!it->clickable) continue;
+    if (it->switchId == 0 && it->controlId == 0) continue;
+    if (!it->hitBounds.contains(p)) continue;
+    if (it->switchId != 0) {
+      showMidiMenu(it->switchId, it->bounds);
+    } else {
+      const auto bounds = it->bounds;
+      showControlMidiMenu(proc_, it->controlId, localAreaToGlobal(bounds),
+                          [this, bounds] { repaint(bounds); });
+    }
+    return;
+  }
   // A right-click on nothing cancels an armed learn, so an accidental arm is
   // easy to back out of.
-  if (e.mods.isPopupMenu() && proc_.midiMap().learning()) {
+  if (proc_.midiMap().learning()) {
     proc_.midiMap().cancelLearn();
     repaint();
     return;
   }
   // Otherwise it is the window's own menu, where the window has one: a page
   // window that the page fills has no other place to be right-clicked.
-  if (e.mods.isPopupMenu() && onBackgroundMenu) onBackgroundMenu();
+  if (onBackgroundMenu) onBackgroundMenu();
 }
 
 // What a stop that makes no sound is, said over its knob: on a demo set the
@@ -1383,6 +1425,10 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
 
 void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
   if (frozen_.isValid()) return;
+  // A finger that moves is sliding or scrolling: no long press, and a stop
+  // slid off is left alone.
+  if (!longPress_.moved(e.getPosition()) && !tappedStopBounds_.contains(e.getPosition()))
+    tappedStop_ = 0;
   if (heldControl_ != 0) {
     // Deliberately not clamped to the image: a hand that slides off the side
     // of a shoe while pushing it is still pushing it, and the position
@@ -1404,8 +1450,14 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
   repaint(keysBounds());
 }
 
-void ConsoleView::mouseUp(const juce::MouseEvent&) {
+void ConsoleView::mouseUp(const juce::MouseEvent& e) {
   if (frozen_.isValid()) return;
+  longPress_.end();
+  if (tappedStop_ != 0) {
+    const Id stop = std::exchange(tappedStop_, 0);
+    if (!longPress_.held() && tappedStopBounds_.contains(e.getPosition()))
+      toggleStop(stop, tappedStopBounds_);
+  }
   heldControl_ = 0;
   if (heldButton_ != 0) {
     proc_.setSwitchEngaged(heldButton_, false);

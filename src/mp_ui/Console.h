@@ -16,6 +16,7 @@
 
 #include "../mp_audio/MasterpieceProcessor.h"
 #include "AccessibleToggle.h"
+#include "Mobile.h"
 
 #include <filesystem>
 #include <functional>
@@ -102,6 +103,12 @@ public:
   void mouseDown(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
+  // Touch: a finger held still opens what a right-click opens (LongPress),
+  // and a stop is drawn as the finger lifts, so a held one opens its menu
+  // and stays as it was. On where touchInput() says.
+  void setTouchInput(bool on) { touch_ = on; }
+  // The long press under way, for a test to fire.
+  LongPress& longPress() { return longPress_; }
   // Position a dragged control from a mouse point inside its image.
   void setControlFromMouse(juce::Point<int> p);
   // Keeps the drawn controls in step with the engine: a piston, a
@@ -300,6 +307,18 @@ private:
   Id heldControl_ = 0;
   // A momentary button held down with the mouse: released with it.
   Id heldButton_ = 0;
+  // Touch: the stop under the finger, drawn or retired as it lifts unless it
+  // was held or slid off.
+  bool touch_ = touchInput();
+  Id tappedStop_ = 0;
+  juce::Rectangle<int> tappedStopBounds_;
+  LongPress longPress_;
+  void onLongPress();
+  // A stop clicked or tapped: drawn or retired, unless it has no pipes.
+  void toggleStop(Id switchId, juce::Rectangle<int> bounds);
+  // What a right-click opens at `p`: a manual's MIDI window when `keys`, a
+  // control's MIDI menu, or the background's.
+  void openMenuAt(juce::Point<int> p, bool keys);
   juce::Rectangle<int> heldButtonBounds_;
   juce::Rectangle<int> heldControlBounds_;
   bool heldControlHigherIsMore_ = true;

@@ -560,7 +560,7 @@ Colours schemeColours(int scheme, size_t sectionIndex) {
 
 // ---- one rectangle -----------------------------------------------------------
 
-class PanelView::Cell : public juce::Component {
+class PanelView::Cell : public juce::Component, public LongPressHolder {
 public:
   Cell(PanelView& owner, PanelElement e, size_t sectionIndex)
       : owner_(owner), e_(std::move(e)), section_(sectionIndex) {}
@@ -681,40 +681,64 @@ public:
       return;
     }
     if (ev.mods.isPopupMenu()) {
-      // The element's own mapping: a stop is mapped through its drawstop.
-      Id target = e_.id;
-      if (e_.kind == PanelElement::Kind::Stop) {
-        const auto s = p.organModel().stops.find(e_.id);
-        target = s != p.organModel().stops.end() ? s->second.controllingSwitchId : 0;
-      }
-      if (target != 0) MidiEventDialog::show(p, MidiTargetKind::Switch, target);
+      openMapping();
       return;
     }
-    switch (e_.kind) {
-      case PanelElement::Kind::Stop: p.setStopEngaged(e_.id, !p.shownStopEngaged(e_.id)); break;
-      case PanelElement::Kind::Switch: p.setSwitchEngaged(e_.id, !p.shownSwitchEngaged(e_.id)); break;
-      case PanelElement::Kind::Piston:
-        // Fired on press, as on a console; let go with the finger.
-        pressed_ = true;
-        p.setSwitchEngaged(e_.id, true);
-        break;
-      case PanelElement::Kind::Control: break;
+    // Touch: a finger held still opens the mapping, and a stop or switch
+    // changes as the finger lifts, so a held one stays as it was.
+    if (owner_.touch_) {
+      if (!longPress_.onHeld) longPress_.onHeld = [this] { letGo(); openMapping(); };
+      longPress_.begin(ev.getPosition());
     }
+    if (e_.kind == PanelElement::Kind::Piston) {
+      // Fired on press, as on a console; let go with the finger.
+      pressed_ = true;
+      p.setSwitchEngaged(e_.id, true);
+      repaint();
+    } else if (!owner_.touch_) {
+      toggle();
+    }
+  }
+  void mouseDrag(const juce::MouseEvent& ev) override { longPress_.moved(ev.getPosition()); }
+  void mouseUp(const juce::MouseEvent& ev) override {
+    longPress_.end();
+    if (owner_.touch_ && !longPress_.held() && e_.kind != PanelElement::Kind::Piston && !owner_.editing_ &&
+        !ev.mods.isPopupMenu() && getLocalBounds().contains(ev.getPosition()))
+      toggle();
+    letGo();
+  }
+  LongPress& longPress() override { return longPress_; }
+
+private:
+  void toggle() {
+    auto& p = owner_.proc_;
+    if (e_.kind == PanelElement::Kind::Stop) p.setStopEngaged(e_.id, !p.shownStopEngaged(e_.id));
+    if (e_.kind == PanelElement::Kind::Switch) p.setSwitchEngaged(e_.id, !p.shownSwitchEngaged(e_.id));
     repaint();
   }
-  void mouseUp(const juce::MouseEvent&) override {
+  void letGo() {
     if (!pressed_) return;
     pressed_ = false;
     owner_.proc_.setSwitchEngaged(e_.id, false);
     repaint();
   }
+  // The element's own mapping: a stop is mapped through its drawstop.
+  void openMapping() {
+    auto& p = owner_.proc_;
+    Id target = e_.id;
+    if (e_.kind == PanelElement::Kind::Stop) {
+      const auto s = p.organModel().stops.find(e_.id);
+      target = s != p.organModel().stops.end() ? s->second.controllingSwitchId : 0;
+    }
+    if (target != 0) MidiEventDialog::show(p, MidiTargetKind::Switch, target);
+  }
 
-private:
   PanelView& owner_;
   PanelElement e_;
   size_t section_ = 0;
   bool shown_ = false;
   bool pressed_ = false;
+  LongPress longPress_;
 };
 
 // ---- one fader -----------------------------------------------------------------
@@ -769,9 +793,19 @@ public:
       MidiEventDialog::show(owner_.proc_, MidiTargetKind::ContinuousControl, e_.id);
       return;
     }
+    // Touch: a finger held still on the name opens the mapping; the track
+    // moves with the finger as before.
+    if (owner_.touch_ && ev.position.y < 26.0f) {
+      if (!longPress_.onHeld)
+        longPress_.onHeld = [this] { MidiEventDialog::show(owner_.proc_, MidiTargetKind::ContinuousControl, e_.id); };
+      longPress_.begin(ev.getPosition());
+      return;
+    }
     mouseDrag(ev);
   }
+  void mouseUp(const juce::MouseEvent&) override { longPress_.end(); }
   void mouseDrag(const juce::MouseEvent& ev) override {
+    if (longPress_.waiting() && longPress_.moved(ev.getPosition())) return;
     if (owner_.editing_ || ev.mods.isPopupMenu()) return;
     const auto track = getLocalBounds().toFloat().reduced(2.0f).withTrimmedTop(22.0f).reduced(10.0f, 6.0f);
     const float frac = juce::jlimit(0.0f, 1.0f, (track.getBottom() - ev.position.y) / track.getHeight());
@@ -784,6 +818,7 @@ private:
   PanelElement e_;
   size_t section_ = 0;
   int shown_ = -1;
+  LongPress longPress_;
 };
 
 // ---- the panel -------------------------------------------------------------------
