@@ -437,6 +437,18 @@ private:
   juce::Label gainLabel_, tuneLabel_;
   juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  // The rank's EQ (RankEq.h): a high shelf and a low shelf, heard at once.
+  juce::Label brightLabel_, bassLabel_;
+  juce::Slider bright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider bass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  // A division's EQ, which its ranks hear added to their own.
+  juce::Label divisionLabel_, divBrightLabel_, divBassLabel_;
+  juce::ComboBox division_;
+  juce::Slider divBright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider divBass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  std::vector<Id> divisionIds_;
+  void loadDivision();
+  void pushDivision();
   juce::TextButton abSwap_{"A / B"};
   juce::TextButton abCopy_{TRANS("Copy to other")};
   juce::TextButton resetOne_{TRANS("Reset this")};

@@ -146,6 +146,22 @@ types:
     access: set
     dump: values
     properties: [name, rank]
+  - code: 19
+    name: brightness
+    plural: brightnesses
+    doc: The voicing EQ's high shelf, above 3 kHz - one per rank in the order of ranks, then one per division in the order of divisions; a rank hears its division's added to its own. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing.
+    value: {min: -120, max: 120}
+    access: set
+    dump: values
+    properties: [name, rank, division]
+  - code: 20
+    name: bass
+    plural: basses
+    doc: The voicing EQ's low shelf, below 200 Hz - one per rank in the order of ranks, then one per division in the order of divisions, as brightnesses. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing.
+    value: {min: -120, max: 120}
+    access: set
+    dump: values
+    properties: [name, rank, division]
 
 # Properties an object can have, returned by Describe.
 properties:

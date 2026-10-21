@@ -290,8 +290,11 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                       juce::jmax(1, samplesPerBlock), false, true, false);
   busScratchAll_.setSize(juce::jmax(1, getTotalNumOutputChannels()) * (unenclosedBus_ + 1),
                          juce::jmax(1, samplesPerBlock), false, true, false);
-  busOuts_.assign(static_cast<size_t>(unenclosedBus_ + 1), nullptr);
-  voices_.setBusCount(unenclosedBus_ + 1);
+  busOuts_.assign(static_cast<size_t>(unenclosedBus_ + 1 + RankEq::kMaxGroups), nullptr);
+  voices_.setBusCount(unenclosedBus_ + 1 + RankEq::kMaxGroups);
+  eqScratch_.setSize(juce::jmax(1, getTotalNumOutputChannels()) * RankEq::kMaxGroups,
+                     juce::jmax(1, samplesPerBlock), false, true, false);
+  configureRankEq();
 
   tremulantLfos_.clear();
   tremOrder_.clear();
@@ -702,6 +705,55 @@ void MasterpieceProcessor::publishWindPressures() {
   }
 }
 
+// The ranks and divisions in id order, as the control API lists them, each
+// rank under the division of the first stop (by id) that draws it.
+void MasterpieceProcessor::configureRankEq() {
+  rankEqIndex_.clear();
+  rankEqRanks_.clear();
+  rankEqDivisions_.clear();
+  std::vector<Id> stops;
+  for (const auto& [id, r] : model_.ranks) rankEqRanks_.push_back(id);
+  for (const auto& [id, d] : model_.divisions) rankEqDivisions_.push_back(id);
+  for (const auto& [id, s] : model_.stops) stops.push_back(id);
+  std::sort(rankEqRanks_.begin(), rankEqRanks_.end());
+  std::sort(rankEqDivisions_.begin(), rankEqDivisions_.end());
+  std::sort(stops.begin(), stops.end());
+  std::unordered_map<Id, int> divisionIndex;
+  for (size_t i = 0; i < rankEqDivisions_.size(); ++i) divisionIndex[rankEqDivisions_[i]] = static_cast<int>(i);
+  std::unordered_map<Id, int> rankDivision;
+  for (Id stopId : stops) {
+    const Stop& stop = model_.stops.at(stopId);
+    const auto d = divisionIndex.find(stop.divisionId);
+    if (d == divisionIndex.end()) continue;
+    for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+  }
+  std::vector<int> divisionOfRank;
+  for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
+    rankEqIndex_[rankEqRanks_[i]] = static_cast<int>(i);
+    const auto d = rankDivision.find(rankEqRanks_[i]);
+    divisionOfRank.push_back(d == rankDivision.end() ? -1 : d->second);
+  }
+  rankEq_.configure(std::move(divisionOfRank), static_cast<int>(rankEqDivisions_.size()), unenclosedBus_ + 1,
+                    sampleRate_);
+  pushVoicingEq();
+}
+
+void MasterpieceProcessor::pushVoicingEq() {
+  std::vector<ShelfEq> ranks(rankEqRanks_.size()), divisions(rankEqDivisions_.size());
+  if (graph_.engineSwitch.enableVoicing && !graph_.engineSwitch.simpleWavOnly) {
+    const VoicingSet& v = voicing_.live();
+    for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
+      const PipeVoicing pv = v.rank(rankEqRanks_[i]);
+      ranks[i] = {pv.bassDb, pv.brightnessDb};
+    }
+    for (size_t i = 0; i < rankEqDivisions_.size(); ++i) {
+      const PipeVoicing pv = v.division(rankEqDivisions_[i]);
+      divisions[i] = {pv.bassDb, pv.brightnessDb};
+    }
+  }
+  rankEq_.setParams(ranks, divisions);
+}
+
 // One mixer bus, summed ADDITIVELY into `dest`. Does not touch the block
 // counter or the wind: the caller owns those, because they happen once per
 // block however many buses there are.
@@ -725,8 +777,11 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
   // once and skip the per-enclosure scratch entirely. The same for a block
   // bigger than the host prepared us for, which the scratch cannot hold: the
   // shades are not applied for that block rather than memory being overrun.
-  if (!enclosuresActive || busEnclosures_.empty() ||
-      numFrames > busScratch_.getNumSamples() || numCh > busScratch_.getNumChannels()) {
+  // The ranks with an EQ play into group buses of their own (RankEq.h); with
+  // none, there are none, and this is the engine as it was.
+  const int groups = rankEq_.groupBuses();
+  if (groups == 0 && (!enclosuresActive || busEnclosures_.empty() ||
+                      numFrames > busScratch_.getNumSamples() || numCh > busScratch_.getNumChannels())) {
     voices_.render(dest.getArrayOfWritePointers(), numCh, numFrames, -1,
                    mixBusFilter);
     return;
@@ -736,16 +791,31 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
   // Every bus in one go: one pass over the voices and one hand-off to the
   // render threads for the block, where each bus made its own (#356 follow-up).
   const int perBus = busScratchAll_.getNumChannels() / juce::jmax(1, numBuses);
+  const int eqPer = eqScratch_.getNumChannels() / RankEq::kMaxGroups;
+  const bool groupsFit = groups == 0 || (numCh <= eqPer && numFrames <= eqScratch_.getNumSamples());
   if (numCh <= perBus && numFrames <= busScratchAll_.getNumSamples() &&
-      static_cast<int>(busOuts_.size()) == numBuses) {
+      static_cast<int>(busOuts_.size()) >= numBuses + groups && groupsFit) {
     busScratchAll_.clear(0, numFrames);
     float* const* all = busScratchAll_.getArrayOfWritePointers();
     for (int bus = 0; bus < numBuses; ++bus) busOuts_[static_cast<size_t>(bus)] = all + bus * perBus;
-    voices_.renderBuses(busOuts_.data(), numBuses, numCh, numFrames, mixBusFilter);
+    float* const* eq = eqScratch_.getArrayOfWritePointers();
+    for (int g = 0; g < groups; ++g) {
+      busOuts_[static_cast<size_t>(numBuses + g)] = eq + g * eqPer;
+      for (int ch = 0; ch < numCh; ++ch) juce::FloatVectorOperations::clear(eq[g * eqPer + ch], numFrames);
+    }
+    voices_.renderBuses(busOuts_.data(), numBuses + groups, numCh, numFrames, mixBusFilter);
+    // Each EQ group filtered, with this pair's filter memory, and added into
+    // its enclosure bus before the shades act on it.
+    for (int g = 0; g < groups; ++g) {
+      float* const* planes = busOuts_[static_cast<size_t>(numBuses + g)];
+      rankEq_.process(g, mixBusFilter < 0 ? 0 : mixBusFilter, planes, numCh, numFrames);
+      float* const* into = busOuts_[static_cast<size_t>(rankEq_.parentOf(g))];
+      for (int ch = 0; ch < numCh; ++ch) juce::FloatVectorOperations::add(into[ch], planes[ch], numFrames);
+    }
     for (int bus = 0; bus < numBuses; ++bus) {
       float* const* planes = busOuts_[static_cast<size_t>(bus)];
 #if MP_ENABLE_DSP
-      if (bus < static_cast<int>(busEnclosures_.size())) {
+      if (enclosuresActive && bus < static_cast<int>(busEnclosures_.size())) {
         const Id encId = busEnclosures_[static_cast<size_t>(bus)];
         const auto filterIt = enclosureFilters_.find(encId);
         const auto encIt = model_.enclosures.find(encId);
@@ -760,6 +830,12 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
 #endif
       for (int ch = 0; ch < numCh; ++ch) dest.addFrom(ch, 0, planes[ch], numFrames);
     }
+    return;
+  }
+  // A block bigger than the buses were made for: every voice at once, and the
+  // EQ left out of this one block, as the shades are.
+  if (groups > 0) {
+    voices_.render(dest.getArrayOfWritePointers(), numCh, numFrames, -1, mixBusFilter);
     return;
   }
   for (int bus = 0; bus < numBuses; ++bus) {
@@ -795,6 +871,8 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
+  // EQ groups whose EQ was taken away go once their last pipe has stopped.
+  if (rankEq_.groupBuses() > 0) rankEq_.beginBlock([this](int bus) { return voices_.voicesOnBus(bus); });
   const juce::int64 w0 = blockLog_.empty() ? 0 : juce::Time::getHighResolutionTicks();
   advanceWind(numFrames);
   advanceTremulants(numFrames);
@@ -1957,10 +2035,18 @@ bool MasterpieceProcessor::saveSettings() const {
              << " " << juce::String(pv.gainDb, 3) << " "
              << juce::String(pv.tuningCents, 3) << " "
              << juce::String(pv.brightnessDb, 3) << " "
-             << juce::String(pv.balance, 3) << "\n";
+             << juce::String(pv.balance, 3) << " "
+             << juce::String(pv.bassDb, 3) << "\n";
       };
       for (Id id : v.rankIds()) line("rank", id, v.rank(id));
       for (Id id : v.pipeIds()) line("pipe", id, v.pipe(id));
+      // A key of its own: a version that knows no division EQ skips it,
+      // where a "division" kind on voicingadj would be read as a rank.
+      for (Id id : v.divisionIds()) {
+        const PipeVoicing pv = v.division(id);
+        text << "voicingdiv " << slot << " " << juce::String(id) << " " << juce::String(pv.brightnessDb, 3)
+             << " " << juce::String(pv.bassDb, 3) << "\n";
+      }
     };
     writeSet("a", voicing_.a);
     writeSet("b", voicing_.b);
@@ -2087,10 +2173,22 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
       pv.tuningCents = tok[4].getFloatValue();
       pv.brightnessDb = tok[5].getFloatValue();
       pv.balance = tok[6].getFloatValue();
+      if (tok.size() >= 8) pv.bassDb = tok[7].getFloatValue();
       VoicingSet& set = tok[0] == "b" ? voicing_.b : voicing_.a;
       const Id id = static_cast<Id>(tok[2].getLargeIntValue());
       if (tok[1] == "pipe") set.setPipe(id, pv);
       else set.setRank(id, pv);
+      continue;
+    }
+    if (key == "voicingdiv") {
+      // "voicingdiv a|b <divisionId> <brightness> <bass>"
+      auto tok = juce::StringArray::fromTokens(val, " ", "");
+      tok.removeEmptyStrings();
+      if (tok.size() < 4) continue;
+      PipeVoicing pv;
+      pv.brightnessDb = tok[2].getFloatValue();
+      pv.bassDb = tok[3].getFloatValue();
+      (tok[0] == "b" ? voicing_.b : voicing_.a).setDivision(static_cast<Id>(tok[1].getLargeIntValue()), pv);
       continue;
     }
     if (key == "combset") {
@@ -3666,6 +3764,11 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
       vs.swayIndex = s != rankSwayIndex_.end() ? s->second : swayChannels_ - 1;
     }
     vs.busIndex = busForPipe(pipe.pipeId);
+    // A rank with an EQ plays into its group's bus, which adds into this one.
+    if (rankEq_.wanted()) {
+      const auto eq = rankEqIndex_.find(rankId);
+      if (eq != rankEqIndex_.end()) vs.busIndex = rankEq_.busFor(eq->second, vs.busIndex);
+    }
     vs.mixBus = mixBusForPipe(rankId, midiNote);
     {
       const auto wIt = pipeWindIndex_.find(pipe.pipeId);

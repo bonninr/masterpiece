@@ -28,6 +28,8 @@ enum class Type : uint8_t {
   Tremulant = 14,
   Windchest = 15,
   Route = 16,
+  Brightness = 19,
+  Bass = 20,
 };
 
 enum class Access : uint8_t { Read, Set, Press };
@@ -63,7 +65,10 @@ constexpr TypeInfo kTypes[] = {
   {Type::Tremulant, "tremulant", "tremulants", Access::Set, Dump::Bits, true, 0, 1, false, "The organ's tremulants. Value 1 while it runs; setting it moves the switch the player would."},
   {Type::Windchest, "windchest", "windchests", Access::Read, Dump::Values, true, 0, 2097151, false, "The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure."},
   {Type::Route, "route", "routes", Access::Set, Dump::Values, true, 1, 8, false, "Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note."},
+  {Type::Brightness, "brightness", "brightnesses", Access::Set, Dump::Values, true, -120, 120, false, "The voicing EQ's high shelf, above 3 kHz - one per rank in the order of ranks, then one per division in the order of divisions; a rank hears its division's added to its own. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing."},
+  {Type::Bass, "bass", "basses", Access::Set, Dump::Values, true, -120, 120, false, "The voicing EQ's low shelf, below 200 Hz - one per rank in the order of ranks, then one per division in the order of divisions, as brightnesses. Value - tenths of a dB, -120 to 120; heard at once, and saved with the voicing."},
 };
+constexpr int kTypeCount = 21;
 
 constexpr const TypeInfo* typeInfo(Type t) {
   for (const auto& i : kTypes)

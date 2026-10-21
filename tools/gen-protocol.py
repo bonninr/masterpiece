@@ -81,6 +81,9 @@ def header(spec):
           f"Dump::{dump}, {'true' if v else 'false'}, {v['min'] if v else 0}, {v['max'] if v else 0}, "
           f"{'true' if v and 'toggle' in v else 'false'}, {cstr(t.get('doc'))}}},")
     w("};")
+    # The number of type codes, gaps included: a table indexed by the code
+    # needs room for the highest one, not for the number of types.
+    w(f"constexpr int kTypeCount = {max(t['code'] for t in spec['types']) + 1};")
     w("")
     w("constexpr const TypeInfo* typeInfo(Type t) {")
     w("  for (const auto& i : kTypes)")

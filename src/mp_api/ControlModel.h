@@ -12,6 +12,7 @@
 #include <juce_core/juce_core.h>
 
 #include "../mp_control/PlayerCombinations.h"
+#include "../mp_audio/VoicingSet.h"
 
 #include <unordered_map>
 
@@ -60,6 +61,9 @@ public:
   void poll(std::vector<Change>& out, bool readings);
 
   int count(Type type);
+  // A brightness or bass index: the rank's voicing, or the division's.
+  PipeVoicing eqVoicing(int index);
+  void setEqVoicing(int index, const PipeVoicing& pv);
 
 private:
   struct SwitchEntry {

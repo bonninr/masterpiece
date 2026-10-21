@@ -168,7 +168,7 @@ Routes each rank to a stereo pair of output channels. No sample set declares an 
 
 ![The Voicing tab](../images/general-voicing.png)
 
-The player's adjustments of level and tuning, for a whole rank or for one pipe, in the way a voicer goes round an organ. A rank adjustment and a pipe adjustment add. Level and tuning are applied when a note starts, so they cost nothing while it sounds, and they work with the DSP switched off. Notes already sounding keep what they began with. The **Voicing** box on the Loading tab of [Organ settings](organ-settings.md#engine-switches) turns every adjustment off while it is cleared; the organ then plays as recorded.
+The player's adjustments of level and tuning, for a whole rank or for one pipe, in the way a voicer goes round an organ. A rank adjustment and a pipe adjustment add. Level and tuning are applied when a note starts, so they cost nothing while it sounds, and they work with the DSP switched off. Notes already sounding keep what they began with. The tab carries an equaliser as well, a shelf for the treble and one for the bass, for each rank and for each division. The **Voicing** box on the Loading tab of [Organ settings](organ-settings.md#engine-switches) turns every adjustment off while it is cleared; the organ then plays as recorded.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -184,7 +184,18 @@ The player's adjustments of level and tuning, for a whole rank or for one pipe, 
 | **Save for this organ** | Writes the organ's settings file. | | | At once |
 | Status line | **Slot A  -  N rank(s), N pipe(s) adjusted  -  takes effect on the next note** | | | |
 
-**Stored.** In the organ file, as `voicingadj` lines for both slots and `voicingslot b` when slot B is live, written by **Save for this organ** and by any other change that makes Masterpiece rewrite the organ file. A rank number has no meaning in another instrument, so adjustments never carry across organs.
+**Stored.** In the organ file, as `voicingadj` lines for both slots, `voicingdiv` lines for the divisions and `voicingslot b` when slot B is live, written by **Save for this organ** and by any other change that makes Masterpiece rewrite the organ file. A rank number has no meaning in another instrument, so adjustments never carry across organs.
+
+### The EQ
+
+A shelf for the treble and one for the bass, for each rank and for each division. The treble acts above 3 kHz, the bass below 200 Hz, each from -12 to +12 dB. A rank's shelves are added to those of its division, so a division can shape every rank in it, and a rank can be shaped on its own. The pipes already sounding hear a change at once; a rank given its first shelf is heard with it from its next note. While no shelf is set anywhere, the organ sounds as recorded and the filters cost nothing.
+
+| Control | What it does | Default | Range or options | Takes effect |
+|---|---|---|---|---|
+| **Brightness** | The treble shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
+| **Bass** | The bass shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
+| **Division EQ** | The division whose shelves are set below. | The first division | The divisions of the loaded organ | At once |
+| Division **Brightness** and **Bass** | The treble and bass shelves of the chosen division. Every rank in it hears them added to its own. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
 
 ## Combination sets
 
