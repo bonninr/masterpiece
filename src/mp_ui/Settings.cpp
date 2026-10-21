@@ -3275,8 +3275,8 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   releases_.onClick = [this] { proc_.setReleaseLogging(releases_.getToggleState()); };
   addAndMakeVisible(releases_);
   updates_.setToggleState(proc_.updateCheckEnabled(), juce::dontSendNotification);
-  updates_.setTooltip(TRANS("Reads the newest version's number from masterpieceorgan.com, a few bytes, "
-                            "and offers the download page when it is newer. Nothing about you is sent."));
+  updates_.setTooltip(TRANS("Reads the newest version's number from GitHub and offers its download page "
+                            "when it is newer. Nothing about you is sent."));
   updates_.onClick = [this] { proc_.setUpdateCheckEnabled(updates_.getToggleState()); };
   addAndMakeVisible(updates_);
 }

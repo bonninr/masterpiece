@@ -673,7 +673,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Not running: %1" = "No está en marcha: %1"
 "Running. Open on this network:" = "En marcha. Abrir en esta red:"
 "Running. Open on this computer:" = "En marcha. Abrir en este ordenador:"
-"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Lee el número de la versión más reciente en masterpieceorgan.com, unos pocos bytes, y ofrece la página de descarga cuando es más nueva. No se envía nada sobre ti."
+"Reads the newest version's number from GitHub and offers its download page when it is newer. Nothing about you is sent." = "Lee el número de la versión más reciente en GitHub y ofrece su página de descarga cuando es más nueva. No se envía nada sobre ti."
 "Drive a console display" = "Controlar una pantalla de consola"
 "Send to display" = "Enviar a la pantalla"
 "What was there before is saved in %1." = "Lo que había antes está guardado en %1."

@@ -13942,6 +13942,18 @@ public:
                  !isNewerVersion("0.8", "0.8.0"),
              "the same version, or an older one, is not");
 
+    // The answer: GitHub's release record, named by its tag, or a plain number.
+    using mp::ui::versionFromAnswer;
+    MP_CHECK(versionFromAnswer("{\"url\":\"x\",\"tag_name\":\"v0.9.0\",\"name\":\"0.9.0\",\"assets\":[]}") == "0.9.0",
+             "the release record gives the tag's number, got " +
+                 versionFromAnswer("{\"tag_name\":\"v0.9.0\"}").toStdString());
+    MP_CHECK(versionFromAnswer("0.8.1\n") == "0.8.1" && versionFromAnswer("{\"tag_name\":\"0.8.2\"}") == "0.8.2",
+             "a plain number, and a tag without its v, are read as they are");
+    MP_CHECK(versionFromAnswer("<html><body>Sign in to the network</body></html>").isEmpty() &&
+                 versionFromAnswer("{\"message\":\"API rate limit exceeded\"}").isEmpty() &&
+                 versionFromAnswer("{\"tag_name\":\"nightly\"}").isEmpty() && versionFromAnswer("").isEmpty(),
+             "a portal's page, a refusal, a tag that is not a version, and nothing, give nothing");
+
     const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                                   .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();

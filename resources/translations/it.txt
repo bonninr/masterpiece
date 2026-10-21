@@ -673,7 +673,7 @@ countries: it ch sm va
 "Not running: %1" = "Non attivo: %1"
 "Running. Open on this network:" = "Attivo. Apri in questa rete:"
 "Running. Open on this computer:" = "In funzione. Aprire su questo computer:"
-"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Legge il numero della versione più recente da masterpieceorgan.com, pochi byte, e propone la pagina di download quando è più nuova. Nulla su di te viene inviato."
+"Reads the newest version's number from GitHub and offers its download page when it is newer. Nothing about you is sent." = "Legge il numero della versione più recente da GitHub e propone la sua pagina di download quando è più nuova. Nulla su di te viene inviato."
 "Drive a console display" = "Comanda un display della consolle"
 "Send to display" = "Invia al display"
 "What was there before is saved in %1." = "Ciò che c\'era prima è salvato in %1."

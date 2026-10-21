@@ -593,7 +593,7 @@ countries: gb us
 "No log is being written." = "No log is being written."
 "For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed." = "For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed."
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed."
-"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent."
+"Reads the newest version's number from GitHub and offers its download page when it is newer. Nothing about you is sent." = "Reads the newest version's number from GitHub and offers its download page when it is newer. Nothing about you is sent."
 "Remote control" = "Remote control"
 "A page any browser on this network can open to draw stops, press pistons and move the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default." = "A page any browser on this network can open to draw stops, press pistons and move the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default."
 "Off, the network can only read: the stops drawn, the levels, the organ loaded." = "Off, the network can only read: the stops drawn, the levels, the organ loaded."

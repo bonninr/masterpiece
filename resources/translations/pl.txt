@@ -673,7 +673,7 @@ countries: pl
 "Not running: %1" = "Nie działa: %1"
 "Running. Open on this network:" = "Działa. Otwórz w tej sieci:"
 "Running. Open on this computer:" = "Działa. Otwórz na tym komputerze:"
-"Reads the newest version's number from masterpieceorgan.com, a few bytes, and offers the download page when it is newer. Nothing about you is sent." = "Odczytuje numer najnowszej wersji z masterpieceorgan.com, kilka bajtów, i proponuje stronę pobierania, gdy jest nowsza. Nic o tobie nie jest wysyłane."
+"Reads the newest version's number from GitHub and offers its download page when it is newer. Nothing about you is sent." = "Odczytuje numer najnowszej wersji z GitHuba i proponuje jej stronę pobierania, gdy jest nowsza. Nic o tobie nie jest wysyłane."
 "Drive a console display" = "Steruj wyświetlaczem kontuaru"
 "Send to display" = "Wyślij na wyświetlacz"
 "What was there before is saved in %1." = "To, co było wcześniej, zapisano w %1."
