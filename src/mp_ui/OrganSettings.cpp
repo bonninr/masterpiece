@@ -597,17 +597,6 @@ juce::String voicingEqPresetName(const VoicingEqPreset& p) {
   }
 }
 
-// A mapping's message, for the MIDI menu's header.
-juce::String describeBinding(const MidiBinding& b) {
-  juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
-                      : b.source.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
-                      : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
-                                                                       : TRANS("CC %1");
-  what = what.replace("%1", juce::String(b.source.number));
-  if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
-  return what;
-}
-
 VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(on_);
   on_.onClick = [this] { apply(); };
@@ -817,7 +806,7 @@ void VoicingEqPanel::presetMidiMenu() {
     juce::PopupMenu sub;
     const auto existing = map.bindingsFor(t.kind, t.id);
     if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
-    for (const MidiBinding* b : existing) sub.addSectionHeader(describeBinding(*b));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(MidiEventDialog::describeBinding(*b));
     sub.addItem(item, TRANS("Learn"));
     sub.addItem(item + 1, TRANS("MIDI window..."));
     sub.addItem(item + 2, TRANS("Clear mapping"), !existing.empty());

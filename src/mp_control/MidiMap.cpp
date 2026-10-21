@@ -108,6 +108,9 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::ScorePageBack: return "score-page-back";
     case MidiTargetKind::RecorderRecord: return "recorder-record";
     case MidiTargetKind::RecorderPlay: return "recorder-play";
+    case MidiTargetKind::RankLevel: return "rank-level";
+    case MidiTargetKind::DivisionLevel: return "division-level";
+    case MidiTargetKind::PairLevel: return "pair-level";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -150,6 +153,9 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "score-page-back") return MidiTargetKind::ScorePageBack;
   if (s == "recorder-record") return MidiTargetKind::RecorderRecord;
   if (s == "recorder-play") return MidiTargetKind::RecorderPlay;
+  if (s == "rank-level") return MidiTargetKind::RankLevel;
+  if (s == "division-level") return MidiTargetKind::DivisionLevel;
+  if (s == "pair-level") return MidiTargetKind::PairLevel;
   return MidiTargetKind::None;
 }
 
@@ -209,7 +215,7 @@ void MidiMap::bind(const MidiBinding& binding) {
   // that steps the keyboard through several manuals (#90, a Johannus whose
   // spare tab moves the lower keyboard between Great and Choir).
   const auto existing = bySource_.find(binding.source);
-  const bool shares = binding.targetKind == MidiTargetKind::ContinuousControl ||
+  const bool shares = isContinuousTarget(binding.targetKind) ||
                       binding.targetKind == MidiTargetKind::RouteKeyboard;
   if (shares && existing != bySource_.end() &&
       existing->second.targetKind == binding.targetKind &&
@@ -369,6 +375,9 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
       }
       break;
     }
+    case MidiTargetKind::RankLevel:
+    case MidiTargetKind::DivisionLevel:
+    case MidiTargetKind::PairLevel:
     case MidiTargetKind::ContinuousControl: {
       // A note sets a control by its velocity as it is struck (#199: the
       // swell written into a sequencer's part as note velocities). Its
@@ -474,8 +483,7 @@ bool MidiMap::learnFrom(const MidiSource& source) {
   // A shoe or a level is moved by a controller. A key pressed while one is
   // armed is the player playing, not teaching: it plays, and the learn waits
   // for the pedal.
-  if (learnKind_ == MidiTargetKind::ContinuousControl &&
-      source.kind != MidiSourceKind::ControlChange)
+  if (isContinuousTarget(learnKind_) && source.kind != MidiSourceKind::ControlChange)
     return false;
 
   // Learning normally replaces whatever that target had: a player re-touching

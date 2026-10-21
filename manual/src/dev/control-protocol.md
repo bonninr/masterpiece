@@ -26,7 +26,7 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 0 | `program` | properties below | per property | some | One per running program |
 | 1 | `switch` | 0 to switches - 1 | 0 off, 1 on | yes | Every switch of the organ file: drawstops, couplers, tremulants, pistons and the rest. Its role is a property |
 | 2 | `control` | 0 to controls - 1 | 0 to 127 | yes | Shoes, crescendo and other continuous controls |
-| 3 | `division` | 0 to divisions - 1 | none | no | For names and grouping |
+| 3 | `division` | 0 to divisions - 1 | its live level, 0 to 127 | yes | For names and grouping; the level is a fader over every rank in it, heard at once, full again at each load |
 | 4 | `keyboard` | 0 to keyboards - 1 | none | no | Manuals and pedal; notes stay on MIDI |
 | 5 | `general` | 0 to generals - 1 | 1 while it is the last recalled | press | The player's general pistons |
 | 6 | `divisional` | 0 to divisionals - 1 | 1 while it is the last recalled in its division | press | The player's divisional pistons |
@@ -39,9 +39,13 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 13 | `enclosure` | 0 to enclosures - 1 | how open its shades are, 0 to 127 | no | Moved by its control |
 | 14 | `tremulant` | 0 to tremulants - 1 | 1 while it runs | yes | Moves the switch the player would |
 | 15 | `windchest` | 0 to compartments - 1 | pressure now, in tenths of a percent of nominal | no | Reservoirs and chests of the wind model |
-| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Mixer tab |
+| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Mixer tab; heard from the next note |
+| 17 | `pair` | 0 to pairs - 1 | its live level, 0 to 127 | yes | The mixer's output pairs; the level is heard at once, full again at each load |
+| 18 | `ranklevel` | 0 to ranks - 1 | the rank's live level, 0 to 127 | yes | A fader on top of the rank's voicing, heard at once, full again at each load |
 | 19 | `brightness` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The treble shelf of the voicing EQ, above 3 kHz: one per rank, then one per division; a rank hears its division's added to its own. Heard at once |
 | 20 | `bass` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The bass shelf of the voicing EQ, below 200 Hz: one per rank, then one per division, as the brightnesses. Heard at once |
+| 21 | `pan` | 0 to ranks + divisions - 1 | -100 full left, 0 the middle, +100 full right | yes | Where a rank or a division stands: one per rank, then one per division, as the brightnesses; a rank's and its division's add. Heard at once |
+| 22 | `width` | 0 to ranks + divisions - 1 | percent, 0 mono, 100 as recorded, 200 twice as wide | yes | The stereo width of a rank or a division: one per rank, then one per division, as the brightnesses; a rank's and its division's multiply. Heard at once |
 
 A `press` acts like a thumb piston: it does what the object does, once.
 

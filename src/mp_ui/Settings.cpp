@@ -1365,7 +1365,7 @@ void RecorderPanel::showMidiMenu() {
     juce::PopupMenu sub;
     const auto existing = map.bindingsFor(kind, 0);
     if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
-    for (const MidiBinding* b : existing) sub.addSectionHeader(describeBinding(*b));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(MidiEventDialog::describeBinding(*b));
     sub.addItem(item, TRANS("Learn"));
     sub.addItem(item + 1, TRANS("Clear"), !existing.empty());
     sub.addItem(item + 2, TRANS("MIDI window, and its lamp..."));
@@ -2786,9 +2786,111 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
                   "A rank you never touch plays through the first pair, so an organ "
                   "is audible before you open this page. If you are listening in "
                   "stereo the pairs are summed, so nothing disappears when you "
-                  "split them up."));
+                  "split them up.") +
+                "\n\n" +
+                TRANS("The faders are live levels, heard at once on the pipes sounding: "
+                      "MIDI learns a knob or a pedal for each. They start at full with "
+                      "every organ."));
+
+  for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
+  styleLabel(pairsHeading_, TRANS("Output pairs"));
+  styleLabel(divisionsHeading_, TRANS("Divisions"));
+  styleLabel(ranksHeading_, TRANS("Ranks"));
 
   refresh();
+  startTimerHz(10);
+}
+
+void MixerPanel::addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, int index,
+                          const juce::String& name) {
+  Fader f;
+  f.kind = kind;
+  f.id = id;
+  f.index = index;
+  if (name.isNotEmpty()) {
+    f.label = std::make_unique<juce::Label>();
+    styleLabel(*f.label, name);
+    rankHolder_.addAndMakeVisible(*f.label);
+  }
+  f.slider = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
+  f.slider->setRange(0.0, LiveLevels::kFull, 1.0);
+  f.slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, kRow - 6);
+  f.slider->textFromValueFunction = [](double v) {
+    const int n = juce::roundToInt(v);
+    return n <= 0 ? TRANS("Off") : juce::String(LiveLevels::dbOf(n), 1) + " dB";
+  };
+  f.slider->setValue(faderLevel(f), juce::dontSendNotification);
+  f.slider->setTooltip(TRANS("A live level, heard at once: full is the level as voiced"));
+  f.midi = std::make_unique<juce::TextButton>(TRANS("MIDI"));
+  f.midi->setTooltip(TRANS("Learn a knob or a pedal for this level"));
+  rankHolder_.addAndMakeVisible(*f.slider);
+  rankHolder_.addAndMakeVisible(*f.midi);
+  into.push_back(std::move(f));
+  Fader& made = into.back();
+  made.slider->onValueChange = [this, &into, i = into.size() - 1] {
+    setFaderLevel(into[i], juce::roundToInt(into[i].slider->getValue()));
+  };
+  made.midi->onClick = [this, &into, i = into.size() - 1] { faderMidiMenu(into[i]); };
+}
+
+int MixerPanel::faderLevel(const Fader& f) const {
+  switch (f.kind) {
+    case MidiTargetKind::PairLevel: return proc_.livePairLevel(f.index);
+    case MidiTargetKind::DivisionLevel: return proc_.liveDivisionLevel(f.index);
+    case MidiTargetKind::RankLevel: return proc_.liveRankLevel(f.index);
+    default: return LiveLevels::kFull;
+  }
+}
+
+void MixerPanel::setFaderLevel(const Fader& f, int value) {
+  switch (f.kind) {
+    case MidiTargetKind::PairLevel: proc_.setLivePairLevel(f.index, value); break;
+    case MidiTargetKind::DivisionLevel: proc_.setLiveDivisionLevel(f.index, value); break;
+    case MidiTargetKind::RankLevel: proc_.setLiveRankLevel(f.index, value); break;
+    default: break;
+  }
+}
+
+// What the knob or pedal for this level is, and Learn and Clear. Learning
+// waits for a controller: a key pressed meanwhile plays.
+void MixerPanel::faderMidiMenu(Fader& f) {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  juce::PopupMenu menu;
+  const auto existing = map.bindingsFor(f.kind, f.id);
+  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
+  for (const MidiBinding* b : existing) menu.addSectionHeader(MidiEventDialog::describeBinding(*b));
+  menu.addItem(1, TRANS("Learn: move the knob or pedal"));
+  menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
+  juce::Component::SafePointer<MixerPanel> self(this);
+  const MidiTargetKind kind = f.kind;
+  const Id id = f.id;
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(f.midi.get()),
+                     [self, kind, id](int choice) {
+                       if (self == nullptr) return;
+                       auto& m = self->proc_.midiMap();
+                       if (choice == 1) m.beginLearn(kind, id, false);
+                       if (choice == 2) {
+                         m.unbindTarget(kind, id);
+                         self->proc_.saveMidiMap();
+                       }
+                     });
+}
+
+void MixerPanel::timerCallback() {
+  for (auto* list : {&pairFaders_, &divisionFaders_, &rankFaders_})
+    for (auto& f : *list) {
+      if (f.slider->isMouseButtonDown()) continue;
+      const int now = faderLevel(f);
+      if (juce::roundToInt(f.slider->getValue()) != now) f.slider->setValue(now, juce::dontSendNotification);
+      // A learning button says so, as the console's controls do.
+      const bool learning = proc_.midiMap().learning() && proc_.midiMap().learningKind() == f.kind &&
+                            proc_.midiMap().learningTarget() == f.id;
+      f.midi->setButtonText(learning ? TRANS("Move it...") : TRANS("MIDI"));
+    }
 }
 
 void MixerPanel::setBusCount(int buses) {
@@ -2804,6 +2906,12 @@ void MixerPanel::setBusCount(int buses) {
     mixer.buses.push_back(b);
   }
   proc_.refreshMixerBuses();
+
+  // The pair faders follow the count.
+  pairFaders_.clear();
+  for (int i = 0; i < juce::jmin(buses, LiveLevels::kMaxPairs); ++i)
+    addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
+  resized();
 
   // A rank pointing at a pair that no longer exists would go quiet for a
   // reason nowhere on screen, so fold it back to the first one.
@@ -2873,7 +2981,24 @@ void MixerPanel::refresh() {
   rankIds_.clear();
   rankLabels_.clear();
   rankBuses_.clear();
+  pairFaders_.clear();
+  divisionFaders_.clear();
+  rankFaders_.clear();
   rankHolder_.removeAllChildren();
+  for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
+
+  for (int i = 0; i < juce::jmin(juce::jmax(1, proc_.mixBusCount()), LiveLevels::kMaxPairs); ++i)
+    addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
+  {
+    std::vector<Id> divisions;
+    for (const auto& [id, d] : proc_.organModel().divisions) divisions.push_back(id);
+    std::sort(divisions.begin(), divisions.end());
+    for (Id id : divisions) {
+      const auto& d = proc_.organModel().divisions.at(id);
+      addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id),
+               d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
+    }
+  }
 
   for (const auto& [id, rank] : proc_.organModel().ranks) rankIds_.push_back(id);
   std::sort(rankIds_.begin(), rankIds_.end());
@@ -2901,6 +3026,7 @@ void MixerPanel::refresh() {
     box->onChange = [this] { pushRouting(); };
     rankHolder_.addAndMakeVisible(*box);
     rankBuses_.push_back(std::move(box));
+    addFader(rankFaders_, MidiTargetKind::RankLevel, rankId, proc_.liveRankIndexOf(rankId), {});
   }
 
   pushRouting();
@@ -2938,14 +3064,33 @@ void MixerPanel::resized() {
   r.removeFromBottom(kGap);
   viewport_.setBounds(r);
 
+  // The pairs and divisions first, then a row per rank: its name, its pair,
+  // its fader. The fader and its MIDI button sit at the right of each row.
   const int rowH = kRow + 2;
-  rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12),
-                      static_cast<int>(rankIds_.size()) * rowH);
+  const int rows = 3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size());
+  rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
+  int y = 0;
+  const auto line = [&] {
+    juce::Rectangle<int> l(0, y, rankHolder_.getWidth(), kRow);
+    y += rowH;
+    return l;
+  };
+  const auto place = [](Fader& f, juce::Rectangle<int> l) {
+    f.midi->setBounds(l.removeFromRight(70).reduced(2, 1));
+    f.slider->setBounds(l.removeFromRight(260).reduced(2, 1));
+    if (f.label != nullptr) f.label->setBounds(l);
+    return l;
+  };
+  pairsHeading_.setBounds(line());
+  for (auto& f : pairFaders_) place(f, line());
+  divisionsHeading_.setBounds(line());
+  for (auto& f : divisionFaders_) place(f, line());
+  ranksHeading_.setBounds(line());
   for (size_t i = 0; i < rankIds_.size(); ++i) {
-    juce::Rectangle<int> line(0, static_cast<int>(i) * rowH,
-                              rankHolder_.getWidth(), kRow);
-    rankBuses_[i]->setBounds(line.removeFromRight(140).reduced(2, 1));
-    rankLabels_[i]->setBounds(line);
+    auto l = line();
+    if (i < rankFaders_.size()) l = place(rankFaders_[i], l);
+    rankBuses_[i]->setBounds(l.removeFromRight(120).reduced(2, 1));
+    rankLabels_[i]->setBounds(l);
   }
 }
 

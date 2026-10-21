@@ -465,6 +465,7 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremAmpDepth = start.tremAmpDepth;
   v.tremPitchDepth = start.tremPitchDepth;
   v.swayIndex = start.swayIndex;
+  v.rankIndex = start.rankIndex;
   v.startedAtBlock = blockCounter_;
   v.startedAtFrame = framesRendered_;
   // If only this sample's head is resident, tell the streamer to start
@@ -763,6 +764,9 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     v.heldWindAmp = wind.ampMul;
     v.heldWindPitch = wind.pitchRatio;
   }
+  // The player's live levels, once per voice per block like the wind; held
+  // tails follow them too. Nothing at all while every fader is at full.
+  if (liveRankGains_ != nullptr) wind.ampMul *= liveGainFor(v);
   const double windRatio = v.ratio * wind.pitchRatio;
   // The tremulant, as a ramp across the block. Its own value is a signed
   // swing in -1..1; this pipe's depths turn that into a gain and a pitch.

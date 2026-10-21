@@ -231,8 +231,6 @@ private:
   juce::Label beat_;
 };
 
-// A mapping's message, such as "Note 36 ch 2", for a MIDI menu's header.
-juce::String describeBinding(const MidiBinding& b);
 
 // Session: MIDI recorder and player.
 class RecorderPanel : public juce::Component, private juce::Timer {
@@ -468,7 +466,7 @@ private:
 // The mixer: how many output pairs the player has, and which one each rank
 // speaks through. Its own tab because the rank list is long — a real organ has
 // dozens — and it is the one settings page that needs to scroll.
-class MixerPanel : public juce::Component {
+class MixerPanel : public juce::Component, private juce::Timer {
 public:
   explicit MixerPanel(MasterpieceProcessor& p);
   void resized() override;
@@ -479,6 +477,24 @@ public:
 private:
   void pushRouting();
   void setBusCount(int buses);
+  // The live levels (LiveLevels.h): a fader for each pair, division and
+  // rank, with a MIDI button to learn a knob or pedal for it. They follow
+  // MIDI and the control API on a timer.
+  struct Fader {
+    MidiTargetKind kind = MidiTargetKind::None;
+    Id id = 0;     // the MIDI target's id
+    int index = 0; // the place in the processor's list
+    std::unique_ptr<juce::Label> label;
+    std::unique_ptr<juce::Slider> slider;
+    std::unique_ptr<juce::TextButton> midi;
+  };
+  void timerCallback() override;
+  void addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, int index, const juce::String& name);
+  int faderLevel(const Fader& f) const;
+  void setFaderLevel(const Fader& f, int value);
+  void faderMidiMenu(Fader& f);
+  std::vector<Fader> pairFaders_, divisionFaders_, rankFaders_;
+  juce::Label pairsHeading_, divisionsHeading_, ranksHeading_;
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
