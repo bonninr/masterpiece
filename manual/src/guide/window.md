@@ -46,6 +46,7 @@ octagon with a cross.
 | Item | What it does |
 |---|---|
 | **Console** | Shows the organ's console pages. The item reads **Stop list** when the organ ships no console artwork. It is ticked while a panel is not shown; choosing it while a panel is shown returns to the console or the stop list. |
+| **Stop list** | Shows the plain list of stops over the console, for a player who cannot see the console. The item is present when the organ ships console artwork, and is ticked while the list is shown. See [The plain stop list](#the-plain-stop-list). |
 | One item per panel | The panel's name. Shows the panel's tab, or brings the panel's window to the front. Ticked while that panel is shown. |
 | **Panel of the whole organ** | Shown while the organ has no panel. Makes the first panel. |
 | **New panel** | Shown once the organ has a panel. Makes a panel; disabled when the organ already has two. |
@@ -244,6 +245,21 @@ themselves are described on [MIDI and consoles](midi.md).
 | Page tab, panel tab | See [Page tabs](#page-tabs). |
 | Empty part of the console | Cancels a learn that is armed. |
 
+### The console without sight
+
+Every drawn stop, coupler and piston carries an invisible component over it,
+where the picture is. A screen reader finds the control there, reads its
+name, and reads whether it is drawn. A stop's name carries its division,
+**Principal 8, Great**; a stop that ships no pipes reads as **not available**.
+
+| Key | What it does |
+|---|---|
+| Tab | Moves to the next control, and back with Shift and Tab. |
+| Space or Enter | Draws the stop or retires it. A piston is fired. |
+
+The console keeps its painting and its clicks: the components over the
+controls take no clicks of their own.
+
 ## A page in its own window
 
 A console surrounds the player: jambs to either side, the key desk in front, a
@@ -359,6 +375,27 @@ sample set**.
 The list holds stops. Couplers, tremulants and pistons that the organ has as
 switches alone are reached through a panel.
 
+### The list without sight
+
+**View > Stop list** shows the plain list over the console of an organ that
+ships console artwork, and Ctrl with L (Cmd with L on a Mac) shows it and hides
+it again. The keyboard focus goes to the first stop.
+
+A screen reader reads each stop as a button that can be drawn or retired. The
+name it reads is the stop's own name and the division it is in, **Principal 8,
+Great**. A stop whose ranks ship no pipes reads as **not available**.
+
+| Key | What it does |
+|---|---|
+| Tab | Moves to the next stop, and back with Shift and Tab. |
+| Left and right arrows | Move one stop along the list. |
+| Up and down arrows | Move a row of the grid, so the number of stops moved follows the width of the window. |
+| Space or Enter | Draws the stop, or retires it. |
+
+A stop that changes by a piston, a combination or MIDI is announced, with its
+name and its new state. The announcement is made only while a screen reader is
+listening.
+
 ## Swell faders
 
 ![The swell faders](../images/swell-faders.jpg)
@@ -411,11 +448,12 @@ on a slow machine. The choice is kept for every organ.
 
 ## Keyboard shortcuts
 
-The window has no fixed shortcuts. Any stop, coupler, piston, setter and other
-object that has a MIDI window can be given a computer key there. The key then
-works from the main window, from page windows and from the Combinations window,
-unless the control with the focus uses the key itself. See
-[MIDI and consoles](midi.md).
+The window has one shortcut of its own: Ctrl with L (Cmd with L on a Mac)
+shows the plain stop list over the console, and hides it again. Any stop,
+coupler, piston, setter and other object that has a MIDI window can be given a
+computer key there. The key then works from the main window, from page windows
+and from the Combinations window, unless the control with the focus uses the
+key itself. See [MIDI and consoles](midi.md).
 
 ## Tooltips
 

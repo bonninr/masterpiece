@@ -26,6 +26,9 @@ endif()
 if(TARGET mp_audio)
   target_link_libraries(mp_tests PRIVATE mp_audio)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_AUDIO=1)
+  # The stop list a screen reader can use: the UI is in mp_audio, and the
+  # test reads the accessibility layer of the stops.
+  target_sources(mp_tests PRIVATE test_accessibility.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_sources(mp_tests PRIVATE test_api.cpp test_api_transports.cpp)

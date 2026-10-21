@@ -1,5 +1,6 @@
 #include "Ui.h"
 
+#include <algorithm>
 #include <map>
 #include "Settings.h"
 #include "OrganSettings.h"
@@ -32,6 +33,15 @@ constexpr int kJambWidth = 320;
 constexpr int kTileWidth = 190;
 constexpr int kGap = 4;
 
+// The key that opens the stop list from the console: the platform's command
+// key (Ctrl, or Cmd on a Mac) with L. The letter's code is the same on every
+// platform, in whichever case the keyboard layout gives.
+bool isStopListKey(const juce::KeyPress& key) {
+  if (!key.getModifiers().isCommandDown()) return false;
+  const int code = key.getKeyCode();
+  return code == 'l' || code == 'L';
+}
+
 int columnsFor(int width) { return juce::jmax(1, (width - 8 + kGap) / (kTileWidth + kGap)); }
 
 // A warning that the log explains further, with a button that opens the
@@ -62,6 +72,42 @@ void showWithLog(const juce::String& title, const juce::String& message) {
 
 // ------------------------------------------------------------------ jamb
 
+void StopButton::setStopName(const juce::String& name, const juce::String& division) {
+  accessibleName_ = division.isNotEmpty() ? name + ", " + division : name;
+  // The title is what the accessibility layer reads; the tile keeps the
+  // stop's own name on it.
+  setTitle(accessibleName_);
+}
+
+void StopButton::accessibleToggle() {
+  if (!isEnabled()) return;
+  // The state changes and the click follows, so the stop is drawn the way a
+  // click on the tile draws it.
+  setToggleState(!getToggleState(), juce::sendNotification);
+}
+
+bool StopButton::keyPressed(const juce::KeyPress& key) {
+  if (isEnabled() && (key.isKeyCode(juce::KeyPress::spaceKey) ||
+                      key.isKeyCode(juce::KeyPress::returnKey))) {
+    // As a click on the tile, and at once: the stop is drawn before the key
+    // comes up.
+    accessibleToggle();
+    return true;
+  }
+  if (onArrowKey && (key.isKeyCode(juce::KeyPress::leftKey) ||
+                     key.isKeyCode(juce::KeyPress::rightKey) ||
+                     key.isKeyCode(juce::KeyPress::upKey) ||
+                     key.isKeyCode(juce::KeyPress::downKey))) {
+    onArrowKey(*this, key);
+    return true;
+  }
+  return juce::TextButton::keyPressed(key);
+}
+
+std::unique_ptr<juce::AccessibilityHandler> StopButton::createAccessibilityHandler() {
+  return std::make_unique<ToggleAccessibilityHandler>(*this, *this);
+}
+
 StopJamb::StopJamb(MasterpieceProcessor& p) : proc_(p) { rebuild(); }
 
 void StopJamb::rebuild() {
@@ -85,10 +131,14 @@ void StopJamb::rebuild() {
     e.stopId = s.stopId;
     e.divisionId = s.divisionId;
     e.playable = s.playable;
-    e.button = std::make_unique<juce::TextButton>(juce::String(s.name));
+    e.name = juce::String(s.name);
+    e.division = divisionLabel(proc_, s.divisionId);
+    e.button = std::make_unique<StopButton>(juce::String(s.name));
     e.button->setClickingTogglesState(true);
     e.button->setToggleState(proc_.shownStopEngaged(s.stopId),
                              juce::dontSendNotification);
+    // What a screen reader reads: the stop and the division it is in.
+    e.button->setStopName(e.name, e.division);
     // Drawn reads as drawn at a glance: ivory with dark lettering, like a
     // stop face, against the dark of one pushed in.
     e.button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f3a));
@@ -104,11 +154,16 @@ void StopJamb::rebuild() {
       // Say WHY rather than just greying it: on a demo set this is the single
       // most confusing thing about the instrument.
       e.button->setTooltip(TRANS("This stop's ranks ship no pipes in this sample set"));
+      // And say it to a screen reader too, which reads no tooltip.
+      e.button->setDescription(TRANS("Not available"));
     }
     const Id id = s.stopId;
     auto* raw = e.button.get();
     e.button->onClick = [this, id, raw] {
       proc_.setStopEngaged(id, raw->getToggleState());
+    };
+    e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
+      moveFocus(from, key);
     };
     addAndMakeVisible(*e.button);
     entries_.push_back(std::move(e));
@@ -123,8 +178,45 @@ void StopJamb::rebuild() {
 void StopJamb::refresh() {
   for (auto& e : entries_) {
     const bool on = proc_.shownStopEngaged(e.stopId);
-    if (e.button->getToggleState() != on) e.button->setToggleState(on, juce::dontSendNotification);
+    if (e.button->getToggleState() == on) continue;
+    e.button->setToggleState(on, juce::dontSendNotification);
+    // A stop changed by a piston, a combination or MIDI: the screen reader
+    // is told, so a player who cannot see the console knows what moved.
+    // The announcement is a no-op while no screen reader is listening.
+    juce::AccessibilityHandler::postAnnouncement(
+        (on ? TRANS("%1 drawn") : TRANS("%1 not drawn")).replace("%1", e.button->accessibleName()),
+        juce::AccessibilityHandler::AnnouncementPriority::medium);
   }
+}
+
+void StopJamb::focusFirstStop() {
+  if (entries_.empty()) return;
+  entries_.front().button->grabKeyboardFocus();
+}
+
+StopButton* StopJamb::stopButtonAt(int index) {
+  if (index < 0 || index >= static_cast<int>(entries_.size())) return nullptr;
+  return entries_[static_cast<size_t>(index)].button.get();
+}
+
+void StopJamb::moveFocus(StopButton& from, const juce::KeyPress& key) {
+  // Left and right move one stop along the list; up and down move a row of
+  // the grid, so the columns follow the width.
+  const int columns = columnsFor(getWidth());
+  int step = 0;
+  if (key.isKeyCode(juce::KeyPress::leftKey)) step = -1;
+  else if (key.isKeyCode(juce::KeyPress::rightKey)) step = 1;
+  else if (key.isKeyCode(juce::KeyPress::upKey)) step = -columns;
+  else if (key.isKeyCode(juce::KeyPress::downKey)) step = columns;
+  else return;
+
+  const auto it = std::find_if(entries_.begin(), entries_.end(),
+                               [&](const Entry& e) { return e.button.get() == &from; });
+  if (it == entries_.end()) return;
+  const int index = static_cast<int>(std::distance(entries_.begin(), it));
+  const int target = index + step;
+  if (target < 0 || target >= static_cast<int>(entries_.size())) return;
+  entries_[static_cast<size_t>(target)].button->grabKeyboardFocus();
 }
 
 int StopJamb::heightFor(int width) const {
@@ -834,6 +926,12 @@ void MasterpieceEditor::parentHierarchyChanged() {
 }
 
 bool MasterpieceEditor::keyPressed(const juce::KeyPress& key, juce::Component*) {
+  // The plain stop list, for a player who cannot see the console: the same
+  // place the console's own panel piston goes.
+  if (isStopListKey(key)) {
+    toggleStopList();
+    return true;
+  }
   if (!proc_.applyKeyShortcut(key.getTextDescription().toStdString())) return false;
   console_.repaint();
   for (const auto& w : pageWindows_) w->repaint();
@@ -1443,6 +1541,9 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // photographed that way. The Keys button is there when it is wanted.
 
   showingConsole_ = console_.hasArtwork();
+  // A new organ brings its own console; the plain stop list is asked for
+  // again if the player wants it.
+  showingStopList_ = false;
   resized();
 
   // The organ's name is in the window title, so the bar says what the title
@@ -1590,7 +1691,7 @@ void MasterpieceEditor::resized() {
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
   auto bar = r.removeFromTop(36);
-  layout_.setVisible(showingConsole_ && console_.layoutCount() > 1);
+  layout_.setVisible(showingConsole_ && !showingStopList_ && console_.layoutCount() > 1);
   // Wide enough to say "(portrait)" when the organ has a portrait layout.
   int layoutW = 130;
   for (int l = 1; l < console_.layoutCount(); ++l)
@@ -1635,7 +1736,8 @@ void MasterpieceEditor::resized() {
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
-  pageTabs_.setVisible(showingConsole_ && (console_.pageCount() > 1 || !panelTabs_.empty()));
+  pageTabs_.setVisible(showingConsole_ && !showingStopList_ &&
+                       (console_.pageCount() > 1 || !panelTabs_.empty()));
   if (pageTabs_.isVisible()) pageTabs_.setBounds(r.removeFromTop(28));
 
   manual_.setVisible(showingKeyboard_ && manual_.getNumItems() > 1);
@@ -1659,6 +1761,16 @@ void MasterpieceEditor::resized() {
 
   for (size_t i = 0; i < panels_.size(); ++i)
     if (panelWindows_[i] == nullptr) panels_[i]->setVisible(false);
+  if (showingStopList_) {
+    // The plain list of stops, in place of the console: the way in for a
+    // player who cannot see the console.
+    consoleView_.setVisible(false);
+    jambView_.setVisible(true);
+    jambView_.setBounds(r);
+    const int jambWidth = jambView_.getWidth() - 12;
+    jamb_.setSize(jambWidth, jamb_.heightFor(jambWidth));
+    return;
+  }
   if (showingConsole_ && showingPanel_ >= 0 &&
       showingPanel_ < static_cast<int>(panels_.size()) &&
       panelWindows_[static_cast<size_t>(showingPanel_)] == nullptr) {
@@ -1850,6 +1962,7 @@ void MasterpieceEditor::showPanel(int index) {
   }
   // From the plain list of an organ without artwork too.
   showingConsole_ = true;
+  showingStopList_ = false;
   for (int t = console_.pageCount(); t < pageTabs_.getNumTabs(); ++t)
     if (panelTabs_[static_cast<size_t>(t - console_.pageCount())] == index)
       pageTabs_.setCurrentTabIndex(t, true);
@@ -1879,7 +1992,11 @@ void MasterpieceEditor::togglePanel() {
 
 void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   const bool onPanel = showingConsole_ && showingPanel_ >= 0;
-  menu.addItem(1002, console_.hasArtwork() ? TRANS("Console") : TRANS("Stop list"), true, !onPanel);
+  menu.addItem(1002, console_.hasArtwork() ? TRANS("Console") : TRANS("Stop list"), true,
+               !onPanel && !showingStopList_);
+  // The plain list of stops, for a player who cannot see the console. The
+  // key that opens it is named in the manual.
+  if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, showingStopList_);
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
                  onPanel && showingPanel_ == static_cast<int>(i));
@@ -1900,6 +2017,13 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
 void MasterpieceEditor::panelItemChosen(int r) {
   if (r == 1001) addPanel();
   else if (r == 1002) {
+    // Back to the console, or to the plain list of an organ that draws no
+    // console.
+    if (showingStopList_) {
+      showingStopList_ = false;
+      resized();
+      return;
+    }
     if (showingConsole_ && showingPanel_ >= 0) togglePanel();
   } else if (r >= 1300) showPanel(r - 1300);
   else if (r >= 1200) panels_[static_cast<size_t>(r - 1200)]->askForTitle();
@@ -1909,6 +2033,19 @@ void MasterpieceEditor::panelItemChosen(int r) {
 void MasterpieceEditor::toggleKeyboard() {
   showingKeyboard_ = !showingKeyboard_;
   resized();
+}
+
+void MasterpieceEditor::toggleStopList() {
+  if (!console_.hasArtwork()) {
+    // The list is already what the window shows: the keyboard focus goes to
+    // the first stop, and the screen reader reads it.
+    jamb_.focusFirstStop();
+    return;
+  }
+  showingStopList_ = !showingStopList_;
+  if (showingStopList_) showingPanel_ = -1;
+  resized();
+  if (showingStopList_) jamb_.focusFirstStop();
 }
 
 void MasterpieceEditor::toggleSwell() {
@@ -1965,6 +2102,7 @@ void MasterpieceEditor::showViewMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
+                       if (c == 15) safe->toggleStopList();
                        if (c == 10) safe->toggleCombinations();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();

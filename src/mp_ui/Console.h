@@ -15,6 +15,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "AccessibleToggle.h"
 
 #include <filesystem>
 #include <functional>
@@ -30,6 +31,59 @@ namespace mp::ui {
 // choice is made, for the caller to repaint.
 void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                          juce::Rectangle<int> area, std::function<void()> after);
+
+// One drawn control, with an invisible component over it. The console paints
+// its controls and takes their clicks as it always did; this is there for the
+// screen reader, which finds the stop, the coupler or the piston there and
+// reads whether it is drawn.
+class ConsoleControl : public juce::Component, public AccessibleToggle {
+public:
+  ConsoleControl(juce::String name, Id switchId)
+      : name_(std::move(name)), switchId_(switchId) {}
+
+  // What the screen reader reads, and whether the control is drawn.
+  juce::String accessibleName() const override { return name_; }
+  bool accessibleDrawn() const override { return drawn_; }
+  void accessibleToggle() override;
+
+  // The switch the control draws.
+  Id switchId() const { return switchId_; }
+  // The state as it is now. `tell` is false when the control is made: the
+  // screen reader is told of a change, not of the state a control starts in.
+  void setDrawn(bool drawn, bool tell = true) {
+    if (drawn == drawn_) return;
+    drawn_ = drawn;
+    if (!tell) return;
+    // The screen reader is told that the control moved.
+    if (auto* handler = getAccessibilityHandler())
+      handler->notifyAccessibilityEvent(juce::AccessibilityEvent::valueChanged);
+  }
+  // A piston is pressed and let go, not drawn and retired: the screen reader
+  // is told of a button, not of a toggle.
+  void setMomentary(bool momentary) { momentary_ = momentary; }
+  // What happens when the control is drawn, retired or pressed.
+  std::function<void()> onToggle;
+
+  // The handler the accessibility layer talks to. The component hands this
+  // out when the console is on screen, which needs a window; this asks for
+  // it without one.
+  std::unique_ptr<juce::AccessibilityHandler> makeAccessibilityHandler() {
+    return createAccessibilityHandler();
+  }
+
+protected:
+  std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override {
+    return std::make_unique<ToggleAccessibilityHandler>(*this, *this,
+                                                         momentary_ ? juce::AccessibilityRole::button
+                                                                    : juce::AccessibilityRole::toggleButton);
+  }
+
+private:
+  juce::String name_;
+  Id switchId_ = 0;
+  bool drawn_ = false;
+  bool momentary_ = false;
+};
 
 class ConsoleView : public juce::Component, public juce::TooltipClient, private juce::Timer {
 public:
@@ -50,6 +104,9 @@ public:
   void mouseUp(const juce::MouseEvent& e) override;
   // Position a dragged control from a mouse point inside its image.
   void setControlFromMouse(juce::Point<int> p);
+  // Keeps the drawn controls in step with the engine: a piston, a
+  // combination or MIDI moves a switch, and the screen reader is told.
+  void refreshControlStates();
   void resized() override;
 
   // Which console layout to draw. A set that ships for more than one console
@@ -165,6 +222,14 @@ private:
 
   // Lay out the text written over the current page.
   void buildTexts(const OrganModel& model, Id pageId);
+  // The invisible components over the drawn controls, so a screen reader
+  // finds them.
+  void buildControls(const OrganModel& model);
+  // The screen reader is offered the console's controls only while the
+  // console is on the screen.
+  void setControlsAccessible(bool accessible);
+  // Draw the control or retire it, as a click on it does.
+  void toggleDrawnSwitch(Id switchId);
 
   // The right-click menu on a drawstop: what it is mapped to now, and the
   // behaviours it can be taught.
@@ -191,6 +256,11 @@ private:
   MasterpieceProcessor& proc_;
   std::vector<Item> items_;      // sorted by layer: painter's order
   std::vector<TextItem> texts_;  // drawn over the artwork, under the keys
+  // The invisible components over the drawn controls, for the screen reader.
+  std::vector<std::unique_ptr<ConsoleControl>> controls_;
+  // Whether the screen reader is offered the controls: only while the console
+  // is on the screen.
+  bool controlsAccessible_ = true;
   std::vector<Id> pageIds_;
   int pageIndex_ = 0;
   int layout_ = 0;
