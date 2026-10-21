@@ -591,10 +591,17 @@ public:
       juce::TextLayout layout;
       layout.createLayout(as, text.getWidth());
       // Smaller until the lines fit the button's height, and until a single
-      // word longer than the button ("Rohrschalmei" on a narrow one) fits its
-      // width; never below 7 px.
-      for (int i = 0; i < 8 && font.getHeight() > 7.0f &&
-                      (layout.getHeight() > text.getHeight() || layout.getWidth() > text.getWidth() + 0.5f);
+      // word longer than the button ("Geigenprincipal" on a narrow one) fits
+      // its width; never below 7 px. The layout breaks such a word inside
+      // itself and stays within the width, so the word is measured alone.
+      const auto words = juce::StringArray::fromTokens(as.getText(), " ", "");
+      const auto widestWord = [&words](const juce::Font& f) {
+        float w = 0.0f;
+        for (const auto& word : words) w = std::max(w, juce::GlyphArrangement::getStringWidth(f, word));
+        return w;
+      };
+      for (int i = 0; i < 12 && font.getHeight() > 7.0f &&
+                      (layout.getHeight() > text.getHeight() || widestWord(font) > text.getWidth());
            ++i) {
         font.setHeight(std::max(7.0f, font.getHeight() * 0.88f));
         as.setFont(font);
