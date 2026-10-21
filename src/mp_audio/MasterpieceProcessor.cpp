@@ -7,6 +7,9 @@
 #include "RealtimeThread.h"
 #include "Translations.h"
 #include <algorithm>
+#include <map>
+#include <set>
+#include <tuple>
 #include <cmath>
 #include <memory>
 #include <sstream>
@@ -7542,6 +7545,144 @@ void MasterpieceProcessor::sendKey(Id keyboard, int midiNote, int velocity, bool
     if (s.targetKind == MidiTargetKind::Keyboard && s.targetId == keyboard &&
         MidiMap::keyMessage(s, midiNote, velocity, on, raw))
       outgoing_.addEvent(raw.bytes, raw.size, 0);
+}
+
+bool MasterpieceProcessor::saveTakeForSequencer(const juce::File& file, bool markers) const {
+  const auto events = recorder_.takeEvents();
+  // A track per keyboard, in the organ's keyboard order, then "Other" for
+  // notes that reach none and "Pedals" for the swell and crescendo pedals.
+  std::vector<Id> keyboards;
+  for (const auto& [id, k] : model_.keyboards) keyboards.push_back(id);
+  std::sort(keyboards.begin(), keyboards.end());
+  const size_t other = keyboards.size(), pedals = keyboards.size() + 1;
+  std::vector<juce::MidiMessageSequence> tracks(keyboards.size() + 2);
+  std::map<Id, size_t> trackOf;
+  juce::MidiMessageSequence markerSeq;  // the first track's, with the tempo
+  for (size_t i = 0; i < keyboards.size(); ++i) trackOf[keyboards[i]] = i;
+
+  // What a switch is called: the stop it works, or the switch's own name.
+  auto nameOf = [this](Id switchId) {
+    for (const auto& [stopId, stop] : model_.stops)
+      if (stop.controllingSwitchId == switchId && !stop.name.empty()) return juce::String::fromUTF8(stop.name.c_str());
+    const auto it = model_.switches.find(switchId);
+    return it != model_.switches.end() && !it->second.name.empty() ? juce::String::fromUTF8(it->second.name.c_str())
+                                                                     : juce::String(static_cast<int>(switchId));
+  };
+
+  // Times from the first event kept: 120 bpm at 960 ticks a quarter, so a
+  // second is 1920 ticks.
+  constexpr double kTicksPerSecond = 1920.0;
+  double start = -1.0, last = 0.0;
+  auto ticks = [&](double seconds) { return std::round((seconds - start) * kTicksPerSecond); };
+  // Keys down, per track, channel and note: a second note-on gets a note-off
+  // first, a note-off for a key not down is dropped, and every key still down
+  // at the end is let go there.
+  std::set<std::tuple<size_t, int, int>> down;
+
+  for (const auto& e : events) {
+    const juce::MidiMessage& m = e.message;
+    if (m.isSysEx() || m.isActiveSense() || m.isMidiClock() || m.isMidiStart() || m.isMidiStop() ||
+        m.isMidiContinue() || m.isMetaEvent())
+      continue;
+    MidiSource source;
+    int value = 0;
+    if (m.isNoteOnOrOff()) {
+      source.kind = MidiSourceKind::Note;
+      source.number = m.getNoteNumber();
+      value = m.isNoteOn() ? m.getVelocity() : 0;
+    } else if (m.isController()) {
+      source.kind = MidiSourceKind::ControlChange;
+      source.number = m.getControllerNumber();
+      value = m.getControllerValue();
+    } else if (m.isProgramChange()) {
+      source.kind = MidiSourceKind::ProgramChange;
+      source.number = m.getProgramChangeNumber();
+      value = 127;
+    }
+    source.channel = m.getChannel();
+    source.deviceId = e.deviceId;
+    // What the message did on the console: the binding a press finds.
+    const MidiAction action = source.kind == MidiSourceKind::None
+                                  ? MidiAction{}
+                                  : midiMap_.actionFor(source, value > 0 ? value : 127);
+    if (action.valid() && action.kind != MidiTargetKind::Keyboard) {
+      if (action.kind == MidiTargetKind::Switch) {
+        // A stop or a coupler: a marker with its name, on the press.
+        if (markers && value > 0) {
+          if (start < 0.0) start = e.seconds;
+          const juce::String text = nameOf(action.targetId) + (action.toggled ? juce::String() : (action.engage ? " on" : " off"));
+          auto marker = juce::MidiMessage::textMetaEvent(6, text);
+          marker.setTimeStamp(ticks(e.seconds));
+          markerSeq.addEvent(marker);
+          last = std::max(last, e.seconds);
+        }
+      } else if (action.kind == MidiTargetKind::ContinuousControl) {
+        if (start < 0.0) start = e.seconds;
+        auto cc = juce::MidiMessage::controllerEvent(1, 11, juce::jlimit(0, 127, value));
+        cc.setTimeStamp(ticks(e.seconds));
+        tracks[pedals].addEvent(cc);
+        last = std::max(last, e.seconds);
+      }
+      // Every other mapped message works the program: left out.
+      continue;
+    }
+    if (!m.isNoteOnOrOff()) continue;
+    const Id keyboard = keyboardForChannel(m.getChannel(), e.deviceId);
+    const auto at = trackOf.find(keyboard);
+    const size_t track = at != trackOf.end() ? at->second : other;
+    const auto key = std::make_tuple(track, m.getChannel(), m.getNoteNumber());
+    if (start < 0.0) start = e.seconds;
+    const double t = ticks(e.seconds);
+    if (m.isNoteOn()) {
+      if (down.count(key) != 0) {
+        auto off = juce::MidiMessage::noteOff(m.getChannel(), m.getNoteNumber());
+        off.setTimeStamp(t);
+        tracks[track].addEvent(off);
+      }
+      auto on = juce::MidiMessage::noteOn(m.getChannel(), m.getNoteNumber(), m.getVelocity());
+      on.setTimeStamp(t);
+      tracks[track].addEvent(on);
+      down.insert(key);
+    } else {
+      if (down.erase(key) == 0) continue;
+      auto off = juce::MidiMessage::noteOff(m.getChannel(), m.getNoteNumber());
+      off.setTimeStamp(t);
+      tracks[track].addEvent(off);
+    }
+    last = std::max(last, e.seconds);
+  }
+  if (start < 0.0) start = 0.0;
+  // Keys still down are let go where the take ends, so none is left with no
+  // length.
+  const double end = std::max(last, recorder_.endSeconds());
+  for (const auto& [track, channel, note] : down) {
+    auto off = juce::MidiMessage::noteOff(channel, note);
+    off.setTimeStamp(ticks(end));
+    tracks[track].addEvent(off);
+  }
+
+  juce::MidiFile out;
+  out.setTicksPerQuarterNote(960);
+  juce::MidiMessageSequence first;
+  first.addEvent(juce::MidiMessage::tempoMetaEvent(500000), 0.0);
+  first.addEvent(juce::MidiMessage::textMetaEvent(1, juce::String::fromUTF8(model_.organName.c_str())), 0.0);
+  first.addSequence(markerSeq, 0.0);
+  out.addTrack(first);
+  auto named = [](const juce::String& name, juce::MidiMessageSequence& seq) {
+    seq.addEvent(juce::MidiMessage::textMetaEvent(3, name), 0.0);
+    seq.sort();
+    seq.updateMatchedPairs();
+    return seq;
+  };
+  for (size_t i = 0; i < keyboards.size(); ++i)
+    out.addTrack(named(juce::String::fromUTF8(model_.keyboards.at(keyboards[i]).name.c_str()), tracks[i]));
+  if (tracks[other].getNumEvents() > 0) out.addTrack(named("Other", tracks[other]));
+  if (tracks[pedals].getNumEvents() > 0) out.addTrack(named("Pedals", tracks[pedals]));
+
+  file.getParentDirectory().createDirectory();
+  file.deleteFile();
+  std::unique_ptr<juce::FileOutputStream> stream(file.createOutputStream());
+  return stream != nullptr && out.writeTo(*stream, 1);
 }
 
 juce::File MasterpieceProcessor::recordingsFolder() {

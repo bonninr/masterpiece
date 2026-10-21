@@ -264,6 +264,9 @@ private:
   juce::TextButton clear_{TRANS("Clear")};
   // Learn and Clear for the console's Record and Play buttons.
   juce::TextButton midi_{TRANS("MIDI...")};
+  // The take as a file for a sequencer or a notation program.
+  juce::TextButton saveForSequencer_{TRANS("Save for a sequencer...")};
+  juce::ToggleButton markers_{TRANS("Write the registration as markers")};
   void showMidiMenu();
   juce::Label status_;
   juce::Label note_;

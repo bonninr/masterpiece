@@ -12,7 +12,9 @@
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/MidiRecorder.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -176,6 +178,142 @@ public:
   }
 };
 static RecorderMidiButtonsTest g_recorderButtons;
+
+// The take saved for a sequencer (5.2): a track per keyboard, the console's
+// own messages left out, every note-on with its note-off, the stops as
+// markers, and times from the first note exact to the tick. The plain save
+// of the same take is the recorder's own and keeps everything.
+class RecorderSequencerFileTest final : public mp::test::Test {
+public:
+  RecorderSequencerFileTest() : Test("functional.audio.recorder-sequencer-file", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(juce::File(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml"), 0, true).ok,
+             "the organ loads");
+    proc.clearChannelAssignments();
+    proc.midiMap().removeBindings([](const mp::MidiBinding&) { return true; });
+    proc.setKeyboardForChannel(1, 701, kConsole, true);
+    MP_CHECK(proc.keyboardForChannel(5, kConsole) == 0, "the channel 5 plays no keyboard");
+    mp::MidiBinding stop;
+    stop.source.kind = mp::MidiSourceKind::ControlChange;
+    stop.source.channel = 16;
+    stop.source.number = 30;
+    stop.targetKind = mp::MidiTargetKind::Switch;
+    stop.targetId = 1101;
+    stop.trigger = mp::MidiTrigger::EngageOnly;
+    proc.midiMap().setBindingsFor(mp::MidiTargetKind::Switch, 1101, {stop});
+    mp::MidiBinding piston = stop;
+    piston.source.kind = mp::MidiSourceKind::ProgramChange;
+    piston.source.number = 3;
+    piston.targetKind = mp::MidiTargetKind::RecorderPlay;
+    piston.targetId = 0;
+    piston.trigger = mp::MidiTrigger::Momentary;
+    proc.midiMap().setBindingsFor(mp::MidiTargetKind::RecorderPlay, 0, {piston});
+
+    // The take, a block at a time: 300 blocks of 256 at 48 kHz is 1.6 s,
+    // 3072 ticks.
+    auto at = [&](std::initializer_list<juce::MidiMessage> messages) {
+      for (const auto& m : messages) proc.pushMidi(kConsole, m);
+      render(proc);
+      for (int i = 1; i < 300; ++i) render(proc);
+    };
+    const juce::uint8 sysex[] = {0x7d, 0x01, 0x02};
+    proc.recorder().startRecording();
+    at({juce::MidiMessage::createSysExMessage(sysex, 3), juce::MidiMessage::midiClock()});
+    at({juce::MidiMessage::controllerEvent(16, 30, 127), juce::MidiMessage::noteOn(1, 60, 100.0f),
+        juce::MidiMessage::noteOn(5, 40, 90.0f),
+        juce::MidiMessage(0xfe), juce::MidiMessage::programChange(16, 3)});
+    at({juce::MidiMessage::noteOn(1, 60, 100.0f), juce::MidiMessage::noteOff(1, 72)});
+    at({juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(0)), juce::MidiMessage::noteOn(1, 64, 80.0f)});
+    proc.recorder().stopRecording();
+    const auto take = proc.recorder().takeEvents();
+    MP_CHECK(take.size() >= 8, "the take holds the messages: " + std::to_string(take.size()));
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-recorder-seq");
+    dir.deleteRecursively();
+    const juce::File seq = dir.getChildFile("take-seq.mid"), plain = dir.getChildFile("take.mid");
+    MP_CHECK(proc.saveTakeForSequencer(seq, true), "saved for a sequencer");
+    MP_CHECK(proc.recorder().saveToFile(plain), "and saved plain");
+    juce::MidiFile file;
+    {
+      juce::FileInputStream in(seq);
+      MP_CHECK(in.openedOk() && file.readFrom(in), "the file reads back");
+    }
+    MP_CHECK(file.getTimeFormat() == 960, "960 ticks a quarter");
+    MP_CHECK(file.getNumTracks() == 3, "the first track, Manual I and Other: " + std::to_string(file.getNumTracks()));
+    auto trackName = [&](int t) {
+      for (const auto* e : *file.getTrack(t))
+        if (e->message.isTrackNameEvent()) return e->message.getTextFromTextMetaEvent();
+      return juce::String();
+    };
+    MP_CHECK(trackName(1) == "Manual I" && trackName(2) == "Other",
+             "the tracks are named: " + trackName(1).toStdString() + ", " + trackName(2).toStdString());
+
+    int dropped = 0, ons = 0, offs = 0, unmatched = 0, tempo = 0;
+    juce::StringArray markers;
+    double first = 1e9;
+    std::vector<std::pair<int, double>> manual;  // note, tick of each note-on on Manual I
+    std::vector<std::pair<int, double>> manualOff;
+    for (int t = 0; t < file.getNumTracks(); ++t)
+      for (const auto* e : *file.getTrack(t)) {
+        const auto& m = e->message;
+        if (m.isSysEx() || m.isMidiClock() || m.isActiveSense() || m.isProgramChange() || m.isController()) ++dropped;
+        if (m.isTempoMetaEvent()) ++tempo;
+        if (m.isTextMetaEvent() && m.getMetaEventType() == 6) markers.add(m.getTextFromTextMetaEvent());
+        if (m.isNoteOn()) {
+          ++ons;
+          if (e->noteOffObject == nullptr) ++unmatched;
+          if (t == 1) manual.emplace_back(m.getNoteNumber(), m.getTimeStamp());
+        }
+        if (m.isNoteOff()) {
+          ++offs;
+          if (t == 1) manualOff.emplace_back(m.getNoteNumber(), m.getTimeStamp());
+        }
+        if (!m.isMetaEvent()) first = std::min(first, m.getTimeStamp());
+      }
+    MP_CHECK(dropped == 0, "no console messages left: " + std::to_string(dropped));
+    MP_CHECK(tempo == 1, "one tempo");
+    MP_CHECK(ons == 4 && offs == 4 && unmatched == 0,
+             "every note-on has its note-off: " + std::to_string(ons) + "/" + std::to_string(offs) + "/" +
+                 std::to_string(unmatched));
+    MP_CHECK(markers.size() == 1 && markers[0].startsWith("Principal 8"),
+             "the stop is a marker with its name: " + markers.joinIntoString("|").toStdString());
+    MP_CHECK(first == 0.0, "the take starts at 0: " + std::to_string(first));
+    // Manual I: 60 at 0, 60 again at 3072 (the first let go there), 64 at
+    // 6144, held to the end; the stray note-off for 72 is gone.
+    std::sort(manual.begin(), manual.end(), [](auto a, auto b) { return a.second < b.second; });
+    MP_CHECK(manual.size() == 3 && manual[0] == std::make_pair(60, 0.0) &&
+                 manual[1] == std::make_pair(60, 3072.0) && manual[2] == std::make_pair(64, 6144.0),
+             "the notes on Manual I, exact to the tick");
+    bool stray = false;
+    for (const auto& [note, tick] : manualOff) stray = stray || note == 72;
+    MP_CHECK(!stray && manualOff.size() == 3, "the note-off for a key never down is left out");
+    bool heldToEnd = false;
+    for (const auto& [note, tick] : manualOff) heldToEnd = heldToEnd || (note == 64 && tick == 9216.0);
+    MP_CHECK(heldToEnd, "a key still down is let go where the take ends");
+
+    // The plain save, the recorder's own: the notes and the stop's controller
+    // as they were played, the ones the other file pairs or turns into a marker.
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(back.loadFromFile(plain) && back.eventCount() >= 7,
+             "the plain save keeps the take as played: " + std::to_string(back.eventCount()) + " of " +
+                 std::to_string(proc.recorder().eventCount()));
+    MP_CHECK(proc.saveTakeForSequencer(seq, false), "saved without markers");
+    {
+      juce::FileInputStream in(seq);
+      juce::MidiFile again;
+      int marks = 0;
+      if (in.openedOk() && again.readFrom(in))
+        for (const auto* e : *again.getTrack(0))
+          if (e->message.isTextMetaEvent() && e->message.getMetaEventType() == 6) ++marks;
+      MP_CHECK(marks == 0, "and then it has none");
+    }
+    dir.deleteRecursively();
+  }
+};
+static RecorderSequencerFileTest g_recorderSequencer;
 
 }  // namespace
 

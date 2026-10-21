@@ -339,6 +339,11 @@ public:
   static juce::File recordingsFolder();
   // The last take a console button saved, for the Recorder window.
   juce::File lastButtonSave() const { return lastButtonSave_; }
+  // The take as a file for other programs, a sequencer or a notation
+  // program: one track per keyboard, the console's own messages left out,
+  // the notes in pairs, and the registration as markers when `markers`.
+  // The plain save is the recorder's own and stays as it is.
+  bool saveTakeForSequencer(const juce::File& file, bool markers) const;
 
   // Output level, for a meter. The audio thread does the decay itself and
   // publishes a single value per channel: a reader that polled more slowly

@@ -424,6 +424,8 @@ it records. Its close button hides it.
 | **Save MIDI...** | Writes the take to a `.mid` file; asks before overwriting. Disabled with an empty take. |
 | **Load MIDI...** | Reads a `.mid` or `.midi` file and replaces the take. The file's tempo events time the notes; meta events (tempo, names) are not kept in the take. |
 | **Clear** | Discards the take. |
+| **Save for a sequencer...** | Writes the take as a `.mid` file for a sequencer or a notation program. See [A file for other programs](#a-file-for-other-programs). |
+| **Write the registration as markers** | With **Save for a sequencer...**: each stop or coupler change as a marker named after it. On by default. |
 | **MIDI...** | **Record** and **Play**, each with **Learn** and **Clear**: a button on the console for each. |
 
 The status reads **Nothing recorded**, **Recording - 12.3 s, 450 events**,
@@ -446,6 +448,26 @@ Each event is stamped at 960 ticks per second of the take, and the file opens
 with a tempo event of 60 bpm, one quarter note per second. A reader that follows
 the tempo event, Masterpiece's own **Load MIDI...** included, reads the saved
 take at its recorded length.
+
+### A file for other programs
+
+**Save for a sequencer...** writes the same take for other programs:
+
+| Part | In the file |
+|---|---|
+| Format | MIDI file type 1, 960 ticks per quarter note, 120 bpm |
+| First track | The tempo, the organ's name and the markers |
+| A track per keyboard | Named after the keyboard, in the organ's order; the notes played on it |
+| **Other** | Notes that reach no keyboard; present when there are any |
+| **Pedals** | The swell and crescendo pedals as controller 11; present when there are any |
+| Markers | A stop or coupler change, named after the stop, with **on** or **off** |
+| Left out | System exclusive, clock, active sensing, start and stop, the pistons and every other console button |
+| Time | From the first event kept, exact to the tick |
+
+Every note-on has its note-off. A key pressed twice is let go before the
+second press, a note-off for a key not down is left out, and a key still down at
+the end of the take is let go there. **Save MIDI...** stays the recorder's own
+file and keeps everything Masterpiece plays back.
 
 The take is kept in memory until it is saved or replaced. The folder of the last
 file dialog is remembered for MIDI files.
