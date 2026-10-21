@@ -185,11 +185,14 @@ void StopJamb::rebuild() {
       e.switchId = pc.switchId;
       e.divisionId = 0;  // a group of its own
       e.playable = true;
-      e.button = std::make_unique<juce::TextButton>(
-          juce::String(it != model.switches.end() ? it->second.name : std::string()));
+      e.name = juce::String(it != model.switches.end() ? it->second.name : std::string());
+      e.division = TRANS("Program couplers");
+      e.button = std::make_unique<StopButton>(e.name);
       e.button->setClickingTogglesState(true);
       e.button->setToggleState(proc_.shownSwitchEngaged(pc.switchId),
                                juce::dontSendNotification);
+      // Read by a screen reader as the stops are: the coupler and its section.
+      e.button->setStopName(e.name, e.division);
       e.button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2f3a));
       e.button->setColour(juce::TextButton::textColourOffId, juce::Colour(0xffb9c2d0));
       e.button->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffeee3c6));
@@ -198,6 +201,9 @@ void StopJamb::rebuild() {
       auto* raw = e.button.get();
       e.button->onClick = [this, id, raw] {
         proc_.setSwitchEngaged(id, raw->getToggleState());
+      };
+      e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
+        moveFocus(from, key);
       };
       addAndMakeVisible(*e.button);
       entries_.push_back(std::move(e));
