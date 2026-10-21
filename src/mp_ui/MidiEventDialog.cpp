@@ -858,8 +858,10 @@ public:
       : tabs_(juce::TabbedButtonBar::TabsAtTop) {
     addAndMakeVisible(tabs_);
     tabs_.addTab(TRANS("Receive"), kBg, new ReceivePanel(p, kind, id), true);
-    // The program's own buttons light nothing on a console.
-    if (kind == MidiTargetKind::Switch || !pressable(kind))
+    // The program's own buttons light nothing on a console, except the
+    // recorder's, whose lamps show it recording and playing.
+    if (kind == MidiTargetKind::Switch || kind == MidiTargetKind::RecorderRecord ||
+        kind == MidiTargetKind::RecorderPlay || !pressable(kind))
       tabs_.addTab(TRANS("Send"), kBg, new SendPanel(p, kind, id), true);
     tabs_.addTab(TRANS("Shortcut"), kBg, new ShortcutPanel(p, kind, id), true);
   }

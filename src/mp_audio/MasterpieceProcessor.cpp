@@ -810,16 +810,40 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   split_.process(midiScratch_, midiOffsets_, blockTimeMs_);
   // Console input reaches the recorder here: it is not in the host's buffer,
   // which is all the recorder saw.
+  // The console's own recorder buttons are not part of the performance: a
+  // take that held its Record press would press it again when played.
+  const auto recorderButton = [this](int deviceId, const juce::MidiMessage& msg) {
+    MidiSource source;
+    if (msg.isNoteOn()) {
+      source.kind = MidiSourceKind::Note;
+      source.number = msg.getNoteNumber();
+    } else if (msg.isController()) {
+      source.kind = MidiSourceKind::ControlChange;
+      source.number = msg.getControllerNumber();
+    } else if (msg.isProgramChange()) {
+      source.kind = MidiSourceKind::ProgramChange;
+      source.number = msg.getProgramChangeNumber();
+    } else {
+      return false;
+    }
+    source.channel = msg.getChannel();
+    source.deviceId = deviceId;
+    const auto kind = midiMap_.actionFor(source, 127).kind;
+    return kind == MidiTargetKind::RecorderRecord || kind == MidiTargetKind::RecorderPlay;
+  };
   if (recorder_.isRecording())
     for (const auto& [deviceId, msg] : midiScratch_)
-      if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg, deviceId);
+      if (deviceId != MidiDeviceMap::kAnyDevice && !recorderButton(deviceId, msg))
+        recorder_.captureLive(msg, deviceId);
   // A take being played back: each event with the console it came from, so it
   // is routed the way it was when it was played. They go in after the split
   // keyboard, which has already had its say over what was recorded.
+  const size_t takeFrom = midiScratch_.size();
   for (const auto& e : recordedPlayback_) {
     midiScratch_.emplace_back(e.deviceId, e.message);
     midiOffsets_.push_back(e.offset);
   }
+  const size_t takeTo = midiScratch_.size();
   // And Panic's releases last of all, so a note a take puts down in this
   // block is released with the rest.
   for (const auto& m : panicNotes_) {
@@ -1062,6 +1086,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::ScorePageForward:
         case MidiTargetKind::ScorePageBack:
           turnScorePage(action.kind == MidiTargetKind::ScorePageForward);
+          continue;
+        // Raised here, carried out on the message thread. Never from a take
+        // being played: a button's press in a take is not the player's.
+        case MidiTargetKind::RecorderRecord:
+          if (m < takeFrom || m >= takeTo) pendingRecorder_.store(1, std::memory_order_release);
+          continue;
+        case MidiTargetKind::RecorderPlay:
+          if (m < takeFrom || m >= takeTo) pendingRecorder_.store(2, std::memory_order_release);
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
@@ -7512,6 +7544,45 @@ void MasterpieceProcessor::sendKey(Id keyboard, int midiNote, int velocity, bool
       outgoing_.addEvent(raw.bytes, raw.size, 0);
 }
 
+juce::File MasterpieceProcessor::recordingsFolder() {
+  return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+      .getChildFile("Masterpiece")
+      .getChildFile("Recordings");
+}
+
+juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::File& folder) {
+  if (!record) {
+    if (recorder_.isPlaying()) recorder_.stopPlayback();
+    else if (!recorder_.isRecording() && !recorder_.empty()) recorder_.startPlayback();
+    return {};
+  }
+  if (recorder_.isRecording()) {
+    recorder_.stopRecording();
+    return {};
+  }
+  if (recorder_.isPlaying()) recorder_.stopPlayback();
+  juce::File saved;
+  if (recorder_.hasUnsavedTake()) {
+    // Named after the organ and the time, with what a file name cannot hold
+    // taken out of the organ's name.
+    const juce::String organ = juce::File::createLegalFileName(
+        model_.organName.empty() ? juce::String("Masterpiece") : juce::String::fromUTF8(model_.organName.c_str()));
+    folder.createDirectory();
+    saved = folder.getChildFile(organ + " " + juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S") + ".mid")
+                .getNonexistentSibling();
+    if (!recorder_.saveToFile(saved)) {
+      // Kept in memory and not replaced: a take is never thrown away.
+      juce::Logger::writeToLog("recorder: the take could not be saved in " + folder.getFullPathName() +
+                               "; it is kept and no new one begins");
+      return {};
+    }
+    lastButtonSave_ = saved;
+    juce::Logger::writeToLog("recorder: the take was saved as " + saved.getFullPathName());
+  }
+  recorder_.startRecording();
+  return saved;
+}
+
 void MasterpieceProcessor::emitSends() {
   const auto& sends = midiMap_.sends();
   if (midiOut_ == nullptr || sends.empty()) return;
@@ -7524,13 +7595,18 @@ void MasterpieceProcessor::emitSends() {
     int now;
     if (s.targetKind == MidiTargetKind::Switch)
       now = switches_.engaged(s.targetId) ? 1 : 0;
+    // The recorder's lamps: lit while it records, and while it plays.
+    else if (s.targetKind == MidiTargetKind::RecorderRecord)
+      now = recorder_.isRecording() ? 1 : 0;
+    else if (s.targetKind == MidiTargetKind::RecorderPlay)
+      now = recorder_.isPlaying() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::ContinuousControl)
       now = controls_.value(s.targetId);
     else
       continue;
     if (now == sentValues_[i]) continue;
     sentValues_[i] = now;
-    const bool made = s.targetKind == MidiTargetKind::Switch
+    const bool made = s.targetKind != MidiTargetKind::ContinuousControl
                           ? MidiMap::switchMessage(s, now != 0, raw)
                           : MidiMap::controlMessage(s, now, raw);
     if (made) outgoing_.addEvent(raw.bytes, raw.size, 0);

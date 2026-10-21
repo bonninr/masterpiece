@@ -2436,6 +2436,13 @@ void MasterpieceEditor::timerCallback() {
       break;
   }
 
+  // A recorder button on the console, carried out here.
+  if (const int asked = proc_.takeRecorderRequest(); asked != 0) {
+    const auto saved = proc_.pressRecorderButton(asked == 1, MasterpieceProcessor::recordingsFolder());
+    if (saved != juce::File())
+      top_.setStatus(TRANS("The take was saved as %1").replace("%1", saved.getFileName()));
+  }
+
   // A voicing EQ preset asked for from MIDI, set here where its filters are
   // worked out, and named in the status line.
   if (const int asked = proc_.takeVoicingEqPresetRequest(); asked != 0) {

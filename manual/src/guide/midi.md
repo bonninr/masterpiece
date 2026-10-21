@@ -207,6 +207,7 @@ The program's own buttons have no object on the console to right-click. Use the 
 | **Temperament** with **Learn** | The temperament chosen in the box beside it, directly |
 | **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
 | **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI output as the message chosen beside them (see below) |
+| **Learn record**, **Learn play** | The recorder's Record and Play, with a lamp each (see [Recorder](playing.md#recorder)) |
 
 Each of these learns a button that fires on the press and ignores the release. A console may have several buttons for one action (two + and two - thumb pistons): each further learn adds a button. The sequencer's first, last, ten-back and ten-forward moves, the generals and the setter are mapped from the Combinations window.
 

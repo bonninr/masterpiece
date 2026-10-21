@@ -130,6 +130,7 @@ The buttons below start a learn: click the button, then press or move the contro
 | | **Learn panel**, **Learn keyboard**, **Learn combinations** | Show the stop-list panel, the on-screen keyboard and the combinations window. |
 | | **Learn transpose -**, **Learn transpose +** | Transpose down and up. |
 | | **Learn temperament -**, **Learn temperament +** | Previous and next temperament. |
+| | **Learn record**, **Learn play** | The recorder's Record and Play. See [Recorder](playing.md#recorder). |
 | **Score app** | **Learn score page -**, **Learn score page +**, message, channel, two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen beside it on the MIDI output, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. |
 | | **Save mapping**, **Clear mapping** | **Save mapping** writes the mapping to disk. **Clear mapping** removes every binding from the mapping in use. The empty mapping reaches disk with **Save mapping**, or with the next learned binding or channel change. |
 | Status | **N binding(s)** | The number of bindings. While a learn waits it adds **LEARNING: move a control now**. |

@@ -82,6 +82,101 @@ public:
 };
 static RecorderPlaysOnItsOwnKeyboardTest g_recorderKeyboard;
 
+// The recorder's buttons on a console (5.1): a learned controller raises a
+// request on the audio thread and nothing more; the message thread carries it
+// out. A second Record with a take that was never saved keeps it in the
+// folder first, and a new take begins. Play plays and stops.
+class RecorderMidiButtonsTest final : public mp::test::Test {
+public:
+  RecorderMidiButtonsTest() : Test("functional.audio.recorder-midi-buttons", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::MidiMap::isConsoleTarget(mp::MidiTargetKind::RecorderRecord) &&
+                 mp::MidiMap::isConsoleTarget(mp::MidiTargetKind::RecorderPlay),
+             "kept for every organ");
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    proc.midiMap().removeBindings([](const mp::MidiBinding&) { return true; });
+    auto button = [&](int cc, mp::MidiTargetKind kind) {
+      mp::MidiBinding b;
+      b.source.kind = mp::MidiSourceKind::ControlChange;
+      b.source.channel = 16;
+      b.source.number = cc;
+      b.targetKind = kind;
+      b.trigger = mp::MidiTrigger::Momentary;
+      b.latching = false;
+      proc.midiMap().setBindingsFor(kind, 0, {b});
+    };
+    button(20, mp::MidiTargetKind::RecorderRecord);
+    button(21, mp::MidiTargetKind::RecorderPlay);
+    const std::string text = proc.midiMap().toText();
+    MP_CHECK(text.find("recorder-record") != std::string::npos && text.find("recorder-play") != std::string::npos,
+             "the map file names them recorder-record and recorder-play");
+    mp::MidiMap reread;
+    MP_CHECK(reread.fromText(text) && reread.bindingsFor(mp::MidiTargetKind::RecorderRecord, 0).size() == 1,
+             "and reads them back");
+    auto press = [&](int cc) {
+      proc.pushMidi(kConsole, juce::MidiMessage::controllerEvent(16, cc, 127));
+      render(proc);
+      proc.pushMidi(kConsole, juce::MidiMessage::controllerEvent(16, cc, 0));
+      render(proc);
+    };
+    const juce::File folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-recorder-buttons");
+    folder.deleteRecursively();
+
+    press(20);
+    MP_CHECK(!proc.recorder().isRecording(), "the audio thread only raises the request");
+    const int asked = proc.takeRecorderRequest();
+    MP_CHECK(asked == 1, "Record is asked for once, on the press");
+    MP_CHECK(proc.takeRecorderRequest() == 0, "and taken");
+    proc.pressRecorderButton(asked == 1, folder);
+    MP_CHECK(proc.recorder().isRecording(), "Record: recording");
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOn(1, 48, 100.0f));
+    render(proc);
+    for (int i = 0; i < 200; ++i) render(proc);  // a take of about a second
+    proc.pushMidi(kConsole, juce::MidiMessage::noteOff(1, 48));
+    render(proc);
+    press(20);
+    proc.pressRecorderButton(proc.takeRecorderRequest() == 1, folder);
+    MP_CHECK(!proc.recorder().isRecording() && proc.recorder().hasUnsavedTake(),
+             "Record again: stopped, with a take never saved");
+
+    press(20);
+    const juce::File kept = proc.pressRecorderButton(proc.takeRecorderRequest() == 1, folder);
+    MP_CHECK(kept.existsAsFile() && kept.isAChildOf(folder) && kept.hasFileExtension(".mid"),
+             "a third press keeps the take in the folder: " + kept.getFullPathName().toStdString());
+    MP_CHECK(proc.recorder().isRecording(), "and a new take begins");
+    mp::MidiRecorder back;
+    back.prepare(48000.0);
+    MP_CHECK(back.loadFromFile(kept) && back.eventCount() >= 1, "the kept file holds the note");
+    {
+      juce::FileInputStream in(kept);
+      juce::MidiFile file;
+      int buttons = 0;
+      if (in.openedOk() && file.readFrom(in))
+        for (int t = 0; t < file.getNumTracks(); ++t)
+          for (const auto* e : *file.getTrack(t))
+            if (e->message.isControllerOfType(20)) ++buttons;
+      MP_CHECK(buttons == 0, "and none of the Record button's presses: " + std::to_string(buttons));
+    }
+    proc.pressRecorderButton(true, folder);  // stop the new, empty take
+
+    // Play, and Play again.
+    proc.recorder().clear();
+    proc.recorder().loadFromFile(kept);
+    press(21);
+    proc.pressRecorderButton(proc.takeRecorderRequest() == 1, folder);
+    MP_CHECK(proc.recorder().isPlaying(), "Play: playing");
+    press(21);
+    proc.pressRecorderButton(proc.takeRecorderRequest() == 1, folder);
+    MP_CHECK(!proc.recorder().isPlaying(), "Play again: stopped");
+    folder.deleteRecursively();
+  }
+};
+static RecorderMidiButtonsTest g_recorderButtons;
+
 }  // namespace
 
 #endif  // MP_TEST_HAS_AUDIO

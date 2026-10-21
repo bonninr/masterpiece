@@ -231,6 +231,9 @@ private:
   juce::Label beat_;
 };
 
+// A mapping's message, such as "Note 36 ch 2", for a MIDI menu's header.
+juce::String describeBinding(const MidiBinding& b);
+
 // Session: MIDI recorder and player.
 class RecorderPanel : public juce::Component, private juce::Timer {
 public:
@@ -259,6 +262,9 @@ private:
   juce::TextButton save_{TRANS("Save MIDI...")};
   juce::TextButton load_{TRANS("Load MIDI...")};
   juce::TextButton clear_{TRANS("Clear")};
+  // Learn and Clear for the console's Record and Play buttons.
+  juce::TextButton midi_{TRANS("MIDI...")};
+  void showMidiMenu();
   juce::Label status_;
   juce::Label note_;
   std::unique_ptr<juce::FileChooser> chooser_;
@@ -367,6 +373,8 @@ private:
   juce::ComboBox scoreKind_, scoreChannel_;
   juce::TextEditor scoreForward_, scoreBack_;
   void pushScorePage();
+  juce::TextButton learnRecord_{TRANS("Learn record")};
+  juce::TextButton learnPlay_{TRANS("Learn play")};
   juce::Label mapStatus_;
   juce::Label note_;
 };

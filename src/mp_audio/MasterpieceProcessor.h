@@ -324,6 +324,21 @@ public:
     return static_cast<MidiTargetKind>(
         pendingConsoleAction_.exchange(0, std::memory_order_acq_rel));
   }
+  // A recorder button pressed on the console: 1 Record, 2 Play, 0 none.
+  // Reading takes it. The audio thread only raises it; the recorder is
+  // started and stopped on the message thread (pressRecorderButton).
+  int takeRecorderRequest() { return pendingRecorder_.exchange(0, std::memory_order_acq_rel); }
+  // What a console's recorder button does, on the message thread. Record
+  // stops a take being made; otherwise a take that was never saved is saved
+  // into `folder` first -- a button cannot answer the question the window
+  // asks -- and a new take begins. Play plays the take, or stops it. Returns
+  // the file the take was saved to, or an empty file.
+  juce::File pressRecorderButton(bool record, const juce::File& folder);
+  // Where a console's Record button keeps the takes it saves:
+  // Documents/Masterpiece/Recordings.
+  static juce::File recordingsFolder();
+  // The last take a console button saved, for the Recorder window.
+  juce::File lastButtonSave() const { return lastButtonSave_; }
 
   // Output level, for a meter. The audio thread does the decay itself and
   // publishes a single value per channel: a reader that polled more slowly
@@ -2099,6 +2114,8 @@ private:
   std::atomic<int> powerNotArmedSeconds_{0};
   void powerButton(MidiTargetKind kind, bool pressed, bool hasRelease);
   void pumpReadyLamp(int numFrames);
+  std::atomic<int> pendingRecorder_{0};
+  juce::File lastButtonSave_;
   std::atomic<float> outPeak_[2]{{0.0f}, {0.0f}};
   float peakHeld_[2] = {0.0f, 0.0f};
   // Per-block decay, worked out once in prepareToPlay. A host that varies its
