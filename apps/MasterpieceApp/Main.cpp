@@ -391,6 +391,9 @@ public:
       }
 #endif
 
+    // The top bar's labels are translated as the window is made, so the
+    // language comes first.
+    proc_->applyChosenLanguage();
     mp::ui::installTouchLook();
     mp::ui::restoreLinkedDocuments();
     win_ = std::make_unique<DocWindow>(*proc_, *devices_);
