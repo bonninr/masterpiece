@@ -312,6 +312,146 @@ public:
 };
 static RankEqOrganTest g_organ;
 
+// Pan and width (5.5): on the groups, then on the organ.
+class RankPanWidthTest final : public mp::test::Test {
+public:
+  RankPanWidthTest() : Test("functional.rank-eq.pan-width", Category::Functional) {}
+
+  // A stereo signal, the right a different tone from the left, through one
+  // rank's group with the given setting; the two channels after it.
+  static std::pair<std::vector<float>, std::vector<float>> through(mp::ShelfEq e) {
+    mp::RankEq f;
+    f.configure({-1}, 0, 1, 48000.0);
+    f.setParams({e}, {});
+    const int bus = f.busFor(0, 0);
+    std::vector<float> l(4800), r(4800);
+    for (size_t i = 0; i < l.size(); ++i) {
+      l[i] = static_cast<float>(0.3 * std::sin(2.0 * 3.141592653589793 * 440.0 * i / 48000.0));
+      r[i] = static_cast<float>(0.2 * std::sin(2.0 * 3.141592653589793 * 660.0 * i / 48000.0));
+    }
+    float* planes[2] = {l.data(), r.data()};
+    if (bus > 0) f.process(bus - 1, 0, planes, 2, static_cast<int>(l.size()));
+    return {l, r};
+  }
+  static double rms(const std::vector<float>& x) {
+    double s = 0.0;
+    for (float v : x) s += static_cast<double>(v) * v;
+    return std::sqrt(s / static_cast<double>(x.size()));
+  }
+
+  void run() override {
+    const auto plain = through({});
+    MP_CHECK(through({0.0f, 0.0f, 0.0f, 1.0f}) == plain, "pan in the middle and width 100%: the samples as they were");
+    {
+      mp::RankEq f;
+      f.configure({-1}, 0, 1, 48000.0);
+      f.setParams({mp::ShelfEq{0.0f, 0.0f, 0.0f, 1.0f}}, {});
+      MP_CHECK(!f.wanted() && f.busFor(0, 0) == 0, "and no group is made for them");
+    }
+    const auto left = through({0.0f, 0.0f, -1.0f, 1.0f});
+    MP_CHECK(left.first == plain.first, "pan full left: the left channel as it was");
+    MP_CHECK(20.0 * std::log10(rms(left.second) / rms(plain.second) + 1e-12) < -60.0, "and the right below -60 dB");
+    const auto mono = through({0.0f, 0.0f, 0.0f, 0.0f});
+    MP_CHECK(mono.first == mono.second, "width 0: the two channels the same, sample for sample");
+    const auto wide = through({0.0f, 0.0f, 0.0f, 2.0f});
+    MP_CHECK(rms(wide.first) > rms(plain.first), "width 200%: the side doubled");
+
+    // A rank's and its division's: pans add and are held, widths multiply.
+    {
+      mp::RankEq f;
+      f.configure({0}, 1, 1, 48000.0);
+      f.setParams({mp::ShelfEq{0.0f, 0.0f, -0.6f, 0.5f}}, {mp::ShelfEq{0.0f, 0.0f, -0.6f, 0.0f}});
+      std::vector<float> l(64, 0.5f), r(64, -0.25f);
+      float* planes[2] = {l.data(), r.data()};
+      const int bus = f.busFor(0, 0);
+      f.process(bus - 1, 0, planes, 2, 64);
+      MP_CHECK(l == std::vector<float>(64, 0.125f) && r == std::vector<float>(64, 0.0f),
+               "pans add and stop at full left, widths multiply to mono");
+    }
+
+    // On the organ: rank A panned full left, division S full right.
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-pan-width");
+    const juce::File odf = writeOrgan(root);
+    auto channels = [](const Rig& r, int blocks) {
+      const size_t perBlock = 512, have = r.heard.size() / perBlock;
+      const size_t from = have > static_cast<size_t>(blocks) ? have - static_cast<size_t>(blocks) : 0;
+      double ls = 0.0, rs = 0.0;
+      for (size_t b = from; b < have; ++b)
+        for (size_t i = 0; i < 256; ++i) {
+          ls += static_cast<double>(r.heard[b * perBlock + i]) * r.heard[b * perBlock + i];
+          rs += static_cast<double>(r.heard[b * perBlock + 256 + i]) * r.heard[b * perBlock + 256 + i];
+        }
+      return std::pair<double, double>{std::sqrt(ls), std::sqrt(rs)};
+    };
+    {
+      Rig plain(odf), set(odf);
+      mp::PipeVoicing pv;
+      pv.balance = 0.0f;
+      pv.width = 1.0f;
+      set.proc.voicing().live().setRank(201, pv);
+      set.proc.applyVoicingEq();
+      plain.play(1, 30, 30);
+      set.play(1, 30, 30);
+      MP_CHECK(plain.heard == set.heard, "a rank set to the middle and 100%: bit-identical to one never set");
+    }
+    {
+      Rig r(odf);
+      mp::PipeVoicing pv;
+      pv.balance = -1.0f;
+      r.proc.voicing().live().setRank(201, pv);
+      r.proc.applyVoicingEq();
+      r.play(1, 30, 0);
+      const auto [l, rr] = channels(r, 20);
+      MP_CHECK(l > 0.0 && 20.0 * std::log10(rr / l + 1e-12) < -60.0,
+               "rank A panned full left: its right channel below -60 dB");
+    }
+    {
+      Rig r(odf);
+      mp::PipeVoicing pv;
+      pv.balance = 1.0f;
+      r.proc.voicing().live().setDivision(802, pv);
+      r.proc.applyVoicingEq();
+      r.play(2, 30, 0);
+      const auto [l, rr] = channels(r, 20);
+      MP_CHECK(rr > 0.0 && 20.0 * std::log10(l / rr + 1e-12) < -60.0,
+               "division S panned full right reaches its rank B: the left below -60 dB");
+    }
+    {
+      Rig r(odf);
+      mp::PipeVoicing pv;
+      pv.balance = -0.25f;
+      pv.width = 0.5f;
+      r.proc.voicing().live().setRank(202, pv);
+      mp::PipeVoicing d;
+      d.balance = 0.5f;
+      d.width = 1.5f;
+      r.proc.voicing().live().setDivision(801, d);
+      MP_CHECK(r.proc.saveSettings(), "saved");
+      Rig back(odf);
+      const auto rank = back.proc.voicing().live().rank(202);
+      const auto div = back.proc.voicing().live().division(801);
+      MP_CHECK(rank.balance == -0.25f && rank.width == 0.5f, "a rank's pan and width read back");
+      MP_CHECK(div.balance == 0.5f && div.width == 1.5f, "a division's read back");
+#if MP_ENABLE_API
+      mp::api::ControlModel model(back.proc);
+      mp::api::Error e;
+      int v = 0;
+      MP_CHECK(model.get(mp::api::Type::Pan, 1, v, e) && v == -25, "rank B's pan through the API");
+      MP_CHECK(model.get(mp::api::Type::Width, 2, v, e) && v == 150, "division G's width");
+      v = 100;
+      MP_CHECK(model.set(mp::api::Type::Pan, 0, v) == mp::api::Error::None &&
+                   back.proc.voicing().live().rank(201).balance == 1.0f,
+               "set through the API");
+      v = 250;
+      MP_CHECK(model.set(mp::api::Type::Width, 0, v) == mp::api::Error::BadValue, "within 200%");
+#endif
+      back.proc.settingsFileFor(odf).deleteFile();
+    }
+    root.deleteRecursively();
+  }
+};
+static RankPanWidthTest g_panWidth;
+
 }  // namespace
 
 #endif  // MP_TEST_HAS_AUDIO

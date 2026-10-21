@@ -446,6 +446,12 @@ private:
   juce::ComboBox division_;
   juce::Slider divBright_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider divBass_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  // Where the rank and the division stand: pan and stereo width, heard at once.
+  juce::Label panLabel_, widthLabel_, divPanLabel_, divWidthLabel_;
+  juce::Slider pan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider width_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider divPan_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
+  juce::Slider divWidth_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   std::vector<Id> divisionIds_;
   void loadDivision();
   void pushDivision();

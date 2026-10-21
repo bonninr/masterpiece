@@ -2331,6 +2331,30 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(divBassLabel_);
   styleLabel(divBassLabel_, TRANS("Bass"));
   divBright_.onValueChange = divBass_.onValueChange = [this] { pushDivision(); };
+  // Pan from full left to full right, width from mono to twice as wide.
+  for (auto* s : {&pan_, &divPan_}) {
+    addAndMakeVisible(*s);
+    s->setRange(-100.0, 100.0, 1.0);
+    s->setValue(0.0, juce::dontSendNotification);
+  }
+  for (auto* s : {&width_, &divWidth_}) {
+    addAndMakeVisible(*s);
+    s->setRange(0.0, 200.0, 1.0);
+    s->setTextValueSuffix(" %");
+    s->setValue(100.0, juce::dontSendNotification);
+  }
+  addAndMakeVisible(panLabel_);
+  styleLabel(panLabel_, TRANS("Pan"));
+  addAndMakeVisible(widthLabel_);
+  styleLabel(widthLabel_, TRANS("Width"));
+  addAndMakeVisible(divPanLabel_);
+  styleLabel(divPanLabel_, TRANS("Pan"));
+  addAndMakeVisible(divWidthLabel_);
+  styleLabel(divWidthLabel_, TRANS("Width"));
+  pan_.setTooltip(TRANS("Where the rank stands, from full left to full right: heard at once"));
+  width_.setTooltip(TRANS("The rank's stereo width: 0% mono, 100% as recorded, 200% twice as wide"));
+  pan_.onValueChange = width_.onValueChange = [this] { pushCurrent(); };
+  divPan_.onValueChange = divWidth_.onValueChange = [this] { pushDivision(); };
 
   addAndMakeVisible(abSwap_);
   abSwap_.onClick = [this] {
@@ -2347,7 +2371,8 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   addAndMakeVisible(resetOne_);
   resetOne_.onClick = [this] {
-    for (auto* s : {&gain_, &tune_, &bright_, &bass_}) s->setValue(0.0, juce::dontSendNotification);
+    for (auto* s : {&gain_, &tune_, &bright_, &bass_, &pan_}) s->setValue(0.0, juce::dontSendNotification);
+    width_.setValue(100.0, juce::dontSendNotification);
     pushCurrent();
   };
   addAndMakeVisible(resetAll_);
@@ -2413,10 +2438,12 @@ void VoicingPanel::refresh() {
 void VoicingPanel::loadDivision() {
   const int idx = division_.getSelectedId() - 1;
   const bool any = idx >= 0 && idx < static_cast<int>(divisionIds_.size());
-  for (auto* s : {&divBright_, &divBass_}) s->setEnabled(any);
+  for (auto* s : {&divBright_, &divBass_, &divPan_, &divWidth_}) s->setEnabled(any);
   const PipeVoicing pv = any ? proc_.voicing().live().division(divisionIds_[static_cast<size_t>(idx)]) : PipeVoicing{};
   divBright_.setValue(pv.brightnessDb, juce::dontSendNotification);
   divBass_.setValue(pv.bassDb, juce::dontSendNotification);
+  divPan_.setValue(pv.balance * 100.0, juce::dontSendNotification);
+  divWidth_.setValue(pv.width * 100.0, juce::dontSendNotification);
 }
 
 void VoicingPanel::pushDivision() {
@@ -2426,6 +2453,8 @@ void VoicingPanel::pushDivision() {
   PipeVoicing pv = proc_.voicing().live().division(id);
   pv.brightnessDb = static_cast<float>(divBright_.getValue());
   pv.bassDb = static_cast<float>(divBass_.getValue());
+  pv.balance = static_cast<float>(divPan_.getValue() / 100.0);
+  pv.width = static_cast<float>(divWidth_.getValue() / 100.0);
   proc_.voicing().live().setDivision(id, pv);
   proc_.applyVoicingEq();
   updateStatus();
@@ -2463,7 +2492,10 @@ void VoicingPanel::loadCurrentIntoSliders() {
   const bool rankScope = scope_.getSelectedId() != 2;
   bright_.setValue(rankScope ? pv.brightnessDb : 0.0, juce::dontSendNotification);
   bass_.setValue(rankScope ? pv.bassDb : 0.0, juce::dontSendNotification);
-  for (auto* c : std::initializer_list<juce::Component*>{&bright_, &bass_, &brightLabel_, &bassLabel_})
+  pan_.setValue(rankScope ? pv.balance * 100.0 : 0.0, juce::dontSendNotification);
+  width_.setValue(rankScope ? pv.width * 100.0 : 100.0, juce::dontSendNotification);
+  for (auto* c : std::initializer_list<juce::Component*>{&bright_, &bass_, &brightLabel_, &bassLabel_, &pan_,
+                                                         &width_, &panLabel_, &widthLabel_})
     c->setEnabled(rankScope);
   updateStatus();
 }
@@ -2490,10 +2522,15 @@ void VoicingPanel::pushCurrent() {
     PipeVoicing pv = proc_.voicing().live().rank(rankId);
     pv.gainDb = static_cast<float>(gain_.getValue());
     pv.tuningCents = static_cast<float>(tune_.getValue());
+    const float pan = static_cast<float>(pan_.getValue() / 100.0);
+    const float width = static_cast<float>(width_.getValue() / 100.0);
     const bool eqChanged = pv.brightnessDb != static_cast<float>(bright_.getValue()) ||
-                           pv.bassDb != static_cast<float>(bass_.getValue());
+                           pv.bassDb != static_cast<float>(bass_.getValue()) || pv.balance != pan ||
+                           pv.width != width;
     pv.brightnessDb = static_cast<float>(bright_.getValue());
     pv.bassDb = static_cast<float>(bass_.getValue());
+    pv.balance = pan;
+    pv.width = width;
     proc_.voicing().live().setRank(rankId, pv);
     if (eqChanged) proc_.applyVoicingEq();
   }
@@ -2550,6 +2587,16 @@ void VoicingPanel::resized() {
   }
   r.removeFromTop(4);
   row = r.removeFromTop(kRow);
+  {
+    auto left = row.removeFromLeft(row.getWidth() / 2);
+    panLabel_.setBounds(left.removeFromLeft(labelW));
+    pan_.setBounds(left.reduced(0, 2));
+    row.removeFromLeft(kGap);
+    widthLabel_.setBounds(row.removeFromLeft(60));
+    width_.setBounds(row.reduced(0, 2));
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
   divisionLabel_.setBounds(row.removeFromLeft(labelW));
   division_.setBounds(row.removeFromLeft(220).reduced(0, 1));
   r.removeFromTop(4);
@@ -2562,6 +2609,17 @@ void VoicingPanel::resized() {
     row.removeFromLeft(kGap);
     divBassLabel_.setBounds(row.removeFromLeft(60));
     divBass_.setBounds(row.reduced(0, 2));
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  {
+    row.removeFromLeft(labelW);
+    auto left = row.removeFromLeft(row.getWidth() / 2);
+    divPanLabel_.setBounds(left.removeFromLeft(90));
+    divPan_.setBounds(left.reduced(0, 2));
+    row.removeFromLeft(kGap);
+    divWidthLabel_.setBounds(row.removeFromLeft(60));
+    divWidth_.setBounds(row.reduced(0, 2));
   }
   r.removeFromTop(kGap);
 

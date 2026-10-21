@@ -219,7 +219,7 @@ The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  t
 - A rank adjustment and a pipe adjustment add.
 - Level is a gain and tuning a pitch ratio, both taken once when a note starts. Notes already sounding keep what they began with. Both work with Simple WAV on and cost nothing while a note sounds.
 - Voicing is stored per organ, as `voicingadj` lines for both slots, `voicingdiv` lines for the divisions and the live slot (`voicingslot`), because a rank number has no meaning in another instrument. The tab changes the live set at once; **Save for this organ** writes it.
-- The file also holds a balance value for each adjustment. The tab has no control for it and the engine does not apply it.
+- The tab sets where each rank and each division stands: **Pan**, a constant-power law with the middle at unity, and **Width**, by mid and side. They are heard at once with the EQ, need the DSP, and are stored with the voicing. In the middle and at 100% nothing is processed.
 - The tab holds an equaliser for each rank and each division: a shelf for the treble and one for the bass. It is heard at once, it needs the DSP, and it is stored with the voicing. See [Voicing](general-settings.md#the-eq).
 
 ### Relation to Voicing EQ
