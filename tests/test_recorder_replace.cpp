@@ -16,6 +16,9 @@ using mp::test::Category;
 
 namespace {
 
+// What playback hands back each block; these tests only record.
+std::vector<mp::MidiRecorder::Playback> playback;
+
 constexpr double kSampleRate = 48000.0;
 
 // A recorder with one note in it: a take that was played and stopped.
@@ -25,7 +28,7 @@ mp::MidiRecorder recordedTake() {
   rec.startRecording();
   juce::MidiBuffer b;
   b.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 100);
-  rec.process(b, 480);
+  rec.process(b, 480, playback);
   rec.stopRecording();
   return rec;
 }
@@ -37,9 +40,9 @@ std::vector<int> playedNotes(mp::MidiRecorder& rec, int blocks) {
   juce::MidiBuffer b;
   for (int i = 0; i < blocks; ++i) {
     b.clear();
-    rec.process(b, 256);
-    for (const auto meta : b)
-      if (meta.getMessage().isNoteOn()) notes.push_back(meta.getMessage().getNoteNumber());
+    rec.process(b, 256, playback);
+    for (const auto& e : playback)
+      if (e.message.isNoteOn()) notes.push_back(e.message.getNoteNumber());
   }
   rec.stopPlayback();
   return notes;
@@ -61,7 +64,7 @@ public:
     rec.startRecording();
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 100);
-    rec.process(b, 480);
+    rec.process(b, 480, playback);
     rec.stopRecording();
     MP_CHECK(rec.hasUnsavedTake(), "a take that was never saved is asked about");
 
@@ -78,7 +81,7 @@ public:
     MP_CHECK(rec.lengthSeconds() == 0.0, "and the clock starts again");
     b.clear();
     b.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
-    rec.process(b, 480);
+    rec.process(b, 480, playback);
     rec.stopRecording();
     MP_CHECK(rec.eventCount() == 1, "the new take holds only what was played after");
     MP_CHECK(rec.lengthSeconds() < 0.001, "and it starts at the beginning");
@@ -98,7 +101,7 @@ public:
     rec.startRecording(mp::MidiRecorder::Take::Append);
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
-    rec.process(b, 480);
+    rec.process(b, 480, playback);
     rec.stopRecording();
 
     MP_CHECK(rec.eventCount() == 2, "the take keeps what was recorded and gains the new event");
@@ -130,7 +133,7 @@ public:
     rec.startRecording(mp::MidiRecorder::Take::Append);
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
-    rec.process(b, 480);
+    rec.process(b, 480, playback);
     rec.stopRecording();
     MP_CHECK(rec.hasUnsavedTake(), "the take is unsaved again once it has grown");
     file.deleteFile();
@@ -157,7 +160,7 @@ public:
     back.startRecording(mp::MidiRecorder::Take::Append);
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
-    back.process(b, 480);
+    back.process(b, 480, playback);
     back.stopRecording();
     MP_CHECK(back.eventCount() == 2, "the loaded take gains the new event");
     MP_CHECK(back.lengthSeconds() > loadedLength,

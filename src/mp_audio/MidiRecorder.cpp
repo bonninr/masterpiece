@@ -4,6 +4,12 @@
 
 namespace mp {
 
+MidiRecorder::MidiRecorder() {
+  // The keys playback holds down: a handful at a time, and the room for them
+  // is there from the start, so the audio thread never has to look for it.
+  held_.reserve(128);
+}
+
 void MidiRecorder::prepare(double sampleRate) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
 }
@@ -49,6 +55,7 @@ void MidiRecorder::clear() {
   saved_ = false;
   writePos_ = playPos_ = 0;
   playIndex_ = 0;
+  held_.clear();
 }
 
 double MidiRecorder::lengthSeconds() const {
@@ -61,33 +68,31 @@ double MidiRecorder::positionSeconds() const {
   return static_cast<double>(pos) / sampleRate_;
 }
 
-void MidiRecorder::captureLive(const juce::MidiMessage& message) {
+void MidiRecorder::captureLive(const juce::MidiMessage& message, int deviceId) {
   if (state_ != State::Recording) return;
   // In time order: after everything at or before the start of this block.
   const auto at = std::upper_bound(
       events_.begin(), events_.end(), blockStart_,
       [](int64_t pos, const Event& e) { return pos < e.samplePos; });
-  events_.insert(at, Event{blockStart_, message});
+  events_.insert(at, Event{blockStart_, message, deviceId});
 }
 
-void MidiRecorder::releaseHeld(juce::MidiBuffer& midi) {
-  if (held_.none()) return;
-  for (size_t i = 0; i < held_.size(); ++i)
-    if (held_[i])
-      midi.addEvent(juce::MidiMessage::noteOff(static_cast<int>(i / 128) + 1,
-                                               static_cast<int>(i % 128)),
-                    0);
-  held_.reset();
+void MidiRecorder::releaseHeld(std::vector<Playback>& out) {
+  for (const auto& h : held_)
+    out.push_back({h.deviceId, juce::MidiMessage::noteOff(h.channel, h.note), 0});
+  held_.clear();
 }
 
-void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
+void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples,
+                           std::vector<Playback>& out) {
+  out.clear();
   if (numSamples <= 0) return;
 
-  // Playback that has ended, or begun again from the top, lets go of the keys
-  // it left down. As note-offs in this block, so each pipe gets its release.
-  // While recording they go in after the capture below, and stay out of the
-  // take.
-  if (restarted_ || state_ == State::Idle) releaseHeld(midi);
+  // Playback that has ended, begun again from the top, or given way to a
+  // recording lets go of the keys it left down. As note-offs in this block,
+  // so each pipe gets its release; `out` is never captured, so they stay out
+  // of the take.
+  if (restarted_ || state_ != State::Playing) releaseHeld(out);
   restarted_ = false;
 
   if (state_ == State::Recording) {
@@ -97,10 +102,9 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
       // and the reserve above covers a long session; a reallocation costs one
       // late block rather than a fault, which is the right trade for a feature
       // the player switches on knowingly.
-      events_.push_back({writePos_ + meta.samplePosition, meta.getMessage()});
+      events_.push_back({writePos_ + meta.samplePosition, meta.getMessage(), 0});
     }
     writePos_ += numSamples;
-    releaseHeld(midi);
     return;
   }
 
@@ -112,11 +116,22 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples) {
       const int offset =
           static_cast<int>(juce::jlimit<int64_t>(0, numSamples - 1,
                                                  e.samplePos - playPos_));
-      midi.addEvent(e.message, offset);
+      // The console it came from goes with it: it is what says which manual
+      // the note plays, and a take that lost it would play on the manual the
+      // channel means in the organ's own assignment.
+      out.push_back({e.deviceId, e.message, offset});
       if (e.message.isNoteOnOrOff()) {
-        const size_t key = static_cast<size_t>(e.message.getChannel() - 1) * 128 +
-                           static_cast<size_t>(e.message.getNoteNumber());
-        held_[key] = e.message.isNoteOn();
+        const int channel = e.message.getChannel();
+        const int note = e.message.getNoteNumber();
+        // The key let go: it is no longer held by playback.
+        for (size_t i = 0; i < held_.size(); ++i)
+          if (held_[i].channel == channel && held_[i].note == note) {
+            held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
+            break;
+          }
+        // A key struck again: the one held down is the same key.
+        if (e.message.isNoteOn())
+          held_.push_back({e.deviceId, channel, note});
       }
       ++playIndex_;
     }
@@ -180,8 +195,11 @@ bool MidiRecorder::loadFromFile(const juce::File& file) {
     for (int i = 0; i < track->getNumEvents(); ++i) {
       const auto& m = track->getEventPointer(i)->message;
       if (m.isMetaEvent()) continue; // tempo and names carry no performance
+      // A file carries the channel and nothing else: which console played it
+      // is not something a MIDI file can say, so a file read back plays by
+      // the organ's own assignment.
       events_.push_back(
-          {static_cast<int64_t>(m.getTimeStamp() * sampleRate_), m});
+          {static_cast<int64_t>(m.getTimeStamp() * sampleRate_), m, 0});
     }
   }
   std::stable_sort(events_.begin(), events_.end(),
