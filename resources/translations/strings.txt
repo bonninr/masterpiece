@@ -390,6 +390,7 @@ countries: gb us
 "Which of each pipe's releases are loaded. Many organs record a short and a long release for each pipe; one of them uses less memory and loads faster." = "Which of each pipe's releases are loaded. Many organs record a short and a long release for each pipe; one of them uses less memory and loads faster."
 "Release length" = "Release length"
 "Each release is kept up to this length and fades out over its last quarter. Shorter releases use less memory: for an organ played in a room with its own reverberation, or under an impulse response." = "Each release is kept up to this length and fades out over its last quarter. Shorter releases use less memory: for an organ played in a room with its own reverberation, or under an impulse response."
+"The two shortest end a note quickly, as a tracker action does: for fast repeated notes." = "The two shortest end a note quickly, as a tracker action does: for fast repeated notes."
 "Release tails end below" = "Release tails end below"
 "Never: every tail plays out" = "Never: every tail plays out"
 "%1 dB" = "%1 dB"

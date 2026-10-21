@@ -1,6 +1,7 @@
 #include "Settings.h"
 
 #include <map>
+#include <iterator>
 
 #include "ManualDialog.h"
 #include "Ui.h"
@@ -23,6 +24,10 @@ void styleNote(juce::Label& l, const juce::String& text) {
 }
 
 constexpr int kRow = 28;
+// The Release length choices, in milliseconds; 0 keeps each release whole.
+// The two shortest are a tracker action's quick release.
+constexpr int kReleaseLengthsMs[] = {0, 150, 300, 500, 1000, 1500, 2000, 3000, 4000};
+constexpr int kReleaseLengthCount = static_cast<int>(std::size(kReleaseLengthsMs));
 constexpr int kGap = 6;
 
 } // namespace
@@ -161,7 +166,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   releaseLength_.setTooltip(TRANS("Each release is kept up to this length and fades out over its "
                                   "last quarter. Shorter releases use less memory: for an organ "
                                   "played in a room with its own reverberation, or under an "
-                                  "impulse response."));
+                                  "impulse response.") +
+                            " " +
+                            TRANS("The two shortest end a note quickly, as a tracker action does: for "
+                                  "fast repeated notes."));
   // Where a tail stops: below what can be heard, it costs what a note costs.
   addAndMakeVisible(releaseCutoffLabel_);
   styleLabel(releaseCutoffLabel_, TRANS("Release tails end below"));
@@ -189,9 +197,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     };
   }
   releaseLength_.onChange = [this] {
-    static const int kMs[] = {0, 500, 1000, 1500, 2000, 3000, 4000};
     const int id = releaseLength_.getSelectedId();
-    if (id >= 1 && id <= 7) proc_.setReleaseMaxMs(kMs[id - 1]);
+    if (id >= 1 && id <= kReleaseLengthCount) proc_.setReleaseMaxMs(kReleaseLengthsMs[id - 1]);
   };
 
   // Keeping the decoded samples, so the next load of the same organ is a read
@@ -645,18 +652,18 @@ void EnginePanel::pushSwitches() {
 }
 
 void EnginePanel::showReleaseLength(int ms) {
-  static const int kMs[] = {0, 500, 1000, 1500, 2000, 3000, 4000};
+  const auto seconds = [](int v) { return juce::String(v / 1000.0, v % 100 ? 2 : v % 1000 ? 1 : 0); };
   releaseLength_.clear(juce::dontSendNotification);
   releaseLength_.addItem(TRANS("Whole"), 1);
-  for (int i = 1; i < 7; ++i)
-    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", juce::String(kMs[i] / 1000.0, kMs[i] % 1000 ? 1 : 0)), i + 1);
+  for (int i = 1; i < kReleaseLengthCount; ++i)
+    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", seconds(kReleaseLengthsMs[i])), i + 1);
   int id = 1;
-  for (int i = 0; i < 7; ++i)
-    if (kMs[i] == ms) id = i + 1;
+  for (int i = 0; i < kReleaseLengthCount; ++i)
+    if (kReleaseLengthsMs[i] == ms) id = i + 1;
   // A length set in the file and not in the list is shown as it is.
   if (ms > 0 && id == 1) {
-    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", juce::String(ms / 1000.0, 2)), 8);
-    id = 8;
+    releaseLength_.addItem(TRANS("Up to %1 s").replace("%1", juce::String(ms / 1000.0, 2)), kReleaseLengthCount + 1);
+    id = kReleaseLengthCount + 1;
   }
   releaseLength_.setSelectedId(id, juce::dontSendNotification);
 }

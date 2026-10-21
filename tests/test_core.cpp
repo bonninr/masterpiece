@@ -11082,7 +11082,7 @@ public:
       rank.pipes.push_back(pipe);
       model.ranks[1] = rank;
     }
-    for (const int ms : {0, 500}) {
+    for (const int ms : {0, 500, 150}) {
       mp::SampleLibrary lib;
       lib.setLoadThreads(1);
       lib.setCacheMode(mp::SampleLibrary::CacheMode::Off);
@@ -11096,11 +11096,11 @@ public:
         MP_CHECK(b->totalFrames() == 96000, "whole, it is the whole file");
         continue;
       }
-      MP_CHECK(b->numFrames == 24000 && !b->streams(),
-               "kept to half a second, it is read that far and held in memory (" +
+      MP_CHECK(b->numFrames == ms * 48 && !b->streams(),
+               "kept to " + std::to_string(ms) + " ms, it is read that far and held in memory (" +
                    std::to_string(b->numFrames) + " frames)");
       float early = 0.0f, last = std::abs(b->sample(b->numFrames - 1, 0));
-      for (int64_t f = 0; f < 12000; ++f) early = std::max(early, std::abs(b->sample(f, 0)));
+      for (int64_t f = 0; f < b->numFrames / 2; ++f) early = std::max(early, std::abs(b->sample(f, 0)));
       MP_CHECK(early > 0.4f && last < 1.0e-3f, "it plays as recorded, then fades to silence at its end");
     }
     root.deleteRecursively();
