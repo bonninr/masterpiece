@@ -790,7 +790,9 @@ void ScorePanel::drawSlot(juce::Graphics& g, int slot) {
   g.drawImage(s.image, bounds);
 
   // The cursor: a band across each system holding a note that sounds, at
-  // the leftmost of those notes, and a ring round each notehead.
+  // the rightmost of those notes, the one struck last, and a ring round each
+  // notehead. A note held from earlier, such as a pedal whole note, keeps
+  // its ring and leaves the band with the beat.
   const auto toPanel = pageToPanel(slot);
   const auto colour = inverted_ ? juce::Colour(0xffffb000) : juce::Colour(0xff1e6fd9);
   std::map<int, float> bandX;
@@ -799,7 +801,7 @@ void ScorePanel::drawSlot(juce::Graphics& g, int slot) {
     if (it == s.geometry.notes.end() || it->second.system < 0) continue;
     const auto& n = it->second;
     auto [b, inserted] = bandX.emplace(n.system, n.head.x);
-    if (!inserted) b->second = std::min(b->second, n.head.x);
+    if (!inserted) b->second = std::max(b->second, n.head.x);
     if (static_cast<size_t>(n.system) < s.geometry.systems.size()) {
       const float gap = s.geometry.systems[static_cast<size_t>(n.system)].lineGap;
       const auto head = juce::Rectangle<float>(n.head.x - gap * 0.4f, n.head.y - gap * 0.9f, gap * 2.0f, gap * 1.8f)
