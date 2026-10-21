@@ -300,7 +300,7 @@ void ApiServer::routes() {
   srv.Get("/api/v1/events", [this](const httplib::Request& req, httplib::Response& res) {
     auto sub = std::make_shared<Subscriber>();
     if (req.has_param("types")) {
-      sub->types.assign(std::size(kTypes), false);
+      sub->types.assign(kTypeCount, false);
       for (const auto& t : juce::StringArray::fromTokens(juce::String(req.get_param_value("types")), ",", "")) {
         if (const TypeInfo* info = typeByPlural(t.trim().toStdString()))
           sub->types[static_cast<size_t>(info->type)] = true;

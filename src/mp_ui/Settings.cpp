@@ -2307,10 +2307,37 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   tune_.onValueChange = [this] { pushCurrent(); };
   addAndMakeVisible(tune_);
 
+  // The EQ: shelves of +/-12 dB, the brightness above 3 kHz and the bass
+  // below 200 Hz. A rank's and its division's add.
+  for (auto* s : {&bright_, &bass_, &divBright_, &divBass_}) {
+    addAndMakeVisible(*s);
+    s->setRange(-12.0, 12.0, 0.5);
+    s->setTextValueSuffix(" dB");
+    s->setValue(0.0, juce::dontSendNotification);
+  }
+  addAndMakeVisible(brightLabel_);
+  styleLabel(brightLabel_, TRANS("Brightness"));
+  addAndMakeVisible(bassLabel_);
+  styleLabel(bassLabel_, TRANS("Bass"));
+  bright_.setTooltip(TRANS("The rank's treble, above 3 kHz: heard at once, on the pipes sounding too"));
+  bass_.setTooltip(TRANS("The rank's bass, below 200 Hz: heard at once, on the pipes sounding too"));
+  bright_.onValueChange = bass_.onValueChange = [this] { pushCurrent(); };
+  addAndMakeVisible(divisionLabel_);
+  styleLabel(divisionLabel_, TRANS("Division EQ"));
+  addAndMakeVisible(division_);
+  division_.onChange = [this] { loadDivision(); };
+  addAndMakeVisible(divBrightLabel_);
+  styleLabel(divBrightLabel_, TRANS("Brightness"));
+  addAndMakeVisible(divBassLabel_);
+  styleLabel(divBassLabel_, TRANS("Bass"));
+  divBright_.onValueChange = divBass_.onValueChange = [this] { pushDivision(); };
+
   addAndMakeVisible(abSwap_);
   abSwap_.onClick = [this] {
     proc_.voicing().swap();
+    proc_.applyVoicingEq();
     loadCurrentIntoSliders();
+    loadDivision();
     updateStatus();
   };
   addAndMakeVisible(abCopy_);
@@ -2320,14 +2347,15 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   addAndMakeVisible(resetOne_);
   resetOne_.onClick = [this] {
-    gain_.setValue(0.0, juce::dontSendNotification);
-    tune_.setValue(0.0, juce::dontSendNotification);
+    for (auto* s : {&gain_, &tune_, &bright_, &bass_}) s->setValue(0.0, juce::dontSendNotification);
     pushCurrent();
   };
   addAndMakeVisible(resetAll_);
   resetAll_.onClick = [this] {
     proc_.voicing().live().clear();
+    proc_.applyVoicingEq();
     loadCurrentIntoSliders();
+    loadDivision();
     updateStatus();
   };
   addAndMakeVisible(save_);
@@ -2367,7 +2395,39 @@ void VoicingPanel::refresh() {
     rank_.addItem(name, static_cast<int>(i) + 1);
   }
   if (!rankIds_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
+  divisionIds_.clear();
+  division_.clear(juce::dontSendNotification);
+  for (const auto& [id, d] : proc_.organModel().divisions) divisionIds_.push_back(id);
+  std::sort(divisionIds_.begin(), divisionIds_.end());
+  for (size_t i = 0; i < divisionIds_.size(); ++i) {
+    const auto& d = proc_.organModel().divisions.at(divisionIds_[i]);
+    division_.addItem(d.name.empty() ? juce::String(static_cast<int>(divisionIds_[i])) : juce::String(d.name),
+                      static_cast<int>(i) + 1);
+  }
+  if (!divisionIds_.empty()) division_.setSelectedId(1, juce::dontSendNotification);
   loadCurrentIntoSliders();
+  loadDivision();
+  updateStatus();
+}
+
+void VoicingPanel::loadDivision() {
+  const int idx = division_.getSelectedId() - 1;
+  const bool any = idx >= 0 && idx < static_cast<int>(divisionIds_.size());
+  for (auto* s : {&divBright_, &divBass_}) s->setEnabled(any);
+  const PipeVoicing pv = any ? proc_.voicing().live().division(divisionIds_[static_cast<size_t>(idx)]) : PipeVoicing{};
+  divBright_.setValue(pv.brightnessDb, juce::dontSendNotification);
+  divBass_.setValue(pv.bassDb, juce::dontSendNotification);
+}
+
+void VoicingPanel::pushDivision() {
+  const int idx = division_.getSelectedId() - 1;
+  if (idx < 0 || idx >= static_cast<int>(divisionIds_.size())) return;
+  const Id id = divisionIds_[static_cast<size_t>(idx)];
+  PipeVoicing pv = proc_.voicing().live().division(id);
+  pv.brightnessDb = static_cast<float>(divBright_.getValue());
+  pv.bassDb = static_cast<float>(divBass_.getValue());
+  proc_.voicing().live().setDivision(id, pv);
+  proc_.applyVoicingEq();
   updateStatus();
 }
 
@@ -2399,6 +2459,12 @@ void VoicingPanel::loadCurrentIntoSliders() {
   // a write and a swap into a wipe.
   gain_.setValue(pv.gainDb, juce::dontSendNotification);
   tune_.setValue(pv.tuningCents, juce::dontSendNotification);
+  // The EQ is a rank's: a pipe of its own would need a filter of its own.
+  const bool rankScope = scope_.getSelectedId() != 2;
+  bright_.setValue(rankScope ? pv.brightnessDb : 0.0, juce::dontSendNotification);
+  bass_.setValue(rankScope ? pv.bassDb : 0.0, juce::dontSendNotification);
+  for (auto* c : std::initializer_list<juce::Component*>{&bright_, &bass_, &brightLabel_, &bassLabel_})
+    c->setEnabled(rankScope);
   updateStatus();
 }
 
@@ -2424,7 +2490,12 @@ void VoicingPanel::pushCurrent() {
     PipeVoicing pv = proc_.voicing().live().rank(rankId);
     pv.gainDb = static_cast<float>(gain_.getValue());
     pv.tuningCents = static_cast<float>(tune_.getValue());
+    const bool eqChanged = pv.brightnessDb != static_cast<float>(bright_.getValue()) ||
+                           pv.bassDb != static_cast<float>(bass_.getValue());
+    pv.brightnessDb = static_cast<float>(bright_.getValue());
+    pv.bassDb = static_cast<float>(bass_.getValue());
     proc_.voicing().live().setRank(rankId, pv);
+    if (eqChanged) proc_.applyVoicingEq();
   }
   updateStatus();
 }
@@ -2467,6 +2538,31 @@ void VoicingPanel::resized() {
   row = r.removeFromTop(kRow);
   tuneLabel_.setBounds(row.removeFromLeft(labelW));
   tune_.setBounds(row.reduced(0, 2));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  {
+    auto left = row.removeFromLeft(row.getWidth() / 2);
+    brightLabel_.setBounds(left.removeFromLeft(labelW));
+    bright_.setBounds(left.reduced(0, 2));
+    row.removeFromLeft(kGap);
+    bassLabel_.setBounds(row.removeFromLeft(60));
+    bass_.setBounds(row.reduced(0, 2));
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  divisionLabel_.setBounds(row.removeFromLeft(labelW));
+  division_.setBounds(row.removeFromLeft(220).reduced(0, 1));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  {
+    row.removeFromLeft(labelW);
+    auto left = row.removeFromLeft(row.getWidth() / 2);
+    divBrightLabel_.setBounds(left.removeFromLeft(90));
+    divBright_.setBounds(left.reduced(0, 2));
+    row.removeFromLeft(kGap);
+    divBassLabel_.setBounds(row.removeFromLeft(60));
+    divBass_.setBounds(row.reduced(0, 2));
+  }
   r.removeFromTop(kGap);
 
   // Four then one. Five across overflowed the dialog and squeezed the last

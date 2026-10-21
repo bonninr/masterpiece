@@ -19,7 +19,7 @@ Each audio block passes through these stages, in this order.
 | Metronome, load-progress taps, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
 
-The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (also the **No DSP** box in the top bar) switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe voicing of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
+The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (also the **No DSP** box in the top bar) switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The equaliser of the **Voicing** tab is a filter, so it needs the DSP. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
 
 ## The audio device
 
@@ -218,12 +218,13 @@ The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  t
 
 - A rank adjustment and a pipe adjustment add.
 - Level is a gain and tuning a pitch ratio, both taken once when a note starts. Notes already sounding keep what they began with. Both work with Simple WAV on and cost nothing while a note sounds.
-- Voicing is stored per organ, as `voicingadj` lines for both slots and the live slot (`voicingslot`), because a rank number has no meaning in another instrument. The tab changes the live set at once; **Save for this organ** writes it.
-- The file also holds brightness and balance values for each adjustment. The tab has no control for them and the engine does not apply them.
+- Voicing is stored per organ, as `voicingadj` lines for both slots, `voicingdiv` lines for the divisions and the live slot (`voicingslot`), because a rank number has no meaning in another instrument. The tab changes the live set at once; **Save for this organ** writes it.
+- The file also holds a balance value for each adjustment. The tab has no control for it and the engine does not apply it.
+- The tab holds an equaliser for each rank and each division: a shelf for the treble and one for the bass. It is heard at once, it needs the DSP, and it is stored with the voicing. See [Voicing](general-settings.md#the-eq).
 
 ### Relation to Voicing EQ
 
-The **Voicing EQ** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The **Voicing** tab of General settings changes single ranks and pipes in level and pitch and is stored per organ. See [Organ settings](organ-settings.md#voicing-eq) for the equaliser.
+The **Voicing EQ** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The **Voicing** tab of General settings changes single ranks and pipes in level and pitch, and holds an equaliser for each rank and each division. What it changes is stored per organ. See [Organ settings](organ-settings.md#voicing-eq) for the equaliser.
 
 The **Voicing** box among the switches of **Organ settings > Loading** is saved with the organ. With the box off, the organ plays as recorded: the per-rank and per-pipe level and tuning of the **Voicing** tab are not applied. The adjustments stay in the voicing sets and apply again when the box is ticked. A change reaches the notes that start afterwards.
 

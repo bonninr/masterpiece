@@ -39,6 +39,9 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 13 | `enclosure` | 0 to enclosures - 1 | how open its shades are, 0 to 127 | no | Moved by its control |
 | 14 | `tremulant` | 0 to tremulants - 1 | 1 while it runs | yes | Moves the switch the player would |
 | 15 | `windchest` | 0 to compartments - 1 | pressure now, in tenths of a percent of nominal | no | Reservoirs and chests of the wind model |
+| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Mixer tab |
+| 19 | `brightness` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The treble shelf of the voicing EQ, above 3 kHz: one per rank, then one per division; a rank hears its division's added to its own. Heard at once |
+| 20 | `bass` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The bass shelf of the voicing EQ, below 200 Hz: one per rank, then one per division, as the brightnesses. Heard at once |
 
 A `press` acts like a thumb piston: it does what the object does, once.
 

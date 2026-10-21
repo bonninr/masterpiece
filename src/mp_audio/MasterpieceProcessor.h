@@ -34,6 +34,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "RankEq.h"
 #include "VoicingEq.h"
 #include "VoicingEqPresets.h"
 #include "Favourites.h"
@@ -1530,6 +1531,13 @@ public:
   // takes it.
   int takeVoicingEqPresetRequest() { return pendingEqPreset_.exchange(0, std::memory_order_acq_rel); }
   VoicingAB& voicing() { return voicing_; }
+  // After the voicing's EQ has changed -- a rank's or a division's
+  // brightness or bass, a swap of A and B, a reset: hands it to the audio
+  // (RankEq.h). Message thread.
+  void applyVoicingEq() {
+    const AudioLock audio(*this);
+    pushVoicingEq();
+  }
   const VoicingAB& voicing() const { return voicing_; }
 
   MixerConfig& mixer() { return mixer_; }
@@ -1769,6 +1777,7 @@ public:
     {
       const AudioLock audio(*this);
       graph_.engineSwitch = sw;
+      pushVoicingEq();
     }
     mirrorSimpleWavParameter();
   }
@@ -2707,6 +2716,17 @@ private:
   // VoiceEngine::renderBuses(); and where each bus's channels begin.
   juce::AudioBuffer<float> busScratchAll_;
   std::vector<float* const*> busOuts_;
+  // EQ per rank and division (RankEq.h): its group buses, numCh channels
+  // each, after the enclosure buses; each rank's place in its tables; and
+  // the ranks and divisions in that order.
+  RankEq rankEq_;
+  juce::AudioBuffer<float> eqScratch_;
+  std::unordered_map<Id, int> rankEqIndex_;
+  std::vector<Id> rankEqRanks_, rankEqDivisions_;
+  void configureRankEq();
+  // The live voicing's EQ to the audio, flat while the voicing or the DSP is
+  // switched off. Under the audio lock, or while no block renders.
+  void pushVoicingEq();
   std::unordered_map<Id, dsp::TremulantLfo> tremulantLfos_;
 
 #endif

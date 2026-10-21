@@ -662,6 +662,13 @@ public:
   void setWorkerHook(std::function<void()> hook);
 
   const EngineStats& stats() const { return stats_; }
+  // How many voices sound through one bus, releases included.
+  int voicesOnBus(int bus) const {
+    int n = 0;
+    for (size_t i = 0; i < scanEnd_ && i < voices_.size(); ++i)
+      if (voices_[i].active() && voices_[i].busIndex == bus) ++n;
+    return n;
+  }
   int activeVoiceCount() const;
   const Voice& voice(int index) const { return voices_[static_cast<size_t>(index)]; }
   int poolSize() const { return static_cast<int>(voices_.size()); }

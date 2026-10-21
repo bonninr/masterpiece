@@ -26,21 +26,24 @@ namespace mp {
 struct PipeVoicing {
   float gainDb = 0.0f;
   float tuningCents = 0.0f;
-  // Declared because the UI and the file format need somewhere to put them,
-  // and NOT applied to audio yet: both need per-voice filtering, which is a
-  // cost that has to be designed against the polyphony budget rather than
-  // bolted on. A value here is stored and shown, never silently heard.
+  // The EQ: a high shelf and a low shelf (RankEq.h). Heard for a rank and a
+  // division, filtered once per group of ranks. A single pipe's are stored
+  // and shown, and not heard: a pipe of its own would need a filter of its
+  // own.
   float brightnessDb = 0.0f;
+  float bassDb = 0.0f;
+  // Stored and shown, and NOT applied yet.
   float balance = 0.0f;  // -1 left, +1 right
 
   bool isNeutral() const {
     return gainDb == 0.0f && tuningCents == 0.0f && brightnessDb == 0.0f &&
-           balance == 0.0f;
+           bassDb == 0.0f && balance == 0.0f;
   }
   void add(const PipeVoicing& o) {
     gainDb += o.gainDb;
     tuningCents += o.tuningCents;
     brightnessDb += o.brightnessDb;
+    bassDb += o.bassDb;
     balance += o.balance;
   }
 };
@@ -49,6 +52,12 @@ class VoicingSet {
  public:
   void setRank(Id rankId, const PipeVoicing& v) { store(ranks_, rankId, v); }
   void setPipe(Id pipeId, const PipeVoicing& v) { store(pipes_, pipeId, v); }
+  // A division's EQ, which its ranks hear added to their own. Only the
+  // brightness and the bass of it are used.
+  void setDivision(Id divisionId, const PipeVoicing& v) { store(divisions_, divisionId, v); }
+  PipeVoicing division(Id divisionId) const { return get(divisions_, divisionId); }
+  std::vector<Id> divisionIds() const { return sortedKeys(divisions_); }
+  const std::unordered_map<Id, PipeVoicing>& divisions() const { return divisions_; }
 
   PipeVoicing rank(Id rankId) const { return get(ranks_, rankId); }
   PipeVoicing pipe(Id pipeId) const { return get(pipes_, pipeId); }
@@ -67,6 +76,7 @@ class VoicingSet {
   void clear() {
     ranks_.clear();
     pipes_.clear();
+    divisions_.clear();
   }
 
   const std::unordered_map<Id, PipeVoicing>& ranks() const { return ranks_; }
@@ -102,6 +112,7 @@ class VoicingSet {
 
   Map ranks_;
   Map pipes_;
+  Map divisions_;
 };
 
 // Cents to a frequency ratio. A pipe pulled 10 cents flat plays at 0.9942 of
