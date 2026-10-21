@@ -1,5 +1,6 @@
 #include "Settings.h"
 
+#include <cmath>
 #include <map>
 #include <iterator>
 
@@ -21,6 +22,17 @@ void styleNote(juce::Label& l, const juce::String& text) {
   l.setColour(juce::Label::textColourId, juce::Colours::grey);
   l.setJustificationType(juce::Justification::topLeft);
   l.setFont(juce::Font(juce::FontOptions(12.0f)));
+}
+
+// The height a label's text takes wrapped to this width, with a line spare.
+int wrappedHeight(const juce::Label& l, int width) {
+  juce::AttributedString s(l.getText());
+  s.setFont(l.getFont());
+  juce::TextLayout layout;
+  const auto border = l.getBorderSize();
+  layout.createLayout(s, static_cast<float>(width - border.getLeftAndRight()));
+  return static_cast<int>(std::ceil(layout.getHeight() + l.getFont().getHeight())) +
+         border.getTopAndBottom();
 }
 
 constexpr int kRow = 28;
@@ -1796,7 +1808,9 @@ void MidiPanel::pushScorePage() {
 }
 
 void MidiPanel::resized() {
-  auto r = getLocalBounds().reduced(12);
+  // Every row at its full height from the top: the tab scrolls when the
+  // window is shorter than the panel.
+  auto r = getLocalBounds().reduced(12).withHeight(1 << 20);
   inputsLabel_.setBounds(r.removeFromTop(kRow));
   for (auto& b : inputs_) {
     b->setBounds(r.removeFromTop(kRow).reduced(12, 0));
@@ -1873,8 +1887,7 @@ void MidiPanel::resized() {
   r.removeFromTop(4);
   row = r.removeFromTop(kRow);
   row.removeFromLeft(120);
-  for (auto* b : {&learnTransposeDown_, &learnTransposeUp_, &learnTemperamentPrev_,
-                  &learnTemperamentNext_}) {
+  for (auto* b : {&learnTransposeDown_, &learnTransposeUp_}) {
     b->setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
   }
@@ -1884,6 +1897,13 @@ void MidiPanel::resized() {
   temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
   row.removeFromLeft(6);
   learnTemperament_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  row.removeFromLeft(120);
+  for (auto* b : {&learnTemperamentPrev_, &learnTemperamentNext_}) {
+    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+  }
 
   r.removeFromTop(4);
   row = r.removeFromTop(kRow);
@@ -1907,13 +1927,17 @@ void MidiPanel::resized() {
     b->setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
   }
-  scoreKind_.setBounds(row.removeFromLeft(130).reduced(0, 1));
-  row.removeFromLeft(4);
-  scoreChannel_.setBounds(row.removeFromLeft(80).reduced(0, 1));
-  row.removeFromLeft(4);
-  scoreForward_.setBounds(row.removeFromLeft(48).reduced(0, 2));
-  row.removeFromLeft(4);
-  scoreBack_.setBounds(row.removeFromLeft(48).reduced(0, 2));
+  // The message sent, on a row of its own, as the ready lamp's.
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  row.removeFromLeft(120);
+  scoreKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  scoreChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+  row.removeFromLeft(6);
+  scoreForward_.setBounds(row.removeFromLeft(60).reduced(2, 2));
+  row.removeFromLeft(6);
+  scoreBack_.setBounds(row.removeFromLeft(60).reduced(2, 2));
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
@@ -1923,7 +1947,12 @@ void MidiPanel::resized() {
   row.removeFromLeft(kGap);
   mapStatus_.setBounds(row);
   r.removeFromTop(kGap);
-  note_.setBounds(r);
+  note_.setBounds(r.removeFromTop(wrappedHeight(note_, r.getWidth())));
+  const int needed = r.getY() + 12;
+  if (needed != contentHeight_) {
+    contentHeight_ = needed;
+    if (auto* host = findParentComponentOfClass<ScrollHost>()) host->fit();
+  }
 }
 
 // ------------------------------------------------------------ favourites
@@ -3005,7 +3034,8 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices);
-    tabs_.addTab(TRANS("MIDI"), bg, midi_.get(), false);
+    midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
+    tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
   }
   tabs_.addTab(TRANS("Mixer"), bg, &mixer_, false);
   tabs_.addTab(TRANS("Voicing"), bg, &voicing_, false);
