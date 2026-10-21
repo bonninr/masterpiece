@@ -10,6 +10,7 @@
 #include "../mp_audio/MasterpieceProcessor.h"
 
 #include <array>
+#include <initializer_list>
 #include <memory>
 #include <vector>
 
@@ -218,8 +219,16 @@ public:
   ~RecorderPanel() override;
   void resized() override;
 
+  // The width the panel needs for its widest row of buttons. The window
+  // around it is that wide, so a label is never squeezed.
+  int preferredWidth();
+
 private:
   void timerCallback() override;
+
+  // One row of buttons, each as wide as its own text. A row that is wider
+  // than the panel wraps to a second line; the height it took is returned.
+  int placeRow(juce::Rectangle<int> row, std::initializer_list<juce::TextButton*> buttons);
 
   MasterpieceProcessor& proc_;
   juce::TextButton record_{TRANS("Record")};

@@ -127,7 +127,7 @@ jobs:
             libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxcomposite-dev libfreetype6-dev \
             libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev \
-            libjack-jackd2-dev python3-yaml
+            libjack-jackd2-dev python3-yaml fonts-dejavu-core
 
       # The control protocol's code and API description are generated from
       # protocol/control.yaml and committed; a change to one without the

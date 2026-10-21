@@ -30,6 +30,33 @@ constexpr int kReleaseLengthsMs[] = {0, 150, 300, 500, 1000, 1500, 2000, 3000, 4
 constexpr int kReleaseLengthCount = static_cast<int>(std::size(kReleaseLengthsMs));
 constexpr int kGap = 6;
 
+// The recorder's buttons are sized from their own text (#429): a fixed width
+// that fits the English label squeezed the French one, whose words are
+// longer.
+constexpr int kMargin = 12;         // the panel's own margin
+constexpr int kMinButtonWidth = 70; // narrower than this and it stops looking like a button
+constexpr int kButtonPadding = 12;  // the room the text has inside the button
+
+// The font a text button of this height is drawn with: the look and feel's
+// own choice, which is the font the button will draw its text in.
+juce::Font buttonFont(juce::TextButton& button, int height) {
+  return button.getLookAndFeel().getTextButtonFont(button, height);
+}
+
+// The width a button needs for its text: the text measured in the button's
+// font, with the padding around it, and never below the minimum.
+int buttonWidth(const juce::TextButton& button, const juce::Font& font) {
+  const int text = juce::GlyphArrangement::getStringWidthInt(font, button.getButtonText());
+  return juce::jmax(kMinButtonWidth, text + 2 * kButtonPadding);
+}
+
+// The width a row of buttons takes.
+int rowWidth(std::initializer_list<juce::TextButton*> buttons, const juce::Font& font) {
+  int total = 0;
+  for (auto* b : buttons) total += buttonWidth(*b, font) + kGap;
+  return total > 0 ? total - kGap : 0; // no gap after the last button
+}
+
 } // namespace
 
 // ---------------------------------------------------------------- engine
@@ -1251,20 +1278,48 @@ void RecorderPanel::timerCallback() {
   audioStop_.setEnabled(on);
 }
 
+// Places a row of buttons, each as wide as its own text. A row that is
+// wider than the panel wraps to a second line. Returns the height the row
+// took.
+int RecorderPanel::placeRow(juce::Rectangle<int> row,
+                             std::initializer_list<juce::TextButton*> buttons) {
+  auto* first = *buttons.begin();
+  const auto font = buttonFont(*first, row.getHeight());
+  int x = row.getX();
+  int y = row.getY();
+  int lines = 1;
+  for (auto* b : buttons) {
+    const int w = buttonWidth(*b, font);
+    if (x > row.getX() && x + w > row.getRight()) {
+      x = row.getX();
+      y += row.getHeight() + kGap;
+      ++lines;
+    }
+    b->setBounds(x, y, w, row.getHeight());
+    x += w + kGap;
+  }
+  return lines * row.getHeight() + (lines - 1) * kGap;
+}
+
+int RecorderPanel::preferredWidth() {
+  const auto font = buttonFont(record_, kRow);
+  int widest = 0;
+  for (auto row : {std::initializer_list<juce::TextButton*>{&record_, &play_, &stop_},
+                   std::initializer_list<juce::TextButton*>{&save_, &load_, &clear_},
+                   std::initializer_list<juce::TextButton*>{&audioRecord_, &audioStop_}})
+    widest = juce::jmax(widest, rowWidth(row, font));
+  return widest + 2 * kMargin;
+}
+
 void RecorderPanel::resized() {
-  auto r = getLocalBounds().reduced(12);
-  auto row = r.removeFromTop(kRow);
-  for (auto* b : {&record_, &play_, &stop_}) {
-    b->setBounds(row.removeFromLeft(90));
-    row.removeFromLeft(kGap);
-  }
-  r.removeFromTop(kGap);
-  row = r.removeFromTop(kRow);
-  for (auto* b : {&save_, &load_, &clear_}) {
-    b->setBounds(row.removeFromLeft(110));
-    row.removeFromLeft(kGap);
-  }
-  r.removeFromTop(kGap);
+  auto r = getLocalBounds().reduced(kMargin);
+  // A row that had to wrap takes a line more, and everything below it moves
+  // down: a panel narrower than the buttons needs (a phone in portrait) keeps
+  // every button on the screen.
+  int h = placeRow(r.removeFromTop(kRow), {&record_, &play_, &stop_});
+  r.removeFromTop(h - kRow + kGap);
+  h = placeRow(r.removeFromTop(kRow), {&save_, &load_, &clear_});
+  r.removeFromTop(h - kRow + kGap);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   note_.setBounds(r.removeFromTop(72));
@@ -1275,10 +1330,7 @@ void RecorderPanel::resized() {
   r.removeFromTop(kGap * 2);
   audioHeading_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
-  row = r.removeFromTop(kRow);
-  audioRecord_.setBounds(row.removeFromLeft(140));
-  row.removeFromLeft(kGap);
-  audioStop_.setBounds(row.removeFromLeft(90));
+  placeRow(r.removeFromTop(kRow), {&audioRecord_, &audioStop_});
   r.removeFromTop(kGap);
   audioStatus_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
