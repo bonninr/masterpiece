@@ -10,6 +10,7 @@
 #include "../mp_audio/MasterpieceProcessor.h"
 
 #include <array>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <vector>
@@ -23,19 +24,30 @@ namespace mp::ui {
 // reach them but resizing.
 class ScrollHost : public juce::Viewport {
 public:
-  explicit ScrollHost(juce::Component& c, int minHeight) : minHeight_(minHeight) {
+  // contentHeight, when given, is the height the contents need, for a tab
+  // whose height changes with the organ (the MIDI tab has a row per keyboard).
+  explicit ScrollHost(juce::Component& c, int minHeight, std::function<int()> contentHeight = {})
+      : minHeight_(minHeight), contentHeight_(std::move(contentHeight)) {
     setViewedComponent(&c, false);
     setScrollBarsShown(true, false);
   }
   void resized() override {
     juce::Viewport::resized();
-    if (auto* c = getViewedComponent())
-      c->setSize(getMaximumVisibleWidth(),
-                 juce::jmax(minHeight_, getMaximumVisibleHeight()));
+    fit();
+  }
+  // Sizes the contents to the window, or taller where they need it, leaving
+  // room for the scroll bar when there is one.
+  void fit() {
+    auto* c = getViewedComponent();
+    if (c == nullptr) return;
+    const int needed = juce::jmax(minHeight_, contentHeight_ ? contentHeight_() : 0);
+    const bool scrolls = needed > getHeight();
+    c->setSize(getWidth() - (scrolls ? getScrollBarThickness() : 0), juce::jmax(needed, getHeight()));
   }
 
 private:
   int minHeight_;
+  std::function<int()> contentHeight_;
 };
 
 class EnginePanel : public juce::Component, private juce::Timer {
@@ -263,12 +275,15 @@ public:
   ~MidiPanel() override;
   void resized() override;
   void refresh();
+  // The height the panel's rows and note need at its present width.
+  int contentHeight() const { return contentHeight_; }
 
 private:
   void timerCallback() override;
 
   MasterpieceProcessor& proc_;
   juce::AudioDeviceManager& devices_;
+  int contentHeight_ = 0;
   juce::Label inputsLabel_, outputsLabel_, keyboardsLabel_;
   std::vector<std::unique_ptr<juce::ToggleButton>> inputs_;
   // One row per playable keyboard: which MIDI channel plays it. This is the
@@ -338,6 +353,14 @@ private:
   juce::Label lampLabel_;
   juce::ComboBox lampKind_, lampChannel_, lampNumber_;
   void pushReadyLamp();
+  // Page turns for a score app on a tablet or another program: a piston
+  // learned here sends the message chosen beside it on the MIDI output.
+  juce::Label scoreHeading_;
+  juce::TextButton learnScoreBack_{TRANS("Learn score page -")};
+  juce::TextButton learnScoreForward_{TRANS("Learn score page +")};
+  juce::ComboBox scoreKind_, scoreChannel_;
+  juce::TextEditor scoreForward_, scoreBack_;
+  void pushScorePage();
   juce::Label mapStatus_;
   juce::Label note_;
 };
@@ -567,6 +590,7 @@ private:
   ReverbPanel reverb_;
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;
+  std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
   MixerPanel mixer_;
   VoicingPanel voicing_;
   FavouritesPanel favourites_;

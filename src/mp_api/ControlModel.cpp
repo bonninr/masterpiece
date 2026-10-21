@@ -657,6 +657,8 @@ Error ControlModel::press(Type type, int index) {
         case Command::EqPresetPrevious: proc_.stepVoicingEqPreset(-1); break;
         case Command::Quit: return quitOrPowerOff(false);
         case Command::PowerOff: return quitOrPowerOff(true);
+        case Command::ScorePageForward: proc_.turnScorePage(true); break;
+        case Command::ScorePageBack: proc_.turnScorePage(false); break;
       }
       return Error::None;
     default:

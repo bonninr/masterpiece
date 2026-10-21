@@ -932,3 +932,9 @@ countries: pl
 
 # src/mp_ui/Ui.cpp (score)
 "Score" = "Nuty"
+"Score app" = "Aplikacja z nutami"
+"The message a page turn sends on the MIDI output; teach it to the score app" = "Komunikat, który przewrócenie strony wysyła na wyjście MIDI; naucz go aplikację z nutami"
+"The number sent for the next page" = "Numer wysyłany dla następnej strony"
+"The number sent for the page before" = "Numer wysyłany dla poprzedniej strony"
+"Learn score page -" = "Naucz stronę nut -"
+"Learn score page +" = "Naucz stronę nut +"

@@ -924,7 +924,8 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
   tabs_.addTab(TRANS("Voicing EQ"), kBackground, &eq_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices);
-    tabs_.addTab(TRANS("MIDI"), kBackground, midi_.get(), false);
+    midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
+    tabs_.addTab(TRANS("MIDI"), kBackground, midiScroll_.get(), false);
   }
   setSize(660, 560);
 }

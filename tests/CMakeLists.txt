@@ -29,6 +29,7 @@ endif()
 # it only exists in the full build, so its tests are guarded the same way.
 if(TARGET mp_audio)
   target_link_libraries(mp_tests PRIVATE mp_audio)
+  target_sources(mp_tests PRIVATE test_page_turn.cpp)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_AUDIO=1)
   # The stop list a screen reader can use: the UI is in mp_audio, and the
   # test reads the accessibility layer of the stops.

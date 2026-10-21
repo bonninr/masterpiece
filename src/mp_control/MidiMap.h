@@ -88,6 +88,11 @@ enum class MidiTargetKind {
   PowerOffComputer,
   // One temperament, chosen directly: id = temperamentTarget(its name).
   Temperament,
+  // A page turn for a score app on another device or program: a piston
+  // learned for one sends the message ScorePageMessage names on the MIDI
+  // output, where the app has learned it in turn.
+  ScorePageForward,
+  ScorePageBack,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -260,6 +265,37 @@ struct RawMidi {
   int size = 0;
 };
 
+// What a page turn sends to a score app: a note, a controller or a program
+// change on one channel, with one number for forward and one for back. Score
+// apps learn whatever message arrives, so any is fine; the default is two
+// notes at the top of channel 16, where no keyboard plays.
+struct ScorePageMessage {
+  enum Kind { Note = 0, Controller = 1, Program = 2 };
+  int kind = Note;
+  int channel = 16;  // 1..16
+  int forward = 127;
+  int back = 126;
+  bool operator==(const ScorePageMessage& o) const {
+    return kind == o.kind && channel == o.channel && forward == o.forward && back == o.back;
+  }
+};
+
+// The bytes of one page turn: a note is struck and let go, a controller goes
+// to 127 and back to 0, as a button sends them. Returns how many messages.
+inline int scorePageTurn(const ScorePageMessage& m, bool forward, RawMidi out[2]) {
+  const auto ch = static_cast<uint8_t>((m.channel < 1 || m.channel > 16 ? 16 : m.channel) - 1);
+  const auto n = static_cast<uint8_t>((forward ? m.forward : m.back) & 0x7F);
+  if (m.kind == ScorePageMessage::Program) {
+    out[0] = {{static_cast<uint8_t>(0xC0 | ch), n, 0}, 2};
+    return 1;
+  }
+  const uint8_t status = m.kind == ScorePageMessage::Controller ? 0xB0 : 0x90;
+  out[0] = {{static_cast<uint8_t>(status | ch), n, 127}, 3};
+  out[1] = m.kind == ScorePageMessage::Controller ? RawMidi{{static_cast<uint8_t>(0xB0 | ch), n, 0}, 3}
+                                                  : RawMidi{{static_cast<uint8_t>(0x80 | ch), n, 0}, 3};
+  return 2;
+}
+
 // A key on the computer's keyboard. A switch toggles with it; a control moves
 // by `step` each press, so a swell box has one key to open and one to close.
 struct KeyShortcut {
@@ -328,6 +364,8 @@ public:
       case MidiTargetKind::QuitProgram:
       case MidiTargetKind::PowerOffComputer:
       case MidiTargetKind::Temperament:
+      case MidiTargetKind::ScorePageForward:
+      case MidiTargetKind::ScorePageBack:
         return true;
       default:
         return false;

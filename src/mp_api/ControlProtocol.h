@@ -177,9 +177,11 @@ enum class Command : uint8_t {
   EqPresetPrevious = 7,
   Quit = 8,
   PowerOff = 9,
+  ScorePageForward = 10,
+  ScorePageBack = 11,
 };
-constexpr std::string_view kCommandNames[] = {"panic", "generalCancel", "stepperNext", "stepperPrevious", "stepperFirst", "stepperLast", "eqPresetNext", "eqPresetPrevious", "quit", "powerOff"};
-constexpr int kCommandCount = 10;
+constexpr std::string_view kCommandNames[] = {"panic", "generalCancel", "stepperNext", "stepperPrevious", "stepperFirst", "stepperLast", "eqPresetNext", "eqPresetPrevious", "quit", "powerOff", "scorePageForward", "scorePageBack"};
+constexpr int kCommandCount = 12;
 
 enum class Op : uint8_t {
   Identify = 1,

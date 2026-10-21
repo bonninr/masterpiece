@@ -1036,6 +1036,10 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           powerButton(action.kind, action.engage,
                       source.kind == MidiSourceKind::Note || source.kind == MidiSourceKind::ControlChange);
           continue;
+        case MidiTargetKind::ScorePageForward:
+        case MidiTargetKind::ScorePageBack:
+          turnScorePage(action.kind == MidiTargetKind::ScorePageForward);
+          continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
           break;
@@ -2064,6 +2068,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (realtimeThreads_.load()) text << "realtimethreads 1\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
+  if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
+    text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
@@ -2228,6 +2234,16 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       }
     } else if (key == "midiinputoff") {
       if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
+    } else if (key == "scorepage") {
+      const auto f = juce::StringArray::fromTokens(val, " ", "");
+      if (f.size() == 4) {
+        ScorePageMessage m;
+        m.kind = juce::jlimit(0, 2, f[0].getIntValue());
+        m.channel = juce::jlimit(1, 16, f[1].getIntValue());
+        m.forward = juce::jlimit(0, 127, f[2].getIntValue());
+        m.back = juce::jlimit(0, 127, f[3].getIntValue());
+        scorePage_.store(packScorePage(m), std::memory_order_release);
+      }
     } else if (key == "midioutput") {
       midiOutputName_ = val;  // opened by the application at start
     } else if (key == "midifeedback") {
@@ -4571,6 +4587,32 @@ void MasterpieceProcessor::sendSysexOut(std::vector<uint8_t> bytes) {
   lcdQueue_.push_back(std::move(bytes));
 }
 
+// The page turns asked for since the last block, into the outgoing stream:
+// the one sender to the port, as the lamps and the LCD lines are.
+void MasterpieceProcessor::emitScorePageTurns() {
+  const int forward = scorePagesForward_.exchange(0, std::memory_order_acq_rel);
+  const int back = scorePagesBack_.exchange(0, std::memory_order_acq_rel);
+  if (forward == 0 && back == 0) return;
+  scorePagesTurned_.fetch_add(forward + back, std::memory_order_acq_rel);
+  if (midiOut_ == nullptr) return;
+  const ScorePageMessage m = scorePageMessage();
+  RawMidi raw[2];
+  for (int i = 0; i < forward + back; ++i) {
+    const int n = scorePageTurn(m, i < forward, raw);
+    for (int k = 0; k < n; ++k) outgoing_.addEvent(raw[k].bytes, raw[k].size, 0);
+  }
+}
+
+void MasterpieceProcessor::setScorePageMessage(const ScorePageMessage& m) {
+  ScorePageMessage held = m;
+  held.kind = juce::jlimit(0, 2, held.kind);
+  held.channel = juce::jlimit(1, 16, held.channel);
+  held.forward = juce::jlimit(0, 127, held.forward);
+  held.back = juce::jlimit(0, 127, held.back);
+  scorePage_.store(packScorePage(held), std::memory_order_release);
+  writeGlobalFile();
+}
+
 int MasterpieceProcessor::refreshLcdPanels() {
   // Drop what the displays are believed to show, then send the real state —
   // rather than rendering a blank state, which would make any line whose true
@@ -5630,6 +5672,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     t1 = tick();
   }
   handleMidi(midi);
+  emitScorePageTurns();
   if (logBlocks) t2 = tick();
   // And every voice still sounding, once the note-offs above have been dealt
   // with: a note stuck because its note-off was lost, or arrived where the

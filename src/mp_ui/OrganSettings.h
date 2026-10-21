@@ -197,6 +197,7 @@ private:
   // General settings, here too, where a player setting up one organ looks
   // (#90). Both edit the same mapping.
   std::unique_ptr<MidiPanel> midi_;
+  std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
   VoicingEqPanel eq_;
 };
 
