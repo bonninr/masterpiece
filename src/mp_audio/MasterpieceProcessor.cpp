@@ -467,6 +467,7 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
         busOutputs_[i] = {left, right};
     }
   refreshBusReverbs();
+  refreshBusBass();
   if (const int wanted = outputChannelsWanted(); wanted != lastOutputChannelsWanted_) {
     lastOutputChannelsWanted_ = wanted;
     if (onOutputChannelsWanted) onOutputChannelsWanted();
@@ -479,6 +480,42 @@ std::pair<int, int> MasterpieceProcessor::busOutputFor(int index, int numCh) con
     if (own.first >= 0 && own.first < numCh && own.second < numCh) return own;
   }
   return {0, numCh > 1 ? 1 : 0};
+}
+
+void MasterpieceProcessor::refreshBusBass() {
+  busBass_.clear();
+  busBass_.resize(mixBusOrder_.size());
+  for (size_t i = 0; i < mixBusOrder_.size(); ++i) {
+    const BusBass* b = mixer_.bassFor(mixBusOrder_[i]);
+    if (b == nullptr || !b->active()) continue;
+    auto m = std::make_unique<BassManager>();
+    m->setCrossoverHz(b->crossoverHz);
+    m->prepare(sampleRate_ > 0.0 ? sampleRate_ : 48000.0, juce::jmax(1, maxBlock_));
+    busBass_[i] = std::move(m);
+  }
+}
+
+void MasterpieceProcessor::setBusBass(int busId, float crossoverHz, int subChannel) {
+  if (crossoverHz <= 0.0f || subChannel < 0) {
+    mixer_.busBass.erase(busId);
+  } else {
+    BusBass b;
+    b.crossoverHz = juce::jlimit(BassManager::kMinHz, BassManager::kMaxHz, crossoverHz);
+    b.subChannel = juce::jlimit(0, kMaxOutputChannels - 1, subChannel);
+    mixer_.busBass[busId] = b;
+  }
+  refreshMixerBuses();
+  // Kept with the pairs: in the organ's settings, and in the defaults when
+  // the player saves them as such.
+  markSettingsDirty();
+}
+
+bool MasterpieceProcessor::needsRoutedOutput(int numCh) const {
+  if (anyBusOnItsOwnChannels(numCh)) return true;
+  for (size_t i = 0; i < busBass_.size() && i < mixBusOrder_.size(); ++i)
+    if (busBass_[i] != nullptr)
+      if (const BusBass* b = mixer_.bassFor(mixBusOrder_[i]); b != nullptr && b->subChannel < numCh) return true;
+  return false;
 }
 
 bool MasterpieceProcessor::anyBusOnItsOwnChannels(int numCh) const {
@@ -495,6 +532,8 @@ int MasterpieceProcessor::outputChannelsWanted() const {
   for (const auto& b : mixer_.buses)
     for (int ch : b.deviceChannels)
       if (ch >= 0 && ch < kMaxOutputChannels) highest = juce::jmax(highest, ch);
+  for (const auto& [id, b] : mixer_.busBass)
+    if (b.active() && b.subChannel < kMaxOutputChannels) highest = juce::jmax(highest, b.subChannel);
   return highest + 1;
 }
 
@@ -775,7 +814,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   // has: each of those buses is rendered on its own, with its own room, and
   // added to its channels; the others go to the first pair. Without them,
   // below, every bus is summed into the first pair, as on a stereo device.
-  if (anyBusOnItsOwnChannels(outCh)) {
+  if (needsRoutedOutput(outCh)) {
     if (pairScratch_.getNumSamples() < numFrames) pairScratch_.setSize(2, numFrames, false, false, true);
     for (int i = 0; i < buses; ++i) {
       const bool captured = mixBusCapture_ != nullptr && i < static_cast<int>(mixBusCapture_->size());
@@ -788,6 +827,14 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
           busConvolvers_[static_cast<size_t>(i)] != nullptr)
         busConvolvers_[static_cast<size_t>(i)]->process(dest);
 #endif
+      // Its lows to the subwoofer's channel, when the output has it; the
+      // highs go on to the pair.
+      if (i < static_cast<int>(busBass_.size()) && busBass_[static_cast<size_t>(i)] != nullptr)
+        if (const BusBass* bass = mixer_.bassFor(mixBusOrder_[static_cast<size_t>(i)]);
+            bass != nullptr && bass->subChannel < outCh)
+          busBass_[static_cast<size_t>(i)]->process(dest.getWritePointer(0),
+                                                    dest.getNumChannels() > 1 ? dest.getWritePointer(1) : nullptr,
+                                                    output.getWritePointer(bass->subChannel), numFrames);
       const auto [left, right] = busOutputFor(i, outCh);
       const int last = dest.getNumChannels() - 1;
       output.addFrom(left, 0, dest, 0, 0, numFrames);
@@ -1632,6 +1679,17 @@ juce::String MasterpieceProcessor::settingsBody() const {
            << juce::String(r.mix, 3) << " " << juce::String(r.irFile) << "\n";
     }
   }
+  // A bus's bass management: "busbass <busId> <crossoverHz> <subChannel>".
+  {
+    std::vector<int> withBass;
+    for (const auto& [busId, b] : mixer_.busBass)
+      if (b.active()) withBass.push_back(busId);
+    std::sort(withBass.begin(), withBass.end());
+    for (int busId : withBass) {
+      const auto& b = mixer_.busBass.at(busId);
+      text << "busbass " << busId << " " << juce::String(b.crossoverHz, 0) << " " << b.subChannel << "\n";
+    }
+  }
   if (!mixer_.groups.empty()) {
     text << "groups";
     for (const auto& g : mixer_.groups) {
@@ -1713,6 +1771,15 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
       mixer_.buses.push_back(std::move(b));
     }
     refreshMixerBuses();
+  } else if (key == "busbass") {
+    const auto parts = juce::StringArray::fromTokens(val, " ", "");
+    if (parts.size() >= 3 && parts[0].getIntValue() != 0) {
+      BusBass b;
+      b.crossoverHz = juce::jlimit(BassManager::kMinHz, BassManager::kMaxHz, parts[1].getFloatValue());
+      b.subChannel = juce::jlimit(0, kMaxOutputChannels - 1, parts[2].getIntValue());
+      mixer_.busBass[parts[0].getIntValue()] = b;
+      refreshMixerBuses();
+    }
   } else if (key == "busir") {
     // "busir <busId> <enabled> <mix> <path...>". The path is last because it
     // can contain spaces, and splitting it would quietly lose the file.

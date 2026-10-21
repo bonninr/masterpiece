@@ -153,6 +153,7 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
 | **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
+| **Bass management...** | One row per pair: **Off**, or a crossover of **40** to **200 Hz**, and **Subwoofer on N**. The lows of both channels of the pair, under the crossover, go to that device channel, and the rest to the pair. Several pairs can share one subwoofer. The crossover is Linkwitz-Riley of the 4th order: the pair and the subwoofer add up flat. | Off | At once |
 | Rank list | One row per rank, labelled with its number and name, with a **Pair** box | **Pair 1** | At once |
 
 A rank is routed when a note starts, so notes already sounding keep the pair they began on. A rank with no entry plays through the first pair, so an organ is audible before the Mixer is opened. The pair of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever pair carries it.

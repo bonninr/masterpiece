@@ -2487,6 +2487,92 @@ void VoicingPanel::resized() {
 
 // ----------------------------------------------------------------- mixer
 
+namespace {
+// One row per pair: the crossover under which its lows go to the subwoofer,
+// and the subwoofer's device channel. Off leaves the pair as it was.
+class BassPanel final : public juce::Component {
+public:
+  std::function<void()> onChanged;
+  explicit BassPanel(MasterpieceProcessor& p, std::function<void()> changed)
+      : onChanged(std::move(changed)), proc_(p) {
+    addAndMakeVisible(heading_);
+    styleLabel(heading_, TRANS("Bass management"));
+    const int channels = juce::jmax(8, proc_.getTotalNumOutputChannels());
+    for (const auto& b : proc_.mixer().buses) {
+      Row row;
+      row.busId = b.id.value;
+      row.label = std::make_unique<juce::Label>();
+      styleLabel(*row.label, TRANS("Pair %1").replace("%1", juce::String(b.id.value)));
+      row.crossover = std::make_unique<juce::ComboBox>();
+      row.crossover->addItem(TRANS("Off"), 1);
+      for (int hz : kFrequencies) row.crossover->addItem(juce::String(hz) + " Hz", hz);
+      row.sub = std::make_unique<juce::ComboBox>();
+      for (int ch = 0; ch < channels; ++ch)
+        row.sub->addItem(TRANS("Subwoofer on %1").replace("%1", juce::String(ch + 1)), ch + 1);
+      const BassSetting now = settingOf(b.id.value);
+      row.crossover->setSelectedId(now.hz > 0 ? now.hz : 1, juce::dontSendNotification);
+      row.sub->setSelectedId(now.sub >= 0 ? now.sub + 1 : juce::jmin(channels, 3), juce::dontSendNotification);
+      row.sub->setEnabled(now.hz > 0);
+      const int id = b.id.value;
+      auto* crossover = row.crossover.get();
+      auto* subBox = row.sub.get();
+      auto apply = [this, id, crossover, subBox] {
+        const int hz = crossover->getSelectedId() > 1 ? crossover->getSelectedId() : 0;
+        subBox->setEnabled(hz > 0);
+        proc_.setBusBass(id, static_cast<float>(hz), subBox->getSelectedId() - 1);
+        if (onChanged) onChanged();
+      };
+      row.crossover->onChange = apply;
+      row.sub->onChange = apply;
+      addAndMakeVisible(*row.label);
+      addAndMakeVisible(*row.crossover);
+      addAndMakeVisible(*row.sub);
+      rows_.push_back(std::move(row));
+    }
+    addAndMakeVisible(note_);
+    styleNote(note_, TRANS("The lows of both channels of a pair, under the crossover, go to the subwoofer's "
+                           "channel, and the rest to the pair. Several pairs can share one subwoofer."));
+    setSize(460, 12 + kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 64);
+  }
+  void resized() override {
+    auto r = getLocalBounds().reduced(12, 6);
+    heading_.setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(kGap);
+    for (auto& row : rows_) {
+      auto line = r.removeFromTop(kRow);
+      r.removeFromTop(4);
+      row.label->setBounds(line.removeFromLeft(80));
+      row.crossover->setBounds(line.removeFromLeft(110).reduced(0, 1));
+      line.removeFromLeft(kGap);
+      row.sub->setBounds(line.removeFromLeft(220).reduced(0, 1));
+    }
+    note_.setBounds(r);
+  }
+
+private:
+  static constexpr int kFrequencies[] = {40, 60, 80, 100, 120, 150, 200};
+  struct BassSetting {
+    int hz = 0;
+    int sub = -1;
+  };
+  BassSetting settingOf(int busId) const {
+    const auto* b = proc_.mixer().bassFor(BusId{busId});
+    if (b == nullptr || !b->active()) return {};
+    return {juce::roundToInt(b->crossoverHz), b->subChannel};
+  }
+  struct Row {
+    int busId = 0;
+    std::unique_ptr<juce::Label> label;
+    std::unique_ptr<juce::ComboBox> crossover;
+    std::unique_ptr<juce::ComboBox> sub;
+  };
+  MasterpieceProcessor& proc_;
+  juce::Label heading_;
+  std::vector<Row> rows_;
+  juce::Label note_;
+};
+}  // namespace
+
 MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Mixer"));
@@ -2518,6 +2604,15 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   };
   addAndMakeVisible(save_);
   save_.onClick = [this] { proc_.saveSettings(); };
+  addAndMakeVisible(bass_);
+  bass_.onClick = [this] {
+    juce::Component::SafePointer<MixerPanel> self(this);
+    juce::CallOutBox::launchAsynchronously(std::make_unique<BassPanel>(proc_,
+                                                                       [self] {
+                                                                         if (self != nullptr) self->showOutputs();
+                                                                       }),
+                                           bass_.getScreenBounds(), nullptr);
+  };
 
   addAndMakeVisible(status_);
   styleLabel(status_, "");
@@ -2602,10 +2697,15 @@ void MixerPanel::showOutputs() {
     if (b.deviceChannels.empty()) continue;
     const int left = b.deviceChannels[0];
     const int right = b.deviceChannels.size() > 1 ? b.deviceChannels[1] : left;
-    pairs.add(TRANS("Pair %1: %2-%3")
-                  .replace("%1", juce::String(b.id.value))
-                  .replace("%2", juce::String(left + 1))
-                  .replace("%3", juce::String(right + 1)));
+    juce::String pair = TRANS("Pair %1: %2-%3")
+                            .replace("%1", juce::String(b.id.value))
+                            .replace("%2", juce::String(left + 1))
+                            .replace("%3", juce::String(right + 1));
+    if (const auto* bass = proc_.mixer().bassFor(b.id); bass != nullptr && bass->active()) {
+      pair += " (" + TRANS("bass to %1").replace("%1", juce::String(bass->subChannel + 1)) + ")";
+      if (bass->subChannel >= outs) beyond = true;
+    }
+    pairs.add(pair);
     if (left >= outs || right >= outs) beyond = true;
   }
   juce::String text = pairs.joinIntoString(", ");
@@ -2671,6 +2771,8 @@ void MixerPanel::resized() {
   reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
   row.removeFromLeft(6);
   save_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  row.removeFromLeft(6);
+  bass_.setBounds(row.removeFromLeft(170).reduced(0, 1));
   r.removeFromTop(4);
   outputs_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);

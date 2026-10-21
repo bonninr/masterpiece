@@ -37,6 +37,16 @@ struct BusReverb {
   bool active() const { return enabled && !irFile.empty(); }
 };
 
+// A bus's bass management: the lows of its pair, below the crossover, to a
+// subwoofer channel of the device, and the rest to the pair. Off while the
+// frequency is 0.
+struct BusBass {
+  float crossoverHz = 0.0f;  // 40..200, or 0 for off
+  int subChannel = -1;       // a device channel, counted from 0
+
+  bool active() const { return crossoverHz > 0.0f && subChannel >= 0; }
+};
+
 // One rank's routing, plus the buses and groups it can reach.
 struct MixerConfig {
   std::vector<MixerBus> buses;
@@ -46,6 +56,13 @@ struct MixerConfig {
   // the shared contract with the UI and validator, and a file path is neither
   // of their business.
   std::unordered_map<int, BusReverb> busReverb;
+  // Indexed by BusId.value as the rooms are: a bus with no entry has none.
+  std::unordered_map<int, BusBass> busBass;
+
+  const BusBass* bassFor(BusId id) const {
+    const auto it = busBass.find(id.value);
+    return it == busBass.end() ? nullptr : &it->second;
+  }
 
   const BusReverb* reverbFor(BusId id) const {
     const auto it = busReverb.find(id.value);

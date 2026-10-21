@@ -473,6 +473,8 @@ private:
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
   juce::TextButton reset_{TRANS("All to pair 1")};
+  // Each pair's lows to a subwoofer channel, in a box of its own.
+  juce::TextButton bass_{TRANS("Bass management...")};
   // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
   juce::Viewport viewport_;
   juce::Component rankHolder_;

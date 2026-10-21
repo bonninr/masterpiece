@@ -9,6 +9,7 @@
 
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/OutputLimiter.h"
+#include "../src/mp_audio/BassManager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -494,6 +495,117 @@ public:
   }
 };
 static OutputPairsTest g_outputPairs;
+
+// ---------------------------------------------------------------- bass management
+
+// A sine on the left channel of a pair through the crossover: the level, in
+// dB under the input, of what stays on the pair, of what reaches the
+// subwoofer, and of the two added back together. Measured after half a
+// second, when the filter has settled.
+struct Bands {
+  double pairDb, subDb, sumDb;
+};
+Bands throughCrossover(double freq, float crossoverHz) {
+  mp::BassManager m;
+  m.setCrossoverHz(crossoverHz);
+  m.prepare(kRate, 512);
+  const int n = static_cast<int>(kRate);  // one second
+  std::vector<float> in(static_cast<size_t>(n)), left(static_cast<size_t>(n)), right(static_cast<size_t>(n), 0.0f),
+      sub(static_cast<size_t>(n), 0.0f);
+  for (int i = 0; i < n; ++i) in[static_cast<size_t>(i)] = static_cast<float>(0.5 * std::sin(2.0 * kPi * freq * i / kRate));
+  left = in;
+  for (int at = 0; at < n; at += 512)
+    m.process(left.data() + at, right.data() + at, sub.data() + at, std::min(512, n - at));
+  auto rms = [&](const std::vector<float>& x) {
+    double s = 0.0;
+    for (int i = n / 2; i < n; ++i) s += static_cast<double>(x[static_cast<size_t>(i)]) * x[static_cast<size_t>(i)];
+    return std::sqrt(s / (n - n / 2));
+  };
+  std::vector<float> sum(static_cast<size_t>(n));
+  for (int i = 0; i < n; ++i) sum[static_cast<size_t>(i)] = left[static_cast<size_t>(i)] + sub[static_cast<size_t>(i)];
+  const double ref = rms(in);
+  auto db = [&](double v) { return 20.0 * std::log10(std::max(v, 1e-12) / ref); };
+  return {db(rms(left)), db(rms(sub)), db(rms(sum))};
+}
+
+class BassManagementTest final : public mp::test::Test {
+public:
+  BassManagementTest() : Test("functional.output.bass-management", Category::Functional) {}
+  void run() override {
+    const auto low = throughCrossover(30.0, 120.0f);
+    MP_CHECK(low.pairDb < -40.0, "30 Hz leaves the pair: " + std::to_string(low.pairDb) + " dB");
+    MP_CHECK(std::fabs(low.subDb) < 0.5, "and arrives on the subwoofer: " + std::to_string(low.subDb) + " dB");
+    const auto high = throughCrossover(1000.0, 120.0f);
+    MP_CHECK(std::fabs(high.pairDb) < 0.5, "1 kHz stays on the pair: " + std::to_string(high.pairDb) + " dB");
+    MP_CHECK(high.subDb < -40.0, "and the subwoofer has none of it: " + std::to_string(high.subDb) + " dB");
+    for (float hz : {40.0f, 80.0f, 120.0f, 200.0f}) {
+      const auto at = throughCrossover(hz, hz);
+      MP_CHECK(std::fabs(at.sumDb) < 0.5, "the pair and the subwoofer add up flat at the crossover, " +
+                                              std::to_string(static_cast<int>(hz)) + " Hz: " +
+                                              std::to_string(at.sumDb) + " dB");
+    }
+    mp::BassManager off;
+    off.prepare(kRate, 64);
+    MP_CHECK(!off.active(), "off out of the box");
+    std::vector<float> l(64, 0.25f), r(64, -0.25f), s(64, 0.0f);
+    off.process(l.data(), r.data(), s.data(), 64);
+    MP_CHECK(l == std::vector<float>(64, 0.25f) && s == std::vector<float>(64, 0.0f), "and off, it touches nothing");
+    off.setCrossoverHz(10.0f);
+    MP_CHECK(off.crossoverHz() == 40.0f, "a crossover under 40 Hz is 40 Hz");
+  }
+};
+static BassManagementTest g_bassManagement;
+
+// Through the processor: the organ's 131 Hz tone on the first pair of a
+// three-channel output, with the pair's bass under 200 Hz sent to channel 3.
+// The tone is mostly on the subwoofer, and the setting is kept.
+class BassProcessorTest final : public mp::test::Test {
+public:
+  BassProcessorTest() : Test("functional.output.bass-processor", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-bass-processor");
+    mp::MasterpieceProcessor proc;
+    Keep global(proc.globalSettingsFile());
+    Keep organSettings(proc.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+
+    juce::AudioProcessor::BusesLayout layout;
+    layout.outputBuses.add(juce::AudioChannelSet::discreteChannels(3));
+    MP_CHECK(proc.setBusesLayout(layout), "three outputs");
+    proc.prepareToPlay(kRate, 256);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    proc.setBusBass(1, 200.0f, 2);
+    MP_CHECK(proc.outputChannelsWanted() == 3, "the subwoofer's channel is asked for");
+    proc.setStopEngaged(901, true);
+    juce::AudioBuffer<float> buffer(3, 256);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    juce::MidiBuffer none;
+    double pair = 0.0, subwoofer = 0.0;
+    for (int block = 0; block < 40; ++block) {
+      buffer.clear();
+      proc.processBlock(buffer, block == 0 ? on : none);
+      if (block < 20) continue;
+      pair += buffer.getRMSLevel(0, 0, 256) + buffer.getRMSLevel(1, 0, 256);
+      subwoofer += buffer.getRMSLevel(2, 0, 256);
+    }
+    MP_CHECK(subwoofer > 0.0 && subwoofer > pair * 2.0,
+             "the tone under the crossover is on the subwoofer: " + std::to_string(subwoofer) + " against " +
+                 std::to_string(pair));
+    proc.releaseResources();
+    MP_CHECK(proc.saveSettings(), "the organ's settings are saved");
+    MP_CHECK(proc.settingsFileFor(organ.odf).loadFileAsString().contains("busbass 1 200 2"),
+             "the organ's settings keep it");
+    mp::MasterpieceProcessor next;
+    next.prepareToPlay(kRate, 256);
+    MP_CHECK(next.loadOrgan(organ.odf, 0, false).ok, "the organ loads again");
+    const auto* b = next.mixer().bassFor(mp::BusId{1});
+    MP_CHECK(b != nullptr && b->crossoverHz == 200.0f && b->subChannel == 2, "and it comes back with the organ");
+    next.releaseResources();
+    organ.root.deleteRecursively();
+  }
+};
+static BassProcessorTest g_bassProcessor;
 
 static LimiterOffTest g_limiterOff;
 static LimiterCeilingTest g_limiterCeiling;
