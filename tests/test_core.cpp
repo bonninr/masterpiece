@@ -14459,6 +14459,56 @@ public:
 };
 static DeviceSysExReloadTest g_deviceSysExReload;
 
+// A small page fills the window (#451): the artwork is measured by its
+// own bounds, a small page may fill the window, and a full-size page is
+// fitted as it always was.
+class PageFitTest final : public mp::test::Test {
+public:
+  PageFitTest() : Test("functional.ui.page-fit", Category::Functional) {}
+  void run() override {
+    // A page drawn on a sheet with a margin: it starts at (40, 30).
+    const juce::Rectangle<int> art(40, 30, 640, 360);
+    const juce::Rectangle<int> first(0, 0, 1280, 720);
+    const juce::Rectangle<int> area(0, 0, 1000, 700);
+
+    // A small panel of its own: magnified as the console is, and no
+    // further, so it keeps its own size beside the first page.
+    const float capped = mp::ui::ConsoleView::fitScale(art, first, area);
+    MP_CHECK(std::abs(capped - std::min(1000.0f / 1280.0f, 700.0f / 720.0f)) < 0.001f,
+             "a small page is not magnified beyond the first page's fit");
+
+    // The player can ask for the small pages to fill the window.
+    const float filled = mp::ui::ConsoleView::fitScale(art, first, area, true);
+    MP_CHECK(std::abs(filled - std::min(1000.0f / 640.0f, 700.0f / 360.0f)) < 0.001f,
+             "and then it fills the window, measured by its own bounds");
+
+    // Where the page is drawn does not change its size: the artwork is
+    // measured from where it starts, not from the origin.
+    const juce::Rectangle<int> atOrigin(0, 0, 640, 360);
+    MP_CHECK(std::abs(mp::ui::ConsoleView::fitScale(art, art, area, true) -
+                      mp::ui::ConsoleView::fitScale(atOrigin, atOrigin, area, true)) < 0.001f,
+             "a page drawn away from the origin is the same size");
+
+    // And it is drawn from its own top-left: the artwork's corners land on
+    // the holder's corners at any scale.
+    const auto t = mp::ui::ConsoleView::artworkTransform(art, filled);
+    float x0 = static_cast<float>(art.getX()), y0 = static_cast<float>(art.getY());
+    float x1 = static_cast<float>(art.getRight()), y1 = static_cast<float>(art.getBottom());
+    t.transformPoint(x0, y0);
+    t.transformPoint(x1, y1);
+    MP_CHECK(std::abs(x0) < 0.01f && std::abs(y0) < 0.01f,
+             "the artwork's top-left is drawn at the holder's: " + std::to_string(x0) + ", " + std::to_string(y0));
+    MP_CHECK(std::abs(x1 - 640.0f * filled) < 0.01f && std::abs(y1 - 360.0f * filled) < 0.01f,
+             "and its far corner at its size times the scale: " + std::to_string(x1) + ", " + std::to_string(y1));
+
+    // A page of the first page's own size: as it was before.
+    const float whole = mp::ui::ConsoleView::fitScale(first, first, area);
+    MP_CHECK(std::abs(whole - std::min(1000.0f / 1280.0f, 700.0f / 720.0f)) < 0.001f,
+             "a full-size page is fitted as before");
+  }
+};
+static PageFitTest g_pageFit;
+
 // The console display's setup is kept: it was the settings tab's, cleared
 // each time the tab opened (#396).
 class ConsoleDisplayKeptTest final : public mp::test::Test {

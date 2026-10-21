@@ -347,6 +347,11 @@ void ConsoleView::rebuild() {
     for (const auto& k : keys_) extent_ = extent_.getUnion(k.bounds);
   }
 
+  // What can be drawn: a GrandOrgue panel laid out for a screen smaller than
+  // its rows puts its top rows above the origin, as GrandOrgue's own layout
+  // does, and nothing is painted there. The page is measured from the origin
+  // at the least, so no band of nothing is kept for them.
+  extent_ = extent_.getIntersection({0, 0, 1 << 24, 1 << 24});
   hasArtwork_ = !items_.empty() || !keys_.empty() || !texts_.empty();
   const std::string firstOf = organRoot_ + "#" + std::to_string(layout_);
   if (pageIndex_ == 0) {
@@ -841,15 +846,20 @@ void ConsoleView::setLayout(int layout) {
 }
 
 float ConsoleView::fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first,
-                            juce::Rectangle<int> area) {
-  if (art.getRight() <= 0 || art.getBottom() <= 0) return 1.0f;
+                            juce::Rectangle<int> area, bool fillSmall) {
+  // The artwork's own bounds: a page whose drawing does not start at the
+  // origin is measured from where it starts, and keeps no band of nothing
+  // beside it.
+  if (art.getWidth() <= 0 || art.getHeight() <= 0) return 1.0f;
   const auto fit = [&area](juce::Rectangle<int> r) {
-    return juce::jmin(static_cast<float>(area.getWidth()) / static_cast<float>(r.getRight()),
-                      static_cast<float>(area.getHeight()) / static_cast<float>(r.getBottom()));
+    return juce::jmin(static_cast<float>(area.getWidth()) / static_cast<float>(r.getWidth()),
+                      static_cast<float>(area.getHeight()) / static_cast<float>(r.getHeight()));
   };
   float scale = fit(art);
-  // Half the first page or less, both ways: a small panel of its own.
-  if (first.getRight() >= art.getRight() * 2 && first.getBottom() >= art.getBottom() * 2)
+  // Half the first page or less, both ways: a small panel of its own. It is
+  // magnified as the console is, and no further, unless the player asks for
+  // the small pages to fill the window.
+  if (!fillSmall && first.getWidth() >= art.getWidth() * 2 && first.getHeight() >= art.getHeight() * 2)
     scale = juce::jmin(scale, fit(first));
   return scale;
 }
@@ -1220,7 +1230,11 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   if (e.mods.isPopupMenu() && proc_.midiMap().learning()) {
     proc_.midiMap().cancelLearn();
     repaint();
+    return;
   }
+  // Otherwise it is the window's own menu, where the window has one: a page
+  // window that the page fills has no other place to be right-clicked.
+  if (e.mods.isPopupMenu() && onBackgroundMenu) onBackgroundMenu();
 }
 
 // What a stop that makes no sound is, said over its knob: on a demo set the

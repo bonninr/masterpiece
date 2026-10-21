@@ -861,3 +861,6 @@ countries: nl be sr
 "A message on the MIDI output that lights a lamp once the organ is ready, blinks while one loads and while a quit or power-off button is held, and goes out with no organ" = "Een bericht op de MIDI-uitgang dat een lamp laat branden zodra het orgel gereed is, knippert tijdens het laden en zolang een knop voor afsluiten of uitschakelen wordt vastgehouden, en uitgaat zonder orgel"
 "Learn quit" = "Afsluiten leren"
 "Learn power off" = "Uitschakelen leren"
+"Small pages fill the window" = "Kleine pagina's vullen het venster"
+"Fit window to page" = "Venster aan de pagina aanpassen"
+"Borderless" = "Zonder rand"

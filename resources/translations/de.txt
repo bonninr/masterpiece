@@ -861,3 +861,6 @@ countries: de at ch li lu
 "A message on the MIDI output that lights a lamp once the organ is ready, blinks while one loads and while a quit or power-off button is held, and goes out with no organ" = "Eine Meldung am MIDI-Ausgang, die eine Lampe einschaltet, sobald die Orgel bereit ist, während des Ladens und während ein Beenden- oder Ausschalten-Taster gehalten wird blinkt und ohne Orgel erlischt"
 "Learn quit" = "Beenden lernen"
 "Learn power off" = "Ausschalten lernen"
+"Small pages fill the window" = "Kleine Seiten füllen das Fenster"
+"Fit window to page" = "Fenster an Seite anpassen"
+"Borderless" = "Ohne Rahmen"

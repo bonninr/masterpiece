@@ -309,11 +309,14 @@ private:
   UpdateNotice updateNotice_{proc_};
   ConsoleView console_;
   juce::Viewport consoleView_;
+  // The room the console page is given in the window, for "Fit window to page".
+  juce::Rectangle<int> consoleArea_;
   PageTabs pageTabs_;
   // Pages in windows of their own, to spread a console over several screens.
   std::vector<std::unique_ptr<PageWindow>> pageWindows_;
   // `layout` is the console layout the window shows, -1 for the main window's.
-  void openPageWindow(int page, juce::Rectangle<int> bounds = {}, int layout = -1);
+  void openPageWindow(int page, juce::Rectangle<int> bounds = {}, int layout = -1,
+                        bool borderless = false);
   // "main layout", "alternate layout 2 (portrait)": how a layout is offered.
   juce::String layoutName(int layout) const;
   void closePageWindow(PageWindow* window);
@@ -336,6 +339,8 @@ private:
   juce::TextButton settingsButton_{TRANS("Settings")};
   void showFileMenu();
   void showViewMenu();
+  // Size the window so the console's page fills it, with no margin.
+  void fitWindowToPage();
   void showSettingsMenu();
   void toggleKeyboard();
   void toggleSwell();

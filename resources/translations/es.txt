@@ -861,3 +861,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "A message on the MIDI output that lights a lamp once the organ is ready, blinks while one loads and while a quit or power-off button is held, and goes out with no organ" = "Un mensaje en la salida MIDI que enciende una lámpara cuando el órgano está listo, parpadea mientras uno carga y mientras se mantiene pulsado un botón de salir o apagar, y se apaga sin órgano"
 "Learn quit" = "Aprender salir"
 "Learn power off" = "Aprender apagar"
+"Small pages fill the window" = "Las páginas pequeñas llenan la ventana"
+"Fit window to page" = "Ajustar la ventana a la página"
+"Borderless" = "Sin bordes"
