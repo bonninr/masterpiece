@@ -96,6 +96,10 @@ enum class MidiTargetKind {
   // "Pedal combinations coupled" (PedalCoupling.h): held or toggled like the
   // setter, under its own id.
   PedalCombinationsCoupled,
+  // The recorder's buttons on a console: Record starts a take, or stops the
+  // one being made; Play plays the take, or stops it.
+  RecorderRecord,
+  RecorderPlay,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -372,6 +376,8 @@ public:
       case MidiTargetKind::Temperament:
       case MidiTargetKind::ScorePageForward:
       case MidiTargetKind::ScorePageBack:
+      case MidiTargetKind::RecorderRecord:
+      case MidiTargetKind::RecorderPlay:
         return true;
       default:
         return false;

@@ -597,8 +597,6 @@ juce::String voicingEqPresetName(const VoicingEqPreset& p) {
   }
 }
 
-namespace {
-
 // A mapping's message, for the MIDI menu's header.
 juce::String describeBinding(const MidiBinding& b) {
   juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
@@ -609,8 +607,6 @@ juce::String describeBinding(const MidiBinding& b) {
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
   return what;
 }
-
-}  // namespace
 
 VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(on_);

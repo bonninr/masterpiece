@@ -424,6 +424,7 @@ it records. Its close button hides it.
 | **Save MIDI...** | Writes the take to a `.mid` file; asks before overwriting. Disabled with an empty take. |
 | **Load MIDI...** | Reads a `.mid` or `.midi` file and replaces the take. The file's tempo events time the notes; meta events (tempo, names) are not kept in the take. |
 | **Clear** | Discards the take. |
+| **MIDI...** | **Record** and **Play**, each with **Learn** and **Clear**: a button on the console for each. |
 
 The status reads **Nothing recorded**, **Recording - 12.3 s, 450 events**,
 **Playing - 4.1 / 12.3 s** or **450 events, 12.3 s**.
@@ -448,6 +449,21 @@ take at its recorded length.
 
 The take is kept in memory until it is saved or replaced. The folder of the last
 file dialog is remembered for MIDI files.
+
+### Record and Play on the console
+
+A console button learned for **Record** starts a take, and stops the take being
+made. A take that was never saved is kept before a new one begins: a button
+cannot answer a question, so it is saved as
+`Documents/Masterpiece/Recordings/<organ> <yyyy-mm-dd hh-mm-ss>.mid`, the status
+line names the file and the Recorder window shows it while the new take records.
+A button learned for **Play** plays the take, and stops it. Both are learned in
+the Recorder window under **MIDI...** or on the MIDI tab of General settings,
+and they are the console's, the same on every organ.
+
+Each can light a lamp: a MIDI send for **recorder-record** or **recorder-play**,
+lit while the recorder records or plays. The buttons' own messages are not
+recorded into a take, and a take played back never presses them.
 
 ### Audio recording
 

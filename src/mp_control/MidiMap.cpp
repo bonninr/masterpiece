@@ -106,6 +106,8 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::Temperament: return "temperament";
     case MidiTargetKind::ScorePageForward: return "score-page-forward";
     case MidiTargetKind::ScorePageBack: return "score-page-back";
+    case MidiTargetKind::RecorderRecord: return "recorder-record";
+    case MidiTargetKind::RecorderPlay: return "recorder-play";
     case MidiTargetKind::None: break;
   }
   return "none";
@@ -146,6 +148,8 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "temperament") return MidiTargetKind::Temperament;
   if (s == "score-page-forward") return MidiTargetKind::ScorePageForward;
   if (s == "score-page-back") return MidiTargetKind::ScorePageBack;
+  if (s == "recorder-record") return MidiTargetKind::RecorderRecord;
+  if (s == "recorder-play") return MidiTargetKind::RecorderPlay;
   return MidiTargetKind::None;
 }
 
@@ -418,6 +422,8 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::Temperament:
     case MidiTargetKind::ScorePageForward:
     case MidiTargetKind::ScorePageBack:
+    case MidiTargetKind::RecorderRecord:
+    case MidiTargetKind::RecorderPlay:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.

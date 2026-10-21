@@ -5,6 +5,7 @@
 #include <iterator>
 
 #include "ManualDialog.h"
+#include "MidiEventDialog.h"
 #include "Ui.h"
 #include "Mobile.h"
 #include "../mp_audio/Translations.h"
@@ -1214,8 +1215,10 @@ void MetronomePanel::resized() {
 // -------------------------------------------------------------- recorder
 
 RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
-  for (auto* b : {&record_, &play_, &stop_, &save_, &load_, &clear_})
+  for (auto* b : {&record_, &play_, &stop_, &save_, &load_, &clear_, &midi_})
     addAndMakeVisible(*b);
+  midi_.setTooltip(TRANS("A button on the console for Record and one for Play"));
+  midi_.onClick = [this] { showMidiMenu(); };
 
   record_.onClick = [this] { askBeforeRecording(); };
   play_.onClick = [this] { proc_.recorder().startPlayback(); };
@@ -1330,6 +1333,42 @@ void RecorderPanel::askBeforeRecording() {
       true);
 }
 
+// Learn or clear the console's Record and Play buttons; the mapping is the
+// console's, the same on every organ.
+void RecorderPanel::showMidiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  juce::PopupMenu menu;
+  const std::pair<MidiTargetKind, juce::String> targets[] = {{MidiTargetKind::RecorderRecord, TRANS("Record")},
+                                                             {MidiTargetKind::RecorderPlay, TRANS("Play")}};
+  int item = 1;
+  for (const auto& [kind, name] : targets) {
+    juce::PopupMenu sub;
+    const auto existing = map.bindingsFor(kind, 0);
+    if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(describeBinding(*b));
+    sub.addItem(item, TRANS("Learn"));
+    sub.addItem(item + 1, TRANS("Clear"), !existing.empty());
+    sub.addItem(item + 2, TRANS("MIDI window, and its lamp..."));
+    menu.addSubMenu(name, sub);
+    item += 3;
+  }
+  juce::Component::SafePointer<RecorderPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int chosen) {
+    if (self == nullptr || chosen <= 0) return;
+    const bool record = chosen <= 3;
+    const auto kind = record ? MidiTargetKind::RecorderRecord : MidiTargetKind::RecorderPlay;
+    switch ((chosen - 1) % 3) {
+      case 0: self->proc_.midiMap().beginLearn(kind, 0, false); break;
+      case 1: self->proc_.setObjectBindings(kind, 0, {}); break;
+      default: MidiEventDialog::show(self->proc_, kind, 0, record ? TRANS("Record") : TRANS("Play")); break;
+    }
+  });
+}
+
 void RecorderPanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
   if (!isShowing()) return;
@@ -1353,6 +1392,8 @@ void RecorderPanel::timerCallback() {
                           .replace("%2", juce::String(r.lengthSeconds(), 1));
       break;
   }
+  if (const auto kept = proc_.lastButtonSave(); kept != juce::File() && r.state() == MidiRecorder::State::Recording)
+    s += "  -  " + TRANS("the last take was saved as %1").replace("%1", kept.getFileName());
   status_.setText(s, juce::dontSendNotification);
   record_.setToggleState(r.isRecording(), juce::dontSendNotification);
   play_.setEnabled(!r.empty());
@@ -1410,7 +1451,7 @@ void RecorderPanel::resized() {
   // every button on the screen.
   int h = placeRow(r.removeFromTop(kRow), {&record_, &play_, &stop_});
   r.removeFromTop(h - kRow + kGap);
-  h = placeRow(r.removeFromTop(kRow), {&save_, &load_, &clear_});
+  h = placeRow(r.removeFromTop(kRow), {&save_, &load_, &clear_, &midi_});
   r.removeFromTop(h - kRow + kGap);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
@@ -1574,6 +1615,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
       {&learnTemperamentNext_, MidiTargetKind::TemperamentNext},
       {&learnScoreBack_, MidiTargetKind::ScorePageBack},
       {&learnScoreForward_, MidiTargetKind::ScorePageForward},
+      {&learnRecord_, MidiTargetKind::RecorderRecord},
+      {&learnPlay_, MidiTargetKind::RecorderPlay},
   };
   for (auto& e : consoleLearn) {
     addAndMakeVisible(*e.b);
@@ -1958,6 +2001,13 @@ void MidiPanel::resized() {
   row = r.removeFromTop(kRow);
   row.removeFromLeft(120);
   for (auto* b : {&learnTemperamentPrev_, &learnTemperamentNext_}) {
+    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+  }
+  r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  row.removeFromLeft(120);
+  for (auto* b : {&learnRecord_, &learnPlay_}) {
     b->setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
   }
