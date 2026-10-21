@@ -5,10 +5,6 @@
 file(GLOB MP_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp)
 add_executable(mp_tests
   MpTest.h MpTest.cpp
-  test_core.cpp
-  test_split.cpp
-  test_sparse_loading.cpp
-  test_storage20.cpp
   ${MP_TEST_SOURCES}
 )
 target_compile_features(mp_tests PRIVATE cxx_std_20)
@@ -24,9 +20,6 @@ target_compile_definitions(mp_tests PRIVATE
 if(TARGET mp_sampler)
   target_link_libraries(mp_tests PRIVATE mp_sampler)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_SAMPLER=1)
-  # The codec interface, and the tests that loop over every codec in the
-  # registry.
-  target_sources(mp_tests PRIVATE test_sample_codec.cpp)
 endif()
 if(TARGET mp_dsp)
   target_link_libraries(mp_tests PRIVATE mp_dsp)
@@ -36,28 +29,13 @@ endif()
 # it only exists in the full build, so its tests are guarded the same way.
 if(TARGET mp_audio)
   target_link_libraries(mp_tests PRIVATE mp_audio)
-  target_sources(mp_tests PRIVATE test_page_turn.cpp)
   target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_AUDIO=1)
-  # The stop list a screen reader can use: the UI is in mp_audio, and the
-  # test reads the accessibility layer of the stops.
-  target_sources(mp_tests PRIVATE test_accessibility.cpp)
-  target_sources(mp_tests PRIVATE test_midi_power.cpp)
-  # The recorder's window: its buttons are sized from their own text (#429).
-  target_sources(mp_tests PRIVATE test_recorder_layout.cpp)
-  target_sources(mp_tests PRIVATE test_unevenness.cpp)
-  target_sources(mp_tests PRIVATE test_settings_archive.cpp)
-  target_sources(mp_tests PRIVATE test_held_notes.cpp)
-  target_sources(mp_tests PRIVATE test_sustain.cpp)
-  # The score panel: the engraving, the page geometry, the player and the
-  # panel playing through a small organ. The engraver reads the font folder
-  # the configure step prepared.
+  # The score panel's tests read the font folder the configure step prepared.
   if(TARGET mp_score)
-    target_sources(mp_tests PRIVATE test_score.cpp)
     target_compile_definitions(mp_tests PRIVATE
       MP_TEST_HAS_SCORE=1
       MP_TEST_SCORE_DATA_DIR="${MP_SCORE_FONTS_DIR}")
   endif()
-  target_sources(mp_tests PRIVATE test_pedal_coupling.cpp)
   # The control API, end to end over HTTP on the loopback address.
   if(MP_ENABLE_API)
     target_compile_definitions(mp_tests PRIVATE MP_TEST_HAS_API=1)

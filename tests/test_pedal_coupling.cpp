@@ -2,6 +2,8 @@
 // then on a two-division organ the first manual's divisional recalling,
 // storing and cancelling the Pedal's of the same number while it is on, and
 // leaving it alone while it is off; a MIDI button for it and the control API.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #if MP_ENABLE_API
 #include "../src/mp_api/ControlModel.h"
@@ -207,3 +209,5 @@ public:
 static PedalCouplingOrganTest g_organ;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO

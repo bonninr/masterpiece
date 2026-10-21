@@ -1,5 +1,7 @@
 // Page turns for a score app: the bytes each kind of message makes, and a
 // piston learned for a page turn reaching the output stream.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #if MP_ENABLE_API
@@ -102,3 +104,5 @@ public:
 static ScorePagePistonTest g_piston;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO

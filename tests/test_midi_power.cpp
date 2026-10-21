@@ -1,6 +1,8 @@
 // A console with no screen: the ready lamp, the quit and power-off buttons
 // with their safeguards, and a button for one temperament. The power hook
 // here only records what it was asked; nothing is ever shut down.
+#ifdef MP_TEST_HAS_AUDIO
+
 #include "MpTest.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
@@ -179,3 +181,5 @@ public:
 static PowerButtonsTest g_power;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO
