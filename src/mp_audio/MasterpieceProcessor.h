@@ -769,6 +769,9 @@ public:
   juce::File globalSettingsFile() const;
   bool saveGlobalDefaults();
   bool loadGlobalDefaults();
+  // The player's language, from the global file, before any window exists:
+  // the labels a window is built with are translated when it is built.
+  void applyChosenLanguage();
 
   // What to reopen when the program starts with no organ named. Held with the
   // global defaults because it belongs to the program, not to any one organ.

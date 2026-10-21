@@ -2031,6 +2031,15 @@ bool MasterpieceProcessor::saveGlobalDefaults() {
   return writeGlobalFile();
 }
 
+void MasterpieceProcessor::applyChosenLanguage() {
+  const auto f = globalSettingsFile();
+  if (f.existsAsFile())
+    for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString()))
+      if (line.upToFirstOccurrenceOf(" ", false, false).trim() == "language")
+        language_ = line.fromFirstOccurrenceOf(" ", false, false).trim().toLowerCase();
+  applyLanguage(language_);
+}
+
 bool MasterpieceProcessor::loadGlobalDefaults() {
   const auto f = globalSettingsFile();
   if (!f.existsAsFile()) {
