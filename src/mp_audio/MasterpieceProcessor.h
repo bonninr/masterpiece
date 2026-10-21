@@ -2234,6 +2234,70 @@ private:
   std::unordered_map<Id, uint64_t> palletNotes_;
   // The strike velocity of the key that is moving the network now.
   int palletVelocity_ = 100;
+  // A coupler carries a note to a division (or a keyboard) whose own key was
+  // never pressed, so nothing opens the pipe there: the organ reaches its
+  // pipework by pressing the key, and no key was pressed. The organ's own
+  // answer is the switch that carries that note in - the division's input
+  // switch, or the destination keyboard's key - and the coupler closes it the
+  // way a key does.
+  //
+  // It closes it through a switch of the engine's own, wired to the organ's
+  // switch the way the key is. The wiring then decides what opens, as it
+  // does for a key, and a key and a coupler can hold the same input at once:
+  // the network releases a destination only when no other wire into it is
+  // still holding it.
+  struct CoupledInputKey {
+    Id couplerSwitch = 0;
+    Id destination = 0;
+    int midiNote = 60;
+    bool operator<(const CoupledInputKey& other) const {
+      if (couplerSwitch != other.couplerSwitch) return couplerSwitch < other.couplerSwitch;
+      if (destination != other.destination) return destination < other.destination;
+      return midiNote < other.midiNote;
+    }
+  };
+  struct CoupledInput {
+    Id own = 0;             // the engine's own switch
+    Id input = 0;           // the division's input switch it closes
+    bool rankless = false;  // no stop of the division names a rank
+  };
+  std::map<CoupledInputKey, CoupledInput> coupledInput_;
+  // Which note holds which of the engine's switches, so the last note out
+  // closes what it opened. Reserved at load: the audio thread adds to it.
+  std::vector<std::pair<uint64_t, Id>> coupledHeld_;
+  // The moves the couplers asked for, made once the walk that asked for them
+  // is over. Moving a switch while keys are held reflows every held note, and
+  // that must never run inside a loop over the held notes or their scratch.
+  struct CoupledMove {
+    Id switchId = 0;
+    bool engaged = false;
+    int velocity = 100;
+  };
+  std::vector<CoupledMove> coupledPending_;
+  int coupledDepth_ = 0;
+  bool coupledFlushing_ = false;
+  // Held by every entry point that can ask for a move; the outermost one
+  // makes the moves as it goes out of scope.
+  struct CoupledScope {
+    explicit CoupledScope(MasterpieceProcessor& p) : owner(p) { ++owner.coupledDepth_; }
+    ~CoupledScope() {
+      if (--owner.coupledDepth_ == 0) owner.flushCoupledInputs();
+    }
+    MasterpieceProcessor& owner;
+  };
+  // The engine's own switches start well above the ids an organ uses.
+  static constexpr Id kCoupledSwitchBase = 0x40000000ull;
+  void buildCouplerInputs();
+  // True when a coupler carried the note and the engine's own switch closes
+  // the division's input for it: the organ's wiring opens the pipe from
+  // there, so the caller must not open it a second time.
+  bool engageCoupledInput(const ExpandedNote& reached, uint64_t noteId, int velocity);
+  void releaseCoupledInput(const ExpandedNote& reached, uint64_t noteId);
+  void releaseCoupledInputs(uint64_t noteId);
+  // Every coupled input let go at once: Panic, and the audio stopping.
+  void releaseAllCoupledInputs();
+  void flushCoupledInputs();
+  void releaseCoupledSwitch(Id sw);
   // Division inputs (#345): the notes a division plays while a switch is
   // engaged, for the divisions the organ reaches that way from its keys.
   // Built after the key flow, which is told which keyboards those are.

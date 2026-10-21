@@ -367,6 +367,7 @@ void MasterpieceProcessor::releaseResources() {
   const AudioLock audio(*this);
   voices_.quiesce();
   soundingNotes_.clear();
+  releaseAllCoupledInputs();
 }
 
 void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
@@ -2996,6 +2997,7 @@ void MasterpieceProcessor::releaseChannel(int channel, int deviceId) {
 }
 
 void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
+  const CoupledScope coupled(*this);
   if (const auto sent = keySends_.find(key); sent != keySends_.end()) {
     sendKey(sent->second.first, sent->second.second, velocity, false);
     keySends_.erase(sent);
@@ -3011,6 +3013,8 @@ void MasterpieceProcessor::stopNoteByKey(int key, int velocity) {
   if (it == soundingNotes_.end()) return;
   NoteRelease rel;
   rel.velocity = velocity;
+  // What the couplers opened for this note goes with it.
+  releaseCoupledInputs(it->second.id);
   voices_.noteOff(it->second.id, rel);
   setKeyDown(it->second.keyboard, it->second.playedNote, false);
   const Id releasedOn = it->second.keyboard;
@@ -3030,6 +3034,7 @@ void MasterpieceProcessor::scheduleExtremes(Id keyboard) {
 }
 
 void MasterpieceProcessor::settleExtremes() {
+  const CoupledScope coupled(*this);
   for (size_t i = 0; i < extremesDue_.size();) {
     if (extremesDue_[i].second > blockTimeMs_) {
       ++i;
@@ -3080,6 +3085,7 @@ void MasterpieceProcessor::reflowExtremes(Id keyboard) {
     // speaks, under the key's own note id.
     for (const ExpandedNote& reached : reflowAfter_) {
       if (contains(reflowBefore_, reached)) continue;
+      if (engageCoupledInput(reached, held.id, held.velocity)) continue;
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
                                          engagedStops_, &engagedSwitches_)) {
         const auto rankIt = model_.ranks.find(rp.rankId);
@@ -3094,6 +3100,7 @@ void MasterpieceProcessor::reflowExtremes(Id keyboard) {
     // No longer the top or the bottom: those pipes let go, the key stays down.
     for (const ExpandedNote& reached : reflowBefore_) {
       if (contains(reflowAfter_, reached)) continue;
+      releaseCoupledInput(reached, held.id);
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
                                          engagedStops_, &engagedSwitches_))
         voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
@@ -3115,6 +3122,12 @@ bool MasterpieceProcessor::startVoicesForKey(Id keyboard, int midiNote,
 
   for (const ExpandedNote& reached : expandScratch_) {
     const int divisionId = reached.divisionId;
+    // A division the note was carried to by a coupler: no key of that
+    // division was pressed, so nothing opened its pipe. The coupler closes
+    // the division's own input switch the way a key does, and the organ's
+    // wiring opens the pipe from there.
+    const bool coupled = engageCoupledInput(reached, noteId, velocity);
+    if (coupled) continue;
     resolveScratch_.clear();
     resolvePipesInto(model_, divisionId, reached.midiNote, stops, &engagedSwitches_,
                      resolveScratch_);
@@ -3250,6 +3263,7 @@ void MasterpieceProcessor::setKeyDown(Id keyboard, int note, bool down) {
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity,
                                                int playedNote) {
+  const CoupledScope coupled(*this);
   if (playedNote < 0) playedNote = midiNote;
   // A manual that sends its keys on: before anything else, so a key played
   // with no stop drawn still reaches the module it drives.
@@ -3289,6 +3303,7 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
   // the old note is also what the instrument would do.
   const auto already = soundingNotes_.find(noteKeyId);
   if (already != soundingNotes_.end()) {
+    releaseCoupledInputs(already->second.id);
     voices_.noteOff(already->second.id, NoteRelease{});
     setKeyDown(already->second.keyboard, already->second.playedNote, false);
     soundingNotes_.erase(already);
@@ -3365,6 +3380,7 @@ void MasterpieceProcessor::reflowHeldNotes() {
     // note-off still to come releases them with the rest.
     for (const ExpandedNote& reached : reflowAfter_) {
       if (contains(reflowBefore_, reached)) continue;
+      if (engageCoupledInput(reached, held.id, held.velocity)) continue;
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
                                          engagedStops_, &engagedSwitches_)) {
         const auto rankIt = model_.ranks.find(rp.rankId);
@@ -3379,6 +3395,7 @@ void MasterpieceProcessor::reflowHeldNotes() {
     // No longer reached: those pipes let go; the key is still down.
     for (const ExpandedNote& reached : reflowBefore_) {
       if (contains(reflowAfter_, reached)) continue;
+      releaseCoupledInput(reached, held.id);
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
                                          engagedStops_, &heldFlowBefore_))
         voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
@@ -4289,6 +4306,8 @@ bool MasterpieceProcessor::firePiston(Id switchId) {
 
 void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   const AudioLock audio(*this);
+  // The couplers' inputs this move reaches are moved after it, not inside it.
+  const CoupledScope coupled(*this);
   if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
   if (!applyingPistons_ && registrationSwitches_.count(switchId) != 0)
     player_.registrationMoved();
@@ -4578,6 +4597,148 @@ void MasterpieceProcessor::buildPalletIndex() {
   }
   palletNotes_.reserve(palletPipes_.size());
   heldKeySwitches_.reserve(256);
+}
+
+void MasterpieceProcessor::buildCouplerInputs() {
+  coupledInput_.clear();
+  coupledHeld_.clear();
+  coupledPending_.clear();
+  coupledDepth_ = 0;
+  coupledFlushing_ = false;
+  if (model_.divisionInputs.empty()) return;
+
+  std::unordered_map<Id, std::vector<const DivisionInput*>> inputsOf;
+  for (const DivisionInput& in : model_.divisionInputs)
+    if (in.switchId != 0) inputsOf[in.divisionId].push_back(&in);
+  // The divisions with a stop that names a rank: there the stop-to-rank walk
+  // reaches the pipes, as it always has.
+  std::unordered_set<Id> ranked;
+  for (const auto& [stopId, stop] : model_.stops)
+    if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
+
+  // The engine's own switches, well above the ids an organ uses, so they
+  // never clash with the organ's own.
+  Id next = kCoupledSwitchBase;
+  for (const KeyAction& a : model_.keyActions) {
+    if (a.conditionSwitchId == 0) continue;
+    // A division the coupler reaches: the division's own input switch for
+    // that note is what carries the note into its pipework. A coupler to a
+    // keyboard is left alone: that keyboard's own keys already carry it.
+    if (a.destIsKeyboard || a.destDivision == 0) continue;
+    const auto inputs = inputsOf.find(static_cast<Id>(a.destDivision));
+    if (inputs == inputsOf.end()) continue;
+    for (const DivisionInput* in : inputs->second) {
+      const CoupledInputKey key{a.conditionSwitchId, static_cast<Id>(a.destDivision), in->midiNote};
+      // Several key actions on the same coupler and division (one per range
+      // of notes) share one switch per note.
+      if (coupledInput_.count(key) != 0) continue;
+      const Id mine = next++;
+      Switch sw;
+      sw.switchId = mine;
+      sw.name = "coupled input";
+      sw.latching = false;
+      sw.clickable = false;
+      model_.switches[mine] = sw;
+      // Wired the way a key is: engaged while it is held, released when it is
+      // let go, and nothing else in the way.
+      SwitchLinkage l;
+      l.sourceSwitchId = mine;
+      l.destSwitchId = in->switchId;
+      l.sourceWhenEngaged = true;
+      l.conditionWhenEngaged = true;
+      l.engageAction = 1;
+      l.disengageAction = 2;
+      model_.switchLinkages.push_back(l);
+      coupledInput_[key] = {mine, in->switchId, ranked.count(in->divisionId) == 0};
+    }
+  }
+  // Ten notes held on every coupled division at once is far beyond a player;
+  // the audio thread adds to these and must not allocate.
+  coupledHeld_.reserve(1024);
+  coupledPending_.reserve(1024);
+}
+
+bool MasterpieceProcessor::engageCoupledInput(const ExpandedNote& reached, uint64_t noteId,
+                                              int velocity) {
+  if (reached.couplerSwitch == 0 || coupledInput_.empty()) return false;
+  const auto it = coupledInput_.find(
+      CoupledInputKey{reached.couplerSwitch, static_cast<Id>(reached.divisionId),
+                      reached.midiNote});
+  if (it == coupledInput_.end()) return false;
+  // Into a division its own keys play through these inputs
+  // (buildDivisionInputs), where the input is the way in for the key and the
+  // coupler alike; or into one whose stops name no rank, where the wiring is
+  // the only way in. A division with ranked stops and no such keys keeps the
+  // stop-to-rank walk, which has always reached it.
+  if (!it->second.rankless && divisionInputBySwitch_.count(it->second.input) == 0) return false;
+  const Id sw = it->second.own;
+  bool held = false;
+  for (const auto& [note, s] : coupledHeld_) {
+    // The same note can reach the coupler twice - the note itself, and a
+    // stop drawn while it is held - and it is released once.
+    if (s == sw && note == noteId) return true;
+    if (s == sw) held = true;
+  }
+  coupledHeld_.emplace_back(noteId, sw);
+  if (!held) coupledPending_.push_back({sw, true, velocity});
+  return true;
+}
+
+void MasterpieceProcessor::releaseCoupledSwitch(Id sw) {
+  for (const auto& h : coupledHeld_)
+    if (h.second == sw) return;  // another note still holds it
+  coupledPending_.push_back({sw, false, palletVelocity_});
+}
+
+void MasterpieceProcessor::releaseCoupledInput(const ExpandedNote& reached, uint64_t noteId) {
+  if (reached.couplerSwitch == 0 || coupledHeld_.empty()) return;
+  const auto it = coupledInput_.find(
+      CoupledInputKey{reached.couplerSwitch, static_cast<Id>(reached.divisionId),
+                      reached.midiNote});
+  if (it == coupledInput_.end()) return;
+  const Id sw = it->second.own;
+  for (size_t i = 0; i < coupledHeld_.size(); ++i)
+    if (coupledHeld_[i].first == noteId && coupledHeld_[i].second == sw) {
+      coupledHeld_.erase(coupledHeld_.begin() + static_cast<std::ptrdiff_t>(i));
+      releaseCoupledSwitch(sw);
+      return;
+    }
+}
+
+void MasterpieceProcessor::releaseCoupledInputs(uint64_t noteId) {
+  for (size_t i = 0; i < coupledHeld_.size();) {
+    if (coupledHeld_[i].first != noteId) {
+      ++i;
+      continue;
+    }
+    const Id sw = coupledHeld_[i].second;
+    coupledHeld_.erase(coupledHeld_.begin() + static_cast<std::ptrdiff_t>(i));
+    releaseCoupledSwitch(sw);
+  }
+}
+
+void MasterpieceProcessor::releaseAllCoupledInputs() {
+  if (coupledHeld_.empty()) return;
+  const CoupledScope scope(*this);
+  while (!coupledHeld_.empty()) {
+    const Id sw = coupledHeld_.back().second;
+    coupledHeld_.pop_back();
+    releaseCoupledSwitch(sw);
+  }
+}
+
+void MasterpieceProcessor::flushCoupledInputs() {
+  // A move made here reflows the held notes, which can ask for more moves:
+  // they join the queue and this loop makes them.
+  if (coupledFlushing_ || coupledPending_.empty()) return;
+  coupledFlushing_ = true;
+  for (size_t i = 0; i < coupledPending_.size(); ++i) {
+    const CoupledMove move = coupledPending_[i];
+    palletVelocity_ = move.velocity;
+    setSwitchEngaged(move.switchId, move.engaged);
+  }
+  coupledPending_.clear();
+  coupledFlushing_ = false;
 }
 
 void MasterpieceProcessor::findPalletStops() {
@@ -5176,6 +5337,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
       return false;
     });
     soundingNotes_.clear();
+    releaseAllCoupledInputs();
   }
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
@@ -5534,6 +5696,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // up that way rather than needing the player to find a switch nobody told
   // them about.
   phases.mark("model: stop map");
+  buildCouplerInputs();
   switches_.reset(model_);
   // Where the player left the switches the organ remembers, set as the player
   // would so their wiring follows: Nancy's "start blower on organ load" is

@@ -15,7 +15,19 @@
 
 namespace mp {
 
-struct ExpandedNote { int divisionId = 0; int midiNote = 60; float velScale = 1.0f; };
+// One division a key press reaches.
+//
+// `couplerSwitch` names the coupler that carried the note there, and is zero
+// for the division the keyboard plays on its own. The two need different
+// pipes: the keyboard's own division is opened by the organ's own wiring, the
+// key's switch moving the pallet, while a coupled division has no key of its
+// own pressed and the engine has to open its pipe itself.
+struct ExpandedNote {
+  int divisionId = 0;
+  int midiNote = 60;
+  float velScale = 1.0f;
+  Id couplerSwitch = 0;
+};
 
 // One sounding pipe for a key press: stop -> StopRank mapping window ->
 // rank pipe by MIDI note (unification falls out: several division notes

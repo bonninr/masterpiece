@@ -951,6 +951,173 @@ public:
   }
 };
 
+// #446: a coupler drawn on the console must carry the note to the division it
+// names. An organ whose pipework is wired through the switch graph reaches a
+// pipe by pressing the key - the key's switch moves the division's input
+// switch, the wiring carries that to the pallet, and the pipe speaks. A
+// coupler presses no key there, so nothing opened the pipe and the coupler
+// moved on the console and coupled nothing.
+//
+// The coupler closes the division's own input switch the way a key does, so
+// the organ's wiring opens the pipe from there, as it does for a key.
+class CoupledInputTest final : public mp::test::Test {
+public:
+  CoupledInputTest()
+      : Test("functional.control.coupled-input", Category::Functional) {}
+
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-coupled-input");
+    dir.getChildFile("OrganDefinitions").createDirectory();
+    const juce::File odf =
+        dir.getChildFile("OrganDefinitions").getChildFile("ci.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\">"
+        "<Keyboard><KeyboardID>1</KeyboardID><Name>1. Pedal</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>32</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "<Keyboard><KeyboardID>2</KeyboardID><Name>2. Hauptwerk</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys>"
+        "<KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>2</Hint_PrimaryAssociatedDivisionID></Keyboard>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Division\">"
+        "<Division><DivisionID>1</DivisionID><Name>1. Pedal</Name></Division>"
+        "<Division><DivisionID>2</DivisionID><Name>2. Hauptwerk</Name></Division>"
+        "</ObjectList>"
+        // The stops name no rank of their own: the pipework is wired through
+        // the switch graph, as it is in the sets that declare no StopRank rows.
+        "<ObjectList ObjectType=\"Stop\">"
+        "<Stop><StopID>1</StopID><Name>Geigenprincipal 8</Name><DivisionID>1</DivisionID>"
+        "<ControllingSwitchID>21001</ControllingSwitchID></Stop>"
+        "<Stop><StopID>2</StopID><Name>Principal 8</Name><DivisionID>2</DivisionID>"
+        "<ControllingSwitchID>21002</ControllingSwitchID></Stop>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Rank\">"
+        "<Rank><RankID>11</RankID><Name>Geigenprincipal</Name></Rank>"
+        "<Rank><RankID>12</RankID><Name>Principal</Name></Rank>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
+        "<Pipe_SoundEngine01><PipeID>101</PipeID><RankID>11</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>9001</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>102</PipeID><RankID>12</RankID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber>"
+        "<ControllingPalletSwitchID>9002</ControllingPalletSwitchID></Pipe_SoundEngine01>"
+        "</ObjectList>"
+        // A key is a switch, and its switch drives its division's input.
+        "<ObjectList ObjectType=\"KeyboardKey\">"
+        "<KeyboardKey><KeyboardID>2</KeyboardID><SwitchID>5001</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></KeyboardKey>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\">"
+        "<DivisionInput><DivisionID>1</DivisionID><SwitchID>900</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput>"
+        "<DivisionInput><DivisionID>2</DivisionID><SwitchID>800</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\">"
+        "<SwitchLinkage><SourceSwitchID>5001</SourceSwitchID><DestSwitchID>800</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "<SwitchLinkage><SourceSwitchID>800</SourceSwitchID><DestSwitchID>9002</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "<SwitchLinkage><SourceSwitchID>900</SourceSwitchID><DestSwitchID>9001</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>21001</SwitchID><Name>Geigenprincipal 8</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>21002</SwitchID><Name>Principal 8</Name><Latching>Y</Latching></Switch>"
+        "<Switch><SwitchID>300</SwitchID><Name>II-I</Name><Latching>Y</Latching></Switch>"
+        "</ObjectList>"
+        // The coupler: manual II also plays division I while its switch is drawn.
+        "<ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>2</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+        "<DestDivisionID>1</DestDivisionID><ActionTypeCode>1</ActionTypeCode>"
+        "<ConditionSwitchID>300</ConditionSwitchID>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+        "<MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
+        "<NumberOfKeys>61</NumberOfKeys></KeyAction>"
+        "</ObjectList></Hauptwerk>");
+
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool hadSettings = settings.existsAsFile();
+    proc.prepareToPlay(48000.0, 256);
+    auto r = proc.loadOrgan(odf, 0, false);
+    MP_CHECK(r.ok, "the two-manual organ loads");
+    // The stops are drawn: with nothing drawn there is no pipe to sound, and
+    // the key flow is not consulted at all.
+    proc.setStopEngaged(1, true);
+    proc.setStopEngaged(2, true);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&](juce::MidiBuffer m) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
+
+    // The coupler is not drawn: the note opens the manual's own division only.
+    block(on);
+    MP_CHECK(proc.switchEngaged(800), "the key opens its own division's input");
+    MP_CHECK(!proc.switchEngaged(900),
+             "and not the division the coupler names, while the coupler is off");
+    MP_CHECK(!proc.switchEngaged(9001), "so the coupled pipe's pallet stays shut");
+
+    // With it drawn, the note carries to the division it names.
+    proc.setSwitchEngaged(300, true);
+    juce::MidiBuffer off;
+    off.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
+    block(off);
+    block(on);
+    MP_CHECK(proc.switchEngaged(900),
+             "a coupler drawn closes the coupled division's input for the note");
+    MP_CHECK(proc.switchEngaged(9001), "and the pipe's pallet with it");
+
+    // And with the coupler pushed in, the pipe lets go.
+    proc.setSwitchEngaged(300, false);
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(!proc.switchEngaged(900), "and lets it go again");
+
+    // Drawn again with the key still down: the held note reaches the coupled
+    // division, the way a key already held reaches a stop drawn under it.
+    proc.setSwitchEngaged(300, true);
+    block({});
+    MP_CHECK(proc.switchEngaged(900), "drawn under a held key: the coupled input closes");
+    block(off);
+    MP_CHECK(!proc.switchEngaged(900), "the key let go: the coupled input opens");
+
+    // A key struck twice with one release between: the second note-on lets go
+    // of the first note, and what the couplers opened for it goes with it.
+    block(on);
+    block(on);
+    block(off);
+    MP_CHECK(!proc.switchEngaged(900), "struck twice, released once: nothing left held");
+    MP_CHECK(!proc.switchEngaged(9001), "and the coupled pipe's pallet shut");
+
+    // Every key released at once.
+    block(on);
+    MP_CHECK(proc.switchEngaged(900), "held again");
+    proc.releaseResources();
+    MP_CHECK(!proc.switchEngaged(900), "the audio stopping lets the coupled input go");
+
+    if (!hadSettings) settings.deleteFile();
+    dir.deleteRecursively();
+  }
+};
+
 #endif // MP_TEST_HAS_AUDIO
 
 class EncryptedDetectionTest final : public mp::test::Test {
@@ -10295,6 +10462,7 @@ static MemoryLimitTest g_memoryLimit;
 static StartupSafetyTest g_startupSafety;
 static MidiQueueThreadsTest g_midiQueueThreads;
 static PlayerControlTest g_playerControl;
+static CoupledInputTest g_coupledInput;
 static IrRateTest g_irRate;
 #endif
 static ConditionSenseTest g_conditionSense;
