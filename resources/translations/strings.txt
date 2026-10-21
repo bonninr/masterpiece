@@ -8,6 +8,7 @@ countries: gb us
 
 # apps/MasterpieceApp/Main.cpp
 "Not running: %1" = "Not running: %1"
+"Running. Open on this computer:" = "Running. Open on this computer:"
 "Running. Open on this network:" = "Running. Open on this network:"
 "Welcome to Masterpiece" = "Welcome to Masterpiece"
 
@@ -554,6 +555,7 @@ countries: gb us
 "A page any browser on this network can open to draw stops, press pistons and move the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default." = "A page any browser on this network can open to draw stops, press pistons and move the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default."
 "Off, the network can only read: the stops drawn, the levels, the organ loaded." = "Off, the network can only read: the stops drawn, the levels, the organ loaded."
 "The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits." = "The quit and power-off commands, for a console with no screen. Refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. Masterpiece saves before it quits."
+"The page, the API and OSC answer on this computer only, at 127.0.0.1. No other device on the network reaches them, and Windows asks for no firewall rule." = "The page, the API and OSC answer on this computer only, at 127.0.0.1. No other device on the network reaches them, and Windows asks for no firewall rule."
 "For a console with a MIDI cable and no network: requests read on the MIDI inputs, replies and changes sent on the console's MIDI output." = "For a console with a MIDI cable and no network: requests read on the MIDI inputs, replies and changes sent on the console's MIDI output."
 "For control surfaces and apps that speak OSC, such as TouchOSC, on the UDP port beside it." = "For control surfaces and apps that speak OSC, such as TouchOSC, on the UDP port beside it."
 "Port" = "Port"
@@ -643,6 +645,7 @@ countries: gb us
 "Serve the web console and the control API on this network" = "Serve the web console and the control API on this network"
 "Allow changes from the network" = "Allow changes from the network"
 "Allow quitting Masterpiece and shutting the computer down" = "Allow quitting Masterpiece and shutting the computer down"
+"This computer only" = "This computer only"
 "Answer the same requests over MIDI (System Exclusive)" = "Answer the same requests over MIDI (System Exclusive)"
 "Answer the same requests over OSC" = "Answer the same requests over OSC"
 "Open in the browser" = "Open in the browser"

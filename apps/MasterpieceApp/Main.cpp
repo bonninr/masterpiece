@@ -447,8 +447,11 @@ public:
       if (api_ == nullptr) return {};
       if (!api_->running())
         return remoteError_.isNotEmpty() ? TRANS("Not running: %1").replace("%1", remoteError_) : TRANS("Off");
-      juce::String status = TRANS("Running. Open on this network:") + "\nhttp://" +
-                            mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
+      juce::String status =
+          proc_->remoteSettings().thisComputerOnly
+              ? TRANS("Running. Open on this computer:") + "\nhttp://127.0.0.1:" + juce::String(api_->port()) + "/"
+              : TRANS("Running. Open on this network:") + "\nhttp://" +
+                    mp::api::ApiServer::addresses(api_->port()).joinIntoString("/\nhttp://") + "/";
       if (oscError_.isNotEmpty()) status << "\nOSC: " << oscError_;
       return status;
     };
@@ -900,6 +903,7 @@ public:
     s.port = r.port;
     s.allowChanges = r.allowChanges;
     s.token = r.token;
+    s.loopbackOnly = r.thisComputerOnly;
     remoteError_.clear();
     if (!api_->apply(s, remoteError_)) juce::Logger::writeToLog("control API: " + remoteError_);
 
@@ -922,10 +926,12 @@ public:
     if (r.osc) {
       if (osc_ == nullptr) osc_ = std::make_unique<mp::api::OscTransport>(*proc_);
       osc_->setAllowChanges(r.allowChanges);
-      if (osc_->port() != r.oscPort && !osc_->start(r.oscPort, oscError_)) {
+      if ((osc_->port() != r.oscPort || oscLocal_ != r.thisComputerOnly) &&
+          !osc_->start(r.oscPort, oscError_, r.thisComputerOnly)) {
         juce::Logger::writeToLog("control API, OSC: " + oscError_);
         osc_.reset();
       }
+      oscLocal_ = r.thisComputerOnly;
     } else {
       osc_.reset();
     }
@@ -1237,6 +1243,7 @@ private:
   juce::String remoteError_, oscError_;
   std::unique_ptr<mp::api::SysexTransport> sysex_;
   std::unique_ptr<mp::api::OscTransport> osc_;
+  bool oscLocal_ = false;
   // Read on the MIDI threads: whether this protocol's System Exclusive
   // messages are taken off the inputs.
   std::atomic<bool> sysexOn_{false};

@@ -13,13 +13,14 @@ Available in the standalone program on Windows, macOS, Linux and the Raspberry P
 | **Serve the web console and the control API on this network** | Starts the server; off stops it. Kept for the next start. | Off |
 | **Allow changes from the network** | Off, the network can only read: the stops drawn, the levels, the organ loaded. | On |
 | **Allow quitting Masterpiece and shutting the computer down** | The `quit` and `powerOff` commands, for a console with no screen. Masterpiece saves and quits; `powerOff` then shuts the computer down a few seconds later. Both are refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. | Off |
+| **This computer only** | The page, the API and OSC answer at `127.0.0.1` only: a browser or a program on this computer reaches them, and no other device on the network does. Windows asks for no firewall rule. | Off |
 | **Port** | The TCP port of the page and the API. Another program already using it shows **Not running** with the reason. | 8080 |
 | **Answer the same requests over MIDI (System Exclusive)** | For a console with a MIDI cable and no network: requests are read on the MIDI inputs, and replies and changes go out on the console's MIDI output, chosen under MIDI. | Off |
 | **Answer the same requests over OSC** | For control surfaces and apps that speak OSC, such as TouchOSC and Open Stage Control, on the UDP port beside it. | Off, port 9000 |
 | **Token** | When set, every change needs it. Reading needs none. | Empty |
 | **Open in the browser** | Opens the page on this computer. | |
 
-Below the switches the tab lists the addresses to open on the network, such as `http://192.168.0.20:8080/`. On Windows the firewall asks once whether Masterpiece may accept connections; allow it for private networks.
+Below the switches the tab lists the addresses to open on the network, such as `http://192.168.0.20:8080/`. On Windows the firewall asks once whether Masterpiece may accept connections; allow it for private networks. With **This computer only** the tab shows `http://127.0.0.1:8080/`, and the firewall does not ask.
 
 While the server is on, anyone on the network can open the page. Without a token, anyone can also change the registration from it. A token keeps changes to those who know it: the page asks for it under **Access**, at the bottom, and keeps it in that browser.
 

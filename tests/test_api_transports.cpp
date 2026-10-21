@@ -284,7 +284,7 @@ public:
     juce::String error;
     int port = 0;
     for (int p = 39100; p < 39200 && port == 0; ++p)
-      if (t.start(p, error)) port = p;
+      if (t.start(p, error, true)) port = p;
     MP_CHECK(port != 0 && t.running(), "listens on a UDP port");
     t.stop();
     MP_CHECK(!t.running(), "and stops");

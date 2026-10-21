@@ -935,6 +935,8 @@ public:
     std::string token;
     // The quit and power-off commands; off by default.
     bool allowPowerOff = false;
+    // The page, the API and OSC on this computer only (127.0.0.1).
+    bool thisComputerOnly = false;
     // The same protocol over MIDI System Exclusive, on the MIDI inputs and
     // the console's output, as this unit number (0-126).
     bool sysex = false;

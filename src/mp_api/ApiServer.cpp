@@ -148,7 +148,7 @@ bool ApiServer::onMessageThread(std::function<void()> fn) {
 
 bool ApiServer::apply(const ServerSettings& s, juce::String& error) {
   // The port as asked for: 0 (any) stays whatever port it got.
-  const bool same = running() && s.enabled && s.port == requestedPort_;
+  const bool same = running() && s.enabled && s.port == requestedPort_ && s.loopbackOnly == settings_.loopbackOnly;
   requestedPort_ = s.port;
   {
     const std::lock_guard<std::mutex> lock(settingsMutex_);
@@ -164,11 +164,12 @@ bool ApiServer::apply(const ServerSettings& s, juce::String& error) {
   // Each open event stream holds a thread of the pool.
   server_->new_task_queue = [] { return new httplib::ThreadPool(16); };
   routes();
+  const char* host = s.loopbackOnly ? "127.0.0.1" : "0.0.0.0";
   if (s.port == 0) {
-    const int any = server_->bind_to_any_port("0.0.0.0");
+    const int any = server_->bind_to_any_port(host);
     const std::lock_guard<std::mutex> lock(settingsMutex_);
     settings_.port = any;
-  } else if (!server_->bind_to_port("0.0.0.0", s.port)) {
+  } else if (!server_->bind_to_port(host, s.port)) {
     error = "port " + juce::String(s.port) + " is in use or not allowed";
     server_.reset();
     return false;
@@ -177,7 +178,9 @@ bool ApiServer::apply(const ServerSettings& s, juce::String& error) {
   running_.store(true);
   thread_ = std::thread([this] { server_->listen_after_bind(); });
   if (!executor_) startTimerHz(20);
-  juce::Logger::writeToLog("control API: http://" + addresses(settings_.port).joinIntoString(", http://") +
+  juce::Logger::writeToLog("control API: http://" +
+                           (s.loopbackOnly ? "127.0.0.1:" + juce::String(settings_.port)
+                                           : addresses(settings_.port).joinIntoString(", http://")) +
                            (s.allowChanges ? "" : " (read only)"));
   return true;
 }
