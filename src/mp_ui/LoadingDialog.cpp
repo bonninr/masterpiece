@@ -30,7 +30,7 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
     if (proc_.loadProgress().phase.load() == LoadProgress::Phase::SavingCache) {
       cancelling_ = true;
       cancel_.setEnabled(false);
-      detail_.setText(TRANS("The organ opens without saving its samples"), juce::dontSendNotification);
+      detail_.setText(TRANS("The organ opens without its cache"), juce::dontSendNotification);
       proc_.skipCacheSave();
       return;
     }
@@ -63,7 +63,7 @@ static juce::String phaseText(LoadProgress::Phase p) {
     case LoadProgress::Phase::WiringConsole:     return TRANS("Wiring the console");
     case LoadProgress::Phase::FindingSamples:    return TRANS("Finding the samples");
     case LoadProgress::Phase::LoadingSamples:    return TRANS("Loading samples");
-    case LoadProgress::Phase::SavingCache:       return TRANS("Saving the samples for the next load");
+    case LoadProgress::Phase::SavingCache:       return TRANS("Creating the sample cache");
     case LoadProgress::Phase::Preparing:         return TRANS("Preparing to play");
     case LoadProgress::Phase::BuildingConsole:   return TRANS("Building the console");
     case LoadProgress::Phase::Done:              return TRANS("Ready");
@@ -135,7 +135,7 @@ void LoadingDialog::timerCallback() {
       detail_.setText(text, juce::dontSendNotification);
     }
   } else if (phase == LoadProgress::Phase::SavingCache) {
-    if (cancel_.getButtonText() != TRANS("Skip saving")) cancel_.setButtonText(TRANS("Skip saving"));
+    if (cancel_.getButtonText() != TRANS("Skip the cache")) cancel_.setButtonText(TRANS("Skip the cache"));
     if (!cancelling_) {
       const double mb = 1024.0 * 1024.0;
       const auto done = static_cast<double>(proc_.cacheBytesDone());

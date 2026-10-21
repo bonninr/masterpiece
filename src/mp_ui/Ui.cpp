@@ -2311,7 +2311,7 @@ void MasterpieceEditor::timerCallback() {
       cacheSaveStartMs_ = now;
       cacheSaveStartFraction_ = f;
     }
-    live += "  |  " + TRANS("saving the samples for the next load");
+    live += "  |  " + TRANS("creating the sample cache");
     if (f >= 0.0) {
       live += ": " + juce::String(juce::roundToInt(f * 100.0)) + "%";
       const double elapsed = (now - cacheSaveStartMs_) / 1000.0;

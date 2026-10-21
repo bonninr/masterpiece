@@ -6520,7 +6520,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       juce::Logger::writeToLog("cache: read " + mb(samples_.cacheBytesRead()) +
                                " MB, samples not decoded");
     else if (samples_.cacheWriting())
-      juce::Logger::writeToLog("cache: saving the samples for the next load, in the background");
+      juce::Logger::writeToLog("cache: creating the sample cache, in the background");
     juce::Logger::writeToLog(
         "memory: resident " + mb(samples_.residentBytes()) + " MB" +
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +

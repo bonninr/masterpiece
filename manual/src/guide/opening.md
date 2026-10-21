@@ -318,11 +318,11 @@ While a load runs, the **Loading** dialog stays in front. It shows the file name
 | **Wiring the console** | Empty. |
 | **Finding the samples** | Empty. |
 | **Loading samples** | `N of M samples`, followed after three seconds and 2% by the estimate `-   about N minutes left`, `about a minute left` or `less than a minute left`. The estimate is smoothed and is timed from the start of the phase. |
-| **Saving the samples for the next load** | `N of M MB written   -   N MB/s   -   about N minutes left`. |
+| **Creating the sample cache** | `N of M MB written   -   N MB/s   -   about N minutes left`. |
 | **Preparing to play** | Empty. |
 | **Ready**, **Cancelled**, **Failed** | The dialog closes. |
 
-**Saving the samples for the next load** writes the sample cache and runs only when the cache has to be written and **Save the sample cache** is set to **Before the organ plays**. With **In silence, while it plays**, the organ opens first and the status line shows `saving the samples for the next load` with a percentage. See [Memory, loading and streaming](memory.md).
+**Creating the sample cache** writes the sample cache and runs only when the cache has to be written and **Save the sample cache** is set to **Before the organ plays**. With **In silence, while it plays**, the organ opens first and the status line shows `creating the sample cache` with a percentage. See [Memory, loading and streaming](memory.md).
 
 The log records the time in each phase after the load, as `stage: <phase name>  N s` lines, and ends with `load: TOTAL  N ms  (<file>)`.
 
@@ -332,7 +332,7 @@ The log records the time in each phase after the load, as `stage: <phase name>  
 |---|---|---|
 | Opening a package | **Cancel** | The archive work stops at a file boundary. The status line reads **Archive opening cancelled**. |
 | Any other phase | **Cancel** | The button changes to **Cancelling...**, and the detail line reads **Finishing the file it is reading**. The load stops after the current file. |
-| Saving the cache | **Skip saving** | The organ opens, and the detail line reads **The organ opens without saving its samples**. The next load reads the samples again. |
+| Saving the cache | **Skip the cache** | The organ opens, and the detail line reads **The organ opens without its cache**. The next load reads the samples again. |
 
 A cancelled load discards the partly loaded organ, because half an instrument that silently drops notes is worse than none. The status line reads **Load cancelled - no organ is loaded**. Masterpiece then loads the console of the same organ without audio, so Organ settings can be opened from the **Settings** menu. The same happens when a load stops at the memory limit, after the dialog **Not enough memory for this organ**.
 
