@@ -214,11 +214,12 @@ takes precedence over the saved settings for that run, except for `--cache`:
 a cache mode saved in the settings still applies. The log line
 `memory config:` shows the values in effect.
 
-### `--storage <int16 | int24 | float32>`
+### `--storage <int16 | int20 | int24 | float32>`
 
 How each sample frame is held in memory. The default is `int24`. `int16` uses
-a third less memory and is enough for most sets. `float32` uses the most
-memory and holds the samples exactly as decoded.
+a third less memory and is enough for most sets. `int20` uses a sixth less
+than `int24`. `float32` uses the most memory and holds the samples exactly as
+decoded.
 
 ### `--load-mono <on | off>`
 

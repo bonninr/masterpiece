@@ -190,11 +190,11 @@ Most of a voice's life is a straight run: the key is held, the cursor is well in
 | `Neon` | ARM: always present on 64-bit, required by the 32-bit build |
 | `None` | The per-frame path only |
 
-`simd::detect()` picks the best unit. Setting `MASTERPIECE_SIMD=0` in the environment forces the per-frame path. The vector code reads the three resident formats (float, 16-bit, 24-bit) and gives the same answer as the per-frame reader: positions advance one frame at a time as there, and the Hermite interpolation uses the same operations in the same order, with no fused multiply-add. `VoiceEngine.cpp` and `SimdRun.cpp` are compiled with `-ffp-contract=off` on every compiler but MSVC, because Apple Clang and GCC would otherwise fuse a multiply and an add into one rounding. A test compares each unit that the machine offers against the per-frame path.
+`simd::detect()` picks the best unit. Setting `MASTERPIECE_SIMD=0` in the environment forces the per-frame path. The vector code reads the four resident formats (float, 16-bit, 20-bit, 24-bit) and gives the same answer as the per-frame reader: positions advance one frame at a time as there, and the Hermite interpolation uses the same operations in the same order, with no fused multiply-add. `VoiceEngine.cpp` and `SimdRun.cpp` are compiled with `-ffp-contract=off` on every compiler but MSVC, because Apple Clang and GCC would otherwise fuse a multiply and an add into one rounding. A test compares each unit that the machine offers against the per-frame path.
 
 The setting **Faster audio engine** (`fasterEngine_`) is on for a program that has never been told otherwise: `fasterEngineByDefault()` returns `true`. It is saved in the global settings file.
 
-Resident audio is held as `Pcm24` (three bytes, little-endian), `int16_t` with a per-file scale folded into the voice gain, or `float`. `renderVoiceFrom<T>` is instantiated per type so the inner loop never tests which one it reads.
+Resident audio is held as `Pcm24` (three bytes, little-endian), `Pcm20` (twenty bits a sample, packed so two samples take five bytes), `int16_t` with a per-file scale folded into the voice gain, or `float`. `renderVoiceFrom<T>` is instantiated per type so the inner loop never tests which one it reads. `Pcm20` has no conversion operator, so any code that walks it as an array of samples does not compile until it is taught the decoder.
 
 ## Front ends and platforms
 

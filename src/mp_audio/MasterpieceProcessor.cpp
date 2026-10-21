@@ -1428,6 +1428,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   // and a width added later does not renumber the existing ones.
   text << "storage "
        << (samples_.storage() == SampleStorage::Int16   ? 16
+           : samples_.storage() == SampleStorage::Int20 ? 20
            : samples_.storage() == SampleStorage::Int24 ? 24
                                                         : 32)
        << "\n";
@@ -1509,6 +1510,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   if (isOverridden(key)) return;
   if (key == "storage")
     samples_.setStorage(val.getIntValue() == 16   ? SampleStorage::Int16
+                        : val.getIntValue() == 20 ? SampleStorage::Int20
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
@@ -6992,6 +6994,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
         ", streamed " + mb(samples_.streamedBytesSaved()) + " MB not held" +
         ", storage=" +
         (samples_.storage() == SampleStorage::Int16   ? "int16"
+         : samples_.storage() == SampleStorage::Int20 ? "int20"
          : samples_.storage() == SampleStorage::Int24 ? "int24"
                                                       : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +

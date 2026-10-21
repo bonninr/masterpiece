@@ -27,7 +27,7 @@ A sample set is the audio of every pipe: an attack with a sustain loop, and one 
 
 The memory an organ takes follows from these choices, in this order of effect:
 
-1. The resident format: 32-bit float, 24-bit or 16-bit.
+1. The resident format: 32-bit float, 24-bit, 20-bit or 16-bit.
 2. Whether release tails are streamed from disk.
 3. Mono folding.
 4. Which stops, perspectives and ranks are loaded.
@@ -41,10 +41,11 @@ The **Resident format** box chooses what one held frame costs.
 | Option | Bytes per sample | What it holds |
 |---|---|---|
 | **24-bit - what the samples are** | 3 | The integers of a 24-bit file unchanged. The audio in memory is bit-for-bit what the file holds. |
+| **20-bit - a sixth less than the source** | 2.5 | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. |
 | **16-bit - two thirds of that, inaudible** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
 | **32-bit float - larger than the source** | 4 | The decoder's floating-point result. One third larger than 24-bit. |
 
-**Default:** 24-bit. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 24` or `storage 32`).
+**Default:** 24-bit. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 20`, `storage 24` or `storage 32`).
 
 Measured on 60 files chosen at random from Friesach, 24-bit is bit-for-bit identical to the source file, and 16-bit has a signal to quantisation noise ratio of 78.1 dB (median) and 75.2 dB (lowest). Processing runs in 32-bit float whatever the resident format is.
 
@@ -154,7 +155,7 @@ The **Stops and perspectives** tab estimates what the organ will take before it 
 
 ![The Stops and perspectives tab](../images/organ-stops.png)
 
-For each sample the estimate takes the frame count, the channels and the rate from the file header, and applies the current settings: the resident format (2, 3 or 4 bytes per sample), mono, the load rate, the length of **Release length**, and, for a release played only as a release, the streamed head. It does not apply **Preloaded per sample**, so **Up to the loop** is not reflected. A file that exists only inside an archive has no header to read and is taken to be 24-bit stereo; a WavPack file without a readable header is taken to be 55% of its uncompressed size.
+For each sample the estimate takes the frame count, the channels and the rate from the file header, and applies the current settings: the resident format (2, 2.5, 3 or 4 bytes per sample), mono, the load rate, the length of **Release length**, and, for a release played only as a release, the streamed head. It does not apply **Preloaded per sample**, so **Up to the loop** is not reflected. A file that exists only inside an archive has no header to read and is taken to be 24-bit stereo; a WavPack file without a readable header is taken to be 55% of its uncompressed size.
 
 The footer shows **About 5.6 GB for this choice (the limit is 12.7 GB)**, in the form **About %1 for this choice (the limit is %2)**. The figure turns red when it exceeds the limit. Each stop, perspective and rank shows its own figure. A sample used by a stop that stays loaded is counted once and stays in the total even when another stop that uses it is left out.
 

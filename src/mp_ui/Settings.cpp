@@ -69,6 +69,29 @@ int rowWidth(std::initializer_list<juce::TextButton*> buttons, const juce::Font&
   return total > 0 ? total - kGap : 0; // no gap after the last button
 }
 
+// The combo box's ids for the resident formats. Twenty bits sits at 4: the
+// other three keep the ids they had, so a saved choice still means the same
+// thing.
+int storageItemId(SampleStorage s) {
+  switch (s) {
+    case SampleStorage::Int16: return 2;
+    case SampleStorage::Int20: return 4;
+    case SampleStorage::Float32: return 3;
+    case SampleStorage::Int24: break;
+  }
+  return 1;
+}
+
+SampleStorage storageOfItem(int id) {
+  switch (id) {
+    case 2: return SampleStorage::Int16;
+    case 4: return SampleStorage::Int20;
+    case 3: return SampleStorage::Float32;
+    default: break;
+  }
+  return SampleStorage::Int24;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------- engine
@@ -155,17 +178,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(storageLabel_, TRANS("Resident format"));
   addAndMakeVisible(storage_);
   storage_.addItem(TRANS("24-bit - what the samples are"), 1);
+  storage_.addItem(TRANS("20-bit - a sixth less than the source"), 4);
   storage_.addItem(TRANS("16-bit - two thirds of that, inaudible"), 2);
   storage_.addItem(TRANS("32-bit float - larger than the source"), 3);
-  storage_.setSelectedId(proc_.sampleStorage() == SampleStorage::Int16     ? 2
-                         : proc_.sampleStorage() == SampleStorage::Float32 ? 3
-                                                                           : 1,
-                         juce::dontSendNotification);
+  storage_.setSelectedId(storageItemId(proc_.sampleStorage()), juce::dontSendNotification);
   storage_.onChange = [this] {
-    const int id = storage_.getSelectedId();
-    proc_.setSampleStorage(id == 2   ? SampleStorage::Int16
-                           : id == 3 ? SampleStorage::Float32
-                                     : SampleStorage::Int24);
+    proc_.setSampleStorage(storageOfItem(storage_.getSelectedId()));
     syncProfile();
   };
 
@@ -659,8 +677,7 @@ void EnginePanel::revert() {
   voicing_.setToggleState(openSwitch_.enableVoicing, juce::dontSendNotification);
   originalPitch_.setToggleState(openSwitch_.playAtOriginalOrganPitch,
                                 juce::dontSendNotification);
-  storage_.setSelectedId(openStorage_ == SampleStorage::Int16 ? 2 : 1,
-                         juce::dontSendNotification);
+  storage_.setSelectedId(storageItemId(openStorage_), juce::dontSendNotification);
   stream_.setToggleState(openStream_, juce::dontSendNotification);
   showStreamPercent(openStreamPercent_);
   streamHead_.setEnabled(openStream_);
@@ -780,6 +797,7 @@ void EnginePanel::timerCallback() {
   const auto bytes = proc_.sampleLibrary().residentBytes();
   const auto fmt = proc_.sampleStorage();
   const juce::String format = fmt == SampleStorage::Int16     ? juce::String("16-bit")
+                              : fmt == SampleStorage::Int20   ? juce::String("20-bit")
                               : fmt == SampleStorage::Float32 ? TRANS("32-bit float")
                                                               : juce::String("24-bit");
   juce::String text = TRANS("Resident samples: %1 MB (%2 samples, %3, %4%5)")
@@ -826,10 +844,7 @@ void EnginePanel::applyProfile(int id) {
   proc_.setStreamReleases(p.stream);
   proc_.setPreloadHeadFrames(p.head);
 
-  storage_.setSelectedId(p.storage == SampleStorage::Int16     ? 2
-                         : p.storage == SampleStorage::Float32 ? 3
-                                                               : 1,
-                         juce::dontSendNotification);
+  storage_.setSelectedId(storageItemId(p.storage), juce::dontSendNotification);
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
   streamHead_.setEnabled(p.stream);
@@ -2598,7 +2613,10 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
   }
   const auto storage = p.sampleStorage();
   row(0, juce::String("Samples kept as ") +
-             (storage == SampleStorage::Int16 ? "16-bit" : storage == SampleStorage::Int24 ? "24-bit" : "32-bit float") +
+             (storage == SampleStorage::Int16   ? "16-bit"
+              : storage == SampleStorage::Int20 ? "20-bit"
+              : storage == SampleStorage::Int24 ? "24-bit"
+                                                : "32-bit float") +
              ", memory limit " +
              (p.memoryLimitSettingMB() > 0 ? juce::String(p.memoryLimitSettingMB()) + " MB" : juce::String("not set")) +
              ", " + juce::String(p.streamUnderruns()) + " stream underruns");

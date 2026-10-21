@@ -76,8 +76,8 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
   on by default
 
 **Memory and loading**
-- 24-bit resident (bit-identical to the files) or 16-bit; stereo can be folded
-  to mono
+- 24-bit resident (bit-identical to the files), 20-bit or 16-bit; stereo can be
+  folded to mono
 - Release tails streamed from disk through per-voice ring buffers; keep the
   first second or 25, 50 or 75% of each release in memory
 - Leave out stops, perspectives or single ranks; left-out stops take their

@@ -177,7 +177,7 @@ These options set how the next organ is loaded. They are the settings of **Organ
 
 | Option | Values | Default | Effect |
 |---|---|---|---|
-| `--storage` | `int16`, `int24`, `float32` | `int24` | How each sample frame is held in memory. `int16` uses a third less than `int24` and is enough for most sets. `float32` uses the most and holds the samples as decoded. Another value is logged and ignored. |
+| `--storage` | `int16`, `int20`, `int24`, `float32` | `int24` | How each sample frame is held in memory. `int16` uses a third less than `int24` and is enough for most sets. `int20` uses a sixth less than `int24`. `float32` uses the most and holds the samples as decoded. Another value is logged and ignored. |
 | `--load-mono` | `on`, `off` | `off` | Folds stereo samples to one channel as they load. Halves the memory and removes the stereo image. `on`, `1`, `true` and `yes` switch it on; any other value switches it off. |
 | `--load-rate` | a rate in Hz, such as `48000`; `0` | `0` (as recorded) | Converts the samples to this rate as they load. Converting a 96 kHz set to 48 kHz halves its memory. |
 | `--stream-releases` | `on`, `off` | `off` | Keeps only the start of each release tail in memory and reads the rest from disk while it plays. Saves a large share of the memory on sets with long releases and needs a fast disk. Accepts the same words as `--load-mono`. |

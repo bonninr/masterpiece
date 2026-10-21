@@ -22,6 +22,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -53,6 +54,11 @@ namespace mp {
 // still uses every bit it is given; on real samples that is about 78 dB of
 // signal to quantisation noise, which is inaudible, for two thirds of Int24.
 //
+// Int20 is the same idea one notch narrower: twenty bits a sample, packed so
+// that two samples take five bytes. It costs two and a half bytes a sample, a
+// sixth less than Int24, and quantises against each file's own peak, so a
+// quiet stop keeps every bit it is given.
+//
 // Float32 remains for a set that is genuinely float, and because processing
 // happens in float regardless -- that is where 32 bits belongs.
 //
@@ -60,8 +66,11 @@ namespace mp {
 // audible hiss under a quiet stop.
 //
 // The order matters: settings files store a bit WIDTH, not this ordinal, but
-// tests pin it so a reordering cannot pass unnoticed.
-enum class SampleStorage { Float32, Int24, Int16 };
+// tests pin it so a reordering cannot pass unnoticed. A new width goes at the
+// END of the list: the ordinal is written into the sample cache's
+// fingerprint, and a width inserted in the middle would give an old cache the
+// fingerprint of a different one.
+enum class SampleStorage { Float32, Int24, Int16, Int20 };
 
 // Three bytes, little-endian, signed -- the layout a 24-bit WAV already uses.
 // Converts to a raw count, like the other integer storage: the scale is folded
@@ -75,6 +84,48 @@ struct Pcm24 {
   }
 };
 static_assert(sizeof(Pcm24) == 3, "24-bit storage must not be padded");
+
+// Twenty bits a sample, packed. The interleaved samples of a buffer form one
+// little-endian bit stream: sample i occupies bits [20i, 20i+20), so two
+// samples take five bytes and the byte a sample starts at is (i*5)>>1.
+//
+// NO conversion operator, on purpose. Any code that walks this as an array of
+// samples and converts what it finds does not compile, which is what catches
+// the places that need the decoder instead.
+struct Pcm20 {
+  unsigned char byte;
+};
+static_assert(sizeof(Pcm20) == 1, "20-bit storage is one byte a sample, packed");
+
+// The bytes a buffer of `count` interleaved samples takes: the samples
+// themselves, plus four bytes of padding, so the four-byte read of the last
+// one never runs past the end. The padding is zeroed.
+constexpr size_t pcm20Bytes(size_t count) { return (count * 20 + 7) / 8 + 4; }
+
+// Read sample `i`: four bytes at its byte offset, little-endian and
+// unaligned, of which the sample is the twenty bits at shift (i&1)*4.
+inline int32_t pcm20At(const Pcm20* data, size_t i) {
+  const size_t o = (i * 5) >> 1;
+  const uint32_t s = static_cast<uint32_t>((i & 1) * 4);
+  uint32_t raw = 0;
+  std::memcpy(&raw, data + o, 4);
+  const uint32_t v = (raw >> s) & 0xFFFFFu;
+  return static_cast<int32_t>((v ^ 0x80000u) - 0x80000u);
+}
+
+// Write sample `i`: the inverse, a read-modify-write of the three bytes the
+// sample touches. The bits of the neighbours in those bytes are kept.
+inline void pcm20Put(Pcm20* data, size_t i, int32_t value) {
+  const size_t o = (i * 5) >> 1;
+  const uint32_t s = static_cast<uint32_t>((i & 1) * 4);
+  uint32_t raw = 0;
+  std::memcpy(&raw, data + o, 4);
+  const uint32_t v = static_cast<uint32_t>(value) & 0xFFFFFu;
+  const uint32_t merged = (raw & ~(0xFFFFFu << s)) | (v << s);
+  data[o + 0].byte = static_cast<unsigned char>(merged & 0xFF);
+  data[o + 1].byte = static_cast<unsigned char>((merged >> 8) & 0xFF);
+  data[o + 2].byte = static_cast<unsigned char>((merged >> 16) & 0xFF);
+}
 
 // Where the rest of a sample lives when only its head is resident.
 //
@@ -103,6 +154,7 @@ struct SampleBuffer {
   std::vector<float> frames;   // Float32 storage
   std::vector<int16_t> pcm16;  // Int16 storage
   std::vector<Pcm24> pcm24;    // Int24 storage
+  std::vector<Pcm20> pcm20;    // Int20 storage: packed, two and a half bytes a sample
   // What an int16 count is worth as a float. Carries both the 1/32767 and the
   // per-file peak, so a sample that peaked at -20 dBFS still uses every bit.
   float pcmScale = 1.0f;
@@ -145,15 +197,23 @@ struct SampleBuffer {
 
   // True when the audio is held as integer counts and pcmScale means
   // something. Which integer width is a separate question, asked below.
-  bool compact() const { return !pcm16.empty() || !pcm24.empty(); }
+  bool compact() const { return !pcm16.empty() || !pcm24.empty() || !pcm20.empty(); }
   bool wide() const { return !pcm24.empty(); }
+  // True when the samples are packed twenty bits: neither a plain integer
+  // count nor a 24-bit one, so the engine asks for it on its own.
+  bool packed20() const { return !pcm20.empty(); }
   // What one sample of one channel costs, resident. Asking compact() alone
-  // cannot answer this any more: it is true of both integer widths.
-  int bytesPerSample() const { return wide() ? 3 : compact() ? 2 : 4; }
+  // cannot answer this any more: it is true of both integer widths. Twenty
+  // bits is two and a half bytes, so the answer is not a whole number.
+  double bytesPerSampleExact() const {
+    if (packed20()) return 2.5;
+    return wide() ? 3.0 : compact() ? 2.0 : 4.0;
+  }
   int64_t residentBytes() const {
     return static_cast<int64_t>(frames.size() * sizeof(float) +
                                 pcm16.size() * sizeof(int16_t) +
-                                pcm24.size() * sizeof(Pcm24));
+                                pcm24.size() * sizeof(Pcm24) +
+                                pcm20.size() * sizeof(Pcm20));
   }
 
   bool loops() const {
@@ -171,6 +231,7 @@ struct SampleBuffer {
     if (frame < 0 || frame >= numFrames) return 0.0f;
     const int ch = channel < numChannels ? channel : numChannels - 1;
     const auto i = static_cast<size_t>(frame * numChannels + ch);
+    if (!pcm20.empty()) return static_cast<float>(pcm20At(pcm20.data(), i)) * pcmScale;
     if (!pcm24.empty()) return static_cast<float>(pcm24[i]) * pcmScale;
     if (!pcm16.empty()) return static_cast<float>(pcm16[i]) * pcmScale;
     return frames[i];

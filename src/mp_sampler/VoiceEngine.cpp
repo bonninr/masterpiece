@@ -45,6 +45,10 @@ template <>
 inline const Pcm24* storageOf<Pcm24>(const SampleBuffer& buf) {
   return buf.pcm24.data();
 }
+template <>
+inline const Pcm20* storageOf<Pcm20>(const SampleBuffer& buf) {
+  return buf.pcm20.data();
+}
 
 inline float storageScale(const SampleBuffer& buf) {
   return buf.compact() ? buf.pcmScale : 1.0f;
@@ -56,6 +60,16 @@ inline float rawSample(const SampleBuffer& buf, int64_t frame, int channel) {
   const int ch = channel < buf.numChannels ? channel : buf.numChannels - 1;
   return static_cast<float>(
       storageOf<T>(buf)[static_cast<size_t>(frame * buf.numChannels + ch)]);
+}
+
+// Twenty-bit samples are packed: they are not an array of values, so they
+// are read through the decoder and never indexed as one.
+template <>
+inline float rawSample<Pcm20>(const SampleBuffer& buf, int64_t frame, int channel) {
+  if (frame < 0 || frame >= buf.numFrames) return 0.0f;
+  const int ch = channel < buf.numChannels ? channel : buf.numChannels - 1;
+  const auto i = static_cast<size_t>(frame * buf.numChannels + ch);
+  return static_cast<float>(pcm20At(storageOf<Pcm20>(buf), i));
 }
 
 template <typename T>
@@ -674,6 +688,18 @@ inline float readInterior(const T* frames, int channels, int channel, int64_t i,
                  static_cast<float>(p[2 * channels]),
                  static_cast<float>(p[3 * channels]), t);
 }
+// Packed twenty-bit samples: the four taps are four decoded values, not four
+// neighbours in an array.
+template <>
+inline float readInterior<Pcm20>(const Pcm20* frames, int channels, int channel,
+                                 int64_t i, float t) {
+  const size_t base = static_cast<size_t>((i - 1) * channels + channel);
+  const size_t step = static_cast<size_t>(channels);
+  return hermite(static_cast<float>(pcm20At(frames, base)),
+                 static_cast<float>(pcm20At(frames, base + step)),
+                 static_cast<float>(pcm20At(frames, base + 2 * step)),
+                 static_cast<float>(pcm20At(frames, base + 3 * step)), t);
+}
 } // namespace
 
 // The resident format is decided once per voice per block, here, so nothing
@@ -694,7 +720,11 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     renderVoice(v, shifted, channels, numFrames - skip);
     return;
   }
-  if (v.buffer != nullptr && v.buffer->wide())
+  // Twenty-bit storage is tested before the others: it is compact too, and a
+  // 20-bit buffer read as 16-bit counts sounds like noise.
+  if (v.buffer != nullptr && v.buffer->packed20())
+    renderVoiceFrom<Pcm20>(v, index, out, numChannels, numFrames);
+  else if (v.buffer != nullptr && v.buffer->wide())
     renderVoiceFrom<Pcm24>(v, index, out, numChannels, numFrames);
   else if (v.buffer != nullptr && v.buffer->compact())
     renderVoiceFrom<int16_t>(v, index, out, numChannels, numFrames);
@@ -841,7 +871,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
       double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
       if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
-      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() && oldRatio > 0.0 &&
+      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() &&
+          ob.packed20() == buf.packed20() && oldRatio > 0.0 &&
           simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
           v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
         int n = std::min({numFrames - i, v.relXfadeLeft, kXfadeChunk});
@@ -899,7 +930,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
           static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
       double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
       if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
-      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() && v.xfadeRatioScale > 0.0 &&
+      if (ob.wide() == buf.wide() && ob.compact() == buf.compact() &&
+          ob.packed20() == buf.packed20() && v.xfadeRatioScale > 0.0 &&
           simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
           v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
         double ratios[kXfadeChunk];

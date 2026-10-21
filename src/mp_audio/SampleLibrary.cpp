@@ -422,6 +422,35 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
         d.b[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
         d.b[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
       }
+  } else if (storage == SampleStorage::Int20) {
+    // Twenty bits a sample, packed two to five bytes. Quantised against this
+    // file's own peak, as 16-bit is: a 24-bit source cannot be held exactly
+    // in twenty bits, so the best use of them is to spend them on the file's
+    // own range rather than on the top of the scale.
+    float peak = 0.0f;
+    for (int c = 0; c < channels; ++c)
+      peak = std::max(peak, scratch.getMagnitude(c, 0, static_cast<int>(want)));
+
+    // 524287 rather than 524288: the negative rail is one count further out,
+    // and using it would make the scale asymmetric.
+    constexpr float full = 524287.0f;
+
+    out.pcmScale = peak > 0.0f ? peak / full : 1.0f;
+    const float toCounts = peak > 0.0f ? full / peak : 0.0f;
+    // The buffer carries its own padding, so the four-byte read of the last
+    // sample never runs past the end.
+    out.pcm20.assign(pcm20Bytes(count), Pcm20{});
+    for (int64_t f = 0; f < want; ++f)
+      for (int c = 0; c < channels; ++c) {
+        const float v = scratch.getSample(c, static_cast<int>(f)) * toCounts;
+        // Round rather than truncate, and clamp: getMagnitude is the peak, so
+        // the product cannot exceed full scale except by rounding, but a
+        // sample set with a NaN in it must not wrap to the opposite rail.
+        const float r = std::round(v);
+        const float q = std::isfinite(r) ? std::clamp(r, -524288.0f, full) : 0.0f;
+        pcm20Put(out.pcm20.data(), static_cast<size_t>(f * channels + c),
+                 static_cast<int32_t>(q));
+      }
   } else if (storage == SampleStorage::Int16) {
     // Scale by this file's own peak before quantising. Organ samples are not
     // normalised — a soft stop's samples can sit 20 dB down, and truncating
@@ -815,7 +844,12 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
 
 int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   if (shape.frames <= 0 || shape.channels <= 0) return 0;
-  const int storeBytes = storage_ == SampleStorage::Int16 ? 2 : storage_ == SampleStorage::Int24 ? 3 : 4;
+  // Twenty bits is two and a half bytes a sample, so the count is not a whole
+  // number of bytes.
+  const double storeBytes = storage_ == SampleStorage::Int16   ? 2.0
+                            : storage_ == SampleStorage::Int24 ? 3.0
+                            : storage_ == SampleStorage::Int20 ? 2.5
+                                                               : 4.0;
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)
     frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
@@ -826,7 +860,8 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
     frames = std::min(frames, streamHeadFor(frames));
   }
   const int channels = loadMono_ ? 1 : shape.channels;
-  return frames * channels * storeBytes;
+  return static_cast<int64_t>(
+      std::llround(static_cast<double>(frames) * static_cast<double>(channels) * storeBytes));
 }
 
 bool SampleLibrary::rankShipped(const Rank& rank, const OrganModel& model, const std::string& organRootDir) const {
@@ -1661,6 +1696,9 @@ namespace {
 constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // 2: the per-sample record carries the release marker of a file that holds
 //    attack, loop and release together.
+// The 20-bit width (code 3) needs no new version: a cache holds it only under a
+// fingerprint with that width in it, which no earlier build can ask for, so
+// the caches players already have stay valid.
 constexpr uint32_t kCacheVersion = 5; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
 
 // A checksum of one sample's audio in the cache, so audio damaged on the
@@ -1701,11 +1739,13 @@ bool getStr(std::istream& is, std::string& s, uint32_t cap = 64u * 1024u) {
   return static_cast<bool>(is);
 }
 
-// 0 float32, 1 int24, 2 int16 — written rather than the enum's ordinal, so
-// reordering SampleStorage cannot silently reinterpret an old cache.
+// 0 float32, 1 int24, 2 int16, 3 int20 — written rather than the enum's
+// ordinal, so reordering SampleStorage cannot silently reinterpret an old
+// cache.
 uint8_t widthCode(const mp::SampleBuffer& b) {
   if (!b.pcm24.empty()) return 1;
   if (!b.pcm16.empty()) return 2;
+  if (!b.pcm20.empty()) return 3;
   return 0;
 }
 
@@ -1715,6 +1755,9 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
                                             int64_t maxFramesPerSample,
                                             LoopSelection loopSelection) const {
   std::string s = "v1|" + cacheOdfStamp_;
+  // The resident width, by the enum's ordinal: the widths are distinct
+  // ordinals, and a new one goes at the end of the enum, so a cache written
+  // at one width is never read back at another.
   s += "|w" + std::to_string(static_cast<int>(storage_));
   s += "|m" + std::to_string(loadMono_ ? 1 : 0);
   s += "|r" + std::to_string(static_cast<int64_t>(loadRate_));
@@ -1794,6 +1837,7 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       if (buf == nullptr) continue;
       total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
                                     buf->pcm16.size() * sizeof(int16_t) +
+                                    buf->pcm20.size() * sizeof(Pcm20) +
                                     buf->frames.size() * sizeof(float));
     }
     cacheTotal_ = total;
@@ -1825,6 +1869,9 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       } else if (!buf->pcm16.empty()) {
         data = reinterpret_cast<const char*>(buf->pcm16.data());
         bytes = buf->pcm16.size() * sizeof(int16_t);
+      } else if (!buf->pcm20.empty()) {
+        data = reinterpret_cast<const char*>(buf->pcm20.data());
+        bytes = buf->pcm20.size() * sizeof(Pcm20);
       } else {
         data = reinterpret_cast<const char*>(buf->frames.data());
         bytes = buf->frames.size() * sizeof(float);
@@ -1915,6 +1962,16 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
       buf->pcm16.resize(static_cast<size_t>(bytes / sizeof(int16_t)));
       if (bytes) is.read(reinterpret_cast<char*>(buf->pcm16.data()),
                          static_cast<std::streamsize>(bytes));
+    } else if (width == 3) {
+      // The twenty-bit buffer carries its own padding, so its size follows
+      // from the frame count: a file that says otherwise is damaged.
+      const auto want = static_cast<uint64_t>(pcm20Bytes(
+          static_cast<size_t>(std::max<int64_t>(0, buf->numFrames)) *
+          static_cast<size_t>(std::max(1, channels))));
+      if (bytes != want) return false;
+      buf->pcm20.resize(static_cast<size_t>(bytes));
+      if (bytes) is.read(reinterpret_cast<char*>(buf->pcm20.data()),
+                         static_cast<std::streamsize>(bytes));
     } else {
       buf->frames.resize(static_cast<size_t>(bytes / sizeof(float)));
       if (bytes) is.read(reinterpret_cast<char*>(buf->frames.data()),
@@ -1924,6 +1981,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
     {
       const char* got = !buf->pcm24.empty()   ? reinterpret_cast<const char*>(buf->pcm24.data())
                         : !buf->pcm16.empty() ? reinterpret_cast<const char*>(buf->pcm16.data())
+                        : !buf->pcm20.empty() ? reinterpret_cast<const char*>(buf->pcm20.data())
                                               : reinterpret_cast<const char*>(buf->frames.data());
       uint64_t stored = 0;
       if (!getPod(is, stored)) return false;
@@ -1976,10 +2034,11 @@ int64_t SampleLibrary::streamedBytesSaved() const {
     if (!buf->streams()) continue;
     const int64_t skipped = buf->totalFrames() - buf->numFrames;
     // Not compact() ? 2 : 4 -- compact() is true of 16-bit AND 24-bit, so
-    // that understated every 24-bit figure by a third.
-    const int64_t perFrame = static_cast<int64_t>(buf->numChannels) *
-                             buf->bytesPerSample();
-    saved += skipped * perFrame;
+    // that understated every 24-bit figure by a third. Twenty bits is two
+    // and a half bytes a sample.
+    const double perFrame =
+        static_cast<double>(buf->numChannels) * buf->bytesPerSampleExact();
+    saved += static_cast<int64_t>(std::llround(static_cast<double>(skipped) * perFrame));
   }
   return saved;
 }

@@ -397,6 +397,7 @@ countries: de at ch li lu
 "Up to the loop (less memory)" = "Bis zur Schleife (weniger Speicher)"
 "Resident format" = "Speicherformat"
 "24-bit - what the samples are" = "24 Bit - so liegen die Samples vor"
+"20-bit - a sixth less than the source" = "20 Bit - ein Sechstel weniger als die Quelle"
 "16-bit - two thirds of that, inaudible" = "16 Bit - zwei Drittel davon, nicht hörbar"
 "32-bit float - larger than the source" = "32 Bit Gleitkomma - größer als die Quelle"
 "Sample rate" = "Abtastrate"

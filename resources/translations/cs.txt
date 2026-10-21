@@ -397,6 +397,7 @@ countries: cz
 "Up to the loop (less memory)" = "Do smyčky (méně paměti)"
 "Resident format" = "Formát v paměti"
 "24-bit - what the samples are" = "24 bitů - tak, jak jsou vzorky"
+"20-bit - a sixth less than the source" = "20 bitu - šestina méně než zdroj"
 "16-bit - two thirds of that, inaudible" = "16 bitů - dvě třetiny toho, neslyšné"
 "32-bit float - larger than the source" = "32 bitů s plovoucí řádovou čárkou - větší než zdroj"
 "Sample rate" = "Vzorkovací frekvence"

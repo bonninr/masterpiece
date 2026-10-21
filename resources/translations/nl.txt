@@ -397,6 +397,7 @@ countries: nl be sr
 "Up to the loop (less memory)" = "Tot de lus (minder geheugen)"
 "Resident format" = "Geheugenformaat"
 "24-bit - what the samples are" = "24 bit - zoals de samples zijn"
+"20-bit - a sixth less than the source" = "20 bit - een zesde minder dan de bron"
 "16-bit - two thirds of that, inaudible" = "16 bit - twee derde daarvan, niet hoorbaar"
 "32-bit float - larger than the source" = "32 bit float - groter dan de bron"
 "Sample rate" = "Samplefrequentie"

@@ -33,6 +33,7 @@ floating point and held in memory.
 |---|---|
 | **Release streaming** | A release tail is several seconds of room sound, played once from its start and never looped. Masterpiece keeps only its first frames in memory and streams the rest from disk into a per-voice ring buffer while it sounds. Attacks and sustain loops stay in memory. |
 | **24-bit storage** | The source files are 24-bit. Samples are held as 24-bit integers instead of being widened to 32-bit float, so the audio in memory is bit-for-bit identical to the file. |
+| **20-bit storage** | Samples are requantised to 20 bits against each file's own peak and packed so two samples take five bytes: two and a half bytes a sample. |
 | **16-bit storage** | Samples are requantised to 16 bits against each file's own peak, so a quiet stop still uses every bit. |
 | **Mono folding** | A stereo sample set is folded to mono as it loads. |
 | **Sample cache** | The decoded, converted samples are written to one file, so the next load of the same organ with the same settings is one sequential read instead of 12,148 decodes. |
