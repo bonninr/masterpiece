@@ -11,7 +11,8 @@ namespace {
 // GitHub gives a request that carries no account.
 const char* const kVersionUrl = "https://api.github.com/repos/bonninr/masterpiece/releases/latest";
 const char* const kRequestHeaders = "User-Agent: Masterpiece\r\nAccept: application/vnd.github+json";
-const char* const kDownloadUrl = "https://masterpieceorgan.com/#platforms";
+// The newest release's page, with its downloads, on the same host.
+const char* const kDownloadUrl = "https://github.com/bonninr/masterpiece/releases/latest";
 constexpr int kShownMs = 30000;
 
 // The newest version's number, or empty. JUCE fetches it everywhere but on
