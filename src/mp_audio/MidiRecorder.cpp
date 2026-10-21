@@ -143,6 +143,14 @@ void MidiRecorder::process(juce::MidiBuffer& midi, int numSamples,
   }
 }
 
+std::vector<MidiRecorder::TakeEvent> MidiRecorder::takeEvents() const {
+  std::vector<TakeEvent> out;
+  out.reserve(events_.size());
+  for (const auto& e : events_)
+    out.push_back({static_cast<double>(e.samplePos) / sampleRate_, e.message, e.deviceId});
+  return out;
+}
+
 bool MidiRecorder::saveToFile(const juce::File& file) {
   if (events_.empty()) return false;
 

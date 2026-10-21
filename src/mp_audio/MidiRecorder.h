@@ -73,6 +73,18 @@ public:
   bool saveToFile(const juce::File& file);
   bool loadFromFile(const juce::File& file);
 
+  // The take, for a file written elsewhere: each message with its time in
+  // seconds from the start of the take and the console it came from.
+  struct TakeEvent {
+    double seconds = 0.0;
+    juce::MidiMessage message;
+    int deviceId = 0;
+  };
+  std::vector<TakeEvent> takeEvents() const;
+  // Where the take ends: where recording stopped, or just after the last event
+  // of a take read from a file.
+  double endSeconds() const { return static_cast<double>(writePos_) / sampleRate_; }
+
 private:
   struct Event {
     int64_t samplePos = 0;

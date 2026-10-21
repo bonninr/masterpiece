@@ -1219,6 +1219,23 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
     addAndMakeVisible(*b);
   midi_.setTooltip(TRANS("A button on the console for Record and one for Play"));
   midi_.onClick = [this] { showMidiMenu(); };
+  addAndMakeVisible(saveForSequencer_);
+  addAndMakeVisible(markers_);
+  markers_.setToggleState(true, juce::dontSendNotification);
+  saveForSequencer_.setTooltip(TRANS("A file for other programs: a track per keyboard, the notes in pairs, the console's "
+                                     "own buttons left out. Save MIDI keeps what Masterpiece plays back."));
+  saveForSequencer_.onClick = [this] {
+    chooser_ = std::make_unique<juce::FileChooser>(TRANS("Save for a sequencer"), proc_.dialogFolder("midi"), "*.mid");
+    chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                              juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this](const juce::FileChooser& fc) {
+                            const auto f = fc.getResult();
+                            proc_.rememberDialogFolder("midi", f);
+                            if (f.getFullPathName().isNotEmpty() &&
+                                !proc_.saveTakeForSequencer(f.withFileExtension(".mid"), markers_.getToggleState()))
+                              status_.setText(TRANS("Could not write that file"), juce::dontSendNotification);
+                          });
+  };
 
   record_.onClick = [this] { askBeforeRecording(); };
   play_.onClick = [this] { proc_.recorder().startPlayback(); };
@@ -1398,6 +1415,7 @@ void RecorderPanel::timerCallback() {
   record_.setToggleState(r.isRecording(), juce::dontSendNotification);
   play_.setEnabled(!r.empty());
   save_.setEnabled(!r.empty());
+  saveForSequencer_.setEnabled(!r.empty());
 
   auto& a = proc_.audioRecorder();
   const bool on = a.isRecording();
@@ -1438,7 +1456,8 @@ int RecorderPanel::preferredWidth() {
   const auto font = buttonFont(record_, kRow);
   int widest = 0;
   for (auto row : {std::initializer_list<juce::TextButton*>{&record_, &play_, &stop_},
-                   std::initializer_list<juce::TextButton*>{&save_, &load_, &clear_},
+                   std::initializer_list<juce::TextButton*>{&save_, &load_, &clear_, &midi_},
+                   std::initializer_list<juce::TextButton*>{&saveForSequencer_},
                    std::initializer_list<juce::TextButton*>{&audioRecord_, &audioStop_}})
     widest = juce::jmax(widest, rowWidth(row, font));
   return widest + 2 * kMargin;
@@ -1453,6 +1472,11 @@ void RecorderPanel::resized() {
   r.removeFromTop(h - kRow + kGap);
   h = placeRow(r.removeFromTop(kRow), {&save_, &load_, &clear_, &midi_});
   r.removeFromTop(h - kRow + kGap);
+  // The option goes on a line of its own, so it never runs off a narrow panel.
+  h = placeRow(r.removeFromTop(kRow), {&saveForSequencer_});
+  r.removeFromTop(h - kRow + kGap);
+  markers_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(kGap);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   note_.setBounds(r.removeFromTop(72));
