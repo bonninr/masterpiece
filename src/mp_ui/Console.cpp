@@ -965,8 +965,11 @@ void ConsoleView::paint(juce::Graphics& g) {
   for (const auto& t : texts_) {
     g.setFont(t.font);
     g.setColour(t.colour);
+    // Text with a box breaks at its spaces, as the set's own program breaks
+    // it; it is never squeezed sideways onto one line first (#452). Only a
+    // word wider than the box on its own is narrowed to fit.
     if (t.wrap)
-      g.drawFittedText(t.text, t.bounds, t.justification, 8);
+      g.drawFittedText(t.text, t.bounds, t.justification, 8, 1.0f);
     else
       g.drawText(t.text, t.bounds, t.justification, false);
     ++drawn;
