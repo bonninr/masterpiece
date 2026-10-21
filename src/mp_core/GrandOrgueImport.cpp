@@ -1062,6 +1062,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       }
       combination(sec, kDivisionalBase + m * 100 + d,
                   ini.str(sec, "Name", ini.str(msec, "Name", msec) + " " + std::to_string(d)), el);
+      // Whose divisional it is, for the generated panel (#489).
+      if (manualInfo.count(m) != 0)
+        Emitter::set(out.lists["Combination"].last_child(), "DivisionID", manualInfo[m].kb);
     }
   }
   // GrandOrgue's own setter -- its programmable generals, Set and General

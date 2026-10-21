@@ -1938,6 +1938,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // AllowsCapture also carries a kind code (1 template, 2 general, ...) as
     // well as Y/N, so anything that is not an explicit N allows capture.
     c.allowsCapture = field(row, "AllowsCapture", compact ? "f" : "g") != "N";
+    // Written by the GrandOrgue import for a manual's divisionals.
+    c.divisionId = fieldInt(row, "DivisionID", nullptr, 0);
     if (c.combinationId != 0) outModel.combinations[c.combinationId] = std::move(c);
   });
 
