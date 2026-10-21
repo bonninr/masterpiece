@@ -5,12 +5,17 @@
 // as the same performance rather than as notes on whatever registration
 // happens to be drawn at the time.
 //
+// Every message keeps the console it came from. The console is part of what
+// says which manual a note plays: a player who gives one console a manual of
+// its own has said so for that console, and a take that forgot where its
+// notes came from would play them on whatever the channel means in the
+// organ's own assignment — the pedal, whose code there is 1.
+//
 // Timestamps are in samples, converted to seconds on save. Sample time is what
 // the audio callback actually has; wall-clock would drift against it.
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 
-#include <bitset>
 #include <vector>
 
 namespace mp {
@@ -20,6 +25,16 @@ public:
   enum class State { Idle, Recording, Playing };
   // What a new recording does with the take that is already there.
   enum class Take { Replace, Append };
+
+  // A message on its way back to the engine: the console it came from, the
+  // message, and where in the block it falls.
+  struct Playback {
+    int deviceId = 0;  // 0: no console of its own
+    juce::MidiMessage message;
+    int offset = 0;    // samples into the block
+  };
+
+  MidiRecorder();
 
   void prepare(double sampleRate);
 
@@ -44,15 +59,16 @@ public:
 
   // Called once per block, before the engine consumes the buffer.
   // While recording, everything in `midi` is captured. While playing, the
-  // recorded events for this block are merged INTO `midi`, so playback drives
-  // exactly the same path a live console does.
-  void process(juce::MidiBuffer& midi, int numSamples);
+  // recorded events for this block are put into `out`, each with the console
+  // it came from, so a take drives exactly the path a live console does.
+  void process(juce::MidiBuffer& midi, int numSamples,
+               std::vector<Playback>& out);
   // A message from a hardware console. Those do not come in the host's buffer
   // but through the processor's own device queue, read after process(), so
   // they are handed over here -- or recording a real console captured nothing
   // but the on-screen keys. They arrived between blocks, so they are placed
   // at the start of the block they were read in.
-  void captureLive(const juce::MidiMessage& message);
+  void captureLive(const juce::MidiMessage& message, int deviceId);
 
   bool saveToFile(const juce::File& file);
   bool loadFromFile(const juce::File& file);
@@ -61,6 +77,14 @@ private:
   struct Event {
     int64_t samplePos = 0;
     juce::MidiMessage message;
+    int deviceId = 0;  // the console it came from; 0: none
+  };
+
+  // A key playback has put down and not yet let go.
+  struct Held {
+    int deviceId = 0;
+    int channel = 0;
+    int note = 0;
   };
 
   std::vector<Event> events_;
@@ -73,15 +97,15 @@ private:
   int64_t blockStart_ = 0; // where the block being recorded began
   int64_t playPos_ = 0;    // playback head
   size_t playIndex_ = 0;   // next event to emit
-  // The keys playback has put down and not yet let go, by channel and note.
+  // The keys playback has put down and not yet let go.
   // When playback ends with any of them still down -- stopped part-way, or a
   // file that ends on a held chord -- they are let go in the next block: an
   // organ pipe has no decay, and the chord would sound until Panic (#325).
   // Only playback's own keys: what the player is holding stays held.
-  std::bitset<16 * 128> held_;
+  std::vector<Held> held_;
   // Playback was started again from the top while it was running.
   bool restarted_ = false;
-  void releaseHeld(juce::MidiBuffer& midi);
+  void releaseHeld(std::vector<Playback>& out);
 };
 
 } // namespace mp

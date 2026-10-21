@@ -2555,11 +2555,14 @@ public:
   void run() override {
     mp::MidiRecorder rec;
     rec.prepare(48000.0);
-    auto noteOffs = [](const juce::MidiBuffer& b) {
+    // The events of the block being played back: the recorder hands them
+    // back, each with the console it came from.
+    std::vector<mp::MidiRecorder::Playback> out;
+    auto noteOffs = [](const std::vector<mp::MidiRecorder::Playback>& v) {
       std::vector<std::pair<int, int>> offs;
-      for (const auto meta : b)
-        if (meta.getMessage().isNoteOff())
-          offs.emplace_back(meta.getMessage().getChannel(), meta.getMessage().getNoteNumber());
+      for (const auto& e : v)
+        if (e.message.isNoteOff())
+          offs.emplace_back(e.message.getChannel(), e.message.getNoteNumber());
       return offs;
     };
     // A take of three blocks: a key down in the first, another in the second,
@@ -2567,53 +2570,53 @@ public:
     rec.startRecording();
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     b.clear();
     b.addEvent(juce::MidiMessage::noteOn(3, 64, 0.8f), 0);
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     b.clear();
     b.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
     b.addEvent(juce::MidiMessage::noteOff(3, 64), 0);
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     rec.stopRecording();
 
     // Stopped after the first block: its key is let go, and only that one.
     rec.startPlayback();
     b.clear();
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     rec.stopPlayback();
     b.clear();
     b.addEvent(juce::MidiMessage::noteOn(1, 40, 0.8f), 0);  // the player's own key
-    rec.process(b, 256);
-    const auto stopped = noteOffs(b);
+    rec.process(b, 256, out);
+    const auto stopped = noteOffs(out);
     MP_CHECK(stopped.size() == 1 && stopped[0] == std::make_pair(2, 60),
              "stopping playback lets go of the key it was holding, got " +
                  std::to_string(stopped.size()) + " note-offs");
     b.clear();
-    rec.process(b, 256);
-    MP_CHECK(noteOffs(b).empty(), "and says so once");
+    rec.process(b, 256, out);
+    MP_CHECK(noteOffs(out).empty(), "and says so once");
 
     // Played to the end: the take lets go of its own keys, nothing is added.
     rec.startPlayback();
     for (int i = 0; i < 3; ++i) {
       b.clear();
-      rec.process(b, 256);
+      rec.process(b, 256, out);
     }
     MP_CHECK(!rec.isPlaying(), "the take ends after its last event");
     b.clear();
-    rec.process(b, 256);
-    MP_CHECK(noteOffs(b).empty(), "a take that lets go of its keys adds no note-offs");
+    rec.process(b, 256, out);
+    MP_CHECK(noteOffs(out).empty(), "a take that lets go of its keys adds no note-offs");
 
     // Begun again from the top while a key is down: let go before it restarts.
     rec.startPlayback();
     b.clear();
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     rec.startPlayback();
     b.clear();
-    rec.process(b, 256);
+    rec.process(b, 256, out);
     bool offFirst = false;
-    for (const auto meta : b) {
-      const auto m = meta.getMessage();
+    for (const auto& e : out) {
+      const auto& m = e.message;
       if (m.isNoteOff() && m.getNoteNumber() == 60) offFirst = true;
       if (m.isNoteOn() && m.getNoteNumber() == 60) {
         MP_CHECK(offFirst, "a restart lets the key go before it plays it again");
@@ -10559,17 +10562,18 @@ public:
   void run() override {
     mp::MidiRecorder rec;
     rec.prepare(48000.0);
+    std::vector<mp::MidiRecorder::Playback> out;
     rec.startRecording();
     juce::MidiBuffer b;
     b.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
-    rec.process(b, 480);
+    rec.process(b, 480, out);
     for (int i = 1; i < 100; ++i) {  // a second at 48 kHz, in blocks of 480
       b.clear();
-      rec.process(b, 480);
+      rec.process(b, 480, out);
     }
     b.clear();
     b.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
-    rec.process(b, 480);
+    rec.process(b, 480, out);
     rec.stopRecording();
 
     const juce::File file = juce::File::getSpecialLocation(juce::File::tempDirectory)

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Masterpiece synthetic test fixture (own content). Two playable keyboards
+     and no pipework: a manual with the assignment code 2 and a pedal with the
+     code 1, so the channel a console plays says which manual it is, and the
+     recorder test can tell the two apart. -->
+<Hauptwerk FileFormat="Organ" FileFormatVersion="6.00">
+  <ObjectList ObjectType="_General">
+    <_General>
+      <UniqueOrganID>90040</UniqueOrganID>
+      <Name>Masterpiece Recorder Test Organ</Name>
+      <OrganInfo_Builder>Masterpiece</OrganInfo_Builder>
+    </_General>
+  </ObjectList>
+
+  <ObjectList ObjectType="Keyboard">
+    <Keyboard>
+      <KeyboardID>701</KeyboardID>
+      <Name>Manual I</Name>
+      <DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>
+      <KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys>
+      <KeyGen_MIDINoteNumberOfFirstKey>30</KeyGen_MIDINoteNumberOfFirstKey>
+      <Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID>
+    </Keyboard>
+    <Keyboard>
+      <KeyboardID>702</KeyboardID>
+      <Name>Pedal</Name>
+      <DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>
+      <KeyGen_NumberOfKeys>21</KeyGen_NumberOfKeys>
+      <KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>
+      <Hint_PrimaryAssociatedDivisionID>802</Hint_PrimaryAssociatedDivisionID>
+    </Keyboard>
+  </ObjectList>
+
+  <ObjectList ObjectType="Division">
+    <Division>
+      <DivisionID>801</DivisionID>
+      <Name>Great</Name>
+    </Division>
+    <Division>
+      <DivisionID>802</DivisionID>
+      <Name>Pedal</Name>
+    </Division>
+  </ObjectList>
+
+  <ObjectList ObjectType="KeyAction">
+    <KeyAction>
+      <SourceKeyboardID>701</SourceKeyboardID>
+      <DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>
+      <DestDivisionID>801</DestDivisionID>
+      <Name>Manual I to Great</Name>
+      <ActionTypeCode>1</ActionTypeCode>
+      <ActionEffectCode>1</ActionEffectCode>
+      <MIDINoteNumOfFirstSourceKey>30</MIDINoteNumOfFirstSourceKey>
+      <NumberOfKeys>61</NumberOfKeys>
+      <MIDINoteNumberIncrement>0</MIDINoteNumberIncrement>
+    </KeyAction>
+    <KeyAction>
+      <SourceKeyboardID>702</SourceKeyboardID>
+      <DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>
+      <DestDivisionID>802</DestDivisionID>
+      <Name>Pedal to Pedal</Name>
+      <ActionTypeCode>1</ActionTypeCode>
+      <ActionEffectCode>1</ActionEffectCode>
+      <MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>
+      <NumberOfKeys>21</NumberOfKeys>
+      <MIDINoteNumberIncrement>0</MIDINoteNumberIncrement>
+    </KeyAction>
+  </ObjectList>
+</Hauptwerk>

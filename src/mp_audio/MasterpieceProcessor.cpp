@@ -362,6 +362,10 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
                    : 0.5f;
   recorder_.prepare(sampleRate_);
   scorePlayer_.prepare(sampleRate_);
+  // A block of a take, and Panic's 2048 releases, without allocating on the
+  // audio thread.
+  recordedPlayback_.reserve(4096);
+  panicNotes_.reserve(16 * 128);
   outgoing_.ensureSize(1024);
   sustainedKeys_.reserve(256);
 }
@@ -808,7 +812,20 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // which is all the recorder saw.
   if (recorder_.isRecording())
     for (const auto& [deviceId, msg] : midiScratch_)
-      if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg);
+      if (deviceId != MidiDeviceMap::kAnyDevice) recorder_.captureLive(msg, deviceId);
+  // A take being played back: each event with the console it came from, so it
+  // is routed the way it was when it was played. They go in after the split
+  // keyboard, which has already had its say over what was recorded.
+  for (const auto& e : recordedPlayback_) {
+    midiScratch_.emplace_back(e.deviceId, e.message);
+    midiOffsets_.push_back(e.offset);
+  }
+  // And Panic's releases last of all, so a note a take puts down in this
+  // block is released with the rest.
+  for (const auto& m : panicNotes_) {
+    midiScratch_.emplace_back(MidiDeviceMap::kAnyDevice, m);
+    midiOffsets_.push_back(0);
+  }
   split_.retagReplay(midiScratch_);
 
   for (size_t m = 0; m < midiScratch_.size(); ++m) {
@@ -5715,13 +5732,17 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // mouse and MIDI take one identical path.
   keyboardState_.processNextMidiBuffer(midi, 0, buffer.getNumSamples(), true);
 
-  // Recording captures what arrived; playback merges its events into the same
-  // buffer, so a recorded performance drives exactly the live path.
-  recorder_.process(midi, buffer.getNumSamples());
-  // The score panel's playing, the same way. One atomic load while idle.
+  // Recording captures what arrived; playback hands its events back, each with
+  // the console it came from, so a take drives exactly the path a live console
+  // does. The console is part of what says which manual a note plays, and a
+  // take that lost it played on whatever the channel means in the organ's own
+  // assignment -- the pedal, whose code there is 1.
+  recorder_.process(midi, buffer.getNumSamples(), recordedPlayback_);
+  // The score panel's playing merges into the buffer. One atomic load while idle.
   scorePlayer_.process(midi, buffer.getNumSamples());
 
-  // Then fold the playback back into the keyboard state.
+  // Then fold the buffer's events, the score panel's among them, into the
+  // keyboard state.
   //
   // The state was read above, BEFORE the recorder added anything, so a note
   // played from a file was never in it. Two things read that state and both
@@ -5734,17 +5755,27 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // every moused note twice.
   keyboardState_.processNextMidiBuffer(midi, 0, buffer.getNumSamples(), false);
 
-  // Panic. Every key on every channel is released, as note-offs in the same
-  // buffer, so they take the ordinary path: a voice stopped this way still
-  // gets its release sample and the room's own decay, rather than being cut
-  // dead. Done after the recorder so a stuck note cannot be re-triggered by
+  // The recorded events are not in the buffer the host handed us, so the
+  // keyboard state is told about them here: the drawn manuals light up
+  // through a recorded performance, and Panic has something to release.
+  for (const auto& e : recordedPlayback_)
+    keyboardState_.processNextMidiEvent(e.message);
+
+  // Panic. Every key on every channel is released, as note-offs, so they take
+  // the ordinary path: a voice stopped this way still gets its release sample
+  // and the room's own decay, rather than being cut dead.
+  //
+  // The releases are kept apart from the buffer and sent after the recorded
+  // events, so a note a take puts down in this block is released with the
+  // rest. Done after the recorder so a stuck note cannot be re-triggered by
   // an event already queued this block.
+  panicNotes_.clear();
   const bool panic = releaseAll_.exchange(false, std::memory_order_acq_rel);
   if (panic) {
     for (int ch = 1; ch <= 16; ++ch) {
       for (int note = 0; note < 128; ++note)
         if (keyboardState_.isNoteOn(ch, note))
-          midi.addEvent(juce::MidiMessage::noteOff(ch, note), 0);
+          panicNotes_.push_back(juce::MidiMessage::noteOff(ch, note));
       keyboardState_.allNotesOff(ch);
     }
   }

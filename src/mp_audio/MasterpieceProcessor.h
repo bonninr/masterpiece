@@ -2612,6 +2612,12 @@ private:
   // for the next prepareToPlay.
   int maxBlock_ = 512;
 
+  // The events of the take being played back, for this block: each with the
+  // console it came from. The recorder fills it, the MIDI handling routes it.
+  std::vector<MidiRecorder::Playback> recordedPlayback_;
+  // Panic's releases for this block, sent after everything else in it.
+  std::vector<juce::MidiMessage> panicNotes_;
+
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MasterpieceProcessor)
 };
 
