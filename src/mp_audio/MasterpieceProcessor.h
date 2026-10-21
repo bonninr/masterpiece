@@ -98,6 +98,16 @@ public:
   // on a loaded Linux machine the heap was corrupted (#267).
   void releaseResources() override;
   void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+  // Any number of discrete outputs up to 32, and no input: a mixer pair with
+  // device channels of its own plays on them when the output has them.
+  static constexpr int kMaxOutputChannels = 32;
+  bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
+  // The output channels the mixer asks for: one past the highest device
+  // channel a bus names, and two at the least.
+  int outputChannelsWanted() const;
+  // Told on the message thread's side when that number changes, so the
+  // program that owns the device can open the channels.
+  std::function<void()> onOutputChannelsWanted;
 
   juce::AudioProcessorEditor* createEditor() override;
   bool hasEditor() const override { return true; }
@@ -2134,6 +2144,18 @@ private:
   // Per-bus scratch, needed only when a bus has its own room: without one the
   // buses sum straight into the output and cost nothing.
   juce::AudioBuffer<float> mixScratch_;
+  // The device channels of each dense bus, left and right; -1 for a bus that
+  // names none, which plays on the first two as every bus did before.
+  std::vector<std::pair<int, int>> busOutputs_;
+  // Where a bus with device channels of its own is rendered before it goes
+  // there, and the stereo fold-down of a wider output for the recorder.
+  juce::AudioBuffer<float> pairScratch_;
+  juce::AudioBuffer<float> recordScratch_;
+  int lastOutputChannelsWanted_ = 2;
+  // The channels of bus `index` on an output of `numCh` channels: its own
+  // when the output has them, otherwise the first pair.
+  std::pair<int, int> busOutputFor(int index, int numCh) const;
+  bool anyBusOnItsOwnChannels(int numCh) const;
   // Built on the message thread, drained by the audio thread into outgoing_ so
   // there is one sender to the port. The audio thread takes this with
   // try_lock and simply waits a block if it is contended — an LCD line arriving

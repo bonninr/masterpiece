@@ -575,6 +575,8 @@ countries: gb us
 "Pair %1" = "Pair %1"
 "%1 rank(s), %2 pair(s)" = "%1 rank(s), %2 pair(s)"
 "%1 unrouted, %2 stale" = "%1 unrouted, %2 stale"
+"Pair %1: %2-%3" = "Pair %1: %2-%3"
+"the device gives %1 outputs: the pairs past them play on 1-2" = "the device gives %1 outputs: the pairs past them play on 1-2"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "The folders Masterpiece writes to, the audio, the organ and its files"
 "The checks and the last 200 lines of the log, to paste into a bug report" = "The checks and the last 200 lines of the log, to paste into a bug report"
 "Run the checks to see what Masterpiece finds on this device." = "Run the checks to see what Masterpiece finds on this device."

@@ -533,6 +533,8 @@ countries: fr be ca ch lu mc
 "Pair %1" = "Paire %1"
 "%1 rank(s), %2 pair(s)" = "%1 rang(s), %2 paire(s)"
 "%1 unrouted, %2 stale" = "%1 non routé(s), %2 obsolète(s)"
+"Pair %1: %2-%3" = "Paire %1 : %2-%3"
+"the device gives %1 outputs: the pairs past them play on 1-2" = "le périphérique donne %1 sorties : les paires au-delà jouent sur 1-2"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "Les dossiers où Masterpiece écrit, l'audio, l'orgue et ses fichiers"
 "The checks and the last 200 lines of the log, to paste into a bug report" = "Les vérifications et les 200 dernières lignes du journal, à coller dans un rapport de bogue"
 "Run the checks to see what Masterpiece finds on this device." = "Lancez les vérifications pour voir ce que Masterpiece trouve sur cet appareil."

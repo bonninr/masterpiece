@@ -149,12 +149,13 @@ The buttons below start a learn: click the button, then press or move the contro
 
 ![The Mixer tab](../images/general-mixer.png)
 
-Routes each rank to a stereo pair of output channels. No sample set declares an audio routing, so the routing is the player's. A rank that is never touched plays through the first pair. Up to eight pairs can be set up, and they are mixed to the stereo output. [Audio, room and mixer](audio.md) explains the use of several pairs.
+Routes each rank to a stereo pair of output channels. No sample set declares an audio routing, so the routing is the player's. A rank that is never touched plays through the first pair. Up to eight pairs can be set up. Each plays on its own device channels when the device has them, and the pairs are mixed to channels 1 and 2 on a stereo device. [Audio, room and mixer](audio.md) explains the use of several pairs.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
-| **Output pairs** | The number of stereo pairs, mixed to the stereo output. Pair N is assigned device channels 2N-1 and 2N. | **1 (stereo)** | **1 (stereo)**, **2 pairs** to **8 pairs** | At once |
+| **Output pairs** | The number of stereo pairs. Pair N is assigned device channels 2N-1 and 2N, and plays on them when the device has them; otherwise on channels 1 and 2. | **1 (stereo)** | **1 (stereo)**, **2 pairs** to **8 pairs** | At once |
 | Status line | Reads **N rank(s), N pair(s)**, and **N unrouted, N stale** when a rank has no pair or points at a pair that no longer exists. | | | |
+| Outputs line | Each pair's device channels, such as **Pair 2: 3-4**, and **the device gives N outputs: the pairs past them play on 1-2** when the device has fewer channels. | | | |
 | **Spread ranks evenly** | Assigns the ranks to the pairs in turn, so the routing is audible at once. | | | At once |
 | **All to pair 1** | Sends every rank to the first pair. | | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routing. | | | At once |

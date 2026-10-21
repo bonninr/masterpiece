@@ -2521,6 +2521,8 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(status_);
   styleLabel(status_, "");
+  addAndMakeVisible(outputs_);
+  styleLabel(outputs_, "");
   addAndMakeVisible(viewport_);
   viewport_.setViewedComponent(&rankHolder_, false);
   viewport_.setScrollBarsShown(true, false);
@@ -2587,6 +2589,30 @@ void MixerPanel::pushRouting() {
                           .replace("%1", juce::String((int)d.unroutedRanks.size()))
                           .replace("%2", juce::String((int)d.ranksRoutedToMissingBus.size()));
   status_.setText(text, juce::dontSendNotification);
+  showOutputs();
+}
+
+void MixerPanel::showOutputs() {
+  // Each pair's device channels, counted from 1 as a device's own panel
+  // counts them, and what the device gives the program.
+  const int outs = proc_.getTotalNumOutputChannels();
+  juce::StringArray pairs;
+  bool beyond = false;
+  for (const auto& b : proc_.mixer().buses) {
+    if (b.deviceChannels.empty()) continue;
+    const int left = b.deviceChannels[0];
+    const int right = b.deviceChannels.size() > 1 ? b.deviceChannels[1] : left;
+    pairs.add(TRANS("Pair %1: %2-%3")
+                  .replace("%1", juce::String(b.id.value))
+                  .replace("%2", juce::String(left + 1))
+                  .replace("%3", juce::String(right + 1)));
+    if (left >= outs || right >= outs) beyond = true;
+  }
+  juce::String text = pairs.joinIntoString(", ");
+  if (beyond)
+    text += "  -  " + TRANS("the device gives %1 outputs: the pairs past them play on 1-2")
+                          .replace("%1", juce::String(outs));
+  outputs_.setText(text, juce::dontSendNotification);
 }
 
 void MixerPanel::refresh() {
@@ -2645,6 +2671,8 @@ void MixerPanel::resized() {
   reset_.setBounds(row.removeFromLeft(120).reduced(0, 1));
   row.removeFromLeft(6);
   save_.setBounds(row.removeFromLeft(160).reduced(0, 1));
+  r.removeFromTop(4);
+  outputs_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
 
   // The note keeps a little space; the rank list takes the rest, which is what

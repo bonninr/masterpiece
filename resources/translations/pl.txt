@@ -533,6 +533,8 @@ countries: pl
 "Pair %1" = "Para %1"
 "%1 rank(s), %2 pair(s)" = "Szeregi: %1, pary: %2"
 "%1 unrouted, %2 stale" = "Nieprzypisane: %1, nieaktualne: %2"
+"Pair %1: %2-%3" = "Para %1: %2-%3"
+"the device gives %1 outputs: the pairs past them play on 1-2" = "urządzenie daje %1 wyjść: pary poza nimi grają na 1-2"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "Foldery, do których zapisuje Masterpiece, audio, organy i ich pliki"
 "The checks and the last 200 lines of the log, to paste into a bug report" = "Wyniki sprawdzeń i ostatnie 200 wierszy dziennika, do wklejenia w zgłoszenie błędu"
 "Run the checks to see what Masterpiece finds on this device." = "Uruchom sprawdzanie, aby zobaczyć, co Masterpiece znajduje na tym urządzeniu."

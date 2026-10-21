@@ -254,6 +254,8 @@ void MasterpieceProcessor::audioWorkgroupContextChanged(const juce::AudioWorkgro
 void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   sampleRate_ = sampleRate > 0.0 ? sampleRate : 48000.0;
   maxBlock_ = juce::jmax(1, samplesPerBlock);
+  pairScratch_.setSize(2, maxBlock_, false, true, false);
+  recordScratch_.setSize(2, maxBlock_, false, true, false);
 #if MP_ENABLE_DSP
   // One filter per enclosure and one LFO per tremulant, built here so the
   // audio thread never allocates. getTotalNumOutputChannels() is the widest
@@ -456,7 +458,52 @@ void MasterpieceProcessor::refreshMixerBuses() {  mixBusOrder_.clear();
     mixBusOrder_.push_back(BusId{1});
     mixBusIndexOf_[1] = 0;
   }
+  busOutputs_.assign(mixBusOrder_.size(), {-1, -1});
+  for (size_t i = 0; i < mixBusOrder_.size(); ++i)
+    if (const MixerBus* b = mixer_.bus(mixBusOrder_[i]); b != nullptr && !b->deviceChannels.empty()) {
+      const int left = b->deviceChannels[0];
+      const int right = b->deviceChannels.size() > 1 ? b->deviceChannels[1] : left;
+      if (left >= 0 && right >= 0 && left < kMaxOutputChannels && right < kMaxOutputChannels)
+        busOutputs_[i] = {left, right};
+    }
   refreshBusReverbs();
+  if (const int wanted = outputChannelsWanted(); wanted != lastOutputChannelsWanted_) {
+    lastOutputChannelsWanted_ = wanted;
+    if (onOutputChannelsWanted) onOutputChannelsWanted();
+  }
+}
+
+std::pair<int, int> MasterpieceProcessor::busOutputFor(int index, int numCh) const {
+  if (index >= 0 && index < static_cast<int>(busOutputs_.size())) {
+    const auto own = busOutputs_[static_cast<size_t>(index)];
+    if (own.first >= 0 && own.first < numCh && own.second < numCh) return own;
+  }
+  return {0, numCh > 1 ? 1 : 0};
+}
+
+bool MasterpieceProcessor::anyBusOnItsOwnChannels(int numCh) const {
+  if (numCh <= 2) return false;
+  for (size_t i = 0; i < busOutputs_.size(); ++i) {
+    const auto at = busOutputFor(static_cast<int>(i), numCh);
+    if (at.first != 0 || at.second != 1) return true;
+  }
+  return false;
+}
+
+int MasterpieceProcessor::outputChannelsWanted() const {
+  int highest = 1;
+  for (const auto& b : mixer_.buses)
+    for (int ch : b.deviceChannels)
+      if (ch >= 0 && ch < kMaxOutputChannels) highest = juce::jmax(highest, ch);
+  return highest + 1;
+}
+
+bool MasterpieceProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+  for (const auto& in : layouts.inputBuses)
+    if (!in.isDisabled()) return false;
+  if (layouts.outputBuses.size() != 1) return false;
+  const int outs = layouts.outputBuses[0].size();
+  return outs >= 1 && outs <= kMaxOutputChannels;
 }
 
 void MasterpieceProcessor::refreshBusReverbs() {
@@ -702,10 +749,10 @@ void MasterpieceProcessor::renderOneMixBus(juce::AudioBuffer<float>& dest,
   }
 }
 
-void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
-  const int numCh = buffer.getNumChannels();
-  const int numFrames = buffer.getNumSamples();
-  if (numCh <= 0 || numFrames <= 0) return;
+void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
+  const int outCh = output.getNumChannels();
+  const int numFrames = output.getNumSamples();
+  if (outCh <= 0 || numFrames <= 0) return;
 
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
@@ -723,6 +770,35 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& buffer) {
     for (const auto& c : busConvolvers_)
       if (c != nullptr) anyBusReverb = true;
 #endif
+
+  // An output wider than a pair, with buses that name device channels it
+  // has: each of those buses is rendered on its own, with its own room, and
+  // added to its channels; the others go to the first pair. Without them,
+  // below, every bus is summed into the first pair, as on a stereo device.
+  if (anyBusOnItsOwnChannels(outCh)) {
+    if (pairScratch_.getNumSamples() < numFrames) pairScratch_.setSize(2, numFrames, false, false, true);
+    for (int i = 0; i < buses; ++i) {
+      const bool captured = mixBusCapture_ != nullptr && i < static_cast<int>(mixBusCapture_->size());
+      juce::AudioBuffer<float> pair(pairScratch_.getArrayOfWritePointers(), 2, numFrames);
+      juce::AudioBuffer<float>& dest = captured ? (*mixBusCapture_)[static_cast<size_t>(i)] : pair;
+      dest.clear(0, numFrames);
+      renderOneMixBus(dest, buses <= 1 ? -1 : i);
+#if MP_ENABLE_DSP
+      if (!graph_.engineSwitch.simpleWavOnly && i < static_cast<int>(busConvolvers_.size()) &&
+          busConvolvers_[static_cast<size_t>(i)] != nullptr)
+        busConvolvers_[static_cast<size_t>(i)]->process(dest);
+#endif
+      const auto [left, right] = busOutputFor(i, outCh);
+      const int last = dest.getNumChannels() - 1;
+      output.addFrom(left, 0, dest, 0, 0, numFrames);
+      output.addFrom(right, 0, dest, juce::jmin(1, last), 0, numFrames);
+    }
+    return;
+  }
+
+  // The first pair of the output: the whole of it on a stereo device.
+  juce::AudioBuffer<float> buffer(output.getArrayOfWritePointers(), juce::jmin(2, outCh), numFrames);
+  const int numCh = buffer.getNumChannels();
 
   // The ordinary case, and the default: one mixer bus means no routing axis at
   // all, so nothing is filtered and this is exactly what the engine did before
@@ -5949,7 +6025,12 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // expensive thing in this callback by a wide margin, and the switch is
   // called "no DSP" — a machine that needs it needs this gone more than it
   // needs anything else gone.
-  if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(buffer);
+  // The room of the whole organ, the metronome and the taps belong to the
+  // first pair: the one a stereo device has, and the one the buses without
+  // device channels of their own are summed into.
+  juce::AudioBuffer<float> firstPair(buffer.getArrayOfWritePointers(),
+                                     juce::jmin(2, buffer.getNumChannels()), buffer.getNumSamples());
+  if (!graph_.engineSwitch.simpleWavOnly) convolver_.process(firstPair);
   if (logBlocks) {
     const juce::int64 t5 = tick();
     BlockRecord& r = blockLog_[blockLogCount_++];
@@ -5988,18 +6069,30 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Capture before the metronome. A click track belongs to the practice room,
   // not to the recording.
-  audioRecorder_.write(buffer);
+  // A wider output is folded down to a pair for the recording, each pair's
+  // left into the left and its right into the right, so the take holds the
+  // whole organ.
+  if (buffer.getNumChannels() > 2 && audioRecorder_.isRecording()) {
+    const int n = buffer.getNumSamples();
+    if (recordScratch_.getNumSamples() < n) recordScratch_.setSize(2, n, false, false, true);
+    juce::AudioBuffer<float> folded(recordScratch_.getArrayOfWritePointers(), 2, n);
+    folded.clear();
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch) folded.addFrom(ch & 1, 0, buffer, ch, 0, n);
+    audioRecorder_.write(folded);
+  } else {
+    audioRecorder_.write(buffer);
+  }
 
   // The metronome is a monitoring aid, not part of the instrument, so it sits
   // after the master fader and is not affected by it.
-  metronome_.process(buffer);
+  metronome_.process(firstPair);
 
   // Load-progress taps, if asked for. Audible, post-recording, beside the
   // metronome: the same kind of thing for the same reason.
-  maybeLoadTick(buffer);
+  maybeLoadTick(firstPair);
 
   // Under everything and after the recorder, so a recording never carries it.
-  addKeepAlive(buffer);
+  addKeepAlive(firstPair);
 
   // Meter last, so it shows what actually leaves. The rise is instant — a
   // meter that eases upward under-reads exactly when it matters — and the
