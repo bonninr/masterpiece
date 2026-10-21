@@ -653,7 +653,7 @@ public:
             (*playFrom)(index + 1);
             return;
           }
-          if (!proc_->recorder().loadFromFile(t.midi)) {
+          if (!proc_->loadTake(t.midi)) {
             juce::Logger::writeToLog("could not read MIDI: " +
                                      t.midi.getFullPathName());
             (*playFrom)(index + 1);
@@ -974,6 +974,9 @@ public:
     // The main window's place, for the next start (#53).
     if (win_) windowStateFile().replaceWithText(win_->getWindowStateAsString());
 
+    // The archive's take in progress, while the log can still say where.
+    if (proc_) proc_->serviceArchive(true);
+
     // Before the logger is destroyed: JUCE asserts on a dangling current
     // logger, and shutdown is the one place that is guaranteed to run.
     juce::Logger::setCurrentLogger(nullptr);
@@ -995,7 +998,7 @@ public:
     // Audio has stopped, so the recording is complete and safe to write.
     if (proc_ && recordMidiTo_ != juce::File()) {
       proc_->recorder().stopRecording();
-      proc_->recorder().saveToFile(recordMidiTo_);
+      proc_->saveTake(recordMidiTo_);
     }
     // A clean exit: the organ that was loaded did not crash anything.
     if (proc_) proc_->clearRunningOrgan();

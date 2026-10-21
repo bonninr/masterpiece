@@ -151,17 +151,9 @@ std::vector<MidiRecorder::TakeEvent> MidiRecorder::takeEvents() const {
   return out;
 }
 
-bool MidiRecorder::saveToFile(const juce::File& file) {
-  if (events_.empty()) return false;
-
-  juce::MidiMessageSequence seq;
-  for (const auto& e : events_) {
-    juce::MidiMessage m = e.message;
-    m.setTimeStamp(static_cast<double>(e.samplePos) / sampleRate_);
-    seq.addEvent(m);
-  }
-  seq.updateMatchedPairs();
-
+bool MidiRecorder::writeTake(const juce::File& file, const std::vector<TakeEvent>& events,
+                             const DeviceName& nameOf) {
+  if (events.empty()) return false;
   juce::MidiFile mf;
   // Ticks per quarter note; with a 1 second = 1 quarter mapping below this
   // gives millisecond resolution, which is finer than any console sends.
@@ -170,26 +162,43 @@ bool MidiRecorder::saveToFile(const juce::File& file) {
 
   // A quarter lasts a second, said in the file: with no tempo event every
   // reader takes 120 bpm, and a take played back at half its length.
-  juce::MidiMessageSequence ticked;
-  ticked.addEvent(juce::MidiMessage::tempoMetaEvent(1000000), 0.0);
-  for (int i = 0; i < seq.getNumEvents(); ++i) {
-    juce::MidiMessage m = seq.getEventPointer(i)->message;
-    m.setTimeStamp(m.getTimeStamp() * ticksPerQuarter);
-    ticked.addEvent(m);
+  juce::MidiMessageSequence tempo;
+  tempo.addEvent(juce::MidiMessage::tempoMetaEvent(1000000), 0.0);
+  mf.addTrack(tempo);
+
+  // A track per console, the one of no console first.
+  std::vector<int> devices;
+  for (const auto& e : events)
+    if (std::find(devices.begin(), devices.end(), e.deviceId) == devices.end()) devices.push_back(e.deviceId);
+  std::sort(devices.begin(), devices.end());
+  for (const int device : devices) {
+    juce::MidiMessageSequence track;
+    const std::string name = device != 0 && nameOf ? nameOf(device) : std::string();
+    if (!name.empty()) track.addEvent(juce::MidiMessage::textMetaEvent(9, juce::String::fromUTF8(name.c_str())), 0.0);
+    for (const auto& e : events)
+      if (e.deviceId == device) {
+        juce::MidiMessage m = e.message;
+        m.setTimeStamp(e.seconds * ticksPerQuarter);
+        track.addEvent(m);
+      }
+    track.updateMatchedPairs();
+    mf.addTrack(track);
   }
-  mf.addTrack(ticked);
 
   file.getParentDirectory().createDirectory();
   file.deleteFile();
   std::unique_ptr<juce::FileOutputStream> out(file.createOutputStream());
-  if (out == nullptr) return false;
-  if (!mf.writeTo(*out)) return false;
+  return out != nullptr && mf.writeTo(*out);
+}
+
+bool MidiRecorder::saveToFile(const juce::File& file, const DeviceName& nameOf) {
+  if (!writeTake(file, takeEvents(), nameOf)) return false;
   // The take is on disk now, so a new recording may replace it without asking.
   saved_ = true;
   return true;
 }
 
-bool MidiRecorder::loadFromFile(const juce::File& file) {
+bool MidiRecorder::loadFromFile(const juce::File& file, const DeviceId& idOf) {
   juce::FileInputStream in(file);
   if (!in.openedOk()) return false;
 
@@ -200,14 +209,20 @@ bool MidiRecorder::loadFromFile(const juce::File& file) {
   clear();
   for (int t = 0; t < mf.getNumTracks(); ++t) {
     const auto* track = mf.getTrack(t);
+    // The console a track was played on, by the name it opens with; a track
+    // with no name, or a console not known here, plays by the organ's own
+    // assignment of its channels.
+    int device = 0;
+    for (int i = 0; i < track->getNumEvents() && device == 0; ++i) {
+      const auto& m = track->getEventPointer(i)->message;
+      if (m.isMetaEvent() && m.getMetaEventType() == 9 && idOf)
+        device = idOf(m.getTextFromTextMetaEvent().toStdString());
+    }
     for (int i = 0; i < track->getNumEvents(); ++i) {
       const auto& m = track->getEventPointer(i)->message;
       if (m.isMetaEvent()) continue; // tempo and names carry no performance
-      // A file carries the channel and nothing else: which console played it
-      // is not something a MIDI file can say, so a file read back plays by
-      // the organ's own assignment.
       events_.push_back(
-          {static_cast<int64_t>(m.getTimeStamp() * sampleRate_), m, 0});
+          {static_cast<int64_t>(m.getTimeStamp() * sampleRate_), m, device});
     }
   }
   std::stable_sort(events_.begin(), events_.end(),

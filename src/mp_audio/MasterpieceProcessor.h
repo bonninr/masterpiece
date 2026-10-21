@@ -25,6 +25,7 @@
 #include "Convolver.h"
 #include "Metronome.h"
 #include "AudioRecorder.h"
+#include "MidiArchive.h"
 #include "MidiRecorder.h"
 #include "ScorePlayer.h"
 #include "SplitKeyboardHost.h"
@@ -84,6 +85,7 @@ public:
 
   MasterpieceProcessor();
   ~MasterpieceProcessor() override {
+    serviceArchive(true);  // quitting saves the archive's take in progress
     alive_->store(false);
     writeBlockLog();
   }
@@ -1351,6 +1353,31 @@ public:
   MidiRecorder& recorder() { return recorder_; }
   // The score panel's playing, merged in where the recorder's is.
   ScorePlayer& scorePlayer() { return scorePlayer_; }
+  // The recorder's take saved and read with the consoles it was played on,
+  // by their names.
+  bool saveTake(const juce::File& file);
+  bool loadTake(const juce::File& file);
+
+  // Everything played, kept (E2): off by default. A take begins with the
+  // first note and ends after `silenceSeconds` with no MIDI input; the
+  // archive folder is kept under `maxMegabytes` and `maxDays`.
+  struct ArchiveSettings {
+    bool on = false;
+    int silenceSeconds = 30;
+    int maxMegabytes = 500;
+    int maxDays = 90;
+  };
+  ArchiveSettings archiveSettings() const {
+    return {archiveOn_.load(std::memory_order_acquire), archiveSilence_, archiveMegabytes_, archiveDays_};
+  }
+  void setArchiveSettings(const ArchiveSettings& s, bool save = true);
+  // Documents/Masterpiece/Recordings/Archive, or the tests' own.
+  juce::File archiveFolder() const;
+  void setArchiveFolderForTests(const juce::File& folder) { archiveFolder_ = folder; }
+  // Message thread, from the window's timer: writes a take that has ended,
+  // or the take in progress when `now`, and prunes the folder. Returns the
+  // file written.
+  juce::File serviceArchive(bool now = false);
   // Captures what leaves, minus the metronome. See AudioRecorder.
   AudioRecorder& audioRecorder() { return audioRecorder_; }
   Convolver& convolver() { return convolver_; }
@@ -2024,6 +2051,10 @@ private:
   Metronome metronome_;
   MidiRecorder recorder_;
   ScorePlayer scorePlayer_;
+  MidiArchive archive_;
+  std::atomic<bool> archiveOn_{false};
+  int archiveSilence_ = 30, archiveMegabytes_ = 500, archiveDays_ = 90;
+  juce::File archiveFolder_;
   AudioRecorder audioRecorder_;
   Convolver convolver_;
   // The organ's declared output trim as a linear gain, resolved once at

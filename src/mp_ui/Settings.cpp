@@ -1255,8 +1255,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
                             const auto f = fc.getResult();
                             proc_.rememberDialogFolder("midi", f);
                             if (f.getFullPathName().isNotEmpty())
-                              proc_.recorder().saveToFile(
-                                  f.withFileExtension(".mid"));
+                              proc_.saveTake(f.withFileExtension(".mid"));
                           });
   };
   load_.onClick = [this] {
@@ -1267,7 +1266,7 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
                           [this](const juce::FileChooser& fc) {
                             const auto f = pickedFile(fc);
                             proc_.rememberDialogFolder("midi", f);
-                            if (f.existsAsFile()) proc_.recorder().loadFromFile(f);
+                            if (f.existsAsFile()) proc_.loadTake(f);
                           });
   };
 
@@ -1558,6 +1557,37 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
                                 "that send only a short note."));
   noiseFilter_.onClick = [this] { proc_.setLearnNoiseFilter(noiseFilter_.getToggleState()); };
 
+  // Everything played, kept: a take a file, in Recordings/Archive.
+  {
+    const auto a = proc_.archiveSettings();
+    addAndMakeVisible(archive_);
+    archive_.setToggleState(a.on, juce::dontSendNotification);
+    archive_.setTooltip(TRANS("Records all the time: a take begins with the first note and ends after the silence "
+                              "chosen, each in its own file in Documents/Masterpiece/Recordings/Archive, by date. "
+                              "The oldest files go first when the folder passes its size or age."));
+    archive_.onClick = [this] { applyArchive(); };
+    const auto fill = [](juce::ComboBox& box, std::initializer_list<int> values, int current,
+                         const std::function<juce::String(int)>& text) {
+      for (const int v : values) box.addItem(text(v), v);
+      if (box.indexOfItemId(current) < 0) box.addItem(text(current), current);
+      box.setSelectedId(current, juce::dontSendNotification);
+    };
+    fill(archiveSilence_, {10, 30, 60, 120, 300, 600}, a.silenceSeconds, [](int s) {
+      return s < 60 ? TRANS("ends after %1 s of silence").replace("%1", juce::String(s))
+                    : TRANS("ends after %1 min of silence").replace("%1", juce::String(s / 60));
+    });
+    fill(archiveSize_, {100, 250, 500, 1000, 2000, 5000}, a.maxMegabytes, [](int mb) {
+      return mb < 1000 ? TRANS("up to %1 MB").replace("%1", juce::String(mb))
+                       : TRANS("up to %1 GB").replace("%1", juce::String(mb / 1000));
+    });
+    fill(archiveAge_, {7, 30, 90, 365}, a.maxDays,
+         [](int d) { return TRANS("kept %1 days").replace("%1", juce::String(d)); });
+    for (auto* box : {&archiveSilence_, &archiveSize_, &archiveAge_}) {
+      addAndMakeVisible(*box);
+      box->onChange = [this] { applyArchive(); };
+    }
+  }
+
   addAndMakeVisible(stepperLabel_);
   styleLabel(stepperLabel_, TRANS("Sequencer"));
   addAndMakeVisible(learnNext_);
@@ -1744,6 +1774,15 @@ MidiPanel::~MidiPanel() { stopTimer(); }
 // Manuals that answer the same channel, named. Sharing one is a way of
 // playing two divisions from one keyboard; doing it unawares is how a manual
 // ends up sounding the wrong division, which is what this line prevents.
+void MidiPanel::applyArchive() {
+  MasterpieceProcessor::ArchiveSettings a;
+  a.on = archive_.getToggleState();
+  a.silenceSeconds = archiveSilence_.getSelectedId();
+  a.maxMegabytes = archiveSize_.getSelectedId();
+  a.maxDays = archiveAge_.getSelectedId();
+  proc_.setArchiveSettings(a);
+}
+
 void MidiPanel::showDefaultConsole() {
   const auto& def = proc_.defaultConsole();
   if (def.empty()) {
@@ -1978,6 +2017,11 @@ void MidiPanel::resized() {
   leaveHeld_.setBounds(r.removeFromTop(kRow));
   sustain_.setBounds(r.removeFromTop(kRow));
   noiseFilter_.setBounds(r.removeFromTop(kRow));
+  row = r.removeFromTop(kRow);
+  archive_.setBounds(row.removeFromLeft(200));
+  archiveSilence_.setBounds(row.removeFromLeft(200).reduced(2, 1));
+  archiveSize_.setBounds(row.removeFromLeft(110).reduced(2, 1));
+  archiveAge_.setBounds(row.removeFromLeft(120).reduced(2, 1));
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
   stepperLabel_.setBounds(row.removeFromLeft(120));
