@@ -103,11 +103,11 @@ The plugin declares a MIDI input and produces no MIDI output.
 | Property | Value |
 |---|---|
 | Inputs | None |
-| Outputs | One stereo bus named **Out** |
+| Outputs | One bus named **Out**: stereo, or up to 32 channels where the host offers them |
 | Reported tail length | 5 seconds |
 | MIDI in / out | In only |
 
-The engine renders the organ to this single stereo bus. The mixer's buses, set under **Settings > General settings > Mixer**, route ranks inside the engine and are summed to the stereo output; the plugin offers no separate output per division or per bus.
+The engine renders the organ to this bus. The mixer's pairs, set under **Settings > General settings > Mixer**, play on their own channels when the host gives the bus that many, and are summed to the first two otherwise.
 
 The plugin takes the sample rate and the block size from the host. A rate change in the host rebuilds the voice pool.
 

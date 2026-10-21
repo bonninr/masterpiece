@@ -467,6 +467,9 @@ private:
   juce::Label busesLabel_;
   juce::ComboBox busCount_;
   juce::Label status_;
+  // Where each pair plays: its device channels, and whether the device has them.
+  juce::Label outputs_;
+  void showOutputs();
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
   juce::TextButton reset_{TRANS("All to pair 1")};

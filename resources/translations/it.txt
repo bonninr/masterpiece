@@ -533,6 +533,8 @@ countries: it ch sm va
 "Pair %1" = "Coppia %1"
 "%1 rank(s), %2 pair(s)" = "%1 fila/e, %2 coppia/e"
 "%1 unrouted, %2 stale" = "%1 non instradate, %2 obsolete"
+"Pair %1: %2-%3" = "Coppia %1: %2-%3"
+"the device gives %1 outputs: the pairs past them play on 1-2" = "il dispositivo dà %1 uscite: le coppie oltre suonano su 1-2"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "Le cartelle in cui scrive Masterpiece, l'audio, l'organo e i suoi file"
 "The checks and the last 200 lines of the log, to paste into a bug report" = "I controlli e le ultime 200 righe del log, da incollare in una segnalazione di errore"
 "Run the checks to see what Masterpiece finds on this device." = "Esegui i controlli per vedere cosa trova Masterpiece su questo dispositivo."

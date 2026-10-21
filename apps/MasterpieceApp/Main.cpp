@@ -343,6 +343,17 @@ public:
 
     player_->setProcessor(proc_.get());
     devices_->addAudioCallback(player_.get());
+    // The mixer's pairs on device channels of their own, as many as the
+    // device has: opened now, again when the mixer asks for more, and when
+    // the player picks another device.
+    proc_->onOutputChannelsWanted = [this] {
+      juce::MessageManager::callAsync([this] { applyOutputChannels(); });
+    };
+    deviceWatch_.changed = [this] {
+      juce::MessageManager::callAsync([this] { applyOutputChannels(); });
+    };
+    devices_->addChangeListener(&deviceWatch_);
+    applyOutputChannels();
 
     // Every MIDI input, enabled by default: an organist plugging in a console
     // expects it to play, not to hunt through a settings dialog first.
@@ -988,6 +999,9 @@ public:
     midiRetry_.reset();
     jackMidi_.reset();  // its process thread hands messages to the processor
 
+    if (proc_) proc_->onOutputChannelsWanted = nullptr;
+    if (devices_) devices_->removeChangeListener(&deviceWatch_);
+    deviceWatch_.changed = nullptr;
     if (devices_ && player_) {
       devices_->removeAudioCallback(player_.get());
       for (auto& r : routes_)
@@ -1289,6 +1303,53 @@ private:
   std::vector<Routed> routes_;
 
   std::unique_ptr<juce::AudioProcessorPlayer> player_;
+  // Told when the device manager changes device or channels.
+  struct DeviceWatch : juce::ChangeListener {
+    std::function<void()> changed;
+    void changeListenerCallback(juce::ChangeBroadcaster*) override {
+      if (changed) changed();
+    }
+  } deviceWatch_;
+
+  // The device channels the mixer's pairs need, up to what the device has:
+  // the device opens them, and the engine is given that many outputs. The
+  // processor is handed to the player again only when the count changes. A
+  // device with fewer outputs than the pairs name plays them summed into its
+  // first two, as a stereo device does.
+  void applyOutputChannels() {
+    if (devices_ == nullptr || player_ == nullptr || proc_ == nullptr) return;
+    auto* dev = devices_->getCurrentAudioDevice();
+    if (dev == nullptr) return;
+    const int has = dev->getOutputChannelNames().size();
+    const int wanted = juce::jmin(proc_->outputChannelsWanted(), juce::jmax(2, has),
+                                  mp::MasterpieceProcessor::kMaxOutputChannels);
+    if (wanted > 2 && dev->getActiveOutputChannels().countNumberOfSetBits() < wanted) {
+      auto setup = devices_->getAudioDeviceSetup();
+      setup.useDefaultOutputChannels = false;
+      setup.outputChannels.clear();
+      setup.outputChannels.setRange(0, wanted, true);
+      const auto error = devices_->setAudioDeviceSetup(setup, true);
+      if (error.isNotEmpty()) juce::Logger::writeToLog("audio device: " + error);
+      dev = devices_->getCurrentAudioDevice();
+      if (dev == nullptr) return;
+    }
+    const int open = juce::jlimit(1, mp::MasterpieceProcessor::kMaxOutputChannels,
+                                  juce::jmax(2, dev->getActiveOutputChannels().countNumberOfSetBits()));
+    const int outs = juce::jmin(open, juce::jmax(2, wanted));
+    if (proc_->getTotalNumOutputChannels() == outs) return;
+    devices_->removeAudioCallback(player_.get());
+    player_->setProcessor(nullptr);
+    juce::AudioProcessor::BusesLayout layout;
+    layout.outputBuses.add(outs == 2 ? juce::AudioChannelSet::stereo()
+                                     : juce::AudioChannelSet::discreteChannels(outs));
+    if (!proc_->setBusesLayout(layout))
+      juce::Logger::writeToLog("audio device: the engine kept its " +
+                               juce::String(proc_->getTotalNumOutputChannels()) + " outputs");
+    player_->setProcessor(proc_.get());
+    devices_->addAudioCallback(player_.get());
+    juce::Logger::writeToLog("audio device: " + juce::String(proc_->getTotalNumOutputChannels()) +
+                             " output channels for the mixer's pairs");
+  }
   // Where --record-midi saves the session on quit; empty when not asked.
   juce::File recordMidiTo_;
   std::unique_ptr<DocWindow> win_;

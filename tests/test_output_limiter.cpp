@@ -395,6 +395,106 @@ public:
     MP_CHECK(std::fabs(next.limiterReleaseMs() - 250.0f) < 0.01f, "and the release");
   }
 };
+// ------------------------------------------- the mixer's pairs on their own channels
+
+// The organ through a processor with `outputs` output channels and the mixer
+// as told, the stop drawn and one key held: every channel, block after block.
+std::vector<std::vector<float>> renderPairs(const juce::File& odf, int outputs, int pairs, int rankPair) {
+  mp::MasterpieceProcessor proc;
+  juce::AudioProcessor::BusesLayout layout;
+  layout.outputBuses.add(outputs == 2 ? juce::AudioChannelSet::stereo()
+                                      : juce::AudioChannelSet::discreteChannels(outputs));
+  MP_CHECK(proc.setBusesLayout(layout), "the processor takes " + std::to_string(outputs) + " outputs");
+  proc.prepareToPlay(kRate, 256);
+  const auto loaded = proc.loadOrgan(odf, 0, false);
+  MP_CHECK(loaded.ok, "the organ loads");
+  auto& mixer = proc.mixer();
+  mixer.buses.clear();
+  for (int i = 0; i < pairs; ++i) {
+    mp::MixerBus b;
+    b.id = mp::BusId{i + 1};
+    b.deviceChannels = {2 * i, 2 * i + 1};
+    mixer.buses.push_back(b);
+  }
+  mp::RankRouting r;
+  r.rankId = 201;
+  r.perspectives[0].dest = mp::BusId{rankPair};
+  mixer.rankRoutings[201] = r;
+  proc.refreshMixerBuses();
+  proc.setStopEngaged(901, true);
+
+  juce::AudioBuffer<float> buffer(outputs, 256);
+  juce::MidiBuffer on;
+  on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+  juce::MidiBuffer none;
+  std::vector<std::vector<float>> out(static_cast<size_t>(outputs));
+  for (int block = 0; block < 20; ++block) {
+    buffer.clear();
+    proc.processBlock(buffer, block == 0 ? on : none);
+    for (int ch = 0; ch < outputs; ++ch)
+      out[static_cast<size_t>(ch)].insert(out[static_cast<size_t>(ch)].end(), buffer.getReadPointer(ch),
+                                          buffer.getReadPointer(ch) + 256);
+  }
+  proc.releaseResources();
+  return out;
+}
+
+float peakOfChannel(const std::vector<float>& c) {
+  float peak = 0.0f;
+  for (float v : c) peak = std::max(peak, std::fabs(v));
+  return peak;
+}
+
+// A rank on the second of three pairs plays on device channels 3 and 4 of a
+// six-channel output, and nowhere else; on a stereo output the same organ is
+// summed into the pair it has, bit for bit as with one pair.
+class OutputPairsTest final : public mp::test::Test {
+public:
+  OutputPairsTest() : Test("functional.output.pairs", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-output-pairs");
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organSettings(probe.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+
+    const auto wide = renderPairs(organ.odf, 6, 3, 2);
+    MP_CHECK(peakOfChannel(wide[2]) > 0.01f && peakOfChannel(wide[3]) > 0.01f,
+             "the rank sounds on channels 3 and 4: " + std::to_string(peakOfChannel(wide[2])));
+    for (int ch : {0, 1, 4, 5})
+      MP_CHECK(peakOfChannel(wide[static_cast<size_t>(ch)]) == 0.0f,
+               "and channel " + std::to_string(ch + 1) + " is silent");
+
+    // Stereo: the pairs are summed into the one there is, and that is the
+    // organ as one pair plays it, bit for bit.
+    const auto summed = renderPairs(organ.odf, 2, 3, 2);
+    const auto single = renderPairs(organ.odf, 2, 1, 1);
+    MP_CHECK(peakOfChannel(summed[0]) > 0.01f, "on a stereo output the pair is heard on 1 and 2");
+    MP_CHECK(summed[0] == single[0] && summed[1] == single[1],
+             "and it is bit for bit the organ with one pair");
+    // The pair on its own channels is the same signal the stereo output has.
+    MP_CHECK(wide[2] == summed[0] && wide[3] == summed[1],
+             "the pair's own channels carry exactly what the first pair carries in stereo");
+
+    // What the standalone asks the device for.
+    mp::MasterpieceProcessor p;
+    MP_CHECK(p.outputChannelsWanted() == 2, "one pair wants two channels");
+    for (int i = 0; i < 3; ++i) {
+      mp::MixerBus b;
+      b.id = mp::BusId{i + 2};
+      b.deviceChannels = {2 * i + 2, 2 * i + 3};
+      p.mixer().buses.push_back(b);
+    }
+    MP_CHECK(p.outputChannelsWanted() == 8, "pairs up to channels 7 and 8 want eight");
+    juce::AudioProcessor::BusesLayout l33;
+    l33.outputBuses.add(juce::AudioChannelSet::discreteChannels(33));
+    MP_CHECK(!p.checkBusesLayoutSupported(l33), "33 outputs are more than the engine takes");
+
+    organ.root.deleteRecursively();
+  }
+};
+static OutputPairsTest g_outputPairs;
+
 static LimiterOffTest g_limiterOff;
 static LimiterCeilingTest g_limiterCeiling;
 static LimiterQuietTest g_limiterQuiet;
