@@ -13,6 +13,53 @@ inline constexpr bool kMobile = true;
 inline constexpr bool kMobile = false;
 #endif
 
+// Whether presses are worked as a finger's: on phones and tablets, and
+// elsewhere with MASTERPIECE_TOUCH=1, which tries it with a mouse.
+bool touchInput();
+
+// A touch screen has no right button, and Android reports a mouse's as the
+// left one (#474): a finger held still for half a second opens what a
+// right-click opens. begin() on the press, moved() on each drag, end() on
+// the release; onHeld runs once the finger has stayed put long enough.
+class LongPress : private juce::Timer {
+public:
+  static constexpr int kMs = 500;
+  std::function<void()> onHeld;
+  void begin(juce::Point<int> at) {
+    at_ = at;
+    held_ = false;
+    startTimer(kMs);
+  }
+  // A finger that moves is sliding or scrolling. True while it is still
+  // where it pressed.
+  bool moved(juce::Point<int> to) {
+    if (isTimerRunning() && to.getDistanceFrom(at_) > 8) stopTimer();
+    return isTimerRunning();
+  }
+  void end() { stopTimer(); }
+  // The press became a long press: its release does nothing else.
+  bool held() const { return held_; }
+  bool waiting() const { return isTimerRunning(); }
+  juce::Point<int> where() const { return at_; }
+  // What the timer does, for a test.
+  void fire() {
+    stopTimer();
+    held_ = true;
+    if (onHeld) onHeld();
+  }
+
+private:
+  void timerCallback() override { fire(); }
+  juce::Point<int> at_;
+  bool held_ = false;
+};
+
+// A component with a long press of its own, for a test to fire.
+struct LongPressHolder {
+  virtual ~LongPressHolder() = default;
+  virtual LongPress& longPress() = 0;
+};
+
 // The part of the screen an app may draw in: the whole display less the
 // system's own bars.
 juce::Rectangle<int> screenArea();

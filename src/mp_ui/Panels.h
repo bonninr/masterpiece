@@ -13,6 +13,7 @@
 #pragma once
 
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "Mobile.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -111,6 +112,7 @@ public:
     for (auto* c : cells_) out.push_back(c->getBounds());
     return out;
   }
+  juce::Component* cellForTest(int i) const { return cells_[i]; }
   juce::Rectangle<int> viewAreaForTest() const {
     return {viewport_.getMaximumVisibleWidth(), viewport_.getMaximumVisibleHeight()};
   }
@@ -138,6 +140,9 @@ public:
   void resized() override;
   void paint(juce::Graphics& g) override;
   bool keyPressed(const juce::KeyPress& key) override;
+  // Touch: a finger held still opens an element's mapping, and a stop
+  // changes as the finger lifts (LongPress). On where touchInput() says.
+  void setTouchInput(bool on) { touch_ = on; }
 
 private:
   class Cell;
@@ -156,6 +161,7 @@ private:
   PanelLayout layout_, saved_;
   std::vector<PanelSection> sections_;
   bool editing_ = false;
+  bool touch_ = touchInput();
 
   juce::OwnedArray<juce::TextButton> sectionButtons_;
   juce::TextButton edit_{TRANS("Edit")}, save_{TRANS("Save")}, detach_{TRANS("Detach")}, rename_{TRANS("Rename")};

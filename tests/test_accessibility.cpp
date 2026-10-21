@@ -282,7 +282,109 @@ public:
   }
 };
 
+// A press at `p` on `c`, with the left button unless `right`.
+static juce::MouseEvent pressAt(juce::Component& c, juce::Point<int> p, bool right = false) {
+  const auto now = juce::Time::getCurrentTime();
+  return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p.toFloat(),
+                          right ? juce::ModifierKeys::rightButtonModifier
+                                : juce::ModifierKeys::leftButtonModifier,
+                          juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c,
+                          now, p.toFloat(), now, 1, false);
+}
+
+// A touch screen has no right button, and Android reports a mouse's as the
+// left one (#474): a finger held still opens what a right-click opens, and a
+// stop changes as the finger lifts, so a held one stays as it was.
+class TouchLongPressTest final : public mp::test::Test {
+public:
+  TouchLongPressTest() : Test("functional.ui.touch-long-press", Category::Functional) {}
+
+  void run() override {
+    TestOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+
+    // The drawn console: the knob of stop 901 is at 100,200, 40 by 60.
+    mp::ui::ConsoleView console(proc);
+    console.setTouchInput(true);
+    int held = 0;
+    console.longPress().onHeld = [&held] { ++held; };
+    const juce::Point<int> knob(120, 230);
+
+    console.mouseDown(pressAt(console, knob));
+    runOneBlock(proc);
+    MP_CHECK(!proc.stopEngaged(901), "a finger on the stop leaves it as it is while it is down");
+    MP_CHECK(console.longPress().waiting(), "and the wait for a long press has begun");
+    console.mouseUp(pressAt(console, knob));
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "a tap draws the stop as the finger lifts");
+    MP_CHECK(held == 0, "a tap is not a long press");
+
+    console.mouseDown(pressAt(console, knob));
+    console.longPress().fire();
+    console.mouseUp(pressAt(console, knob));
+    runOneBlock(proc);
+    MP_CHECK(held == 1, "a finger held still is a long press");
+    MP_CHECK(proc.stopEngaged(901), "and the stop held stays drawn");
+
+    console.mouseDown(pressAt(console, knob));
+    console.mouseDrag(pressAt(console, {300, 400}));
+    MP_CHECK(!console.longPress().waiting(), "a finger that slides is no long press");
+    console.mouseUp(pressAt(console, {300, 400}));
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "and a stop slid off is left as it was");
+
+    console.mouseDown(pressAt(console, knob));
+    console.mouseDrag(pressAt(console, knob + juce::Point<int>(3, 3)));
+    MP_CHECK(console.longPress().waiting(), "a finger that trembles is still held");
+    console.mouseUp(pressAt(console, knob + juce::Point<int>(3, 3)));
+    runOneBlock(proc);
+    MP_CHECK(!proc.stopEngaged(901), "and its tap retires the stop");
+
+    // With a mouse, the stop changes on the press, as it always has.
+    console.setTouchInput(false);
+    console.mouseDown(pressAt(console, knob));
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "a click draws the stop on the press");
+    MP_CHECK(!console.longPress().waiting(), "and starts no long press");
+    console.mouseUp(pressAt(console, knob));
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "and the release leaves it drawn");
+
+    // The generated panel: its first cell is stop 901.
+    juce::MessageManager::getInstance();
+    mp::ui::PanelView panel(proc, 0, mp::ui::PanelLayout{});
+    panel.setTouchInput(true);
+    panel.setSize(1240, 660);
+    auto* cell = panel.cellForTest(0);
+    MP_CHECK(cell != nullptr, "the panel has a cell");
+    if (cell == nullptr) return;
+    auto* cellPress = dynamic_cast<mp::ui::LongPressHolder*>(cell);
+    MP_CHECK(cellPress != nullptr, "the cell keeps a long press");
+    if (cellPress == nullptr) return;
+    int cellHeld = 0;
+    cellPress->longPress().onHeld = [&cellHeld] { ++cellHeld; };
+    const auto middle = cell->getLocalBounds().getCentre();
+
+    cell->mouseDown(pressAt(*cell, middle));
+    runOneBlock(proc);
+    MP_CHECK(proc.stopEngaged(901), "the panel leaves the stop drawn while the finger is down");
+    cell->mouseUp(pressAt(*cell, middle));
+    runOneBlock(proc);
+    MP_CHECK(!proc.stopEngaged(901), "and its tap retires it as the finger lifts");
+
+    cell->mouseDown(pressAt(*cell, middle));
+    cellPress->longPress().fire();
+    cell->mouseUp(pressAt(*cell, middle));
+    runOneBlock(proc);
+    MP_CHECK(cellHeld == 1, "a finger held on the cell is a long press");
+    MP_CHECK(!proc.stopEngaged(901), "and leaves the stop as it was");
+  }
+};
+
 static StopListAccessibilityTest g_stopListAccessibility;
 static ConsoleAccessibilityTest g_consoleAccessibility;
+static TouchLongPressTest g_touchLongPress;
 
 #endif  // MP_TEST_HAS_AUDIO

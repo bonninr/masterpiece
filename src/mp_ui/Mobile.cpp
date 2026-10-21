@@ -350,6 +350,12 @@ void importDocument(const juce::URL& document, std::function<void(juce::File)> d
   (new ImportThread(document, std::move(done)))->launchThread();
 }
 
+bool touchInput() {
+  static const bool on =
+      kMobile || juce::SystemStats::getEnvironmentVariable("MASTERPIECE_TOUCH", "0") == "1";
+  return on;
+}
+
 juce::Rectangle<int> screenArea() {
   // The whole display: on a phone or tablet the console runs in kiosk mode,
   // with the system's bars hidden (see the app's main window). Each panel is
