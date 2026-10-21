@@ -895,6 +895,15 @@ public:
     stopsLeaveHeldNotes_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
+  // A sustain pedal, controller 64 on any channel, for a player directing a
+  // choir: while it is down, keys let go keep sounding until it is lifted.
+  // Off by default; a controller 64 learned for something else keeps doing
+  // that.
+  bool sustainPedal() const { return sustainPedal_.load(std::memory_order_relaxed); }
+  void setSustainPedal(bool on) {
+    sustainPedal_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   // The noise filter for learning. A console with a failing contact sends
   // notes of a few milliseconds that nobody played, and the first of them was
   // learned in place of the key the player pressed. With this on, a key
@@ -1729,6 +1738,11 @@ private:
   void startNoteOnKeyboard(Id keyboard, int noteKeyId, int midiNote,
                            int velocity, int playedNote = -1);
   void stopNoteByKey(int noteKeyId, int velocity);
+  // A key let go: held over while the sustain pedal is down, released
+  // otherwise. Audio thread.
+  void keyUp(int noteKeyId, int velocity);
+  // The pedal down or up; up releases every key it held over.
+  void setSustainDown(bool down);
   // Notes are held per (channel, key): two manuals playing the same key are
   // two separate presses and one release must not silence both.
   static int noteKey(int channel, int midiNote) {
@@ -2155,6 +2169,10 @@ private:
   std::atomic<bool> pistonRouted_{false};
   std::atomic<bool> cancelResetsKeyboards_{false};
   std::atomic<bool> stopsLeaveHeldNotes_{false};
+  std::atomic<bool> sustainPedal_{false};
+  // Audio thread: whether the pedal is down, and the keys let go under it.
+  bool sustainDown_ = false;
+  std::vector<int> sustainedKeys_;
   std::atomic<bool> learnNoiseFilter_{false};
   // Keys held while learning with the noise filter on, until one has been
   // held long enough. Audio thread only.
