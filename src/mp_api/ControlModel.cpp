@@ -333,6 +333,7 @@ int ControlModel::programValue(ProgramProp prop) {
     case ProgramProp::RoomWet: return juce::roundToInt(proc_.convolver().mix() * 100.0f);
     case ProgramProp::PipeDetune: return juce::roundToInt(proc_.pipeDetuneCents() * 10.0f);
     case ProgramProp::WindSway: return juce::roundToInt(proc_.windSwayCents() * 10.0f);
+    case ProgramProp::SparseLoading: return proc_.sparseEvery();
   }
   return 0;
 }
@@ -716,6 +717,7 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
     case ProgramProp::RoomWet: proc_.convolver().setMix(static_cast<float>(value) / 100.0f); break;
     case ProgramProp::PipeDetune: proc_.setPipeDetuneCents(static_cast<float>(value) / 10.0f); break;
     case ProgramProp::WindSway: proc_.setWindSwayCents(static_cast<float>(value) / 10.0f); break;
+    case ProgramProp::SparseLoading: proc_.setSparseEvery(value); break;
     default: return Error::ReadOnly;
   }
   return Error::None;

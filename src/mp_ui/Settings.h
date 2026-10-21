@@ -78,6 +78,7 @@ private:
   double openRate_ = 0.0;
   SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
   int openReleaseMs_ = 0;
+  int openSparse_ = 1;
   SampleLibrary::CacheMode openCache_ = SampleLibrary::CacheMode::Single;
   // General config rather than per-organ state, but shown here because this
   // is the panel about loading. Reverted like the rest; each change writes
@@ -124,6 +125,9 @@ private:
   juce::Label releaseCutoffLabel_;
   juce::ComboBox releaseCutoff_;
   void showReleaseLength(int ms);
+  // How many notes of a rank are loaded.
+  juce::Label sparseLabel_;
+  juce::ComboBox sparse_;
   juce::Label cacheLabel_;
   juce::ComboBox cache_;
   juce::Label cacheWhenLabel_;

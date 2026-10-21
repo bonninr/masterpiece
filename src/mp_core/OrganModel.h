@@ -191,6 +191,11 @@ struct Pipe {
   // the pallet -- and declare no StopRank at all; the pipe then speaks while
   // this switch is engaged and at no other time. 0 means the file names none.
   Id palletSwitchId = 0;
+  // Sparse loading: the pipe whose samples this one plays, when it plays a
+  // neighbour's because its own were left out of the load. 0 when it plays
+  // its own. The pipe keeps its own id, note, footage and tuning: only the
+  // samples travel.
+  Id borrowedFromPipeId = 0;
 };
 
 struct Rank {

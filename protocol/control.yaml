@@ -192,6 +192,7 @@ program:
   - {index: 19, name: roomWet, min: 0, max: 100, access: set, doc: The room's wet share, in percent}
   - {index: 20, name: pipeDetune, min: 0, max: 100, access: set, doc: Each pipe up to this far off true in tenths of a cent - 0 off}
   - {index: 21, name: windSway, min: 0, max: 100, access: set, doc: The wind's slow pitch sway in tenths of a cent - 0 off}
+  - {index: 22, name: sparseLoading, min: 1, max: 3, access: set, doc: "How many notes of a rank are loaded: 1 every note, 2 every second, 3 every third"}
 
 # Commands (type 9), pressed.
 commands:

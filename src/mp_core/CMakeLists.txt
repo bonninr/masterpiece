@@ -6,6 +6,7 @@ add_library(mp_core STATIC
   Temperament.h Temperament.cpp
   Perspectives.h Perspectives.cpp
   PathCase.h PathCase.cpp
+  SparseLoading.h SparseLoading.cpp
 )
 target_include_directories(mp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_core PUBLIC cxx_std_20)

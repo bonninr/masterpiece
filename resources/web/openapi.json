@@ -68,7 +68,8 @@
         "roomOn",
         "roomWet",
         "pipeDetune",
-        "windSway"
+        "windSway",
+        "sparseLoading"
        ]
       }
      },

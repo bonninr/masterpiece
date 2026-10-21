@@ -16,6 +16,7 @@
 #pragma once
 #include "../mp_core/OrganModel.h"
 #include "../mp_core/LoadProgress.h"
+#include "../mp_core/SparseLoading.h"
 #include "../mp_sampler/VoiceEngine.h"
 #include "../mp_archive/OrganArchive.h"
 
@@ -138,6 +139,17 @@ public:
 
   void setStorage(SampleStorage s) { storage_ = s; }
   SampleStorage storage() const { return storage_; }
+
+  // How many notes of a rank are loaded: 1 for every note, 2 for every
+  // second, 3 for every third. A note that is not loaded plays its nearest
+  // loaded neighbour's samples, retuned to its own pitch, so the samples it
+  // would have played are never read.
+  //
+  // It is part of the cache fingerprint: a cache of a full load and a cache of
+  // a sparse one hold different samples and must never be mistaken for each
+  // other.
+  void setSparseEvery(int every) { sparseEvery_ = every < 1 ? 1 : every; }
+  int sparseEvery() const { return sparseEvery_; }
 
   // Stream the tails of RELEASE samples from disk instead of holding them.
   //
@@ -265,8 +277,12 @@ public:
     double rate = 0.0;
     bool releaseOnly = false;
   };
+  // The samples the pipework plays, and where each is. `wanted` names them
+  // instead of the pipework when given: a sparse load reads fewer samples
+  // than the model names, and the estimate has to show that.
   std::vector<ShapeJob> shapeJobs(const OrganModel& model, const std::string& organRootDir,
-                                  const OrganArchive* archive) const;
+                                  const OrganArchive* archive,
+                                  const SparseSamples* wanted = nullptr) const;
   static SampleShape readShape(const ShapeJob& job);
   int64_t residentBytes(const SampleShape& shape) const;
   const std::shared_ptr<const OrganArchive>& archive() const { return archive_; }
@@ -278,6 +294,17 @@ public:
   // sample file counts as there. Stops at the first file found, so a shipped
   // rank costs one look.
   bool rankShipped(const Rank& rank, const OrganModel& model, const std::string& organRootDir) const;
+
+  // Whether one sample can be read: held already (this load's, or the sample
+  // cache's), on disk under its package's root, or in the organ's archive.
+  // The format's standard components are generated when they are missing, so
+  // they count as there.
+  //
+  // Asked before the load, by the sparse loading: a pipe whose neighbour's
+  // samples cannot be read keeps its own, so a demo's missing pipes stay
+  // missing.
+  bool samplePresent(Id sampleId, const OrganModel& model,
+                      const std::string& organRootDir) const;
 
   // A provider to hand VoiceEngine::setSampleProvider. Lock-free and
   // allocation-free: safe to call from the audio thread.
@@ -384,6 +411,9 @@ private:
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
   bool loadMono_ = false;
+  // How many notes of a rank are loaded: 1 for every note, 2 for every
+  // second, 3 for every third.
+  int sparseEvery_ = 1;
   ReleaseChoice releaseChoice_ = ReleaseChoice::All;
   int releaseMaxMs_ = 0;
   double loadRate_ = 0.0;   // 0 = keep each file's own rate
