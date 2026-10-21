@@ -335,6 +335,40 @@ public:
 };
 static ScoreGeometryTest g_scoreGeometry;
 
+// The first page opens with the title, and only the first. A metronome mark's
+// note is text in Bravura: the program carries the font, and JUCE finds it by
+// that name with the note's glyph in it.
+class ScoreTitleAndTempoTest final : public mp::test::Test {
+public:
+  ScoreTitleAndTempoTest() : Test("functional.score.title-and-tempo", Category::Functional) {}
+
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    mp::ScoreEngraver eng(MP_TEST_SCORE_DATA_DIR);
+    eng.setPage(900, 600, 70);
+    MP_CHECK(eng.load(readScoreFixture("titled-tempo.musicxml")), "the score loads: " + eng.error());
+    const std::string first = eng.renderPage(1);
+    MP_CHECK(first.find("class=\"pgHead") != std::string::npos, "the first page has a heading");
+    MP_CHECK(first.find("Short Prelude") != std::string::npos, "with the title in it");
+    const std::string quarter = "\xee\xb2\xa5";  // U+ECA5, metNoteQuarterUp
+    MP_CHECK(first.find("font-family=\"Bravura\"") != std::string::npos && first.find(quarter) != std::string::npos,
+             "the metronome mark's note is text in Bravura");
+
+    // The later pages carry the page number alone.
+    eng.setPage(300, 120, 70);
+    MP_CHECK(eng.pageCount() >= 2, "a small page breaks the score in two, got " + std::to_string(eng.pageCount()));
+    MP_CHECK(eng.renderPage(2).find("Short Prelude") == std::string::npos, "the second page has no title");
+
+    MP_CHECK(mp::ui::registerScoreMusicFont(), "the program's Bravura loads");
+    const juce::Font font(juce::FontOptions("Bravura", 20.0f, juce::Font::plain));
+    const auto face = font.getTypefacePtr();
+    MP_CHECK(face != nullptr && face->getName() == "Bravura",
+             "JUCE finds it by name, got " + (face != nullptr ? face->getName() : juce::String("nothing")).toStdString());
+    MP_CHECK(face != nullptr && face->getNominalGlyphForCodepoint(0xECA5).value_or(0) != 0, "with the quarter note in it");
+  }
+};
+static ScoreTitleAndTempoTest g_scoreTitleAndTempo;
+
 // The panel with an organ: the staves get their manuals, playing puts the
 // keys down on those manuals with a cursor on the page, the pages turn by
 // themselves, and the panel's other buttons do what they say.

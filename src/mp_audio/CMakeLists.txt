@@ -64,7 +64,7 @@ if(TARGET mp_score)
   juce_add_binary_data(mp_score_fonts
     HEADER_NAME MpScoreFonts.h
     NAMESPACE MpScoreFonts
-    SOURCES ${MP_SCORE_FONTS_ZIP})
+    SOURCES ${MP_SCORE_FONTS_ZIP} ${MP_SCORE_MUSIC_FONT})
   target_link_libraries(mp_audio PUBLIC mp_score mp_score_fonts)
   target_compile_definitions(mp_audio PUBLIC MP_HAS_SCORE=1)
 endif()

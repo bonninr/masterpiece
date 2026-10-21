@@ -29,11 +29,12 @@ void ScoreEngraver::setPage(int widthPx, int heightPx, int scalePercent) {
   i.heightPx = heightPx;
   i.scale = scalePercent;
   // The page is given in Verovio units, which the scale shrinks or grows to
-  // pixels: pixels = units * scale / 100.
+  // pixels: pixels = units * scale / 100. The first page opens with the
+  // score's title, composer and other credits.
   char opts[320];
   std::snprintf(opts, sizeof opts,
                 "{\"pageWidth\":%d,\"pageHeight\":%d,\"scale\":%d,\"breaks\":\"auto\","
-                "\"adjustPageHeight\":false,\"header\":\"none\",\"footer\":\"none\","
+                "\"adjustPageHeight\":false,\"header\":\"auto\",\"footer\":\"none\","
                 "\"font\":\"Bravura\",\"svgViewBox\":false,\"svgRemoveXlink\":false}",
                 widthPx * 100 / scalePercent, heightPx * 100 / scalePercent, scalePercent);
   i.tk.SetOptions(opts);

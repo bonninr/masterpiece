@@ -176,6 +176,12 @@ bool unpackScoreFonts(const juce::File& folder) {
   return folder.getChildFile(".complete").create().wasOk();
 }
 
+bool registerScoreMusicFont() {
+  static const juce::Typeface::Ptr face = juce::Typeface::createSystemTypefaceFor(
+      {reinterpret_cast<const std::byte*>(MpScoreFonts::Bravura_otf), static_cast<size_t>(MpScoreFonts::Bravura_otfSize)});
+  return face != nullptr;
+}
+
 juce::File scoreResourceFolder() {
   const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                           .getChildFile("Masterpiece")
@@ -236,6 +242,7 @@ private:
 }  // namespace
 
 ScorePanel::ScorePanel(MasterpieceProcessor& proc, const juce::File& fonts) : proc_(proc) {
+  registerScoreMusicFont();
   fonts_ = fonts != juce::File() ? fonts : scoreResourceFolder();
   if (fonts_ != juce::File())
     engraver_ = std::make_unique<mp::ScoreEngraver>(fonts_.getFullPathName().toStdString());
