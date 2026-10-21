@@ -30,12 +30,14 @@ void ScoreEngraver::setPage(int widthPx, int heightPx, int scalePercent) {
   i.scale = scalePercent;
   // The page is given in Verovio units, which the scale shrinks or grows to
   // pixels: pixels = units * scale / 100. The first page opens with the
-  // score's title, composer and other credits.
-  char opts[320];
+  // score's title, composer and other credits. Music symbols inside text are
+  // drawn from the Bravura the program registers, so no page carries its own
+  // copy of the font: a page is half the size without it.
+  char opts[384];
   std::snprintf(opts, sizeof opts,
                 "{\"pageWidth\":%d,\"pageHeight\":%d,\"scale\":%d,\"breaks\":\"auto\","
                 "\"adjustPageHeight\":false,\"header\":\"auto\",\"footer\":\"none\","
-                "\"font\":\"Bravura\",\"svgViewBox\":false,\"svgRemoveXlink\":false}",
+                "\"font\":\"Bravura\",\"smuflTextFont\":\"none\",\"svgViewBox\":false,\"svgRemoveXlink\":false}",
                 widthPx * 100 / scalePercent, heightPx * 100 / scalePercent, scalePercent);
   i.tk.SetOptions(opts);
   if (loaded_) i.tk.RedoLayout();

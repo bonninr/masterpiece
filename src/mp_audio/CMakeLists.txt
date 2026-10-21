@@ -61,10 +61,14 @@ if(TARGET mp_score)
   target_sources(mp_audio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.cpp)
+  # And the fonts the page's text is drawn with: Bravura for the music
+  # symbols, Liberation Serif for the words.
+  file(GLOB MP_SCORE_TEXT_FONTS CONFIGURE_DEPENDS
+       ${CMAKE_CURRENT_SOURCE_DIR}/../../resources/fonts/*.ttf)
   juce_add_binary_data(mp_score_fonts
     HEADER_NAME MpScoreFonts.h
     NAMESPACE MpScoreFonts
-    SOURCES ${MP_SCORE_FONTS_ZIP} ${MP_SCORE_MUSIC_FONT})
+    SOURCES ${MP_SCORE_FONTS_ZIP} ${MP_SCORE_MUSIC_FONT} ${MP_SCORE_TEXT_FONTS})
   target_link_libraries(mp_audio PUBLIC mp_score mp_score_fonts)
   target_compile_definitions(mp_audio PUBLIC MP_HAS_SCORE=1)
 endif()

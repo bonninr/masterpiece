@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <sstream>
 
 using mp::test::Category;
@@ -336,8 +337,8 @@ public:
 static ScoreGeometryTest g_scoreGeometry;
 
 // The first page opens with the title, and only the first. A metronome mark's
-// note is text in Bravura: the program carries the font, and JUCE finds it by
-// that name with the note's glyph in it.
+// note is text in Bravura and the words are in Liberation Serif: the program
+// carries both, JUCE finds them by name, and the page is drawn with them.
 class ScoreTitleAndTempoTest final : public mp::test::Test {
 public:
   ScoreTitleAndTempoTest() : Test("functional.score.title-and-tempo", Category::Functional) {}
@@ -353,18 +354,42 @@ public:
     const std::string quarter = "\xee\xb2\xa5";  // U+ECA5, metNoteQuarterUp
     MP_CHECK(first.find("font-family=\"Bravura\"") != std::string::npos && first.find(quarter) != std::string::npos,
              "the metronome mark's note is text in Bravura");
+    MP_CHECK(first.find("@font-face") == std::string::npos, "and the page carries no copy of the font");
 
     // The later pages carry the page number alone.
     eng.setPage(300, 120, 70);
     MP_CHECK(eng.pageCount() >= 2, "a small page breaks the score in two, got " + std::to_string(eng.pageCount()));
     MP_CHECK(eng.renderPage(2).find("Short Prelude") == std::string::npos, "the second page has no title");
 
-    MP_CHECK(mp::ui::registerScoreMusicFont(), "the program's Bravura loads");
+    MP_CHECK(mp::ui::registerScoreFonts(), "the program's fonts load");
     const juce::Font font(juce::FontOptions("Bravura", 20.0f, juce::Font::plain));
     const auto face = font.getTypefacePtr();
     MP_CHECK(face != nullptr && face->getName() == "Bravura",
-             "JUCE finds it by name, got " + (face != nullptr ? face->getName() : juce::String("nothing")).toStdString());
+             "JUCE finds Bravura by name, got " + (face != nullptr ? face->getName() : juce::String("nothing")).toStdString());
     MP_CHECK(face != nullptr && face->getNominalGlyphForCodepoint(0xECA5).value_or(0) != 0, "with the quarter note in it");
+    for (const int style : {juce::Font::plain, juce::Font::bold, juce::Font::italic}) {
+      const auto serif = juce::Font(juce::FontOptions(mp::ui::kScoreTextFont, 20.0f, style)).getTypefacePtr();
+      MP_CHECK(serif != nullptr && serif->getName() == mp::ui::kScoreTextFont,
+               "JUCE finds the serif by name in style " + std::to_string(style));
+    }
+
+    // And the page as the panel draws it: the title in the serif, the
+    // metronome mark's note in Bravura.
+    eng.setPage(900, 600, 70);
+    mp::ui::ScorePageGeometry geo;
+    const auto page = mp::ui::parseScorePage(eng.renderPage(1), geo);
+    MP_CHECK(page != nullptr, "JUCE reads the page");
+    juce::String titleFont, noteFont;
+    std::function<void(const juce::Component&)> walk = [&](const juce::Component& c) {
+      if (auto* t = dynamic_cast<const juce::DrawableText*>(&c)) {
+        if (t->getText().contains("Short Prelude")) titleFont = t->getFont().getTypefaceName();
+        if (t->getText().containsChar(static_cast<juce::juce_wchar>(0xECA5))) noteFont = t->getFont().getTypefaceName();
+      }
+      for (auto* child : c.getChildren()) walk(*child);
+    };
+    if (page != nullptr) walk(*page);
+    MP_CHECK(titleFont == mp::ui::kScoreTextFont, "the title is drawn in the serif, got " + titleFont.toStdString());
+    MP_CHECK(noteFont == "Bravura", "the note is drawn in Bravura, got " + noteFont.toStdString());
   }
 };
 static ScoreTitleAndTempoTest g_scoreTitleAndTempo;

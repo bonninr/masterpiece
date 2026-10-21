@@ -34,10 +34,13 @@ namespace mp::ui {
 juce::File scoreResourceFolder();
 // The same into any folder, which is emptied first. False when it fails.
 bool unpackScoreFonts(const juce::File& folder);
-// Bravura, built into the program, made known to JUCE by its family name, so
-// the page's text in that font (the note of a metronome mark) finds it. Once
-// per run; true when the font is there.
-bool registerScoreMusicFont();
+// The fonts built into the program for the page's text, made known to JUCE by
+// their family names: Bravura for music symbols inside text (the note of a
+// metronome mark), Liberation Serif for the words. Once per run; true when
+// every one loaded.
+bool registerScoreFonts();
+// The family the page's words are drawn in.
+inline constexpr const char* kScoreTextFont = "Liberation Serif";
 
 // Where the notes and systems of one engraved page are, in the page's pixels.
 // Read from the SVG Verovio writes: each glyph is a <use> placed by a
