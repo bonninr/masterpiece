@@ -161,11 +161,14 @@ public:
   // load and then loading again read the organ twice).
   std::function<bool(const std::string& organ, const std::string& publisher)> licenceAsker;
   // Asked on the loading thread for a package a composite plays that is not
-  // in the organ's folder nor a folder in it (#289): the player may point to
-  // its archive, or the folder that holds it, and the choice is kept for the
-  // organ. Returns that path, or nothing to play without it. Blocks until
-  // answered. Unset -- the renderer, the tests -- nothing is asked.
-  std::function<std::string(const std::string& package, const std::string& name)> packageAsker;
+  // in the organ's folder, the folders in it or beside it (#289, #522): the
+  // player may point to its archive, or the folder that holds it, and the
+  // choice is kept for the organ. `start` is where a chooser opens: the folder
+  // last picked for this organ, or the one that holds the organ's. Returns the
+  // path, or nothing to play without it. Blocks until answered. Unset -- the
+  // renderer, the tests -- nothing is asked.
+  std::function<std::string(const std::string& package, const std::string& name, const std::string& start)>
+      packageAsker;
   // `graphicsOnly` builds the whole model and console and reads not one byte
   // of audio: the artwork, the jamb, the drawn manuals and the switch network
   // all come from the ODF, and only `loadAll` touches the sample tree. It is

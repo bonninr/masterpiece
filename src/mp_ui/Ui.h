@@ -302,7 +302,7 @@ public:
   // Ask whether the player holds the publisher's licence for this organ.
   void askForLicence();
   // The question itself; `answered` gets the player's answer.
-  void askForPackage(const juce::String& package, const juce::String& name,
+  void askForPackage(const juce::String& package, const juce::String& name, const juce::File& start,
                      std::function<void(const juce::String&)> answered);
   std::unique_ptr<juce::FileChooser> packageChooser_;
   void askLicenceQuestion(const juce::String& organ, const juce::String& who,

@@ -5775,44 +5775,93 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   std::set<std::string> found;
   if (missing.empty() || root.empty()) return found;
 
-  // Where the player keeps the organ: the folder of its archive, or its own
-  // folder, and the folders directly in it. A composite is kept with the
-  // organs it plays, or above them; the player points to anything else.
   const juce::File folder = file(root);
   const juce::File home = !archivePath.empty() ? file(archivePath).getParentDirectory() : folder;
-  std::vector<juce::File> dirs{home};
-  for (const auto& d : home.findChildFiles(juce::File::findDirectories, false)) dirs.push_back(d);
-  const int besideOrgan = (int)dirs.size() - 1;
-  auto addDir = [&](const juce::File& d) {
-    if (std::find(dirs.begin(), dirs.end(), d) == dirs.end()) dirs.push_back(d);
-  };
-  const bool packageFolder = packageDir_.getFullPathName().isNotEmpty() && packageDir_.isDirectory();
-  if (packageFolder) {
-    addDir(packageDir_);
-    for (const auto& d : packageDir_.findChildFiles(juce::File::findDirectories, false)) addDir(d);
-  }
-  juce::Logger::writeToLog("load: " + juce::String((int)missing.size()) + " package(s) not with the organ; looking in " +
-                           home.getFullPathName() + " and the " + juce::String(besideOrgan) + " folders in it" +
-                           (packageFolder ? ", and in the package folder " + packageDir_.getFullPathName() : juce::String()));
 
-  // What the player pointed to before, kept beside the organ: a folder per
-  // package, and the archives found or chosen.
+  // What the player pointed to before, and what was found before, kept beside
+  // the organ: a folder per package, and the archives found or chosen.
   const juce::File folderRecord = folder.getChildFile("package-folders.txt");
   const juce::File archiveRecord = folder.getChildFile("joined-packages.txt");
+  juce::File lastPicked;
   for (const auto& line : juce::StringArray::fromLines(folderRecord.loadFileAsString())) {
     const Id package = static_cast<Id>(line.upToFirstOccurrenceOf("\t", false, false).getLargeIntValue());
     const juce::File dir(line.fromFirstOccurrenceOf("\t", false, false));
+    if (dir.isDirectory()) lastPicked = dir;
     if (missing.count(package) != 0 && installedIn(dir, package)) roots[package] = dir.getFullPathName().toStdString();
+  }
+  auto keepFolder = [&](Id package, const juce::File& dir) {
+    roots[package] = dir.getFullPathName().toStdString();
+    folderRecord.appendText(juce::String(static_cast<juce::int64>(package)) + "\t" + dir.getFullPathName() + "\n");
+  };
+  auto needed = [&] {
+    std::vector<Id> out;
+    for (Id package : missing)
+      if (!here(package)) out.push_back(package);
+    return out;
+  };
+
+  // Where the player keeps the organ: the folder of its archive, or its own
+  // folder. A set downloaded as several packages is often unpacked one
+  // package to a folder, side by side, so the search takes in the organ's
+  // folder and two levels below it, the folders beside it and the folders in
+  // those, and the package folder and two levels below it. A folder of
+  // packages or of definitions is not walked into: what it holds are
+  // packages, not the folders that hold them. The walk stops at a few hundred
+  // folders, which a folder of everything reaches.
+  constexpr size_t kMostFolders = 600;
+  auto walk = [](const juce::File& top, int depth, size_t most) {
+    std::vector<juce::File> out{top};
+    std::vector<juce::File> level{top};
+    for (int i = 0; i < depth && !level.empty() && out.size() < most; ++i) {
+      std::vector<juce::File> next;
+      for (const auto& d : level)
+        for (const auto& c : d.findChildFiles(juce::File::findDirectories, false)) {
+          const juce::String name = c.getFileName();
+          if (name.equalsIgnoreCase("OrganInstallationPackages") || name.equalsIgnoreCase("OrganDefinitions") ||
+              name.startsWithChar('.'))
+            continue;
+          if (out.size() >= most) break;
+          out.push_back(c);
+          next.push_back(c);
+        }
+      level = std::move(next);
+    }
+    return out;
+  };
+  std::vector<juce::File> dirs;
+  auto addTree = [&](const juce::File& top, int depth) {
+    if (top.getFullPathName().isEmpty() || !top.isDirectory() || dirs.size() >= kMostFolders) return;
+    for (const auto& d : walk(top, depth, kMostFolders - dirs.size()))
+      if (std::find(dirs.begin(), dirs.end(), d) == dirs.end()) dirs.push_back(d);
+  };
+  const juce::File beside = home.getParentDirectory();
+  const bool packageFolder = packageDir_.getFullPathName().isNotEmpty() && packageDir_.isDirectory();
+  if (!needed().empty()) {
+    addTree(home, 2);
+    // Beside a drive's root folder are the drive's other folders: the ones
+    // directly there, and no further.
+    if (beside != home) addTree(beside, beside.getParentDirectory() == beside ? 1 : 2);
+    if (packageFolder) addTree(packageDir_, 2);
+    juce::Logger::writeToLog("load: " + juce::String((int)needed().size()) + " package(s) not with the organ; looking in " +
+                             juce::String((int)dirs.size()) + " folders: " + home.getFullPathName() +
+                             " and the folders in it, the folders beside it in " + beside.getFullPathName() +
+                             (packageFolder ? ", and the package folder " + packageDir_.getFullPathName() : juce::String()));
   }
 
   // Installed folders: OrganInstallationPackages/<id> with the samples, in
-  // those folders or in a Hauptwerk library.
-  std::vector<juce::File> installed = dirs;
-  for (const auto& lib : libraries_) installed.push_back(lib);
-  for (const auto& dir : installed) {
-    if (dir == folder || !dir.getChildFile("OrganInstallationPackages").isDirectory()) continue;
-    for (Id package : missing)
-      if (roots.count(package) == 0 && installedIn(dir, package)) roots[package] = dir.getFullPathName().toStdString();
+  // those folders or in a Hauptwerk library. A folder found is kept, so the
+  // next load goes to it first.
+  auto lookIn = [&](const std::vector<juce::File>& where) {
+    for (const auto& dir : where) {
+      if (dir == folder || !dir.getChildFile("OrganInstallationPackages").isDirectory()) continue;
+      for (Id package : needed())
+        if (installedIn(dir, package)) keepFolder(package, dir);
+    }
+  };
+  {
+    std::vector<juce::File> installed = dirs;
+    for (const auto& lib : libraries_) installed.push_back(lib);
+    lookIn(installed);
   }
 
   // An archive joined to the organ's: its index kept beside the organ, or the
@@ -5876,20 +5925,37 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   // that holds it, and the answer is kept for the next load. Hauptwerk's own
   // standard components (package 1) come with no sample set and have
   // stand-ins of their own, so they are not asked for.
+  //
+  // The folder picked may hold OrganInstallationPackages, be that folder, be
+  // the package's own folder or a folder in it, or be a folder above them:
+  // three levels up and two down are looked at. The other packages still
+  // missing are looked for there too.
   if (packageAsker)
     for (Id package : missing) {
       if (package == 1 || here(package)) continue;
       const auto named = model_.packages.find(package);
+      // The chooser opens where the player last pointed for this organ, or
+      // in the folder that holds the organ's.
+      const juce::File start = lastPicked.isDirectory() ? lastPicked : beside;
       const std::string chosen =
-          packageAsker(dirName(package), named != model_.packages.end() ? named->second.name : std::string());
+          packageAsker(dirName(package), named != model_.packages.end() ? named->second.name : std::string(),
+                       start.getFullPathName().toStdString());
       if (chosen.empty()) continue;
       const juce::File pick = file(chosen);
       if (pick.isDirectory()) {
-        if (installedIn(pick, package)) {
-          roots[package] = pick.getFullPathName().toStdString();
-          folderRecord.appendText(juce::String(static_cast<juce::int64>(package)) + "\t" + pick.getFullPathName() + "\n");
-        } else {
-          for (const auto& s : OrganArchive::carryingIn({pick.getFullPathName().toStdString()}, {dirName(package)})) {
+        lastPicked = pick;
+        std::vector<juce::File> near;
+        for (juce::File up = pick.getParentDirectory(); near.size() < 3 && up != up.getParentDirectory();
+             up = up.getParentDirectory())
+          near.push_back(up);
+        for (const auto& d : walk(pick, 2, kMostFolders)) near.push_back(d);
+        lookIn(near);
+        if (!here(package)) {
+          std::set<std::string> wanted;
+          for (Id p : needed()) wanted.insert(dirName(p));
+          std::vector<std::string> folders;
+          for (const auto& d : walk(pick, 2, kMostFolders)) folders.push_back(d.getFullPathName().toStdString());
+          for (const auto& s : OrganArchive::carryingIn(folders, wanted)) {
             joinSource(s);
             archiveRecord.appendText(juce::String::fromUTF8(s.c_str()) + "\n");
           }
@@ -5912,7 +5978,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
       juce::Logger::writeToLog("load: package " + id + " (" + name + ") from another organ's archives");
     } else {
       juce::Logger::writeToLog("load: package " + id + " (" + name + ") is not in " + home.getFullPathName() +
-                               ", a folder in it, nor the package folder: its pipes are silent");
+                               ", the folders in it or beside it, nor the package folder: its pipes are silent");
     }
   }
   samples_.setPackageRoots(std::move(roots));
