@@ -17182,12 +17182,33 @@ public:
     stop.targetKind = mp::MidiTargetKind::Switch;
     stop.targetId = 12345;
     proc.midiMap().bind(stop);
+    // The record button's lamp and a computer key for Play: the console's as
+    // well, on every organ.
+    mp::MidiSend lamp;
+    lamp.kind = mp::MidiSourceKind::Note;
+    lamp.channel = 16;
+    lamp.number = 103;
+    proc.midiMap().setSendsFor(mp::MidiTargetKind::RecorderRecord, 0, {lamp});
+    mp::KeyShortcut key;
+    key.key = "ctrl + P";
+    proc.midiMap().setShortcutsFor(mp::MidiTargetKind::RecorderPlay, 0, {key});
+    mp::MidiSend stopLamp = lamp;
+    stopLamp.number = 41;
+    proc.midiMap().setSendsFor(mp::MidiTargetKind::Switch, 12345, {stopLamp});
+    auto consoleExtras = [&] {
+      const auto sends = proc.midiMap().sendsFor(mp::MidiTargetKind::RecorderRecord, 0);
+      const auto keys = proc.midiMap().shortcutsFor(mp::MidiTargetKind::RecorderPlay, 0);
+      return sends.size() == 1 && sends[0].number == 103 && keys.size() == 1 && keys[0].key == "ctrl + P";
+    };
     MP_CHECK(proc.saveMidiMap(), "saved");
     MP_CHECK(proc.loadOrgan(b, 0, false).ok, "another organ loads");
     MP_CHECK(proc.midiMap().actionFor(note(40), 127).kind == mp::MidiTargetKind::StepperNext,
              "the stepper button still works on the other organ");
+    MP_CHECK(consoleExtras(), "and so do the record lamp and the Play key, with no file for this organ");
     MP_CHECK(!proc.midiMap().actionFor(note(41), 127).valid(),
              "and the first organ's stop mapping does not come with it");
+    MP_CHECK(!proc.midiMap().hasSends(mp::MidiTargetKind::Switch, 12345),
+             "nor its stop's lamp");
     MP_CHECK(proc.loadOrgan(a, 0, false).ok &&
                  proc.midiMap().actionFor(note(41), 127).kind == mp::MidiTargetKind::Switch,
              "it is still there on its own organ");
@@ -17213,6 +17234,7 @@ public:
              "the general it was saved with comes with it");
     MP_CHECK(proc.midiMap().actionFor(note(40), 127).kind == mp::MidiTargetKind::StepperNext,
              "and the console's button keeps what the console gave it");
+    MP_CHECK(consoleExtras(), "the lamp and the key come with the console onto an organ saved without them");
 
     for (auto& [f, text] : kept) {
       if (text == "\\u0001absent") f.deleteFile();
