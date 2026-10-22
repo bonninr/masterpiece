@@ -765,6 +765,7 @@ public:
         proc_->setCacheMode(v == "off"        ? mp::SampleLibrary::CacheMode::Off
                             : v == "per-organ" ? mp::SampleLibrary::CacheMode::PerOrgan
                                                : mp::SampleLibrary::CacheMode::Single);
+        proc_->overrideSetting("cache");
       } else if (args[i] == "--load-rate" && i + 1 < args.size()) {
         proc_->setLoadSampleRate(args[++i].unquoted().getDoubleValue());
         proc_->overrideSetting("rate");
