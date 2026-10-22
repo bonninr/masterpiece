@@ -3,7 +3,44 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
 namespace mp {
+
+namespace {
+
+// A room's power where an organ sounds: the mean, over the octaves from
+// 63 Hz to 8 kHz, of its power within each. A room is far from flat: the
+// ones measured stand 8 to 15 dB above their own average from 250 Hz to
+// 1 kHz and fall away above 4 kHz, and an average over every frequency is
+// mostly the top octaves, where an organ has little. On the same scale as
+// the energy: a flat room gives its sum of squares.
+double octavePower(const float* x, int n, double rate) {
+  if (n <= 0 || rate <= 0.0) return 0.0;
+  int order = 1;
+  while ((1 << order) < n) ++order;
+  const int size = 1 << order;
+  juce::dsp::FFT fft(order);
+  std::vector<float> data(static_cast<size_t>(2 * size), 0.0f);
+  std::copy(x, x + n, data.begin());
+  fft.performFrequencyOnlyForwardTransform(data.data(), true);
+  double sum = 0.0;
+  int bands = 0;
+  for (double centre = 62.5; centre <= 8000.0; centre *= 2.0) {
+    const int lo = static_cast<int>(std::ceil(centre / std::sqrt(2.0) * size / rate));
+    const int hi = std::min(size / 2, static_cast<int>(std::floor(centre * std::sqrt(2.0) * size / rate)));
+    if (lo < 1 || hi < lo) continue;
+    double p = 0.0;
+    for (int k = lo; k <= hi; ++k) p += static_cast<double>(data[static_cast<size_t>(k)]) * data[static_cast<size_t>(k)];
+    sum += p / (hi - lo + 1);
+    ++bands;
+  }
+  return bands > 0 ? sum / bands : 0.0;
+}
+
+} // namespace
 
 void Convolver::prepare(const juce::dsp::ProcessSpec& spec) {
   fromLeft_.prepare(spec);
@@ -51,18 +88,17 @@ bool Convolver::loadImpulseResponse(const juce::File& chosen) {
   reader->read(&all, 0, length, 0, true, true);
 
   // One gain for every path, so a true-stereo room keeps its own balance
-  // between them; normalising each engine separately would not. By energy,
-  // not by peak: a room's loudness is the whole of its tail, and a two-second
-  // tail normalised to its peak came out more than 20 dB too hot. The scale
-  // is the one JUCE's own normalisation uses, so a room sits where it did.
-  double energy = 0.0;
-  for (int ch = 0; ch < channels; ++ch) {
-    const float* p = all.getReadPointer(ch);
-    double e = 0.0;
-    for (int i = 0; i < length; ++i) e += static_cast<double>(p[i]) * p[i];
-    energy = juce::jmax(energy, e);
-  }
-  const float gain = energy > 0.0 ? static_cast<float>(0.125 / std::sqrt(energy)) : 1.0f;
+  // between them; normalising each engine separately would not. By power
+  // where the organ sounds, octave by octave: at full wet, a pipe's tone
+  // comes out of the room at about the level it went in, so the Wet control
+  // runs from the dry organ to the room alone. Rooms on their own scale
+  // come out 16 to 21 dB louder than the sound; JUCE's normalisation, by
+  // energy and 18 dB below unity, left the room unheard at the default wet
+  // (#494).
+  double power = 0.0;
+  for (int ch = 0; ch < channels; ++ch)
+    power = juce::jmax(power, octavePower(all.getReadPointer(ch), length, reader->sampleRate));
+  const float gain = power > 0.0 ? static_cast<float>(1.0 / std::sqrt(power)) : 1.0f;
 
   auto pair = [&](int a, int b) {
     juce::AudioBuffer<float> ir(2, length);
