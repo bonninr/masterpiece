@@ -858,7 +858,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     DivisionInput in;
     in.divisionId = fieldInt(row, "DivisionID", "a", 0);
     in.switchId = fieldInt(row, "SwitchID", "b", 0);
-    in.midiNote = fieldInt(row, "NormalMIDINoteNumber", "c", -1);
+    // A compact row leaves out a field at its default, and the default note
+    // is 60: every division's middle C input comes without one, as its
+    // KeyboardKey does (#517, #521).
+    in.midiNote = fieldInt(row, "NormalMIDINoteNumber", "c", isCompact(row) ? 60 : -1);
     if (in.divisionId == 0 || in.switchId == 0 || in.midiNote < 0 || in.midiNote > 127) return;
     outModel.divisionInputs.push_back(in);
   });
