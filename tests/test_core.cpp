@@ -7087,6 +7087,13 @@ public:
     MP_CHECK(std::fabs(mp::tremulantAmpSwing(20.0 * std::log10((goDepth / 100.0) / mp::kTremulantWaveformAmpDepth)) -
                        0.06) < 1e-12,
              "a GrandOrgue depth converted by the importer swings by exactly that depth");
+    // The pitch adjustment is a percentage of the waveform's own swing, 8.4
+    // cents, measured on Ashton's files. Ashton's pipes state 80 to 99 %, and
+    // swung by 80 to 99 cents when it was read as a percentage of a semitone (#523).
+    MP_CHECK(std::fabs(mp::tremulantPitchSwingSemitones(100.0) * 100.0 - 8.4) < 1e-9 &&
+                 std::fabs(mp::tremulantPitchSwingSemitones(90.0) * 100.0 - 7.56) < 1e-9 &&
+                 mp::tremulantPitchSwingSemitones(0.0) == 0.0,
+             "100 % swings by the waveform's 8.4 cents, Ashton's 90 % by 7.6, 0 % not at all");
     MP_CHECK(trem.controllingSwitchId == 1, "tremulant bound to its drawstop");
     MP_CHECK(trem.hasWaveform && trem.waveformId == 500,
              "TremulantWaveform links the waveform to its tremulant");

@@ -3831,11 +3831,12 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
           vs.tremIndex = ti->second;
           // The pipe's and the layer's adjustments to the waveform's own
           // depth, as a linear swing about unity (tremulantAmpSwing); and
-          // percent of a semitone to semitones.
+          // percentages of the waveform's pitch swing, in semitones
+          // (tremulantPitchSwingSemitones).
           vs.tremAmpDepth = static_cast<float>(
               tremulantAmpSwing(tm->second.ampDepthDb + layer.tremAmpDepthAdjustDb));
           vs.tremPitchDepth =
-              tm->second.pitchDepthPct / 100.0 *
+              tremulantPitchSwingSemitones(tm->second.pitchDepthPct) *
               juce::jlimit(0.0, 4.0, layer.tremPitchDepthAdjustPct / 100.0);
         }
       }
