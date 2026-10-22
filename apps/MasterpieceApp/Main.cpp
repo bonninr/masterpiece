@@ -951,6 +951,11 @@ public:
 #endif
 
   void shutdown() override {
+    // Quitting in the middle of a load: its threads read the processor and
+    // the editor's callbacks to the end, so it stops before either goes. A
+    // load that does not stop leaves the processor alive; the program is
+    // ending in any case.
+    if (proc_ && !proc_->stopLoad(15000)) loadStillRunning_ = true;
 #if MP_ENABLE_API
     // First: its requests are carried out on the message thread, against the
     // processor, and neither may be gone under it.
@@ -1013,7 +1018,10 @@ public:
     player_.reset();
     devices_.reset();
     if (proc_) proc_->setReleaseLogging(false);
-    proc_.reset();
+    if (loadStillRunning_)
+      (void)proc_.release();
+    else
+      proc_.reset();
     // Every window is gone by now, so nothing still points at the look.
     mp::ui::removeTouchLook();
   }
@@ -1047,6 +1055,7 @@ private:
     }
   };
   std::unique_ptr<QuitWatch> quitWatch_;
+  bool loadStillRunning_ = false;
   // An input the player wants and another program holds (Windows gives a MIDI
   // port to one program at a time) is opened as soon as it is free: before,
   // it stayed shut until Masterpiece was started again (#305).

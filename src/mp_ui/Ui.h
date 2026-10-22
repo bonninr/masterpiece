@@ -266,8 +266,9 @@ private:
   void finishLoad(const juce::File& odf, bool graphicsOnly,
                   const MasterpieceProcessor::LoadResult& result);
   // Non-owning: the dialog window owns itself once launched async, and this
-  // is how it gets closed when the load ends.
-  juce::DialogWindow* loadWindow_ = nullptr;
+  // is how it gets closed when the load ends. A close from the system
+  // (Alt+F4) deletes it sooner, and this then reads null.
+  juce::Component::SafePointer<juce::DialogWindow> loadWindow_;
   bool loading_ = false;
   // Run once the load in progress has finished: a first load reads the
   // organ without its audio, then asks for Organ settings, then loads.
