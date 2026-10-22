@@ -252,6 +252,13 @@ struct Voice {
   Id pipeId = 0;
   Id sampleId = 0;
   uint64_t noteId = 0;   // groups the voices started by one key press
+  // The other key presses holding this pipe open. A pipe that two keys reach
+  // at once sounds once, as on an organ: the second key joins the voice the
+  // first one started, and the pipe closes when the last of them lets go.
+  // When noteId's key lets go first, the voice passes to one of these.
+  static constexpr int kMaxHolders = 7;
+  uint64_t holders[kMaxHolders] = {};
+  int holderCount = 0;
   int attackId = 0;      // which attack played, for release pairing
   int attackIndex = 0;
   int attackVelocity = 64;
@@ -395,6 +402,11 @@ struct VoiceStart {
   // Noises, percussive ranks and releases must not sustain, and "-1 means use
   // the file's loop" cannot express that.
   bool oneShot = false;
+  // A pipe has one valve. Set, a key press that reaches a pipe already
+  // speaking this layer holds it open with the key that opened it, and
+  // starts nothing; the pipe closes when the last key holding it lets go.
+  // The organ's pipes are started this way; a one-shot always starts anew.
+  bool joinSpeaking = false;
   int busIndex = 0;  // enclosure
   int mixBus = 0;    // mixer output
   int swayIndex = -1;  // wind sway; see Voice::swayIndex
@@ -430,6 +442,8 @@ public:
 
   // Start one voice. Returns its index, or -1 when nothing could be started
   // (no free voice and nothing stealable, or the audio is not resident).
+  // With VoiceStart::joinSpeaking, a pipe already speaking this layer is not
+  // started again: the key press joins that voice, and its index is returned.
   int startVoice(const VoiceStart& start, uint64_t noteId);
 
   // The vector unit the straight runs use, found when the engine is prepared
@@ -474,9 +488,13 @@ public:
   template <class Keep>
   void releaseAll(Keep keep) {
     for (size_t i = 0; i < scanEnd_; ++i) {
-      const Voice& v = voices_[i];
+      Voice& v = voices_[i];
       if (!v.active() || v.phase == VoicePhase::Release || keep(v.noteId)) continue;
-      releaseVoices(v.noteId, 0, NoteRelease{});
+      bool held = false;
+      for (int h = 0; h < v.holderCount && !held; ++h) held = keep(v.holders[h]);
+      if (held) continue;
+      v.holderCount = 0;
+      releaseVoice(v, NoteRelease{});
     }
   }
   void releaseAll() {
@@ -491,8 +509,23 @@ private:
   simd::Isa isa_ = simd::Isa::None;
   bool simdWanted_ = false;
   std::atomic<uint64_t> simdFrames_{0};
-  // The body of both: one pipe of a note, or all of them.
+  // The body of both: one pipe of a note, or all of them. A voice another
+  // key still holds stays open.
   void releaseVoices(uint64_t noteId, Id pipeId, const NoteRelease& release);
+  // One voice into its release.
+  void releaseVoice(Voice& v, const NoteRelease& release);
+  // The voice already speaking this pipe's layer, which the key press then
+  // holds too; -1 when there is none, or it has no room for another holder.
+  int joinSpeakingPipe(const VoiceStart& start, uint64_t noteId);
+  // What each slot speaks, kept apart from the voices so the search above
+  // reads sixteen bytes a slot. Written when a voice starts, cleared when it
+  // is released; a slot that went quiet on its own is caught by checking the
+  // voice itself.
+  struct SpeakingPipe {
+    Id pipeId = 0;
+    const PipeLayer* layer = nullptr;
+  };
+  std::vector<SpeakingPipe> speaking_;
 public:
 
   // Mix active voices into `out` (numChannels planar buffers, additive).
