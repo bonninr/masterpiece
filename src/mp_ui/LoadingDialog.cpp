@@ -49,7 +49,10 @@ LoadingDialog::LoadingDialog(MasterpieceProcessor& proc,
   startTimerHz(10);
 }
 
-LoadingDialog::~LoadingDialog() { stopTimer(); }
+LoadingDialog::~LoadingDialog() {
+  stopTimer();
+  if (onClosed) onClosed();
+}
 
 // LoadProgress is below the interface and has no translations of its own, so
 // the words for each phase are given here.

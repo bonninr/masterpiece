@@ -832,10 +832,12 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // The licence question, asked from the loading thread before a sample is
   // read (#164). The box belongs to the message thread, so it is shown there
   // and the load waits for the answer. A window gone, or a question never
-  // answered because the program is closing, is a no.
+  // answered because the program is closing, is a no. So is a load cancelled
+  // while it waits: the program closing waits for the load in turn.
   proc_.licenceAsker = [this](const std::string& organ, const std::string& who) {
     auto answer = std::make_shared<std::promise<bool>>();
     auto future = answer->get_future();
+    const auto& progress = proc_.loadProgress();
     juce::Component::SafePointer<MasterpieceEditor> self(this);
     juce::MessageManager::callAsync([self, answer, organ, who] {
       if (self == nullptr) {
@@ -845,6 +847,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       self->askLicenceQuestion(juce::String(organ), juce::String(who),
                                [answer](bool yes) { answer->set_value(yes); });
     });
+    while (future.wait_for(std::chrono::milliseconds(50)) != std::future_status::ready)
+      if (progress.isCancelled()) return false;
     try {
       return future.get();
     } catch (const std::future_error&) {
@@ -856,6 +860,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   proc_.packageAsker = [this](const std::string& package, const std::string& name) -> std::string {
     auto answer = std::make_shared<std::promise<std::string>>();
     auto future = answer->get_future();
+    const auto& progress = proc_.loadProgress();
     juce::Component::SafePointer<MasterpieceEditor> self(this);
     juce::MessageManager::callAsync([self, answer, package, name] {
       if (self == nullptr) {
@@ -865,6 +870,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       self->askForPackage(juce::String(package), juce::String::fromUTF8(name.c_str()),
                           [answer](const juce::String& path) { answer->set_value(path.toStdString()); });
     });
+    while (future.wait_for(std::chrono::milliseconds(50)) != std::future_status::ready)
+      if (progress.isCancelled()) return {};
     try {
       return future.get();
     } catch (const std::future_error&) {
@@ -1094,11 +1101,11 @@ void MasterpieceEditor::loadOrgan(const juce::File& requested, bool graphicsOnly
       const auto definitions = processor->openPackagedOrgan(odf, error);
       juce::MessageManager::callAsync([self, odf, graphicsOnly, definitions, error] {
         if (self == nullptr) return;
+        self->loading_ = false;
         if (self->loadWindow_ != nullptr) {
-          delete self->loadWindow_;
+          delete self->loadWindow_.getComponent();
           self->loadWindow_ = nullptr;
         }
-        self->loading_ = false;
         if (error == "cancelled") {
           self->top_.setStatus(TRANS("Archive opening cancelled"));
           return;
@@ -1160,6 +1167,12 @@ void MasterpieceEditor::showLoadingDialog(const juce::File& file) {
   // Windows offer to kill the program.
   auto dialog = std::make_unique<LoadingDialog>(proc_, file.getFileName());
   dialog->onCancel = [this] { proc_.cancelLoad(); };
+  // Closed while the load runs is a Cancel: the load ends as a cancelled one,
+  // and its end finds no window left to close.
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  dialog->onClosed = [self] {
+    if (self != nullptr && self->loading_) self->proc_.cancelLoad();
+  };
   dialog->setSize(460, 190);
 
   juce::DialogWindow::LaunchOptions opts;
@@ -1185,12 +1198,14 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
 
   showLoadingDialog(odf);
 
-  juce::Thread::launch([this, odf, graphicsOnly] {
+  juce::Component::SafePointer<MasterpieceEditor> self(this);
+  auto& proc = proc_;
+  juce::Thread::launch([self, &proc, odf, graphicsOnly] {
     // A load that throws ends as a failed one. JUCE catches what leaves this
     // thread, and the loading dialog then stayed open for good.
     MasterpieceProcessor::LoadResult result;
     try {
-      result = proc_.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
+      result = proc.loadOrgan(odf, /*maxFramesPerSample*/ 0, graphicsOnly);
     } catch (const std::exception& e) {
       result.ok = false;
       result.error = e.what();
@@ -1198,8 +1213,10 @@ void MasterpieceEditor::startLoad(const juce::File& odf, bool graphicsOnly) {
     }
     // Everything past here touches components, so it belongs to the message
     // thread. The lambda copies what it needs; the loader thread ends here.
-    juce::MessageManager::callAsync(
-        [this, odf, graphicsOnly, result] { finishLoad(odf, graphicsOnly, result); });
+    // The window may have closed during the load.
+    juce::MessageManager::callAsync([self, odf, graphicsOnly, result] {
+      if (self != nullptr) self->finishLoad(odf, graphicsOnly, result);
+    });
   });
 }
 
@@ -1558,7 +1575,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   auto then = std::move(afterLoad_);
   afterLoad_ = nullptr;
   if (loadWindow_ != nullptr) {
-    delete loadWindow_;
+    delete loadWindow_.getComponent();
     loadWindow_ = nullptr;
   }
 

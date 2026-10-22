@@ -89,6 +89,9 @@ public:
 
   MasterpieceProcessor();
   ~MasterpieceProcessor() override {
+    // A load on another thread reads and writes this object to the end: it
+    // stops before anything here goes.
+    stopLoad(15000);
     serviceArchive(true);  // quitting saves the archive's take in progress
     alive_->store(false);
     writeBlockLog();
@@ -232,6 +235,10 @@ public:
     loadProgress_.cancelled.store(true, std::memory_order_release);
     juce::Logger::writeToLog("load: cancel requested");
   }
+  // Cancels a load running on another thread and waits for it to end, for
+  // the program quitting in the middle of one. False if it still ran after
+  // `timeoutMs`.
+  bool stopLoad(int timeoutMs);
   const OrganModel& organModel() const { return model_; }
   const SampleLibrary& sampleLibrary() const { return samples_; }
 

@@ -28,6 +28,9 @@ public:
   // Called on the message thread when the player presses Cancel. The load
   // itself stops at the next file boundary; this is only the request.
   std::function<void()> onCancel;
+  // Called as the dialog goes, however it went: the load ending, or the
+  // window closed from outside (Alt+F4) while the load still runs.
+  std::function<void()> onClosed;
 
 private:
   void timerCallback() override;

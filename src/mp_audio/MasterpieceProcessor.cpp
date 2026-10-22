@@ -7928,6 +7928,21 @@ void MasterpieceProcessor::serviceMidiRequests() {
   }
 }
 
+bool MasterpieceProcessor::stopLoad(int timeoutMs) {
+  if (!organLoading()) return true;
+  cancelLoad();
+  const auto until = juce::Time::getMillisecondCounter() + static_cast<juce::uint32>(timeoutMs);
+  while (organLoading()) {
+    if (juce::Time::getMillisecondCounter() > until) {
+      juce::Logger::writeToLog("load: still running " + juce::String(timeoutMs) + " ms after the cancel");
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  juce::Logger::writeToLog("load: stopped for the program to close");
+  return true;
+}
+
 void MasterpieceProcessor::loadOrganAsync(const juce::File& odfFile) {
   // Loading a 19 GB set must not block the message thread. The audio thread is
   // unaffected either way: it only ever reads the sample store through an
