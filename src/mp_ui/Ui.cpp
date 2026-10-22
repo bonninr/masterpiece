@@ -853,16 +853,18 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   };
   // The package question, asked the same way: a composite plays a package
   // that was not found beside it, and the player may point to it.
-  proc_.packageAsker = [this](const std::string& package, const std::string& name) -> std::string {
+  proc_.packageAsker = [this](const std::string& package, const std::string& name,
+                              const std::string& start) -> std::string {
     auto answer = std::make_shared<std::promise<std::string>>();
     auto future = answer->get_future();
     juce::Component::SafePointer<MasterpieceEditor> self(this);
-    juce::MessageManager::callAsync([self, answer, package, name] {
+    juce::MessageManager::callAsync([self, answer, package, name, start] {
       if (self == nullptr) {
         answer->set_value({});
         return;
       }
       self->askForPackage(juce::String(package), juce::String::fromUTF8(name.c_str()),
+                          juce::File(juce::String::fromUTF8(start.c_str())),
                           [answer](const juce::String& path) { answer->set_value(path.toStdString()); });
     });
     try {
@@ -1252,7 +1254,7 @@ void MasterpieceEditor::askLicenceQuestion(const juce::String& organName, const 
                        true);  // deleted when dismissed
 }
 
-void MasterpieceEditor::askForPackage(const juce::String& package, const juce::String& name,
+void MasterpieceEditor::askForPackage(const juce::String& package, const juce::String& name, const juce::File& start,
                                       std::function<void(const juce::String&)> answered) {
   auto* box = new juce::AlertWindow(
       TRANS("A package this organ plays is missing"),
@@ -1267,7 +1269,7 @@ void MasterpieceEditor::askForPackage(const juce::String& package, const juce::S
   box->addButton(TRANS("Play without it"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   box->enterModalState(
-      true, juce::ModalCallbackFunction::create([self, answered](int result) {
+      true, juce::ModalCallbackFunction::create([self, answered, start](int result) {
         if (result == 0 || self == nullptr) {
           answered({});
           return;
@@ -1275,7 +1277,8 @@ void MasterpieceEditor::askForPackage(const juce::String& package, const juce::S
         const bool folder = result == 2;
         self->packageChooser_ = std::make_unique<juce::FileChooser>(
             folder ? TRANS("The folder that holds the package") : TRANS("The package's archive"),
-            juce::File::getSpecialLocation(juce::File::userHomeDirectory), folder ? juce::String() : "*.rar;*.zip;*.7z");
+            start.isDirectory() ? start : juce::File::getSpecialLocation(juce::File::userHomeDirectory),
+            folder ? juce::String() : "*.rar;*.zip;*.7z");
         const int flags = juce::FileBrowserComponent::openMode |
                           (folder ? juce::FileBrowserComponent::canSelectDirectories
                                   : juce::FileBrowserComponent::canSelectFiles);

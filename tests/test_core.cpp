@@ -15778,7 +15778,7 @@ public:
       mp::MasterpieceProcessor proc;
       proc.usePackageDirectory(juce::File(juce::String(packageFolder.string())));
       if (answer)
-        proc.packageAsker = [&, answer](const std::string& package, const std::string& name) {
+        proc.packageAsker = [&, answer](const std::string& package, const std::string& name, const std::string&) {
           ++asked;
           askedFor = package + " " + name;
           return answer();
@@ -15810,7 +15810,8 @@ public:
     load({}, [&] { return std::string(); });
     MP_CHECK(asked == 2 && !unreported, "played without it when the player says so, and the package reported");
 
-    const fs::path installed = base / "Installed";
+    // Four levels below the folder beside the organ: further than the search goes.
+    const fs::path installed = base / "Beside" / "deep" / "far" / "Installed";
     fs::create_directories(installed / "OrganInstallationPackages" / "900289" / "Principal");
     std::ofstream(installed / "OrganInstallationPackages" / "900289" / "Principal" / "036-C.wav", std::ios::binary)
         << tone;
@@ -15916,7 +15917,7 @@ public:
     const juce::File odfFile(juce::String(odf.string()));
     std::vector<std::string> asked;
     mp::MasterpieceProcessor proc;
-    proc.packageAsker = [&](const std::string& package, const std::string&) {
+    proc.packageAsker = [&](const std::string& package, const std::string&, const std::string&) {
       asked.push_back(package);
       return std::string();
     };
@@ -15944,6 +15945,156 @@ public:
   }
 };
 static DemoPackageHereTest g_demoPackageHere;
+
+// A set sold as several packages, each downloaded and unpacked into a folder
+// of its own, side by side (#522): the definition in one, a package in each of
+// the others. Both packages are found beside the organ with nothing asked,
+// and kept. A package further away is asked for; the player may pick the
+// package's own folder, and the chooser opens in the folder that holds the
+// organ's.
+class PackagesBesideOrganTest final : public mp::test::Test {
+public:
+  PackagesBesideOrganTest() : Test("functional.archive.packages-beside-organ", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-packages-beside";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::create_directories(base / "Demo_ODF" / "OrganDefinitions");
+    fs::create_directories(base / "Demo_ODF" / "OrganInstallationPackages");
+    fs::create_directories(base / "Surround1" / "OrganInstallationPackages" / "900521" / "Principal");
+    fs::create_directories(base / "Surround2" / "OrganInstallationPackages" / "900522" / "Flute");
+
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 65.41 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
+    std::ofstream(base / "Surround1" / "OrganInstallationPackages" / "900521" / "Principal" / "036.wav",
+                  std::ios::binary)
+        << tone;
+    std::ofstream(base / "Surround2" / "OrganInstallationPackages" / "900522" / "Flute" / "036.wav", std::ios::binary)
+        << tone;
+
+    const fs::path odf = base / "Demo_ODF" / "OrganDefinitions" / "Demo.Organ_Hauptwerk_xml";
+    std::ofstream(odf) <<
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Beside</Identification_Name>"
+        "<Identification_UniqueOrganID>522</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\">"
+        "<RequiredInstallationPackage><InstallationPackageID>900521</InstallationPackageID><Name>Core</Name>"
+        "</RequiredInstallationPackage>"
+        "<RequiredInstallationPackage><InstallationPackageID>900522</InstallationPackageID><Name>Surround</Name>"
+        "</RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\">"
+        "<Sample><SampleID>101</SampleID><InstallationPackageID>900521</InstallationPackageID>"
+        "<SampleFilename>Principal\\036.wav</SampleFilename></Sample>"
+        "<Sample><SampleID>102</SampleID><InstallationPackageID>900522</InstallationPackageID>"
+        "<SampleFilename>Flute\\036.wav</SampleFilename></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>202</RankID><Name>Flute</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+        "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><Pipe_SoundEngine01_Layer><LayerID>401</LayerID>"
+        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\"><Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID>"
+        "<LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>102</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>701</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey>"
+        "<Hint_PrimaryAssociatedDivisionID>801</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><Stop><StopID>901</StopID><Name>Principal 8</Name><DivisionID>801</DivisionID>"
+        "<ControllingSwitchID>1101</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"StopRank\"><StopRank><StopID>901</StopID><RankID>201</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank>"
+        "<StopRank><StopID>901</StopID><RankID>202</RankID>"
+        "<MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+        "<NumberOfMappedDivisionInputNodes>61</NumberOfMappedDivisionInputNodes></StopRank></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name>"
+        "<Latching>Y</Latching></Switch></ObjectList></Hauptwerk>";
+
+    const juce::File odfFile(juce::String(odf.string()));
+    int asked = 0;
+    std::string askedFor, startedIn;
+    struct Load {
+      int missing = 0, voices = 0;
+      bool warned = false;
+    };
+    auto load = [&](std::function<std::string()> answer) {
+      mp::MasterpieceProcessor proc;
+      proc.packageAsker = [&, answer](const std::string& package, const std::string&, const std::string& start) {
+        ++asked;
+        askedFor = package;
+        startedIn = start;
+        return answer ? answer() : std::string();
+      };
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      Load out;
+      MP_CHECK(r.ok, "the organ loads");
+      out.missing = r.samples.missing;
+      for (const auto& w : r.diagnostics.warnings)
+        out.warned = out.warned || w.find("900521") != std::string::npos || w.find("900522") != std::string::npos;
+      proc.clearChannelAssignments();
+      proc.setKeyboardForChannel(1, 701);
+      proc.setStopEngaged(901, true);
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer on;
+      on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+      proc.processBlock(buf, on);
+      for (int i = 0; i < 4; ++i) {
+        juce::MidiBuffer none;
+        proc.processBlock(buf, none);
+      }
+      out.voices = proc.voiceStats().activeVoices;
+      return out;
+    };
+
+    auto first = load(nullptr);
+    MP_CHECK(asked == 0, "both packages found beside the organ, nothing asked: asked for " + askedFor);
+    MP_CHECK(first.missing == 0 && !first.warned, "no sample missing and no package reported: " +
+                                                      std::to_string(first.missing) + " missing");
+    MP_CHECK(first.voices == 2, "and both pipes sound: " + std::to_string(first.voices) + " voices");
+    std::stringstream kept;
+    kept << std::ifstream(base / "Demo_ODF" / "package-folders.txt").rdbuf();
+    MP_CHECK(kept.str().find("Surround1") != std::string::npos && kept.str().find("Surround2") != std::string::npos,
+             "where they were found is kept: " + kept.str());
+
+    // Further than the search goes: asked, and the package's own folder picked.
+    const fs::path far = base / "Store" / "a" / "b" / "Surround2";
+    fs::create_directories(far.parent_path());
+    fs::rename(base / "Surround2", far);
+    fs::remove(base / "Demo_ODF" / "package-folders.txt");
+    const fs::path ownFolder = far / "OrganInstallationPackages" / "900522";
+    auto picked = load([&] { return ownFolder.string(); });
+    MP_CHECK(asked == 1 && askedFor == "900522", "asked once, for the package that is far: " + askedFor);
+    MP_CHECK(fs::equivalent(mp::pathOf(startedIn), base, ec), "the chooser opens where the organ is kept: " + startedIn);
+    MP_CHECK(picked.missing == 0 && picked.voices == 2, "the package's own folder picked plays: " +
+                                                            std::to_string(picked.missing) + " missing");
+    auto again = load(nullptr);
+    MP_CHECK(asked == 1 && again.missing == 0, "and kept: not asked again");
+    fs::remove_all(base, ec);
+  }
+};
+static PackagesBesideOrganTest g_packagesBesideOrgan;
 
 // An organ whose folders and archive are named outside ASCII. On Windows a
 // path made from a UTF-8 string went through the system's code page: the
