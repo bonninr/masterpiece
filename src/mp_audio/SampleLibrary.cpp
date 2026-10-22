@@ -1,4 +1,5 @@
 #include "SampleLibrary.h"
+#include "DataFolder.h"
 #include "../mp_core/Utf8Path.h"
 #include "PathCase.h"
 #include "WavPackFormat.h"
@@ -1072,8 +1073,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           (archive_ == nullptr ||
            archive_->find(std::filesystem::path(resolvePath("", ref.fileName, 1)).generic_string()) == nullptr)) {
         const juce::File dir = standardNoiseDir_.empty()
-                                   ? juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                         .getChildFile("Masterpiece")
+                                   ? mp::dataFolder()
                                          .getChildFile("Standard noises")
                                    : juce::File(standardNoiseDir_);
         const auto made = standardNoiseFor(ref.fileName, dir);

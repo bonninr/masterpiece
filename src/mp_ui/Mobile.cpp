@@ -8,6 +8,7 @@
 #include <algorithm>
 
 #include "../mp_archive/OrganArchive.h"
+#include "../mp_audio/DataFolder.h"
 
 #if JUCE_ANDROID
  #include <map>
@@ -68,8 +69,7 @@ bool isMobilePackage(const juce::String& fileName) {
 }
 
 juce::File importedOrgansFolder() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("Organs");
 }
 
@@ -248,8 +248,7 @@ int openLinkedDocument(const std::string& path) {
 }  // namespace
 
 juce::File linkedFolder() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("Linked");
 }
 
@@ -478,8 +477,7 @@ namespace {
 // The size each kind of dialog was last left at (#153), one "kind=w h" line
 // each, beside the main window's own place.
 juce::File dialogSizesFile() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("dialogs.txt");
 }
 

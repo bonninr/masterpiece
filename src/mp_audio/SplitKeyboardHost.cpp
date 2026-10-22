@@ -1,4 +1,5 @@
 #include "SplitKeyboardHost.h"
+#include "DataFolder.h"
 
 #include <algorithm>
 
@@ -14,8 +15,7 @@ std::string lower(std::string s) {
 }  // namespace
 
 juce::File SplitKeyboardHost::sharedFile() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("split-keyboard.txt");
 }
 

@@ -1,6 +1,7 @@
 #include "JackMidi.h"
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
+#include "../../src/mp_audio/DataFolder.h"
 
 #if JUCE_LINUX
  #include <dlfcn.h>
@@ -11,8 +12,7 @@ namespace {
 // Where the port's connections are kept between runs (#249): one source port
 // name a line, as JACK names it ("MuseScore:mscore-midi-1").
 juce::File connectionsFile() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("jack-connections.txt");
 }
 }  // namespace

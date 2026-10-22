@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "../mp_audio/DataFolder.h"
 
 #include <cmath>
 #include <map>
@@ -3143,8 +3144,7 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
   out.add("Checked " + juce::Time::getCurrentTime().toISO8601(true));
   out.add({});
 
-  const auto data = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                        .getChildFile("Masterpiece");
+  const auto data = mp::dataFolder();
   folder("Settings folder", data);
   folder("Sample cache", p.cacheDirectory());
   if (p.cacheDirectorySetting() != juce::File() && p.cacheDirectorySetting() != p.cacheDirectory())

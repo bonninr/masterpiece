@@ -2,6 +2,7 @@
 #include "MpScoreFonts.h"
 #include "Mobile.h"
 #include "../mp_audio/MasterpieceProcessor.h"
+#include "../mp_audio/DataFolder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -199,8 +200,7 @@ bool registerScoreFonts() {
 }
 
 juce::File scoreResourceFolder() {
-  const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                          .getChildFile("Masterpiece")
+  const auto folder = mp::dataFolder()
                           .getChildFile("Score fonts");
   if (folder.getChildFile(".complete").existsAsFile()) return folder;
   return unpackScoreFonts(folder) ? folder : juce::File();

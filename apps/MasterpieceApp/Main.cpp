@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
+#include "../../src/mp_audio/DataFolder.h"
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/OrganSettings.h"
 #include "../../src/mp_ui/Settings.h"
@@ -254,8 +255,7 @@ public:
     // else's machine, this file is what they can send. This session's, and
     // the one before it, so a crash does not lose the run that crashed.
     if (logger_ == nullptr) {
-      const auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                           .getChildFile("Masterpiece");
+      const auto dir = mp::dataFolder();
       dir.createDirectory();
       const auto current = dir.getChildFile("masterpiece.log");
       if (current.existsAsFile()) current.moveFileTo(dir.getChildFile("masterpiece.previous.log"));
@@ -897,15 +897,12 @@ public:
   // Beside the player's own data, with the organ settings and the MIDI maps.
   // Where the main window was, and whether maximised, as JUCE writes it.
   static juce::File windowStateFile() {
-    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-        .getChildFile("Masterpiece")
+    return mp::dataFolder()
         .getChildFile("window.txt");
   }
 
   static juce::File audioSettingsFile() {
-    return juce::File::getSpecialLocation(
-               juce::File::userApplicationDataDirectory)
-        .getChildFile("Masterpiece")
+    return mp::dataFolder()
         .getChildFile("audio.xml");
   }
 
