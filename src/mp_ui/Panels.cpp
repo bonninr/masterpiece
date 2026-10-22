@@ -185,6 +185,28 @@ static std::string withoutCategory(const std::string& name) {
   return out;
 }
 
+// What a name says once the organ's bookkeeping is taken off, to tell a
+// stop's knob drawn again on another page from a control of its own:
+// "11. HW  Principal 8'" and " GO: Montre 16 (Stop Screen)" are the stops
+// "HW  Principal 8'" and "GO: Montre 16". The organ's number in front, the
+// page in brackets (cut short or not), categories, case and spacing go.
+static std::string nameKey(const std::string& name) {
+  std::string n = name;
+  const auto first = n.find_first_not_of(' ');
+  n.erase(0, first == std::string::npos ? n.size() : first);
+  size_t digits = 0;
+  while (digits < n.size() && std::isdigit(static_cast<unsigned char>(n[digits])) != 0) ++digits;
+  if (digits > 0 && digits < n.size() && n[digits] == '.') n.erase(0, digits + 1);
+  n.erase(0, std::min(n.size(), n.find_first_not_of(' ')));
+  n = withoutCategory(n);
+  if (const auto bracket = n.find('('); bracket != std::string::npos && bracket > 0) n.erase(bracket);
+  std::string key;
+  for (const char ch : n)
+    if (std::isalnum(static_cast<unsigned char>(ch)) != 0)
+      key += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  return key;
+}
+
 std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
   const auto& m = p.organModel();
   std::vector<PanelSection> divisions;
@@ -357,6 +379,89 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       sectionFor(c->divisionId).elements.push_back(std::move(e));
     else
       presets.elements.push_back(std::move(e));
+  }
+
+  // A drawn knob that sounds pipes of its own, a blower or a Zimbelstern
+  // (#518): it opens a pipe's pallet, and is no stop's knob drawn again on
+  // another page. A key and a piston have places of their own.
+  {
+    std::set<Id> pistonGroups;
+    for (const Combination* c : combos)
+      if (const Id sw = pistonSwitch(c); sw != 0) pistonGroups.insert(root(sw));
+    std::map<Id, std::set<Id>> palletRanks;  // a pallet switch, and the ranks whose pipes it opens
+    for (const auto& [rid, rank] : m.ranks)
+      for (const auto& pipe : rank.pipes)
+        if (pipe.palletSwitchId != 0) palletRanks[pipe.palletSwitchId].insert(rid);
+    std::map<Id, std::vector<Id>> linkedTo;
+    for (const auto& l : m.switchLinkages) linkedTo[l.sourceSwitchId].push_back(l.destSwitchId);
+    // The switches within five linkages of one, itself included.
+    const auto within = [&linkedTo](Id from) {
+      std::vector<Id> frontier{from};
+      std::set<Id> seen{from};
+      for (int hop = 0; hop < 5 && !frontier.empty(); ++hop) {
+        std::vector<Id> next;
+        for (Id s : frontier)
+          if (const auto l = linkedTo.find(s); l != linkedTo.end())
+            for (Id d : l->second)
+              if (seen.insert(d).second) next.push_back(d);
+        frontier.swap(next);
+      }
+      return seen;
+    };
+    const auto ranksOpened = [&palletRanks](const std::set<Id>& switches) {
+      std::set<Id> ranks;
+      for (Id s : switches)
+        if (const auto it = palletRanks.find(s); it != palletRanks.end())
+          ranks.insert(it->second.begin(), it->second.end());
+      return ranks;
+    };
+    const auto meets = [](const std::set<Id>& a, const std::set<Id>& b) {
+      return std::any_of(a.begin(), a.end(), [&b](Id x) { return b.count(x) != 0; });
+    };
+    std::set<Id> stopKnobs = stopSwitches;
+    std::set<std::string> named;  // what a stop or a button already shown is called
+    for (const auto& [sid, stop] : m.stops) {
+      if (stop.controllingSwitchId != 0) stopKnobs.insert(stop.controllingSwitchId);
+      named.insert(nameKey(stop.name));
+    }
+    const auto nameShown = [&named](const PanelSection& s) {
+      for (const auto& e : s.elements) {
+        named.insert(nameKey(e.name + " " + e.footage));
+        named.insert(nameKey(s.title + " " + e.name + " " + e.footage));
+      }
+    };
+    for (const auto& s : divisions) nameShown(s);
+    nameShown(other);
+    nameShown(presets);
+    // A stop's knob clicks its stop action: those noises are ranks of their
+    // own, and a knob drawn for a stop the set leaves out opens only them.
+    std::set<Id> actionRanks;
+    std::map<Id, std::set<Id>> drawnReach;
+    for (Id id : switchIds)
+      if (m.switches.at(id).dispInstanceId != 0) {
+        auto& reach = drawnReach[id] = within(id);
+        if (meets(reach, stopKnobs))
+          for (Id r : ranksOpened(reach)) actionRanks.insert(r);
+      }
+    for (const auto& [id, reach] : drawnReach) {
+      const auto& sw = m.switches.at(id);
+      if (!sw.clickable || !sw.latching || stopSwitches.count(id) != 0) continue;
+      if (sw.name.empty() || sw.name[0] == '_' || m.keyboardKeys.count(id) != 0) continue;
+      const Id group = root(id);
+      if (stopGroups.count(group) != 0 || groupsShown.count(group) != 0 || pistonGroups.count(group) != 0)
+        continue;
+      if (meets(reach, stopKnobs)) continue;
+      const std::set<Id> opened = ranksOpened(reach);
+      if (std::none_of(opened.begin(), opened.end(), [&](Id r) { return actionRanks.count(r) == 0; })) continue;
+      const std::string key = nameKey(groupName[group]);
+      if (key.empty() || !named.insert(key).second) continue;
+      groupsShown.insert(group);
+      PanelElement e;
+      e.kind = PanelElement::Kind::Switch;
+      e.id = id;
+      splitFootage(withoutCategory(groupName[group]), e.name, e.footage);
+      other.elements.push_back(std::move(e));
+    }
   }
 
   // Expression: the shoe each enclosure is worked by, and the crescendo.
