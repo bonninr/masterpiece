@@ -758,6 +758,8 @@ public:
         "<o><a>3</a><b>cond</b></o></ObjectList>"
         "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>1</a><b>2</b><c>3</c></o></ObjectList>"
         "<ObjectList ObjectType=\"KeyboardKey\"><o><a>1</a><b>1</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\"><o><a>5</a><b>35059</b><c>59</c></o>"
+        "<o><a>5</a><b>35060</b></o><o><a>5</a><b>35061</b><c>61</c></o></ObjectList>"
         "<ObjectList ObjectType=\"ContinuousControl\">"
         "<o><a>10</a><b>x</b></o><o><a>11</a><b>y</b></o><o><a>12</a><b>z</b></o>"
         "</ObjectList>"
@@ -793,6 +795,13 @@ public:
              "an absent condition sense is 'while disengaged'");
     MP_CHECK(m.keyboardKeys.count(1) && m.keyboardKeys.at(1).midiNote == 60,
              "a key with no note written is middle C, not dropped");
+    {
+      std::map<mp::Id, int> inputNote;
+      for (const auto& in : m.divisionInputs) inputNote[in.switchId] = in.midiNote;
+      MP_CHECK(inputNote.size() == 3 && inputNote[35059] == 59 && inputNote[35060] == 60 &&
+                   inputNote[35061] == 61,
+               "a division input with no note written is middle C, as Ashton writes it (#517, #521)");
+    }
     MP_CHECK(m.controlDoubleLinkages.size() == 1 &&
                  m.controlDoubleLinkages[0].operationCode == 3,
              "a double linkage with no operation written multiplies, not dropped");
