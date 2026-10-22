@@ -2476,7 +2476,8 @@ private:
   // setRealtimeThreads(): the switch, the device's workgroup, the length of a
   // block, which the scheduler is told a share may take, and a count moved on
   // each change, which the audio thread compares with the one it last saw.
-  std::atomic<bool> realtimeThreads_{false};
+  // On wherever the system has them, since 0.9.0.
+  std::atomic<bool> realtimeThreads_{realtimeThreadsSupported()};
   std::mutex workgroupMutex_;
   juce::AudioWorkgroup workgroup_;
   std::atomic<double> blockSeconds_{0.0};

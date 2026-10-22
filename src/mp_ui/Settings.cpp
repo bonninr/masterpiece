@@ -471,8 +471,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     showFasterUnit();
   };
   showFasterUnit();
-  // Real-time render threads, off until players have tried it. Android gives
-  // an app no way to have them.
+  // Real-time render threads, on by default. Android gives an app no way to
+  // have them.
   if (MasterpieceProcessor::realtimeThreadsSupported())
     addAndMakeVisible(realtime_);
   else
@@ -480,9 +480,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   realtime_.setToggleState(proc_.realtimeThreads(), juce::dontSendNotification);
   realtime_.setTooltip(TRANS("Makes the threads that render the organ real-time threads, so the system runs "
                              "them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO or rtkit on Linux, "
-                             "the audio workgroup on macOS. Off by default while it is tried. If the late blocks "
-                             "in the status bar go down or up with it on, please tell us in the discussion on "
-                             "GitHub."));
+                             "the audio workgroup on macOS."));
   realtime_.onClick = [this] {
     proc_.setRealtimeThreads(realtime_.getToggleState());
     showRealtimeUnit();
@@ -705,11 +703,11 @@ void EnginePanel::showFasterUnit() {
 // Says how real-time threads are had here, or that the system gives none, so a
 // player on Linux without the rights sees it where the box is.
 void EnginePanel::showRealtimeUnit() {
-  const juce::String base = TRANS("Real-time render threads (trial)");
+  const juce::String base = TRANS("Real-time render threads");
   const juce::String how = MasterpieceProcessor::realtimeMethod();
   realtime_.setButtonText(!proc_.realtimeThreads() ? base
-                          : how.isNotEmpty()       ? TRANS("Real-time render threads (trial): using %1").replace("%1", how)
-                                                   : TRANS("Real-time render threads (trial): no real-time rights "
+                          : how.isNotEmpty()       ? TRANS("Real-time render threads: using %1").replace("%1", how)
+                                                   : TRANS("Real-time render threads: no real-time rights "
                                                            "on this system"));
 }
 

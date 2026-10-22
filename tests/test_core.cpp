@@ -17633,6 +17633,48 @@ public:
 };
 static FasterEngineSwitchTest g_fasterEngineSwitch;
 
+// Real-time render threads are on by default wherever the system has them
+// (0.9.0). A player who turns them off finds them off at the next start; a
+// settings file from before, which names them only when on, starts with them on.
+class RealtimeThreadsDefaultTest final : public mp::test::Test {
+public:
+  RealtimeThreadsDefaultTest() : Test("functional.engine.realtime-default", Category::Functional) {}
+  void run() override {
+    const bool supported = mp::MasterpieceProcessor::realtimeThreadsSupported();
+    mp::MasterpieceProcessor proc;
+    const juce::File global = proc.globalSettingsFile();
+    const bool had = global.existsAsFile();
+    const juce::String kept = had ? global.loadFileAsString() : juce::String();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.realtimeThreads() == supported, "a program never told has them wherever the system has them");
+
+    proc.setRealtimeThreads(false);
+    MP_CHECK(global.loadFileAsString().contains("realtimethreads 0"), "turned off, that is saved");
+    {
+      mp::MasterpieceProcessor next;
+      next.loadGlobalDefaults();
+      MP_CHECK(!next.realtimeThreads(), "and the next start finds them off");
+    }
+    proc.setRealtimeThreads(true);
+    MP_CHECK(global.loadFileAsString().contains("realtimethreads 1"), "turned on, that is saved too");
+
+    // A file written before 0.9.0 has no line for them while they are off.
+    juce::String older;
+    for (const auto& line : juce::StringArray::fromLines(global.loadFileAsString()))
+      if (!line.startsWith("realtimethreads")) older << line << "\n";
+    global.replaceWithText(older);
+    {
+      mp::MasterpieceProcessor next;
+      next.loadGlobalDefaults();
+      MP_CHECK(next.realtimeThreads() == supported, "a file without the line starts with them on");
+    }
+    proc.setRealtimeThreads(false);
+    if (had) global.replaceWithText(kept);
+    else global.deleteFile();
+  }
+};
+static RealtimeThreadsDefaultTest g_realtimeThreadsDefault;
+
 // How long a key was held decides which release a set's pipe plays: Nancy
 // records a release after short, medium and held notes (#120). Nothing
 // measured the hold time, so every release was chosen as if the key had been
