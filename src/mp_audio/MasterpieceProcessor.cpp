@@ -1,4 +1,5 @@
 #include "MasterpieceProcessor.h"
+#include "DataFolder.h"
 #include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/GrandOrgueImport.h"
@@ -1488,8 +1489,7 @@ juce::File MasterpieceProcessor::organFileForSaving(
   if (loadedOdf_.getFullPathName().isEmpty()) return {};
   // Always the organ's own identity, even when a legacy file was read: the
   // point of the migration is that it happens once.
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile(folder)
       .getChildFile(juce::String(organKey()) + extension);
 }
@@ -1501,8 +1501,7 @@ juce::File MasterpieceProcessor::organFile(const juce::File& odf,
   // Beside the player's own data, never inside the sample set: writing into a
   // licensed package is not ours to do.
   const auto dir =
-      juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-          .getChildFile("Masterpiece")
+      mp::dataFolder()
           .getChildFile(folder);
 
   // Named by the organ's own identity, so moving or renaming the sample set
@@ -2340,7 +2339,7 @@ juce::File MasterpieceProcessor::globalSettingsFile() const {
 }
 
 juce::File MasterpieceProcessor::settingsRoot() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Masterpiece");
+  return mp::dataFolder();
 }
 
 void MasterpieceProcessor::saveEverythingPending() {
@@ -3032,8 +3031,7 @@ void MasterpieceProcessor::setCacheDirectoryForTests(const juce::File& dir) { te
 
 juce::File MasterpieceProcessor::defaultCacheDirectory() {
   if (testCacheDirectory().getFullPathName().isNotEmpty()) return testCacheDirectory();
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("cache");
 }
 
@@ -3138,8 +3136,7 @@ bool MasterpieceProcessor::saveMasterGainIfDirty() {
 }
 
 juce::File MasterpieceProcessor::consoleMidiFile() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("midi")
       .getChildFile("console.mpmidi");
 }
@@ -5819,8 +5816,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
 
   // An archive joined to the organ's: its index kept beside the organ, or the
   // one kept when that organ was opened itself, so it is walked once.
-  const juce::File packagedRoot = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                      .getChildFile("Masterpiece")
+  const juce::File packagedRoot = mp::dataFolder()
                                       .getChildFile("Packaged");
   auto joinSource = [&](const std::string& source) {
     if (archive != nullptr)
@@ -7524,8 +7520,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
 }
 
 juce::File MasterpieceProcessor::portableRoot() {
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-      .getChildFile("Masterpiece")
+  return mp::dataFolder()
       .getChildFile("Portable");
 }
 
@@ -7710,8 +7705,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
   if (!inspected) return fail(why);
   // Named by the archives themselves, so the same packages open the same
   // folder -- and the organ keeps its settings -- however they were reached.
-  const juce::File dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                             .getChildFile("Masterpiece")
+  const juce::File dir = mp::dataFolder()
                              .getChildFile("Packaged")
                              .getChildFile(archive.identity());
   const std::string index = dir.getChildFile("archive-index.txt").getFullPathName().toStdString();

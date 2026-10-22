@@ -39,6 +39,7 @@
 #endif
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_audio/AudioRecorder.h"
+#include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_audio/SampleLibrary.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #endif
@@ -13954,8 +13955,7 @@ public:
                  versionFromAnswer("{\"tag_name\":\"nightly\"}").isEmpty() && versionFromAnswer("").isEmpty(),
              "a portal's page, a refusal, a tag that is not a version, and nothing, give nothing");
 
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     {
@@ -13981,8 +13981,7 @@ class MetronomeKeptTest final : public mp::test::Test {
 public:
   MetronomeKeptTest() : Test("functional.settings.metronome-kept", Category::Functional) {}
   void run() override {
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     {
@@ -14012,8 +14011,7 @@ class RemoteLocalKeptTest final : public mp::test::Test {
 public:
   RemoteLocalKeptTest() : Test("functional.settings.remote-local-kept", Category::Functional) {}
   void run() override {
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     {
@@ -14160,8 +14158,7 @@ class VoicingEqDefaultTest final : public mp::test::Test {
 public:
   VoicingEqDefaultTest() : Test("functional.settings.voicing-eq-default", Category::Functional) {}
   void run() override {
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-eq-default");
@@ -14255,8 +14252,7 @@ public:
     MP_CHECK(!read.readLine("5 0 0 0 0 0 0 0 0 0 0 0 Not mine"), "an id of the program's is not taken from the file");
 
     // Through the processor and the general settings file.
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     int id = 0;
@@ -14772,8 +14768,7 @@ class ConsoleDisplayKeptTest final : public mp::test::Test {
 public:
   ConsoleDisplayKeptTest() : Test("functional.midi.console-display-kept", Category::Functional) {}
   void run() override {
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     {
@@ -15039,8 +15034,7 @@ class MidiOutputKeptTest final : public mp::test::Test {
 public:
   MidiOutputKeptTest() : Test("functional.midi.output-kept", Category::Functional) {}
   void run() override {
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     {
@@ -16747,6 +16741,45 @@ public:
   }
 };
 static TestCacheApartTest g_testCacheApart;
+
+// The suite's settings are its own too. A test that changed a global setting
+// left it in the player's settings.mpglobal: a limiter at -1 dB, a test
+// organ's folder in the library.
+class TestDataApartTest final : public mp::test::Test {
+public:
+  TestDataApartTest() : Test("functional.settings.tests-apart", Category::Functional) {}
+  void run() override {
+    const auto player = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                            .getChildFile("Masterpiece");
+    const auto playerFile = player.getChildFile("settings.mpglobal");
+    const bool had = playerFile.existsAsFile();
+    const juce::String before = had ? playerFile.loadFileAsString() : juce::String();
+
+    MP_CHECK(mp::dataFolder() != player && !mp::dataFolder().isAChildOf(player),
+             "the suite keeps its settings in " + mp::dataFolder().getFullPathName().toStdString());
+    const auto suiteFile = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool suiteHad = suiteFile.existsAsFile();
+    const juce::String suiteBefore = suiteHad ? suiteFile.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor p;
+      MP_CHECK(p.globalSettingsFile() == suiteFile,
+               "the processor saves to " + p.globalSettingsFile().getFullPathName().toStdString());
+      p.setLimiterEnabled(true);
+      p.setLimiterCeilingDb(-7.0f);
+      p.saveEverythingPending();
+      MP_CHECK(suiteFile.loadFileAsString().contains("limiter 1 -7.0"),
+               "the setting is saved in the suite's own file");
+    }
+    // The limiter stays out of the tests after this one.
+    if (suiteHad)
+      suiteFile.replaceWithText(suiteBefore);
+    else
+      suiteFile.deleteFile();
+    MP_CHECK(playerFile.existsAsFile() == had && (!had || playerFile.loadFileAsString() == before),
+             "the player's settings.mpglobal is as it was");
+  }
+};
+static TestDataApartTest g_testDataApart;
 #endif // MP_TEST_HAS_AUDIO
 
 int main(int argc, char** argv) {
@@ -16759,7 +16792,12 @@ int main(int argc, char** argv) {
       filter = mp::test::Category::Functional;
   }
 #ifdef MP_TEST_HAS_AUDIO
-  // The suite's sample cache, apart from the player's.
+  // The suite's settings, emptied for each run, and its sample cache, both
+  // apart from the player's: what a test saves never reaches the player.
+  const auto data = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-tests-data");
+  data.deleteRecursively();
+  data.createDirectory();
+  mp::setDataFolder(data);
   const auto cache = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-tests-cache");
   cache.createDirectory();
   mp::MasterpieceProcessor::setCacheDirectoryForTests(cache);

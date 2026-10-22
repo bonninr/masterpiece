@@ -19,6 +19,7 @@ add_library(mp_audio STATIC
   ScorePlayer.h ScorePlayer.cpp
   MidiArchive.h MidiArchive.cpp
   SplitKeyboardHost.h SplitKeyboardHost.cpp
+  DataFolder.h DataFolder.cpp
   Convolver.h Convolver.cpp
   Translations.h Translations.cpp
   SettingsArchive.h SettingsArchive.cpp

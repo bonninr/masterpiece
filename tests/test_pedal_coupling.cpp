@@ -9,6 +9,7 @@
 #include "../src/mp_api/ControlModel.h"
 #endif
 #include "../src/mp_audio/MasterpieceProcessor.h"
+#include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_control/PedalCoupling.h"
 
 #include <string>
@@ -118,8 +119,7 @@ public:
   PedalCouplingOrganTest() : Test("functional.pedal-coupling.organ", Category::Functional) {}
   void run() override {
     // The switch is kept in the global file: put that back as it was.
-    const juce::File global = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                  .getChildFile("Masterpiece").getChildFile("settings.mpglobal");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
     const bool had = global.existsAsFile();
     juce::MemoryBlock before;
     if (had) global.loadFileAsData(before);
