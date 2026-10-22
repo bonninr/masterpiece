@@ -5573,6 +5573,21 @@ void MasterpieceProcessor::findPalletStops() {
       palletStops_.insert(stopId);
 }
 
+void MasterpieceProcessor::findControlStops() {
+  controlStops_.clear();
+  std::unordered_set<Id> works;
+  for (const auto& ka : model_.keyActions)
+    if (ka.conditionSwitchId != 0) works.insert(ka.conditionSwitchId);
+  for (const auto& [tremulantId, tremulant] : model_.tremulants)
+    if (tremulant.controllingSwitchId != 0) works.insert(tremulant.controllingSwitchId);
+  for (const auto& [stopId, stop] : model_.stops)
+    for (const auto& entry : stop.ranks)
+      if (entry.alternateSwitchId != 0) works.insert(entry.alternateSwitchId);
+  if (works.empty()) return;
+  for (const auto& [stopId, stop] : model_.stops)
+    if (stop.ranks.empty() && works.count(stop.controllingSwitchId) != 0) controlStops_.insert(stopId);
+}
+
 // A division the organ plays from its keys through switches: each key's
 // switch drives the input for its note, and a unison off is the condition on
 // that link (Hill, Burton-Berlin, #345). For each keyboard, the key switches
@@ -7432,6 +7447,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     juce::Logger::writeToLog("load: " + juce::String((int)unshippedRanks_.size()) +
                              " rank(s) list pipes and ship no samples; their stops are not available");
   findPalletStops();
+  findControlStops();
   std::unordered_set<Id> silent;
   lockedStops_.clear();
   for (const auto& e : stopList()) {
@@ -7670,8 +7686,10 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
     // A stop whose ranks have no pipes cannot sound. Demo sets are full of
     // them, and a console that shows no difference between a stop that works
     // and one that was never shipped is actively misleading. A stop wired to
-    // its pipes' pallets plays them too.
-    e.playable = palletStops_.count(id) != 0;
+    // its pipes' pallets plays them too, and one that works a coupler or a
+    // tremulant is a control in its own right.
+    e.control = controlStops_.count(id) != 0;
+    e.playable = palletStops_.count(id) != 0 || e.control;
     for (const auto& entry : stop.ranks) {
       const auto rit = model_.ranks.find(entry.rankId);
       if (rit != model_.ranks.end() && !rit->second.pipes.empty() && unshippedRanks_.count(entry.rankId) == 0) {

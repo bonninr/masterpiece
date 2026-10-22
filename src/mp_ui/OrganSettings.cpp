@@ -176,7 +176,8 @@ void StopsLoadPanel::build() {
     row.effect = effect;
     row.toggle = std::make_unique<juce::ToggleButton>(juce::String(s.name));
     row.toggle->setToggleState(excluded.count(s.stopId) == 0, juce::dontSendNotification);
-    row.toggle->setEnabled(s.playable);
+    // A coupler or a tremulant has no samples to leave out.
+    row.toggle->setEnabled(s.playable && !s.control);
     if (!s.playable) row.toggle->setTooltip(TRANS("This stop's ranks ship no pipes in this sample set"));
     row.toggle->addMouseListener(this, false);
     row.toggle->addKeyListener(this);
