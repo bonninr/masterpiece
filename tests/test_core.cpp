@@ -18005,6 +18005,82 @@ public:
 };
 static PanelCopiesTest g_panelCopies;
 
+// A drawn knob that opens a pipe's pallet of its own, a blower or a
+// Zimbelstern, is a button in Other (#518). A stop's knob drawn again on
+// another page under the organ's number or the page's name is not, and a
+// blower drawn twice is one button.
+class PanelOwnPipesTest final : public mp::test::Test {
+public:
+  PanelOwnPipesTest() : Test("functional.ui.panel-own-pipes", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool drawn) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name +
+             "</Name><Latching>Y</Latching><Clickable>" + (drawn ? "Y" : "N") + "</Clickable>" +
+             (drawn ? "<Disp_ImageSetInstanceID>" + std::to_string(id) + "</Disp_ImageSetInstanceID>" : std::string()) +
+             "</Switch>";
+    };
+    auto link = [](int from, int to) {
+      return "<SwitchLinkage><SourceSwitchID>" + std::to_string(from) + "</SourceSwitchID><DestSwitchID>" +
+             std::to_string(to) + "</DestSwitchID><SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged>"
+             "<EngageLinkActionCode>1</EngageLinkActionCode><DisengageLinkActionCode>2</DisengageLinkActionCode>"
+             "</SwitchLinkage>";
+    };
+    auto pipe = [](int id, int rank, int pallet) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+             "</RankID>"
+             "<ControllingPalletSwitchID>" + std::to_string(pallet) + "</ControllingPalletSwitchID>"
+             "<NormalMIDINoteNumber>" + std::to_string(id % 100) + "</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+    };
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_UniqueOrganID>315</Identification_UniqueOrganID>"
+        "<Identification_Name>Own pipes</Identification_Name></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>1</KeyboardID><Name>Great</Name>"
+        "<DefaultInputOutputKeyboardAsgnCode>2</DefaultInputOutputKeyboardAsgnCode>"
+        "<Hint_PrimaryAssociatedDivisionID>1</Hint_PrimaryAssociatedDivisionID></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(2224, "Principal 8", true) + sw(2225, "Principal 8 sounds", false) + sw(700, "Blower", true) +
+        sw(702, "Blower (Tab 2)", true) + sw(701, "Blower noise", false) + sw(800, "11. Principal 8 (Tab 2)", true) +
+        sw(801, "Principal 8 action", false) + sw(900, "Montre 16 (Stop Screen)", true) +
+        sw(901, "Montre 16 action", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + link(700, 701) + link(702, 701) + link(800, 801) +
+        link(2224, 2225) + link(2224, 801) + link(900, 901) +
+        "</ObjectList><ObjectList ObjectType=\"Stop\"><Stop><StopID>1</StopID><Name>Principal 8</Name>"
+        "<DivisionID>1</DivisionID><ControllingSwitchID>2225</ControllingSwitchID></Stop></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>2</RankID><Name>Blower</Name></Rank>"
+        "<Rank><RankID>3</RankID><Name>Stop action</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipe(236, 2, 701) + pipe(237, 3, 801) + pipe(238, 3, 901) +
+        "</ObjectList></Hauptwerk>";
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-panel-own-pipes");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("own-pipes.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      std::vector<std::string> labels;
+      for (const auto& s : mp::ui::panelSections(proc))
+        for (const auto& e : s.elements) labels.push_back(e.name + (e.footage.empty() ? "" : " " + e.footage));
+      std::string all;
+      for (const auto& l : labels) all += " [" + l + "]";
+      auto count = [&](const std::string& part) {
+        return std::count_if(labels.begin(), labels.end(),
+                             [&](const std::string& l) { return l.find(part) != std::string::npos; });
+      };
+      MP_CHECK(count("Blower") == 1, "the blower drawn twice is one button:" + all);
+      MP_CHECK(count("11.") == 0 && count("Principal 8 (") == 0,
+               "the stop's copy on another page is no second button:" + all);
+      MP_CHECK(count("Montre") == 0, "a knob that only clicks a stop action is no button:" + all);
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static PanelOwnPipesTest g_panelOwnPipes;
+
 // The Log tab's checks, the text a phone or tablet player sends with a report
 // (#197): the folders Masterpiece writes to, the audio, the organ.
 class DiagnosticsReportTest final : public mp::test::Test {
