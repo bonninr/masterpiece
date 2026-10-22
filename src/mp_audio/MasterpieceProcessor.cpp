@@ -3199,6 +3199,17 @@ void MasterpieceProcessor::applyConsoleMidi() {
     }
   for (const auto& b : own.bindings())
     if (taken.count(b.source) == 0) midiMap_.bindFrom(own, b);
+  // The console's lamps and computer keys come with it too. Only its buttons
+  // came before: on an organ with no file of its own, or one saved before the
+  // lamp was set, the recorder's lamps stayed dark. A target the console has
+  // none for keeps what the organ's file gave it, as its buttons do.
+  std::set<std::pair<MidiTargetKind, Id>> lit, keyed;
+  for (const auto& s : console.sends())
+    if (MidiMap::isConsoleTarget(s.targetKind)) lit.insert({s.targetKind, s.targetId});
+  for (const auto& [kind, id] : lit) midiMap_.setSendsFor(kind, id, console.sendsFor(kind, id));
+  for (const auto& k : console.shortcuts())
+    if (MidiMap::isConsoleTarget(k.targetKind)) keyed.insert({k.targetKind, k.targetId});
+  for (const auto& [kind, id] : keyed) midiMap_.setShortcutsFor(kind, id, console.shortcutsFor(kind, id));
 }
 
 int MasterpieceProcessor::consoleRoleOf(Id keyboardId) const {
@@ -3234,6 +3245,10 @@ bool MasterpieceProcessor::loadMidiMap() {
   // The last organ's stops and shoes go: their switch and control numbers
   // mean other things here. They lingered when this organ had no file.
   midiMap_.removeBindings([](const MidiBinding&) { return true; });
+  // Their lamps and computer keys as well.
+  for (const auto s : std::vector<MidiSend>(midiMap_.sends())) midiMap_.setSendsFor(s.targetKind, s.targetId, {});
+  for (const auto k : std::vector<KeyShortcut>(midiMap_.shortcuts()))
+    midiMap_.setShortcutsFor(k.targetKind, k.targetId, {});
   const auto f = midiMapFileFor(loadedOdf_);
   // Nothing saved for this organ: the player's own console, when there is one.
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) {
