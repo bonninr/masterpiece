@@ -996,3 +996,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "over" = "durante"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Cada tubo empieza así de más fuerte, o más suave, y llega a su propio nivel: más o menos chiff. 0 dB es apagado. Se oye desde la próxima nota; se guarda con el órgano."
 "How long the attack's emphasis lasts" = "Cuánto dura el énfasis del ataque"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "La caché de muestras de esta carpeta: %1. Cada órgano vuelve a leer sus muestras en su próxima carga."
+"No sample cache in this folder" = "No hay caché de muestras en esta carpeta"
+"Delete the cache" = "Borrar la caché"
+"sample cache not saved: the disk is full" = "caché de muestras no guardada: el disco está lleno"
+"sample cache not saved" = "caché de muestras no guardada"

@@ -1,6 +1,6 @@
 // Open: the player's favourite organs, then any other (#276).
 //
-// What the Open button shows once there is a favourite: the list, in slot
+// What the Open button shows once there is a favourite or an organ loaded: the list, in slot
 // order, to open with one touch; a search over it; each one moved up or down
 // the list, renamed or removed; the organ now loaded added; and the file
 // dialog for an organ that is not a favourite. Everything to do with getting
@@ -27,7 +27,7 @@ public:
   void paint(juce::Graphics& g) override;
   void visibilityChanged() override;
   // Show the window, or go straight to the file dialog when there is no
-  // favourite to show.
+  // favourite to show and no organ loaded to add.
   static void show(MasterpieceProcessor& p, std::function<void(const juce::File&)> open,
                    std::function<void()> browse);
 

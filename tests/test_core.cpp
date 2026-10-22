@@ -14490,6 +14490,122 @@ public:
 };
 static MetronomeKeptTest g_metronomeKept;
 
+// A save on a full disk leaves the settings as they were (#519). It needs a
+// small file system of its own to fill, named by MP_FULL_DISK_DIR (a tmpfs
+// of a few megabytes); without one the test has nothing to fill and passes.
+class FullDiskSettingsTest final : public mp::test::Test {
+public:
+  FullDiskSettingsTest() : Test("functional.settings.full-disk", Category::Functional) {}
+  void run() override {
+    const juce::String dir = juce::SystemStats::getEnvironmentVariable("MP_FULL_DISK_DIR", {});
+    if (dir.isEmpty()) return;
+    const juce::File disk(dir);
+    const juce::File data = disk.getChildFile("data");
+    const juce::File filler = disk.getChildFile("filler");
+    data.deleteRecursively();
+    filler.deleteFile();
+    MP_CHECK(data.createDirectory(), "the settings folder is made on the small disk");
+    const juce::File previous = mp::dataFolder();
+    mp::setDataFolder(data);
+    {
+      mp::MasterpieceProcessor proc;
+      proc.metronome().setTempo(72.0);
+      proc.rememberMetronome();
+      const juce::File global = proc.globalSettingsFile();
+      const juce::String saved = global.loadFileAsString();
+      MP_CHECK(saved.contains("Masterpiece defaults"), "the settings are saved while there is room");
+      // Every byte taken, as the reporter's cache took them.
+      if (std::FILE* fp = std::fopen(filler.getFullPathName().toRawUTF8(), "wb"); fp != nullptr) {
+        std::setvbuf(fp, nullptr, _IONBF, 0);
+        std::vector<char> block(1 << 20, 'x');
+        for (size_t n = block.size(); n > 0; n /= 2)
+          while (std::fwrite(block.data(), 1, n, fp) == n) {
+          }
+        std::fclose(fp);
+      }
+      proc.metronome().setTempo(96.0);
+      proc.rememberMetronome();
+      const juce::String after = global.loadFileAsString();
+      juce::Array<juce::File> left;
+      global.getParentDirectory().findChildFiles(left, juce::File::findFiles, false, "*");
+      filler.deleteFile();
+      MP_CHECK(after == saved, "a save on a full disk leaves the settings as they were: " +
+                                   std::to_string(after.length()) + " of " + std::to_string(saved.length()) +
+                                   " characters");
+      MP_CHECK(left.size() == 1, "and leaves no part-written file beside them: " + std::to_string(left.size()));
+    }
+    mp::setDataFolder(previous);
+    data.deleteRecursively();
+  }
+};
+static FullDiskSettingsTest g_fullDiskSettings;
+
+// A sample cache the disk has no room for is not left half written: its part
+// file goes, the disk has its space back, and the status line can say why
+// (#519). On the small file system of MP_FULL_DISK_DIR, as above.
+class FullDiskCacheTest final : public mp::test::Test {
+public:
+  FullDiskCacheTest() : Test("functional.cache.full-disk", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const juce::String dir = juce::SystemStats::getEnvironmentVariable("MP_FULL_DISK_DIR", {});
+    if (dir.isEmpty()) return;
+    const juce::File disk(dir);
+    const juce::File cacheDir = disk.getChildFile("cache");
+    const juce::File filler = disk.getChildFile("filler");
+    cacheDir.deleteRecursively();
+    filler.deleteFile();
+    cacheDir.createDirectory();
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_full_disk_cache");
+    root.deleteRecursively();
+    mp::OrganModel model;
+    for (int i = 1; i <= 8; ++i) {
+      const auto name = "s" + std::to_string(i) + ".wav";
+      SampleLibraryTest::writeWav(root.getChildFile(name), 48000, 1, 48000.0);
+      mp::SampleRef ref;
+      ref.sampleId = i;
+      ref.fileName = name;
+      model.samples[i] = ref;
+    }
+    // All the room but a quarter of a megabyte taken: less than the cache.
+    std::error_code ec;
+    const auto room = fs::space(mp::pathOf(disk.getFullPathName().toStdString()), ec).available;
+    if (std::FILE* fp = std::fopen(filler.getFullPathName().toRawUTF8(), "wb"); fp != nullptr) {
+      std::vector<char> block(1 << 16, 'x');
+      for (uint64_t left = room > (256u << 10) ? room - (256u << 10) : 0; left > 0;) {
+        const size_t n = static_cast<size_t>(std::min<uint64_t>(left, block.size()));
+        if (std::fwrite(block.data(), 1, n, fp) != n) break;
+        left -= n;
+      }
+      std::fclose(fp);
+    }
+    {
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("full", "stamp");
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      lib.finishCacheWrite(false);
+      juce::Array<juce::File> left;
+      cacheDir.findChildFiles(left, juce::File::findFiles, false, "*");
+      juce::String names;
+      for (const auto& f : left) names << " " << f.getFileName() << " (" << f.getSize() << " bytes)";
+      MP_CHECK(report.loaded == 8, "the organ loads whole, cache or none");
+      MP_CHECK(left.isEmpty(), "and a cache with no room leaves nothing behind:" + names.toStdString());
+      MP_CHECK(lib.cacheWriteFailure() == mp::SampleLibrary::CacheFailure::DiskFull,
+               "and says the disk is full");
+    }
+    filler.deleteFile();
+    cacheDir.deleteRecursively();
+    root.deleteRecursively();
+  }
+};
+static FullDiskCacheTest g_fullDiskCache;
+
 // "This computer only" on the Remote tab is kept for the next start, and off
 // out of the box.
 class RemoteLocalKeptTest final : public mp::test::Test {

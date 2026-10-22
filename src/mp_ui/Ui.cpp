@@ -2651,6 +2651,17 @@ void MasterpieceEditor::timerCallback() {
     }
   } else {
     cacheSaveStartMs_ = 0.0;
+    // A cache that could not be written is said, until the next load (#519).
+    switch (proc_.cacheWriteFailure()) {
+      case SampleLibrary::CacheFailure::DiskFull:
+        live += "  |  " + TRANS("sample cache not saved: the disk is full");
+        break;
+      case SampleLibrary::CacheFailure::Failed:
+        live += "  |  " + TRANS("sample cache not saved");
+        break;
+      case SampleLibrary::CacheFailure::None:
+        break;
+    }
   }
   if (stats.startsDropped > 0)
     live += ", " + TRANS("dropped %1").replace("%1", juce::String(stats.startsDropped));

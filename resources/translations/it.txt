@@ -996,3 +996,8 @@ countries: it ch sm va
 "over" = "in"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Ogni canna inizia di tanto più forte, o più piano, e poi torna al suo livello: più o meno chiff. 0 dB è spento. Udito dalla nota successiva; salvato con l'organo."
 "How long the attack's emphasis lasts" = "Quanto dura l'enfasi dell'attacco"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "La cache dei campioni in questa cartella: %1. Ogni organo rilegge i suoi campioni al prossimo caricamento."
+"No sample cache in this folder" = "Nessuna cache dei campioni in questa cartella"
+"Delete the cache" = "Elimina la cache"
+"sample cache not saved: the disk is full" = "cache dei campioni non salvata: il disco è pieno"
+"sample cache not saved" = "cache dei campioni non salvata"

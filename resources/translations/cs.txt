@@ -996,3 +996,8 @@ countries: cz
 "over" = "během"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Každá píšťala začne o tolik hlasitěji nebo tišeji a pak dojde na svou vlastní úroveň: více nebo méně chiffu. 0 dB je vypnuto. Slyšet od další noty; ukládá se s varhanami."
 "How long the attack's emphasis lasts" = "Jak dlouho trvá zdůraznění nasazení"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "Mezipaměť vzorků v této složce: %1. Každá varhana při příštím načtení znovu načte své vzorky."
+"No sample cache in this folder" = "V této složce není mezipaměť vzorků"
+"Delete the cache" = "Smazat mezipaměť"
+"sample cache not saved: the disk is full" = "mezipaměť vzorků neuložena: disk je plný"
+"sample cache not saved" = "mezipaměť vzorků neuložena"

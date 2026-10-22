@@ -225,6 +225,11 @@ public:
   // The bytes of samples the cache write has written, and has to write.
   int64_t cacheBytesDone() const { return cacheDone_.load(); }
   int64_t cacheBytesTotal() const { return cacheTotal_.load(); }
+  // How the last cache write of this load ended, for the status line: a
+  // write that fails removes its part file, and the next load reads the
+  // samples again (#519).
+  enum class CacheFailure { None, Failed, DiskFull };
+  CacheFailure cacheWriteFailure() const { return cacheFailure_.load(); }
   // Whether the next cache write runs while the organ plays: then at the
   // system's lowest priority, and only while `busy` says nothing sounds. Off,
   // the load waits for it at full speed, with the organ not yet playable.
@@ -365,6 +370,7 @@ private:
   std::thread cacheThread_;
   std::atomic<bool> cacheWriting_{false};
   mutable std::atomic<bool> cacheStop_{false};
+  mutable std::atomic<CacheFailure> cacheFailure_{CacheFailure::None};
   bool cacheWhilePlaying_ = false;
   std::function<bool()> cacheBusy_;
 

@@ -938,6 +938,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   cacheWritten_ = 0;
   cacheTotal_ = 0;
   cacheDone_ = 0;
+  cacheFailure_ = CacheFailure::None;
 
   // A cache of a previous load of this organ, at these settings, is the whole
   // of the work below already done. Reading it is sequential; doing it again
@@ -1821,9 +1822,20 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   // Written beside and moved into place, so an interrupted write leaves the
   // old cache rather than a half one that passes its own length checks.
   const std::string tmp = path + ".part";
+  // A write that fails, on a full disk most often, takes its part file with
+  // it: left behind, it kept the disk full and the settings unsaved (#519).
+  const auto failed = [&] {
+    std::filesystem::remove(mp::pathOf(tmp), ec);
+    if (cacheStop_.load()) return false;
+    std::error_code spaceError;
+    const auto space = std::filesystem::space(mp::pathOf(path).parent_path(), spaceError);
+    cacheFailure_ = !spaceError && space.available < (uint64_t{64} << 20) ? CacheFailure::DiskFull
+                                                                        : CacheFailure::Failed;
+    return false;
+  };
   {
     std::ofstream os(mp::pathOf(tmp), std::ios::binary | std::ios::trunc);
-    if (!os) return false;
+    if (!os) return failed();
     os.write(kCacheMagic, 4);
     putPod(os, kCacheVersion);
     putStr(os, fingerprint);
@@ -1892,21 +1904,22 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
         putPod<double>(os, buf->tailSrcRate);
         putPod<double>(os, buf->tailDstRate);
       }
-      if (!os) return false;
+      if (!os) break;
     }
-    if (cacheStop_.load()) {
-      os.close();
-      std::filesystem::remove(mp::pathOf(tmp), ec);
-      return false;
+    // The last bytes leave the stream's buffer here: a disk that fills on
+    // them fails the write as surely as one that fills halfway.
+    bool written = !cacheStop_.load() && static_cast<bool>(os);
+    if (written) {
+      cacheWritten_ = static_cast<int64_t>(os.tellp());
+      os.flush();
+      written = static_cast<bool>(os);
     }
-    cacheWritten_ = static_cast<int64_t>(os.tellp());
+    os.close();
+    if (!written || os.fail()) return failed();
   }
 
   std::filesystem::rename(mp::pathOf(tmp), mp::pathOf(path), ec);
-  if (ec) {
-    std::filesystem::remove(mp::pathOf(tmp), ec);
-    return false;
-  }
+  if (ec) return failed();
   return true;
 }
 

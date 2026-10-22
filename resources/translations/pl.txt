@@ -996,3 +996,8 @@ countries: pl
 "over" = "przez"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Każda piszczałka zaczyna o tyle głośniej lub ciszej i dochodzi do własnego poziomu: więcej lub mniej chiffu. 0 dB to wyłączone. Słychać od następnej nuty; zapisywane z organami."
 "How long the attack's emphasis lasts" = "Jak długo trwa podkreślenie ataku"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "Pamięć podręczna próbek w tym folderze: %1. Każde organy przy następnym wczytaniu odczytają swoje próbki ponownie."
+"No sample cache in this folder" = "Brak pamięci podręcznej próbek w tym folderze"
+"Delete the cache" = "Usuń pamięć podręczną"
+"sample cache not saved: the disk is full" = "pamięć podręczna próbek nie zapisana: dysk jest pełny"
+"sample cache not saved" = "pamięć podręczna próbek nie zapisana"

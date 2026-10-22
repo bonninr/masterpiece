@@ -996,3 +996,8 @@ countries: de at ch li lu
 "over" = "über"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Jede Pfeife setzt um so viel lauter oder leiser ein und kommt dann auf ihren eigenen Pegel: mehr oder weniger Vorläuferton. 0 dB ist aus. Ab dem nächsten Ton zu hören; mit der Orgel gespeichert."
 "How long the attack's emphasis lasts" = "Wie lange die Betonung der Ansprache dauert"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "Der Sample-Cache in diesem Ordner: %1. Jede Orgel liest ihre Samples beim nächsten Laden erneut."
+"No sample cache in this folder" = "Kein Sample-Cache in diesem Ordner"
+"Delete the cache" = "Cache löschen"
+"sample cache not saved: the disk is full" = "Sample-Cache nicht gespeichert: Der Datenträger ist voll"
+"sample cache not saved" = "Sample-Cache nicht gespeichert"
