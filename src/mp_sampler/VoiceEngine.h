@@ -628,6 +628,11 @@ public:
     int velocity = 64;
     int releaseCount = 0;      // releases the pipe offers
     int chosen = -1;           // which of them, -1 for none
+    // How far into the release its start was moved to meet the attack's
+    // phase, in release frames; 0 when it was not aligned. Here, and the flag
+    // below with the others, so the event keeps its size: the ring of them
+    // lives inside the engine.
+    float alignFrames = 0.0f;
     int64_t attackFrame = 0;   // where the attack was when the key let go
     double attackRate = 0.0;
     bool attackLooping = false;
@@ -636,11 +641,16 @@ public:
     int64_t startFrame = 0;    // where in it playback starts
     bool cueWanted = false;    // the organ says to start at the file's marker
     bool cueFound = false;     // and the file has one
+    bool aligned = false;      // started in phase with the attack
     double crossfadeMs = 0.0;
     bool streamed = false;
     int64_t residentFrames = 0;
   };
   void setReleaseLogging(bool on) { logReleases_.store(on, std::memory_order_release); }
+  // Releases that ask for it start in phase with the attack they follow
+  // (PhaseAlignAutomatically). On by default; off only to measure against.
+  void setReleasePhaseAlign(bool on) { phaseAlign_.store(on, std::memory_order_release); }
+  bool releasePhaseAlign() const { return phaseAlign_.load(std::memory_order_acquire); }
   // Moves the events recorded since the last call into `out`, and returns how
   // many were dropped meanwhile.
   int64_t takeReleaseEvents(std::vector<ReleaseEvent>& out);
@@ -810,6 +820,7 @@ private:
   std::atomic<size_t> releaseTail_{0}; // written by the reader
   std::atomic<int64_t> releaseDropped_{0};
   std::atomic<bool> logReleases_{false};
+  std::atomic<bool> phaseAlign_{true};
   std::atomic<int64_t> streaming_{0};
   std::atomic<int64_t> streamPasses_{0};
 

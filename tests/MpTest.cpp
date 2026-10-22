@@ -82,6 +82,8 @@ int runAll(std::optional<Category> filter) {
       std::printf("[FAIL] %s\n        unexpected exception: %s\n",
                   test->name().c_str(), e.what());
     }
+    // A test that crashes the process leaves the lines before it on record.
+    std::fflush(stdout);
   }
   std::printf("==================== SUMMARY ====================\n");
   std::printf("%d run, %d failed\n", ran, failed);

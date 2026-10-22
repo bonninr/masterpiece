@@ -3010,6 +3010,153 @@ class VoiceReleaseCrossfadeTest final : public mp::test::Test {
   }
 };
 
+// A release that starts in phase with the attack it follows (#525).
+//
+// Through the crossfade the attack's loop and the release's head sound
+// together. Started at its first frame, the release meets the loop wherever
+// the key let go: in phase the two add, out of phase they cancel, and the
+// level dips by the timing of the key. Aligned, the dip is the same at every
+// note-off point.
+class VoiceReleasePhaseAlignTest final : public mp::test::Test {
+ public:
+  VoiceReleasePhaseAlignTest()
+      : Test("functional.voice.release-phase-align", Category::Functional) {}
+
+  struct Result {
+    double lowest = 0.0;  // the quietest period through the crossfade
+    bool aligned = false;
+    double alignFrames = 0.0;
+    int64_t startFrame = -1;
+  };
+
+  // 200 Hz at 48 kHz: 240 frames a period. The attack loops seamlessly over
+  // its second half; the release is the same pipe decaying from phase 0.
+  static Result play(int offsetFrames, bool engineAligns, bool rowAsks,
+                     bool silentAttack) {
+    constexpr double kHz = 200.0;
+    mp::SampleBuffer attack = voicetest::makeTone(kHz, 48000.0, 9600);
+    if (silentAttack)
+      for (auto& s : attack.frames) s = 0.0f;
+    mp::SampleBuffer tail = voicetest::makeTone(kHz, 48000.0, 48000, 1, false);
+    for (int i = 0; i < tail.numFrames; ++i)
+      tail.frames[static_cast<size_t>(i)] *=
+          static_cast<float>(std::exp(-i / (48000.0 * 0.2)));
+    mp::Pipe pipe;
+    pipe.pipeId = 100;
+    pipe.midiNote = 55;
+    mp::PipeLayer layer;
+    layer.layerId = 1;
+    mp::AttackSample a;
+    a.id = 11;
+    a.sample.sampleId = 1;
+    a.sample.resolvedPitchHz = kHz;
+    layer.attacks.push_back(a);
+    mp::ReleaseSample r;
+    r.id = 21;
+    r.sample.sampleId = 2;
+    r.sample.resolvedPitchHz = kHz;
+    r.releaseCrossfadeMs = 50.0;
+    r.phaseAlign = rowAsks;
+    layer.releases.push_back(r);
+    pipe.layers.push_back(std::move(layer));
+    auto provider = [&](mp::Id id) -> const mp::SampleBuffer* {
+      if (id == 1) return &attack;
+      if (id == 2) return &tail;
+      return nullptr;
+    };
+
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 4, 1);
+    eng.setSampleProvider(provider);
+    eng.setReleasePhaseAlign(engineAligns);
+    eng.setReleaseLogging(true);
+    mp::VoiceStart start;
+    start.pipe = &pipe;
+    start.layer = &pipe.layers[0];
+    start.velocity = 90;
+    start.ratio = 1.0;
+    start.gain = 1.0f;
+    Result res;
+    if (eng.startVoice(start, 7) < 0) return res;
+
+    // Well into the loop, then a fraction of a period more.
+    std::vector<float> buf(4096, 0.0f);
+    float* out[1] = {buf.data()};
+    for (int i = 0; i < 2; ++i) eng.render(out, 1, 4096);
+    if (offsetFrames > 0) eng.render(out, 1, offsetFrames);
+
+    mp::NoteRelease rel;
+    rel.velocity = 64;
+    eng.noteOff(7, rel);
+    std::vector<mp::VoiceEngine::ReleaseEvent> events;
+    eng.takeReleaseEvents(events);
+    if (!events.empty()) {
+      res.aligned = events.back().aligned;
+      res.alignFrames = static_cast<double>(events.back().alignFrames);
+      res.startFrame = events.back().startFrame;
+    }
+
+    std::fill(buf.begin(), buf.end(), 0.0f);
+    eng.render(out, 1, 4096);
+    // Through the 2400-frame crossfade, one period at a time.
+    res.lowest = 1e9;
+    for (int at = 0; at + 240 <= 2400; at += 60) {
+      double acc = 0.0;
+      for (int i = at; i < at + 240; ++i)
+        acc += static_cast<double>(buf[static_cast<size_t>(i)]) *
+               buf[static_cast<size_t>(i)];
+      res.lowest = std::min(res.lowest, std::sqrt(acc / 240.0));
+    }
+    return res;
+  }
+
+  // The spread of the quietest point across twelve note-off times one period
+  // apart, in dB.
+  static double spreadDb(bool engineAligns, bool* allAligned,
+                         double* largestShift) {
+    double lo = 1e9, hi = 0.0;
+    bool all = true;
+    double shift = 0.0;
+    for (int k = 0; k < 12; ++k) {
+      const Result r = play(k * 20, engineAligns, true, false);
+      lo = std::min(lo, r.lowest);
+      hi = std::max(hi, r.lowest);
+      all = all && r.aligned;
+      shift = std::max(shift, r.alignFrames);
+    }
+    if (allAligned != nullptr) *allAligned = all;
+    if (largestShift != nullptr) *largestShift = shift;
+    return 20.0 * std::log10(hi / std::max(lo, 1e-9));
+  }
+
+  void run() override {
+    bool alignedAll = false;
+    double shift = 0.0;
+    const double aligned = spreadDb(true, &alignedAll, &shift);
+    const double asRecorded = spreadDb(false, nullptr, nullptr);
+    const std::string figures = " (aligned " + std::to_string(aligned) + " dB, as recorded " +
+                                std::to_string(asRecorded) + " dB)";
+    MP_CHECK(asRecorded > 6.0,
+             "sanity: started at its first frame, the release dips by the "
+             "timing of the key" + figures);
+    MP_CHECK(aligned < 1.0,
+             "in phase, the dip is the same whenever the key lets go" + figures);
+    MP_CHECK(alignedAll, "every release that asks is aligned");
+    MP_CHECK(shift >= 0.0 && shift < 240.0,
+             "the start moves forward by less than one period");
+
+    const Result notAsked = play(100, true, false, false);
+    MP_CHECK(!notAsked.aligned && notAsked.startFrame == 0,
+             "a release that does not ask starts at its first frame");
+    const Result silent = play(100, true, true, true);
+    MP_CHECK(!silent.aligned && silent.startFrame == 0,
+             "after a silent attack the release starts at its first frame");
+    const Result asked = play(100, true, true, false);
+    MP_CHECK(asked.aligned && asked.startFrame > 0,
+             "sanity: the same release after a sounding attack is moved");
+  }
+};
+
 // A key struck again while it is still down.
 //
 // The processor keeps one note id per key and hands it to the voice engine.
@@ -10664,6 +10811,7 @@ public:
 static ReleasePitchTest g_releasePitch;
 static VoiceReleaseTailTest g_voiceReleaseTail;
 static VoiceReleaseCrossfadeTest g_voiceReleaseCrossfade;
+static VoiceReleasePhaseAlignTest g_voiceReleasePhaseAlign;
 static VoiceEngineStealingTest g_voiceStealing;
 
 // A larger polyphony is built when it is chosen (#320): the player who raised
@@ -11580,6 +11728,17 @@ public:
     for (const auto& ka : m.keyActions)
       if (ka.conditionSwitchId == 4001 && ka.destDivision == 1) coupled = true;
     MP_CHECK(coupled, "the coupler keys the pedal division under its switch");
+    bool allAligned = true;
+    size_t releases = 0;
+    for (const auto& [id, rank] : m.ranks)
+      for (const auto& pipe : rank.pipes)
+        for (const auto& layer : pipe.layers)
+          for (const auto& r : layer.releases) {
+            ++releases;
+            allAligned = allAligned && r.phaseAlign;
+          }
+    MP_CHECK(releases > 0 && allAligned,
+             "every release starts in phase with its attack, as GrandOrgue plays it (#525)");
     MP_CHECK(m.pipeEnclosure.size() == 5, "every pipe on the chest is enclosed, borrowed ones too");
     MP_CHECK(m.tremulantPipes.size() == 5, "every pipe on the chest is tremulated, borrowed ones too");
     MP_CHECK(m.tremulants.count(101) &&
