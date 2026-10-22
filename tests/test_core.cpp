@@ -525,6 +525,132 @@ public:
   }
 };
 
+// A room loaded as an impulse response is heard (#494). Its level comes from
+// its power octave by octave, whatever the file's own scale or how dark the
+// room is: at full wet, sound with equal power in each octave comes out of
+// the room at the level it went in.
+class RoomLevelTest final : public mp::test::Test {
+public:
+  RoomLevelTest() : Test("functional.dsp.room-level", Category::Functional) {}
+
+  void run() override {
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-room-level");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    struct Cleanup { juce::File d; ~Cleanup() { d.deleteRecursively(); } } cleanup{dir};
+
+    struct Room { float peak; bool dark; };
+    for (const Room r : {Room{0.9f, false}, Room{0.05f, false}, Room{0.9f, true}}) {
+      const float peak = r.peak;
+      const auto file = dir.getChildFile("room-" + juce::String(peak, 2) + (r.dark ? "-dark" : "") + ".wav");
+      writeRoom(file, peak, r.dark);
+      for (const float wet : {1.0f, 0.25f}) {
+        mp::Convolver room;
+        room.prepare({kRate, static_cast<juce::uint32>(kBlock), 2});
+        MP_CHECK(room.loadImpulseResponse(file), "the room loads");
+        room.setMix(wet);
+        room.setEnabled(true);
+        MP_CHECK(waitReady(room), "the room is in place");
+        if (!room.ready()) return;
+
+        // Two seconds of pink noise, then one of silence.
+        juce::Random rnd(494);
+        const int sound = static_cast<int>(2 * kRate), total = static_cast<int>(3 * kRate);
+        juce::AudioBuffer<float> in(2, total), out(2, total);
+        in.clear();
+        for (int ch = 0; ch < 2; ++ch) {
+          double b0 = 0.0, b1 = 0.0, b2 = 0.0;  // the economy pinking filter
+          for (int i = 0; i < sound; ++i) {
+            const double white = rnd.nextFloat() * 2.0 - 1.0;
+            b0 = 0.99765 * b0 + white * 0.0990460;
+            b1 = 0.96300 * b1 + white * 0.2965164;
+            b2 = 0.57000 * b2 + white * 1.0526913;
+            in.setSample(ch, i, static_cast<float>(0.05 * (b0 + b1 + b2 + white * 0.1848)));
+          }
+        }
+        out.makeCopyOf(in);
+        for (int at = 0; at < total; at += kBlock) {
+          juce::AudioBuffer<float> view(out.getArrayOfWritePointers(), 2, at, juce::jmin(kBlock, total - at));
+          room.process(view);
+        }
+        // The second second of the sound: the room is full by then.
+        const double level = rms(out, sound / 2, sound) / rms(in, sound / 2, sound);
+        const double tail = rms(out, sound + static_cast<int>(0.05 * kRate), sound + static_cast<int>(0.15 * kRate)) /
+                            rms(in, sound / 2, sound);
+        const auto at = " (peak " + std::to_string(peak) + (r.dark ? ", dark" : "") + ", wet " +
+                        std::to_string(wet) + ")";
+        if (wet == 1.0f) {
+          const double db = 20.0 * std::log10(level);
+          MP_CHECK(db > -2.0 && db < 2.0, "at full wet the room plays at the level of the sound: " +
+                                              std::to_string(db) + " dB" + at);
+        } else {
+          // The default wet: from 50 to 150 ms after the sound stops, the
+          // room is still sounding, within 24 dB of it.
+          const double db = 20.0 * std::log10(tail);
+          MP_CHECK(db > -24.0, "the room's tail is heard at the default wet: " + std::to_string(db) + " dB" + at);
+        }
+      }
+    }
+  }
+
+private:
+  static constexpr double kRate = 48000.0;
+  static constexpr int kBlock = 256;
+
+  // A one-second room: noise falling 60 dB over the second, in stereo. A
+  // dark one is that noise through a 300 Hz low-pass, as a room's response
+  // falls away above its lowest octaves.
+  static void writeRoom(const juce::File& f, float peak, bool dark) {
+    juce::Random rnd(1494);
+    const int n = static_cast<int>(kRate);
+    juce::AudioBuffer<float> ir(2, n);
+    const double a = std::exp(-2.0 * juce::MathConstants<double>::pi * 300.0 / kRate);
+    float top = 0.0f;
+    for (int ch = 0; ch < 2; ++ch) {
+      double lp = 0.0;
+      for (int i = 0; i < n; ++i) {
+        double v = rnd.nextFloat() * 2.0 - 1.0;
+        if (dark) v = lp = (1.0 - a) * v + a * lp;
+        const float s = static_cast<float>(std::pow(10.0, -3.0 * i / n) * v);
+        ir.setSample(ch, i, s);
+        top = juce::jmax(top, std::abs(s));
+      }
+    }
+    ir.applyGain(peak / top);
+    f.deleteFile();
+    juce::WavAudioFormat fmt;
+    std::unique_ptr<juce::FileOutputStream> os(f.createOutputStream());
+    std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), kRate, 2, 24, {}, 0));
+    w->writeFromAudioSampleBuffer(ir, 0, n);
+  }
+
+  // JUCE swaps the room in from process(), after building it on a thread of
+  // its own; then it crossfades from its placeholder over 50 ms.
+  static bool waitReady(mp::Convolver& room) {
+    juce::AudioBuffer<float> silence(2, kBlock);
+    const auto start = juce::Time::getMillisecondCounter();
+    while (!room.ready() && juce::Time::getMillisecondCounter() - start < 10000) {
+      silence.clear();
+      room.process(silence);
+      juce::Thread::sleep(1);
+    }
+    for (int i = 0; i < 40; ++i) {
+      silence.clear();
+      room.process(silence);
+    }
+    room.reset();
+    return room.ready();
+  }
+
+  static double rms(const juce::AudioBuffer<float>& b, int from, int to) {
+    double e = 0.0;
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+      for (int i = from; i < to; ++i) e += static_cast<double>(b.getSample(ch, i)) * b.getSample(ch, i);
+    return std::sqrt(e / (b.getNumChannels() * static_cast<double>(to - from)));
+  }
+};
+
 // Console artwork in BMP. JUCE reads PNG, JPEG and GIF; the older Hauptwerk
 // sets paint their consoles in BMP, and those came out black (issue #24).
 // The depths and layouts checked here are the ones such a set uses.
@@ -10770,6 +10896,7 @@ static MidiQueueThreadsTest g_midiQueueThreads;
 static PlayerControlTest g_playerControl;
 static CoupledInputTest g_coupledInput;
 static IrRateTest g_irRate;
+static RoomLevelTest g_roomLevel;
 #endif
 static ConditionSenseTest g_conditionSense;
 static EncryptedDetectionTest g_encrypted;

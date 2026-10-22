@@ -28,6 +28,15 @@ public:
   void clear();
 
   bool hasImpulseResponse() const { return loaded_; }
+  // The room is in effect. JUCE builds it on a background thread, posted
+  // from process(), and swaps it in on a later block; until then its
+  // placeholder engine, a one-sample impulse, passes the signal through.
+  // A live device gets there within a fraction of a second; an offline
+  // render, many times faster than real time, has to wait for it.
+  bool ready() const {
+    return loaded_ && fromLeft_.getCurrentIRSize() > 1 &&
+           (!trueStereo_ || fromRight_.getCurrentIRSize() > 1);
+  }
   juce::String impulseResponseName() const { return irName_; }
   // The file chosen, as the player picked it: saved with the organ.
   juce::File impulseResponseFile() const { return irFile_; }
