@@ -15408,6 +15408,105 @@ public:
 };
 static DemoStopNoiseTest g_demoStopNoise;
 
+// A GrandOrgue set lists its couplers and tremulants with the stops, each a
+// stop with no ranks on the switch that works it. They counted as stops with
+// no pipes, and the switches were held off: on the Walcker Wildervank set no
+// coupler and no tremulant could be drawn (#490). A stop whose switch works a
+// coupler or a tremulant is a control; a stop with no pipes stays locked.
+class ControlStopTest final : public mp::test::Test {
+public:
+  ControlStopTest() : Test("functional.control.coupler-tremulant-stops", Category::Functional) {}
+  void run() override {
+    auto sw = [](int id, const char* name, bool latching) {
+      return "<Switch><SwitchID>" + std::to_string(id) + "</SwitchID><Name>" + name + "</Name><Latching>" +
+             (latching ? "Y" : "N") + "</Latching><DefaultToEngaged>N</DefaultToEngaged></Switch>";
+    };
+    auto stop = [](int id, const char* name, int sw) {
+      return "<Stop><StopID>" + std::to_string(id) + "</StopID><Name>" + name +
+             "</Name><DivisionID>1</DivisionID><ControllingSwitchID>" + std::to_string(sw) +
+             "</ControllingSwitchID></Stop>";
+    };
+    auto pipe = [](int id, int rank, int pallet) {
+      return "<Pipe_SoundEngine01><PipeID>" + std::to_string(id) + "</PipeID><RankID>" + std::to_string(rank) +
+             "</RankID><NormalMIDINoteNumber>60</NormalMIDINoteNumber><ControllingPalletSwitchID>" +
+             std::to_string(pallet) + "</ControllingPalletSwitchID></Pipe_SoundEngine01>";
+    };
+    // 900 is the key; it opens the Principal's pallet (555) while 101 is
+    // drawn. The Piccolo (102) has only its action noise. 150 is the octave
+    // coupler's switch, 160 the tremulant's; each is also a stop with no ranks.
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General>"
+        "<Identification_UniqueOrganID>490</Identification_UniqueOrganID>"
+        "<Identification_Name>Control stops</Identification_Name>"
+        "</_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID>"
+        "<Name>Great</Name></Division></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><Keyboard><KeyboardID>1</KeyboardID>"
+        "<Name>Great</Name></Keyboard></ObjectList>"
+        "<ObjectList ObjectType=\"DivisionInput\"><DivisionInput><DivisionID>1</DivisionID>"
+        "<SwitchID>900</SwitchID><NormalMIDINoteNumber>60</NormalMIDINoteNumber></DivisionInput></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">" +
+        sw(900, "Key C4", false) + sw(101, "Principal 8", true) + sw(102, "Piccolo 2", true) +
+        sw(150, "Great Octave", true) + sw(160, "Tremulant", true) + sw(555, "Pallet C4", false) +
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">"
+        "<SwitchLinkage><SourceSwitchID>900</SourceSwitchID><DestSwitchID>555</DestSwitchID>"
+        "<ConditionSwitchID>101</ConditionSwitchID><ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+        "<SourceSwitchLinkIfEngaged>Y</SourceSwitchLinkIfEngaged><EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList><ObjectList ObjectType=\"KeyAction\"><KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestDivisionID>1</DestDivisionID><ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode>"
+        "<MIDINoteNumberIncrement>12</MIDINoteNumberIncrement><ConditionSwitchID>150</ConditionSwitchID>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged></KeyAction>"
+        "</ObjectList><ObjectList ObjectType=\"Tremulant\"><Tremulant><TremulantID>1</TremulantID>"
+        "<Name>Tremulant</Name><ControllingSwitchID>160</ControllingSwitchID></Tremulant>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">" +
+        stop(1, "Principal 8", 101) + stop(2, "Piccolo 2", 102) + stop(4, "Great Octave", 150) +
+        stop(5, "Tremulant", 160) +
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Stop action noises</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
+        pipe(71, 7, 555) + pipe(81, 8, 101) + pipe(82, 8, 102) + "</ObjectList></Hauptwerk>";
+
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-control-stops");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("controls.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      std::map<mp::Id, bool> playable, control;
+      for (const auto& e : proc.stopList()) {
+        playable[e.stopId] = e.playable;
+        control[e.stopId] = e.control;
+      }
+      MP_CHECK(playable[1], "the stop a key reaches plays");
+      MP_CHECK(!playable[2], "a stop with only its action noise is locked");
+      MP_CHECK(playable[4], "the coupler listed as a stop is available");
+      MP_CHECK(playable[5], "and so is the tremulant");
+      MP_CHECK(control[4] && control[5] && !control[1] && !control[2], "only those two are controls");
+      MP_CHECK(proc.unavailableFor(150) == nullptr && proc.unavailableFor(160) == nullptr,
+               "neither refuses a click");
+
+      proc.setSwitchEngaged(150, true);
+      MP_CHECK(proc.switchEngaged(150), "the coupler draws");
+      proc.setStopEngaged(5, true);
+      MP_CHECK(proc.switchEngaged(160), "the tremulant draws");
+      proc.setSwitchEngaged(150, false);
+      MP_CHECK(!proc.switchEngaged(150), "and the coupler goes back in");
+      proc.setStopEngaged(2, true);
+      MP_CHECK(!proc.switchEngaged(102), "the locked Piccolo stays in");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ControlStopTest g_controlStop;
+
 // A demo can list pipes for every stop and ship the samples of a few: Brasov
 // far lists 35 stops and ships 8 (#390). A rank none of whose samples is on
 // disk or in the archive counts as having no pipes, and its stop is not

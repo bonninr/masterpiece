@@ -269,7 +269,9 @@ public:
 
   // Stops in a stable order for the console: by division, then by id, so the
   // jamb does not reshuffle between loads.
-  struct StopEntry { Id stopId = 0; Id divisionId = 0; std::string name; bool playable = false; };
+  // control: a coupler or a tremulant listed with the stops. It plays, and
+  // holds no samples of its own to leave out of a load.
+  struct StopEntry { Id stopId = 0; Id divisionId = 0; std::string name; bool playable = false; bool control = false; };
   std::vector<StopEntry> stopList() const;
   bool stopEngaged(Id stopId) const { return engagedStops_.count(stopId) != 0; }
   // The same two answers for the window, which asks from its own thread while
@@ -2619,6 +2621,10 @@ private:
   // its stops reach their pipes only that way.
   void findPalletStops();
   std::unordered_set<Id> palletStops_;
+  // The stops whose switch works a coupler or a tremulant: a GrandOrgue set
+  // lists its couplers and tremulants with the stops, with no ranks (#490).
+  void findControlStops();
+  std::unordered_set<Id> controlStops_;
   void fireMovedStages();
   // False while a load is rebuilding the stage table; see loadOrgan().
   std::atomic<bool> stagesReady_{false};
