@@ -4428,6 +4428,11 @@ std::vector<std::string> MasterpieceProcessor::takeReleaseLog() {
            " at " + std::to_string(static_cast<int>(e.releaseRate)) + " Hz, from " +
            seconds(e.startFrame, e.releaseRate);
       if (e.cueWanted) l += e.cueFound ? " (its release marker)" : " (marker asked for, none in the file)";
+      if (e.aligned && e.releaseRate > 0.0) {
+        char al[48];
+        std::snprintf(al, sizeof al, ", in phase +%.2f ms", static_cast<double>(e.alignFrames) * 1000.0 / e.releaseRate);
+        l += al;
+      }
       l += " | crossfade " + std::string(xf);
       l += e.streamed ? " | streamed, " + seconds(e.residentFrames, e.releaseRate) + " resident"
                       : " | resident";

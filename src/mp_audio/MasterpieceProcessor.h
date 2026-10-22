@@ -1755,6 +1755,9 @@ public:
   // from the command line or from General settings. Message thread.
   void setReleaseLogging(bool on);
   bool releaseLogging() const { return releaseLog_ != nullptr; }
+  // Releases start in phase with their attack where the set asks for it.
+  // Off only to measure against.
+  void setReleasePhaseAlign(bool on) { voices_.setReleasePhaseAlign(on); }
 
   // A learned pedal's ends, from where it is now: a console whose swell shoe
   // only sends 55..127 still has to close the box (#90). Returns the value

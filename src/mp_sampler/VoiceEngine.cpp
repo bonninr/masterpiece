@@ -1,4 +1,5 @@
 #include "VoiceEngine.h"
+#include "ReleaseAlign.h"
 
 #include <algorithm>
 #include <chrono>
@@ -633,6 +634,24 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
                  : relBuf->loopEnd > 0 && relBuf->loopEnd < relBuf->totalFrames()
                      ? static_cast<double>(relBuf->loopEnd)
                      : 0.0;
+      // In phase with the attack it follows, when the release asks for it:
+      // otherwise the two meet wherever the key let go, and the crossfade
+      // cancels or adds by the timing of the key (#525). The attack keeps its
+      // own speed under the release; one release frame is xfadeRatioScale of
+      // its frames.
+      if (row.phaseAlign && oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
+        const double hz = releaseHz > 0.0 ? releaseHz : attackHz;
+        if (hz > 0.0 && relBuf->sampleRate > 0.0) {
+          const ReleaseAlignment al =
+              alignRelease(*oldBuf, oldCursor, oldLoopStart, oldLoopEnd, v.xfadeRatioScale,
+                           *relBuf, v.cursor, relBuf->sampleRate / hz);
+          if (al.aligned) v.cursor += al.offset;
+          if (logging) {
+            ev.aligned = al.aligned;
+            ev.alignFrames = static_cast<float>(al.offset);
+          }
+        }
+      }
       // A release is a one-shot: it must not inherit the attack's loop.
       v.loopStart = -1;
       v.loopEnd = -1;

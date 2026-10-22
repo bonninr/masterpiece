@@ -549,6 +549,8 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           Emitter::set(rel, "LoadSampleRange_StartPositionTypeCode", 1);
           Emitter::set(rel, "AttackSelCriteria_HighestVelocity", highest);
           Emitter::set(rel, "ReleaseSelCriteria_PreferThisRelForAttackID", attackUid);
+          // GrandOrgue starts every release in phase with the attack it follows.
+          Emitter::yn(rel, "PhaseAlignAutomatically", true);
           const int rx = ini.num(sec, attacks[i].prefix + "ReleaseCrossfadeLength", 0);
           if (rx > 0) Emitter::set(rel, "ReleaseCrossfadeLengthMs", rx);
         }
@@ -562,6 +564,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         Emitter::set(rel, "UniqueID", nextUniqueId++);
         Emitter::set(rel, "LayerID", pipeId);
         Emitter::set(rel, "SampleID", sampleFor(f, nominalHz));
+        Emitter::yn(rel, "PhaseAlignAutomatically", true);
         const int maxMs = ini.num(sec, pre + "MaxKeyPressTime", -1);
         if (maxMs >= 0) Emitter::set(rel, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", maxMs);
       }
