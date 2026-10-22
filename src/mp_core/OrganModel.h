@@ -644,7 +644,9 @@ struct TremulantPipeMod {
   // An ADJUSTMENT, in decibels, to the depth of the tremulant's recorded
   // waveform -- not the depth itself. 0 dB is the waveform's own depth.
   double ampDepthDb = 0.0;
-  double pitchDepthPct = 0.0; // peak pitch swing, in percent of a semitone
+  // An adjustment, in percent, to the pitch swing of the tremulant's recorded
+  // waveform: 100 is the waveform's own swing (tremulantPitchSwingSemitones).
+  double pitchDepthPct = 0.0;
 };
 
 // The amplitude a tremulant's recorded waveform swings a pipe by, before a
@@ -657,6 +659,17 @@ struct TremulantPipeMod {
 constexpr double kTremulantWaveformAmpDepth = 0.15;
 inline double tremulantAmpSwing(double adjustDb) {
   return kTremulantWaveformAmpDepth * std::pow(10.0, adjustDb / 20.0);
+}
+
+// The pitch a tremulant's recorded waveform swings a pipe by, before a pipe's
+// adjustment, which is a percentage of it. Channel 0 of a pitch waveform file
+// is the pitch's deviation as a fraction of its frequency. Measured on all 726
+// of Ashton's: a peak of 5.4 to 14.5 cents, median 8.4, flues lower and reeds
+// higher. Masterpiece swings a sine of the median. Reading the percentage as
+// a percentage of a semitone swung Ashton's pipes by 80 to 99 cents (#523).
+constexpr double kTremulantWaveformPitchCents = 8.4;
+inline double tremulantPitchSwingSemitones(double adjustPct) {
+  return kTremulantWaveformPitchCents / 100.0 * adjustPct / 100.0;
 }
 
 struct WindCompartment {
