@@ -31,12 +31,12 @@ bool putBlock(DecodedWindow& w, const SplitRiceStream& s, int64_t block, int64_t
   const size_t first = static_cast<size_t>(at) * static_cast<size_t>(s.channels);
   const size_t pad = static_cast<size_t>(kWindowPad) * static_cast<size_t>(s.channels);
   if (w.wide) {
+    // Four bytes stored a value, three kept: each store's top byte is
+    // written over by the next value, the last one's by the zeroed pad.
     unsigned char* p = w.data + first * 3;
     for (size_t i = 0; i < n; ++i, p += 3) {
       const auto x = static_cast<uint32_t>(v[i]);
-      p[0] = static_cast<unsigned char>(x & 0xFF);
-      p[1] = static_cast<unsigned char>((x >> 8) & 0xFF);
-      p[2] = static_cast<unsigned char>((x >> 16) & 0xFF);
+      std::memcpy(p, &x, 4);
     }
     std::memset(p, 0, pad * 3);
   } else {

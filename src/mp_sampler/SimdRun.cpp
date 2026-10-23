@@ -235,6 +235,29 @@ inline void tapsSse(const int16_t* data, int channels, int64_t k, __m128* ch) {
     ch[1] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(3, 1, 3, 1));
   }
 }
+// Four 24-bit counts from twelve bytes, sign-extended, from one 16-byte load.
+// Each lane is moved to the bytes its count starts at, the top byte shifted
+// out and the sign brought back. The load reads four bytes past the twelve;
+// kRunMargin leaves at least two frames there.
+inline __m128i widen24(const Pcm24* p) {
+  const __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p));
+  const __m128i a = _mm_unpacklo_epi32(v, _mm_srli_si128(v, 3));                     // 0 3 4 7
+  const __m128i b = _mm_unpacklo_epi32(_mm_srli_si128(v, 6), _mm_srli_si128(v, 9));  // 6 9 ...
+  const __m128i w = _mm_unpacklo_epi64(a, b);                                         // 0 3 6 9
+  return _mm_srai_epi32(_mm_slli_epi32(w, 8), 8);
+}
+// 24-bit samples, widened four at a time: a frame's taps are twelve bytes
+// mono, twenty-four stereo.
+inline void tapsSse(const Pcm24* data, int channels, int64_t k, __m128* ch) {
+  if (channels == 1) {
+    ch[0] = _mm_cvtepi32_ps(widen24(data + (k - 1)));
+  } else {
+    const __m128 lo = _mm_cvtepi32_ps(widen24(data + (k - 1) * 2));      // L0 R0 L1 R1
+    const __m128 hi = _mm_cvtepi32_ps(widen24(data + (k - 1) * 2 + 4));  // L2 R2 L3 R3
+    ch[0] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(2, 0, 2, 0));
+    ch[1] = _mm_shuffle_ps(lo, hi, _MM_SHUFFLE(3, 1, 3, 1));
+  }
+}
 template <typename T>
 inline void tapsSse(const T* data, int channels, int64_t k, __m128* ch) {
   // The integer formats are widened one value at a time; the arithmetic

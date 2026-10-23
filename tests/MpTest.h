@@ -45,7 +45,8 @@ std::vector<Test*>& registry();
 
 // Runs registry (optionally filtered). Prints per-test result + summary.
 // Returns failed count (0 = success).
-int runAll(std::optional<Category> filter);
+// `prefix`, when not empty, runs only the tests whose names start with it.
+int runAll(std::optional<Category> filter, const std::string& prefix = {});
 
 // Measures fn() once; wall via steady_clock, CPU via rusage/GetProcessTimes.
 Timing measure(const std::function<void()>& fn);

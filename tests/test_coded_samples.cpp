@@ -128,6 +128,7 @@ struct Played {
   std::vector<float> out;  // left then right, a block at a time
   uint64_t decoded = 0;
   int started = 0;
+  double seconds = 0.0;  // the rendering, wall time
 };
 
 constexpr int kBlock = 256;
@@ -188,6 +189,8 @@ Played play(const Playing& p, bool windows, mp::simd::Isa isa) {
 
   std::vector<float> left(kBlock), right(kBlock);
   float* planes[2] = {left.data(), right.data()};
+  result.out.reserve(static_cast<size_t>(p.totalBlocks) * kBlock * 2);
+  const auto t0 = std::chrono::steady_clock::now();
   for (int block = 0; block < p.totalBlocks; ++block) {
     if (block == p.holdBlocks)
       for (int i = 0; i < voices; ++i) engine.noteOff(static_cast<uint64_t>(i + 1), mp::NoteRelease{});
@@ -197,6 +200,7 @@ Played play(const Playing& p, bool windows, mp::simd::Isa isa) {
     result.out.insert(result.out.end(), left.begin(), left.end());
     result.out.insert(result.out.end(), right.begin(), right.end());
   }
+  result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   result.decoded = engine.blocksDecoded();
   return result;
 }
@@ -481,6 +485,51 @@ public:
   }
 };
 static CodedThreadsTest g_codedThreads;
+
+// What playing from coded samples costs against playing from plain ones: 256
+// voices on one thread, each held two seconds on a long loop and let go into
+// a release, at each storage width. Prints the render time of each and the
+// blocks decoded against the blocks the voices play through.
+class CodedPlaybackPerfTest final : public mp::test::Test {
+public:
+  CodedPlaybackPerfTest() : Test("perf.voice.coded-playback", Category::Perf) {}
+
+  void run() override {
+    const auto isa = units().back();
+    for (const Width width : {Width::Int16, Width::Int24, Width::Int16In24}) {
+      auto attackPlain = plainBuffer(width, 96000, 2, 220.0, 41);
+      attackPlain.loopStart = 24000;
+      attackPlain.loopEnd = 95000;
+      const auto releasePlain = plainBuffer(width, 48000, 2, 220.0, 42);
+      const auto attackCoded = codedCopy(attackPlain);
+      const auto releaseCoded = codedCopy(releasePlain);
+      Playing a;
+      a.attack = &attackPlain;
+      a.release = &releasePlain;
+      a.ratios.clear();
+      for (int i = 0; i < 256; ++i) a.ratios.push_back(0.5 + 1.5 * i / 255.0);
+      a.loopCrossfade = 64;
+      a.holdBlocks = 375;
+      a.totalBlocks = 563;
+      Playing b = a;
+      b.attack = &attackCoded;
+      b.release = &releaseCoded;
+      const Played plain = play(a, false, isa);
+      const Played coded = play(b, true, isa);
+      // The blocks of the coder each voice reads through, at its ratio.
+      double through = 0.0;
+      for (const double r : a.ratios)
+        through += r * kBlock * a.totalBlocks / static_cast<double>(mp::kSplitRiceBlockFrames);
+      std::printf("    %s, %s: plain %.0f ms, coded %.0f ms (%.2fx); %llu blocks decoded, %.0f played through\n",
+                  widthName(width), mp::simd::isaName(isa), plain.seconds * 1e3, coded.seconds * 1e3,
+                  coded.seconds / plain.seconds, static_cast<unsigned long long>(coded.decoded), through);
+      MP_CHECK(coded.started == 256, std::string(widthName(width)) + ": every coded voice starts");
+      MP_CHECK(same(worstDifference(plain.out, coded.out)),
+               std::string(widthName(width)) + ": coded plays what plain plays");
+    }
+  }
+};
+static CodedPlaybackPerfTest g_codedPlaybackPerf;
 
 // A sample whose head is resident and whose rest streams from the disk: the
 // head coded, the rest arriving as it does for any sample.
