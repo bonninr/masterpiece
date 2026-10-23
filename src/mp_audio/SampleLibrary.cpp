@@ -5,6 +5,7 @@
 #include "WavPackFormat.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <atomic>
 #include <condition_variable>
@@ -1330,7 +1331,8 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
                                  juce::String(seconds, 1) +
                                  " s; the next load reads the samples again");
       else
-        juce::Logger::writeToLog("cache: could not be written to " + juce::String(path));
+        juce::Logger::writeToLog("cache: not saved to " + juce::String(path) +
+                                 "; the next load reads the samples again");
       cacheWriting_.store(false);
     });
   }
@@ -1839,45 +1841,99 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   if (path.empty()) return false;
 
   std::error_code ec;
-  std::filesystem::create_directories(mp::pathOf(path).parent_path(), ec);
+  const auto dir = mp::pathOf(path).parent_path();
+  std::filesystem::create_directories(dir, ec);
+  constexpr uint64_t kMB = uint64_t{1} << 20;
+
+  // How much there is to write, so the status line can say how far along
+  // it is and how long is left: on a large organ this takes minutes.
+  int64_t total = 0;
+  for (const auto& [id, buf] : store) {
+    (void)id;
+    if (buf == nullptr) continue;
+    total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
+                                  buf->pcm16.size() * sizeof(int16_t) +
+                                  buf->pcm20.size() * sizeof(Pcm20) +
+                                  buf->frames.size() * sizeof(float) +
+                                  (buf->coded != nullptr ? buf->coded->bytes() : 0));
+  }
+  cacheTotal_ = total;
+
+  // Room for it, before a byte is written: a cache the disk cannot hold ran
+  // for most of a minute on a phone and then failed. The file at `path` goes
+  // in any case, replaced by this one -- it holds another organ, or these
+  // samples at other settings, or this load would have read it -- so its
+  // room counts, and it is removed first when the disk needs it. Left free
+  // beside the cache: a twentieth of the disk, from 64 to 512 MB, since
+  // Android refuses an app the last few percent of its storage.
+  {
+    std::error_code spaceError;
+    const auto space = std::filesystem::space(dir, spaceError);
+    if (!spaceError && space.capacity > 0) {
+      const uint64_t spare = std::clamp<uint64_t>(space.capacity / 20, 64 * kMB, 512 * kMB);
+      // Each sample's description, its checksum and a streamed tail's path.
+      const uint64_t needed = static_cast<uint64_t>(total) + store.size() * 512 + spare;
+      // And a part file a crash left, which the write starts by emptying.
+      std::error_code sizeError, partError;
+      const uint64_t old = std::filesystem::file_size(mp::pathOf(path), sizeError);
+      const uint64_t part = std::filesystem::file_size(mp::pathOf(path + ".part"), partError);
+      const uint64_t replaced = (sizeError ? 0 : old) + (partError ? 0 : part);
+      if (space.available < needed) {
+        if (space.available + replaced < needed) {
+          juce::Logger::writeToLog("cache: not written: it needs " + juce::String(needed / kMB) +
+                                   " MB with " + juce::String(spare / kMB) + " MB left over, and " +
+                                   juce::String((space.available + replaced) / kMB) +
+                                   " MB is free");
+          cacheFailure_ = CacheFailure::DiskFull;
+          return false;
+        }
+        std::filesystem::remove(mp::pathOf(path), ec);
+        juce::Logger::writeToLog("cache: the cache it replaces removed first, " +
+                                 juce::String(replaced / kMB) + " MB, to make room");
+      }
+    }
+  }
 
   // Written beside and moved into place, so an interrupted write leaves the
   // old cache rather than a half one that passes its own length checks.
   const std::string tmp = path + ".part";
   // A write that fails, on a full disk most often, takes its part file with
   // it: left behind, it kept the disk full and the settings unsaved (#519).
-  // The space is read while the part file still holds it: once it is
-  // removed, the disk that just filled up shows the room the cache took.
-  const auto failed = [&] {
+  // The disk is full when the system says so, or when it has under 64 MB:
+  // the space is read while the part file still holds it, since once it is
+  // removed the disk that just filled up shows the room the cache took.
+  // `why` is the error the call gave, or none: a stream says only that it
+  // failed, and leaves the system's errno.
+  const auto failed = [&](std::error_code why) {
+    if (!why && errno != 0) why = std::error_code(errno, std::generic_category());
     std::error_code spaceError;
-    const auto space = std::filesystem::space(mp::pathOf(path).parent_path(), spaceError);
-    std::filesystem::remove(mp::pathOf(tmp), ec);
+    const auto space = std::filesystem::space(dir, spaceError);
+    std::error_code removeError;
+    std::filesystem::remove(mp::pathOf(tmp), removeError);
     if (cacheStop_.load()) return false;
-    cacheFailure_ = !spaceError && space.available < (uint64_t{64} << 20) ? CacheFailure::DiskFull
-                                                                        : CacheFailure::Failed;
+    bool full = why == std::errc::no_space_on_device;
+#ifdef EDQUOT
+    full = full || why == std::error_condition(EDQUOT, std::generic_category());
+#endif
+    full = full || (!spaceError && space.available < 64 * kMB);
+    cacheFailure_ = full ? CacheFailure::DiskFull : CacheFailure::Failed;
+    juce::Logger::writeToLog("cache: the write stopped at " +
+                             juce::String(cacheDone_.load() / static_cast<int64_t>(kMB)) + " of " +
+                             juce::String(total / static_cast<int64_t>(kMB)) + " MB: " +
+                             (why ? juce::String(why.message()) : juce::String("no reason given")) +
+                             (spaceError ? juce::String()
+                                         : ", " + juce::String(space.available / kMB) + " MB free"));
     return false;
   };
   {
+    errno = 0;
     std::ofstream os(mp::pathOf(tmp), std::ios::binary | std::ios::trunc);
-    if (!os) return failed();
+    if (!os) return failed({});
     os.write(kCacheMagic, 4);
     putPod(os, kCacheVersion);
     putStr(os, fingerprint);
     putPod<uint64_t>(os, static_cast<uint64_t>(store.size()));
 
-    // How much there is to write, so the status line can say how far along
-    // it is and how long is left: on a large organ this takes minutes.
-    int64_t total = 0;
-    for (const auto& [id, buf] : store) {
-      (void)id;
-      if (buf == nullptr) continue;
-      total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
-                                    buf->pcm16.size() * sizeof(int16_t) +
-                                    buf->pcm20.size() * sizeof(Pcm20) +
-                                    buf->frames.size() * sizeof(float) +
-                                    (buf->coded != nullptr ? buf->coded->bytes() : 0));
-    }
-    cacheTotal_ = total;
     int64_t done = 0;
 
     for (const auto& [id, buf] : store) {
@@ -1949,11 +2005,11 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       written = static_cast<bool>(os);
     }
     os.close();
-    if (!written || os.fail()) return failed();
+    if (!written || os.fail()) return failed({});
   }
 
   std::filesystem::rename(mp::pathOf(tmp), mp::pathOf(path), ec);
-  if (ec) return failed();
+  if (ec) return failed(ec);
   return true;
 }
 
