@@ -1198,24 +1198,33 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                                juce::String(static_cast<int>(action.kind)));
     if (action.valid()) {
       switch (action.kind) {
-        case MidiTargetKind::Switch:
+        case MidiTargetKind::Switch: {
           // A button that toggles flips the switch as it is now: a stop a
           // cancel or a piston pushed in draws on the next press, where the
           // button's own memory said it was still out and took one press to
           // agree. A piston on such a button is pressed and let go each time,
           // so every press fires it (#366).
-          if (action.toggled) {
-            const auto sw = model_.switches.find(action.targetId);
-            if (sw != model_.switches.end() && !sw->second.latching) {
-              setSwitchEngaged(action.targetId, true);
-              setSwitchEngaged(action.targetId, false);
-            } else {
-              setSwitchEngaged(action.targetId, !switches_.engaged(action.targetId));
+          auto apply = [this](const MidiAction& a) {
+            if (a.toggled) {
+              const auto sw = model_.switches.find(a.targetId);
+              if (sw != model_.switches.end() && !sw->second.latching) {
+                setSwitchEngaged(a.targetId, true);
+                setSwitchEngaged(a.targetId, false);
+              } else {
+                setSwitchEngaged(a.targetId, !switches_.engaged(a.targetId));
+              }
+              return;
             }
-            continue;
-          }
-          setSwitchEngaged(action.targetId, action.engage);
+            setSwitchEngaged(a.targetId, a.engage);
+          };
+          if (!action.idle) apply(action);
+          // Every other stop the same button works, each by its own trigger
+          // (#551).
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              if (const MidiAction more = midiMap_.switchAction(b, value); more.valid()) apply(more);
           continue;
+        }
         case MidiTargetKind::ContinuousControl:
           setControlValue(action.targetId, action.value);
           if (action.alsoDrives != nullptr)
@@ -8158,7 +8167,14 @@ bool MasterpieceProcessor::saveTakeForSequencer(const juce::File& file, bool mar
         // A stop or a coupler: a marker with its name, on the press.
         if (markers && value > 0) {
           if (start < 0.0) start = e.seconds;
-          const juce::String text = nameOf(action.targetId) + (action.toggled ? juce::String() : (action.engage ? " on" : " off"));
+          juce::String text = nameOf(action.targetId) + (action.toggled ? juce::String() : (action.engage ? " on" : " off"));
+          // And every other stop the same button works.
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              text << ", " << nameOf(b.targetId)
+                   << (b.trigger == MidiTrigger::Toggle          ? ""
+                       : b.trigger == MidiTrigger::DisengageOnly ? " off"
+                                                                 : " on");
           auto marker = juce::MidiMessage::textMetaEvent(6, text);
           marker.setTimeStamp(ticks(e.seconds));
           markerSeq.addEvent(marker);

@@ -11333,6 +11333,85 @@ public:
   }
 };
 static PedalRangeTest g_pedalRange;
+
+// One button for two stops (#551): a message learned for a second stop works
+// both, each by its own trigger; clearing one leaves the other; anything
+// other than a stop learned on it still takes it over.
+class SharedSwitchMessageTest final : public mp::test::Test {
+public:
+  SharedSwitchMessageTest() : Test("functional.midi.one-message-several-stops", Category::Functional) {}
+  void run() override {
+    const mp::MidiSource tab{mp::MidiSourceKind::Note, 1, 36};
+    mp::MidiMap map;
+    map.beginLearnAs(mp::MidiTargetKind::Switch, 10, mp::MidiTrigger::Toggle);
+    map.learnFrom(tab);
+    map.beginLearnAs(mp::MidiTargetKind::Switch, 11, mp::MidiTrigger::Toggle);
+    map.learnFrom(tab);
+    MP_CHECK(map.bindingsFor(mp::MidiTargetKind::Switch, 10).size() == 1 &&
+                 map.bindingsFor(mp::MidiTargetKind::Switch, 11).size() == 1,
+             "learning a second stop on the same tab leaves the first one's mapping");
+    auto action = map.actionFor(tab, 100);
+    MP_CHECK(action.valid() && !action.idle && action.toggled && action.alsoDrives != nullptr &&
+                 action.alsoDrives->size() == 1,
+             "a press toggles the first stop and carries the second");
+    const mp::Id first = action.targetId, second = action.alsoDrives->front().targetId;
+    MP_CHECK((first == 10 && second == 11) || (first == 11 && second == 10), "the two stops, once each");
+    MP_CHECK(map.switchAction(action.alsoDrives->front(), 100).toggled, "and the second one toggles too");
+    action = map.actionFor(tab, 0);
+    MP_CHECK(action.valid() && action.idle && action.alsoDrives != nullptr &&
+                 !map.switchAction(action.alsoDrives->front(), 0).valid(),
+             "the release does nothing to either");
+
+    // A third on the same tab, held while pressed: its release is its own.
+    map.beginLearnAs(mp::MidiTargetKind::Switch, 12, mp::MidiTrigger::Momentary);
+    map.learnFrom(tab);
+    action = map.actionFor(tab, 0);
+    bool heldLetGo = false;
+    for (const auto& b : *action.alsoDrives)
+      if (b.targetId == 12) {
+        const auto a = map.switchAction(b, 0);
+        heldLetGo = a.valid() && !a.engage;
+      }
+    MP_CHECK(action.alsoDrives->size() == 2 && heldLetGo,
+             "a held stop on the same tab is let go on the release, whatever the others do");
+
+    mp::MidiMap copy;
+    MP_CHECK(copy.fromText(map.toText()) && copy.bindings().size() == 3, "all three survive saving");
+    action = copy.actionFor(tab, 100);
+    MP_CHECK(action.alsoDrives != nullptr && action.alsoDrives->size() == 2, "and all three work after a restart");
+
+    // The same stop learned again on the same tab: the others keep it.
+    map.beginLearnAs(mp::MidiTargetKind::Switch, 10, mp::MidiTrigger::Toggle);
+    map.learnFrom(tab);
+    MP_CHECK(map.bindings().size() == 3, "learning a stop again on its own tab keeps the others");
+
+    // A draw-only message for stop 11 on the same tab replaces its toggle and
+    // nothing else.
+    map.beginLearnAs(mp::MidiTargetKind::Switch, 11, mp::MidiTrigger::EngageOnly);
+    map.learnFrom(tab);
+    const auto eleven = map.bindingsFor(mp::MidiTargetKind::Switch, 11);
+    MP_CHECK(eleven.size() == 1 && eleven.front()->trigger == mp::MidiTrigger::EngageOnly &&
+                 map.bindingsFor(mp::MidiTargetKind::Switch, 10).size() == 1 &&
+                 map.bindingsFor(mp::MidiTargetKind::Switch, 12).size() == 1,
+             "a draw-only message for one stop leaves the other stops on the tab");
+
+    map.unbindTarget(mp::MidiTargetKind::Switch, 10);
+    action = map.actionFor(tab, 100);
+    MP_CHECK(action.valid() && action.targetId != 10 && action.alsoDrives != nullptr &&
+                 action.alsoDrives->size() == 1 && action.alsoDrives->front().targetId != 10,
+             "clearing one stop leaves the tab working the other two");
+
+    // A piston learned on the tab takes it from the stops.
+    map.beginLearnAs(mp::MidiTargetKind::PlayerGeneral, 1, mp::MidiTrigger::Momentary);
+    map.learnFrom(tab);
+    action = map.actionFor(tab, 100);
+    MP_CHECK(action.kind == mp::MidiTargetKind::PlayerGeneral && action.alsoDrives == nullptr &&
+                 map.bindingsFor(mp::MidiTargetKind::Switch, 11).empty() &&
+                 map.bindingsFor(mp::MidiTargetKind::Switch, 12).empty(),
+             "a piston learned on the tab takes it over");
+  }
+};
+static SharedSwitchMessageTest g_sharedSwitchMessage;
 static ContinuousControlBankTest g_ccBank;
 static ExpressionTablesTest g_expressionTables;
 static NoiseOptOutTest g_noiseOptOut;
@@ -14384,6 +14463,92 @@ public:
   }
 };
 static GrandOrgueSetterLinkTest g_grandOrgueSetterLink;
+
+// One console tab drawing two stops through the engine (#551): a CC learned
+// for both draws both, cancels both, and a held stop on it follows the tab.
+class SharedSwitchMessageEngineTest final : public mp::test::Test {
+public:
+  SharedSwitchMessageEngineTest() : Test("functional.midi.one-message-several-stops-engine", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-shared-tab");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          wav.createWriterFor(os.release(), 48000.0, 1, 16, juce::StringPairArray(), 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    juce::String organ =
+        "[Organ]\nChurchName=SharedTab\nHasPedals=N\nNumberOfManuals=1\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Manual001]\nName=Manual\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=3\nStop001=1\nStop002=2\nStop003=3\n";
+    for (int s = 1; s <= 3; ++s)
+      organ << "[Stop00" << s << "]\nName=Stop " << s << "\nDisplayed=Y\nNumberOfLogicalPipes=3\n"
+            << "NumberOfAccessiblePipes=3\nFirstAccessiblePipeLogicalKeyNumber=1\nWindchestGroup=1\n"
+            << "Pipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    const auto odf = dir.getChildFile("shared-tab.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    std::vector<mp::Id> stops;
+    for (const auto& [id, st] : proc.organModel().stops) stops.push_back(id);
+    std::sort(stops.begin(), stops.end());
+    MP_CHECK(stops.size() == 3, "with its three stops");
+    if (stops.size() != 3) return;
+    auto sw = [&](size_t i) { return proc.organModel().stops.at(stops[i]).controllingSwitchId; };
+
+    // Learned as the console menu does it: the tab's message, once for each.
+    juce::AudioBuffer<float> buf(2, 256);
+    auto send = [&](int cc, int value) {
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage::controllerEvent(1, cc, value), 0);
+      proc.processBlock(buf, midi);
+    };
+    for (size_t i = 0; i < 2; ++i) {
+      proc.midiMap().beginLearnAs(mp::MidiTargetKind::Switch, sw(i), mp::MidiTrigger::Toggle);
+      send(20, 127);
+      send(20, 0);
+    }
+    proc.midiMap().beginLearnAs(mp::MidiTargetKind::Switch, sw(2), mp::MidiTrigger::Momentary);
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(proc.midiMap().bindings().size() == 3, "one tab learned for three stops keeps all three");
+
+    send(20, 127);
+    MP_CHECK(proc.stopEngaged(stops[0]) && proc.stopEngaged(stops[1]) && proc.stopEngaged(stops[2]),
+             "a press draws all three");
+    send(20, 0);
+    MP_CHECK(proc.stopEngaged(stops[0]) && proc.stopEngaged(stops[1]) && !proc.stopEngaged(stops[2]),
+             "the release leaves the two toggled stops drawn and lets the held one go");
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(!proc.stopEngaged(stops[0]) && !proc.stopEngaged(stops[1]) && !proc.stopEngaged(stops[2]),
+             "the next press cancels the two toggled stops");
+
+    // The same after saving and reading the mapping back.
+    proc.saveMidiMap();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    MP_CHECK(proc.midiMap().bindings().size() == 3, "with all three on the tab");
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(proc.stopEngaged(stops[0]) && proc.stopEngaged(stops[1]), "and the tab still draws both");
+
+    proc.midiMapFileFor(odf).deleteFile();
+    proc.settingsFileFor(odf).deleteFile();
+    proc.combinationFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static SharedSwitchMessageEngineTest g_sharedSwitchMessageEngine;
 #endif // MP_TEST_HAS_AUDIO
 
 // A WavPack file's size in memory, from its own header (#219). The
