@@ -6638,6 +6638,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
 
   phases.mark("odf parse");
+  if (!result.diagnostics.latchedDrawstops.empty())
+    juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(result.diagnostics.latchedDrawstops.size())) +
+                             " drawstop switch(es) the definition marks momentary latch");
 
   // Publish the model before the audio, so a note-on during loading resolves
   // pipes that simply have no sound yet rather than reading a half-built map.

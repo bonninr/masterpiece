@@ -270,6 +270,86 @@ void reportEncrypted(OrganModel& model, OdfDiagnostics& diag, const std::string&
     diag.encryptedSamples.push_back(file);
 }
 
+// A drawstop latches, whatever the definition says (#445).
+//
+// Pekela's demo definition marks sixteen of its drawstops, its couplers and
+// its tremulant Latching N: each knob, and the stop switch it drives, is
+// momentary, so the stop sounds while the mouse is held and goes in when it
+// is let go. The other players read every drawstop as latching, and no other
+// definition we hold marks one momentary, Wildervank from the same builder
+// included.
+//
+// A drawstop here is a drawn, clickable switch upstream of a stop's
+// controlling switch through plain follows (engage 1, disengage 2, no
+// condition). The momentary switches on that path latch: the knob and the
+// stop switches between it and the node. The node itself is left alone, as
+// every set wires it as a momentary follower. A toggling link (a reversible
+// piston) is no follow and stops the walk, and so does a switch that reaches
+// more than one stop: a Tutti or a general is a registration aid, and a
+// momentary one stays a button.
+void latchDrawstops(OrganModel& model, OdfDiagnostics& diag) {
+  std::unordered_map<Id, std::vector<Id>> feeders;
+  for (const auto& l : model.switchLinkages)
+    if (l.sourceSwitchId != l.destSwitchId && l.sourceWhenEngaged && l.conditionSwitchId == 0 &&
+        l.engageAction == 1 && l.disengageAction == 2)
+      feeders[l.destSwitchId].push_back(l.sourceSwitchId);
+  if (feeders.empty()) return;
+
+  auto drawn = [&model](Id id) {
+    const auto it = model.switches.find(id);
+    return it != model.switches.end() && it->second.clickable && it->second.dispInstanceId != 0;
+  };
+  // Every switch upstream of `node`, `node` left out; none past `stopAt`.
+  std::vector<Id> queue;
+  std::unordered_set<Id> seen;
+  auto upstream = [&](Id node, const std::unordered_set<Id>* stopAt) {
+    queue.assign(1, node);
+    seen.clear();
+    seen.insert(node);
+    for (size_t head = 0; head < queue.size() && queue.size() < 4096; ++head) {
+      const auto it = feeders.find(queue[head]);
+      if (it == feeders.end()) continue;
+      for (Id up : it->second) {
+        if (!seen.insert(up).second) continue;
+        if (stopAt != nullptr && stopAt->count(up) != 0) continue;
+        queue.push_back(up);
+      }
+    }
+    queue.erase(queue.begin());
+  };
+
+  std::unordered_set<Id> nodes;
+  for (const auto& [stopId, stop] : model.stops)
+    if (stop.controllingSwitchId != 0) nodes.insert(stop.controllingSwitchId);
+
+  // The switches that reach more than one stop.
+  std::unordered_map<Id, int> reach;
+  for (Id node : nodes) {
+    upstream(node, nullptr);
+    for (Id id : queue) ++reach[id];
+  }
+  std::unordered_set<Id> aids;
+  for (const auto& [id, n] : reach)
+    if (n > 1) aids.insert(id);
+
+  std::vector<Id> latched;
+  for (Id node : nodes) {
+    upstream(node, &aids);
+    if (aids.count(node) != 0) continue;
+    std::vector<Id> path(queue.begin(), queue.end());
+    if (drawn(node)) path.push_back(node);
+    if (std::none_of(path.begin(), path.end(), drawn)) continue;
+    for (Id id : path) {
+      auto it = model.switches.find(id);
+      if (it == model.switches.end() || it->second.latching) continue;
+      it->second.latching = true;
+      latched.push_back(id);
+    }
+  }
+  std::sort(latched.begin(), latched.end());
+  diag.latchedDrawstops = std::move(latched);
+}
+
 } // namespace
 
 // Forward: CODM ObjectList compiler (defined at end of file).
@@ -1971,6 +2051,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       outDiag.danglingIds.push_back(el.capturedSwitchId);
     comboIt->second.elements.push_back(el);
   });
+
+  latchDrawstops(outModel, outDiag);
 
   // Every field of a known table that holds a value and that no part of the
   // loader asked for. A field the format has and this player ignores is a

@@ -32,6 +32,9 @@ struct OdfDiagnostics {
   // (ADR-002).
   std::vector<int> unmappedLinkageCodes;
   std::vector<Id> switchLinkageDangling; // linkage naming a switch that is not there
+  // Switches the definition marks momentary that draw a stop, and which are
+  // read as latching (#445).
+  std::vector<Id> latchedDrawstops;
   std::vector<std::string> missingImageFiles; // M1.4: element/mask bitmaps absent on disk
   std::vector<Id> emptyDisplayPages; // M1.4: page with no instances and no texts
   std::vector<Id> unreferencedImageSets; // M1.4: set never instanced on any page
