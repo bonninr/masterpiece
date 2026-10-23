@@ -686,7 +686,7 @@ void TopBar::resized() {
   // Wide enough to set a level by hand (#90: too small to use). The status
   // line has moved to the bottom of the window, so the fader and the meter
   // share the rest.
-  const int volumeW = juce::jlimit(90, 220, room - 120);
+  const int volumeW = juce::jlimit(kFaderMinWidth, 220, room - 120);
   const int meterW = juce::jlimit(0, 112, room - volumeW - 8);
   volume_.setBounds(r.removeFromLeft(volumeW));
   r.removeFromLeft(8);
@@ -1851,12 +1851,17 @@ void MasterpieceEditor::resized() {
   // on the right left the bar on the left too little room, and the volume
   // fader went with it (#53). Below that, the buttons take a row of their own.
   const int menuW = kMobile ? 84 : 70;
+  const int stepW = kMobile ? 44 : 30;
   bool stacked = false;
   {
-    constexpr int kFaderRowMin = 350;  // the menus, No DSP and the fader
-    const int buttons = 70 + 140 + 96 + (kMobile ? 44 + 44 + 64 : 30 + 30 + 56) +
-                        (layout_.isVisible() ? layoutW : 0);
-    if (bar.getWidth() - buttons < kFaderRowMin) {
+    // Every button in the band, as placed below: the three menus on the
+    // left; on the right panic, save, the layout, the temperament and the
+    // sequencer. What is left is the bar's, and it needs No DSP and a fader
+    // a hand can use.
+    const int menus = 3 * menuW + 14;
+    const int buttons = 2 * (kMobile ? 46 : 38) + (layout_.isVisible() ? layoutW : 0) + 140 +
+                        2 * stepW + 96 + (kMobile ? 64 : 56);
+    if (bar.getWidth() - menus - buttons < TopBar::kMinWidth) {
       auto row = bar;
       fileMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
       viewMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
@@ -1878,7 +1883,6 @@ void MasterpieceEditor::resized() {
   tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   // A fingertip wide on a phone or tablet.
-  const int stepW = kMobile ? 44 : 30;
   stepNext_.setBounds(bar.removeFromRight(stepW).reduced(2));
   stepFrame_.setBounds(bar.removeFromRight(96).reduced(2));
   stepPrev_.setBounds(bar.removeFromRight(stepW).reduced(2));
