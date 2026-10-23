@@ -58,6 +58,20 @@ juce::Image woodTileFor(const std::string& name) {
   return {};
 }
 
+// The face a label is drawn in: the one the set names, or the default face
+// where this machine does not have it. On Android, JUCE looks for a missing
+// face again at every draw and logs three assertions each time, six thousand
+// on one load of the GrandOrgue demo; the default face is what it falls back
+// to in any case. Elsewhere the system's own matching finds a close face
+// (fontconfig on Linux), so the name is left as the set gives it.
+juce::String installedFace(const juce::String& face) {
+#if JUCE_ANDROID
+  static const juce::StringArray installed = juce::Font::findAllTypefaceNames();
+  if (!installed.contains(face)) return juce::Font::getDefaultSansSerifFontName();
+#endif
+  return face;
+}
+
 // A stand-in for one of the standard components by its file name, without
 // directory or extension and ignoring case: "HauptwerkStandardImages/
 // WindDialNeedle07.25.bmp" is resources/standard/WindDialNeedle07.25.png.
@@ -497,6 +511,7 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
     if (!style.faceLinux.empty()) face = juce::String::fromUTF8(style.faceLinux.c_str());
    #endif
     if (face.isEmpty()) face = "Arial";
+    face = installedFace(face);
     // Font_SizePixels is a height in pixels, which is what JUCE wants.
     const float height = static_cast<float>(style.sizePx > 0 ? style.sizePx : 10);
     int flags = juce::Font::plain;
