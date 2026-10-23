@@ -180,8 +180,13 @@ bool unpackScoreFonts(const juce::File& folder) {
 
 bool registerScoreFonts() {
   static const bool loaded = [] {
-    // JUCE finds a typeface made this way by name only while it is alive.
-    static std::vector<juce::Typeface::Ptr> faces;
+    // JUCE finds a typeface made this way by name only while it is alive, so
+    // the faces are kept to the end. They are kept in a static made after the
+    // first face: statics go in the reverse order they were made, and each
+    // face takes itself out of JUCE's register of memory fonts, a static that
+    // the first face makes. Kept in one made before it, they went after the
+    // register and the program crashed on its way out.
+    std::vector<juce::Typeface::Ptr> faces;
     bool all = true;
     for (int i = 0; i < MpScoreFonts::namedResourceListSize; ++i) {
       const juce::String file = MpScoreFonts::originalFilenames[i];
@@ -194,7 +199,9 @@ bool registerScoreFonts() {
       if (face != nullptr) faces.push_back(face);
       else all = false;
     }
-    return all && !faces.empty();
+    const bool any = !faces.empty();
+    static const std::vector<juce::Typeface::Ptr> kept = std::move(faces);
+    return all && any;
   }();
   return loaded;
 }
