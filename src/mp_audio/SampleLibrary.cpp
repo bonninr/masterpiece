@@ -1824,11 +1824,13 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   const std::string tmp = path + ".part";
   // A write that fails, on a full disk most often, takes its part file with
   // it: left behind, it kept the disk full and the settings unsaved (#519).
+  // The space is read while the part file still holds it: once it is
+  // removed, the disk that just filled up shows the room the cache took.
   const auto failed = [&] {
-    std::filesystem::remove(mp::pathOf(tmp), ec);
-    if (cacheStop_.load()) return false;
     std::error_code spaceError;
     const auto space = std::filesystem::space(mp::pathOf(path).parent_path(), spaceError);
+    std::filesystem::remove(mp::pathOf(tmp), ec);
+    if (cacheStop_.load()) return false;
     cacheFailure_ = !spaceError && space.available < (uint64_t{64} << 20) ? CacheFailure::DiskFull
                                                                         : CacheFailure::Failed;
     return false;
