@@ -996,3 +996,8 @@ countries: fr be ca ch lu mc
 "over" = "sur"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Chaque tuyau commence d'autant plus fort, ou plus doux, puis rejoint son propre niveau : plus ou moins de chiff. 0 dB, c'est désactivé. Entendu dès la note suivante ; enregistré avec l'orgue."
 "How long the attack's emphasis lasts" = "Durée de l'accentuation de l'attaque"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "Le cache d'échantillons de ce dossier : %1. Chaque orgue relit ses échantillons à son prochain chargement."
+"No sample cache in this folder" = "Aucun cache d'échantillons dans ce dossier"
+"Delete the cache" = "Supprimer le cache"
+"sample cache not saved: the disk is full" = "cache d'échantillons non enregistré : le disque est plein"
+"sample cache not saved" = "cache d'échantillons non enregistré"

@@ -306,7 +306,7 @@ static juce::File openInPlaceAndRemember(const juce::URL& document) {
   lines.removeString(document.toString(true));
   lines.removeEmptyStrings();
   lines.add(document.toString(true));
-  linkedList().replaceWithText(lines.joinIntoString("\n") + "\n");
+  mp::writeTextFile(linkedList(), lines.joinIntoString("\n") + "\n");
   return link;
 }
 #endif
@@ -332,7 +332,7 @@ void restoreLinkedDocuments() {
     if (line.isNotEmpty() && openInPlace(juce::URL(line)).existsAsFile()) kept.add(line);
   // A document that has gone (deleted, or its access withdrawn) is dropped.
   if (kept.size() != lines.size())
-    linkedList().replaceWithText(kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
+    mp::writeTextFile(linkedList(), kept.joinIntoString("\n") + (kept.isEmpty() ? "" : "\n"));
  #endif
 }
 
@@ -506,7 +506,7 @@ void saveDialogSize(const juce::String& kind, int w, int h) {
     if (lines[i].upToFirstOccurrenceOf("=", false, false) == kind) lines.remove(i);
   lines.add(kind + "=" + juce::String(w) + " " + juce::String(h));
   dialogSizesFile().getParentDirectory().createDirectory();
-  dialogSizesFile().replaceWithText(lines.joinIntoString("\n") + "\n");
+  mp::writeTextFile(dialogSizesFile(), lines.joinIntoString("\n") + "\n");
 }
 
 // Writes the dialog's size down as it closes. Owned by nobody but itself: it

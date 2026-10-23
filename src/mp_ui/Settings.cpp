@@ -14,6 +14,16 @@
 namespace mp::ui {
 namespace {
 
+// The sample cache's files in a folder: one per organ or a single one, and
+// the part file of a write that stopped.
+juce::Array<juce::File> sampleCacheFiles(const juce::File& dir) {
+  juce::Array<juce::File> files;
+  if (!dir.isDirectory()) return files;
+  dir.findChildFiles(files, juce::File::findFiles, false, "samples*.mpcache");
+  dir.findChildFiles(files, juce::File::findFiles, false, "samples*.mpcache.part");
+  return files;
+}
+
 void styleLabel(juce::Label& l, const juce::String& text) {
   l.setText(text, juce::dontSendNotification);
   l.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
@@ -348,6 +358,14 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(cacheDirDefault_);
   cacheDirDefault_.onClick = [this] {
     proc_.setCacheDirectory(juce::File());
+    showCacheDir();
+  };
+  // The cache files in that folder, removed in one click: they run to
+  // gigabytes, and a disk they filled needs them gone without a load (#519).
+  addAndMakeVisible(cacheDelete_);
+  cacheDelete_.onClick = [this] {
+    if (proc_.cacheWriting()) return;
+    for (const auto& f : sampleCacheFiles(proc_.cacheDirectory())) f.deleteFile();
     showCacheDir();
   };
 
@@ -878,6 +896,13 @@ void EnginePanel::showCacheDir() {
                              : chosen.getFullPathName(),
                          juce::dontSendNotification);
   cacheDirValue_.setTooltip(proc_.cacheDirectory().getFullPathName());
+  juce::int64 bytes = 0;
+  for (const auto& f : sampleCacheFiles(proc_.cacheDirectory())) bytes += f.getSize();
+  cacheDelete_.setEnabled(bytes > 0 && !proc_.cacheWriting());
+  cacheDelete_.setTooltip(
+      bytes > 0 ? TRANS("The sample cache in this folder: %1. Each organ reads its samples again on its next load.")
+                      .replace("%1", juce::File::descriptionOfSizeInBytes(bytes))
+                : TRANS("No sample cache in this folder"));
 }
 
 void EnginePanel::showPackageDir() {
@@ -991,6 +1016,8 @@ void EnginePanel::resized() {
   cacheDirChoose_.setBounds(cacheDirRow.removeFromRight(90).reduced(0, 2));
   cacheDirRow.removeFromRight(6);
   cacheDirDefault_.setBounds(cacheDirRow.removeFromRight(80).reduced(0, 2));
+  cacheDirRow.removeFromRight(6);
+  cacheDelete_.setBounds(cacheDirRow.removeFromRight(130).reduced(0, 2));
   cacheDirRow.removeFromRight(8);
   cacheDirValue_.setBounds(cacheDirRow);
   r.removeFromTop(6);
@@ -3235,7 +3262,7 @@ LogPanel::LogPanel(MasterpieceProcessor& p) : proc_(p) {
   send_.onClick = [this] {
     const auto report = juce::File::getSpecialLocation(juce::File::tempDirectory)
                             .getChildFile("masterpiece-report.txt");
-    report.replaceWithText(reportWithLog());
+    mp::writeTextFile(report, reportWithLog());
     juce::Array<juce::URL> files;
     files.add(juce::URL(report));
     const auto log = logFile();

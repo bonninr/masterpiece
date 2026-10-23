@@ -1714,6 +1714,7 @@ public:
   double cacheWriteFraction() const { return samples_.cacheWriteFraction(); }
   int64_t cacheBytesDone() const { return samples_.cacheBytesDone(); }
   int64_t cacheBytesTotal() const { return samples_.cacheBytesTotal(); }
+  SampleLibrary::CacheFailure cacheWriteFailure() const { return samples_.cacheWriteFailure(); }
   // When the sample cache of a new load is written. Off (the default): the
   // load writes it before the organ can be played, as GrandOrgue does, and
   // nothing competes with the sound. On: the organ plays at once and the

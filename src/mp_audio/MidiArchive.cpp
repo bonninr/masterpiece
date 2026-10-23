@@ -1,4 +1,5 @@
 #include "MidiArchive.h"
+#include "DataFolder.h"
 
 #include <algorithm>
 
@@ -29,7 +30,7 @@ std::vector<Listed> readIndex(const juce::File& folder) {
 void writeIndex(const juce::File& folder, const std::vector<Listed>& listed) {
   juce::String text;
   for (const auto& l : listed) text << juce::String(l.writtenMs) << "\t" << l.path << "\n";
-  folder.getChildFile(MidiArchive::kIndexName).replaceWithText(text);
+  mp::writeTextFile(folder.getChildFile(MidiArchive::kIndexName), text);
 }
 
 }  // namespace

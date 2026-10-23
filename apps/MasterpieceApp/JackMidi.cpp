@@ -87,7 +87,7 @@ struct JackMidiInput::Impl : private juce::Timer {
     for (const auto& p : pending) sources.addIfNotAlreadyThere(p);
     const auto f = connectionsFile();
     f.getParentDirectory().createDirectory();
-    f.replaceWithText(sources.joinIntoString("\n") + (sources.isEmpty() ? "" : "\n"));
+    mp::writeTextFile(f, sources.joinIntoString("\n") + (sources.isEmpty() ? "" : "\n"));
   }
 
   // JACK's process thread: hand every short message to the processor's queue,

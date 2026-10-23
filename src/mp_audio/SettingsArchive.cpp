@@ -1,4 +1,5 @@
 #include "SettingsArchive.h"
+#include "DataFolder.h"
 
 namespace mp::settings {
 
@@ -314,7 +315,7 @@ bool restore(const juce::File& zip, const juce::File& root, const juce::String& 
   }
   for (const auto& e : entries) {
     const juce::File f = fileAt(root, e.path);
-    if (!f.getParentDirectory().createDirectory() || !f.replaceWithData(e.data.getData(), e.data.getSize()))
+    if (!f.getParentDirectory().createDirectory() || !mp::writeDataFile(f, e.data.getData(), e.data.getSize()))
       ok = false;
   }
   if (!ok)
@@ -369,7 +370,7 @@ bool copy(const juce::File& root, const juce::String& from, const juce::String& 
         if (isMixerOrVoicing(l)) out.add(l);
       const juce::String text = out.joinIntoString(nl) + nl;
       ok = dst.getParentDirectory().createDirectory() &&
-           dst.replaceWithData(text.toRawUTF8(), text.getNumBytesAsUTF8()) && ok;
+           mp::writeDataFile(dst, text.toRawUTF8(), text.getNumBytesAsUTF8()) && ok;
     }
   }
   if (!ok)

@@ -274,7 +274,9 @@ void OpenPanel::resized() {
 
 void OpenPanel::show(MasterpieceProcessor& p, std::function<void(const juce::File&)> open,
                      std::function<void()> browse) {
-  if (p.favourites().organs.used().empty()) {
+  // With an organ on the console the window opens even with no favourite,
+  // for its "Add the organ now loaded" (#519).
+  if (p.favourites().organs.used().empty() && p.loadedOrganFile() == juce::File()) {
     if (browse) browse();
     return;
   }

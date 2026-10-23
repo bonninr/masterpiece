@@ -278,13 +278,13 @@ bool SplitKeyboardHost::proposeMapping() {
 void SplitKeyboardHost::saveShared() const {
   const auto f = sharedFile();
   f.getParentDirectory().createDirectory();
-  f.replaceWithText(split::sharedToText(shared_, [this](int id) { return map_.devices().nameFor(id); }));
+  mp::writeTextFile(f, split::sharedToText(shared_, [this](int id) { return map_.devices().nameFor(id); }));
 }
 
 void SplitKeyboardHost::saveOrgan() const {
   if (organFile_.getFullPathName().isEmpty()) return;
   organFile_.getParentDirectory().createDirectory();
-  organFile_.replaceWithText(split::organToText(organLayout_, organPreset_));
+  mp::writeTextFile(organFile_, split::organToText(organLayout_, organPreset_));
 }
 
 }  // namespace mp

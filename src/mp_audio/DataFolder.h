@@ -15,4 +15,12 @@ juce::File dataFolder();
 // an empty File goes back to the player's own folder.
 void setDataFolder(const juce::File& folder);
 
+// A whole file written afresh, the bytes File::replaceWithText and
+// replaceWithData write, through a temporary file beside it. The file is
+// replaced only once every byte is on the disk: a full disk or a failed write
+// leaves the old file as it was, removes the temporary one, and returns false
+// (#519).
+bool writeTextFile(const juce::File& target, const juce::String& text);
+bool writeDataFile(const juce::File& target, const void* data, size_t size);
+
 }  // namespace mp

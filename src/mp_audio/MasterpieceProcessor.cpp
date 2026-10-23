@@ -1967,10 +1967,10 @@ bool MasterpieceProcessor::saveRememberedState() const {
   if (lines.isEmpty()) lines.add("# Masterpiece per-organ settings");
   const juce::String text = lines.joinIntoString("\n") + "\n" + rememberedStateLines();
   // A stop drawn and put back: nothing to write. What is on disk has the
-  // CRLF endings replaceWithText writes on Windows.
+  // CRLF endings writeTextFile writes.
   if (text == before.replace("\r\n", "\n")) return true;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(text);
+  return mp::writeTextFile(f, text);
 }
 
 bool MasterpieceProcessor::saveRememberedStateIfSettled(uint32_t quietMs) {
@@ -2101,7 +2101,7 @@ bool MasterpieceProcessor::saveSettings() const {
     if (attackDb() != 0.0f) text << "attack " << juce::String(attackDb(), 1) << " " << attackMs() << "\n";
   }
 
-  return f.replaceWithText(text);
+  return mp::writeTextFile(f, text);
 }
 
 bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
@@ -2461,7 +2461,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
            << juce::String(fav.target) << "\n";
     }
   }
-  return f.replaceWithText(text);
+  return mp::writeTextFile(f, text);
 }
 
 bool MasterpieceProcessor::saveGlobalDefaults() {
@@ -3128,7 +3128,7 @@ bool MasterpieceProcessor::saveMasterGain() const {
     if (lines.isEmpty()) lines.add("# Masterpiece per-organ settings");
     lines.add(gainLine);
   }
-  return f.replaceWithText(lines.joinIntoString("\n") + "\n");
+  return mp::writeTextFile(f, lines.joinIntoString("\n") + "\n");
 }
 
 bool MasterpieceProcessor::saveMasterGainIfDirty() {
@@ -3156,7 +3156,7 @@ bool MasterpieceProcessor::saveMidiMap() const {
   console.keepOnlyConsoleSendsAndShortcuts();
   const auto cf = consoleMidiFile();
   cf.getParentDirectory().createDirectory();
-  cf.replaceWithText(juce::String(console.toText()));
+  mp::writeTextFile(cf, juce::String(console.toText()));
 
   const auto f = organFileForSaving("midi", ".mpmidi");
   if (f.getFullPathName().isEmpty()) return false;
@@ -3172,7 +3172,7 @@ bool MasterpieceProcessor::saveMidiMap() const {
     }
   }
   organ.removeBindings([](const MidiBinding& b) { return MidiMap::isConsoleTarget(b.targetKind); });
-  return f.replaceWithText(juce::String(organ.toText()));
+  return mp::writeTextFile(f, juce::String(organ.toText()));
 }
 
 void MasterpieceProcessor::applyConsoleMidi() {
@@ -3271,7 +3271,7 @@ bool MasterpieceProcessor::loadMidiMap() {
   midiMapRepaired_ = midiMap_.repairKeyboardBindings(couplers_.inputKeyboards());
   if (midiMapRepaired_ > 0) {
     const auto backup = f.getSiblingFile(f.getFileName() + ".before-repair");
-    if (!backup.existsAsFile()) backup.replaceWithText(text);
+    if (!backup.existsAsFile()) mp::writeTextFile(backup, text);
     saveMidiMap();
     juce::Logger::writeToLog(
         "midi: repaired the saved mapping: " + juce::String(midiMapRepaired_) +
@@ -5303,7 +5303,7 @@ bool MasterpieceProcessor::copyCombinationSetTo(const std::string& name) const {
   const auto f = organFileForSaving("combinations", setExtension(clean));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(combinationFileText()));
+  return mp::writeTextFile(f, juce::String(combinationFileText()));
 }
 
 bool MasterpieceProcessor::deleteCombinationSet(const std::string& name) const {
@@ -5334,7 +5334,7 @@ bool MasterpieceProcessor::saveCombinations() const {
   const auto f = organFileForSaving("combinations", setExtension(combinationSet_));
   if (f.getFullPathName().isEmpty()) return false;
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(combinationFileText()));
+  return mp::writeTextFile(f, juce::String(combinationFileText()));
 }
 
 bool MasterpieceProcessor::saveCombinationsIfDirty() {
@@ -5955,7 +5955,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
       sources = OrganArchive::carryingIn(folders, wanted);
       juce::String text;
       for (const auto& s : sources) text << juce::String::fromUTF8(s.c_str()) << "\n";
-      if (text.isNotEmpty()) archiveRecord.replaceWithText(text);
+      if (text.isNotEmpty()) mp::writeTextFile(archiveRecord, text);
     }
     for (const auto& source : sources) joinSource(source);
   }
@@ -7681,7 +7681,7 @@ void MasterpieceProcessor::writePortableCopy(const juce::File& odf) {
     juce::Logger::writeToLog("portable: could not copy the definition to " + copy.getFullPathName());
     return;
   }
-  stamp.replaceWithText(juce::String(loadedStamp_));
+  mp::writeTextFile(stamp, juce::String(loadedStamp_));
 
   // The index: this original now has a copy.
   juce::StringArray lines;
@@ -7690,7 +7690,7 @@ void MasterpieceProcessor::writePortableCopy(const juce::File& odf) {
   for (int i = lines.size(); --i >= 0;)
     if (lines[i].upToFirstOccurrenceOf("\t", false, false) == odf.getFullPathName()) lines.remove(i);
   lines.add(odf.getFullPathName() + "\t" + copy.getFullPathName());
-  root.getChildFile("index.txt").replaceWithText(lines.joinIntoString("\n") + "\n");
+  mp::writeTextFile(root.getChildFile("index.txt"), lines.joinIntoString("\n") + "\n");
   juce::Logger::writeToLog("portable: a copy of the definition and " + juce::String(files - 1) + " other files (" +
                            juce::String(bytes / (1024.0 * 1024.0), 1) + " MB) in " + bundle.getFullPathName() +
                            ", after " + juce::String((juce::Time::getMillisecondCounterHiRes() - started) / 1000.0, 1) +
@@ -7775,7 +7775,7 @@ juce::Array<juce::File> MasterpieceProcessor::organVersions(const juce::File& od
 void MasterpieceProcessor::rememberDefinition(const juce::File& odf) {
   const juce::File package = packageFolderOf(odf);
   if (package == juce::File()) return;
-  package.getChildFile(kChosenDefinition).replaceWithText(odf.getRelativePathFrom(package));
+  mp::writeTextFile(package.getChildFile(kChosenDefinition), odf.getRelativePathFrom(package));
 }
 
 juce::File MasterpieceProcessor::rememberedDefinition(const juce::Array<juce::File>& definitions) {

@@ -978,11 +978,11 @@ public:
       if (auto state = devices_->createStateXml()) {
         const auto f = audioSettingsFile();
         f.getParentDirectory().createDirectory();
-        f.replaceWithText(state->toString());
+        mp::writeTextFile(f, state->toString());
       }
 
     // The main window's place, for the next start (#53).
-    if (win_) windowStateFile().replaceWithText(win_->getWindowStateAsString());
+    if (win_) mp::writeTextFile(windowStateFile(), win_->getWindowStateAsString());
 
     // The archive's take in progress, while the log can still say where.
     if (proc_) proc_->serviceArchive(true);

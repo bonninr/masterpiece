@@ -996,3 +996,8 @@ countries: nl be sr
 "over" = "over"
 "Each pipe begins this much louder, or softer, and comes to its own level: more or less chiff. 0 dB is off. Heard from the next note; saved with the organ." = "Elke pijp begint zoveel luider of zachter en komt dan op zijn eigen niveau: meer of minder chiff. 0 dB is uit. Te horen vanaf de volgende noot; opgeslagen met het orgel."
 "How long the attack's emphasis lasts" = "Hoe lang de nadruk op de aanspraak duurt"
+"The sample cache in this folder: %1. Each organ reads its samples again on its next load." = "De samplecache in deze map: %1. Elk orgel leest zijn samples opnieuw bij het volgende laden."
+"No sample cache in this folder" = "Geen samplecache in deze map"
+"Delete the cache" = "Cache verwijderen"
+"sample cache not saved: the disk is full" = "samplecache niet opgeslagen: de schijf is vol"
+"sample cache not saved" = "samplecache niet opgeslagen"

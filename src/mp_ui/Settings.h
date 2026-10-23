@@ -157,6 +157,7 @@ private:
   juce::Label cacheDirValue_;
   juce::TextButton cacheDirChoose_{TRANS("Choose...")};
   juce::TextButton cacheDirDefault_{TRANS("Default")};
+  juce::TextButton cacheDelete_{TRANS("Delete the cache")};
   std::unique_ptr<juce::FileChooser> cacheDirChooser_;
   void showCacheDir();
   juce::Label packageDirLabel_;

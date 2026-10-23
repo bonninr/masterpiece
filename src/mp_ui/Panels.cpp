@@ -1,5 +1,6 @@
 #include "Panels.h"
 
+#include "../mp_audio/DataFolder.h"
 #include "MidiEventDialog.h"
 #include "Mobile.h"
 
@@ -624,7 +625,7 @@ bool savePanelLayouts(const MasterpieceProcessor& p, const std::vector<PanelLayo
   std::string text = "# Masterpiece panels\n";
   for (const auto& l : panels) text += "panel\n" + l.toText();
   f.getParentDirectory().createDirectory();
-  return f.replaceWithText(juce::String(text));
+  return mp::writeTextFile(f, juce::String(text));
 }
 
 // ---- colours -----------------------------------------------------------------
