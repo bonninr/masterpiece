@@ -277,6 +277,8 @@ public:
           for (int c = 0; c < channels; ++c)
             all = all && coded.sample(f, c) == plain.sample(f, c);
         MP_CHECK(all, label + ": every value reads back the same");
+        MP_CHECK(coded.coded->data.capacity() == coded.coded->data.size(),
+                 label + ": the stream holds no room it does not use");
       }
 
     // What it leaves alone.

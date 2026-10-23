@@ -75,8 +75,10 @@ struct SplitRiceStream {
   size_t blockCount() const { return blockOffsets.size(); }
   // The frames in a block: all of them but the last are full.
   uint32_t framesInBlock(size_t index) const;
-  // What the sample costs in memory.
-  size_t bytes() const { return data.size() + blockOffsets.size() * sizeof(uint32_t); }
+  // What the sample costs in memory: what is held, used or not.
+  size_t bytes() const {
+    return data.capacity() + blockOffsets.capacity() * sizeof(uint32_t);
+  }
 };
 
 // The decoder's working memory, made once and kept: a voice decodes on the

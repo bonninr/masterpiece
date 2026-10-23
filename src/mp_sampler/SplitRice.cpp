@@ -715,6 +715,11 @@ bool encodeSplitRice(const int32_t* samples, uint64_t frames, int channels, int 
     }
   }
   out.data.insert(out.data.end(), kTail, 0);
+  // The reserve above is a guess at the worst case, about twice what a
+  // sample codes to. A stream lives as long as the organ, so it keeps only
+  // what it uses; otherwise every sample holds its surplus resident.
+  out.data.shrink_to_fit();
+  out.blockOffsets.shrink_to_fit();
   if (error) *error = CodecError::None;
   return true;
 }

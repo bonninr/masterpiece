@@ -182,6 +182,7 @@ public:
           "  --console-page <n>       show this console page once the organ is up (from 1)\n"
           "  --storage <format>       int16, int20, int24 or float32 samples in memory\n"
           "  --load-mono <on|off>     load samples as mono\n"
+          "  --compress-samples <on|off>  hold samples compressed, lossless\n"
           "  --stream-releases <on|off>  stream release tails from disk\n"
           "  --preload-head <frames>  minimum head of every sample (0 = whole file)\n"
           "  --load-rate <Hz>         convert samples to this rate as they load\n"
