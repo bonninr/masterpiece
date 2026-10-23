@@ -181,7 +181,7 @@ private:
   juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
   juce::ToggleButton faster_{TRANS("Faster audio engine")};
-  juce::ToggleButton realtime_{TRANS("Real-time render threads (trial)")};
+  juce::ToggleButton realtime_{TRANS("Real-time render threads")};
   juce::ToggleButton portable_{TRANS("Keep this organ playable without its installation files")};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;

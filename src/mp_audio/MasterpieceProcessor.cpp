@@ -2420,7 +2420,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   // Written either way: on is the default since 0.7.11, and a player who
   // turned it off has to find it off.
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
-  if (realtimeThreads_.load()) text << "realtimethreads 1\n";
+  // Written either way too: on is the default since 0.9.0.
+  text << "realtimethreads " << (realtimeThreads_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
   if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
