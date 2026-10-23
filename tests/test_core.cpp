@@ -13432,6 +13432,59 @@ public:
 };
 static ReversiblePistonTest g_reversiblePiston;
 
+// A drawstop latches when the definition marks it momentary (#445). Stop 2
+// is wired as Pekela's demo wires sixteen of its stops: the knob and the stop
+// switch Latching N, each following the one before. A Tutti that reaches two
+// stops, a reversible on a toggling link, and a stop no drawn switch reaches
+// keep the definition's momentary switches.
+class DrawstopLatchesTest final : public mp::test::Test {
+public:
+  DrawstopLatchesTest() : Test("functional.switches.drawstop-latches", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>10</a><b>knob 1</b><i>Y</i><k>1</k></o>"
+        "<o><a>11</a><b>stop 1</b></o>"
+        "<o><a>12</a><b>node 1</b><d>N</d></o>"
+        "<o><a>20</a><b>knob 2</b><d>N</d><i>Y</i><k>2</k></o>"
+        "<o><a>21</a><b>stop 2</b><d>N</d></o>"
+        "<o><a>22</a><b>node 2</b><d>N</d></o>"
+        "<o><a>30</a><b>Tutti</b><d>N</d><i>Y</i><k>3</k></o>"
+        "<o><a>40</a><b>reversible</b><d>N</d><i>Y</i><k>4</k></o>"
+        "<o><a>50</a><b>input 3</b><d>N</d></o>"
+        "<o><a>51</a><b>stop 3</b><d>N</d></o>"
+        "<o><a>52</a><b>node 3</b><d>N</d></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\">"
+        "<o><a>10</a><b>11</b></o><o><a>11</a><b>10</b></o><o><a>11</a><b>12</b></o>"
+        "<o><a>20</a><b>21</b></o><o><a>21</a><b>22</b></o>"
+        "<o><a>30</a><b>11</b></o><o><a>30</a><b>21</b></o>"
+        "<o><a>40</a><b>21</b><f>3</f><g>7</g></o>"
+        "<o><a>50</a><b>51</b></o><o><a>51</a><b>52</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Stop\">"
+        "<o><a>1</a><b>one</b><d>12</d></o><o><a>2</a><b>two</b><d>22</d></o>"
+        "<o><a>3</a><b>three</b><d>52</d></o></ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d), "the definition loads");
+    auto latching = [&m](mp::Id id) { return m.switches.at(id).latching; };
+    MP_CHECK(latching(10) && latching(11), "the latching stop is as it was");
+    MP_CHECK(latching(20), "the momentary knob latches");
+    MP_CHECK(latching(21), "and so does the stop switch it drives");
+    MP_CHECK(!latching(22), "the node the engine reads is left as the definition has it");
+    MP_CHECK(!latching(30), "a Tutti reaching two stops stays a button");
+    MP_CHECK(!latching(40), "a reversible piston stays a button");
+    MP_CHECK(!latching(50) && !latching(51), "a stop no drawn switch reaches is left alone");
+    MP_CHECK(d.latchedDrawstops == std::vector<mp::Id>({20, 21}), "the two are reported");
+  }
+};
+static DrawstopLatchesTest g_drawstopLatches;
+
 #ifdef MP_TEST_HAS_AUDIO
 // The player's own console: channels set on one organ, taken as the default,
 // are what an organ with nothing saved for it starts from -- by role, the
