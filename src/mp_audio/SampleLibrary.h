@@ -338,7 +338,8 @@ private:
   // the cache is not ours.
   std::string cacheFingerprint(const std::unordered_set<Id>* onlyRanks,
                                int64_t maxFramesPerSample,
-                               LoopSelection loopSelection) const;
+                               LoopSelection loopSelection,
+                               size_t licensedLeftOut) const;
   std::string cachePath() const;
   bool writeCache(const Store& store, const std::string& fingerprint,
                   const std::string& path) const;

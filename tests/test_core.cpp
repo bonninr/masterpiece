@@ -11508,11 +11508,56 @@ public:
     root.deleteRecursively();
   }
 };
+
+// The licence mark is a number, the licence a file needs, and 0 is none.
+// St. Maximin writes 1 on its releases and 2440 on its attacks; read as a yes
+// or no, 2440 was neither, so its attacks loaded without the licence and its
+// releases waited for it.
+class LicenceNumberTest final : public mp::test::Test {
+public:
+  LicenceNumberTest() : Test("functional.samples.licence-number", Category::Functional) {}
+  void run() override {
+    const auto base = juce::File(juce::String(MP_TEST_FIXTURES_DIR) + "/edge.encrypted.Organ_Hauptwerk_xml")
+                          .loadFileAsString()
+                          .replace("036-C.hbw", "036-C.wav");
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_licence_number");
+    root.deleteRecursively();
+    root.createDirectory();
+    auto marked = [&](const juce::String& value, bool& licensed, bool& organ) {
+      const juce::String mark = "<LicenceSerialNumRequiredForSampleFile>1<";
+      const int at = base.indexOf(mark);
+      const juce::String xml = base.substring(0, at) + "<LicenceSerialNumRequiredForSampleFile>" + value + "<" +
+                               base.substring(at + mark.length());
+      const auto odf = root.getChildFile("number.Organ_Hauptwerk_xml");
+      odf.replaceWithText(xml);
+      mp::OdfLoader loader;
+      mp::OdfLoader::Options opts;
+      mp::OrganModel m;
+      mp::OdfDiagnostics d;
+      if (!loader.load(odf.getFullPathName().toStdString(), opts, m, d)) return false;
+      for (const auto& [id, ref] : m.samples)
+        if (ref.fileName == "036-C.wav") licensed = ref.licenceRequired;
+      organ = m.hasLicensedSamples;
+      return true;
+    };
+    bool licensed = false, organ = false;
+    MP_CHECK(marked("2440", licensed, organ) && licensed && organ, "licence 2440 needs a licence");
+    MP_CHECK(marked("1", licensed, organ) && licensed && organ, "licence 1 needs a licence");
+    MP_CHECK(marked("2.44e3", licensed, organ) && licensed, "a number in scientific notation is read as a number");
+    MP_CHECK(marked("Y", licensed, organ) && licensed, "Y needs a licence");
+    licensed = true;
+    MP_CHECK(marked("0", licensed, organ) && !licensed && !organ, "0 needs none, and the organ asks for none");
+    licensed = true;
+    MP_CHECK(marked("N", licensed, organ) && !licensed, "N needs none");
+    root.deleteRecursively();
+  }
+};
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
 static SampleLibraryTest g_sampleLibrary;
 static PublisherLicenceTest g_publisherLicence;
+static LicenceNumberTest g_licenceNumber;
 static PartialLoadTest g_partialLoad;
 // The releases a player chooses to load (#310): the longest, the shortest
 // or none of each pipe's, and each kept up to a length, faded at its end.
