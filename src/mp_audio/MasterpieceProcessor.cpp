@@ -170,6 +170,7 @@ static juce::String realtimeState(bool on) {
 }
 
 juce::String MasterpieceProcessor::realtimeMethod() { return realtime::method(); }
+juce::String MasterpieceProcessor::realtimeRefusal() { return juce::String(realtime::refusal()); }
 
 // Render workers real-time now, and of those in an audio workgroup: up when
 // one is, down when it stops or its thread ends.

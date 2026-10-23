@@ -51,6 +51,7 @@ static void throttleForPower(bool allowed) {
 
 bool supported() { return true; }
 const char* method() { return "MMCSS Pro Audio"; }
+std::string refusal() { return {}; }
 
 bool makeRealtime(double) {
   if (mmcss == nullptr) {
@@ -77,6 +78,7 @@ static thread_local bool timeConstrained = false;
 
 bool supported() { return true; }
 const char* method() { return "Mach time constraint"; }
+std::string refusal() { return {}; }
 
 // A share may take up to a block, as JUCE asks of a thread made with the
 // audio processing time. Only a thread like this can join the audio
@@ -159,6 +161,11 @@ struct Kit {
   BusCall call = nullptr;
   BusUnref unrefMessage = nullptr;
   BusErrorFree freeError = nullptr;
+  // Threads it has made real-time, and its answer the first time it said no
+  // (polkit gives rtkit only to the active desktop session: a program started
+  // over SSH is refused).
+  int granted = 0;
+  std::string refusal;
 };
 // One bus connection for every thread, and sd-bus wants one caller at a time.
 static std::mutex kitMutex;
@@ -238,6 +245,10 @@ static bool askKit(int wanted) {
   const int r = k->call(k->bus, k->destination, k->path, k->interface, "MakeThreadRealtimeWithPID", &error,
                         &reply, "ttu", pid, tid, priority);
   if (reply != nullptr) k->unrefMessage(reply);
+  if (r >= 0)
+    ++k->granted;
+  else if (k->refusal.empty())
+    k->refusal = error.name != nullptr ? error.name : "refused";
   k->freeError(&error);
   return r >= 0;
 }
@@ -248,7 +259,12 @@ const char* method() {
   if (priority() > 0) return "SCHED_FIFO";
   const std::lock_guard<std::mutex> lock(kitMutex);
   const Kit* const k = findKit();
-  return k != nullptr ? k->name : "";
+  return k != nullptr && (k->granted > 0 || k->refusal.empty()) ? k->name : "";
+}
+
+std::string refusal() {
+  const std::lock_guard<std::mutex> lock(kitMutex);
+  return kit.granted == 0 ? kit.refusal : std::string();
 }
 
 bool makeRealtime(double) {
@@ -295,6 +311,7 @@ void setAudioThread(bool on, double blockSeconds) {
 
 bool supported() { return false; }
 const char* method() { return ""; }
+std::string refusal() { return {}; }
 bool makeRealtime(double) { return false; }
 void makeNormal() {}
 void setAudioThread(bool, double) {}

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // Real-time scheduling for the threads that render audio, the way each system
 // offers it: MMCSS "Pro Audio" on Windows (and never slowed down to save
 // power), SCHED_FIFO on Linux where the user may have it, the Mach
@@ -12,8 +14,13 @@ namespace mp::realtime {
 // app have one; its audio callback is real-time already.
 bool supported();
 
-// What it is called here, for the log.
+// What it is called here, for the log. Empty where the system gives none,
+// and on Linux once rtkit has refused every thread that asked.
 const char* method();
+
+// What the system answered the first time it refused a thread, for the log;
+// empty while nothing has been refused. Linux and rtkit only.
+std::string refusal();
 
 // Makes the calling thread real-time, for audio work of up to blockSeconds
 // each block. False where the system refused: on Linux, a user without
