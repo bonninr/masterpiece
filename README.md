@@ -206,6 +206,12 @@ in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Installing
 
+| System | Oldest version |
+|---|---|
+| Windows | Windows 10, version 1607 |
+| macOS, Apple silicon | macOS 11 |
+| macOS, Intel | macOS 10.15 |
+
 **Windows.** `masterpiece-<version>-windows-setup.exe` installs with a Start
 menu entry; the portable `.zip` runs from any folder and holds the VST3 and LV2
 plugins in its `VST3` and `LV2` folders.
