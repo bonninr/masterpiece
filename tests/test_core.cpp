@@ -17868,12 +17868,15 @@ static TestDataApartTest g_testDataApart;
 
 int main(int argc, char** argv) {
   std::optional<mp::test::Category> filter;
+  std::string only;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--perf-only")
       filter = mp::test::Category::Perf;
     else if (arg == "--no-perf")
       filter = mp::test::Category::Functional;
+    else if (arg == "--only" && i + 1 < argc)
+      only = argv[++i];
   }
 #ifdef MP_TEST_HAS_AUDIO
   // The suite's settings, emptied for each run, and its sample cache, both
@@ -17886,7 +17889,7 @@ int main(int argc, char** argv) {
   cache.createDirectory();
   mp::MasterpieceProcessor::setCacheDirectoryForTests(cache);
 #endif
-  return mp::test::runAll(filter) == 0 ? 0 : 1;
+  return mp::test::runAll(filter, only) == 0 ? 0 : 1;
 }
 
 // The MIDI window's model: several receive events per object, each with its

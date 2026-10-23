@@ -63,11 +63,13 @@ Timing measure(const std::function<void()>& fn) {
   return t;
 }
 
-int runAll(std::optional<Category> filter) {
+int runAll(std::optional<Category> filter, const std::string& prefix) {
   int failed = 0, ran = 0;
   std::printf("==================== MASTERPIECE TESTS ====================\n");
   for (Test* test : registry()) {
     if (filter && test->category() != *filter)
+      continue;
+    if (!prefix.empty() && test->name().rfind(prefix, 0) != 0)
       continue;
     ++ran;
     try {
