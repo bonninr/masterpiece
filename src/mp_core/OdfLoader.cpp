@@ -535,8 +535,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // before the plain files are used -- a different thing, and a question
     // for the player (ADR-003).
     s.encrypted = isEncryptedFile(s.fileName);
-    s.licenceRequired =
-        !s.encrypted && fieldBool(row, "LicenceSerialNumRequiredForSampleFile", "h", false);
+    // The field holds the number of the licence a file needs, 0 for none:
+    // St. Maximin writes 1 on its releases and 2440 on its attacks.
+    const std::string licence = field(row, "LicenceSerialNumRequiredForSampleFile", "h");
+    const char lc = licence.empty() ? 'n' : static_cast<char>(std::tolower(static_cast<unsigned char>(licence[0])));
+    const bool licenceNumbered =
+        lc == 'y' || lc == 't' || (lc != 'n' && lc != 'f' && std::strtod(licence.c_str(), nullptr) != 0.0);
+    s.licenceRequired = !s.encrypted && licenceNumbered;
     if (s.licenceRequired) outModel.hasLicensedSamples = true;
     s.pitchHz = fieldDouble(row, "Pitch_ExactSamplePitch", "g", 0.0);
     s.installationPackageId = fieldInt(row, "InstallationPackageID", "b", 0);

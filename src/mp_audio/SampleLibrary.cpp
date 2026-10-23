@@ -942,8 +942,12 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // A cache of a previous load of this organ, at these settings, is the whole
   // of the work below already done. Reading it is sequential; doing it again
   // is twelve thousand file opens and a decode each.
+  size_t licensedLeftOut = 0;
+  if (!licenceConfirmed_)
+    for (const auto& [id, ref] : model.samples)
+      if (ref.licenceRequired) ++licensedLeftOut;
   const std::string fingerprint =
-      cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection);
+      cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection, licensedLeftOut);
   if (cacheMode_ != CacheMode::Off && !cacheDir_.empty()) {
     auto cached = std::make_shared<Store>();
     if (readCache(*cached, fingerprint, progress) && !cached->empty()) {
@@ -1753,7 +1757,8 @@ uint8_t widthCode(const mp::SampleBuffer& b) {
 
 std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRanks,
                                             int64_t maxFramesPerSample,
-                                            LoopSelection loopSelection) const {
+                                            LoopSelection loopSelection,
+                                            size_t licensedLeftOut) const {
   std::string s = "v1|" + cacheOdfStamp_;
   // The resident width, by the enum's ordinal: the widths are distinct
   // ordinals, and a new one goes at the end of the enum, so a cache written
@@ -1774,6 +1779,10 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   s += "|sp" + std::to_string(sparseEvery_);
   // Without the licensed samples a cache is not the organ with them.
   s += "|c" + std::to_string(licenceConfirmed_ ? 1 : 0);
+  // How many samples wait for the licence. A cache written when the licence
+  // number was read as yes or no held St. Maximin's attacks without one; this
+  // retires it, and only on organs that ask for a licence.
+  if (licensedLeftOut > 0) s += "|lo" + std::to_string(licensedLeftOut);
   // Caches written before a read failure stopped being fatal may hold only
   // part of an organ (Buckeburg: 5639 of its samples); this retires them.
   s += "|r2";
