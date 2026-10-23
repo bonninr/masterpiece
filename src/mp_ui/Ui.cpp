@@ -2681,6 +2681,14 @@ void MasterpieceEditor::timerCallback() {
       live += ", " + TRANS("streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings")
                          .replace("%1", juce::String(under));
   const auto now = juce::Time::getMillisecondCounter();
+  // The switch is on and the system said no: the log says so once, with its
+  // answer, since the line written at the start only knew how it would ask.
+  if (proc_.realtimeThreads() && !realtimeRefusalLogged_)
+    if (const auto refusal = MasterpieceProcessor::realtimeRefusal(); refusal.isNotEmpty()) {
+      juce::Logger::writeToLog("real-time render threads: refused (" + refusal +
+                               "); the render threads run at normal priority");
+      realtimeRefusalLogged_ = true;
+    }
   if (load.late > lateBlocksLogged_ && now - lateLoggedAt_ > 5000) {
     juce::Logger::writeToLog("audio: " + juce::String(load.late - lateBlocksLogged_) +
                              " late block(s) of " + juce::String(load.blocks) +

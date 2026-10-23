@@ -485,6 +485,7 @@ private:
   int64_t lateBlocksLogged_ = 0;
   juce::uint32 lateLoggedAt_ = 0;
   double worstBlockSinceLog_ = 0.0;
+  bool realtimeRefusalLogged_ = false;
 };
 
 } // namespace mp::ui

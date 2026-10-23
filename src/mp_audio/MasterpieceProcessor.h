@@ -951,6 +951,9 @@ public:
   // realtime portal", "Mach time constraint"; empty where the system gives
   // this user no real-time rights (Linux without them).
   static juce::String realtimeMethod();
+  // What the system answered when it refused real-time render threads, or
+  // empty.
+  static juce::String realtimeRefusal();
   // How many render workers are real-time now, and how many in a workgroup.
   static int realtimeWorkers();
   static int workgroupWorkers();
