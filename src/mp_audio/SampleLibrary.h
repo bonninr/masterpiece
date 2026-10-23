@@ -18,6 +18,7 @@
 #include "../mp_core/LoadProgress.h"
 #include "../mp_core/SparseLoading.h"
 #include "../mp_sampler/VoiceEngine.h"
+#include "../mp_sampler/DiskProbe.h"
 #include "../mp_archive/OrganArchive.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -191,6 +192,9 @@ public:
   // How many samples are held only in part, and how many frames that saved.
   size_t streamedCount() const;
   int64_t streamedBytesSaved() const;
+  // The streamed samples' tails, to time reads of: valid while this library
+  // holds the samples it holds now.
+  std::vector<TailToTime> streamedTails() const;
 
 
   // ---- the sample cache ------------------------------------------------

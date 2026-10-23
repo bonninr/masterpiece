@@ -171,6 +171,7 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   }
   underruns_.store(0, std::memory_order_relaxed);
   streaming_.store(0, std::memory_order_relaxed);
+  streamReads_.store(0, std::memory_order_relaxed);
 
   // Two windows a voice for samples held coded, and the audio thread's
   // scratch; the workers' scratch comes with the workers.
@@ -205,7 +206,7 @@ uint64_t VoiceEngine::blocksDecoded() const {
 void VoiceEngine::setStreamSeconds(double seconds) {
   // Takes effect at the next prepare(), because the rings are sized there and
   // resizing them under a sounding voice is not something to do at all.
-  streamSeconds_ = std::clamp(seconds, 0.25, 30.0);
+  streamSeconds_ = std::clamp(seconds, 0.1, 30.0);
 }
 
 void VoiceEngine::startStreamer() {
@@ -244,20 +245,23 @@ void VoiceEngine::armStream(size_t voiceIndex, const SampleBuffer& buf,
   // A pool prepared without rings has nowhere to put a tail: the voice plays
   // what is resident and goes quiet at its end.
   if (st.ring.empty()) return;
-  // Bump the generation FIRST: a fill still in flight for the previous voice
-  // must not publish its frames into this one's ring.
-  st.generation.fetch_add(1, std::memory_order_acq_rel);
+  // Disarm, then a new generation, and only then change the slot. A fill
+  // still in flight for the previous voice fails to publish. A streamer that
+  // reads the new generation also reads the slot disarmed until it is armed
+  // again, whole.
   // A slot taken over while its last voice was still streaming was counted
   // twice, and the count is what lets the streamer sleep.
   if (st.armed.exchange(false, std::memory_order_acq_rel))
     streaming_.fetch_sub(1, std::memory_order_relaxed);
-  st.filled.store(0, std::memory_order_release);
+  st.nextGeneration();
+  st.readFrom.store(0, std::memory_order_release);
   st.starved.store(false, std::memory_order_relaxed);
   st.base = fromFrame;
   st.channels = buf.numChannels;
   st.tail = buf.tail;
   st.armed.store(true, std::memory_order_release);
   streaming_.fetch_add(1, std::memory_order_relaxed);
+  streamKick_.store(true, std::memory_order_release);
   streamCv_.notify_one();
 }
 
@@ -265,7 +269,7 @@ void VoiceEngine::disarmStream(size_t voiceIndex) {
   if (voiceIndex >= streams_.size()) return;
   VoiceStream& st = *streams_[voiceIndex];
   if (!st.armed.exchange(false, std::memory_order_acq_rel)) return;
-  st.generation.fetch_add(1, std::memory_order_acq_rel);
+  st.nextGeneration();
   streaming_.fetch_sub(1, std::memory_order_relaxed);
 }
 
@@ -283,7 +287,7 @@ float VoiceEngine::streamedSample(size_t voiceIndex, const SampleBuffer& buf,
   if (frame >= buf.totalFrames()) return 0.0f;
   // Acquire: everything the streamer wrote before publishing `filled` is
   // visible here. This one load is the whole synchronisation.
-  const int64_t filled = st.filled.load(std::memory_order_acquire);
+  const int64_t filled = st.filled();
   if (offset >= filled) {
     // The disk did not keep up. Silence for this frame, and a count, because
     // a release that goes quiet halfway is exactly the fault a player would
@@ -296,12 +300,32 @@ float VoiceEngine::streamedSample(size_t voiceIndex, const SampleBuffer& buf,
   if (st.starved.load(std::memory_order_relaxed))
     st.starved.store(false, std::memory_order_relaxed);
   const int ch = channel < st.channels ? channel : st.channels - 1;
-  const auto idx = static_cast<size_t>(offset) * static_cast<size_t>(st.channels) +
-                   static_cast<size_t>(ch);
+  const size_t idx = st.place(offset) + static_cast<size_t>(ch);
   return idx < st.ring.size() ? st.ring[idx] : 0.0f;
 }
 
+void VoiceEngine::publishReadPosition(size_t voiceIndex, const Voice& v) {
+  if (voiceIndex >= streams_.size()) return;
+  VoiceStream& st = *streams_[voiceIndex];
+  if (!st.armed.load(std::memory_order_relaxed)) return;
+  // The interpolation's first tap is the frame before the cursor's; one more
+  // frame of margin keeps a rounding of the cursor from mattering.
+  const int64_t at = static_cast<int64_t>(v.cursor) - st.base - 2;
+  // Release: every read of the ring this block made comes before the
+  // streamer's next write to the places it read.
+  if (at > st.readFrom.load(std::memory_order_relaxed))
+    st.readFrom.store(at, std::memory_order_release);
+}
+
 void VoiceEngine::streamerLoop() {
+  // The voices with room in their rings, and how much each has read ahead of
+  // where it plays. Kept between passes so a pass does not allocate.
+  struct Due {
+    int64_t ahead;
+    size_t index;
+  };
+  std::vector<Due> due;
+  bool worked = false;
   for (;;) {
     {
       std::unique_lock<std::mutex> lock(streamMutex_);
@@ -315,46 +339,93 @@ void VoiceEngine::streamerLoop() {
         streamCv_.wait_for(lock, std::chrono::milliseconds(50), [this] {
           return streamQuit_ || streaming_.load(std::memory_order_acquire) > 0;
         });
-      // While something streams, often enough to keep every ring topped up.
-      // A voice consumes one frame per output frame, so even a full ring
-      // lasts seconds; ten milliseconds is generous. The first pass after a
-      // sleep goes at once.
-      else
-        streamCv_.wait_for(lock, std::chrono::milliseconds(10),
-                           [this] { return streamQuit_; });
+      // A pass that read something goes round again at once: there may be
+      // more due. One that found every ring full enough waits a little, and
+      // a voice that starts streaming ends the wait: a release whose head is
+      // short has no ten milliseconds to give.
+      else if (!worked)
+        streamCv_.wait_for(lock, std::chrono::milliseconds(10), [this] {
+          return streamQuit_ || streamKick_.load(std::memory_order_acquire);
+        });
       if (streamQuit_) return;
     }
+    // Cleared before the pass looks at the voices: one armed from here on
+    // sets it again and is seen by the next pass.
+    streamKick_.store(false, std::memory_order_relaxed);
+    worked = false;
     if (streaming_.load(std::memory_order_acquire) == 0) continue;
     streamPasses_.fetch_add(1, std::memory_order_relaxed);
 
+    // Which rings are due. A ring is topped up once half of it is free, in
+    // one read of all that is free: on a hard disk every read of another
+    // file costs a seek, and a few long reads keep many more voices fed
+    // than many short ones. A ring is due sooner when its file ends within
+    // the room it has.
+    due.clear();
     for (size_t i = 0; i < streams_.size(); ++i) {
       VoiceStream& st = *streams_[i];
       if (!st.armed.load(std::memory_order_acquire)) continue;
       const auto tail = st.tail;
       if (!tail || !tail->read) continue;
-
-      const uint64_t gen = st.generation.load(std::memory_order_acquire);
-      const int64_t filled = st.filled.load(std::memory_order_acquire);
-      const int64_t capacity =
-          static_cast<int64_t>(st.ring.size() / static_cast<size_t>(std::max(1, st.channels)));
-      if (filled >= capacity) continue; // full
+      const int64_t capacity = st.frames();
+      if (capacity <= 0) continue;
+      const int64_t filled = st.filled();
+      const int64_t readFrom = st.readFrom.load(std::memory_order_acquire);
+      const int64_t room = readFrom + capacity - filled;
       const int64_t remaining = tail->totalFrames - (st.base + filled);
-      if (remaining <= 0) continue; // end of the file
+      if (room <= 0 || remaining <= 0) continue;
+      if (room < capacity / 2 && room < remaining) continue;
+      due.push_back({filled - readFrom, i});
+    }
+    if (due.empty()) continue;
+    // The voice closest to running out first. A pass takes a few of them and
+    // then looks again, so a voice that comes due while a slow disk works
+    // through the others waits for a few reads at most.
+    constexpr size_t kPerPass = 8;
+    const size_t take = std::min(due.size(), kPerPass);
+    std::partial_sort(due.begin(), due.begin() + static_cast<std::ptrdiff_t>(take), due.end(),
+                      [](const Due& a, const Due& b) { return a.ahead < b.ahead; });
 
-      // A chunk at a time, so one slow read cannot starve every other voice.
-      constexpr int64_t kChunk = 16384;
-      const int64_t want = std::min({kChunk, capacity - filled, remaining});
-      float* dest = st.ring.data() +
-                    static_cast<size_t>(filled) * static_cast<size_t>(st.channels);
-      const int64_t got = tail->read(st.base + filled, static_cast<int>(want),
-                                     dest, st.channels);
-      if (got <= 0) continue;
-
-      // Publish only if this slot is still the same voice. Re-armed underneath
-      // us means the frames just written belong to nobody, and the new voice's
-      // own fill will overwrite them.
-      if (st.generation.load(std::memory_order_acquire) != gen) continue;
-      st.filled.store(filled + got, std::memory_order_release);
+    for (size_t d = 0; d < take; ++d) {
+      VoiceStream& st = *streams_[due[d].index];
+      // The word first, then the slot: a word of the voice now armed comes
+      // with that voice's base, channels and tail, all set before it was
+      // armed. The voice's own fields are taken once, here.
+      uint64_t word = st.fill.load(std::memory_order_acquire);
+      if (!st.armed.load(std::memory_order_acquire)) continue;
+      const auto tail = st.tail;
+      if (!tail || !tail->read) continue;
+      const int64_t base = st.base;
+      const int channels = std::max(1, st.channels);
+      const auto capacity = static_cast<int64_t>(st.ring.size() / static_cast<size_t>(channels));
+      if (capacity <= 0) continue;
+      // Acquire: the voice has finished with every place below this, so they
+      // can be written again.
+      const int64_t readFrom = st.readFrom.load(std::memory_order_acquire);
+      // Up to the ring's end, then on from its start: two reads at most.
+      for (int piece = 0; piece < 2; ++piece) {
+        const auto filled = static_cast<int64_t>(word & VoiceStream::kFillMask);
+        const int64_t room = std::min(capacity, readFrom + capacity - filled);
+        const int64_t remaining = tail->totalFrames - (base + filled);
+        if (room <= 0 || remaining <= 0) break;
+        const int64_t at = filled % capacity;
+        const int64_t want = std::min({room, capacity - at, remaining});
+        float* dest = st.ring.data() + static_cast<size_t>(at) * static_cast<size_t>(channels);
+        const int64_t got = tail->read(base + filled, static_cast<int>(want), dest, channels);
+        if (got <= 0) break;
+        streamReads_.fetch_add(1, std::memory_order_relaxed);
+        worked = true;
+        // Publish only if the slot is still this voice's: taken over while
+        // the read ran, the frames just written belong to nobody, and the
+        // new voice's own fill overwrites them. Release: the frames are
+        // seen with the count.
+        const uint64_t next = word + static_cast<uint64_t>(got);
+        if (!st.fill.compare_exchange_strong(word, next, std::memory_order_release,
+                                             std::memory_order_relaxed))
+          break;
+        word = next;
+        if (got < want) break;
+      }
     }
   }
 }
@@ -956,6 +1027,7 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
       renderVoiceFrom<Pcm24, true>(v, index, out, numChannels, numFrames, scratch);
     else
       renderVoiceFrom<int16_t, true>(v, index, out, numChannels, numFrames, scratch);
+    publishReadPosition(index, v);
     return;
   }
   // Twenty-bit storage is tested before the others: it is compact too, and a
@@ -968,6 +1040,7 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     renderVoiceFrom<int16_t, false>(v, index, out, numChannels, numFrames, scratch);
   else
     renderVoiceFrom<float, false>(v, index, out, numChannels, numFrames, scratch);
+  publishReadPosition(index, v);
 }
 
 template <typename T, bool Coded>
@@ -1095,7 +1168,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         streaming && voiceIndex < streams_.size() ? streams_[voiceIndex].get() : nullptr;
     const int64_t filled =
         st != nullptr && st->armed.load(std::memory_order_acquire)
-            ? st->filled.load(std::memory_order_acquire)
+            ? st->filled()
             : 0;
     float peak = 0.0f;
     bool read = false;
@@ -1107,8 +1180,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         if (f < resident) {
           x = raw(f, c) * storeScale;
         } else if (st != nullptr && f - st->base >= 0 && f - st->base < filled) {
-          const auto idx = static_cast<size_t>(f - st->base) * static_cast<size_t>(st->channels) +
-                           static_cast<size_t>(std::min(c, st->channels - 1));
+          const size_t idx = st->place(f - st->base) +
+                             static_cast<size_t>(std::min(c, st->channels - 1));
           x = idx < st->ring.size() ? st->ring[idx] : 0.0f;
         } else {
           continue;  // not read yet: no judgement from it
@@ -1451,21 +1524,28 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     // and every tap of every frame went through streamedSample() and its
     // checks. In a fast passage nearly every voice is such a tail a moment
     // after its note: on a two-core computer, half of the program's time.
-    // The ring is plain samples in order, so the vector code reads it as it
-    // reads a resident sample, up to what the streamer has published. What
-    // lies past that, and the fade at the file's end, stay frame by frame.
+    // The ring is plain samples in order between its wraps, so the vector
+    // code reads one lap of it as it reads a resident sample, up to what the
+    // streamer has published. What lies past that, the frames whose taps
+    // straddle the wrap, and the fade at the file's end, stay frame by frame.
     if (canRun && streaming && v.phase == VoicePhase::Release && v.releaseIsSample &&
         v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr && voiceIndex < streams_.size()) {
       const VoiceStream& st = *streams_[voiceIndex];
       if (st.armed.load(std::memory_order_acquire) && !st.ring.empty() &&
           simd::runSupports(isa_, st.channels)) {
-        const int64_t filled = st.filled.load(std::memory_order_acquire);
-        const double base = static_cast<double>(st.base);
-        // Every tap of every frame inside what is published, and short of
-        // the fade at the end of the file.
-        const double limit = std::min(base + static_cast<double>(filled - simd::kRunMargin),
-                                      static_cast<double>(total - kReleaseEndFadeFrames));
-        if (v.cursor >= base + 1.0 && v.cursor < limit) {
+        const int64_t filled = st.filled();
+        const double lap = static_cast<double>(st.frames());
+        // The file frame held at ring[0] on the lap the cursor is on.
+        const double base = static_cast<double>(st.base) +
+                            lap * std::floor((v.cursor - static_cast<double>(st.base)) / lap);
+        // Every tap of every frame inside what is published, inside this
+        // lap, and short of the fade at the end of the file.
+        const double limit =
+            std::min({static_cast<double>(st.base + filled - simd::kRunMargin),
+                      base + lap - static_cast<double>(simd::kRunMargin),
+                      static_cast<double>(total - kReleaseEndFadeFrames)});
+        if (v.cursor >= static_cast<double>(st.base) + 1.0 && v.cursor >= base + 1.0 &&
+            v.cursor < limit) {
           const float* ring = st.ring.data();
           // Read in time: a shortfall counted before is over.
           if (st.starved.load(std::memory_order_relaxed)) st.starved.store(false, std::memory_order_relaxed);
@@ -1536,14 +1616,19 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       const VoiceStream* st = nullptr;
       double base = static_cast<double>(fbase);
       double limit = static_cast<double>(readEnd);
-      if (ending && streaming && v.cursor >= static_cast<double>(runEnd) &&
+      if (ending && streaming && v.cursor >= static_cast<double>(resident) + 1.0 &&
           voiceIndex < streams_.size()) {
         st = streams_[voiceIndex].get();
         if (st->armed.load(std::memory_order_acquire) && !st->ring.empty() &&
             simd::runSupports(isa_, st->channels)) {
-          base = static_cast<double>(st->base);
-          limit = base + static_cast<double>(st->filled.load(std::memory_order_acquire) -
-                                             simd::kRunMargin);
+          // One lap of the ring, as for the straight runs above.
+          const double lap = static_cast<double>(st->frames());
+          base = static_cast<double>(st->base) +
+                 lap * std::floor((v.cursor - static_cast<double>(st->base)) / lap);
+          limit = std::min(
+              static_cast<double>(st->base + st->filled() -
+                                  simd::kRunMargin),
+              base + lap - static_cast<double>(simd::kRunMargin));
         } else {
           st = nullptr;
         }

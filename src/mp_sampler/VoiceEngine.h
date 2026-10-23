@@ -741,6 +741,8 @@ public:
   int64_t streamingVoices() const {
     return streaming_.load(std::memory_order_relaxed);
   }
+  // Reads the streamer has made from the disk since prepare().
+  int64_t streamReads() const { return streamReads_.load(std::memory_order_relaxed); }
   // How many times the streamer has gone over the voices looking for a ring
   // to fill. It stands still while nothing streams.
   int64_t streamerPasses() const {
@@ -876,20 +878,53 @@ private:
   // the same reason the voices have their own cursors.
   //
   // Single producer, single consumer: the streamer thread writes and publishes
-  // `filled`; the audio thread reads it. Nothing else is shared, so an atomic
-  // on that one number is the whole synchronisation.
+  // `filled`; the audio thread reads it, and publishes `readFrom` as it plays.
+  //
+  // The ring goes round. A streamed voice only ever reads forward (a release,
+  // a one-shot), so frame `base + o` of the file lives at place `o` modulo
+  // the ring's frames, and the streamer refills behind the voice as it plays.
+  // A ring that was filled once and never again let a release sound for its
+  // head and two seconds more, then go silent: most releases of a large
+  // church are longer than that (#548).
   struct VoiceStream {
     std::vector<float> ring;   // interleaved; capacity fixed at prepare()
-    int64_t base = 0;          // file frame held at ring[0]
-    std::atomic<int64_t> filled{0}; // frames valid from `base`
+    int64_t base = 0;          // file frame of offset 0: the end of the head
+    // What has been written, and for which voice, in one word: the slot's
+    // generation above kFillBits, and below it how many offsets from 0 hold
+    // frames. The generation moves on every time the slot is armed or
+    // disarmed, so the streamer publishes with one compare-and-swap that
+    // fails when the slot was taken over while it read: a fill in flight for
+    // the previous voice cannot land in the new one's.
+    static constexpr int kFillBits = 40;
+    static constexpr uint64_t kFillMask = (uint64_t{1} << kFillBits) - 1;
+    std::atomic<uint64_t> fill{0};
+    // Offsets [0, filled()) have been written. Acquire: so have their frames.
+    int64_t filled() const {
+      return static_cast<int64_t>(fill.load(std::memory_order_acquire) & kFillMask);
+    }
+    // The offset below which the voice reads nothing again. The streamer
+    // writes offset `o` only while `o < readFrom + frames()`, so a place is
+    // overwritten only once the voice has left the frame it held.
+    std::atomic<int64_t> readFrom{0};
+    // Frames the ring holds for this voice's channel count.
+    int64_t frames() const {
+      return static_cast<int64_t>(ring.size() / static_cast<size_t>(std::max(1, channels)));
+    }
+    // Where offset `o` is in the ring, in floats, for channel 0.
+    size_t place(int64_t o) const {
+      return static_cast<size_t>(o % frames()) * static_cast<size_t>(channels);
+    }
     std::shared_ptr<const SampleTail> tail;
     int channels = 1;
     // Set by the audio thread when it starts a streaming voice, cleared when
     // the voice ends. The streamer only touches armed slots.
     std::atomic<bool> armed{false};
-    // Bumped every time the slot is re-armed, so a fill that was in flight for
-    // the previous voice cannot publish frames into the new one's ring.
-    std::atomic<uint64_t> generation{0};
+    // A new generation with nothing written: the slot changes hands. Audio
+    // thread, the only one that arms and disarms.
+    void nextGeneration() {
+      const uint64_t gen = (fill.load(std::memory_order_relaxed) >> kFillBits) + 1;
+      fill.store(gen << kFillBits, std::memory_order_release);
+    }
     // Whether the last read found the ring short, so one shortfall counts
     // once however many frames and taps it lasts. Set from the const read
     // path, hence mutable.
@@ -900,6 +935,9 @@ private:
   std::mutex streamMutex_;
   std::condition_variable streamCv_;
   bool streamQuit_ = false;
+  // Set when a voice starts streaming: the streamer's short wait ends for it,
+  // and a voice armed while a pass runs gets a pass of its own straight after.
+  std::atomic<bool> streamKick_{false};
   double streamSeconds_ = 2.0;
   bool streamRings_ = true;
   // Samples held coded: two windows a voice, their bytes in one block, and a
@@ -922,6 +960,7 @@ private:
   std::atomic<bool> phaseAlign_{true};
   std::atomic<int64_t> streaming_{0};
   std::atomic<int64_t> streamPasses_{0};
+  std::atomic<int64_t> streamReads_{0};
 
   void startStreamer();
   void stopStreamer();
@@ -929,6 +968,8 @@ private:
   // Arm a voice's ring for a streaming sample, or disarm it. Audio thread.
   void armStream(size_t voiceIndex, const SampleBuffer& buf, int64_t fromFrame);
   void disarmStream(size_t voiceIndex);
+  // After a voice's block: tells the streamer the ring behind it is free.
+  void publishReadPosition(size_t voiceIndex, const Voice& v);
   // One frame of a streaming voice, or 0 when the streamer has not reached it.
   float streamedSample(size_t voiceIndex, const SampleBuffer& buf,
                        int64_t frame, int channel) const;

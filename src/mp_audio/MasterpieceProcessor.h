@@ -1765,10 +1765,22 @@ public:
     markSettingsDirty();
   }
   int streamHeadPercent() const { return samples_.streamHeadPercent(); }
-  void setStreamSeconds(double s) { voices_.setStreamSeconds(s); }
+  // The length of each voice's ring for a streamed release. Set, it holds;
+  // left alone, each load sizes it from reads of the organ's own files.
+  void setStreamSeconds(double s) {
+    voices_.setStreamSeconds(s);
+    ringSecondsSet_ = true;
+  }
+  double streamSeconds() const { return voices_.streamSeconds(); }
+  // What the last load measured of reading the organ's streamed releases.
+  TailReadCost tailReadCost() const { return tailReadCost_; }
   // Zero unless the disk could not keep up, in which case a release went
   // silent partway and the player deserves to know.
   int64_t streamUnderruns() const { return voices_.streamUnderruns(); }
+  // Reads of streamed releases from the disk since the pool was made.
+  int64_t streamReads() const { return voices_.streamReads(); }
+  // Voices reading a streamed release right now.
+  int64_t streamingVoices() const { return voices_.streamingVoices(); }
   // --log-releases: record every key release, and describe the ones recorded
   // since the last call, one line each. Message thread.
   // Also writes the lines to the log, a few times a second, while it is on;
@@ -2465,6 +2477,11 @@ private:
   std::string blockLogPath_;
   double blockWindUs_ = 0.0;
   void writeBlockLog();
+  // The streamed releases' rings: sized at each load from timed reads of the
+  // organ's files, unless setStreamSeconds() fixed them.
+  bool ringSecondsSet_ = false;
+  TailReadCost tailReadCost_;
+  void sizeStreamRings();
   std::atomic<bool> skipCacheSave_{false};
   // The cache-deciding choices, as one string to compare, and what the
   // loaded organ was loaded with.
