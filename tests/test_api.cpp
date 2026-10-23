@@ -19,8 +19,11 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -253,6 +256,79 @@ public:
   }
 };
 static ApiHttpTest g_apiHttp;
+
+// A request hands its work to the message thread and answers busy when that
+// thread is held up, as it is at the end of a long organ load. The work still
+// queued must then never run: it writes into the request's own variables,
+// which are gone, and the program crashed when the thread came free.
+class ApiLateAnswerTest final : public mp::test::Test {
+public:
+  ApiLateAnswerTest() : Test("functional.api.late-answer", Category::Functional) {}
+  void run() override {
+    const std::atomic<bool> running{false};
+    std::vector<std::function<void()>> queue;
+    const auto toQueue = [&queue](std::function<void()> call) {
+      queue.push_back(std::move(call));
+      return true;
+    };
+
+    // Held up past the wait: busy, and the late call does nothing.
+    auto ran = std::make_shared<int>(0);
+    MP_CHECK(!ApiServer::runAndWait(toQueue, [ran] { ++*ran; }, 50, running),
+             "a request the message thread does not reach in time answers busy");
+    MP_CHECK(queue.size() == 1, "its work is still queued");
+    queue.front()();
+    MP_CHECK(*ran == 0, "and does not run when the thread comes free");
+    queue.clear();
+
+    // On time: the work runs and the request sees what it wrote.
+    int value = 0;
+    std::thread thread;
+    const auto onThread = [&thread](std::function<void()> call) {
+      thread = std::thread([call = std::move(call)] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        call();
+      });
+      return true;
+    };
+    MP_CHECK(ApiServer::runAndWait(onThread, [&value] { value = 7; }, 2000, running) && value == 7,
+             "work done in time is answered");
+    thread.join();
+
+    // Started before the wait ends and still running after: seen out, so the
+    // request's variables outlive it.
+    value = 0;
+    const auto atOnce = [&thread](std::function<void()> call) {
+      thread = std::thread([call = std::move(call)] { call(); });
+      return true;
+    };
+    const auto start = std::chrono::steady_clock::now();
+    const bool done = ApiServer::runAndWait(
+        atOnce,
+        [&value] {
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+          value = 9;
+        },
+        20, running);
+    const auto waited = std::chrono::steady_clock::now() - start;
+    thread.join();
+    MP_CHECK(done && value == 9, "work already running is waited for");
+    MP_CHECK(waited >= std::chrono::milliseconds(190), "to its end");
+
+    // Stopping: busy at once, and the queued work is dropped.
+    const std::atomic<bool> stopping{true};
+    *ran = 0;
+    MP_CHECK(!ApiServer::runAndWait(toQueue, [ran] { ++*ran; }, 5000, stopping), "a stop answers busy");
+    queue.front()();
+    MP_CHECK(*ran == 0, "and drops the queued work");
+    queue.clear();
+
+    // Refused by the queue: busy.
+    MP_CHECK(!ApiServer::runAndWait([](std::function<void()>) { return false; }, [] {}, 50, running),
+             "work the queue refuses answers busy");
+  }
+};
+static ApiLateAnswerTest g_apiLateAnswer;
 
 }  // namespace
 #endif  // MP_TEST_HAS_API
