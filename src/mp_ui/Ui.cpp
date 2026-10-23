@@ -104,6 +104,24 @@ bool StopButton::keyPressed(const juce::KeyPress& key) {
   return juce::TextButton::keyPressed(key);
 }
 
+void StopButton::mouseDown(const juce::MouseEvent& e) {
+  if (e.mods.isPopupMenu()) {
+    if (onMidiMenu) onMidiMenu(*this);
+    return;
+  }
+  juce::TextButton::mouseDown(e);
+}
+
+void StopButton::mouseUp(const juce::MouseEvent& e) {
+  if (e.mods.isPopupMenu()) return;
+  juce::TextButton::mouseUp(e);
+}
+
+void StopButton::mouseDrag(const juce::MouseEvent& e) {
+  if (e.mods.isPopupMenu()) return;
+  juce::TextButton::mouseDrag(e);
+}
+
 std::unique_ptr<juce::AccessibilityHandler> StopButton::createAccessibilityHandler() {
   return std::make_unique<ToggleAccessibilityHandler>(*this, *this);
 }
@@ -165,6 +183,14 @@ void StopJamb::rebuild() {
     e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
       moveFocus(from, key);
     };
+    // Mapped through its drawstop, as on a panel page (#555).
+    if (const auto st = proc_.organModel().stops.find(id);
+        st != proc_.organModel().stops.end() && st->second.controllingSwitchId != 0) {
+      const Id sw = st->second.controllingSwitchId;
+      e.button->onMidiMenu = [this, sw](StopButton& b) {
+        showSwitchMidiMenu(proc_, sw, b.getScreenBounds(), nullptr);
+      };
+    }
     addAndMakeVisible(*e.button);
     entries_.push_back(std::move(e));
   }
@@ -204,6 +230,9 @@ void StopJamb::rebuild() {
       };
       e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
         moveFocus(from, key);
+      };
+      e.button->onMidiMenu = [this, id](StopButton& b) {
+        showSwitchMidiMenu(proc_, id, b.getScreenBounds(), nullptr);
       };
       addAndMakeVisible(*e.button);
       entries_.push_back(std::move(e));

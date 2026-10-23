@@ -33,6 +33,13 @@ namespace mp::ui {
 void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                          juce::Rectangle<int> area, std::function<void()> after);
 
+// The right-click menu on a stop, a coupler or a piston, wherever it is shown:
+// the console, a panel page, the stop list. What drives it now, the ways to
+// learn it, the MIDI window, and clearing the mapping. `area` is in screen
+// coordinates; `after` runs once a choice is made, for the caller to repaint.
+void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
+                        juce::Rectangle<int> area, std::function<void()> after);
+
 // One drawn control, with an invisible component over it. The console paints
 // its controls and takes their clicks as it always did; this is there for the
 // screen reader, which finds the stop, the coupler or the piston there and

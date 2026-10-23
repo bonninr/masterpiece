@@ -48,6 +48,12 @@ public:
   bool keyPressed(const juce::KeyPress& key) override;
   std::function<void(StopButton&, const juce::KeyPress&)> onArrowKey;
 
+  // A right-click opens the stop's MIDI menu and leaves the stop as it is.
+  void mouseDown(const juce::MouseEvent& e) override;
+  void mouseUp(const juce::MouseEvent& e) override;
+  void mouseDrag(const juce::MouseEvent& e) override;
+  std::function<void(StopButton&)> onMidiMenu;
+
   // What the accessibility layer reads: the stop's name, and whether it is
   // drawn.
   juce::String accessibleName() const override { return accessibleName_; }
