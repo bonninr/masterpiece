@@ -14704,6 +14704,119 @@ public:
 };
 static FullDiskCacheTest g_fullDiskCache;
 
+// A cache the disk holds only once the cache it replaces is gone: that one is
+// removed first and the new one written. One the disk cannot hold even then
+// is not started, and the old one stays. The cache is larger than the room
+// the write leaves free, so the middle step has less room than the cache
+// itself and passes only when the old one makes way. On MP_FULL_DISK_DIR, of
+// 192 MB or more.
+class FullDiskCacheReplaceTest final : public mp::test::Test {
+public:
+  FullDiskCacheReplaceTest() : Test("functional.cache.full-disk-replaces", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const juce::String dir = juce::SystemStats::getEnvironmentVariable("MP_FULL_DISK_DIR", {});
+    if (dir.isEmpty()) return;
+    const juce::File disk(dir);
+    const auto diskPath = mp::pathOf(disk.getFullPathName().toStdString());
+    std::error_code ec;
+    constexpr uint64_t kMB = uint64_t{1} << 20;
+    const auto capacity = fs::space(diskPath, ec).capacity;
+    if (ec || capacity < 192 * kMB) return;
+    const uint64_t spare = std::clamp<uint64_t>(capacity / 20, 64 * kMB, 512 * kMB);
+    // The cache: the room left free and 32 MB more, in sixteen 16-bit samples.
+    const uint64_t cacheTarget = spare + 32 * kMB;
+    if (capacity < 2 * cacheTarget) return;
+    const int frames = static_cast<int>(cacheTarget / 16 / 2);
+    const juce::File cacheDir = disk.getChildFile("cache");
+    const juce::File filler = disk.getChildFile("filler");
+    const juce::File cacheFile = cacheDir.getChildFile("samples.mpcache");
+    cacheDir.deleteRecursively();
+    filler.deleteFile();
+    cacheDir.createDirectory();
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp_full_disk_replace");
+    root.deleteRecursively();
+    mp::OrganModel model;
+    for (int i = 1; i <= 16; ++i) {
+      const auto name = "s" + std::to_string(i) + ".wav";
+      SampleLibraryTest::writeWav(root.getChildFile(name), frames, 1, 48000.0);
+      mp::SampleRef ref;
+      ref.sampleId = i;
+      ref.fileName = name;
+      model.samples[i] = ref;
+    }
+    struct Result {
+      int loaded = 0;
+      mp::SampleLibrary::CacheFailure failure = mp::SampleLibrary::CacheFailure::None;
+      int64_t read = 0;
+    };
+    // The organ loaded at the settings `stamp` names: each stamp is a cache of
+    // its own, replacing the last.
+    const auto load = [&](const std::string& stamp) {
+      mp::SampleLibrary lib;
+      lib.setLoadThreads(1);
+      lib.setCacheDir(cacheDir.getFullPathName().toStdString());
+      lib.setCacheMode(mp::SampleLibrary::CacheMode::Single);
+      lib.setCacheIdentity("full", stamp);
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                                      mp::LoopSelection::Longest, &progress);
+      lib.finishCacheWrite(false);
+      return Result{report.loaded, lib.cacheWriteFailure(), lib.cacheBytesRead()};
+    };
+    // The disk filled until `leave` bytes are free.
+    const auto fillTo = [&](uint64_t leave) {
+      const auto room = fs::space(diskPath, ec).available;
+      if (room <= leave) return;
+      if (std::FILE* fp = std::fopen(filler.getFullPathName().toRawUTF8(), "ab"); fp != nullptr) {
+        std::vector<char> block(1 << 16, 'x');
+        for (uint64_t left = room - leave; left > 0;) {
+          const size_t n = static_cast<size_t>(std::min<uint64_t>(left, block.size()));
+          if (std::fwrite(block.data(), 1, n, fp) != n) break;
+          left -= n;
+        }
+        std::fclose(fp);
+      }
+    };
+    const auto noPart = [&] { return !cacheDir.getChildFile("samples.mpcache.part").exists(); };
+    using Failure = mp::SampleLibrary::CacheFailure;
+
+    const auto one = load("one");
+    MP_CHECK(one.loaded == 16 && one.failure == Failure::None && cacheFile.existsAsFile(),
+             "the first cache is written");
+    const auto first = static_cast<uint64_t>(cacheFile.getSize());
+    MP_CHECK(first > spare + 16 * kMB, "the cache is larger than the room left free: " +
+                                           std::to_string(first / kMB) + " MB");
+
+    // Room for what is left over and 16 MB, less than the cache itself: the
+    // new cache fits only with the old one gone.
+    fillTo(spare + 16 * kMB);
+    const auto two = load("two");
+    MP_CHECK(two.loaded == 16, "the organ loads whole");
+    MP_CHECK(two.failure == Failure::None, "the cache it replaces makes the room: the new one is written");
+    MP_CHECK(noPart(), "and no part file is left");
+    const auto again = load("two");
+    MP_CHECK(again.read > 0, "and the next load at those settings reads it: " + std::to_string(again.read) +
+                                 " bytes read");
+
+    // No room even with the old one gone: nothing is started, the old one stays.
+    fillTo(spare / 2);
+    const auto three = load("three");
+    MP_CHECK(three.loaded == 16, "the organ loads whole without a cache");
+    MP_CHECK(three.failure == Failure::DiskFull, "and says the disk is full");
+    MP_CHECK(cacheFile.existsAsFile() && static_cast<uint64_t>(cacheFile.getSize()) == first,
+             "and the cache there is kept: " + std::to_string(cacheFile.getSize()) + " of " +
+                 std::to_string(first) + " bytes");
+    MP_CHECK(noPart(), "and no part file is left");
+
+    filler.deleteFile();
+    cacheDir.deleteRecursively();
+    root.deleteRecursively();
+  }
+};
+static FullDiskCacheReplaceTest g_fullDiskCacheReplace;
+
 // "This computer only" on the Remote tab is kept for the next start, and off
 // out of the box.
 class RemoteLocalKeptTest final : public mp::test::Test {
