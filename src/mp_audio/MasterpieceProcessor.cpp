@@ -5645,17 +5645,34 @@ void MasterpieceProcessor::findPalletStops() {
 
 void MasterpieceProcessor::findControlStops() {
   controlStops_.clear();
+  // What a stop with no ranks of its own can work: a coupler or a tremulant.
   std::unordered_set<Id> works;
+  // And what a tremulant stop works whatever ranks it has: a tremulant, or
+  // tremmed ranks it swaps in that the set ships. St David's gives each
+  // tremulant stop a rank of its own for the motor's noise, and with that
+  // noise missing the stop was locked as not available while its tremmed
+  // ranks were loaded (#552).
+  std::unordered_set<Id> trems;
   for (const auto& ka : model_.keyActions)
     if (ka.conditionSwitchId != 0) works.insert(ka.conditionSwitchId);
   for (const auto& [tremulantId, tremulant] : model_.tremulants)
-    if (tremulant.controllingSwitchId != 0) works.insert(tremulant.controllingSwitchId);
+    if (tremulant.controllingSwitchId != 0) {
+      works.insert(tremulant.controllingSwitchId);
+      trems.insert(tremulant.controllingSwitchId);
+    }
   for (const auto& [stopId, stop] : model_.stops)
-    for (const auto& entry : stop.ranks)
-      if (entry.alternateSwitchId != 0) works.insert(entry.alternateSwitchId);
+    for (const auto& entry : stop.ranks) {
+      if (entry.alternateSwitchId == 0) continue;
+      works.insert(entry.alternateSwitchId);
+      const auto alt = model_.ranks.find(entry.alternateRankId);
+      if (alt != model_.ranks.end() && !alt->second.pipes.empty() && unshippedRanks_.count(alt->first) == 0)
+        trems.insert(entry.alternateSwitchId);
+    }
   if (works.empty()) return;
   for (const auto& [stopId, stop] : model_.stops)
-    if (stop.ranks.empty() && works.count(stop.controllingSwitchId) != 0) controlStops_.insert(stopId);
+    if (stop.ranks.empty() ? works.count(stop.controllingSwitchId) != 0
+                           : trems.count(stop.controllingSwitchId) != 0)
+      controlStops_.insert(stopId);
 }
 
 // A division the organ plays from its keys through switches: each key's
@@ -7782,9 +7799,10 @@ std::vector<MasterpieceProcessor::StopEntry> MasterpieceProcessor::stopList() co
     // them, and a console that shows no difference between a stop that works
     // and one that was never shipped is actively misleading. A stop wired to
     // its pipes' pallets plays them too, and one that works a coupler or a
-    // tremulant is a control in its own right.
-    e.control = controlStops_.count(id) != 0;
-    e.playable = palletStops_.count(id) != 0 || e.control;
+    // tremulant is a control in its own right. A tremulant with ranks of its
+    // own keeps them to leave out in Organ settings.
+    e.control = controlStops_.count(id) != 0 && stop.ranks.empty();
+    e.playable = palletStops_.count(id) != 0 || controlStops_.count(id) != 0;
     for (const auto& entry : stop.ranks) {
       const auto rit = model_.ranks.find(entry.rankId);
       if (rit != model_.ranks.end() && !rit->second.pipes.empty() && unshippedRanks_.count(entry.rankId) == 0) {

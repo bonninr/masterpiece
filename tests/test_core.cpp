@@ -16624,6 +16624,117 @@ public:
 };
 static DemoUnshippedRankTest g_demoUnshippedRank;
 
+// St David's gives each tremulant stop a rank of its own, the motor's noise,
+// and the tremulant itself is the switch that swaps each stop's tremmed rank
+// in. With the noise's samples missing the tremulant counted as a stop with
+// no pipes and was not available, while its tremmed ranks were loaded (#552).
+// A tremulant whose tremmed ranks ship is available; one whose tremmed ranks
+// ship nothing either is still locked.
+class TremulantWithNoiseRankTest final : public mp::test::Test {
+public:
+  TremulantWithNoiseRankTest() : Test("functional.control.tremulant-noise-rank", Category::Functional) {}
+  void run() override {
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("mp-tremulant-noise-rank");
+    root.deleteRecursively();
+    const juce::File defs = root.getChildFile("OrganDefinitions");
+    const juce::File pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000002");
+    defs.createDirectory();
+    pkg.createDirectory();
+    for (const char* name : {"flute.wav", "flute-trem.wav"}) {
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::OutputStream> os(pkg.getChildFile(name).createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      tone.clear();
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    auto stop = [](int id, const char* name) {
+      return "<Stop><StopID>" + std::to_string(id) + "</StopID><Name>" + name +
+             "</Name><DivisionID>1</DivisionID><ControllingSwitchID>" + std::to_string(100 + id) +
+             "</ControllingSwitchID></Stop>";
+    };
+    auto stopRank = [](int stopId, int rank, int alternate, int altSwitch) {
+      std::string s = "<StopRank><StopID>" + std::to_string(stopId) + "</StopID><RankID>" + std::to_string(rank) +
+                      "</RankID>";
+      if (alternate != 0)
+        s += "<AlternateRankID>" + std::to_string(alternate) + "</AlternateRankID><SwitchIDToSwitchToAlternateRank>" +
+             std::to_string(altSwitch) + "</SwitchIDToSwitchToAlternateRank>";
+      return s + "</StopRank>";
+    };
+    auto sample = [](int id, const char* file) {
+      return "<Sample><SampleID>" + std::to_string(id) + "</SampleID><InstallationPackageID>2</InstallationPackageID>"
+             "<SampleFilename>" + file + "</SampleFilename></Sample>";
+    };
+    // One pipe per rank, rank r's pipe r*10+1, its layer r*100+11, playing
+    // sample r.
+    std::string pipes, layers, attacks;
+    for (int r : {7, 8, 10, 11, 12, 13}) {
+      const std::string p = std::to_string(r * 10 + 1), l = std::to_string(r * 100 + 11), s = std::to_string(r);
+      pipes += "<Pipe_SoundEngine01><PipeID>" + p + "</PipeID><RankID>" + s +
+               "</RankID><NormalMIDINoteNumber>60</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+      layers += "<Pipe_SoundEngine01_Layer><LayerID>" + l + "</LayerID><PipeID>" + p + "</PipeID></Pipe_SoundEngine01_Layer>";
+      attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>" + s + "</UniqueID><LayerID>" + l + "</LayerID><SampleID>" +
+                 s + "</SampleID></Pipe_SoundEngine01_AttackSample>";
+    }
+    // The Flute (1) ships, and so does its tremmed rank, swapped in by the
+    // Tremulant (4), whose own rank is a motor noise that ships nothing. The
+    // Trumpet (2) ships nothing, nor does its tremmed rank, swapped in by the
+    // Trumpet Tremulant (5), whose noise ships nothing either.
+    std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Tremulant noise</Identification_Name>"
+        "<Identification_UniqueOrganID>552</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><Division><DivisionID>1</DivisionID><Name>Swell</Name></Division>"
+        "</ObjectList><ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>101</SwitchID><Name>Flute 8</Name></Switch>"
+        "<Switch><SwitchID>102</SwitchID><Name>Trumpet 8</Name></Switch>"
+        "<Switch><SwitchID>104</SwitchID><Name>Tremulant</Name></Switch>"
+        "<Switch><SwitchID>105</SwitchID><Name>Trumpet Tremulant</Name></Switch>"
+        "</ObjectList><ObjectList ObjectType=\"Stop\">" +
+        stop(1, "Flute 8") + stop(2, "Trumpet 8") + stop(4, "Tremulant") + stop(5, "Trumpet Tremulant") +
+        "</ObjectList><ObjectList ObjectType=\"StopRank\">" + stopRank(1, 7, 10, 104) + stopRank(2, 8, 13, 105) +
+        stopRank(4, 11, 0, 0) + stopRank(5, 12, 0, 0) +
+        "</ObjectList><ObjectList ObjectType=\"Sample\">" + sample(7, "flute.wav") + sample(10, "flute-trem.wav") +
+        sample(8, "Trumpet\\060.wav") + sample(13, "Trumpet trem\\060.wav") + sample(11, "Noises; Trem\\036-c.wav") +
+        sample(12, "Noises; Trumpet trem\\036-c.wav") +
+        "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Flute</Name></Rank>"
+        "<Rank><RankID>8</RankID><Name>Trumpet</Name></Rank><Rank><RankID>10</RankID><Name>Flute tremmed</Name></Rank>"
+        "<Rank><RankID>11</RankID><Name>Noises: Trem</Name></Rank><Rank><RankID>12</RankID><Name>Noises: Trumpet trem</Name></Rank>"
+        "<Rank><RankID>13</RankID><Name>Trumpet tremmed</Name></Rank>"
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers +
+        "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks +
+        "</ObjectList></Hauptwerk>";
+    const juce::File file = defs.getChildFile("tremnoise.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(odf.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, false).ok, "the organ loads");
+      std::map<mp::Id, bool> playable, control;
+      for (const auto& e : proc.stopList()) {
+        playable[e.stopId] = e.playable;
+        control[e.stopId] = e.control;
+      }
+      MP_CHECK(playable[1], "the Flute plays");
+      MP_CHECK(playable[4], "the Tremulant is available with its motor noise missing");
+      MP_CHECK(proc.unavailableFor(104) == nullptr, "and its knob takes a click");
+      MP_CHECK(!control[4], "its noise rank can still be left out in Organ settings");
+      MP_CHECK(!playable[2], "the Trumpet, shipping nothing, is not available");
+      MP_CHECK(!playable[5], "nor its tremulant, whose tremmed rank ships nothing");
+      proc.setStopEngaged(4, true);
+      MP_CHECK(proc.switchEngaged(104), "the Tremulant draws");
+      proc.setStopEngaged(5, true);
+      MP_CHECK(!proc.switchEngaged(105), "the Trumpet Tremulant stays in");
+      settings.deleteFile();
+    }
+    root.deleteRecursively();
+  }
+};
+static TremulantWithNoiseRankTest g_tremulantNoiseRank;
+
 // A division played from its keys through division inputs, as Hill,
 // Burton-Berlin plays every manual (#345): the key's switch drives the input
 // for its note while the Unison Off is in. Drawn, the Unison Off silences the

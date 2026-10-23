@@ -2672,6 +2672,7 @@ private:
   std::unordered_set<Id> palletStops_;
   // The stops whose switch works a coupler or a tremulant: a GrandOrgue set
   // lists its couplers and tremulants with the stops, with no ranks (#490).
+  // A tremulant stop with ranks of its own, a motor noise, is one too (#552).
   void findControlStops();
   std::unordered_set<Id> controlStops_;
   void fireMovedStages();
