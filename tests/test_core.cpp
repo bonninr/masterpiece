@@ -4404,6 +4404,87 @@ public:
       MP_CHECK(eng.streamingVoices() == 0 && disk->reads.load() == readsBefore,
                "with nothing read from the disk");
     }
+
+    // A release longer than the head and the ring together, as most releases
+    // of a reverberant set are (#548: four to seven seconds, past a head of
+    // one and a ring of two). The ring is refilled behind the voice as it
+    // reads, so the whole tail plays, the same as the release held whole.
+    {
+      constexpr int kLong = 48000;  // a second; the ring holds a quarter of one
+      auto longWhole = voicetest::makeTone(220.0, 48000.0, kLong, 2, false);
+      auto longDisk = std::make_shared<FakeDisk>();
+      longDisk->all = longWhole.frames;
+      longDisk->channels = 2;
+      const auto longStreamed = headOf(longWhole, 1000, longDisk);
+      auto releaseVoice = [&](const mp::SampleBuffer& rel, mp::simd::Isa isa, double ratio,
+                              int64_t* underruns) {
+        voicetest::Fixture fx;
+        fx.release = rel;
+        mp::VoiceEngine eng;
+        eng.setStreamSeconds(0.25);
+        eng.prepare(48000.0, 4, 2, 256);
+        eng.setSimdIsa(isa);
+        eng.setSampleProvider(fx.provider());
+        mp::VoiceStart st;
+        st.pipe = &fx.pipe;
+        st.layer = &fx.pipe.layers[0];
+        st.ratio = ratio;
+        st.gain = 0.5f;
+        eng.startVoice(st, 1);
+        std::vector<float> all, l(256), r(256);
+        float* out[2] = {l.data(), r.data()};
+        // Past the end of the release at either speed.
+        const int blocks = static_cast<int>(kLong / ratio / 256.0) + 12;
+        for (int b = 0; b < blocks; ++b) {
+          if (b == 4) eng.noteOff(1, mp::NoteRelease{});
+          // A block of audio lasts 5 ms; the streamer is given about that
+          // long, as it is between two blocks played live.
+          if (b >= 4) std::this_thread::sleep_for(std::chrono::milliseconds(3));
+          std::fill(l.begin(), l.end(), 0.0f);
+          std::fill(r.begin(), r.end(), 0.0f);
+          eng.render(out, 2, 256);
+          all.insert(all.end(), l.begin(), l.end());
+          all.insert(all.end(), r.begin(), r.end());
+        }
+        if (underruns != nullptr) *underruns = eng.streamUnderruns();
+        return all;
+      };
+      for (const double ratio : {1.0, 1.37}) {
+        std::vector<mp::simd::Isa> isas{mp::simd::Isa::None};
+        for (const auto isa : mp::simd::available()) isas.push_back(isa);
+        for (const auto isa : isas) {
+          const std::string what = std::string(mp::simd::isaName(isa)) + " at ratio " + std::to_string(ratio);
+          const auto plain = releaseVoice(longWhole, isa, ratio, nullptr);
+          int64_t underruns = -1;
+          const auto viaDisk = releaseVoice(longStreamed, isa, ratio, &underruns);
+          MP_CHECK(underruns == 0, what + ": a release longer than its ring streams with no underrun, got " +
+                                       std::to_string(underruns));
+          // The last quarter second, well past head and ring: it sounds.
+          const size_t lateFrom = static_cast<size_t>((4 * 256 + (kLong - 12000) / ratio) * 2);
+          double late = 0.0;
+          for (size_t i = lateFrom; i < viaDisk.size() && i < lateFrom + 4000; ++i)
+            late = std::max(late, static_cast<double>(std::fabs(viaDisk[i])));
+          MP_CHECK(late > 0.05, what + ": the end of a long streamed release sounds (peak " +
+                                    std::to_string(late) + ")");
+          double worst = 0.0;
+          for (size_t i = 0; i < plain.size() && i < viaDisk.size(); ++i)
+            worst = std::max(worst, static_cast<double>(std::fabs(plain[i] - viaDisk[i])));
+          // Off its own pitch, the few frames a vector run leaves at the seam
+          // and at each turn of the ring are worked out one at a time, and the
+          // two ways round round differently in the last place.
+          bool exact = ratio == 1.0 || isa == mp::simd::Isa::None;
+#if defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+          exact = false;
+#endif
+          if (exact)
+            MP_CHECK(worst == 0.0, what + ": the long streamed release the same as the release held whole (worst " +
+                                       std::to_string(worst) + ")");
+          else
+            MP_CHECK(worst < 1e-6, what + ": the long streamed release the same within rounding (worst " +
+                                       std::to_string(worst) + ")");
+        }
+      }
+    }
   }
 };
 
@@ -7672,6 +7753,89 @@ public:
              "HDD quadruples heads");
     MP_CHECK(mp::headScaleForTier(mp::DiskTier::Unknown) == 200,
              "Unknown tier is conservative (SATA-class heads)");
+  }
+};
+
+// The rings of streamed releases sized from what reading the organ's own
+// files costs (#548): short on a solid-state disk, long on a hard disk, and
+// long enough, by the reckoning, for the releases they are sized for.
+class RingFromDiskTest final : public mp::test::Test {
+public:
+  RingFromDiskTest() : Test("functional.sampler.ring-from-disk", Category::Functional) {}
+
+  // A tail that takes `latencyMs` plus a frame's worth per `framesPerMs`.
+  static std::shared_ptr<mp::SampleTail> slowTail(double latencyMs, double framesPerMs) {
+    auto tail = std::make_shared<mp::SampleTail>();
+    tail->totalFrames = 48000 * 5;
+    tail->read = [latencyMs, framesPerMs](int64_t, int n, float* dest, int ch) -> int64_t {
+      const double ms = latencyMs + n / framesPerMs;
+      const auto until = std::chrono::steady_clock::now() +
+                         std::chrono::microseconds(static_cast<int64_t>(ms * 1000.0));
+      while (std::chrono::steady_clock::now() < until) {
+      }
+      std::fill(dest, dest + static_cast<size_t>(n) * static_cast<size_t>(ch), 0.0f);
+      return n;
+    };
+    return tail;
+  }
+
+  void run() override {
+    constexpr double kRate = 48000.0;
+    mp::TailReadCost nvme;
+    nvme.files = 16;
+    nvme.latencyMs = 0.1;
+    nvme.framesPerMs = 300000.0;  // about 1.7 GB/s of 24-bit stereo
+    MP_CHECK(mp::ringSecondsFor(nvme, kRate, 256) == 0.25,
+             "a solid-state disk gets the shortest ring, got " +
+                 std::to_string(mp::ringSecondsFor(nvme, kRate, 256)));
+    mp::TailReadCost hdd;
+    hdd.files = 16;
+    hdd.latencyMs = 13.0;
+    hdd.framesPerMs = 15000.0;  // about 90 MB/s
+    MP_CHECK(mp::ringSecondsFor(hdd, kRate, 256) == 2.0, "a hard disk gets the longest");
+    MP_CHECK(mp::ringSecondsFor(mp::TailReadCost{}, kRate, 256) == 2.0,
+             "with nothing measured, the longest");
+    // The two measured: the box's NVMe and this computer's hard disk.
+    mp::TailReadCost boxNvme;
+    boxNvme.files = 16;
+    boxNvme.latencyMs = 0.13;
+    boxNvme.framesPerMs = 73000.0;
+    MP_CHECK(mp::ringSecondsFor(boxNvme, kRate, 256) == 0.25, "the box's NVMe: the shortest");
+    mp::TailReadCost hdd5400;
+    hdd5400.files = 16;
+    hdd5400.latencyMs = 10.8;
+    hdd5400.framesPerMs = 5300.0;
+    MP_CHECK(mp::ringSecondsFor(hdd5400, kRate, 256) == 2.0, "a 5400 rpm disk: the longest");
+
+    // Between the two: the ring the reckoning gives, to the next twentieth.
+    // 256 voices at 0.48 ms of transfer a second each leave 0.377 of the
+    // disk's time; 2 x 256 x 0.5 ms / 0.377 is 0.68 s.
+    mp::TailReadCost middle;
+    middle.files = 16;
+    middle.latencyMs = 0.5;
+    middle.framesPerMs = 100000.0;
+    const double ring = mp::ringSecondsFor(middle, kRate, 256);
+    MP_CHECK(std::fabs(ring - 0.7) < 1e-9, "between the two, 0.7 s, got " + std::to_string(ring));
+    MP_CHECK(mp::ringSecondsFor(middle, kRate, 64) < ring, "fewer releases, a shorter ring");
+
+    // Measured: a disk of a known cost is read as that cost.
+    std::vector<std::shared_ptr<mp::SampleTail>> keep;
+    std::vector<mp::TailToTime> tails;
+    for (int i = 0; i < 20; ++i) {
+      keep.push_back(slowTail(2.0, 20000.0));
+      tails.push_back({keep.back().get(), 48000, 2});
+    }
+    // One too short to time, left out.
+    auto shortTail = slowTail(2.0, 20000.0);
+    shortTail->totalFrames = 60000;
+    tails.push_back({shortTail.get(), 48000, 2});
+    const auto cost = mp::measureTailReads(tails, 16);
+    MP_CHECK(cost.files == 16, "sixteen files timed, " + std::to_string(cost.files));
+    MP_CHECK(cost.latencyMs > 1.5 && cost.latencyMs < 3.5,
+             "the fixed part of a read, 2 ms, measured as " + std::to_string(cost.latencyMs));
+    MP_CHECK(cost.framesPerMs > 10000.0 && cost.framesPerMs < 40000.0,
+             "and its rate, 20000 frames a millisecond, as " + std::to_string(cost.framesPerMs));
+    MP_CHECK(mp::measureTailReads({}, 16).files == 0, "no tails, nothing measured");
   }
 };
 
@@ -11351,6 +11515,7 @@ static FixturePipeworkTest g_fixturePipework;
 static MissingGeneralTest g_missingGeneral;
 #ifdef MP_TEST_HAS_SAMPLER
 static DiskTierClassifyTest g_diskTier;
+static RingFromDiskTest g_ringFromDisk;
 static SampleHandleTest g_sampleHandle;
 #endif
 #ifdef MP_TEST_HAS_AUDIO
@@ -15361,6 +15526,59 @@ public:
   }
 };
 static StopLoadChoiceTest g_stopLoadChoice;
+
+// The release buffer chosen on the Loading tab (#548): kept with the organ,
+// built at the next load, counted in the memory figures, and Automatic again
+// when set back.
+class ReleaseBufferChoiceTest final : public mp::test::Test {
+public:
+  ReleaseBufferChoiceTest() : Test("functional.load.release-buffer", Category::Functional) {}
+
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    MP_CHECK(proc.releaseBufferSeconds() == 0.0, "Automatic at first");
+    proc.setStreamReleases(true);
+    const int64_t automaticBytes = proc.voicePoolBytes(256);
+
+    // A fixture with nothing to stream is not timed, so its rings keep the
+    // longest length, which a shorter choice undercuts.
+    MP_CHECK(proc.streamSeconds() > 1.0, "the rings start at the longest length");
+    proc.setReleaseBufferSeconds(1.0);
+    MP_CHECK(proc.voicePoolBytes(256) < automaticBytes,
+             "the memory figure follows the choice before the load");
+    MP_CHECK(proc.saveSettings(), "the choice is saved with the organ");
+    MP_CHECK(settings.loadFileAsString().contains("releasebuffer 1.00"),
+             "as a line of the organ's file");
+
+    proc.setReleaseBufferSeconds(0.0);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    MP_CHECK(proc.releaseBufferSeconds() == 1.0, "the choice is read back with the organ");
+    MP_CHECK(proc.streamSeconds() == 1.0,
+             "and the rings are built at that length, " + std::to_string(proc.streamSeconds()));
+
+    proc.setReleaseBufferSeconds(0.5);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.streamSeconds() == 0.5,
+             "a choice kept for the session is the length of the next load");
+
+    proc.setReleaseBufferSeconds(0.0);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.saveSettings() && proc.loadOrgan(odf, 0, false).ok &&
+                 proc.releaseBufferSeconds() == 0.0,
+             "and Automatic again when set back");
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static ReleaseBufferChoiceTest g_releaseBufferChoice;
 
 // A channel no manual claims plays the default manual only while nothing says
 // what the channels are; once they are set, it plays nothing -- a console's

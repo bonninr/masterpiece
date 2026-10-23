@@ -111,6 +111,45 @@ void MasterpieceProcessor::writeBlockLog() {
 
 static juce::String realtimeState(bool on);
 
+// How many releases streaming at once the rings are sized for (#548). On an
+// NVMe disk the reckoning gives the shortest ring, a quarter of a second,
+// and thirty notes a second on one stop of four ranks, 899 releases
+// streaming at once, played with no shortfall at that length on a two-core
+// computer. On a hard disk it gives the longest.
+static constexpr int kStreamsToFeed = 256;
+
+void MasterpieceProcessor::sizeStreamRings() {
+  if (releaseBufferSeconds_ > 0.0) {
+    voices_.setStreamSeconds(releaseBufferSeconds_);
+    tailReadCost_ = {};
+    if (samples_.streamedCount() > 0)
+      juce::Logger::writeToLog("streaming: rings of " + juce::String(releaseBufferSeconds_, 2) +
+                               " s, the release buffer chosen for this organ");
+    return;
+  }
+  const auto tails = samples_.streamedTails();
+  if (tails.empty()) return;
+  const double t0 = juce::Time::getMillisecondCounterHiRes();
+  tailReadCost_ = measureTailReads(tails);
+  const double took = juce::Time::getMillisecondCounterHiRes() - t0;
+  const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  const double ring = ringSecondsFor(tailReadCost_, rate, kStreamsToFeed);
+  voices_.setStreamSeconds(ring);
+  if (tailReadCost_.files <= 0) {
+    juce::Logger::writeToLog("streaming: no release long enough to time; rings of " +
+                             juce::String(ring, 2) + " s");
+    return;
+  }
+  const double perSecond =
+      tailReadCost_.framesPerMs > 0.0 ? rate / tailReadCost_.framesPerMs : 0.0;
+  juce::Logger::writeToLog(
+      "streaming: reads of " + juce::String(tailReadCost_.files) + " release files, " +
+      juce::String(tailReadCost_.latencyMs, 2) + " ms each plus " + juce::String(perSecond, 1) +
+      " ms a second of sound, the first " + juce::String(tailReadCost_.openMs, 1) +
+      " ms; rings of " + juce::String(ring, 2) + " s (measured in " + juce::String(took, 0) +
+      " ms)");
+}
+
 // The voice pool and the threads that render it, at the pool size chosen.
 // prepareToPlay builds it, and a larger polyphony builds it again with the
 // organ loaded: the samples stay, only the voices are new.
@@ -1733,6 +1772,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "streamheadpct " << samples_.streamHeadPercent() << "\n";
+  text << "releasebuffer " << juce::String(releaseBufferSeconds_, 2) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
   if (organRootOverride_.getFullPathName().isNotEmpty())
     text << "root " << organRootOverride_.getFullPathName() << "\n";
@@ -1844,6 +1884,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "streamheadpct") samples_.setStreamHeadPercent(val.getIntValue());
+  else if (key == "releasebuffer") releaseBufferSeconds_ = std::max(0.0, val.getDoubleValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
   // Where this organ's OrganInstallationPackages actually is, for a layout
   // the definition's path cannot reveal. Taken whole: a path may have spaces.
@@ -2936,9 +2977,11 @@ void MasterpieceProcessor::setPolyphonyLimit(int voices) {
 }
 
 int64_t MasterpieceProcessor::voicePoolBytes(int voices) const {
+  // A release buffer the player chose is the length the next load builds.
+  const double ring = releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_ : voices_.streamSeconds();
   return static_cast<int64_t>(std::max(0, voices)) *
          VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
-                                    voices_.streamSeconds(), samples_.streamReleases(),
+                                    ring, samples_.streamReleases(),
                                     samples_.codeSamples() || samples_.codedCount() > 0);
 }
 
@@ -4369,6 +4412,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.stream = samples_.streamReleases();
   c.streamHead = samples_.streamHeadFrames();
   c.streamHeadPercent = samples_.streamHeadPercent();
+  c.releaseBuffer = releaseBufferSeconds_;
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
   c.programCouplers = programCouplers_;
@@ -6610,6 +6654,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setStreamReleases(c.stream);
     samples_.setStreamHeadFrames(c.streamHead);
     samples_.setStreamHeadPercent(c.streamHeadPercent);
+    releaseBufferSeconds_ = c.releaseBuffer;
     preloadHead_ = c.preload;
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
@@ -7385,15 +7430,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
   // Still suspended, with no voice sounding: nothing else needs keeping.
   samples_.retireOldGenerations();
+  // Rings for streamed releases as long as the disk this organ is on needs.
+  const double ringBefore = voices_.streamSeconds();
+  sizeStreamRings();
+  const bool ringChanged = voices_.streamSeconds() != ringBefore && samples_.streamedCount() > 0;
   // Samples held compressed are read through windows the voice pool makes
   // when it is built. A pool built for the other kind is built again, here,
-  // while nothing sounds.
+  // while nothing sounds; and one whose rings are the wrong length.
   if (const size_t coded = samples_.codedCount();
-      (coded > 0) != voices_.codedWindows() && sampleRate_ > 0.0) {
+      ((coded > 0) != voices_.codedWindows() || ringChanged) && sampleRate_ > 0.0) {
     buildVoicePool(getBlockSize());
     juce::Logger::writeToLog("load: the voice pool made again " +
                              juce::String(coded > 0 ? "with" : "without") +
-                             " windows for compressed samples");
+                             " windows for compressed samples, rings of " +
+                             juce::String(voices_.streamSeconds(), 2) + " s");
   }
   if (const size_t coded = samples_.codedCount(); coded > 0)
     juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(coded)) +

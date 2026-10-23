@@ -1765,10 +1765,31 @@ public:
     markSettingsDirty();
   }
   int streamHeadPercent() const { return samples_.streamHeadPercent(); }
-  void setStreamSeconds(double s) { voices_.setStreamSeconds(s); }
+  // The release buffer: how much of each streamed release a voice holds
+  // ahead of where it plays, in seconds, as chosen on the Loading tab and
+  // kept with the organ. 0, Automatic, leaves it to each load, which sizes
+  // it from timed reads of the organ's own files. Applied at the next load.
+  void setReleaseBufferSeconds(double s) {
+    releaseBufferSeconds_ = s > 0.0 ? s : 0.0;
+    markSettingsDirty();
+  }
+  double releaseBufferSeconds() const { return releaseBufferSeconds_; }
+  // A fixed length from now on, for measurements.
+  void setStreamSeconds(double s) {
+    releaseBufferSeconds_ = s > 0.0 ? s : 0.0;
+    voices_.setStreamSeconds(s);
+  }
+  // The length the voice pool's rings have now.
+  double streamSeconds() const { return voices_.streamSeconds(); }
+  // What the last load measured of reading the organ's streamed releases.
+  TailReadCost tailReadCost() const { return tailReadCost_; }
   // Zero unless the disk could not keep up, in which case a release went
   // silent partway and the player deserves to know.
   int64_t streamUnderruns() const { return voices_.streamUnderruns(); }
+  // Reads of streamed releases from the disk since the pool was made.
+  int64_t streamReads() const { return voices_.streamReads(); }
+  // Voices reading a streamed release right now.
+  int64_t streamingVoices() const { return voices_.streamingVoices(); }
   // --log-releases: record every key release, and describe the ones recorded
   // since the last call, one line each. Message thread.
   // Also writes the lines to the log, a few times a second, while it is on;
@@ -2465,6 +2486,11 @@ private:
   std::string blockLogPath_;
   double blockWindUs_ = 0.0;
   void writeBlockLog();
+  // The streamed releases' rings: sized at each load from timed reads of the
+  // organ's files, or at the length the player chose (0: Automatic).
+  double releaseBufferSeconds_ = 0.0;
+  TailReadCost tailReadCost_;
+  void sizeStreamRings();
   std::atomic<bool> skipCacheSave_{false};
   // The cache-deciding choices, as one string to compare, and what the
   // loaded organ was loaded with.
@@ -2544,6 +2570,7 @@ private:
     bool mono = false, stream = false, code = false;
     int64_t streamHead = 0, preload = 0;
     int streamHeadPercent = 0;
+    double releaseBuffer = 0.0;
     // How many notes of a rank are loaded: 1 for every note, 2 for every
     // second, 3 for every third.
     int sparse = 1;

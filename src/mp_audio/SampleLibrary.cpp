@@ -2169,6 +2169,18 @@ size_t SampleLibrary::streamedCount() const {
   return n;
 }
 
+std::vector<TailToTime> SampleLibrary::streamedTails() const {
+  std::vector<TailToTime> out;
+  const Store* store = live_.load(std::memory_order_acquire);
+  if (store == nullptr) return out;
+  for (const auto& [id, buf] : *store) {
+    (void)id;
+    if (!buf->streams()) continue;
+    out.push_back({buf->tail.get(), buf->numFrames, std::max(1, buf->numChannels)});
+  }
+  return out;
+}
+
 int64_t SampleLibrary::streamedBytesSaved() const {
   const Store* store = live_.load(std::memory_order_acquire);
   if (store == nullptr) return 0;

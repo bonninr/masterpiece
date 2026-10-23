@@ -115,6 +115,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStorage_ = proc_.sampleStorage();
   openStream_ = proc_.streamReleases();
   openStreamPercent_ = proc_.streamHeadPercent();
+  openReleaseBuffer_ = proc_.releaseBufferSeconds();
   openMono_ = proc_.loadMono();
   openCompress_ = proc_.codeSamples();
   openProgramCouplers_ = proc_.programCouplers();
@@ -438,7 +439,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   stream_.setToggleState(proc_.streamReleases(), juce::dontSendNotification);
   stream_.onClick = [this] {
     proc_.setStreamReleases(stream_.getToggleState());
-    streamHead_.setEnabled(stream_.getToggleState());
+    enableStreamControls(stream_.getToggleState());
     syncProfile();
   };
   // How much of each release stays in memory while streaming. More gives a
@@ -449,11 +450,29 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   streamHead_.addItem(TRANS("Hold 50% of each release"), 3);
   streamHead_.addItem(TRANS("Hold 75% of each release"), 4);
   showStreamPercent(proc_.streamHeadPercent());
-  streamHead_.setEnabled(proc_.streamReleases());
   streamHead_.onChange = [this] {
     const int id = streamHead_.getSelectedId();
     proc_.setStreamHeadPercent(id == 2 ? 25 : id == 3 ? 50 : id == 4 ? 75 : 0);
   };
+  // The release buffer (#548): Automatic times reads of the organ's own
+  // files at each load and picks the length that disk needs.
+  addAndMakeVisible(releaseBufferLabel_);
+  styleLabel(releaseBufferLabel_, TRANS("Release buffer"));
+  addAndMakeVisible(releaseBuffer_);
+  releaseBuffer_.setTitle(TRANS("Release buffer"));
+  showReleaseBuffer(proc_.releaseBufferSeconds());
+  releaseBuffer_.setTooltip(
+      TRANS("How much of each streamed release a voice reads ahead of where it plays. Automatic "
+            "times reads of the organ's own files at each load: a quarter of a second on an SSD, "
+            "up to 2 s on a hard disk. A longer buffer gives a busy disk more time and uses more "
+            "memory per voice."));
+  releaseBuffer_.onChange = [this] {
+    static const double kSeconds[] = {0.0, 0.25, 0.5, 1.0, 2.0};
+    const int i = releaseBuffer_.getSelectedId() - 1;
+    if (i >= 0 && i < 5) proc_.setReleaseBufferSeconds(kSeconds[i]);
+    fillPolyphony();
+  };
+  enableStreamControls(proc_.streamReleases());
 
   addAndMakeVisible(mono_);
   mono_.setToggleState(proc_.loadMono(), juce::dontSendNotification);
@@ -662,6 +681,7 @@ void EnginePanel::revert() {
   proc_.setSampleStorage(openStorage_);
   proc_.setStreamReleases(openStream_);
   proc_.setStreamHeadPercent(openStreamPercent_);
+  proc_.setReleaseBufferSeconds(openReleaseBuffer_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
   proc_.setCodeSamples(openCompress_);
@@ -710,7 +730,8 @@ void EnginePanel::revert() {
   storage_.setSelectedId(storageItemId(openStorage_), juce::dontSendNotification);
   stream_.setToggleState(openStream_, juce::dontSendNotification);
   showStreamPercent(openStreamPercent_);
-  streamHead_.setEnabled(openStream_);
+  showReleaseBuffer(openReleaseBuffer_);
+  enableStreamControls(openStream_);
   showPreload(openPreload_);
 
   // simpleWavOnly greys the rest out; restoring the states has to restore
@@ -786,6 +807,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.releaseChoice() != openReleases_ || proc_.releaseMaxMs() != openReleaseMs_ ||
          proc_.sparseEvery() != openSparse_ ||
          proc_.streamHeadPercent() != openStreamPercent_ ||
+         proc_.releaseBufferSeconds() != openReleaseBuffer_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.codeSamples() != openCompress_ ||
          proc_.programCouplers() != openProgramCouplers_ ||
@@ -880,7 +902,7 @@ void EnginePanel::applyProfile(int id) {
   storage_.setSelectedId(storageItemId(p.storage), juce::dontSendNotification);
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
-  streamHead_.setEnabled(p.stream);
+  enableStreamControls(p.stream);
   preload_.setSelectedId(1, juce::dontSendNotification);
   applyingProfile_ = false;
 }
@@ -950,6 +972,41 @@ void EnginePanel::showPreload(int64_t frames) {
 void EnginePanel::showStreamPercent(int percent) {
   streamHead_.setSelectedId(percent >= 75 ? 4 : percent >= 50 ? 3 : percent >= 25 ? 2 : 1,
                              juce::dontSendNotification);
+}
+
+void EnginePanel::showReleaseBuffer(double seconds) {
+  releaseBuffer_.clear(juce::dontSendNotification);
+  // 0.25, 0.5, 1, 2: as few digits as the length needs.
+  const auto secs = [](double s) {
+    auto t = juce::String(s, 2);
+    while (t.endsWithChar('0')) t = t.dropLastCharacters(1);
+    if (t.endsWithChar('.')) t = t.dropLastCharacters(1);
+    return TRANS("%1 s").replace("%1", t);
+  };
+  // Automatic names the length the loaded organ's disk was given.
+  releaseBuffer_.addItem(proc_.loadedOrganFile().getFullPathName().isNotEmpty() &&
+                                 proc_.releaseBufferSeconds() <= 0.0
+                             ? TRANS("Automatic (%1)").replace("%1", secs(proc_.streamSeconds()))
+                             : TRANS("Automatic"),
+                         1);
+  static const double kSeconds[] = {0.25, 0.5, 1.0, 2.0};
+  int id = 1;
+  for (int i = 0; i < 4; ++i) {
+    releaseBuffer_.addItem(secs(kSeconds[i]), i + 2);
+    if (seconds > 0.0 && std::abs(seconds - kSeconds[i]) < 0.001) id = i + 2;
+  }
+  // A length set in the file and not in the list is shown as it is.
+  if (seconds > 0.0 && id == 1) {
+    releaseBuffer_.addItem(secs(seconds), 6);
+    id = 6;
+  }
+  releaseBuffer_.setSelectedId(id, juce::dontSendNotification);
+}
+
+void EnginePanel::enableStreamControls(bool on) {
+  streamHead_.setEnabled(on);
+  releaseBuffer_.setEnabled(on);
+  releaseBufferLabel_.setEnabled(on);
 }
 
 void EnginePanel::layoutFooter(juce::Rectangle<int> footer) {
@@ -1056,6 +1113,12 @@ void EnginePanel::resized() {
     auto streamRow = r.removeFromTop(kRow);
     streamHead_.setBounds(streamRow.removeFromRight(230).reduced(0, 2));
     stream_.setBounds(streamRow);
+  }
+  r.removeFromTop(2);
+  {
+    auto bufferRow = r.removeFromTop(kRow);
+    releaseBufferLabel_.setBounds(bufferRow.removeFromLeft(180));
+    releaseBuffer_.setBounds(bufferRow.removeFromLeft(300));
   }
   r.removeFromTop(2);
   {
