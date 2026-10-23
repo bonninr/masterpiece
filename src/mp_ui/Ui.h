@@ -201,6 +201,11 @@ public:
   // The status line lives along the bottom of the window, where it has the
   // whole width; the editor places it there.
   juce::Label& statusLabel() { return status_; }
+  // The fader at its narrowest: its 58-pixel readout and a track a hand can
+  // still set a level on.
+  static constexpr int kFaderMinWidth = 160;
+  // No DSP and the fader at its narrowest, with the bar's margins.
+  static constexpr int kMinWidth = 8 + 88 + 10 + kFaderMinWidth;
 
 private:
   MasterpieceProcessor& proc_;
