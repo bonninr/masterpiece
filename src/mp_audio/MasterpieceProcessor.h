@@ -1765,12 +1765,21 @@ public:
     markSettingsDirty();
   }
   int streamHeadPercent() const { return samples_.streamHeadPercent(); }
-  // The length of each voice's ring for a streamed release. Set, it holds;
-  // left alone, each load sizes it from reads of the organ's own files.
-  void setStreamSeconds(double s) {
-    voices_.setStreamSeconds(s);
-    ringSecondsSet_ = true;
+  // The release buffer: how much of each streamed release a voice holds
+  // ahead of where it plays, in seconds, as chosen on the Loading tab and
+  // kept with the organ. 0, Automatic, leaves it to each load, which sizes
+  // it from timed reads of the organ's own files. Applied at the next load.
+  void setReleaseBufferSeconds(double s) {
+    releaseBufferSeconds_ = s > 0.0 ? s : 0.0;
+    markSettingsDirty();
   }
+  double releaseBufferSeconds() const { return releaseBufferSeconds_; }
+  // A fixed length from now on, for measurements.
+  void setStreamSeconds(double s) {
+    releaseBufferSeconds_ = s > 0.0 ? s : 0.0;
+    voices_.setStreamSeconds(s);
+  }
+  // The length the voice pool's rings have now.
   double streamSeconds() const { return voices_.streamSeconds(); }
   // What the last load measured of reading the organ's streamed releases.
   TailReadCost tailReadCost() const { return tailReadCost_; }
@@ -2478,8 +2487,8 @@ private:
   double blockWindUs_ = 0.0;
   void writeBlockLog();
   // The streamed releases' rings: sized at each load from timed reads of the
-  // organ's files, unless setStreamSeconds() fixed them.
-  bool ringSecondsSet_ = false;
+  // organ's files, or at the length the player chose (0: Automatic).
+  double releaseBufferSeconds_ = 0.0;
   TailReadCost tailReadCost_;
   void sizeStreamRings();
   std::atomic<bool> skipCacheSave_{false};
@@ -2561,6 +2570,7 @@ private:
     bool mono = false, stream = false, code = false;
     int64_t streamHead = 0, preload = 0;
     int streamHeadPercent = 0;
+    double releaseBuffer = 0.0;
     // How many notes of a rank are loaded: 1 for every note, 2 for every
     // second, 3 for every third.
     int sparse = 1;

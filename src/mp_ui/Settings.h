@@ -86,6 +86,7 @@ private:
   SampleStorage openStorage_ = SampleStorage::Float32;
   bool openStream_ = false;
   int openStreamPercent_ = 0;
+  double openReleaseBuffer_ = 0.0;
   bool openMono_ = false;
   bool openCompress_ = false;
   // Whether the program couplers are offered. Off by default.
@@ -178,6 +179,12 @@ private:
   juce::ToggleButton stream_{TRANS("Stream release tails from disk")};
   juce::ComboBox streamHead_;
   void showStreamPercent(int percent);
+  // How far ahead of each streamed release its voice reads.
+  juce::Label releaseBufferLabel_;
+  juce::ComboBox releaseBuffer_;
+  void showReleaseBuffer(double seconds);
+  // Greys out the controls that only mean something while releases stream.
+  void enableStreamControls(bool on);
   void showPreload(int64_t frames);
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
   juce::ToggleButton compress_{TRANS("Hold samples compressed (lossless)")};

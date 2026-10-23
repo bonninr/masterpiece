@@ -15527,6 +15527,59 @@ public:
 };
 static StopLoadChoiceTest g_stopLoadChoice;
 
+// The release buffer chosen on the Loading tab (#548): kept with the organ,
+// built at the next load, counted in the memory figures, and Automatic again
+// when set back.
+class ReleaseBufferChoiceTest final : public mp::test::Test {
+public:
+  ReleaseBufferChoiceTest() : Test("functional.load.release-buffer", Category::Functional) {}
+
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    MP_CHECK(proc.releaseBufferSeconds() == 0.0, "Automatic at first");
+    proc.setStreamReleases(true);
+    const int64_t automaticBytes = proc.voicePoolBytes(256);
+
+    // A fixture with nothing to stream is not timed, so its rings keep the
+    // longest length, which a shorter choice undercuts.
+    MP_CHECK(proc.streamSeconds() > 1.0, "the rings start at the longest length");
+    proc.setReleaseBufferSeconds(1.0);
+    MP_CHECK(proc.voicePoolBytes(256) < automaticBytes,
+             "the memory figure follows the choice before the load");
+    MP_CHECK(proc.saveSettings(), "the choice is saved with the organ");
+    MP_CHECK(settings.loadFileAsString().contains("releasebuffer 1.00"),
+             "as a line of the organ's file");
+
+    proc.setReleaseBufferSeconds(0.0);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    MP_CHECK(proc.releaseBufferSeconds() == 1.0, "the choice is read back with the organ");
+    MP_CHECK(proc.streamSeconds() == 1.0,
+             "and the rings are built at that length, " + std::to_string(proc.streamSeconds()));
+
+    proc.setReleaseBufferSeconds(0.5);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok && proc.streamSeconds() == 0.5,
+             "a choice kept for the session is the length of the next load");
+
+    proc.setReleaseBufferSeconds(0.0);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.saveSettings() && proc.loadOrgan(odf, 0, false).ok &&
+                 proc.releaseBufferSeconds() == 0.0,
+             "and Automatic again when set back");
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static ReleaseBufferChoiceTest g_releaseBufferChoice;
+
 // A channel no manual claims plays the default manual only while nothing says
 // what the channels are; once they are set, it plays nothing -- a console's
 // piston buttons, sending notes on a channel of their own, played the manual.

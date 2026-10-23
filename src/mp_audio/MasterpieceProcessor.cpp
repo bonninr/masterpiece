@@ -119,7 +119,14 @@ static juce::String realtimeState(bool on);
 static constexpr int kStreamsToFeed = 256;
 
 void MasterpieceProcessor::sizeStreamRings() {
-  if (ringSecondsSet_) return;
+  if (releaseBufferSeconds_ > 0.0) {
+    voices_.setStreamSeconds(releaseBufferSeconds_);
+    tailReadCost_ = {};
+    if (samples_.streamedCount() > 0)
+      juce::Logger::writeToLog("streaming: rings of " + juce::String(releaseBufferSeconds_, 2) +
+                               " s, the release buffer chosen for this organ");
+    return;
+  }
   const auto tails = samples_.streamedTails();
   if (tails.empty()) return;
   const double t0 = juce::Time::getMillisecondCounterHiRes();
@@ -1765,6 +1772,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "streamheadpct " << samples_.streamHeadPercent() << "\n";
+  text << "releasebuffer " << juce::String(releaseBufferSeconds_, 2) << "\n";
   text << "preload " << juce::String(preloadHead_) << "\n";
   if (organRootOverride_.getFullPathName().isNotEmpty())
     text << "root " << organRootOverride_.getFullPathName() << "\n";
@@ -1876,6 +1884,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
   else if (key == "streamheadpct") samples_.setStreamHeadPercent(val.getIntValue());
+  else if (key == "releasebuffer") releaseBufferSeconds_ = std::max(0.0, val.getDoubleValue());
   else if (key == "preload") preloadHead_ = val.getLargeIntValue();
   // Where this organ's OrganInstallationPackages actually is, for a layout
   // the definition's path cannot reveal. Taken whole: a path may have spaces.
@@ -2968,9 +2977,11 @@ void MasterpieceProcessor::setPolyphonyLimit(int voices) {
 }
 
 int64_t MasterpieceProcessor::voicePoolBytes(int voices) const {
+  // A release buffer the player chose is the length the next load builds.
+  const double ring = releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_ : voices_.streamSeconds();
   return static_cast<int64_t>(std::max(0, voices)) *
          VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
-                                    voices_.streamSeconds(), samples_.streamReleases(),
+                                    ring, samples_.streamReleases(),
                                     samples_.codeSamples() || samples_.codedCount() > 0);
 }
 
@@ -4401,6 +4412,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.stream = samples_.streamReleases();
   c.streamHead = samples_.streamHeadFrames();
   c.streamHeadPercent = samples_.streamHeadPercent();
+  c.releaseBuffer = releaseBufferSeconds_;
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
   c.programCouplers = programCouplers_;
@@ -6642,6 +6654,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setStreamReleases(c.stream);
     samples_.setStreamHeadFrames(c.streamHead);
     samples_.setStreamHeadPercent(c.streamHeadPercent);
+    releaseBufferSeconds_ = c.releaseBuffer;
     preloadHead_ = c.preload;
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
