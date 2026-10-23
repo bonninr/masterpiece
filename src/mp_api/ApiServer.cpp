@@ -131,19 +131,54 @@ bool ApiServer::onMessageThread(std::function<void()> fn) {
     return true;
   }
   if (juce::MessageManager::getInstanceWithoutCreating() == nullptr) return false;
-  auto done = std::make_shared<std::promise<void>>();
-  auto future = done->get_future();
-  const bool posted = juce::MessageManager::callAsync([fn = std::move(fn), done] {
+  return runAndWait([](std::function<void()> call) { return juce::MessageManager::callAsync(std::move(call)); },
+                    std::move(fn), 3000, stopping_);
+}
+
+bool ApiServer::runAndWait(const std::function<bool(std::function<void()>)>& post,
+                           std::function<void()> fn, int waitMs,
+                           const std::atomic<bool>& stopping) {
+  // Shared by the waiting request and the queued call, which can outlive it.
+  struct Handoff {
+    std::mutex mutex;
+    std::condition_variable changed;
+    enum class State { Queued, Running, Done, Dropped } state = State::Queued;
+  };
+  auto handoff = std::make_shared<Handoff>();
+  const bool posted = post([fn = std::move(fn), handoff] {
+    {
+      const std::lock_guard<std::mutex> lock(handoff->mutex);
+      if (handoff->state == Handoff::State::Dropped) return;
+      handoff->state = Handoff::State::Running;
+    }
+    // Done on every way out, so the request never waits on a call that threw.
+    struct Finish {
+      Handoff& h;
+      ~Finish() {
+        {
+          const std::lock_guard<std::mutex> lock(h.mutex);
+          h.state = Handoff::State::Done;
+        }
+        h.changed.notify_all();
+      }
+    } finish{*handoff};
     fn();
-    done->set_value();
   });
   if (!posted) return false;
+
+  std::unique_lock<std::mutex> lock(handoff->mutex);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMs);
   // In short waits, so a stop is never held up by a request in flight.
-  for (int i = 0; i < 100; ++i) {
-    if (future.wait_for(std::chrono::milliseconds(30)) == std::future_status::ready) return true;
-    if (stopping_.load()) return false;
+  while (handoff->state != Handoff::State::Done) {
+    const bool late = std::chrono::steady_clock::now() >= deadline || stopping.load();
+    if (late && handoff->state == Handoff::State::Queued) {
+      handoff->state = Handoff::State::Dropped;
+      return false;
+    }
+    // Running: it reads and writes the request's variables, so it is seen out.
+    handoff->changed.wait_for(lock, std::chrono::milliseconds(30));
   }
-  return false;
+  return true;
 }
 
 bool ApiServer::apply(const ServerSettings& s, juce::String& error) {

@@ -10,6 +10,7 @@
 #include <juce_events/juce_events.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -63,6 +64,15 @@ public:
   // streams are open.
   static constexpr int kThreadPoolSize = 32;
   static constexpr int kMaxEventStreams = 16;
+
+  // Hands `fn` to `post`, which queues it for another thread, and waits up to
+  // `waitMs` for it to run, or until `stopping`. False when `post` refuses it
+  // or the wait ends first. A request's `fn` writes into the request's own
+  // variables, which are gone once the request has answered busy, so an `fn`
+  // still queued then is dropped unrun; one already running is waited for.
+  static bool runAndWait(const std::function<bool(std::function<void()>)>& post,
+                         std::function<void()> fn, int waitMs,
+                         const std::atomic<bool>& stopping);
 
 private:
   void timerCallback() override;
