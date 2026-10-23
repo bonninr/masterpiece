@@ -37,13 +37,15 @@ struct ReleaseAlignment {
 namespace releasealign {
 
 // The sum of a buffer's channels at a fractional frame, linearly interpolated.
-inline double summed(const SampleBuffer& b, double pos) {
+// `read(frame, channel)` answers as SampleBuffer::sample() does.
+template <class Read>
+inline double summed(int channels, Read& read, double pos) {
   const auto i = static_cast<int64_t>(pos);
   const double t = pos - static_cast<double>(i);
   double a = 0.0, c = 0.0;
-  for (int ch = 0; ch < b.numChannels; ++ch) {
-    a += b.sample(i, ch);
-    c += b.sample(i + 1, ch);
+  for (int ch = 0; ch < channels; ++ch) {
+    a += read(i, ch);
+    c += read(i + 1, ch);
   }
   return a + (c - a) * t;
 }
@@ -61,10 +63,16 @@ constexpr double kSilentAttack = 1e-6;
 
 // attackPos: where the attack is, in its own frames. attackStep: attack frames
 // per release frame. periodFrames: the pipe's period, in release frames.
-inline ReleaseAlignment alignRelease(const SampleBuffer& attack, double attackPos,
-                                     int64_t loopStart, int64_t loopEnd, double attackStep,
-                                     const SampleBuffer& release, double releaseStart,
-                                     double periodFrames) {
+// readAttack and readRelease answer for each buffer as SampleBuffer::sample()
+// does; a sample held coded is read through the voice's windows. Each side is
+// read in a pass of its own, so a reader that decodes reads one sample at a
+// time, in order.
+template <class ReadAttack, class ReadRelease>
+inline ReleaseAlignment alignReleaseWith(const SampleBuffer& attack, ReadAttack&& readAttack,
+                                         double attackPos, int64_t loopStart, int64_t loopEnd,
+                                         double attackStep, const SampleBuffer& release,
+                                         ReadRelease&& readRelease, double releaseStart,
+                                         double periodFrames) {
   using namespace releasealign;
   ReleaseAlignment none;
   const double P = periodFrames;
@@ -87,31 +95,40 @@ inline ReleaseAlignment alignRelease(const SampleBuffer& attack, double attackPo
   double aEnergy = 0.0, rEnergy = 0.0;
   const double step = 2.0 * 3.14159265358979323846 * stride / P;
   const double cs = std::cos(step), sn = std::sin(step);
-  double c1 = 1.0, s1 = 0.0; // the fundamental's phasor at this read
+  // One side's reads into its bins. The two sides' sums do not meet, so one
+  // pass each gives the same numbers as one pass over both.
+  const auto bins = [&](auto position, auto& read, int channels, double* re, double* im,
+                        double& energy) {
+    double c1 = 1.0, s1 = 0.0; // the fundamental's phasor at this read
+    for (int k = 0; k < n; ++k) {
+      const double x = summed(channels, read, position(k));
+      energy += x * x;
+      double ch = c1, sh = s1; // harmonic h's phasor, as a power of the fundamental's
+      for (int h = 0; h < kHarmonics; ++h) {
+        re[h] += x * ch;
+        im[h] -= x * sh;
+        const double nc = ch * c1 - sh * s1;
+        sh = ch * s1 + sh * c1;
+        ch = nc;
+      }
+      const double nc = c1 * cs - s1 * sn;
+      s1 = c1 * sn + s1 * cs;
+      c1 = nc;
+    }
+  };
   double pa = attackPos;
   const double paStep = attackStep * stride;
-  for (int k = 0; k < n; ++k) {
-    if (loops)
-      while (pa >= static_cast<double>(loopEnd) - 1.0) pa -= loopLen;
-    const double xa = summed(attack, pa);
-    const double xr = summed(release, releaseStart + static_cast<double>(k) * stride);
-    aEnergy += xa * xa;
-    rEnergy += xr * xr;
-    double ch = c1, sh = s1; // harmonic h's phasor, as a power of the fundamental's
-    for (int h = 0; h < kHarmonics; ++h) {
-      aRe[h] += xa * ch;
-      aIm[h] -= xa * sh;
-      rRe[h] += xr * ch;
-      rIm[h] -= xr * sh;
-      const double nc = ch * c1 - sh * s1;
-      sh = ch * s1 + sh * c1;
-      ch = nc;
-    }
-    const double nc = c1 * cs - s1 * sn;
-    s1 = c1 * sn + s1 * cs;
-    c1 = nc;
-    pa += paStep;
-  }
+  // The attack's reads step on from where it is, round its loop.
+  bins(
+      [&](int k) {
+        if (k > 0) pa += paStep;
+        if (loops)
+          while (pa >= static_cast<double>(loopEnd) - 1.0) pa -= loopLen;
+        return pa;
+      },
+      readAttack, attack.numChannels, aRe, aIm, aEnergy);
+  bins([&](int k) { return releaseStart + static_cast<double>(k) * stride; }, readRelease,
+       release.numChannels, rRe, rIm, rEnergy);
   if (!(rEnergy > 0.0) || aEnergy < rEnergy * kSilentAttack) return none;
   double aHarm = 0.0, rHarm = 0.0;
   for (int h = 0; h < kHarmonics; ++h) {
@@ -152,6 +169,17 @@ inline ReleaseAlignment alignRelease(const SampleBuffer& attack, double attackPo
   }
   bestS = std::fmod(bestS + P, P);
   return {bestS, true};
+}
+
+// Both samples read as they are held, through SampleBuffer::sample().
+inline ReleaseAlignment alignRelease(const SampleBuffer& attack, double attackPos,
+                                     int64_t loopStart, int64_t loopEnd, double attackStep,
+                                     const SampleBuffer& release, double releaseStart,
+                                     double periodFrames) {
+  return alignReleaseWith(
+      attack, [&](int64_t i, int ch) { return attack.sample(i, ch); }, attackPos, loopStart,
+      loopEnd, attackStep, release, [&](int64_t i, int ch) { return release.sample(i, ch); },
+      releaseStart, periodFrames);
 }
 
 }  // namespace mp

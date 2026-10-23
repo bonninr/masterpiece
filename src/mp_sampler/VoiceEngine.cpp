@@ -102,6 +102,28 @@ constexpr int kXfadeChannels = 2;
 // A run under a moving tremulant is worked out this many frames at a time.
 constexpr int kTremChunk = 256;
 
+// A coded sample's window is made to hold the frame behind the cursor and
+// this many after it: room for a straight run to start, and when that runs
+// past the window's end, the window moves on to the next block.
+constexpr int64_t kHoldAhead = kWindowMargin - 2;
+// Render threads with a decoding scratch of their own: the audio thread and
+// its workers. The list has this many places from prepare() on, filled as
+// workers are made, so making them never moves a scratch in use.
+constexpr size_t kMaxDecodeThreads = 64;
+
+// A raw count from a buffer of any storage, for the one read that may meet a
+// buffer of another storage than the voice's own: the attack under a
+// release crossfade.
+inline float rawAny(const SampleBuffer& buf, int64_t frame, int channel) {
+  if (frame < 0 || frame >= buf.numFrames) return 0.0f;
+  const int ch = channel < buf.numChannels ? channel : buf.numChannels - 1;
+  const auto i = static_cast<size_t>(frame * buf.numChannels + ch);
+  if (!buf.pcm20.empty()) return static_cast<float>(pcm20At(buf.pcm20.data(), i));
+  if (!buf.pcm24.empty()) return static_cast<float>(buf.pcm24[i]);
+  if (!buf.pcm16.empty()) return static_cast<float>(buf.pcm16[i]);
+  return buf.frames[i];
+}
+
 } // namespace
 
 void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
@@ -149,7 +171,35 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   }
   underruns_.store(0, std::memory_order_relaxed);
   streaming_.store(0, std::memory_order_relaxed);
+
+  // Two windows a voice for samples held coded, and the audio thread's
+  // scratch; the workers' scratch comes with the workers.
+  windows_.clear();
+  windowBytes_.clear();
+  decodeScratch_.clear();
+  if (codedWindows_) {
+    windowBytes_.assign(voices_.size() * 2 * kWindowBytes, 0);
+    windows_.assign(voices_.size() * 2, DecodedWindow{});
+    for (size_t w = 0; w < windows_.size(); ++w)
+      windows_[w].data = windowBytes_.data() + w * kWindowBytes;
+    decodeScratch_.resize(kMaxDecodeThreads);
+    makeDecodeScratch(1);
+  }
   startStreamer();
+}
+
+void VoiceEngine::makeDecodeScratch(size_t threads) {
+  if (windows_.empty()) return;
+  threads = std::min(threads, decodeScratch_.size());
+  for (size_t t = 0; t < threads; ++t)
+    if (decodeScratch_[t] == nullptr) decodeScratch_[t] = std::make_unique<DecodeScratch>();
+}
+
+uint64_t VoiceEngine::blocksDecoded() const {
+  uint64_t n = 0;
+  for (const auto& s : decodeScratch_)
+    if (s != nullptr) n += s->decodes.load(std::memory_order_relaxed);
+  return n;
 }
 
 void VoiceEngine::setStreamSeconds(double seconds) {
@@ -175,13 +225,16 @@ void VoiceEngine::stopStreamer() {
   if (streamer_.joinable()) streamer_.join();
 }
 
-int64_t VoiceEngine::bytesPerVoice(double sampleRate, double streamSeconds, bool rings) {
+int64_t VoiceEngine::bytesPerVoice(double sampleRate, double streamSeconds, bool rings,
+                                   bool codedWindows) {
   const double rate = sampleRate > 0.0 ? sampleRate : 48000.0;
   const auto ringFrames = static_cast<int64_t>(std::max(1.0, streamSeconds * rate));
   // The voice, its stream record, and its places in the render and steal
-  // lists; the ring, stereo, when there is one.
+  // lists; the ring, stereo, when there is one; its two windows, when samples
+  // are held coded.
   return static_cast<int64_t>(sizeof(Voice) + sizeof(VoiceStream) + 2 * sizeof(uint32_t)) +
-         (rings ? ringFrames * 2 * static_cast<int64_t>(sizeof(float)) : 0);
+         (rings ? ringFrames * 2 * static_cast<int64_t>(sizeof(float)) : 0) +
+         (codedWindows ? static_cast<int64_t>(2 * (kWindowBytes + sizeof(DecodedWindow))) : 0);
 }
 
 void VoiceEngine::armStream(size_t voiceIndex, const SampleBuffer& buf,
@@ -434,6 +487,11 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     ++stats_.samplesMissing;
     return -1;
   }
+  // Held coded, and the pool was made without the windows to read it through.
+  if (buf->coded != nullptr && windows_.empty()) {
+    ++stats_.samplesMissing;
+    return -1;
+  }
 
   const int slot = allocateVoice();
   if (slot < 0) {
@@ -443,6 +501,10 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
 
   Voice& v = voices_[static_cast<size_t>(slot)];
   v = Voice{};
+  if (!windows_.empty()) {
+    windows_[static_cast<size_t>(slot) * 2].clear();
+    windows_[static_cast<size_t>(slot) * 2 + 1].clear();
+  }
   v.phase = VoicePhase::Attack;
   v.buffer = buf;
   v.pipeId = start.pipe->pipeId;
@@ -538,6 +600,50 @@ void VoiceEngine::noteOffPipe(uint64_t noteId, Id pipeId,
   releaseVoices(noteId, pipeId, release);
 }
 
+bool codeSampleBuffer(SampleBuffer& buf) {
+  if (buf.coded != nullptr) return true;
+  if (buf.numFrames <= 0 || buf.numChannels < 1 || buf.numChannels > kSplitRiceMaxChannels)
+    return false;
+  const bool wide = !buf.pcm24.empty();
+  if (!wide && buf.pcm16.empty()) return false;
+  const auto count = static_cast<size_t>(buf.numFrames) * static_cast<size_t>(buf.numChannels);
+  if ((wide ? buf.pcm24.size() : buf.pcm16.size()) != count) return false;
+  std::vector<int32_t> values(count);
+  uint32_t bits = 0;  // every value's bits, or'ed: the low ones no value uses
+  for (size_t i = 0; i < count; ++i) {
+    if (wide) {
+      const auto& p = buf.pcm24[i];
+      int32_t v = p.b[0] | (p.b[1] << 8) | (p.b[2] << 16);
+      if (v & 0x800000) v -= 0x1000000;
+      values[i] = v;
+    } else {
+      values[i] = buf.pcm16[i];
+    }
+    bits |=static_cast<uint32_t>(values[i]);
+  }
+  // A 16-bit recording held at 24 bits has eight zero bits under every
+  // value, and a 20-bit one four: coded as they are, they cost those bits in
+  // every sample. They are shifted out and the scale takes them back. A power
+  // of two scales a float exactly, so what plays is the same to the bit.
+  int shift = 0;
+  while (bits != 0 && (bits & 1u) == 0 && shift < (wide ? 8 : 0)) {
+    bits >>= 1;
+    ++shift;
+  }
+  if (shift > 0)
+    for (auto& v : values) v >>= shift;  // exact: the bits shifted out are zero
+  const int depth = wide && shift < 8 ? 24 : 16;
+  auto stream = std::make_shared<SplitRiceStream>();
+  if (!encodeSplitRice(values.data(), static_cast<uint64_t>(buf.numFrames), buf.numChannels,
+                       depth, *stream))
+    return false;
+  buf.coded = std::move(stream);
+  buf.pcmScale = std::ldexp(buf.pcmScale, shift);
+  std::vector<Pcm24>().swap(buf.pcm24);
+  std::vector<int16_t>().swap(buf.pcm16);
+  return true;
+}
+
 void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
   releaseVoices(noteId, 0, release);
 }
@@ -602,6 +708,8 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       relSampleId = r.sample.sampleId;
       xfadeMs = r.releaseCrossfadeMs;
       if (provider_) relBuf = provider_(relSampleId);
+      // Held coded, with no windows to read it through: as if not resident.
+      if (relBuf != nullptr && relBuf->coded != nullptr && windows_.empty()) relBuf = nullptr;
     }
 
     // The attack being left: it keeps sounding through the crossfade, so its
@@ -638,6 +746,10 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       // The render loop ramps this 0 -> 1 over the crossfade; a zero-length
       // crossfade swaps instantly, as authored.
       v.releaseGain = v.relXfadeLength > 0 ? 0.0f : 1.0f;
+      // A coded attack goes on being read through the window it was read
+      // through, which becomes the voice's other one; the release takes the
+      // first.
+      if (oldBuf != nullptr && oldBuf->coded != nullptr) v.window ^= 1u;
     } else {
       v.releaseGain = 1.0f;
       v.xfadeBuf = nullptr;
@@ -693,7 +805,13 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       // its frames.
       if (row.phaseAlign && oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
         const double hz = releaseHz > 0.0 ? releaseHz : attackHz;
-        if (hz > 0.0 && relBuf->sampleRate > 0.0) {
+        if (hz > 0.0 && relBuf->sampleRate > 0.0 &&
+            (oldBuf->coded != nullptr || relBuf->coded != nullptr)) {
+          // A coded sample is decoded on the thread that renders the voice:
+          // the start is found there, before its first frame.
+          v.alignPending = true;
+          v.alignPeriod = relBuf->sampleRate / hz;
+        } else if (hz > 0.0 && relBuf->sampleRate > 0.0) {
           const ReleaseAlignment al =
               alignRelease(*oldBuf, oldCursor, oldLoopStart, oldLoopEnd, v.xfadeRatioScale,
                            *relBuf, v.cursor, relBuf->sampleRate / hz);
@@ -778,9 +896,41 @@ inline float readInterior<Pcm20>(const Pcm20* frames, int channels, int channel,
 
 // The resident format is decided once per voice per block, here, so nothing
 // below it pays for the choice.
-void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
-                              int numFrames) {
+void VoiceEngine::alignPendingRelease(Voice& v, DecodeScratch& scratch) {
+  v.alignPending = false;
+  const SampleBuffer* ob = v.xfadeBuf;
+  const SampleBuffer* rb = v.buffer;
+  if (ob == nullptr || rb == nullptr || windows_.empty()) return;
   const size_t index = static_cast<size_t>(&v - voices_.data());
+  const DecodedWindow* a = &windows_[index * 2];
+  const DecodedWindow* b = &windows_[index * 2 + 1];
+  // Each buffer answers as SampleBuffer::sample() does; a coded one from the
+  // voice's windows and the thread's blocks.
+  const auto reader = [&](const SampleBuffer& buf) {
+    return [&buf, a, b, &scratch](int64_t i, int ch) -> float {
+      if (buf.coded == nullptr) return buf.sample(i, ch);
+      if (i < 0 || i >= buf.numFrames) return 0.0f;
+      return static_cast<float>(codedValue(*buf.coded, a, b, i, ch, scratch)) * buf.pcmScale;
+    };
+  };
+  const ReleaseAlignment al =
+      alignReleaseWith(*ob, reader(*ob), v.xfadeOldCursor, v.xfadeOldLoopStart,
+                       v.xfadeOldLoopEnd, v.xfadeRatioScale, *rb, reader(*rb), v.cursor,
+                       v.alignPeriod);
+  if (al.aligned) v.cursor += al.offset;
+}
+
+void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
+                              int numFrames, int thread) {
+  const size_t index = static_cast<size_t>(&v - voices_.data());
+  DecodeScratch* const scratch =
+      thread >= 0 && static_cast<size_t>(thread) < decodeScratch_.size()
+          ? decodeScratch_[static_cast<size_t>(thread)].get()
+          : nullptr;
+  if (v.alignPending) {
+    if (scratch != nullptr) alignPendingRelease(v, *scratch);
+    else v.alignPending = false;
+  }
   // A voice started part-way into the block begins there: what comes before
   // its note-on stays as it was.
   if (v.delayFrames > 0) {
@@ -791,25 +941,39 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     float* shifted[kMaxChannels];
     const int channels = std::min(numChannels, kMaxChannels);
     for (int c = 0; c < channels; ++c) shifted[c] = out[c] + skip;
-    renderVoice(v, shifted, channels, numFrames - skip);
+    renderVoice(v, shifted, channels, numFrames - skip, thread);
+    return;
+  }
+  // A coded sample is read through the voice's windows, decoded with this
+  // thread's scratch. Without them it cannot sound.
+  if (v.buffer != nullptr && v.buffer->coded != nullptr) {
+    if (scratch == nullptr || windows_.empty()) {
+      v.phase = VoicePhase::Idle;
+      disarmStream(index);
+      return;
+    }
+    if (v.buffer->wide())
+      renderVoiceFrom<Pcm24, true>(v, index, out, numChannels, numFrames, scratch);
+    else
+      renderVoiceFrom<int16_t, true>(v, index, out, numChannels, numFrames, scratch);
     return;
   }
   // Twenty-bit storage is tested before the others: it is compact too, and a
   // 20-bit buffer read as 16-bit counts sounds like noise.
   if (v.buffer != nullptr && v.buffer->packed20())
-    renderVoiceFrom<Pcm20>(v, index, out, numChannels, numFrames);
+    renderVoiceFrom<Pcm20, false>(v, index, out, numChannels, numFrames, scratch);
   else if (v.buffer != nullptr && v.buffer->wide())
-    renderVoiceFrom<Pcm24>(v, index, out, numChannels, numFrames);
+    renderVoiceFrom<Pcm24, false>(v, index, out, numChannels, numFrames, scratch);
   else if (v.buffer != nullptr && v.buffer->compact())
-    renderVoiceFrom<int16_t>(v, index, out, numChannels, numFrames);
+    renderVoiceFrom<int16_t, false>(v, index, out, numChannels, numFrames, scratch);
   else
-    renderVoiceFrom<float>(v, index, out, numChannels, numFrames);
+    renderVoiceFrom<float, false>(v, index, out, numChannels, numFrames, scratch);
 }
 
-template <typename T>
+template <typename T, bool Coded>
 void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
                                   float* const* out, int numChannels,
-                                  int numFrames) {
+                                  int numFrames, DecodeScratch* scratch) {
   const SampleBuffer& buf = *v.buffer;
   // The resident head, and the whole file. They are the same length unless
   // this sample streams, which is the only difference between the two modes:
@@ -819,7 +983,15 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   const bool streaming = total > resident;
   const double fadeStep =
       1.0 / std::max(1.0, kReleaseFadeSeconds * sampleRate_);
-  const T* const frames = storageOf<T>(buf);
+  // Where the resident frames are read: the buffer, or for a coded sample
+  // the window that holds them, its frames counted from `fbase`. hold() below
+  // points these at the window.
+  const T* frames = nullptr;
+  int64_t fbase = 0;
+  int64_t winEnd = Coded ? 0 : resident;
+  if constexpr (!Coded) frames = storageOf<T>(buf);
+  const SplitRiceStream* const coded = Coded ? buf.coded.get() : nullptr;
+  DecodedWindow* const wins = Coded ? &windows_[voiceIndex * 2] : nullptr;
   const int bufChannels = buf.numChannels;
   // The wind, read once per voice per block rather than per sample: the
   // pressure moves on the order of tenths of a second and the inner loop runs
@@ -894,6 +1066,25 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // the multiply below is the one the gain needed anyway.
   const float storeScale = storageScale(buf);
 
+  // One raw count of the voice's sample, and four of them interpolated, for
+  // the reads off the interior: a coded sample answers from either window,
+  // or from the thread's blocks.
+  const auto raw = [&](int64_t f, int ch) -> float {
+    if constexpr (Coded)
+      return static_cast<float>(codedValue(*coded, wins, wins + 1, f, ch, *scratch));
+    else
+      return rawSample<T>(buf, f, ch);
+  };
+  const auto interp = [&](double p, int ch) -> float {
+    if constexpr (Coded) {
+      const auto k = static_cast<int64_t>(p);
+      const auto t = static_cast<float>(p - static_cast<double>(k));
+      return hermite(raw(k - 1, ch), raw(k, ch), raw(k + 1, ch), raw(k + 2, ch), t);
+    } else {
+      return readInterpolated<T>(buf, p, ch);
+    }
+  };
+
   // A release tail heard below the cutoff for a twentieth of a second ends.
   // Its level is read from sixteen frames across what this block will play,
   // at the level they will be played at.
@@ -914,7 +1105,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       for (int c = 0; c < bufChannels && c < 2; ++c) {
         float x;
         if (f < resident) {
-          x = rawSample<T>(buf, f, c) * storeScale;
+          x = raw(f, c) * storeScale;
         } else if (st != nullptr && f - st->base >= 0 && f - st->base < filled) {
           const auto idx = static_cast<size_t>(f - st->base) * static_cast<size_t>(st->channels) +
                            static_cast<size_t>(std::min(c, st->channels - 1));
@@ -949,10 +1140,84 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   const bool canRun = isa_ != simd::Isa::None && simd::runSupports(isa_, bufChannels) &&
                       windRatio > 0.0;
   const bool runnable = canRun && !tremMoving;
+  // The end of the resident head for the vector code, and where its reads of
+  // the resident frames stop: the same for a sample held whole, the end of
+  // the window for a coded one.
   const int64_t runEnd = resident - simd::kRunMargin;
+  int64_t readEnd = Coded ? 0 : runEnd;
+
+  // A coded sample: makes the window the voice reads hold frames first to
+  // last, and points the reads at it. Mode 1 takes the other window when it
+  // holds them already -- a loop's start, kept there from the wrap before.
+  // Mode 2 moves to the other window whenever this one lacks them, and keeps
+  // this one: a loop's end, which the crossfade after a wrap reads on from.
+  const auto hold = [&](int64_t first, int64_t last, int mode) -> bool {
+    if constexpr (Coded) {
+      const auto n = static_cast<int64_t>(coded->numFrames);
+      first = std::clamp<int64_t>(first, 0, n - 1);
+      last = std::clamp<int64_t>(last, first, n - 1);
+      if (!wins[v.window].holds(coded, first, last)) {
+        if (mode == 2 || (mode == 1 && wins[v.window ^ 1u].holds(coded, first, last)))
+          v.window ^= 1u;
+        DecodedWindow& w = wins[v.window];
+        if (!w.holds(coded, first, last) && !holdFrames(w, *coded, first, last, *scratch))
+          return false;
+      }
+      const DecodedWindow& w = wins[v.window];
+      frames = reinterpret_cast<const T*>(w.data);
+      fbase = w.start;
+      winEnd = w.start + w.count;
+      readEnd = std::min(runEnd, winEnd - simd::kRunMargin);
+    } else {
+      (void)first;
+      (void)last;
+      (void)mode;
+    }
+    return true;
+  };
+  // The attack under a release crossfade, for the vector code: its frames,
+  // the frame they start at, and its limit, short of the window's end for a
+  // coded attack. False when it is not held as the release is.
+  const auto oldRun = [&](const SampleBuffer& ob, const T*& data, int64_t& base,
+                          double& limit) -> bool {
+    if ((ob.coded != nullptr) != Coded) return false;
+    if constexpr (Coded) {
+      const auto o = static_cast<int64_t>(v.xfadeOldCursor);
+      int64_t last = o + kHoldAhead;
+      if (v.xfadeOldLoopStart >= 0 && v.xfadeOldLoopEnd > v.xfadeOldLoopStart)
+        last = std::min(last, v.xfadeOldLoopEnd - 1);
+      DecodedWindow& w = wins[v.window ^ 1u];
+      if (!holdFrames(w, *ob.coded, o - 1, last, *scratch)) return false;
+      data = reinterpret_cast<const T*>(w.data);
+      base = w.start;
+      limit = std::min(limit, static_cast<double>(w.start + w.count - simd::kRunMargin));
+    } else {
+      data = storageOf<T>(ob);
+      base = 0;
+    }
+    return true;
+  };
 
   for (int i = 0; i < numFrames; ++i) {
     if (v.phase == VoicePhase::Idle) return;
+
+    // A coded sample's window holds the frames about the cursor. A looping
+    // voice's are held up to the loop's end: past it the voice wraps, and
+    // the window is moved where it lands.
+    if constexpr (Coded) {
+      const auto p = static_cast<int64_t>(v.cursor);
+      int64_t last = p + kHoldAhead;
+      bool want = p - 1 < resident;
+      if (v.phase != VoicePhase::Release && v.loops()) {
+        if (v.cursor >= static_cast<double>(v.loopEnd)) want = false;
+        else last = std::min(last, v.loopEnd - 1);
+      }
+      if (want && !hold(p - 1, last, v.phase == VoicePhase::Release ? 0 : 1)) {
+        v.phase = VoicePhase::Idle;
+        if (streaming) disarmStream(voiceIndex);
+        return;
+      }
+    }
 
     // A release crossfade, as two straight runs. For the length the release
     // names -- tens of milliseconds -- the tail fades in over the attack fading
@@ -969,13 +1234,17 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       const bool oldLoops = v.xfadeOldLoopEnd > v.xfadeOldLoopStart && v.xfadeOldLoopStart >= 0;
       // Short of each side's own seam, which the per-frame path reads.
       const double newLimit =
-          static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
+          static_cast<double>(std::min(readEnd, total - kReleaseEndFadeFrames));
       double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
       if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
+      const T* oldFrames = nullptr;
+      int64_t oldBase = 0;
       if (ob.wide() == buf.wide() && ob.compact() == buf.compact() &&
-          ob.packed20() == buf.packed20() && oldRatio > 0.0 &&
-          simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
-          v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
+          ob.packed20() == buf.packed20() && oldRun(ob, oldFrames, oldBase, oldLimit) &&
+          oldRatio > 0.0 && simd::runSupports(isa_, ob.numChannels) &&
+          v.cursor >= static_cast<double>(fbase) + 1.0 && v.cursor < newLimit &&
+          v.xfadeOldCursor >= static_cast<double>(oldBase) + 1.0 &&
+          v.xfadeOldCursor < oldLimit) {
         int n = std::min({numFrames - i, v.relXfadeLeft, kXfadeChunk});
         const double newRoom = (newLimit - v.cursor) / windRatio;
         const double oldRoom = (oldLimit - v.xfadeOldCursor) / oldRatio;
@@ -1004,10 +1273,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
             attackSteps[k] = oldRatio;
           }
           v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, tailSteps,
-                                             tailLevels, out, numChannels, i, n);
+                                             tailLevels, out, numChannels, i, n, fbase);
           v.xfadeOldCursor =
-              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
-                                      attackSteps, attackLevels, out, numChannels, i, n);
+              simd::renderRunPerFrame(isa_, oldFrames, ob.numChannels, v.xfadeOldCursor,
+                                      attackSteps, attackLevels, out, numChannels, i, n, oldBase);
           v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
           v.relXfadeLeft = left - n;
           if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
@@ -1028,13 +1297,17 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       const SampleBuffer& ob = *v.xfadeBuf;
       const bool oldLoops = v.xfadeOldLoopEnd > v.xfadeOldLoopStart && v.xfadeOldLoopStart >= 0;
       const double newLimit =
-          static_cast<double>(std::min(runEnd, total - kReleaseEndFadeFrames));
+          static_cast<double>(std::min(readEnd, total - kReleaseEndFadeFrames));
       double oldLimit = static_cast<double>(ob.numFrames - simd::kRunMargin);
       if (oldLoops) oldLimit = std::min(oldLimit, static_cast<double>(v.xfadeOldLoopEnd - 3));
+      const T* oldFrames = nullptr;
+      int64_t oldBase = 0;
       if (ob.wide() == buf.wide() && ob.compact() == buf.compact() &&
-          ob.packed20() == buf.packed20() && v.xfadeRatioScale > 0.0 &&
-          simd::runSupports(isa_, ob.numChannels) && v.cursor >= 1.0 && v.cursor < newLimit &&
-          v.xfadeOldCursor >= 1.0 && v.xfadeOldCursor < oldLimit) {
+          ob.packed20() == buf.packed20() && oldRun(ob, oldFrames, oldBase, oldLimit) &&
+          v.xfadeRatioScale > 0.0 && simd::runSupports(isa_, ob.numChannels) &&
+          v.cursor >= static_cast<double>(fbase) + 1.0 && v.cursor < newLimit &&
+          v.xfadeOldCursor >= static_cast<double>(oldBase) + 1.0 &&
+          v.xfadeOldCursor < oldLimit) {
         double ratios[kXfadeChunk];
         double oldRatios[kXfadeChunk];
         float levels[kXfadeChunk];
@@ -1071,10 +1344,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
             attackLevels[k] = levels[k] * oldScale * (1.0f - t);
           }
           v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios,
-                                             tailLevels, out, numChannels, i, n);
+                                             tailLevels, out, numChannels, i, n, fbase);
           v.xfadeOldCursor =
-              simd::renderRunPerFrame(isa_, storageOf<T>(ob), ob.numChannels, v.xfadeOldCursor,
-                                      oldRatios, attackLevels, out, numChannels, i, n);
+              simd::renderRunPerFrame(isa_, oldFrames, ob.numChannels, v.xfadeOldCursor,
+                                      oldRatios, attackLevels, out, numChannels, i, n, oldBase);
           v.releaseGain = 1.0f - static_cast<float>(left - (n - 1)) / length;
           v.relXfadeLeft = left - n;
           if (v.relXfadeLeft <= 0) v.xfadeBuf = nullptr;
@@ -1095,12 +1368,12 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     if (runnable && v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr) {
       const bool release = v.phase == VoicePhase::Release;
       if (!release || v.releaseIsSample) {
-        double limit = static_cast<double>(runEnd);
+        double limit = static_cast<double>(readEnd);
         // Short of the loop's seam, which the per-frame path reads (atSeam).
         if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd - 3));
         if (release)
           limit = std::min(limit, static_cast<double>(total - kReleaseEndFadeFrames));
-        if (v.cursor >= 1.0 && v.cursor < limit) {
+        if (v.cursor >= static_cast<double>(fbase) + 1.0 && v.cursor < limit) {
           // One frame of slack: the positions are summed a frame at a time
           // and must not cross the limit on the last of them.
           const double room = (limit - v.cursor) / windRatio;
@@ -1117,7 +1390,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
             if (release) envReal *= v.releaseGain;
             const float env = envReal * storeScale;
             v.cursor = simd::renderRun(isa_, frames, bufChannels, v.cursor, windRatio, env, out,
-                                       numChannels, i, n);
+                                       numChannels, i, n, fbase);
             simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
             i += n - 1;
             continue;
@@ -1132,11 +1405,11 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     if (canRun && tremMoving && v.xfadeRemaining <= 0 && v.xfadeBuf == nullptr) {
       const bool release = v.phase == VoicePhase::Release;
       if (!release || v.releaseIsSample) {
-        double limit = static_cast<double>(runEnd);
+        double limit = static_cast<double>(readEnd);
         if (!release && v.loops()) limit = std::min(limit, static_cast<double>(v.loopEnd - 3));
         if (release)
           limit = std::min(limit, static_cast<double>(total - kReleaseEndFadeFrames));
-        if (v.cursor >= 1.0 && v.cursor < limit) {
+        if (v.cursor >= static_cast<double>(fbase) + 1.0 && v.cursor < limit) {
           double ratios[kTremChunk];
           float envs[kTremChunk];
           const int want = std::min(numFrames - i, kTremChunk);
@@ -1162,7 +1435,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
               v.relXfadeLeft = 0;
             }
             v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios, envs,
-                                               out, numChannels, i, n);
+                                               out, numChannels, i, n, fbase);
             tremPhase = phase;
             tremRatio = swing;
             simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
@@ -1261,8 +1534,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       // Where the frames are read from: the resident sample, or this voice's
       // ring for a streamed tail.
       const VoiceStream* st = nullptr;
-      double base = 0.0;
-      double limit = static_cast<double>(runEnd);
+      double base = static_cast<double>(fbase);
+      double limit = static_cast<double>(readEnd);
       if (ending && streaming && v.cursor >= static_cast<double>(runEnd) &&
           voiceIndex < streams_.size()) {
         st = streams_[voiceIndex].get();
@@ -1323,7 +1596,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
                                                       numChannels, i, n);
           else
             v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, ratios, envs,
-                                               out, numChannels, i, n);
+                                               out, numChannels, i, n, fbase);
           if (fading) v.releaseGain = gain;
           else v.releaseGain = 1.0f;
           v.relXfadeLeft = 0;
@@ -1359,6 +1632,16 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
               (v.cursor - static_cast<double>(v.loopStart)) / loopLen);
         }
         v.phase = VoicePhase::Loop;
+        // A coded sample: the window moves where the cursor lands, and the
+        // one it leaves keeps the frames past the loop's end.
+        if constexpr (Coded) {
+          const auto p = static_cast<int64_t>(v.cursor);
+          if (!hold(p - 1, std::min(p + kHoldAhead, v.loopEnd - 1), 2)) {
+            v.phase = VoicePhase::Idle;
+            if (streaming) disarmStream(voiceIndex);
+            return;
+          }
+        }
       }
     }
 
@@ -1442,7 +1725,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     if ((v.xfadeRemaining <= 0 || v.xfadeLength <= 0) && atSeam) {
       const int64_t loopLen = v.loopEnd - v.loopStart;
       const auto tap = [&](int64_t f, int srcCh) {
-        return rawSample<T>(buf, f >= v.loopEnd ? f - loopLen : f, srcCh) * storeScale;
+        return raw(f >= v.loopEnd ? f - loopLen : f, srcCh) * storeScale;
       };
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
@@ -1451,10 +1734,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
                       envReal;
       }
     } else if (v.xfadeRemaining <= 0 || v.xfadeLength <= 0) {
-      if (pos >= 1 && pos + 2 < resident) {
+      if (pos >= 1 && pos + 2 < resident && pos - 1 >= fbase && pos + 2 < winEnd) {
         for (int ch = 0; ch < numChannels; ++ch) {
           const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
-          out[ch][i] += readInterior<T>(frames, bufChannels, srcCh, pos, frac) * env;
+          out[ch][i] += readInterior<T>(frames, bufChannels, srcCh, pos - fbase, frac) * env;
         }
       } else if (streaming && pos + 2 >= resident) {
         // At and past the end of the resident head. Each of the four taps
@@ -1468,7 +1751,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         // enough to pass a render comparison, loud enough to be a click.
         const auto tap = [&](int64_t f, int srcCh) {
           return f < resident
-                     ? rawSample<T>(buf, f, srcCh) * storeScale
+                     ? raw(f, srcCh) * storeScale
                      : streamedSample(voiceIndex, buf, f, srcCh);
         };
         for (int ch = 0; ch < numChannels; ++ch) {
@@ -1480,7 +1763,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         }
       } else {
         for (int ch = 0; ch < numChannels; ++ch)
-          out[ch][i] += readInterpolated<T>(buf, v.cursor, ch) * env;
+          out[ch][i] += interp(v.cursor, ch) * env;
       }
     } else {
       // Blending. Weight 1 is fully the outgoing (pre-wrap) stream, 0 fully
@@ -1489,13 +1772,21 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       // equal-power would bulge the level at every wrap.
       const float xfade = static_cast<float>(v.xfadeRemaining) /
                           static_cast<float>(v.xfadeLength);
-      const bool interior = pos >= 1 && pos + 2 < resident;
+      const bool interior =
+          pos >= 1 && pos + 2 < resident && pos - 1 >= fbase && pos + 2 < winEnd;
+      // A coded sample: the outgoing reads, past the loop's end, from the
+      // other window when this one does not hold them.
+      if constexpr (Coded) {
+        const auto x = static_cast<int64_t>(v.xfadePos);
+        if (!wins[v.window].holds(coded, x - 1, x + 2))
+          holdFrames(wins[v.window ^ 1u], *coded, x - 1, x + kHoldAhead, *scratch);
+      }
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
         const float incoming =
-            interior ? readInterior<T>(frames, bufChannels, srcCh, pos, frac)
-                     : readInterpolated<T>(buf, v.cursor, ch);
-        const float outgoing = readInterpolated<T>(buf, v.xfadePos, ch);
+            interior ? readInterior<T>(frames, bufChannels, srcCh, pos - fbase, frac)
+                     : interp(v.cursor, ch);
+        const float outgoing = interp(v.xfadePos, ch);
         out[ch][i] += (outgoing * xfade + incoming * (1.0f - xfade)) * env;
       }
     }
@@ -1537,8 +1828,23 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       // (atSeam): a key let go just after a wrap clicked otherwise.
       const int64_t oldLoopLen = v.xfadeOldLoopEnd - v.xfadeOldLoopStart;
       const bool oldWraps = v.xfadeOldLoopStart >= 0 && oldLoopLen > 4;
-      const auto otap = [&](int64_t f, int srcCh) {
-        return rawSample<T>(ob, oldWraps && f >= v.xfadeOldLoopEnd ? f - oldLoopLen : f, srcCh);
+      // A coded attack is read through the voice's other window.
+      DecodedWindow* const ow = ob.coded != nullptr && !windows_.empty() && scratch != nullptr
+                                    ? &windows_[voiceIndex * 2 + (v.window ^ 1u)]
+                                    : nullptr;
+      if (ow != nullptr)
+        holdFrames(*ow, *ob.coded, opos - 1,
+                   oldWraps ? std::min(opos + kHoldAhead, v.xfadeOldLoopEnd - 1)
+                            : opos + kHoldAhead,
+                   *scratch);
+      const auto otap = [&](int64_t f, int srcCh) -> float {
+        const int64_t g = oldWraps && f >= v.xfadeOldLoopEnd ? f - oldLoopLen : f;
+        if (ob.coded != nullptr)
+          return ow != nullptr ? static_cast<float>(codedValue(*ob.coded, ow, nullptr, g, srcCh, *scratch))
+                               : 0.0f;
+        // The release is coded and the attack is not: read as it is held.
+        if constexpr (Coded) return rawAny(ob, g, srcCh);
+        else return rawSample<T>(ob, g, srcCh);
       };
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < ob.numChannels ? ch : ob.numChannels - 1;
@@ -1606,9 +1912,9 @@ constexpr int kSpinMissesBeforeHoldoff = 4;
 } // namespace
 
 void VoiceEngine::renderList(const uint32_t* list, size_t count, float* const* out,
-                             int numChannels, int numFrames) {
+                             int numChannels, int numFrames, int thread) {
   for (size_t i = 0; i < count; ++i)
-    renderVoice(voices_[list[i]], out, numChannels, numFrames);
+    renderVoice(voices_[list[i]], out, numChannels, numFrames, thread);
 }
 
 void VoiceEngine::stopWorkers() {
@@ -1660,6 +1966,8 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
   const size_t planesPerWorker =
       static_cast<size_t>(numChannels_) * static_cast<size_t>(std::max(1, busCount_));
   workers_.reserve(static_cast<size_t>(extra));
+  // A decoding scratch for each worker, the audio thread's being the first.
+  makeDecodeScratch(static_cast<size_t>(extra) + 1);
   for (int n = 0; n < extra; ++n) {
     auto worker = std::make_unique<Worker>();
     worker->scratch.assign(planesPerWorker * static_cast<size_t>(maxFrames_), 0.0f);
@@ -1671,9 +1979,11 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
     workers_.push_back(std::move(worker));
   }
 
-  for (auto& owned : workers_) {
-    Worker* const wk = owned.get();
-    wk->thread = std::thread([this, wk, scratchFrames]() {
+  for (size_t n = 0; n < workers_.size(); ++n) {
+    Worker* const wk = workers_[n].get();
+    // Thread 0 is the audio thread; worker n renders as thread n + 1.
+    const int thread = static_cast<int>(n) + 1;
+    wk->thread = std::thread([this, wk, scratchFrames, thread]() {
       uint32_t seen = 0;
       uint32_t hookSeen = 0;
       const auto called = [&] {
@@ -1714,7 +2024,7 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
             float* const* planes = wk->planes.data() + static_cast<size_t>(b) * static_cast<size_t>(numChannels_);
             for (int c = 0; c < channels; ++c) std::fill(planes[c], planes[c] + frames, 0.0f);
             renderList(busLists_[static_cast<size_t>(b)].data() + from, to - from, planes, channels,
-                       frames);
+                       frames, thread);
           }
           if (jobsOutstanding_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
             std::lock_guard<std::mutex> done(jobMutex_);
@@ -1731,7 +2041,7 @@ void VoiceEngine::setRenderThreads(int numThreads, int minVoicesPerThread) {
           std::fill(wk->planes[static_cast<size_t>(c)],
                     wk->planes[static_cast<size_t>(c)] + frames, 0.0f);
         renderList(jobList_.data() + wk->begin, wk->end - wk->begin, wk->planes.data(), channels,
-                   frames);
+                   frames, thread);
 
         if (jobsOutstanding_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
           // Under the lock, so the audio thread cannot miss it between its
@@ -1792,7 +2102,7 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
     shares = std::min(workers_.size() + 1,
                       count / static_cast<size_t>(std::max(1, minVoicesPerThread_)));
   if (shares <= 1) {
-    renderList(jobList_.data(), count, out, numChannels, numFrames);
+    renderList(jobList_.data(), count, out, numChannels, numFrames, 0);
     return;
   }
 
@@ -1815,7 +2125,7 @@ void VoiceEngine::render(float* const* out, int numChannels, int numFrames,
   for (size_t w = 0; w < helpers; ++w) workers_[w]->wake.notify_one();
 
   // The audio thread takes the first share rather than blocking idle.
-  renderList(jobList_.data(), count / shares, out, numChannels, numFrames);
+  renderList(jobList_.data(), count / shares, out, numChannels, numFrames, 0);
   waitForWorkers();
 
   // Sum the scratches of the workers that rendered, in a fixed order. This
@@ -1935,7 +2245,7 @@ void VoiceEngine::renderBuses(float* const* const* busOut, int numBuses, int num
     for (size_t w = 0; w < helpers; ++w)
       if (workers_[w]->busBegin[static_cast<size_t>(b)] < workers_[w]->busEnd[static_cast<size_t>(b)])
         shares = w + 2;
-    renderList(list.data(), list.size() / shares, busOut[b], numChannels, numFrames);
+    renderList(list.data(), list.size() / shares, busOut[b], numChannels, numFrames, 0);
   }
   if (helpers > 0) waitForWorkers();
   // Voices that ended in this block's render are free for the next note-on,

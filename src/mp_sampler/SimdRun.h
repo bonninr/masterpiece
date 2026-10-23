@@ -48,18 +48,28 @@ constexpr int64_t kRunMargin = 4;
 // Render `frames` frames starting at out[..][start], reading from the
 // resident storage at `cursor` and stepping by `ratio`, each output added at
 // `env`. Returns the cursor after the run. The caller guarantees every
-// position in the run satisfies 1 <= pos < resident - kRunMargin. Channel
+// position in the run satisfies base + 1 <= pos < base + held - kRunMargin,
+// where `held` is the frames `data` holds. Channel
 // counts above two fall back to the per-frame path on NEON; the caller asks
 // runSupports() first.
+//
+// `base` is the frame `data` starts at. It is zero for a sample held whole;
+// a coded sample is read from the blocks a voice has decoded, and those
+// start further in. The cursor stays the position in the whole sample, so a
+// coded sample sums its positions exactly as the same sample held as PCM.
 bool runSupports(Isa isa, int bufChannels);
 double renderRun(Isa isa, const float* data, int bufChannels, double cursor, double ratio,
-                 float env, float* const* out, int numChannels, int start, int frames);
+                 float env, float* const* out, int numChannels, int start, int frames,
+                 int64_t base = 0);
 double renderRun(Isa isa, const int16_t* data, int bufChannels, double cursor, double ratio,
-                 float env, float* const* out, int numChannels, int start, int frames);
+                 float env, float* const* out, int numChannels, int start, int frames,
+                 int64_t base = 0);
 double renderRun(Isa isa, const Pcm24* data, int bufChannels, double cursor, double ratio,
-                 float env, float* const* out, int numChannels, int start, int frames);
+                 float env, float* const* out, int numChannels, int start, int frames,
+                 int64_t base = 0);
 double renderRun(Isa isa, const Pcm20* data, int bufChannels, double cursor, double ratio,
-                 float env, float* const* out, int numChannels, int start, int frames);
+                 float env, float* const* out, int numChannels, int start, int frames,
+                 int64_t base = 0);
 
 // The same run with the step and the level given for every frame, for a voice
 // a tremulant is moving: ratios[j] is how far the cursor moves after frame j,
@@ -68,16 +78,16 @@ double renderRun(Isa isa, const Pcm20* data, int bufChannels, double cursor, dou
 // same steps and know where every frame reads.
 double renderRunPerFrame(Isa isa, const float* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
-                         int numChannels, int start, int frames);
+                         int numChannels, int start, int frames, int64_t base = 0);
 double renderRunPerFrame(Isa isa, const int16_t* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
-                         int numChannels, int start, int frames);
+                         int numChannels, int start, int frames, int64_t base = 0);
 double renderRunPerFrame(Isa isa, const Pcm24* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
-                         int numChannels, int start, int frames);
+                         int numChannels, int start, int frames, int64_t base = 0);
 double renderRunPerFrame(Isa isa, const Pcm20* data, int bufChannels, double cursor,
                          const double* ratios, const float* envs, float* const* out,
-                         int numChannels, int start, int frames);
+                         int numChannels, int start, int frames, int64_t base = 0);
 
 }  // namespace simd
 }  // namespace mp

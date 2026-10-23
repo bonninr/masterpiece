@@ -140,6 +140,15 @@ public:
   void setStorage(SampleStorage s) { storage_ = s; }
   SampleStorage storage() const { return storage_; }
 
+  // Hold the samples compressed (#447): every 16- and 24-bit sample of one
+  // or two channels is coded split Rice once read, and the voices decode it
+  // as they play. Lossless: what plays is what plain storage plays, to the
+  // bit. The sample cache holds them coded too. Takes effect on the next load.
+  void setCodeSamples(bool on) { codeSamples_ = on; }
+  bool codeSamples() const { return codeSamples_; }
+  // The samples loaded that are held coded.
+  size_t codedCount() const;
+
   // How many notes of a rank are loaded: 1 for every note, 2 for every
   // second, 3 for every third. A note that is not loaded plays its nearest
   // loaded neighbour's samples, retuned to its own pitch, so the samples it
@@ -417,6 +426,7 @@ private:
   int loadThreads_ = 0;
   // 24-bit: what the sample sets are. See SampleStorage.
   SampleStorage storage_ = SampleStorage::Int24;
+  bool codeSamples_ = false;
   bool loadMono_ = false;
   // How many notes of a rank are loaded: 1 for every note, 2 for every
   // second, 3 for every third.

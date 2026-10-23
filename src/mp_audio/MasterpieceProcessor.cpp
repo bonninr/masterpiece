@@ -123,6 +123,8 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
   // What is loaded may stream though the choice for the next load says
   // otherwise: either way, rings.
   voices_.setStreamRings(samples_.streamReleases() || samples_.streamedCount() > 0);
+  // Windows to read samples held compressed, when the organ loaded has any.
+  voices_.setCodedWindows(samples_.codedCount() > 0);
   voices_.prepare(sampleRate_, graph_.maxVoices,
                   juce::jmax(1, getTotalNumOutputChannels()),
                   juce::jmax(1, blockFrames));
@@ -1716,6 +1718,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
                                                         : 32)
        << "\n";
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
+  text << "compress " << (samples_.codeSamples() ? 1 : 0) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
@@ -1808,6 +1811,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
                         : val.getIntValue() == 32 ? SampleStorage::Float32
                                                   : SampleStorage::Int24);
   else if (key == "mono") samples_.setLoadMono(on);
+  else if (key == "compress") samples_.setCodeSamples(on);
   else if (key == "programcouplers") programCouplers_ = on;
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
@@ -2933,7 +2937,8 @@ void MasterpieceProcessor::setPolyphonyLimit(int voices) {
 int64_t MasterpieceProcessor::voicePoolBytes(int voices) const {
   return static_cast<int64_t>(std::max(0, voices)) *
          VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
-                                    voices_.streamSeconds(), samples_.streamReleases());
+                                    voices_.streamSeconds(), samples_.streamReleases(),
+                                    samples_.codeSamples() || samples_.codedCount() > 0);
 }
 
 int64_t MasterpieceProcessor::memoryLimitBytes() const {
@@ -4350,7 +4355,7 @@ std::string MasterpieceProcessor::cacheChoices() const {
          std::to_string(static_cast<int>(samples_.cacheMode())) + "/" +
          std::to_string(static_cast<int>(samples_.releaseChoice())) + "/" +
          std::to_string(samples_.releaseMaxMs()) + "/" +
-         std::to_string(sparseEvery_);
+         std::to_string(sparseEvery_) + (samples_.codeSamples() ? "/z" : "");
 }
 
 void MasterpieceProcessor::keepLoadingChoiceForSession() {
@@ -4359,6 +4364,7 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.organ = loadedOdf_;
   c.storage = samples_.storage();
   c.mono = samples_.loadMono();
+  c.code = samples_.codeSamples();
   c.stream = samples_.streamReleases();
   c.streamHead = samples_.streamHeadFrames();
   c.streamHeadPercent = samples_.streamHeadPercent();
@@ -6599,6 +6605,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const auto& c = *sessionLoading_;
     samples_.setStorage(c.storage);
     samples_.setLoadMono(c.mono);
+    samples_.setCodeSamples(c.code);
     samples_.setStreamReleases(c.stream);
     samples_.setStreamHeadFrames(c.streamHead);
     samples_.setStreamHeadPercent(c.streamHeadPercent);
@@ -7377,6 +7384,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   }
   // Still suspended, with no voice sounding: nothing else needs keeping.
   samples_.retireOldGenerations();
+  // Samples held compressed are read through windows the voice pool makes
+  // when it is built. A pool built for the other kind is built again, here,
+  // while nothing sounds.
+  if (const size_t coded = samples_.codedCount();
+      (coded > 0) != voices_.codedWindows() && sampleRate_ > 0.0) {
+    buildVoicePool(getBlockSize());
+    juce::Logger::writeToLog("load: the voice pool made again " +
+                             juce::String(coded > 0 ? "with" : "without") +
+                             " windows for compressed samples");
+  }
+  if (const size_t coded = samples_.codedCount(); coded > 0)
+    juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(coded)) +
+                             " samples held compressed, " +
+                             juce::String(samples_.residentBytes() / (1024 * 1024)) + " MB");
   voices_.setSampleProvider(samples_.provider());
   // A release to be read from its file's marker, in a file with no marker
   // and nothing after its loop, holds nothing to play. A GrandOrgue pipe
@@ -7598,6 +7619,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
          : samples_.storage() == SampleStorage::Int24 ? "int24"
                                                       : "float32") +
         ", mono=" + (samples_.loadMono() ? "on" : "off") +
+        ", compressed=" + (samples_.codeSamples() ? "on" : "off") +
         ", rate=" + (samples_.loadSampleRate() > 0.0
                          ? juce::String(samples_.loadSampleRate(), 0)
                          : juce::String("as recorded")) +

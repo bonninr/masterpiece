@@ -1,6 +1,7 @@
 // Masterpiece -- the codecs that ship with the program: the predictive delta
 // codec and plain storage.
 #include "SampleCodecBuiltins.h"
+#include "SplitRice.h"
 
 #include <cmath>
 #include <cstring>
@@ -471,6 +472,7 @@ std::unique_ptr<SampleCodec> makePlainCodec(int bitDepth) {
 
 void registerBuiltinCodecs(CodecRegistry& registry) {
   registry.add(makeDeltaCodec());
+  registry.add(makeSplitRiceCodec());
   registry.add(makePlainCodec(32));
   registry.add(makePlainCodec(24));
   registry.add(makePlainCodec(16));

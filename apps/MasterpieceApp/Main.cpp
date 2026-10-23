@@ -760,6 +760,10 @@ public:
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setLoadMono(v == "on" || v == "1" || v == "true" || v == "yes");
         proc_->overrideSetting("mono");
+      } else if (args[i] == "--compress-samples" && i + 1 < args.size()) {
+        const auto v = args[++i].unquoted().trim().toLowerCase();
+        proc_->setCodeSamples(v == "on" || v == "1" || v == "true" || v == "yes");
+        proc_->overrideSetting("compress");
       } else if (args[i] == "--cache" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
         proc_->setCacheMode(v == "off"        ? mp::SampleLibrary::CacheMode::Off
@@ -785,6 +789,7 @@ public:
          : proc_->sampleStorage() == mp::SampleStorage::Int24 ? "int24"
                                                               : "float32") +
         ", mono=" + (proc_->loadMono() ? "on" : "off") +
+        ", compressed=" + (proc_->codeSamples() ? "on" : "off") +
         ", rate=" + (proc_->loadSampleRate() > 0.0
                          ? juce::String(proc_->loadSampleRate(), 0)
                          : juce::String("as recorded")) +
