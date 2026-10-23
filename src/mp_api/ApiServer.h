@@ -57,6 +57,13 @@ public:
   // One client of the event stream.
   struct Subscriber;
 
+  // An open event stream holds a server thread for its whole life, so the pool
+  // is larger than the request load needs and the number of streams is capped
+  // below it. Normal requests then always have threads to run on, however many
+  // streams are open.
+  static constexpr int kThreadPoolSize = 32;
+  static constexpr int kMaxEventStreams = 16;
+
 private:
   void timerCallback() override;
   void routes();
@@ -74,6 +81,7 @@ private:
   std::atomic<bool> stopping_{false};
   std::mutex subscribersMutex_;
   std::vector<std::shared_ptr<Subscriber>> subscribers_;
+  std::atomic<int> eventStreams_{0};  // open /events streams, capped at kMaxEventStreams
   int ticks_ = 0;
   int requestedPort_ = -1;
   std::function<void(std::function<void()>)> executor_;

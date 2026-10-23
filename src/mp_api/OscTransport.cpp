@@ -1,10 +1,25 @@
 #include "OscTransport.h"
 
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
 namespace mp::api {
 
 namespace {
 
 juce::String str(std::string_view s) { return juce::String(std::string(s)); }
+
+constexpr char kBundleTag[8] = {'#', 'b', 'u', 'n', 'd', 'l', 'e', '\0'};
+
+bool startsBundle(const uint8_t* p, std::size_t n) {
+  return n >= 8 && std::memcmp(p, kBundleTag, 8) == 0;
+}
+
+int32_t beInt32(const uint8_t* p) {
+  return static_cast<int32_t>((static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+                              (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]));
+}
 
 juce::OSCMessage message(const juce::String& address) { return juce::OSCMessage(juce::OSCAddressPattern(address)); }
 
@@ -46,26 +61,88 @@ OscTransport::~OscTransport() {
   receiver_.removeListener(this);
 }
 
+bool OscTransport::packetWithinLimits(const void* data, std::size_t size) {
+  const auto* bytes = static_cast<const uint8_t*>(data);
+  // A message, or something too short or not a bundle: no nesting, so nothing
+  // for the recursive parser to run away on. The parser reports any error.
+  if (!startsBundle(bytes, size)) return true;
+  // Walk the bundle tree with an explicit stack, never recursing. Each entry is
+  // a byte range of a bundle's elements and the depth that bundle sits at.
+  struct Range {
+    const uint8_t* p;
+    const uint8_t* end;
+    int depth;
+  };
+  std::vector<Range> stack;
+  stack.push_back({bytes + 16, bytes + size, 1});  // past "#bundle\0" and the 8-byte time tag
+  while (!stack.empty()) {
+    const Range r = stack.back();
+    stack.pop_back();
+    if (r.depth > kMaxBundleDepth) return false;
+    const uint8_t* p = r.p;
+    while (p + 4 <= r.end) {
+      const int32_t elemSize = beInt32(p);
+      p += 4;
+      if (elemSize < 0 || (elemSize % 4) != 0 || p + elemSize > r.end) return false;  // not well formed
+      if (startsBundle(p, static_cast<std::size_t>(elemSize))) {
+        if (r.depth + 1 > kMaxBundleDepth) return false;
+        stack.push_back({p + 16, p + elemSize, r.depth + 1});
+      }
+      p += elemSize;
+    }
+  }
+  return true;
+}
+
+void OscTransport::filterLoop() {
+  std::vector<char> buffer(65536);
+  while (filtering_.load()) {
+    const int ready = publicSocket_->waitUntilReady(true, 200);
+    if (ready < 0) break;      // the socket failed
+    if (ready == 0) continue;  // timed out: look at the flag again
+    const int n = publicSocket_->read(buffer.data(), static_cast<int>(buffer.size()), false);
+    if (n <= 0) continue;
+    if (packetWithinLimits(buffer.data(), static_cast<std::size_t>(n)))
+      forwardSocket_->write("127.0.0.1", relayPort_, buffer.data(), n);
+  }
+}
+
 bool OscTransport::start(int port, juce::String& error, bool loopbackOnly) {
   stop();
-  if (loopbackOnly) {
-    socket_ = std::make_unique<juce::DatagramSocket>(false);
-    if (!socket_->bindToPort(port, "127.0.0.1") || !receiver_.connectToSocket(*socket_)) {
-      socket_.reset();
-      error = "UDP port " + juce::String(port) + " is in use";
-      return false;
-    }
-  } else if (!receiver_.connect(port)) {
+  publicSocket_ = std::make_unique<juce::DatagramSocket>(false);
+  const bool bound = loopbackOnly ? publicSocket_->bindToPort(port, "127.0.0.1") : publicSocket_->bindToPort(port);
+  if (!bound) {
+    publicSocket_.reset();
     error = "UDP port " + juce::String(port) + " is in use";
     return false;
   }
+  // The JUCE receiver reads a private loopback socket; only packets that pass
+  // packetWithinLimits are forwarded to it.
+  relaySocket_ = std::make_unique<juce::DatagramSocket>(false);
+  forwardSocket_ = std::make_unique<juce::DatagramSocket>(false);
+  if (!relaySocket_->bindToPort(0, "127.0.0.1") || !forwardSocket_->bindToPort(0, "127.0.0.1") ||
+      !receiver_.connectToSocket(*relaySocket_)) {
+    forwardSocket_.reset();
+    relaySocket_.reset();
+    publicSocket_.reset();
+    error = "the OSC port could not be opened";
+    return false;
+  }
+  relayPort_ = relaySocket_->getBoundPort();
+  filtering_.store(true);
+  filterThread_ = std::thread([this] { filterLoop(); });
   port_ = port;
   return true;
 }
 
 void OscTransport::stop() {
-  if (port_ != 0) receiver_.disconnect();
-  socket_.reset();
+  filtering_.store(false);
+  if (filterThread_.joinable()) filterThread_.join();
+  receiver_.disconnect();
+  forwardSocket_.reset();
+  relaySocket_.reset();
+  publicSocket_.reset();
+  relayPort_ = 0;
   port_ = 0;
 }
 

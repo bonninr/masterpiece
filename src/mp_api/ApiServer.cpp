@@ -161,8 +161,9 @@ bool ApiServer::apply(const ServerSettings& s, juce::String& error) {
   if (!s.enabled) return true;
 
   server_ = std::make_unique<httplib::Server>();
-  // Each open event stream holds a thread of the pool.
-  server_->new_task_queue = [] { return new httplib::ThreadPool(16); };
+  // Each open event stream holds a thread of the pool; the pool is sized so
+  // that even kMaxEventStreams of them leave threads free for other requests.
+  server_->new_task_queue = [] { return new httplib::ThreadPool(kThreadPoolSize); };
   routes();
   const char* host = s.loopbackOnly ? "127.0.0.1" : "0.0.0.0";
   if (s.port == 0) {
@@ -290,7 +291,9 @@ void ApiServer::routes() {
     if (index < 0) return fail(res, Error::OutOfRange);
     const juce::var body = juce::JSON::parse(juce::String(req.body));
     if (!body.hasProperty("value")) return fail(res, Error::BadMessage);
-    int value = static_cast<int>(body["value"]);
+    const juce::var raw = body["value"];
+    if (!(raw.isInt() || raw.isInt64() || raw.isDouble() || raw.isBool())) return fail(res, Error::BadValue);
+    int value = static_cast<int>(raw);
     Error e = Error::None;
     if (!onMessageThread([&] { e = model_.set(Type::Program, index, value); })) return fail(res, Error::Busy);
     if (e != Error::None) return fail(res, e);
@@ -298,6 +301,12 @@ void ApiServer::routes() {
   });
 
   srv.Get("/api/v1/events", [this](const httplib::Request& req, httplib::Response& res) {
+    // A stream would hold a server thread until the client goes away, so past
+    // the cap a new one is refused rather than starving ordinary requests.
+    if (eventStreams_.fetch_add(1) >= kMaxEventStreams) {
+      eventStreams_.fetch_sub(1);
+      return fail(res, Error::Busy);
+    }
     auto sub = std::make_shared<Subscriber>();
     if (req.has_param("types")) {
       sub->types.assign(kTypeCount, false);
@@ -334,6 +343,7 @@ void ApiServer::routes() {
           return true;
         },
         [this, sub](bool) {
+          eventStreams_.fetch_sub(1);
           const std::lock_guard<std::mutex> lock(subscribersMutex_);
           subscribers_.erase(std::remove(subscribers_.begin(), subscribers_.end(), sub), subscribers_.end());
         });
@@ -369,8 +379,9 @@ void ApiServer::routes() {
     const juce::var body = juce::JSON::parse(juce::String(req.body));
     if (!body.hasProperty("value")) return fail(res, Error::BadMessage);
     const juce::var raw = body["value"];
-    int value = raw.isString() && raw.toString() == "toggle" ? 2 : static_cast<int>(raw);
-    if (raw.isString() && raw.toString() != "toggle") return fail(res, Error::BadValue);
+    const bool toggle = raw.isString() && raw.toString() == "toggle";
+    if (!(toggle || raw.isInt() || raw.isInt64() || raw.isDouble() || raw.isBool())) return fail(res, Error::BadValue);
+    int value = toggle ? 2 : static_cast<int>(raw);
     Error e = Error::None;
     if (!onMessageThread([&] { e = model_.set(info->type, index, value); })) return fail(res, Error::Busy);
     if (e != Error::None) return fail(res, e);

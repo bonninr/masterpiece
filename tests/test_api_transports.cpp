@@ -293,5 +293,43 @@ public:
 };
 static OscTransportTest g_oscTransport;
 
+// A deeply nested OSC bundle must be turned away before the recursive parser
+// sees it, so the reader thread's stack cannot be overflowed by one datagram.
+class OscPacketLimitTest final : public mp::test::Test {
+public:
+  OscPacketLimitTest() : Test("functional.api.osc-packet-limit", Category::Functional) {}
+  void run() override {
+    const auto message = [] { return std::vector<uint8_t>{'/', 'x', 0, 0, ',', 0, 0, 0}; };
+    const auto wrap = [](const std::vector<uint8_t>& inner) {
+      std::vector<uint8_t> b{'#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 0, 0, 0, 1};
+      const uint32_t sz = static_cast<uint32_t>(inner.size());
+      b.push_back(static_cast<uint8_t>(sz >> 24));
+      b.push_back(static_cast<uint8_t>(sz >> 16));
+      b.push_back(static_cast<uint8_t>(sz >> 8));
+      b.push_back(static_cast<uint8_t>(sz));
+      b.insert(b.end(), inner.begin(), inner.end());
+      return b;
+    };
+    const auto deep = [&](int levels) {
+      std::vector<uint8_t> p = message();
+      for (int i = 0; i < levels; ++i) p = wrap(p);
+      return p;
+    };
+
+    const auto ok = [](const std::vector<uint8_t>& p) { return OscTransport::packetWithinLimits(p.data(), p.size()); };
+
+    MP_CHECK(ok(message()), "a bare message passes");
+    MP_CHECK(ok(deep(1)), "a bundle one deep passes");
+    MP_CHECK(ok(deep(OscTransport::kMaxBundleDepth)), "nesting at the limit passes");
+    MP_CHECK(!ok(deep(OscTransport::kMaxBundleDepth + 1)), "one past the limit is turned away");
+    MP_CHECK(!ok(deep(2600)), "the crashing depth is turned away");
+
+    // An element claiming more bytes than the packet holds is not well formed.
+    std::vector<uint8_t> bad{'#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x7f, 0xff, 0xff, 0xfc};
+    MP_CHECK(!ok(bad), "an element running past the end is turned away");
+  }
+};
+static OscPacketLimitTest g_oscPacketLimit;
+
 }  // namespace
 #endif  // MP_TEST_HAS_API

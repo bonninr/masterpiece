@@ -24,7 +24,10 @@
 #include <juce_events/juce_events.h>
 #include <juce_osc/juce_osc.h>
 
+#include <atomic>
+#include <cstddef>
 #include <functional>
+#include <thread>
 
 namespace mp::api {
 
@@ -50,7 +53,15 @@ public:
   std::function<void(const juce::OSCMessage&)> onSend;
   void pollNow() { timerCallback(); }
 
+  // A received packet is safe to hand to the parser when its bundles do not
+  // nest past kMaxBundleDepth. JUCE parses a bundle by recursion, so a deeply
+  // nested datagram would overflow the reader thread's stack before any
+  // listener runs. Walked iteratively here, so the check itself never recurses.
+  static constexpr int kMaxBundleDepth = 32;
+  static bool packetWithinLimits(const void* data, std::size_t size);
+
 private:
+  void filterLoop();
   void oscMessageReceived(const juce::OSCMessage& m) override;
   void oscBundleReceived(const juce::OSCBundle& b) override;
   void timerCallback() override;
@@ -63,9 +74,15 @@ private:
 
   ControlModel model_;
   juce::OSCReceiver receiver_;
-  // The socket of a loopback-only start; the receiver reads it but does not
-  // own it.
-  std::unique_ptr<juce::DatagramSocket> socket_;
+  // The user-facing port is read by our own thread, which drops unsafe packets
+  // and forwards the rest to a private loopback socket the JUCE receiver reads.
+  // So a malformed datagram never reaches JUCE's recursive parser.
+  std::unique_ptr<juce::DatagramSocket> publicSocket_;
+  std::unique_ptr<juce::DatagramSocket> relaySocket_;
+  std::unique_ptr<juce::DatagramSocket> forwardSocket_;
+  int relayPort_ = 0;
+  std::thread filterThread_;
+  std::atomic<bool> filtering_{false};
   juce::OSCSender sender_;
   bool hasTarget_ = false;
   int port_ = 0;
