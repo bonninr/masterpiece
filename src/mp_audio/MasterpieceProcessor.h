@@ -1686,6 +1686,10 @@ public:
   int releaseMaxMs() const { return samples_.releaseMaxMs(); }
   void setReleaseMaxMs(int ms) { samples_.setReleaseMaxMs(ms); }
   bool loadMono() const { return samples_.loadMono(); }
+  // Hold the samples compressed, losslessly: about half the memory, decoded
+  // as they play. Applies to the next load.
+  void setCodeSamples(bool on) { samples_.setCodeSamples(on); }
+  bool codeSamples() const { return samples_.codeSamples(); }
 
   // --- sparse loading -----------------------------------------------------
   // How many notes of a rank are loaded: 1 for every note, 2 for every second
@@ -2534,7 +2538,7 @@ private:
   struct LoadingChoice {
     juce::File organ;
     SampleStorage storage = SampleStorage::Float32;
-    bool mono = false, stream = false;
+    bool mono = false, stream = false, code = false;
     int64_t streamHead = 0, preload = 0;
     int streamHeadPercent = 0;
     // How many notes of a rank are loaded: 1 for every note, 2 for every

@@ -847,10 +847,14 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   if (shape.frames <= 0 || shape.channels <= 0) return 0;
   // Twenty bits is two and a half bytes a sample, so the count is not a whole
   // number of bytes.
-  const double storeBytes = storage_ == SampleStorage::Int16   ? 2.0
-                            : storage_ == SampleStorage::Int24 ? 3.0
-                            : storage_ == SampleStorage::Int20 ? 2.5
-                                                               : 4.0;
+  double storeBytes = storage_ == SampleStorage::Int16   ? 2.0
+                      : storage_ == SampleStorage::Int24 ? 3.0
+                      : storage_ == SampleStorage::Int20 ? 2.5
+                                                         : 4.0;
+  // Coded, a sample takes a third to a half of its plain size: the half is
+  // the estimate, so a set that fits by it fits.
+  if (codeSamples_ && (storage_ == SampleStorage::Int16 || storage_ == SampleStorage::Int24))
+    storeBytes *= 0.5;
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)
     frames = static_cast<int64_t>(static_cast<double>(frames) * loadRate_ / shape.rate);
@@ -1147,6 +1151,9 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         dropFromFileCache(mp::utf8Of(path));
       }
 
+      // Held compressed, when asked: coded here, on the reading thread.
+      if (ok && codeSamples_) codeSampleBuffer(*buffer);
+
       // Against the memory ceiling, before it is kept: the sample that would
       // take the load past it is not added, and the load stops here.
       if (ok && progress != nullptr && !progress->charge(buffer->residentBytes()))
@@ -1261,6 +1268,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           const bool ok = reader != nullptr &&
                           readInto(*reader, *buffer, maxFramesPerSample, loopSelection, storage_,
                                    loadMono_, loadRate_, releaseIds.count(id) != 0, releaseMaxMs_);
+          if (ok && codeSamples_) codeSampleBuffer(*buffer);
           if (ok && progress != nullptr && !progress->charge(buffer->residentBytes())) {
             std::lock_guard<std::mutex> lock(queueMutex);
             stop = true;
@@ -1744,10 +1752,11 @@ bool getStr(std::istream& is, std::string& s, uint32_t cap = 64u * 1024u) {
   return static_cast<bool>(is);
 }
 
-// 0 float32, 1 int24, 2 int16, 3 int20 — written rather than the enum's
-// ordinal, so reordering SampleStorage cannot silently reinterpret an old
-// cache.
+// 0 float32, 1 int24, 2 int16, 3 int20, 4 split Rice coded — written rather
+// than the enum's ordinal, so reordering SampleStorage cannot silently
+// reinterpret an old cache.
 uint8_t widthCode(const mp::SampleBuffer& b) {
+  if (b.coded != nullptr) return 4;
   if (!b.pcm24.empty()) return 1;
   if (!b.pcm16.empty()) return 2;
   if (!b.pcm20.empty()) return 3;
@@ -1792,6 +1801,10 @@ std::string SampleLibrary::cacheFingerprint(const std::unordered_set<Id>* onlyRa
   // back after they were (Zamardi-Buda: 263 of 5228). Only when there are
   // any, so every other organ keeps the cache it has.
   for (const auto& package : packagesFromElsewhere_) s += "|k" + package;
+  // Samples held coded are cached coded. Only when they are, so every cache
+  // written with plain storage stays as good as it was, and a program that
+  // cannot read a coded one never takes one for its own.
+  if (codeSamples_) s += "|z1";
   // A partial load holds a different set of samples from a full one, and the
   // two must never be mistaken for each other: a cache written by
   // --preload-drawn would otherwise come back as a whole organ with most of
@@ -1861,7 +1874,8 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
                                     buf->pcm16.size() * sizeof(int16_t) +
                                     buf->pcm20.size() * sizeof(Pcm20) +
-                                    buf->frames.size() * sizeof(float));
+                                    buf->frames.size() * sizeof(float) +
+                                    (buf->coded != nullptr ? buf->coded->bytes() : 0));
     }
     cacheTotal_ = total;
     int64_t done = 0;
@@ -1886,7 +1900,16 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
 
       const char* data = nullptr;
       uint64_t bytes = 0;
-      if (!buf->pcm24.empty()) {
+      if (buf->coded != nullptr) {
+        // The width it was coded at and where each block starts, then the
+        // blocks themselves as the data.
+        const SplitRiceStream& c = *buf->coded;
+        putPod<uint8_t>(os, static_cast<uint8_t>(c.bitDepth));
+        putPod<uint64_t>(os, static_cast<uint64_t>(c.blockOffsets.size()));
+        for (const uint32_t o : c.blockOffsets) putPod<uint32_t>(os, o);
+        data = reinterpret_cast<const char*>(c.data.data());
+        bytes = c.data.size();
+      } else if (!buf->pcm24.empty()) {
         data = reinterpret_cast<const char*>(buf->pcm24.data());
         bytes = buf->pcm24.size() * sizeof(Pcm24);
       } else if (!buf->pcm16.empty()) {
@@ -1973,12 +1996,40 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
         !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
         !getPod(is, buf->loopEnd) || !getPod(is, buf->releaseCue) ||
         !getPod(is, buf->fileMidiNote) || !getPod(is, buf->pcmScale) ||
-        !getPod(is, width) || !getPod(is, bytes))
+        !getPod(is, width))
       return false;
     buf->numChannels = channels;
+    // A coded sample: its width and its block offsets come before its data.
+    std::shared_ptr<SplitRiceStream> coded;
+    if (width == 4) {
+      uint8_t depth = 0;
+      uint64_t blocks = 0;
+      if (!getPod(is, depth) || !getPod(is, blocks)) return false;
+      const uint64_t frames = static_cast<uint64_t>(std::max<int64_t>(0, buf->numFrames));
+      if ((depth != 16 && depth != 24) || channels < 1 || channels > kSplitRiceMaxChannels ||
+          blocks != (frames + kSplitRiceBlockFrames - 1) / kSplitRiceBlockFrames)
+        return false;
+      coded = std::make_shared<SplitRiceStream>();
+      coded->numFrames = frames;
+      coded->channels = channels;
+      coded->bitDepth = depth;
+      coded->blockOffsets.resize(static_cast<size_t>(blocks));
+      for (auto& o : coded->blockOffsets)
+        if (!getPod(is, o)) return false;
+    }
+    if (!getPod(is, bytes)) return false;
     if (bytes > (uint64_t)1 << 34) return false;   // 16 GB for one sample: corrupt
 
-    if (width == 1) {
+    if (coded != nullptr) {
+      coded->data.resize(static_cast<size_t>(bytes));
+      if (bytes) is.read(reinterpret_cast<char*>(coded->data.data()),
+                         static_cast<std::streamsize>(bytes));
+      // Each block starts inside the data, after the one before.
+      for (size_t b = 0; b < coded->blockOffsets.size(); ++b)
+        if (coded->blockOffsets[b] >= bytes ||
+            (b > 0 && coded->blockOffsets[b] <= coded->blockOffsets[b - 1]))
+          return false;
+    } else if (width == 1) {
       buf->pcm24.resize(static_cast<size_t>(bytes / sizeof(Pcm24)));
       if (bytes) is.read(reinterpret_cast<char*>(buf->pcm24.data()),
                          static_cast<std::streamsize>(bytes));
@@ -2003,7 +2054,8 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
     }
     if (!is) return false;
     {
-      const char* got = !buf->pcm24.empty()   ? reinterpret_cast<const char*>(buf->pcm24.data())
+      const char* got = coded != nullptr      ? reinterpret_cast<const char*>(coded->data.data())
+                        : !buf->pcm24.empty() ? reinterpret_cast<const char*>(buf->pcm24.data())
                         : !buf->pcm16.empty() ? reinterpret_cast<const char*>(buf->pcm16.data())
                         : !buf->pcm20.empty() ? reinterpret_cast<const char*>(buf->pcm20.data())
                                               : reinterpret_cast<const char*>(buf->frames.data());
@@ -2016,6 +2068,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
         return false;
       }
     }
+    if (coded != nullptr) buf->coded = std::move(coded);
 
     if (!getPod(is, streams)) return false;
     if (streams) {
@@ -2036,6 +2089,17 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   is.close();
   dropFromFileCache(path);
   return true;
+}
+
+size_t SampleLibrary::codedCount() const {
+  const Store* store = live_.load(std::memory_order_acquire);
+  if (store == nullptr) return 0;
+  size_t n = 0;
+  for (const auto& [id, buf] : *store) {
+    (void)id;
+    if (buf->coded != nullptr) ++n;
+  }
+  return n;
 }
 
 size_t SampleLibrary::streamedCount() const {

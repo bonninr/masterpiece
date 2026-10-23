@@ -87,6 +87,7 @@ private:
   bool openStream_ = false;
   int openStreamPercent_ = 0;
   bool openMono_ = false;
+  bool openCompress_ = false;
   // Whether the program couplers are offered. Off by default.
   bool openProgramCouplers_ = false;
   juce::ToggleButton programCouplers_{TRANS("Program couplers")};
@@ -179,6 +180,7 @@ private:
   void showStreamPercent(int percent);
   void showPreload(int64_t frames);
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
+  juce::ToggleButton compress_{TRANS("Hold samples compressed (lossless)")};
   juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
   juce::ToggleButton faster_{TRANS("Faster audio engine")};

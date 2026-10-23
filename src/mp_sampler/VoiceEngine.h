@@ -17,6 +17,7 @@
 #include "../mp_core/OrganModel.h"
 #include "StreamingEngine.h" // NoteStrike / NoteRelease + the selection matrices
 #include "SimdRun.h"
+#include "DecodedWindow.h"
 
 #include <array>
 #include <atomic>
@@ -189,6 +190,11 @@ struct SampleBuffer {
   // The rest of the file, when only the head is resident. Null means what is
   // here is all there is, which is what every preloaded sample looks like.
   std::shared_ptr<const SampleTail> tail;
+  // The resident frames held split Rice coded (#447), in place of pcm16 or
+  // pcm24: the same counts, at the same pcmScale, a third of the bytes. A
+  // voice reads them through its windows (DecodedWindow.h). Null for a
+  // sample held as plain counts.
+  std::shared_ptr<const SplitRiceStream> coded;
   // Length of the WHOLE file. Equal to numFrames when nothing is streamed.
   int64_t totalFrames() const {
     return tail ? tail->totalFrames : numFrames;
@@ -197,8 +203,12 @@ struct SampleBuffer {
 
   // True when the audio is held as integer counts and pcmScale means
   // something. Which integer width is a separate question, asked below.
-  bool compact() const { return !pcm16.empty() || !pcm24.empty() || !pcm20.empty(); }
-  bool wide() const { return !pcm24.empty(); }
+  // A coded sample is read as 16-bit counts up to sixteen bits and as 24-bit
+  // counts above, the storage it was coded from.
+  bool compact() const {
+    return !pcm16.empty() || !pcm24.empty() || !pcm20.empty() || coded != nullptr;
+  }
+  bool wide() const { return !pcm24.empty() || (coded != nullptr && coded->bitDepth > 16); }
   // True when the samples are packed twenty bits: neither a plain integer
   // count nor a 24-bit one, so the engine asks for it on its own.
   bool packed20() const { return !pcm20.empty(); }
@@ -206,6 +216,11 @@ struct SampleBuffer {
   // cannot answer this any more: it is true of both integer widths. Twenty
   // bits is two and a half bytes, so the answer is not a whole number.
   double bytesPerSampleExact() const {
+    if (coded != nullptr)
+      return numFrames > 0 && numChannels > 0
+                 ? static_cast<double>(coded->bytes()) /
+                       static_cast<double>(numFrames * numChannels)
+                 : 0.0;
     if (packed20()) return 2.5;
     return wide() ? 3.0 : compact() ? 2.0 : 4.0;
   }
@@ -213,7 +228,8 @@ struct SampleBuffer {
     return static_cast<int64_t>(frames.size() * sizeof(float) +
                                 pcm16.size() * sizeof(int16_t) +
                                 pcm24.size() * sizeof(Pcm24) +
-                                pcm20.size() * sizeof(Pcm20));
+                                pcm20.size() * sizeof(Pcm20) +
+                                (coded != nullptr ? coded->bytes() : 0));
   }
 
   bool loops() const {
@@ -227,9 +243,16 @@ struct SampleBuffer {
   bool releaseHoldsNothing() const {
     return releaseCue <= 0 && loopEnd > 0 && loopEnd >= totalFrames();
   }
+  // A coded sample decodes the frame here, which allocates: off the audio
+  // thread only. The engine reads a coded sample through its windows.
   float sample(int64_t frame, int channel) const {
     if (frame < 0 || frame >= numFrames) return 0.0f;
     const int ch = channel < numChannels ? channel : numChannels - 1;
+    if (coded != nullptr) {
+      int32_t v[kSplitRiceMaxChannels] = {};
+      if (!decodeSplitRiceFrames(*coded, static_cast<uint64_t>(frame), 1, v)) return 0.0f;
+      return static_cast<float>(v[ch]) * pcmScale;
+    }
     const auto i = static_cast<size_t>(frame * numChannels + ch);
     if (!pcm20.empty()) return static_cast<float>(pcm20At(pcm20.data(), i)) * pcmScale;
     if (!pcm24.empty()) return static_cast<float>(pcm24[i]) * pcmScale;
@@ -237,6 +260,11 @@ struct SampleBuffer {
     return frames[i];
   }
 };
+
+// The buffer's 16-bit or 24-bit counts, coded split Rice in their place
+// (#447). The counts play back the same to the bit. False, and the buffer
+// left as it was, for any other storage or when the coding fails.
+bool codeSampleBuffer(SampleBuffer& buf);
 
 // How the engine gets at audio. Returns nullptr when a sample is not resident
 // (still streaming in, or missing on disk) — the voice then stays silent
@@ -365,6 +393,15 @@ struct Voice {
   int64_t loopEnd = -1;
   // Frames in a row this release has been heard below the engine's cutoff.
   int quietFrames = 0;
+  // A coded sample's windows: which of the voice's two reads `buffer`. The
+  // other holds the attack a release fades from, or the frames past a loop's
+  // end that its crossfade reads.
+  uint8_t window = 0;
+  // A release from or to a coded sample starts in phase where the voice is
+  // rendered, where its blocks are decoded: the pipe's period, in release
+  // frames, is kept until then.
+  bool alignPending = false;
+  double alignPeriod = 0.0;
 
   bool active() const { return phase != VoicePhase::Idle; }
   bool loops() const {
@@ -641,8 +678,18 @@ public:
   // release tail. Without streaming nothing ever reads one, and at 48 kHz a
   // ring is three quarters of a megabyte a voice.
   void setStreamRings(bool on) { streamRings_ = on; }
-  // What one voice of the pool holds in memory, with or without its ring.
-  static int64_t bytesPerVoice(double sampleRate, double streamSeconds, bool rings);
+  // Whether the next prepare() gives each voice its two windows for samples
+  // held coded (DecodedWindow.h), and each render thread its decoding
+  // scratch. Without them a coded sample does not sound: its start is
+  // counted as a sample not resident.
+  void setCodedWindows(bool on) { codedWindows_ = on; }
+  bool codedWindows() const { return codedWindows_; }
+  // Blocks of coded samples decoded since prepare(), on every render thread.
+  uint64_t blocksDecoded() const;
+  // What one voice of the pool holds in memory, with or without its ring and
+  // its windows.
+  static int64_t bytesPerVoice(double sampleRate, double streamSeconds, bool rings,
+                               bool codedWindows = false);
   double streamSeconds() const { return streamSeconds_; }
   // Underruns since prepare(): a voice reached material the streamer had not
   // fetched yet and played silence. Should be zero; anything else is a disk
@@ -754,19 +801,31 @@ public:
 private:
   // Free slot, else the least musically costly voice to cut short.
   int allocateVoice();
-  void renderVoice(Voice& v, float* const* out, int numChannels, int numFrames);
+  // `thread` is the render thread: 0 the audio thread, k + 1 worker k. It
+  // picks the scratch a coded sample is decoded with.
+  void renderVoice(Voice& v, float* const* out, int numChannels, int numFrames, int thread);
   // Instantiated for each resident storage type, so the inner loop never
-  // tests which one it is reading. Defined in the .cpp; both instantiations
-  // are reached through renderVoice().
-  template <typename T>
+  // tests which one it is reading, and for a sample held coded or not, so a
+  // plain sample's loop is the one it always was. Defined in the .cpp; every
+  // instantiation is reached through renderVoice().
+  template <typename T, bool Coded>
   void renderVoiceFrom(Voice& v, size_t voiceIndex, float* const* out,
-                       int numChannels, int numFrames);
+                       int numChannels, int numFrames, DecodeScratch* scratch);
+  // A release to or from a coded sample, started in phase (Voice::alignPending).
+  void alignPendingRelease(Voice& v, DecodeScratch& scratch);
+  // The voice's two windows: the one that reads its buffer, and the other.
+  DecodedWindow* readingWindow(size_t voiceIndex, const Voice& v) {
+    return windows_.empty() ? nullptr : &windows_[voiceIndex * 2 + v.window];
+  }
+  DecodedWindow* otherWindow(size_t voiceIndex, const Voice& v) {
+    return windows_.empty() ? nullptr : &windows_[voiceIndex * 2 + (v.window ^ 1u)];
+  }
 
   // Render the voices at these pool indices into `out`. This is the unit of
   // work a thread takes; the shares never overlap, so no voice is touched
   // twice and no locking is needed on the voices themselves.
   void renderList(const uint32_t* list, size_t count, float* const* out, int numChannels,
-                  int numFrames);
+                  int numFrames, int thread);
   void stopWorkers();
 
   std::vector<Voice> voices_;
@@ -843,6 +902,13 @@ private:
   bool streamQuit_ = false;
   double streamSeconds_ = 2.0;
   bool streamRings_ = true;
+  // Samples held coded: two windows a voice, their bytes in one block, and a
+  // scratch for each render thread. All empty unless setCodedWindows().
+  bool codedWindows_ = false;
+  std::vector<unsigned char> windowBytes_;
+  std::vector<DecodedWindow> windows_;
+  std::vector<std::unique_ptr<DecodeScratch>> decodeScratch_;
+  void makeDecodeScratch(size_t threads);
   // Counted from the read path, which is const because reading a sample does
   // not change the engine — but an underrun is exactly the thing a player must
   // be told about, so it is recorded rather than swallowed.

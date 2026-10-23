@@ -9,8 +9,11 @@
 
 #ifdef MP_TEST_HAS_SAMPLER
 #include "../src/mp_sampler/SampleCodec.h"
+#include "../src/mp_sampler/SplitRice.h"
 #endif
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -377,6 +380,168 @@ public:
   }
 };
 
+// Split Rice's bytes for one mono 16-bit frame of value 5, worked out by
+// hand, so a change to the format cannot pass unseen.
+//
+// Order 0 costs least: no history, and the residual is the sample, zigzagged
+// to 10. The one group of 256 (the frame and 255 of padding) takes k = 0: 256
+// unary ones and a q of 10 cost 266 bits, against 517 for k = 1. So:
+//
+//   00                 stereo mode (mono)
+//   00                 predictor order
+//   00                 the group's k, 5 bits, padded to a byte
+//                      no low bits at k = 0
+//   00 FC FF x31 03    the unary stream: ten zeros and a one for the frame,
+//                      then a one for each of the 255 padding values: 266 bits
+//   00 x6              padded to 40 bytes
+//   00 x16             the stream's tail
+class SplitRiceBytesTest : public mp::test::Test {
+public:
+  SplitRiceBytesTest() : mp::test::Test("functional.codec.split-rice-bytes", Category::Functional) {}
+
+  void run() override {
+    mp::SampleCodec* codec = mp::CodecRegistry::instance().find("SRIC");
+    MP_CHECK(codec != nullptr, "split Rice is registered");
+    if (codec == nullptr) return;
+    MP_CHECK(codec->info().access == mp::CodecAccess::RandomAccess, "any block decodes on its own");
+    MP_CHECK(codec->info().blockFrames == mp::kSplitRiceBlockFrames, "in blocks of 4096 frames");
+    std::vector<uint8_t> expected = {0x00, 0x00, 0x00, 0x00, 0xFC};
+    expected.insert(expected.end(), 31, 0xFF);
+    expected.push_back(0x03);
+    expected.insert(expected.end(), 6 + 16, 0x00);
+    const int32_t sample = 5;
+    mp::SplitRiceStream stream;
+    mp::CodecError error = mp::CodecError::None;
+    MP_CHECK(mp::encodeSplitRice(&sample, 1, 1, 16, stream, &error), "one frame encodes");
+    MP_CHECK(stream.data == expected, "the bytes are as worked out");
+    MP_CHECK(stream.blockOffsets == std::vector<uint32_t>{0}, "one block, at the start");
+    std::vector<uint8_t> payload;
+    MP_CHECK(codec->encode(&sample, 1, 1, 16, mp::kSplitRiceBlockFrames, payload, &error), "the codec encodes");
+    std::vector<uint8_t> framed = {1, 0, 0, 0, 0, 0, 0, 0};
+    framed.insert(framed.end(), expected.begin(), expected.end());
+    MP_CHECK(payload == framed, "its payload is the block count, the offsets and the stream");
+    int32_t back = 0;
+    MP_CHECK(mp::decodeSplitRiceFrames(stream, 0, 1, &back, &error) && back == 5, "and it decodes to 5");
+  }
+};
+
+// The vector kernels give the plain kernels' numbers, block by block, on
+// every signal and width, and on full-scale noise at 24 bits, whose groups
+// take a k too wide for the vector unpack.
+class SplitRiceKernelsTest : public mp::test::Test {
+public:
+  SplitRiceKernelsTest() : mp::test::Test("functional.codec.split-rice-kernels", Category::Functional) {}
+
+  void run() override {
+    const bool had = mp::splitRiceVectorKernels();
+    std::printf("    split Rice: vector kernels %s on this machine\n", had ? "present" : "absent");
+    mp::SplitRiceScratch scratch;
+    for (int width : {8, 16, 20, 24})
+      for (int channels : {1, 2})
+        for (Signal signal : {Signal::Noise, Signal::Silence, Signal::Square, Signal::Sine}) {
+          const size_t frames = 3 * mp::kSplitRiceBlockFrames + 1000;
+          const auto input = makeSignal(signal, frames, channels, width, 11u);
+          mp::SplitRiceStream stream;
+          mp::CodecError error = mp::CodecError::None;
+          MP_CHECK(mp::encodeSplitRice(input.data(), frames, channels, width, stream, &error), "encode");
+          std::vector<int32_t> plain(mp::kSplitRiceBlockFrames * static_cast<size_t>(channels));
+          std::vector<int32_t> fast(plain.size());
+          for (size_t b = 0; b < stream.blockCount(); ++b) {
+            mp::setSplitRiceVectorKernels(false);
+            MP_CHECK(mp::decodeSplitRiceBlock(stream, b, plain.data(), scratch, &error), "plain decode");
+            mp::setSplitRiceVectorKernels(true);
+            MP_CHECK(mp::decodeSplitRiceBlock(stream, b, fast.data(), scratch, &error), "vector decode");
+            const size_t n = static_cast<size_t>(stream.framesInBlock(b)) * static_cast<size_t>(channels);
+            const size_t at = b * mp::kSplitRiceBlockFrames * static_cast<size_t>(channels);
+            MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n), fast.begin()),
+                     "the two kernels agree, block " + std::to_string(b) + " at " + std::to_string(width) + " bits");
+            MP_CHECK(std::equal(plain.begin(), plain.begin() + static_cast<std::ptrdiff_t>(n),
+                                input.begin() + static_cast<std::ptrdiff_t>(at)),
+                     "and give the input back");
+          }
+        }
+    mp::setSplitRiceVectorKernels(true);
+  }
+};
+
+// What it is for: a bass pipe's tone, as in the delta codec's test, takes
+// under half the room of plain storage and less than the delta codec.
+class SplitRiceRatioTest : public mp::test::Test {
+public:
+  SplitRiceRatioTest() : mp::test::Test("functional.codec.split-rice-ratio", Category::Functional) {}
+
+  void run() override {
+    mp::SampleCodec* rice = mp::CodecRegistry::instance().find("SRIC");
+    mp::SampleCodec* delta = mp::CodecRegistry::instance().find("PDLT");
+    MP_CHECK(rice != nullptr && delta != nullptr, "both codecs are registered");
+    if (rice == nullptr || delta == nullptr) return;
+    for (int width : {16, 24}) {
+      const size_t frames = 48000;
+      std::vector<int32_t> input(frames * 2);
+      const double amplitude = 0.1 * static_cast<double>(mp::codecSampleMax(width));
+      for (size_t f = 0; f < frames; ++f)
+        for (size_t c = 0; c < 2; ++c)
+          input[f * 2 + c] = static_cast<int32_t>(std::lround(
+              amplitude * std::sin(2.0 * 3.141592653589793 * (static_cast<double>(f) / 400.0 + 0.25 * static_cast<double>(c)))));
+      std::vector<uint8_t> ricePayload, deltaPayload;
+      mp::CodecError error = mp::CodecError::None;
+      MP_CHECK(rice->encode(input.data(), frames, 2, width, mp::kSplitRiceBlockFrames, ricePayload, &error), "encode");
+      MP_CHECK(delta->encode(input.data(), frames, 2, width, 0, deltaPayload, &error), "delta encode");
+      const double plain = static_cast<double>(frames) * 2.0 * (width == 16 ? 2.0 : 3.0);
+      std::printf("    a 120 Hz tone at %d bits: split Rice %.1f %%, predictive delta %.1f %% of plain\n", width,
+                  100.0 * static_cast<double>(ricePayload.size()) / plain,
+                  100.0 * static_cast<double>(deltaPayload.size()) / plain);
+      MP_CHECK(static_cast<double>(ricePayload.size()) < 0.5 * plain, "under half of plain storage");
+      MP_CHECK(ricePayload.size() < deltaPayload.size(), "and smaller than predictive delta");
+    }
+  }
+};
+
+// How fast a voice's blocks decode: frames a second on one thread, with the
+// vector kernels and with the plain ones, on a stereo 24-bit signal shaped
+// like a pipe (a tone and a little noise).
+class SplitRiceSpeedTest : public mp::test::Test {
+public:
+  SplitRiceSpeedTest() : mp::test::Test("perf.codec.split-rice-decode", Category::Perf) {}
+
+  void run() override {
+    const size_t frames = 64 * mp::kSplitRiceBlockFrames;
+    std::vector<int32_t> input(frames * 2);
+    std::mt19937 rng(9u);
+    std::uniform_int_distribution<int> noise(-200, 200);
+    for (size_t f = 0; f < frames; ++f)
+      for (size_t c = 0; c < 2; ++c)
+        input[f * 2 + c] = static_cast<int32_t>(
+            std::lround(400000.0 * std::sin(2.0 * 3.141592653589793 * (static_cast<double>(f) / 183.7 + 0.1 * static_cast<double>(c))))) +
+                           noise(rng);
+    mp::SplitRiceStream stream;
+    MP_CHECK(mp::encodeSplitRice(input.data(), frames, 2, 24, stream), "encode");
+    std::printf("    split Rice: %.1f %% of plain 24-bit\n",
+                100.0 * static_cast<double>(stream.bytes()) / (static_cast<double>(frames) * 6.0));
+    mp::SplitRiceScratch scratch;
+    std::vector<int32_t> out(mp::kSplitRiceBlockFrames * 2);
+    auto rate = [&](bool useVector) {
+      mp::setSplitRiceVectorKernels(useVector);
+      const auto t0 = std::chrono::steady_clock::now();
+      int rounds = 0;
+      double seconds = 0.0;
+      do {
+        for (size_t b = 0; b < stream.blockCount(); ++b) mp::decodeSplitRiceBlock(stream, b, out.data(), scratch);
+        ++rounds;
+        seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      } while (seconds < 0.5);
+      return static_cast<double>(rounds) * static_cast<double>(frames) / seconds;
+    };
+    const double plain = rate(false);
+    const double fast = rate(true);
+    mp::setSplitRiceVectorKernels(true);
+    std::printf("    split Rice decode: %.0f M frames/s plain, %.0f M frames/s vector\n", plain / 1e6, fast / 1e6);
+    MP_CHECK(plain > 0.0 && fast > 0.0, "both decode");
+    if (mp::splitRiceVectorKernels())
+      MP_CHECK(fast > 0.8 * plain, "the vector kernels are no slower than the plain ones");
+  }
+};
+
 } // namespace
 
 // The tests register themselves, so they have to exist.
@@ -385,5 +550,9 @@ static CodecDamageTest g_codecDamage;
 static DeltaBytesTest g_deltaBytes;
 static DeltaResumeTest g_deltaResume;
 static DeltaRatioTest g_deltaRatio;
+static SplitRiceBytesTest g_splitRiceBytes;
+static SplitRiceKernelsTest g_splitRiceKernels;
+static SplitRiceRatioTest g_splitRiceRatio;
+static SplitRiceSpeedTest g_splitRiceSpeed;
 
 #endif // MP_TEST_HAS_SAMPLER

@@ -116,6 +116,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openStream_ = proc_.streamReleases();
   openStreamPercent_ = proc_.streamHeadPercent();
   openMono_ = proc_.loadMono();
+  openCompress_ = proc_.codeSamples();
   openProgramCouplers_ = proc_.programCouplers();
   addAndMakeVisible(programCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
@@ -461,6 +462,15 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     syncProfile();
   };
 
+  // Lossless compression of the resident samples (#447): what plays is the
+  // same to the bit, for less memory and a little more work per voice.
+  addAndMakeVisible(compress_);
+  compress_.setToggleState(proc_.codeSamples(), juce::dontSendNotification);
+  compress_.setTooltip(
+      TRANS("16- and 24-bit samples are held in a lossless compressed form and decoded as "
+            "they play. The sound is identical; memory use is lower. Applies at the next load."));
+  compress_.onClick = [this] { proc_.setCodeSamples(compress_.getToggleState()); };
+
   // Audible load progress for large organs. General config: written to the
   // global file at once rather than kept for an organ, and off unless asked.
   addAndMakeVisible(loadTicks_);
@@ -654,6 +664,8 @@ void EnginePanel::revert() {
   proc_.setStreamHeadPercent(openStreamPercent_);
   proc_.setLoadMono(openMono_);
   mono_.setToggleState(openMono_, juce::dontSendNotification);
+  proc_.setCodeSamples(openCompress_);
+  compress_.setToggleState(openCompress_, juce::dontSendNotification);
   proc_.setProgramCouplers(openProgramCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
   proc_.setLoadTicks(openLoadTicks_);
@@ -775,6 +787,7 @@ bool EnginePanel::loadingChanged() const {
          proc_.sparseEvery() != openSparse_ ||
          proc_.streamHeadPercent() != openStreamPercent_ ||
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
+         proc_.codeSamples() != openCompress_ ||
          proc_.programCouplers() != openProgramCouplers_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
          proc_.polyphonyLimit() != openPolyphony_ ||
@@ -826,6 +839,8 @@ void EnginePanel::timerCallback() {
                           .replace("%5", proc_.loadSampleRate() > 0.0
                                              ? ", " + juce::String(proc_.loadSampleRate() / 1000.0, 1) + " kHz"
                                              : juce::String());
+  if (const auto coded = proc_.sampleLibrary().codedCount(); coded > 0)
+    text += "  -  " + TRANS("%1 held compressed").replace("%1", juce::String(static_cast<int>(coded)));
   const auto streamed = proc_.sampleLibrary().streamedCount();
   if (streamed > 0)
     text += "  -  " + TRANS("%1 streamed, %2 MB left on disk")
@@ -1043,7 +1058,11 @@ void EnginePanel::resized() {
     stream_.setBounds(streamRow);
   }
   r.removeFromTop(2);
-  mono_.setBounds(r.removeFromTop(kRow));
+  {
+    auto monoRow = r.removeFromTop(kRow);
+    compress_.setBounds(monoRow.removeFromRight(monoRow.getWidth() / 2));
+    mono_.setBounds(monoRow);
+  }
   r.removeFromTop(2);
   loadTicks_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
