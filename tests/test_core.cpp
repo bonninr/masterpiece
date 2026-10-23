@@ -2224,6 +2224,146 @@ public:
   }
 };
 
+// A pipe has one valve (#521). Two keys reaching the same pipe -- a coupler
+// and the manual's own key, or two keys an octave coupler joins -- sound it
+// once, at the level of one; it closes when the last of them lets go,
+// whichever goes first.
+class PipeSoundsOnceTest final : public mp::test::Test {
+public:
+  PipeSoundsOnceTest() : Test("functional.voice.pipe-sounds-once", Category::Functional) {}
+
+  void run() override {
+    voicetest::Fixture fx;
+    std::vector<float> buf(512, 0.0f);
+    float* out[1] = {buf.data()};
+    auto level = [&](mp::VoiceEngine& eng) {
+      std::fill(buf.begin(), buf.end(), 0.0f);
+      eng.render(out, 1, 512);
+      return voicetest::rms(buf);
+    };
+    auto settle = [&](mp::VoiceEngine& eng) {  // past the release's own length
+      for (int i = 0; i < 40; ++i) level(eng);
+    };
+    // On the heap: each engine carries its release ring, and nine of them
+    // are more than a Windows stack holds.
+    auto fresh = [&] {
+      auto eng = std::make_unique<mp::VoiceEngine>();
+      eng->prepare(48000.0, 64, 1);
+      eng->setSampleProvider(fx.provider());
+      return eng;
+    };
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.velocity = 100;
+    st.ratio = 1.0;
+    st.gain = 1.0f;
+    st.joinSpeaking = true;
+
+    const auto oneEngine = fresh();
+    auto& one = *oneEngine;
+    one.startVoice(st, 1);
+    for (int i = 0; i < 4; ++i) level(one);
+    const double single = level(one);
+
+    // The second key joins the voice the first opened.
+    const auto engEngine = fresh();
+    auto& eng = *engEngine;
+    const int a = eng.startVoice(st, 11);
+    const int b = eng.startVoice(st, 22);
+    MP_CHECK(a >= 0 && b == a, "the second key joins the voice the first opened");
+    MP_CHECK(eng.activeVoiceCount() == 1, "two keys on one pipe: one voice");
+    for (int i = 0; i < 4; ++i) level(eng);
+    const double both = level(eng);
+    MP_CHECK(std::abs(both - single) < 1e-6, "at the level of one pipe");
+
+    // The first key up: the pipe speaks on for the second.
+    eng.noteOff(11, mp::NoteRelease{});
+    settle(eng);
+    MP_CHECK(eng.activeVoiceCount() == 1 && level(eng) > 0.1,
+             "the key that opened it lets go; the other key holds it open");
+    eng.noteOff(11, mp::NoteRelease{});
+    settle(eng);
+    MP_CHECK(eng.activeVoiceCount() == 1, "a second note-off of that key changes nothing");
+    eng.noteOff(22, mp::NoteRelease{});
+    settle(eng);
+    MP_CHECK(eng.activeVoiceCount() == 0, "the last key up closes it");
+
+    // The other order: the joining key lets go first.
+    const auto revEngine = fresh();
+    auto& rev = *revEngine;
+    rev.startVoice(st, 11);
+    rev.startVoice(st, 22);
+    rev.noteOff(22, mp::NoteRelease{});
+    settle(rev);
+    MP_CHECK(rev.activeVoiceCount() == 1 && level(rev) > 0.1, "the joining key up first: it speaks on");
+    rev.noteOff(11, mp::NoteRelease{});
+    settle(rev);
+    MP_CHECK(rev.activeVoiceCount() == 0, "and closes with the key that opened it");
+
+    // A stop pushed in under one key: the other still holds the pipe.
+    const auto stopEngine = fresh();
+    auto& stop = *stopEngine;
+    stop.startVoice(st, 11);
+    stop.startVoice(st, 22);
+    stop.noteOffPipe(11, fx.pipe.pipeId, mp::NoteRelease{});
+    settle(stop);
+    MP_CHECK(stop.activeVoiceCount() == 1, "one key's stop change leaves the other key's pipe speaking");
+
+    // Panic keeps a pipe any of its keys is kept for, and closes the rest.
+    const auto panicEngine = fresh();
+    auto& panic = *panicEngine;
+    panic.startVoice(st, 11);
+    panic.startVoice(st, 22);
+    panic.releaseAll([](uint64_t id) { return id == 22; });
+    settle(panic);
+    MP_CHECK(panic.activeVoiceCount() == 1, "a pipe held by a kept note sounds on");
+    panic.releaseAll();
+    settle(panic);
+    MP_CHECK(panic.activeVoiceCount() == 0, "with nothing kept it closes");
+
+    // Struck again in its release, the pipe speaks anew; a one-shot always
+    // starts anew; and so does a start that does not ask to join.
+    const auto againEngine = fresh();
+    auto& again = *againEngine;
+    again.startVoice(st, 11);
+    again.noteOff(11, mp::NoteRelease{});
+    MP_CHECK(again.startVoice(st, 22) >= 0 && again.activeVoiceCount() == 2,
+             "a pipe in its release, struck again, speaks anew");
+    const auto shotEngine = fresh();
+    auto& shot = *shotEngine;
+    mp::VoiceStart os = st;
+    os.oneShot = true;
+    shot.startVoice(os, 11);
+    shot.startVoice(os, 22);
+    MP_CHECK(shot.activeVoiceCount() == 2, "a one-shot starts for each key");
+    const auto plainEngine = fresh();
+    auto& plain = *plainEngine;
+    mp::VoiceStart own = st;
+    own.joinSpeaking = false;
+    plain.startVoice(own, 11);
+    plain.startVoice(own, 22);
+    MP_CHECK(plain.activeVoiceCount() == 2, "a start that does not join gets a voice of its own");
+
+    // Seven keys join one; the ninth gets a voice of its own, and every one
+    // of them has to let go before the pipe closes.
+    const auto manyEngine = fresh();
+    auto& many = *manyEngine;
+    for (uint64_t k = 1; k <= 8; ++k) many.startVoice(st, k);
+    MP_CHECK(many.activeVoiceCount() == 1, "eight keys share the pipe");
+    many.startVoice(st, 9);
+    MP_CHECK(many.activeVoiceCount() == 2, "the ninth key gets a voice of its own");
+    for (uint64_t k = 1; k <= 7; ++k) many.noteOff(k, mp::NoteRelease{});
+    settle(many);
+    MP_CHECK(many.activeVoiceCount() == 2, "seven of the eight up: the pipe still speaks");
+    many.noteOff(8, mp::NoteRelease{});
+    many.noteOff(9, mp::NoteRelease{});
+    settle(many);
+    MP_CHECK(many.activeVoiceCount() == 0, "all up: silence");
+  }
+};
+static PipeSoundsOnceTest g_pipeSoundsOnce;
+
 // Once a pipe's valve closes, the chest no longer reaches it: what sounds is
 // its release and the room. A releasing voice therefore keeps the wind it last
 // spoke with. Following the chest instead slid every tail in pitch and level
@@ -8746,6 +8886,49 @@ public:
              "512 voices must render faster than real time");
   }
 };
+
+// A full chord on every stop, started in one block: 1000 different pipes,
+// each start looking for the pipe already speaking (#521) and finding none,
+// which is the dearest case for that search. Timed against the same starts
+// without it.
+class VoiceChordStartPerfTest final : public mp::test::Test {
+public:
+  VoiceChordStartPerfTest() : Test("perf.voice.chord-start", Category::Perf) {}
+  void run() override {
+    constexpr int kPipes = 1000;
+    constexpr int kRounds = 20;
+    voicetest::Fixture fx;
+    std::vector<mp::Pipe> pipes(kPipes, fx.pipe);
+    for (int i = 0; i < kPipes; ++i) pipes[static_cast<size_t>(i)].pipeId = 1000 + i;
+    auto timeStarts = [&](bool join) {
+      double best = 1e9;
+      for (int round = 0; round < kRounds; ++round) {
+        mp::VoiceEngine eng;
+        eng.prepare(48000.0, 1024, 2);
+        eng.setSampleProvider(fx.provider());
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < kPipes; ++i) {
+          mp::VoiceStart st;
+          st.pipe = &pipes[static_cast<size_t>(i)];
+          st.layer = &pipes[static_cast<size_t>(i)].layers[0];
+          st.joinSpeaking = join;
+          eng.startVoice(st, static_cast<uint64_t>(i / 60 + 1));
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        MP_CHECK(eng.activeVoiceCount() == kPipes, "every pipe of the chord speaks");
+        best = std::min(best, std::chrono::duration<double, std::milli>(t1 - t0).count());
+      }
+      return best;
+    };
+    const double plain = timeStarts(false);
+    const double joined = timeStarts(true);
+    std::printf("        %d pipes started in one block: %.3f ms, %.3f ms looking for the pipe "
+                "already speaking (a 256-frame block is 5.333 ms)\n",
+                kPipes, plain, joined);
+    MP_CHECK(joined < 5.333, "the chord starts within one block");
+  }
+};
+static VoiceChordStartPerfTest g_voiceChordStartPerf;
 
 // The whole engine with and without the vector runs: 512 looping voices, as
 // perf.voice.polyphony, in two storage formats. The ratio is what an

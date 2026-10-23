@@ -113,6 +113,7 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   numChannels_ = numChannels > 0 ? numChannels : 2;
   maxFrames_ = maxBlockFrames > 0 ? maxBlockFrames : 2048;
   voices_.assign(static_cast<size_t>(std::max(1, maxVoices)), Voice{});
+  speaking_.assign(voices_.size(), SpeakingPipe{});
   jobList_.clear();
   jobList_.reserve(voices_.size());
   for (auto& list : busLists_) {
@@ -319,6 +320,7 @@ void VoiceEngine::quiesce() {
 void VoiceEngine::reset() {
   for (size_t i = 0; i < voices_.size(); ++i) disarmStream(i);
   for (auto& v : voices_) v = Voice{};
+  for (auto& s : speaking_) s = SpeakingPipe{};
   stats_ = EngineStats{};
   freeHint_ = 0;
   liveCount_ = 0;
@@ -415,6 +417,13 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
       start.attackIndex >= static_cast<int>(start.layer->attacks.size()))
     return -1;
 
+  // A pipe has one valve: a second key reaching it while it speaks holds it
+  // open, it does not sound a second pipe (#521).
+  if (start.joinSpeaking && !start.oneShot) {
+    const int joined = joinSpeakingPipe(start, noteId);
+    if (joined >= 0) return joined;
+  }
+
   const AttackSample& attack =
       start.layer->attacks[static_cast<size_t>(start.attackIndex)];
 
@@ -491,7 +500,30 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     v.loopStart = start.loopStartOverride;
     v.loopEnd = start.loopEndOverride;
   }
+  speaking_[static_cast<size_t>(slot)] =
+      start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
   return slot;
+}
+
+int VoiceEngine::joinSpeakingPipe(const VoiceStart& start, uint64_t noteId) {
+  const Id pipeId = start.pipe->pipeId;
+  if (pipeId == 0) return -1;
+  for (size_t slot = 0; slot < scanEnd_; ++slot) {
+    const SpeakingPipe& s = speaking_[slot];
+    if (s.pipeId != pipeId || s.layer != start.layer) continue;
+    Voice& v = voices_[slot];
+    // Gone quiet on its own, or the slot holds another voice now.
+    if (!v.active() || v.phase == VoicePhase::Release || v.pipeId != pipeId ||
+        v.layer != start.layer)
+      continue;
+    if (v.noteId == noteId) return static_cast<int>(slot);
+    for (int h = 0; h < v.holderCount; ++h)
+      if (v.holders[h] == noteId) return static_cast<int>(slot);
+    if (v.holderCount >= Voice::kMaxHolders) return -1;
+    v.holders[v.holderCount++] = noteId;
+    return static_cast<int>(slot);
+  }
+  return -1;
 }
 
 int64_t VoiceEngine::msSincePipeClosed(Id pipeId) const {
@@ -515,9 +547,29 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
                                 const NoteRelease& release) {
   for (size_t slot = 0; slot < scanEnd_; ++slot) {
     Voice& v = voices_[slot];
-    if (!v.active() || v.noteId != noteId) continue;
+    if (!v.active() || v.phase == VoicePhase::Release) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
-    if (v.phase == VoicePhase::Release) continue;
+    if (v.noteId != noteId) {
+      // Held by this key alongside another: it lets go, the pipe speaks on.
+      for (int h = 0; h < v.holderCount; ++h)
+        if (v.holders[h] == noteId) {
+          v.holders[h] = v.holders[--v.holderCount];
+          break;
+        }
+      continue;
+    }
+    // Another key still holds it: the pipe passes to that key.
+    if (v.holderCount > 0) {
+      v.noteId = v.holders[--v.holderCount];
+      continue;
+    }
+    releaseVoice(v, release);
+  }
+}
+
+void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
+  {
+    speaking_[static_cast<size_t>(&v - voices_.data())] = SpeakingPipe{};
     stealStage_ = 0;  // the voices to take first have changed
     if (v.pipeId != 0) pipeClosedAt_[v.pipeId] = framesRendered_;
 

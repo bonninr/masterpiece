@@ -3862,6 +3862,9 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     vs.loopCrossfadeFrames = static_cast<int>(
         layer.loopCrossfadeMs * 0.001 * sampleRate_);
     vs.startOffset = eventOffset_;
+    // Two keys reaching this pipe, through a coupler and directly, sound it
+    // once (#521).
+    vs.joinSpeaking = true;
     if (voices_.startVoice(vs, noteId) >= 0) anyStarted = true;
   }
   return anyStarted;
