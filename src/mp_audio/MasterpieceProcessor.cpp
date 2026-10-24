@@ -912,6 +912,21 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   const int numFrames = output.getNumSamples();
   if (outCh <= 0 || numFrames <= 0) return;
 
+  // A block bigger than the one prepareToPlay was told of is played as blocks
+  // of that size. A Jack or PipeWire server can raise its buffer size while
+  // the player runs, with no new prepareToPlay, and the scratch the swell
+  // boxes, the EQ groups and the rooms render through holds the prepared size
+  // only: without this, a bigger block played every enclosed pipe as if the
+  // box stood open (#554).
+  if (numFrames > maxBlock_) {
+    float* const* planes = output.getArrayOfWritePointers();
+    for (int start = 0; start < numFrames; start += maxBlock_) {
+      juce::AudioBuffer<float> part(planes, outCh, start, std::min(maxBlock_, numFrames - start));
+      renderBuses(part);
+    }
+    return;
+  }
+
   // One block for the whole callback, whatever the bus count.
   voices_.beginBlock(numFrames);
   // EQ groups whose EQ was taken away go once their last pipe has stopped.
