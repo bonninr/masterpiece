@@ -11,10 +11,6 @@ juce_add_plugin(MasterpiecePlugin
   NEEDS_MIDI_INPUT TRUE
   NEEDS_MIDI_OUTPUT FALSE
   IS_SYNTH TRUE
-  # The Standalone build's audio settings have the same "Bluetooth MIDI"
-  # button as the app (#563).
-  BLUETOOTH_PERMISSION_ENABLED TRUE
-  BLUETOOTH_PERMISSION_TEXT "Masterpiece uses Bluetooth to connect to Bluetooth MIDI keyboards and consoles."
 )
 
 target_sources(MasterpiecePlugin PRIVATE PluginEntry.cpp)
