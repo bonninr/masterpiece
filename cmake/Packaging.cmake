@@ -13,9 +13,8 @@
 #     filtering instead gave an NSIS installer with a components page and a
 #     silent install (/S) that aborted without installing anything.
 #
-# The standalone application is the product and is always in the package. The
-# Linux package also carries the VST3 and LV2 plugins where they were built,
-# because on Linux there is no other obvious place for a player to put them.
+# The standalone application is the product and is what the package holds.
+# The plugins ship in archives of their own, built by the plugins job.
 #
 # Output names do not change between releases, so a download link can point
 # at releases/latest/download/<name> for good:
@@ -34,7 +33,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Open-source pipe organ sample player")
 set(CPACK_PACKAGE_DESCRIPTION
     "Masterpiece plays sampled pipe organs compatible with Hauptwerk sample \
 sets. It builds each instrument's own console from the set's definition -- \
-drawstops, keyboards, pedalboard -- and plays it, standalone or as a plugin.")
+drawstops, keyboards, pedalboard -- and plays it.")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/bonninr/masterpiece")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_LIST_DIR}/../LICENCE")
@@ -123,17 +122,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
           DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages RENAME masterpiece.xml
           COMPONENT app)
 
-  # The plugins, where this build made them. JUCE lays its artefacts out per
-  # configuration, and the release presets are single-configuration.
-  set(_mp_plug "${CMAKE_BINARY_DIR}/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/${CMAKE_BUILD_TYPE}")
-  if(TARGET MasterpiecePlugin_VST3)
-    install(DIRECTORY "${_mp_plug}/VST3/Masterpiece.vst3"
-            DESTINATION lib/vst3 COMPONENT app USE_SOURCE_PERMISSIONS OPTIONAL)
-  endif()
-  if(TARGET MasterpiecePlugin_LV2)
-    install(DIRECTORY "${_mp_plug}/LV2/Masterpiece.lv2"
-            DESTINATION lib/lv2 COMPONENT app USE_SOURCE_PERMISSIONS OPTIONAL)
-  endif()
+  # The plugins ship in packages of their own (the plugins job in build.yml).
 
   # Debian names architectures its own way; the cross-build toolchains set
   # CMAKE_SYSTEM_PROCESSOR to the target's, so this follows the target.

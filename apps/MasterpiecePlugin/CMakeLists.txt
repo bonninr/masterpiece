@@ -1,9 +1,17 @@
+# The formats each platform's package ships. The program itself is
+# apps/MasterpieceApp; a plugin Standalone would be a second copy of it.
+if(APPLE)
+  set(_mp_plugin_formats VST3 AU)
+else()
+  set(_mp_plugin_formats VST3 LV2)
+endif()
+
 juce_add_plugin(MasterpiecePlugin
   COMPANY_NAME "Masterpiece"
   BUNDLE_ID "org.masterpiece.player"
   PLUGIN_MANUFACTURER_CODE Mspc
   PLUGIN_CODE Msp1
-  FORMATS VST3 AU LV2 Standalone
+  FORMATS ${_mp_plugin_formats}
   # LV2 identifies plugins by URI and requires a real scheme; JUCE static-asserts
   # on a bare name. This URI is an identifier, not a live address.
   LV2URI "https://masterpiece.audio/plugins/masterpiece"

@@ -8,11 +8,22 @@ The standalone program is the main product. The plugins use the same engine, the
 
 | Format | Systems | Delivered as |
 |---|---|---|
-| VST3 | Windows, macOS, Linux | `Masterpiece.vst3`: in the Windows portable `.zip`, in the macOS `.zip`, and installed to `/usr/lib/vst3` by the PC Debian package |
-| LV2 | Linux | `Masterpiece.lv2`, installed to `/usr/lib/lv2` by the PC Debian package |
-| AU | macOS | `Masterpiece.component`, in the macOS `.zip` beside `Masterpiece.app` |
+| VST3 | Windows, macOS, Linux | `Masterpiece.vst3`, in `masterpiece-<version>-plugins-windows.zip`, `-plugins-macos-arm64.zip`, `-plugins-macos-x86_64.zip` and `-plugins-linux-x86_64.tar.gz` |
+| LV2 | Windows, Linux | `Masterpiece.lv2`, in `masterpiece-<version>-plugins-windows.zip` and `-plugins-linux-x86_64.tar.gz` |
+| AU | macOS | `Masterpiece.component`, in `masterpiece-<version>-plugins-macos-arm64.zip` and `-plugins-macos-x86_64.zip` |
 
-The Windows setup program (`masterpiece-<version>-windows-setup.exe`) installs the standalone program only. To use the VST3 on Windows, take `Masterpiece.vst3` from the portable `.zip` and copy it to a folder that the host scans for VST3 plugins. On macOS, copy the plugins from the `.zip` to the folders the host scans. After a copy, rescan the plugins in the host.
+Each archive unpacks to a folder `Masterpiece-plugins`. Copy the bundles to a folder that the host scans, then rescan the plugins in the host:
+
+| Format | System | Folders hosts scan |
+|---|---|---|
+| VST3 | Windows | `C:\Program Files\Common Files\VST3` |
+| VST3 | macOS | `~/Library/Audio/Plug-Ins/VST3` (one user), `/Library/Audio/Plug-Ins/VST3` (all users) |
+| VST3 | Linux | `~/.vst3` (one user), `/usr/lib/vst3` or `/usr/local/lib/vst3` (all users) |
+| AU | macOS | `~/Library/Audio/Plug-Ins/Components` (one user), `/Library/Audio/Plug-Ins/Components` (all users) |
+| LV2 | Windows | `%APPDATA%\LV2` (one user), `%COMMONPROGRAMFILES%\LV2` (all users) |
+| LV2 | Linux | `~/.lv2` (one user), `/usr/lib/lv2` or `/usr/local/lib/lv2` (all users) |
+
+The program's packages, the Windows setup program among them, hold the standalone program only. Up to 0.8.1 the plugins came inside the program's zips and tarballs, and the amd64 `.deb` installed them to `/usr/lib/vst3` and `/usr/lib/lv2`.
 
 The macOS build is unsigned; see [Installing Masterpiece](installing.md).
 
