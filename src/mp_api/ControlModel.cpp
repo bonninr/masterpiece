@@ -862,6 +862,8 @@ void ControlModel::poll(std::vector<Change>& out, bool readings) {
   }
   for (const auto& t : kTypes) {
     if (!t.hasValue || t.type == Type::Program) continue;
+    // Wind pressure moves with every note: a reading, sent twice a second (#571).
+    if (t.type == Type::Windchest && !readings) continue;
     auto& s = seen_[static_cast<size_t>(t.type)];
     const int n = count(t.type);
     if (static_cast<int>(s.size()) != n) s.assign(static_cast<size_t>(n), INT32_MIN);  // presets added or removed

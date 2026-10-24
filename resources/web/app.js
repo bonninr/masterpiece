@@ -227,14 +227,16 @@ function organPanel() {
     state.el.enclosure[e.index] = { m, out };
     sec.append(el("label", { class: "control" }, el("span", {}, e.name), m, out));
   }
+  // The wind, folded: a large set has dozens of reservoirs and chests.
   if (state.windchests.length) {
-    const box = el("div", { class: "dim" });
+    const box = el("details", { class: "dim wind" },
+      el("summary", {}, `Wind, of nominal pressure (${state.windchests.length})`));
     for (const w of state.windchests) {
       const v = el("span", {}, `${(w.value / 10).toFixed(1)}%`);
       state.el.windchest[w.index] = v;
       box.append(el("div", {}, `${w.name}: `, v));
     }
-    sec.append(el("div", { class: "dim" }, "Wind, of nominal pressure"), box);
+    sec.append(box);
   }
   const room = el("button", { id: "roomOn", title: "The room: the convolution reverb" }, "Room");
   room.addEventListener("click", () => setProgram("roomOn", state.program.roomOn ? 0 : 1));
