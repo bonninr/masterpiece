@@ -7,6 +7,11 @@ juce_add_gui_app(MasterpieceApp
   ICON_SMALL ""
   # Finder's "Open With" for organ definitions and packages (#90).
   DOCUMENT_EXTENSIONS Organ_Hauptwerk_xml CustomOrgan_Hauptwerk_xml organ orgue rar
+  # macOS and iOS end an app that opens the system's Bluetooth MIDI window
+  # (the "Bluetooth MIDI" button in the audio settings) without this
+  # description in its Info.plist (#563).
+  BLUETOOTH_PERMISSION_ENABLED TRUE
+  BLUETOOTH_PERMISSION_TEXT "Masterpiece uses Bluetooth to connect to Bluetooth MIDI keyboards and consoles."
   # iOS only; the other platforms ignore these. A sample set reaches an iPad
   # through the Files app, into the app's own Documents folder, and the organ
   # keeps sounding when the screen locks or another app comes to the front.

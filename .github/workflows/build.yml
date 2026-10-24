@@ -252,6 +252,8 @@ jobs:
           got=$(otool -l "$BIN" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')
           echo "oldest macOS: $got (wanted $want)"
           [ -z "$want" ] || [ "$got" = "$want" ] || { echo "the binary asks for macOS $got"; exit 1; }
+          # The "Bluetooth MIDI" button ends an app without this key (#563).
+          plutil -p "$APP/Contents/Info.plist" | grep NSBluetoothAlwaysUsageDescription || { echo "no Bluetooth usage description"; exit 1; }
           "$BIN" &
           pid=$!
           sleep 15
@@ -561,6 +563,8 @@ jobs:
           echo "$APP"
           lipo -info "$APP/Masterpiece"
           plutil -p "$APP/Info.plist" | grep -E "UIFileSharingEnabled|UIBackgroundModes|LSSupportsOpeningDocumentsInPlace" || true
+          # The Bluetooth MIDI window ends an app without this key (#563).
+          plutil -p "$APP/Info.plist" | grep NSBluetoothAlwaysUsageDescription || { echo "no Bluetooth usage description"; exit 1; }
           echo "APP=$APP" >> "$GITHUB_ENV"
 
       # Run it, since nobody here has a Mac to look with. Organs made from
