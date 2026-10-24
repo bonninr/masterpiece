@@ -41,6 +41,17 @@ public:
     c = mp::coupledDivisions(m, coded);
     MP_CHECK(c.pedal == 21 && c.manual == 22, "the Pedal and the first manual found by their keyboards' codes");
 
+    // An English organ with the Choir as its first manual: the Great is named (#569).
+    std::vector<PlayerCombinations::Division> choirFirst{{20, "Swell"}, {21, "Pedal"}, {22, "Choir"}, {23, "Great"}};
+    c = mp::coupledDivisions(m, choirFirst);
+    MP_CHECK(c.pedal == 21 && c.manual == 23, "the Great, the Choir's keyboard code 2 notwithstanding");
+    std::vector<PlayerCombinations::Division> grandOrgue{{40, "Positif"}, {41, "Grand-Orgue"}, {42, "P\xc3\xa9" "dale"}};
+    c = mp::coupledDivisions(mp::OrganModel{}, grandOrgue);
+    MP_CHECK(c.pedal == 42 && c.manual == 41, "the Grand-Orgue after the Positif");
+    std::vector<PlayerCombinations::Division> greatPedal{{50, "Swell"}, {51, "Great Pedal"}, {52, "Choir"}};
+    c = mp::coupledDivisions(mp::OrganModel{}, greatPedal);
+    MP_CHECK(c.pedal == 51 && c.manual == 50, "a Pedal with Great in its name stays the Pedal");
+
     std::vector<PlayerCombinations::Division> manualsOnly{{30, "Great"}, {31, "Swell"}};
     MP_CHECK(!mp::coupledDivisions(mp::OrganModel{}, manualsOnly).valid(), "no pedal: nothing to couple");
   }
