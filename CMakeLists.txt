@@ -21,7 +21,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MP_FETCH_JUCE "Fetch JUCE via FetchContent (CLI-only, no Projucer)" ON)
 option(MP_BUILD_STANDALONE "Build Masterpiece standalone app" ON)
-option(MP_BUILD_PLUGIN "Build Masterpiece plugin (VST3/AU/LV2/Standalone wrapper)" ON)
+option(MP_BUILD_PLUGIN "Build Masterpiece plugin (VST3 and AU on macOS, VST3 and LV2 elsewhere)" ON)
 option(MP_BUILD_VALIDATOR "Build mp-validate-odf CLI" ON)
 option(MP_BUILD_TESTS "Build + register CTest unit tests" ON)
 option(MP_ENABLE_DSP "Compile full DSP (wind/trem/enclosure/voicing/IR). Runtime-togglable." ON)

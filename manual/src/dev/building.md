@@ -93,7 +93,7 @@ A file named `CMakeUserPresets.json` is ignored by Git and holds personal preset
 | Option | Default | Effect |
 |---|---|---|
 | `MP_BUILD_STANDALONE` | `ON` | Builds the standalone app, target `MasterpieceApp`. |
-| `MP_BUILD_PLUGIN` | `ON` | Builds the plugins, target `MasterpiecePlugin`: VST3, AU, LV2 and a standalone wrapper. |
+| `MP_BUILD_PLUGIN` | `ON` | Builds the plugins, target `MasterpiecePlugin`: VST3 and AU on macOS, VST3 and LV2 on Windows and Linux. |
 | `MP_BUILD_TESTS` | `ON` | Builds `mp_tests` and registers the CTest tests when `tests/` exists. |
 | `MP_ENABLE_DSP` | `ON` | Compiles `mp_dsp`: wind, tremulant, enclosure and voicing processing. It can still be switched off per organ at run time. Requires JUCE (`juce_dsp`). |
 | `MP_ENABLE_STREAMING` | `ON` | Adds `src/mp_sampler` to the build. `mp_audio` includes headers from `mp_sampler`, so leave it `ON` for every build of the app or the plugins. |
@@ -135,7 +135,7 @@ cmake --build --preset dev-fast
 
 ## Building the plugins
 
-`MasterpiecePlugin` is built when `MP_BUILD_PLUGIN` is `ON`. The presets `dev`, `dev-debug`, `ci-linux`, `ci-macos` and `ci-windows` build it; `dev-fast`, `core-only`, `ci-functional`, `ci-perf` and the ARM presets switch it off. The target declares the formats `VST3 AU LV2 Standalone`; JUCE builds the ones the platform supports. Plugin identity:
+`MasterpiecePlugin` is built when `MP_BUILD_PLUGIN` is `ON`. The presets `dev`, `dev-debug`, `ci-linux`, `ci-macos` and `ci-windows` build it; `dev-fast`, `core-only`, `ci-functional`, `ci-perf` and the ARM presets switch it off. The target declares the formats `VST3 AU` on macOS and `VST3 LV2` elsewhere. CI builds the program with `-DMP_BUILD_PLUGIN=OFF` and the plugins in a job of their own with `-DMP_BUILD_STANDALONE=OFF`, so the two sets of link-time optimised links run on separate runners. Plugin identity:
 
 | Property | Value |
 |---|---|
@@ -263,11 +263,10 @@ The Linux package installs:
 | `share/applications/masterpiece.desktop` | The launcher |
 | `share/icons/hicolor/256x256/apps/masterpiece.png` | The icon |
 | `share/mime/packages/masterpiece.xml` | The organ file types |
-| `lib/vst3/Masterpiece.vst3`, `lib/lv2/Masterpiece.lv2` | The plugins, where the build made them |
 
 Its section is `sound`. For native builds `dpkg-shlibdeps` works out the dependencies; cross-built packages use the list `libasound2 | libasound2t64, libfreetype6, libfontconfig1, libx11-6, libxext6, libxrandr2, libxinerama1, libxcursor1, libgl1`. CI installs each package in `debian:12` and `ubuntu:24.04` containers (emulated for ARM), checks that every library resolves, and removes it again.
 
-macOS has no CPack package. CI copies `Masterpiece.app` and, where built, `AU/Masterpiece.component` and `VST3/Masterpiece.vst3` into one folder and zips it with `ditto`, which keeps the bundle's executable bit. The macOS build is unsigned.
+macOS has no CPack package. CI copies `Masterpiece.app` into one folder and zips it with `ditto`, which keeps the bundle's executable bit. The plugins job packs `Masterpiece-plugins` folders: `Masterpiece.component` and `Masterpiece.vst3` on macOS (zipped with `ditto`), `VST3` and `LV2` folders on Windows and Linux. The release publishes them as `masterpiece-<version>-plugins-<platform>`. The macOS build is unsigned.
 
 ## Versioning
 
