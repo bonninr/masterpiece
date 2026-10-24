@@ -114,7 +114,13 @@ jobs:
         with:
           # The architecture too, now that both Macs build on one runner.
           key: ${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}
-          max-size: 500M
+          # Room for one whole build. At 500M the Windows build (about 600M)
+          # pushed its own objects out as it went: 361 cleanups and 47% hits
+          # on a main run restored from the run before it.
+          max-size: ${{ runner.os == 'Windows' && '1500M' || '1000M' }}
+          # What the build did not touch is dropped before the save, so the
+          # cache holds this build and nothing older, and stays its size.
+          evict-old-files: job
           # Saved from main only; pull requests restore main's. Every run
           # saving its own filled the 10 GB cache allowance in a day.
           save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
