@@ -7032,9 +7032,14 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Reverse the linkages once. Walking the whole list per switch is O(n*m),
   // and a large organ has thousands of each.
   std::unordered_map<Id, std::vector<Id>> feeders;
-  for (const auto& l : model_.switchLinkages)
+  // The switches a linkage waits on, for the second look below.
+  std::unordered_map<Id, std::vector<Id>> conditions;
+  for (const auto& l : model_.switchLinkages) {
     if (l.sourceSwitchId != l.destSwitchId && l.sourceWhenEngaged)
       feeders[l.destSwitchId].push_back(l.sourceSwitchId);
+    if (l.conditionSwitchId != 0 && l.conditionSwitchId != l.destSwitchId && l.conditionWhenEngaged)
+      conditions[l.destSwitchId].push_back(l.conditionSwitchId);
+  }
 
   // A switch wired straight into the nodes of several stops is a registration
   // aid -- a Tutti, a reversible, a general -- and the knob of none of them.
@@ -7075,30 +7080,42 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // Conditional edges are followed too. A conditional linkage is how a
   // console wires a knob that acts only when something else is set, and the
   // knob at the far end of one is still the thing a player pulls.
+  //
+  // The switches a linkage waits on come in only when the sources lead to no
+  // knob. A GrandOrgue "And" of an undrawn switch (a blower, a ventil) and a
+  // drawstop becomes a linkage from the first named into the stop's switch,
+  // waiting on the second; named in that order, the walk ended on the undrawn
+  // one and the stop had no knob, so the console listed the gate itself and a
+  // piston drew the stop without its drawstop (#570). Last, so that a stop
+  // whose own knob is upstream never takes a condition's knob for it.
   playerSwitch_.clear();
   std::vector<Id> queue;
   std::unordered_set<Id> seen;
-  for (const auto& [id, sw] : model_.switches) {
-    (void)sw;
-    if (isKnob(id)) { playerSwitch_[id] = id; continue; }
-
+  auto walk = [&](Id id, bool withConditions) {
     queue.clear();
     seen.clear();
     queue.push_back(id);
     seen.insert(id);
-    Id found = id;
     for (size_t head = 0; head < queue.size() && head < 512; ++head) {
-      const auto fit = feeders.find(queue[head]);
-      if (fit == feeders.end()) continue;
-      bool done = false;
-      for (Id up : fit->second) {
-        if (!seen.insert(up).second) continue;
-        if (isAid(up)) continue;
-        if (isKnob(up)) { found = up; done = true; break; }
-        queue.push_back(up);
+      for (const auto* edges : {&feeders, withConditions ? &conditions : nullptr}) {
+        if (edges == nullptr) continue;
+        const auto fit = edges->find(queue[head]);
+        if (fit == edges->end()) continue;
+        for (Id up : fit->second) {
+          if (!seen.insert(up).second) continue;
+          if (isAid(up)) continue;
+          if (isKnob(up)) return up;
+          queue.push_back(up);
+        }
       }
-      if (done) break;
     }
+    return id;
+  };
+  for (const auto& [id, sw] : model_.switches) {
+    (void)sw;
+    if (isKnob(id)) { playerSwitch_[id] = id; continue; }
+    Id found = walk(id, false);
+    if (found == id && !conditions.empty()) found = walk(id, true);
     playerSwitch_[id] = found;
   }
 

@@ -330,5 +330,65 @@ public:
 };
 static ApiLateAnswerTest g_apiLateAnswer;
 
+// The console's switches on a GrandOrgue set: a stop drawn on two panels is
+// listed once, and a stop worked through an "And" lists its drawstop, with
+// the undrawn switch named first (#570).
+class ApiHelperSwitchesTest final : public mp::test::Test {
+public:
+  ApiHelperSwitchesTest() : Test("functional.api.helper-switches", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\r\nChurchName=Helpers\r\nHasPedals=N\r\nNumberOfManuals=1\r\nNumberOfRanks=1\r\n"
+        "NumberOfSwitches=2\r\nNumberOfWindchestGroups=1\r\nNumberOfPanels=1\r\n"
+        "[WindchestGroup001]\r\nName=W\r\n"
+        "[Switch001]\r\nName=Blower\r\nDefaultToEngaged=Y\r\nDisplayed=N\r\n"
+        "[Switch002]\r\nName=Principal\r\nDisplayed=Y\r\n"
+        "[Rank001]\r\nName=P\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=1\r\nPipe001=p.wav\r\n"
+        "[Manual001]\r\nName=Great\r\nNumberOfLogicalKeys=1\r\nNumberOfAccessibleKeys=1\r\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "[Stop001]\r\nName=Principal\r\nNumberOfRanks=1\r\nRank001=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "Function=And\r\nSwitchCount=2\r\nSwitch001=001\r\nSwitch002=002\r\n"
+        "[Panel001]\r\nName=Jamb\r\nHasPedals=N\r\nNumberOfManuals=0\r\n"
+        "NumberOfSwitches=1\r\nSwitch001=002\r\n";
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-api-helper-switches");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("helpers.organ");
+    file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      ControlModel m(proc);
+      Error e;
+      const juce::var list = m.list(Type::Switch, e);
+      int principals = 0;
+      juce::String names, principalRole;
+      for (const auto& item : *list["items"].getArray()) {
+        const juce::String name = item["name"].toString();
+        names << " [" << name << "]";
+        if (name == "Principal") {
+          ++principals;
+          principalRole = item["role"].toString();
+        }
+      }
+      MP_CHECK(principals == 1, "the drawstop is listed once:" + names.toStdString());
+      MP_CHECK(principalRole == "stop", "as the stop it draws: " + principalRole.toStdString());
+      MP_CHECK(!names.contains("mirror") && !names.contains("logic"),
+               "no copy and no gate is listed:" + names.toStdString());
+      const auto& model = proc.organModel();
+      const auto stop = model.stops.find(2001);
+      MP_CHECK(stop != model.stops.end(), "the stop is there");
+      if (stop != model.stops.end())
+        MP_CHECK(proc.playerSwitchFor(stop->second.controllingSwitchId) == 8002,
+                 "the stop's knob is its drawstop, the blower named first notwithstanding");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ApiHelperSwitchesTest g_apiHelperSwitches;
+
 }  // namespace
 #endif  // MP_TEST_HAS_API
