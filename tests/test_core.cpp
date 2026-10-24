@@ -12687,10 +12687,63 @@ public:
     trem.rankId = id;
     trem.name = "Tremulant noise";
     m.ranks[id++] = trem;
+    // Every stop plays one rank of each position, as a set recorded this way
+    // is wired; the cornet is a stop of its own.
+    for (int i = 0; i < 10; ++i) {
+      mp::Stop s;
+      s.stopId = 100 + i;
+      for (int p = 0; p < 3; ++p) {
+        mp::StopRankEntry e;
+        e.rankId = 1 + i + p * 10;
+        s.ranks.push_back(e);
+      }
+      m.stops[s.stopId] = s;
+    }
+    {
+      mp::Stop s;
+      s.stopId = 120;
+      mp::StopRankEntry e;
+      e.rankId = cornet.rankId;
+      s.ranks.push_back(e);
+      m.stops[s.stopId] = s;
+    }
+    // The drawstops' action noises, recorded as each is drawn and put in, and
+    // sounded by the drawstops themselves: no stop plays them (Lemmer, as
+    // imported from GrandOrgue).
+    for (const char* how : {"on", "off"})
+      for (int i = 0; i < 10; ++i) {
+        mp::Rank r;
+        r.rankId = id;
+        r.name = "Stop " + std::to_string(i) + " (" + how + ")";
+        m.ranks[id++] = r;
+      }
     const auto groups = mp::perspectivesOf(m);
     MP_CHECK(groups.size() == 3 && groups.count("close") && groups.count("front") && groups.count("rear"),
-             "...but only the positions that carry a share of the organ are perspectives");
+             "...but only the positions that carry a share of the organ are perspectives, got " +
+                 std::to_string(groups.size()));
     MP_CHECK(groups.at("rear").size() == 10, "each with its ranks");
+
+    // The noises alone, beside stops of their own: no perspectives.
+    mp::OrganModel noises;
+    for (int i = 0; i < 10; ++i) {
+      mp::Rank r;
+      r.rankId = 1 + i;
+      r.name = "Principal " + std::to_string(i);
+      noises.ranks[r.rankId] = r;
+      mp::Stop s;
+      s.stopId = 100 + i;
+      mp::StopRankEntry e;
+      e.rankId = r.rankId;
+      s.ranks.push_back(e);
+      noises.stops[s.stopId] = s;
+      for (const char* how : {"on", "off"}) {
+        mp::Rank n;
+        n.rankId = (how[1] == 'n' ? 200 : 300) + i;
+        n.name = "Stop Principal " + std::to_string(i) + " (" + how + ")";
+        noises.ranks[n.rankId] = n;
+      }
+    }
+    MP_CHECK(mp::perspectivesOf(noises).empty(), "a drawstop's noise drawn and put in is no perspective");
 
     mp::OrganModel one;
     for (int i = 0; i < 10; ++i) {
