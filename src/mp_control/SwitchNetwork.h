@@ -26,7 +26,9 @@
 // there is one) is in the state that fires it: do `engageAction`; when it stops
 // firing, do `disengageAction`. Codes 1 and 4 engage, 2 and 7 disengage, and
 // an engage action of 3 toggles the destination on each firing (a reversible
-// piston) and does nothing when the wire stops firing. Together these cover
+// piston) and does nothing when the wire stops firing. A wire that disengages
+// when it fires (2) has nothing to take back when it stops, whatever its
+// disengage code says. Together these cover
 // every wiring real organs use — a plain follow (1/2 or 4/7), a reversible
 // (3/7) and an
 // inverting one (7/4, or 1/2 driven from the source's OFF state).
@@ -146,6 +148,8 @@ private:
   std::unordered_set<Id> heldOff_;
   std::vector<std::pair<Id, bool>> changes_;
   std::deque<std::pair<Id, bool>> work_;
+  // Wires whose CONDITION just moved, re-evaluated once work_ has settled.
+  std::deque<const SwitchLinkage*> conditionWork_;
   bool ranAway_ = false;
 };
 

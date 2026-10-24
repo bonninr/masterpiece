@@ -736,16 +736,15 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 // linkages undo, (value - 63.5) * 8 across a needle whose 81 frames run 0 to
 // 20 inches. The next block's propagate carries it to the needle.
 //
-// A half rounds down: no pressure is 63, below the 63.5 the sets' linkages
-// subtract. Rounded up it read 64, and a delay ramp built on
-// (value - 63.5) * 63.5 -- Azzio's Sesquialtera and tremulant -- sat a quarter
-// open at rest (#285).
+// The control reports the nearest step with a half rounding down: no pressure
+// is 63, below the 63.5 the sets' linkages subtract. Rounded up it read 64,
+// and a delay ramp built on (value - 63.5) * 63.5 -- Azzio's Sesquialtera and
+// tremulant -- sat a quarter open at rest (#285). The linkages read the
+// pressure itself: the same ramp at its 4 inch working pressure is 65.5, which
+// as the step 65 stopped it at 95 of 127 (#546).
 void MasterpieceProcessor::publishWindPressures() {
-  for (const auto& [compartment, control] : windGauges_) {
-    const double v = 63.5 + wind_.pressureFor(compartment) * 0.5;
-    const int next = static_cast<int>(std::ceil(std::clamp(v, 0.0, 127.0) - 0.5));
-    if (controls_.value(control) != next) controls_.setValue(control, next);
-  }
+  for (const auto& [compartment, control] : windGauges_)
+    controls_.setExact(control, 63.5 + wind_.pressureFor(compartment) * 0.5);
 }
 
 // The ranks and divisions in id order, as the control API lists them, each
