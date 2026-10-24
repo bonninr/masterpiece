@@ -143,13 +143,28 @@ std::map<std::string, std::vector<Id>> perspectivesOf(const OrganModel& model) {
   const size_t floor = std::max<size_t>(3, model.ranks.size() / 10);
   if (auto byLevel = byLevelControl(model, floor); !byLevel.empty()) return byLevel;
 
+  // Names alone can mislead: a drawstop's action noise recorded as it is
+  // drawn and put in, "Stop Fluit 4 (on)" and "(off)", names no microphone
+  // position, and no stop plays it. A position's group holds stops' ranks;
+  // its noises recorded from there go with it.
+  std::set<Id> played;
+  for (const auto& [stopId, stop] : model.stops) {
+    (void)stopId;
+    for (const auto& e : stop.ranks) {
+      played.insert(e.rankId);
+      if (e.alternateRankId != 0) played.insert(e.alternateRankId);
+    }
+  }
   std::map<std::string, std::vector<Id>> groups;
   for (const auto& [rankId, rank] : model.ranks) {
     const std::string p = perspectiveOf(rank.name);
     if (!p.empty()) groups[p].push_back(rankId);
   }
+  const auto unplayed = [&](const std::vector<Id>& ranks) {
+    return std::none_of(ranks.begin(), ranks.end(), [&](Id r) { return played.count(r) != 0; });
+  };
   for (auto it = groups.begin(); it != groups.end();)
-    it = it->second.size() < floor ? groups.erase(it) : std::next(it);
+    it = it->second.size() < floor || unplayed(it->second) ? groups.erase(it) : std::next(it);
   if (groups.size() < 2) groups.clear();
   for (auto& [name, ids] : groups) std::sort(ids.begin(), ids.end());
   if (!groups.empty()) return groups;
