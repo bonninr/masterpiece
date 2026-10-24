@@ -243,9 +243,15 @@ struct MidiAction {
   bool toggled = false;
   int value = 0;        // for ContinuousControl, 0..127
   // Further continuous controls the same controller drives -- one pedal for
-  // two swell boxes -- each with its own window; or further manuals one
-  // control steps a keyboard through. Null when there are none.
+  // two swell boxes -- each with its own window; further manuals one control
+  // steps a keyboard through; or further switches one button works (#551),
+  // each with its own trigger: ask switchAction() what each one does.
+  // Null when there are none.
   const std::vector<MidiBinding>* alsoDrives = nullptr;
+  // A switch whose own binding has nothing to do with this message -- a
+  // toggle's release -- while the other switches on the same message may:
+  // the action carries them, and its own target is left alone.
+  bool idle = false;
   bool valid() const { return kind != MidiTargetKind::None; }
 };
 
@@ -333,11 +339,18 @@ public:
   // the other map's number names whichever device this map gave it (#217).
   void bindFrom(const MidiMap& other, MidiBinding binding);
   void unbind(const MidiSource& source);
+  // Only this target's binding on this source: another switch the same
+  // message works keeps it.
+  void unbindOne(const MidiSource& source, MidiTargetKind kind, Id targetId);
   void unbindTarget(MidiTargetKind kind, Id targetId);
 
   // Look up what a message should do. `value` is velocity for a note, the
   // controller value for a CC. A note-off arrives as value 0.
   MidiAction actionFor(const MidiSource& source, int value) const;
+  // What one switch binding does with a message: engage, disengage, toggle,
+  // or nothing (an invalid action). actionFor() uses it for the binding it
+  // finds; the engine uses it for each further switch the message works.
+  MidiAction switchAction(const MidiBinding& b, int value) const;
 
   const std::vector<MidiBinding>& bindings() const { return ordered_; }
   size_t size() const { return ordered_.size(); }

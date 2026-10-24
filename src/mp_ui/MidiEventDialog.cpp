@@ -356,7 +356,13 @@ public:
                             "drawstop or move the pedal on your console."));
     addAndMakeVisible(note_);
     styleNote(note_,
-              pressable(kind)
+              kind == MidiTargetKind::Switch
+                  ? TRANS("Add a row for every message that works this. A rocker tab or a console "
+                          "with separate draw and cancel buttons is two rows: one that draws it and "
+                          "one that cancels it. Listen fills a row from the next message your "
+                          "console sends. One message can work several stops and couplers; a "
+                          "message used by anything else moves here. Saved with this organ.")
+              : pressable(kind)
                   ? TRANS("Add a row for every message that works this. A rocker tab or a console "
                           "with separate draw and cancel buttons is two rows: one that draws it and "
                           "one that cancels it. Listen fills a row from the next message your "

@@ -214,9 +214,21 @@ void MidiMap::bind(const MidiBinding& binding) {
   // And a control learned for a second manual on a keyboard: one spare stop
   // that steps the keyboard through several manuals (#90, a Johannus whose
   // spare tab moves the lower keyboard between Great and Choir).
+  //
+  // And a button learned for a second stop or coupler: one tab that draws
+  // two stops together (#551).
   const auto existing = bySource_.find(binding.source);
   const bool shares = isContinuousTarget(binding.targetKind) ||
-                      binding.targetKind == MidiTargetKind::RouteKeyboard;
+                      binding.targetKind == MidiTargetKind::RouteKeyboard ||
+                      binding.targetKind == MidiTargetKind::Switch;
+  // The same target learned again: its binding changes, and whatever else
+  // the message works keeps working.
+  if (existing != bySource_.end() && existing->second.targetKind == binding.targetKind &&
+      existing->second.targetId == binding.targetId) {
+    existing->second = binding;
+    rebuildOrdered();
+    return;
+  }
   if (shares && existing != bySource_.end() &&
       existing->second.targetKind == binding.targetKind &&
       existing->second.targetId != binding.targetId) {
@@ -266,6 +278,33 @@ bool MidiMap::replace(const MidiBinding& binding) {
 void MidiMap::unbind(const MidiSource& source) {
   const bool any = bySource_.erase(source) > 0;
   if (alsoDrives_.erase(source) > 0 || any) rebuildOrdered();
+}
+
+void MidiMap::unbindOne(const MidiSource& source, MidiTargetKind kind, Id targetId) {
+  const auto it = bySource_.find(source);
+  if (it == bySource_.end()) return;
+  auto more = alsoDrives_.find(source);
+  if (it->second.targetKind == kind && it->second.targetId == targetId) {
+    // The next one on the same message takes its place.
+    if (more != alsoDrives_.end() && !more->second.empty()) {
+      it->second = more->second.front();
+      more->second.erase(more->second.begin());
+      if (more->second.empty()) alsoDrives_.erase(more);
+    } else {
+      bySource_.erase(it);
+    }
+    rebuildOrdered();
+    return;
+  }
+  if (more == alsoDrives_.end()) return;
+  auto& list = more->second;
+  const auto before = list.size();
+  list.erase(std::remove_if(list.begin(), list.end(),
+                            [&](const MidiBinding& b) { return b.targetKind == kind && b.targetId == targetId; }),
+             list.end());
+  const bool changed = list.size() != before;
+  if (list.empty()) alsoDrives_.erase(more);
+  if (changed) rebuildOrdered();
 }
 
 void MidiMap::unbindTarget(MidiTargetKind kind, Id targetId) {
@@ -340,40 +379,20 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     // kept under an id no switch can have.
     case MidiTargetKind::Setter:
     case MidiTargetKind::PedalCombinationsCoupled:
+      return switchAction(b, value);
     case MidiTargetKind::Switch: {
-      // A console that sends 64 for a press, or whose button only travels part
-      // of the range, still has to register.
-      const bool pressed = b.isOn(value);
-      // A message that only ever engages, or only ever disengages. This is how
-      // a console with separate "draw" and "cancel" messages per stop is
-      // mapped, and it cannot be expressed by toggling.
-      if (b.trigger == MidiTrigger::EngageOnly ||
-          b.trigger == MidiTrigger::DisengageOnly) {
-        if (!pressed) {
-          action.kind = MidiTargetKind::None; // nothing to do on release
-          return action;
-        }
-        action.engage = b.trigger == MidiTrigger::EngageOnly;
-        latchState_[b.targetId] = action.engage;
-        break;
+      // Each further switch on this message has its own trigger, so a
+      // release this one ignores may still be one another acts on.
+      MidiAction own = switchAction(b, value);
+      const auto more = alsoDrives_.find(it->first);
+      if (more == alsoDrives_.end()) return own;
+      own.alsoDrives = &more->second;
+      if (!own.valid()) {
+        own.kind = b.targetKind;
+        own.targetId = b.targetId;
+        own.idle = true;
       }
-      if (b.trigger == MidiTrigger::Toggle) {
-        // A latching control toggles on the press and ignores the release,
-        // which is what a drawstop button on a console does.
-        if (!pressed) {
-          action.kind = MidiTargetKind::None; // nothing to do on release
-          return action;
-        }
-        bool& state = latchState_[b.targetId];
-        state = !state;
-        action.engage = state;
-        action.toggled = true;
-      } else {
-        // Momentary: held is on, released is off. This is a piston.
-        action.engage = pressed;
-        latchState_[b.targetId] = action.engage;
-      }
-      break;
+      return own;
     }
     case MidiTargetKind::RankLevel:
     case MidiTargetKind::DivisionLevel:
@@ -449,6 +468,38 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
   return action;
 }
 
+MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
+  MidiAction action;
+  action.kind = b.targetKind;
+  action.targetId = b.targetId;
+  // A console that sends 64 for a press, or whose button only travels part
+  // of the range, still has to register.
+  const bool pressed = b.isOn(value);
+  // A message that only ever engages, or only ever disengages. This is how
+  // a console with separate "draw" and "cancel" messages per stop is
+  // mapped, and it cannot be expressed by toggling.
+  if (b.trigger == MidiTrigger::EngageOnly || b.trigger == MidiTrigger::DisengageOnly) {
+    if (!pressed) return {};  // nothing to do on release
+    action.engage = b.trigger == MidiTrigger::EngageOnly;
+    latchState_[b.targetId] = action.engage;
+    return action;
+  }
+  if (b.trigger == MidiTrigger::Toggle) {
+    // A latching control toggles on the press and ignores the release,
+    // which is what a drawstop button on a console does.
+    if (!pressed) return {};  // nothing to do on release
+    bool& state = latchState_[b.targetId];
+    state = !state;
+    action.engage = state;
+    action.toggled = true;
+    return action;
+  }
+  // Momentary: held is on, released is off. This is a piston.
+  action.engage = pressed;
+  latchState_[b.targetId] = action.engage;
+  return action;
+}
+
 // ------------------------------------------------------------------ learn
 
 void MidiMap::beginLearnAs(MidiTargetKind kind, Id targetId,
@@ -507,7 +558,8 @@ bool MidiMap::learnFrom(const MidiSource& source) {
       if (existing->trigger == learnTrigger_ ||
           (existing->trigger != MidiTrigger::EngageOnly &&
            existing->trigger != MidiTrigger::DisengageOnly)) {
-        unbind(existing->source);
+        const MidiSource was = existing->source;
+        unbindOne(was, learnKind_, learnTarget_);
         break;
       }
   }
