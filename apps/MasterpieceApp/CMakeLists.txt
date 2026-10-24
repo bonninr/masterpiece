@@ -1,3 +1,14 @@
+# macOS 15 and later ask the player before an app sends to a device on the
+# local network, as the control API does when it answers a tablet or phone over
+# OSC. This description is the explanation in that question. Phones and tablets
+# leave the API out of the build, and the key with it.
+set(_mp_local_network)
+if(MP_ENABLE_API)
+  set(_mp_local_network
+    LOCAL_NETWORK_PERMISSION_ENABLED TRUE
+    LOCAL_NETWORK_PERMISSION_TEXT "Masterpiece uses the local network to answer the tablets and phones that control it, when the control API is on.")
+endif()
+
 juce_add_gui_app(MasterpieceApp
   VERSION "${PROJECT_VERSION}"
   PRODUCT_NAME "Masterpiece"
@@ -24,6 +35,7 @@ juce_add_gui_app(MasterpieceApp
   # A console is wider than it is tall.
   IPHONE_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
   IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+  ${_mp_local_network}
 )
 
 target_sources(MasterpieceApp PRIVATE Main.cpp JackMidi.cpp)

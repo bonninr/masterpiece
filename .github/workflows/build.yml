@@ -256,6 +256,9 @@ jobs:
           test -x "$BIN" || { echo "no binary was produced"; exit 1; }
           file "$BIN"
           file "$BIN" | grep -q "${{ matrix.macarch }}"
+          # The explanation macOS shows when the control API answers a device
+          # on the local network.
+          plutil -p "$APP/Contents/Info.plist" | grep NSLocalNetworkUsageDescription || { echo "no local network usage description"; exit 1; }
           # The oldest macOS the app opens on, as the binary says it: it must
           # be the one the job names, never the build machine's own.
           want=$(echo "${{ matrix.cmake_extra }}" | sed -n 's/.*DEPLOYMENT_TARGET=\([0-9.]*\).*/\1/p')
