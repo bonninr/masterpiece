@@ -1,8 +1,11 @@
 #include "OrganSettings.h"
 #include "MidiEventDialog.h"
+#include "../mp_core/LoadPlan.h"
 
 #include <algorithm>
 #include <cmath>
+#include <set>
+#include <vector>
 #include <unordered_set>
 
 namespace mp::ui {
@@ -480,39 +483,50 @@ void StopsLoadPanel::refreshFigures() {
     (void)shape;
     all += bytesOf(id);
   }
-  // Everything, less the perspectives left out, less what only left-out stops
-  // use: a sample shared with a stop that stays is loaded anyway, and so is
-  // anything no stop owns.
-  std::unordered_set<Id> dropped;
   for (const auto& p : perspectives_) {
     int64_t mine = 0;
     for (Id id : p.samples) mine += bytesOf(id);
     p.size->setText(megabytes(mine), juce::dontSendNotification);
-    if (!p.toggle->getToggleState()) dropped.insert(p.samples.begin(), p.samples.end());
   }
-  std::unordered_set<Id> kept;
-  for (const auto& r : rows_)
-    if (r.toggle->getToggleState()) kept.insert(r.samples.begin(), r.samples.end());
   for (const auto& r : rows_) {
     int64_t mine = 0;
     for (Id id : r.samples) mine += bytesOf(id);
     r.size->setText(megabytes(mine), juce::dontSendNotification);
-    if (!r.toggle->getToggleState())
-      for (Id id : r.samples)
-        if (kept.count(id) == 0) dropped.insert(id);
   }
   for (const auto& r : ranks_) {
     int64_t mine = 0;
     for (Id id : r.samples) mine += bytesOf(id);
     r.size->setText(megabytes(mine), juce::dontSendNotification);
-    if (!r.toggle->getToggleState()) dropped.insert(r.samples.begin(), r.samples.end());
   }
+  // The ranks the load reads, worked out as the load works it out
+  // (LoadPlan.h), so the figure is what it takes (#574). Everything, less the
+  // samples of the ranks it leaves out: a sample a rank it reads shares is
+  // read anyway, and so is anything no rank owns.
+  std::set<Id> stopsOut;
+  for (const auto& r : rows_)
+    if (!r.toggle->getToggleState()) stopsOut.insert(r.stopId);
+  const std::set<Id> singleRanksOut = ranksOut();
+  const LoadPlan plan = planLoad(proc_.organModel(), perspectivesOut(), stopsOut, singleRanksOut);
   int64_t total = all;
-  for (Id id : dropped) total -= bytesOf(id);
+  if (!plan.onlyRanks.empty() || plan.readsNothing) {
+    std::vector<Id> read, skipped;
+    for (const auto& [rankId, rank] : proc_.organModel().ranks) {
+      (void)rank;
+      (plan.onlyRanks.count(rankId) != 0 ? read : skipped).push_back(rankId);
+    }
+    const std::vector<Id> readSamples = proc_.samplesOfRanks(read);  // sorted
+    for (Id id : proc_.samplesOfRanks(skipped))
+      if (!std::binary_search(readSamples.begin(), readSamples.end(), id)) total -= bytesOf(id);
+  }
 
   const int64_t limit = proc_.memoryLimitBytes();
   juce::String text = TRANS("About %1 for this choice").replace("%1", megabytes(total));
   if (limit > 0) text << " " << TRANS("(the limit is %1)").replace("%1", megabytes(limit));
+  // Every rank left out would leave out the organ: the single ranks load.
+  bool ranksNamed = false;
+  for (Id rankId : singleRanksOut) ranksNamed = ranksNamed || proc_.organModel().ranks.count(rankId) != 0;
+  if (ranksNamed && plan.ranksLeftOut.empty())
+    text << ". " << TRANS("The ranks left out would leave nothing to play, so they load");
   total_.setText(text, juce::dontSendNotification);
   total_.setColour(juce::Label::textColourId,
                    limit > 0 && total > limit ? juce::Colour(0xffe06c5c) : kText);

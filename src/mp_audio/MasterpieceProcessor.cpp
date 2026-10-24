@@ -3,6 +3,7 @@
 #include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/GrandOrgueImport.h"
+#include "../mp_core/LoadPlan.h"
 #include "../mp_core/SparseLoading.h"
 #include "../mp_core/Temperament.h"
 #include "RealtimeThread.h"
@@ -7233,78 +7234,28 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
       }
     if (!preloadRanks_.empty())
       onlyRanks = std::unordered_set<Id>(preloadRanks_.begin(), preloadRanks_.end());
-    // The player's own choice, when no test flag has made one: every rank
-    // except those that only left-out stops use.
-    // Perspectives left out: their ranks, whatever stop plays them. Only
-    // names this organ has count, so a choice saved for a set that has since
-    // been renamed does not silence it.
-    std::unordered_set<Id> perspectiveOut;
+    // The player's own choice, when no test flag has made one: the
+    // perspectives, stops and single ranks left out (LoadPlan.h), worked out
+    // as the memory figure in Organ settings works it out.
     perspectivesLeftOut_.clear();
-    if (onlyRanks.empty() && !excludedPerspectives_.empty()) {
-      for (const auto& [name, ranks] : perspectivesOf(model_))
-        if (excludedPerspectives_.count(name) != 0) {
-          perspectivesLeftOut_.insert(name);
-          perspectiveOut.insert(ranks.begin(), ranks.end());
-        }
-      // Leaving out every perspective would leave out the organ.
-      if (perspectivesLeftOut_.size() == perspectivesOf(model_).size()) {
-        perspectivesLeftOut_.clear();
-        perspectiveOut.clear();
-      }
-    }
-    // Single ranks left out go the same way as a perspective's: out, whatever
-    // stop plays them. Only ranks this organ has count, and never all of them.
     ranksLeftOut_.clear();
-    if (onlyRanks.empty())
-      for (Id rankId : excludedRanks_)
-        if (model_.ranks.count(rankId) != 0) ranksLeftOut_.insert(rankId);
-    if (ranksLeftOut_.size() >= model_.ranks.size()) ranksLeftOut_.clear();
-    perspectiveOut.insert(ranksLeftOut_.begin(), ranksLeftOut_.end());
-    if (onlyRanks.empty() && !perspectiveOut.empty() && excludedStops_.empty()) {
-      for (const auto& [rankId, rank] : model_.ranks) {
-        (void)rank;
-        if (perspectiveOut.count(rankId) == 0) onlyRanks.insert(rankId);
-      }
+    bool readsNothing = false;
+    if (onlyRanks.empty()) {
+      LoadPlan plan = planLoad(model_, excludedPerspectives_, excludedStops_, excludedRanks_);
+      readsNothing = plan.readsNothing;
+      onlyRanks = std::move(plan.onlyRanks);
+      perspectivesLeftOut_ = std::move(plan.perspectivesLeftOut);
+      ranksLeftOut_ = std::move(plan.ranksLeftOut);
+      unloadedStops_ = std::move(plan.unloadedStops);
+      if (ranksLeftOut_.empty() && std::any_of(excludedRanks_.begin(), excludedRanks_.end(),
+                                               [this](Id r) { return model_.ranks.count(r) != 0; }))
+        juce::Logger::writeToLog("load: the single ranks left out would leave out every rank; they load");
+      if (readsNothing) juce::Logger::writeToLog("load: the stops left out take every rank; no rank is read");
     }
-    if (onlyRanks.empty() && !excludedStops_.empty()) {
-      // A stop's rank and the alternate its tremulant swaps in go together:
-      // the tremulant's recordings are as much that stop's as the rank
-      // itself, and a stop left out kept loading them (#165).
-      std::unordered_set<Id> wanted;
-      for (const auto& [stopId, stop] : model_.stops)
-        if (excludedStops_.count(stopId) == 0)
-          for (const auto& e : stop.ranks) {
-            wanted.insert(e.rankId);
-            if (e.alternateRankId != 0) wanted.insert(e.alternateRankId);
-          }
-      std::unordered_set<Id> leftOut;
-      for (Id stopId : excludedStops_) {
-        const auto it = model_.stops.find(stopId);
-        if (it == model_.stops.end()) continue;
-        unloadedStops_.insert(stopId);
-        for (const auto& e : it->second.ranks)
-          for (const Id rankId : {e.rankId, e.alternateRankId})
-            if (rankId != 0 && wanted.count(rankId) == 0) leftOut.insert(rankId);
-      }
-      for (const auto& [rankId, rank] : model_.ranks) {
-        (void)rank;
-        if (leftOut.count(rankId) == 0 && perspectiveOut.count(rankId) == 0) onlyRanks.insert(rankId);
-      }
-    }
-    // A stop none of whose ranks came is as good as left out: the console
-    // dims it rather than leaving a drawstop that makes no sound.
-    if (!perspectiveOut.empty())
-      for (const auto& [stopId, stop] : model_.stops) {
-        bool any = false;
-        for (const auto& e : stop.ranks)
-          if (onlyRanks.count(e.rankId) != 0) any = true;
-        if (!stop.ranks.empty() && !any) unloadedStops_.insert(stopId);
-      }
     if (!perspectivesLeftOut_.empty()) {
       juce::String names;
       for (const auto& p : perspectivesLeftOut_) names << (names.isEmpty() ? "" : ", ") << juce::String(p);
-      juce::Logger::writeToLog("load: perspectives left out: " + names + " (" +
-                               juce::String(static_cast<int>(perspectiveOut.size())) + " ranks)");
+      juce::Logger::writeToLog("load: perspectives left out: " + names);
     }
     if (!onlyRanks.empty())
       juce::Logger::writeToLog("load: PARTIAL -- " +
@@ -7422,7 +7373,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     if (sparseEvery_ > 1 && !graphicsOnly) applySparseLoadingToModel();
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
-                                      onlyRanks.empty() ? nullptr : &onlyRanks);
+                                      onlyRanks.empty() && !readsNothing ? nullptr : &onlyRanks);
 
     // Now that the files have been opened, and only now, each sample can be
     // asked what pitch it holds. This has to happen after loading because one

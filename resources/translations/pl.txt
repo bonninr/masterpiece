@@ -306,6 +306,7 @@ countries: pl
 "Left out with every stop that plays it" = "Pominięta wraz ze wszystkimi głosami, które ją grają"
 "Estimating the memory each stop takes..." = "Szacowanie pamięci zajmowanej przez każdy głos..."
 "About %1 for this choice" = "Około %1 przy tym wyborze"
+"The ranks left out would leave nothing to play, so they load" = "Pominięte szeregi nie zostawiłyby nic do grania, więc zostają wczytane"
 "(the limit is %1)" = "(limit wynosi %1)"
 "Keep this EQ with this organ for the next time it is loaded" = "Zachowaj ten korektor z tymi organami na następne wczytanie"
 "Start every organ with this EQ, unless one is saved for it: a correction for your speakers and room" = "Uruchamiaj każde organy z tym korektorem, chyba że mają zapisany własny: korekta dla głośników i pomieszczenia"
