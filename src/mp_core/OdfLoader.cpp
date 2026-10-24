@@ -2031,6 +2031,22 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (c.combinationId != 0) outModel.combinations[c.combinationId] = std::move(c);
   });
 
+  // A divisional the definition places in no division names it by its piston
+  // code: the 2xx pistons belong to division 1, the 3xx to division 2, up to
+  // the 8xx for division 7; the 1xx are the generals. Wildervank's "Div1
+  // combination 01" is 201 and division 1 its PED; Lemmer's "Great 01" is 301
+  // and division 2 its GREAT (#572).
+  for (auto& [id, c] : outModel.combinations) {
+    (void)id;
+    if (c.divisionId != 0) continue;
+    int code = c.type >= 100 ? c.type : 0;
+    if (code == 0)
+      if (const auto s = outModel.switches.find(c.activatingSwitchId); s != outModel.switches.end())
+        code = s->second.asgnCode;
+    const Id division = static_cast<Id>(code / 100 - 1);
+    if (code >= 200 && code < 900 && outModel.divisions.count(division) != 0) c.divisionId = division;
+  }
+
   // ---- M1.5: CombinationElement table (capture wiring; dangling = report) ----
   forEachRow(odfRoot, "CombinationElement", [&](pugi::xml_node row) {
     const Id comboId = fieldInt(row, "CombinationID", "b", 0);
