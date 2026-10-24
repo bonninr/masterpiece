@@ -1268,7 +1268,9 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       instance(page, imageSet({stockName("wood%02d", num)}, 0, 0, 0, 0), x, y, 0, x + w, y + h);
     };
     // A switch has one drawn instance. A second appearance -- the same stop
-    // on the console and on a jamb -- is a mirror switch wired both ways.
+    // on the console and on a jamb -- is a mirror switch wired both ways. Its
+    // name starts with "__", the mark sets give a helper switch, so that a
+    // list of the console's switches names the stop once (#570).
     std::set<int> drawnSwitches;
     auto attach = [&](int switchId, int inst, bool clickable) {
       int id = switchId;
@@ -1277,7 +1279,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         const auto src = switchRows.find(switchId);
         const bool on = src != switchRows.end() &&
                         std::string(src->second.child("DefaultToEngaged").text().get()) == "Y";
-        emitSwitch(id, "mirror of " + std::to_string(switchId), on);
+        emitSwitch(id, "__mirror of " + std::to_string(switchId), on);
         link(switchId, id, 0, true);
         link(id, switchId, 0, true);
       }
