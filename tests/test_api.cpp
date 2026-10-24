@@ -493,12 +493,12 @@ public:
       const juce::var divisions = m.list(Type::Division, e);
       for (const auto& d : *divisions["items"].getArray())
         divisionNames.push_back(d["name"].toString().toStdString());
-      std::map<int64_t, std::string> divisionOf;
+      std::map<juce::int64, std::string> divisionOf;
       std::string listed;
       const juce::var switches = m.list(Type::Switch, e, true);
       for (const auto& item : *switches["items"].getArray()) {
         const int d = static_cast<int>(item["division"]);
-        const auto id = static_cast<int64_t>(item["odfId"]);
+        const auto id = static_cast<juce::int64>(item["odfId"]);
         listed += " [" + std::to_string(id) + " " + item["role"].toString().toStdString() + " " + std::to_string(d) + "]";
         if (item["role"].toString() == "piston")
           divisionOf[id] = d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
