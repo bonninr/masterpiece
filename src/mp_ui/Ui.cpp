@@ -183,10 +183,10 @@ void StopJamb::rebuild() {
     e.button->onArrowKey = [this](StopButton& from, const juce::KeyPress& key) {
       moveFocus(from, key);
     };
-    // Mapped through its drawstop, as on a panel page (#555).
+    // Mapped on the drawstop the console draws for it, as on a panel page (#555).
     if (const auto st = proc_.organModel().stops.find(id);
         st != proc_.organModel().stops.end() && st->second.controllingSwitchId != 0) {
-      const Id sw = st->second.controllingSwitchId;
+      const Id sw = proc_.playerSwitchFor(st->second.controllingSwitchId);
       e.button->onMidiMenu = [this, sw](StopButton& b) {
         showSwitchMidiMenu(proc_, sw, b.getScreenBounds(), nullptr);
       };

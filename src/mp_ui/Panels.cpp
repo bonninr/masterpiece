@@ -829,9 +829,10 @@ private:
     owner_.proc_.setSwitchEngaged(e_.id, false);
     repaint();
   }
-  // The element's own mapping: a stop is mapped through its drawstop. The
-  // menu is the console's, so a mapping can be learnt, seen and cleared here
-  // the same way (#555).
+  // The element's own mapping, on the knob the console draws for it: a stop
+  // through its drawstop, a coupler or tremulant through the switch a player
+  // moves. The menu is the console's, so a mapping learnt on either is seen
+  // and cleared on both (#555).
   void openMapping() {
     auto& p = owner_.proc_;
     Id target = e_.id;
@@ -839,6 +840,7 @@ private:
       const auto s = p.organModel().stops.find(e_.id);
       target = s != p.organModel().stops.end() ? s->second.controllingSwitchId : 0;
     }
+    if (target != 0) target = p.playerSwitchFor(target);
     if (target != 0)
       showSwitchMidiMenu(p, target, getScreenBounds(),
                          [safe = juce::Component::SafePointer<juce::Component>(this)] {
