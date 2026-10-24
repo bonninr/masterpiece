@@ -1074,6 +1074,10 @@ void ConsoleView::paint(juce::Graphics& g) {
       g.fillRect(item.bounds);
       g.restoreState();
     } else {
+      // An image is drawn with the alpha of the colour last set. The veil
+      // below sets a translucent one, and every knob drawn after a veiled
+      // stop came out at 55%, the wood showing through it (#573).
+      g.setOpacity(1.0f);
       g.drawImageAt(*img, item.bounds.getX(), item.bounds.getY(), false);
     }
     // A stop left out of the load still draws and moves, and makes no sound:
@@ -1132,6 +1136,7 @@ void ConsoleView::paint(juce::Graphics& g) {
     if (img == nullptr)
       img = imageFor(k.imageSetId, down ? k.disengagedIndex : k.engagedIndex);
     if (img == nullptr) continue;
+    g.setOpacity(1.0f);  // whatever alpha the engraved text left set
     g.drawImageAt(*img, k.bounds.getX(), k.bounds.getY(), false);
     ++drawn;
   }
