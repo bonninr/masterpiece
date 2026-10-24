@@ -184,9 +184,7 @@ void StopJamb::rebuild() {
       moveFocus(from, key);
     };
     // Mapped on the drawstop the console draws for it, as on a panel page (#555).
-    if (const auto st = proc_.organModel().stops.find(id);
-        st != proc_.organModel().stops.end() && st->second.controllingSwitchId != 0) {
-      const Id sw = proc_.playerSwitchFor(st->second.controllingSwitchId);
+    if (const Id sw = proc_.stopKnobFor(id); sw != 0) {
       e.button->onMidiMenu = [this, sw](StopButton& b) {
         showSwitchMidiMenu(proc_, sw, b.getScreenBounds(), nullptr);
       };

@@ -835,12 +835,8 @@ private:
   // and cleared on both (#555).
   void openMapping() {
     auto& p = owner_.proc_;
-    Id target = e_.id;
-    if (e_.kind == PanelElement::Kind::Stop) {
-      const auto s = p.organModel().stops.find(e_.id);
-      target = s != p.organModel().stops.end() ? s->second.controllingSwitchId : 0;
-    }
-    if (target != 0) target = p.playerSwitchFor(target);
+    const Id target = e_.kind == PanelElement::Kind::Stop ? p.stopKnobFor(e_.id)
+                                                           : p.playerSwitchFor(e_.id);
     if (target != 0)
       showSwitchMidiMenu(p, target, getScreenBounds(),
                          [safe = juce::Component::SafePointer<juce::Component>(this)] {
