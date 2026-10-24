@@ -5,6 +5,7 @@ add_library(mp_core STATIC
   CodmCompiler.h CodmCompiler.cpp
   Temperament.h Temperament.cpp
   Perspectives.h Perspectives.cpp
+  LoadPlan.h
   PathCase.h PathCase.cpp
   SparseLoading.h SparseLoading.cpp
 )
