@@ -4437,9 +4437,18 @@ public:
         const int blocks = static_cast<int>(kLong / ratio / 256.0) + 12;
         for (int b = 0; b < blocks; ++b) {
           if (b == 4) eng.noteOff(1, mp::NoteRelease{});
-          // A block of audio lasts 5 ms; the streamer is given about that
-          // long, as it is between two blocks played live.
-          if (b >= 4) std::this_thread::sleep_for(std::chrono::milliseconds(3));
+          // Live, the streamer has the 5 ms of each block to refill the ring.
+          // Here it is given one full pass over the voices at the release and
+          // every four blocks after, however long a pass takes: the ring holds
+          // more than thirty blocks and is due once half of it is free. A fixed
+          // sleep measured the machine, and a loaded test runner missed a
+          // refill now and then.
+          if (b >= 4 && (b - 4) % 4 == 0 && eng.streamingVoices() > 0) {
+            const int64_t from = eng.streamerPasses();
+            const auto giveUp = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+            while (eng.streamerPasses() < from + 2 && std::chrono::steady_clock::now() < giveUp)
+              std::this_thread::sleep_for(std::chrono::microseconds(100));
+          }
           std::fill(l.begin(), l.end(), 0.0f);
           std::fill(r.begin(), r.end(), 0.0f);
           eng.render(out, 2, 256);
