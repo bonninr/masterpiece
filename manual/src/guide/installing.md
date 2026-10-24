@@ -9,12 +9,16 @@ Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bon
 | File | System | What it holds |
 |---|---|---|
 | `masterpiece-<version>-windows-setup.exe` | Windows, 64-bit | Installer for the standalone program |
-| `masterpiece-<version>-windows.zip` | Windows, 64-bit | A `Masterpiece` folder: the program, and the VST3 and LV2 plugins |
-| `masterpiece-<version>-macos-arm64.zip` | macOS, Apple silicon | `Masterpiece.app` and the Audio Unit and VST3 plugins |
-| `masterpiece-<version>-macos-x86_64.zip` | macOS, Intel | `Masterpiece.app` and the Audio Unit and VST3 plugins |
+| `masterpiece-<version>-windows.zip` | Windows, 64-bit | A `Masterpiece` folder with the program |
+| `masterpiece-<version>-plugins-windows.zip` | Windows, 64-bit | A `Masterpiece-plugins` folder: the VST3 and LV2 plugins |
+| `masterpiece-<version>-macos-arm64.zip` | macOS, Apple silicon | A `Masterpiece` folder with `Masterpiece.app` |
+| `masterpiece-<version>-macos-x86_64.zip` | macOS, Intel | A `Masterpiece` folder with `Masterpiece.app` |
+| `masterpiece-<version>-plugins-macos-arm64.zip` | macOS, Apple silicon | A `Masterpiece-plugins` folder: the Audio Unit and VST3 plugins |
+| `masterpiece-<version>-plugins-macos-x86_64.zip` | macOS, Intel | A `Masterpiece-plugins` folder: the Audio Unit and VST3 plugins |
 | `masterpiece-<version>-linux-x86_64.flatpak` | Linux, x86-64 | Flatpak bundle of the standalone program |
-| `masterpiece-<version>-linux-amd64.deb` | Debian, Ubuntu and relatives, x86-64 | The program, the VST3 and LV2 plugins, the menu entry and the file types |
-| `masterpiece-<version>-linux-x86_64.tar.gz` | Linux, x86-64 | A `Masterpiece` folder: the program, and the VST3 and LV2 plugins |
+| `masterpiece-<version>-linux-amd64.deb` | Debian, Ubuntu and relatives, x86-64 | The program, the menu entry and the file types |
+| `masterpiece-<version>-linux-x86_64.tar.gz` | Linux, x86-64 | A `Masterpiece` folder with the program |
+| `masterpiece-<version>-plugins-linux-x86_64.tar.gz` | Linux, x86-64 | A `Masterpiece-plugins` folder: the VST3 and LV2 plugins |
 | `masterpiece-<version>-linux-arm64.deb` | Raspberry Pi OS, 64-bit | The program, the menu entry and the file types |
 | `masterpiece-<version>-linux-armhf.deb` | Raspberry Pi OS, 32-bit | The program, the menu entry and the file types |
 | `masterpiece-<version>-linux-arm64.tar.gz` | Raspberry Pi OS, 64-bit | A `Masterpiece` folder with the program |
@@ -22,7 +26,7 @@ Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bon
 | `masterpiece-<version>-android.apk` | Android | The app |
 | `masterpiece-<version>-ios.ipa` | iPhone and iPad | The app, unsigned |
 
-The Raspberry Pi, Flatpak and mobile builds contain the standalone program only. The plugin formats are built for Windows, macOS and the Linux PC packages.
+The plugins come in the `plugins` archives, for Windows, macOS and Linux x86-64. Up to 0.8.1 they came inside the program's zips and tarballs and the amd64 `.deb`.
 
 ### Download addresses
 
@@ -87,7 +91,7 @@ The box **Faster audio engine** on **Settings > Organ settings... > Loading** tu
 
 Run `masterpiece-<version>-windows-setup.exe`. The installer puts `bin\Masterpiece.exe` and `Uninstall.exe` into an install folder whose default name is `Masterpiece`, adds a Start menu entry in a folder that defaults to `Masterpiece`, adds an entry in Windows **Apps & features**, and registers the file types listed under [File associations](#file-associations).
 
-The installer installs `Masterpiece.exe` only. The VST3 plugin ships in the Windows zip.
+The installer installs `Masterpiece.exe` only. The plugins are in `masterpiece-<version>-plugins-windows.zip`.
 
 The release workflow adds no code signature to the Windows files.
 
@@ -101,11 +105,11 @@ masterpiece-<version>-windows-setup.exe /S /D=C:\Path\To\Masterpiece
 
 ### Zip
 
-`masterpiece-<version>-windows.zip` runs from any folder and installs nothing. It holds one folder, `Masterpiece`, with `Masterpiece.exe` and the plugins in `VST3\Masterpiece.vst3` and `LV2\Masterpiece.lv2`. Extract it and start `Masterpiece.exe`. For the VST3 plugin, copy `Masterpiece.vst3` to `C:\Program Files\Common Files\VST3`, the folder DAWs scan (see [Plugins](#plugins)). In 0.8.0 and earlier the zip holds the build folders, and the plugin is in `MasterpiecePlugin\MasterpiecePlugin_artefacts\Release\VST3\Masterpiece.vst3`.
+`masterpiece-<version>-windows.zip` runs from any folder and installs nothing. It holds one folder, `Masterpiece`, with `Masterpiece.exe`. Extract it and start `Masterpiece.exe`. The plugins are in `masterpiece-<version>-plugins-windows.zip` (see [Plugins](#plugins)). In 0.8.1 the zip also holds the plugins, in its `VST3` and `LV2` folders. In 0.8.0 and earlier the zip holds the build folders, and the plugin is in `MasterpiecePlugin\MasterpiecePlugin_artefacts\Release\VST3\Masterpiece.vst3`.
 
 ## macOS
 
-Download the zip for the processor: `macos-arm64` for Apple silicon, `macos-x86_64` for Intel. The zip unpacks to a folder `Masterpiece` that holds `Masterpiece.app`, `Masterpiece.component` (Audio Unit) and `Masterpiece.vst3`. Move `Masterpiece.app` to **Applications**.
+Download the zip for the processor: `macos-arm64` for Apple silicon, `macos-x86_64` for Intel. The zip unpacks to a folder `Masterpiece` that holds `Masterpiece.app`. Move `Masterpiece.app` to **Applications**. The Audio Unit and VST3 plugins are in `plugins-macos-arm64.zip` and `plugins-macos-x86_64.zip` (see [Plugins](#plugins)).
 
 The macOS builds are unsigned. At the first start macOS may report that Masterpiece "is damaged and can't be opened". Remove the quarantine flag and open the app from its context menu:
 
@@ -157,8 +161,6 @@ The package is named `masterpiece` and installs:
 | `/usr/share/applications/masterpiece.desktop` | The menu entry |
 | `/usr/share/icons/hicolor/256x256/apps/masterpiece.png` | The icon |
 | `/usr/share/mime/packages/masterpiece.xml` | The organ file types |
-| `/usr/lib/vst3/Masterpiece.vst3` | The VST3 plugin (amd64 package) |
-| `/usr/lib/lv2/Masterpiece.lv2` | The LV2 plugin (amd64 package) |
 
 The package depends on `libasound2` (or `libasound2t64`), `libfreetype6`, `libfontconfig1`, `libx11-6`, `libxext6`, `libxrandr2`, `libxinerama1`, `libxcursor1` and `libgl1`, plus the C library version the binary needs. `apt` installs them. JACK is optional: Masterpiece opens `libjack` at run time when it exists and then lists JACK as an audio device type.
 
@@ -166,7 +168,7 @@ Remove it with `sudo apt remove masterpiece`.
 
 ### Tar archive
 
-`masterpiece-<version>-linux-x86_64.tar.gz` holds one folder, `Masterpiece`, with the program and the plugins in `VST3/Masterpiece.vst3` and `LV2/Masterpiece.lv2`. The files are packed from build artifacts, which carry no executable bit; the build's own launch check runs `chmod +x` on the binary. Set the bit on the `Masterpiece` file before the first start:
+`masterpiece-<version>-linux-x86_64.tar.gz` holds one folder, `Masterpiece`, with the program. The files are packed from build artifacts, which carry no executable bit; the build's own launch check runs `chmod +x` on the binary. Set the bit on the `Masterpiece` file before the first start:
 
 ```
 tar -xzf masterpiece-<version>-linux-x86_64.tar.gz
@@ -233,15 +235,15 @@ USB host, MIDI and Bluetooth LE are declared as optional features; the app insta
 
 ## Plugins
 
-The plugin formats are VST3 (Windows, macOS, Linux), Audio Unit (macOS) and LV2 (Linux). The plugin shares its settings folder with the standalone program. See [Plugins in a DAW](plugins.md).
+The plugin formats are VST3 (Windows, macOS, Linux), Audio Unit (macOS) and LV2 (Windows, Linux). The plugin shares its settings folder with the standalone program. See [Plugins in a DAW](plugins.md).
 
 | Format | Windows | macOS | Linux |
 |---|---|---|---|
-| VST3 | `VST3\Masterpiece.vst3` in the zip | `Masterpiece.vst3` in the zip | `/usr/lib/vst3/Masterpiece.vst3` from the amd64 `.deb`; `VST3/` in the tar.gz |
-| Audio Unit | none | `Masterpiece.component` in the zip | none |
-| LV2 | `LV2\Masterpiece.lv2` in the zip | none | `/usr/lib/lv2/Masterpiece.lv2` from the amd64 `.deb`; `LV2/` in the tar.gz |
+| VST3 | `VST3\Masterpiece.vst3` in `plugins-windows.zip` | `Masterpiece.vst3` in `plugins-macos-arm64.zip` and `plugins-macos-x86_64.zip` | `VST3/Masterpiece.vst3` in `plugins-linux-x86_64.tar.gz` |
+| Audio Unit | none | `Masterpiece.component` in `plugins-macos-arm64.zip` and `plugins-macos-x86_64.zip` | none |
+| LV2 | `LV2\Masterpiece.lv2` in `plugins-windows.zip` | none | `LV2/Masterpiece.lv2` in `plugins-linux-x86_64.tar.gz` |
 
-There are no separate plugin downloads. Windows and macOS ship the plugins as bundles inside the zips; copy them into a folder that the host scans.
+Each archive unpacks to a folder `Masterpiece-plugins`. Copy the bundles into a folder that the host scans; [Plugins in a DAW](plugins.md) lists them. The amd64 `.deb` of 0.8.1 and earlier installed the plugins to `/usr/lib/vst3` and `/usr/lib/lv2`; from 0.9.0 it holds the program.
 
 ## File associations
 

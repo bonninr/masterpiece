@@ -179,9 +179,13 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # The program and the test suite. The plugins build in the plugins job
+      # below, on a runner of their own, so their link-time optimised links
+      # no longer wait in line behind the program's.
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}
+          -DMP_BUILD_PLUGIN=OFF
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
@@ -273,10 +277,6 @@ jobs:
           stage=$(mktemp -d)/Masterpiece
           mkdir -p "$stage"
           cp -R build/${{ matrix.preset }}/apps/MasterpieceApp/MasterpieceApp_artefacts/Release/Masterpiece.app "$stage/"
-          for f in AU/Masterpiece.component VST3/Masterpiece.vst3; do
-            src=build/${{ matrix.preset }}/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release/$f
-            [ -e "$src" ] && cp -R "$src" "$stage/"
-          done
           mkdir -p dist
           ditto -c -k --keepParent "$stage" "dist/${{ matrix.artifact }}.zip"
           ls -lh dist
@@ -448,8 +448,7 @@ jobs:
           retention-days: 3
 
       # The Windows zip and the Linux tarballs as one folder, the way the Mac
-      # zip is: the program, and the plugins in VST3 and LV2 folders beside it.
-      # They used to carry the build tree, and the VST3 was five folders down.
+      # zip is. The plugins have packages of their own (the plugins job).
       - name: Package (Windows and Linux)
         if: '!matrix.mac'
         shell: bash
@@ -461,13 +460,150 @@ jobs:
             src=$apps/MasterpieceApp/MasterpieceApp_artefacts/Release/$f
             if [ -f "$src" ]; then cp "$src" "$stage/"; fi
           done
-          for kind in VST3 LV2; do
-            src=$apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release/$kind/Masterpiece.$(echo "$kind" | tr 'A-Z' 'a-z')
-            if [ -e "$src" ]; then mkdir -p "$stage/$kind" && cp -R "$src" "$stage/$kind/"; fi
-          done
           find dist/portable -maxdepth 3 | sort
           ls "$stage"/Masterpiece* > /dev/null
 
+      - uses: actions/upload-artifact@v4
+        if: '!matrix.mac'
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/portable/
+          if-no-files-found: error
+          retention-days: 3
+
+  # The plugins, in jobs and packages of their own: VST3 and LV2 on Windows and
+  # Linux, VST3 and the Audio Unit on both Macs. Built beside the program on
+  # one runner, their link-time optimised links queued behind the program's
+  # and made the desktop jobs the slowest of every run. The Raspberry Pi
+  # builds have no plugins.
+  #
+  # Each restores the compiler cache of the desktop job for its platform and
+  # saves none: the organ libraries compile the same for both, and a cache of
+  # their own per job would not fit in the repository's cache allowance.
+  plugins:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            preset: ci-linux
+            artifact: masterpiece-plugins-linux-x86_64
+          - os: windows-latest
+            preset: ci-windows
+            artifact: masterpiece-plugins-windows
+          - os: macos-14
+            preset: ci-macos
+            artifact: masterpiece-plugins-macos-arm64
+            mac: true
+            macarch: arm64
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          - os: macos-14
+            preset: ci-macos
+            artifact: masterpiece-plugins-macos-x86_64
+            mac: true
+            macarch: x86_64
+            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          # The desktop job's key, so this job starts from its cache.
+          key: ${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}
+          max-size: ${{ runner.os == 'Windows' && '1500M' || '1000M' }}
+          save: false
+
+      - name: Verovio compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/.ccache-verovio
+          key: verovio-${{ matrix.preset }}-${{ matrix.os }}${{ matrix.macarch && format('-{0}', matrix.macarch) || '' }}-${{ hashFiles('cmake/MpVerovio.cmake', 'cmake/MpVerovioStubs.cpp') }}
+
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxcomposite-dev libfreetype6-dev \
+            libfontconfig1-dev libglu1-mesa-dev mesa-common-dev libxi-dev \
+            libjack-jackd2-dev fonts-dejavu-core
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja --no-progress -y
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: >
+          cmake --preset ${{ matrix.preset }}
+          -DMP_BUILD_STANDALONE=OFF
+          -DMP_BUILD_TESTS=OFF
+          -DMP_BUILD_VALIDATOR=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
+          ${{ matrix.cmake_extra }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      # Each bundle is there, holds a binary for the right machine, and on
+      # Linux finds every library it links.
+      - name: Check and package
+        shell: bash
+        run: |
+          out=build/${{ matrix.preset }}/apps/MasterpiecePlugin/MasterpiecePlugin_artefacts/Release
+          stage=dist/portable/Masterpiece-plugins
+          mkdir -p "$stage"
+          if [ "${{ runner.os }}" = macOS ]; then
+            for b in AU/Masterpiece.component VST3/Masterpiece.vst3; do
+              test -d "$out/$b" || { echo "not built: $b"; exit 1; }
+              bin="$out/$b/Contents/MacOS/Masterpiece"
+              file "$bin"
+              file "$bin" | grep -q "${{ matrix.macarch }}"
+              want=$(echo "${{ matrix.cmake_extra }}" | sed -n 's/.*DEPLOYMENT_TARGET=\([0-9.]*\).*/\1/p')
+              got=$(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f && /minos/{print $2; exit}')
+              echo "oldest macOS: $got (wanted $want)"
+              [ -z "$want" ] || [ "$got" = "$want" ] || { echo "$b asks for macOS $got"; exit 1; }
+              cp -R "$out/$b" "$stage/"
+            done
+            ditto -c -k --keepParent "$stage" "dist/${{ matrix.artifact }}.zip"
+            ls -lh dist
+          else
+            for kind in VST3 LV2; do
+              b="$kind/Masterpiece.$(echo "$kind" | tr 'A-Z' 'a-z')"
+              test -d "$out/$b" || { echo "not built: $b"; exit 1; }
+              mkdir -p "$stage/$kind" && cp -R "$out/$b" "$stage/$kind/"
+            done
+            if [ "${{ runner.os }}" = Linux ]; then
+              for so in $(find "$stage" -name '*.so'); do
+                file "$so"
+                if ldd "$so" | grep 'not found'; then exit 1; fi
+              done
+            fi
+            find "$stage" -maxdepth 3 | sort
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.mac
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+          retention-days: 3
+
+      # A folder, as the Windows zip and the Linux tarballs of the program
+      # are; the release packs it with the plugins folder at its top.
       - uses: actions/upload-artifact@v4
         if: '!matrix.mac'
         with:

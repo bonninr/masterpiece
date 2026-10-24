@@ -21,8 +21,8 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 [![Flatpak](https://img.shields.io/badge/Download-Linux%20Flatpak-4A86CF?logo=flatpak&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-linux-x86_64.flatpak)
 
 Portable archives for every platform are on the
-[releases page](https://github.com/bonninr/masterpiece/releases/latest); the
-plugins come in the archives and in the 64-bit Debian package. The
+[releases page](https://github.com/bonninr/masterpiece/releases/latest), and
+the plugins have archives of their own for Windows, macOS and Linux. The
 [manual](https://masterpieceorgan.com/docs/) covers installing and every setting.
 
 [![build](https://github.com/bonninr/masterpiece/actions/workflows/build.yml/badge.svg)](https://github.com/bonninr/masterpiece/actions/workflows/build.yml)
@@ -213,8 +213,9 @@ in [ATTRIBUTION.md](ATTRIBUTION.md).
 | macOS, Intel | macOS 10.15 |
 
 **Windows.** `masterpiece-<version>-windows-setup.exe` installs with a Start
-menu entry; the portable `.zip` runs from any folder and holds the VST3 and LV2
-plugins in its `VST3` and `LV2` folders.
+menu entry; the portable `.zip` runs from any folder. The VST3 and LV2 plugins
+are in `masterpiece-<version>-plugins-windows.zip`, in its `VST3` and `LV2`
+folders.
 
 **Debian, Ubuntu, Raspberry Pi OS.**
 
@@ -224,8 +225,8 @@ sudo apt install ./masterpiece-0.8.1-linux-arm64.deb     # Raspberry Pi OS, 64-b
 sudo apt install ./masterpiece-0.8.1-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
-Runs as `masterpiece`; the PC package also installs the plugins to
-`/usr/lib/vst3` and `/usr/lib/lv2`.
+Runs as `masterpiece`. The VST3 and LV2 plugins for the PC are in
+`masterpiece-<version>-plugins-linux-x86_64.tar.gz`.
 
 **Other Linux distributions.** The Flatpak bundle runs on any x86-64
 distribution with Flatpak installed; it uses the freedesktop 24.08 runtime,
@@ -236,12 +237,13 @@ flatpak install --user ./masterpiece-0.8.1-linux-x86_64.flatpak
 flatpak run io.github.bonninr.Masterpiece
 ```
 
-The `.tar.gz` archives hold the same program in a `Masterpiece` folder, with the
-plugins in its `VST3` and `LV2` folders.
+The `.tar.gz` archives hold the same program in a `Masterpiece` folder.
 
 **macOS.** Move `Masterpiece.app` to Applications. The build is unsigned; if
 Gatekeeper reports it as damaged, run
 `xattr -cr /Applications/Masterpiece.app` and open it with right-click, Open.
+The Audio Unit and VST3 plugins are in
+`masterpiece-<version>-plugins-macos-arm64.zip` and `-plugins-macos-x86_64.zip`.
 
 **Android, iPhone and iPad.** The `.apk` and `.ipa` on the releases page are
 installed directly; see the [0.7.0 release notes](https://github.com/bonninr/masterpiece/releases/tag/v0.7.0).
