@@ -39,7 +39,10 @@ function flash(text) {
 }
 function showState() {
   const s = state.program.organState;
-  $("state").textContent = s === 1 ? `loading ${Math.round((state.program.loadProgress || 0) / 10)}%` : s === 0 ? "no organ loaded" : "";
+  const pct = `${Math.round((state.program.loadProgress || 0) / 10)}%`;
+  $("state").textContent = s === 1 ? `loading ${pct}` : s === 0 ? "no organ loaded" : "";
+  const p = $("loadpct");
+  if (p) p.textContent = pct;
 }
 
 function el(tag, attrs = {}, ...children) {
@@ -56,6 +59,18 @@ function el(tag, attrs = {}, ...children) {
 // ---- building the panels -------------------------------------------------
 
 async function load() {
+  // While an organ loads, the lists answer "busy": the page shows the load and
+  // its progress, and builds when the event stream says the organ is ready.
+  const [id0, prog0] = await Promise.all([get(""), get("program")]);
+  if (prog0.organState !== 2) {
+    state.session = -1;
+    state.program = prog0;
+    state.divisions = []; state.switches = []; state.controls = [];
+    $("organ").textContent = id0.organ || "Masterpiece";
+    build();
+    showProgram();
+    return;
+  }
   const [id, prog, divs, sw, ctl, gen, divl, eq, tem, trem, encl, wind, pairs] = await Promise.all([
     get(""), get("program"), get("divisions"), get("switches"), get("controls"), get("generals"),
     get("divisionals"), get("eqpresets"), get("temperaments"), get("tremulants"), get("enclosures"), get("windchests"),
@@ -76,7 +91,9 @@ function build() {
   state.el = { switch: [], control: [], general: [], divisional: [], tremulant: [], enclosure: [], windchest: [], division: [], pair: [] };
   state.all = { switch: [], control: [], rank: [] };
   if (!state.switches.length && !state.controls.length) {
-    main.append(el("div", { class: "empty" }, state.program.organState === 1 ? "Loading the organ..." : "No organ loaded."));
+    main.append(state.program.organState === 1
+      ? el("div", { class: "empty" }, "Loading the organ: ", el("span", { id: "loadpct" }, ""))
+      : el("div", { class: "empty" }, "No organ loaded."));
     fillSelects();
     return;
   }
@@ -338,11 +355,18 @@ async function refreshAll() {
 
 // ---- the event stream -----------------------------------------------------
 
-let reloading = false;
+// A reload asked for while one runs runs again after it: the organ can become
+// ready while the page is still reading the state of the load before.
+let reloading = false, reloadAgain = false;
 async function reload() {
-  if (reloading) return;
+  if (reloading) { reloadAgain = true; return; }
   reloading = true;
-  try { await load(); } catch (e) { flash(String(e.message || e)); } finally { reloading = false; }
+  try {
+    do {
+      reloadAgain = false;
+      try { await load(); } catch (e) { flash(String(e.message || e)); }
+    } while (reloadAgain);
+  } finally { reloading = false; }
 }
 
 function connect() {
@@ -359,6 +383,7 @@ function connect() {
       if (c.property === "organState" && c.value === 2 && state.session !== c.session) return reload();
       return showProgram(c.property);
     }
+    if (state.program.organState !== 2) return;  // nothing built yet: the ready event builds it
     if (c.session !== state.session) return reload();
     if (c.type === "switch") showSwitch(c.index, c.value);
     else if (c.type === "control") showControl(c.index, c.value);
