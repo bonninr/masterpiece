@@ -135,7 +135,7 @@ types:
   - code: 15
     name: windchest
     plural: windchests
-    doc: The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure.
+    doc: The wind system's compartments - reservoirs, chests. Value - pressure now as tenths of a percent of its nominal pressure, sent with the readings, twice a second.
     value: {min: 0, max: 2097151}
     access: read
     dump: values
