@@ -1313,15 +1313,26 @@ juce::String ConsoleView::getTooltip() {
 }
 
 void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
+  // Not attached to this view: a popup takes its target component's scale,
+  // and the console is drawn scaled down to fit, so the menu came out smaller
+  // than every other one (#53).
+  showSwitchMidiMenu(proc_, switchId, localAreaToGlobal(bounds),
+                     [safe = juce::Component::SafePointer<ConsoleView>(this), bounds] {
+                       if (safe != nullptr) safe->repaint(bounds);
+                     });
+}
+
+void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
+                        juce::Rectangle<int> area, std::function<void()> after) {
   // Right-click a drawstop to map it. One message that flips it is what most
   // consoles send, and a piston is held rather than latched, which the organ
   // itself says -- so Learn follows the organ. Plenty of consoles send a
   // separate message to draw and to cancel, so every way stays on offer. The
   // list is GrandOrgue's, which documents these properly.
-  auto& map = proc_.midiMap();
+  auto& map = proc.midiMap();
   juce::PopupMenu menu;
   // What was clicked, so a player can see it is the right one (#346).
-  menu.addSectionHeader(MidiEventDialog::targetName(proc_, MidiTargetKind::Switch, switchId));
+  menu.addSectionHeader(MidiEventDialog::targetName(proc, MidiTargetKind::Switch, switchId));
   menu.addSeparator();
 
   const auto existing = map.bindingsFor(MidiTargetKind::Switch, switchId);
@@ -1348,8 +1359,8 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
   // The organ says whether this switch latches (a drawstop, a coupler) or is
   // held (a piston, a Set button), so the plain Learn follows it; the four
   // ways remain for a console that sends something else (#53).
-  const auto sw = proc_.organModel().switches.find(switchId);
-  const bool latching = sw == proc_.organModel().switches.end() || sw->second.latching;
+  const auto sw = proc.organModel().switches.find(switchId);
+  const bool latching = sw == proc.organModel().switches.end() || sw->second.latching;
   menu.addItem(6, latching ? TRANS("Learn") : TRANS("Learn (held while pressed)"));
   juce::PopupMenu other;
   other.addItem(1, TRANS("Toggle: each press draws or cancels"));
@@ -1360,16 +1371,13 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
   menu.addSeparator();
   menu.addItem(5, TRANS("Clear mapping"), !existing.empty());
 
-  // Not attached to this view: a popup takes its target component's scale,
-  // and the console is drawn scaled down to fit, so the menu came out smaller
-  // than every other one (#53).
   menu.showMenuAsync(
-      juce::PopupMenu::Options().withTargetScreenArea(localAreaToGlobal(bounds)),
-      [this, switchId, bounds, latching](int choice) {
-        auto& m = proc_.midiMap();
+      juce::PopupMenu::Options().withTargetScreenArea(area),
+      [&proc, switchId, latching, after = std::move(after)](int choice) {
+        auto& m = proc.midiMap();
         if (choice == 6) choice = latching ? 1 : 2;
         if (choice == 7) {
-          MidiEventDialog::show(proc_, MidiTargetKind::Switch, switchId);
+          MidiEventDialog::show(proc, MidiTargetKind::Switch, switchId);
           return;
         }
         switch (choice) {
@@ -1390,12 +1398,12 @@ void ConsoleView::showMidiMenu(Id switchId, juce::Rectangle<int> bounds) {
             break;
           case 5:
             m.unbindTarget(MidiTargetKind::Switch, switchId);
-            proc_.saveMidiMap();
+            proc.saveMidiMap();
             break;
           default:
             return;
         }
-        repaint(bounds);
+        if (after) after();
       });
 }
 

@@ -1,6 +1,7 @@
 #include "Panels.h"
 
 #include "../mp_audio/DataFolder.h"
+#include "Console.h"
 #include "MidiEventDialog.h"
 #include "Mobile.h"
 
@@ -828,15 +829,19 @@ private:
     owner_.proc_.setSwitchEngaged(e_.id, false);
     repaint();
   }
-  // The element's own mapping: a stop is mapped through its drawstop.
+  // The element's own mapping, on the knob the console draws for it: a stop
+  // through its drawstop, a coupler or tremulant through the switch a player
+  // moves. The menu is the console's, so a mapping learnt on either is seen
+  // and cleared on both (#555).
   void openMapping() {
     auto& p = owner_.proc_;
-    Id target = e_.id;
-    if (e_.kind == PanelElement::Kind::Stop) {
-      const auto s = p.organModel().stops.find(e_.id);
-      target = s != p.organModel().stops.end() ? s->second.controllingSwitchId : 0;
-    }
-    if (target != 0) MidiEventDialog::show(p, MidiTargetKind::Switch, target);
+    const Id target = e_.kind == PanelElement::Kind::Stop ? p.stopKnobFor(e_.id)
+                                                           : p.playerSwitchFor(e_.id);
+    if (target != 0)
+      showSwitchMidiMenu(p, target, getScreenBounds(),
+                         [safe = juce::Component::SafePointer<juce::Component>(this)] {
+                           if (safe != nullptr) safe->repaint();
+                         });
   }
 
   PanelView& owner_;
@@ -896,18 +901,24 @@ public:
       return;
     }
     if (ev.mods.isPopupMenu()) {
-      MidiEventDialog::show(owner_.proc_, MidiTargetKind::ContinuousControl, e_.id);
+      openMapping();
       return;
     }
     // Touch: a finger held still on the name opens the mapping; the track
     // moves with the finger as before.
     if (owner_.touch_ && ev.position.y < 26.0f) {
-      if (!longPress_.onHeld)
-        longPress_.onHeld = [this] { MidiEventDialog::show(owner_.proc_, MidiTargetKind::ContinuousControl, e_.id); };
+      if (!longPress_.onHeld) longPress_.onHeld = [this] { openMapping(); };
       longPress_.begin(ev.getPosition());
       return;
     }
     mouseDrag(ev);
+  }
+  // The console's menu for a shoe or slider (#555).
+  void openMapping() {
+    showControlMidiMenu(owner_.proc_, e_.id, getScreenBounds(),
+                        [safe = juce::Component::SafePointer<juce::Component>(this)] {
+                          if (safe != nullptr) safe->repaint();
+                        });
   }
   void mouseUp(const juce::MouseEvent&) override { longPress_.end(); }
   void mouseDrag(const juce::MouseEvent& ev) override {

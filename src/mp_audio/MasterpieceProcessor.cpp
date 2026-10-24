@@ -5153,6 +5153,13 @@ Id MasterpieceProcessor::playerSwitchFor(Id switchId) const {
   return it == playerSwitch_.end() ? switchId : it->second;
 }
 
+Id MasterpieceProcessor::stopKnobFor(Id stopId) const {
+  if (const auto knob = stopKnob_.find(stopId); knob != stopKnob_.end()) return knob->second;
+  const auto s = model_.stops.find(stopId);
+  if (s == model_.stops.end() || s->second.controllingSwitchId == 0) return 0;
+  return playerSwitchFor(s->second.controllingSwitchId);
+}
+
 bool MasterpieceProcessor::firePiston(Id switchId) {
   const Id comboId = combinations_.combinationForSwitch(switchId);
   if (comboId == 0) return false;

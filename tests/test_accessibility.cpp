@@ -383,8 +383,38 @@ public:
   }
 };
 
+// A right-click on a stop in the stop list opens its MIDI menu, the console's
+// own, and leaves the stop as it is (#555).
+class StopListMidiMenuTest final : public mp::test::Test {
+public:
+  StopListMidiMenuTest() : Test("functional.ui.stop-list-midi-menu", Category::Functional) {}
+
+  void run() override {
+    TestOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    juce::MessageManager::getInstance();
+    mp::ui::StopJamb jamb(proc);
+    auto* button = jamb.stopButtonAt(0);
+    MP_CHECK(button != nullptr, "the stop is in the list");
+    if (button == nullptr) return;
+    MP_CHECK(button->onMidiMenu != nullptr, "the stop has a MIDI menu");
+
+    int opened = 0;
+    button->onMidiMenu = [&opened](mp::ui::StopButton&) { ++opened; };
+    const auto middle = button->getLocalBounds().getCentre();
+    button->mouseDown(pressAt(*button, middle, true));
+    button->mouseUp(pressAt(*button, middle, true));
+    runOneBlock(proc);
+    MP_CHECK(opened == 1, "a right-click opens it, got " + std::to_string(opened));
+    MP_CHECK(!proc.stopEngaged(901) && !button->getToggleState(), "and leaves the stop as it was");
+  }
+};
+
 static StopListAccessibilityTest g_stopListAccessibility;
 static ConsoleAccessibilityTest g_consoleAccessibility;
 static TouchLongPressTest g_touchLongPress;
+static StopListMidiMenuTest g_stopListMidiMenu;
 
 #endif  // MP_TEST_HAS_AUDIO

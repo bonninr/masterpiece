@@ -413,6 +413,10 @@ public:
   // and a general cancel, which works by turning the logical switch off, then
   // has nothing to push back.
   Id playerSwitchFor(Id switchId) const;
+  // The drawstop a player pulls for this stop: the knob its wiring leads to,
+  // or on a set that pairs them by name (Friesach) the knob of the same name.
+  // 0 for a stop with no controlling switch.
+  Id stopKnobFor(Id stopId) const;
 
   // --- pistons ----------------------------------------------------------
   // Combinations are the player's own, not the organ builder's, so they are
