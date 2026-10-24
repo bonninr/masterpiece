@@ -4,7 +4,9 @@
 // the setter stores both, and the manual's cancel cancels the Pedal too.
 //
 // This works out which two of the player's divisions it ties: the Pedal, and
-// the manual whose pistons carry it, the first manual. Hauptwerk-format organs
+// the manual whose pistons carry it: the division named as the Great, or else
+// the first manual. An English organ often has the Choir as its first manual
+// (#569). Hauptwerk-format organs
 // say which keyboard is the pedal by its default assignment code (1 is the
 // pedal, 2 the first manual) more often than by name; a division is linked to
 // its keyboard by the keyboard's division hint or the division's own list.
@@ -39,6 +41,19 @@ inline bool namedPedal(const std::string& name) {
   return n == "ped" || n == "p";
 }
 
+// The Great in the languages organs are labelled in: Great, Grand Orgue,
+// Hauptwerk, Hoofdwerk, Huvudverk, Hovedv\xc3\xa6rk, Grand'Organo, Gran \xc3\x93rgano, and
+// the short "G.O.".
+inline bool namedGreat(const std::string& name) {
+  std::string n;
+  for (char c : name) n.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  for (const char* word : {"great", "grand orgue", "grand-orgue", "grand'orgue", "hauptwerk", "hoofdwerk",
+                           "huvudverk", "hovedv", "grand'organo", "grande organo", "organo grande", "gran organo",
+                           "gran \xc3\xb3rgano", "g.o."})
+    if (n.find(word) != std::string::npos) return true;
+  return n == "go" || n == "gt";
+}
+
 }  // namespace pedal_coupling
 
 inline CoupledDivisions coupledDivisions(const OrganModel& model,
@@ -69,8 +84,14 @@ inline CoupledDivisions coupledDivisions(const OrganModel& model,
       out.pedal = r.id;
       break;
     }
-  // The first manual: the lowest assignment code that is not the pedal's, then
-  // the player's own order of divisions.
+  // The manual named as the Great, the first such in the player's order.
+  for (const auto& d : divisions)
+    if (d.divisionId != out.pedal && !pedal_coupling::namedPedal(d.name) && pedal_coupling::namedGreat(d.name)) {
+      out.manual = d.divisionId;
+      return out;
+    }
+  // Else the first manual: the lowest assignment code that is not the pedal's,
+  // then the player's own order of divisions.
   const Row* best = nullptr;
   for (const auto& r : rows)
     if (!r.pedal && r.id != out.pedal && (best == nullptr || r.code < best->code)) best = &r;
