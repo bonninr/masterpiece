@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -389,6 +390,129 @@ public:
   }
 };
 static ApiHelperSwitchesTest g_apiHelperSwitches;
+
+// A divisional piston names its division, so a console can group pistons
+// that share a name across divisions, as Wildervank's 1 to 5 do (#572).
+class ApiPistonDivisionsTest final : public mp::test::Test {
+public:
+  ApiPistonDivisionsTest() : Test("functional.api.piston-divisions", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\r\nChurchName=Divisionals\r\nHasPedals=N\r\nNumberOfManuals=2\r\n"
+        "NumberOfGenerals=1\r\nNumberOfDivisionals=2\r\n"
+        "[General001]\r\nName=G1\r\nNumberOfStops=1\r\nStopManual001=1\r\nStopNumber001=1\r\n"
+        "[Divisional001]\r\nName=1\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "[Divisional002]\r\nName=1\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "[Manual001]\r\nName=Hauptwerk\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=3\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "NumberOfDivisionals=1\r\nDivisional001=1\r\n"
+        "[Manual002]\r\nName=Schwellwerk\r\nNumberOfLogicalKeys=3\r\nFirstAccessibleKeyMIDINoteNumber=36\r\n"
+        "NumberOfAccessibleKeys=3\r\nNumberOfStops=1\r\nStop001=2\r\n"
+        "NumberOfDivisionals=1\r\nDivisional001=2\r\n"
+        "[Stop001]\r\nName=Principal 8\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nPipe001=P8\\036.wav\r\n"
+        "[Stop002]\r\nName=Viola 8\r\nNumberOfLogicalPipes=1\r\nNumberOfAccessiblePipes=1\r\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\r\nPipe001=V8\\036.wav\r\n";
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-api-piston-divisions");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("divisionals.organ");
+    file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      ControlModel m(proc);
+      Error e;
+      std::vector<std::string> divisionNames;
+      const juce::var divisions = m.list(Type::Division, e);
+      for (const auto& d : *divisions["items"].getArray())
+        divisionNames.push_back(d["name"].toString().toStdString());
+      std::vector<std::string> ones;
+      int generalDivision = -2;
+      std::string listed;
+      const juce::var switches = m.list(Type::Switch, e, true);
+      for (const auto& item : *switches["items"].getArray()) {
+        listed += " [" + item["name"].toString().toStdString() + " " + item["role"].toString().toStdString() + " " +
+                  item["division"].toString().toStdString() + "]";
+        if (item["role"].toString() != "piston") continue;
+        const int d = static_cast<int>(item["division"]);
+        if (item["name"].toString() == "1")
+          ones.push_back(d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
+                                                                              : "none");
+        if (item["name"].toString() == "G1") generalDivision = d;
+      }
+      std::string seen;
+      for (const auto& n : ones) seen += " [" + n + "]";
+      MP_CHECK(ones.size() == 2 && ones[0] != ones[1] && ones[0] != "none" && ones[1] != "none",
+               "each piston 1 names its own division:" + seen + " of" + listed);
+      MP_CHECK(generalDivision == -1, "a general names none: " + std::to_string(generalDivision));
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ApiPistonDivisionsTest g_apiPistonDivisions;
+
+// The same on a definition whose panel pistons work the combinations' own
+// switches through the wiring and whose combinations name their division by
+// code alone, as Wildervank's do: "CustPg1_Comb piston: PED 01" engages
+// switch 201, which fires "Div1 combination 01" (#572).
+class ApiLinkedPistonDivisionsTest final : public mp::test::Test {
+public:
+  ApiLinkedPistonDivisionsTest() : Test("functional.api.linked-piston-divisions", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><o><a>1</a><b>PED</b></o><o><a>2</a><b>HW</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>101</a><b>Comb piston: General 01</b><c>101</c><d>N</d></o>"
+        "<o><a>201</a><b>Comb piston: PED 01</b><c>201</c><d>N</d></o>"
+        "<o><a>10075</a><b>CustPg1_Comb piston: General 01</b><d>N</d></o>"
+        "<o><a>10076</a><b>CustPg1_Comb piston: PED 01</b><d>N</d></o></ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>10075</a><b>101</b></o><o><a>10076</a><b>201</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Combination\">"
+        "<o><a>3073</a><b>General 01</b><c>101</c></o>"
+        "<o><a>55681</a><b>Div1 combination 01</b><c>201</c></o></ObjectList></Hauptwerk>";
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-api-linked-pistons");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("linked.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      ControlModel m(proc);
+      Error e;
+      std::vector<std::string> divisionNames;
+      const juce::var divisions = m.list(Type::Division, e);
+      for (const auto& d : *divisions["items"].getArray())
+        divisionNames.push_back(d["name"].toString().toStdString());
+      std::map<juce::int64, std::string> divisionOf;
+      std::string listed;
+      const juce::var switches = m.list(Type::Switch, e, true);
+      for (const auto& item : *switches["items"].getArray()) {
+        const int d = static_cast<int>(item["division"]);
+        const auto id = static_cast<juce::int64>(item["odfId"]);
+        listed += " [" + std::to_string(id) + " " + item["role"].toString().toStdString() + " " + std::to_string(d) + "]";
+        if (item["role"].toString() == "piston")
+          divisionOf[id] = d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
+                                                                                 : "none";
+      }
+      MP_CHECK(divisionOf.count(10076) && divisionOf[10076] == "PED",
+               "the panel's PED 01 piston, wired to the combination's switch, names the PED:" + listed);
+      MP_CHECK(divisionOf.count(10075) && divisionOf[10075] == "none", "the panel's general names none:" + listed);
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ApiLinkedPistonDivisionsTest g_apiLinkedPistonDivisions;
 
 }  // namespace
 #endif  // MP_TEST_HAS_API

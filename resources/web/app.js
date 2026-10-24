@@ -107,7 +107,7 @@ function build() {
     else (s.division >= 0 && groups[s.division] ? groups[s.division] : none).items.push(s);
   }
   for (const g of [...groups, none]) if (g.items.length) main.append(switchPanel(g.name, g.items));
-  if (pistons.length) main.append(switchPanel("The organ's pistons", pistons, "pistons"));
+  if (pistons.length) main.append(pistonPanel(pistons));
   if (state.controls.length) main.append(controlPanel());
   main.append(levelPanel());
   main.append(organPanel());
@@ -178,7 +178,7 @@ function allPanel() {
   return sec;
 }
 
-function switchPanel(title, items, kind = "stops") {
+function switchButtons(items, kind = "stops") {
   const box = el("div", { class: kind === "pistons" ? "stops pistons" : "stops" });
   for (const s of items) {
     const b = el("button", { class: s.role + (s.available ? "" : " unavailable"),
@@ -188,7 +188,24 @@ function switchPanel(title, items, kind = "stops") {
     state.el.switch[s.index] = b;
     box.append(b);
   }
-  return el("section", {}, el("h2", {}, title), box);
+  return box;
+}
+
+function switchPanel(title, items, kind = "stops") {
+  return el("section", {}, el("h2", {}, title), switchButtons(items, kind));
+}
+
+// The organ's own pistons: those of no division first, the generals among
+// them, then each division's divisionals under its name, in the organ's order.
+function pistonPanel(pistons) {
+  const sec = el("section", {}, el("h2", {}, "The organ's pistons"));
+  const loose = pistons.filter((s) => !(s.division >= 0 && state.divisions[s.division]));
+  if (loose.length) sec.append(switchButtons(loose, "pistons"));
+  state.divisions.forEach((d, i) => {
+    const mine = pistons.filter((s) => s.division === i);
+    if (mine.length) sec.append(el("div", { class: "dim" }, d.name || `Division ${i + 1}`), switchButtons(mine, "pistons"));
+  });
+  return sec;
 }
 
 function controlPanel() {

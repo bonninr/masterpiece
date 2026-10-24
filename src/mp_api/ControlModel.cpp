@@ -128,6 +128,28 @@ void ControlModel::rebuild() {
   for (const auto& [sid, s] : m.switches)
     if (s.dispInstanceId != 0) anyDrawn = true;
 
+  // The combination a piston fires: its own, or the one whose switch it
+  // engages through the wiring, a few links on at most.
+  std::unordered_map<Id, std::vector<Id>> engages;
+  for (const auto& l : m.switchLinkages)
+    if (l.conditionSwitchId == 0 && l.sourceWhenEngaged && (l.engageAction == 1 || l.engageAction == 4))
+      engages[l.sourceSwitchId].push_back(l.destSwitchId);
+  auto combinationWorkedBy = [&](Id start) -> Id {
+    std::vector<Id> level{start};
+    std::unordered_set<Id> seen{start};
+    for (int depth = 0; depth < 4 && !level.empty(); ++depth) {
+      std::vector<Id> next;
+      for (Id at : level) {
+        if (const Id combo = proc_.combinations().combinationForSwitch(at); combo != 0) return combo;
+        if (const auto it = engages.find(at); it != engages.end())
+          for (Id d : it->second)
+            if (seen.insert(d).second) next.push_back(d);
+      }
+      level = std::move(next);
+    }
+    return 0;
+  };
+
   for (int64_t id : sortedIds(m.switches)) {
     const Id sid = static_cast<Id>(id);
     // A key drawn as a switch is a key: notes travel over MIDI.
@@ -151,6 +173,14 @@ void ControlModel::rebuild() {
     else if (!s.latching) e.role = Role::Piston;
     if (auto it = couplerInto.find(id); it != couplerInto.end() && e.role == Role::Coupler)
       e.division = divisionIndex(it->second);
+    // A divisional piston belongs to its division, when the organ says which:
+    // Wildervank names every division's pistons 1 to 5 and C (#572). The
+    // piston on the panel can work the combination's own switch through the
+    // wiring, so that is followed too.
+    if (e.role == Role::Piston)
+      if (const Id combo = combinationWorkedBy(sid); combo != 0)
+        if (const auto c = m.combinations.find(combo); c != m.combinations.end() && c->second.divisionId != 0)
+          e.division = divisionIndex(static_cast<int64_t>(c->second.divisionId));
     if (auto it = stopOf.find(id); it != stopOf.end()) {
       const Stop& stop = m.stops.at(static_cast<Id>(it->second));
       e.division = divisionIndex(static_cast<int64_t>(stop.divisionId));

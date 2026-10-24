@@ -951,6 +951,49 @@ public:
 };
 static CompactDefaultsTest g_compactDefaults;
 
+// A divisional names its division by its piston code, 2xx for division 1 up
+// to 8xx for division 7, whether the code is its type (Wildervank, which
+// writes none and leaves the switch number) or its piston switch's code
+// (Lemmer, whose type is the kind, 3) (#572).
+class DivisionalDivisionTest final : public mp::test::Test {
+public:
+  DivisionalDivisionTest() : Test("functional.odf.divisional-division", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><o><a>1</a><b>PED</b></o><o><a>2</a><b>HW</b></o>"
+        "<o><a>7</a><b>NOISES</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>201</a><b>Comb piston: PED 01</b><c>201</c></o>"
+        "<o><a>9</a><b>Great 01</b><c>301</c></o>"
+        "<o><a>10</a><b>General 01</b><c>101</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"Combination\">"
+        "<o><a>55681</a><b>Div1 combination 01</b><c>201</c></o>"
+        "<o><a>61825</a><b>Great 01</b><c>9</c><g>3</g></o>"
+        "<o><a>3073</a><b>General 01</b><c>10</c><g>2</g></o>"
+        "<o><a>67969</a><b>Div3 combination 01</b><c>401</c></o>"
+        "<o><a>92545</a><b>Div7 combination 01</b><c>801</c></o>"
+        "</ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d), "the definition loads");
+    const auto divisionOf = [&](mp::Id c) {
+      return m.combinations.count(c) != 0 ? static_cast<long long>(m.combinations.at(c).divisionId) : -1ll;
+    };
+    MP_CHECK(divisionOf(55681) == 1, "a 2xx divisional is division 1's: " + std::to_string(divisionOf(55681)));
+    MP_CHECK(divisionOf(61825) == 2,
+             "a divisional whose piston switch is 301 is division 2's: " + std::to_string(divisionOf(61825)));
+    MP_CHECK(divisionOf(92545) == 7, "an 8xx divisional is division 7's: " + std::to_string(divisionOf(92545)));
+    MP_CHECK(divisionOf(3073) == 0, "a general is no division's: " + std::to_string(divisionOf(3073)));
+    MP_CHECK(divisionOf(67969) == 0,
+             "a divisional of a division the organ lacks is no division's: " + std::to_string(divisionOf(67969)));
+  }
+};
+static DivisionalDivisionTest g_divisionalDivision;
+
 class CompactLinkageTest final : public mp::test::Test {
 public:
   CompactLinkageTest()
