@@ -13,6 +13,7 @@ void SwitchNetwork::reset(const OrganModel& model) {
   heldOff_.clear();
   changes_.clear();
   work_.clear();
+  conditionWork_.clear();
   ranAway_ = false;
   fired_.assign(links_.size(), 0);
 
@@ -109,6 +110,7 @@ void SwitchNetwork::holdOff(std::unordered_set<Id> switches) {
   changes_.clear();
   ranAway_ = false;
   work_.clear();
+  conditionWork_.clear();
   for (Id id : heldOff_)
     if (engaged_.count(id) != 0) work_.emplace_back(id, false);
   drain();
@@ -116,6 +118,7 @@ void SwitchNetwork::holdOff(std::unordered_set<Id> switches) {
 
 void SwitchNetwork::propagate(Id switchId, bool engaged) {
   work_.clear();
+  conditionWork_.clear();
   work_.emplace_back(switchId, engaged);
   drain();
 }
@@ -126,10 +129,24 @@ void SwitchNetwork::drain() {
   constexpr int kMaxSteps = 200000;
   int steps = 0;
 
-  while (!work_.empty()) {
+  while (!work_.empty() || !conditionWork_.empty()) {
     if (++steps > kMaxSteps) {
       ranAway_ = true;
       break;
+    }
+    // A wire gated by a switch that moved is judged once everything the move
+    // set off has landed, on the state that settled. Judged on the way, it
+    // saw its source a moment before the same move switched it off: Azzio's
+    // right-hand half of the Sesquialtera knob (6) is wired to switch the
+    // left-hand half (7) off while 7 is on, 7 is wired to switch 6 off, and
+    // drawing 7 with 6 in saw the first wire fire against the 6 that 7 was
+    // about to push in, switched 7 off again, and rang until the step limit
+    // (#546).
+    if (work_.empty()) {
+      const SwitchLinkage* gated = conditionWork_.front();
+      conditionWork_.pop_front();
+      reevaluate(*gated, true);
+      continue;
     }
     const auto [id, want] = work_.front();
     work_.pop_front();
@@ -148,13 +165,12 @@ void SwitchNetwork::drain() {
     // Everything this switch can swing: the wires it drives, and the wires it
     // gates. Each is re-evaluated from its own source and condition, and
     // asserts only if its firing state just changed.
-    const auto reeval = [&](const std::vector<const SwitchLinkage*>& list, bool conditionMoved) {
-      for (const SwitchLinkage* l : list) reevaluate(*l, conditionMoved);
-    };
     const auto srcIt = bySource_.find(id);
-    if (srcIt != bySource_.end()) reeval(srcIt->second, false);
+    if (srcIt != bySource_.end())
+      for (const SwitchLinkage* l : srcIt->second) reevaluate(*l, false);
     const auto condIt = byCondition_.find(id);
-    if (condIt != byCondition_.end()) reeval(condIt->second, true);
+    if (condIt != byCondition_.end())
+      for (const SwitchLinkage* l : condIt->second) conditionWork_.push_back(l);
   }
 }
 
@@ -177,6 +193,15 @@ void SwitchNetwork::reevaluate(const SwitchLinkage& l, bool conditionMoved) {
     const bool sourceOn = engaged_.count(l.sourceSwitchId) != 0;
     if (sourceOn == l.sourceWhenEngaged) return;
   }
+
+  // A wire that pushes its destination in when it fires (2) has nothing to
+  // take back when it stops (7): the destination was left where the wire put
+  // it, and anything that has moved it since owns its state. Azzio's two
+  // Sesquialtera halves exclude each other this way, 2/7 each way round:
+  // drawing 6 pushes 7 in, and 7 letting go then pushed the 6 just drawn in
+  // after it, so the knob could never go from fully out back to halfway
+  // (#546).
+  if (!now && l.engageAction == 2 && l.disengageAction == 7) return;
 
   // A reversible piston: each press flips what it controls, and letting
   // go does nothing -- a toggle has no state of its own to undo. Every

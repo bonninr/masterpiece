@@ -246,6 +246,13 @@ public:
   // Set a control from MIDI or the UI. Out-of-range input is clamped to the
   // control's declared range, never wrapped.
   void setValue(Id controlId, int value);
+  // Set a control from a reading that falls between two steps, such as a wind
+  // gauge. value() reports the nearest step, an exact half rounding down; the
+  // linkages that read the control see the reading itself. Azzio's wind
+  // gauge is 63.5 at rest and 65.5 at its 4 inch working pressure, and its
+  // delay ramp is (gauge - 63.5) * 63.5: read in whole steps, 65.5 became 65
+  // and the ramp stopped at 95 of 127 (#546).
+  void setExact(Id controlId, double value);
   int value(Id controlId) const;
   // Position within the control's own min..max, as 0..1. Returns 0 for an
   // unknown control. Honours the ODF's inverted flag, so a reversed shoe
@@ -288,6 +295,11 @@ private:
   // Each control's slot, its value and range, in plain arrays.
   std::unordered_map<Id, int32_t> index_;
   std::vector<int> vals_, lo_, hi_;
+  // Parallel to vals_: the reading between two steps that setExact() was
+  // given, or NaN when the control holds a whole step.
+  std::vector<double> exact_;
+  // Parallel to vals_: the reading the graph was last woken for.
+  std::vector<double> flagged_;
   // The linkages compiled against those slots at reset.
   struct Link {
     int32_t src = -1, dst = -1;

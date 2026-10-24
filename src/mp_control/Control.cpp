@@ -1,6 +1,7 @@
 #include "Control.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <tuple>
 #include <utility>
@@ -525,6 +526,8 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     hi_.push_back(std::max(c.minValue, c.maxValue));
     vals_.push_back(clampToRange(c, c.defaultValue));
   }
+  exact_.assign(vals_.size(), std::nan(""));
+  flagged_.assign(vals_.begin(), vals_.end());
   auto slot = [this](Id id) {
     const auto it = index_.find(id);
     return it == index_.end() ? -1 : it->second;
@@ -612,6 +615,32 @@ void ContinuousControlBank::setValue(Id controlId, int value) {
     vals_[i] = v;
     dirty_ = true;
   }
+  // A whole step replacing a reading between two steps changes what the
+  // linkages read, though the step may be the same.
+  if (!std::isnan(exact_[i])) dirty_ = true;
+  exact_[i] = std::nan("");
+  flagged_[i] = v;
+}
+
+void ContinuousControlBank::setExact(Id controlId, double value) {
+  const auto it = index_.find(controlId);
+  if (it == index_.end()) return;
+  const int i = it->second;
+  const double clamped = std::clamp(value, static_cast<double>(lo_[i]), static_cast<double>(hi_[i]));
+  // The nearest step, an exact half rounding down.
+  const int step = static_cast<int>(std::ceil(clamped - 0.5));
+  const double kept = clamped == static_cast<double>(step) ? std::nan("") : clamped;
+  const bool changed = vals_[i] != step;
+  // The linkages always read the latest reading. The graph is woken when the
+  // step changes, and for a reading that has crept an eighth of a step since
+  // it last woke it: a chest sagging and recovering as it is played must not
+  // run every linkage of a large organ on every block.
+  vals_[i] = step;
+  exact_[i] = kept;
+  if (changed || std::fabs(clamped - flagged_[i]) >= 1.0 / 8.0) {
+    dirty_ = true;
+    flagged_[i] = clamped;
+  }
 }
 
 int ContinuousControlBank::value(Id controlId) const {
@@ -652,6 +681,11 @@ void ContinuousControlBank::propagate(Id pinned,
   if (pinned != 0)
     if (const auto it = index_.find(pinned); it != index_.end()) pinnedSlot = it->second;
 
+  // What a linkage reads from a control: the reading between two steps when
+  // setExact() gave one, the step otherwise.
+  auto reading = [this](int i) {
+    return std::isnan(exact_[i]) ? static_cast<double>(vals_[i]) : exact_[i];
+  };
   auto clampSlot = [this](int i, double scaled) {
     const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
     return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
@@ -705,10 +739,11 @@ void ContinuousControlBank::propagate(Id pinned,
       }
       if (k.dst == pinnedSlot) continue; // the player's own move stands
 
-      const int next = clampSlot(k.dst, k.link->apply(source));
+      const int next = clampSlot(k.dst, k.link->apply(reading(k.src)));
       int& slot = vals_[k.dst];
       if (slot != next) {
         slot = next;
+        exact_[k.dst] = std::nan("");
         changed = true;
       }
     }
@@ -719,8 +754,8 @@ void ContinuousControlBank::propagate(Id pinned,
     for (const DoubleLink& k : doubles_) {
       if (k.dst == pinnedSlot) continue;
       const ContinuousControlDoubleLinkage& d = *k.link;
-      const double x = vals_[k.a] * d.firstCoefficient + d.firstIncrement;
-      const double y = vals_[k.b] * d.secondCoefficient + d.secondIncrement;
+      const double x = reading(k.a) * d.firstCoefficient + d.firstIncrement;
+      const double y = reading(k.b) * d.secondCoefficient + d.secondIncrement;
       double combined = 0.0;
       switch (d.operationCode) {
         case 1: combined = x + y; break;
@@ -739,6 +774,7 @@ void ContinuousControlBank::propagate(Id pinned,
       int& slot = vals_[k.dst];
       if (slot != next) {
         slot = next;
+        exact_[k.dst] = std::nan("");
         changed = true;
       }
     }

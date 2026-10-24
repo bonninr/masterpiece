@@ -19009,6 +19009,181 @@ public:
 };
 static ConditionalLinkTest g_conditionalLinks;
 
+// Azzio's three-way Sesquialtera knob, wired as the set wires it (#546): two
+// clickable halves, 6 (right, halfway) and 7 (left, fully out), that exclude
+// each other with 2/7 wires, three state switches (off 21, middle 22, on 23)
+// and the hidden "on in any variant" switch 26 that draws both stops. Moving
+// from halfway to fully out used to ring between switches 7, 23 and 21 until
+// the step limit (every turn a stop-action noise, a burst of them), and
+// moving back from fully out to halfway was undone as it was made.
+class ThreeWayKnobTest final : public mp::test::Test {
+public:
+  ThreeWayKnobTest() : Test("functional.control.three-way-knob", Category::Functional) {}
+
+  static mp::SwitchLinkage wire(mp::Id from, mp::Id to, bool fromEngaged, mp::Id condition, bool conditionEngaged,
+                                int engage, int disengage) {
+    mp::SwitchLinkage l;
+    l.sourceSwitchId = from;
+    l.destSwitchId = to;
+    l.sourceWhenEngaged = fromEngaged;
+    l.conditionSwitchId = condition;
+    l.conditionWhenEngaged = conditionEngaged;
+    l.engageAction = engage;
+    l.disengageAction = disengage;
+    return l;
+  }
+
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {mp::Id{6}, mp::Id{7}, mp::Id{21}, mp::Id{22}, mp::Id{23}, mp::Id{26}}) {
+      mp::Switch sw;
+      sw.switchId = id;
+      m.switches[id] = sw;
+    }
+    auto add = [&](mp::SwitchLinkage l) { m.switchLinkages.push_back(l); };
+    add(wire(22, 26, true, 0, true, 1, 7));
+    add(wire(23, 26, true, 0, true, 1, 7));
+    add(wire(6, 22, true, 23, false, 1, 2));
+    add(wire(7, 23, true, 0, true, 1, 2));
+    add(wire(23, 21, false, 22, false, 1, 2));
+    add(wire(21, 26, false, 0, true, 1, 2));
+    add(wire(7, 6, true, 0, true, 2, 7));
+    add(wire(6, 7, true, 7, true, 2, 7));
+
+    mp::SwitchNetwork net;
+    net.reset(m);
+    auto state = [&] {
+      std::string s;
+      for (mp::Id id : {mp::Id{6}, mp::Id{7}, mp::Id{21}, mp::Id{22}, mp::Id{23}, mp::Id{26}})
+        s += std::to_string(id) + (net.engaged(id) ? "=on " : "=off ");
+      return s;
+    };
+    auto isOff = [&] {
+      return net.engaged(21) && !net.engaged(6) && !net.engaged(7) && !net.engaged(22) && !net.engaged(23) &&
+             !net.engaged(26);
+    };
+    auto isHalf = [&] {
+      return net.engaged(6) && net.engaged(22) && net.engaged(26) && !net.engaged(7) && !net.engaged(23) &&
+             !net.engaged(21);
+    };
+    auto isFull = [&] {
+      return net.engaged(7) && net.engaged(23) && net.engaged(26) && !net.engaged(6) && !net.engaged(22) &&
+             !net.engaged(21);
+    };
+    auto stopsStayedDrawn = [&] {
+      for (const auto& [id, on] : net.lastChanges())
+        if (id == 26 && !on) return false;
+      return true;
+    };
+
+    MP_CHECK(isOff(), "the knob comes up out, stops pushed in: " + state());
+
+    net.set(6, true);
+    MP_CHECK(isHalf(), "the right half draws it halfway: " + state());
+
+    net.set(7, true);
+    MP_CHECK(isFull(), "the left half from halfway draws it fully out: " + state());
+    MP_CHECK(!net.lastChangeRanAway(), "and the wiring settles");
+    MP_CHECK(net.lastChanges().size() < 16, "in a few moves, not a ringing one: " +
+                                                std::to_string(net.lastChanges().size()));
+    MP_CHECK(stopsStayedDrawn(), "with the stops drawn throughout");
+
+    net.set(6, true);
+    MP_CHECK(isHalf(), "the right half from fully out brings it back to halfway: " + state());
+    MP_CHECK(!net.lastChangeRanAway(), "settled");
+
+    net.set(7, true);
+    MP_CHECK(isFull(), "and out again: " + state());
+
+    net.set(7, false);
+    MP_CHECK(isOff(), "the left half pushed in, from fully out, pushes the knob in: " + state());
+
+    net.set(6, true);
+    MP_CHECK(isHalf(), "halfway again: " + state());
+    net.set(6, false);
+    MP_CHECK(isOff(), "the right half pushed in, from halfway, pushes the knob in: " + state());
+
+    // The rule behind it: a wire that pushes its destination in has nothing
+    // to take back when it lets go.
+    {
+      mp::OrganModel p;
+      for (mp::Id id : {mp::Id{1}, mp::Id{2}}) {
+        mp::Switch sw;
+        sw.switchId = id;
+        p.switches[id] = sw;
+      }
+      p.switchLinkages.push_back(wire(1, 2, true, 0, true, 2, 7));
+      mp::SwitchNetwork one;
+      one.reset(p);
+      one.set(2, true);
+      one.set(1, true);
+      MP_CHECK(!one.engaged(2), "a 2/7 wire pushes its destination in when its source is drawn");
+      one.set(2, true);
+      one.set(1, false);
+      MP_CHECK(one.engaged(2), "and leaves it where the player put it when the source lets go");
+    }
+  }
+};
+static ThreeWayKnobTest g_threeWayKnob;
+
+// A wind gauge's reading between two steps reaches the linkages that read it
+// (#546). Azzio's delay chamber reports 63.5 at rest and 65.5 at its 4 inch
+// working pressure; the ramp built on it, (gauge - 63.5) * 63.5, has to run
+// from nothing to a full 127, and its inverse from 127 to nothing, as the
+// chamber fills. Read in whole steps the top of the ramp was 95 of 127, and
+// the knob drawn halfway still sounded its second rank at 32/127.
+class GaugeReadingTest final : public mp::test::Test {
+public:
+  GaugeReadingTest() : Test("functional.control.gauge-reading", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    auto control = [&](mp::Id id, int def) {
+      mp::ContinuousControl c;
+      c.controlId = id;
+      c.defaultValue = def;
+      c.clickable = false;
+      m.continuousControls[id] = c;
+    };
+    control(91, 63);  // the gauge
+    control(92, 0);   // the ramp
+    control(93, 127); // its inverse
+    mp::ContinuousControlLinkage ramp;
+    ramp.sourceControlId = 91;
+    ramp.destControlId = 92;
+    ramp.increment = -63.5;
+    ramp.coefficient = 63.5;
+    m.controlLinkages.push_back(ramp);
+    mp::ContinuousControlLinkage inverse;
+    inverse.sourceControlId = 92;
+    inverse.destControlId = 93;
+    inverse.invert = true;
+    m.controlLinkages.push_back(inverse);
+
+    mp::ContinuousControlBank bank;
+    bank.reset(m);
+    bank.setExact(91, 63.5);
+    bank.propagate();
+    MP_CHECK(bank.value(91) == 63, "an exact half rounds down on the gauge: " + std::to_string(bank.value(91)));
+    MP_CHECK(bank.value(92) == 0 && bank.value(93) == 127,
+             "at rest the ramp is closed and its inverse open: " + std::to_string(bank.value(92)) + " / " +
+                 std::to_string(bank.value(93)));
+    bank.setExact(91, 64.5);
+    bank.propagate();
+    MP_CHECK(bank.value(91) == 64, "a pressure of 2 inches reads step 64");
+    MP_CHECK(bank.value(92) == 64, "and opens the ramp half way: " + std::to_string(bank.value(92)));
+    bank.setExact(91, 65.5);
+    bank.propagate();
+    MP_CHECK(bank.value(91) == 65, "the working pressure reads step 65 on the gauge");
+    MP_CHECK(bank.value(92) == 127 && bank.value(93) == 0,
+             "and opens the ramp fully, closing its inverse: " + std::to_string(bank.value(92)) + " / " +
+                 std::to_string(bank.value(93)));
+    bank.setValue(91, 65);
+    bank.propagate();
+    MP_CHECK(bank.value(92) == 95, "a whole step is read as the step: " + std::to_string(bank.value(92)));
+  }
+};
+static GaugeReadingTest g_gaugeReading;
+
 #ifdef MP_TEST_HAS_AUDIO
 // Two stops on one switch (#285): Azzio's Sesquialtera draws both of its stops
 // from one hidden switch. Kept one stop per switch, the second overwrote the
