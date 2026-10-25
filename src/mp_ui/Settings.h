@@ -640,8 +640,10 @@ public:
   // Without a device manager (a plugin) there are no Audio and MIDI tabs.
   SettingsWindow(MasterpieceProcessor& p, juce::AudioDeviceManager* devices);
   ~SettingsWindow() override;
-  // Open on the tab of this name ("Audio"), when there is one.
+  // Open on the tab of this name ("Audio"), when there is one. Without one
+  // the window opens on the tab it was last closed on (#591).
   void showTab(const juce::String& name);
+  juce::String currentTab() const { return tabs_.getCurrentTabName(); }
   void resized() override;
 
   // Run once the window has closed, on the message thread: an organ's first
