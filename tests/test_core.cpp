@@ -12174,6 +12174,43 @@ public:
       MP_CHECK(early > 0.4f && last < 1.0e-3f, "it plays as recorded, then fades to silence at its end");
     }
     root.deleteRecursively();
+
+    // The memory estimate leaves out the releases the choice leaves out (#591).
+    {
+      auto m = threeReleases();
+      for (mp::Id id = 1; id <= 3; ++id) {
+        mp::SampleRef ref;
+        ref.sampleId = id;
+        ref.fileName = "rel" + std::to_string(id) + ".wav";
+        m.samples[id] = ref;
+      }
+      mp::SampleLibrary lib;
+      std::map<mp::Id, mp::SampleLibrary::SampleShape> shapes;
+      for (const auto& job : lib.shapeJobs(m, "", nullptr)) {
+        mp::SampleLibrary::SampleShape s;
+        s.frames = 1000;
+        s.channels = 1;
+        s.releaseOnly = job.releaseOnly;
+        s.keptBy = job.keptBy;
+        shapes[job.sampleId] = s;
+      }
+      MP_CHECK(shapes.size() == 3, "each release is looked at");
+      lib.setStorage(mp::SampleStorage::Float32);
+      auto total = [&] {
+        int64_t bytes = 0;
+        for (const auto& [id, s] : shapes) bytes += lib.residentBytes(s);
+        return bytes;
+      };
+      MP_CHECK(total() == 3 * 4000, "all releases: all three counted");
+      lib.setReleaseChoice(C::Longest);
+      MP_CHECK(total() == 4000 && lib.residentBytes(shapes[3]) == 4000,
+               "the longest: only the release for the longest hold counted");
+      lib.setReleaseChoice(C::Shortest);
+      MP_CHECK(total() == 4000 && lib.residentBytes(shapes[2]) == 4000,
+               "the shortest: only the release for the shortest hold counted");
+      lib.setReleaseChoice(C::None);
+      MP_CHECK(total() == 0, "no releases: none counted");
+    }
   }
 };
 // The format's standard components (installation package 1) come with the
