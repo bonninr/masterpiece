@@ -179,6 +179,9 @@ private:
     Id instanceId = 0;
     Id imageSetId = 0;
     Id switchId = 0;          // 0 = decoration, not a control
+    // Whose state picks the frame: the switch itself, or the drawstop of a
+    // GrandOrgue reversible piston (#587).
+    Id shownSwitchId = 0;
     // A shoe, wheel or slider: dragged rather than toggled, and its frame is
     // chosen from its value instead of from an on/off pair. Mutually
     // exclusive with switchId in every set seen so far, but not assumed to be.

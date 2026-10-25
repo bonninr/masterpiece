@@ -1132,8 +1132,13 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
 
   // A reversible piston flips one drawstop each time it is pressed: a
   // momentary switch wired to it by a toggling link (3/7), as the reversible
-  // pistons of the sets built for the other format are.
+  // pistons of the sets built for the other format are. Its picture shows the
+  // drawstop, as GrandOrgue draws it: lit while the stop is drawn (#587).
   const int reversibleCount = ini.num("Organ", "NumberOfReversiblePistons", 0);
+  // Each piston's drawstop switch, and its section for the way that drawstop
+  // is displayed.
+  std::map<int, int> reversibleTarget;
+  std::map<int, std::string> reversibleObject;
   for (int r = 1; r <= reversibleCount; ++r) {
     const std::string sec = "ReversiblePiston" + n3(r);
     const std::string type = lower(ini.str(sec, "ObjectType"));
@@ -1148,6 +1153,16 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     emitSwitch(piston, ini.str(sec, "Name", "Reversible " + std::to_string(r)), false);
     Emitter::yn(switchRows[piston], "Latching", false);
     link(piston, target, 0, true, 3, 7);
+    auto shown = out.row("MasterpieceSwitchDisplay");
+    Emitter::set(shown, "SwitchID", piston);
+    Emitter::set(shown, "ShownSwitchID", target);
+    reversibleTarget[piston] = target;
+    const std::string manual = "Manual" + n3(m);
+    reversibleObject[piston] =
+        type == "stop"      ? "Stop" + n3(ini.num(manual, "Stop" + n3(k), 0))
+        : type == "coupler" ? "Coupler" + n3(ini.num(manual, "Coupler" + n3(k), 0))
+        : type == "tremulant" ? "Tremulant" + n3(k)
+                              : "Switch" + n3(k);
   }
   if (ini.num("Organ", "NumberOfDivisionalCouplers", 0) > 0)
     note("divisional couplers are not imported yet");
@@ -1282,6 +1297,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         emitSwitch(id, "__mirror of " + std::to_string(switchId), on);
         link(switchId, id, 0, true);
         link(id, switchId, 0, true);
+        if (const auto rev = reversibleTarget.find(switchId); rev != reversibleTarget.end()) {
+          auto shown = out.row("MasterpieceSwitchDisplay");
+          Emitter::set(shown, "SwitchID", id);
+          Emitter::set(shown, "ShownSwitchID", rev->second);
+        }
       }
       auto row = switchRows[id];
       if (!row) return;
@@ -1835,6 +1855,11 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
           std::string on = ini.str(sec, "ImageOn", stockName(piston ? "piston%02d_on" : "drawstop%02d_on", image));
           std::string off = ini.str(sec, "ImageOff", stockName(piston ? "piston%02d_off" : "drawstop%02d_off", image));
           if (ini.yes(sec, "DisplayInInvertedState", false)) std::swap(on, off);
+          // A reversible piston shows its drawstop the way that drawstop is
+          // displayed, inverted when it is.
+          if (const auto rev = reversibleObject.find(e.switchId);
+              rev != reversibleObject.end() && ini.yes(rev->second, "DisplayInInvertedState", false))
+            std::swap(on, off);
           const auto wh = sizeOf(off);
           const int w = ini.num(sec, "Width", wh.first), h = ini.num(sec, "Height", wh.second);
           int x = ini.num(sec, "PositionX", -1), y = ini.num(sec, "PositionY", -1);
