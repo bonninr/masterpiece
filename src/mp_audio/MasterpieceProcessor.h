@@ -2180,6 +2180,10 @@ private:
   // reached under them and under the new ones: what a coupler moved (#131).
   std::unordered_set<Id> heldFlowBefore_;
   std::vector<ExpandedNote> reflowBefore_, reflowAfter_;
+  // The stops held notes were last given and are still drawn: a stop moved
+  // in the same piston press reaches the held notes at the next block, along
+  // the couplers then drawn (#589).
+  std::unordered_set<Id> reflowStops_;
   void reflowHeldNotes();
   MidiMap midiMap_;
   SplitKeyboardHost split_{midiMap_};
