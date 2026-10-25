@@ -4071,6 +4071,13 @@ void MasterpieceProcessor::reflowHeldNotes() {
   const auto contains = [&same](const std::vector<ExpandedNote>& v, const ExpandedNote& n) {
     return std::any_of(v.begin(), v.end(), [&](const ExpandedNote& x) { return same(x, n); });
   };
+  // A coupler moves only the stops the held notes already sound. A stop moved
+  // in the same piston press is started or let go at the next block, along
+  // the couplers drawn then; a stop pushed in just before the coupler still
+  // sounds on the notes the coupler reached, so the coupler lets it go (#589).
+  reflowStops_.clear();
+  for (Id s : appliedStops_)
+    if (engagedStops_.count(s) != 0) reflowStops_.insert(s);
   for (const auto& [key, held] : soundingNotes_) {
     (void)key;
     const float vel = static_cast<float>(held.velocity) / 127.0f;
@@ -4086,7 +4093,7 @@ void MasterpieceProcessor::reflowHeldNotes() {
       if (contains(reflowBefore_, reached)) continue;
       if (engageCoupledInput(reached, held.id, held.velocity)) continue;
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
-                                         engagedStops_, &engagedSwitches_)) {
+                                         reflowStops_, &engagedSwitches_)) {
         const auto rankIt = model_.ranks.find(rp.rankId);
         if (rankIt == model_.ranks.end()) continue;
         for (const auto& pipe : rankIt->second.pipes)
@@ -4101,7 +4108,7 @@ void MasterpieceProcessor::reflowHeldNotes() {
       if (contains(reflowAfter_, reached)) continue;
       releaseCoupledInput(reached, held.id);
       for (const auto& rp : resolvePipes(model_, reached.divisionId, reached.midiNote,
-                                         engagedStops_, &heldFlowBefore_))
+                                         appliedStops_, &heldFlowBefore_))
         voices_.noteOffPipe(held.id, rp.pipeId, NoteRelease{});
     }
   }
