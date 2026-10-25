@@ -376,6 +376,7 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
   scratch.clear();
   const std::pair<Id, int> origin{static_cast<Id>(sourceKeyboardId), midiNote};
   scratch.frontier.push_back(origin);
+  scratch.frontierGate.push_back(0);
   scratch.seen.push_back(origin);
 
   // Bounded rather than trusted: a file with a coupler cycle must not spin the
@@ -383,7 +384,13 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
   constexpr int kMaxDepth = 16;
   for (int depth = 0; depth < kMaxDepth && !scratch.frontier.empty(); ++depth) {
     scratch.next.clear();
-    for (const auto& step : scratch.frontier) {
+    scratch.nextGate.clear();
+    for (size_t f = 0; f < scratch.frontier.size(); ++f) {
+      const auto& step = scratch.frontier[f];
+      // The coupler that brought the walk to this keyboard: the division it
+      // plays was reached through that coupler, and is opened as a coupled
+      // division is (#565).
+      const Id gate = scratch.frontierGate[f];
       // A keyboard sounds the division it is associated with, whether or not a
       // KeyAction says so. On a full-size organ nothing does: the manuals are
       // wired to their pipework through the switch graph, and
@@ -394,7 +401,7 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       if (divIt != divisionOfKeyboard_.end() && !viaSwitches) {
         const int div = static_cast<int>(divIt->second);
         if (insertUnique(scratch.emitted, std::pair<int, int>{div, step.second}))
-          out.push_back({div, step.second, velocity});
+          out.push_back({div, step.second, velocity, gate});
       }
       // The program couplers into the played keyboard's own division: the key
       // sounds the source's division at the key's note plus the shift. Only
@@ -410,7 +417,7 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
             if (note < 0 || note > 127) continue;
             const int src = static_cast<int>(c.srcDivision);
             if (insertUnique(scratch.emitted, std::pair<int, int>{src, note}))
-              out.push_back({src, note, velocity});
+              out.push_back({src, note, velocity, c.switchId});
           }
       }
 
@@ -433,8 +440,11 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
           const Id kb = static_cast<Id>(a->destKeyboard);
           // Keyed on keyboard AND note: the same keyboard reached at two
           // pitches through a 16' and an 8' coupler must sound both.
-          if (kb != 0 && insertUnique(scratch.seen, std::pair<Id, int>{kb, note}))
+          if (kb != 0 && insertUnique(scratch.seen, std::pair<Id, int>{kb, note})) {
             scratch.next.push_back({kb, note});
+            scratch.nextGate.push_back(a->conditionSwitchId != 0 ? static_cast<Id>(a->conditionSwitchId)
+                                                                 : gate);
+          }
         } else if (a->destDivision != 0) {
           if (insertUnique(scratch.emitted,
                            std::pair<int, int>{a->destDivision, note}))
@@ -443,7 +453,29 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       }
     }
     scratch.frontier.swap(scratch.next);
+    scratch.frontierGate.swap(scratch.nextGate);
   }
+}
+
+std::vector<Id> CouplerMatrix::divisionsThrough(Id keyboardId) const {
+  std::vector<Id> divisions, keyboards{keyboardId};
+  for (size_t i = 0; i < keyboards.size() && i < 64; ++i) {
+    const Id kb = keyboards[i];
+    if (const auto d = divisionOfKeyboard_.find(kb); d != divisionOfKeyboard_.end())
+      if (std::find(divisions.begin(), divisions.end(), d->second) == divisions.end())
+        divisions.push_back(d->second);
+    const auto it = edges_.find(kb);
+    if (it == edges_.end()) continue;
+    // A gated edge further on names its own coupler, so only the ungated ones
+    // carry this coupler's.
+    for (const KeyAction* a : it->second) {
+      if (a->conditionSwitchId != 0 || !a->destIsKeyboard || a->destKeyboard == 0) continue;
+      const Id dst = static_cast<Id>(a->destKeyboard);
+      if (std::find(keyboards.begin(), keyboards.end(), dst) == keyboards.end())
+        keyboards.push_back(dst);
+    }
+  }
+  return divisions;
 }
 
 std::vector<ExpandedNote> CouplerMatrix::expand(

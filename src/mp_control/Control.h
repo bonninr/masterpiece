@@ -18,7 +18,8 @@ namespace mp {
 // One division a key press reaches.
 //
 // `couplerSwitch` names the coupler that carried the note there, and is zero
-// for the division the keyboard plays on its own. The two need different
+// for the division the keyboard plays on its own. A coupler to a keyboard
+// carries its switch on to the division that keyboard plays (#565). The two need different
 // pipes: the keyboard's own division is opened by the organ's own wiring, the
 // key's switch moving the pallet, while a coupled division has no key of its
 // own pressed and the engine has to open its pipe itself.
@@ -77,6 +78,9 @@ void resolvePipesInto(const OrganModel& model, int divisionId, int midiNote,
 struct KeyFlowScratch {
   std::vector<std::pair<Id, int>> frontier, next, seen;
   std::vector<std::pair<int, int>> emitted;
+  // Beside frontier and next, one for one: the coupler switch that carried the
+  // walk to that keyboard, zero for the keyboard played and its plain feeds.
+  std::vector<Id> frontierGate, nextGate;
 
   // Called once, off the audio thread. The sizes are generous for an organ:
   // five manuals plus pedal, four or five hops of coupling.
@@ -85,12 +89,16 @@ struct KeyFlowScratch {
     next.reserve(n);
     seen.reserve(n);
     emitted.reserve(n);
+    frontierGate.reserve(n);
+    nextGate.reserve(n);
   }
   void clear() {
     frontier.clear();
     next.clear();
     seen.clear();
     emitted.clear();
+    frontierGate.clear();
+    nextGate.clear();
   }
 };
 
@@ -179,6 +187,11 @@ public:
   // is what makes a unison off work. Couplers off the keyboard still walk.
   // Set after reset(), so the fallback decided there is not affected.
   void setSwitchFedKeyboards(std::unordered_set<Id> keyboards) { switchFed_ = std::move(keyboards); }
+
+  // The divisions a coupler to this keyboard reaches: the keyboard's own, and
+  // those its ungated key flow carries on to. The walk names the coupler for
+  // each of them (#565). For the load, never for the audio thread.
+  std::vector<Id> divisionsThrough(Id keyboardId) const;
 
 private:
   bool conditionMet(const KeyAction& a,
