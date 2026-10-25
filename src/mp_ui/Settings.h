@@ -188,6 +188,8 @@ private:
   void showPreload(int64_t frames);
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
   juce::ToggleButton compress_{TRANS("Hold samples compressed (lossless)")};
+  // Greys out compression for the resident formats it does not code (#591).
+  void enableCompress();
   juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
   juce::ToggleButton faster_{TRANS("Faster audio engine")};
