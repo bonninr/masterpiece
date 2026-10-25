@@ -826,7 +826,9 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   const std::filesystem::path path = mp::pathOf(job.path);
   std::error_code ec;
   int64_t fileBytes = job.packageBytes;
+  shape.fromPackage = true;
   if (std::filesystem::exists(path, ec)) {
+    shape.fromPackage = false;
     if (readWavPackShape(path, wav) || (!job.wavpack && readWavShape(path, wav))) {
       shape.channels = wav.channels;
       shape.rate = wav.rate;
@@ -862,7 +864,7 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   if (shape.releaseOnly && releaseMaxMs_ > 0) {
     const double rate = loadRate_ > 0.0 ? loadRate_ : shape.rate > 0.0 ? shape.rate : 48000.0;
     frames = std::min(frames, static_cast<int64_t>(releaseMaxMs_ * rate / 1000.0));
-  } else if (shape.releaseOnly && streamReleases_) {
+  } else if (shape.releaseOnly && streamReleases_ && !shape.fromPackage) {
     frames = std::min(frames, streamHeadFor(frames));
   }
   const int channels = loadMono_ ? 1 : shape.channels;

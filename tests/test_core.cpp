@@ -15929,6 +15929,22 @@ public:
     MP_CHECK(lib.residentBytes(m16) == 8000LL * 1 * 4, "a quarter is less than the head, so the head");
     lib.setStreamHeadPercent(0);
 
+    // A release only in the package the organ was opened from is read out of
+    // the archive whole, with no file to stream its tail from (#594).
+    mp::SampleLibrary::ShapeJob packaged;
+    packaged.path = dir.getChildFile("in-the-package.wav").getFullPathName().toStdString();
+    packaged.releaseOnly = true;
+    packaged.packageBytes = 24000LL * 2 * 3;
+    const auto p24 = mp::SampleLibrary::readShape(packaged);
+    MP_CHECK(p24.frames == 24000 && p24.channels == 2 && p24.fromPackage,
+             "a sample only in the package is sized from its entry");
+    MP_CHECK(lib.residentBytes(p24) == 24000LL * 2 * 4,
+             "a release from the package is counted whole while releases stream");
+    lib.setStreamReleases(false);
+    MP_CHECK(lib.residentBytes(p24) == 24000LL * 2 * 4, "and whole when they do not");
+    lib.setStreamReleases(true);
+    MP_CHECK(lib.residentBytes(m16) == 8000LL * 1 * 4, "a release on disk still streams");
+
     job.path = dir.getChildFile("not-there.wav").getFullPathName().toStdString();
     MP_CHECK(lib.residentBytes(mp::SampleLibrary::readShape(job)) == 0,
              "a missing file costs nothing, since nothing will be loaded for it");

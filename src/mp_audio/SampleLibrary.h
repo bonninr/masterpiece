@@ -294,6 +294,9 @@ public:
     int channels = 0;
     double rate = 0.0;
     bool releaseOnly = false;
+    // Only in the package the organ was opened from: read out of the archive
+    // whole, a release included, with no file to stream from (#594).
+    bool fromPackage = false;
   };
   // The samples the pipework plays, and where each is. `wanted` names them
   // instead of the pipework when given: a sparse load reads fewer samples
