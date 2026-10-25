@@ -1139,14 +1139,34 @@ public:
 //
 // The coupler closes the division's own input switch the way a key does, so
 // the organ's wiring opens the pipe from there, as it does for a key.
+//
+// #565: the same for a coupler that names a keyboard, the way Pinerolo's
+// couplers do: it reaches the division that keyboard plays, whose own keys
+// are wired through the switches as well. And for a program coupler, which
+// reaches a division the same way.
 class CoupledInputTest final : public mp::test::Test {
 public:
   CoupledInputTest()
       : Test("functional.control.coupled-input", Category::Functional) {}
 
   void run() override {
+    scenario(false, false);
+    try {
+      scenario(true, false);
+    } catch (const mp::test::Failure& f) {
+      throw mp::test::Failure("a coupler to a keyboard: " + f.what());
+    }
+    try {
+      scenario(false, true);
+    } catch (const mp::test::Failure& f) {
+      throw mp::test::Failure("a program coupler: " + f.what());
+    }
+  }
+
+  void scenario(bool toKeyboard, bool program) {
     const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                               .getChildFile("mp-coupled-input");
+                               .getChildFile(program ? "mp-coupled-input-pc"
+                                             : toKeyboard ? "mp-coupled-input-kb" : "mp-coupled-input");
     dir.getChildFile("OrganDefinitions").createDirectory();
     const juce::File odf =
         dir.getChildFile("OrganDefinitions").getChildFile("ci.Organ_Hauptwerk_xml");
@@ -1195,6 +1215,8 @@ public:
         "<ObjectList ObjectType=\"KeyboardKey\">"
         "<KeyboardKey><KeyboardID>2</KeyboardID><SwitchID>5001</SwitchID>"
         "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></KeyboardKey>"
+        "<KeyboardKey><KeyboardID>1</KeyboardID><SwitchID>5002</SwitchID>"
+        "<NormalMIDINoteNumber>60</NormalMIDINoteNumber></KeyboardKey>"
         "</ObjectList>"
         "<ObjectList ObjectType=\"DivisionInput\">"
         "<DivisionInput><DivisionID>1</DivisionID><SwitchID>900</SwitchID>"
@@ -1204,6 +1226,9 @@ public:
         "</ObjectList>"
         "<ObjectList ObjectType=\"SwitchLinkage\">"
         "<SwitchLinkage><SourceSwitchID>5001</SourceSwitchID><DestSwitchID>800</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "<SwitchLinkage><SourceSwitchID>5002</SourceSwitchID><DestSwitchID>900</DestSwitchID>"
         "<EngageLinkActionCode>1</EngageLinkActionCode>"
         "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
         "<SwitchLinkage><SourceSwitchID>800</SourceSwitchID><DestSwitchID>9002</DestSwitchID>"
@@ -1218,11 +1243,15 @@ public:
         "<Switch><SwitchID>21002</SwitchID><Name>Principal 8</Name><Latching>Y</Latching></Switch>"
         "<Switch><SwitchID>300</SwitchID><Name>II-I</Name><Latching>Y</Latching></Switch>"
         "</ObjectList>"
-        // The coupler: manual II also plays division I while its switch is drawn.
+        // The coupler: manual II also plays division I while its switch is
+        // drawn, named as the division or as keyboard I.
         "<ObjectList ObjectType=\"KeyAction\">"
-        "<KeyAction><SourceKeyboardID>2</SourceKeyboardID>"
-        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
-        "<DestDivisionID>1</DestDivisionID><ActionTypeCode>1</ActionTypeCode>"
+        "<KeyAction><SourceKeyboardID>2</SourceKeyboardID>" +
+        juce::String(toKeyboard ? "<DestIsKeyboardNotDivision>Y</DestIsKeyboardNotDivision>"
+                                  "<DestKeyboardID>1</DestKeyboardID>"
+                                : "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision>"
+                                  "<DestDivisionID>1</DestDivisionID>") +
+        "<ActionTypeCode>1</ActionTypeCode>"
         "<ConditionSwitchID>300</ConditionSwitchID>"
         "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
         "<MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey>"
@@ -1233,8 +1262,18 @@ public:
     const juce::File settings = proc.settingsFileFor(odf);
     const bool hadSettings = settings.existsAsFile();
     proc.prepareToPlay(48000.0, 256);
+    if (program) proc.setProgramCouplers(true);
     auto r = proc.loadOrgan(odf, 0, false);
     MP_CHECK(r.ok, "the two-manual organ loads");
+    // The coupler under test: the organ's own, or the program's division I
+    // to division II at 8', which a key on manual II plays division I through.
+    mp::Id coupler = 300;
+    if (program) {
+      coupler = 0;
+      for (const auto& c : proc.programCouplerList())
+        if (c.srcDivision == 1 && c.destDivision == 2 && c.shift == 0) coupler = c.switchId;
+      MP_CHECK(coupler != 0, "the program offers division I to division II at 8'");
+    }
     // The stops are drawn: with nothing drawn there is no pipe to sound, and
     // the key flow is not consulted at all.
     proc.setStopEngaged(1, true);
@@ -1256,7 +1295,7 @@ public:
     MP_CHECK(!proc.switchEngaged(9001), "so the coupled pipe's pallet stays shut");
 
     // With it drawn, the note carries to the division it names.
-    proc.setSwitchEngaged(300, true);
+    proc.setSwitchEngaged(coupler, true);
     juce::MidiBuffer off;
     off.addEvent(juce::MidiMessage::noteOff(2, 60), 0);
     block(off);
@@ -1266,13 +1305,13 @@ public:
     MP_CHECK(proc.switchEngaged(9001), "and the pipe's pallet with it");
 
     // And with the coupler pushed in, the pipe lets go.
-    proc.setSwitchEngaged(300, false);
+    proc.setSwitchEngaged(coupler, false);
     for (int i = 0; i < 4; ++i) block({});
     MP_CHECK(!proc.switchEngaged(900), "and lets it go again");
 
     // Drawn again with the key still down: the held note reaches the coupled
     // division, the way a key already held reaches a stop drawn under it.
-    proc.setSwitchEngaged(300, true);
+    proc.setSwitchEngaged(coupler, true);
     block({});
     MP_CHECK(proc.switchEngaged(900), "drawn under a held key: the coupled input closes");
     block(off);

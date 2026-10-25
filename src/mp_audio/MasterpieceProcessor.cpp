@@ -5500,57 +5500,67 @@ void MasterpieceProcessor::buildCouplerInputs() {
   coupledPending_.clear();
   coupledDepth_ = 0;
   coupledFlushing_ = false;
+  // The engine's own switches, well above the ids an organ uses, so they
+  // never clash with the organ's own.
+  nextCoupledSwitch_ = kCoupledSwitchBase;
   if (model_.divisionInputs.empty()) return;
 
-  std::unordered_map<Id, std::vector<const DivisionInput*>> inputsOf;
-  for (const DivisionInput& in : model_.divisionInputs)
-    if (in.switchId != 0) inputsOf[in.divisionId].push_back(&in);
   // The divisions with a stop that names a rank: there the stop-to-rank walk
   // reaches the pipes, as it always has.
   std::unordered_set<Id> ranked;
   for (const auto& [stopId, stop] : model_.stops)
     if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
 
-  // The engine's own switches, well above the ids an organ uses, so they
-  // never clash with the organ's own.
-  Id next = kCoupledSwitchBase;
+  std::vector<Id> reached;
   for (const KeyAction& a : model_.keyActions) {
     if (a.conditionSwitchId == 0) continue;
     // A division the coupler reaches: the division's own input switch for
     // that note is what carries the note into its pipework. A coupler to a
-    // keyboard is left alone: that keyboard's own keys already carry it.
-    if (a.destIsKeyboard || a.destDivision == 0) continue;
-    const auto inputs = inputsOf.find(static_cast<Id>(a.destDivision));
-    if (inputs == inputsOf.end()) continue;
-    for (const DivisionInput* in : inputs->second) {
-      const CoupledInputKey key{a.conditionSwitchId, static_cast<Id>(a.destDivision), in->midiNote};
-      // Several key actions on the same coupler and division (one per range
-      // of notes) share one switch per note.
-      if (coupledInput_.count(key) != 0) continue;
-      const Id mine = next++;
-      Switch sw;
-      sw.switchId = mine;
-      sw.name = "coupled input";
-      sw.latching = false;
-      sw.clickable = false;
-      model_.switches[mine] = sw;
-      // Wired the way a key is: engaged while it is held, released when it is
-      // let go, and nothing else in the way.
-      SwitchLinkage l;
-      l.sourceSwitchId = mine;
-      l.destSwitchId = in->switchId;
-      l.sourceWhenEngaged = true;
-      l.conditionWhenEngaged = true;
-      l.engageAction = 1;
-      l.disengageAction = 2;
-      model_.switchLinkages.push_back(l);
-      coupledInput_[key] = {mine, in->switchId, ranked.count(in->divisionId) == 0};
+    // keyboard reaches the division that keyboard plays, and the ones its
+    // plain key flow carries on to: on an organ wired through its switches
+    // that keyboard's keys are not pressed, so its inputs are the way in
+    // there as well (#565).
+    reached.clear();
+    if (a.destIsKeyboard) {
+      if (a.destKeyboard != 0) reached = couplers_.divisionsThrough(static_cast<Id>(a.destKeyboard));
+    } else if (a.destDivision != 0) {
+      reached.push_back(static_cast<Id>(a.destDivision));
     }
+    for (const Id division : reached)
+      addCoupledInputs(static_cast<Id>(a.conditionSwitchId), division, ranked.count(division) == 0);
   }
   // Ten notes held on every coupled division at once is far beyond a player;
   // the audio thread adds to these and must not allocate.
   coupledHeld_.reserve(1024);
   coupledPending_.reserve(1024);
+}
+
+void MasterpieceProcessor::addCoupledInputs(Id coupler, Id division, bool rankless) {
+  for (const DivisionInput& in : model_.divisionInputs) {
+    if (in.switchId == 0 || in.divisionId != division) continue;
+    const CoupledInputKey key{coupler, division, in.midiNote};
+    // Several key actions on the same coupler and division (one per range of
+    // notes) share one switch per note.
+    if (coupledInput_.count(key) != 0) continue;
+    const Id mine = nextCoupledSwitch_++;
+    Switch sw;
+    sw.switchId = mine;
+    sw.name = "coupled input";
+    sw.latching = false;
+    sw.clickable = false;
+    model_.switches[mine] = sw;
+    // Wired the way a key is: engaged while it is held, released when it is
+    // let go, and nothing else in the way.
+    SwitchLinkage l;
+    l.sourceSwitchId = mine;
+    l.destSwitchId = in.switchId;
+    l.sourceWhenEngaged = true;
+    l.conditionWhenEngaged = true;
+    l.engageAction = 1;
+    l.disengageAction = 2;
+    model_.switchLinkages.push_back(l);
+    coupledInput_[key] = {mine, in.switchId, rankless};
+  }
 }
 
 bool MasterpieceProcessor::engageCoupledInput(const ExpandedNote& reached, uint64_t noteId,
@@ -5790,6 +5800,18 @@ void MasterpieceProcessor::buildProgramCouplers() {
       model_.switches[sw.switchId] = sw;
       programCouplersList_.push_back({sw.switchId, div, div, shift});
     }
+
+  // A division whose stops name no rank is reached only through its inputs,
+  // on an organ wired through its switches: a program coupler closes them the
+  // way the organ's own couplers do (#565). A division with ranked stops keeps
+  // the stop-to-rank walk.
+  if (!model_.divisionInputs.empty()) {
+    std::unordered_set<Id> ranked;
+    for (const auto& [stopId, stop] : model_.stops)
+      if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
+    for (const auto& c : programCouplersList_)
+      if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+  }
 
   couplers_.setProgramCouplers(programCouplersList_);
 }
@@ -6813,12 +6835,13 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // up that way rather than needing the player to find a switch nobody told
   // them about.
   phases.mark("model: stop map");
-  buildCouplerInputs();
   // The key flow is walked before the switches are wired, because the
   // program couplers are switches of the organ's own, and the coupler
   // matrix has to know which divisions a player can play before it can
-  // offer the couplers between them.
+  // offer the couplers between them. The coupled inputs follow it: a coupler
+  // to a keyboard reaches the divisions the matrix says that keyboard plays.
   couplers_.reset(model_);
+  buildCouplerInputs();
   buildProgramCouplers();
   switches_.reset(model_);
   // Where the player left the switches the organ remembers, set as the player

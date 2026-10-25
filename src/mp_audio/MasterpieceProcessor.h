@@ -2780,7 +2780,11 @@ private:
   };
   // The engine's own switches start well above the ids an organ uses.
   static constexpr Id kCoupledSwitchBase = 0x40000000ull;
+  Id nextCoupledSwitch_ = kCoupledSwitchBase;
   void buildCouplerInputs();
+  // The engine's switches that close `division`'s inputs for `coupler`, one
+  // per note. `rankless`: no stop of the division names a rank.
+  void addCoupledInputs(Id coupler, Id division, bool rankless);
   // True when a coupler carried the note and the engine's own switch closes
   // the division's input for it: the organ's wiring opens the pipe from
   // there, so the caller must not open it a second time.
