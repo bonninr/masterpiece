@@ -15876,6 +15876,48 @@ public:
 };
 static UnclaimedChannelTest g_unclaimedChannel;
 
+// A manual moved to a channel of its own leaves the organ's default channel
+// for it (#585): Pedal, lower and upper manual moved to 11, 12 and 13 still
+// played from 1, 2 and 3 as well. A manual left on its default keeps it, and
+// a manual placed for one console only keeps its default on the others.
+class MovedManualChannelTest final : public mp::test::Test {
+public:
+  MovedManualChannelTest() : Test("functional.midi.moved-manual-leaves-its-channel", Category::Functional) {}
+  void run() override {
+    // Manual I (701) on channel 2 and the Pedal (702) on channel 1 by default.
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/recorder-keyboards.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads");
+    proc.clearChannelAssignments();
+    MP_CHECK(proc.keyboardForChannel(2) == 701 && proc.keyboardForChannel(1) == 702,
+             "the organ's own channels to begin with");
+
+    proc.setKeyboardForChannel(12, 701, 0, false);
+    MP_CHECK(proc.keyboardForChannel(12) == 701, "channel 12 plays Manual I");
+    MP_CHECK(proc.keyboardForChannel(2) == 0, "and channel 2 no longer does");
+    MP_CHECK(proc.keyboardForChannel(1) == 702, "the Pedal, left alone, keeps channel 1");
+
+    proc.setKeyboardForChannel(11, 702, 0, false);
+    MP_CHECK(proc.keyboardForChannel(11) == 702 && proc.keyboardForChannel(1) == 0,
+             "the Pedal moved to 11 leaves channel 1");
+
+    // Placed for console 5 only: another console still finds it on its default.
+    proc.clearChannelAssignments();
+    proc.setKeyboardForChannel(12, 701, 5, false);
+    MP_CHECK(proc.keyboardForChannel(12, 5) == 701, "console 5 plays Manual I on 12");
+    MP_CHECK(proc.keyboardForChannel(2, 5) == 0, "and not on 2");
+    MP_CHECK(proc.keyboardForChannel(2, 6) == 701, "console 6 still plays it on 2");
+
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static MovedManualChannelTest g_movedManualChannel;
+
 // A piston that makes a keyboard play another manual: one or two keyboards
 // playing an organ with more (#90, "virtual keyboards").
 class ManualButtonTest final : public mp::test::Test {

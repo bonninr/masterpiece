@@ -3526,9 +3526,18 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
 
   // Hauptwerk's own default: the assignment code IS the channel. Code 1 is the
   // pedal, 2 the first manual, and so on, so an organ plays the way its author
-  // expected before anyone maps anything.
+  // expected before anyone maps anything. A keyboard the player has given a
+  // channel of its own, for this console, leaves its default channel (#585):
+  // a Great moved to channel 12 still played from channel 2 as well.
+  auto placed = [&](Id kb) {
+    for (const auto& b : midiMap_.keyboardBindings()) {
+      if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId) continue;
+      if (b.keyboardId == kb || couplers_.inputKeyboardFor(b.keyboardId) == kb) return true;
+    }
+    return false;
+  };
   for (Id kb : couplers_.inputKeyboards())
-    if (couplers_.assignmentCodeFor(kb) == channel) return kb;
+    if (couplers_.assignmentCodeFor(kb) == channel && !placed(kb)) return kb;
 
   // A channel nothing claims plays the default manual only while nothing says
   // what the channels are: an organ that declares no channels, played before
