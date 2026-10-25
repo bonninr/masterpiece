@@ -1092,7 +1092,9 @@ void EnginePanel::resized() {
   cacheWhenLabel_.setBounds(cacheWhenRow.removeFromLeft(180));
   cacheWhen_.setBounds(cacheWhenRow.removeFromLeft(300));
   r.removeFromTop(6);
-  programCouplers_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
+  // The checkboxes start at the left edge, like the ones at the top, so
+  // each is seen on a first read down the tab (#565).
+  programCouplers_.setBounds(r.removeFromTop(kRow));
   rebuildNote_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
   r.removeFromTop(6);
   auto cacheDirRow = r.removeFromTop(kRow);
@@ -1133,21 +1135,16 @@ void EnginePanel::resized() {
     releaseBuffer_.setBounds(bufferRow.removeFromLeft(300));
   }
   r.removeFromTop(2);
-  {
-    auto monoRow = r.removeFromTop(kRow);
-    compress_.setBounds(monoRow.removeFromRight(monoRow.getWidth() / 2));
-    mono_.setBounds(monoRow);
-  }
+  mono_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(2);
+  compress_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
   loadTicks_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(2);
   reopen_.setBounds(r.removeFromTop(kRow));
   portable_.setBounds(r.removeFromTop(kRow));
-  {
-    auto fasterRow = r.removeFromTop(kRow);
-    if (realtime_.isVisible()) realtime_.setBounds(fasterRow.removeFromRight(fasterRow.getWidth() / 2));
-    faster_.setBounds(fasterRow);
-  }
+  faster_.setBounds(r.removeFromTop(kRow));
+  if (realtime_.isVisible()) realtime_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(6);
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));
