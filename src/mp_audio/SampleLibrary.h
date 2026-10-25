@@ -282,12 +282,18 @@ public:
   //
   // A file only in a package has no header to read, so it is taken to be
   // 24-bit stereo; a WavPack file, about 55% of its PCM size.
+  // Which of the release choices Longest and Shortest keep a release-only
+  // sample: the one written for the longest or the shortest hold of its layer.
+  static constexpr uint8_t kKeptByLongest = 1;
+  static constexpr uint8_t kKeptByShortest = 2;
+  static constexpr uint8_t kKeptByBoth = kKeptByLongest | kKeptByShortest;
   struct ShapeJob {
     Id sampleId = 0;
     std::string path;          // on disk, when it is there
     int64_t packageBytes = 0;  // the entry's size, when it is only in a package
     bool wavpack = false;
     bool releaseOnly = false;  // played only as a release: may stream
+    uint8_t keptBy = kKeptByBoth;  // the release choices that keep it
   };
   struct SampleShape {
     int64_t frames = 0;
@@ -297,6 +303,7 @@ public:
     // Only in the package the organ was opened from: read out of the archive
     // whole, a release included, with no file to stream from (#594).
     bool fromPackage = false;
+    uint8_t keptBy = kKeptByBoth;
   };
   // The samples the pipework plays, and where each is. `wanted` names them
   // instead of the pipework when given: a sparse load reads fewer samples

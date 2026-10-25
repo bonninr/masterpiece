@@ -792,6 +792,27 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
         }
     }
   }
+  // The release choices that keep each release, the way pruneReleases picks
+  // them: per layer, the release for its longest or its shortest hold.
+  std::unordered_map<Id, uint8_t> keptBy;
+  for (const auto& [rankId, rank] : model.ranks) {
+    (void)rankId;
+    for (const auto& pipe : rank.pipes)
+      for (const auto& layer : pipe.layers) {
+        if (layer.releases.empty()) continue;
+        int64_t longest = layer.releases.front().holdTimeMsHigh, shortest = longest;
+        for (const auto& r : layer.releases) {
+          longest = std::max<int64_t>(longest, r.holdTimeMsHigh);
+          shortest = std::min<int64_t>(shortest, r.holdTimeMsHigh);
+        }
+        for (const auto& r : layer.releases) {
+          if (r.sample.sampleId == 0) continue;
+          auto& kept = keptBy[r.sample.sampleId];
+          if (r.holdTimeMsHigh == longest) kept |= kKeptByLongest;
+          if (r.holdTimeMsHigh == shortest) kept |= kKeptByShortest;
+        }
+      }
+  }
   std::vector<ShapeJob> jobs;
   jobs.reserve(attacks.size() + releases.size());
   auto add = [&](Id id, bool releaseOnly) {
@@ -801,6 +822,10 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     ShapeJob job;
     job.sampleId = id;
     job.releaseOnly = releaseOnly;
+    if (releaseOnly) {
+      const auto kept = keptBy.find(id);
+      job.keptBy = kept == keptBy.end() ? 0 : kept->second;
+    }
     const auto path = resolvePath(rootFor(organRootDir, ref.installationPackageId), ref.fileName, ref.installationPackageId);
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -822,6 +847,7 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
 SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   SampleShape shape;
   shape.releaseOnly = job.releaseOnly;
+  shape.keptBy = job.keptBy;
   WavShape wav;
   const std::filesystem::path path = mp::pathOf(job.path);
   std::error_code ec;
@@ -848,6 +874,12 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
 
 int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
   if (shape.frames <= 0 || shape.channels <= 0) return 0;
+  // A release the release choice leaves out is never read (#591).
+  if (shape.releaseOnly) {
+    if (releaseChoice_ == ReleaseChoice::None) return 0;
+    if (releaseChoice_ == ReleaseChoice::Longest && (shape.keptBy & kKeptByLongest) == 0) return 0;
+    if (releaseChoice_ == ReleaseChoice::Shortest && (shape.keptBy & kKeptByShortest) == 0) return 0;
+  }
   // Twenty bits is two and a half bytes a sample, so the count is not a whole
   // number of bytes.
   double storeBytes = storage_ == SampleStorage::Int16   ? 2.0
