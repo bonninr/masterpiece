@@ -2586,6 +2586,12 @@ private:
     // when the organ's own settings are read again at the load.
     bool programCouplers = false;
     EngineSwitch engine;
+    // The rest of the tab's choices the organ's file also holds (#591): the
+    // sample rate, the cache and the releases.
+    double rate = 0.0;
+    SampleLibrary::CacheMode cache = SampleLibrary::CacheMode::Single;
+    SampleLibrary::ReleaseChoice releases{};
+    int releaseMs = 0, releaseCutoffDb = 0;
   };
   std::optional<LoadingChoice> sessionLoading_;
   // Noise ranks keyed by the switch that fires them, built once at
