@@ -357,7 +357,7 @@ countries: de at ch li lu
 "All stops" = "Alle Register"
 "No stops" = "Keine Register"
 "Only the stops drawn now" = "Nur die jetzt gezogenen Register"
-"Load the organ again" = "Orgel erneut laden"
+"Load the organ" = "Orgel laden"
 "On" = "Ein"
 "Flat" = "Linear"
 
@@ -443,7 +443,7 @@ countries: de at ch li lu
 "Real-time render threads: using %1" = "Echtzeit-Render-Threads: verwendet %1"
 "Real-time render threads: no real-time rights on this system" = "Echtzeit-Render-Threads: keine Echtzeitrechte auf diesem System"
 "Save as default" = "Als Standard speichern"
-"Load the organ again to apply" = "Orgel erneut laden, um zu übernehmen"
+"Load the organ to apply" = "Orgel laden, um zu übernehmen"
 "32-bit float" = "32 Bit Gleitkomma"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Samples im Speicher: %1 MB (%2 Samples, %3, %4%5)"
 "mono" = "mono"

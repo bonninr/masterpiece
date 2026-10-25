@@ -357,7 +357,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "All stops" = "Todos los registros"
 "No stops" = "Ningún registro"
 "Only the stops drawn now" = "Solo los registros sacados ahora"
-"Load the organ again" = "Volver a cargar el órgano"
+"Load the organ" = "Cargar el órgano"
 "On" = "Activado"
 "Flat" = "Plano"
 
@@ -443,7 +443,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Real-time render threads: using %1" = "Hilos de render en tiempo real: usando %1"
 "Real-time render threads: no real-time rights on this system" = "Hilos de render en tiempo real: este sistema no da permisos de tiempo real"
 "Save as default" = "Guardar como predeterminado"
-"Load the organ again to apply" = "Vuelve a cargar el órgano para aplicar"
+"Load the organ to apply" = "Carga el órgano para aplicar"
 "32-bit float" = "32 bits en coma flotante"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Muestras residentes: %1 MB (%2 muestras, %3, %4%5)"
 "mono" = "mono"

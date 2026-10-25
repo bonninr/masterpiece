@@ -114,7 +114,7 @@ private:
   // organ already loaded, and nothing said so (#120: streaming switched off,
   // and the glitches went on until Masterpiece was restarted).
   bool loadingChanged() const;
-  juce::TextButton reload_{TRANS("Load the organ again to apply")};
+  juce::TextButton reload_{TRANS("Load the organ to apply")};
   juce::TextButton revert_{TRANS("Revert changes")};
   juce::TextButton keep_{TRANS("Keep changes")};
   juce::TextButton saveOrgan_{TRANS("Save for this organ")};

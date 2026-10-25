@@ -357,7 +357,7 @@ countries: cz
 "All stops" = "Všechny rejstříky"
 "No stops" = "Žádné rejstříky"
 "Only the stops drawn now" = "Jen právě zapnuté rejstříky"
-"Load the organ again" = "Znovu načíst varhany"
+"Load the organ" = "Načíst varhany"
 "On" = "Zapnuto"
 "Flat" = "Plochá"
 
@@ -443,7 +443,7 @@ countries: cz
 "Real-time render threads: using %1" = "Vykreslovací vlákna v reálném čase: používá %1"
 "Real-time render threads: no real-time rights on this system" = "Vykreslovací vlákna v reálném čase: systém nedává práva reálného času"
 "Save as default" = "Uložit jako výchozí"
-"Load the organ again to apply" = "Znovu načtěte varhany, aby se změny projevily"
+"Load the organ to apply" = "Načtěte varhany, aby se změny projevily"
 "32-bit float" = "32 bitů s plovoucí řádovou čárkou"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Vzorky v paměti: %1 MB (počet vzorků: %2, %3, %4%5)"
 "mono" = "mono"

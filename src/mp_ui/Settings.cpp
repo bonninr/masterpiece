@@ -843,7 +843,7 @@ void EnginePanel::timerCallback() {
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
   const bool pending = offer && loadingChanged();
   if (rebuildNote_.isVisible() != cacheRebuildPending()) rebuildNote_.setVisible(cacheRebuildPending());
-  const juce::String reloadText = pending ? TRANS("Load the organ again to apply") : TRANS("Load the organ again");
+  const juce::String reloadText = pending ? TRANS("Load the organ to apply") : TRANS("Load the organ");
   if (reload_.getButtonText() != reloadText) {
     reload_.setButtonText(reloadText);
     reload_.setColour(juce::TextButton::buttonColourId,
@@ -1165,7 +1165,7 @@ void EnginePanel::resized() {
   // it back". The buttons share the whole width, each in proportion to its
   // label, with the same gap between every pair: two groups pushed to either
   // side left a hole in the middle as wide as the panel was spare (#120).
-  // "Load the organ again" is laid out even while it is hidden, so the others
+  // "Load the organ" is laid out even while it is hidden, so the others
   // do not jump when it appears.
   layoutFooter(footer);
 

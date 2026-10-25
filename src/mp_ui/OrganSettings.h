@@ -112,7 +112,7 @@ private:
 
   // About stops only: perspectives and ranks keep their own choices (#53).
   juce::TextButton all_{TRANS("All stops")}, none_{TRANS("No stops")}, drawn_{TRANS("Only the stops drawn now")};
-  juce::TextButton reloadNow_{TRANS("Load the organ again")};
+  juce::TextButton reloadNow_{TRANS("Load the organ")};
   juce::Label total_;
   juce::Label note_;
 
@@ -186,7 +186,7 @@ public:
   std::function<void()> onReopen;
 
 private:
-  // "Load the organ again" closes the window; the load follows the close, so
+  // "Load the organ" closes the window; the load follows the close, so
   // on a first load -- where closing loads anyway -- it happens once.
   void reloadOnClose();
   std::function<void()> reload_;

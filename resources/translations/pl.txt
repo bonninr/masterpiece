@@ -357,7 +357,7 @@ countries: pl
 "All stops" = "Wszystkie głosy"
 "No stops" = "Żadnych głosów"
 "Only the stops drawn now" = "Tylko głosy włączone teraz"
-"Load the organ again" = "Wczytaj organy ponownie"
+"Load the organ" = "Wczytaj organy"
 "On" = "Włączone"
 "Flat" = "Płaska"
 
@@ -443,7 +443,7 @@ countries: pl
 "Real-time render threads: using %1" = "Wątki renderowania w czasie rzeczywistym: używa %1"
 "Real-time render threads: no real-time rights on this system" = "Wątki renderowania w czasie rzeczywistym: brak uprawnień czasu rzeczywistego w tym systemie"
 "Save as default" = "Zapisz jako domyślne"
-"Load the organ again to apply" = "Wczytaj organy ponownie, aby zastosować"
+"Load the organ to apply" = "Wczytaj organy, aby zastosować"
 "32-bit float" = "32 bity zmiennoprzecinkowe"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Próbki w pamięci: %1 MB (%2 próbek, %3, %4%5)"
 "mono" = "mono"

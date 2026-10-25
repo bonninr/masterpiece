@@ -357,7 +357,7 @@ countries: fr be ca ch lu mc
 "All stops" = "Tous les jeux"
 "No stops" = "Aucun jeu"
 "Only the stops drawn now" = "Seulement les jeux tirés maintenant"
-"Load the organ again" = "Recharger l'orgue"
+"Load the organ" = "Charger l'orgue"
 "On" = "Activé"
 "Flat" = "Plate"
 
@@ -443,7 +443,7 @@ countries: fr be ca ch lu mc
 "Real-time render threads: using %1" = "Threads de rendu en temps réel : avec %1"
 "Real-time render threads: no real-time rights on this system" = "Threads de rendu en temps réel : aucun droit temps réel sur ce système"
 "Save as default" = "Enregistrer par défaut"
-"Load the organ again to apply" = "Rechargez l'orgue pour appliquer"
+"Load the organ to apply" = "Chargez l'orgue pour appliquer"
 "32-bit float" = "32 bits flottants"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Échantillons résidents : %1 Mo (%2 échantillons, %3, %4%5)"
 "mono" = "mono"
