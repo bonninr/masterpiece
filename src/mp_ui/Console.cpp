@@ -247,6 +247,8 @@ void ConsoleView::rebuild() {
 
     if (sit != switchByInstance.end()) {
       item.switchId = sit->second->switchId;
+      item.shownSwitchId =
+          sit->second->dispShownSwitchId != 0 ? sit->second->dispShownSwitchId : item.switchId;
       item.engagedIndex = sit->second->dispIndexEngaged;
       item.disengagedIndex = sit->second->dispIndexDisengaged;
       item.clickable = sit->second->clickable;
@@ -905,7 +907,7 @@ int ConsoleView::frameIndexFor(const Item& item) const {
   }
 
   if (item.switchId == 0) return item.defaultIndex;
-  const bool on = proc_.shownSwitchEngaged(item.switchId);
+  const bool on = proc_.shownSwitchEngaged(item.shownSwitchId != 0 ? item.shownSwitchId : item.switchId);
   const int chosen = on ? item.engagedIndex : item.disengagedIndex;
   // A set that names no frame for a state falls back to what the instance
   // declares, rather than drawing nothing.

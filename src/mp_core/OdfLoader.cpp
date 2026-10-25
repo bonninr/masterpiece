@@ -60,7 +60,7 @@ const std::unordered_set<std::string>& knownTables() {
     "DisplayPage", "ImageSet", "ImageSetElement", "ImageSetInstance",
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
-    "MasterpieceRankWindchest",
+    "MasterpieceRankWindchest", "MasterpieceSwitchDisplay",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -1077,6 +1077,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     sw.dispIndexDisengaged = fieldInt(row, "Disp_ImageSetIndexDisengaged", "m", 0);
     if (sw.switchId != 0) outModel.switches[sw.switchId] = sw;
     if (sw.defaultEngaged) outDiag.defaultEngagedSwitches.push_back(sw.switchId);
+  });
+  // A drawn switch that shows another one's state, written by the GrandOrgue
+  // import for its reversible pistons (#587).
+  forEachRow(odfRoot, "MasterpieceSwitchDisplay", [&](pugi::xml_node row) {
+    const auto it = outModel.switches.find(fieldInt(row, "SwitchID", "a", 0));
+    const Id shown = fieldInt(row, "ShownSwitchID", "b", 0);
+    if (it != outModel.switches.end() && outModel.switches.count(shown) != 0)
+      it->second.dispShownSwitchId = shown;
   });
 
   // ---- M3.1: the wind system. Compartments, the pipes between them, and

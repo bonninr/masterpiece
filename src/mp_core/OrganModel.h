@@ -431,6 +431,10 @@ struct Switch {
   Id dispInstanceId = 0;
   int dispIndexEngaged = 0;
   int dispIndexDisengaged = 0;
+  // The switch whose state the picture shows, when it is another one: a
+  // GrandOrgue reversible piston is lit while its stop is drawn (#587).
+  // 0 = this switch.
+  Id dispShownSwitchId = 0;
 };
 
 struct CombinationElement {

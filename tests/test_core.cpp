@@ -13826,6 +13826,72 @@ public:
 };
 static ReversiblePistonTest g_reversiblePiston;
 
+// A GrandOrgue reversible piston is drawn lit while its drawstop is drawn, and
+// dark while it is not, as GrandOrgue draws it (#587). It used to show its own
+// state: lit only while held. A drawstop displayed inverted inverts its
+// piston too.
+class ReversiblePistonShowsItsStopTest final : public mp::test::Test {
+public:
+  ReversiblePistonShowsItsStopTest()
+      : Test("functional.switches.reversible-piston-shows-its-stop", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfReversiblePistons=2\n"
+        "[ReversiblePiston001]\nName=RevA\nObjectType=STOP\nManualNumber=1\nObjectNumber=1\n"
+        "Displayed=Y\n"
+        "[ReversiblePiston002]\nName=RevB\nObjectType=STOP\nManualNumber=1\nObjectNumber=2\n"
+        "Displayed=Y\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "[Stop001]\nName=A\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\nDisplayed=Y\n"
+        "[Stop002]\nName=B\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\nDisplayed=Y\n"
+        "DisplayInInvertedState=Y\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    const mp::Id stopA = m.stops.at(2001).controllingSwitchId;
+    const mp::Id stopB = m.stops.at(2002).controllingSwitchId;
+    const auto& revA = m.switches.at(12501);
+    const auto& revB = m.switches.at(12502);
+    MP_CHECK(revA.dispInstanceId != 0 && revB.dispInstanceId != 0, "both pistons are drawn");
+    MP_CHECK(revA.dispShownSwitchId == stopA, "the first piston shows stop A");
+    MP_CHECK(revB.dispShownSwitchId == stopB, "the second shows stop B");
+    MP_CHECK(!revA.latching && revA.clickable, "the piston stays a button that is pressed");
+    MP_CHECK(m.switches.at(stopA).dispShownSwitchId == 0, "a drawstop shows itself");
+
+    // The frame drawn for "off" (the first) is the piston's off picture, and
+    // its on picture for the piston of an inverted drawstop.
+    auto offFrame = [&](mp::Id instanceId) {
+      for (const auto& [pid, page] : m.displayPages) {
+        (void)pid;
+        for (const auto& inst : page.instances) {
+          if (inst.instanceId != instanceId) continue;
+          for (const auto& el : m.imageSets.at(inst.imageSetId).elements)
+            if (el.index == revA.dispIndexDisengaged) return el.bitmapFile + el.name;
+        }
+      }
+      return std::string();
+    };
+    const std::string offA = offFrame(revA.dispInstanceId), offB = offFrame(revB.dispInstanceId);
+    MP_CHECK(offA.find("_off") != std::string::npos, "piston A is dark while A is off: " + offA);
+    MP_CHECK(offB.find("_on") != std::string::npos, "piston B, inverted as B is: " + offB);
+
+    // A press still flips the stop, and a release leaves it.
+    mp::SwitchNetwork net;
+    net.reset(m);
+    net.set(12501, true);
+    net.set(12501, false);
+    MP_CHECK(net.engaged(stopA) && !net.engaged(12501), "drawn by a press; the piston itself is let go");
+  }
+};
+static ReversiblePistonShowsItsStopTest g_reversiblePistonShowsItsStop;
+
 // A drawstop latches when the definition marks it momentary (#445). Stop 2
 // is wired as Pekela's demo wires sixteen of its stops: the knob and the stop
 // switch Latching N, each following the one before. A Tutti that reaches two
