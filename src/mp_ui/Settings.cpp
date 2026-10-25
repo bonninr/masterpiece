@@ -198,6 +198,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   storage_.setSelectedId(storageItemId(proc_.sampleStorage()), juce::dontSendNotification);
   storage_.onChange = [this] {
     proc_.setSampleStorage(storageOfItem(storage_.getSelectedId()));
+    enableCompress();
     syncProfile();
   };
 
@@ -489,6 +490,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
       TRANS("16- and 24-bit samples are held in a lossless compressed form and decoded as "
             "they play. The sound is identical; memory use is lower. Applies at the next load."));
   compress_.onClick = [this] { proc_.setCodeSamples(compress_.getToggleState()); };
+  enableCompress();
 
   // Audible load progress for large organs. General config: written to the
   // global file at once rather than kept for an organ, and off unless asked.
@@ -728,6 +730,7 @@ void EnginePanel::revert() {
   originalPitch_.setToggleState(openSwitch_.playAtOriginalOrganPitch,
                                 juce::dontSendNotification);
   storage_.setSelectedId(storageItemId(openStorage_), juce::dontSendNotification);
+  enableCompress();
   stream_.setToggleState(openStream_, juce::dontSendNotification);
   showStreamPercent(openStreamPercent_);
   showReleaseBuffer(openReleaseBuffer_);
@@ -900,11 +903,20 @@ void EnginePanel::applyProfile(int id) {
   proc_.setPreloadHeadFrames(p.head);
 
   storage_.setSelectedId(storageItemId(p.storage), juce::dontSendNotification);
+  enableCompress();
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
   enableStreamControls(p.stream);
   preload_.setSelectedId(1, juce::dontSendNotification);
   applyingProfile_ = false;
+}
+
+// Compression codes 16- and 24-bit samples; 20-bit and 32-bit float are held as
+// they are. The box keeps its tick, so going back to 16 or 24 bits finds the
+// player's choice where it was.
+void EnginePanel::enableCompress() {
+  const auto st = proc_.sampleStorage();
+  compress_.setEnabled(st == SampleStorage::Int16 || st == SampleStorage::Int24);
 }
 
 void EnginePanel::syncProfile() {
