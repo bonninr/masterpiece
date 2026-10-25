@@ -15818,6 +15818,41 @@ public:
              "a Loading choice kept for the session survives the next load");
     proc.setSampleStorage(before);
     proc.keepLoadingChoiceForSession();
+
+    // And the rest of the tab the organ's file also holds (#591): changed
+    // after the file was saved, kept, and the organ loaded again.
+    MP_CHECK(proc.saveSettings(), "the organ's file holds the choices as they are");
+    const double rateWas = proc.loadSampleRate();
+    const auto cacheWas = proc.cacheMode();
+    const auto releasesWas = proc.releaseChoice();
+    const int releaseMsWas = proc.releaseMaxMs();
+    const int cutoffWas = proc.releaseCutoffDb();
+    const double rateNow = rateWas == 44100.0 ? 48000.0 : 44100.0;
+    const auto cacheNow = cacheWas == mp::SampleLibrary::CacheMode::Off ? mp::SampleLibrary::CacheMode::Single
+                                                                       : mp::SampleLibrary::CacheMode::Off;
+    const auto releasesNow = releasesWas == mp::SampleLibrary::ReleaseChoice::Longest
+                                 ? mp::SampleLibrary::ReleaseChoice::Shortest
+                                 : mp::SampleLibrary::ReleaseChoice::Longest;
+    const int releaseMsNow = releaseMsWas == 1500 ? 2500 : 1500;
+    const int cutoffNow = cutoffWas == -60 ? -70 : -60;
+    proc.setLoadSampleRate(rateNow);
+    proc.setCacheMode(cacheNow);
+    proc.setReleaseChoice(releasesNow);
+    proc.setReleaseMaxMs(releaseMsNow);
+    proc.setReleaseCutoffDb(cutoffNow);
+    proc.keepLoadingChoiceForSession();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    MP_CHECK(proc.loadSampleRate() == rateNow, "the sample rate kept for the session survives the load");
+    MP_CHECK(proc.cacheMode() == cacheNow, "the sample cache kept for the session survives the load");
+    MP_CHECK(proc.releaseChoice() == releasesNow, "the releases kept for the session survive the load");
+    MP_CHECK(proc.releaseMaxMs() == releaseMsNow, "the release length kept for the session survives the load");
+    MP_CHECK(proc.releaseCutoffDb() == cutoffNow, "the release cutoff kept for the session survives the load");
+    proc.setLoadSampleRate(rateWas);
+    proc.setCacheMode(cacheWas);
+    proc.setReleaseChoice(releasesWas);
+    proc.setReleaseMaxMs(releaseMsWas);
+    proc.setReleaseCutoffDb(cutoffWas);
+    proc.keepLoadingChoiceForSession();
     if (had) settings.replaceWithText(kept);
     else settings.deleteFile();
 

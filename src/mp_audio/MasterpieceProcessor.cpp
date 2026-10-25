@@ -4457,6 +4457,11 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.sparse = sparseEvery_;
   c.programCouplers = programCouplers_;
   c.engine = graph_.engineSwitch;
+  c.rate = samples_.loadSampleRate();
+  c.cache = samples_.cacheMode();
+  c.releases = samples_.releaseChoice();
+  c.releaseMs = samples_.releaseMaxMs();
+  c.releaseCutoffDb = releaseCutoffDb_;
   sessionLoading_ = c;
 }
 
@@ -6724,6 +6729,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     samples_.setSparseEvery(c.sparse);
     programCouplers_ = c.programCouplers;
     graph_.engineSwitch = c.engine;
+    samples_.setLoadSampleRate(c.rate);
+    samples_.setCacheMode(c.cache);
+    samples_.setReleaseChoice(c.releases);
+    samples_.setReleaseMaxMs(c.releaseMs);
+    setReleaseCutoffDb(c.releaseCutoffDb);
     juce::Logger::writeToLog("load: using the Loading choices kept for this session");
   } else {
     sessionLoading_.reset();
