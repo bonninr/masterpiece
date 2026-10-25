@@ -3743,7 +3743,17 @@ void LanguagePanel::resized() {
 
 // --------------------------------------------------------------- window
 
+namespace {
+// The tab General settings was last closed on: it opens there again, and
+// "Audio and MIDI" opens it on Audio (#591).
+juce::String& lastSettingsTab() {
+  static juce::String tab;
+  return tab;
+}
+}  // namespace
+
 SettingsWindow::~SettingsWindow() {
+  lastSettingsTab() = tabs_.getCurrentTabName();
   // Posted, not called: the window is still being torn down here.
   if (onClosed) juce::MessageManager::callAsync(std::move(onClosed));
 }
@@ -3778,6 +3788,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     tabs_.addTab(TRANS("Remote"), bg, remote_.get(), false);
   }
   tabs_.addTab(TRANS("Log"), bg, &log_, false);
+  if (lastSettingsTab().isNotEmpty()) showTab(lastSettingsTab());
   // The Engine tab is the tallest: six switches, five memory controls, a
   // readout and a footer. Adding a row without adding height pushes the
   // Save buttons off the bottom, where they cannot be pressed at all.
