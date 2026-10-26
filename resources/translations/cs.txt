@@ -847,7 +847,6 @@ countries: cz
 "Organ settings..." = "Nastavení varhan..."
 "Licence confirmed for this organ" = "Licence pro tyto varhany potvrzena"
 "General settings..." = "Obecná nastavení..."
-"Audio and MIDI..." = "Zvuk a MIDI..."
 "Frame %1 / %2" = "Krok %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set je zapnut z hracího stolu nebo z okna kombinací: tlačítka ukládají. Stisknutím jej uvolníte."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set: zvolte tlačítko nebo krok, zapněte rejstříky a poté stiskněte Set, čímž je tam uložíte"

@@ -129,7 +129,7 @@ The plugin takes the sample rate and the block size from the host. A rate change
 | Audio device, rate, buffer | Chosen in **Settings > General settings > Audio** | Owned by the host |
 | MIDI inputs | All enabled by default; selectable in **General settings > MIDI** | The host's MIDI stream only |
 | MIDI output | Chosen in **General settings > MIDI** | None |
-| Settings windows | **Organ settings...**, **General settings...** and **Audio and MIDI...** in the **Settings** menu | The **Settings** menu lists **Organ settings...** and **General settings...**. **General settings...** opens General settings without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Audio and MIDI...** is absent. |
+| Settings windows | **Organ settings...** and **General settings...** in the **Settings** menu | The **Settings** menu lists **Organ settings...** and **General settings...**. **General settings...** opens General settings without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. |
 | First-run wizard | Shown at the first start | Not shown |
 | Startup | Opens the last organ when **Reopen the last organ when Masterpiece starts** is on | Opens the organ stored in the host's project when a project opens, and no organ otherwise |
 | Crash guard | Remembers the organ being loaded and writes a note to the log after a crash | Absent |

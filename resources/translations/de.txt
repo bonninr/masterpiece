@@ -847,7 +847,6 @@ countries: de at ch li lu
 "Organ settings..." = "Orgeleinstellungen..."
 "Licence confirmed for this organ" = "Lizenz für diese Orgel bestätigt"
 "General settings..." = "Allgemeine Einstellungen..."
-"Audio and MIDI..." = "Audio und MIDI..."
 "Frame %1 / %2" = "Schritt %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set ist vom Spieltisch oder vom Kombinationsfenster aus eingeschaltet: Setzerknöpfe speichern. Zum Ausschalten drücken."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set: Setzerknopf oder Schritt wählen, Register ziehen, dann Set drücken, um sie dort zu speichern"

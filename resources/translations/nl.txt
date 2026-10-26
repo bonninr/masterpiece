@@ -847,7 +847,6 @@ countries: nl be sr
 "Organ settings..." = "Orgelinstellingen..."
 "Licence confirmed for this organ" = "Licentie voor dit orgel bevestigd"
 "General settings..." = "Algemene instellingen..."
-"Audio and MIDI..." = "Audio en MIDI..."
 "Frame %1 / %2" = "Stap %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set staat aan vanaf de speeltafel of het combinatievenster: drukknoppen slaan op. Druk om los te laten."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set: kies een drukknop of stap, trek de registers en druk dan op Set om ze daar op te slaan"

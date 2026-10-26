@@ -300,9 +300,6 @@ public:
   // the process — the status bar cannot be read, and a fixed wait is a guess
   // that a slow disk turns into a screenshot of a half-built console.
   std::function<void(const juce::String&)> onOrganLoaded;
-  // Supplied by the host application, which owns the device manager; the
-  // editor must not reach for hardware itself.
-  std::function<void()> onAudioSettings;
   // Supplied by the application, which owns the device manager the settings
   // panel needs.
   std::function<void()> onSettings;

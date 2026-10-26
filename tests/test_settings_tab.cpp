@@ -1,7 +1,5 @@
-// General settings opens on the tab it was last closed on (#591). The menu's
-// "General settings" and "Audio and MIDI" both opened the window on its first
-// tab, so the two entries looked the same. "Audio and MIDI" names its tab, and
-// that choice still wins.
+// General settings opens on the tab it was last closed on (#591). A caller
+// that names a tab still gets that tab.
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO

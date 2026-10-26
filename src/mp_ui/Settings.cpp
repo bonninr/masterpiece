@@ -3751,8 +3751,7 @@ void LanguagePanel::resized() {
 // --------------------------------------------------------------- window
 
 namespace {
-// The tab General settings was last closed on: it opens there again, and
-// "Audio and MIDI" opens it on Audio (#591).
+// The tab General settings was last closed on: it opens there again (#591).
 juce::String& lastSettingsTab() {
   static juce::String tab;
   return tab;

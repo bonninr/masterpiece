@@ -847,7 +847,6 @@ countries: it ch sm va
 "Organ settings..." = "Impostazioni dell'organo..."
 "Licence confirmed for this organ" = "Licenza confermata per questo organo"
 "General settings..." = "Impostazioni generali..."
-"Audio and MIDI..." = "Audio e MIDI..."
 "Frame %1 / %2" = "Passo %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set è attivo dalla consolle o dalla finestra delle combinazioni: i pulsanti memorizzano. Premi per rilasciarlo."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set: scegli un pulsante o un passo, inserisci i registri, poi premi Set per memorizzarli lì"
