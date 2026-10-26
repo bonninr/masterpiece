@@ -541,10 +541,60 @@ TopBar::TopBar(MasterpieceProcessor& p)
   };
 }
 
+namespace {
+bool& pairingOpen() {
+  static bool open = false;
+  return open;
+}
+
+// Handed to the pairing window, which calls it once as it closes.
+struct PairingClosed final : juce::ModalComponentManager::Callback {
+  void modalStateFinished(int) override { pairingOpen() = false; }
+};
+}  // namespace
+
+bool openPairingOnce(const std::function<bool(juce::ModalComponentManager::Callback*)>& open) {
+  if (pairingOpen()) return false;
+  pairingOpen() = true;
+  // The window owns the callback from here, and deletes it even when it
+  // cannot open.
+  if (!open(new PairingClosed())) pairingOpen() = false;
+  return pairingOpen();
+}
+
+bool guardPairingButton(juce::AudioDeviceSelectorComponent& selector) {
+  // The selector keeps its button private; it is the one with this tooltip,
+  // JUCE's own text, translated the way the selector translates it.
+  const juce::String tooltip = juce::translate("Scan for bluetooth MIDI devices");
+  for (auto* child : selector.getChildren()) {
+    auto* button = dynamic_cast<juce::TextButton*>(child);
+    if (button == nullptr || button->getTooltip() != tooltip)
+      continue;
+    button->onClick = [] {
+      auto open = [](juce::ModalComponentManager::Callback* closed) {
+        return juce::BluetoothMidiDevicePairingDialogue::open(closed);
+      };
+      // The selector's own steps: ask for the permission first where it is
+      // not yet given.
+      if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi)) {
+        openPairingOnce(open);
+        return;
+      }
+      juce::RuntimePermissions::request(juce::RuntimePermissions::bluetoothMidi, [open](bool) {
+        if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi))
+          openPairingOnce(open);
+      });
+    };
+    return true;
+  }
+  return false;
+}
+
 AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
                                        MasterpieceProcessor& p)
     : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
   addAndMakeVisible(selector_);
+  guardPairingButton(selector_);
   addAndMakeVisible(latency_);
   latency_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   latency_.setTooltip(TRANS("The buffer size sets the delay between a key and its sound. How many "
