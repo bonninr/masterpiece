@@ -28,14 +28,14 @@ public:
     xml = xml.replaceFirstOccurrenceOf(
         "<ObjectList ObjectType=\"Combination\">",
         "<ObjectList ObjectType=\"Combination\"><Combination><CombinationID>1203</CombinationID>"
-        "<Name>General 1</Name><CombinationTypeCode>6</CombinationTypeCode>"
+        "<Name>General 1</Name><CombinationTypeCode>2</CombinationTypeCode>"
         "<ActivatingSwitchID>101</ActivatingSwitchID><AllowsCapture>Y</AllowsCapture></Combination>");
     xml = xml.replaceFirstOccurrenceOf(
         "<ObjectList ObjectType=\"CombinationElement\">",
         "<ObjectList ObjectType=\"CombinationElement\"><CombinationElement>"
         "<CombinationElementID>1303</CombinationElementID><CombinationID>1203</CombinationID>"
-        "<ControlledSwitchID>1101</ControlledSwitchID><InitialStoredStateIsEngaged>N</InitialStoredStateIsEngaged>"
-        "</CombinationElement>");
+        "<ControlledSwitchID>1101</ControlledSwitchID><CapturedSwitchID>1101</CapturedSwitchID>"
+        "<InitialStoredStateIsEngaged>N</InitialStoredStateIsEngaged></CombinationElement>");
 
     const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-set-off");
     dir.deleteRecursively();
@@ -48,15 +48,26 @@ public:
     const bool had = global.existsAsFile();
     const juce::String before = had ? global.loadFileAsString() : juce::String();
     MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    {
+      const auto& combos = proc.organModel().combinations;
+      const auto c = combos.find(1203);
+      MP_CHECK(c != combos.end() && c->second.elements.size() == 1 && c->second.allowsCapture,
+               "the piston's combination loads with its element");
+    }
 
     // Off, the default: Set stays down after a store, on the console and over MIDI.
     proc.setSetOffAfterStore(false);
+    proc.setSwitchEngaged(1101, true);
     proc.setCaptureMode(true);
     proc.setSwitchEngaged(101, true);
     MP_CHECK(proc.captureMode() && proc.switchEngaged(12), "with the option off, Set stays down");
     proc.pressGeneral(1);
     MP_CHECK(proc.captureMode(), "with the option off, Set stays down after a player piston");
     proc.setCaptureMode(false);
+    // The paired check: the console piston stored, and recalls with Set up.
+    proc.setSwitchEngaged(1101, false);
+    proc.setSwitchEngaged(101, true);
+    MP_CHECK(proc.switchEngaged(1101), "the console piston recalls what it stored");
 
     proc.setSetOffAfterStore(true);
 
