@@ -19328,6 +19328,16 @@ public:
     MP_CHECK(!proc.programCouplerList().empty(),
              "the program couplers are there after the load: " +
                  std::to_string(proc.programCouplerList().size()));
+    // View > Program couplers changes the setting and loads again, with the
+    // Loading choice above still kept: the new value has to win over it.
+    proc.setProgramCouplers(false);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again without them");
+    MP_CHECK(!proc.programCouplers() && proc.programCouplerList().empty(),
+             "turned off from the menu, the program couplers stay off after the load");
+    proc.setProgramCouplers(true);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again with them");
+    MP_CHECK(proc.programCouplers() && !proc.programCouplerList().empty(),
+             "turned on from the menu, the program couplers are there after the load");
     proc.releaseResources();
     root.deleteRecursively();
   }
