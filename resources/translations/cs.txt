@@ -60,7 +60,7 @@ countries: cz
 "MIDI window..." = "Okno MIDI..."
 "Clear mapping" = "Smazat přiřazení"
 "Combinations" = "Kombinace"
-"After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it" = "Poté, co tlačítko kliknuté zde uloží kombinaci, Set se vypne, takže další kliknutí kombinaci vyvolá a nepřepíše"
+"After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Poté, co tlačítko uloží kombinaci, Set se vypne a další stisk ji vyvolá: tlačítka zde, na hracím stole i přes MIDI"
 
 # src/mp_ui/CombinationsWindow.h
 "Set" = "Set"

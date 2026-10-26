@@ -55,8 +55,6 @@ public:
 
 private:
   void timerCallback() override;
-  // After a piston click: Set lets go if it stored and the player asked for that.
-  void afterPiston(bool stored);
   void refreshSets();
   void refreshState();
   // Right-click: what a piston is mapped to, and how to map it.

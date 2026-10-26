@@ -2483,7 +2483,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (archiveDays_ != 90) text << "archivedays " << archiveDays_ << "\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
-  if (setOffAfterStore_) text << "setoffafterstore 1\n";
+  if (setOffAfterStore_.load()) text << "setoffafterstore 1\n";
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
@@ -2652,7 +2652,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "setoffafterstore") {
-      setOffAfterStore_ = val.getIntValue() != 0;
+      setOffAfterStore_.store(val.getIntValue() != 0);
     } else if (key == "pistonsleavebass") {
       leaveBassAndMelody_ = val.getIntValue() != 0;
       player_.setLeaveBassAndMelody(leaveBassAndMelody_);
@@ -4675,6 +4675,7 @@ void MasterpieceProcessor::pressGeneral(int n) {
   if (captureMode()) {
     if (player_.captureGeneral(n, read))
       combinationsDirty_.store(true, std::memory_order_release);
+    afterPistonStore();
     return;
   }
   // Never captured: nothing to recall, but it is chosen, for Set to fill.
@@ -4749,6 +4750,7 @@ void MasterpieceProcessor::pressDivisional(Id divisionId, int n) {
     bool stored = player_.captureDivisional(divisionId, n, read);
     if (pedal != 0) stored = player_.captureDivisional(pedal, n, read) || stored;
     if (stored) combinationsDirty_.store(true, std::memory_order_release);
+    afterPistonStore();
     return;
   }
   const bool own = player_.divisionalSet(divisionId, n);
@@ -5197,8 +5199,18 @@ bool MasterpieceProcessor::firePiston(Id switchId) {
   // Capture reads the RESOLVED state, because that is what the player can see
   // and hear; the base state would miss a stop pulled by a coupler or by
   // another piston.
+  const bool storing = combinations_.captureMode();
   fireCombination(comboId);
+  if (storing) afterPistonStore();
   return true;
+}
+
+void MasterpieceProcessor::afterPistonStore() {
+  // Set lets go after a piston has stored, when the player asked for it
+  // (#130), wherever the piston was pressed: the console, MIDI, the control
+  // API or the combinations window (#591). The player's stepper keeps Set
+  // down, which is how a sequence is built frame by frame.
+  if (setOffAfterStore_.load(std::memory_order_relaxed)) setCaptureMode(false);
 }
 
 void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
