@@ -2366,11 +2366,22 @@ void MasterpieceEditor::showFileMenu() {
   }
   menu.addSeparator();
   menu.addItem(5, TRANS("Recorder..."), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  // The application's own way out (#591), the same path as the window's close
+  // button. A plug-in's host owns quitting; on a Mac it is in the app menu.
+#if !JUCE_MAC
+  if (!kMobile && juce::JUCEApplicationBase::isStandaloneApp()) {
+    menu.addSeparator();
+    menu.addItem(6, JUCE_WINDOWS ? TRANS("Exit") : TRANS("Quit"));
+  }
+#endif
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
                        if (c == 5) safe->toggleRecorder();
+                       if (c == 6)
+                         if (auto* app = juce::JUCEApplicationBase::getInstance())
+                           app->systemRequestedQuit();
                        if (c >= 100 && c - 100 < versions.size()) safe->loadOrgan(versions[c - 100]);
                      });
 }

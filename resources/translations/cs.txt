@@ -835,6 +835,8 @@ countries: cz
 "Open..." = "Otevřít..."
 "Other versions of this organ" = "Jiné verze těchto varhan"
 "Recorder..." = "Rekordér..."
+"Exit" = "Konec"
+"Quit" = "Ukončit"
 "Swell faders" = "Posuvníky žaluzií"
 "Show played keys" = "Zobrazovat stisknuté klávesy"
 "Keyboard" = "Klaviatura"

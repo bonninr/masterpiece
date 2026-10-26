@@ -835,6 +835,8 @@ countries: nl be sr
 "Open..." = "Openen..."
 "Other versions of this organ" = "Andere versies van dit orgel"
 "Recorder..." = "Recorder..."
+"Exit" = "Afsluiten"
+"Quit" = "Stoppen"
 "Swell faders" = "Zwelschuiven"
 "Show played keys" = "Gespeelde toetsen tonen"
 "Keyboard" = "Toetsenbord"

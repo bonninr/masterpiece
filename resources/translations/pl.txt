@@ -835,6 +835,8 @@ countries: pl
 "Open..." = "Otwórz..."
 "Other versions of this organ" = "Inne wersje tych organów"
 "Recorder..." = "Rejestrator..."
+"Exit" = "Zakończ"
+"Quit" = "Zakończ"
 "Swell faders" = "Suwaki ekspresji"
 "Show played keys" = "Pokazuj naciskane klawisze"
 "Keyboard" = "Klawiatura"
