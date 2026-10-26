@@ -147,6 +147,15 @@ private:
   std::vector<std::unique_ptr<juce::Label>> labels_;
 };
 
+// The system's Bluetooth MIDI pairing window, one at a time. On macOS each
+// press of the selector's "Bluetooth MIDI" button opened another window (#565).
+// openPairingOnce calls `open` only while no pairing window is open; `open`
+// hands the callback to the window, which calls it when the window closes.
+bool openPairingOnce(const std::function<bool(juce::ModalComponentManager::Callback*)>& open);
+// Points the selector's "Bluetooth MIDI" button at openPairingOnce. False
+// where the selector has no such button (no Bluetooth MIDI on the platform).
+bool guardPairingButton(juce::AudioDeviceSelectorComponent& selector);
+
 // The Audio and MIDI dialog: the device selector, and under it what belongs
 // to the output rather than to any organ -- keeping portable speakers awake.
 class AudioSettingsPanel : public juce::Component, private juce::ChangeListener {
