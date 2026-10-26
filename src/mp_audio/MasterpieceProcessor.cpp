@@ -4809,9 +4809,19 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
   routeScratch_.push_back(action.targetId);
   if (action.alsoDrives != nullptr)
     for (const auto& b : *action.alsoDrives) routeScratch_.push_back(b.targetId);
+  // A console draws its manuals as keyboards of their own and plays through
+  // the organ's internal ones, so one manual can go by two ids: the drawn
+  // keyboard the channel plays, and the internal keyboard a piston is learned
+  // on. Both are settled to the keyboard a player plays before they are
+  // compared, or the piston reads the manual it is already on as a different
+  // one and takes two presses to move (#591).
+  const auto played = [this](Id keyboard) {
+    const Id input = couplers_.inputKeyboardFor(keyboard);
+    return input != 0 ? input : keyboard;
+  };
   const auto& order = couplers_.inputKeyboards();
-  const auto rank = [&order](Id target) {
-    const auto it = std::find(order.begin(), order.end(), routedKeyboard(target));
+  const auto rank = [&order, &played](Id target) {
+    const auto it = std::find(order.begin(), order.end(), played(routedKeyboard(target)));
     return static_cast<int>(it - order.begin());
   };
   std::sort(routeScratch_.begin(), routeScratch_.end(), [&rank](Id a, Id b) {
@@ -4823,10 +4833,10 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
     size_t end = i;
     while (end < routeScratch_.size() && routedChannel(routeScratch_[end]) == channel) ++end;
     if (channel >= 1 && channel <= 16) {
-      const Id now = keyboardForChannel(channel, MidiDeviceMap::kAnyDevice);
+      const Id now = played(keyboardForChannel(channel, MidiDeviceMap::kAnyDevice));
       Id next = routedKeyboard(routeScratch_[i]);
       for (size_t k = i; k < end; ++k)
-        if (routedKeyboard(routeScratch_[k]) == now) {
+        if (played(routedKeyboard(routeScratch_[k])) == now) {
           next = routedKeyboard(routeScratch_[k + 1 < end ? k + 1 : i]);
           break;
         }
