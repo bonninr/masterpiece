@@ -106,6 +106,7 @@ countries: nl be sr
 "Wiring the console" = "Speeltafel aansluiten"
 "Finding the samples" = "Samples zoeken"
 "Loading samples" = "Samples laden"
+"Loading samples from the cache" = "Samples laden uit de cache"
 "Release tails end below" = "Releasestaarten eindigen onder"
 "Never: every tail plays out" = "Nooit: elke staart klinkt helemaal uit"
 "%1 dB" = "%1 dB"

@@ -106,6 +106,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Wiring the console" = "Conectando la consola"
 "Finding the samples" = "Localizando las muestras"
 "Loading samples" = "Cargando muestras"
+"Loading samples from the cache" = "Cargando muestras desde la caché"
 "Release tails end below" = "Las colas de liberación terminan bajo"
 "Never: every tail plays out" = "Nunca: cada cola suena hasta el final"
 "%1 dB" = "%1 dB"

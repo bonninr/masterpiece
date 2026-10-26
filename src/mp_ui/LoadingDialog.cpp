@@ -65,6 +65,7 @@ static juce::String phaseText(LoadProgress::Phase p) {
     case LoadProgress::Phase::BuildingWind:      return TRANS("Building the wind model");
     case LoadProgress::Phase::WiringConsole:     return TRANS("Wiring the console");
     case LoadProgress::Phase::FindingSamples:    return TRANS("Finding the samples");
+    case LoadProgress::Phase::ReadingCache:      return TRANS("Loading samples from the cache");
     case LoadProgress::Phase::LoadingSamples:    return TRANS("Loading samples");
     case LoadProgress::Phase::SavingCache:       return TRANS("Creating the sample cache");
     case LoadProgress::Phase::Preparing:         return TRANS("Preparing to play");
@@ -126,7 +127,7 @@ void LoadingDialog::timerCallback() {
   const double f = p.fraction();
   barValue_ = f;  // negative keeps the bar indeterminate rather than faking 0%
 
-  if (phase == LoadProgress::Phase::LoadingSamples) {
+  if (phase == LoadProgress::Phase::LoadingSamples || phase == LoadProgress::Phase::ReadingCache) {
     const int done = p.done.load(std::memory_order_relaxed);
     const int total = p.total.load(std::memory_order_relaxed);
     if (!cancelling_ && total > 0) {

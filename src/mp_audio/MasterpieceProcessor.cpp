@@ -446,7 +446,8 @@ void MasterpieceProcessor::maybeLoadTick(juce::AudioBuffer<float>& buffer) {
   int pct = -1;
   if (phase == LoadProgress::Phase::Done) {
     pct = 100;
-  } else if (phase == LoadProgress::Phase::LoadingSamples) {
+  } else if (phase == LoadProgress::Phase::LoadingSamples ||
+             phase == LoadProgress::Phase::ReadingCache) {
     const double f = loadProgress_.fraction();
     if (f >= 0.0) pct = static_cast<int>(f * 100.0);
   } else if (phase == LoadProgress::Phase::Idle) {
@@ -6676,7 +6677,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // keep their times; the rest start from nothing.
   for (auto p : {LoadProgress::Phase::ReadingDefinition, LoadProgress::Phase::BuildingWind,
                  LoadProgress::Phase::WiringConsole, LoadProgress::Phase::FindingSamples,
-                 LoadProgress::Phase::LoadingSamples, LoadProgress::Phase::Preparing})
+                 LoadProgress::Phase::ReadingCache, LoadProgress::Phase::LoadingSamples,
+                 LoadProgress::Phase::Preparing})
     loadProgress_.phaseMs[static_cast<size_t>(p)].store(0, std::memory_order_relaxed);
   loadProgress_.beginPhase(LoadProgress::Phase::ReadingDefinition);
 
@@ -7712,8 +7714,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     for (auto p : {LoadProgress::Phase::OpeningArchive, LoadProgress::Phase::ReadingArchive,
                    LoadProgress::Phase::ExtractingArchive, LoadProgress::Phase::ReadingDefinition,
                    LoadProgress::Phase::BuildingWind, LoadProgress::Phase::WiringConsole,
-                   LoadProgress::Phase::FindingSamples, LoadProgress::Phase::LoadingSamples,
-                   LoadProgress::Phase::Preparing}) {
+                   LoadProgress::Phase::FindingSamples, LoadProgress::Phase::ReadingCache,
+                   LoadProgress::Phase::LoadingSamples, LoadProgress::Phase::Preparing}) {
       int64_t ms = loadProgress_.timeIn(p);
       // The stage still running is the last one, charged up to now.
       if (p == loadProgress_.phase.load(std::memory_order_acquire) && began > 0) ms += now - began;

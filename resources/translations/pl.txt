@@ -106,6 +106,7 @@ countries: pl
 "Wiring the console" = "Łączenie kontuaru"
 "Finding the samples" = "Wyszukiwanie próbek"
 "Loading samples" = "Wczytywanie próbek"
+"Loading samples from the cache" = "Wczytywanie próbek z pamięci podręcznej"
 "Release tails end below" = "Wybrzmienia kończą się poniżej"
 "Never: every tail plays out" = "Nigdy: każde wybrzmienie do końca"
 "%1 dB" = "%1 dB"

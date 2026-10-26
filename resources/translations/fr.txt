@@ -106,6 +106,7 @@ countries: fr be ca ch lu mc
 "Wiring the console" = "Câblage de la console"
 "Finding the samples" = "Recherche des échantillons"
 "Loading samples" = "Chargement des échantillons"
+"Loading samples from the cache" = "Chargement des échantillons depuis le cache"
 "Release tails end below" = "Les queues de relâchement s'arrêtent sous"
 "Never: every tail plays out" = "Jamais : chaque queue va jusqu'au bout"
 "%1 dB" = "%1 dB"

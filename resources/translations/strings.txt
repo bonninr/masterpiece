@@ -113,6 +113,7 @@ countries: gb us
 "Building the wind model" = "Building the wind model"
 "Wiring the console" = "Wiring the console"
 "Finding the samples" = "Finding the samples"
+"Loading samples from the cache" = "Loading samples from the cache"
 "Loading samples" = "Loading samples"
 "Creating the sample cache" = "Creating the sample cache"
 "Preparing to play" = "Preparing to play"
