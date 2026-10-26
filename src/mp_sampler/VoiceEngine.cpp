@@ -633,6 +633,12 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     v.loopStart = start.loopStartOverride;
     v.loopEnd = start.loopEndOverride;
   }
+  // With no loop in force there is nothing for a held key to sustain, so the
+  // file itself is what says the pipe is struck: a bell or a carillon pipe
+  // records its ring once and has no loop. The definition of a set carries no
+  // field that could mark a rank so, and a forced one-shot (a noise) already
+  // says it for itself.
+  v.percussive = !start.oneShot && !v.loops();
   speaking_[static_cast<size_t>(slot)] =
       start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
   return slot;
@@ -650,6 +656,10 @@ int VoiceEngine::joinSpeakingPipe(const VoiceStart& start, uint64_t noteId) {
         v.layer != start.layer)
       continue;
     if (v.noteId == noteId) return static_cast<int>(slot);
+    // A struck pipe is not passed from one key to another while it rings: the
+    // next strike sounds it again. Two paths of the SAME key press still
+    // join, above.
+    if (v.percussive) return -1;
     for (int h = 0; h < v.holderCount; ++h)
       if (v.holders[h] == noteId) return static_cast<int>(slot);
     if (v.holderCount >= Voice::kMaxHolders) return -1;
@@ -726,6 +736,9 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     Voice& v = voices_[slot];
     if (!v.active() || v.phase == VoicePhase::Release) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
+    // A struck sample has no sustain to let go of: the key, the stop or the
+    // coupler releases nothing, and the voice ends with its recording.
+    if (v.percussive) continue;
     if (v.noteId != noteId) {
       // Held by this key alongside another: it lets go, the pipe speaks on.
       for (int h = 0; h < v.holderCount; ++h)
