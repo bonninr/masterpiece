@@ -1673,14 +1673,16 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     if (result.outOfMemory)
       juce::AlertWindow::showMessageBoxAsync(
           juce::MessageBoxIconType::WarningIcon, TRANS("Not enough memory for this organ"),
-          TRANS("%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\n"
+          TRANS("%1 was not loaded: its samples need more than the memory limit (%2 GB, "
+                "the most the program is set to hold; this computer has %3 GB).\n\n"
                 "Its console is shown without sound, so Organ settings can be opened "
                 "from the Settings menu: leave out perspectives or stops, or on the Loading tab "
                 "load 16-bit samples, stream the release tails, load in mono or preload less of "
                 "each sample -- or raise the memory limit on the same tab, if this computer has "
                 "the memory to spare.")
               .replace("%1", odf.getFileNameWithoutExtension())
-              .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+              .replace("%2", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1))
+              .replace("%3", juce::String(juce::SystemStats::getMemorySizeInMegabytes() / 1024.0, 1)));
     // The organ's console, without its audio, so the way out is on screen
     // (#53: the only way back was deleting the organ's settings file). The
     // same after Cancel, which is often a load taking too much (#90). Once:
@@ -1826,7 +1828,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
                             : 0;
     juce::AlertWindow::showMessageBoxAsync(
         juce::MessageBoxIconType::WarningIcon, TRANS("Only part of this organ fits"),
-        TRANS("%1 of %2 samples (%3%) were loaded before the memory limit (%4 GB) was "
+        TRANS("%1 of %2 samples (%3%) were loaded before the memory limit (%4 GB, the most "
+              "the program is set to hold; this computer has %5 GB) was "
               "reached. The organ plays, but some stops or notes will be silent.\n\n"
               "To load all of it: leave out perspectives or stops in Organ settings, load "
               "16-bit samples or stream the release tails on its Loading tab, or raise the "
@@ -1834,7 +1837,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
             .replace("%1", juce::String(result.samples.loaded))
             .replace("%2", juce::String(result.samples.wanted))
             .replace("%3", juce::String(percent))
-            .replace("%4", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+            .replace("%4", juce::String(proc_.memoryLimitBytes() / (1024.0 * 1024.0 * 1024.0), 1))
+            .replace("%5", juce::String(juce::SystemStats::getMemorySizeInMegabytes() / 1024.0, 1)));
   } else if (!graphicsOnly && result.samples.licensed > 0 && !proc_.licenceConfirmed()) {
     // Asked already, before any sample was read, and answered no: said, not
     // asked again. Only a load that could not ask is asked now.
