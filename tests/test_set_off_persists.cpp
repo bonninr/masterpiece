@@ -5,6 +5,7 @@
 
 #ifdef MP_TEST_HAS_AUDIO
 
+#include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
 using mp::test::Category;
@@ -33,6 +34,13 @@ public:
 
   void run() override {
     const auto odf = writeOrgan("set");
+    // The program's own settings file is not this test's to change: the
+    // defaults are read and written in a folder of their own.
+    const auto data = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-set-off-data");
+    data.deleteRecursively();
+    data.createDirectory();
+    const auto previous = mp::dataFolder();
+    mp::setDataFolder(data);
 
     {
       mp::MasterpieceProcessor proc;
@@ -57,6 +65,9 @@ public:
       MP_CHECK(third.loadOrgan(odf, 0, false).ok, "the organ loads a third time");
       MP_CHECK(!third.setOffAfterStore(), "the box stays unticked");
     }
+
+    mp::setDataFolder(previous);
+    data.deleteRecursively();
   }
 };
 static SetOffAfterStorePersistsTest g_setOffAfterStorePersists;
