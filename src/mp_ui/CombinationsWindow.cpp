@@ -244,11 +244,7 @@ void CombinationsPanel::rebuild() {
   for (int n = 1; n <= pc.generalCount(); ++n) {
     auto b = std::make_unique<PistonButton>(juce::String(n));
     auto* raw = b.get();
-    b->onClick = [this, n] {
-      const bool storing = proc_.captureMode();
-      proc_.pressGeneral(n);
-      afterPiston(storing);
-    };
+    b->onClick = [this, n] { proc_.pressGeneral(n); };
     b->onRightClick = [this, raw, n] {
       showMidiMenu(*raw, MidiTargetKind::PlayerGeneral, n, false);
     };
@@ -268,11 +264,7 @@ void CombinationsPanel::rebuild() {
     for (int n = 1; n <= pc.divisionalCount(); ++n) {
       auto b = std::make_unique<PistonButton>(juce::String(n));
       auto* raw = b.get();
-      b->onClick = [this, div, n] {
-        const bool storing = proc_.captureMode();
-        proc_.pressDivisional(div, n);
-        afterPiston(storing);
-      };
+      b->onClick = [this, div, n] { proc_.pressDivisional(div, n); };
       b->onRightClick = [this, raw, div, n] {
         showMidiMenu(*raw, MidiTargetKind::PlayerDivisional,
                      playerDivisionalTarget(div, n), false);
@@ -402,13 +394,6 @@ void CombinationsPanel::timerCallback() {
   }
   if (getTimerInterval() >= 250) startTimerHz(10);
   refreshState();
-}
-
-void CombinationsPanel::afterPiston(bool stored) {
-  // Only a store made from here, with the mouse: a console's own Set button
-  // stays down until it is pressed again, and stepping with Set held is how
-  // a sequence is built (#130).
-  if (stored && proc_.setOffAfterStore()) proc_.setCaptureMode(false);
 }
 
 void CombinationsPanel::refreshState() {
@@ -589,8 +574,8 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   content_.addAndMakeVisible(onTop_);
   setOff_.setToggleState(p.setOffAfterStore(), juce::dontSendNotification);
   setOff_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
-  setOff_.setTooltip(TRANS("After a piston clicked here has stored a combination, Set turns off, "
-                           "so the next click recalls it instead of overwriting it"));
+  setOff_.setTooltip(TRANS("After a piston has stored a combination, Set turns off, so the next "
+                           "press recalls it: pistons here, on the console and over MIDI"));
   setOff_.onClick = [this] { proc_.setSetOffAfterStore(setOff_.getToggleState()); };
   content_.addAndMakeVisible(setOff_);
   // On consoles where the bass and melody couplers belong to the hands, the

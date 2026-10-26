@@ -880,13 +880,13 @@ public:
     combinationsOnTop_ = on;
     writeGlobalFile();
   }
-  // Whether Set lets go once a piston clicked in the combinations window
-  // has stored, so the next click recalls instead of overwriting a
-  // combination by mistake (#130). Off by default: a console's own Set
-  // button stays down until it is pressed again.
-  bool setOffAfterStore() const { return setOffAfterStore_; }
+  // Whether Set lets go once a piston has stored, so the next press recalls
+  // instead of overwriting a combination by mistake (#130, #591): pistons on
+  // the console, over MIDI and in the combinations window alike. Off by
+  // default: Set stays down until it is pressed again.
+  bool setOffAfterStore() const { return setOffAfterStore_.load(std::memory_order_relaxed); }
   void setSetOffAfterStore(bool on) {
-    setOffAfterStore_ = on;
+    setOffAfterStore_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
   // Whether the player's pistons and sequencer leave the bass and melody
@@ -1971,6 +1971,8 @@ private:
   // Returns true when the switch was a piston, so the caller knows it has
   // already been dealt with.
   bool firePiston(Id switchId);
+  // Turns Set off after a piston has stored, when the player asked for that.
+  void afterPistonStore();
   // Recall a combination, or capture into it when the setter is held. Shared
   // by the pistons and the sequencer, so a frame the sequencer lands on
   // behaves exactly like the same piston pressed by hand.
@@ -2507,7 +2509,8 @@ private:
   // How many voices sounded in the last block, for the cache write that waits
   // for silence.
   std::atomic<int> soundingVoices_{0};
-  bool setOffAfterStore_ = false;
+  // Read on the audio thread, where console and MIDI pistons are pressed.
+  std::atomic<bool> setOffAfterStore_{false};
   bool leaveBassAndMelody_ = false;
   std::atomic<bool> showPlayedKeys_{true};
   std::atomic<bool> smallPagesFill_{false};

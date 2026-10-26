@@ -60,7 +60,7 @@ countries: de at ch li lu
 "MIDI window..." = "MIDI-Fenster..."
 "Clear mapping" = "Zuordnung löschen"
 "Combinations" = "Kombinationen"
-"After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it" = "Nachdem ein hier angeklickter Setzerknopf eine Kombination gespeichert hat, schaltet sich Set aus; der nächste Klick ruft sie dann ab und überschreibt sie nicht"
+"After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Nachdem ein Setzerknopf eine Kombination gespeichert hat, schaltet sich Set aus, und der nächste Druck ruft sie ab: Knöpfe hier, am Spieltisch und über MIDI"
 
 # src/mp_ui/CombinationsWindow.h
 "Set" = "Set"

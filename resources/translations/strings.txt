@@ -64,7 +64,7 @@ countries: gb us
 "MIDI window..." = "MIDI window..."
 "Clear mapping" = "Clear mapping"
 "Combinations" = "Combinations"
-"After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it" = "After a piston clicked here has stored a combination, Set turns off, so the next click recalls it instead of overwriting it"
+"After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI"
 "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in." = "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in."
 
 # src/mp_ui/CombinationsWindow.h
