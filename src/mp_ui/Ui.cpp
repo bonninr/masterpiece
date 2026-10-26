@@ -2371,7 +2371,11 @@ void MasterpieceEditor::showFileMenu() {
 #if !JUCE_MAC
   if (!kMobile && juce::JUCEApplicationBase::isStandaloneApp()) {
     menu.addSeparator();
-    menu.addItem(6, JUCE_WINDOWS ? TRANS("Exit") : TRANS("Quit"));
+#if JUCE_WINDOWS
+    menu.addItem(6, TRANS("Exit"));
+#else
+    menu.addItem(6, TRANS("Quit"));
+#endif
   }
 #endif
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&fileMenu_),
