@@ -35,6 +35,10 @@ struct LoadProgress {
     // seconds, and it was shown as "Wiring the console", which takes
     // milliseconds (#133).
     FindingSamples,
+    // The samples read back from the cache of an earlier load. On a large
+    // set this is the long part of a cached load, and it was shown as
+    // "Finding the samples" with no progress (#591). done/total count samples.
+    ReadingCache,
     LoadingSamples,     // the long one: done/total are meaningful here
     // The samples just read are written to the cache for the next load, with
     // the organ not yet playable (unless the player chose to save in silence
@@ -139,6 +143,7 @@ struct LoadProgress {
       case Phase::BuildingWind:      return "Building the wind model";
       case Phase::WiringConsole:     return "Wiring the console";
       case Phase::FindingSamples:    return "Finding the samples";
+      case Phase::ReadingCache:      return "Loading samples from the cache";
       case Phase::LoadingSamples:    return "Loading samples";
       case Phase::SavingCache:       return "Creating the sample cache";
       case Phase::Preparing:         return "Preparing to play";

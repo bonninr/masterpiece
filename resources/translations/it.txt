@@ -106,6 +106,7 @@ countries: it ch sm va
 "Wiring the console" = "Collegamento della consolle"
 "Finding the samples" = "Ricerca dei campioni"
 "Loading samples" = "Caricamento dei campioni"
+"Loading samples from the cache" = "Caricamento dei campioni dalla cache"
 "Release tails end below" = "Le code di rilascio terminano sotto"
 "Never: every tail plays out" = "Mai: ogni coda suona fino in fondo"
 "%1 dB" = "%1 dB"

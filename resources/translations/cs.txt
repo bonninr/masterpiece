@@ -106,6 +106,7 @@ countries: cz
 "Wiring the console" = "Zapojuje se hrací stůl"
 "Finding the samples" = "Vyhledávají se vzorky"
 "Loading samples" = "Načítají se vzorky"
+"Loading samples from the cache" = "Načítají se vzorky z mezipaměti"
 "Release tails end below" = "Doznění končí pod"
 "Never: every tail plays out" = "Nikdy: každé doznění dozní celé"
 "%1 dB" = "%1 dB"

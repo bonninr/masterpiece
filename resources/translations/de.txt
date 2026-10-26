@@ -106,6 +106,7 @@ countries: de at ch li lu
 "Wiring the console" = "Spieltisch wird verdrahtet"
 "Finding the samples" = "Samples werden gesucht"
 "Loading samples" = "Samples werden geladen"
+"Loading samples from the cache" = "Samples werden aus dem Cache geladen"
 "Release tails end below" = "Release-Ausklang endet unter"
 "Never: every tail plays out" = "Nie: jeder Ausklang klingt ganz aus"
 "%1 dB" = "%1 dB"

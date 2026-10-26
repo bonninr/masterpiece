@@ -2074,9 +2074,15 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   uint64_t count = 0;
   if (!getPod(is, count) || count > 4000000ull) return false;
 
+  // From here the cache is read back, sample by sample, and the loading
+  // window counts them.
+  if (progress != nullptr)
+    progress->beginPhase(LoadProgress::Phase::ReadingCache, static_cast<int>(count));
   Store loaded;
   loaded.reserve(static_cast<size_t>(count));
   for (uint64_t i = 0; i < count; ++i) {
+    if (progress != nullptr && (i & 63) == 0)
+      progress->done.store(static_cast<int>(i), std::memory_order_relaxed);
     uint32_t id = 0;
     int32_t channels = 0;
     uint8_t width = 0, streams = 0;
