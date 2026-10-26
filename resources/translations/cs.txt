@@ -439,6 +439,8 @@ countries: cz
 "Faster audio engine: using %1" = "Rychlejší zvukový engine: používá %1"
 "Faster audio engine: not available on this processor" = "Rychlejší zvukový engine: na tomto procesoru není k dispozici"
 "Real-time render threads" = "Vykreslovací vlákna v reálném čase"
+"Render on every logical processor" = "Vykreslovat na všech logických procesorech"
+"Renders the organ on every logical processor, with none kept for the interface, disk streaming and the system: more polyphony on a machine doing nothing else. Off: every processor but one, eight at most." = "Vykresluje varhany na všech logických procesorech a žádný nenechává pro rozhraní, čtení z disku a systém: více polyfonie na počítači, který nic jiného nedělá. Vypnuto: všechny procesory kromě jednoho, nejvýše osm."
 "Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO or rtkit on Linux, the audio workgroup on macOS." = "Z vláken, která vykreslují varhany, udělá vlákna reálného času, takže je systém spouští přednostně, na nejrychlejších jádrech: MMCSS ve Windows, SCHED_FIFO nebo rtkit v Linuxu, zvuková pracovní skupina v macOS."
 "Real-time render threads: using %1" = "Vykreslovací vlákna v reálném čase: používá %1"
 "Real-time render threads: no real-time rights on this system" = "Vykreslovací vlákna v reálném čase: systém nedává práva reálného času"

@@ -104,6 +104,7 @@ private:
   bool openReopen_ = false;
   bool openFaster_ = true;
   bool openRealtime_ = false;
+  bool openEveryProcessor_ = false;
   int openMemLimit_ = 0;
   int openPolyphony_ = 0;
   // Set while a profile is writing the individual controls, so their
@@ -194,6 +195,7 @@ private:
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
   juce::ToggleButton faster_{TRANS("Faster audio engine")};
   juce::ToggleButton realtime_{TRANS("Real-time render threads")};
+  juce::ToggleButton everyProcessor_{TRANS("Render on every logical processor")};
   juce::ToggleButton portable_{TRANS("Keep this organ playable without its installation files")};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;

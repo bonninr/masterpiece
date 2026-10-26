@@ -439,6 +439,8 @@ countries: nl be sr
 "Faster audio engine: using %1" = "Snellere audio-engine: gebruikt %1"
 "Faster audio engine: not available on this processor" = "Snellere audio-engine: niet beschikbaar op deze processor"
 "Real-time render threads" = "Realtime renderthreads"
+"Render on every logical processor" = "Op alle logische processors berekenen"
+"Renders the organ on every logical processor, with none kept for the interface, disk streaming and the system: more polyphony on a machine doing nothing else. Off: every processor but one, eight at most." = "Berekent het orgel op alle logische processors, zonder er een vrij te houden voor de interface, het lezen van schijf en het systeem: meer polyfonie op een computer die verder niets doet. Uit: alle processors op één na, hoogstens acht."
 "Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO or rtkit on Linux, the audio workgroup on macOS." = "Maakt van de threads die het orgel berekenen realtime-threads, zodat het systeem ze als eerste uitvoert, op de snelste kernen: MMCSS op Windows, SCHED_FIFO of rtkit op Linux, de audiowerkgroep op macOS."
 "Real-time render threads: using %1" = "Realtime renderthreads: gebruikt %1"
 "Real-time render threads: no real-time rights on this system" = "Realtime renderthreads: geen realtime-rechten op dit systeem"

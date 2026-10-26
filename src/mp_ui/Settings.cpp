@@ -133,6 +133,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   openReopen_ = proc_.reopenLastOrgan();
   openFaster_ = proc_.fasterEngine();
   openRealtime_ = proc_.realtimeThreads();
+  openEveryProcessor_ = proc_.everyProcessor();
   openMemLimit_ = proc_.memoryLimitSettingMB();
   openPolyphony_ = proc_.polyphonyLimit();
 
@@ -535,6 +536,12 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     showRealtimeUnit();
   };
   showRealtimeUnit();
+  addAndMakeVisible(everyProcessor_);
+  everyProcessor_.setToggleState(proc_.everyProcessor(), juce::dontSendNotification);
+  everyProcessor_.setTooltip(TRANS("Renders the organ on every logical processor, with none kept for the "
+                                   "interface, disk streaming and the system: more polyphony on a machine "
+                                   "doing nothing else. Off: every processor but one, eight at most."));
+  everyProcessor_.onClick = [this] { proc_.setEveryProcessor(everyProcessor_.getToggleState()); };
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
   portable_.setTooltip(TRANS("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
@@ -700,6 +707,8 @@ void EnginePanel::revert() {
   if (proc_.realtimeThreads() != openRealtime_) proc_.setRealtimeThreads(openRealtime_);
   realtime_.setToggleState(openRealtime_, juce::dontSendNotification);
   showRealtimeUnit();
+  proc_.setEveryProcessor(openEveryProcessor_);
+  everyProcessor_.setToggleState(openEveryProcessor_, juce::dontSendNotification);
   proc_.setMemoryLimitMB(openMemLimit_);
   fillMemLimit();
   proc_.setPolyphonyLimit(openPolyphony_);
@@ -1145,6 +1154,7 @@ void EnginePanel::resized() {
   portable_.setBounds(r.removeFromTop(kRow));
   faster_.setBounds(r.removeFromTop(kRow));
   if (realtime_.isVisible()) realtime_.setBounds(r.removeFromTop(kRow));
+  everyProcessor_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(6);
   auto memRow = r.removeFromTop(kRow);
   memLimitLabel_.setBounds(memRow.removeFromLeft(180));

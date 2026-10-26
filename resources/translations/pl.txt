@@ -439,6 +439,8 @@ countries: pl
 "Faster audio engine: using %1" = "Szybszy silnik audio: używa %1"
 "Faster audio engine: not available on this processor" = "Szybszy silnik audio: niedostępny na tym procesorze"
 "Real-time render threads" = "Wątki renderowania w czasie rzeczywistym"
+"Render on every logical processor" = "Obliczaj na wszystkich procesorach logicznych"
+"Renders the organ on every logical processor, with none kept for the interface, disk streaming and the system: more polyphony on a machine doing nothing else. Off: every processor but one, eight at most." = "Oblicza organy na wszystkich procesorach logicznych, nie zostawiając żadnego dla interfejsu, odczytu z dysku i systemu: więcej polifonii na komputerze, który nie robi nic innego. Wyłączone: wszystkie procesory oprócz jednego, najwyżej osiem."
 "Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores: MMCSS on Windows, SCHED_FIFO or rtkit on Linux, the audio workgroup on macOS." = "Zamienia wątki, które renderują organy, w wątki czasu rzeczywistego, dzięki czemu system uruchamia je w pierwszej kolejności, na najszybszych rdzeniach: MMCSS w Windows, SCHED_FIFO lub rtkit w Linuksie, grupa robocza audio w macOS."
 "Real-time render threads: using %1" = "Wątki renderowania w czasie rzeczywistym: używa %1"
 "Real-time render threads: no real-time rights on this system" = "Wątki renderowania w czasie rzeczywistym: brak uprawnień czasu rzeczywistego w tym systemie"

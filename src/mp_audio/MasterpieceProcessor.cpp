@@ -178,20 +178,34 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
                                 ? "per-frame"
                                 : juce::String("faster (") + simd::isaName(voices_.simd()) + ")"));
 
-  // Worker pool (ADR-012). Auto means cores - 1, leaving one for the rest of
-  // the system; the audio thread renders a share itself, so the total doing
-  // voice work is that count. Threads are started here, never in the callback.
+  startRenderThreads(blockFrames);
+}
+
+int MasterpieceProcessor::usableProcessors() { return usableCores(); }
+
+int MasterpieceProcessor::autoRenderThreads(int cores, bool everyProcessor) {
+  // Every logical processor, when the player asks for it: the audio thread
+  // and a worker on each of the others, with no ceiling.
+  if (everyProcessor) return std::max(1, cores);
+  // Otherwise cores - 1, leaving one for the rest of the system.
+  int threads = cores > 2 ? cores - 1 : 1;
+  // But not every core of a big machine: a block is shared out only above
+  // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
+  // Pro (#120) wait for over 700 voices before helping, and every worker
+  // woken is one more the audio thread waits on. Eight carry any console.
+  return std::min(threads, 8);
+}
+
+void MasterpieceProcessor::startRenderThreads(int blockFrames) {
+  // Worker pool (ADR-012). The audio thread renders a share itself, so the
+  // total doing voice work is the count. Threads are started here, never in
+  // the callback.
   int threads = graph_.parallel.renderThreads;
-  if (threads <= 0) {
-    const int cores = usableCores();
-    threads = cores > 2 ? cores - 1 : 1;
-    // But not every core of a big machine: a block is shared out only above
-    // minVoicesPerThread voices per thread, so 23 threads on a 24-thread Mac
-    // Pro (#120) wait for over 700 voices before helping, and every worker
-    // woken is one more the audio thread waits on. Eight carry any console.
-    threads = std::min(threads, 8);
-  }
+  if (threads <= 0) threads = autoRenderThreads(usableCores(), everyProcessor_.load());
   voices_.setRenderThreads(threads, graph_.parallel.minVoicesPerThread);
+  juce::Logger::writeToLog("render threads: " + juce::String(voices_.renderThreads()) + " of " +
+                           juce::String(usableCores()) + " logical processors" +
+                           (everyProcessor_.load() ? ", every processor chosen" : ""));
   // New workers, and the length of a block may be new: each sets itself
   // again, and the audio thread with them.
   blockSeconds_.store(juce::jmax(1, blockFrames) / sampleRate_);
@@ -281,6 +295,18 @@ void MasterpieceProcessor::setRealtimeThreads(bool on) {
 }
 
 bool MasterpieceProcessor::realtimeThreadsSupported() { return realtime::supported(); }
+
+void MasterpieceProcessor::setEveryProcessor(bool on) {
+  if (everyProcessor_.load() == on) return;
+  everyProcessor_.store(on);
+  // The workers start again under the audio lock, between two blocks; the
+  // voice pool and what sounds stay as they are.
+  {
+    const AudioLock lock(*this);
+    startRenderThreads(getBlockSize());
+  }
+  writeGlobalFile();
+}
 
 void MasterpieceProcessor::audioWorkgroupContextChanged(const juce::AudioWorkgroup& workgroup) {
   {
@@ -2492,6 +2518,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "fasterengine " << (fasterEngine_.load() ? 1 : 0) << "\n";
   // Written either way too: on is the default since 0.9.0.
   text << "realtimethreads " << (realtimeThreads_.load() ? 1 : 0) << "\n";
+  text << "everyprocessor " << (everyProcessor_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
   if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
   if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
@@ -2667,6 +2694,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (realtimeThreads_.load()) {
         voices_.setWorkerHook([this] { realtimeHere(); });
         realtimeGeneration_.fetch_add(1);
+      }
+    } else if (key == "everyprocessor") {
+      // The audio is running by the time the file is read at start: the
+      // workers it started are started again for the saved choice.
+      const bool every = val.getIntValue() != 0;
+      if (everyProcessor_.exchange(every) != every) {
+        const AudioLock lock(*this);
+        startRenderThreads(getBlockSize());
       }
     } else if (key == "midiinputoff") {
       if (val.isNotEmpty()) inputsOff_.addIfNotAlreadyThere(val);
