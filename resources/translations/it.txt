@@ -357,7 +357,7 @@ countries: it ch sm va
 "All stops" = "Tutti i registri"
 "No stops" = "Nessun registro"
 "Only the stops drawn now" = "Solo i registri inseriti ora"
-"Load the organ again" = "Ricarica l'organo"
+"Load the organ" = "Carica l'organo"
 "On" = "Attivo"
 "Flat" = "Lineare"
 
@@ -443,7 +443,7 @@ countries: it ch sm va
 "Real-time render threads: using %1" = "Thread di rendering in tempo reale: usa %1"
 "Real-time render threads: no real-time rights on this system" = "Thread di rendering in tempo reale: nessun permesso di tempo reale su questo sistema"
 "Save as default" = "Salva come predefinito"
-"Load the organ again to apply" = "Ricarica l'organo per applicare"
+"Load the organ to apply" = "Carica l'organo per applicare"
 "32-bit float" = "32 bit float"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Campioni residenti: %1 MB (%2 campioni, %3, %4%5)"
 "mono" = "mono"

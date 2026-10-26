@@ -357,7 +357,7 @@ countries: nl be sr
 "All stops" = "Alle registers"
 "No stops" = "Geen registers"
 "Only the stops drawn now" = "Alleen de nu getrokken registers"
-"Load the organ again" = "Het orgel opnieuw laden"
+"Load the organ" = "Het orgel laden"
 "On" = "Aan"
 "Flat" = "Vlak"
 
@@ -443,7 +443,7 @@ countries: nl be sr
 "Real-time render threads: using %1" = "Realtime renderthreads: gebruikt %1"
 "Real-time render threads: no real-time rights on this system" = "Realtime renderthreads: geen realtime-rechten op dit systeem"
 "Save as default" = "Als standaard opslaan"
-"Load the organ again to apply" = "Laad het orgel opnieuw om toe te passen"
+"Load the organ to apply" = "Laad het orgel om toe te passen"
 "32-bit float" = "32 bit float"
 "Resident samples: %1 MB (%2 samples, %3, %4%5)" = "Samples in het geheugen: %1 MB (%2 samples, %3, %4%5)"
 "mono" = "mono"
