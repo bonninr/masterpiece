@@ -61,8 +61,12 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
   }
 
   addChildComponent(openOrgan_);
+  // Choosing an organ is the wizard's last question: the wizard closes and the
+  // organ chooser opens, so the console is in view while the organ loads (#591).
   openOrgan_.onClick = [this] {
-    if (onOpenOrgan) onOpenOrgan();
+    auto open = onOpenOrgan;  // finish() may delete this panel
+    finish();
+    if (open) open();
   };
   addChildComponent(organStatus_);
   style(organStatus_, 12.0f, juce::Colours::grey);
