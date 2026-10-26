@@ -1,6 +1,7 @@
-// Render on every logical processor (#422): off, the organ renders on every
-// processor but one, eight at most; on, on all of them, with no ceiling. The
-// setting takes effect at once and is kept for the next start.
+// Render on every logical processor (#422), on by default: on, the organ
+// renders on every processor, with no ceiling; off, on every processor but
+// one, eight at most. The setting takes effect at once and is kept for the
+// next start.
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -36,14 +37,15 @@ public:
 
     {
       P proc;
-      proc.setEveryProcessor(false);
+      MP_CHECK(proc.everyProcessor(), "on by default");
       proc.prepareToPlay(48000.0, 256);
-      const int off = proc.renderThreadCount();
-      MP_CHECK(off == P::autoRenderThreads(cores, false),
-               "off by default: " + std::to_string(off) + " render threads on " + std::to_string(cores));
-      proc.setEveryProcessor(true);
-      MP_CHECK(proc.renderThreadCount() == P::autoRenderThreads(cores, true),
-               "turned on, the threads change at once: " + std::to_string(proc.renderThreadCount()));
+      const int on = proc.renderThreadCount();
+      MP_CHECK(on == P::autoRenderThreads(cores, true),
+               "every processor by default: " + std::to_string(on) + " render threads on " +
+                   std::to_string(cores));
+      proc.setEveryProcessor(false);
+      MP_CHECK(proc.renderThreadCount() == P::autoRenderThreads(cores, false),
+               "turned off, the threads change at once: " + std::to_string(proc.renderThreadCount()));
       render(proc);
       proc.releaseResources();
     }
@@ -51,15 +53,15 @@ public:
       // The application starts the audio before it reads the saved settings.
       P again;
       again.prepareToPlay(48000.0, 256);
-      MP_CHECK(again.renderThreadCount() == P::autoRenderThreads(cores, false),
-               "before the settings are read, every processor but one");
-      again.loadGlobalDefaults();
-      MP_CHECK(again.everyProcessor(), "the setting is kept for the next start");
       MP_CHECK(again.renderThreadCount() == P::autoRenderThreads(cores, true),
-               "once they are read, every processor");
-      again.setEveryProcessor(false);
+               "before the settings are read, every processor");
+      again.loadGlobalDefaults();
+      MP_CHECK(!again.everyProcessor(), "turned off, it stays off at the next start");
       MP_CHECK(again.renderThreadCount() == P::autoRenderThreads(cores, false),
-               "turned off, back to every processor but one");
+               "once the settings are read, every processor but one");
+      again.setEveryProcessor(true);
+      MP_CHECK(again.renderThreadCount() == P::autoRenderThreads(cores, true),
+               "turned on again, every processor");
       render(again);
       again.releaseResources();
     }

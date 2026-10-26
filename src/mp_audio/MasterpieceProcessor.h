@@ -953,7 +953,8 @@ public:
   static bool realtimeThreadsSupported();
   // Render on every logical processor: the audio thread and a worker on each
   // of the others, with none kept for the interface, disk streaming and the
-  // system, and no ceiling of eight. Off by default (#422). Takes effect at
+  // system, and no ceiling of eight. On by default since 0.9.0 (#422): fewer late blocks
+  // on the 4- and 8-processor machines measured. Takes effect at
   // once.
   bool everyProcessor() const { return everyProcessor_.load(); }
   void setEveryProcessor(bool on);
@@ -2533,7 +2534,7 @@ private:
   // each change, which the audio thread compares with the one it last saw.
   // On wherever the system has them, since 0.9.0.
   std::atomic<bool> realtimeThreads_{realtimeThreadsSupported()};
-  std::atomic<bool> everyProcessor_{false};
+  std::atomic<bool> everyProcessor_{true};
   std::mutex workgroupMutex_;
   juce::AudioWorkgroup workgroup_;
   std::atomic<double> blockSeconds_{0.0};
