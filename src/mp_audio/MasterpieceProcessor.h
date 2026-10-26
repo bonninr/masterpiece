@@ -951,6 +951,19 @@ public:
   void setRealtimeThreads(bool on);
   // False on Android, which gives an app none.
   static bool realtimeThreadsSupported();
+  // Render on every logical processor: the audio thread and a worker on each
+  // of the others, with none kept for the interface, disk streaming and the
+  // system, and no ceiling of eight. On by default since 0.9.0 (#422): fewer late blocks
+  // on the 4- and 8-processor machines measured. Takes effect at
+  // once.
+  bool everyProcessor() const { return everyProcessor_.load(); }
+  void setEveryProcessor(bool on);
+  // The threads that render, the audio thread included.
+  int renderThreadCount() const { return voices_.renderThreads(); }
+  // The automatic count of render threads for this many logical processors.
+  static int autoRenderThreads(int cores, bool everyProcessor);
+  // The logical processors this program may run on.
+  static int usableProcessors();
   // How it is done here: "MMCSS Pro Audio", "SCHED_FIFO", "rtkit", "the
   // realtime portal", "Mach time constraint"; empty where the system gives
   // this user no real-time rights (Linux without them).
@@ -1903,6 +1916,7 @@ private:
   // Turn incoming MIDI into voice starts and stops. Runs on the audio thread,
   // so it must not allocate: the pipe list it walks is preallocated scratch.
   void buildVoicePool(int blockFrames);
+  void startRenderThreads(int blockFrames);
   void handleMidi(const juce::MidiBuffer& midi);
   // Resampling ratio for one pipe playing one recorded sample: the pitch we
   // want over the pitch the file actually holds.
@@ -2528,6 +2542,7 @@ private:
   // each change, which the audio thread compares with the one it last saw.
   // On wherever the system has them, since 0.9.0.
   std::atomic<bool> realtimeThreads_{realtimeThreadsSupported()};
+  std::atomic<bool> everyProcessor_{true};
   std::mutex workgroupMutex_;
   juce::AudioWorkgroup workgroup_;
   std::atomic<double> blockSeconds_{0.0};
