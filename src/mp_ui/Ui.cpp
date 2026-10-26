@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <map>
+#include <utility>
 #include "Settings.h"
 #include "OrganSettings.h"
 #include "../mp_archive/OrganArchive.h"
@@ -1720,9 +1721,14 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
 
   showingConsole_ = console_.hasArtwork();
   // A new organ brings its own console; the plain stop list is asked for
-  // again if the player wants it.
+  // again if the player wants it. Program couplers just turned on from the
+  // View menu are the exception: the list opens on them.
   showingStopList_ = false;
+  if (std::exchange(showCouplersAfterLoad_, false) && proc_.programCouplers() &&
+      !proc_.programCouplerList().empty() && console_.hasArtwork())
+    showingStopList_ = true;
   resized();
+  if (showingStopList_) jamb_.focusFirstStop();
 
   // The organ's name is in the window title, so the bar says what the title
   // cannot: how much instrument arrived, and whether it has any audio.
@@ -2282,6 +2288,10 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   // The plain list of stops, for a player who cannot see the console. The
   // key that opens it is named in the manual.
   if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, showingStopList_);
+  // The program couplers (#468), a menu away (#591). They are switches the
+  // organ is built with, so changing this loads the organ again.
+  if (proc_.loadedOrganFile().existsAsFile())
+    menu.addItem(19, TRANS("Program couplers"), true, proc_.programCouplers());
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
                  onPanel && showingPanel_ == static_cast<int>(i));
@@ -2342,6 +2352,16 @@ void MasterpieceEditor::toggleStopList() {
   if (showingStopList_) showingPanel_ = -1;
   resized();
   if (showingStopList_) jamb_.focusFirstStop();
+}
+
+void MasterpieceEditor::toggleProgramCouplers() {
+  // The organ's own setting, the one on Organ settings > Loading, saved for
+  // this organ before it is loaded again with it.
+  const bool on = !proc_.programCouplers();
+  proc_.setProgramCouplers(on);
+  proc_.saveSettings();
+  showCouplersAfterLoad_ = on;
+  reloadOrgan();
 }
 
 void MasterpieceEditor::toggleSwell() {
@@ -2432,6 +2452,7 @@ void MasterpieceEditor::showViewMenu() {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
                        if (c == 15) safe->toggleStopList();
+                       if (c == 19) safe->toggleProgramCouplers();
                        if (c == 10) safe->toggleCombinations();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();

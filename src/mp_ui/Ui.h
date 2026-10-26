@@ -384,6 +384,9 @@ private:
   // by division, as buttons a screen reader can read. The key that opens it
   // is named in the View menu.
   void toggleStopList();
+  // View > Program couplers: turns them on or off for this organ and loads it
+  // again; turned on, the stop list opens on them.
+  void toggleProgramCouplers();
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
   // window's are shown too.
@@ -481,6 +484,9 @@ private:
   // The plain stop list is on screen, over the console. An organ that ships
   // no console artwork shows it anyway, and then this is never set.
   bool showingStopList_ = false;
+  // Set by View > Program couplers when it turns them on, for the load it
+  // starts: the stop list then opens on them.
+  bool showCouplersAfterLoad_ = false;
   // The expression shoes as a strip of faders down the side. Off by default:
   // it took 120px of console width permanently, and on a set that draws its
   // own shoes it was showing the same control twice. Kept because a set whose

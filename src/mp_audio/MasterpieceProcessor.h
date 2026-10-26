@@ -1649,7 +1649,12 @@ public:
   // Whether the program couplers are offered: the ones the player asks
   // for, between the manuals at 16', 8' and 4'. Off by default; when on,
   // they are real switches and everything else works with them.
-  void setProgramCouplers(bool on) { programCouplers_ = on; }
+  // A Loading choice kept for this session takes the new value too, or the
+  // next load of this organ would put the old one back.
+  void setProgramCouplers(bool on) {
+    programCouplers_ = on;
+    if (sessionLoading_) sessionLoading_->programCouplers = on;
+  }
   bool programCouplers() const { return programCouplers_; }
   // The program couplers this organ has, in the order they were numbered.
   const std::vector<CouplerMatrix::ProgramCoupler>& programCouplerList() const {
