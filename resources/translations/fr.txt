@@ -836,6 +836,8 @@ countries: fr be ca ch lu mc
 "Open..." = "Ouvrir..."
 "Other versions of this organ" = "Autres versions de cet orgue"
 "Recorder..." = "Enregistreur..."
+"Exit" = "Quitter"
+"Quit" = "Quitter"
 "Swell faders" = "Curseurs d'expression"
 "Show played keys" = "Afficher les touches jouées"
 "Keyboard" = "Clavier"

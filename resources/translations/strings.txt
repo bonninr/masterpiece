@@ -956,6 +956,8 @@ countries: gb us
 "Open..." = "Open..."
 "Other versions of this organ" = "Other versions of this organ"
 "Recorder..." = "Recorder..."
+"Exit" = "Exit"
+"Quit" = "Quit"
 "Swell faders" = "Swell faders"
 "Show played keys" = "Show played keys"
 "Small pages fill the window" = "Small pages fill the window"

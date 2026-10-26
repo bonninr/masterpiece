@@ -836,6 +836,8 @@ countries: it ch sm va
 "Open..." = "Apri..."
 "Other versions of this organ" = "Altre versioni di questo organo"
 "Recorder..." = "Registratore..."
+"Exit" = "Esci"
+"Quit" = "Esci"
 "Swell faders" = "Cursori delle staffe"
 "Show played keys" = "Mostra i tasti suonati"
 "Keyboard" = "Tastiera"

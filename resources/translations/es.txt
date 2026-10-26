@@ -836,6 +836,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Open..." = "Abrir..."
 "Other versions of this organ" = "Otras versiones de este órgano"
 "Recorder..." = "Grabador..."
+"Exit" = "Salir"
+"Quit" = "Salir"
 "Swell faders" = "Deslizadores de expresión"
 "Show played keys" = "Mostrar las teclas tocadas"
 "Keyboard" = "Teclado"

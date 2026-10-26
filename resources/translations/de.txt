@@ -836,6 +836,8 @@ countries: de at ch li lu
 "Open..." = "Öffnen..."
 "Other versions of this organ" = "Andere Versionen dieser Orgel"
 "Recorder..." = "Rekorder..."
+"Exit" = "Beenden"
+"Quit" = "Beenden"
 "Swell faders" = "Schwellerregler"
 "Show played keys" = "Gespielte Tasten anzeigen"
 "Keyboard" = "Tastatur"
