@@ -565,14 +565,12 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   // Above every other window, for a player who works the pistons with the
   // mouse while another program is in front (#130). Off, it stays above the
   // console only while Masterpiece is in front.
-  onTop_.setToggleState(p.combinationsOnTop(), juce::dontSendNotification);
   onTop_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
   onTop_.onClick = [this] {
     proc_.setCombinationsOnTop(onTop_.getToggleState());
     if (isVisible()) showFloating(*this, true, onTopNow());
   };
   content_.addAndMakeVisible(onTop_);
-  setOff_.setToggleState(p.setOffAfterStore(), juce::dontSendNotification);
   setOff_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
   setOff_.setTooltip(TRANS("After a piston has stored a combination, Set turns off, so the next "
                            "press recalls it: pistons here, on the console and over MIDI"));
@@ -580,12 +578,12 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   content_.addAndMakeVisible(setOff_);
   // On consoles where the bass and melody couplers belong to the hands, the
   // pistons neither store nor recall them.
-  leaveBass_.setToggleState(p.leaveBassAndMelody(), juce::dontSendNotification);
   leaveBass_.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffb9c2d0));
   leaveBass_.setTooltip(TRANS("The pistons and the sequencer neither store nor recall the bass and melody "
                               "couplers, which stay as the player set them. The cancels still push them in."));
   leaveBass_.onClick = [this] { proc_.setLeaveBassAndMelody(leaveBass_.getToggleState()); };
   content_.addAndMakeVisible(leaveBass_);
+  refreshToggles();
   content_.addAndMakeVisible(viewport_);
   content_.layout = [this] {
     auto r = content_.getLocalBounds();
@@ -624,8 +622,21 @@ void CombinationsWindow::closeButtonPressed() { showOrHide(false); }
 
 void CombinationsWindow::showOrHide(bool show) {
   open_ = show;
+  if (show) refreshToggles();
   showFloating(*this, show, onTopNow());
   remember();
+}
+
+// The three choices are the program's, and the settings file is read at start
+// after the console -- and so this window -- has been built (Main.cpp). Read
+// here every time the window comes up, the boxes say what is really in force:
+// a box that kept its built-in state showed "Set turns off after storing" off
+// at every start while the choice was on, and ticking it then turned the
+// choice off for good (#591).
+void CombinationsWindow::refreshToggles() {
+  onTop_.setToggleState(proc_.combinationsOnTop(), juce::dontSendNotification);
+  setOff_.setToggleState(proc_.setOffAfterStore(), juce::dontSendNotification);
+  leaveBass_.setToggleState(proc_.leaveBassAndMelody(), juce::dontSendNotification);
 }
 
 void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTime) {
@@ -653,6 +664,7 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
               besideThis.getBottom() - getHeight() - 20, getWidth(), getHeight());
   }
   open_ = saved.w > 0 ? saved.open : openFirstTime;
+  if (open_) refreshToggles();
   // Opened with the organ, while the program is still coming to the front:
   // where "above" cannot change later (Linux), it opens above.
   if (open_ != isVisible()) showFloating(*this, open_, onTopNow() || !kLiveOnTop);

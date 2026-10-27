@@ -127,6 +127,8 @@ public:
   }
 
 private:
+  // The three boxes above the pistons, from what the processor holds now.
+  void refreshToggles();
   void remember();
   MasterpieceProcessor& proc_;
   // The checkbox above the pistons, then the pistons.
