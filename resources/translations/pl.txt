@@ -615,7 +615,7 @@ countries: pl
 "Record audio..." = "Nagraj audio..."
 "Use as default for all organs" = "Użyj jako domyślnych dla wszystkich organów"
 "Clear default" = "Usuń domyślne"
-"Send stop changes back to the console" = "Odsyłaj zmiany głosów z powrotem do kontuaru"
+"Send stop changes on the MIDI output" = "Wysyłaj zmiany głosów na wyjście MIDI"
 "General Cancel also puts the keyboards back on their own manuals" = "Kasowanie generalne przywraca też klawiaturom ich własne manuały"
 "Sustain pedal: controller 64 holds the notes let go" = "Pedał sustain: kontroler 64 trzyma puszczone nuty"
 "Save mapping" = "Zapisz przypisania"

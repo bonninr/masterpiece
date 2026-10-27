@@ -107,7 +107,7 @@ The plugin declares a MIDI input and produces no MIDI output.
 - With no mapping, a controller number acts as the control with that number, so a swell shoe can be driven from a controller out of the box.
 - All-notes-off (controller 123) and all-sound-off (controller 120) release the notes of that channel.
 - The split keyboard (**View > Split keyboard**) works on the host's notes.
-- The plugin opens no MIDI device and offers no MIDI output port. The lights and displays of a console (**Send stop changes back to the console**, console displays) need a MIDI output that only the standalone program opens.
+- The plugin opens no MIDI device and offers no MIDI output port. The lights and displays of a console (**Send stop changes on the MIDI output**, console displays) need a MIDI output that only the standalone program opens.
 
 ## Audio outputs and buses
 

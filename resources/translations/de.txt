@@ -615,7 +615,7 @@ countries: de at ch li lu
 "Record audio..." = "Audio aufnehmen..."
 "Use as default for all organs" = "Als Standard für alle Orgeln verwenden"
 "Clear default" = "Standard löschen"
-"Send stop changes back to the console" = "Registeränderungen an den Spieltisch zurücksenden"
+"Send stop changes on the MIDI output" = "Registeränderungen über den MIDI-Ausgang senden"
 "General Cancel also puts the keyboards back on their own manuals" = "Der Generalabsteller setzt auch die Tastaturen auf ihre eigenen Manuale zurück"
 "Sustain pedal: controller 64 holds the notes let go" = "Haltepedal: Controller 64 hält die losgelassenen Töne"
 "Save mapping" = "Zuordnung speichern"

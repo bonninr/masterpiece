@@ -615,7 +615,7 @@ countries: nl be sr
 "Record audio..." = "Audio opnemen..."
 "Use as default for all organs" = "Als standaard voor alle orgels gebruiken"
 "Clear default" = "Standaard wissen"
-"Send stop changes back to the console" = "Registerwisselingen terugsturen naar de speeltafel"
+"Send stop changes on the MIDI output" = "Registerwisselingen via de MIDI-uitgang verzenden"
 "General Cancel also puts the keyboards back on their own manuals" = "Generaal af zet ook de toetsenborden terug op hun eigen klavieren"
 "Sustain pedal: controller 64 holds the notes let go" = "Sustainpedaal: controller 64 houdt de losgelaten noten vast"
 "Save mapping" = "Koppeling opslaan"

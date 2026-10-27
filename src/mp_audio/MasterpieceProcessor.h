@@ -1460,6 +1460,10 @@ public:
   // which have no MIDI output to read.
   int scorePagesTurned() const { return scorePagesTurned_.load(std::memory_order_acquire); }
   juce::MidiOutput* midiOutput() const { return midiOut_; }
+  // For tests, which have no MIDI port: called with each block's outgoing
+  // messages, on the audio thread. While it is set, the lamps are made as if
+  // a port were open.
+  std::function<void(const juce::MidiBuffer&)> outgoingProbe;
   // The console's output port, opened by name and kept in the general
   // settings: lamps, displays and key echo reach the console with any window
   // open or none, and the port opens again at the next start (Main.cpp). An

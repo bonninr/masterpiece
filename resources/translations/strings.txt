@@ -697,7 +697,7 @@ countries: gb us
 "Record audio..." = "Record audio..."
 "Use as default for all organs" = "Use as default for all organs"
 "Clear default" = "Clear default"
-"Send stop changes back to the console" = "Send stop changes back to the console"
+"Send stop changes on the MIDI output" = "Send stop changes on the MIDI output"
 "General Cancel also puts the keyboards back on their own manuals" = "General Cancel also puts the keyboards back on their own manuals"
 "Stop changes leave the notes already held alone" = "Stop changes leave the notes already held alone"
 "Sustain pedal: controller 64 holds the notes let go" = "Sustain pedal: controller 64 holds the notes let go"

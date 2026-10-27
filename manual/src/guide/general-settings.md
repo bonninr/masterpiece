@@ -117,7 +117,7 @@ When a default exists, the line beside the buttons reads **Default for organs wi
 | Control | What it does | Default | Range or options | Takes effect and storage |
 |---|---|---|---|---|
 | **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
-| **Send stop changes back to the console** | Sends each stop change to the output so that a console with lit stops follows the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
+| **Send stop changes on the MIDI output** | Sends each stop change on the MIDI output, on the message the stop was learned on, so that lit drawstops or a pad controller follow the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
 | **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
 | **Stop changes leave the notes already held alone** | Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep the pipes they started with until their keys are let go, and only keys pressed afterwards play the new registration. | Off | On, off | At once. Global file key `stopsleaveheldnotes`, written only while on. |
 | **Sustain pedal: controller 64 holds the notes let go** | For directing a choir. While controller 64 is held down, the keys you let go keep sounding, and they stop when it is lifted. The controller works on any channel. A controller 64 learned for something else keeps doing this. | Off | On, off | At once. Global file key `sustainpedal`, written only while on. |
@@ -352,7 +352,7 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 | `midiinputoff` | A device name. One line per unticked input. | **MIDI inputs** |
 | `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Use as default for all organs** |
 | `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |
-| `midifeedback` | `1`. Written only while on. | **Send stop changes back to the console** |
+| `midifeedback` | `1`. Written only while on. | **Send stop changes on the MIDI output** |
 | `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
 | `limiter` | `<on> <ceilingDb> <releaseMs>`: the switch, the ceiling in dBFS and the release in ms. | The **Output limiter** on the **Audio** tab |
 | `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Display** tab |
