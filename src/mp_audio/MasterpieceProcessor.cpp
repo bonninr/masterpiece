@@ -4840,7 +4840,7 @@ void MasterpieceProcessor::routeFromControl(const MidiAction& action) {
           next = routedKeyboard(routeScratch_[k + 1 < end ? k + 1 : i]);
           break;
         }
-      if (next != 0 && next != now) {
+      if (next != 0 && played(next) != now) {
         // Where the keyboards were before any of this, for General Cancel
         // and for saving: a piston moves a keyboard for the piece, and the
         // next load starts from the player's own setup.

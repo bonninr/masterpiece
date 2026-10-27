@@ -116,6 +116,26 @@ public:
     MP_CHECK(proc.keyboardForChannel(1) == 66,
              "the next press steps it on to the Great's internal keyboard; it is on " +
                  std::to_string(proc.keyboardForChannel(1)));
+
+    // A piston for the manual the channel already plays, named by the drawn
+    // keyboard, leaves the channel where it is: moving it would only let go
+    // of every held key for the same manual.
+    mp::MidiBinding same;
+    same.source.kind = mp::MidiSourceKind::ProgramChange;
+    same.source.channel = 12;
+    same.source.number = 25;
+    same.targetKind = mp::MidiTargetKind::RouteKeyboard;
+    same.targetId = mp::routeKeyboardTarget(1, 1);
+    proc.midiMap().bind(same);
+    juce::MidiBuffer m;
+    m.addEvent(juce::MidiMessage::programChange(12, 25), 0);
+    proc.processBlock(buf, m);
+    MP_CHECK(proc.keyboardForChannel(1) == 66,
+             "a piston for the manual already playing leaves the channel alone; it is on " +
+                 std::to_string(proc.keyboardForChannel(1)));
+
+    proc.releaseResources();
+    dir.deleteRecursively();
   }
 };
 static ManualPistonOrderTest g_manualPistonOrder;
