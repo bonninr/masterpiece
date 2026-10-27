@@ -13,14 +13,13 @@ The **Settings** button in the top bar opens a menu with up to four entries.
 | **Organ settings...** | Opens [Organ settings](organ-settings.md). Available while an organ is loaded. |
 | **Licence confirmed for this organ** | Appears only for an organ whose samples carry a publisher licence. Ticked once the licence has been confirmed for this organ; choosing it while ticked withdraws the confirmation, saves the organ's settings and loads the organ again. |
 | **General settings...** | Opens the window described on this page. |
-| **Audio and MIDI...** | Opens the same window on the **Audio** tab. Offered by the standalone application. |
 
 The window is titled **General settings**, opens at 660 x 560 pixels and can be resized. The Esc key closes it. It has no OK or Cancel button: each control acts when it is changed, and the **Takes effect** column below says whether that is at once or later.
 
 General settings hold the program and the player's console. Four tabs hold choices that belong to the organ that is loaded and are saved with it: **Room**, **Mixer** (the rank routing), **Voicing** and **Combination sets**. The **MIDI** tab keeps the keyboard channels and learned controls per organ and the rest for every organ. [Where settings are kept](#where-settings-are-kept) lists the files.
 
 > [!NOTE]
-> In the VST3, LV2 and AU plugins, **General settings...** opens this window without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Audio and MIDI...** is absent. **Licence confirmed for this organ** works in both.
+> In the VST3, LV2 and AU plugins, **General settings...** opens this window without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Licence confirmed for this organ** works in both.
 
 ## Audio
 

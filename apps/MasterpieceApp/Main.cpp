@@ -1112,7 +1112,6 @@ private:
       auto* ed = new mp::ui::MasterpieceEditor(p);
       // The editor must not reach for hardware itself; the application owns
       // the device manager and hands the panel down.
-      ed->onAudioSettings = [this] { showAudioSettings(); };
       ed->onSettings = [this, &p] { showSettings(p); };
       ed->onOrganSettings = [this, &p] { showOrganSettings(p); };
       ed->onBeforeFirstLoad = [this, &p](std::function<void()> load) {
@@ -1284,9 +1283,6 @@ private:
       opts.resizable = true;
       mp::ui::launchDialog(opts);
     }
-
-    // Audio and MIDI are a tab of General settings (#276).
-    void showAudioSettings() { showSettings(editor_->organProcessor(), {}, TRANS("Audio")); }
 
    private:
     juce::AudioDeviceManager& devices_;

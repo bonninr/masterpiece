@@ -847,7 +847,6 @@ countries: pl
 "Organ settings..." = "Ustawienia organów..."
 "Licence confirmed for this organ" = "Licencja dla tych organów potwierdzona"
 "General settings..." = "Ustawienia ogólne..."
-"Audio and MIDI..." = "Audio i MIDI..."
 "Frame %1 / %2" = "Krok %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set jest włączone z kontuaru lub okna kombinacji: przyciski zapisują. Naciśnij, aby zwolnić."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set: wybierz przycisk lub krok, włącz głosy, a potem naciśnij Set, aby je tam zapisać"

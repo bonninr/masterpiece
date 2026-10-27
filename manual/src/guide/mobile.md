@@ -115,7 +115,7 @@ The **Log** tab of **General settings** lists the loans under **Documents lent b
 
 Audio goes through the device's audio system. On Android the low-latency interface needs Android 8.0 (API level 26), the minimum of the app. The iPhone and iPad app declares background audio: the organ keeps sounding when the screen locks or another app comes to the front.
 
-The first start picks the default output, a rate of at least 44.1 kHz and a buffer of about 10 ms; see [Installing Masterpiece](installing.md#first-start). **Settings > Audio and MIDI...** opens the **Audio** tab of the general settings. See [Audio, room and mixer](audio.md).
+The first start picks the default output, a rate of at least 44.1 kHz and a buffer of about 10 ms; see [Installing Masterpiece](installing.md#first-start). **Settings > General settings...** opens on the **Audio** tab the first time. See [Audio, room and mixer](audio.md).
 
 The engine renders with the NEON vector unit on 64-bit ARM, so the **Faster audio engine** box applies on a phone as on a Raspberry Pi. The Android emulator (`x86_64`) uses AVX2 or SSE2.
 

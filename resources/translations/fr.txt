@@ -847,7 +847,6 @@ countries: fr be ca ch lu mc
 "Organ settings..." = "Réglages de l'orgue..."
 "Licence confirmed for this organ" = "Licence confirmée pour cet orgue"
 "General settings..." = "Réglages généraux..."
-"Audio and MIDI..." = "Audio et MIDI..."
 "Frame %1 / %2" = "Étape %1 / %2"
 "Set is on from the console or the combinations window: pistons store. Press to let it go." = "Set est activé depuis la console ou la fenêtre des combinaisons : les pistons mémorisent. Appuyez pour le relâcher."
 "Set: choose a piston or a step, draw the stops, then press Set to store them there" = "Set : choisissez un piston ou une étape, tirez les jeux, puis appuyez sur Set pour les y mémoriser"

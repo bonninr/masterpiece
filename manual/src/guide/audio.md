@@ -2,7 +2,7 @@
 
 This page covers everything between the organ and the loudspeakers: the audio device and its latency, the signal chain, the output pairs of the mixer, the impulse-response room, the player's voicing of ranks and pipes, the master level, the metronome, and what to do when the sound breaks up. Use it to set up a device for low latency, to place a dry organ in a room, and to find the cause of dropouts.
 
-The controls described here are on the **Audio**, **Room**, **Metronome**, **Mixer** and **Voicing** tabs of **Settings > General settings**. **Settings > Audio and MIDI...** opens the same window on the **Audio** tab. The memory and loading choices that decide how many voices a machine can render are in **Settings > Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
+The controls described here are on the **Audio**, **Room**, **Metronome**, **Mixer** and **Voicing** tabs of **Settings > General settings**. The memory and loading choices that decide how many voices a machine can render are in **Settings > Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
 
 ## The signal chain
 
@@ -23,7 +23,7 @@ The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (al
 
 ## The audio device
 
-Open **Settings > Audio and MIDI...**. The tab is the device selector with two additions below it: a latency line and the **Keep portable speakers awake** control.
+Open **Settings > General settings...**, which opens on the **Audio** tab the first time. The tab is the device selector with two additions below it: a latency line and the **Keep portable speakers awake** control.
 
 ![The Audio tab](../images/general-audio.png)
 

@@ -71,13 +71,13 @@ sections below. **Show played keys** is described under
 | **Organ settings...** | Opens the settings of the loaded organ. Disabled until an organ is loaded. See [Organ settings](organ-settings.md). |
 | **Licence confirmed for this organ** | Present when the organ's samples need the publisher's licence. Ticked once the licence is confirmed. Choosing it while ticked withdraws the confirmation and loads the organ again without the licensed samples; choosing it while unticked asks the licence question. |
 | **General settings...** | Opens the program's settings. See [General settings](general-settings.md). |
-| **Audio and MIDI...** | Opens the audio device and MIDI input selector. Present in the standalone application. See [Audio, room and mixer](audio.md). |
 
-The standalone application supplies the three settings windows. In the VST3,
-LV2 and AU plugins **General settings...** opens General settings without the
-**Audio** and **MIDI** tabs, **Organ settings...** opens Organ settings without
-its **MIDI** tab (the host owns the audio device and the MIDI ports), and
-**Audio and MIDI...** is absent.
+The standalone application supplies both settings windows; **General settings...**
+opens on the **Audio** tab the first time and afterwards on the tab it was closed
+on. In the VST3, LV2 and AU plugins **General settings...** opens General
+settings without the **Audio** and **MIDI** tabs, and **Organ settings...** opens
+Organ settings without its **MIDI** tab (the host owns the audio device and the
+MIDI ports).
 
 ### Controls in the bar
 
@@ -477,5 +477,4 @@ A tooltip appears after the pointer rests on a control for 700 ms.
 | Feature | VST3, LV2, AU | Phones and tablets |
 |---|---|---|
 | Pages in windows of their own | Absent; the pages stay tabs | Windows fill the screen; see [Phones and tablets](mobile.md) |
-| **Audio and MIDI...** | Absent; the host owns the audio device | Present |
 | Panel **Detach** | Present | Absent |

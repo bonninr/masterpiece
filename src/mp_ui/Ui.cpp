@@ -2563,14 +2563,12 @@ void MasterpieceEditor::showSettingsMenu() {
   if (proc_.organModel().hasLicensedSamples)
     menu.addItem(4, TRANS("Licence confirmed for this organ"), true, proc_.licenceConfirmed());
   menu.addItem(2, TRANS("General settings..."));
-  if (onAudioSettings) menu.addItem(6, TRANS("Audio and MIDI..."));
   addBackupItems(menu, 20);
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
                        if (c == 2 && safe->onSettings) safe->onSettings();
-                       if (c == 6 && safe->onAudioSettings) safe->onAudioSettings();
                        if (c >= 20 && c < 30) safe->backupItemChosen(c - 20);
                        if (c == 4) {
                          if (safe->proc_.licenceConfirmed()) {
