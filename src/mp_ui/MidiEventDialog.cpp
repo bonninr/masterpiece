@@ -1,6 +1,6 @@
 #include "MidiEventDialog.h"
 
-#include <unordered_set>
+#include "ObjectLabels.h"
 #include "Mobile.h"
 
 namespace mp::ui {
@@ -19,19 +19,6 @@ juce::String noteName(int n) {
   return juce::String(kNames[n % 12]) + juce::String(n / 12 - 1) + " (" + juce::String(n) + ")";
 }
 
-// A name as a player would read it. Sets name the switch behind a drawn knob
-// "__Img_14. GO  Principale 8'": the prefix marks it hidden, and is dropped.
-juce::String readable(const std::string& raw) {
-  juce::String n(raw);
-  if (n.startsWith("__")) {
-    n = n.trimCharactersAtStart("_");
-    const int cut = n.indexOfChar('_');
-    if (cut > 0 && cut < 8 && !n.substring(0, cut).containsChar(' ')) n = n.substring(cut + 1);
-  }
-  while (n.contains("  ")) n = n.replace("  ", " ");
-  return n.trim();
-}
-
 // A target worked by a press, as a switch is: the organ's own switches, and
 // the program's buttons -- the player's pistons, the cancels, the setter, the
 // stepper. Everything but a shoe and a manual.
@@ -40,42 +27,13 @@ bool pressable(MidiTargetKind k) {
          k != MidiTargetKind::None;
 }
 
-// The stop or tremulant a switch works: the switch itself, then what it
-// drives through the linkages, then what drives it, nearest first.
-juce::String workedBy(const OrganModel& m, Id switchId) {
-  auto named = [&m](Id sw) -> std::string {
-    for (const auto& [stopId, stop] : m.stops)
-      if (stop.controllingSwitchId == sw && !stop.name.empty()) return stop.name;
-    for (const auto& [tremId, trem] : m.tremulants)
-      if (trem.controllingSwitchId == sw && !trem.name.empty()) return trem.name;
-    return {};
-  };
-  for (const bool forward : {true, false}) {
-    std::vector<Id> ring{switchId};
-    std::unordered_set<Id> seen{switchId};
-    for (int depth = 0; depth < (forward ? 4 : 2) && !ring.empty(); ++depth) {
-      for (Id sw : ring)
-        if (const auto n = named(sw); !n.empty()) return readable(n);
-      std::vector<Id> next;
-      for (const auto& l : m.switchLinkages) {
-        const Id from = forward ? l.sourceSwitchId : l.destSwitchId;
-        const Id to = forward ? l.destSwitchId : l.sourceSwitchId;
-        for (Id sw : ring)
-          if (from == sw && seen.insert(to).second) next.push_back(to);
-      }
-      ring = std::move(next);
-    }
-  }
-  return {};
-}
-
 juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
   const auto& m = p.organModel();
   if (kind == MidiTargetKind::Switch) return MidiEventDialog::switchName(m, id);
   if (kind == MidiTargetKind::ContinuousControl) {
     const auto it = m.continuousControls.find(id);
     if (it != m.continuousControls.end() && !it->second.name.empty())
-      return readable(it->second.name);
+      return juce::String(mp::readableName(it->second.name));
     return TRANS("Control %1").replace("%1", juce::String(static_cast<int>(id)));
   }
   return juce::String(p.keyboardName(id));
@@ -880,11 +838,11 @@ private:
 } // namespace
 
 juce::String MidiEventDialog::switchName(const OrganModel& m, Id id) {
-  const auto it = m.switches.find(id);
-  if (it != m.switches.end() && it->second.isCoupler && !it->second.name.empty())
-    return readable(it->second.name);
-  if (const auto worked = workedBy(m, id); worked.isNotEmpty()) return worked;
-  if (it != m.switches.end() && !it->second.name.empty()) return readable(it->second.name);
+  // The set's own words for the switch win, and the wiring answers only for a
+  // switch named by a number: mp::switchLabel holds the rule, and its test
+  // holds the two consoles that wrote it (#591).
+  const auto name = mp::switchLabel(m, id);
+  if (!name.empty()) return juce::String(name);
   return TRANS("Switch %1").replace("%1", juce::String(static_cast<int>(id)));
 }
 
