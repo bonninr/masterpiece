@@ -2780,6 +2780,10 @@ private:
   // Set with palletsLive_: the first block after a load opens the pallets of
   // switches that came up engaged -- a blower that runs from the start.
   std::atomic<bool> palletsOpenEngaged_{false};
+  // Set with palletsLive_: the first block after a load sends every lamp
+  // learned on the console as the new organ stands.
+  std::atomic<bool> lampsAfterLoad_{false};
+  void sendLampsAfterLoad();
   void palletMoved(Id switchId, bool engaged);
   // Pallet switch -> the pipes it opens, with their rank.
   std::unordered_map<Id, std::vector<std::pair<Id, const Pipe*>>> palletPipes_;

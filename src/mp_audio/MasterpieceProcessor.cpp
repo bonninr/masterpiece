@@ -6603,6 +6603,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (palletsOpenEngaged_.exchange(false, std::memory_order_acq_rel))
     for (const auto& [switchId, pipes] : palletPipes_)
       if (switches_.engaged(switchId)) palletMoved(switchId, true);
+  if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
 
   // LCD text, built on the message thread, joins the same outgoing stream so
@@ -7965,6 +7966,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   stagesReady_.store(true, std::memory_order_release);
   palletsLive_.store(true, std::memory_order_release);
   palletsOpenEngaged_.store(true, std::memory_order_release);
+  lampsAfterLoad_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
   // Starting the organ moved its controls and switches, and that is the
@@ -8644,6 +8646,27 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
   }
   recorder_.startRecording();
   return saved;
+}
+
+// A console's lamps after a load: the lamps of the organ before stayed as
+// they were, and a stop the new organ starts with drawn was never lit, since
+// a lamp was sent only when its switch moved (#565). Every lamp is sent once,
+// as the new organ stands: the explicit sends start over, and with stop
+// changes sent on the output, each stop learned on a note or a controller.
+void MasterpieceProcessor::sendLampsAfterLoad() {
+  sentValues_.clear();
+  if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
+  for (const auto& b : midiMap_.bindings()) {
+    if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
+    const bool on = switches_.engaged(b.targetId);
+    const int ch = b.source.channel > 0 ? b.source.channel : 1;
+    if (b.source.kind == MidiSourceKind::Note)
+      outgoing_.addEvent(on ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
+                            : juce::MidiMessage::noteOff(ch, b.source.number),
+                         0);
+    else if (b.source.kind == MidiSourceKind::ControlChange)
+      outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, on ? 127 : 0), 0);
+  }
 }
 
 void MasterpieceProcessor::emitSends() {
