@@ -6,6 +6,7 @@ add_library(mp_core STATIC
   Temperament.h Temperament.cpp
   Perspectives.h Perspectives.cpp
   LoadPlan.h
+  ObjectLabels.h ObjectLabels.cpp
   PathCase.h PathCase.cpp
   SparseLoading.h SparseLoading.cpp
 )

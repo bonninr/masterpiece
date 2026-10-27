@@ -30,10 +30,11 @@ public:
   static void show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                    const juce::String& name = {});
 
-  // What a player calls the object (#346): for a switch, the stop or
-  // tremulant it works, followed through the organ's switch linkages, since
-  // the switch behind a drawn knob is often named only by a number. Shown at
-  // the top of the right-click menu and in the MIDI window's title.
+  // What a player calls the object (#346, #591): for a switch, the name the
+  // set gives it, and where that is only a number, the stop or tremulant it
+  // works, followed through the organ's switch linkages. mp::switchLabel holds
+  // the rule. Shown at the top of the right-click menu and in the MIDI
+  // window's title.
   static juce::String targetName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id);
   static juce::String switchName(const OrganModel& m, Id switchId);
   // A mapping's message, for a MIDI menu's header: "CC 7 ch 1".
