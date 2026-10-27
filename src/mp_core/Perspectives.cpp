@@ -46,7 +46,23 @@ std::string perspectiveOf(const std::string& rankName) {
   }
   if (!name.empty() && name.back() == ')') {
     const auto open = name.rfind('(');
-    if (open != std::string::npos) return lowerTrim(name.substr(open + 1, name.size() - open - 2));
+    if (open != std::string::npos) {
+      std::string p = lowerTrim(name.substr(open + 1, name.size() - open - 2));
+      // A tremulant recorded from a position belongs to that position:
+      // "(rear tremmed)" (Rotterdam), "(rear, tremmed)" (Pinerolo) are rear.
+      for (const char* trem : {"tremmed", "tremulant", "trem"}) {
+        const std::string t = trem;
+        if (p.size() > t.size() && p.compare(p.size() - t.size(), t.size(), t) == 0) {
+          std::string rest = p.substr(0, p.size() - t.size());
+          if (rest.back() == ' ' || rest.back() == ',') {
+            while (!rest.empty() && (rest.back() == ' ' || rest.back() == ',')) rest.pop_back();
+            if (!rest.empty()) p = lowerTrim(rest);
+          }
+          break;
+        }
+      }
+      return p;
+    }
   }
   // The last word, after a space, a dash or an underscore.
   const auto cut = name.find_last_of(" -_");
@@ -155,6 +171,14 @@ std::map<std::string, std::vector<Id>> perspectivesOf(const OrganModel& model) {
       if (e.alternateRankId != 0) played.insert(e.alternateRankId);
     }
   }
+  // A set wired through its switches lists no rank under any stop: each
+  // pipe names the switch that opens its pallet (Pinerolo). There, a rank
+  // whose pipes have one is played.
+  if (played.empty())
+    for (const auto& [rankId, rank] : model.ranks)
+      if (std::any_of(rank.pipes.begin(), rank.pipes.end(),
+                      [](const Pipe& p) { return p.palletSwitchId != 0; }))
+        played.insert(rankId);
   std::map<std::string, std::vector<Id>> groups;
   for (const auto& [rankId, rank] : model.ranks) {
     const std::string p = perspectiveOf(rank.name);

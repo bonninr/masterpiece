@@ -12954,6 +12954,39 @@ public:
     }
     MP_CHECK(mp::perspectivesOf(one).empty(), "an organ recorded from one place has none to choose");
 
+    // A tremulant recorded from a position goes with that position (#621).
+    MP_CHECK(mp::perspectiveOf("1 Holpijp 8 (rear tremmed)") == "rear", "a tremmed rank, by a space");
+    MP_CHECK(mp::perspectiveOf("145. HW  Vox humana 8' (rear, tremmed)") == "rear", "...or a comma");
+    MP_CHECK(mp::perspectiveOf("Vox humana (tremmed)") == "tremmed", "a bracket of the tremulant alone stays");
+
+    // A set wired through its switches (Pinerolo): no stop lists a rank, each
+    // pipe names the switch of its pallet. Its positions are perspectives, and
+    // a position's few tremmed ranks are part of it.
+    mp::OrganModel wired;
+    {
+      mp::Id rid = 1;
+      for (const char* where : {"close", "front", "rear"}) {
+        for (int i = 0; i < 20; ++i) {
+          mp::Rank r;
+          r.rankId = rid;
+          r.name = std::to_string(rid) + ". HW  Rank " + std::to_string(i) + " (" + where +
+                   (i < 4 ? ", tremmed)" : ")");
+          mp::Pipe pipe;
+          pipe.palletSwitchId = 1000 + i;
+          r.pipes.push_back(pipe);
+          wired.ranks[rid++] = r;
+        }
+      }
+      mp::Stop s;
+      s.stopId = 1;
+      wired.stops[s.stopId] = s;
+    }
+    const auto wiredGroups = mp::perspectivesOf(wired);
+    MP_CHECK(wiredGroups.size() == 3 && wiredGroups.count("rear") != 0 &&
+                 wiredGroups.at("rear").size() == 20,
+             "a set wired through its switches has its perspectives, the tremmed ranks within, got " +
+                 std::to_string(wiredGroups.size()));
+
     // By the level sliders, whatever the ranks are called: each rank's layers
     // answer to one slider per position, and every stop plays one rank of each.
     auto levelled = [](bool sameStops) {
