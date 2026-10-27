@@ -5,6 +5,7 @@
 // message thread through ControlModel, as a click in the window would be.
 #pragma once
 
+#include "ConsolePages.h"
 #include "ControlModel.h"
 
 #include <juce_events/juce_events.h>
@@ -83,6 +84,8 @@ private:
 
   MasterpieceProcessor& proc_;
   ControlModel model_;
+  // The console's pages as pictures; used on the message thread only.
+  std::unique_ptr<ConsolePages> pages_;
   std::mutex settingsMutex_;  // the server threads read it, the window writes it
   ServerSettings settings_;
   std::unique_ptr<httplib::Server> server_;

@@ -118,6 +118,16 @@ public:
   LongPress& longPress() { return longPress_; }
   // Position a dragged control from a mouse point inside its image.
   void setControlFromMouse(juce::Point<int> p);
+  // A press, a drag and a release at a point in the console's coordinates,
+  // as the mouse makes them; the web console sends its taps here. `keys`: a
+  // press on a drawn manual plays the key.
+  void pressAt(juce::Point<int> where, bool keys);
+  void dragTo(juce::Point<int> where);
+  void releaseAt(juce::Point<int> where);
+  // Repaints what changed in the engine since the last look, each thing in
+  // its own rectangle; true when anything did. The timer looks while the
+  // console is on the screen; a console drawn for a browser looks when asked.
+  bool lookForChanges();
   // Keeps the drawn controls in step with the engine: a piston, a
   // combination or MIDI moves a switch, and the screen reader is told.
   void refreshControlStates();

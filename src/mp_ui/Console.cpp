@@ -733,6 +733,19 @@ void ConsoleView::timerCallback() {
   }
   setControlsAccessible(true);
 
+  // Thirty looks a second while the organ is being played, ten once nothing
+  // has moved for two seconds. The first key after a pause lights up to a
+  // tenth of a second late, and the organ at rest is woken a third as often.
+  if (lookForChanges()) {
+    quietTicks_ = 0;
+    if (getTimerInterval() != kPlayingMs) startTimer(kPlayingMs);
+  } else if (getTimerInterval() != kRestingMs && ++quietTicks_ >= kQuietTicks) {
+    startTimer(kRestingMs);
+  }
+}
+
+bool ConsoleView::lookForChanges() {
+  if (frozen_.isValid()) return false;
   // The player may have moved a manual to another channel in Settings since
   // the console was built; the drawn keys follow without a reload. Routing is
   // worked out once per manual and a few times a second: it walks the MIDI
@@ -821,16 +834,7 @@ void ConsoleView::timerCallback() {
   // is one repaint of the lot.
   if (learningMoved || changed >= kRepaintWhole) repaint();
   else if (changed == 1) repaint(first);
-
-  // Thirty looks a second while the organ is being played, ten once nothing
-  // has moved for two seconds. The first key after a pause lights up to a
-  // tenth of a second late, and the organ at rest is woken a third as often.
-  if (changed > 0 || learningMoved) {
-    quietTicks_ = 0;
-    if (getTimerInterval() != kPlayingMs) startTimer(kPlayingMs);
-  } else if (getTimerInterval() != kRestingMs && ++quietTicks_ >= kQuietTicks) {
-    startTimer(kRestingMs);
-  }
+  return changed > 0 || learningMoved;
 }
 
 juce::String ConsoleView::pageName(int index) const {
@@ -1168,20 +1172,27 @@ void ConsoleView::paint(juce::Graphics& g) {
 
 void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   if (frozen_.isValid()) return;
+  if (e.mods.isPopupMenu()) {
+    longPress_.end();
+    tappedStop_ = 0;
+    openMenuAt(e.getPosition(), true);
+    return;
+  }
+  pressAt(e.getPosition(), true);
+}
+
+void ConsoleView::pressAt(juce::Point<int> where, bool keys) {
+  if (frozen_.isValid()) return;
   // A second finger ends the first one's wait: Set held while a piston is
   // pressed is two presses, and neither is a long press.
   longPress_.end();
   tappedStop_ = 0;
-  if (e.mods.isPopupMenu()) {
-    openMenuAt(e.getPosition(), true);
-    return;
-  }
   // A drawn manual is playable: clicking a key sounds it. The click goes
   // through MidiKeyboardState, which is the same path a physical console
   // takes, so stops and couplers apply to it identically. A key held is a
   // note held, on a touch screen too.
   int channel = 1;
-  const int note = keyAt(e.getPosition(), &channel);
+  const int note = keys ? keyAt(where, &channel) : -1;
   if (note >= 0) {
     heldKey_ = note;
     heldChannel_ = channel;
@@ -1193,14 +1204,14 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
   // Touch: a finger held still opens the menu.
   if (touch_) {
     if (!longPress_.onHeld) longPress_.onHeld = [this] { onLongPress(); };
-    longPress_.begin(e.getPosition());
+    longPress_.begin(where);
   }
 
   // Topmost first: the controls are painted last, so they are hit first.
   for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
     if (!it->clickable) continue;
     if (it->switchId == 0 && it->controlId == 0) continue;
-    if (!it->hitBounds.contains(e.getPosition())) continue;
+    if (!it->hitBounds.contains(where)) continue;
 
     // A shoe or slider. The press only takes hold of it — the value does not
     // move until the mouse does, which is what "click it, hold, and drag"
@@ -1210,8 +1221,8 @@ void ConsoleView::mouseDown(const juce::MouseEvent& e) {
       heldControl_ = it->controlId;
       heldControlBounds_ = it->hitBounds;
       heldControlHigherIsMore_ = it->controlHigherIsMore;
-      heldControlStartY_ = e.getPosition().getY();
-      heldControlStartX_ = e.getPosition().getX();
+      heldControlStartY_ = where.getY();
+      heldControlStartX_ = where.getX();
       heldControlStartValue_ = proc_.continuousControlValue(it->controlId);
       return;
     }
@@ -1453,17 +1464,19 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
   repaint(heldControlBounds_);
 }
 
-void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
+void ConsoleView::mouseDrag(const juce::MouseEvent& e) { dragTo(e.getPosition()); }
+
+void ConsoleView::dragTo(juce::Point<int> where) {
   if (frozen_.isValid()) return;
   // A finger that moves is sliding or scrolling: no long press, and a stop
   // slid off is left alone.
-  if (!longPress_.moved(e.getPosition()) && !tappedStopBounds_.contains(e.getPosition()))
+  if (!longPress_.moved(where) && !tappedStopBounds_.contains(where))
     tappedStop_ = 0;
   if (heldControl_ != 0) {
     // Deliberately not clamped to the image: a hand that slides off the side
     // of a shoe while pushing it is still pushing it, and the position
     // saturates at the end of the travel rather than jumping.
-    setControlFromMouse(e.getPosition());
+    setControlFromMouse(where);
     return;
   }
   if (heldKey_ < 0) return;
@@ -1471,7 +1484,7 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
   // manual onto another switches channel with the key, which is what actually
   // happens when a hand crosses between them.
   int channel = heldChannel_;
-  const int note = keyAt(e.getPosition(), &channel);
+  const int note = keyAt(where, &channel);
   if (note == heldKey_ && channel == heldChannel_) return;
   proc_.keyboardState().noteOff(heldChannel_, heldKey_, 0.0f);
   heldKey_ = note;
@@ -1480,12 +1493,14 @@ void ConsoleView::mouseDrag(const juce::MouseEvent& e) {
   repaint(keysBounds());
 }
 
-void ConsoleView::mouseUp(const juce::MouseEvent& e) {
+void ConsoleView::mouseUp(const juce::MouseEvent& e) { releaseAt(e.getPosition()); }
+
+void ConsoleView::releaseAt(juce::Point<int> where) {
   if (frozen_.isValid()) return;
   longPress_.end();
   if (tappedStop_ != 0) {
     const Id stop = std::exchange(tappedStop_, 0);
-    if (!longPress_.held() && tappedStopBounds_.contains(e.getPosition()))
+    if (!longPress_.held() && tappedStopBounds_.contains(where))
       toggleStop(stop, tappedStopBounds_);
   }
   heldControl_ = 0;

@@ -917,6 +917,455 @@
     }
    }
   },
+  "/api/v1/pages": {
+   "get": {
+    "summary": "The organ's console pages, with their sizes and layouts",
+    "operationId": "listPages",
+    "responses": {
+     "200": {
+      "description": "{session, pages: [{index, name, width, height, layouts: [{layout, portrait}]}]}",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/pages/{page}/picture": {
+   "get": {
+    "summary": "A console page as the program draws it, whole or one rectangle of it",
+    "operationId": "pagePicture",
+    "parameters": [
+     {
+      "name": "page",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "layout",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "The console layout; 0, the primary one, when absent"
+     },
+     {
+      "name": "x",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "A rectangle in the page's pixels; the whole page when absent"
+     },
+     {
+      "name": "y",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "A rectangle in the page's pixels; the whole page when absent"
+     },
+     {
+      "name": "w",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "A rectangle in the page's pixels; the whole page when absent"
+     },
+     {
+      "name": "h",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "A rectangle in the page's pixels; the whole page when absent"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "PNG; the X-Serial header is the page's change count as drawn",
+      "content": {
+       "image/png": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/pages/{page}/changes": {
+   "get": {
+    "summary": "The rectangles of a page drawn anew since a change count",
+    "operationId": "pageChanges",
+    "parameters": [
+     {
+      "name": "page",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "layout",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "description": "The console layout; 0, the primary one, when absent"
+     },
+     {
+      "name": "since",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "{serial, full: true} to fetch the page whole, else {serial, areas: [{x, y, w, h}]}",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/pages/{page}/pointer": {
+   "post": {
+    "summary": "A tap or a drag on a console page, carried out as a click",
+    "operationId": "pagePointer",
+    "parameters": [
+     {
+      "name": "page",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "phase",
+         "x",
+         "y"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string",
+          "enum": [
+           "down",
+           "move",
+           "up"
+          ]
+         },
+         "x": {
+          "type": "integer"
+         },
+         "y": {
+          "type": "integer"
+         },
+         "layout": {
+          "type": "integer",
+          "minimum": 0
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Done",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "bad-value",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "not-allowed",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "unknown-operation",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "405": {
+      "description": "read-only",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "no-organ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "503": {
+      "description": "busy",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/v1/events": {
    "get": {
     "summary": "Every change, as server-sent events",

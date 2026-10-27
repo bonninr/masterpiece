@@ -19,8 +19,11 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <functional>
+#include <future>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <thread>
@@ -513,6 +516,203 @@ public:
   }
 };
 static ApiLinkedPistonDivisionsTest g_apiLinkedPistonDivisions;
+
+// The organ's own console pages over HTTP: a page with one drawstop, drawn
+// red when in and green when drawn. The picture shows the knob as it stands,
+// a tap draws the stop, and the change comes back as the knob's rectangle
+// alone, drawn green.
+class ApiConsolePagesTest final : public mp::test::Test {
+public:
+  ApiConsolePagesTest() : Test("functional.api.console-pages", Category::Functional) {}
+
+  static void png(const juce::File& f, int w, int h, juce::Colour c) {
+    juce::Image img(juce::Image::RGB, w, h, false);
+    img.clear(img.getBounds(), c);
+    f.deleteFile();
+    juce::FileOutputStream out(f);
+    juce::PNGImageFormat().writeImageToStream(img, out);
+  }
+
+  void run() override {
+    // Components belong to the message thread: this one. The server's work is
+    // handed here and run while the requests wait on threads of their own.
+    juce::MessageManager::getInstance();
+    std::mutex m;
+    std::deque<std::function<void()>> queue;
+    const auto pump = [&] {
+      for (;;) {
+        std::function<void()> fn;
+        {
+          const std::lock_guard<std::mutex> lock(m);
+          if (queue.empty()) return;
+          fn = std::move(queue.front());
+          queue.pop_front();
+        }
+        fn();
+      }
+    };
+    const auto call = [&](std::function<httplib::Result()> request) {
+      auto f = std::async(std::launch::async, std::move(request));
+      while (f.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) pump();
+      return f.get();
+    };
+
+    const juce::File root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-console-pages");
+    root.deleteRecursively();
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    pkg.createDirectory();
+    root.getChildFile("OrganDefinitions").createDirectory();
+    png(pkg.getChildFile("back.png"), 300, 400, juce::Colours::grey);
+    png(pkg.getChildFile("in.png"), 40, 60, juce::Colours::red);
+    png(pkg.getChildFile("out.png"), 40, 60, juce::Colours::lime);
+    const juce::File odf = root.getChildFile("OrganDefinitions").getChildFile("page.Organ_Hauptwerk_xml");
+    odf.replaceWithText(
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Page</Identification_Name>"
+        "<Identification_UniqueOrganID>78</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+        "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<Switch><SwitchID>1101</SwitchID><Name>Principal 8</Name><Latching>Y</Latching>"
+        "<Disp_ImageSetInstanceID>20</Disp_ImageSetInstanceID>"
+        "<Disp_ImageSetIndexEngaged>2</Disp_ImageSetIndexEngaged>"
+        "<Disp_ImageSetIndexDisengaged>1</Disp_ImageSetIndexDisengaged></Switch></ObjectList>"
+        "<ObjectList ObjectType=\"DisplayPage\">"
+        "<DisplayPage><PageID>1</PageID><Name>Console</Name></DisplayPage></ObjectList>"
+        "<ObjectList ObjectType=\"ImageSet\">"
+        "<ImageSet><ImageSetID>10</ImageSetID><Name>Knob</Name><InstallationPackageID>1</InstallationPackageID>"
+        "<ImageWidthPixels>40</ImageWidthPixels><ImageHeightPixels>60</ImageHeightPixels></ImageSet>"
+        "<ImageSet><ImageSetID>11</ImageSetID><Name>Back</Name><InstallationPackageID>1</InstallationPackageID>"
+        "<ImageWidthPixels>300</ImageWidthPixels><ImageHeightPixels>400</ImageHeightPixels></ImageSet></ObjectList>"
+        "<ObjectList ObjectType=\"ImageSetElement\">"
+        "<ImageSetElement><ImageSetID>10</ImageSetID><ImageIndexWithinSet>1</ImageIndexWithinSet><BitmapFilename>in.png</BitmapFilename></ImageSetElement>"
+        "<ImageSetElement><ImageSetID>10</ImageSetID><ImageIndexWithinSet>2</ImageIndexWithinSet><BitmapFilename>out.png</BitmapFilename></ImageSetElement>"
+        "<ImageSetElement><ImageSetID>11</ImageSetID><ImageIndexWithinSet>1</ImageIndexWithinSet><BitmapFilename>back.png</BitmapFilename></ImageSetElement>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"ImageSetInstance\">"
+        "<ImageSetInstance><ImageSetInstanceID>21</ImageSetInstanceID><Name>Back</Name>"
+        "<ImageSetID>11</ImageSetID><DefaultImageIndexWithinSet>1</DefaultImageIndexWithinSet>"
+        "<DisplayPageID>1</DisplayPageID><ScreenLayerNumber>1</ScreenLayerNumber>"
+        "<LeftXPosPixels>0</LeftXPosPixels><TopYPosPixels>0</TopYPosPixels></ImageSetInstance>"
+        "<ImageSetInstance><ImageSetInstanceID>20</ImageSetInstanceID><Name>Principal knob</Name>"
+        "<ImageSetID>10</ImageSetID><DefaultImageIndexWithinSet>1</DefaultImageIndexWithinSet>"
+        "<DisplayPageID>1</DisplayPageID><ScreenLayerNumber>5</ScreenLayerNumber>"
+        "<LeftXPosPixels>100</LeftXPosPixels><TopYPosPixels>200</TopYPosPixels></ImageSetInstance>"
+        "</ObjectList></Hauptwerk>");
+    struct Clean {
+      juce::File dir;
+      ~Clean() { dir.deleteRecursively(); }
+    } clean{root};
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    const auto block = [&proc] {
+      juce::AudioBuffer<float> buf(2, 256);
+      juce::MidiBuffer none;
+      proc.processBlock(buf, none);
+    };
+    block();
+
+    ApiServer server(proc);
+    server.setExecutor([&](std::function<void()> fn) {
+      std::promise<void> done;
+      {
+        const std::lock_guard<std::mutex> lock(m);
+        queue.push_back([&] {
+          fn();
+          done.set_value();
+        });
+      }
+      done.get_future().wait();
+    });
+    ServerSettings s;
+    s.enabled = true;
+    s.port = 0;
+    s.loopbackOnly = true;
+    juce::String error;
+    MP_CHECK(server.apply(s, error) && server.running(), "the server starts");
+    httplib::Client cli("127.0.0.1", server.port());
+    cli.set_read_timeout(10, 0);
+    const auto get = [&](const std::string& path) { return call([&cli, path] { return cli.Get(path); }); };
+    const auto tap = [&](const std::string& phase, int x, int y, const httplib::Headers& h = {}) {
+      const std::string b = "{\"phase\": \"" + phase + "\", \"x\": " + std::to_string(x) + ", \"y\": " + std::to_string(y) + "}";
+      return call([&cli, b, h] { return cli.Post("/api/v1/pages/0/pointer", h, b, "application/json"); });
+    };
+    const auto image = [](const httplib::Result& r) {
+      return r ? juce::ImageFileFormat::loadFrom(r->body.data(), r->body.size()) : juce::Image();
+    };
+
+    auto r = get("/api/v1/pages");
+    const juce::var list = body(r);
+    MP_CHECK(r && r->status == 200 && list["pages"].size() == 1, "one page is listed");
+    const juce::var p0 = list["pages"][0];
+    MP_CHECK(p0["name"].toString() == "Console" && static_cast<int>(p0["width"]) == 300 &&
+                 static_cast<int>(p0["height"]) == 400,
+             "with its name and size, got " + juce::JSON::toString(p0, true).toStdString());
+
+    r = get("/api/v1/pages/0/picture");
+    juce::Image whole = image(r);
+    MP_CHECK(r && r->status == 200 && r->get_header_value("Content-Type") == "image/png" && whole.getWidth() == 300 &&
+                 whole.getHeight() == 400,
+             "the page's picture, at its own size");
+    MP_CHECK(whole.getPixelAt(120, 230).getRed() > 200 && whole.getPixelAt(120, 230).getGreen() < 50,
+             "the knob is drawn in, red");
+    MP_CHECK(whole.getPixelAt(10, 10).getRed() == whole.getPixelAt(10, 10).getGreen(), "on the grey background");
+    const std::string serial = r->get_header_value("X-Serial");
+
+    r = get("/api/v1/pages/0/changes?since=" + serial);
+    MP_CHECK(r && r->status == 200 && body(r)["areas"].size() == 0, "nothing changed yet");
+
+    // A tap on the knob draws the stop, as a click does.
+    r = tap("down", 120, 230);
+    MP_CHECK(r && r->status == 200, "the press is taken");
+    r = tap("up", 120, 230);
+    MP_CHECK(r && r->status == 200, "and the release");
+    block();
+    MP_CHECK(proc.shownSwitchEngaged(1101), "the stop is drawn");
+
+    r = get("/api/v1/pages/0/changes?since=" + serial);
+    const juce::var ch = body(r);
+    MP_CHECK(r && r->status == 200 && ch["areas"].size() == 1, "one rectangle changed, got " + r->body);
+    const juce::var a = ch["areas"][0];
+    const int ax = a["x"], ay = a["y"], aw = a["w"], ah = a["h"];
+    MP_CHECK(ax <= 100 && ay <= 200 && ax + aw >= 140 && ay + ah >= 260 && aw < 60 && ah < 80,
+             "the knob's, got " + r->body);
+    r = get("/api/v1/pages/0/picture?x=" + std::to_string(ax) + "&y=" + std::to_string(ay) + "&w=" +
+            std::to_string(aw) + "&h=" + std::to_string(ah));
+    const juce::Image part = image(r);
+    MP_CHECK(part.getWidth() == aw && part.getHeight() == ah, "that rectangle alone is sent");
+    const auto c = part.getPixelAt(120 - ax, 230 - ay);
+    MP_CHECK(c.getGreen() > 200 && c.getRed() < 50, "with the knob drawn out, green");
+
+    r = get("/api/v1/pages/0/changes?since=" + juce::String(static_cast<juce::int64>(ch["serial"])).toStdString());
+    MP_CHECK(r && body(r)["areas"].size() == 0, "and nothing since");
+
+    // A tap on the background changes nothing.
+    tap("down", 10, 10);
+    tap("up", 10, 10);
+    block();
+    MP_CHECK(proc.shownSwitchEngaged(1101), "a tap beside the knob leaves the stop");
+
+    r = tap("sideways", 120, 230);
+    MP_CHECK(r && r->status == 400, "an unknown phase is refused");
+    r = get("/api/v1/pages/3/picture");
+    MP_CHECK(r && r->status == 404, "a page the organ lacks is out of range");
+
+    s.token = "organist";
+    server.apply(s, error);
+    r = tap("down", 120, 230);
+    MP_CHECK(r && r->status == 403, "a tap without the token is refused");
+    r = get("/api/v1/pages/0/picture?w=10&h=10");
+    MP_CHECK(r && r->status == 200, "and the picture is still there to read");
+    block();
+    MP_CHECK(proc.shownSwitchEngaged(1101), "the refused tap left the stop drawn");
+
+    server.stop();
+  }
+};
+static ApiConsolePagesTest g_apiConsolePages;
 
 }  // namespace
 #endif  // MP_TEST_HAS_API

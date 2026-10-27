@@ -69,6 +69,7 @@ async function load() {
     $("organ").textContent = id0.organ || "Masterpiece";
     build();
     showProgram();
+    await loadPages();
     return;
   }
   const [id, prog, divs, sw, ctl, gen, divl, eq, tem, trem, encl, wind, pairs] = await Promise.all([
@@ -83,6 +84,7 @@ async function load() {
   $("organ").textContent = id.organ || "Masterpiece";
   document.title = id.organ ? `${id.organ} - Masterpiece` : "Masterpiece";
   build();
+  await loadPages();
 }
 
 function build() {
@@ -372,6 +374,159 @@ async function refreshAll() {
   showProgram();
 }
 
+// ---- the organ's own console pages -----------------------------------------
+
+// A page is drawn by the program, as its window draws it, and sent as a
+// picture; after a change only the parts drawn anew are fetched again. Taps
+// and drags go back to the program, which carries them out as clicks.
+const page = { list: [], index: -1, layout: 0, serial: -1, busy: false, again: false, down: false,
+  chain: Promise.resolve(), move: null, soon: 0 };
+
+// The address names a page (#page=2) for a device kept on one jamb; else
+// the choice last made on this device.
+function chosenView() {
+  const m = location.hash.match(/page=(\d+)/);
+  if (m) return m[1];
+  try { return localStorage.getItem("mp-view") || "panels"; } catch { return "panels"; }
+}
+
+async function loadPages() {
+  try { page.list = state.session >= 0 ? (await get("pages")).pages || [] : []; } catch { page.list = []; }
+  page.index = -1;
+  const v = $("view");
+  v.replaceChildren(el("option", { value: "panels" }, "Panels"),
+    ...page.list.map((p) => el("option", { value: String(p.index) }, p.name || `Page ${p.index + 1}`)));
+  const want = chosenView();
+  v.value = page.list.some((p) => String(p.index) === want) ? want : "panels";
+  showView();
+}
+
+// A set that ships portrait jambs shows them on a screen held upright.
+function layoutFor(p) {
+  const tall = innerHeight > innerWidth;
+  const l = p.layouts.find((l) => l.portrait === tall);
+  return l ? l.layout : 0;
+}
+
+function showView() {
+  const v = $("view").value;
+  const i = v === "panels" ? -1 : Number(v);
+  $("panels").hidden = i >= 0;
+  $("page").hidden = i < 0;
+  $("pageOnly").hidden = i < 0;
+  if (i < 0) document.body.classList.remove("pageonly");
+  const p = page.list.find((p) => p.index === i);
+  const layout = p ? layoutFor(p) : 0;
+  if (i === page.index && layout === page.layout) return;
+  page.index = i;
+  page.layout = layout;
+  page.serial = -1;
+  if (i >= 0) drawPage();
+}
+
+async function picture(area) {
+  const q = new URLSearchParams({ layout: page.layout, ...(area || {}) });
+  const r = await fetch(url(`pages/${page.index}/picture?${q}`), { cache: "no-store" });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return { serial: Number(r.headers.get("X-Serial")), bitmap: await createImageBitmap(await r.blob()) };
+}
+
+// Brings the canvas up to date: the whole page the first time, then only the
+// parts the program drew anew. A call made while one runs runs once more after.
+async function drawPage() {
+  if (page.busy) { page.again = true; return; }
+  page.busy = true;
+  try {
+    do {
+      page.again = false;
+      const i = page.index, c = $("pageCanvas"), g = c.getContext("2d");
+      if (i < 0) break;
+      if (page.serial < 0) {
+        const p = await picture();
+        if (i !== page.index) continue;
+        c.width = p.bitmap.width;
+        c.height = p.bitmap.height;
+        g.drawImage(p.bitmap, 0, 0);
+        page.serial = p.serial;
+        continue;
+      }
+      const ch = await get(`pages/${i}/changes?layout=${page.layout}&since=${page.serial}`);
+      if (i !== page.index) continue;
+      if (ch.full) { page.serial = -1; page.again = true; continue; }
+      const parts = await Promise.all(ch.areas.map((a) => picture(a)));
+      if (i !== page.index) continue;
+      ch.areas.forEach((a, k) => g.drawImage(parts[k].bitmap, a.x, a.y));
+      page.serial = ch.serial;
+    } while (page.again);
+  } catch (e) {
+    page.serial = -1;
+    flash(`Page: ${e.message || e}`);
+  } finally { page.busy = false; }
+}
+
+function pageChanged() {
+  if (page.index < 0) return;
+  clearTimeout(page.soon);
+  page.soon = setTimeout(drawPage, 30);
+}
+
+// Where the finger is, in the page's own pixels.
+function pagePoint(e) {
+  const c = $("pageCanvas"), r = c.getBoundingClientRect();
+  return { x: Math.round((e.clientX - r.left) * c.width / r.width),
+           y: Math.round((e.clientY - r.top) * c.height / r.height) };
+}
+
+// Sent one after another, in order; of the moves waiting, only the latest.
+function sendPointer(phase, at) {
+  const i = page.index, layout = page.layout;
+  if (phase === "move") {
+    const first = page.move === null;
+    page.move = at;
+    if (!first) return;
+    page.chain = page.chain.then(() => {
+      const a = page.move;
+      page.move = null;
+      return send("POST", `pages/${i}/pointer`, { layout, phase: "move", ...a });
+    }).then(pageChanged);
+    return;
+  }
+  page.chain = page.chain.then(() => send("POST", `pages/${i}/pointer`, { layout, phase, ...at })).then(pageChanged);
+}
+
+{
+  const c = $("pageCanvas");
+  c.addEventListener("pointerdown", (e) => {
+    if (page.index < 0 || page.serial < 0) return;
+    e.preventDefault();
+    c.setPointerCapture(e.pointerId);
+    page.down = true;
+    sendPointer("down", pagePoint(e));
+  });
+  c.addEventListener("pointermove", (e) => { if (page.down) sendPointer("move", pagePoint(e)); });
+  const up = (e) => {
+    if (!page.down) return;
+    page.down = false;
+    sendPointer("up", pagePoint(e));
+  };
+  c.addEventListener("pointerup", up);
+  c.addEventListener("pointercancel", up);
+  c.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+$("view").addEventListener("change", () => {
+  const v = $("view").value;
+  try { localStorage.setItem("mp-view", v); } catch {}
+  history.replaceState(null, "", v === "panels" ? location.pathname + location.search : `#page=${v}`);
+  showView();
+});
+$("pageOnly").addEventListener("click", () => document.body.classList.add("pageonly"));
+$("pageBack").addEventListener("click", () => document.body.classList.remove("pageonly"));
+addEventListener("resize", showView);
+addEventListener("hashchange", () => { const v = chosenView(); if ($("view").value !== v) { $("view").value = v; showView(); } });
+// What changes with no event (a key lit, a control being learned) is looked
+// for every two seconds as well.
+setInterval(() => { if (page.index >= 0 && !document.hidden) drawPage(); }, 2000);
+
 // ---- the event stream -----------------------------------------------------
 
 // A reload asked for while one runs runs again after it: the organ can become
@@ -404,6 +559,7 @@ function connect() {
     }
     if (state.program.organState !== 2) return;  // nothing built yet: the ready event builds it
     if (c.session !== state.session) return reload();
+    pageChanged();
     if (c.type === "switch") showSwitch(c.index, c.value);
     else if (c.type === "control") showControl(c.index, c.value);
     else if (c.type === "tremulant") { const t = state.el.tremulant[c.index]; if (t) { t.t.value = c.value; t.b.classList.toggle("on", c.value === 1); } }

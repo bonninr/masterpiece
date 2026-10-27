@@ -10,6 +10,8 @@
 <header>
   <div class="title"><span id="organ">Masterpiece</span><span id="state" class="dim"></span></div>
   <div class="bar">
+    <label>View <select id="view" title="The panels, or one of the organ's own console pages. Each device keeps its own choice."><option value="panels">Panels</option></select></label>
+    <button id="pageOnly" title="The page alone, as large as the screen allows" hidden>Page only</button>
     <label>Volume <input id="gain" type="range" min="-400" max="240" step="5"><span id="gainText" class="dim"></span></label>
     <span class="group">Transpose
       <button id="transDown" title="A semitone down">&minus;</button><span id="trans">0</span><button id="transUp" title="A semitone up">+</button></span>
@@ -19,6 +21,7 @@
   </div>
 </header>
 <main id="panels"></main>
+<div id="page" hidden><canvas id="pageCanvas"></canvas><button id="pageBack" title="Show the bars again">&#x2715;</button></div>
 <footer>
   <span id="conn" class="off">connecting</span>
   <span id="voices" class="dim"></span>
