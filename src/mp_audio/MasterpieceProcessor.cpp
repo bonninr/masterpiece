@@ -1,5 +1,6 @@
 #include "MasterpieceProcessor.h"
 #include "DataFolder.h"
+#include "SystemMemory.h"
 #include "../mp_archive/OrganArchive.h"
 
 #include "../mp_core/GrandOrgueImport.h"
@@ -119,9 +120,30 @@ static juce::String realtimeState(bool on);
 // computer. On a hard disk it gives the longest.
 static constexpr int kStreamsToFeed = 256;
 
+// The ring a streamed voice can have, at most `wanted`, from the memory the
+// ceiling and the system leave once the samples are in: the shortest ring is
+// part of the load's own reckoning, and anything longer comes out of what is
+// still free.
+double MasterpieceProcessor::ringThatFits(double wanted) const {
+  if (wanted <= kShortestRingSeconds) return wanted;
+  const int voices = std::max(1, voicePool());
+  const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
+  const double bytesPerSecond = static_cast<double>(voices) * rate * 2.0 * sizeof(float);
+  int64_t room = memoryLimitBytes() - samples_.residentBytes() -
+                 voicePoolBytes(voicePool(), kShortestRingSeconds);
+  if (const int64_t free = roomForPool(); free >= 0) room = std::min(room, free);
+  if (room <= 0) return kShortestRingSeconds;
+  return std::clamp(kShortestRingSeconds + static_cast<double>(room) / bytesPerSecond,
+                    kShortestRingSeconds, wanted);
+}
+
 void MasterpieceProcessor::sizeStreamRings() {
   if (releaseBufferSeconds_ > 0.0) {
-    voices_.setStreamSeconds(releaseBufferSeconds_);
+    const double ring = ringThatFits(releaseBufferSeconds_);
+    voices_.setStreamSeconds(ring);
+    if (ring < releaseBufferSeconds_)
+      juce::Logger::writeToLog("streaming: rings of " + juce::String(ring, 2) +
+                               " s, shorter than the release buffer chosen: the memory left allows no more");
     tailReadCost_ = {};
     if (samples_.streamedCount() > 0)
       juce::Logger::writeToLog("streaming: rings of " + juce::String(releaseBufferSeconds_, 2) +
@@ -134,8 +156,16 @@ void MasterpieceProcessor::sizeStreamRings() {
   tailReadCost_ = measureTailReads(tails);
   const double took = juce::Time::getMillisecondCounterHiRes() - t0;
   const double rate = sampleRate_ > 0.0 ? sampleRate_ : 48000.0;
-  const double ring = ringSecondsFor(tailReadCost_, rate, kStreamsToFeed);
+  // Nothing long enough to time is little to stream: the shortest ring
+  // serves it. The longest was given before, 2 s a voice, to the sets with
+  // the least to read.
+  const double wanted = tailReadCost_.files > 0 ? ringSecondsFor(tailReadCost_, rate, kStreamsToFeed)
+                                                : kShortestRingSeconds;
+  const double ring = ringThatFits(wanted);
   voices_.setStreamSeconds(ring);
+  if (ring < wanted)
+    juce::Logger::writeToLog("streaming: rings of " + juce::String(ring, 2) + " s, where the disk asks " +
+                             juce::String(wanted, 2) + " s: the memory left allows no more");
   if (tailReadCost_.files <= 0) {
     juce::Logger::writeToLog("streaming: no release long enough to time; rings of " +
                              juce::String(ring, 2) + " s");
@@ -159,17 +189,21 @@ void MasterpieceProcessor::buildVoicePool(int blockFrames) {
   voices_.setSimd(fasterEngine_.load());
   // The pool the player chose, with a ring per voice only when releases can
   // stream.
-  graph_.maxVoices = voicePool();
   // What is loaded may stream though the choice for the next load says
   // otherwise: either way, rings.
-  voices_.setStreamRings(samples_.streamReleases() || samples_.streamedCount() > 0);
+  const bool rings = samples_.streamReleases() || samples_.streamedCount() > 0;
+  voices_.setStreamRings(rings);
   // Windows to read samples held compressed, when the organ loaded has any.
-  voices_.setCodedWindows(samples_.codedCount() > 0);
+  const bool coded = samples_.codedCount() > 0;
+  voices_.setCodedWindows(coded);
+  // As many voices as the system can give: a pool past what is free would
+  // have the system end the program as it is made.
+  graph_.maxVoices = voicesThatFit(voicePool(), rings, coded);
   voices_.prepare(sampleRate_, graph_.maxVoices,
                   juce::jmax(1, getTotalNumOutputChannels()),
                   juce::jmax(1, blockFrames));
   juce::Logger::writeToLog("voices: " + juce::String(graph_.maxVoices) + ", " +
-                           juce::String(voicePoolBytes(graph_.maxVoices) / (1024 * 1024)) +
+                           juce::String(voicePoolBytes(graph_.maxVoices, voices_.streamSeconds()) / (1024 * 1024)) +
                            " MB" + (samples_.streamReleases() ? " with release streaming" : ""));
   // Which path renders, for any report about the sound: the new engine is
   // the first thing to rule in or out.
@@ -3006,7 +3040,12 @@ void MasterpieceProcessor::clearRunningOrgan() {
 }
 
 int MasterpieceProcessor::defaultMemoryLimitMB() {
-  return std::max(512, juce::SystemStats::getMemorySizeInMegabytes() * 8 / 10);
+  int64_t mb = std::max(512, juce::SystemStats::getMemorySizeInMegabytes() * 8 / 10);
+  // Where the system ends a program at a ceiling of its own (iOS), the limit
+  // stays under it, with the reserve kept free.
+  if (const int64_t ceiling = processMemoryCeilingBytes(); ceiling > 0)
+    mb = std::min<int64_t>(mb, std::max<int64_t>(256, (ceiling - memoryReserveBytes()) / (1024 * 1024)));
+  return static_cast<int>(mb);
 }
 
 void MasterpieceProcessor::setMemoryLimitMB(int mb) {
@@ -3036,13 +3075,56 @@ void MasterpieceProcessor::setPolyphonyLimit(int voices) {
   writeGlobalFile();
 }
 
-int64_t MasterpieceProcessor::voicePoolBytes(int voices) const {
+int64_t MasterpieceProcessor::voicePoolBytes(int voices, double ringSeconds) const {
   // A release buffer the player chose is the length the next load builds.
-  const double ring = releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_ : voices_.streamSeconds();
+  const double ring = ringSeconds > 0.0 ? ringSeconds
+                      : releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_
+                                                    : voices_.streamSeconds();
   return static_cast<int64_t>(std::max(0, voices)) *
-         VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
-                                    ring, samples_.streamReleases(),
+         VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0, ring, loadCanStream(),
                                     samples_.codeSamples() || samples_.codedCount() > 0);
+}
+
+bool MasterpieceProcessor::loadCanStream() const {
+  return samples_.streamReleases() || preloadHead_ > 0 || samples_.streamedCount() > 0;
+}
+
+int64_t MasterpieceProcessor::roomForPool() const {
+  const int64_t free = memoryProbe ? memoryProbe() : availableMemoryBytes();
+  if (free < 0) return -1;
+  return free - (memoryProbe ? 0 : memoryReserveBytes()) + voices_.poolBytes();
+}
+
+int MasterpieceProcessor::voicesThatFit(int voices, bool rings, bool codedWindows) const {
+  const int64_t room = roomForPool();
+  if (room < 0) return voices;
+  const int64_t perVoice = VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
+                                                      voices_.streamSeconds(), rings, codedWindows);
+  const int64_t fit = perVoice > 0 && room > 0 ? room / perVoice : 0;
+  if (fit >= voices) return voices;
+  // Never below what one key of a large organ sounds: a pool that small is a
+  // few megabytes.
+  const int fitted = static_cast<int>(std::max<int64_t>(64, fit));
+  juce::Logger::writeToLog("voices: " + juce::String(fitted) + " of the " + juce::String(voices) +
+                           " asked for: the memory free allows no more");
+  return fitted;
+}
+
+void MasterpieceProcessor::armLoadBudget(bool graphicsOnly) {
+  // The system's own figure, asked as the samples come in, on every platform.
+  loadProgress_.freeMemory = graphicsOnly ? std::function<int64_t()>{}
+                             : memoryProbe ? memoryProbe
+                                           : std::function<int64_t()>([] { return availableMemoryBytes(); });
+  loadProgress_.reserveBytes = memoryProbe ? 0 : memoryReserveBytes();
+  // A probe is asked at every sample, so a test can stop a load at one.
+  loadProgress_.checkEveryBytes = memoryProbe ? 1 : LoadProgress::kCheckEveryBytes;
+  // The samples of this load may take up to the memory ceiling, and no more.
+  // The voices are made from the same memory: what the pool will hold, with
+  // the shortest ring or the one the player chose, is taken off what the
+  // samples may.
+  const double ring = releaseBufferSeconds_ > 0.0 ? releaseBufferSeconds_ : kShortestRingSeconds;
+  loadProgress_.resetBudget(
+      graphicsOnly ? 0 : std::max<int64_t>(0, memoryLimitBytes() - voicePoolBytes(voicePool(), ring)));
 }
 
 int64_t MasterpieceProcessor::memoryLimitBytes() const {
@@ -6698,6 +6780,38 @@ struct LoadPhases {
 
 MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
+  // A load runs on a thread of its own, where an exception would end the
+  // program. Whatever throws -- the system refusing memory, a definition the
+  // parser chokes on -- the load fails and says so, and the program goes on.
+  // The engine's suspension and the loading flags undo themselves on the way
+  // out; the stage table and the pallets stay off from the load's start, so
+  // nothing half-built sounds.
+  auto failed = [&](const std::string& why) {
+    juce::Logger::writeToLog("load: FAILED: " + juce::String(why));
+    try {
+      voices_.reset();
+      samples_.clear();
+    } catch (...) {
+    }
+    LoadResult r;
+    r.memoryLow = why.rfind("out of memory", 0) == 0;
+    r.outOfMemory = r.memoryLow;
+    r.error = why;
+    return r;
+  };
+  try {
+    return loadOrganUnguarded(odfFile, maxFramesPerSample, graphicsOnly);
+  } catch (const std::bad_alloc&) {
+    return failed("out of memory: the system refused memory while loading this organ");
+  } catch (const std::exception& e) {
+    return failed(std::string("the organ could not be loaded: ") + e.what());
+  } catch (...) {
+    return failed("the organ could not be loaded");
+  }
+}
+
+MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
+    const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
   // For anything that reads the model from another thread (the control API):
   // hands off while this runs, and a new session once it has.
   struct Loading {
@@ -6777,8 +6891,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // The samples of this load may take up to the memory ceiling, and no more.
   // The voices are made from the same memory: what the pool will hold is
   // taken off what the samples may.
-  loadProgress_.resetBudget(
-      graphicsOnly ? 0 : std::max<int64_t>(0, memoryLimitBytes() - voicePoolBytes(voicePool())));
+  armLoadBudget(graphicsOnly);
   // Written before the load can crash, cleared only by a clean exit.
   if (crashGuard_ && !graphicsOnly && odfFile.existsAsFile()) {
     runningOrgan_ = odfFile;
@@ -7510,6 +7623,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     // changed first, and the load follows it.
     samples_.setSparseEvery(sparseEvery_);
     if (sparseEvery_ > 1 && !graphicsOnly) applySparseLoadingToModel();
+    // Again, now that this organ's own loading choices are in force: whether
+    // it streams and holds samples compressed decides what its pool takes.
+    armLoadBudget(graphicsOnly);
     result.samples = samples_.loadAll(model_, opts.organRootDir, head,
                                       LoopSelection::Longest, &loadProgress_,
                                       onlyRanks.empty() && !readsNothing ? nullptr : &onlyRanks);
@@ -7520,22 +7636,25 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     resolveSamplePitches();
   }
 
-  // A cancelled load is NOT a partly-loaded organ. Half an instrument that
-  // plays some notes and silently drops others is worse than none: the player
-  // would be debugging their sample set rather than remembering they pressed
-  // Cancel. Drop what was read and say so plainly.
-  // Except at the memory limit: there the player did not ask to stop, and
-  // what fitted is kept and played. An organ that is mostly there is worth
-  // more than none, provided it says it is incomplete -- and the player can
-  // then leave out perspectives or stops until it fits.
-  if (loadProgress_.isCancelled() && loadProgress_.overBudget.load(std::memory_order_acquire) &&
-      result.samples.loaded > 0) {
-    juce::Logger::writeToLog("load: stopped at the memory limit; keeping the " +
-                             juce::String(result.samples.loaded) + " of " +
+  // A load stopped while its samples were being read keeps what was read:
+  // at the memory limit, when the system ran low, and when the player
+  // pressed Cancel. The stops whose samples arrived play; the rest are
+  // silent, and the organ says it is incomplete, so the player can leave out
+  // perspectives or stops until it fits, or load it again in full.
+  if (loadProgress_.isCancelled() && result.samples.loaded > 0) {
+    const bool overBudget = loadProgress_.overBudget.load(std::memory_order_acquire);
+    const bool low = loadProgress_.memoryLow.load(std::memory_order_relaxed);
+    juce::Logger::writeToLog(juce::String("load: ") +
+                             (!overBudget ? "cancelled by the player"
+                              : low       ? "stopped: the system has little memory left"
+                                          : "stopped at the memory limit") +
+                             "; keeping the " + juce::String(result.samples.loaded) + " of " +
                              juce::String(result.samples.wanted) +
                              " samples read -- the organ is INCOMPLETE");
     result.incomplete = true;
-    result.outOfMemory = true;
+    result.outOfMemory = overBudget;
+    result.memoryLow = low;
+    result.stoppedByPlayer = !overBudget;
     loadProgress_.cancelled.store(false, std::memory_order_release);
   }
   if (loadProgress_.isCancelled()) {
@@ -7558,16 +7677,28 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                               std::memory_order_release);
     result.ok = false;
     result.outOfMemory = outOfMemory;
-    result.error = outOfMemory
+    result.memoryLow = loadProgress_.memoryLow.load(std::memory_order_relaxed);
+    result.error = result.memoryLow
+                       ? std::string("out of memory: the system has too little memory free for this "
+                                     "organ's samples")
+                   : outOfMemory
                        ? "out of memory: this organ's samples need more than the " +
                              std::to_string(memoryLimitBytes() / (1024 * 1024)) +
                              " MB memory limit"
                        : "cancelled";
     return result;
   }
+  // The samples are in; what follows takes seconds on a large set, and the
+  // window says so, step by step, where it used to sit at the last sample.
+  if (!graphicsOnly) {
+    phases.mark("samples read");
+    loadProgress_.beginPhase(LoadProgress::Phase::Preparing);
+    loadProgress_.beginStep(LoadProgress::Step::LettingGo);
+  }
   // Still suspended, with no voice sounding: nothing else needs keeping.
   samples_.retireOldGenerations();
   // Rings for streamed releases as long as the disk this organ is on needs.
+  loadProgress_.beginStep(LoadProgress::Step::Voices, voicePool());
   const double ringBefore = voices_.streamSeconds();
   sizeStreamRings();
   const bool ringChanged = voices_.streamSeconds() != ringBefore && samples_.streamedCount() > 0;
@@ -7587,6 +7718,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
                              " samples held compressed, " +
                              juce::String(samples_.residentBytes() / (1024 * 1024)) + " MB");
   voices_.setSampleProvider(samples_.provider());
+  if (!graphicsOnly) phases.mark("voices");
+  loadProgress_.beginStep(LoadProgress::Step::Releases);
   // A release to be read from its file's marker, in a file with no marker
   // and nothing after its loop, holds nothing to play. A GrandOrgue pipe
   // offers its own file's release beside any separate ones; started at the
@@ -7642,8 +7775,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // only what a host has REPORTED, and with none reporting -- the render tool,
   // a test -- it is 0, which sized the scratch buffers to one frame for the
   // next 256-frame block to write past.
+  loadProgress_.beginStep(LoadProgress::Step::Audio, voicePool());
   if (sampleRate_ > 0.0)
     prepareToPlay(sampleRate_, juce::jmax(1, maxBlock_));
+  phases.mark("audio");
 
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
@@ -7670,6 +7805,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   // tooltip names it as not available.
   // Only a load that reads samples can tell: a graphics-only one has no
   // archive and holds nothing, and every rank would look unshipped.
+  loadProgress_.beginStep(LoadProgress::Step::Ranks);
   unshippedRanks_.clear();
   if (!graphicsOnly)
     for (const auto& [rankId, rank] : model_.ranks)
@@ -7677,6 +7813,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
   if (!unshippedRanks_.empty())
     juce::Logger::writeToLog("load: " + juce::String((int)unshippedRanks_.size()) +
                              " rank(s) list pipes and ship no samples; their stops are not available");
+  phases.mark("ranks");
   findPalletStops();
   findControlStops();
   std::unordered_set<Id> silent;
@@ -7759,6 +7896,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrgan(
     shownStale_ = true;
     stopsChanged_.store(true, std::memory_order_release);
   }
+  loadProgress_.beginStep(LoadProgress::Step::Combinations);
   resetPlayerCombinations();
   loadCombinations();
 

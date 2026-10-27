@@ -6,6 +6,7 @@
 #include "Settings.h"
 #include "OrganSettings.h"
 #include "../mp_archive/OrganArchive.h"
+#include "../mp_audio/SystemMemory.h"
 
 #include "LoadingDialog.h"
 #include "OpenWindow.h"
@@ -1668,12 +1669,15 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // Taken now so a failed load does not leave it waiting for the next one.
   auto then = std::move(afterLoad_);
   afterLoad_ = nullptr;
-  if (loadWindow_ != nullptr) {
-    delete loadWindow_.getComponent();
-    loadWindow_ = nullptr;
-  }
+  auto closeLoadWindow = [this] {
+    if (loadWindow_ != nullptr) {
+      delete loadWindow_.getComponent();
+      loadWindow_ = nullptr;
+    }
+  };
 
   if (!result.ok) {
+    closeLoadWindow();
     // Cancelling is a choice, not a fault, and must not look like one.
     status_ = result.error == "cancelled"
                   ? TRANS("Load cancelled - no organ is loaded")
@@ -1683,7 +1687,16 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     top_.setStatus(status_);
     // Stopping at the memory limit is the one failure a player can fix from
     // here, so it is said in full rather than left in the status line.
-    if (result.outOfMemory)
+    if (result.memoryLow)
+      juce::AlertWindow::showMessageBoxAsync(
+          juce::MessageBoxIconType::WarningIcon, TRANS("Not enough memory for this organ"),
+          TRANS("%1 was not loaded: this computer had too little memory free for its "
+                "samples.\n\nIts console is shown without sound. Close other programs, or "
+                "open Organ settings from the Settings menu and leave out perspectives or "
+                "stops, or on the Loading tab load 16-bit samples, hold samples compressed or "
+                "stream the release tails.")
+              .replace("%1", odf.getFileNameWithoutExtension()));
+    else if (result.outOfMemory)
       juce::AlertWindow::showMessageBoxAsync(
           juce::MessageBoxIconType::WarningIcon, TRANS("Not enough memory for this organ"),
           TRANS("%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\n"
@@ -1716,6 +1729,13 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // Timed separately from the model: this is where the console artwork is
   // actually decoded, and on a set with a thousand bitmaps it can dominate a
   // load that has no audio in it at all.
+  // The loading window stays up through it, saying so: it runs on this
+  // thread, nothing paints meanwhile, and a window closed first left seconds
+  // with the program looking stuck.
+  proc_.beginConsoleBuild();
+  if (loadWindow_ != nullptr)
+    if (auto* dialog = dynamic_cast<LoadingDialog*>(loadWindow_->getContentComponent()))
+      dialog->refreshNow();
   const double artStart = juce::Time::getMillisecondCounterHiRes();
   jamb_.rebuild();
   expression_.rebuild();
@@ -1731,6 +1751,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
       "load: artwork       " +
       juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
       " ms");
+  proc_.endConsoleBuild();
+  closeLoadWindow();
 
   loadPanels();
   rebuildPageTabs();
@@ -1832,11 +1854,29 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   }
   status_ = parts.joinIntoString(", ");
   if (!graphicsOnly && result.incomplete)
-    status_ += "  -  " + TRANS("INCOMPLETE (memory limit)");
-  if (!graphicsOnly && result.incomplete) {
-    const int percent = result.samples.wanted > 0
-                            ? juce::roundToInt(100.0 * result.samples.loaded / result.samples.wanted)
-                            : 0;
+    status_ += "  -  " + (result.stoppedByPlayer ? TRANS("INCOMPLETE (load cancelled)")
+                          : result.memoryLow     ? TRANS("INCOMPLETE (memory low)")
+                                                 : TRANS("INCOMPLETE (memory limit)"));
+  const int percent = result.samples.wanted > 0
+                          ? juce::roundToInt(100.0 * result.samples.loaded / result.samples.wanted)
+                          : 0;
+  if (!graphicsOnly && result.incomplete && result.stoppedByPlayer) {
+    // Cancel keeps what was read: the status line says how much, and the
+    // stops whose samples arrived play.
+  } else if (!graphicsOnly && result.incomplete && result.memoryLow) {
+    juce::AlertWindow::showMessageBoxAsync(
+        juce::MessageBoxIconType::WarningIcon, TRANS("Only part of this organ fits"),
+        TRANS("%1 of %2 samples (%3%) were loaded before the memory free on this computer ran "
+              "low. Loading stopped there, with %4 GB kept free for the program and the "
+              "system. The organ plays, but some stops or notes will be silent.\n\n"
+              "To load all of it: close other programs, leave out perspectives or stops in "
+              "Organ settings, or load 16-bit samples, hold samples compressed or stream the "
+              "release tails on its Loading tab.")
+            .replace("%1", juce::String(result.samples.loaded))
+            .replace("%2", juce::String(result.samples.wanted))
+            .replace("%3", juce::String(percent))
+            .replace("%4", juce::String(mp::memoryReserveBytes() / (1024.0 * 1024.0 * 1024.0), 1)));
+  } else if (!graphicsOnly && result.incomplete) {
     juce::AlertWindow::showMessageBoxAsync(
         juce::MessageBoxIconType::WarningIcon, TRANS("Only part of this organ fits"),
         TRANS("%1 of %2 samples (%3%) were loaded before the memory limit (%4 GB) was "

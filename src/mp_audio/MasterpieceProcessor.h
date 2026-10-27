@@ -150,9 +150,14 @@ public:
     int stopsEngaged = 0;
     // Stopped at the memory limit rather than failing on its own.
     bool outOfMemory = false;
-    // Stopped at the memory limit, and kept: what was read plays, the rest
-    // of the organ is silent. samples.loaded of samples.wanted arrived.
+    // Stopped at the memory limit or by Cancel, and kept: what was read
+    // plays, the rest of the organ is silent. samples.loaded of
+    // samples.wanted arrived.
     bool incomplete = false;
+    // Stopped because the system had little memory left, before the limit.
+    bool memoryLow = false;
+    // Stopped by the player's Cancel while the samples were being read.
+    bool stoppedByPlayer = false;
     // The licence was asked about during this load (licenceAsker), so the
     // caller need not ask again whatever the answer was.
     bool licenceAsked = false;
@@ -182,6 +187,9 @@ public:
                        int64_t maxFramesPerSample = 0,
                        bool graphicsOnly = false);
   void loadOrganAsync(const juce::File& odfFile);
+  // loadOrgan's body; loadOrgan turns anything it throws into a failed load.
+  LoadResult loadOrganUnguarded(const juce::File& odfFile, int64_t maxFramesPerSample,
+                                bool graphicsOnly);
 
   // An organ still in its RAR packages. Indexes them and unpacks the small
   // files -- definitions, artwork -- into a folder of its own, once; later
@@ -222,6 +230,15 @@ public:
   // by a UI timer while the loader's worker threads write it, which is why
   // everything in it is atomic.
   const LoadProgress& loadProgress() const { return loadProgress_; }
+  // The editor decodes the console's artwork after the load: the loading
+  // window names it while that runs.
+  void beginConsoleBuild() { loadProgress_.beginPhase(LoadProgress::Phase::BuildingConsole); }
+  // And Done again after it, which the load's 100% tap waits for.
+  void endConsoleBuild() { loadProgress_.beginPhase(LoadProgress::Phase::Done); }
+  // Where a load reads the memory free, for the tests: unset, the system's
+  // own figure (SystemMemory). Set, it is asked at every sample, with no
+  // reserve, and a figure below what a sample takes stops the load there.
+  std::function<int64_t()> memoryProbe;
   // True while loadOrgan() runs, on whatever thread; the model is the
   // loader's then. organLoads() moves on each time one ends.
   bool organLoading() const { return organLoading_.load(std::memory_order_acquire); }
@@ -1146,8 +1163,14 @@ public:
   static int maxPolyphonySetting() { return 16384; }
   int voicePool() const { return polyphony_ > 0 ? polyphony_ : defaultPolyphony(); }
   // What a pool of this many voices holds in memory with the streaming
-  // choice as it stands; part of the memory limit, with the samples.
-  int64_t voicePoolBytes(int voices) const;
+  // choice as it stands; part of the memory limit, with the samples. Rings
+  // are counted whenever anything can stream, as buildVoicePool makes them,
+  // at `ringSeconds`, or at the length the next load starts from when < 0.
+  int64_t voicePoolBytes(int voices, double ringSeconds = -1.0) const;
+  // The shortest ring a streamed voice is given, and what a load reserves
+  // for one before the disk has been timed: more is given after the load
+  // only from memory that is still free.
+  static constexpr double kShortestRingSeconds = 0.25;
   // The same ceiling for this session only, saved nowhere: for tools that
   // must not rewrite the player's settings.
   void overrideMemoryLimitMB(int mb) { memoryLimitOverrideMB_ = mb > 0 ? mb : 0; }
@@ -2524,6 +2547,20 @@ private:
   double releaseBufferSeconds_ = 0.0;
   TailReadCost tailReadCost_;
   void sizeStreamRings();
+  // Whether this load can stream: releases streamed, or samples held only in
+  // part. Rings are made for every voice when it can.
+  bool loadCanStream() const;
+  // The pool this many voices make fitted to what the system has free: fewer
+  // voices, never a pool the system cannot give.
+  // What a new voice pool may take: the memory free, less the reserve, plus
+  // what the pool in place holds, which goes when the new one is built. -1
+  // when the system gives no figure. Through memoryProbe when one is set.
+  int64_t roomForPool() const;
+  int voicesThatFit(int voices, bool rings, bool codedWindows) const;
+  double ringThatFits(double wanted) const;
+  // The ceiling and the watchdog for the samples of this load, with the
+  // organ's own loading choices in force.
+  void armLoadBudget(bool graphicsOnly);
   std::atomic<bool> skipCacheSave_{false};
   // The cache-deciding choices, as one string to compare, and what the
   // loaded organ was loaded with.

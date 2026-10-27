@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
+#include <limits>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -283,8 +284,20 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
                              int64_t maxFrames, LoopSelection selection,
                              SampleStorage storage, bool loadMono,
                              double targetRate, bool releaseOnly, int releaseMaxMs) {
-  const int64_t total = static_cast<int64_t>(reader.lengthInSamples);
-  if (total <= 0) return false;
+  int64_t total = static_cast<int64_t>(reader.lengthInSamples);
+  // A damaged header can claim more audio than its file holds, gigabytes
+  // from a file of kilobytes, and all of it would be allocated before a frame
+  // was read. Uncompressed audio holds no more frames than its bytes allow.
+  const juce::String formatName = reader.getFormatName();
+  if (reader.input != nullptr && reader.bitsPerSample > 0 &&
+      (formatName.startsWithIgnoreCase("WAV") || formatName.startsWithIgnoreCase("AIFF"))) {
+    const int64_t bytesPerFrame =
+        static_cast<int64_t>(std::max(1u, reader.numChannels)) * ((reader.bitsPerSample + 7) / 8);
+    const int64_t fileBytes = reader.input->getTotalLength();
+    if (fileBytes > 0) total = std::min(total, fileBytes / bytesPerFrame);
+  }
+  // One buffer is counted in ints: past that, the file is not audio we can hold.
+  if (total <= 0 || total >= std::numeric_limits<int>::max()) return false;
 
   // The preload head is a MINIMUM, not a cap, because a head that stops short
   // of the sustain loop makes the note die — which is not "less preloaded", it
@@ -990,7 +1003,19 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       cacheFingerprint(onlyRanks, maxFramesPerSample, loopSelection, licensedLeftOut);
   if (cacheMode_ != CacheMode::Off && !cacheDir_.empty()) {
     auto cached = std::make_shared<Store>();
-    if (readCache(*cached, fingerprint, progress) && !cached->empty()) {
+    // A cache that throws as it is read -- damaged, or more than memory
+    // allows -- is passed over, and the samples are read from their files.
+    bool fromCache = false;
+    try {
+      fromCache = readCache(*cached, fingerprint, progress);
+    } catch (const std::bad_alloc&) {
+      cached->clear();
+      juce::Logger::writeToLog("cache: the system refused memory reading it back");
+    } catch (...) {
+      cached->clear();
+      juce::Logger::writeToLog("cache: damaged, read from the samples instead");
+    }
+    if (fromCache && !cached->empty()) {
       report.loaded = static_cast<int>(cached->size());
       publish(std::move(cached));
       if (progress != nullptr) {
@@ -1206,12 +1231,38 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     }
   };
 
+  // A sample that throws -- the system refusing memory, or a file the reader
+  // chokes on -- must not end the program: an exception leaving a thread
+  // does. Refused memory stops the load as the watchdog would, keeping what
+  // was read; anything else costs that one file, and the worker goes on with
+  // the next (the cursor has already moved past it).
+  auto guarded = [&](const auto& body) {
+    for (;;) {
+      try {
+        body();
+        return;
+      } catch (const std::bad_alloc&) {
+        if (progress != nullptr) progress->memoryRefused();
+        juce::Logger::writeToLog("load: the system refused memory for a sample; loading stopped");
+        return;
+      } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(resultMutex);
+        ++report.failed;
+        juce::Logger::writeToLog(juce::String("load: a sample could not be read: ") + e.what());
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(resultMutex);
+        ++report.failed;
+        juce::Logger::writeToLog("load: a sample could not be read");
+      }
+    }
+  };
+
   if (threads <= 1 || wanted.size() < 32) {
-    worker();
+    guarded(worker);
   } else {
     std::vector<std::thread> pool;
     pool.reserve(static_cast<size_t>(threads));
-    for (int t = 0; t < threads; ++t) pool.emplace_back(worker);
+    for (int t = 0; t < threads; ++t) pool.emplace_back([&] { guarded(worker); });
     for (auto& t : pool) t.join();
   }
 
@@ -1249,16 +1300,27 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       ++producersLeft;
       producers.emplace_back([&, a] {
         std::string error;
-        archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
-          auto block = std::make_shared<juce::MemoryBlock>(bytes.data(), bytes.size());
-          std::unique_lock<std::mutex> lock(queueMutex);
-          queueChanged.wait(lock, [&] { return stop || queuedBytes < kQueueCap; });
-          if (stop) return false;
-          queuedBytes += block->getSize();
-          queue.push_back({key, std::move(block)});
-          queueChanged.notify_all();
-          return true;
-        }, error);
+        // Whatever happens in the archive, the decoders hear that this
+        // producer is done, or they would wait for it for ever.
+        try {
+          archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
+            auto block = std::make_shared<juce::MemoryBlock>(bytes.data(), bytes.size());
+            std::unique_lock<std::mutex> lock(queueMutex);
+            queueChanged.wait(lock, [&] { return stop || queuedBytes < kQueueCap; });
+            if (stop) return false;
+            queuedBytes += block->getSize();
+            queue.push_back({key, std::move(block)});
+            queueChanged.notify_all();
+            return true;
+          }, error);
+        } catch (const std::bad_alloc&) {
+          if (progress != nullptr) progress->memoryRefused();
+          error = "the system refused memory while reading the archive";
+        } catch (const std::exception& e) {
+          error = std::string("the archive could not be read: ") + e.what();
+        } catch (...) {
+          error = "the archive could not be read";
+        }
         if (!error.empty()) {
           // One line per file that did not read.
           std::lock_guard<std::mutex> lock(resultMutex);
@@ -1322,8 +1384,30 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         }
       }
     };
+    // As on the disk path, a sample that throws costs that sample; refused
+    // memory stops everything, and the producers are told, or they would wait
+    // on a full queue for ever.
+    auto guardedDecoder = [&] {
+      for (;;) {
+        try {
+          decoder();
+          return;
+        } catch (const std::bad_alloc&) {
+          if (progress != nullptr) progress->memoryRefused();
+          juce::Logger::writeToLog("load: the system refused memory for a sample; loading stopped");
+          std::lock_guard<std::mutex> lock(queueMutex);
+          stop = true;
+          queueChanged.notify_all();
+          return;
+        } catch (...) {
+          std::lock_guard<std::mutex> lock(resultMutex);
+          ++report.failed;
+          juce::Logger::writeToLog("load: a sample in an archive could not be read");
+        }
+      }
+    };
     std::vector<std::thread> decoders;
-    for (int t = 0; t < std::max(1, threads); ++t) decoders.emplace_back(decoder);
+    for (int t = 0; t < std::max(1, threads); ++t) decoders.emplace_back(guardedDecoder);
     for (auto& t : producers) t.join();
     for (auto& t : decoders) t.join();
   }
@@ -1349,7 +1433,15 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     cacheThread_ = std::thread([this, written, fingerprint, path = cachePath()] {
       if (cacheWhilePlaying_) runInTheBackground();
       const auto started = std::chrono::steady_clock::now();
-      const bool saved = writeCache(*written, fingerprint, path);
+      bool saved = false;
+      try {
+        saved = writeCache(*written, fingerprint, path);
+      } catch (...) {
+        // An exception leaving this thread would end the program; the cache
+        // is only a shortcut for the next load.
+        std::error_code removeError;
+        std::filesystem::remove(mp::pathOf(path + ".part"), removeError);
+      }
       const double seconds =
           std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
       // Said when it ends: whether the next load reads the cache depends on
@@ -2101,6 +2193,7 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
       uint8_t depth = 0;
       uint64_t blocks = 0;
       if (!getPod(is, depth) || !getPod(is, blocks)) return false;
+      if (!sizeError && blocks > static_cast<uint64_t>(cacheBytes) / sizeof(uint32_t)) return false;
       const uint64_t frames = static_cast<uint64_t>(std::max<int64_t>(0, buf->numFrames));
       if ((depth != 16 && depth != 24) || channels < 1 || channels > kSplitRiceMaxChannels ||
           blocks != (frames + kSplitRiceBlockFrames - 1) / kSplitRiceBlockFrames)
@@ -2115,6 +2208,9 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
     }
     if (!getPod(is, bytes)) return false;
     if (bytes > (uint64_t)1 << 34) return false;   // 16 GB for one sample: corrupt
+    // Nor can one sample hold more than the whole file: a damaged length is
+    // refused before it is allocated.
+    if (!sizeError && bytes > static_cast<uint64_t>(cacheBytes)) return false;
 
     if (coded != nullptr) {
       coded->data.resize(static_cast<size_t>(bytes));

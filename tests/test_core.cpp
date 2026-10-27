@@ -4437,7 +4437,9 @@ public:
       st.oneShot = true;
       const int before = disk->reads.load();
       eng.startVoice(st, 1);
-      std::this_thread::sleep_for(std::chrono::milliseconds(120));
+      // Up to two seconds: a busy build machine can keep the thread waiting.
+      for (int i = 0; i < 200 && !(eng.streamerPasses() > 0 && disk->reads.load() > before); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       MP_CHECK(eng.streamerPasses() > 0 && disk->reads.load() > before,
                "a streaming voice wakes it");
       // The one slot taken over by another streaming voice is one stream.
@@ -16081,6 +16083,9 @@ public:
   void run() override {
     const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
     mp::MasterpieceProcessor proc;
+    // Memory to spare, whatever this computer has free: a ring is shortened
+    // only when memory runs short, and that is the watchdog's test.
+    proc.memoryProbe = [] { return int64_t{1} << 40; };
     const juce::File settings = proc.settingsFileFor(odf);
     const bool had = settings.existsAsFile();
     const juce::String kept = had ? settings.loadFileAsString() : juce::String();

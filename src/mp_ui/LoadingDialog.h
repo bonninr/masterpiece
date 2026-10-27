@@ -32,6 +32,11 @@ public:
   // window closed from outside (Alt+F4) while the load still runs.
   std::function<void()> onClosed;
 
+  // Reads the load's state and paints it at once, for work on the message
+  // thread that would leave no chance to paint: the console's artwork is
+  // decoded there, and the window then shows what it is doing throughout.
+  void refreshNow();
+
 private:
   void timerCallback() override;
 

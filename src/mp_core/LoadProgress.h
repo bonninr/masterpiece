@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 
 namespace mp {
 
@@ -52,6 +53,17 @@ struct LoadProgress {
   };
 
   std::atomic<Phase> phase{Phase::Idle};
+  // What "Preparing to play" is doing at the moment, for the loading window:
+  // after the last sample there are seconds of work on a large set, and a
+  // window that says nothing then looks stuck. `stepCount` is the number the
+  // step names (the voices being set up), or 0.
+  enum class Step { None, LettingGo, Voices, Releases, Audio, Ranks, Combinations };
+  std::atomic<Step> step{Step::None};
+  std::atomic<int> stepCount{0};
+  void beginStep(Step s, int count = 0) {
+    stepCount.store(count, std::memory_order_relaxed);
+    step.store(s, std::memory_order_release);
+  }
   std::atomic<int> done{0};
   std::atomic<int> total{0};
   // Archive indexing counts compressed bytes; extraction counts the files
@@ -70,6 +82,8 @@ struct LoadProgress {
     if (began > 0 && leaving < phaseMs.size())
       phaseMs[leaving].fetch_add(now - began, std::memory_order_relaxed);
     archiveFraction.store(-1.0, std::memory_order_relaxed);
+    step.store(Step::None, std::memory_order_relaxed);
+    stepCount.store(0, std::memory_order_relaxed);
     done.store(0, std::memory_order_relaxed);
     total.store(itemTotal, std::memory_order_relaxed);
     phase.store(p, std::memory_order_release);
@@ -103,21 +117,62 @@ struct LoadProgress {
   std::atomic<int64_t> usedBytes{0};
   std::atomic<bool> overBudget{false};
 
+  // The watchdog: what the system says is still free, asked as the load goes
+  // on. The ceiling is the program's own reckoning, and a reckoning can be
+  // wrong or the rest of the computer can take memory meanwhile; the system's
+  // figure cannot. A load that would leave less than `reserveBytes` free
+  // stops there, as at the ceiling, so the program is never the one the
+  // system ends for want of memory. Set before the load starts and left
+  // alone while it runs; it returns -1 when the system gives no figure.
+  std::function<int64_t()> freeMemory;
+  int64_t reserveBytes = 0;
+  // Stopped because the system ran low, the ceiling not yet reached.
+  std::atomic<bool> memoryLow{false};
+  // Asked at most once in this many bytes charged, and for every charge as
+  // large: reading the figure costs a system call.
+  static constexpr int64_t kCheckEveryBytes = int64_t{32} * 1024 * 1024;
+  int64_t checkEveryBytes = kCheckEveryBytes;
+  std::atomic<int64_t> sinceCheck{0};
+
   void resetBudget(int64_t bytes) {
     budgetBytes.store(bytes, std::memory_order_relaxed);
     usedBytes.store(0, std::memory_order_relaxed);
+    sinceCheck.store(0, std::memory_order_relaxed);
+    memoryLow.store(false, std::memory_order_relaxed);
     overBudget.store(false, std::memory_order_release);
   }
-  // Count `bytes` against the ceiling. Returns false, and stops the load, once
-  // the total is past it.
+  // Count `bytes` against the ceiling and against what the system has free.
+  // Returns false, and stops the load, once either says no more. A charge
+  // made before its bytes are taken (a cache read back whole) needs them free
+  // as well as the reserve; one made after (a sample read) is already in the
+  // figure, and needing it twice only stops a little early.
   bool charge(int64_t bytes) {
     const int64_t used = usedBytes.fetch_add(bytes, std::memory_order_relaxed) + bytes;
     const int64_t budget = budgetBytes.load(std::memory_order_relaxed);
-    if (budget <= 0 || used <= budget) return true;
+    if (budget > 0 && used > budget) return stop(false);
+    if (freeMemory) {
+      const int64_t since = sinceCheck.fetch_add(bytes, std::memory_order_relaxed) + bytes;
+      if (bytes >= checkEveryBytes || since >= checkEveryBytes) {
+        sinceCheck.store(0, std::memory_order_relaxed);
+        const int64_t free = freeMemory();
+        if (free >= 0 && free < reserveBytes + bytes) return stop(true);
+      }
+    }
+    return true;
+  }
+  // The system refused memory outright: the load stops as it does when free
+  // memory runs low, keeping what it read.
+  void memoryRefused() { stop(true); }
+
+ private:
+  bool stop(bool low) {
+    if (low) memoryLow.store(true, std::memory_order_relaxed);
     overBudget.store(true, std::memory_order_release);
     cancelled.store(true, std::memory_order_release);
     return false;
   }
+
+ public:
 
   // 0..1, or -1 when this phase has no countable items. The caller decides
   // whether that means a spinner or a bar; both are honest, a fake bar is not.
