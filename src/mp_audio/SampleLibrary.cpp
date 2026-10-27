@@ -866,7 +866,8 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   shape.releaseOnly = job.releaseOnly;
   shape.keptBy = job.keptBy;
   WavShape wav;
-  const std::filesystem::path path = mp::pathOf(job.path);
+  // Found as the loader finds it, ignoring case in every folder (#591).
+  const std::filesystem::path path = resolveIgnoringCase(mp::pathOf(job.path));
   std::error_code ec;
   int64_t fileBytes = job.packageBytes;
   shape.fromPackage = true;
