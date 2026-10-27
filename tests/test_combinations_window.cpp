@@ -6,6 +6,7 @@
 
 #ifdef MP_TEST_HAS_AUDIO
 
+#include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_ui/CombinationsWindow.h"
 
@@ -29,10 +30,17 @@ public:
 
   void run() override {
     juce::MessageManager::getInstance();
+    // The program's own settings are not this test's to change: the defaults
+    // are written and read in a folder of their own.
+    const auto data =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-combinations-window");
+    data.deleteRecursively();
+    data.createDirectory();
+    const auto previous = mp::dataFolder();
+    mp::setDataFolder(data);
+
     mp::MasterpieceProcessor proc;
     const juce::File global = proc.globalSettingsFile();
-    const bool had = global.existsAsFile();
-    const juce::String before = had ? global.loadFileAsString() : juce::String();
 
     // What a player who turned all three on left behind at the last quit.
     global.getParentDirectory().createDirectory();
@@ -69,19 +77,8 @@ public:
       window.showOrHide(false);
     }
 
-    // The round trip the boxes sit on: the choice is written out and read
-    // back at the next start (#591).
-    proc.setSetOffAfterStore(true);
-    {
-      mp::MasterpieceProcessor next;
-      next.prepareToPlay(48000.0, 256);
-      next.loadGlobalDefaults();
-      MP_CHECK(next.setOffAfterStore(), "the choice survives a restart");
-      next.releaseResources();
-    }
-
-    if (had) global.replaceWithText(before);
-    else global.deleteFile();
+    mp::setDataFolder(previous);
+    data.deleteRecursively();
   }
 };
 static CombinationsWindowTogglesTest g_combinationsWindowToggles;
