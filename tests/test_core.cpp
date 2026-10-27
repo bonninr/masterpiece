@@ -5888,6 +5888,32 @@ public:
       for (const auto& e : PC::collect(u, nullptr))
         if (e.kind == K::Switch && e.id == 803) division = e.divisionId;
       MP_CHECK(division == 2, "a unison off written into the keys' wires is the Great's coupler");
+
+      // Bückeburg: a compass switch gates only the top keys' wires. It
+      // belongs to the console, and stays out of the combinations.
+      mp::Switch compass;
+      compass.switchId = 804;
+      compass.name = "Compass Selection";
+      u.switches[804] = compass;
+      for (int note = 40; note < 48; ++note) {
+        mp::DivisionInput in;
+        in.divisionId = 2;
+        in.switchId = 6000 + note;
+        in.midiNote = note;
+        u.divisionInputs.push_back(in);
+      }
+      mp::SwitchLinkage top;
+      top.sourceSwitchId = 5047;
+      top.destSwitchId = 6047;
+      top.conditionSwitchId = 804;
+      u.switchLinkages.push_back(top);
+      bool compassTaken = false, unisonStill = false;
+      for (const auto& e : PC::collect(u, nullptr)) {
+        compassTaken = compassTaken || (e.kind == K::Switch && e.id == 804);
+        unisonStill = unisonStill || (e.kind == K::Switch && e.id == 803);
+      }
+      MP_CHECK(!compassTaken, "a compass switch, gating one key of twelve, is not a coupler");
+      MP_CHECK(!unisonStill, "and a knob gating four keys of twelve is not a unison off either");
     }
 
     const auto divisions = PC::divisionsOf(m, elements);

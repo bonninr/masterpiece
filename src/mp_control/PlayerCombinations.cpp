@@ -203,14 +203,24 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   // drives its note's division input, gated on the knob. Ashton's "3. unison
   // off" waits on no key action at all, and no unison off of its was ever
   // stored or cancelled (#591). The knob belongs to the division it silences.
+  // It gates the whole division: a knob that gates a few keys is a compass
+  // switch, which adds the top notes (Bückeburg's "Compass Selection"), and
+  // belongs to the console.
   if (!model.divisionInputs.empty()) {
     std::unordered_map<Id, Id> inputDivision;
-    for (const auto& in : model.divisionInputs) inputDivision.emplace(in.switchId, in.divisionId);
+    std::map<Id, int> inputsOf;  // division -> its key inputs
+    for (const auto& in : model.divisionInputs) {
+      inputDivision.emplace(in.switchId, in.divisionId);
+      ++inputsOf[in.divisionId];
+    }
+    std::map<std::pair<Id, Id>, int> gated;  // (knob, division) -> inputs gated
     for (const auto& l : model.switchLinkages) {
       if (l.conditionSwitchId == 0) continue;
       const auto d = inputDivision.find(l.destSwitchId);
-      if (d != inputDivision.end()) addCondition(l.conditionSwitchId, d->second, false);
+      if (d != inputDivision.end()) ++gated[{l.conditionSwitchId, d->second}];
     }
+    for (const auto& [key, n] : gated)
+      if (2 * n >= inputsOf[key.second]) addCondition(key.first, key.second, false);
   }
 
   // Tremulants: the division of the stops whose pipes they shake.
