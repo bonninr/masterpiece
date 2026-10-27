@@ -18052,6 +18052,113 @@ public:
 };
 static PackagesBesideOrganTest g_packagesBesideOrgan;
 
+// A package on disk whose folders are spelled in another case than the
+// definition's (#591, Burton Berlin on Linux: "pipes/GO/04-Rea" on disk,
+// "pipes/go/04-rea" in the definition). Its samples play, so it is there: it
+// is found with nothing asked, and where it was found is kept.
+class PackageFolderAnyCaseTest final : public mp::test::Test {
+public:
+  PackageFolderAnyCaseTest() : Test("functional.archive.package-folder-any-case", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-package-any-case";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 65.41 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
+    // The package's sample, spelled on disk in another case than the
+    // definition's "pipes\go\036-c.wav".
+    auto putPackage = [&](const fs::path& top) {
+      const fs::path pipes = top / "OrganInstallationPackages" / "900532" / "Pipes" / "GO";
+      fs::create_directories(pipes);
+      std::ofstream(pipes / "036-C.wav", std::ios::binary) << tone;
+    };
+
+    const std::string definition =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>AnyCase</Identification_Name>"
+        "<Identification_UniqueOrganID>532</Identification_UniqueOrganID></_General></ObjectList>"
+        "<ObjectList ObjectType=\"RequiredInstallationPackage\">"
+        "<RequiredInstallationPackage><InstallationPackageID>900532</InstallationPackageID><Name>Volume 2</Name>"
+        "</RequiredInstallationPackage></ObjectList>"
+        "<ObjectList ObjectType=\"Sample\">"
+        "<Sample><SampleID>101</SampleID><InstallationPackageID>900532</InstallationPackageID>"
+        "<SampleFilename>pipes\\go\\036-c.wav</SampleFilename></Sample></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>Principal</Name></Rank></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID>"
+        "<NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><Pipe_SoundEngine01_Layer><LayerID>401</LayerID>"
+        "<PipeID>301</PipeID></Pipe_SoundEngine01_Layer></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\"><Pipe_SoundEngine01_AttackSample>"
+        "<UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample></ObjectList></Hauptwerk>";
+
+    struct Load {
+      int asked = 0, missing = -1;
+    };
+    auto load = [&](const fs::path& odf) {
+      Load out;
+      mp::MasterpieceProcessor proc;
+      proc.packageAsker = [&out](const std::string&, const std::string&, const std::string&) {
+        ++out.asked;
+        return std::string();
+      };
+      proc.prepareToPlay(48000.0, 256);
+      const juce::File odfFile(juce::String(odf.string()));
+      const auto r = proc.loadOrgan(odfFile, 0, false);
+      proc.settingsFileFor(odfFile).deleteFile();
+      MP_CHECK(r.ok, "the organ loads");
+      out.missing = r.samples.missing;
+      return out;
+    };
+
+    // Every package unpacked into the organ's own OrganInstallationPackages,
+    // as the reporter keeps them.
+    {
+      const fs::path top = base / "Together";
+      fs::create_directories(top / "OrganDefinitions");
+      putPackage(top);
+      const fs::path odf = top / "OrganDefinitions" / "Demo.Organ_Hauptwerk_xml";
+      std::ofstream(odf) << definition;
+      const auto l = load(odf);
+      MP_CHECK(l.missing == 0, "its sample is read: " + std::to_string(l.missing) + " missing");
+      MP_CHECK(l.asked == 0, "the package beside the others is not asked for: asked " + std::to_string(l.asked));
+    }
+
+    // The package in a folder of its own beside the organ's. The organ
+    // above is remembered as a library, and goes, so its package is not the
+    // one found here.
+    fs::remove_all(base / "Together", ec);
+    {
+      const fs::path top = base / "Demo_ODF";
+      fs::create_directories(top / "OrganDefinitions");
+      fs::create_directories(top / "OrganInstallationPackages");
+      putPackage(base / "Volume2");
+      const fs::path odf = top / "OrganDefinitions" / "Demo.Organ_Hauptwerk_xml";
+      std::ofstream(odf) << definition;
+      const auto l = load(odf);
+      MP_CHECK(l.missing == 0 && l.asked == 0,
+               "a package beside the organ is found with nothing asked: asked " + std::to_string(l.asked) + ", " +
+                   std::to_string(l.missing) + " missing");
+      std::stringstream kept;
+      kept << std::ifstream(top / "package-folders.txt").rdbuf();
+      MP_CHECK(kept.str().find("Volume2") != std::string::npos, "and where it was found is kept: " + kept.str());
+    }
+    fs::remove_all(base, ec);
+  }
+};
+static PackageFolderAnyCaseTest g_packageFolderAnyCase;
+
 // An organ whose folders and archive are named outside ASCII. On Windows a
 // path made from a UTF-8 string went through the system's code page: the
 // archive "AVO-Vörösbereny_IR" was "not found", and an organ under such a

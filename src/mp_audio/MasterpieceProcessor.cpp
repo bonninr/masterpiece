@@ -5,6 +5,8 @@
 
 #include "../mp_core/GrandOrgueImport.h"
 #include "../mp_core/LoadPlan.h"
+#include "../mp_core/PathCase.h"
+#include "../mp_core/Utf8Path.h"
 #include "../mp_core/SparseLoading.h"
 #include "../mp_core/Temperament.h"
 #include "RealtimeThread.h"
@@ -6079,11 +6081,21 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
     }
   std::unordered_map<Id, std::string> roots;
   auto packageRel = [&](Id package) { return "OrganInstallationPackages/" + dirName(package) + "/"; };
+  // Matched as the samples are read, ignoring case: a package unpacked on a
+  // case-sensitive disk with "pipes/GO/04-Rea" for the definition's
+  // "pipes/go/04-rea" plays, and was asked for at every load all the same,
+  // the folder picked for it never kept (#591, Burton Berlin on Linux).
   auto installedIn = [&](const juce::File& dir, Id package) {
     const juce::File pkg = dir.getChildFile(juce::String::fromUTF8(packageRel(package).c_str()));
     if (!pkg.isDirectory()) return false;
-    for (const auto& rel : samplesOf.at(package))
-      if (pkg.getChildFile(juce::String::fromUTF8(rel.c_str())).existsAsFile()) return true;
+    std::error_code ec;
+    for (const auto& rel : samplesOf.at(package)) {
+      const juce::File wanted = pkg.getChildFile(juce::String::fromUTF8(rel.c_str()));
+      if (wanted.existsAsFile() ||
+          std::filesystem::is_regular_file(
+              mp::resolvePathIgnoringCase(mp::pathOf(wanted.getFullPathName().toStdString())), ec))
+        return true;
+    }
     return false;
   };
   auto inArchive = [&](Id package) {
