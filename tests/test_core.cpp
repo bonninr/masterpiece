@@ -16801,6 +16801,82 @@ public:
 };
 static MidiLampFromProgramTest g_midiLampFromProgram;
 
+// A console's lamps show the organ that has just loaded: every stop learned on
+// the console sends its state once the load is done, so a lamp lit by the
+// organ before goes out, and a stop that comes up drawn is lit (#565).
+class MidiLampsAtLoadTest final : public mp::test::Test {
+public:
+  MidiLampsAtLoadTest() : Test("functional.midi.lamps-at-load", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    juce::File map;
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      map = proc.midiMapFileFor(odf);
+      const bool hadMap = map.existsAsFile();
+      const juce::String mapBefore = hadMap ? map.loadFileAsString() : juce::String();
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      // The last message for the pad: 1 lit, 0 out, -1 none.
+      auto lamp = [&sent] {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.getChannel() == 1 && m.getNoteNumber() == 36 && (m.isNoteOn() || m.isNoteOff()))
+            state = m.isNoteOn() && m.getVelocity() > 0 ? 1 : 0;
+        return state;
+      };
+      mp::MidiBinding pad;  // Principal 8 learned on a pad: note 36, channel 1
+      pad.source.kind = mp::MidiSourceKind::Note;
+      pad.source.channel = 1;
+      pad.source.number = 36;
+      pad.targetKind = mp::MidiTargetKind::Switch;
+      pad.targetId = 1101;
+      pad.trigger = mp::MidiTrigger::Toggle;
+      pad.latching = true;
+      proc.setObjectBindings(mp::MidiTargetKind::Switch, 1101, {pad});  // saved with the organ
+      proc.setMidiFeedbackEnabled(true);
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(lamp() == 1, "drawn, the stop's lamp is lit");
+
+      // Loaded again: the pad's binding comes back with the organ, and its
+      // lamp is sent as the stop now stands, drawn or not.
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      MP_CHECK(proc.midiMap().bindingFor(mp::MidiTargetKind::Switch, 1101) != nullptr,
+               "the pad's binding comes back with the organ");
+      blocks(2);
+      const int drawn = proc.switchEngaged(1101) ? 1 : 0;
+      MP_CHECK(lamp() == drawn, "after the load the lamp shows the stop: drawn " + std::to_string(drawn) +
+                                    ", lamp " + std::to_string(lamp()) + ", " + std::to_string(sent.size()) +
+                                    " message(s)");
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+      proc.settingsFileFor(odf).deleteFile();
+      if (hadMap) map.replaceWithText(mapBefore);
+      else map.deleteFile();
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiLampsAtLoadTest g_midiLampsAtLoad;
+
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
 // is one level further up. Drawing a stop from the stop list or a combination
