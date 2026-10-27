@@ -3497,9 +3497,13 @@ class VoiceReleasePhaseAlignTest final : public mp::test::Test {
     MP_CHECK(shift >= 0.0 && shift < 240.0,
              "the start moves forward by less than one period");
 
+    // Every release, as GrandOrgue aligns every release (#565).
     const Result notAsked = play(100, true, false, false);
-    MP_CHECK(!notAsked.aligned && notAsked.startFrame == 0,
-             "a release that does not ask starts at its first frame");
+    MP_CHECK(notAsked.aligned && notAsked.startFrame > 0,
+             "a release whose definition does not ask is put in phase all the same");
+    const Result switchedOff = play(100, false, true, false);
+    MP_CHECK(!switchedOff.aligned && switchedOff.startFrame == 0,
+             "with alignment switched off, a release starts at its first frame");
     const Result silent = play(100, true, true, true);
     MP_CHECK(!silent.aligned && silent.startFrame == 0,
              "after a silent attack the release starts at its first frame");

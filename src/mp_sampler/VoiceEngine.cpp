@@ -897,12 +897,14 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
                  : relBuf->loopEnd > 0 && relBuf->loopEnd < relBuf->totalFrames()
                      ? static_cast<double>(relBuf->loopEnd)
                      : 0.0;
-      // In phase with the attack it follows, when the release asks for it:
-      // otherwise the two meet wherever the key let go, and the crossfade
-      // cancels or adds by the timing of the key (#525). The attack keeps its
-      // own speed under the release; one release frame is xfadeRatioScale of
-      // its frames.
-      if (row.phaseAlign && oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
+      // In phase with the attack it follows: otherwise the two meet wherever
+      // the key let go, and the crossfade cancels or adds by the timing of
+      // the key (#525). Every release, as GrandOrgue aligns every release:
+      // a definition that leaves PhaseAlignAutomatically off dipped or
+      // swelled at the note-off by the moment the key let go (#565). The
+      // attack keeps its own speed under the release; one release frame is
+      // xfadeRatioScale of its frames.
+      if (oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
         const double hz = releaseHz > 0.0 ? releaseHz : attackHz;
         if (hz > 0.0 && relBuf->sampleRate > 0.0 &&
             (oldBuf->coded != nullptr || relBuf->coded != nullptr)) {
