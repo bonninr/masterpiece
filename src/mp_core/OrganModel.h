@@ -483,7 +483,7 @@ struct Combination {
   }
 };
 
-// A fully open enclosure filters nothing: its cutoff sits above hearing, and
+// A fully open enclosure filters nothing: its shelf sits above hearing, and
 // the engine clamps it below Nyquist (#205).
 constexpr double kOpenEnclosureHz = 20000.0;
 
@@ -491,27 +491,32 @@ struct Enclosure {
   Id enclosureId = 0;
   std::string name;
   Id continuousControlId = 0;
-  // The filter the shades impose, as the engine's one-cutoff-one-gain model
-  // takes it. Hauptwerk states these PER PIPE (EnclosurePipe's FiltParam...),
-  // relative to each pipe's own pitch, so there is no single enclosure-level
-  // number in the file: these are the medians of the pipes' values gathered at
-  // load, which is the representative figure for a bus-level filter. Set from
-  // the pipes when the set declares any; the numbers below are only the
-  // fallback for a box that ships none.
-  double closedFilterHz = 800.0, openFilterHz = kOpenEnclosureHz;
+
+  // The filter the shades impose, in the format's own terms: at one end of
+  // the shoe's travel the response is LOUDEST at `maxHz` and QUIETEST at
+  // `minHz`, `shelfDb` lower. Which of the two is the higher frequency
+  // decides the shape — `minHz` above `maxHz` is a low-pass, the shades
+  // dulling the treble, and below it a high-pass. Hauptwerk states these PER
+  // PIPE (EnclosurePipe's FiltParam...), against each pipe's own pitch, and
+  // projects them between notes; the engine filters one bus per box, so the
+  // box takes the upper quartile of its pipes' figures (see OdfLoader).
+  //
+  // A box that states no shelf (ExtraAttnAtMinDb 0) filters nothing and
+  // moves only its level, which is how most sets ask for a swell.
+  double closedMaxHz = 200.0, closedMinHz = 4000.0, closedShelfDb = 9.0;
+
+  // The open box's own frequencies, which place the far end of the sweep.
+  // Hauptwerk states the open response as a filter too, but an open box is
+  // meant to be out of the way, so its shelf is not applied (#205): the
+  // depth falls to nothing as the shades open.
+  double openMaxHz = kOpenEnclosureHz, openMinHz = kOpenEnclosureHz;
+
   double closedAttnDb = -24.0, openAttnDb = 0.0;
   bool filterParamsFromPipes = false;
   // Shade positions the ODF actually declares (EnclosurePipe rows). An
   // enclosure with none is inert — the validator reports it rather than
   // silently swallowing the swell pedal (query enclosure-without-shades).
   int numShades = 0;
-  // How far below its passband the closed filter reaches, in dB: the pipes'
-  // ExtraAttnAtMinDb, "the extra attenuation at the minimum frequency
-  // response relative to that at the maximum". The filter is a shelf of that
-  // depth, gone when the box is open, and a box that states none filters
-  // nothing. Used only when filterParamsFromPipes; the fallback filters at
-  // full depth.
-  double closedFilterDepthDb = 0.0;
 };
 
 // M2.4: a console input that sweeps rather than switches — swell shoes,

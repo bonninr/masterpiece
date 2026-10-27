@@ -97,19 +97,24 @@ float TremulantLfo::nextSample(const Tremulant& t, bool engaged,
 
 void EnclosureFilter::prepare(const juce::dsp::ProcessSpec& spec) {
   sampleRate_ = spec.sampleRate > 0.0 ? spec.sampleRate : 48000.0;
-  svf_.prepare(spec);
-  svf_.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
-  svf_.setResonance(juce::MathConstants<float>::sqrt2 / 2.0f); // Butterworth
-  svf_.setCutoffFrequency(static_cast<float>(
-      std::clamp(12000.0, 20.0, sampleRate_ * 0.45)));
-  svf_.reset();
+  // One biquad per channel: a shelf holds state, and two channels sharing it
+  // would leak one into the other.
+  const size_t channels = std::max<size_t>(2, spec.numChannels);
+  shelf_.resize(channels);
+  for (auto& f : shelf_) {
+    // Each its own biquad's worth of coefficients, made here so the audio
+    // thread only ever writes into them.
+    f.coefficients = new juce::dsp::IIR::Coefficients<float>(1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+    f.prepare(spec);
+    f.reset();
+  }
   smoothShutter_.reset(sampleRate_, kShutterRampSeconds);
   smoothShutter_.setCurrentAndTargetValue(1.0);
   gain_.reset(sampleRate_, kShutterRampSeconds);
   gain_.setCurrentAndTargetValue(1.0f);
-  floor_.reset(sampleRate_, kShutterRampSeconds);
-  floor_.setCurrentAndTargetValue(0.0f);
   cutoffHz_ = 0.0;
+  shelfDb_ = -1.0;   // forces the first updateFor to place the filter
+  shelfLowPass_ = false;
 }
 
 void EnclosureFilter::reset(double sampleRate) {
@@ -120,32 +125,62 @@ void EnclosureFilter::snapTo(double shutter01) {
   smoothShutter_.setCurrentAndTargetValue(clamp01(shutter01));
 }
 
+EnclosureFilter::Shelf EnclosureFilter::keyOf(double maxHz, double minHz) {
+  // Guard the logs — a malformed ODF can carry a zero or negative frequency —
+  // and keep both ends inside hearing, where the format's figures live.
+  const double hi = std::clamp(maxHz > 0.0 ? maxHz : kOpenEnclosureHz, 20.0, 20000.0);
+  const double lo = std::clamp(minHz > 0.0 ? minHz : hi, 20.0, 20000.0);
+  // A MinFreqHz above MaxFreqHz is the format's low-pass: the loudest point
+  // is the lower one and the response falls towards the higher. Below it,
+  // a high-pass. The two frequencies span the shelf's transition, so its
+  // corner sits between them on the octave scale, where they are stated.
+  return Shelf{0.5 * (std::log2(hi) + std::log2(lo)), lo > hi};
+}
+
 void EnclosureFilter::updateFor(const Enclosure& e) {
   const double s = clamp01(smoothShutter_.getCurrentValue());
 
-  // Cutoff interpolates geometrically: shades are heard in octaves, not hertz,
-  // so a linear sweep would spend most of its travel doing nothing audible.
-  // Guard the logs — a malformed ODF can carry a zero or negative frequency.
-  const double closedHz = e.closedFilterHz > 0.0 ? e.closedFilterHz : 20.0;
-  const double openHz = e.openFilterHz > 0.0 ? e.openFilterHz : 20000.0;
-  const double hz = std::exp(std::log(closedHz) + s * (std::log(openHz) - std::log(closedHz)));
-  cutoffHz_ = std::clamp(hz, 20.0, sampleRate_ * 0.45);
-  svf_.setCutoffFrequency(static_cast<float>(cutoffHz_));
+  // The shelf's corner moves geometrically between the closed and open
+  // figures: shades are heard in octaves, not hertz, so a linear sweep would
+  // spend most of its travel doing nothing audible. The shape is the closed
+  // end's: a box that dulls the treble closed does not go the other way part
+  // way open.
+  const Shelf closed = keyOf(e.closedMaxHz, e.closedMinHz);
+  const Shelf open = keyOf(e.openMaxHz, e.openMinHz);
+  const double octaves = closed.octaves + s * (open.octaves - closed.octaves);
+  cutoffHz_ = std::clamp(std::exp2(octaves), 20.0, sampleRate_ * 0.45);
 
   // Gain interpolates linearly in dB — that is how the attenuations are
   // specified, and it is what the ear tracks.
   const double db = e.closedAttnDb + s * (e.openAttnDb - e.closedAttnDb);
   gain_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(db), -100.0f));
 
-  // The filter's depth, from the set's own figure, shallower as the shades
-  // open and gone when open: a shelf, the shape the format describes. The
-  // fallback box, with no figures of its own, keeps the full low-pass.
-  if (e.filterParamsFromPipes) {
-    const double depthDb = std::max(0.0, e.closedFilterDepthDb) * (1.0 - s);
-    floor_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(-depthDb), -100.0f));
-  } else {
-    floor_.setTargetValue(0.0f);
-  }
+  // The shelf's depth, from the set's own figure, shallower as the shades
+  // open and gone when open: the shape the format describes, and an open box
+  // filtering nothing (#205).
+  const double depthDb = std::max(0.0, e.closedShelfDb) * (1.0 - s);
+
+  // Rebuilt only when something moved: four biquads a block cost nothing,
+  // but a player holding the shoe still is the common case.
+  if (std::abs(depthDb - shelfDb_) < 0.01 && closed.lowPass == shelfLowPass_ &&
+      std::abs(cutoffHz_ - shelfHz_) < 1.0)
+    return;
+  shelfDb_ = depthDb;
+  shelfLowPass_ = closed.lowPass;
+  shelfHz_ = cutoffHz_;
+
+  const float depthGain =
+      juce::Decibels::decibelsToGain(static_cast<float>(-depthDb), -100.0f);
+  const auto hz = static_cast<float>(cutoffHz_);
+  const auto q = static_cast<float>(juce::MathConstants<double>::sqrt2 / 2.0);
+  // A shelf that cuts the treble is JUCE's high shelf — it passes the lows
+  // and takes the highs down — and the format's high-pass is its low shelf.
+  // Written into the coefficients prepare() made: this runs on the audio
+  // thread whenever the shoe moves, and a new set each time would allocate.
+  using Shelves = juce::dsp::IIR::ArrayCoefficients<float>;
+  const auto c = shelfLowPass_ ? Shelves::makeHighShelf(sampleRate_, hz, q, depthGain)
+                               : Shelves::makeLowShelf(sampleRate_, hz, q, depthGain);
+  for (auto& f : shelf_) *f.coefficients = c;
 }
 
 float EnclosureFilter::process(float x, const Enclosure& e, double shutter01,
@@ -155,9 +190,7 @@ float EnclosureFilter::process(float x, const Enclosure& e, double shutter01,
   smoothShutter_.setTargetValue(clamp01(shutter01));
   smoothShutter_.getNextValue();
   updateFor(e);
-  const float low = svf_.processSample(0, x);
-  const float f = floor_.getNextValue();
-  return (low + f * (x - low)) * gain_.getNextValue();
+  return shelf_[0].processSample(x) * gain_.getNextValue();
 }
 
 void EnclosureFilter::processBlock(juce::dsp::AudioBlock<float> block,
@@ -169,36 +202,26 @@ void EnclosureFilter::processBlock(juce::dsp::AudioBlock<float> block,
   if (numSamples <= 0) return;
 
   // Advance the shutter smoother across the block and set the filter from the
-  // block's end position: the SVF and the gain smoother each interpolate
-  // internally, so per-sample coefficient recalculation buys nothing.
+  // block's end position: the biquad and the gain smoother each interpolate
+  // within the block, so per-sample coefficient recalculation buys nothing.
   smoothShutter_.setTargetValue(clamp01(shutter01));
   smoothShutter_.skip(numSamples);
   updateFor(e);
 
   const auto numCh = block.getNumChannels();
-  if (!floor_.isSmoothing() && floor_.getTargetValue() == 0.0f) {
-    // The full low-pass: the filter over the block, then the level.
-    juce::dsp::ProcessContextReplacing<float> ctx(block);
-    svf_.process(ctx);
-    for (int i = 0; i < numSamples; ++i) {
-      const float g = gain_.getNextValue();
-      for (size_t ch = 0; ch < numCh; ++ch)
-        block.setSample(static_cast<int>(ch), i,
-                        block.getSample(static_cast<int>(ch), i) * g);
-    }
-    return;
-  }
-  // A shelf: each sample's filtered part, with the floor of the dry one.
+  // Channels beyond those prepared take the level alone: the audio thread
+  // never allocates, and prepare() sizes the shelves for every output.
+  const size_t filtered = std::min(numCh, shelf_.size());
   for (int i = 0; i < numSamples; ++i) {
     const float g = gain_.getNextValue();
-    const float f = floor_.getNextValue();
     for (size_t ch = 0; ch < numCh; ++ch) {
       const float x = block.getSample(static_cast<int>(ch), i);
-      const float low = svf_.processSample(static_cast<int>(ch), x);
-      block.setSample(static_cast<int>(ch), i, (low + f * (x - low)) * g);
+      block.setSample(static_cast<int>(ch), i,
+                      (ch < filtered ? shelf_[ch].processSample(x) : x) * g);
     }
   }
-  svf_.snapToZero();
+  for (auto& f : shelf_) f.snapToZero();
 }
+
 
 } // namespace mp::dsp

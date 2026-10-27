@@ -429,16 +429,20 @@ public:
       // The figures are stated against each pipe's own pitch, so the box takes
       // the upper quartile: the median would describe a pipe lower than most
       // of what is heard, and an "open" box would sound permanently closed.
-      MP_CHECK(e != m.enclosures.end() && e->second.closedFilterHz == 1200.0,
-               "the closed cutoff is the upper quartile of the pipes' maxima");
-      MP_CHECK(e != m.enclosures.end() && e->second.openFilterHz == mp::kOpenEnclosureHz,
-               "an open box filters nothing, whatever its when-open figures (#205)");
+      MP_CHECK(e != m.enclosures.end() && e->second.closedMaxHz == 1200.0,
+               "the closed loudest frequency is the upper quartile of the pipes'");
+      MP_CHECK(e != m.enclosures.end() && e->second.openMaxHz == 12000.0,
+               "and the open one is the same figure from the open column");
       MP_CHECK(e != m.enclosures.end() && e->second.closedAttnDb == -10.0,
-               "the closed level is the overall figure; the extra at min is the filter's depth");
-      MP_CHECK(e != m.enclosures.end() && e->second.closedFilterDepthDb == 0.0,
+               "the closed level is the overall figure");
+      MP_CHECK(e != m.enclosures.end() && e->second.closedShelfDb == 0.0,
                "a box that states no extra filters nothing");
       MP_CHECK(e != m.enclosures.end() && e->second.openAttnDb == 0.0,
                "an open box takes the insertion loss off");
+      // A row that names one frequency and not the other still places the
+      // shelf: it has nothing to span, so the box moves its level alone.
+      MP_CHECK(e != m.enclosures.end() && e->second.closedMinHz == 1200.0,
+               "a missing quiet frequency falls back to the loud one");
     }
 
     // --- the per-layer velocity response and tremulant trims -----------
@@ -7633,10 +7637,12 @@ public:
     const auto& swell = m.enclosures.at(1);
     MP_CHECK(swell.name == "Swell Box", "enclosure name parsed");
     MP_CHECK(swell.continuousControlId == 1, "enclosure bound to its shoe");
-    MP_CHECK(std::fabs(swell.closedFilterHz - 700.0) < 1e-9,
-             "closed shade cutoff parsed");
-    MP_CHECK(swell.openFilterHz == mp::kOpenEnclosureHz,
-             "an open box filters nothing (#205)");
+    MP_CHECK(std::fabs(swell.closedMaxHz - 700.0) < 1e-9,
+             "the closed response's loudest frequency parsed");
+    MP_CHECK(std::fabs(swell.closedMinHz - 7000.0) < 1e-9,
+             "and its quietest, which is above it: a low-pass");
+    MP_CHECK(swell.openMaxHz == 14000.0 && swell.openMinHz == 20000.0,
+             "the open response's own frequencies parsed; its depth is not applied (#205)");
     MP_CHECK(std::fabs(swell.closedAttnDb + 20.0) < 1e-9,
              "closed attenuation parsed");
     MP_CHECK(swell.numShades == 2, "EnclosurePipe rows counted");
@@ -8612,71 +8618,128 @@ public:
     return std::sqrt(acc / n);
   }
 
+  // A box stated the way the format states one: loudest at one frequency,
+  // quieter towards another, plus an overall loss.
+  static mp::Enclosure box(double closedMax, double closedMin, double shelfDb,
+                           double openMax, double openMin, double attnDb) {
+    mp::Enclosure e;
+    e.enclosureId = 1;
+    e.name = "Swell";
+    e.closedMaxHz = closedMax;
+    e.closedMinHz = closedMin;
+    e.closedShelfDb = shelfDb;
+    e.openMaxHz = openMax;
+    e.openMinHz = openMin;
+    e.closedAttnDb = attnDb;
+    e.openAttnDb = 0.0;
+    e.filterParamsFromPipes = true;
+    return e;
+  }
+
+  static double db(double ratio) { return 20.0 * std::log10(ratio); }
+
   void run() override {
     mp::EngineSwitch full;
-    const mp::Enclosure e{1, "Swell", 0, 800.0, 12000.0, -24.0, 0.0};
 
-    // Closing the box must attenuate, and must attenuate treble harder than
-    // bass — that is the whole point of a swell shade.
-    const double lowOpen = rmsAt(200.0, 1.0, e, full);
-    const double lowShut = rmsAt(200.0, 0.0, e, full);
-    const double highOpen = rmsAt(6000.0, 1.0, e, full);
-    const double highShut = rmsAt(6000.0, 0.0, e, full);
-    MP_CHECK(lowShut < lowOpen, "closing the box attenuates the bass");
-    MP_CHECK(highShut < highOpen, "closing the box attenuates the treble");
-    MP_CHECK((highShut / highOpen) < (lowShut / lowOpen),
-             "a closed box rolls off treble more than bass");
+    // A swell that dulls the treble: Nancy's shape, loudest at 880 Hz and
+    // 7 dB quieter by 6 kHz when closed, 8 dB down overall.
+    const mp::Enclosure lowpass = box(880.0, 6160.0, 7.0, 3519.0, 8800.0, -8.0);
+    const double bassOpen = rmsAt(200.0, 1.0, lowpass, full);
+    const double bassShut = rmsAt(200.0, 0.0, lowpass, full);
+    const double trebleOpen = rmsAt(6000.0, 1.0, lowpass, full);
+    const double trebleShut = rmsAt(6000.0, 0.0, lowpass, full);
+    MP_CHECK(bassShut < bassOpen, "closing the box attenuates the bass");
+    MP_CHECK(trebleShut < trebleOpen, "closing the box attenuates the treble");
+    MP_CHECK((trebleShut / trebleOpen) < (bassShut / bassOpen),
+             "a closed box dulls the treble more than the bass");
+    MP_CHECK(std::fabs(db(bassShut / bassOpen) + 8.0) < 1.5,
+             "the bass of a closed box loses its overall figure: " +
+                 std::to_string(db(bassShut / bassOpen)) + " dB");
+    MP_CHECK(std::fabs(db(trebleShut / trebleOpen) + 15.0) < 2.0,
+             "and the treble loses that and the shelf's depth: " +
+                 std::to_string(db(trebleShut / trebleOpen)) + " dB");
 
-    // A box whose figures come from its pipes, stated as the format states
-    // them: 3 dB overall, 9 dB more at the far end of the filter's band
-    // (#366). Closed, the bass sinks by the overall figure and the treble by
-    // both; the extra used to land on the bass as well, and the treble went
-    // under a low-pass with no floor.
+    // An open box is out of the way whatever its figures say: the depth falls
+    // to nothing with the shades open (#205).
+    MP_CHECK(std::fabs(db(rmsAt(200.0, 1.0, lowpass, full) / std::sqrt(0.5))) < 1.0,
+             "an open box leaves the bass alone");
+    MP_CHECK(std::fabs(db(rmsAt(6000.0, 1.0, lowpass, full) / std::sqrt(0.5))) < 1.0,
+             "and the treble");
+
+    // A box that states no shelf filters nothing and moves its level alone.
     {
-      mp::Enclosure p{1, "Swell", 0, 500.0, mp::kOpenEnclosureHz, -3.0, 0.0};
-      p.filterParamsFromPipes = true;
-      p.closedFilterDepthDb = 9.0;
-      const double bassDb = 20.0 * std::log10(rmsAt(80.0, 0.0, p, full) / rmsAt(80.0, 1.0, p, full));
-      const double trebleDb = 20.0 * std::log10(rmsAt(8000.0, 0.0, p, full) / rmsAt(8000.0, 1.0, p, full));
-      MP_CHECK(bassDb < -2.0 && bassDb > -4.5,
-               "a closed box lowers the bass by its overall figure: " + std::to_string(bassDb) + " dB");
-      MP_CHECK(trebleDb < -10.5 && trebleDb > -13.5,
-               "and the treble by the overall figure and the extra: " + std::to_string(trebleDb) + " dB");
-      const double openTreble = 20.0 * std::log10(rmsAt(8000.0, 1.0, p, full) / std::sqrt(0.5));
-      MP_CHECK(std::fabs(openTreble) < 1.0, "an open box leaves the treble: " + std::to_string(openTreble) + " dB");
-      p.closedFilterDepthDb = 0.0;
-      const double flatDb = 20.0 * std::log10(rmsAt(8000.0, 0.0, p, full) / rmsAt(8000.0, 1.0, p, full));
-      MP_CHECK(flatDb < -2.0 && flatDb > -4.0,
-               "a box that states no extra only lowers the level: " + std::to_string(flatDb) + " dB");
+      const mp::Enclosure flat = box(880.0, 6160.0, 0.0, 3519.0, 8800.0, -8.0);
+      const double bass = db(rmsAt(200.0, 0.0, flat, full) / rmsAt(200.0, 1.0, flat, full));
+      const double treble = db(rmsAt(6000.0, 0.0, flat, full) / rmsAt(6000.0, 1.0, flat, full));
+      MP_CHECK(std::fabs(bass + 8.0) < 1.0,
+               "a box with no shelf lowers the bass by its level alone: " + std::to_string(bass));
+      MP_CHECK(std::fabs(treble - bass) < 1.0,
+               "and the treble by the same amount: " + std::to_string(treble));
     }
 
-    // The closed attenuation must land near the declared closedAttnDb at a
-    // frequency well inside the closed passband (so the filter is not the
-    // dominant term).
-    const double closedDb = 20.0 * std::log10(rmsAt(100.0, 0.0, e, full) /
-                                              rmsAt(100.0, 1.0, e, full));
-    MP_CHECK(closedDb < -18.0 && closedDb > -30.0,
-             "closed box attenuates a low tone by roughly closedAttnDb");
+    // Bethesda Redeemer's own figures, and the report behind them: closed 3 dB
+    // down with the quietest point at 175 Hz and the loudest at 12 kHz, which
+    // is the format's high-pass. Read as a low-pass corner, the engine moved a
+    // level over 12 kHz and the shades did nearly nothing (#591).
+    {
+      const mp::Enclosure hp = box(12075.0, 175.0, 9.33, 16250.0, 175.0, -3.0);
+      const double bass = db(rmsAt(100.0, 0.0, hp, full) / rmsAt(100.0, 1.0, hp, full));
+      const double treble = db(rmsAt(8000.0, 0.0, hp, full) / rmsAt(8000.0, 1.0, hp, full));
+      MP_CHECK(bass < -10.0 && bass > -14.0,
+               "these shades take the bass down by the level and the shelf: " +
+                   std::to_string(bass) + " dB");
+      MP_CHECK(treble < -1.5 && treble > -4.5,
+               "and leave the treble at the level alone: " + std::to_string(treble) + " dB");
+      MP_CHECK(bass < treble - 6.0,
+               "so closing the box is audible: " + std::to_string(treble - bass) + " dB between them");
 
-    // Open box at 0 dB with a 12 kHz corner must be near unity in the speech
-    // range: the shades are out of the way.
-    MP_CHECK(std::fabs(20.0 * std::log10(rmsAt(440.0, 1.0, e, full) /
-                                         std::sqrt(0.5))) < 1.0,
-             "an open box is within a dB of unity at 440 Hz");
+      // The shoe swept from shut to open in a quarter of a second, in the
+      // blocks the engine renders: the shelf is placed once a block, and the
+      // tone must move no further from one sample to the next than a steady
+      // tone of its loudness does. A click is a jump many times that.
+      const double sr = 48000.0, hz = 220.0;
+      const int blockLen = 256, blocks = static_cast<int>(0.25 * sr) / blockLen;
+      mp::dsp::EnclosureFilter enc;
+      enc.prepare({sr, static_cast<juce::uint32>(blockLen), 2u});
+      enc.snapTo(0.0);
+      juce::AudioBuffer<float> buf(2, blockLen);
+      const double w = 2.0 * 3.141592653589793 * hz / sr;
+      int64_t t = 0;
+      float last = 0.0f, worstStep = 0.0f, loudest = 0.0f, apart = 0.0f;
+      for (int b = -40; b < blocks + 40; ++b) {
+        for (int i = 0; i < blockLen; ++i, ++t)
+          for (int ch = 0; ch < 2; ++ch) buf.setSample(ch, i, static_cast<float>(std::sin(w * t)));
+        const double shoe = std::clamp(static_cast<double>(b) / blocks, 0.0, 1.0);
+        enc.processBlock(juce::dsp::AudioBlock<float>(buf), hp, shoe, full);
+        for (int i = 0; i < blockLen; ++i) {
+          const float y = buf.getSample(0, i);
+          apart = std::max(apart, std::fabs(y - buf.getSample(1, i)));
+          if (b > -40 || i > 0) worstStep = std::max(worstStep, std::fabs(y - last));
+          loudest = std::max(loudest, std::fabs(y));
+          last = y;
+        }
+      }
+      MP_CHECK(apart < 1e-6f, "both channels filtered alike: " + std::to_string(apart));
+      // A steady sine of peak A moves at most A * w per sample.
+      const float steady = loudest * static_cast<float>(w);
+      MP_CHECK(worstStep < steady * 1.5f,
+               "the sweep is smooth: worst step " + std::to_string(worstStep) + " against " +
+                   std::to_string(steady) + " for a steady tone");
+    }
 
     // Loudness must rise monotonically as the shoe opens - no dead spots or
     // reversals anywhere in the shoe's travel.
     double prev = -1.0;
     for (int step = 0; step <= 10; ++step) {
-      const double r = rmsAt(440.0, step / 10.0, e, full);
+      const double r = rmsAt(440.0, step / 10.0, lowpass, full);
       MP_CHECK(r > prev, "loudness rises monotonically as the shoe opens");
       prev = r;
     }
 
     // Out-of-range shutter values must be clamped, not extrapolated.
-    MP_CHECK(std::fabs(rmsAt(440.0, 2.0, e, full) - rmsAt(440.0, 1.0, e, full)) < 1e-6,
+    MP_CHECK(std::fabs(rmsAt(440.0, 2.0, lowpass, full) - rmsAt(440.0, 1.0, lowpass, full)) < 1e-6,
              "a shutter above 1 clamps to fully open");
-    MP_CHECK(std::fabs(rmsAt(440.0, -1.0, e, full) - rmsAt(440.0, 0.0, e, full)) < 1e-6,
+    MP_CHECK(std::fabs(rmsAt(440.0, -1.0, lowpass, full) - rmsAt(440.0, 0.0, lowpass, full)) < 1e-6,
              "a shutter below 0 clamps to fully closed");
   }
 };
@@ -8689,7 +8752,13 @@ public:
     : Test("functional.dsp.enclosure-modulation", Category::Functional) {}
   void run() override {
     mp::EngineSwitch full;
-    const mp::Enclosure e{1, "Swell", 0, 800.0, 12000.0, -24.0, 0.0};
+    mp::Enclosure e;
+    e.enclosureId = 1;
+    e.name = "Swell";
+    e.closedMaxHz = 800.0;
+    e.closedMinHz = 12000.0;
+    e.closedShelfDb = 24.0;
+    e.closedAttnDb = -24.0;
     mp::dsp::EnclosureFilter enc;
     enc.reset(48000.0);
 
@@ -8704,9 +8773,15 @@ public:
     }
     MP_CHECK(peak < 2.0, "a swept enclosure does not blow up");
 
-    // A degenerate enclosure (zero/negative corner frequencies from a broken
-    // ODF) must be survivable, not a crash or a NaN factory.
-    const mp::Enclosure bad{2, "Broken", 0, 0.0, -5.0, -24.0, 0.0};
+    // A degenerate enclosure (zero/negative frequencies from a broken ODF)
+    // must be survivable, not a crash or a NaN factory.
+    mp::Enclosure bad;
+    bad.enclosureId = 2;
+    bad.name = "Broken";
+    bad.closedMaxHz = 0.0;
+    bad.closedMinHz = -5.0;
+    bad.closedShelfDb = 24.0;
+    bad.closedAttnDb = -24.0;
     mp::dsp::EnclosureFilter badEnc;
     badEnc.reset(48000.0);
     for (int i = 0; i < 4800; ++i) {
@@ -8843,7 +8918,13 @@ public:
 
     mp::dsp::EnclosureFilter enc;
     enc.reset(48000.0);
-    const mp::Enclosure e{1, "Sw", 0, 800.0, 12000.0, -24.0, 0.0};
+    mp::Enclosure e;
+    e.enclosureId = 1;
+    e.name = "Sw";
+    e.closedMaxHz = 800.0;
+    e.closedMinHz = 12000.0;
+    e.closedShelfDb = 24.0;
+    e.closedAttnDb = -24.0;
     MP_CHECK(enc.process(0.5f, e, 0.0, bypass) == 0.5f,
              "enclosure must pass through in simple mode");
     float out = 0.0f;
