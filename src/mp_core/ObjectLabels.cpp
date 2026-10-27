@@ -95,6 +95,9 @@ std::vector<std::string> switchWorkedNames(const OrganModel& m, Id switchId) {
 std::string switchLabel(const OrganModel& m, Id switchId) {
   const auto it = m.switches.find(switchId);
   const bool named = it != m.switches.end() && hasWords(it->second.name);
+  // A coupler is its own control, named by the set: the stops its wiring may
+  // reach are not what it is.
+  if (named && it->second.isCoupler) return readableName(it->second.name);
   const auto worked = switchWorkedNames(m, switchId);
 
   // One stop or tremulant along the wiring is the answer, and is what these

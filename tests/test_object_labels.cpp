@@ -82,6 +82,18 @@ public:
              "an internal tag on a switch over one stop reads as the stop: " +
                  mp::switchLabel(tagged, 30));
 
+    // A coupler keeps the set's name, whatever stop its wiring reaches.
+    mp::OrganModel coupled = tagged;
+    coupled.switches[31].switchId = 31;
+    coupled.switches[31].name = "Swell to Great";
+    coupled.switches[31].isCoupler = true;
+    mp::SwitchLinkage toStop;
+    toStop.sourceSwitchId = 31;
+    toStop.destSwitchId = 30;
+    coupled.switchLinkages.push_back(toStop);
+    MP_CHECK(mp::switchLabel(coupled, 31) == "Swell to Great",
+             "a coupler reads as the coupler: " + mp::switchLabel(coupled, 31));
+
     // A switch named by a number over a shared stop still names something, and
     // names it the same way every run: the lowest stop id.
     mp::OrganModel numbered = azzio();
