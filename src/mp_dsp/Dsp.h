@@ -7,17 +7,20 @@
 // Every kernel below must honour the runtime switches in its own hot path.
 //
 // JUCE (ADR-012): the filters are JUCE's, not hand-rolled. The enclosure is a
-// juce::dsp::StateVariableTPTFilter — a topology-preserving state-variable
-// filter, which is the right structure when the cutoff is swept continuously
-// by the swell shoe (a direct-form biquad zippers and can go unstable when its
-// coefficients move that fast). Hot kernels vectorise through juce::dsp; the
-// tremulant reads a juce::dsp::LookupTableTransform rather than calling
-// std::sin per sample. Because this TU includes juce_dsp, mp_dsp is built and
-// tested in the full CMake build (RunPod / CI), not in the JUCE-free WSL fast
-// loop, which now covers mp_core / mp_sampler / mp_control only.
+// pair of juce::dsp::IIR shelf biquads, one per channel, whose coefficients
+// move with the swell shoe — placed once per block from the block's end
+// position, so a sweep is a series of short shelves rather than a
+// per-sample coefficient recalculation. Hot kernels vectorise through
+// juce::dsp; the tremulant reads a juce::dsp::LookupTableTransform rather
+// than calling std::sin per sample. Because this TU includes juce_dsp,
+// mp_dsp is built and tested in the full CMake build (RunPod / CI), not in
+// the JUCE-free WSL fast loop, which now covers mp_core / mp_sampler /
+// mp_control only.
 //
 #pragma once
 #include "../mp_core/OrganModel.h"
+
+#include <vector>
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -55,9 +58,12 @@ private:
   bool lastEngaged_ = false;
 };
 
-// Swell-shade filter. Cutoff morphs geometrically and gain linearly in dB
-// between the enclosure's closed and open settings, driven by a smoothed
-// shutter position so there is no zipper noise.
+// Swell-shade filter. A shelf whose corner morphs geometrically and whose
+// level moves linearly in dB between the enclosure's closed and open
+// settings, driven by a smoothed shutter position so there is no zipper
+// noise. The shelf is the format's own model: loudest at one frequency and
+// quieter towards another, the difference fading to nothing as the shades
+// open.
 class EnclosureFilter {
 public:
   void prepare(const juce::dsp::ProcessSpec& spec);
@@ -73,22 +79,32 @@ public:
   void snapTo(double shutter01);
 
   double smoothedShutter() const { return smoothShutter_.getCurrentValue(); }
+  // The shelf's corner, in hertz, at the shutter's current position.
   double cutoffHz() const { return cutoffHz_; }
   float gainLinear() const { return gain_.getCurrentValue(); }
 
 private:
-  // Recompute cutoff/gain from the smoothed shutter. Cheap enough to run once
-  // per block; the filter itself interpolates within the block.
+  // Where one end of the shoe's travel puts the shelf, and which way round
+  // the shelf faces.
+  struct Shelf {
+    double octaves = 0.0; // the corner, on the octave scale
+    bool lowPass = false; // the format's low-pass: the treble is dulled
+  };
+  static Shelf keyOf(double maxHz, double minHz);
+
+  // Recompute the corner, depth and gain from the smoothed shutter. Cheap
+  // enough to run once per block; the filter itself interpolates within the
+  // block.
   void updateFor(const Enclosure& e);
 
-  juce::dsp::StateVariableTPTFilter<float> svf_;
+  std::vector<juce::dsp::IIR::Filter<float>> shelf_;
   juce::SmoothedValue<double, juce::ValueSmoothingTypes::Linear> smoothShutter_{1.0};
   juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> gain_{1.0f};
-  // The share of the unfiltered signal mixed back in: what turns the
-  // low-pass into a shelf of the box's stated depth. 0 is the full low-pass.
-  juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> floor_{0.0f};
   double sampleRate_ = 48000.0;
   double cutoffHz_ = 0.0;
+  double shelfHz_ = 0.0;
+  double shelfDb_ = -1.0;
+  bool shelfLowPass_ = false;
 };
 
 struct VoicingOverride {

@@ -1554,12 +1554,15 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // unenclosed Great must stay unenclosed while the Swell shades move.
   //
   // The row also carries the box's filter, stated against each pipe's own
-  // pitch: OverallAttnDb insertion loss, and the [MaxFreq, MinFreq] band the
-  // shades move it between (closed one band, open higher). The engine filters
-  // one bus per box rather than one filter per voice, so the box gets the
-  // MEDIAN of its pipes' values — the representative figure for the box —
-  // and the raw spread stays in the file where a per-voice filter can use it
-  // later. Read as the dictionary numbers them: c..h.
+  // pitch: OverallAttnDb is how much quieter the pipe is with the box shut,
+  // and the two frequency pairs give the shape of its response — loudest at
+  // MaxFreqHz, quietest at MinFreqHz, the lower by ExtraAttnAtMinDb. A
+  // MinFreqHz above its MaxFreqHz is a low-pass, below it a high-pass. The
+  // engine filters one bus per box rather than one filter per voice, so the
+  // box takes the upper quartile of its pipes' frequencies and the mean of
+  // their levels — the representative figure for the box — and the raw spread
+  // stays in the file where a per-voice filter can use it later. Read as the
+  // dictionary numbers them: c..h.
   {
     // Per enclosure, the six values from every row, for a median at the end.
     std::unordered_map<Id, std::vector<std::array<double, 6>>> shadeParams;
@@ -1604,7 +1607,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       // Bégard the open median is 1.7 kHz, which would leave a box that is
       // open sounding permanently closed. The upper quartile is the bus
       // filter's honest compromise — the open box stays close to
-      // transparent, the closed one clearly muffled, and the numbers are
+      // transparent, the closed one clearly shifted, and the numbers are
       // still the set's own (Bégard closed 932 Hz / open 3.7 kHz, against
       // invented 800 Hz / 12 kHz before). A per-pipe filter is the faithful
       // model and this is where it would go; see the Enclosure comment in
@@ -1620,21 +1623,30 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         return col[static_cast<size_t>(pos + 0.5)];
       };
       Enclosure& e = encIt->second;
+      // The closed response: loudest at MaxFreqHz, quietest at MinFreqHz,
+      // ExtraAttnAtMinDb between them. A set that states one and not the
+      // other still names a corner, and the shape falls back to the level
+      // alone (a shelf of no depth), which is what the format asks for.
       const double closedMax = quantile(1, 0.75), closedMin = quantile(2, 0.75);
-      if (closedMax > 0.0) e.closedFilterHz = closedMax;
-      else if (closedMin > 0.0) e.closedFilterHz = closedMin;
-      // A box fully open filters nothing: Hauptwerk's attenuation there is
-      // always zero, and its "when open" frequencies are only the limits the
-      // filter moves towards as the shades open, so the sweep has no jump at
-      // the end. Read as the open cutoff they shut a swell that was wide open
-      // to its lowest figure: Klais Szikszó's open boxes sat at 100 Hz, and
-      // the shoe moved the sound between 100 and 200 Hz (#205).
-      e.openFilterHz = kOpenEnclosureHz;
+      if (closedMax > 0.0) e.closedMaxHz = closedMax;
+      else if (closedMin > 0.0) e.closedMaxHz = closedMin;
+      if (closedMin > 0.0) e.closedMinHz = closedMin;
+      else e.closedMinHz = e.closedMaxHz;
+      // The open response places the sweep's far end. Its depth is not
+      // applied: a box fully open is meant to be out of the way, and the
+      // format's open attenuation is always zero. Read as the filter's own
+      // cutoff, the "when open" figures shut a swell that was wide open:
+      // Klais Szikszó's open boxes sat at 100 Hz, and the shoe moved the
+      // sound between 100 and 200 Hz (#205).
+      const double openMax = quantile(4, 0.75), openMin = quantile(5, 0.75);
+      if (openMax > 0.0) e.openMaxHz = openMax;
+      if (openMin > 0.0) e.openMinHz = openMin;
+      else e.openMinHz = e.openMaxHz;
       // The overall figure is the box's level, across the spectrum; the extra
-      // is the depth of the filter, below that level at the far end of its
-      // band. Added together, a closed box sank by the extra at every
-      // frequency as well: 9 dB too quiet on sets that state 3 and 9 (#366).
-      // An open box takes the level off entirely.
+      // is how much deeper the filter reaches at its quiet end. Added
+      // together, a closed box sank by the extra at every frequency as well:
+      // 9 dB too quiet on sets that state 3 and 9 (#366). An open box takes
+      // the level off entirely.
       auto meanPositive = [&rows](size_t i) {
         double sum = 0.0;
         size_t n = 0;
@@ -1644,7 +1656,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         return n > 0 ? sum / static_cast<double>(n) : 0.0;
       };
       e.closedAttnDb = -meanPositive(0);
-      e.closedFilterDepthDb = meanPositive(3);
+      e.closedShelfDb = meanPositive(3);
       e.openAttnDb = 0.0;
       e.filterParamsFromPipes = true;
     }
