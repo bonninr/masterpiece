@@ -691,6 +691,15 @@ public:
   static int64_t bytesPerVoice(double sampleRate, double streamSeconds, bool rings,
                                bool codedWindows = false);
   double streamSeconds() const { return streamSeconds_; }
+  // What the pool built now holds in rings and decode windows: freed when
+  // the next is built, so a new pool may count it as room. Read while the
+  // engine is suspended.
+  int64_t poolBytes() const {
+    int64_t bytes = static_cast<int64_t>(windows_.capacity() * sizeof(DecodedWindow));
+    for (const auto& st : streams_)
+      if (st != nullptr) bytes += static_cast<int64_t>(st->ring.capacity() * sizeof(float));
+    return bytes;
+  }
   // Underruns since prepare(): a voice reached material the streamer had not
   // fetched yet and played silence. Should be zero; anything else is a disk
   // that cannot keep up, and the player needs to be told rather than left
@@ -743,6 +752,8 @@ public:
   }
   // Reads the streamer has made from the disk since prepare().
   int64_t streamReads() const { return streamReads_.load(std::memory_order_relaxed); }
+  // Streaming passes that threw and were started again (a pulled drive).
+  int64_t streamFaults() const { return streamFaults_.load(std::memory_order_relaxed); }
   // How many times the streamer has gone over the voices looking for a ring
   // to fill. It stands still while nothing streams.
   int64_t streamerPasses() const {
@@ -961,6 +972,7 @@ private:
   std::atomic<int64_t> streaming_{0};
   std::atomic<int64_t> streamPasses_{0};
   std::atomic<int64_t> streamReads_{0};
+  std::atomic<int64_t> streamFaults_{0};
 
   void startStreamer();
   void stopStreamer();

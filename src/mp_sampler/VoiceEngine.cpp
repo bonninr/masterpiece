@@ -214,7 +214,21 @@ void VoiceEngine::startStreamer() {
     std::lock_guard<std::mutex> lock(streamMutex_);
     streamQuit_ = false;
   }
-  streamer_ = std::thread([this] { streamerLoop(); });
+  // A read that throws -- a drive pulled out mid-note, memory refused --
+  // costs that pass, never the program: an exception leaving this thread
+  // would end it. The loop starts again after a pause, and a voice whose
+  // file is gone runs out of its ring and falls silent.
+  streamer_ = std::thread([this] {
+    for (;;) {
+      try {
+        streamerLoop();
+        return;
+      } catch (...) {
+        streamFaults_.fetch_add(1, std::memory_order_relaxed);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      }
+    }
+  });
 }
 
 void VoiceEngine::stopStreamer() {

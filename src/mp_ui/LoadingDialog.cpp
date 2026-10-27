@@ -167,6 +167,29 @@ void LoadingDialog::timerCallback() {
                                     : TRANS("%1% of files processed")).replace("%1", percent)
                             : juce::String(TRANS("This may take a few minutes")),
                     juce::dontSendNotification);
+  } else if (!cancelling_ && phase == LoadProgress::Phase::Preparing) {
+    // Seconds of work on a large set, after the last sample: named step by
+    // step, with the time it has taken so far, so the window never sits
+    // still looking stuck.
+    const int count = p.stepCount.load(std::memory_order_relaxed);
+    juce::String text;
+    switch (p.step.load(std::memory_order_acquire)) {
+      case LoadProgress::Step::LettingGo:    text = TRANS("Letting the previous organ go"); break;
+      case LoadProgress::Step::Voices:
+      case LoadProgress::Step::Audio:
+        text = count > 0 ? TRANS("Setting up %1 voices").replace("%1", juce::String(count))
+                         : TRANS("Setting up the voices");
+        break;
+      case LoadProgress::Step::Releases:     text = TRANS("Checking the releases"); break;
+      case LoadProgress::Step::Ranks:        text = TRANS("Checking which stops have samples"); break;
+      case LoadProgress::Step::Combinations: text = TRANS("Restoring the combinations"); break;
+      case LoadProgress::Step::None:         break;
+    }
+    const double elapsed = (juce::Time::getMillisecondCounterHiRes() - phaseStartMs_) / 1000.0;
+    if (elapsed >= 2.0)
+      text += (text.isEmpty() ? juce::String() : juce::String("   -   ")) +
+              TRANS("%1 s").replace("%1", juce::String(static_cast<int>(elapsed)));
+    detail_.setText(text, juce::dontSendNotification);
   } else if (!cancelling_) {
     // Every other phase counts nothing, and inventing a number would be a lie
     // the next phase immediately contradicts. The phase line carries the
@@ -174,6 +197,12 @@ void LoadingDialog::timerCallback() {
     // sample count while something else entirely is happening.
     detail_.setText("", juce::dontSendNotification);
   }
+}
+
+void LoadingDialog::refreshNow() {
+  timerCallback();
+  repaint();
+  if (auto* peer = getPeer()) peer->performAnyPendingRepaintsNow();
 }
 
 void LoadingDialog::paint(juce::Graphics& g) {

@@ -145,7 +145,8 @@ std::string originalOf(const std::string& fileName) {
 // The volume number of a multi-volume member, or -1. "Name.part3.rar" is 3;
 // the old scheme's "Name.rar" is 0 and "Name.r00" is 1.
 int volumeNumber(const std::string& fileName, std::string& setName) {
-  static const std::regex partN(R"(^(.*)\.part(\d+)\.rar$)", std::regex::icase);
+  // Up to six digits: a longer number is not a volume, and would not fit an int.
+  static const std::regex partN(R"(^(.*)\.part(\d{1,6})\.rar$)", std::regex::icase);
   static const std::regex rNN(R"(^(.*)\.r(\d\d)$)", std::regex::icase);
   std::smatch m;
   if (std::regex_match(fileName, m, partN)) {
@@ -1539,6 +1540,9 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
   // Runs `job` for 0..count-1 on the threads, and calls in on this one until
   // they are done: false from it stops them.
   std::atomic<bool> stop{false};
+  // A job that throws -- a damaged volume, or memory refused -- stops the
+  // others; on its own thread it would have ended the program.
+  std::atomic<bool> jobThrew{false};
   std::atomic<int64_t> doneBytes{0};
   const auto runAll = [&](size_t count, const std::function<void(size_t)>& job) {
     std::atomic<size_t> next{0}, finished{0};
@@ -1546,7 +1550,14 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
     for (size_t t = 0; t < (std::min)(threads, count); ++t)
       pool.emplace_back([&] {
         for (size_t k; (k = next.fetch_add(1)) < count;) {
-          if (!stop.load()) job(k);
+          if (!stop.load()) {
+            try {
+              job(k);
+            } catch (...) {
+              jobThrew = true;
+              stop = true;
+            }
+          }
           ++finished;
         }
       });
@@ -1559,7 +1570,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     for (auto& t : pool) t.join();
-    return going;
+    return going && !jobThrew.load();
   };
 
   std::vector<std::vector<Rar4File>> listed(volumes.size());
@@ -1571,7 +1582,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
         }
         doneBytes += sizes[v];
       })) {
-    error = "cancelled";
+    error = jobThrew.load() ? "the archive could not be read" : "cancelled";
     return false;
   }
   if (failed) return false;
@@ -1633,7 +1644,7 @@ bool OrganArchive::indexVolumesAtOnce(size_t archive, const Progress& scanned,
         const std::lock_guard<std::mutex> lock(merge);
         unpacked_.insert(got.begin(), got.end());
       })) {
-    error = "cancelled";
+    error = jobThrew.load() ? "the archive could not be read" : "cancelled";
     return false;
   }
   return true;

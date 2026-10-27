@@ -16000,6 +16000,9 @@ public:
   void run() override {
     const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
     mp::MasterpieceProcessor proc;
+    // Memory to spare, whatever this computer has free: a ring is shortened
+    // only when memory runs short, and that is the watchdog's test.
+    proc.memoryProbe = [] { return int64_t{1} << 40; };
     const juce::File settings = proc.settingsFileFor(odf);
     const bool had = settings.existsAsFile();
     const juce::String kept = had ? settings.loadFileAsString() : juce::String();
