@@ -80,7 +80,7 @@ bool readSysExField(const std::string& field, std::vector<uint8_t>& out) {
     out.clear();
     return true;
   }
-  return parseSysExText(field, out);
+  return parseMidiText(field, out);
 }
 
 const char* kindName(MidiSourceKind k) {
@@ -679,7 +679,30 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
 
 } // namespace
 
-bool parseSysExText(const std::string& text, std::vector<uint8_t>& out) {
+size_t midiMessageLength(const std::vector<uint8_t>& bytes, size_t at) {
+  if (at >= bytes.size() || bytes[at] < 0x80) return 0;
+  const uint8_t status = bytes[at];
+  size_t data;
+  if (status == 0xF0) {
+    for (size_t i = at + 1; i < bytes.size(); ++i) {
+      if (bytes[i] == 0xF7) return i - at + 1;
+      if (bytes[i] >= 0x80) return 0;
+    }
+    return 0;
+  } else if (status >= 0xF0) {
+    return 0;  // the system common and real-time messages are not sent from here
+  } else if ((status & 0xF0) == 0xC0 || (status & 0xF0) == 0xD0) {
+    data = 1;
+  } else {
+    data = 2;
+  }
+  if (at + data >= bytes.size()) return 0;
+  for (size_t i = 1; i <= data; ++i)
+    if (bytes[at + i] >= 0x80) return 0;
+  return data + 1;
+}
+
+bool parseMidiText(const std::string& text, std::vector<uint8_t>& out) {
   std::vector<uint8_t> bytes;
   int high = -1;  // the first digit of a byte, waiting for its second
   for (char c : text) {
@@ -697,22 +720,28 @@ bool parseSysExText(const std::string& text, std::vector<uint8_t>& out) {
     }
   }
   if (high >= 0) return false;
-  if (!bytes.empty()) {
-    if (bytes.size() < 2 || bytes.front() != 0xF0 || bytes.back() != 0xF7) return false;
-    for (size_t i = 1; i + 1 < bytes.size(); ++i)
-      if (bytes[i] >= 0x80) return false;
+  for (size_t at = 0; at < bytes.size();) {
+    const size_t n = midiMessageLength(bytes, at);
+    if (n == 0) return false;
+    at += n;
   }
   out = std::move(bytes);
   return true;
 }
 
-std::string sysExText(const std::vector<uint8_t>& bytes) {
+std::string midiText(const std::vector<uint8_t>& bytes) {
   static const char* kHex = "0123456789ABCDEF";
   std::string s;
-  for (uint8_t b : bytes) {
-    if (!s.empty()) s += ' ';
-    s += kHex[b >> 4];
-    s += kHex[b & 15];
+  size_t next = 0;  // where the next message starts
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    if (i == next && i > 0) s += ", ";
+    else if (i > 0) s += ' ';
+    if (i == next) {
+      const size_t n = midiMessageLength(bytes, i);
+      next = i + (n > 0 ? n : bytes.size());
+    }
+    s += kHex[bytes[i] >> 4];
+    s += kHex[bytes[i] & 15];
   }
   return s;
 }

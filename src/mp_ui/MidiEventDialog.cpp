@@ -484,15 +484,16 @@ public:
       if (kind == MidiTargetKind::Switch) {
         for (auto* e : {&sysExOn_, &sysExOff_}) {
           addChildComponent(*e);
-          e->setTooltip(TRANS("A whole system exclusive message in hex, F0 to F7, for example "
-                              "F0 7D 01 F7. Sent again after each load, so a controller's mode "
+          e->setTooltip(TRANS("MIDI messages in hex, one or several separated by commas: a system "
+                              "exclusive message F0 to F7, or any other, for example F0 7D 01 F7, "
+                              "B0 14 7F. Sent again after each load, so a controller's mode "
                               "message reaches it every time."));
           e->onReturnKey = e->onFocusLost = [this, e] { sysExEdited(*e); };
         }
-        sysExOn_.setTextToShowWhenEmpty(TRANS("When on: F0 ... F7"), juce::Colours::grey);
+        sysExOn_.setTextToShowWhenEmpty(TRANS("When on: hex messages"), juce::Colours::grey);
         sysExOff_.setTextToShowWhenEmpty(TRANS("When off: none"), juce::Colours::grey);
-        sysExOn_.setText(juce::String(sysExText(s.sysExOn)), juce::dontSendNotification);
-        sysExOff_.setText(juce::String(sysExText(s.sysExOff)), juce::dontSendNotification);
+        sysExOn_.setText(juce::String(midiText(s.sysExOn)), juce::dontSendNotification);
+        sysExOff_.setText(juce::String(midiText(s.sysExOff)), juce::dontSendNotification);
       }
       // A switch: what it sends on and off, and "none" for a console that
       // only wants to hear about the lamp coming on. A control: its range.
@@ -566,8 +567,8 @@ public:
       if (s.kind == MidiSourceKind::SysEx) {
         // A message that does not read keeps the one before.
         std::vector<uint8_t> bytes;
-        if (parseSysExText(sysExOn_.getText().toStdString(), bytes)) s.sysExOn = bytes;
-        if (parseSysExText(sysExOff_.getText().toStdString(), bytes)) s.sysExOff = bytes;
+        if (parseMidiText(sysExOn_.getText().toStdString(), bytes)) s.sysExOn = bytes;
+        if (parseMidiText(sysExOff_.getText().toStdString(), bytes)) s.sysExOff = bytes;
       }
     }
     return s;
@@ -591,9 +592,9 @@ private:
   // A message that does not read is outlined in red and left out.
   void sysExEdited(juce::TextEditor& e) {
     std::vector<uint8_t> bytes;
-    if (parseSysExText(e.getText().toStdString(), bytes)) {
+    if (parseMidiText(e.getText().toStdString(), bytes)) {
       e.removeColour(juce::TextEditor::outlineColourId);
-      e.setText(juce::String(sysExText(bytes)), juce::dontSendNotification);
+      e.setText(juce::String(midiText(bytes)), juce::dontSendNotification);
     } else {
       e.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
     }

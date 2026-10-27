@@ -404,7 +404,10 @@ private:
   juce::Label lampLabel_;
   juce::ComboBox lampKind_, lampChannel_, lampNumber_;
   void pushReadyLamp();
-  // A system exclusive message sent when an organ loads, before anything else.
+  // The lamp's own messages, in hex, when it lights and when it goes dark.
+  juce::TextEditor lampLit_, lampDark_;
+  void pushLampMessages();
+  // MIDI messages sent when an organ loads, before anything else.
   juce::Label loadMessageLabel_;
   juce::TextEditor loadMessage_;
   void pushLoadMessage();

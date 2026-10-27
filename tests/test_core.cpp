@@ -17041,13 +17041,23 @@ public:
   MidiSendSysExTest() : Test("functional.midi.send-sysex", Category::Functional) {}
   void run() override {
     std::vector<uint8_t> bytes;
-    MP_CHECK(mp::parseSysExText("f0 00 20 29 02 0D 0E 01 F7", bytes) && bytes.size() == 9 &&
-                 mp::sysExText(bytes) == "F0 00 20 29 02 0D 0E 01 F7",
+    MP_CHECK(mp::parseMidiText("f0 00 20 29 02 0D 0E 01 F7", bytes) && bytes.size() == 9 &&
+                 mp::midiText(bytes) == "F0 00 20 29 02 0D 0E 01 F7",
              "a programmer-mode message reads, and prints back");
-    MP_CHECK(mp::parseSysExText("F07D01F7", bytes) && bytes.size() == 4, "unbroken hex reads too");
-    MP_CHECK(mp::parseSysExText("", bytes) && bytes.empty(), "an empty text is no message");
-    for (const char* bad : {"F0 01 02", "90 3C 40", "F0 81 F7", "F0 0 F7", "F0 GG F7", "F7"})
-      MP_CHECK(!mp::parseSysExText(bad, bytes), std::string("refused: ") + bad);
+    MP_CHECK(mp::parseMidiText("F07D01F7", bytes) && bytes.size() == 4, "unbroken hex reads too");
+    MP_CHECK(mp::parseMidiText("", bytes) && bytes.empty(), "an empty text is no message");
+    for (const char* bad : {"F0 01 02", "90 3C", "F0 81 F7", "F0 0 F7", "F0 GG F7", "F7", "F0 01 F7, C0"})
+      MP_CHECK(!mp::parseMidiText(bad, bytes), std::string("refused: ") + bad);
+    // Several messages in one text, of any kind: a mode, a controller, a
+    // program change.
+    MP_CHECK(mp::parseMidiText("F0 7D 01 F7, B0 07 7F, C0 05", bytes) && bytes.size() == 9 &&
+                 mp::midiText(bytes) == "F0 7D 01 F7, B0 07 7F, C0 05",
+             "several messages read, and print back one by one");
+    MP_CHECK(mp::parseMidiText("90 3C 7F 80 3C 00", bytes) && mp::midiText(bytes) == "90 3C 7F, 80 3C 00",
+             "a note on and off with no comma between them read as two");
+    MP_CHECK(mp::midiMessageLength(bytes, 0) == 3 && mp::midiMessageLength(bytes, 3) == 3 &&
+                 mp::midiMessageLength(bytes, 1) == 0,
+             "each message has its length; a data byte starts none");
 
     mp::MidiSend mode;  // on the stop's pad: the mode when it comes on, nothing off
     mode.targetKind = mp::MidiTargetKind::Switch;
@@ -17125,8 +17135,13 @@ public:
 
       // The load message from Settings > MIDI goes first of all.
       MP_CHECK(!proc.setLoadMessage("F0 7D"), "a cut-off load message is refused");
-      MP_CHECK(proc.setLoadMessage("f0 7d 01 f7") && proc.loadMessage() == "F0 7D 01 F7",
-               "the load message is taken");
+      MP_CHECK(proc.setLoadMessage("f0 7d 01 f7, b0 07 64") && proc.loadMessage() == "F0 7D 01 F7, B0 07 64",
+               "the load message is taken, two messages in one");
+      // The ready lamp's own messages: two when it lights.
+      MP_CHECK(!proc.setReadyLampMessages("B0 14", ""), "a cut-off lamp message is refused");
+      MP_CHECK(proc.setReadyLampMessages("b0 14 7f, 90 3c 7f", "b0 14 00") &&
+                   proc.readyLampLitMessages() == "B0 14 7F, 90 3C 7F" && proc.readyLampDarkMessages() == "B0 14 00",
+               "the lamp's messages are taken");
       sent.clear();
       proc.loadOrgan(odf, 0, false);
       proc.setSwitchEngaged(1101, true);
@@ -17134,9 +17149,21 @@ public:
       MP_CHECK(!sent.empty() && sent[0].isSysEx() && sent[0].getSysExDataSize() == 2 &&
                    sent[0].getSysExData()[0] == 0x7D,
                "the load message is the first thing sent after the load");
+      MP_CHECK(sent.size() > 1 && sent[1].isController() && sent[1].getControllerNumber() == 7 &&
+                   sent[1].getControllerValue() == 100,
+               "and its second message right after it");
+      int lampCc = -1, lampNote = -1;
+      for (size_t i = 0; i < sent.size(); ++i) {
+        if (sent[i].isController() && sent[i].getControllerNumber() == 20 && sent[i].getControllerValue() == 127)
+          lampCc = static_cast<int>(i);
+        if (sent[i].isNoteOn() && sent[i].getNoteNumber() == 60) lampNote = static_cast<int>(i);
+      }
+      MP_CHECK(lampCc > 1 && lampNote == lampCc + 1,
+               "the organ ready, the lamp sends both its messages, after the load message: at " +
+                   std::to_string(lampCc) + ", " + std::to_string(lampNote));
       MP_CHECK(proc.midiMap().sendsFor(mp::MidiTargetKind::Switch, 1101).size() == 2,
                "the row comes back with the organ");
-      MP_CHECK(modeAt() == 1, "and the row's message right after it, before the stop moved in that "
+      MP_CHECK(modeAt() == 2, "and the row's message right after them, before the stop moved in that "
                               "block lights anything: at " + std::to_string(modeAt()));
       MP_CHECK(lampAt() >= 0 && modeAt() < lampAt(),
                "ahead of the lamps: mode at " + std::to_string(modeAt()) + ", lamp at " +
@@ -17150,7 +17177,9 @@ public:
     {
       mp::MasterpieceProcessor proc;  // the next start
       proc.loadGlobalDefaults();
-      MP_CHECK(proc.loadMessage() == "F0 7D 01 F7", "the load message is kept in the general settings");
+      MP_CHECK(proc.loadMessage() == "F0 7D 01 F7, B0 07 64", "the load message is kept in the general settings");
+      MP_CHECK(proc.readyLampLitMessages() == "B0 14 7F, 90 3C 7F" && proc.readyLampDarkMessages() == "B0 14 00",
+               "so are the lamp's messages");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();

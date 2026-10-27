@@ -1099,11 +1099,19 @@ public:
   };
   ReadyLamp readyLamp() const;
   void setReadyLamp(const ReadyLamp& lamp);
-  // A system exclusive message sent on the MIDI output when an organ loads,
-  // first of all, before any stop moves or lamp lights: for a controller
-  // that needs a mode set, such as a pad grid's programmer layout. Hex, F0
-  // to F7; empty sends nothing. False, keeping the message before, when the
-  // text is not one. Kept with the global settings.
+  // The ready lamp's own messages besides the learned one, or in its place:
+  // whole MIDI messages in hex, one or several, sent when the lamp lights and
+  // when it goes dark. False, keeping the messages before, when a text is not
+  // whole messages. Kept with the global settings.
+  bool setReadyLampMessages(const juce::String& litHex, const juce::String& darkHex);
+  juce::String readyLampLitMessages() const;
+  juce::String readyLampDarkMessages() const;
+  // MIDI messages sent on the output when an organ loads, first of all,
+  // before any stop moves or lamp lights: for a controller that needs a mode
+  // set, such as a pad grid's programmer layout. Hex, one message or
+  // several, system exclusive or any other; empty sends nothing. False,
+  // keeping the messages before, when the text is not whole messages. Kept
+  // with the global settings.
   bool setLoadMessage(const juce::String& hex);
   juce::String loadMessage() const;
   // What the lamp shows this block: 1 lit, 0 dark.
@@ -2281,6 +2289,12 @@ private:
   juce::String midiOutputName_;
   bool midiFeedback_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
+  // The ready lamp's own messages, changed under the AudioLock; and the
+  // block they go out in, sized once so the audio thread allocates nothing.
+  std::vector<uint8_t> lampLit_, lampDark_;
+  juce::MidiBuffer lampOut_;
+  // Adds each whole message in `bytes` to `buffer`.
+  static void addMessages(juce::MidiBuffer& buffer, const std::vector<uint8_t>& bytes);
   LcdPanels lcd_;
   LcdSetup lcdSetup_;
   // lcd_ built from lcdSetup_; the setter and the settings reader both use it.
