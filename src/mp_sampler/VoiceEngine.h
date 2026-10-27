@@ -391,6 +391,11 @@ struct Voice {
   // cannot live only on the shared buffer.
   int64_t loopStart = -1;
   int64_t loopEnd = -1;
+  // The sample speaks with no loop and has no release to go to: it is the
+  // sound of a strike, as a bell's is. The last key, stop or coupler to let
+  // go of it leaves it to finish its recording, and the next strike sounds
+  // it again. Only Panic cuts it short (releaseAll()).
+  bool percussive = false;
   // Frames in a row this release has been heard below the engine's cutoff.
   int quietFrames = 0;
   // A coded sample's windows: which of the voice's two reads `buffer`. The
@@ -436,8 +441,9 @@ struct VoiceStart {
   // of its note-on in that block, when the note came with one.
   int startOffset = 0;
   // Force a one-shot: ignore the file's own loop as well as any override.
-  // Noises, percussive ranks and releases must not sustain, and "-1 means use
-  // the file's loop" cannot express that.
+  // A noise and a release must not sustain, and "-1 means use the file's loop"
+  // cannot express that. A pipe whose sample file has no loop of its own is a
+  // one-shot without this; see Voice::percussive.
   bool oneShot = false;
   // A pipe has one valve. Set, a key press that reaches a pipe already
   // speaking this layer holds it open with the key that opened it, and

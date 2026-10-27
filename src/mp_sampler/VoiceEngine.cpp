@@ -633,6 +633,13 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     v.loopStart = start.loopStartOverride;
     v.loopEnd = start.loopEndOverride;
   }
+  // With no loop in force and no release to go to, there is nothing for a
+  // held key to sustain or to let go into: the pipe is struck, as a bell is,
+  // and its recording plays to its end, as GrandOrgue plays it. A pipe with a
+  // release sample keeps its release at key-up, and a forced one-shot (a
+  // noise) already says it for itself.
+  v.percussive = !start.oneShot && !v.loops() &&
+                 (start.layer == nullptr || start.layer->releases.empty());
   speaking_[static_cast<size_t>(slot)] =
       start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
   return slot;
@@ -738,6 +745,13 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     // Another key still holds it: the pipe passes to that key.
     if (v.holderCount > 0) {
       v.noteId = v.holders[--v.holderCount];
+      continue;
+    }
+    // A struck pipe let go by its last key rings on to the end of its
+    // recording. It is no longer the pipe a key holds open, so the next key
+    // to reach it strikes it again.
+    if (v.percussive) {
+      speaking_[slot] = SpeakingPipe{};
       continue;
     }
     releaseVoice(v, release);
