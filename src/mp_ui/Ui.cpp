@@ -1370,10 +1370,12 @@ void MasterpieceEditor::askForPackage(const juce::String& package, const juce::S
           return;
         }
         const bool folder = result == 2;
-        // The chooser opens on a message of its own, once the box has gone
-        // (#591). Launched from the box's own callback it opens while the box
-        // is still up, and the desktop can put it behind the window that is
-        // closing as it appears.
+        // The chooser is made on a message of its own, once the box has gone
+        // (#591). On Linux the chooser is a zenity or kdialog process, and
+        // JUCE hands it the active window, read as the chooser is made, as the
+        // window to stay with. Made in the box's own callback, that window is
+        // the box, which is deleted as the callback returns, and the chooser
+        // was left tied to a window that no longer exists.
         juce::MessageManager::callAsync([self, answered, start, folder] {
           if (self == nullptr) {
             answered({});
