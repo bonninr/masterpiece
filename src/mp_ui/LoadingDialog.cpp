@@ -121,7 +121,12 @@ void LoadingDialog::timerCallback() {
     phaseStartMs_ = juce::Time::getMillisecondCounterHiRes();
     etaSeconds_ = -1.0;
   }
-  if (!cancelling_)
+  // A cancel holds its own words while the reading winds down. Past the
+  // samples, the steps that follow are named again: they run whether or not
+  // the load was cancelled, and on a large organ they take seconds.
+  const bool afterSamples =
+      phase == LoadProgress::Phase::Preparing || phase == LoadProgress::Phase::BuildingConsole;
+  if (!cancelling_ || afterSamples)
     phase_.setText(phaseText(phase), juce::dontSendNotification);
 
   const double f = p.fraction();
@@ -167,7 +172,7 @@ void LoadingDialog::timerCallback() {
                                     : TRANS("%1% of files processed")).replace("%1", percent)
                             : juce::String(TRANS("This may take a few minutes")),
                     juce::dontSendNotification);
-  } else if (!cancelling_ && phase == LoadProgress::Phase::Preparing) {
+  } else if (phase == LoadProgress::Phase::Preparing) {
     // Seconds of work on a large set, after the last sample: named step by
     // step, with the time it has taken so far, so the window never sits
     // still looking stuck.
@@ -190,7 +195,7 @@ void LoadingDialog::timerCallback() {
       text += (text.isEmpty() ? juce::String() : juce::String("   -   ")) +
               TRANS("%1 s").replace("%1", juce::String(static_cast<int>(elapsed)));
     detail_.setText(text, juce::dontSendNotification);
-  } else if (!cancelling_) {
+  } else if (!cancelling_ || afterSamples) {
     // Every other phase counts nothing, and inventing a number would be a lie
     // the next phase immediately contradicts. The phase line carries the
     // meaning; this one stays empty rather than holding the last phase's
