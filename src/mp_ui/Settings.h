@@ -52,7 +52,14 @@ private:
 
 class EnginePanel : public juce::Component, private juce::Timer {
 public:
-  explicit EnginePanel(MasterpieceProcessor& p);
+  // Which rows the panel shows. Organ: how this organ is loaded and what it
+  // plays through, with the buttons that save it (Organ settings > Loading).
+  // Performance: the audio engine, the same for every organ. General: start,
+  // folders and the sample cache, the same for every organ.
+  enum class Part { Organ, Performance, General };
+  explicit EnginePanel(MasterpieceProcessor& p, Part part = Part::Organ);
+  // The height its rows need, for the scrolling tab around it.
+  int contentHeight() const;
   ~EnginePanel() override;
   // Loads the organ again with what this panel now says. Given by a window
   // that can do that; without it, no button is offered.
@@ -63,8 +70,11 @@ public:
 private:
   void timerCallback() override;
   void pushSwitches();
-  // Apply one of the named profiles to all four memory settings at once.
+  // Apply one of the quality presets to the memory settings at once.
   void applyProfile(int id);
+  // The performance presets: the engine, the threads and the polyphony.
+  void applyPerformance(int id);
+  void syncPerformance();
   // Move the profile box to whichever profile the current settings match, or
   // to Custom when they match none.
   void syncProfile();
@@ -75,8 +85,13 @@ private:
   void showFasterUnit();
   void showRealtimeUnit();
   void layoutFooter(juce::Rectangle<int> footer);
+  // Shows the rows of this part, fewer in Simple mode (View > Display mode).
+  void applyPart();
 
   MasterpieceProcessor& proc_;
+  const Part part_;
+  bool shownSimple_ = false;
+  int fittedHeight_ = 0;
 
   // Settings here apply live, so leaving is not by itself a decision: the
   // player needs a way back that does not depend on remembering what was
@@ -124,7 +139,7 @@ private:
   // was saved (#120). The button says it was saved, for a moment.
   void showSaved(juce::TextButton& button);
   juce::uint32 savedUntilMs_ = 0;
-  juce::ToggleButton simpleWav_{TRANS("Simple WAV only (bypass all DSP)")};
+  juce::ToggleButton simpleWav_{TRANS("Bypass all effects")};
   juce::ToggleButton wind_{TRANS("Wind model")};
   juce::ToggleButton tremulant_{TRANS("Tremulants")};
   juce::ToggleButton enclosure_{TRANS("Enclosures (swell shades)")};
@@ -177,7 +192,9 @@ private:
   void showOrganRoot();
   juce::Label profileLabel_;
   juce::ComboBox profile_;
-  juce::ToggleButton stream_{TRANS("Stream release tails from disk")};
+  juce::Label performanceLabel_;
+  juce::ComboBox performance_;
+  juce::ToggleButton stream_{TRANS("Stream releases from disk")};
   juce::ComboBox streamHead_;
   void showStreamPercent(int percent);
   // How far ahead of each streamed release its voice reads.
@@ -188,15 +205,15 @@ private:
   void enableStreamControls(bool on);
   void showPreload(int64_t frames);
   juce::ToggleButton mono_{TRANS("Load in mono (halves memory, gives up the stereo image)")};
-  juce::ToggleButton compress_{TRANS("Hold samples compressed (lossless)")};
+  juce::ToggleButton compress_{TRANS("Lossless compression in memory")};
   // Greys out compression for the resident formats it does not code (#591).
   void enableCompress();
-  juce::ToggleButton loadTicks_{TRANS("Tap at each 10% while loading an organ")};
+  juce::ToggleButton loadTicks_{TRANS("Click at each 10% while loading")};
   juce::ToggleButton reopen_{TRANS("Reopen the last organ when Masterpiece starts")};
   juce::ToggleButton faster_{TRANS("Faster audio engine")};
   juce::ToggleButton realtime_{TRANS("Real-time render threads")};
   juce::ToggleButton everyProcessor_{TRANS("Render on every logical processor")};
-  juce::ToggleButton portable_{TRANS("Keep this organ playable without its installation files")};
+  juce::ToggleButton portable_{TRANS("Keep a portable copy of this organ")};
   juce::Label memLimitLabel_;
   juce::ComboBox memLimit_;
   // Fill the memory-limit choices around the current setting.
@@ -205,7 +222,6 @@ private:
   juce::ComboBox polyphony_;
   void fillPolyphony();
   juce::Label memory_;
-  juce::Label note_;
 };
 
 // Room: impulse-response convolution.
@@ -217,12 +233,11 @@ public:
 private:
   MasterpieceProcessor& proc_;
   juce::ToggleButton enabled_{TRANS("Impulse-response reverb")};
-  juce::TextButton load_{TRANS("Load IR...")};
+  juce::TextButton load_{TRANS("Load impulse response...")};
   juce::TextButton clear_{TRANS("Clear")};
   juce::Label irName_;
   juce::Label mixLabel_;
   juce::Slider mix_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  juce::Label note_;
   std::unique_ptr<juce::FileChooser> chooser_;
 };
 
@@ -281,7 +296,6 @@ private:
   juce::ToggleButton markers_{TRANS("Write the registration as markers")};
   void showMidiMenu();
   juce::Label status_;
-  juce::Label note_;
   std::unique_ptr<juce::FileChooser> chooser_;
 
   // Audio capture is a separate recording from the MIDI one and they are
@@ -298,7 +312,10 @@ private:
 // MIDI: what the console sends and what comes back, plus the learned mapping.
 class MidiPanel : public juce::Component, private juce::Timer {
 public:
-  MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices);
+  // Console: the devices, and what the console does on every organ, for
+  // Settings. Organ: this organ's keyboards, for Organ settings.
+  enum class Part { Console, Organ };
+  MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices, Part part);
   ~MidiPanel() override;
   void resized() override;
   void refresh();
@@ -310,6 +327,10 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::AudioDeviceManager& devices_;
+  const Part part_;
+  // Shows the rows of this part, in the display mode chosen in View.
+  void applyPart();
+  bool shownSimple_ = false;
   int contentHeight_ = 0;
   juce::Label inputsLabel_, outputsLabel_, keyboardsLabel_;
   std::vector<std::unique_ptr<juce::ToggleButton>> inputs_;
@@ -343,7 +364,7 @@ private:
   juce::ToggleButton leaveHeld_{TRANS("Stop changes leave the notes already held alone")};
   juce::ToggleButton sustain_{TRANS("Sustain pedal: controller 64 holds the notes let go")};
   juce::ToggleButton noiseFilter_{TRANS("Noise filter: when learning, a key counts once held a quarter second")};
-  juce::ToggleButton archive_{TRANS("Keep everything played")};
+  juce::ToggleButton archive_{TRANS("Archive everything played")};
   juce::ComboBox archiveSilence_, archiveSize_, archiveAge_;
   void applyArchive();
   juce::TextButton saveMap_{TRANS("Save mapping")};
@@ -394,7 +415,6 @@ private:
   juce::TextButton learnRecord_{TRANS("Learn record")};
   juce::TextButton learnPlay_{TRANS("Learn play")};
   juce::Label mapStatus_;
-  juce::Label note_;
 };
 
 // Combination sets: the registration books of the organ loaded. The favourite
@@ -421,7 +441,6 @@ private:
   juce::Label setStatus_;
   std::vector<std::string> setNames_;
   std::unique_ptr<juce::AlertWindow> setPrompt_;
-  juce::Label note_;
 };
 
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
@@ -529,7 +548,6 @@ private:
   std::vector<Id> rankIds_;
   std::vector<std::unique_ptr<juce::Label>> rankLabels_;
   std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
-  juce::Label note_;
 };
 
 // The console's own text display: the little 32-character panel on the jamb
@@ -565,7 +583,7 @@ private:
   juce::ScopedMessageBox sending_;
   juce::ToggleButton midi_{TRANS("Log every MIDI message and what became of it")};
   juce::ToggleButton releases_{TRANS("Log every key release: the release played, its length and start")};
-  juce::ToggleButton updates_{TRANS("Check once a day for a newer version")};
+  juce::ToggleButton updates_{TRANS("Check for updates daily")};
 };
 
 // The control API and the web console it serves (src/mp_api): on or off, the
@@ -579,7 +597,7 @@ private:
   void apply();
   void timerCallback() override;
   MasterpieceProcessor& proc_;
-  juce::Label heading_, portLabel_, tokenLabel_, status_, note_, oscPortLabel_;
+  juce::Label heading_, portLabel_, tokenLabel_, status_, oscPortLabel_;
   juce::ToggleButton enable_{TRANS("Serve the web console and the control API on this network")};
   juce::ToggleButton write_{TRANS("Allow changes from the network")};
   juce::ToggleButton power_{TRANS("Allow quitting Masterpiece and shutting the computer down")};
@@ -616,7 +634,6 @@ private:
   juce::Label previewLabel_;
   juce::Label preview_;
   juce::TextButton send_{TRANS("Send to display")};
-  juce::Label note_;
 };
 
 // The language the program speaks. Applies at the next start: every window is
@@ -631,7 +648,6 @@ private:
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   juce::ComboBox language_;
-  juce::Label note_;
   // The codes behind the list, by item id minus 3. Ids 1 and 2 are the system
   // default and English.
   std::vector<juce::String> codes_;
@@ -656,8 +672,9 @@ public:
   void paint(juce::Graphics& g) override;
 
 private:
-  // General settings: the program and the player's console. What belongs to
-  // the organ -- how it is loaded, which stops -- is OrganSettingsWindow.
+  // Settings: the program, the computer and the player's console, the same
+  // for every organ. What belongs to one organ -- how it is loaded, its
+  // stops, outputs and voicing -- is OrganSettingsWindow.
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   // The output device and MIDI inputs: the toolbar's Audio window, which is
   // set up once and seldom visited again (#276).
@@ -666,8 +683,10 @@ private:
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
-  MixerPanel mixer_;
-  VoicingPanel voicing_;
+  EnginePanel performance_;
+  ScrollHost performanceScroll_{performance_, 0, [this] { return performance_.contentHeight(); }};
+  EnginePanel general_;
+  ScrollHost generalScroll_{general_, 0, [this] { return general_.contentHeight(); }};
   FavouritesPanel favourites_;
   DisplayPanel display_;
   LanguagePanel language_;

@@ -32,29 +32,6 @@ juce::File defaultFolder() {
 
 }  // namespace
 
-void MasterpieceEditor::addBackupItems(juce::PopupMenu& menu, int firstId) {
-  // A phone or a tablet has no folder to save a file to that this can reach.
-  if (kMobile) return;
-  const bool loaded = !proc_.loadedOrganFile().getFullPathName().isEmpty();
-  juce::PopupMenu sub;
-  sub.addItem(firstId + 0, TRANS("Export this organ's settings..."), loaded);
-  sub.addItem(firstId + 1, TRANS("Export all settings..."));
-  sub.addItem(firstId + 2, TRANS("Import settings..."));
-  sub.addItem(firstId + 3, TRANS("Copy settings from another organ..."), loaded);
-  menu.addSeparator();
-  menu.addSubMenu(TRANS("Back up and restore"), sub);
-}
-
-void MasterpieceEditor::backupItemChosen(int item) {
-  switch (item) {
-    case 0: exportSettings(false); break;
-    case 1: exportSettings(true); break;
-    case 2: importSettings(); break;
-    case 3: copySettingsFrom(); break;
-    default: break;
-  }
-}
-
 void MasterpieceEditor::exportSettings(bool all) {
   // On disk first, so the file holds what the player sees.
   proc_.saveEverythingPending();

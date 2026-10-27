@@ -63,19 +63,12 @@ StopsLoadPanel::StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> re
 
   addAndMakeVisible(total_);
   total_.setColour(juce::Label::textColourId, kText);
+  total_.setTooltip(TRANS("Estimated from the sample files, at the settings on the Loading tab. The choices "
+                          "here are saved for this organ and take effect when it is loaded again."));
   addAndMakeVisible(reloadNow_);
   reloadNow_.onClick = [this] {
     if (reload_) reload_();
   };
-  addAndMakeVisible(note_);
-  note_.setColour(juce::Label::textColourId, kTextDim);
-  note_.setJustificationType(juce::Justification::topLeft);
-  note_.setText(TRANS("A perspective left out takes every rank recorded from that position; the "
-                      "stops still play from the others. A stop left out costs no memory and makes "
-                      "no sound, and keeps its drawstop, dimmed. Both are saved for this organ and "
-                      "take effect when it is loaded again. Figures are estimates from the sample "
-                      "files, at the settings on the Loading tab."),
-                juce::dontSendNotification);
 
   build();
   startEstimate();
@@ -551,7 +544,6 @@ void StopsLoadPanel::resized() {
   filter_.setBounds(find.reduced(0, 2));
   r.removeFromTop(8);
 
-  note_.setBounds(r.removeFromBottom(68));
   r.removeFromBottom(6);
   auto footer = r.removeFromBottom(28);
   reloadNow_.setBounds(footer.removeFromRight(180).reduced(0, 2));
@@ -614,6 +606,7 @@ juce::String voicingEqPresetName(const VoicingEqPreset& p) {
 
 VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(on_);
+  on_.setTooltip(TRANS("A correction for the room and the speakers, on the whole organ"));
   on_.onClick = [this] { apply(); };
   addAndMakeVisible(presetLabel_);
   presetLabel_.setText(TRANS("Preset"), juce::dontSendNotification);
@@ -692,12 +685,6 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     save_.setButtonText(TRANS("Save for this organ"));
     repaint(curveArea_);
   };
-  addAndMakeVisible(note_);
-  note_.setText(TRANS("A correction for the room and the speakers, on the whole organ. "
-                      "Off unless turned on here; the organ as recorded is the reference."),
-                juce::dontSendNotification);
-  note_.setColour(juce::Label::textColourId, juce::Colour(0xff9aa3b2));
-  note_.setFont(juce::Font(juce::FontOptions(13.0f)));
   auto style = [this](juce::Slider& sl, juce::Label& name, const juce::String& text) {
     sl.setSliderStyle(juce::Slider::LinearVertical);
     sl.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 46, 18);
@@ -890,7 +877,6 @@ void VoicingEqPanel::resized() {
   updatePreset_.setBounds(row.removeFromRight(80).reduced(2, 0));
   savePreset_.setBounds(row.removeFromRight(130).reduced(2, 0));
   presets_.setBounds(row.reduced(2, 0));
-  note_.setBounds(r.removeFromTop(36));
   curveArea_ = r.removeFromTop(130).reduced(0, 4);
   r.removeFromTop(6);
   {
@@ -947,14 +933,17 @@ void VoicingEqPanel::paint(juce::Graphics& g) {
 
 OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload,
                                          juce::AudioDeviceManager* devices)
-    : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }), eq_(p) {
+    : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }), outputs_(p), voicing_(p),
+      eq_(p) {
   addAndMakeVisible(tabs_);
   engine_.onReload = [this] { reloadOnClose(); };
   tabs_.addTab(TRANS("Loading"), kBackground, &engineScroll_, false);
   tabs_.addTab(TRANS("Stops and perspectives"), kBackground, &stops_, false);
-  tabs_.addTab(TRANS("Voicing EQ"), kBackground, &eq_, false);
+  tabs_.addTab(TRANS("Outputs"), kBackground, &outputs_, false);
+  tabs_.addTab(TRANS("Voicing"), kBackground, &voicing_, false);
+  tabs_.addTab(TRANS("Equalizer"), kBackground, &eq_, false);
   if (devices != nullptr) {
-    midi_ = std::make_unique<MidiPanel>(p, *devices);
+    midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Organ);
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
     tabs_.addTab(TRANS("MIDI"), kBackground, midiScroll_.get(), false);
   }

@@ -114,7 +114,6 @@ private:
   juce::TextButton all_{TRANS("All stops")}, none_{TRANS("No stops")}, drawn_{TRANS("Only the stops drawn now")};
   juce::TextButton reloadNow_{TRANS("Load the organ")};
   juce::Label total_;
-  juce::Label note_;
 
   // Each sample's shape, read off the message thread from its file header;
   // turned into bytes at whatever the Loading tab says now.
@@ -155,7 +154,6 @@ private:
   juce::ComboBox presets_;
   juce::TextButton savePreset_{TRANS("Save as preset...")}, updatePreset_{TRANS("Update")},
       renamePreset_{TRANS("Rename...")}, deletePreset_{TRANS("Delete")}, midiPreset_{TRANS("MIDI...")};
-  juce::Label note_;
   std::array<juce::Slider, VoicingEqSettings::kBands> bands_;
   std::array<juce::Label, VoicingEqSettings::kBands> bandNames_;
   juce::Slider gain_;
@@ -196,8 +194,10 @@ private:
   // Tall enough for every row, the buttons and the whole note above them
   // (about 740 without the note, which runs to six paragraphs); a smaller
   // window scrolls.
-  ScrollHost engineScroll_{engine_, 1350};
+  ScrollHost engineScroll_{engine_, 0, [this] { return engine_.contentHeight(); }};
   StopsLoadPanel stops_;
+  MixerPanel outputs_;
+  VoicingPanel voicing_;
   // Which channel plays which of this organ's manuals: the same panel as in
   // General settings, here too, where a player setting up one organ looks
   // (#90). Both edit the same mapping.

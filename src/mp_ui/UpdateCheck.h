@@ -35,6 +35,19 @@ juce::String versionFromAnswer(const juce::String& answer);
 void checkForUpdate(MasterpieceProcessor& proc, const juce::String& currentVersion,
                     std::function<void(const juce::String& latest)> onNewer);
 
+// Help > Check for updates: asked now, whatever the day. `onAnswer` is called
+// on the message thread with the newest version's number, empty when there
+// was no answer.
+void checkForUpdateNow(MasterpieceProcessor& proc, std::function<void(const juce::String& latest)> onAnswer);
+
+// This program's version, "0.9.0".
+juce::String programVersion();
+
+// The pages Help opens.
+extern const char* const kDocumentationUrl;
+extern const char* const kReleaseNotesUrl;
+extern const char* const kDownloadPageUrl;
+
 // "Masterpiece 0.8.1 is out", with Download, Never check again and a close
 // button, at the right of the status bar. It stays while an organ loads and
 // goes 30 seconds after the load ends; with no load, 30 seconds after it

@@ -1113,6 +1113,7 @@ private:
       // The editor must not reach for hardware itself; the application owns
       // the device manager and hands the panel down.
       ed->onSettings = [this, &p] { showSettings(p); };
+      ed->onSettingsTab = [this, &p](const juce::String& tab) { showSettings(p, {}, tab); };
       ed->onOrganSettings = [this, &p] { showOrganSettings(p); };
       ed->onBeforeFirstLoad = [this, &p](std::function<void()> load) {
         showOrganSettings(p, std::move(load));
@@ -1245,7 +1246,7 @@ private:
       panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
-      opts.dialogTitle = TRANS("General settings");
+      opts.dialogTitle = TRANS("Settings");
       opts.dialogBackgroundColour = juce::Colour(0xff15171c);
       opts.escapeKeyTriggersCloseButton = true;
       opts.useNativeTitleBar = true;

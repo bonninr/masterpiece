@@ -18,21 +18,21 @@ public:
     mp::MasterpieceProcessor proc;
     {
       mp::ui::SettingsWindow first(proc, nullptr);
-      first.showTab("Display");
-      MP_CHECK(first.currentTab() == "Display", "the Display tab can be chosen");
+      first.showTab("Console display");
+      MP_CHECK(first.currentTab() == "Console display", "the Console display tab can be chosen");
     }
     {
       mp::ui::SettingsWindow again(proc, nullptr);
-      MP_CHECK(again.currentTab() == "Display",
-               "General settings opens on the tab it was closed on; it opened on " +
+      MP_CHECK(again.currentTab() == "Console display",
+               "Settings opens on the tab it was closed on; it opened on " +
                    again.currentTab().toStdString());
       // A caller that names a tab gets that tab.
-      again.showTab("Room");
-      MP_CHECK(again.currentTab() == "Room", "a named tab wins over the remembered one");
+      again.showTab("Reverb");
+      MP_CHECK(again.currentTab() == "Reverb", "a named tab wins over the remembered one");
     }
     {
       mp::ui::SettingsWindow after(proc, nullptr);
-      MP_CHECK(after.currentTab() == "Room", "the named tab is remembered in its turn");
+      MP_CHECK(after.currentTab() == "Reverb", "the named tab is remembered in its turn");
     }
   }
 };
