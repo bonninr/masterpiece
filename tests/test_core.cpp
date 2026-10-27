@@ -15116,6 +15116,40 @@ public:
 };
 static WavPackShapeTest g_wavPackShape;
 
+// The size estimate finds a sample in folders spelled in another case than
+// the definition's, as the loader does (#591, Burton Berlin on Linux).
+class ShapeAnyCaseTest final : public mp::test::Test {
+public:
+  ShapeAnyCaseTest() : Test("functional.files.shape-any-case", Category::Functional) {}
+  void run() override {
+    const auto base = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-shape-any-case");
+    base.deleteRecursively();
+    const auto file = base.getChildFile("Pipes").getChildFile("GO").getChildFile("036-C.wv");
+    file.getParentDirectory().createDirectory();
+    unsigned char h[32] = {'w', 'v', 'p', 'k'};
+    auto put32 = [&](int at, uint32_t v) {
+      for (int i = 0; i < 4; ++i) h[at + i] = static_cast<unsigned char>(v >> (8 * i));
+    };
+    put32(4, 24);
+    h[8] = 0x10;
+    h[9] = 0x04;                        // version 0x410
+    put32(12, 96000);                   // total samples
+    put32(20, 22050);                   // samples in this block
+    put32(24, 1u | (9u << 23));         // 16-bit, stereo, 44100 Hz
+    file.replaceWithData(h, sizeof h);
+    mp::SampleLibrary::ShapeJob job;
+    job.wavpack = true;
+    job.path = base.getChildFile("pipes").getChildFile("go").getChildFile("036-c.wv").getFullPathName().toStdString();
+    const auto shape = mp::SampleLibrary::readShape(job);
+    MP_CHECK(shape.frames == 96000 && shape.channels == 2,
+             "a sample in \"Pipes/GO\" is measured for the definition's \"pipes/go\", got " +
+                 std::to_string(shape.frames) + " frames, " + std::to_string(shape.channels) + " channels");
+    MP_CHECK(!shape.fromPackage, "and counted as present");
+    base.deleteRecursively();
+  }
+};
+static ShapeAnyCaseTest g_shapeAnyCase;
+
 // A temperament from a Scala file, the format tuning libraries publish.
 class ScalaTemperamentTest final : public mp::test::Test {
 public:
