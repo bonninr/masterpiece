@@ -87,6 +87,24 @@ void checkForUpdate(MasterpieceProcessor& proc, const juce::String& currentVersi
   });
 }
 
+void checkForUpdateNow(MasterpieceProcessor& proc, std::function<void(const juce::String& latest)> onAnswer) {
+  proc.markUpdateChecked();
+  const auto alive = proc.aliveToken();
+  juce::Thread::launch([alive, onAnswer = std::move(onAnswer)] {
+    const juce::String latest = fetchLatest();
+    juce::Logger::writeToLog("update check, asked: " + (latest.isEmpty() ? juce::String("no answer") : latest));
+    juce::MessageManager::callAsync([alive, latest, onAnswer] {
+      if (const auto token = alive.lock(); token != nullptr && token->load() && onAnswer) onAnswer(latest);
+    });
+  });
+}
+
+juce::String programVersion() { return MP_VERSION; }
+
+const char* const kDocumentationUrl = "https://github.com/bonninr/masterpiece#readme";
+const char* const kReleaseNotesUrl = "https://github.com/bonninr/masterpiece/releases";
+const char* const kDownloadPageUrl = kDownloadUrl;
+
 UpdateNotice::UpdateNotice(MasterpieceProcessor& p) : proc_(p) {
   text_.setColour(juce::Label::textColourId, juce::Colour(0xffe8c98a));
   text_.setFont(juce::FontOptions(12.0f));
@@ -98,7 +116,7 @@ UpdateNotice::UpdateNotice(MasterpieceProcessor& p) : proc_(p) {
     hide();
   };
   addAndMakeVisible(download_);
-  never_.setTooltip(TRANS("No more checks; General settings, Log turns them on again"));
+  never_.setTooltip(TRANS("No more checks; Settings, Diagnostics turns them on again"));
   never_.onClick = [this] {
     proc_.setUpdateCheckEnabled(false);
     hide();

@@ -60,6 +60,8 @@ add_library(mp_audio STATIC
 )
 # An exported settings archive says which version wrote it.
 set_property(SOURCE SettingsArchive.cpp APPEND PROPERTY COMPILE_DEFINITIONS MP_VERSION="${PROJECT_VERSION}")
+set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/UpdateCheck.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+             MP_VERSION="${PROJECT_VERSION}")
 # The score panel (Verovio) is compiled in like the rest of the window; the
 # fonts it reads are carried as one zip and unpacked at first use.
 if(TARGET mp_score)

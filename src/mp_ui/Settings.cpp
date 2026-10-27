@@ -108,7 +108,7 @@ SampleStorage storageOfItem(int id) {
 
 // ---------------------------------------------------------------- engine
 
-EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
+EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(part) {
   // Before a single control is wired: what Revert goes back to.
   openSwitch_ = proc_.engineSwitch();
   openPreload_ = proc_.preloadHeadFrames();
@@ -157,18 +157,21 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   // because someone who knows their machine should not have to accept a
   // profile to get at them.
   addAndMakeVisible(profileLabel_);
-  styleLabel(profileLabel_, TRANS("Memory profile"));
+  styleLabel(profileLabel_, TRANS("Quality"));
   addAndMakeVisible(profile_);
   // Named for what they do, not for a machine they suit. The figures that
   // actually decide whether one fits are in the readout below the controls,
   // measured on the organ in front of you rather than assumed.
-  profile_.addItem(TRANS("Best quality - 24-bit, hold everything"), 1);
-  profile_.addItem(TRANS("Recommended - 16-bit, stream releases"), 2);
-  profile_.addItem(TRANS("Smallest - 16-bit mono, stream releases"), 3);
-  profile_.addItem(TRANS("Custom"), 4);
+  profile_.addItem(TRANS("Best: 24-bit, all in memory"), 1);
+  profile_.addItem(TRANS("High: 24-bit, compressed, releases streamed"), 2);
+  profile_.addItem(TRANS("Recommended: 16-bit, releases streamed"), 3);
+  profile_.addItem(TRANS("Compact: 16-bit, compressed, releases streamed"), 4);
+  profile_.addItem(TRANS("Small: 16-bit mono, compressed, releases streamed"), 5);
+  profile_.addItem(TRANS("Smallest: as Small, short releases only"), 6);
+  profile_.addItem(TRANS("Custom"), 7);
   profile_.onChange = [this] {
     if (applyingProfile_) return;
-    if (profile_.getSelectedId() != 4) applyProfile(profile_.getSelectedId());
+    if (profile_.getSelectedId() != 7) applyProfile(profile_.getSelectedId());
   };
 
   addAndMakeVisible(preloadLabel_);
@@ -238,6 +241,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
                              "loads faster."));
   releases_.onChange = [this] {
     proc_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(releases_.getSelectedId() - 1));
+    syncProfile();
   };
   addAndMakeVisible(releaseLengthLabel_);
   styleLabel(releaseLengthLabel_, TRANS("Release length"));
@@ -490,7 +494,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   compress_.setTooltip(
       TRANS("16- and 24-bit samples are held in a lossless compressed form and decoded as "
             "they play. The sound is identical; memory use is lower. Applies at the next load."));
-  compress_.onClick = [this] { proc_.setCodeSamples(compress_.getToggleState()); };
+  compress_.onClick = [this] {
+    proc_.setCodeSamples(compress_.getToggleState());
+    syncProfile();
+  };
   enableCompress();
 
   // Audible load progress for large organs. General config: written to the
@@ -519,6 +526,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   faster_.onClick = [this] {
     proc_.setFasterEngine(faster_.getToggleState());
     showFasterUnit();
+    syncPerformance();
   };
   showFasterUnit();
   // Real-time render threads, on by default. Android gives an app no way to
@@ -534,6 +542,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   realtime_.onClick = [this] {
     proc_.setRealtimeThreads(realtime_.getToggleState());
     showRealtimeUnit();
+    syncPerformance();
   };
   showRealtimeUnit();
   addAndMakeVisible(everyProcessor_);
@@ -541,7 +550,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
   everyProcessor_.setTooltip(TRANS("Renders the organ on every logical processor, with none kept for the "
                                    "interface, disk streaming and the system: more polyphony on a machine "
                                    "doing nothing else. Off: every processor but one, eight at most."));
-  everyProcessor_.onClick = [this] { proc_.setEveryProcessor(everyProcessor_.getToggleState()); };
+  everyProcessor_.onClick = [this] {
+    proc_.setEveryProcessor(everyProcessor_.getToggleState());
+    syncPerformance();
+  };
   addAndMakeVisible(portable_);
   portable_.setToggleState(proc_.keepsPortableCopy(), juce::dontSendNotification);
   portable_.setTooltip(TRANS("Keeps this organ's own sample cache, whatever the Sample cache setting says, "
@@ -573,7 +585,23 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
     const int id = polyphony_.getSelectedId();
     // Ids above 1000 are a number of voices plus 1000; 1 is every voice.
     proc_.setPolyphonyLimit(id == 1 ? 0 : id - 1000);
+    syncPerformance();
   };
+
+  addAndMakeVisible(performanceLabel_);
+  styleLabel(performanceLabel_, TRANS("Performance"));
+  addAndMakeVisible(performance_);
+  performance_.addItem(TRANS("Most polyphony: every processor, 8192 voices"), 1);
+  performance_.addItem(TRANS("Balanced (default)"), 2);
+  performance_.addItem(TRANS("Steady: one processor kept for the system"), 3);
+  performance_.addItem(TRANS("Light computer: 1024 voices"), 4);
+  performance_.addItem(TRANS("Small computer, Raspberry Pi, tablet: 512 voices"), 5);
+  performance_.addItem(TRANS("Custom"), 6);
+  performance_.setTooltip(TRANS("Sets the audio engine, its threads and the polyphony together. Applies at once."));
+  performance_.onChange = [this] {
+    if (performance_.getSelectedId() <= 5) applyPerformance(performance_.getSelectedId());
+  };
+  syncPerformance();
 
   syncProfile();
 
@@ -602,31 +630,15 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(memory_);
   styleLabel(memory_, "");
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("These settings take effect on the next organ load.\n\n"
-                  "\"Up to the loop\" keeps each attack from its start to the end of "
-                  "its sustain loop, which is all a held note plays; a sample whose "
-                  "release is in the same file is always kept whole.\n\n"
-                  "The resident format decides what a held frame costs. 16-bit halves "
-                  "the memory and is what most players load by default; each sample "
-                  "is scaled by its own peak first, so a quiet stop keeps the full "
-                  "sixteen bits instead of only the top few.\n\n"
-                  "Streaming holds only the start of each release - the first second, "
-                  "or the share chosen beside it - and fetches the rest from disk while "
-                  "it plays. A larger share gives a slow disk longer to catch up. Releases are the only samples "
-                  "in an organ worth streaming - several seconds each, played once, "
-                  "straight through, never looped - and an attack cannot be treated "
-                  "the same way because its sustain loop has to be resident. On the "
-                  "Nancy demo this is 12.2 GB down to 5.6 GB, with the rendered "
-                  "audio identical sample for sample. Needs a disk that keeps up; "
-                  "the Engine readout says if it did not.\n\n"
-                  "\"Keep this organ playable without its installation files\" gives "
-                  "the organ a sample cache of its own, whatever the Sample cache "
-                  "setting says, and keeps a copy of its definition and console "
-                  "pictures beside it. It is made at the next complete load. Released "
-                  "notes streamed from disk still need the installation files, so "
-                  "turn streaming off for an organ that has to play without them."));
+  stream_.setTooltip(TRANS("Holds only the start of each release in memory and reads the rest from disk as it "
+                           "plays. Needs a disk that keeps up: the readout below counts any underrun."));
+  storage_.setTooltip(TRANS("What a held sample costs. 16-bit halves the memory of 24-bit; each sample is "
+                            "scaled by its own peak first."));
+  preload_.setTooltip(TRANS("\"Up to the loop\" keeps each attack to the end of its sustain loop, all a held "
+                            "note plays."));
+  profile_.setTooltip(TRANS("Sets the format, stereo or mono, compression and streaming together. Takes "
+                            "effect on the next organ load."));
+  applyPart();
   startTimerHz(2);
 }
 
@@ -751,6 +763,7 @@ void EnginePanel::revert() {
   const bool detailed = !openSwitch_.simpleWavOnly;
   for (auto* b : {&wind_, &tremulant_, &enclosure_, &voicing_})
     b->setEnabled(detailed);
+  syncPerformance();
 }
 
 // Says what the faster engine found on this machine, so a report can say it.
@@ -848,10 +861,21 @@ void EnginePanel::timerCallback() {
   }
   // Always there while an organ is loaded (#134), and marked when a change
   // here is waiting for it.
-  const bool offer = onReload != nullptr && proc_.loadedOrganFile().getFullPathName().isNotEmpty();
+  if (shownSimple_ != proc_.simpleMode()) {
+    applyPart();
+    resized();
+  }
+  // The scrolling tab around it follows the rows it shows.
+  if (const int h = contentHeight(); h != fittedHeight_) {
+    fittedHeight_ = h;
+    if (auto* host = findParentComponentOfClass<ScrollHost>()) host->fit();
+  }
+  const bool offer = part_ == Part::Organ && onReload != nullptr &&
+                     proc_.loadedOrganFile().getFullPathName().isNotEmpty();
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
   const bool pending = offer && loadingChanged();
-  if (rebuildNote_.isVisible() != cacheRebuildPending()) rebuildNote_.setVisible(cacheRebuildPending());
+  const bool rebuild = part_ == Part::Organ && !proc_.simpleMode() && cacheRebuildPending();
+  if (rebuildNote_.isVisible() != rebuild) rebuildNote_.setVisible(rebuild);
   const juce::String reloadText = pending ? TRANS("Load the organ to apply") : TRANS("Load the organ");
   if (reload_.getButtonText() != reloadText) {
     reload_.setButtonText(reloadText);
@@ -894,30 +918,88 @@ void EnginePanel::paint(juce::Graphics& g) { g.fillAll(juce::Colour(0xff1b1e24))
 // The memory settings as combinations worth having, rather than as four
 // independent questions. Measured on a 44-stop, 17 GB set these span 21.6 GB
 // down to 2.3 GB; the individual controls below can still reach anything.
-void EnginePanel::applyProfile(int id) {
-  applyingProfile_ = true;
-  struct Profile {
-    SampleStorage storage;
-    bool mono;
-    bool stream;
-    int64_t head;
-  };
-  const Profile p = id == 1   ? Profile{SampleStorage::Int24, false, false, 0}
-                    : id == 2 ? Profile{SampleStorage::Int16, false, true, 0}
-                              : Profile{SampleStorage::Int16, true, true, 0};
+namespace {
+// The quality presets, in the order the box lists them.
+struct QualityPreset {
+  SampleStorage storage;
+  bool mono, stream, compress;
+  SampleLibrary::ReleaseChoice releases;
+};
+constexpr QualityPreset kQuality[] = {
+    {SampleStorage::Int24, false, false, false, SampleLibrary::ReleaseChoice::All},
+    {SampleStorage::Int24, false, true, true, SampleLibrary::ReleaseChoice::All},
+    {SampleStorage::Int16, false, true, false, SampleLibrary::ReleaseChoice::All},
+    {SampleStorage::Int16, false, true, true, SampleLibrary::ReleaseChoice::All},
+    {SampleStorage::Int16, true, true, true, SampleLibrary::ReleaseChoice::All},
+    {SampleStorage::Int16, true, true, true, SampleLibrary::ReleaseChoice::Shortest},
+};
 
+// The performance presets: from the most the computer can give to what a
+// small one keeps up with. Polyphony 0 is the computer's own default.
+struct PerformancePreset {
+  bool faster, realtime, everyProcessor;
+  int polyphony;
+};
+constexpr PerformancePreset kPerformance[] = {
+    {true, true, true, 8192},
+    {true, true, true, 0},
+    {true, true, false, 0},
+    {true, true, false, 1024},
+    {true, true, false, 512},
+};
+}  // namespace
+
+void EnginePanel::applyProfile(int id) {
+  if (id < 1 || id > static_cast<int>(std::size(kQuality))) return;
+  applyingProfile_ = true;
+  const auto& p = kQuality[id - 1];
   proc_.setSampleStorage(p.storage);
   proc_.setLoadMono(p.mono);
   proc_.setStreamReleases(p.stream);
-  proc_.setPreloadHeadFrames(p.head);
+  proc_.setCodeSamples(p.compress);
+  proc_.setReleaseChoice(p.releases);
+  proc_.setPreloadHeadFrames(0);
 
   storage_.setSelectedId(storageItemId(p.storage), juce::dontSendNotification);
   enableCompress();
   mono_.setToggleState(p.mono, juce::dontSendNotification);
   stream_.setToggleState(p.stream, juce::dontSendNotification);
+  compress_.setToggleState(p.compress, juce::dontSendNotification);
+  releases_.setSelectedId(static_cast<int>(p.releases) + 1, juce::dontSendNotification);
   enableStreamControls(p.stream);
   preload_.setSelectedId(1, juce::dontSendNotification);
   applyingProfile_ = false;
+}
+
+void EnginePanel::applyPerformance(int id) {
+  if (id < 1 || id > static_cast<int>(std::size(kPerformance))) return;
+  const auto& p = kPerformance[id - 1];
+  proc_.setFasterEngine(p.faster);
+  faster_.setToggleState(p.faster, juce::dontSendNotification);
+  showFasterUnit();
+  if (MasterpieceProcessor::realtimeThreadsSupported()) {
+    proc_.setRealtimeThreads(p.realtime);
+    realtime_.setToggleState(p.realtime, juce::dontSendNotification);
+    showRealtimeUnit();
+  }
+  proc_.setEveryProcessor(p.everyProcessor);
+  everyProcessor_.setToggleState(p.everyProcessor, juce::dontSendNotification);
+  proc_.setPolyphonyLimit(p.polyphony);
+  fillPolyphony();
+}
+
+void EnginePanel::syncPerformance() {
+  int id = static_cast<int>(std::size(kPerformance)) + 1;  // Custom
+  for (size_t i = 0; i < std::size(kPerformance); ++i) {
+    const auto& p = kPerformance[i];
+    const bool realtime = !MasterpieceProcessor::realtimeThreadsSupported() || proc_.realtimeThreads() == p.realtime;
+    if (proc_.fasterEngine() == p.faster && realtime && proc_.everyProcessor() == p.everyProcessor &&
+        proc_.polyphonyLimit() == p.polyphony) {
+      id = static_cast<int>(i) + 1;
+      break;
+    }
+  }
+  performance_.setSelectedId(id, juce::dontSendNotification);
 }
 
 // Compression codes 16- and 24-bit samples; 20-bit and 32-bit float are held as
@@ -929,17 +1011,17 @@ void EnginePanel::enableCompress() {
 }
 
 void EnginePanel::syncProfile() {
-  const auto st = proc_.sampleStorage();
-  const bool mono = proc_.loadMono();
-  const bool stream = proc_.streamReleases();
-  const bool wholeHead = proc_.preloadHeadFrames() == 0;
-
-  int id = 4; // Custom, until the settings match one of the three exactly
-  if (wholeHead) {
-    if (st == SampleStorage::Int24 && !mono && !stream) id = 1;
-    else if (st == SampleStorage::Int16 && !mono && stream) id = 2;
-    else if (st == SampleStorage::Int16 && mono && stream) id = 3;
-  }
+  int id = static_cast<int>(std::size(kQuality)) + 1;  // Custom, until the settings match a preset
+  if (proc_.preloadHeadFrames() == 0)
+    for (size_t i = 0; i < std::size(kQuality); ++i) {
+      const auto& p = kQuality[i];
+      if (proc_.sampleStorage() == p.storage && proc_.loadMono() == p.mono &&
+          proc_.streamReleases() == p.stream && proc_.codeSamples() == p.compress &&
+          proc_.releaseChoice() == p.releases) {
+        id = static_cast<int>(i) + 1;
+        break;
+      }
+    }
   applyingProfile_ = true;
   profile_.setSelectedId(id, juce::dontSendNotification);
   applyingProfile_ = false;
@@ -1047,136 +1129,136 @@ void EnginePanel::layoutFooter(juce::Rectangle<int> footer) {
   }
 }
 
+void EnginePanel::applyPart() {
+  shownSimple_ = proc_.simpleMode();
+  const bool simple = shownSimple_;
+  using List = std::initializer_list<juce::Component*>;
+  const List organ{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_, &originalPitch_,
+                   &profileLabel_, &profile_, &preloadLabel_, &preload_, &storageLabel_, &storage_,
+                   &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
+                   &releaseLengthLabel_, &releaseLength_, &releaseCutoffLabel_, &releaseCutoff_,
+                   &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
+                   &programCouplers_, &portable_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
+  const List organSimple{&profileLabel_, &profile_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
+  const List performance{&performanceLabel_, &performance_, &faster_, &realtime_, &everyProcessor_,
+                         &memLimitLabel_, &memLimit_, &polyphonyLabel_, &polyphony_};
+  const List performanceSimple{&performanceLabel_, &performance_};
+  const List general{&reopen_, &loadTicks_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                     &organRootDefault_, &cacheDirLabel_, &cacheDirValue_, &cacheDirChoose_,
+                     &cacheDirDefault_, &cacheDelete_, &packageDirLabel_, &packageDirValue_,
+                     &packageDirChoose_, &packageDirClear_, &cacheLabel_, &cache_, &cacheWhenLabel_,
+                     &cacheWhen_};
+  const List generalSimple{&reopen_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                           &organRootDefault_};
+  const List& mine = part_ == Part::Organ ? organ : part_ == Part::Performance ? performance : general;
+  const List& few = part_ == Part::Organ ? organSimple
+                    : part_ == Part::Performance ? performanceSimple
+                                                 : generalSimple;
+  const auto in = [](const List& l, juce::Component* c) { return std::find(l.begin(), l.end(), c) != l.end(); };
+  for (auto* c : getChildren()) {
+    // The timer shows these two when they apply.
+    if (c == &reload_ || c == &rebuildNote_) continue;
+    bool show = in(mine, c) && (!simple || in(few, c));
+    if (c == &realtime_) show = show && MasterpieceProcessor::realtimeThreadsSupported();
+    c->setVisible(show);
+  }
+}
+
+int EnginePanel::contentHeight() const {
+  // The lowest row's bottom, as resized() last placed them, and the footer.
+  int bottom = 0;
+  for (auto* c : getChildren())
+    if (c->isVisible() && c != &reload_ && c != &revert_ && c != &keep_ && c != &saveOrgan_ &&
+        c != &saveGlobal_)
+      bottom = juce::jmax(bottom, c->getBottom());
+  return bottom + 12 + (part_ == Part::Organ ? kRow + 4 + kGap : 0);
+}
+
 void EnginePanel::resized() {
   auto r = getLocalBounds().reduced(12);
-  // The buttons first, at their full height, whatever the rows above need:
-  // when a row was added in 0.7.2 the rows ran past the panel's height and
-  // the footer took the shortfall, which left the buttons too short to tap
-  // (#149). The note between them takes what is left instead.
-  auto footer = r.removeFromBottom(kRow + 4);
-  r.removeFromBottom(kGap);
-  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
-                  &originalPitch_}) {
-    b->setBounds(r.removeFromTop(kRow));
-    r.removeFromTop(2);
+  // The buttons first, at their full height, whatever the rows above need
+  // (#149). Read left to right they go from discarding to committing hardest.
+  // "Load the organ" is laid out even while it is hidden, so the others do
+  // not jump when it appears.
+  if (part_ == Part::Organ) {
+    layoutFooter(r.removeFromBottom(kRow + 4));
+    r.removeFromBottom(kGap);
   }
-  r.removeFromTop(kGap);
-  auto profileRow = r.removeFromTop(kRow);
-  profileLabel_.setBounds(profileRow.removeFromLeft(180));
-  profile_.setBounds(profileRow.removeFromLeft(320));
-  r.removeFromTop(10);
-  auto row = r.removeFromTop(kRow);
-  preloadLabel_.setBounds(row.removeFromLeft(180));
-  preload_.setBounds(row.removeFromLeft(260));
-  r.removeFromTop(6);
-  auto storageRow = r.removeFromTop(kRow);
-  storageLabel_.setBounds(storageRow.removeFromLeft(180));
-  storage_.setBounds(storageRow.removeFromLeft(260));
-  r.removeFromTop(6);
-  auto rateRow = r.removeFromTop(kRow);
-  rateLabel_.setBounds(rateRow.removeFromLeft(180));
-  rate_.setBounds(rateRow.removeFromLeft(260));
-  r.removeFromTop(6);
-  auto sparseRow = r.removeFromTop(kRow);
-  sparseLabel_.setBounds(sparseRow.removeFromLeft(180));
-  sparse_.setBounds(sparseRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  auto releasesRow = r.removeFromTop(kRow);
-  releasesLabel_.setBounds(releasesRow.removeFromLeft(180));
-  releases_.setBounds(releasesRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  auto releaseLengthRow = r.removeFromTop(kRow);
-  releaseLengthLabel_.setBounds(releaseLengthRow.removeFromLeft(180));
-  releaseLength_.setBounds(releaseLengthRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  auto releaseCutoffRow = r.removeFromTop(kRow);
-  releaseCutoffLabel_.setBounds(releaseCutoffRow.removeFromLeft(180));
-  releaseCutoff_.setBounds(releaseCutoffRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  auto cacheRow = r.removeFromTop(kRow);
-  cacheLabel_.setBounds(cacheRow.removeFromLeft(180));
-  cache_.setBounds(cacheRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  auto cacheWhenRow = r.removeFromTop(kRow);
-  cacheWhenLabel_.setBounds(cacheWhenRow.removeFromLeft(180));
-  cacheWhen_.setBounds(cacheWhenRow.removeFromLeft(300));
-  r.removeFromTop(6);
-  // The checkboxes start at the left edge, like the ones at the top, so
-  // each is seen on a first read down the tab (#565).
-  programCouplers_.setBounds(r.removeFromTop(kRow));
-  rebuildNote_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(180));
-  r.removeFromTop(6);
-  auto cacheDirRow = r.removeFromTop(kRow);
-  cacheDirLabel_.setBounds(cacheDirRow.removeFromLeft(180));
-  cacheDirChoose_.setBounds(cacheDirRow.removeFromRight(90).reduced(0, 2));
-  cacheDirRow.removeFromRight(6);
-  cacheDirDefault_.setBounds(cacheDirRow.removeFromRight(80).reduced(0, 2));
-  cacheDirRow.removeFromRight(6);
-  cacheDelete_.setBounds(cacheDirRow.removeFromRight(130).reduced(0, 2));
-  cacheDirRow.removeFromRight(8);
-  cacheDirValue_.setBounds(cacheDirRow);
-  r.removeFromTop(6);
-  auto packageDirRow = r.removeFromTop(kRow);
-  packageDirLabel_.setBounds(packageDirRow.removeFromLeft(180));
-  packageDirChoose_.setBounds(packageDirRow.removeFromRight(90).reduced(0, 2));
-  packageDirRow.removeFromRight(6);
-  packageDirClear_.setBounds(packageDirRow.removeFromRight(80).reduced(0, 2));
-  packageDirRow.removeFromRight(8);
-  packageDirValue_.setBounds(packageDirRow);
-  r.removeFromTop(6);
-  auto organRootRow = r.removeFromTop(kRow);
-  organRootLabel_.setBounds(organRootRow.removeFromLeft(180));
-  organRootChoose_.setBounds(organRootRow.removeFromRight(90).reduced(0, 2));
-  organRootRow.removeFromRight(6);
-  organRootDefault_.setBounds(organRootRow.removeFromRight(80).reduced(0, 2));
-  organRootRow.removeFromRight(8);
-  organRootValue_.setBounds(organRootRow);
-  r.removeFromTop(6);
-  {
+  const auto line = [&r](juce::Component& c) {
+    if (!c.isVisible()) return;
+    c.setBounds(r.removeFromTop(kRow));
+    r.removeFromTop(2);
+  };
+  const auto pair = [&r](juce::Component& label, juce::Component& box, int w) {
+    if (!box.isVisible()) return;
+    auto row = r.removeFromTop(kRow);
+    label.setBounds(row.removeFromLeft(180));
+    box.setBounds(row.removeFromLeft(w));
+    r.removeFromTop(6);
+  };
+  const auto folder = [&r](juce::Label& label, juce::Label& value,
+                           std::initializer_list<std::pair<juce::Component*, int>> buttons) {
+    if (!value.isVisible()) return;
+    auto row = r.removeFromTop(kRow);
+    label.setBounds(row.removeFromLeft(180));
+    for (const auto& [b, w] : buttons) {
+      b->setBounds(row.removeFromRight(w).reduced(0, 2));
+      row.removeFromRight(6);
+    }
+    value.setBounds(row);
+    r.removeFromTop(6);
+  };
+
+  // This organ: what it plays through, then how it is loaded.
+  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_, &originalPitch_}) line(*b);
+  if (simpleWav_.isVisible()) r.removeFromTop(kGap);
+  pair(profileLabel_, profile_, 380);
+  if (profile_.isVisible()) r.removeFromTop(4);
+  pair(preloadLabel_, preload_, 260);
+  pair(storageLabel_, storage_, 260);
+  pair(rateLabel_, rate_, 260);
+  pair(sparseLabel_, sparse_, 300);
+  pair(releasesLabel_, releases_, 300);
+  pair(releaseLengthLabel_, releaseLength_, 300);
+  pair(releaseCutoffLabel_, releaseCutoff_, 300);
+  if (stream_.isVisible()) {
     auto streamRow = r.removeFromTop(kRow);
     streamHead_.setBounds(streamRow.removeFromRight(230).reduced(0, 2));
     stream_.setBounds(streamRow);
+    r.removeFromTop(2);
   }
-  r.removeFromTop(2);
-  {
-    auto bufferRow = r.removeFromTop(kRow);
-    releaseBufferLabel_.setBounds(bufferRow.removeFromLeft(180));
-    releaseBuffer_.setBounds(bufferRow.removeFromLeft(300));
+  pair(releaseBufferLabel_, releaseBuffer_, 300);
+  line(mono_);
+  line(compress_);
+  line(programCouplers_);
+  line(portable_);
+  // The cache note's row is kept while the organ's rows show, so nothing
+  // jumps when it appears.
+  if (part_ == Part::Organ && !proc_.simpleMode()) rebuildNote_.setBounds(r.removeFromTop(kRow));
+  if (memory_.isVisible()) {
+    r.removeFromTop(kGap);
+    memory_.setBounds(r.removeFromTop(kRow * 2));
   }
-  r.removeFromTop(2);
-  mono_.setBounds(r.removeFromTop(kRow));
-  r.removeFromTop(2);
-  compress_.setBounds(r.removeFromTop(kRow));
-  r.removeFromTop(2);
-  loadTicks_.setBounds(r.removeFromTop(kRow));
-  r.removeFromTop(2);
-  reopen_.setBounds(r.removeFromTop(kRow));
-  portable_.setBounds(r.removeFromTop(kRow));
-  faster_.setBounds(r.removeFromTop(kRow));
-  if (realtime_.isVisible()) realtime_.setBounds(r.removeFromTop(kRow));
-  everyProcessor_.setBounds(r.removeFromTop(kRow));
-  r.removeFromTop(6);
-  auto memRow = r.removeFromTop(kRow);
-  memLimitLabel_.setBounds(memRow.removeFromLeft(180));
-  memLimit_.setBounds(memRow.removeFromLeft(300));
-  r.removeFromTop(4);
-  auto polyRow = r.removeFromTop(kRow);
-  polyphonyLabel_.setBounds(polyRow.removeFromLeft(180));
-  polyphony_.setBounds(polyRow.removeFromLeft(300));
-  r.removeFromTop(kGap);
-  memory_.setBounds(r.removeFromTop(kRow));
-  r.removeFromTop(kGap);
 
-  // The footer, taken above. Read left to right it goes from discarding to
-  // committing hardest, so the consequence grows with the distance from "put
-  // it back". The buttons share the whole width, each in proportion to its
-  // label, with the same gap between every pair: two groups pushed to either
-  // side left a hole in the middle as wide as the panel was spare (#120).
-  // "Load the organ" is laid out even while it is hidden, so the others
-  // do not jump when it appears.
-  layoutFooter(footer);
+  // Performance: the engine, for every organ.
+  pair(performanceLabel_, performance_, 380);
+  if (performance_.isVisible()) r.removeFromTop(4);
+  line(faster_);
+  line(realtime_);
+  line(everyProcessor_);
+  if (faster_.isVisible()) r.removeFromTop(4);
+  pair(memLimitLabel_, memLimit_, 300);
+  pair(polyphonyLabel_, polyphony_, 300);
 
-  note_.setBounds(r);
+  // General: start, folders and the cache, for every organ.
+  line(reopen_);
+  line(loadTicks_);
+  if (reopen_.isVisible()) r.removeFromTop(4);
+  folder(organRootLabel_, organRootValue_, {{&organRootChoose_, 90}, {&organRootDefault_, 80}});
+  folder(cacheDirLabel_, cacheDirValue_, {{&cacheDirChoose_, 90}, {&cacheDirDefault_, 80}, {&cacheDelete_, 130}});
+  folder(packageDirLabel_, packageDirValue_, {{&packageDirChoose_, 90}, {&packageDirClear_, 80}});
+  pair(cacheLabel_, cache_, 300);
+  pair(cacheWhenLabel_, cacheWhen_, 300);
 }
 
 // ---------------------------------------------------------------- reverb
@@ -1241,15 +1323,6 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.markSettingsDirty();
   };
 
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("Most sample sets are recorded in the room they live in, and "
-                  "several ship close / far / rear perspectives which ARE the room. "
-                  "Convolution is for a dry set, or for headphones, and usually "
-                  "wants far less wet signal than a reverb plugin would suggest.") +
-                "\n\n" +
-                TRANS("The room chosen here is kept with the organ that is loaded, and each "
-                      "organ opens with its own."));
 }
 
 void ReverbPanel::resized() {
@@ -1267,7 +1340,6 @@ void ReverbPanel::resized() {
   mixLabel_.setBounds(row.removeFromLeft(60));
   mix_.setBounds(row.removeFromLeft(320));
   r.removeFromTop(kGap);
-  note_.setBounds(r);
 }
 
 // ------------------------------------------------------------- metronome
@@ -1399,13 +1471,6 @@ RecorderPanel::RecorderPanel(MasterpieceProcessor& p) : proc_(p) {
 
   addAndMakeVisible(status_);
   styleLabel(status_, "");
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("Records everything that reaches the engine, not just notes: stop "
-                  "changes, couplers and shoe movements that arrive as MIDI are "
-                  "captured too, so a recording plays back as the same performance "
-                  "rather than as notes on whatever registration happens to be "
-                  "drawn at the time."));
 
   addAndMakeVisible(audioHeading_);
   styleLabel(audioHeading_, TRANS("Audio"));
@@ -1605,7 +1670,6 @@ void RecorderPanel::resized() {
   r.removeFromTop(kGap);
   status_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
-  note_.setBounds(r.removeFromTop(72));
 
   // Audio capture below the MIDI half, with its own heading: they are two
   // recordings of the same performance and mixing the controls would suggest
@@ -1622,8 +1686,8 @@ void RecorderPanel::resized() {
 
 // ------------------------------------------------------------------ midi
 
-MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
-    : proc_(p), devices_(devices) {
+MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices, Part part)
+    : proc_(p), devices_(devices), part_(part) {
   addAndMakeVisible(inputsLabel_);
   styleLabel(inputsLabel_, TRANS("MIDI inputs"));
   addAndMakeVisible(outputsLabel_);
@@ -1766,20 +1830,6 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
 
   addAndMakeVisible(mapStatus_);
   styleLabel(mapStatus_, "");
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("To map a control: right-click a drawstop on the console, then "
-                  "move the control on your console. Unmapped messages keep working "
-                  "as they are, so an organ is playable the moment it loads rather "
-                  "than only after a mapping session.\n\n"
-                  "The mapping is saved per organ, in your own application data - "
-                  "never inside the sample set.\n\n"
-                  "Keyboards: the channel decides which manual your console plays, "
-                  "and therefore which division sounds. Couplers work off that, so "
-                  "getting it wrong makes a manual sound like the wrong one."
-                  "\n\nSequencer and console actions: the organ declares none of "
-                  "these, so there is nothing on the console to right-click. Press "
-                  "a Learn button here, then the piston you want to use."));
 
   addAndMakeVisible(consoleHeading_);
   styleLabel(consoleHeading_, TRANS("Console"));
@@ -1885,6 +1935,41 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices)
 
   refresh();
   startTimerHz(2);
+}
+
+void MidiPanel::applyPart() {
+  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &cancelResets_,
+                                        &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
+                                        &archiveSize_, &archiveAge_, &stepperLabel_, &learnPrev_, &learnNext_,
+                                        &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
+                                        &learnStopList_, &learnKeyboard_, &learnCombinations_,
+                                        &learnTransposeDown_, &learnTransposeUp_, &temperamentLabel_,
+                                        &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
+                                        &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_,
+                                        &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_,
+                                        &lampNumber_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
+                                        &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
+  for (auto& b : inputs_) console.push_back(b.get());
+  std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
+                                      &defaultNote_, &keyboardsHeading_, &learnManuals_};
+  for (auto& v : keyboardLabels_) organ.push_back(v.get());
+  for (auto& v : keyboardChannels_) organ.push_back(v.get());
+  for (auto& v : keyboardDevices_) organ.push_back(v.get());
+  for (auto& v : keyboardMore_) organ.push_back(v.get());
+  // What Simple mode leaves out: the console builder's settings.
+  const std::vector<juce::Component*> professional{
+      &cancelResets_, &leaveHeld_, &noiseFilter_, &archive_, &archiveSilence_, &archiveSize_, &archiveAge_,
+      &stepperLabel_, &learnPrev_, &learnNext_, &consoleHeading_, &learnPagePrev_, &learnPageNext_,
+      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &learnTransposeDown_,
+      &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
+      &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_, &learnPowerOff_,
+      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &scoreHeading_, &learnScoreBack_,
+      &learnScoreForward_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_, &keyboardsHeading_,
+      &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
+  shownSimple_ = proc_.simpleMode();
+  for (auto* c : part_ == Part::Console ? console : organ)
+    c->setVisible(!shownSimple_ || std::find(professional.begin(), professional.end(), c) == professional.end());
+  for (auto* c : part_ == Part::Console ? organ : console) c->setVisible(false);
 }
 
 void MidiPanel::pushReadyLamp() {
@@ -2073,12 +2158,17 @@ void MidiPanel::refresh() {
     output_.addItem(proc_.midiOutputName(), id++);
   }
   output_.setSelectedId(chosen, juce::dontSendNotification);
+  applyPart();
   resized();
 }
 
 void MidiPanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
   if (!isShowing()) return;
+  if (proc_.simpleMode() != shownSimple_) {
+    applyPart();
+    resized();
+  }
   const auto& map = proc_.midiMap();
   juce::String s = TRANS("%1 binding(s)").replace("%1", juce::String(static_cast<int>(map.size())));
   if (map.learning()) s += "  -  " + TRANS("LEARNING: move a control now");
@@ -2101,148 +2191,155 @@ void MidiPanel::resized() {
   // Every row at its full height from the top: the tab scrolls when the
   // window is shorter than the panel.
   auto r = getLocalBounds().reduced(12).withHeight(1 << 20);
-  inputsLabel_.setBounds(r.removeFromTop(kRow));
-  for (auto& b : inputs_) {
-    b->setBounds(r.removeFromTop(kRow).reduced(12, 0));
-    r.removeFromTop(2);
-  }
-  if (inputs_.empty()) {
-    r.removeFromTop(kRow); // leaves room for the "none found" case
-  }
-  r.removeFromTop(kGap);
-  keyboardsLabel_.setBounds(r.removeFromTop(kRow));
-  for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
-    auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
-    keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150));
-    keyboardChannels_[i]->setBounds(kbRow.removeFromLeft(170));
-    kbRow.removeFromLeft(6);
-    // In a narrow window the device box gives way first: the range button's
-    // text shrank to a few pixels when it took the remainder (#493).
-    const int deviceWidth = juce::jlimit(140, 200, kbRow.getWidth() - 6 - 160);
-    if (i < keyboardDevices_.size())
-      keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(deviceWidth));
-    kbRow.removeFromLeft(6);
-    if (i < keyboardMore_.size())
-      keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
-    r.removeFromTop(2);
+  juce::Rectangle<int> row;
+  if (part_ == Part::Console) {
+    inputsLabel_.setBounds(r.removeFromTop(kRow));
+    for (auto& b : inputs_) {
+      b->setBounds(r.removeFromTop(kRow).reduced(12, 0));
+      r.removeFromTop(2);
+    }
+    if (inputs_.empty()) {
+      r.removeFromTop(kRow); // leaves room for the "none found" case
+    }
+  } else {
+    keyboardsLabel_.setBounds(r.removeFromTop(kRow));
+    for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
+      auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
+      keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150));
+      keyboardChannels_[i]->setBounds(kbRow.removeFromLeft(170));
+      kbRow.removeFromLeft(6);
+      // In a narrow window the device box gives way first: the range button's
+      // text shrank to a few pixels when it took the remainder (#493).
+      const int deviceWidth = juce::jlimit(140, 200, kbRow.getWidth() - 6 - 160);
+      if (i < keyboardDevices_.size())
+        keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(deviceWidth));
+      kbRow.removeFromLeft(6);
+      if (i < keyboardMore_.size())
+        keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
+      r.removeFromTop(2);
+    }
+
+    sharedNote_.setBounds(r.removeFromTop(kRow).reduced(12, 0));
+    if (!shownSimple_) {
+      auto defRow = r.removeFromTop(kRow).reduced(12, 0);
+      useAsDefault_.setBounds(defRow.removeFromLeft(220).reduced(0, 1));
+      defRow.removeFromLeft(6);
+      clearDefault_.setBounds(defRow.removeFromLeft(110).reduced(0, 1));
+      defRow.removeFromLeft(10);
+      defaultNote_.setBounds(defRow);
+    }
+    // The pistons that move a keyboard to another manual (#90).
+    if (!shownSimple_) {
+      r.removeFromTop(4);
+      row = r.removeFromTop(kRow);
+      keyboardsHeading_.setBounds(row.removeFromLeft(120));
+      learnManuals_.setBounds(row.removeFromLeft(190).reduced(2, 0));
+    }
   }
 
-  sharedNote_.setBounds(r.removeFromTop(kRow).reduced(12, 0));
-  {
-    auto defRow = r.removeFromTop(kRow).reduced(12, 0);
-    useAsDefault_.setBounds(defRow.removeFromLeft(220).reduced(0, 1));
-    defRow.removeFromLeft(6);
-    clearDefault_.setBounds(defRow.removeFromLeft(110).reduced(0, 1));
-    defRow.removeFromLeft(10);
-    defaultNote_.setBounds(defRow);
+  if (part_ == Part::Console) {
+    r.removeFromTop(kGap);
+    row = r.removeFromTop(kRow);
+    outputsLabel_.setBounds(row.removeFromLeft(120));
+    output_.setBounds(row.removeFromLeft(300));
+    r.removeFromTop(4);
+    feedback_.setBounds(r.removeFromTop(kRow));
+    sustain_.setBounds(r.removeFromTop(kRow));
   }
+  if (part_ == Part::Console && !shownSimple_) {
+    cancelResets_.setBounds(r.removeFromTop(kRow));
+    leaveHeld_.setBounds(r.removeFromTop(kRow));
+    noiseFilter_.setBounds(r.removeFromTop(kRow));
+    row = r.removeFromTop(kRow);
+    archive_.setBounds(row.removeFromLeft(200));
+    archiveSilence_.setBounds(row.removeFromLeft(200).reduced(2, 1));
+    archiveSize_.setBounds(row.removeFromLeft(110).reduced(2, 1));
+    archiveAge_.setBounds(row.removeFromLeft(120).reduced(2, 1));
+    r.removeFromTop(kGap);
+    row = r.removeFromTop(kRow);
+    stepperLabel_.setBounds(row.removeFromLeft(120));
+    learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+    learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
 
-  r.removeFromTop(kGap);
-  auto row = r.removeFromTop(kRow);
-  outputsLabel_.setBounds(row.removeFromLeft(120));
-  output_.setBounds(row.removeFromLeft(300));
-  r.removeFromTop(4);
-  feedback_.setBounds(r.removeFromTop(kRow));
-  cancelResets_.setBounds(r.removeFromTop(kRow));
-  leaveHeld_.setBounds(r.removeFromTop(kRow));
-  sustain_.setBounds(r.removeFromTop(kRow));
-  noiseFilter_.setBounds(r.removeFromTop(kRow));
-  row = r.removeFromTop(kRow);
-  archive_.setBounds(row.removeFromLeft(200));
-  archiveSilence_.setBounds(row.removeFromLeft(200).reduced(2, 1));
-  archiveSize_.setBounds(row.removeFromLeft(110).reduced(2, 1));
-  archiveAge_.setBounds(row.removeFromLeft(120).reduced(2, 1));
-  r.removeFromTop(kGap);
-  row = r.removeFromTop(kRow);
-  stepperLabel_.setBounds(row.removeFromLeft(120));
-  learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    // Console actions, on their own row under the same idea: things a physical
+    // console's thumb pistons do that the organ file never mentions.
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    consoleHeading_.setBounds(row.removeFromLeft(120));
+    for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    for (auto* b : {&learnTransposeDown_, &learnTransposeUp_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    temperamentLabel_.setBounds(row.removeFromLeft(120));
+    temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
+    row.removeFromLeft(6);
+    learnTemperament_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    for (auto* b : {&learnTemperamentPrev_, &learnTemperamentNext_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    for (auto* b : {&learnRecord_, &learnPlay_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
 
-  // The manual buttons on a row of their own: beside the sequencer they read
-  // as part of it, and a dialog at its default size cut them off (#90).
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  keyboardsHeading_.setBounds(row.removeFromLeft(120));
-  learnManuals_.setBounds(row.removeFromLeft(190).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    powerHeading_.setBounds(row.removeFromLeft(120));
+    learnQuit_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+    learnPowerOff_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    lampLabel_.setBounds(row.removeFromLeft(120));
+    lampKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+    lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    row.removeFromLeft(6);
+    lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
 
-  // Console actions, on their own row under the same idea: things a physical
-  // console's thumb pistons do that the organ file never mentions.
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  consoleHeading_.setBounds(row.removeFromLeft(120));
-  for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    scoreHeading_.setBounds(row.removeFromLeft(120));
+    for (auto* b : {&learnScoreBack_, &learnScoreForward_}) {
+      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+      row.removeFromLeft(6);
+    }
+    // The message sent, on a row of its own, as the ready lamp's.
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    scoreKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
-  }
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  row.removeFromLeft(120);
-  for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    scoreChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
-  }
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  row.removeFromLeft(120);
-  for (auto* b : {&learnTransposeDown_, &learnTransposeUp_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
+    scoreForward_.setBounds(row.removeFromLeft(60).reduced(2, 2));
     row.removeFromLeft(6);
+    scoreBack_.setBounds(row.removeFromLeft(60).reduced(2, 2));
   }
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  temperamentLabel_.setBounds(row.removeFromLeft(120));
-  temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
-  row.removeFromLeft(6);
-  learnTemperament_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  row.removeFromLeft(120);
-  for (auto* b : {&learnTemperamentPrev_, &learnTemperamentNext_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-    row.removeFromLeft(6);
-  }
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  row.removeFromLeft(120);
-  for (auto* b : {&learnRecord_, &learnPlay_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-    row.removeFromLeft(6);
-  }
-
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  powerHeading_.setBounds(row.removeFromLeft(120));
-  learnQuit_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  learnPowerOff_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  lampLabel_.setBounds(row.removeFromLeft(120));
-  lampKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
-
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  scoreHeading_.setBounds(row.removeFromLeft(120));
-  for (auto* b : {&learnScoreBack_, &learnScoreForward_}) {
-    b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-    row.removeFromLeft(6);
-  }
-  // The message sent, on a row of its own, as the ready lamp's.
-  r.removeFromTop(4);
-  row = r.removeFromTop(kRow);
-  row.removeFromLeft(120);
-  scoreKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  scoreChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-  row.removeFromLeft(6);
-  scoreForward_.setBounds(row.removeFromLeft(60).reduced(2, 2));
-  row.removeFromLeft(6);
-  scoreBack_.setBounds(row.removeFromLeft(60).reduced(2, 2));
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
@@ -2252,7 +2349,6 @@ void MidiPanel::resized() {
   row.removeFromLeft(kGap);
   mapStatus_.setBounds(row);
   r.removeFromTop(kGap);
-  note_.setBounds(r.removeFromTop(wrappedHeight(note_, r.getWidth())));
   const int needed = r.getY() + 12;
   if (needed != contentHeight_) {
     contentHeight_ = needed;
@@ -2332,13 +2428,6 @@ FavouritesPanel::FavouritesPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(setStatus_);
   styleLabel(setStatus_, "");
 
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("A combination set is a whole registration book: one for a "
-                  "recital, another for a service. Changing set saves the one you "
-                  "are leaving first, so nothing you captured is lost by switching.\n\n"
-                  "Favourite organs are in Open: search them, put them in your own "
-                  "order, rename them, and add the organ now loaded."));
   refresh();
 }
 
@@ -2382,7 +2471,6 @@ void FavouritesPanel::resized() {
   r.removeFromTop(4);
   setStatus_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap * 2);
-  note_.setBounds(r.removeFromTop(120));
 }
 
 // --------------------------------------------------------------- voicing
@@ -2813,9 +2901,6 @@ public:
       addAndMakeVisible(*row.sub);
       rows_.push_back(std::move(row));
     }
-    addAndMakeVisible(note_);
-    styleNote(note_, TRANS("The lows of both channels of a pair, under the crossover, go to the subwoofer's "
-                           "channel, and the rest to the pair. Several pairs can share one subwoofer."));
     setSize(460, 12 + kRow + kGap + static_cast<int>(rows_.size()) * (kRow + 4) + 64);
   }
   void resized() override {
@@ -2830,7 +2915,6 @@ public:
       line.removeFromLeft(kGap);
       row.sub->setBounds(line.removeFromLeft(220).reduced(0, 1));
     }
-    note_.setBounds(r);
   }
 
 private:
@@ -2853,13 +2937,12 @@ private:
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   std::vector<Row> rows_;
-  juce::Label note_;
 };
 }  // namespace
 
 MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
-  styleLabel(heading_, TRANS("Mixer"));
+  styleLabel(heading_, TRANS("Outputs"));
   addAndMakeVisible(busesLabel_);
   styleLabel(busesLabel_, TRANS("Output pairs"));
   addAndMakeVisible(busCount_);
@@ -2906,21 +2989,6 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   viewport_.setViewedComponent(&rankHolder_, false);
   viewport_.setScrollBarsShown(true, false);
 
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("No sample set says anything about audio routing - not one - so "
-                  "this is yours to decide, like the MIDI mapping. Output pairs and "
-                  "their device channels carry across organs; which rank goes where "
-                  "is saved per organ, because a rank number means nothing in a "
-                  "different instrument.\n\n"
-                  "A rank you never touch plays through the first pair, so an organ "
-                  "is audible before you open this page. If you are listening in "
-                  "stereo the pairs are summed, so nothing disappears when you "
-                  "split them up.") +
-                "\n\n" +
-                TRANS("The faders are live levels, heard at once on the pipes sounding: "
-                      "MIDI learns a knob or a pedal for each. They start at full with "
-                      "every organ."));
 
   for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
   styleLabel(pairsHeading_, TRANS("Output pairs"));
@@ -3190,7 +3258,6 @@ void MixerPanel::resized() {
   // The note keeps a little space; the rank list takes the rest, which is what
   // makes the page work on an organ with fifty ranks and on one with six.
   auto noteArea = r.removeFromBottom(juce::jmin(76, r.getHeight() / 3));
-  note_.setBounds(noteArea);
   r.removeFromBottom(kGap);
   viewport_.setBounds(r);
 
@@ -3436,7 +3503,9 @@ RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(enable_);
   enable_.setToggleState(s.enabled, juce::dontSendNotification);
   enable_.setTooltip(TRANS("A page any browser on this network can open to draw stops, press pistons and move "
-                           "the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default."));
+                           "the shoes, and the API that consoles and scripts use (HTTP, JSON). Off by default. "
+                           "While it is on, anyone on this network can open the page; without a token, "
+                           "anyone can also change the registration from it."));
   enable_.onClick = [this] { apply(); };
   addAndMakeVisible(write_);
   write_.setToggleState(s.allowChanges, juce::dontSendNotification);
@@ -3489,9 +3558,6 @@ RemotePanel::RemotePanel(MasterpieceProcessor& p) : proc_(p) {
   open_.onClick = [this] {
     juce::URL("http://localhost:" + juce::String(proc_.remoteSettings().port) + "/").launchInDefaultBrowser();
   };
-  addAndMakeVisible(note_);
-  styleNote(note_, TRANS("While it is on, anyone on this network can open the page. Without a token, anyone can "
-                          "also change the registration from it; with one, only those who know it."));
   timerCallback();
   startTimerHz(1);
 }
@@ -3550,7 +3616,6 @@ void RemotePanel::resized() {
   status_.setBounds(r.removeFromTop(70));
   open_.setBounds(r.removeFromTop(30).removeFromLeft(200).reduced(0, 1));
   r.removeFromTop(12);
-  note_.setBounds(r.removeFromTop(60));
 }
 
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
@@ -3621,20 +3686,6 @@ DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(send_);
   send_.onClick = [this] { proc_.refreshLcdPanels(); };
 
-  addAndMakeVisible(note_);
-  styleNote(note_,
-            TRANS("A console display is driven by system exclusive messages, and the "
-                  "bytes that introduce one belong to the display hardware rather "
-                  "than to the organ - so they are typed in here rather than "
-                  "guessed. 7D is the id the MIDI specification reserves for "
-                  "non-commercial use, which is the honest default when your "
-                  "manufacturer's prefix is unknown.\n\n"
-                  "Choose the MIDI output on the MIDI page first: this sends "
-                  "through the same port that lights your drawstops.\n\n"
-                  "Only lines whose text actually changed are sent, so a display "
-                  "showing a steady temperament costs nothing. Accented letters are "
-                  "transliterated, because system exclusive carries seven bits and a "
-                  "high byte would end the message rather than draw a character."));
 
   startTimerHz(2);
 }
@@ -3707,7 +3758,6 @@ void DisplayPanel::resized() {
   previewLabel_.setBounds(r.removeFromTop(kRow));
   preview_.setBounds(r.removeFromTop(kRow * 3).withTrimmedLeft(12));
   r.removeFromTop(kGap);
-  note_.setBounds(r);
 }
 
 // -------------------------------------------------------------- language
@@ -3716,6 +3766,8 @@ LanguagePanel::LanguagePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Language"));
   addAndMakeVisible(language_);
+  language_.setTooltip(TRANS("The language changes the next time Masterpiece starts. Names of "
+                              "organs, stops and pages stay as the organ gives them."));
   language_.addItem(TRANS("System default"), 1);
   language_.addItem("English", 2);
   // Each language is named in itself, so a player who cannot read the current
@@ -3735,9 +3787,6 @@ LanguagePanel::LanguagePanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.setLanguageSetting(sel == 1 ? juce::String() : sel == 2 ? juce::String("en")
                                                                   : codes_[static_cast<size_t>(sel - 3)]);
   };
-  addAndMakeVisible(note_);
-  styleNote(note_, TRANS("The language changes the next time Masterpiece starts. Names of organs, stops and "
-                         "pages stay as the organ gives them."));
 }
 
 void LanguagePanel::resized() {
@@ -3745,7 +3794,6 @@ void LanguagePanel::resized() {
   heading_.setBounds(r.removeFromTop(kRow));
   language_.setBounds(r.removeFromTop(kRow).removeFromLeft(260).reduced(0, 1));
   r.removeFromTop(kGap);
-  note_.setBounds(r.removeFromTop(48));
 }
 
 // --------------------------------------------------------------- window
@@ -3766,7 +3814,8 @@ SettingsWindow::~SettingsWindow() {
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
-    : reverb_(p), metronome_(p), mixer_(p), voicing_(p), favourites_(p), display_(p), language_(p), log_(p) {
+    : reverb_(p), metronome_(p), performance_(p, EnginePanel::Part::Performance),
+      general_(p, EnginePanel::Part::General), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   // Without a device manager -- a plugin, whose host owns the audio device
@@ -3775,30 +3824,28 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     audio_ = std::make_unique<AudioSettingsPanel>(*devices, p);
     tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
   }
-  tabs_.addTab(TRANS("Room"), bg, &reverb_, false);
-  tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   if (devices != nullptr) {
-    midi_ = std::make_unique<MidiPanel>(p, *devices);
+    midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Console);
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
     tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
   }
-  tabs_.addTab(TRANS("Mixer"), bg, &mixer_, false);
-  tabs_.addTab(TRANS("Voicing"), bg, &voicing_, false);
+  tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
+  tabs_.addTab(TRANS("General"), bg, &generalScroll_, false);
+  tabs_.addTab(TRANS("Reverb"), bg, &reverb_, false);
+  tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);
-  tabs_.addTab(TRANS("Display"), bg, &display_, false);
+  tabs_.addTab(TRANS("Console display"), bg, &display_, false);
   tabs_.addTab(TRANS("Language"), bg, &language_, false);
   // Only where the program runs the server: the standalone program sets
   // remoteStatus; a plugin does not.
   if (p.remoteStatus) {
     remote_ = std::make_unique<RemotePanel>(p);
-    tabs_.addTab(TRANS("Remote"), bg, remote_.get(), false);
+    tabs_.addTab(TRANS("Remote control"), bg, remote_.get(), false);
   }
-  tabs_.addTab(TRANS("Log"), bg, &log_, false);
+  tabs_.addTab(TRANS("Diagnostics"), bg, &log_, false);
   if (lastSettingsTab().isNotEmpty()) showTab(lastSettingsTab());
-  // The Engine tab is the tallest: six switches, five memory controls, a
-  // readout and a footer. Adding a row without adding height pushes the
-  // Save buttons off the bottom, where they cannot be pressed at all.
-  setSize(660, 560);
+  // Wide enough for every tab's name in full; the tabs scroll when taller.
+  setSize(960, 560);
 }
 
 void SettingsWindow::showTab(const juce::String& name) {

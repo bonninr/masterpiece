@@ -305,12 +305,13 @@ public:
   std::function<void()> onSettings;
   // The organ's own settings: how it is loaded and which stops.
   std::function<void()> onOrganSettings;
+  // Settings > a section: the settings window, open on the tab of that name.
+  std::function<void(const juce::String& tab)> onSettingsTab;
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
-  // Back up and restore (SettingsBackup.cpp): the organ's settings or all of
-  // them to one file and back, and parts of another organ's copied to this one.
-  void addBackupItems(juce::PopupMenu& menu, int firstId);
-  void backupItemChosen(int item);
+  // File > Import and Export, Organ > Copy settings (SettingsBackup.cpp): the
+  // organ's settings or all of them to one file and back, and parts of another
+  // organ's copied to this one.
   void exportSettings(bool all);
   void importSettings();
   void copySettingsFrom();
@@ -377,10 +378,16 @@ private:
   // recordings, View for what the window shows, Settings for the windows that
   // change how things work.
   juce::TextButton fileMenu_{TRANS("File")};
+  juce::TextButton organMenu_{TRANS("Organ")};
   juce::TextButton viewMenu_{TRANS("View")};
   juce::TextButton settingsButton_{TRANS("Settings")};
+  juce::TextButton helpMenu_{TRANS("Help")};
   void showFileMenu();
+  void showOrganMenu();
   void showViewMenu();
+  void showHelpMenu();
+  void checkForUpdatesNow();
+  void showAbout();
   // Size the window so the console's page fills it, with no margin.
   void fitWindowToPage();
   void showSettingsMenu();

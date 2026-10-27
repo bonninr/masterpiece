@@ -1009,13 +1009,15 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       if (choice >= 10) openPageWindow(page, {}, choice - 10);
     });
   };
-  for (auto* b : {&fileMenu_, &viewMenu_, &settingsButton_}) {
+  for (auto* b : {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_}) {
     addAndMakeVisible(*b);
     b->setTriggeredOnMouseDown(true);
   }
   fileMenu_.onClick = [this] { showFileMenu(); };
+  organMenu_.onClick = [this] { showOrganMenu(); };
   viewMenu_.onClick = [this] { showViewMenu(); };
   settingsButton_.onClick = [this] { showSettingsMenu(); };
+  helpMenu_.onClick = [this] { showHelpMenu(); };
 
   // The sequencer. Held with "Set", stepping CAPTURES the frame it lands on,
   // which is how a registration is built for a piece.
@@ -1994,14 +1996,16 @@ void MasterpieceEditor::resized() {
     // left; on the right panic, save, the layout, the temperament and the
     // sequencer. What is left is the bar's, and it needs No DSP and a fader
     // a hand can use.
-    const int menus = 3 * menuW + 14;
+    const int menus = 5 * menuW + 14;
     const int buttons = 2 * (kMobile ? 46 : 38) + (layout_.isVisible() ? layoutW : 0) + 140 +
                         2 * stepW + 96 + (kMobile ? 64 : 56);
     if (bar.getWidth() - menus - buttons < TopBar::kMinWidth) {
       auto row = bar;
       fileMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
+      organMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
       viewMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
       settingsButton_.setBounds(row.removeFromLeft(menuW + 14).reduced(2));
+      helpMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
       top_.setBounds(row);
       bar = r.removeFromTop(36);
       stacked = true;
@@ -2009,8 +2013,10 @@ void MasterpieceEditor::resized() {
   }
   if (!stacked) {
     fileMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
+    organMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
     viewMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
     settingsButton_.setBounds(bar.removeFromLeft(menuW + 14).reduced(2));
+    helpMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
   }
   panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
   saveStateButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
@@ -2391,10 +2397,6 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   // The plain list of stops, for a player who cannot see the console. The
   // key that opens it is named in the manual.
   if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, showingStopList_);
-  // The program couplers (#468), a menu away (#591). They are switches the
-  // organ is built with, so changing this loads the organ again.
-  if (proc_.loadedOrganFile().existsAsFile())
-    menu.addItem(19, TRANS("Program couplers"), true, proc_.programCouplers());
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
                  onPanel && showingPanel_ == static_cast<int>(i));
@@ -2473,10 +2475,9 @@ void MasterpieceEditor::toggleSwell() {
 }
 
 void MasterpieceEditor::showFileMenu() {
+  // Organs and settings files: what is opened and saved.
   juce::PopupMenu menu;
-  // One door (#276): the favourites, with the file dialog a button away in
-  // the same window; with no favourite yet, the file dialog itself.
-  menu.addItem(1, TRANS("Open..."));
+  menu.addItem(1, TRANS("Open organ..."));
   // The same organ as another definition: a perspective, or full and light.
   const juce::File loaded = proc_.loadedOrganFile();
   const auto versions = MasterpieceProcessor::organVersions(loaded);
@@ -2485,10 +2486,15 @@ void MasterpieceEditor::showFileMenu() {
     for (int i = 0; i < versions.size(); ++i)
       other.addItem(100 + i, versions[i].getFileNameWithoutExtension(), versions[i] != loaded,
                     versions[i] == loaded);
-    menu.addSubMenu(TRANS("Other versions of this organ"), other);
+    menu.addSubMenu(TRANS("Open another version"), other);
   }
-  menu.addSeparator();
-  menu.addItem(5, TRANS("Recorder..."), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  // A phone or a tablet has no folder to save a file to that this can reach.
+  if (!kMobile) {
+    menu.addSeparator();
+    menu.addItem(20, TRANS("Import settings..."));
+    menu.addItem(21, TRANS("Export settings..."));
+    menu.addItem(22, TRANS("Export organ settings..."), !loaded.getFullPathName().isEmpty());
+  }
   // The application's own way out (#591), the same path as the window's close
   // button. A plug-in's host owns quitting; on a Mac it is in the app menu.
 #if !JUCE_MAC
@@ -2505,11 +2511,56 @@ void MasterpieceEditor::showFileMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), versions](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1) safe->showOpenMenu();
-                       if (c == 5) safe->toggleRecorder();
+                       if (c == 20) safe->importSettings();
+                       if (c == 21) safe->exportSettings(true);
+                       if (c == 22) safe->exportSettings(false);
                        if (c == 6)
                          if (auto* app = juce::JUCEApplicationBase::getInstance())
                            app->systemRequestedQuit();
                        if (c >= 100 && c - 100 < versions.size()) safe->loadOrgan(versions[c - 100]);
+                     });
+}
+
+void MasterpieceEditor::showOrganMenu() {
+  // The organ that is loaded: its settings, its tuning, its combinations.
+  const bool loaded = proc_.loadedOrganFile().existsAsFile();
+  juce::PopupMenu menu;
+  menu.addItem(1, TRANS("Organ settings..."), loaded);
+  menu.addItem(2, TRANS("Temperament and tuning..."), loaded);
+  menu.addItem(3, TRANS("Combinations"), loaded && combinations_ != nullptr,
+               combinations_ != nullptr && combinations_->isVisible());
+  // The program couplers (#468): switches the organ is built with, so
+  // changing this loads the organ again.
+  menu.addItem(4, TRANS("Program couplers"), loaded, proc_.programCouplers());
+  menu.addSeparator();
+  menu.addItem(5, TRANS("Reload organ"), loaded);
+  menu.addItem(6, TRANS("Copy settings from another organ..."), loaded && !kMobile);
+  // A licence confirmed for this organ can be taken back here.
+  if (proc_.organModel().hasLicensedSamples) {
+    menu.addSeparator();
+    menu.addItem(7, TRANS("Licence accepted"), true, proc_.licenceConfirmed());
+  }
+  menu.addSeparator();
+  menu.addItem(8, TRANS("All notes off"));
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&organMenu_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
+                       if (safe == nullptr || c == 0) return;
+                       if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
+                       if (c == 2) safe->tuningButton_.triggerClick();
+                       if (c == 3) safe->toggleCombinations();
+                       if (c == 4) safe->toggleProgramCouplers();
+                       if (c == 5) safe->reloadOrgan();
+                       if (c == 6) safe->copySettingsFrom();
+                       if (c == 8) safe->proc_.releaseAllKeys();
+                       if (c == 7) {
+                         if (safe->proc_.licenceConfirmed()) {
+                           safe->proc_.setLicenceConfirmed(false);
+                           safe->proc_.saveSettingsIfDirty();
+                           safe->reloadOrgan();
+                         } else {
+                           safe->askForLicence();
+                         }
+                       }
                      });
 }
 
@@ -2539,39 +2590,47 @@ void MasterpieceEditor::fitWindowToPage() {
 }
 
 void MasterpieceEditor::showViewMenu() {
+  // What the window shows, and the windows beside it.
   juce::PopupMenu menu;
+  {
+    juce::PopupMenu mode;
+    mode.addItem(30, TRANS("Simple"), true, proc_.simpleMode());
+    mode.addItem(31, TRANS("Professional"), true, !proc_.simpleMode());
+    menu.addSubMenu(TRANS("Display mode"), mode);
+  }
+  menu.addSeparator();
   addPanelItems(menu);
   menu.addSeparator();
-  menu.addItem(10, TRANS("Combinations"), combinations_ != nullptr,
-               combinations_ != nullptr && combinations_->isVisible());
-  if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Swell faders"), true, showingSwell_);
+  if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Expression pedals"), true, showingSwell_);
   menu.addItem(12, TRANS("Keyboard"), true, showingKeyboard_);
-  menu.addItem(13, TRANS("Show played keys"), true, proc_.showPlayedKeys());
+  menu.addItem(13, TRANS("Highlight played keys"), true, proc_.showPlayedKeys());
   // Each item its own number: the handler below runs every branch that
   // matches, so a shared number does two things at once. 15 is the stop list.
-  menu.addItem(17, TRANS("Small pages fill the window"), true, proc_.smallPagesFill());
+  menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
   menu.addItem(18, TRANS("Fit window to page"));
-  menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
-#if MP_HAS_SCORE
-  menu.addItem(16, TRANS("Score"), true,
-               (showingConsole_ && showingScore_) || scoreWindow_ != nullptr);
-#endif
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
     juce::PopupMenu pages;
     for (int i = 0; i < console_.pageCount(); ++i)
       pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
-    menu.addSeparator();
-    menu.addSubMenu(TRANS("A page in its own window"), pages);
+    menu.addSubMenu(TRANS("Open page in new window"), pages);
   }
+  menu.addSeparator();
+  menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
+  menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+#if MP_HAS_SCORE
+  menu.addItem(16, TRANS("Score"), true,
+               (showingConsole_ && showingScore_) || scoreWindow_ != nullptr);
+#endif
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
+                       // The settings windows follow it on their own.
+                       if (c == 30 || c == 31) safe->proc_.setSimpleMode(c == 30);
+                       if (c == 5) safe->toggleRecorder();
                        if (c == 15) safe->toggleStopList();
-                       if (c == 19) safe->toggleProgramCouplers();
-                       if (c == 10) safe->toggleCombinations();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
                        if (c == 14) safe->toggleSplitKeyboard();
@@ -2595,31 +2654,67 @@ void MasterpieceEditor::showViewMenu() {
 }
 
 void MasterpieceEditor::showSettingsMenu() {
-  // Two windows: what belongs to this organ, and what belongs to the
-  // program and the player's console; and the sound card, set up once.
+  // The program and the player's console, the same for every organ: one
+  // item per section of the settings window. A plug-in's host owns the
+  // devices, and its window has no Audio and MIDI sections.
   juce::PopupMenu menu;
-  menu.addItem(1, TRANS("Organ settings..."), !proc_.loadedOrganFile().getFullPathName().isEmpty());
-  // A licence confirmed for this organ can be taken back here.
-  if (proc_.organModel().hasLicensedSamples)
-    menu.addItem(4, TRANS("Licence confirmed for this organ"), true, proc_.licenceConfirmed());
-  menu.addItem(2, TRANS("General settings..."));
-  addBackupItems(menu, 20);
+  const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
+  const juce::StringArray tabs =
+      standalone ? juce::StringArray{"Audio", "MIDI", "Performance", "General", "Reverb", "Metronome",
+                                     "Combination sets", "Console display", "Language", "Remote control"}
+                 : juce::StringArray{"Performance", "General", "Reverb", "Metronome", "Combination sets",
+                                     "Console display", "Language"};
+  for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
+                       if (safe == nullptr || c < 40 || c - 40 >= tabs.size()) return;
+                       if (safe->onSettingsTab) safe->onSettingsTab(TRANS(tabs[c - 40]));
+                       else if (safe->onSettings) safe->onSettings();
+                     });
+}
+
+void MasterpieceEditor::showHelpMenu() {
+  juce::PopupMenu menu;
+  menu.addItem(1, TRANS("Documentation"));
+  menu.addItem(2, TRANS("Release notes"));
+  menu.addSeparator();
+  menu.addItem(3, TRANS("Check for updates..."));
+  menu.addItem(4, TRANS("Diagnostics..."), juce::JUCEApplicationBase::isStandaloneApp());
+  menu.addSeparator();
+  menu.addItem(5, TRANS("About Masterpiece"));
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&helpMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
-                       if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
-                       if (c == 2 && safe->onSettings) safe->onSettings();
-                       if (c >= 20 && c < 30) safe->backupItemChosen(c - 20);
-                       if (c == 4) {
-                         if (safe->proc_.licenceConfirmed()) {
-                           safe->proc_.setLicenceConfirmed(false);
-                           safe->proc_.saveSettingsIfDirty();
-                           safe->reloadOrgan();
-                         } else {
-                           safe->askForLicence();
-                         }
-                       }
+                       if (c == 1) juce::URL(kDocumentationUrl).launchInDefaultBrowser();
+                       if (c == 2) juce::URL(kReleaseNotesUrl).launchInDefaultBrowser();
+                       if (c == 3) safe->checkForUpdatesNow();
+                       if (c == 4 && safe->onSettingsTab) safe->onSettingsTab(TRANS("Diagnostics"));
+                       if (c == 5) safe->showAbout();
                      });
+}
+
+void MasterpieceEditor::checkForUpdatesNow() {
+  top_.setStatus(TRANS("Checking for updates..."));
+  checkForUpdateNow(proc_, [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](
+                               const juce::String& latest) {
+    if (safe == nullptr) return;
+    if (latest.isEmpty()) {
+      safe->top_.setStatus(TRANS("No answer from the update server. Check the network and try again."));
+    } else if (isNewerVersion(latest, programVersion())) {
+      safe->top_.setStatus({});
+      safe->showUpdateNotice(latest);
+    } else {
+      safe->top_.setStatus(TRANS("Masterpiece %1 is the latest version.").replace("%1", programVersion()));
+    }
+  });
+}
+
+void MasterpieceEditor::showAbout() {
+  juce::AlertWindow::showMessageBoxAsync(
+      juce::MessageBoxIconType::NoIcon, TRANS("About Masterpiece"),
+      "Masterpiece " + programVersion() + "\n" + TRANS("Pipe organ sample player") +
+          "\n\nmasterpieceorgan.com\n" + TRANS("Licence: GNU General Public License, version 3"),
+      TRANS("Close"), this);
 }
 
 void MasterpieceEditor::showConsolePage(int oneBased) {
@@ -2903,13 +2998,15 @@ juce::AudioProcessorEditor* MasterpieceProcessor::createEditor() {
     e->loadOrgan(organ, false);
     return true;
   };
-  ed->onSettings = [this, safe, launch] {
+  ed->onSettingsTab = [this, safe, launch](const juce::String& tab) {
     auto panel = std::make_unique<ui::SettingsWindow>(*this, nullptr);
     panel->setOrganLoader([safe](const juce::File& f) {
       if (auto* e = safe.getComponent()) e->loadOrgan(f, false);
     });
-    launch(std::move(panel), TRANS("General settings"));
+    if (tab.isNotEmpty()) panel->showTab(tab);
+    launch(std::move(panel), TRANS("Settings"));
   };
+  ed->onSettings = [ed] { ed->onSettingsTab({}); };
   ed->onOrganSettings = [this, safe, launch] {
     launch(std::make_unique<ui::OrganSettingsWindow>(*this,
                                                      [safe] {

@@ -450,11 +450,6 @@ public:
       controlClear_[ci].onClick = [this, c] { host_.clearControl(c); };
     }
 
-    addAndMakeVisible(note_);
-    styleLabel(note_, TRANS("The split plays the organ through its own MIDI input, \"Split keyboard\": Lower, "
-                            "Upper, Solo and Pedal are its channels 11 to 14, and each can be sent to any "
-                            "manual here or in Settings > MIDI."));
-    note_.setFont(juce::FontOptions(12.0f));
 
     fillSources();
     fillKeyboards();
@@ -572,7 +567,6 @@ public:
       }
     }
     r.removeFromTop(6);
-    note_.setBounds(row(48));
   }
 
   void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xff15171c)); }
@@ -795,7 +789,6 @@ private:
   juce::Label controlsHeading_;
   std::array<juce::Label, split::kControlCount> controlLabel_;
   std::array<juce::TextButton, split::kControlCount> controlLearn_, controlClear_;
-  juce::Label note_;
 };
 
 // The panel in a viewport: on a small screen it scrolls.

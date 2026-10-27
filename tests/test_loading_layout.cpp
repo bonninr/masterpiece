@@ -21,6 +21,23 @@ public:
   void run() override {
     juce::MessageManager::getInstance();
     mp::MasterpieceProcessor proc;
+    // Simple mode first: the Quality presets, and none of the checkboxes.
+    proc.setSimpleMode(true, false);
+    {
+      mp::ui::EnginePanel simple(proc);
+      simple.setSize(770, 1350);
+      int ticks = 0;
+      bool quality = false;
+      for (auto* child : simple.getChildren()) {
+        if (!child->isVisible()) continue;
+        if (dynamic_cast<juce::ToggleButton*>(child) != nullptr) ++ticks;
+        if (auto* label = dynamic_cast<juce::Label*>(child); label != nullptr && label->getText() == "Quality")
+          quality = true;
+      }
+      MP_CHECK(quality, "Simple mode shows the Quality presets");
+      MP_CHECK(ticks == 0, "and no checkbox: " + std::to_string(ticks) + " shown");
+    }
+    proc.setSimpleMode(false, false);
     mp::ui::EnginePanel panel(proc);
     // The width of the Organ settings window and the height its Loading tab
     // gives the panel (OrganSettings.h).
@@ -40,11 +57,11 @@ public:
       MP_CHECK(box->getX() == left, "\"" + text + "\" starts at x " + std::to_string(box->getX()) +
                                         ", the other checkboxes at " + std::to_string(left));
       if (text == "Program couplers") couplers = true;
-      if (text.rfind("Hold samples compressed", 0) == 0) compressed = true;
+      if (text == "Lossless compression in memory") compressed = true;
     }
     MP_CHECK(boxes >= 10, "the Loading tab has its checkboxes");
     MP_CHECK(couplers, "Program couplers is on the tab");
-    MP_CHECK(compressed, "Hold samples compressed is on the tab");
+    MP_CHECK(compressed, "Lossless compression in memory is on the tab");
 
     // Rows were added: nothing runs into its neighbour or under the buttons.
     for (size_t i = 0; i < shown.size(); ++i)

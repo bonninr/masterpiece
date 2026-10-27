@@ -67,6 +67,8 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   };
 
   addAndMakeVisible(pitch_);
+  pitch_.setTooltip(TRANS("Saved for this organ. Notes played from now on take the change; held notes keep "
+                          "their pitch."));
   const double native = proc_.nativePitchHz();
   pitch_.setRange(native * 0.75, native * 1.34, 0.1);
   pitch_.setTextValueSuffix(" Hz");
@@ -122,10 +124,6 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(note_);
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
-  note_.setText(TRANS("Notes played from now on take the change; held notes keep the pitch "
-                      "they started with. Saved for this organ. Transposing moves the keys, "
-                      "not the samples. Map any of these to your console in Settings, MIDI."),
-                juce::dontSendNotification);
 
   setSize(460, 340);
   refresh();
