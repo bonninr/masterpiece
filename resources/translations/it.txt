@@ -615,7 +615,7 @@ countries: it ch sm va
 "Record audio..." = "Registra audio..."
 "Use as default for all organs" = "Usa come predefinito per tutti gli organi"
 "Clear default" = "Cancella il predefinito"
-"Send stop changes back to the console" = "Rimanda alla consolle i cambi di registro"
+"Send stop changes on the MIDI output" = "Invia i cambi di registro all'uscita MIDI"
 "General Cancel also puts the keyboards back on their own manuals" = "L'annullatore generale riporta anche le tastiere sui propri manuali"
 "Sustain pedal: controller 64 holds the notes let go" = "Pedale di sustain: il controller 64 mantiene le note rilasciate"
 "Save mapping" = "Salva associazione"

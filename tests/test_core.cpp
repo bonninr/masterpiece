@@ -16671,6 +16671,98 @@ public:
 };
 static MidiOutputKeptTest g_midiOutputKept;
 
+// A stop moved in the program lights its lamp on the console, as one moved
+// from the console does: a click on screen, the remote or a piston. The window
+// queued the lamp between blocks and the next block cleared it unsent, so only
+// a change made from the console itself ever went out.
+class MidiLampFromProgramTest final : public mp::test::Test {
+public:
+  MidiLampFromProgramTest() : Test("functional.midi.lamp-from-program", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto block = [&](const juce::MidiBuffer& in) {
+        juce::MidiBuffer m(in);
+        buf.clear();
+        proc.processBlock(buf, m);
+      };
+      auto lamp = [&sent](int velocity) {  // 0: note off
+        for (const auto& m : sent)
+          if (m.getNoteNumber() == 36 && m.getChannel() == 1 &&
+              (velocity == 0 ? (m.isNoteOff() || (m.isNoteOn() && m.getVelocity() == 0))
+                             : (m.isNoteOn() && m.getVelocity() == velocity)))
+            return true;
+        return false;
+      };
+
+      mp::MidiBinding pad;  // Principal 8 learned on a pad: note 36, channel 1
+      pad.source.kind = mp::MidiSourceKind::Note;
+      pad.source.channel = 1;
+      pad.source.number = 36;
+      pad.targetKind = mp::MidiTargetKind::Switch;
+      pad.targetId = 1101;
+      pad.trigger = mp::MidiTrigger::Toggle;
+      pad.latching = true;
+      proc.midiMap().bind(pad);
+      proc.setMidiFeedbackEnabled(true);
+      block({});
+      sent.clear();
+
+      proc.setSwitchEngaged(1101, true);  // the window, the remote, a piston
+      block({});
+      MP_CHECK(proc.switchEngaged(1101), "the stop is drawn from the program");
+      MP_CHECK(lamp(127), "and its lamp lights: note 36 at 127");
+      sent.clear();
+      proc.setSwitchEngaged(1101, false);
+      block({});
+      MP_CHECK(lamp(0), "pushed in from the program, its lamp goes out");
+      sent.clear();
+
+      juce::MidiBuffer press;  // and from the pad itself, as before
+      press.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+      block(press);
+      MP_CHECK(proc.switchEngaged(1101) && lamp(127), "drawn from the pad, its lamp lights");
+      sent.clear();
+
+      // A Send row of its own: a pad's colour for each state.
+      mp::MidiSend colour;
+      colour.targetKind = mp::MidiTargetKind::Switch;
+      colour.targetId = 1101;
+      colour.kind = mp::MidiSourceKind::Note;
+      colour.channel = 1;
+      colour.number = 36;
+      colour.low = 5;
+      colour.high = 21;
+      proc.midiMap().setSendsFor(mp::MidiTargetKind::Switch, 1101, {colour});
+      block({});
+      sent.clear();
+      proc.setSwitchEngaged(1101, false);
+      block({});
+      MP_CHECK(lamp(5), "with a Send row, pushed in sends its 'off' value, 5");
+      sent.clear();
+      proc.setSwitchEngaged(1101, true);
+      block({});
+      MP_CHECK(lamp(21), "and drawn sends its 'on' value, 21");
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiLampFromProgramTest g_midiLampFromProgram;
+
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
 // is one level further up. Drawing a stop from the stop list or a combination

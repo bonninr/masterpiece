@@ -337,7 +337,7 @@ private:
   juce::Label defaultNote_;
   void showDefaultConsole();
   juce::ComboBox output_;
-  juce::ToggleButton feedback_{TRANS("Send stop changes back to the console")};
+  juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton cancelResets_{
       TRANS("General Cancel also puts the keyboards back on their own manuals")};
   juce::ToggleButton leaveHeld_{TRANS("Stop changes leave the notes already held alone")};

@@ -5367,7 +5367,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
 
     // Reflect the change on the physical console, if the player wants that.
     // A switch with sends of its own is lit by those, every block.
-    if (midiFeedback_ && midiOut_ != nullptr &&
+    if (midiFeedback_ && (midiOut_ != nullptr || outgoingProbe) &&
         !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
       if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId)) {
         const int ch = b->source.channel > 0 ? b->source.channel : 1;
@@ -6483,7 +6483,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (stopsChanged_.exchange(false, std::memory_order_acq_rel))
     applyStopChangeToHeldNotes();
 
-  outgoing_.clear();
+  // outgoing_ already holds what the window queued since the last block: a
+  // stop clicked on screen or moved by the remote lights its lamp from here.
   juce::int64 t1 = 0, t2 = 0;
   if (logBlocks) {
     for (const auto meta : midi) {
@@ -6539,6 +6540,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
     midiOut_->sendBlockOfMessagesNow(outgoing_);
+  if (outgoingProbe && !outgoing_.isEmpty()) outgoingProbe(outgoing_);
+  outgoing_.clear();
 
   // Each enclosure renders its own voices and filters only those, so an
   // unenclosed Great stays unenclosed while the Swell shades move.
@@ -8507,7 +8510,7 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
 
 void MasterpieceProcessor::emitSends() {
   const auto& sends = midiMap_.sends();
-  if (midiOut_ == nullptr || sends.empty()) return;
+  if ((midiOut_ == nullptr && !outgoingProbe) || sends.empty()) return;
   // Sized to the list; a list that changed shape starts over, which sends
   // every lamp's current state -- what a console needs when it is set up.
   if (sentValues_.size() != sends.size()) sentValues_.assign(sends.size(), -1);

@@ -79,7 +79,7 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 | `midiinputoff` | Name of a MIDI input that is switched off; one line per input. | The inputs list in **General settings > MIDI** |
 | `consolechannel` | A console role and its MIDI channel, set as the player's own console. | **General settings > MIDI** |
 | `midioutput` | Name of the MIDI output port. The port opens again at the next start; a port that is not plugged in keeps its name. | **MIDI output** in **General settings > MIDI** |
-| `midifeedback` | `1` when on. | **Send stop changes back to the console** |
+| `midifeedback` | `1` when on. | **Send stop changes on the MIDI output** |
 | `metronome` | `<bpm> <beats> <level>`: tempo, beats per bar and level. Written when the Metronome tab closes. The click itself starts silent. | **General settings > Metronome** |
 | `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: the console display setup. | **General settings > Display** |
 | `defaulteq` | `<on> <gain> <band 1> ... <band 10>`: the EQ that every organ without an EQ of its own starts with. Absent while the default is off and flat. | **Save as default** in **Organ settings > Voicing EQ** |
