@@ -391,10 +391,10 @@ struct Voice {
   // cannot live only on the shared buffer.
   int64_t loopStart = -1;
   int64_t loopEnd = -1;
-  // The sample speaks with no loop at all: it is the sound of a strike, as a
-  // bell's is, and nothing in it sustains for a held key to release. A
-  // note-off leaves the voice to finish its recording, and so does a stop or
-  // a coupler letting go of it. Only Panic cuts it short (releaseAll()).
+  // The sample speaks with no loop and has no release to go to: it is the
+  // sound of a strike, as a bell's is. The last key, stop or coupler to let
+  // go of it leaves it to finish its recording, and the next strike sounds
+  // it again. Only Panic cuts it short (releaseAll()).
   bool percussive = false;
   // Frames in a row this release has been heard below the engine's cutoff.
   int quietFrames = 0;

@@ -633,12 +633,13 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
     v.loopStart = start.loopStartOverride;
     v.loopEnd = start.loopEndOverride;
   }
-  // With no loop in force there is nothing for a held key to sustain, so the
-  // file itself is what says the pipe is struck: a bell or a carillon pipe
-  // records its ring once and has no loop. The definition of a set carries no
-  // field that could mark a rank so, and a forced one-shot (a noise) already
-  // says it for itself.
-  v.percussive = !start.oneShot && !v.loops();
+  // With no loop in force and no release to go to, there is nothing for a
+  // held key to sustain or to let go into: the pipe is struck, as a bell is,
+  // and its recording plays to its end, as GrandOrgue plays it. A pipe with a
+  // release sample keeps its release at key-up, and a forced one-shot (a
+  // noise) already says it for itself.
+  v.percussive = !start.oneShot && !v.loops() &&
+                 (start.layer == nullptr || start.layer->releases.empty());
   speaking_[static_cast<size_t>(slot)] =
       start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
   return slot;
@@ -656,10 +657,6 @@ int VoiceEngine::joinSpeakingPipe(const VoiceStart& start, uint64_t noteId) {
         v.layer != start.layer)
       continue;
     if (v.noteId == noteId) return static_cast<int>(slot);
-    // A struck pipe is not passed from one key to another while it rings: the
-    // next strike sounds it again. Two paths of the SAME key press still
-    // join, above.
-    if (v.percussive) return -1;
     for (int h = 0; h < v.holderCount; ++h)
       if (v.holders[h] == noteId) return static_cast<int>(slot);
     if (v.holderCount >= Voice::kMaxHolders) return -1;
@@ -736,9 +733,6 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     Voice& v = voices_[slot];
     if (!v.active() || v.phase == VoicePhase::Release) continue;
     if (pipeId != 0 && v.pipeId != pipeId) continue;
-    // A struck sample has no sustain to let go of: the key, the stop or the
-    // coupler releases nothing, and the voice ends with its recording.
-    if (v.percussive) continue;
     if (v.noteId != noteId) {
       // Held by this key alongside another: it lets go, the pipe speaks on.
       for (int h = 0; h < v.holderCount; ++h)
@@ -751,6 +745,13 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
     // Another key still holds it: the pipe passes to that key.
     if (v.holderCount > 0) {
       v.noteId = v.holders[--v.holderCount];
+      continue;
+    }
+    // A struck pipe let go by its last key rings on to the end of its
+    // recording. It is no longer the pipe a key holds open, so the next key
+    // to reach it strikes it again.
+    if (v.percussive) {
+      speaking_[slot] = SpeakingPipe{};
       continue;
     }
     releaseVoice(v, release);
