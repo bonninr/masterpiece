@@ -4433,7 +4433,9 @@ public:
       st.oneShot = true;
       const int before = disk->reads.load();
       eng.startVoice(st, 1);
-      std::this_thread::sleep_for(std::chrono::milliseconds(120));
+      // Up to two seconds: a busy build machine can keep the thread waiting.
+      for (int i = 0; i < 200 && !(eng.streamerPasses() > 0 && disk->reads.load() > before); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       MP_CHECK(eng.streamerPasses() > 0 && disk->reads.load() > before,
                "a streaming voice wakes it");
       // The one slot taken over by another streaming voice is one stream.

@@ -13,7 +13,11 @@
 #elif defined(__APPLE__)
  #include <TargetConditionals.h>
  #include <mach/mach.h>
- #if TARGET_OS_IPHONE
+ // A device reports the memory left before the system ends the process. The
+ // simulator sets no such limit, and reports 0 there: it runs on the Mac, and
+ // the Mac's own figures apply.
+ #if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
+  #define MP_PROCESS_MEMORY_LIMIT 1
   #include <os/proc.h>
  #endif
 #elif defined(__linux__)
@@ -23,7 +27,7 @@
 
 namespace mp {
 
-#if defined(__APPLE__)
+#if defined(MP_PROCESS_MEMORY_LIMIT)
 // What this process holds as the system counts it: the figure iOS kills by.
 static int64_t footprintBytes() {
   task_vm_info_data_t info{};
@@ -55,7 +59,7 @@ int64_t availableMemoryBytes() {
       pmc.PrivateUsage > pmc.WorkingSetSize)
     free -= static_cast<int64_t>(pmc.PrivateUsage - pmc.WorkingSetSize);
   return free;
-#elif defined(__APPLE__) && TARGET_OS_IPHONE
+#elif defined(MP_PROCESS_MEMORY_LIMIT)
   return static_cast<int64_t>(os_proc_available_memory());
 #elif defined(__APPLE__)
   vm_statistics64_data_t vm{};
@@ -89,7 +93,7 @@ int64_t availableMemoryBytes() {
 }
 
 int64_t processMemoryCeilingBytes() {
-#if defined(__APPLE__) && TARGET_OS_IPHONE
+#if defined(MP_PROCESS_MEMORY_LIMIT)
   const int64_t held = footprintBytes();
   if (held < 0) return -1;
   return held + static_cast<int64_t>(os_proc_available_memory());
