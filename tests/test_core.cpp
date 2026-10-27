@@ -8692,6 +8692,39 @@ public:
                "and leave the treble at the level alone: " + std::to_string(treble) + " dB");
       MP_CHECK(bass < treble - 6.0,
                "so closing the box is audible: " + std::to_string(treble - bass) + " dB between them");
+
+      // The shoe swept from shut to open in a quarter of a second, in the
+      // blocks the engine renders: the shelf is placed once a block, and the
+      // tone must move no further from one sample to the next than a steady
+      // tone of its loudness does. A click is a jump many times that.
+      const double sr = 48000.0, hz = 220.0;
+      const int blockLen = 256, blocks = static_cast<int>(0.25 * sr) / blockLen;
+      mp::dsp::EnclosureFilter enc;
+      enc.prepare({sr, static_cast<juce::uint32>(blockLen), 2u});
+      enc.snapTo(0.0);
+      juce::AudioBuffer<float> buf(2, blockLen);
+      const double w = 2.0 * 3.141592653589793 * hz / sr;
+      int64_t t = 0;
+      float last = 0.0f, worstStep = 0.0f, loudest = 0.0f, apart = 0.0f;
+      for (int b = -40; b < blocks + 40; ++b) {
+        for (int i = 0; i < blockLen; ++i, ++t)
+          for (int ch = 0; ch < 2; ++ch) buf.setSample(ch, i, static_cast<float>(std::sin(w * t)));
+        const double shoe = std::clamp(static_cast<double>(b) / blocks, 0.0, 1.0);
+        enc.processBlock(juce::dsp::AudioBlock<float>(buf), hp, shoe, full);
+        for (int i = 0; i < blockLen; ++i) {
+          const float y = buf.getSample(0, i);
+          apart = std::max(apart, std::fabs(y - buf.getSample(1, i)));
+          if (b > -40 || i > 0) worstStep = std::max(worstStep, std::fabs(y - last));
+          loudest = std::max(loudest, std::fabs(y));
+          last = y;
+        }
+      }
+      MP_CHECK(apart < 1e-6f, "both channels filtered alike: " + std::to_string(apart));
+      // A steady sine of peak A moves at most A * w per sample.
+      const float steady = loudest * static_cast<float>(w);
+      MP_CHECK(worstStep < steady * 1.5f,
+               "the sweep is smooth: worst step " + std::to_string(worstStep) + " against " +
+                   std::to_string(steady) + " for a steady tone");
     }
 
     // Loudness must rise monotonically as the shoe opens - no dead spots or

@@ -102,6 +102,9 @@ void EnclosureFilter::prepare(const juce::dsp::ProcessSpec& spec) {
   const size_t channels = std::max<size_t>(2, spec.numChannels);
   shelf_.resize(channels);
   for (auto& f : shelf_) {
+    // Each its own biquad's worth of coefficients, made here so the audio
+    // thread only ever writes into them.
+    f.coefficients = new juce::dsp::IIR::Coefficients<float>(1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
     f.prepare(spec);
     f.reset();
   }
@@ -170,16 +173,14 @@ void EnclosureFilter::updateFor(const Enclosure& e) {
       juce::Decibels::decibelsToGain(static_cast<float>(-depthDb), -100.0f);
   const auto hz = static_cast<float>(cutoffHz_);
   const auto q = static_cast<float>(juce::MathConstants<double>::sqrt2 / 2.0);
-  for (auto& f : shelf_) {
-    // A shelf that cuts the treble is JUCE's high shelf — it passes the lows
-    // and takes the highs down — and the format's high-pass is its low shelf.
-    if (shelfLowPass_)
-      f.coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(
-          sampleRate_, hz, q, depthGain);
-    else
-      f.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowShelf(
-          sampleRate_, hz, q, depthGain);
-  }
+  // A shelf that cuts the treble is JUCE's high shelf — it passes the lows
+  // and takes the highs down — and the format's high-pass is its low shelf.
+  // Written into the coefficients prepare() made: this runs on the audio
+  // thread whenever the shoe moves, and a new set each time would allocate.
+  using Shelves = juce::dsp::IIR::ArrayCoefficients<float>;
+  const auto c = shelfLowPass_ ? Shelves::makeHighShelf(sampleRate_, hz, q, depthGain)
+                               : Shelves::makeLowShelf(sampleRate_, hz, q, depthGain);
+  for (auto& f : shelf_) *f.coefficients = c;
 }
 
 float EnclosureFilter::process(float x, const Enclosure& e, double shutter01,
@@ -208,19 +209,16 @@ void EnclosureFilter::processBlock(juce::dsp::AudioBlock<float> block,
   updateFor(e);
 
   const auto numCh = block.getNumChannels();
-  if (numCh > shelf_.size()) {
-    shelf_.resize(numCh);
-    for (auto& f : shelf_) {
-      f.prepare({sampleRate_, 512u, static_cast<juce::uint32>(numCh)});
-      f.reset();
-    }
-  }
+  // Channels beyond those prepared take the level alone: the audio thread
+  // never allocates, and prepare() sizes the shelves for every output.
+  const size_t filtered = std::min(numCh, shelf_.size());
   for (int i = 0; i < numSamples; ++i) {
     const float g = gain_.getNextValue();
-    for (size_t ch = 0; ch < numCh; ++ch)
+    for (size_t ch = 0; ch < numCh; ++ch) {
+      const float x = block.getSample(static_cast<int>(ch), i);
       block.setSample(static_cast<int>(ch), i,
-                      shelf_[ch].processSample(
-                          block.getSample(static_cast<int>(ch), i)) * g);
+                      (ch < filtered ? shelf_[ch].processSample(x) : x) * g);
+    }
   }
   for (auto& f : shelf_) f.snapToZero();
 }
