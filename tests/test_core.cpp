@@ -18135,7 +18135,10 @@ public:
       MP_CHECK(l.asked == 0, "the package beside the others is not asked for: asked " + std::to_string(l.asked));
     }
 
-    // The package in a folder of its own beside the organ's.
+    // The package in a folder of its own beside the organ's. The organ
+    // above is remembered as a library, and goes, so its package is not the
+    // one found here.
+    fs::remove_all(base / "Together", ec);
     {
       const fs::path top = base / "Demo_ODF";
       fs::create_directories(top / "OrganDefinitions");
