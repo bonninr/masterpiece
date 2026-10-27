@@ -1848,6 +1848,10 @@ public:
   // Releases start in phase with their attack where the set asks for it.
   // Off only to measure against.
   void setReleasePhaseAlign(bool on) { voices_.setReleasePhaseAlign(on); }
+  // GrandOrgue's release techniques (VoiceEngine): each off unless switched on.
+  void setReleaseAlignTable(bool on) { voices_.setReleaseAlignTable(on); }
+  void setReleaseShortNoteGain(bool on) { voices_.setReleaseShortNoteGain(on); }
+  void setReleaseStaccatoFade(bool on) { voices_.setReleaseStaccatoFade(on); }
 
   // A learned pedal's ends, from where it is now: a console whose swell shoe
   // only sends 55..127 still has to close the box (#90). Returns the value
