@@ -51,6 +51,38 @@ MidiTrigger triggerFrom(const std::string& s) {
 
 namespace {
 
+int hexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+// A send's SysEx in the map file: unbroken hex, "-" for none.
+std::string sysExField(const std::vector<uint8_t>& bytes) {
+  if (bytes.empty()) return "-";
+  static const char* kHex = "0123456789ABCDEF";
+  std::string s;
+  for (uint8_t b : bytes) {
+    s += kHex[b >> 4];
+    s += kHex[b & 15];
+  }
+  return s;
+}
+
+std::string sysExFields(const MidiSend& s) {
+  if (s.kind != MidiSourceKind::SysEx) return {};
+  return " " + sysExField(s.sysExOn) + " " + sysExField(s.sysExOff);
+}
+
+bool readSysExField(const std::string& field, std::vector<uint8_t>& out) {
+  if (field == "-") {
+    out.clear();
+    return true;
+  }
+  return parseSysExText(field, out);
+}
+
 const char* kindName(MidiSourceKind k) {
   switch (k) {
     case MidiSourceKind::Note: return "note";
@@ -647,6 +679,44 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
 
 } // namespace
 
+bool parseSysExText(const std::string& text, std::vector<uint8_t>& out) {
+  std::vector<uint8_t> bytes;
+  int high = -1;  // the first digit of a byte, waiting for its second
+  for (char c : text) {
+    if (c == ' ' || c == ',' || c == '\t') {
+      if (high >= 0) return false;  // a byte is two digits
+      continue;
+    }
+    const int d = hexDigit(c);
+    if (d < 0) return false;
+    if (high < 0) {
+      high = d;
+    } else {
+      bytes.push_back(static_cast<uint8_t>(high * 16 + d));
+      high = -1;
+    }
+  }
+  if (high >= 0) return false;
+  if (!bytes.empty()) {
+    if (bytes.size() < 2 || bytes.front() != 0xF0 || bytes.back() != 0xF7) return false;
+    for (size_t i = 1; i + 1 < bytes.size(); ++i)
+      if (bytes[i] >= 0x80) return false;
+  }
+  out = std::move(bytes);
+  return true;
+}
+
+std::string sysExText(const std::vector<uint8_t>& bytes) {
+  static const char* kHex = "0123456789ABCDEF";
+  std::string s;
+  for (uint8_t b : bytes) {
+    if (!s.empty()) s += ' ';
+    s += kHex[b >> 4];
+    s += kHex[b & 15];
+  }
+  return s;
+}
+
 bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
   // A program change has no "off": it is a button that says which program.
   if (s.kind == MidiSourceKind::ProgramChange)
@@ -760,7 +830,7 @@ std::string MidiMap::toText() const {
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
-        << ' ' << s.high << '\n';
+        << ' ' << s.high << sysExFields(s) << '\n';
   for (const auto& k : shortcuts_)
     out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
         << ' ' << encodeName(k.key) << '\n';
@@ -942,7 +1012,15 @@ bool MidiMap::fromText(const std::string& text) {
         snd.targetKind = targetKindFrom(tgt);
         snd.targetId = static_cast<Id>(id);
         snd.kind = sourceKindFrom(kind);
-        if (snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
+        // A system exclusive send carries its two messages after the
+        // numbers, as unbroken hex, "-" for none.
+        std::string on, off;
+        bool sysExOk = true;
+        if (snd.kind == MidiSourceKind::SysEx) {
+          sysExOk = static_cast<bool>(sl >> on >> off) && readSysExField(on, snd.sysExOn) &&
+                    readSysExField(off, snd.sysExOff);
+        }
+        if (sysExOk && snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
           sends_.push_back(snd);
           continue;
         }

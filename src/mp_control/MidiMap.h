@@ -272,12 +272,25 @@ struct MidiSend {
   // low..high, so a fader that wants 0..100 gets 0..100.
   int low = 0;
   int high = 127;
+  // A switch's system exclusive send: the whole message it sends when it
+  // comes on and when it goes off, F0 to F7. Empty sends nothing. Like every
+  // send, it goes out again after each load, so a controller's mode message
+  // (a pad grid's programmer layout) reaches it every time.
+  std::vector<uint8_t> sysExOn, sysExOff;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
-           channel == o.channel && number == o.number && low == o.low && high == o.high;
+           channel == o.channel && number == o.number && low == o.low && high == o.high &&
+           sysExOn == o.sysExOn && sysExOff == o.sysExOff;
   }
 };
+
+// One system exclusive message from hex bytes ("F0 7D 01 F7", spaces or
+// none). An empty text is an empty message. False for anything that is not
+// F0, data bytes, F7.
+bool parseSysExText(const std::string& text, std::vector<uint8_t>& out);
+// The bytes as "F0 7D 01 F7".
+std::string sysExText(const std::vector<uint8_t>& bytes);
 
 // One MIDI message of up to three bytes, built without JUCE.
 struct RawMidi {

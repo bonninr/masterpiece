@@ -17032,6 +17032,132 @@ public:
 };
 static MidiLampsAtLoadTest g_midiLampsAtLoad;
 
+// A Send row can be a system exclusive message, one for each state of the
+// switch. A pad grid that shows lamps only in its programmer layout gets that
+// layout's message after every load, ahead of the lamps (#565). The Send tab
+// offered "System exclusive" before, and a row set to it sent nothing.
+class MidiSendSysExTest final : public mp::test::Test {
+public:
+  MidiSendSysExTest() : Test("functional.midi.send-sysex", Category::Functional) {}
+  void run() override {
+    std::vector<uint8_t> bytes;
+    MP_CHECK(mp::parseSysExText("f0 00 20 29 02 0D 0E 01 F7", bytes) && bytes.size() == 9 &&
+                 mp::sysExText(bytes) == "F0 00 20 29 02 0D 0E 01 F7",
+             "a programmer-mode message reads, and prints back");
+    MP_CHECK(mp::parseSysExText("F07D01F7", bytes) && bytes.size() == 4, "unbroken hex reads too");
+    MP_CHECK(mp::parseSysExText("", bytes) && bytes.empty(), "an empty text is no message");
+    for (const char* bad : {"F0 01 02", "90 3C 40", "F0 81 F7", "F0 0 F7", "F0 GG F7", "F7"})
+      MP_CHECK(!mp::parseSysExText(bad, bytes), std::string("refused: ") + bad);
+
+    mp::MidiSend mode;  // on the stop's pad: the mode when it comes on, nothing off
+    mode.targetKind = mp::MidiTargetKind::Switch;
+    mode.targetId = 1101;
+    mode.kind = mp::MidiSourceKind::SysEx;
+    mode.sysExOn = {0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x0E, 0x01, 0xF7};
+    {
+      mp::MidiMap a;
+      mp::MidiSend off = mode;
+      off.targetId = 1102;
+      off.sysExOff = {0xF0, 0x7D, 0x00, 0xF7};
+      a.setSendsFor(mp::MidiTargetKind::Switch, 1101, {mode});
+      a.setSendsFor(mp::MidiTargetKind::Switch, 1102, {off});
+      mp::MidiMap b;
+      MP_CHECK(b.fromText(a.toText()), "the map reads back");
+      MP_CHECK(b.sends().size() == 2 && b.sendsFor(mp::MidiTargetKind::Switch, 1101).at(0) == mode &&
+                   b.sendsFor(mp::MidiTargetKind::Switch, 1102).at(0) == off,
+               "with both messages of each row");
+    }
+
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      const juce::File map = proc.midiMapFileFor(odf);
+      const bool hadMap = map.existsAsFile();
+      const juce::String mapBefore = hadMap ? map.loadFileAsString() : juce::String();
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      auto modeAt = [&sent] {  // where the mode message went, or -1
+        for (size_t i = 0; i < sent.size(); ++i)
+          if (sent[i].isSysEx() && sent[i].getSysExDataSize() == 7 && sent[i].getSysExData()[5] == 0x0E)
+            return static_cast<int>(i);
+        return -1;
+      };
+      auto lampAt = [&sent] {
+        for (size_t i = 0; i < sent.size(); ++i)
+          if ((sent[i].isNoteOn() || sent[i].isNoteOff()) && sent[i].getNoteNumber() == 40)
+            return static_cast<int>(i);
+        return -1;
+      };
+      // The pad's lamp, listed first: the mode still goes out ahead of it.
+      mp::MidiSend lamp;
+      lamp.targetKind = mp::MidiTargetKind::Switch;
+      lamp.targetId = 1101;
+      lamp.kind = mp::MidiSourceKind::Note;
+      lamp.channel = 1;
+      lamp.number = 40;
+      lamp.low = 5;
+      lamp.high = 21;
+      proc.setObjectSends(mp::MidiTargetKind::Switch, 1101, {lamp, mode});
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(modeAt() >= 0, "drawn, the row sends its message");
+      sent.clear();
+      proc.setSwitchEngaged(1101, false);
+      blocks(2);
+      MP_CHECK(modeAt() < 0 && lampAt() >= 0, "pushed in, an empty 'when off' sends nothing; the lamp row goes");
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+
+      // The load message from Settings > MIDI goes first of all.
+      MP_CHECK(!proc.setLoadMessage("F0 7D"), "a cut-off load message is refused");
+      MP_CHECK(proc.setLoadMessage("f0 7d 01 f7") && proc.loadMessage() == "F0 7D 01 F7",
+               "the load message is taken");
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(!sent.empty() && sent[0].isSysEx() && sent[0].getSysExDataSize() == 2 &&
+                   sent[0].getSysExData()[0] == 0x7D,
+               "the load message is the first thing sent after the load");
+      MP_CHECK(proc.midiMap().sendsFor(mp::MidiTargetKind::Switch, 1101).size() == 2,
+               "the row comes back with the organ");
+      MP_CHECK(modeAt() == 1, "and the row's message right after it, before the stop moved in that "
+                              "block lights anything: at " + std::to_string(modeAt()));
+      MP_CHECK(lampAt() >= 0 && modeAt() < lampAt(),
+               "ahead of the lamps: mode at " + std::to_string(modeAt()) + ", lamp at " +
+                   std::to_string(lampAt()));
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+      proc.settingsFileFor(odf).deleteFile();
+      if (hadMap) map.replaceWithText(mapBefore);
+      else map.deleteFile();
+    }
+    {
+      mp::MasterpieceProcessor proc;  // the next start
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.loadMessage() == "F0 7D 01 F7", "the load message is kept in the general settings");
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiSendSysExTest g_midiSendSysEx;
+
 // A Tutti wired straight into every stop's node, beside the stop's own switch,
 // as Coral Pipes' sets are (#211). The stop's switch is not clickable; its knob
 // is one level further up. Drawing a stop from the stop list or a combination

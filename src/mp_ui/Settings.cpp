@@ -1910,6 +1910,15 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   lampKind_.setTooltip(TRANS("A message on the MIDI output that lights a lamp once the organ is ready, blinks "
                              "while one loads and while a quit or power-off button is held, and goes out "
                              "with no organ"));
+  addAndMakeVisible(loadMessageLabel_);
+  styleLabel(loadMessageLabel_, TRANS("On organ load"));
+  addAndMakeVisible(loadMessage_);
+  loadMessage_.setText(proc_.loadMessage(), juce::dontSendNotification);
+  loadMessage_.setTextToShowWhenEmpty(TRANS("System exclusive, F0 ... F7"), juce::Colours::grey);
+  loadMessage_.setTooltip(TRANS("A system exclusive message in hex, sent on the MIDI output each time an organ "
+                                "loads, before any stop moves or lamp lights: for a controller that needs a mode "
+                                "set first, such as a pad grid's programmer layout. Empty sends nothing."));
+  loadMessage_.onReturnKey = loadMessage_.onFocusLost = [this] { pushLoadMessage(); };
   addAndMakeVisible(scoreHeading_);
   styleLabel(scoreHeading_, TRANS("Score app"));
   const ScorePageMessage page = proc_.scorePageMessage();
@@ -1947,8 +1956,9 @@ void MidiPanel::applyPart() {
                                         &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
                                         &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_,
                                         &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_,
-                                        &lampNumber_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
-                                        &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
+                                        &lampNumber_, &loadMessageLabel_, &loadMessage_, &scoreHeading_,
+                                        &learnScoreBack_, &learnScoreForward_, &scoreKind_, &scoreChannel_,
+                                        &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
                                       &defaultNote_, &keyboardsHeading_, &learnManuals_};
@@ -1963,7 +1973,8 @@ void MidiPanel::applyPart() {
       &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &learnTransposeDown_,
       &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
       &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_, &learnPowerOff_,
-      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &scoreHeading_, &learnScoreBack_,
+      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &loadMessageLabel_, &loadMessage_, &scoreHeading_,
+      &learnScoreBack_,
       &learnScoreForward_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_, &keyboardsHeading_,
       &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
@@ -1979,6 +1990,17 @@ void MidiPanel::pushReadyLamp() {
   lamp.channel = juce::jmax(1, lampChannel_.getSelectedId());
   lamp.number = juce::jmax(0, lampNumber_.getSelectedId() - 1);
   proc_.setReadyLamp(lamp);
+}
+
+// A message that does not read is outlined in red; the one before is kept.
+void MidiPanel::pushLoadMessage() {
+  if (proc_.setLoadMessage(loadMessage_.getText())) {
+    loadMessage_.removeColour(juce::TextEditor::outlineColourId);
+    loadMessage_.setText(proc_.loadMessage(), juce::dontSendNotification);
+  } else {
+    loadMessage_.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+  }
+  loadMessage_.repaint();
 }
 
 MidiPanel::~MidiPanel() { stopTimer(); }
@@ -2320,6 +2342,10 @@ void MidiPanel::resized() {
     lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
     lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    loadMessageLabel_.setBounds(row.removeFromLeft(120));
+    loadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
 
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
