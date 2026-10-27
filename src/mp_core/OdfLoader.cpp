@@ -812,11 +812,33 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     release.loadEndValue = fieldInt(row, "LoadSampleRange_EndPositionValue", "g", 0);
     release.holdTimeMsHigh =
         ceilingField(row, "ReleaseSelCriteria_LatestKeyReleaseTimeMs", "q", INT32_MAX);
-    release.releaseCrossfadeMs = fieldDouble(row, "ReleaseCrossfadeLengthMs", "n",
-                                             isCompact(row) ? 45.0 : release.releaseCrossfadeMs);
+    // A compact row leaves out the format's own default; a full row that
+    // gives none is marked, and takes a length by its pipe's pitch below.
+    release.releaseCrossfadeMs = fieldDouble(row, "ReleaseCrossfadeLengthMs", "n", isCompact(row) ? 45.0 : -1.0);
     release.phaseAlign = fieldBool(row, "PhaseAlignAutomatically", "m", isCompact(row));
     layerIt->second->releases.push_back(std::move(release));
   });
+  // A release whose definition gives no crossfade takes one by its pipe's
+  // MIDI note, as GrandOrgue does: 184 ms up to note 42, 6 ms from note 87,
+  // in a straight line between, 46 ms for a pipe of no known note. A fixed
+  // 10 ms joined a bass pipe's release to its sustain in a fraction of its
+  // period, and the joint was heard as a bump (#565).
+  for (auto& [rankId, rank] : outModel.ranks) {
+    (void)rankId;
+    for (auto& pipe : rank.pipes)
+      for (auto& layer : pipe.layers)
+        for (auto& release : layer.releases) {
+          if (release.releaseCrossfadeMs >= 0.0) continue;
+          const int note = pipe.midiNote;
+          int ms = 46;
+          if (note > 0 && note < 133) {
+            ms = 184 - static_cast<int>(((static_cast<float>(note) - 42.0f) / 44.0f) * 178.0f);
+            if (note < 42) ms = 184;
+            if (note > 86) ms = 6;
+          }
+          release.releaseCrossfadeMs = ms;
+        }
+  }
 
   // ---- M2.1 validator: velocity coverage + dead release branches ----
   // A velocity is covered when some attack's ceiling reaches it (ceilings

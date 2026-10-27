@@ -103,6 +103,8 @@ struct ReleaseSample {
   int loadStartType = 0, loadStartValue = 0;
   int loadEndType = 0, loadEndValue = 0; // raw; type semantics unverified (see AttackSample)
   double releaseCrossfadeMs = 10.0;
+  // PhaseAlignAutomatically, as the definition states it. Every release is
+  // put in phase all the same (VoiceEngine::releaseVoice); kept for reading.
   bool phaseAlign = false;
   // Set at load: a release read from its file's marker, in a file that has
   // no marker and nothing after its loop, holds no release. Never chosen.
