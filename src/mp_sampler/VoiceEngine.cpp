@@ -914,12 +914,49 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
           v.alignPeriod = relBuf->sampleRate / hz;
         } else if (hz > 0.0 && relBuf->sampleRate > 0.0) {
           const ReleaseAlignment al =
-              alignRelease(*oldBuf, oldCursor, oldLoopStart, oldLoopEnd, v.xfadeRatioScale,
-                           *relBuf, v.cursor, relBuf->sampleRate / hz);
+              alignTable_.load(std::memory_order_relaxed)
+                  ? alignReleaseTableWith(
+                        *oldBuf, [&](int64_t i, int ch) { return oldBuf->sample(i, ch); }, oldCursor,
+                        oldLoopStart, oldLoopEnd, v.xfadeRatioScale, *relBuf,
+                        [&](int64_t i, int ch) { return relBuf->sample(i, ch); }, v.cursor)
+                  : alignRelease(*oldBuf, oldCursor, oldLoopStart, oldLoopEnd, v.xfadeRatioScale,
+                                 *relBuf, v.cursor, relBuf->sampleRate / hz);
           if (al.aligned) v.cursor += al.offset;
           if (logging) {
             ev.aligned = al.aligned;
             ev.alignFrames = static_cast<float>(al.offset);
+          }
+        }
+      }
+      // GrandOrgue's scaled releases (CreateReleaseSampler). A key let go
+      // during the attack: the release was recorded after a full-grown note,
+      // so it is scaled down, from 0.2 at once to 1 at the attack's end, the
+      // attack taken as 500 ms in the bass to 50 ms from MIDI 96.
+      {
+        const bool shortGain = shortNoteGain_.load(std::memory_order_relaxed);
+        const bool staccato = staccatoFade_.load(std::memory_order_relaxed);
+        if (shortGain || staccato) {
+          const double hz = releaseHz > 0.0 ? releaseHz : attackHz;
+          int note = hz > 0.0 ? static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / 440.0))) : 60;
+          if (note > 133 || note <= 0) note = 60;
+          const double held = static_cast<double>(heldMs);
+          if (shortGain) {
+            const double attackMs = note >= 96 ? 50.0 : note < 24 ? 500.0 : 500.0 + (24.0 - note) * 6.25;
+            if (held < attackMs) {
+              const double a = held / attackMs;
+              v.releaseLevel = static_cast<float>(0.2 + 0.8 * (2.0 * a - a * a));
+            }
+          }
+          // A staccato note: the room had no time to fill, so the release
+          // fades to silence, over longer the longer the note was held.
+          if (staccato && relBuf->sampleRate > 0.0) {
+            const double releaseSeconds =
+                std::max(0.0, static_cast<double>(relBuf->totalFrames()) - v.cursor) / relBuf->sampleRate;
+            const double fullRoomMs = std::clamp(60.0 * releaseSeconds + 40.0, 100.0, 350.0);
+            if (held < fullRoomMs) {
+              const double fadeMs = fullRoomMs + 6000.0 * held / fullRoomMs;
+              v.releaseLevelStep = static_cast<float>(v.releaseLevel / (fadeMs * sampleRate_ / 1000.0));
+            }
           }
         }
       }
@@ -1015,9 +1052,12 @@ void VoiceEngine::alignPendingRelease(Voice& v, DecodeScratch& scratch) {
     };
   };
   const ReleaseAlignment al =
-      alignReleaseWith(*ob, reader(*ob), v.xfadeOldCursor, v.xfadeOldLoopStart,
-                       v.xfadeOldLoopEnd, v.xfadeRatioScale, *rb, reader(*rb), v.cursor,
-                       v.alignPeriod);
+      alignTable_.load(std::memory_order_relaxed)
+          ? alignReleaseTableWith(*ob, reader(*ob), v.xfadeOldCursor, v.xfadeOldLoopStart,
+                                  v.xfadeOldLoopEnd, v.xfadeRatioScale, *rb, reader(*rb), v.cursor)
+          : alignReleaseWith(*ob, reader(*ob), v.xfadeOldCursor, v.xfadeOldLoopStart,
+                             v.xfadeOldLoopEnd, v.xfadeRatioScale, *rb, reader(*rb), v.cursor,
+                             v.alignPeriod);
   if (al.aligned) v.cursor += al.offset;
 }
 
@@ -1058,6 +1098,7 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
     else
       renderVoiceFrom<int16_t, true>(v, index, out, numChannels, numFrames, scratch);
     publishReadPosition(index, v);
+    fallReleaseLevel(v, index, numFrames);
     return;
   }
   // Twenty-bit storage is tested before the others: it is compact too, and a
@@ -1071,6 +1112,17 @@ void VoiceEngine::renderVoice(Voice& v, float* const* out, int numChannels,
   else
     renderVoiceFrom<float, false>(v, index, out, numChannels, numFrames, scratch);
   publishReadPosition(index, v);
+  fallReleaseLevel(v, index, numFrames);
+}
+
+void VoiceEngine::fallReleaseLevel(Voice& v, size_t index, int numFrames) {
+  if (v.releaseLevelStep <= 0.0f || v.phase != VoicePhase::Release) return;
+  v.releaseLevel -= v.releaseLevelStep * static_cast<float>(numFrames);
+  if (v.releaseLevel <= 0.0f) {
+    v.releaseLevel = 0.0f;
+    v.phase = VoicePhase::Idle;
+    disarmStream(index);
+  }
 }
 
 template <typename T, bool Coded>
@@ -1167,7 +1219,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   }
   // Folded in once rather than applied per tap. For Float32 this is 1.0f and
   // the multiply below is the one the gain needed anyway.
-  const float storeScale = storageScale(buf);
+  // A release sample sounds at its own level, which is 1 unless a GrandOrgue
+  // release technique lowered it (Voice::releaseLevel).
+  const float storeScale =
+      storageScale(buf) * (v.phase == VoicePhase::Release && v.releaseIsSample ? v.releaseLevel : 1.0f);
 
   // One raw count of the voice's sample, and four of them interpolated, for
   // the reads off the interior: a coded sample answers from either window,

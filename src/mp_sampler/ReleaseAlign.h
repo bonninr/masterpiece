@@ -171,6 +171,62 @@ inline ReleaseAlignment alignReleaseWith(const SampleBuffer& attack, ReadAttack&
   return {bestS, true};
 }
 
+// GrandOrgue's way (GOSoundReleaseAlignTable): the attack's last two frames
+// give a level and a slope, each into a bin, 32 levels across the pipe's
+// range and 2 slopes, rising or not; the release starts after the first frame
+// of its first 50 ms that falls in the same bins, or the nearest bin found.
+// The range here is the larger of the two sides' peaks over that window.
+template <class ReadAttack, class ReadRelease>
+inline ReleaseAlignment alignReleaseTableWith(const SampleBuffer& attack, ReadAttack&& readAttack,
+                                              double attackPos, int64_t loopStart, int64_t loopEnd,
+                                              double attackStep, const SampleBuffer& release,
+                                              ReadRelease&& readRelease, double releaseStart) {
+  using namespace releasealign;
+  ReleaseAlignment none;
+  constexpr int kLevels = 32;
+  const int len = static_cast<int>(release.sampleRate / 20.0);
+  if (len < 2 * kLevels * 2 || !(attackStep > 0.0) || !std::isfinite(attackStep)) return none;
+  if (releaseStart < 0.0 || releaseStart + len + 2.0 > static_cast<double>(release.numFrames)) return none;
+  const bool loops = loopStart >= 0 && loopEnd > loopStart + 1 && loopEnd <= attack.numFrames;
+  const double loopLen = static_cast<double>(loopEnd - loopStart);
+  if (attackPos < 2.0 * attackStep + 1.0) return none;
+  if (!loops && attackPos + len * attackStep + 2.0 > static_cast<double>(attack.numFrames)) return none;
+  const double f = summed(attack.numChannels, readAttack, attackPos - attackStep);
+  const double fPrev = summed(attack.numChannels, readAttack, attackPos - 2.0 * attackStep);
+  // The range: both sides' peaks over the window, the attack read on round
+  // its loop as it goes on sounding.
+  double peak = 0.0;
+  double pa = attackPos;
+  for (int i = 0; i < len; ++i) {
+    peak = std::max(peak, std::fabs(summed(release.numChannels, readRelease, releaseStart + i)));
+    if (loops)
+      while (pa >= static_cast<double>(loopEnd) - 1.0) pa -= loopLen;
+    peak = std::max(peak, std::fabs(summed(attack.numChannels, readAttack, pa)));
+    pa += attackStep;
+  }
+  if (!(peak > 0.0)) return none;
+  const auto level = [&](double x) {
+    return std::clamp(static_cast<int>(std::floor((x + peak) * kLevels / (2.0 * peak))), 0, kLevels - 1);
+  };
+  const int wantLevel = level(f);
+  const bool wantRising = f - fPrev > 0.0;
+  int bestI = -1, bestGap = 1 << 30;
+  double prev = summed(release.numChannels, readRelease, releaseStart);
+  for (int i = 1; i < len; ++i) {
+    const double x = summed(release.numChannels, readRelease, releaseStart + i);
+    const bool rising = x - prev > 0.0;
+    prev = x;
+    const int gap = std::abs(level(x) - wantLevel) * 2 + (rising == wantRising ? 0 : 1);
+    if (gap < bestGap) {
+      bestGap = gap;
+      bestI = i;
+      if (gap == 0) break;
+    }
+  }
+  if (bestI < 0) return none;
+  return {static_cast<double>(bestI + 1), true};
+}
+
 // Both samples read as they are held, through SampleBuffer::sample().
 inline ReleaseAlignment alignRelease(const SampleBuffer& attack, double attackPos,
                                      int64_t loopStart, int64_t loopEnd, double attackStep,

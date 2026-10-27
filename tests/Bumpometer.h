@@ -11,7 +11,9 @@
 //   through the joint and a straight line (in dB) from the held level to the
 //   release's level just after the crossfade;
 // - the click: the high-frequency energy at the joint (the second difference
-//   of the signal) over that of the held sound, in dB.
+//   of the signal) over that of the held sound, in dB;
+// - the jump: the most the level rises above the held level through the
+//   joint, in dB: a release recorded louder than the note it follows.
 //
 // No JUCE and no engine: it reads a rendered signal, so the tests and the
 // render tool measure alike.
@@ -27,6 +29,7 @@ namespace mp::bump {
 struct Joint {
   double bumpDb = 0.0;   // largest gap from the smooth line, either way
   double clickDb = 0.0;  // HF energy at the joint over the held sound's
+  double jumpDb = 0.0;   // the most the level rises above the held level
   double heldDb = 0.0;
   double tailDb = 0.0;
 };
@@ -36,6 +39,8 @@ struct Summary {
   double medianBumpDb = 0.0;
   double spreadDb = 0.0;  // worst less best: how much the key's timing matters
   double worstClickDb = 0.0;
+  double worstJumpDb = 0.0;
+  double medianJumpDb = 0.0;
   int count = 0;
 };
 
@@ -68,6 +73,7 @@ inline Joint measure(const std::vector<float>& y, double rate, int64_t at, int64
     const double line = j.heldDb + (j.tailDb - j.heldDb) * static_cast<double>(c - at) / static_cast<double>(span);
     const double level = dbOf(rmsOf(y, c - w / 2, c - w / 2 + w));
     j.bumpDb = std::max(j.bumpDb, std::fabs(level - line));
+    j.jumpDb = std::max(j.jumpDb, level - j.heldDb);
   }
 
   // The second difference: a sine's grows with its frequency squared, so a
@@ -96,11 +102,15 @@ inline Summary summarise(std::vector<Joint> joints) {
   Summary s;
   s.count = static_cast<int>(joints.size());
   if (joints.empty()) return s;
-  std::vector<double> bumps;
+  std::vector<double> bumps, jumps;
   for (const auto& j : joints) {
     bumps.push_back(j.bumpDb);
+    jumps.push_back(j.jumpDb);
     s.worstClickDb = std::max(s.worstClickDb, j.clickDb);
   }
+  std::sort(jumps.begin(), jumps.end());
+  s.worstJumpDb = jumps.back();
+  s.medianJumpDb = jumps[jumps.size() / 2];
   std::sort(bumps.begin(), bumps.end());
   s.worstBumpDb = bumps.back();
   s.medianBumpDb = bumps[bumps.size() / 2];

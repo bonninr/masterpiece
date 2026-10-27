@@ -295,6 +295,11 @@ struct Voice {
   double ratio = 1.0;    // playback speed: temperament * sample-rate conversion
   float gain = 1.0f;
   float releaseGain = 1.0f; // envelope during release crossfade
+  // The release sample's own level, as GrandOrgue sets it at a note-off: lower
+  // for a key let go during the attack, and falling to silence for a staccato
+  // note. Applied a block at a time; 1 and no fall unless switched on.
+  float releaseLevel = 1.0f;
+  float releaseLevelStep = 0.0f;  // fall per frame
   // True once note-off has swapped in a real release sample. The 120 ms fade
   // below then does not apply: it exists to fade the attack itself when the
   // rank ships no release, and applying it to a real tail murders seconds of
@@ -746,6 +751,15 @@ public:
   // (PhaseAlignAutomatically). On by default; off only to measure against.
   void setReleasePhaseAlign(bool on) { phaseAlign_.store(on, std::memory_order_release); }
   bool releasePhaseAlign() const { return phaseAlign_.load(std::memory_order_acquire); }
+  // GrandOrgue's release techniques, each off unless switched on:
+  // - the start found with its table of 32 levels by 2 slopes, read over the
+  //   release's first 50 ms (else: the pipe's first three harmonics);
+  // - a release after a key let go during the attack scaled down, the attack
+  //   taken as 500 ms in the bass to 50 ms from MIDI 96;
+  // - a release after a staccato note faded to silence, the room not yet full.
+  void setReleaseAlignTable(bool on) { alignTable_.store(on, std::memory_order_release); }
+  void setReleaseShortNoteGain(bool on) { shortNoteGain_.store(on, std::memory_order_release); }
+  void setReleaseStaccatoFade(bool on) { staccatoFade_.store(on, std::memory_order_release); }
   // Moves the events recorded since the last call into `out`, and returns how
   // many were dropped meanwhile.
   int64_t takeReleaseEvents(std::vector<ReleaseEvent>& out);
@@ -832,6 +846,9 @@ private:
                        int numChannels, int numFrames, DecodeScratch* scratch);
   // A release to or from a coded sample, started in phase (Voice::alignPending).
   void alignPendingRelease(Voice& v, DecodeScratch& scratch);
+  // A falling release level (the staccato fade) after a block: the voice ends
+  // when it reaches silence.
+  void fallReleaseLevel(Voice& v, size_t index, int numFrames);
   // The voice's two windows: the one that reads its buffer, and the other.
   DecodedWindow* readingWindow(size_t voiceIndex, const Voice& v) {
     return windows_.empty() ? nullptr : &windows_[voiceIndex * 2 + v.window];
@@ -975,6 +992,9 @@ private:
   std::atomic<int64_t> releaseDropped_{0};
   std::atomic<bool> logReleases_{false};
   std::atomic<bool> phaseAlign_{true};
+  std::atomic<bool> alignTable_{false};
+  std::atomic<bool> shortNoteGain_{false};
+  std::atomic<bool> staccatoFade_{false};
   std::atomic<int64_t> streaming_{0};
   std::atomic<int64_t> streamPasses_{0};
   std::atomic<int64_t> streamReads_{0};
