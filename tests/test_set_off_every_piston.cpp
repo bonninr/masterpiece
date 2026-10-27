@@ -1,7 +1,7 @@
 // "Set turns off after storing" holds for every piston (#591): the console's
-// own pistons and the player's pistons pressed over MIDI or the control API,
-// as well as those clicked in the combinations window (#130). The player's
-// stepper keeps Set down, which is how a sequence is built frame by frame.
+// own pistons, the player's pistons pressed over MIDI or the control API, the
+// sequencer's stepper, as well as those clicked in the combinations window
+// (#130).
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -96,11 +96,20 @@ public:
       MP_CHECK(!proc.captureMode(), "a player divisional that stored turns Set off");
     }
 
-    // The stepper keeps Set down: stepping with Set held builds a sequence.
+    // The sequencer's stepper stores a frame, so with the option on it lets Set
+    // go at that step: a step taken by mistake does not leave Set down for the
+    // next piston to overwrite (#591).
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.stepperNext(), "a step stores a frame");
+    MP_CHECK(!proc.captureMode(), "a step that stored turns Set off");
+
+    // Off, as the player who builds a sequence wants it: Set stays down and
+    // every step stores, frame after frame.
+    proc.setSetOffAfterStore(false);
     proc.setCaptureMode(true);
     proc.stepperNext();
     proc.stepperNext();
-    MP_CHECK(proc.captureMode(), "stepping with Set held keeps Set down");
+    MP_CHECK(proc.captureMode(), "with the option off, stepping keeps Set down");
     proc.setCaptureMode(false);
 
     proc.settingsFileFor(odf).deleteFile();

@@ -4934,8 +4934,12 @@ bool MasterpieceProcessor::stepperNext() {
       playerScratch_);
   if (!moved) return false;
   storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
-  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
-  else applyPlayerChanges();
+  if (capturing) {
+    combinationsDirty_.store(true, std::memory_order_release);
+    afterPistonStore();
+  } else {
+    applyPlayerChanges();
+  }
   return true;
 }
 
@@ -4948,8 +4952,12 @@ bool MasterpieceProcessor::stepperPrev() {
       playerScratch_);
   if (!moved) return false;
   storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
-  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
-  else applyPlayerChanges();
+  if (capturing) {
+    combinationsDirty_.store(true, std::memory_order_release);
+    afterPistonStore();
+  } else {
+    applyPlayerChanges();
+  }
   return true;
 }
 
@@ -4991,8 +4999,12 @@ bool MasterpieceProcessor::stepperGoto(int frame) {
       playerScratch_);
   if (!moved) return false;
   storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
-  if (capturing) combinationsDirty_.store(true, std::memory_order_release);
-  else applyPlayerChanges();
+  if (capturing) {
+    combinationsDirty_.store(true, std::memory_order_release);
+    afterPistonStore();
+  } else {
+    applyPlayerChanges();
+  }
   return true;
 }
 
@@ -5254,8 +5266,7 @@ bool MasterpieceProcessor::firePiston(Id switchId) {
 void MasterpieceProcessor::afterPistonStore() {
   // Set lets go after a piston has stored, when the player asked for it
   // (#130), wherever the piston was pressed: the console, MIDI, the control
-  // API or the combinations window (#591). The player's stepper keeps Set
-  // down, which is how a sequence is built frame by frame.
+  // API, the combinations window or the player's stepper (#591).
   if (setOffAfterStore_.load(std::memory_order_relaxed)) setCaptureMode(false);
 }
 
