@@ -288,9 +288,13 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   // A damaged header can claim more audio than its file holds, gigabytes
   // from a file of kilobytes, and all of it would be allocated before a frame
   // was read. Uncompressed audio holds no more frames than its bytes allow.
+  // Only JUCE's own WAV and AIFF readers, by their exact names: WavPack's
+  // name begins "Wav" too, and a compressed file holds several times more
+  // frames than its bytes; capped, a WavPack sample lost two thirds of its
+  // length and the loop and release marker in them.
   const juce::String formatName = reader.getFormatName();
   if (reader.input != nullptr && reader.bitsPerSample > 0 &&
-      (formatName.startsWithIgnoreCase("WAV") || formatName.startsWithIgnoreCase("AIFF"))) {
+      (formatName == "WAV file" || formatName == "AIFF file")) {
     const int64_t bytesPerFrame =
         static_cast<int64_t>(std::max(1u, reader.numChannels)) * ((reader.bitsPerSample + 7) / 8);
     const int64_t fileBytes = reader.input->getTotalLength();
@@ -1840,7 +1844,9 @@ constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // The 20-bit width (code 3) needs no new version: a cache holds it only under a
 // fingerprint with that width in it, which no earlier build can ask for, so
 // the caches players already have stay valid.
-constexpr uint32_t kCacheVersion = 5; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
+// 6: a cache written while WavPack samples were cut to their file's byte count
+//    holds them short; it is rebuilt from the files.
+constexpr uint32_t kCacheVersion = 6; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
 
 // A checksum of one sample's audio in the cache, so audio damaged on the
 // disk is found as it is read back: a flipped bit there plays as a click or
