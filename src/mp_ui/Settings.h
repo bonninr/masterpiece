@@ -40,9 +40,13 @@ public:
   void fit() {
     auto* c = getViewedComponent();
     if (c == nullptr) return;
-    const int needed = juce::jmax(minHeight_, contentHeight_ ? contentHeight_() : 0);
-    const bool scrolls = needed > getHeight();
-    c->setSize(getWidth() - (scrolls ? getScrollBarThickness() : 0), juce::jmax(needed, getHeight()));
+    // Twice: the contents lay their rows out when they are sized, and only
+    // then is the height they need known.
+    for (int pass = 0; pass < 2; ++pass) {
+      const int needed = juce::jmax(minHeight_, contentHeight_ ? contentHeight_() : 0);
+      const bool scrolls = needed > getHeight();
+      c->setSize(getWidth() - (scrolls ? getScrollBarThickness() : 0), juce::jmax(needed, getHeight()));
+    }
   }
 
 private:
