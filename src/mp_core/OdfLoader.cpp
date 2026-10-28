@@ -379,7 +379,10 @@ bool OdfLoader::load(const std::string& odfPath, const Options& opts,
       return false;
     }
     for (const auto& n : go.notes) outDiag.warnings.emplace_back("GrandOrgue import: " + n);
-    return loadFromXmlString(go.xml, odfPath, opts, outModel, outDiag);
+    const bool ok = loadFromXmlString(go.xml, odfPath, opts, outModel, outDiag);
+    // Its keyboards are all manuals (#638).
+    outModel.everyKeyboardPlayable = true;
+    return ok;
   }
   std::ifstream f(pathOf(odfPath), std::ios::binary);
   if (!f) {

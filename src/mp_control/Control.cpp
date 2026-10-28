@@ -42,10 +42,12 @@ void CouplerMatrix::reset(const OrganModel& m) {
   // The organ says so directly: AccessibleForInput, plus a default assignment
   // code. Codes at 6 and above are not manuals at all — they are the noise and
   // miscellaneous keyboards an organ uses internally, and the reference
-  // conversion skips them for the same reason.
+  // conversion skips them for the same reason. A GrandOrgue set has no such
+  // keyboards: each of its keyboards is a manual, the ninth as much as the
+  // first (#638).
   for (const auto& [id, kb] : m.keyboards) {
     if (!kb.accessibleForInput) continue;
-    if (kb.assignmentCode <= 0 || kb.assignmentCode >= 6) continue;
+    if (kb.assignmentCode <= 0 || (kb.assignmentCode >= 6 && !m.everyKeyboardPlayable)) continue;
     inputKeyboards_.push_back(id);
   }
   // A model that says nothing (hand-built, or a CODM set) falls back to the

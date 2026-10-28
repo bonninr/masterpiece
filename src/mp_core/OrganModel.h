@@ -898,6 +898,11 @@ struct OrganModel {
   std::vector<SwitchLinkage> switchLinkages;
   std::unordered_map<Id, Division> divisions;
   std::unordered_map<Id, Keyboard> keyboards; // M1.3: manuals/pedal + division links
+  // Every keyboard is a manual a player plays, whatever its assignment code:
+  // a GrandOrgue set's keyboards are its manuals, numbered on from the pedal,
+  // and its fifth manual and those after it were taken for internal keyboards
+  // (#638: Barton's second-touch and traps manuals). Set by the loader.
+  bool everyKeyboardPlayable = false;
   std::vector<KeyAction> keyActions; // M1.3: global key-flow list (matrix built in M3)
   // Switch id -> the key it is. Keyed by switch because that is what a console
   // click arrives as.
