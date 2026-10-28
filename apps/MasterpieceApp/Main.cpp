@@ -1115,6 +1115,19 @@ private:
       ed->onSettings = [this, &p] { showSettings(p); };
       ed->onSettingsTab = [this, &p](const juce::String& tab) { showSettings(p, {}, tab); };
       ed->onOrganSettings = [this, &p] { showOrganSettings(p); };
+      // Each input the player has ticked is closed and opened again, as
+      // unticking and ticking it in Settings > MIDI would (#637).
+      ed->onPanic = [this, &p] {
+        for (const auto& in : juce::MidiInput::getAvailableDevices()) {
+          if (!p.midiInputEnabled(in.name)) continue;
+          devices_.setMidiInputDeviceEnabled(in.identifier, false);
+          devices_.setMidiInputDeviceEnabled(in.identifier, true);
+          juce::Logger::writeToLog("midi: " + in.name +
+                                   (devices_.isMidiInputDeviceEnabled(in.identifier)
+                                        ? " opened again by Panic"
+                                        : " could not be opened again; it is tried every few seconds"));
+        }
+      };
       ed->onBeforeFirstLoad = [this, &p](std::function<void()> load) {
         showOrganSettings(p, std::move(load));
       };

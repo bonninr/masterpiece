@@ -1065,7 +1065,10 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   stepFrame_.onClick = [this] { askForFrame(proc_); };
 
   addAndMakeVisible(panicButton_);
-  panicButton_.onClick = [this] { proc_.releaseAllKeys(); };
+  panicButton_.onClick = [this] {
+    proc_.releaseAllKeys();
+    if (onPanic) onPanic();
+  };
   addAndMakeVisible(saveStateButton_);
   saveStateButton_.onClick = [this] { proc_.saveCurrentState(); };
 

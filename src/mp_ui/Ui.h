@@ -305,6 +305,9 @@ public:
   std::function<void()> onSettings;
   // The organ's own settings: how it is loaded and which stops.
   std::function<void()> onOrganSettings;
+  // After Panic has silenced the notes: the application opens the MIDI inputs
+  // again, for a keyboard that stopped sending (#637).
+  std::function<void()> onPanic;
   // Settings > a section: the settings window, open on the tab of that name.
   std::function<void(const juce::String& tab)> onSettingsTab;
   // Load the organ that is loaded now again, with whatever its settings say.
