@@ -483,6 +483,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   recordedPlayback_.reserve(4096);
   panicNotes_.reserve(16 * 128);
   outgoing_.ensureSize(1024);
+  lampOut_.ensureSize(512);
   sustainedKeys_.reserve(256);
 }
 
@@ -2512,6 +2513,9 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const auto lamp = readyLamp(); lamp.kind != MidiSourceKind::None)
     text << "readylamp " << (lamp.kind == MidiSourceKind::Note ? "note" : "cc") << " " << lamp.channel << " "
          << lamp.number << "\n";
+  if (!loadMessage_.empty()) text << "loadmessage " << loadMessage() << "\n";
+  if (!lampLit_.empty()) text << "readylamplit " << readyLampLitMessages() << "\n";
+  if (!lampDark_.empty()) text << "readylampdark " << readyLampDarkMessages() << "\n";
   if (remote_.thisComputerOnly) text << "apilocal 1\n";
   if (remote_.sysex) text << "apisysex 1\n";
   if (remote_.sysexUnit != 0) text << "apisysexunit " << remote_.sysexUnit << "\n";
@@ -2662,6 +2666,12 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       lampKind_.store(static_cast<int>(lamp.kind), std::memory_order_relaxed);
       lampChannel_.store(lamp.channel, std::memory_order_relaxed);
       lampNumber_.store(lamp.number, std::memory_order_relaxed);
+    } else if (key == "loadmessage") {
+      std::vector<uint8_t> bytes;
+      if (parseMidiText(val.toStdString(), bytes)) loadMessage_ = std::move(bytes);
+    } else if (key == "readylamplit" || key == "readylampdark") {
+      std::vector<uint8_t> bytes;
+      if (parseMidiText(val.toStdString(), bytes)) (key == "readylamplit" ? lampLit_ : lampDark_) = std::move(bytes);
     } else if (key == "apilocal") {
       remote_.thisComputerOnly = val.getIntValue() != 0;
     } else if (key == "apisysex") {
@@ -6503,6 +6513,14 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     blocksSkippedForLoad_.fetch_add(1, std::memory_order_relaxed);
     return;
   }
+  // The first block of a new organ: the load message from Settings, then the
+  // system exclusive sends, go before anything else, so a controller's mode message reaches it before any stop
+  // moves and lights a lamp. The other sends follow with the lamps below.
+  if (lampsAfterLoad_.load(std::memory_order_acquire)) {
+    if (!loadMessage_.empty() && (midiOut_ != nullptr || outgoingProbe)) addMessages(outgoing_, loadMessage_);
+    sentValues_.clear();
+    emitSends(true);
+  }
 
   // The runtime DSP switch is also a plain parameter, so a host can drop to
   // the simple-WAV path without a rebuild (ADR-005). The organ's own switch
@@ -8286,6 +8304,47 @@ void MasterpieceProcessor::setReadyLamp(const ReadyLamp& lamp) {
   writeGlobalFile();
 }
 
+bool MasterpieceProcessor::setLoadMessage(const juce::String& hex) {
+  std::vector<uint8_t> bytes;
+  if (!parseMidiText(hex.toStdString(), bytes)) return false;
+  if (bytes == loadMessage_) return true;
+  {
+    const AudioLock audio(*this);
+    loadMessage_.swap(bytes);
+  }
+  writeGlobalFile();
+  return true;
+}
+
+juce::String MasterpieceProcessor::loadMessage() const { return juce::String(midiText(loadMessage_)); }
+
+bool MasterpieceProcessor::setReadyLampMessages(const juce::String& litHex, const juce::String& darkHex) {
+  std::vector<uint8_t> lit, dark;
+  if (!parseMidiText(litHex.toStdString(), lit) || !parseMidiText(darkHex.toStdString(), dark)) return false;
+  if (lit == lampLit_ && dark == lampDark_) return true;
+  {
+    const AudioLock audio(*this);
+    lampLit_.swap(lit);
+    lampDark_.swap(dark);
+    // Sent again in the new form at the next block.
+    lampSent_ = -1;
+  }
+  writeGlobalFile();
+  return true;
+}
+
+juce::String MasterpieceProcessor::readyLampLitMessages() const { return juce::String(midiText(lampLit_)); }
+juce::String MasterpieceProcessor::readyLampDarkMessages() const { return juce::String(midiText(lampDark_)); }
+
+void MasterpieceProcessor::addMessages(juce::MidiBuffer& buffer, const std::vector<uint8_t>& bytes) {
+  for (size_t at = 0; at < bytes.size();) {
+    const size_t n = midiMessageLength(bytes, at);
+    if (n == 0) break;
+    buffer.addEvent(bytes.data() + at, static_cast<int>(n), 0);
+    at += n;
+  }
+}
+
 bool MasterpieceProcessor::readyLampMessage(const ReadyLamp& lamp, bool lit, RawMidi& out) {
   const int ch = juce::jlimit(1, 16, lamp.channel) - 1;
   const auto n = static_cast<uint8_t>(juce::jlimit(0, 127, lamp.number));
@@ -8330,16 +8389,24 @@ void MasterpieceProcessor::pumpReadyLamp(int numFrames) {
   }
 
   const ReadyLamp lamp = readyLamp();
-  if (lamp.kind == MidiSourceKind::None || midiOut_ == nullptr) {
+  const bool own = !lampLit_.empty() || !lampDark_.empty();
+  if ((lamp.kind == MidiSourceKind::None && !own) || (midiOut_ == nullptr && !outgoingProbe)) {
     lampSent_ = -1;
     return;
   }
   if (lit == lampSent_) return;
+  // The block after a load opens with the load message; the lamp follows in
+  // the next one.
+  if (lampsAfterLoad_.load(std::memory_order_acquire)) return;
+  lampSent_ = lit;
+  // Into a block sized once, so a long message allocates nothing here.
+  lampOut_.clear();
   RawMidi raw;
-  if (readyLampMessage(lamp, lit == 1, raw)) {
-    midiOut_->sendMessageNow(juce::MidiMessage(raw.bytes, raw.size));
-    lampSent_ = lit;
-  }
+  if (readyLampMessage(lamp, lit == 1, raw)) lampOut_.addEvent(raw.bytes, raw.size, 0);
+  addMessages(lampOut_, lit == 1 ? lampLit_ : lampDark_);
+  if (lampOut_.isEmpty()) return;
+  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(lampOut_);
+  if (outgoingProbe) outgoingProbe(lampOut_);
 }
 
 void MasterpieceProcessor::powerButton(MidiTargetKind kind, bool pressed, bool hasRelease) {
@@ -8671,7 +8738,8 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
 // as the new organ stands: the explicit sends start over, and with stop
 // changes sent on the output, each stop learned on a note or a controller.
 void MasterpieceProcessor::sendLampsAfterLoad() {
-  sentValues_.clear();
+  // The explicit sends start over: the system exclusive ones went at the top
+  // of this block, and the others go in emitSends() after the lamps.
   if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
   for (const auto& b : midiMap_.bindings()) {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
@@ -8686,7 +8754,7 @@ void MasterpieceProcessor::sendLampsAfterLoad() {
   }
 }
 
-void MasterpieceProcessor::emitSends() {
+void MasterpieceProcessor::emitSends(bool sysExOnly) {
   const auto& sends = midiMap_.sends();
   if ((midiOut_ == nullptr && !outgoingProbe) || sends.empty()) return;
   // Sized to the list; a list that changed shape starts over, which sends
@@ -8695,6 +8763,7 @@ void MasterpieceProcessor::emitSends() {
   RawMidi raw;
   for (size_t i = 0; i < sends.size(); ++i) {
     const MidiSend& s = sends[i];
+    if (sysExOnly && s.kind != MidiSourceKind::SysEx) continue;
     int now;
     if (s.targetKind == MidiTargetKind::Switch)
       now = switches_.engaged(s.targetId) ? 1 : 0;
@@ -8709,6 +8778,12 @@ void MasterpieceProcessor::emitSends() {
       continue;
     if (now == sentValues_[i]) continue;
     sentValues_[i] = now;
+    if (s.kind == MidiSourceKind::SysEx) {
+      // A whole message of its own for each state; a control has none.
+      if (s.targetKind == MidiTargetKind::ContinuousControl) continue;
+      addMessages(outgoing_, now != 0 ? s.sysExOn : s.sysExOff);
+      continue;
+    }
     const bool made = s.targetKind != MidiTargetKind::ContinuousControl
                           ? MidiMap::switchMessage(s, now != 0, raw)
                           : MidiMap::controlMessage(s, now, raw);

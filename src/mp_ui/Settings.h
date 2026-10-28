@@ -404,6 +404,13 @@ private:
   juce::Label lampLabel_;
   juce::ComboBox lampKind_, lampChannel_, lampNumber_;
   void pushReadyLamp();
+  // The lamp's own messages, in hex, when it lights and when it goes dark.
+  juce::TextEditor lampLit_, lampDark_;
+  void pushLampMessages();
+  // MIDI messages sent when an organ loads, before anything else.
+  juce::Label loadMessageLabel_;
+  juce::TextEditor loadMessage_;
+  void pushLoadMessage();
   // Page turns for a score app on a tablet or another program: a piston
   // learned here sends the message chosen beside it on the MIDI output.
   juce::Label scoreHeading_;

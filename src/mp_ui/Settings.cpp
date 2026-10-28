@@ -1910,6 +1910,28 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   lampKind_.setTooltip(TRANS("A message on the MIDI output that lights a lamp once the organ is ready, blinks "
                              "while one loads and while a quit or power-off button is held, and goes out "
                              "with no organ"));
+  for (auto* e : {&lampLit_, &lampDark_}) {
+    addAndMakeVisible(*e);
+    e->onReturnKey = e->onFocusLost = [this] { pushLampMessages(); };
+  }
+  lampLit_.setText(proc_.readyLampLitMessages(), juce::dontSendNotification);
+  lampDark_.setText(proc_.readyLampDarkMessages(), juce::dontSendNotification);
+  lampLit_.setTextToShowWhenEmpty(TRANS("Lit: hex messages"), juce::Colours::grey);
+  lampDark_.setTextToShowWhenEmpty(TRANS("Dark: hex messages"), juce::Colours::grey);
+  lampLit_.setTooltip(TRANS("MIDI messages in hex sent when the ready lamp lights, as well as the one above. "
+                            "Several are separated by commas: 90 3C 7F, B0 14 7F"));
+  lampDark_.setTooltip(TRANS("MIDI messages in hex sent when the ready lamp goes dark. Several are separated "
+                             "by commas: 80 3C 00, B0 14 00"));
+  addAndMakeVisible(loadMessageLabel_);
+  styleLabel(loadMessageLabel_, TRANS("On organ load"));
+  addAndMakeVisible(loadMessage_);
+  loadMessage_.setText(proc_.loadMessage(), juce::dontSendNotification);
+  loadMessage_.setTextToShowWhenEmpty(TRANS("Hex messages, F0 ... F7, B0 07 7F"), juce::Colours::grey);
+  loadMessage_.setTooltip(TRANS("MIDI messages in hex, sent on the MIDI output each time an organ loads, before "
+                                "any stop moves or lamp lights: for a controller that needs a mode set first, "
+                                "such as a pad grid's programmer layout. Several are separated by commas. Empty "
+                                "sends nothing."));
+  loadMessage_.onReturnKey = loadMessage_.onFocusLost = [this] { pushLoadMessage(); };
   addAndMakeVisible(scoreHeading_);
   styleLabel(scoreHeading_, TRANS("Score app"));
   const ScorePageMessage page = proc_.scorePageMessage();
@@ -1947,7 +1969,8 @@ void MidiPanel::applyPart() {
                                         &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
                                         &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_,
                                         &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_,
-                                        &lampNumber_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
+                                        &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
+                                        &loadMessage_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
                                         &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
@@ -1963,7 +1986,8 @@ void MidiPanel::applyPart() {
       &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &learnTransposeDown_,
       &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
       &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_, &learnPowerOff_,
-      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &scoreHeading_, &learnScoreBack_,
+      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
+      &loadMessage_, &scoreHeading_, &learnScoreBack_,
       &learnScoreForward_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_, &keyboardsHeading_,
       &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
@@ -1979,6 +2003,30 @@ void MidiPanel::pushReadyLamp() {
   lamp.channel = juce::jmax(1, lampChannel_.getSelectedId());
   lamp.number = juce::jmax(0, lampNumber_.getSelectedId() - 1);
   proc_.setReadyLamp(lamp);
+}
+
+// Messages that do not read are outlined in red; the ones before are kept.
+void MidiPanel::pushLampMessages() {
+  const bool ok = proc_.setReadyLampMessages(lampLit_.getText(), lampDark_.getText());
+  for (auto* e : {&lampLit_, &lampDark_}) {
+    if (ok) e->removeColour(juce::TextEditor::outlineColourId);
+    else e->setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+    e->repaint();
+  }
+  if (ok) {
+    lampLit_.setText(proc_.readyLampLitMessages(), juce::dontSendNotification);
+    lampDark_.setText(proc_.readyLampDarkMessages(), juce::dontSendNotification);
+  }
+}
+
+void MidiPanel::pushLoadMessage() {
+  if (proc_.setLoadMessage(loadMessage_.getText())) {
+    loadMessage_.removeColour(juce::TextEditor::outlineColourId);
+    loadMessage_.setText(proc_.loadMessage(), juce::dontSendNotification);
+  } else {
+    loadMessage_.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+  }
+  loadMessage_.repaint();
 }
 
 MidiPanel::~MidiPanel() { stopTimer(); }
@@ -2320,6 +2368,16 @@ void MidiPanel::resized() {
     lampChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
     lampNumber_.setBounds(row.removeFromLeft(90).reduced(2, 0));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    row.removeFromLeft(120);
+    lampLit_.setBounds(row.removeFromLeft(228).reduced(2, 2));
+    row.removeFromLeft(6);
+    lampDark_.setBounds(row.removeFromLeft(228).reduced(2, 2));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    loadMessageLabel_.setBounds(row.removeFromLeft(120));
+    loadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
 
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);

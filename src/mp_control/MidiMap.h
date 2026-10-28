@@ -272,12 +272,30 @@ struct MidiSend {
   // low..high, so a fader that wants 0..100 gets 0..100.
   int low = 0;
   int high = 127;
+  // A switch's hex send: the whole MIDI messages it sends when it comes on
+  // and when it goes off, one or several, system exclusive or any other.
+  // Empty sends nothing. Like every send, it goes out again after each load,
+  // so a controller's mode message (a pad grid's programmer layout) reaches
+  // it every time.
+  std::vector<uint8_t> sysExOn, sysExOff;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
-           channel == o.channel && number == o.number && low == o.low && high == o.high;
+           channel == o.channel && number == o.number && low == o.low && high == o.high &&
+           sysExOn == o.sysExOn && sysExOff == o.sysExOff;
   }
 };
+
+// Whole MIDI messages from hex bytes: "F0 7D 01 F7, B0 07 7F", spaces and
+// commas between bytes or none. A system exclusive message runs from F0 to
+// F7; a note, controller, pressure or pitch bend takes two data bytes, a
+// program change or channel pressure one. An empty text is no message.
+// False for anything else, a message cut short among them.
+bool parseMidiText(const std::string& text, std::vector<uint8_t>& out);
+// The bytes as "F0 7D 01 F7, B0 07 7F", one message after another.
+std::string midiText(const std::vector<uint8_t>& bytes);
+// The length of the whole message that starts at bytes[at]; 0 when none does.
+size_t midiMessageLength(const std::vector<uint8_t>& bytes, size_t at);
 
 // One MIDI message of up to three bytes, built without JUCE.
 struct RawMidi {

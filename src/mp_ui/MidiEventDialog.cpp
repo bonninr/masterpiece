@@ -39,11 +39,11 @@ juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id i
   return juce::String(p.keyboardName(id));
 }
 
-void fillEvents(juce::ComboBox& box) {
+void fillEvents(juce::ComboBox& box, bool sysEx = true) {
   box.addItem(TRANS("Note"), 1);
   box.addItem(TRANS("Controller"), 2);
   box.addItem(TRANS("Program change"), 3);
-  box.addItem(TRANS("System exclusive"), 4);
+  if (sysEx) box.addItem(TRANS("System exclusive"), 4);
 }
 int eventItem(MidiSourceKind k) {
   return k == MidiSourceKind::ControlChange   ? 2
@@ -456,7 +456,9 @@ public:
   std::function<void()> onChange, onDelete;
 
   SendRow(MidiTargetKind kind, const MidiSend& s) : kind_(kind), send_(s) {
-    fillEvents(event_);
+    // A system exclusive send is a whole message for each state, so only a
+    // switch, which has two states, offers it.
+    fillEvents(event_, kind == MidiTargetKind::Switch);
     event_.setSelectedId(eventItem(s.kind), juce::dontSendNotification);
     fillChannels(channel_, false);
     channel_.setSelectedId(juce::jlimit(1, 16, s.channel) + 1, juce::dontSendNotification);
@@ -475,9 +477,24 @@ public:
       addAndMakeVisible(number_);
       event_.onChange = [this] {
         fillNumbers(number_, eventKind(event_.getSelectedId()), number_.getSelectedId() - 1);
+        showSysEx();
         changed();
       };
       number_.onChange = [this] { changed(); };
+      if (kind == MidiTargetKind::Switch) {
+        for (auto* e : {&sysExOn_, &sysExOff_}) {
+          addChildComponent(*e);
+          e->setTooltip(TRANS("MIDI messages in hex, one or several separated by commas: a system "
+                              "exclusive message F0 to F7, or any other, for example F0 7D 01 F7, "
+                              "B0 14 7F. Sent again after each load, so a controller's mode "
+                              "message reaches it every time."));
+          e->onReturnKey = e->onFocusLost = [this, e] { sysExEdited(*e); };
+        }
+        sysExOn_.setTextToShowWhenEmpty(TRANS("When on: hex messages"), juce::Colours::grey);
+        sysExOff_.setTextToShowWhenEmpty(TRANS("When off: none"), juce::Colours::grey);
+        sysExOn_.setText(juce::String(midiText(s.sysExOn)), juce::dontSendNotification);
+        sysExOff_.setText(juce::String(midiText(s.sysExOff)), juce::dontSendNotification);
+      }
       // A switch: what it sends on and off, and "none" for a console that
       // only wants to hear about the lamp coming on. A control: its range.
       styleValue(high_, 0, 127);
@@ -500,6 +517,7 @@ public:
     addAndMakeVisible(delete_);
     delete_.setTooltip(TRANS("Remove this event"));
     delete_.onClick = [this] { if (onDelete) onDelete(); };
+    showSysEx();
   }
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
@@ -518,6 +536,14 @@ public:
       layoutRow(getLocalBounds().reduced(0, 2),
                 {{&channel_, cols[0].second}, {&transpose_, cols[1].second},
                  {&delete_, cols[2].second}});
+    else if (sysEx())
+      // The two messages take the channel and number columns, and the two
+      // value columns.
+      layoutRow(getLocalBounds().reduced(0, 2),
+                {{&event_, cols[0].second},
+                 {&sysExOn_, cols[1].second + kGap + cols[2].second},
+                 {&sysExOff_, cols[3].second + kGap + cols[4].second},
+                 {&delete_, cols[5].second}});
     else
       layoutRow(getLocalBounds().reduced(0, 2),
                 {{&event_, cols[0].second}, {&channel_, cols[1].second},
@@ -538,11 +564,43 @@ public:
       s.number = juce::jmax(0, number_.getSelectedId() - 1);
       s.low = static_cast<int>(low_.getValue());
       s.high = static_cast<int>(high_.getValue());
+      if (s.kind == MidiSourceKind::SysEx) {
+        // A message that does not read keeps the one before.
+        std::vector<uint8_t> bytes;
+        if (parseMidiText(sysExOn_.getText().toStdString(), bytes)) s.sysExOn = bytes;
+        if (parseMidiText(sysExOff_.getText().toStdString(), bytes)) s.sysExOff = bytes;
+      }
     }
     return s;
   }
 
 private:
+  bool sysEx() const {
+    return kind_ == MidiTargetKind::Switch && eventKind(event_.getSelectedId()) == MidiSourceKind::SysEx;
+  }
+  void showSysEx() {
+    if (kind_ != MidiTargetKind::Switch) return;
+    const bool on = sysEx();
+    sysExOn_.setVisible(on);
+    sysExOff_.setVisible(on);
+    channel_.setVisible(!on);
+    number_.setVisible(!on);
+    high_.setVisible(!on);
+    low_.setVisible(!on);
+    resized();
+  }
+  // A message that does not read is outlined in red and left out.
+  void sysExEdited(juce::TextEditor& e) {
+    std::vector<uint8_t> bytes;
+    if (parseMidiText(e.getText().toStdString(), bytes)) {
+      e.removeColour(juce::TextEditor::outlineColourId);
+      e.setText(juce::String(midiText(bytes)), juce::dontSendNotification);
+    } else {
+      e.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+    }
+    e.repaint();
+    changed();
+  }
   void changed() {
     send_ = read();
     if (onChange) onChange();
@@ -550,6 +608,7 @@ private:
 
   MidiTargetKind kind_;
   MidiSend send_;
+  juce::TextEditor sysExOn_, sysExOff_;
   juce::ComboBox event_, channel_, number_;
   juce::Slider low_, high_, transpose_;
   juce::TextButton delete_{"X"};

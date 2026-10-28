@@ -51,6 +51,38 @@ MidiTrigger triggerFrom(const std::string& s) {
 
 namespace {
 
+int hexDigit(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+// A send's SysEx in the map file: unbroken hex, "-" for none.
+std::string sysExField(const std::vector<uint8_t>& bytes) {
+  if (bytes.empty()) return "-";
+  static const char* kHex = "0123456789ABCDEF";
+  std::string s;
+  for (uint8_t b : bytes) {
+    s += kHex[b >> 4];
+    s += kHex[b & 15];
+  }
+  return s;
+}
+
+std::string sysExFields(const MidiSend& s) {
+  if (s.kind != MidiSourceKind::SysEx) return {};
+  return " " + sysExField(s.sysExOn) + " " + sysExField(s.sysExOff);
+}
+
+bool readSysExField(const std::string& field, std::vector<uint8_t>& out) {
+  if (field == "-") {
+    out.clear();
+    return true;
+  }
+  return parseMidiText(field, out);
+}
+
 const char* kindName(MidiSourceKind k) {
   switch (k) {
     case MidiSourceKind::Note: return "note";
@@ -647,6 +679,73 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
 
 } // namespace
 
+size_t midiMessageLength(const std::vector<uint8_t>& bytes, size_t at) {
+  if (at >= bytes.size() || bytes[at] < 0x80) return 0;
+  const uint8_t status = bytes[at];
+  size_t data;
+  if (status == 0xF0) {
+    for (size_t i = at + 1; i < bytes.size(); ++i) {
+      if (bytes[i] == 0xF7) return i - at + 1;
+      if (bytes[i] >= 0x80) return 0;
+    }
+    return 0;
+  } else if (status >= 0xF0) {
+    return 0;  // the system common and real-time messages are not sent from here
+  } else if ((status & 0xF0) == 0xC0 || (status & 0xF0) == 0xD0) {
+    data = 1;
+  } else {
+    data = 2;
+  }
+  if (at + data >= bytes.size()) return 0;
+  for (size_t i = 1; i <= data; ++i)
+    if (bytes[at + i] >= 0x80) return 0;
+  return data + 1;
+}
+
+bool parseMidiText(const std::string& text, std::vector<uint8_t>& out) {
+  std::vector<uint8_t> bytes;
+  int high = -1;  // the first digit of a byte, waiting for its second
+  for (char c : text) {
+    if (c == ' ' || c == ',' || c == '\t') {
+      if (high >= 0) return false;  // a byte is two digits
+      continue;
+    }
+    const int d = hexDigit(c);
+    if (d < 0) return false;
+    if (high < 0) {
+      high = d;
+    } else {
+      bytes.push_back(static_cast<uint8_t>(high * 16 + d));
+      high = -1;
+    }
+  }
+  if (high >= 0) return false;
+  for (size_t at = 0; at < bytes.size();) {
+    const size_t n = midiMessageLength(bytes, at);
+    if (n == 0) return false;
+    at += n;
+  }
+  out = std::move(bytes);
+  return true;
+}
+
+std::string midiText(const std::vector<uint8_t>& bytes) {
+  static const char* kHex = "0123456789ABCDEF";
+  std::string s;
+  size_t next = 0;  // where the next message starts
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    if (i == next && i > 0) s += ", ";
+    else if (i > 0) s += ' ';
+    if (i == next) {
+      const size_t n = midiMessageLength(bytes, i);
+      next = i + (n > 0 ? n : bytes.size());
+    }
+    s += kHex[bytes[i] >> 4];
+    s += kHex[bytes[i] & 15];
+  }
+  return s;
+}
+
 bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
   // A program change has no "off": it is a button that says which program.
   if (s.kind == MidiSourceKind::ProgramChange)
@@ -760,7 +859,7 @@ std::string MidiMap::toText() const {
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
-        << ' ' << s.high << '\n';
+        << ' ' << s.high << sysExFields(s) << '\n';
   for (const auto& k : shortcuts_)
     out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
         << ' ' << encodeName(k.key) << '\n';
@@ -942,7 +1041,15 @@ bool MidiMap::fromText(const std::string& text) {
         snd.targetKind = targetKindFrom(tgt);
         snd.targetId = static_cast<Id>(id);
         snd.kind = sourceKindFrom(kind);
-        if (snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
+        // A system exclusive send carries its two messages after the
+        // numbers, as unbroken hex, "-" for none.
+        std::string on, off;
+        bool sysExOk = true;
+        if (snd.kind == MidiSourceKind::SysEx) {
+          sysExOk = static_cast<bool>(sl >> on >> off) && readSysExField(on, snd.sysExOn) &&
+                    readSysExField(off, snd.sysExOff);
+        }
+        if (sysExOk && snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
           sends_.push_back(snd);
           continue;
         }
