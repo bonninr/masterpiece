@@ -672,6 +672,9 @@ public:
       Load plain = load(false, storage);
       MP_CHECK(plain.loaded == count, label + ": the samples load plain");
       MP_CHECK(plain.lib->codedCount() == 0, label + ": none held coded");
+      // Its cache write finished before the folder goes: one still running
+      // on a slow runner failed the coded load's write after it.
+      plain.lib->finishCacheWrite(false);
       cacheDir.deleteRecursively();
       cacheDir.createDirectory();
 
