@@ -151,11 +151,14 @@ public:
                   static_cast<long long>((after - before) >> 20));
       // The samples come back. What stays is the program's own: buffers sized
       // for the larger organ, kept for the next one. Measured against the
-      // samples' own size: a macOS runner's footprint can show the organ's
-      // load as a single megabyte.
+      // samples' own size. Not on macOS: a runner's footprint read the same
+      // organ's 167 MB load as 1 MB on one run and 69 MB on another, so the
+      // figure there measures nothing.
+#if !defined(__APPLE__)
       MP_CHECK(after - before < samples / 2,
                "the memory comes back: " + std::to_string((after - before) >> 20) + " MB still held of " +
                    std::to_string(samples >> 20) + " MB of samples");
+#endif
     }
     dir.deleteRecursively();
   }
