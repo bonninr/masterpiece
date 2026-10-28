@@ -149,11 +149,13 @@ public:
       const int64_t after = ownBytes();
       std::printf("reload-memory: %lld MB still held after the small organ again\n",
                   static_cast<long long>((after - before) >> 20));
-      // Most of what the organ took comes back. What stays is the program's
-      // own: buffers sized for the larger organ, kept for the next one.
-      MP_CHECK(after - before < first / 2,
+      // The samples come back. What stays is the program's own: buffers sized
+      // for the larger organ, kept for the next one. Measured against the
+      // samples' own size: a macOS runner's footprint can show the organ's
+      // load as a single megabyte.
+      MP_CHECK(after - before < samples / 2,
                "the memory comes back: " + std::to_string((after - before) >> 20) + " MB still held of " +
-                   std::to_string(first >> 20) + " MB the organ took");
+                   std::to_string(samples >> 20) + " MB of samples");
     }
     dir.deleteRecursively();
   }
