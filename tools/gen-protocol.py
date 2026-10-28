@@ -202,6 +202,11 @@ def openapi(spec):
                   "schema": {"type": "string", "enum": type_enum}}
     index_param = {"name": "index", "in": "path", "required": True,
                    "schema": {"type": "integer", "minimum": 0}}
+    page_param = {"name": "page", "in": "path", "required": True,
+                  "schema": {"type": "integer", "minimum": 0}}
+    layout_param = {"name": "layout", "in": "query", "required": False,
+                    "schema": {"type": "integer", "minimum": 0},
+                    "description": "The console layout; 0, the primary one, when absent"}
     session_header = {"name": "X-Session", "in": "header", "required": False,
                       "schema": {"type": "integer"},
                       "description": "Refused with stale-session when another organ has loaded since."}
@@ -254,6 +259,36 @@ def openapi(spec):
         "/api/v1/{type}/{index}/press": {"post": {
             "summary": "Press: a piston, a preset, a temperament or a command", "operationId": "press",
             "parameters": [type_param, index_param, session_header],
+            "responses": {"200": {"description": "Done", "content": {"application/json": {"schema": {"type": "object"}}}},
+                          **error_responses()}}},
+        "/api/v1/pages": {"get": {
+            "summary": "The organ's console pages, with their sizes and layouts", "operationId": "listPages",
+            "responses": {"200": {"description": "{session, pages: [{index, name, width, height, layouts: [{layout, portrait}]}]}",
+                                  "content": {"application/json": {"schema": {"type": "object"}}}},
+                          **error_responses()}}},
+        "/api/v1/pages/{page}/picture": {"get": {
+            "summary": "A console page as the program draws it, whole or one rectangle of it", "operationId": "pagePicture",
+            "parameters": [page_param, layout_param] + [
+                {"name": n, "in": "query", "required": False, "schema": {"type": "integer", "minimum": 0},
+                 "description": "A rectangle in the page's pixels; the whole page when absent"} for n in ("x", "y", "w", "h")],
+            "responses": {"200": {"description": "PNG; the X-Serial header is the page's change count as drawn",
+                                  "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}},
+                          **error_responses()}}},
+        "/api/v1/pages/{page}/changes": {"get": {
+            "summary": "The rectangles of a page drawn anew since a change count", "operationId": "pageChanges",
+            "parameters": [page_param, layout_param,
+                           {"name": "since", "in": "query", "required": True, "schema": {"type": "integer"}}],
+            "responses": {"200": {"description": "{serial, full: true} to fetch the page whole, else {serial, areas: [{x, y, w, h}]}",
+                                  "content": {"application/json": {"schema": {"type": "object"}}}},
+                          **error_responses()}}},
+        "/api/v1/pages/{page}/pointer": {"post": {
+            "summary": "A tap or a drag on a console page, carried out as a click", "operationId": "pagePointer",
+            "parameters": [page_param],
+            "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                "type": "object", "required": ["phase", "x", "y"],
+                "properties": {"phase": {"type": "string", "enum": ["down", "move", "up"]},
+                               "x": {"type": "integer"}, "y": {"type": "integer"},
+                               "layout": {"type": "integer", "minimum": 0}}}}}},
             "responses": {"200": {"description": "Done", "content": {"application/json": {"schema": {"type": "object"}}}},
                           **error_responses()}}},
         "/api/v1/events": {"get": {

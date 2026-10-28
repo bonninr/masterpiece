@@ -46,3 +46,12 @@ details.all summary { cursor: pointer; color: var(--dim); text-transform: upperc
 details.all input[type=search] { width: 100%; margin: 10px 0; background: var(--off); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font: inherit; }
 details.all h2 { margin-top: 12px; }
 details.all .stops button { min-width: 0; min-height: 32px; font-size: 13px; }
+/* One of the organ's console pages, drawn by the program, as large as the
+   space below the bar allows and in its own proportions. */
+#page { position: relative; display: flex; justify-content: center; align-items: center; padding: 8px; height: calc(100vh - 130px); }
+#page[hidden], main[hidden] { display: none; }
+#page canvas { max-width: 100%; max-height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; background: #0d0f12; }
+#pageBack { display: none; position: fixed; top: 6px; right: 6px; opacity: .55; z-index: 2; }
+body.pageonly header, body.pageonly footer { display: none; }
+body.pageonly #page { height: 100vh; padding: 0; }
+body.pageonly #pageBack { display: block; }

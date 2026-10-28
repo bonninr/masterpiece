@@ -137,6 +137,8 @@ if(MP_ENABLE_API)
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ControlModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ApiServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ConsolePages.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/ConsolePages.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexCodec.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexTransport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_api/SysexTransport.cpp

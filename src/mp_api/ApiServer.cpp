@@ -120,7 +120,8 @@ bool webFile(const std::string& path, std::string& body, std::string& type) {
 
 }  // namespace
 
-ApiServer::ApiServer(MasterpieceProcessor& p) : proc_(p), model_(p) {}
+ApiServer::ApiServer(MasterpieceProcessor& p)
+    : proc_(p), model_(p), pages_(std::make_unique<ConsolePages>(p)) {}
 
 ApiServer::~ApiServer() { stop(); }
 
@@ -297,6 +298,66 @@ void ApiServer::routes() {
     return true;
   };
   auto typeOf = [](const std::string& plural) -> const TypeInfo* { return typeByPlural(plural); };
+
+  // The organ's own console pages (ConsolePages). Ahead of /api/v1/{type},
+  // which would take "pages" for a type.
+  const auto number = [](const httplib::Request& req, const char* name, int64_t fallback) -> int64_t {
+    if (!req.has_param(name)) return fallback;
+    return std::strtoll(req.get_param_value(name).c_str(), nullptr, 10);
+  };
+  srv.Get("/api/v1/pages", [this](const httplib::Request&, httplib::Response& res) {
+    juce::var v;
+    Error e = Error::None;
+    if (!onMessageThread([&] { v = pages_->list(e); })) return fail(res, Error::Busy);
+    if (e != Error::None) return fail(res, e);
+    reply(res, v);
+  });
+  srv.Get(R"(/api/v1/pages/(\d+)/picture)", [this, number](const httplib::Request& req, httplib::Response& res) {
+    const int page = std::atoi(req.matches[1].str().c_str());
+    const int layout = static_cast<int>(number(req, "layout", 0));
+    const juce::Rectangle<int> part(static_cast<int>(number(req, "x", 0)), static_cast<int>(number(req, "y", 0)),
+                                    static_cast<int>(number(req, "w", 0)), static_cast<int>(number(req, "h", 0)));
+    juce::Image image;
+    int64_t serial = 0;
+    Error e = Error::None;
+    if (!onMessageThread([&] { image = pages_->picture(page, layout, part, serial, e); })) return fail(res, Error::Busy);
+    if (e != Error::None) return fail(res, e);
+    // Encoded here, off the message thread: the picture is this request's own.
+    juce::MemoryOutputStream out;
+    juce::PNGImageFormat png;
+    if (!image.isValid() || !png.writeImageToStream(image, out)) return fail(res, Error::Busy);
+    res.set_header("X-Serial", std::to_string(serial));
+    res.set_header("Cache-Control", "no-store");
+    res.set_content(static_cast<const char*>(out.getData()), out.getDataSize(), "image/png");
+  });
+  srv.Get(R"(/api/v1/pages/(\d+)/changes)", [this, number](const httplib::Request& req, httplib::Response& res) {
+    const int page = std::atoi(req.matches[1].str().c_str());
+    const int layout = static_cast<int>(number(req, "layout", 0));
+    const int64_t since = number(req, "since", -1);
+    juce::var v;
+    Error e = Error::None;
+    if (!onMessageThread([&] { v = pages_->changes(page, layout, since, e); })) return fail(res, Error::Busy);
+    if (e != Error::None) return fail(res, e);
+    reply(res, v);
+  });
+  srv.Post(R"(/api/v1/pages/(\d+)/pointer)", [this, mayChange](const httplib::Request& req, httplib::Response& res) {
+    if (!mayChange(req, res)) return;
+    const int page = std::atoi(req.matches[1].str().c_str());
+    const juce::var body = juce::JSON::parse(juce::String(req.body));
+    const juce::String phase = body["phase"].toString();
+    const auto whole = [](const juce::var& n) { return n.isInt() || n.isInt64() || n.isDouble(); };
+    if (!whole(body["x"]) || !whole(body["y"]) || (phase != "down" && phase != "move" && phase != "up"))
+      return fail(res, Error::BadValue);
+    const int layout = body.hasProperty("layout") ? static_cast<int>(body["layout"]) : 0;
+    const juce::Point<int> at(static_cast<int>(body["x"]), static_cast<int>(body["y"]));
+    const auto ph = phase == "down"   ? ConsolePages::Phase::Down
+                    : phase == "move" ? ConsolePages::Phase::Move
+                                      : ConsolePages::Phase::Up;
+    Error e = Error::None;
+    if (!onMessageThread([&] { e = pages_->pointer(page, layout, ph, at); })) return fail(res, Error::Busy);
+    if (e != Error::None) return fail(res, e);
+    reply(res, juce::var(new juce::DynamicObject()));
+  });
 
   srv.Get("/api/v1", [this](const httplib::Request&, httplib::Response& res) {
     juce::var v;
