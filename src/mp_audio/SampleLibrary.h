@@ -294,6 +294,9 @@ public:
     bool wavpack = false;
     bool releaseOnly = false;  // played only as a release: may stream
     uint8_t keptBy = kKeptByBoth;  // the release choices that keep it
+    // The sample whose file this one shares, read the same way: the load
+    // reads that file once for both (#639). Its own id when it is the first.
+    Id readAs = 0;
   };
   struct SampleShape {
     int64_t frames = 0;
@@ -304,6 +307,7 @@ public:
     // whole, a release included, with no file to stream from (#594).
     bool fromPackage = false;
     uint8_t keptBy = kKeptByBoth;
+    Id readAs = 0;  // as in ShapeJob: a file shared with that sample counts once
   };
   // The samples the pipework plays, and where each is. `wanted` names them
   // instead of the pipework when given: a sparse load reads fewer samples

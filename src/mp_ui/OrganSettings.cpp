@@ -122,6 +122,8 @@ void StopsLoadPanel::build() {
       row.size = std::make_unique<juce::Label>();
       row.size->setJustificationType(juce::Justification::centredRight);
       row.size->setColour(juce::Label::textColourId, kTextDim);
+      row.size->setTooltip(TRANS("The memory these ranks take once loaded, at the settings on the Loading tab. "
+                                 "A compressed or 16-bit sample file takes more room in memory than on disk."));
       row.samples = proc_.samplesOfRanks(ranks);
       list_.addAndMakeVisible(*row.toggle);
       list_.addAndMakeVisible(*row.size);
@@ -185,6 +187,8 @@ void StopsLoadPanel::build() {
     row.size = std::make_unique<juce::Label>();
     row.size->setJustificationType(juce::Justification::centredRight);
     row.size->setColour(juce::Label::textColourId, kTextDim);
+    row.size->setTooltip(TRANS("The memory this stop's ranks take once loaded, at the settings on the Loading "
+                               "tab. A rank that several stops play counts in each of them, and once in the total."));
     row.samples = proc_.samplesOfStop(s.stopId);
     list_.addAndMakeVisible(*row.toggle);
     list_.addAndMakeVisible(*row.size);
@@ -237,6 +241,8 @@ void StopsLoadPanel::build() {
     row.size = std::make_unique<juce::Label>();
     row.size->setJustificationType(juce::Justification::centredRight);
     row.size->setColour(juce::Label::textColourId, kTextDim);
+    row.size->setTooltip(TRANS("The memory this rank takes once loaded, at the settings on the Loading tab. "
+                               "A sample file that several pipes play counts once."));
     row.samples = proc_.samplesOfRanks({rankId});
     list_.addAndMakeVisible(*row.toggle);
     list_.addAndMakeVisible(*row.size);
@@ -471,26 +477,29 @@ void StopsLoadPanel::refreshFigures() {
     const auto it = shapes_.find(sampleId);
     return it == shapes_.end() ? 0 : proc_.residentBytesFor(it->second);
   };
-  int64_t all = 0;
+  // The sample the load reads for this one: samples sharing a file are read
+  // once, so they count once (#639).
+  auto readAs = [this](Id sampleId) -> Id {
+    const auto it = shapes_.find(sampleId);
+    return it == shapes_.end() || it->second.readAs == 0 ? sampleId : it->second.readAs;
+  };
+  auto bytesOfAll = [&](const auto& samples) -> int64_t {
+    std::unordered_set<Id> read;
+    int64_t bytes = 0;
+    for (Id id : samples)
+      if (const Id first = readAs(id); read.insert(first).second) bytes += bytesOf(first);
+    return bytes;
+  };
+  std::vector<Id> everything;
+  everything.reserve(shapes_.size());
   for (const auto& [id, shape] : shapes_) {
     (void)shape;
-    all += bytesOf(id);
+    everything.push_back(id);
   }
-  for (const auto& p : perspectives_) {
-    int64_t mine = 0;
-    for (Id id : p.samples) mine += bytesOf(id);
-    p.size->setText(megabytes(mine), juce::dontSendNotification);
-  }
-  for (const auto& r : rows_) {
-    int64_t mine = 0;
-    for (Id id : r.samples) mine += bytesOf(id);
-    r.size->setText(megabytes(mine), juce::dontSendNotification);
-  }
-  for (const auto& r : ranks_) {
-    int64_t mine = 0;
-    for (Id id : r.samples) mine += bytesOf(id);
-    r.size->setText(megabytes(mine), juce::dontSendNotification);
-  }
+  const int64_t all = bytesOfAll(everything);
+  for (const auto& p : perspectives_) p.size->setText(megabytes(bytesOfAll(p.samples)), juce::dontSendNotification);
+  for (const auto& r : rows_) r.size->setText(megabytes(bytesOfAll(r.samples)), juce::dontSendNotification);
+  for (const auto& r : ranks_) r.size->setText(megabytes(bytesOfAll(r.samples)), juce::dontSendNotification);
   // The ranks the load reads, worked out as the load works it out
   // (LoadPlan.h), so the figure is what it takes (#574). Everything, less the
   // samples of the ranks it leaves out: a sample a rank it reads shares is
@@ -507,9 +516,11 @@ void StopsLoadPanel::refreshFigures() {
       (void)rank;
       (plan.onlyRanks.count(rankId) != 0 ? read : skipped).push_back(rankId);
     }
-    const std::vector<Id> readSamples = proc_.samplesOfRanks(read);  // sorted
+    // By the file each reads: one a rank that loads shares is read anyway.
+    std::unordered_set<Id> readFiles;
+    for (Id id : proc_.samplesOfRanks(read)) readFiles.insert(readAs(id));
     for (Id id : proc_.samplesOfRanks(skipped))
-      if (!std::binary_search(readSamples.begin(), readSamples.end(), id)) total -= bytesOf(id);
+      if (const Id first = readAs(id); readFiles.insert(first).second) total -= bytesOf(first);
   }
 
   const int64_t limit = proc_.memoryLimitBytes();
