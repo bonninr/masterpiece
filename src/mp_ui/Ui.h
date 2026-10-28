@@ -234,6 +234,11 @@ private:
   juce::Label status_;
 };
 
+// The width a page tab gives the icon that opens the page in a window of its
+// own. A finger needs a wider target than a mouse: on phones and tablets the
+// icon takes 44 pixels of the tab and is drawn at the same size as elsewhere.
+inline int popOutIconWidth(bool touch) { return touch ? 44 : 16; }
+
 // The page tabs, with a right-click that offers the page a window of its own.
 class PageTabs : public juce::TabbedButtonBar {
 public:
