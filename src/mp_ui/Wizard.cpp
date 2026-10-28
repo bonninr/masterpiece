@@ -52,9 +52,13 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
     b->setToggleState(devices_.isMidiInputDeviceEnabled(in.identifier),
                       juce::dontSendNotification);
     const auto id = in.identifier;
+    const auto name = in.name;
     auto* raw = b.get();
-    b->onClick = [this, id, raw] {
+    // The choice is the player's, kept as Settings > MIDI keeps it (#637):
+    // closing the device alone lasted until the retry opened it again.
+    b->onClick = [this, id, name, raw] {
       devices_.setMidiInputDeviceEnabled(id, raw->getToggleState());
+      proc_.setMidiInputEnabled(name, raw->getToggleState());
     };
     addChildComponent(*b);
     midiInputs_.push_back(std::move(b));
