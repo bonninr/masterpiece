@@ -38,6 +38,9 @@
 #include <pthread.h>
 #include <sched.h>
 #endif
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <malloc.h>
+#endif
 #if defined(_WIN32)
 // The two calls it needs, declared here: windows.h beside JUCE's headers
 // brings in more names than this file wants.
@@ -270,14 +273,30 @@ void SampleLibrary::publish(std::shared_ptr<const Store> next) {
 }
 
 void SampleLibrary::retireOldGenerations() {
-  std::lock_guard<std::mutex> lock(publishMutex_);
-  const Store* keep = live_.load(std::memory_order_acquire);
-  generations_.erase(
-      std::remove_if(generations_.begin(), generations_.end(),
-                     [keep](const std::shared_ptr<const Store>& g) {
-                       return g.get() != keep;
-                     }),
-      generations_.end());
+  size_t dropped = 0;
+  {
+    std::lock_guard<std::mutex> lock(publishMutex_);
+    const Store* keep = live_.load(std::memory_order_acquire);
+    const size_t before = generations_.size();
+    generations_.erase(
+        std::remove_if(generations_.begin(), generations_.end(),
+                       [keep](const std::shared_ptr<const Store>& g) {
+                         return g.get() != keep;
+                       }),
+        generations_.end());
+    dropped = before - generations_.size();
+  }
+  // An organ's samples freed on Linux stayed with the program: the C library
+  // keeps freed blocks for the next allocation, and blocks the loader threads
+  // took are kept apart from each other. The system counted them as used,
+  // so the next organ's load found too little memory free and stopped
+  // (#636: Ashton opened three times on 64 GB). Handing them back costs
+  // milliseconds, at a load or an unload, with no voice sounding.
+#if defined(__GLIBC__)
+  if (dropped > 0) malloc_trim(0);
+#else
+  (void)dropped;
+#endif
 }
 
 bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
