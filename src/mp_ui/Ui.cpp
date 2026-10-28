@@ -1436,7 +1436,7 @@ namespace {
 class PopOutIcon : public juce::Button {
 public:
   PopOutIcon() : juce::Button("pop out") {
-    setSize(16, 16);
+    setSize(popOutIconWidth(touchInput()), 16);
     setTooltip(TRANS("Open this page in its own window, to move to another screen"));
   }
   void setOut(bool out) {
@@ -1447,8 +1447,8 @@ public:
     repaint();
   }
   void paintButton(juce::Graphics& g, bool over, bool) override {
-    // A square in the middle, whatever height the tab gives the button.
-    const float side = static_cast<float>(juce::jmin(getWidth(), getHeight()));
+    // A square of 16 pixels at most in the middle, however wide the target.
+    const float side = static_cast<float>(juce::jmin(getWidth(), getHeight(), 16));
     const auto r = getLocalBounds().toFloat().withSizeKeepingCentre(side, side).reduced(3.0f);
     const auto colour = out_ ? juce::Colour(0xffe6cf7a)
                              : (over ? juce::Colours::white : juce::Colour(0xff9aa3b2));
