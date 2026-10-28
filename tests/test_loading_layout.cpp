@@ -73,6 +73,19 @@ public:
                                        shown[j]->getName().toStdString() + "\" at " +
                                        b.toString().toStdString());
       }
+
+    // Shorter than its rows, as on a small screen: every row keeps its
+    // height, and the panel asks for the room they need, so the tab scrolls
+    // to all of them (the Loading tab on a Mac, D565).
+    const int needed = panel.contentHeight();
+    panel.setSize(770, 400);
+    MP_CHECK(panel.contentHeight() == needed, "a short panel asks for " + std::to_string(needed) +
+                                                  " pixels as a tall one does, got " +
+                                                  std::to_string(panel.contentHeight()));
+    MP_CHECK(needed > 400, "the Loading tab's rows need more than 400 pixels");
+    for (auto* child : panel.getChildren())
+      if (child->isVisible() && dynamic_cast<juce::ComboBox*>(child) != nullptr)
+        MP_CHECK(child->getHeight() > 0, "\"" + child->getName().toStdString() + "\" keeps its height in a short panel");
   }
 };
 static LoadingLayoutTest g_loadingLayout;

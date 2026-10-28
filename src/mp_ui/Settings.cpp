@@ -1184,6 +1184,11 @@ void EnginePanel::resized() {
     layoutFooter(r.removeFromBottom(kRow + 4));
     r.removeFromBottom(kGap);
   }
+  // Every row at its full height however little room is left, so that
+  // contentHeight() can say what the rows need and the tab around them scroll
+  // to all of them. Cut to the room, the last rows came out with no height
+  // and were measured that way (the Loading tab on a Mac, D565).
+  r.setHeight(1 << 20);
   const auto line = [&r](juce::Component& c) {
     if (!c.isVisible()) return;
     c.setBounds(r.removeFromTop(kRow));
