@@ -858,6 +858,10 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
   for (Id id : attacks) add(id, false);
   for (Id id : releases)
     if (attacks.count(id) == 0) add(id, true);
+  // The samples that share a file, as loadAll() finds them.
+  std::unordered_map<std::string, Id> firstOf;
+  for (auto& job : jobs)
+    job.readAs = firstOf.emplace((job.releaseOnly ? "r|" : "a|") + job.path, job.sampleId).first->second;
   return jobs;
 }
 
@@ -865,6 +869,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
   SampleShape shape;
   shape.releaseOnly = job.releaseOnly;
   shape.keptBy = job.keptBy;
+  shape.readAs = job.readAs != 0 ? job.readAs : job.sampleId;
   WavShape wav;
   // Found as the loader finds it, ignoring case in every folder (#591).
   const std::filesystem::path path = resolveIgnoringCase(mp::pathOf(job.path));
@@ -1079,8 +1084,44 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       }
   }
 
+  // A file several samples name is read once, and they share it (#639). A
+  // GrandOrgue rank whose keys all play one file -- a drum, a bell -- names
+  // it once per pipe, each at that pipe's pitch, and every copy was the same
+  // decoded audio: Barton's traps took 61 copies of each of their files. The
+  // pitch is in the model, never in the buffer, so one buffer serves them all
+  // when they are read the same way.
+  const size_t samplesWanted = wanted.size();
+  std::unordered_map<Id, std::vector<Id>> sharers;  // the sample read -> the others
+  {
+    std::unordered_map<std::string, Id> firstOf;
+    std::vector<Id> distinct;
+    distinct.reserve(wanted.size());
+    for (Id id : wanted) {
+      const auto it = model.samples.find(id);
+      if (it == model.samples.end() || it->second.fileName.empty()) {
+        distinct.push_back(id);
+        continue;
+      }
+      const SampleRef& ref = it->second;
+      const std::string key = std::to_string(ref.installationPackageId) + "|" +
+                              (releaseIds.count(id) != 0 ? "r|" : "a|") + (ref.licenceRequired ? "l|" : "-|") +
+                              (ref.encrypted ? "e|" : "-|") + ref.fileName;
+      const auto [first, isNew] = firstOf.emplace(key, id);
+      if (isNew)
+        distinct.push_back(id);
+      else
+        sharers[first->second].push_back(id);
+    }
+    wanted = std::move(distinct);
+  }
+  // How many samples one read stands for, for the counts in the report.
+  auto readsFor = [&sharers](Id id) {
+    const auto it = sharers.find(id);
+    return 1 + (it == sharers.end() ? 0 : static_cast<int>(it->second.size()));
+  };
+
   auto next = std::make_shared<Store>();
-  next->reserve(wanted.size());
+  next->reserve(samplesWanted);
 
   // Decoding is I/O bound, and on a network or 9p-backed path overwhelmingly
   // so, which is why this uses more threads than cores by default.
@@ -1095,7 +1136,15 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
   // Samples not on disk that the organ's archives hold: key -> sample ids.
   std::unordered_map<std::string, std::vector<Id>> fromArchive;
 
-  report.wanted = static_cast<int>(wanted.size());
+  // Kept, with the samples that share its file (resultMutex held).
+  auto store = [&](Id id, std::shared_ptr<SampleBuffer> buffer) {
+    if (const auto it = sharers.find(id); it != sharers.end())
+      for (Id other : it->second) (*next)[other] = buffer;
+    (*next)[id] = std::move(buffer);
+    report.loaded += readsFor(id);
+  };
+
+  report.wanted = static_cast<int>(samplesWanted);
   if (progress != nullptr)
     progress->beginPhase(LoadProgress::Phase::LoadingSamples,
                          static_cast<int>(wanted.size()));
@@ -1125,14 +1174,14 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       if (ref.encrypted || isEncrypted(ref.fileName)) {
         // ADR-003: detected and reported, never decoded.
         std::lock_guard<std::mutex> lock(resultMutex);
-        ++report.encrypted;
+        report.encrypted += readsFor(refIt->first);
         continue;
       }
       if (ref.licenceRequired && !licenceConfirmed_) {
         // ADR-003: plain files, but the publisher asks for its licence first,
         // and only the player can say they hold it.
         std::lock_guard<std::mutex> lock(resultMutex);
-        ++report.licensed;
+        report.licensed += readsFor(refIt->first);
         continue;
       }
 
@@ -1167,7 +1216,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
             continue;
           }
         }
-        ++report.missing;
+        report.missing += readsFor(refIt->first);
         if (report.missingFiles.size() < 50)
           report.missingFiles.push_back(ref.fileName);
         continue;
@@ -1226,13 +1275,12 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
 
       std::lock_guard<std::mutex> lock(resultMutex);
       if (!ok) {
-        ++report.failed;
+        report.failed += readsFor(refIt->first);
         if (report.failedFiles.size() < 50)
           report.failedFiles.push_back(ref.fileName);
         continue;
       }
-      (*next)[refIt->first] = std::move(buffer);
-      ++report.loaded;
+      store(refIt->first, std::move(buffer));
     }
   };
 
@@ -1380,12 +1428,11 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           std::lock_guard<std::mutex> lock(resultMutex);
           if (progress != nullptr) progress->done.fetch_add(1, std::memory_order_relaxed);
           if (!ok) {
-            ++report.failed;
+            report.failed += readsFor(id);
             if (report.failedFiles.size() < 50) report.failedFiles.push_back(item.key);
             continue;
           }
-          (*next)[id] = std::move(buffer);
-          ++report.loaded;
+          store(id, std::move(buffer));
         }
       }
     };
@@ -1847,7 +1894,7 @@ constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // the caches players already have stay valid.
 // 6: a cache written while WavPack samples were cut to their file's byte count
 //    holds them short; it is rebuilt from the files.
-constexpr uint32_t kCacheVersion = 6; // 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
+constexpr uint32_t kCacheVersion = 7; // 7 writes a buffer shared by several samples once; 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
 
 // A checksum of one sample's audio in the cache, so audio damaged on the
 // disk is found as it is read back: a flipped bit there plays as a click or
@@ -1981,9 +2028,10 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
   // How much there is to write, so the status line can say how far along
   // it is and how long is left: on a large organ this takes minutes.
   int64_t total = 0;
+  std::unordered_set<const SampleBuffer*> counted;
   for (const auto& [id, buf] : store) {
     (void)id;
-    if (buf == nullptr) continue;
+    if (buf == nullptr || !counted.insert(buf.get()).second) continue;
     total += static_cast<int64_t>(buf->pcm24.size() * sizeof(Pcm24) +
                                   buf->pcm16.size() * sizeof(int16_t) +
                                   buf->pcm20.size() * sizeof(Pcm20) +
@@ -2069,8 +2117,16 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
 
     int64_t done = 0;
 
+    // A buffer several samples share is written once; the others follow it,
+    // each as its id, -1 for its length, and the id it shares with (#639).
+    std::unordered_map<const SampleBuffer*, Id> writtenAs;
+    std::vector<std::pair<Id, Id>> sharing;
     for (const auto& [id, buf] : store) {
       if (buf == nullptr) continue;
+      if (const auto [first, isNew] = writtenAs.emplace(buf.get(), id); !isNew) {
+        sharing.emplace_back(id, first->second);
+        continue;
+      }
       // While the organ plays, the write waits for silence: it is not let near
       // the sound at all.
       while (cacheWhilePlaying_ && cacheBusy_ && cacheBusy_() && !cacheStop_.load())
@@ -2128,6 +2184,12 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
         putPod<double>(os, buf->tailDstRate);
       }
       if (!os) break;
+    }
+    for (const auto& [id, sharedWith] : sharing) {
+      if (cacheStop_.load() || !os) break;
+      putPod<uint32_t>(os, static_cast<uint32_t>(id));
+      putPod<int64_t>(os, -1);
+      putPod<uint32_t>(os, static_cast<uint32_t>(sharedWith));
     }
     // The last bytes leave the stream's buffer here: a disk that fills on
     // them fails the write as surely as one that fills halfway.
@@ -2187,7 +2249,18 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
     uint8_t width = 0, streams = 0;
     uint64_t bytes = 0;
     auto buf = std::make_shared<SampleBuffer>();
-    if (!getPod(is, id) || !getPod(is, buf->numFrames) || !getPod(is, channels) ||
+    if (!getPod(is, id) || !getPod(is, buf->numFrames)) return false;
+    // A sample sharing a buffer written before it.
+    if (buf->numFrames == -1) {
+      uint32_t sharedWith = 0;
+      if (!getPod(is, sharedWith)) return false;
+      const auto it = loaded.find(static_cast<Id>(sharedWith));
+      if (it == loaded.end()) return false;
+      auto shared = it->second;
+      loaded.emplace(static_cast<Id>(id), std::move(shared));
+      continue;
+    }
+    if (!getPod(is, channels) ||
         !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
         !getPod(is, buf->loopEnd) || !getPod(is, buf->releaseCue) ||
         !getPod(is, buf->fileMidiNote) || !getPod(is, buf->pcmScale) ||
@@ -2316,9 +2389,10 @@ std::vector<TailToTime> SampleLibrary::streamedTails() const {
   std::vector<TailToTime> out;
   const Store* store = live_.load(std::memory_order_acquire);
   if (store == nullptr) return out;
+  std::unordered_set<const SampleBuffer*> seen;
   for (const auto& [id, buf] : *store) {
     (void)id;
-    if (!buf->streams()) continue;
+    if (!buf->streams() || !seen.insert(buf.get()).second) continue;
     out.push_back({buf->tail.get(), buf->numFrames, std::max(1, buf->numChannels)});
   }
   return out;
@@ -2328,9 +2402,10 @@ int64_t SampleLibrary::streamedBytesSaved() const {
   const Store* store = live_.load(std::memory_order_acquire);
   if (store == nullptr) return 0;
   int64_t saved = 0;
+  std::unordered_set<const SampleBuffer*> seen;
   for (const auto& [id, buf] : *store) {
     (void)id;
-    if (!buf->streams()) continue;
+    if (!buf->streams() || !seen.insert(buf.get()).second) continue;
     const int64_t skipped = buf->totalFrames() - buf->numFrames;
     // Not compact() ? 2 : 4 -- compact() is true of 16-bit AND 24-bit, so
     // that understated every 24-bit figure by a third. Twenty bits is two
@@ -2361,10 +2436,12 @@ size_t SampleLibrary::residentCount() const {
 int64_t SampleLibrary::residentBytes() const {
   const Store* store = live_.load(std::memory_order_acquire);
   if (store == nullptr) return 0;
+  // A buffer several samples share counts once.
   int64_t bytes = 0;
+  std::unordered_set<const SampleBuffer*> seen;
   for (const auto& [id, buf] : *store) {
     (void)id;
-    bytes += buf->residentBytes();
+    if (seen.insert(buf.get()).second) bytes += buf->residentBytes();
   }
   return bytes;
 }
