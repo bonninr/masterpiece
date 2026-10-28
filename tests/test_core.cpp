@@ -5799,6 +5799,123 @@ public:
       MP_CHECK(knob && !stageSwitch, "a coupler behind a delay is registered as its knob");
     }
 
+    // #591, Ashton: a piston with no type code carries its switch's number as
+    // its type. Switch 1422 is such a piston, and the Solo's octave knob 801
+    // is assigned 1422: the knob is a coupler all the same.
+    {
+      mp::OrganModel a = m;
+      mp::Switch piston;
+      piston.switchId = 1422;
+      piston.name = "Piston";
+      a.switches[1422] = piston;
+      mp::Combination c;
+      c.combinationId = 61;
+      c.type = 1422;
+      c.activatingSwitchId = 1422;
+      a.combinations[61] = c;
+      mp::Switch octave;
+      octave.switchId = 801;
+      octave.name = "4. octave";
+      octave.asgnCode = 1422;
+      a.switches[801] = octave;
+      mp::KeyAction ka;
+      ka.sourceKeyboard = 2;
+      ka.destKeyboard = 2;
+      ka.conditionSwitchId = 801;
+      a.keyActions.push_back(ka);
+      bool knob = false, pistonTaken = false;
+      for (const auto& e : PC::collect(a, nullptr)) {
+        knob = knob || (e.kind == K::Switch && e.id == 801);
+        pistonTaken = pistonTaken || (e.kind == K::Switch && e.id == 1422);
+      }
+      MP_CHECK(knob && !pistonTaken,
+               "a piston's switch number is no assignment code: a knob assigned it is a coupler");
+    }
+
+    // #591, Cheltenham: the switch a coupler's key action waits on also works
+    // the coupler's action noise, a stop in the noises division. The coupler
+    // is registration; the blower, a stop in the same division, is not.
+    {
+      mp::OrganModel c = m;
+      mp::Switch node;
+      node.switchId = 802;
+      node.name = "CouplerNode";
+      c.switches[802] = node;
+      mp::Stop noise;
+      noise.stopId = 20;
+      noise.divisionId = 7;
+      noise.name = "CouplerEffect_802";
+      noise.controllingSwitchId = 802;
+      c.stops[20] = noise;
+      mp::KeyAction ka;
+      ka.sourceKeyboard = 2;
+      ka.destKeyboard = 1;
+      ka.conditionSwitchId = 802;
+      c.keyActions.push_back(ka);
+      bool coupler = false, noiseStop = false, blower = false;
+      for (const auto& e : PC::collect(c, nullptr)) {
+        coupler = coupler || (e.kind == K::Switch && e.id == 802);
+        noiseStop = noiseStop || (e.kind == K::Stop && e.id == 20);
+        blower = blower || (e.kind == K::Switch && e.id == 109);
+      }
+      MP_CHECK(coupler && !noiseStop && !blower,
+               "a coupler that sounds its own action noise is still a coupler");
+    }
+
+    // #591, Ashton: a unison off gates each key's wire into its division's
+    // inputs, and waits on no key action.
+    {
+      mp::OrganModel u = m;
+      mp::Switch unisonOff;
+      unisonOff.switchId = 803;
+      unisonOff.name = "3. unison off";
+      u.switches[803] = unisonOff;
+      for (int note = 36; note < 40; ++note) {
+        const mp::Id key = 5000 + note, input = 6000 + note;
+        mp::DivisionInput in;
+        in.divisionId = 2;
+        in.switchId = input;
+        in.midiNote = note;
+        u.divisionInputs.push_back(in);
+        mp::SwitchLinkage l;
+        l.sourceSwitchId = key;
+        l.destSwitchId = input;
+        l.conditionSwitchId = 803;
+        l.conditionWhenEngaged = false;
+        u.switchLinkages.push_back(l);
+      }
+      mp::Id division = 0;
+      for (const auto& e : PC::collect(u, nullptr))
+        if (e.kind == K::Switch && e.id == 803) division = e.divisionId;
+      MP_CHECK(division == 2, "a unison off written into the keys' wires is the Great's coupler");
+
+      // Bückeburg: a compass switch gates only the top keys' wires. It
+      // belongs to the console, and stays out of the combinations.
+      mp::Switch compass;
+      compass.switchId = 804;
+      compass.name = "Compass Selection";
+      u.switches[804] = compass;
+      for (int note = 40; note < 48; ++note) {
+        mp::DivisionInput in;
+        in.divisionId = 2;
+        in.switchId = 6000 + note;
+        in.midiNote = note;
+        u.divisionInputs.push_back(in);
+      }
+      mp::SwitchLinkage top;
+      top.sourceSwitchId = 5047;
+      top.destSwitchId = 6047;
+      top.conditionSwitchId = 804;
+      u.switchLinkages.push_back(top);
+      bool compassTaken = false, unisonStill = false;
+      for (const auto& e : PC::collect(u, nullptr)) {
+        compassTaken = compassTaken || (e.kind == K::Switch && e.id == 804);
+        unisonStill = unisonStill || (e.kind == K::Switch && e.id == 803);
+      }
+      MP_CHECK(!compassTaken, "a compass switch, gating one key of twelve, is not a coupler");
+      MP_CHECK(!unisonStill, "and a knob gating four keys of twelve is not a unison off either");
+    }
+
     const auto divisions = PC::divisionsOf(m, elements);
     MP_CHECK(divisions.size() == 2 && divisions[0].divisionId == 1 &&
                  divisions[1].name == "Great",

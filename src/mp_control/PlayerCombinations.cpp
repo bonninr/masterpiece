@@ -81,15 +81,17 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
   // captured or cancelled as though they were: the stops' own switches (the
   // stop is registered as a stop), pistons and the setter.
   std::unordered_set<Id> notRegistration;
-  for (const auto& [id, stop] : model.stops)
-    if (stop.controllingSwitchId != 0) {
-      notRegistration.insert(stop.controllingSwitchId);
-      notRegistration.insert(player(stop.controllingSwitchId));
-    }
   std::unordered_set<int> pistonCodes{12};  // 12 is the setter
   for (const auto& [id, combo] : model.combinations) {
     if (combo.activatingSwitchId != 0) notRegistration.insert(combo.activatingSwitchId);
-    if (combo.type > 0) pistonCodes.insert(combo.type);
+    // A piston the definition gives no type code carries its switch's number
+    // as its type, and that number is no assignment code: Ashton's pistons
+    // are switches 1402 to 1449, and the Solo's "4. octave" and "4. sub
+    // octave" knobs are assigned 1422 and 1420, so they were taken for
+    // pistons and left out of every capture and cancel (#591). The switch
+    // itself is excluded above.
+    if (combo.type > 0 && combo.type != static_cast<int>(combo.activatingSwitchId))
+      pistonCodes.insert(combo.type);
   }
   for (const auto& [sid, sw] : model.switches)
     if (sw.asgnCode > 0 && pistonCodes.count(sw.asgnCode) != 0) notRegistration.insert(sid);
@@ -106,6 +108,21 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     }
     return false;
   };
+
+  // The stops' own switches. A stop that sounds only a knob's own action is
+  // that knob's noise, and the knob stays what it is: Cheltenham sounds each
+  // coupler's movement through a stop in its noises division, worked by the
+  // very switch the coupler's key action waits on, and every coupler was left
+  // out of the combinations (#591). A blower or a motor is the machine itself,
+  // and stays out.
+  for (const auto& [id, stop] : model.stops) {
+    if (stop.controllingSwitchId == 0) continue;
+    const bool machine =
+        mentions(stop.name, "blower") || mentions(stop.name, "motor") || onBlower(stop);
+    if (isEffect(model, stop) && !machine) continue;
+    notRegistration.insert(stop.controllingSwitchId);
+    notRegistration.insert(player(stop.controllingSwitchId));
+  }
 
   // Stops, in the stop list's order.
   std::vector<std::pair<Id, Id>> stops;  // (division, stop)
@@ -155,30 +172,56 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
 
   std::map<Id, Vote> couplers;
   std::unordered_set<Id> bassOrMelody;
+  // One switch the keys wait on, played from division `div`.
+  auto addCondition = [&](Id conditionSwitchId, Id div, bool extreme) {
+    Id condition = conditionSwitchId;
+    if (const auto d = delayedBy.find(condition); d != delayedBy.end()) condition = d->second;
+    const Id sw = player(condition);
+    if (notRegistration.count(sw) != 0 || notRegistration.count(conditionSwitchId) != 0) return;
+    couplers[sw].add(div);
+    if (extreme) bassOrMelody.insert(sw);
+    if (const auto k = knobsInto.find(condition); k != knobsInto.end())
+      for (Id knob : k->second)
+        if (knob != sw && notRegistration.count(knob) == 0) {
+          couplers[knob].add(div);
+          if (extreme) bassOrMelody.insert(knob);
+        }
+  };
   auto addActions = [&](const std::vector<KeyAction>& actions, Id fallbackDivision) {
     for (const KeyAction& ka : actions) {
       if (ka.conditionSwitchId == 0) continue;
-      Id condition = ka.conditionSwitchId;
-      if (const auto d = delayedBy.find(condition); d != delayedBy.end()) condition = d->second;
-      const Id sw = player(condition);
-      if (notRegistration.count(sw) != 0 || notRegistration.count(ka.conditionSwitchId) != 0)
-        continue;
       Id div = ka.sourceDivision != 0 ? ka.sourceDivision
                                       : divisionOfKeyboard(model, ka.sourceKeyboard);
       if (div == 0) div = fallbackDivision;
-      couplers[sw].add(div);
-      const bool extreme = ka.actionType == 2 || ka.actionType == 3;
-      if (extreme) bassOrMelody.insert(sw);
-      if (const auto k = knobsInto.find(condition); k != knobsInto.end())
-        for (Id knob : k->second)
-          if (knob != sw && notRegistration.count(knob) == 0) {
-            couplers[knob].add(div);
-            if (extreme) bassOrMelody.insert(knob);
-          }
+      addCondition(ka.conditionSwitchId, div, ka.actionType == 2 || ka.actionType == 3);
     }
   };
   addActions(model.keyActions, 0);
   for (const auto& [id, div] : model.divisions) addActions(div.keyActions, id);
+
+  // A unison off is written into each key's own wire: the key's switch
+  // drives its note's division input, gated on the knob. Ashton's "3. unison
+  // off" waits on no key action at all, and no unison off of its was ever
+  // stored or cancelled (#591). The knob belongs to the division it silences.
+  // It gates the whole division: a knob that gates a few keys is a compass
+  // switch, which adds the top notes (Bückeburg's "Compass Selection"), and
+  // belongs to the console.
+  if (!model.divisionInputs.empty()) {
+    std::unordered_map<Id, Id> inputDivision;
+    std::map<Id, int> inputsOf;  // division -> its key inputs
+    for (const auto& in : model.divisionInputs) {
+      inputDivision.emplace(in.switchId, in.divisionId);
+      ++inputsOf[in.divisionId];
+    }
+    std::map<std::pair<Id, Id>, int> gated;  // (knob, division) -> inputs gated
+    for (const auto& l : model.switchLinkages) {
+      if (l.conditionSwitchId == 0) continue;
+      const auto d = inputDivision.find(l.destSwitchId);
+      if (d != inputDivision.end()) ++gated[{l.conditionSwitchId, d->second}];
+    }
+    for (const auto& [key, n] : gated)
+      if (2 * n >= inputsOf[key.second]) addCondition(key.first, key.second, false);
+  }
 
   // Tremulants: the division of the stops whose pipes they shake.
   std::map<Id, Vote> tremulants;
