@@ -2175,6 +2175,13 @@ void MasterpieceEditor::loadPanels() {
 }
 
 void MasterpieceEditor::rebuildPageTabs() {
+  // What the window shows, chosen again once the tabs are made again: a panel
+  // put back from its window, or a tab renamed, leaves it where it was.
+  // Cleared and refilled, the bar alone would go to its first tab.
+  const int pageShown = console_.currentPage();
+#if MP_HAS_SCORE
+  const bool scoreShown = showingScore_;
+#endif
   pageTabs_.clearTabs();
   for (int i = 0; i < console_.pageCount(); ++i)
     pageTabs_.addTab(console_.pageName(i), juce::Colour(0xff2a2f3a), i);
@@ -2196,6 +2203,13 @@ void MasterpieceEditor::rebuildPageTabs() {
   if (showingPanel_ >= 0 &&
       std::find(panelTabs_.begin(), panelTabs_.end(), showingPanel_) == panelTabs_.end())
     showingPanel_ = -1;
+  int tab = console_.pageCount() > 0 ? juce::jlimit(0, console_.pageCount() - 1, pageShown) : -1;
+  for (size_t i = 0; i < panelTabs_.size(); ++i)
+    if (panelTabs_[i] == showingPanel_) tab = console_.pageCount() + static_cast<int>(i);
+#if MP_HAS_SCORE
+  if (scoreShown && scoreTab_ >= 0) tab = scoreTab_;
+#endif
+  if (tab >= 0 && tab < pageTabs_.getNumTabs()) pageTabs_.setCurrentTabIndex(tab, false);
   // The tabs were made again: their pop-out icons with them.
   addPopOutIcons();
   resized();
@@ -2221,6 +2235,9 @@ void MasterpieceEditor::addPanel() {
   addChildComponent(*view);
   savePanels();
   showingConsole_ = true;
+  // From the stop list too, which otherwise stays over the new panel's tab.
+  showingStopList_ = false;
+  showingPanel_ = index;
   rebuildPageTabs();
   // Straight to the new panel's tab.
   for (int t = 0; t < pageTabs_.getNumTabs(); ++t)
