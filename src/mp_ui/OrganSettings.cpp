@@ -398,7 +398,20 @@ void StopsLoadPanel::choose(std::set<Id> excluded) {
   refreshFigures();
 }
 
+void StopsLoadPanel::timerCallback() {
+  if (proc_.sparseEvery() != estimatedSparse_) {
+    // The worker still reading for the old choice stops, and its result is dropped.
+    alive_->store(false);
+    alive_ = std::make_shared<std::atomic<bool>>(true);
+    ready_ = false;
+    shapes_.clear();
+    startEstimate();
+  }
+  refreshFigures();
+}
+
 void StopsLoadPanel::startEstimate() {
+  estimatedSparse_ = proc_.sparseEvery();
   // The jobs are taken from the model here, on the message thread; the worker
   // only reads files, so a load starting meanwhile cannot pull the model out
   // from under it.
@@ -412,8 +425,8 @@ void StopsLoadPanel::startEstimate() {
       if (!alive->load()) return;
       (*shapes)[job.sampleId] = SampleLibrary::readShape(job);
     }
-    juce::MessageManager::callAsync([shapes, safe] {
-      if (safe == nullptr) return;
+    juce::MessageManager::callAsync([shapes, alive, safe] {
+      if (safe == nullptr || !alive->load()) return;
       safe->shapes_ = std::move(*shapes);
       safe->ready_ = true;
       safe->refreshFigures();

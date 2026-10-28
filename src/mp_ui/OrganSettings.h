@@ -93,8 +93,10 @@ private:
   void refreshFigures();
   void startEstimate();
   // The Loading tab changes the figures (16-bit, mono, streaming) without a
-  // word to this one; a slow tick follows it.
-  void timerCallback() override { refreshFigures(); }
+  // word to this one; a slow tick follows it. Notes loaded changes which
+  // samples are read at all, so a new choice there starts a new estimate.
+  void timerCallback() override;
+  int estimatedSparse_ = 1;
 
   MasterpieceProcessor& proc_;
   std::function<void()> reload_;
