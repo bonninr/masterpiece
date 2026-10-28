@@ -699,6 +699,14 @@ public:
   }
 
   Id keyboardForChannel(int channel, int deviceId = 0) const;
+  // Whether the player has given this keyboard a channel, for this console.
+  bool placedByPlayer(Id keyboardId, int deviceId) const;
+  // A keyboard on its default channel that another keyboard has been put on:
+  // that keyboard, which plays the channel now; 0 when the default stands.
+  Id defaultChannelTakenBy(Id keyboardId) const;
+  // The console that plays this keyboard, on the channel it has now. The
+  // other keyboards sharing that channel keep it (#637).
+  void setKeyboardDevice(Id keyboardId, int deviceId);
   // The keyboard the fallback piano plays, and the one an unassigned channel
   // falls back to. See mp_control::defaultKeyboard.
   Id preferredKeyboard() const { return defaultKeyboard(model_, couplers_); }

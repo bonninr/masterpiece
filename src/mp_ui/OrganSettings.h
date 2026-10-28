@@ -29,6 +29,11 @@ public:
   // `reload` loads the organ again with the choice made here.
   StopsLoadPanel(MasterpieceProcessor& p, std::function<void()> reload);
   ~StopsLoadPanel() override;
+  // The choice here differs from what is loaded.
+  bool choicePending() const;
+  // A change on another tab that the next load applies: the button is marked
+  // for it too, so every tab shows one answer (#637).
+  std::function<bool()> alsoPending;
   void resized() override;
   void paint(juce::Graphics& g) override;
 

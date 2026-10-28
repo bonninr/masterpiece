@@ -490,6 +490,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Manual %1 %2" = "Manual %1 %2"
 "keyboard %1" = "teclado %1"
 "Channel %1: %2" = "Canal %1: %2"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "El canal %1 toca %2; elija Canal %1 para %3 y tocarán los dos."
 "Shared -- %1" = "Compartido -- %1"
 "%1  -  in use by another program; opened when it is free" = "%1  -  en uso por otro programa; se abrirá cuando quede libre"
 "%1 could not be opened" = "No se pudo abrir %1"

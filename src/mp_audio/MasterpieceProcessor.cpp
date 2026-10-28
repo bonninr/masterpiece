@@ -3646,6 +3646,32 @@ double MasterpieceProcessor::playbackRatioFor(const Pipe& pipe,
   return playbackRatio(targetHz, recordedHz);
 }
 
+// A keyboard the player has given a channel of its own, for this console,
+// leaves its default channel (#585): a Great moved to channel 12 still played
+// from channel 2 as well.
+bool MasterpieceProcessor::placedByPlayer(Id keyboardId, int deviceId) const {
+  for (const auto& b : midiMap_.keyboardBindings()) {
+    if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId) continue;
+    if (b.keyboardId == keyboardId || couplers_.inputKeyboardFor(b.keyboardId) == keyboardId) return true;
+  }
+  return false;
+}
+
+Id MasterpieceProcessor::defaultChannelTakenBy(Id keyboardId) const {
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.keyboardId == keyboardId) return 0;  // the player's own channel
+  const int channel = channelForKeyboard(keyboardId);
+  for (const auto& b : midiMap_.keyboardBindings())
+    if (b.channel == channel && b.keyboardId != keyboardId) return b.keyboardId;
+  return 0;
+}
+
+void MasterpieceProcessor::setKeyboardDevice(Id keyboardId, int deviceId) {
+  const int channel = channelForKeyboard(keyboardId);
+  keepRouting();
+  setKeyboardForChannel(channel, keyboardId, deviceId, false);
+}
+
 Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
   // A binding that names this console beats one that does not, so a rig can be
   // set up loosely and one keyboard pinned exactly.
@@ -3661,18 +3687,9 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
 
   // Hauptwerk's own default: the assignment code IS the channel. Code 1 is the
   // pedal, 2 the first manual, and so on, so an organ plays the way its author
-  // expected before anyone maps anything. A keyboard the player has given a
-  // channel of its own, for this console, leaves its default channel (#585):
-  // a Great moved to channel 12 still played from channel 2 as well.
-  auto placed = [&](Id kb) {
-    for (const auto& b : midiMap_.keyboardBindings()) {
-      if (b.deviceId != MidiDeviceMap::kAnyDevice && b.deviceId != deviceId) continue;
-      if (b.keyboardId == kb || couplers_.inputKeyboardFor(b.keyboardId) == kb) return true;
-    }
-    return false;
-  };
+  // expected before anyone maps anything.
   for (Id kb : couplers_.inputKeyboards())
-    if (couplers_.assignmentCodeFor(kb) == channel && !placed(kb)) return kb;
+    if (couplers_.assignmentCodeFor(kb) == channel && !placedByPlayer(kb, deviceId)) return kb;
 
   // A channel nothing claims plays the default manual only while nothing says
   // what the channels are: an organ that declares no channels, played before
@@ -5142,11 +5159,17 @@ void MasterpieceProcessor::resetPlayerCombinations() {
       break;
     }
   // On a drawn console, what the player can reach is what has a knob: the
-  // one the wiring leads to, or the one matched by name (stopKnob_).
+  // one the wiring leads to, or the one matched by name (stopKnob_). The
+  // program couplers have their own buttons, in the stop list and on the
+  // panels, and are stored and cancelled with the rest (#637).
+  auto programCoupler = [this](Id sw) {
+    const auto it = model_.switches.find(sw);
+    return it != model_.switches.end() && it->second.programProvided;
+  };
   std::function<bool(const PlayerCombinations::Element&)> onConsole;
   if (drawnConsole)
-    onConsole = [this, drawn](const PlayerCombinations::Element& e) {
-      if (e.kind == PlayerCombinations::ElementKind::Switch) return drawn(e.id);
+    onConsole = [this, drawn, programCoupler](const PlayerCombinations::Element& e) {
+      if (e.kind == PlayerCombinations::ElementKind::Switch) return drawn(e.id) || programCoupler(e.id);
       if (stopKnob_.count(e.id) != 0) return true;
       const auto it = model_.stops.find(e.id);
       return it != model_.stops.end() && it->second.controllingSwitchId != 0 &&
@@ -5984,6 +6007,26 @@ void MasterpieceProcessor::buildProgramCouplers() {
       if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
     for (const auto& c : programCouplersList_)
       if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+  }
+
+  // The organ's own generals store the program couplers, and its general
+  // cancels clear them (#637). By the type code: 2 a general, 6 a general
+  // cancel, 101 to 199 the numbered generals and 100 their cancel, and 1, which
+  // a GrandOrgue set's generals carry. Divisionals and the crescendo's stages
+  // are left as they are.
+  auto general = [](const Combination& c) {
+    return c.divisionId == 0 &&
+           (c.type == 1 || c.type == 2 || c.type == 6 || (c.type >= 100 && c.type <= 199));
+  };
+  for (auto& [comboId, combo] : model_.combinations) {
+    if (!general(combo) || combo.elements.empty()) continue;
+    for (const auto& pc : programCouplersList_) {
+      CombinationElement e;
+      e.combinationId = comboId;
+      e.controlledSwitchId = pc.switchId;
+      e.capturedSwitchId = pc.switchId;
+      combo.elements.push_back(e);
+    }
   }
 
   couplers_.setProgramCouplers(programCouplersList_);

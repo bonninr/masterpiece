@@ -68,6 +68,10 @@ public:
   // Loads the organ again with what this panel now says. Given by a window
   // that can do that; without it, no button is offered.
   std::function<void()> onReload;
+  // A change on another tab that the next load applies: the button is marked
+  // for it too, so every tab shows one answer (#637).
+  std::function<bool()> alsoPending;
+  bool changesPending() const { return loadingChanged(); }
   void resized() override;
   void paint(juce::Graphics& g) override;
 

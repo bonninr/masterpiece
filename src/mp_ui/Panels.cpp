@@ -316,6 +316,8 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     for (Id id : switchIds) {
       const auto& sw = m.switches.at(id);
       if (!sw.clickable || !sw.latching || stopSwitches.count(id) != 0) continue;
+      // The program couplers have their section above (#637).
+      if (sw.programProvided) continue;
       const bool drawn = sw.dispInstanceId != 0 || sw.isCoupler || sw.isTremulant;
       // A leading underscore marks a switch the organ keeps to itself.
       if (!drawn || sw.name.empty() || sw.name[0] == '_') continue;
