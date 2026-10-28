@@ -68,9 +68,12 @@ public:
 #endif
   }
 
-  // A one-manual organ of four ranks of 61 pipes, each a WAV of 3 s of noise.
+  // A one-manual organ of four ranks of 61 pipes, each a WAV of 5 s of noise:
+  // 720 KB a pipe, the size of a real organ's samples. Smaller blocks share
+  // the C library's heaps with the rest of the program, and the earlier
+  // tests in the same run decide how much of those comes back.
   static juce::File writeOrgan(const juce::File& dir) {
-    constexpr int kRanks = 4, kPipes = 61, kFrames = 3 * 48000;
+    constexpr int kRanks = 4, kPipes = 61, kFrames = 5 * 48000;
     juce::String organ;
     organ << "[Organ]\r\nChurchName=Reload\r\nHasPedals=N\r\nNumberOfManuals=1\r\nNumberOfRanks=" << kRanks
           << "\r\nNumberOfWindchestGroups=1\r\nNumberOfPanels=0\r\n[WindchestGroup001]\r\nName=W\r\n"
@@ -134,7 +137,7 @@ public:
                     static_cast<long long>(samples >> 20),
                     static_cast<long long>((ownBytes() - before) >> 20));
       }
-      MP_CHECK(samples > 80ll * 1024 * 1024, "its samples take " + std::to_string(samples >> 20) + " MB");
+      MP_CHECK(samples > 150ll * 1024 * 1024, "its samples take " + std::to_string(samples >> 20) + " MB");
       MP_CHECK(proc.loadOrgan(minimal, 0, false).ok, "then the small organ loads again");
       const int64_t after = ownBytes();
       std::printf("reload-memory: %lld MB still held after the small organ again\n",
