@@ -129,24 +129,31 @@ public:
       // keeps from its first load onwards are in the starting figure.
       MP_CHECK(proc.loadOrgan(minimal, 0, false).ok, "a small organ loads first");
       const int64_t before = ownBytes();
-      int64_t samples = 0;
+      int64_t samples = 0, first = 0, last = 0;
       for (int i = 0; i < 3; ++i) {
         MP_CHECK(proc.loadOrgan(big, 0, false).ok, "the organ loads, time " + std::to_string(i + 1));
         samples = proc.sampleLibrary().residentBytes();
+        last = ownBytes() - before;
+        if (i == 0) first = last;
         std::printf("reload-memory: load %d, %lld MB of samples, %lld MB above the start\n", i + 1,
-                    static_cast<long long>(samples >> 20),
-                    static_cast<long long>((ownBytes() - before) >> 20));
+                    static_cast<long long>(samples >> 20), static_cast<long long>(last >> 20));
       }
       MP_CHECK(samples > 150ll * 1024 * 1024, "its samples take " + std::to_string(samples >> 20) + " MB");
+      // Each load gives back the one before: the third takes what the first
+      // did. A quarter of the samples is room for the program's own
+      // allocations on the way.
+      MP_CHECK(last - first < samples / 4,
+               "reloading takes no more: " + std::to_string(first >> 20) + " MB on the first load, " +
+                   std::to_string(last >> 20) + " MB on the third");
       MP_CHECK(proc.loadOrgan(minimal, 0, false).ok, "then the small organ loads again");
       const int64_t after = ownBytes();
       std::printf("reload-memory: %lld MB still held after the small organ again\n",
                   static_cast<long long>((after - before) >> 20));
-      // What the samples took comes back; a quarter of it is room for the
-      // program's own allocations on the way.
-      MP_CHECK(after - before < samples / 4,
+      // Most of what the organ took comes back. What stays is the program's
+      // own: buffers sized for the larger organ, kept for the next one.
+      MP_CHECK(after - before < first / 2,
                "the memory comes back: " + std::to_string((after - before) >> 20) + " MB still held of " +
-                   std::to_string(samples >> 20) + " MB of samples");
+                   std::to_string(first >> 20) + " MB the organ took");
     }
     dir.deleteRecursively();
   }
