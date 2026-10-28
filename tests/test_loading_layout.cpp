@@ -18,6 +18,18 @@ class LoadingLayoutTest final : public mp::test::Test {
 public:
   LoadingLayoutTest() : Test("functional.ui.loading-layout", Category::Functional) {}
 
+  // The visible drop-down holding "Custom": 1 when it can be chosen, 0 when
+  // greyed, -1 when there is none.
+  static int customState(juce::Component& panel) {
+    for (auto* child : panel.getChildren()) {
+      auto* box = dynamic_cast<juce::ComboBox*>(child);
+      if (box == nullptr || !box->isVisible()) continue;
+      for (int i = 0; i < box->getNumItems(); ++i)
+        if (box->getItemText(i) == "Custom") return box->isItemEnabled(box->getItemId(i)) ? 1 : 0;
+    }
+    return -1;
+  }
+
   void run() override {
     juce::MessageManager::getInstance();
     mp::MasterpieceProcessor proc;
@@ -36,8 +48,18 @@ public:
       }
       MP_CHECK(quality, "Simple mode shows the Quality presets");
       MP_CHECK(ticks == 0, "and no checkbox: " + std::to_string(ticks) + " shown");
+      // Custom stands for the controls Simple mode hides: there it is shown
+      // but cannot be chosen (#636).
+      mp::ui::EnginePanel performance(proc, mp::ui::EnginePanel::Part::Performance);
+      for (auto* panel : {static_cast<juce::Component*>(&simple), static_cast<juce::Component*>(&performance)})
+        MP_CHECK(customState(*panel) == 0, "Simple mode: Custom is listed and greyed");
     }
     proc.setSimpleMode(false, false);
+    {
+      mp::ui::EnginePanel organ(proc), performance(proc, mp::ui::EnginePanel::Part::Performance);
+      MP_CHECK(customState(organ) == 1, "Professional mode: Quality's Custom can be chosen");
+      MP_CHECK(customState(performance) == 1, "Professional mode: Performance's Custom can be chosen");
+    }
     mp::ui::EnginePanel panel(proc);
     // The width of the Organ settings window and the height its Loading tab
     // gives the panel (OrganSettings.h).

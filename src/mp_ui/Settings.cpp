@@ -1162,6 +1162,10 @@ void EnginePanel::applyPart() {
     if (c == &realtime_) show = show && MasterpieceProcessor::realtimeThreadsSupported();
     c->setVisible(show);
   }
+  // Simple mode hides the controls that Custom stands for, so there Custom
+  // names settings that match no preset and cannot be chosen.
+  profile_.setItemEnabled(7, !simple);
+  performance_.setItemEnabled(6, !simple);
 }
 
 int EnginePanel::contentHeight() const {
