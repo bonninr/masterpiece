@@ -1,17 +1,35 @@
 // An organ opened again, and again, then another: the memory the earlier
-// loads took goes back to the system, so the next load finds it free. On
-// Linux the C library kept the freed samples, and a third load of an organ
-// stopped for lack of memory that nothing was using (#636).
+// loads took goes back to the system, so the next load finds it free (#636).
+// Checked on Linux, Windows and macOS against what each system counts as this
+// program's own memory. The Linux case of #636 needs an organ of gigabytes
+// spread over the loader threads' heaps; it was measured with Friesach on a
+// 16 GB machine, three loads held at 7.2 GB.
 #include "MpTest.h"
 
-#if defined(MP_TEST_HAS_AUDIO) && defined(__linux__) && !defined(__ANDROID__)
+#if defined(__APPLE__)
+ #include <TargetConditionals.h>
+#endif
+
+#if defined(MP_TEST_HAS_AUDIO) && !defined(__ANDROID__) && \
+    (defined(__linux__) || defined(_WIN32) || (defined(__APPLE__) && !TARGET_OS_IPHONE))
 
 #include "../src/mp_audio/MasterpieceProcessor.h"
 
 #include <cstdint>
-#include <fstream>
+#include <cstdio>
 #include <string>
-#include <unistd.h>
+
+#if defined(_WIN32)
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+ #include <psapi.h>
+#elif defined(__APPLE__)
+ #include <mach/mach.h>
+#else
+ #include <fstream>
+#endif
 
 using mp::test::Category;
 
@@ -19,11 +37,35 @@ class ReloadMemoryTest final : public mp::test::Test {
 public:
   ReloadMemoryTest() : Test("functional.load.reload-returns-memory", Category::Functional) {}
 
-  static int64_t residentBytes() {
-    std::ifstream statm("/proc/self/statm");
-    int64_t size = 0, resident = 0;
-    statm >> size >> resident;
-    return resident * static_cast<int64_t>(sysconf(_SC_PAGESIZE));
+  // The program's own memory, as the system counts it: sample files mapped
+  // while they are read belong to the file cache and are left out.
+  static int64_t ownBytes() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS_EX pmc{};
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                              sizeof(pmc)))
+      return -1;
+    return static_cast<int64_t>(pmc.PrivateUsage);
+#elif defined(__APPLE__)
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) !=
+        KERN_SUCCESS)
+      return -1;
+    return static_cast<int64_t>(info.phys_footprint);
+#else
+    std::ifstream status("/proc/self/status");
+    std::string key;
+    int64_t kb = 0;
+    while (status >> key) {
+      if (key == "RssAnon:") {
+        status >> kb;
+        break;
+      }
+      status.ignore(1 << 12, '\n');
+    }
+    return kb * 1024;
+#endif
   }
 
   // A one-manual organ of four ranks of 61 pipes, each a WAV of 3 s of noise.
@@ -72,7 +114,7 @@ public:
     dir.deleteRecursively();
     dir.createDirectory();
     const juce::File big = writeOrgan(dir);
-    const juce::File small(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File minimal(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
     {
       mp::MasterpieceProcessor proc;
       proc.setCacheMode(mp::SampleLibrary::CacheMode::Off);
@@ -80,15 +122,23 @@ public:
       proc.setCodeSamples(false);
       proc.setLoadMono(false);
 
-      const int64_t before = residentBytes();
+      // The small organ first: the voices, threads and buffers the player
+      // keeps from its first load onwards are in the starting figure.
+      MP_CHECK(proc.loadOrgan(minimal, 0, false).ok, "a small organ loads first");
+      const int64_t before = ownBytes();
       int64_t samples = 0;
       for (int i = 0; i < 3; ++i) {
         MP_CHECK(proc.loadOrgan(big, 0, false).ok, "the organ loads, time " + std::to_string(i + 1));
         samples = proc.sampleLibrary().residentBytes();
+        std::printf("reload-memory: load %d, %lld MB of samples, %lld MB above the start\n", i + 1,
+                    static_cast<long long>(samples >> 20),
+                    static_cast<long long>((ownBytes() - before) >> 20));
       }
       MP_CHECK(samples > 80ll * 1024 * 1024, "its samples take " + std::to_string(samples >> 20) + " MB");
-      MP_CHECK(proc.loadOrgan(small, 0, false).ok, "then another organ loads");
-      const int64_t after = residentBytes();
+      MP_CHECK(proc.loadOrgan(minimal, 0, false).ok, "then the small organ loads again");
+      const int64_t after = ownBytes();
+      std::printf("reload-memory: %lld MB still held after the small organ again\n",
+                  static_cast<long long>((after - before) >> 20));
       // What the samples took comes back; a quarter of it is room for the
       // program's own allocations on the way.
       MP_CHECK(after - before < samples / 4,
