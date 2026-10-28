@@ -490,6 +490,7 @@ countries: it ch sm va
 "Manual %1 %2" = "Manuale %1 %2"
 "keyboard %1" = "tastiera %1"
 "Channel %1: %2" = "Canale %1: %2"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "Il canale %1 suona %2; scegliere Canale %1 per %3 e suonano entrambi."
 "Shared -- %1" = "Condiviso -- %1"
 "%1  -  in use by another program; opened when it is free" = "%1  -  in uso da un altro programma; verrà aperto quando sarà libero"
 "%1 could not be opened" = "Impossibile aprire %1"

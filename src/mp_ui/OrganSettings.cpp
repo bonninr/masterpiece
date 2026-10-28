@@ -449,16 +449,19 @@ void StopsLoadPanel::showRankStates() {
   }
 }
 
-void StopsLoadPanel::refreshFigures() {
-  showRankStates();
+bool StopsLoadPanel::choicePending() const {
   std::set<Id> loaded;  // what the last load left out
   for (const auto& r : rows_)
     if (!proc_.stopLoaded(r.stopId)) loaded.insert(r.stopId);
+  return loaded != proc_.excludedStops() || perspectivesOut() != proc_.perspectivesLeftOut() ||
+         ranksOut() != proc_.ranksLeftOut();
+}
+
+void StopsLoadPanel::refreshFigures() {
+  showRankStates();
   // Always available while an organ is loaded (#134), and marked when the
-  // choice here differs from what is loaded.
-  const bool pending = loaded != proc_.excludedStops() ||
-                       perspectivesOut() != proc_.perspectivesLeftOut() ||
-                       ranksOut() != proc_.ranksLeftOut();
+  // choice here, or on another tab, differs from what is loaded.
+  const bool pending = choicePending() || (alsoPending && alsoPending());
   reloadNow_.setEnabled(!proc_.loadedOrganFile().getFullPathName().isEmpty());
   reloadNow_.setColour(juce::TextButton::buttonColourId,
                        pending ? juce::Colour(0xff8a5a12) : juce::Colour(0xff2a2f38));
@@ -937,6 +940,8 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
       eq_(p) {
   addAndMakeVisible(tabs_);
   engine_.onReload = [this] { reloadOnClose(); };
+  engine_.alsoPending = [this] { return stops_.choicePending(); };
+  stops_.alsoPending = [this] { return engine_.changesPending(); };
   tabs_.addTab(TRANS("Loading"), kBackground, &engineScroll_, false);
   tabs_.addTab(TRANS("Stops and perspectives"), kBackground, &stops_, false);
   tabs_.addTab(TRANS("Outputs"), kBackground, &outputs_, false);

@@ -490,6 +490,7 @@ countries: nl be sr
 "Manual %1 %2" = "Klavier %1 %2"
 "keyboard %1" = "toetsenbord %1"
 "Channel %1: %2" = "Kanaal %1: %2"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "Kanaal %1 speelt %2; kies Kanaal %1 voor %3 en beide spelen."
 "Shared -- %1" = "Gedeeld -- %1"
 "%1  -  in use by another program; opened when it is free" = "%1  -  in gebruik door een ander programma; wordt geopend zodra het vrij is"
 "%1 could not be opened" = "%1 kon niet worden geopend"

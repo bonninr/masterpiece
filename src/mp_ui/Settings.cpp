@@ -873,7 +873,7 @@ void EnginePanel::timerCallback() {
   const bool offer = part_ == Part::Organ && onReload != nullptr &&
                      proc_.loadedOrganFile().getFullPathName().isNotEmpty();
   if (reload_.isVisible() != offer) reload_.setVisible(offer);
-  const bool pending = offer && loadingChanged();
+  const bool pending = offer && (loadingChanged() || (alsoPending && alsoPending()));
   const bool rebuild = part_ == Part::Organ && !proc_.simpleMode() && cacheRebuildPending();
   if (rebuildNote_.isVisible() != rebuild) rebuildNote_.setVisible(rebuild);
   const juce::String reloadText = pending ? TRANS("Load the organ to apply") : TRANS("Load the organ");
@@ -2076,8 +2076,18 @@ void MidiPanel::showSharedChannels() {
     text << (text.isEmpty() ? "" : "   ")
          << TRANS("Channel %1: %2").replace("%1", juce::String(channel)).replace("%2", names.joinIntoString(", "));
   }
-  sharedNote_.setText(text.isEmpty() ? juce::String() : TRANS("Shared -- %1").replace("%1", text),
-                      juce::dontSendNotification);
+  if (text.isNotEmpty()) text = TRANS("Shared -- %1").replace("%1", text);
+  // A manual left on its default channel after another was put there: the
+  // channel plays the other one now, and the row still reads "Default" (#637).
+  auto nameOf = [this](Id kb) { return juce::String(proc_.keyboardName(kb)); };
+  for (Id kb : proc_.playableKeyboards())
+    if (const Id other = proc_.defaultChannelTakenBy(kb); other != 0)
+      text << (text.isEmpty() ? "" : "   ")
+           << TRANS("Channel %1 plays %2; choose Channel %1 for %3 to play both.")
+                  .replace("%1", juce::String(proc_.channelForKeyboard(kb)))
+                  .replace("%2", nameOf(other))
+                  .replace("%3", nameOf(kb));
+  sharedNote_.setText(text, juce::dontSendNotification);
 }
 
 void MidiPanel::refresh() {
@@ -2175,13 +2185,11 @@ void MidiPanel::refresh() {
     dev->setSelectedId(selectedDev, juce::dontSendNotification);
     auto* rawDev = dev.get();
     auto* rawBox = keyboardChannels_.back().get();
-    dev->onChange = [this, kb, rawBox, rawDev] {
-      const int channel = rawBox->getSelectedId() > 1
-                              ? rawBox->getSelectedId() - 1
-                              : proc_.channelForKeyboard(kb);
-      proc_.keepRouting();
-      proc_.setKeyboardForChannel(channel, kb, rawDev->getSelectedId() - 1);
+    dev->onChange = [this, kb, rawDev] {
+      // On the channel the row shows; the manuals sharing it keep it (#637).
+      proc_.setKeyboardDevice(kb, rawDev->getSelectedId() - 1);
       proc_.saveMidiMap();
+      showSharedChannels();
     };
     addAndMakeVisible(*dev);
     keyboardDevices_.push_back(std::move(dev));
@@ -2191,6 +2199,7 @@ void MidiPanel::refresh() {
     addAndMakeVisible(*more);
     keyboardMore_.push_back(std::move(more));
   }
+  showSharedChannels();
 
   output_.clear(juce::dontSendNotification);
   output_.addItem(TRANS("None"), 1);

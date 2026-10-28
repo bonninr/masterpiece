@@ -490,6 +490,7 @@ countries: fr be ca ch lu mc
 "Manual %1 %2" = "Clavier %1 %2"
 "keyboard %1" = "clavier MIDI %1"
 "Channel %1: %2" = "Canal %1 : %2"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "Le canal %1 joue %2 ; choisissez Canal %1 pour %3 et les deux jouent."
 "Shared -- %1" = "Partagé -- %1"
 "%1  -  in use by another program; opened when it is free" = "%1  -  utilisé par un autre programme ; ouvert dès qu'il est libre"
 "%1 could not be opened" = "%1 n'a pas pu être ouvert"

@@ -490,6 +490,7 @@ countries: cz
 "Manual %1 %2" = "Manuál %1 %2"
 "keyboard %1" = "klaviatura %1"
 "Channel %1: %2" = "Kanál %1: %2"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "Kanál %1 hraje %2; zvolte Kanál %1 pro %3 a budou hrát oba."
 "Shared -- %1" = "Sdíleno -- %1"
 "%1  -  in use by another program; opened when it is free" = "%1  -  používá jiný program; otevře se, jakmile bude volné"
 "%1 could not be opened" = "%1 se nepodařilo otevřít"
