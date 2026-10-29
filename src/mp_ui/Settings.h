@@ -365,6 +365,13 @@ private:
   juce::TextButton clearDefault_{TRANS("Clear default")};
   juce::Label defaultNote_;
   void showDefaultConsole();
+  // The same default, set here for every organ with none loaded (#634): the
+  // pedal and the first manuals, each a channel or none.
+  static constexpr int kDefaultRoles = 6;
+  juce::Label defaultChannelsLabel_;
+  std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
+  std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
+  void showDefaultChannels();
   juce::ComboBox output_;
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton cancelResets_{
