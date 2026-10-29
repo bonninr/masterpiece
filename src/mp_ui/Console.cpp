@@ -1249,6 +1249,7 @@ void ConsoleView::pressAt(juce::Point<int> where, bool keys) {
       tappedStopBounds_ = it->bounds.getUnion(it->hitBounds);
     } else {
       dragStops_ = proc_.shownSwitchEngaged(it->switchId) ? 0 : 1;
+      dragStop_ = it->switchId;
       toggleStop(it->switchId, it->bounds);
     }
     return;
@@ -1487,6 +1488,7 @@ void ConsoleView::dragTo(juce::Point<int> where) {
       if (!it->hitBounds.contains(where)) continue;
       const auto sw = proc_.organModel().switches.find(it->switchId);
       if (sw == proc_.organModel().switches.end() || !sw->second.latching) break;
+      if (std::exchange(dragStop_, it->switchId) == it->switchId) break;
       if (proc_.shownSwitchEngaged(it->switchId) != (dragStops_ == 1)) toggleStop(it->switchId, it->bounds);
       break;
     }
@@ -1518,6 +1520,7 @@ void ConsoleView::releaseAt(juce::Point<int> where) {
   }
   heldControl_ = 0;
   dragStops_ = -1;
+  dragStop_ = 0;
   if (heldButton_ != 0) {
     proc_.setSwitchEngaged(heldButton_, false);
     repaint(heldButtonBounds_);

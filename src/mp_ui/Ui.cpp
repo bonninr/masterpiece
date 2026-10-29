@@ -294,6 +294,7 @@ bool StopJamb::dragAcross(StopButton& from, const juce::MouseEvent& e) {
     dragFrom_ = &from;
     dragStart_ = e.mouseDownTime;
     dragState_ = -1;
+    dragOn_ = &from;
   }
   auto* under = dynamic_cast<StopButton*>(getComponentAt(e.getEventRelativeTo(this).getPosition()));
   if (dragState_ < 0) {
@@ -301,7 +302,10 @@ bool StopJamb::dragAcross(StopButton& from, const juce::MouseEvent& e) {
     dragState_ = from.getToggleState() ? 0 : 1;
     if (from.isEnabled()) from.setToggleState(dragState_ == 1, juce::sendNotification);
   }
-  if (under != nullptr && under->isEnabled() && under->getToggleState() != (dragState_ == 1))
+  // Each stop is set once as the pointer enters it: the state shown lags a
+  // moment behind a change.
+  if (under == nullptr || std::exchange(dragOn_, under) == under) return true;
+  if (under->isEnabled() && under->getToggleState() != (dragState_ == 1))
     under->setToggleState(dragState_ == 1, juce::sendNotification);
   return true;
 }

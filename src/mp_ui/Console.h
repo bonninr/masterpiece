@@ -330,6 +330,9 @@ private:
   // A drag that began on a stop: every stop it passes over is set the way
   // the first one went (1 drawn, 0 retired, -1 no drag).
   int dragStops_ = -1;
+  // The stop the drag is on: set once as the pointer enters it, since the
+  // state shown lags a moment behind a change.
+  Id dragStop_ = 0;
   // Touch: the stop under the finger, drawn or retired as it lifts unless it
   // was held or slid off.
   bool touch_ = touchInput();

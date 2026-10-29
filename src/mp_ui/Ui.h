@@ -124,6 +124,7 @@ private:
   StopButton* dragFrom_ = nullptr;
   juce::Time dragStart_;
   int dragState_ = -1;
+  StopButton* dragOn_ = nullptr;
 };
 
 // One shoe per enclosure, plus whatever else the organ exposes as a

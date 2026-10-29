@@ -165,6 +165,9 @@ private:
   // A drag that began on a stop or switch: each one it passes over is set the
   // way the first went (1 on, 0 off, -1 no drag).
   int dragState_ = -1;
+  // The element the drag is on: set once as the pointer enters it, since the
+  // state shown lags a moment behind a change.
+  const juce::Component* dragOn_ = nullptr;
 
   juce::OwnedArray<juce::TextButton> sectionButtons_;
   juce::TextButton edit_{TRANS("Edit")}, save_{TRANS("Save")}, detach_{TRANS("Detach")}, rename_{TRANS("Rename")};
