@@ -78,7 +78,8 @@ private:
   // The stop ticks, as the processor's choice of stops to leave out.
   void applyStopTicks();
   // Bulk selection (#136): a division heading clicked selects or clears its
-  // stops; a press on a stop dragged across others gives them its new state.
+  // stops; a press on a stop or a rank dragged across others gives them its
+  // new state; shift-click sets every row from the one clicked before.
   void mouseDown(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
@@ -89,6 +90,8 @@ private:
   bool keyPressed(const juce::KeyPress& key, juce::Component* origin) override;
   using juce::Component::keyPressed;
   bool dragState_ = true;
+  // The row clicked last, for a shift-click that sets every row between.
+  int lastStop_ = -1, lastRank_ = -1;
   void choose(std::set<Id> excluded);
   // The filter: rows whose name holds the text stay, the rest are hidden.
   bool shown(const juce::String& name) const;
