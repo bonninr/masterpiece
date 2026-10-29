@@ -73,7 +73,7 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
           RUN: ${{ github.event.workflow_run.html_url }}
         run: |
-          short=${SHA:0:7}
+          short=${SHA:0:5}
           notes="The newest build of main: commit $short, built by $RUN. Replaced on every push to main. A test build, ahead of the latest release."
           # The tag follows main; a tag outside v* starts no release.
           gh api -X PATCH "repos/$GH_REPO/git/refs/tags/main-latest" -f sha="$SHA" -F force=true ||
