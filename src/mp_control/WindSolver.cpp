@@ -246,6 +246,8 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
 
   constexpr int kMaxSweeps = 20000;
   constexpr double kStill = 1.0e-7;  // inches: far below anything the model resolves
+  int sweeps = kMaxSweeps;
+  bool finite = true;
   for (int sweep = 1; sweep <= kMaxSweeps; ++sweep) {
     double moved = 0.0;
     for (size_t j = 0; j < order_.size(); ++j) {
@@ -273,9 +275,123 @@ bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
       moved = std::max(moved, std::abs(p - order_[j].pressure));
       order_[j].pressure = p;
     }
-    if (!std::isfinite(moved)) break;
+    if (!std::isfinite(moved)) {
+      finite = false;
+      break;
+    }
     if (moved < kStill) {
-      lastSweeps_ = sweep;
+      sweeps = sweep;
+      break;
+    }
+  }
+
+  // A small step per sweep is not always the balance. A block of compartments
+  // joined by wide links, fed and drained only through narrow ones, moves as
+  // one body a hair per sweep while still far from where it settles. Newton's
+  // method on the whole network finishes it. The balance is the lowest point
+  // of a convex energy -- each link's flow only grows with its pressure
+  // difference -- so a Newton step taken to the lowest point along it always
+  // makes progress. Where the sweeps have settled, the first Newton step is
+  // below kStill and their answer stands unchanged.
+  std::vector<int> var(order_.size(), -1);
+  std::vector<size_t> at;
+  for (size_t j = 0; j < order_.size(); ++j)
+    if (!ends[j].empty()) {
+      var[j] = static_cast<int>(at.size());
+      at.push_back(j);
+    }
+  const size_t n = at.size();
+  constexpr size_t kMaxNewton = 1000;  // a dense solve; organs have tens to a few hundred
+  if (finite && n > 0 && n <= kMaxNewton) {
+    std::vector<double> h(n * n), r(n), step(n), base(n);
+    bool settled = false;
+    for (int it = 0; it < 100; ++it) {
+      std::fill(h.begin(), h.end(), 0.0);
+      for (size_t v = 0; v < n; ++v) {
+        const size_t j = at[v];
+        double net = 0.0;
+        for (const End& e : ends[j]) {
+          const double d = pressureAt(e) - order_[j].pressure;
+          net += orificeFlow(e.flowAtRef, e.refDiff, d);
+          // The flow's slope, held finite where the difference vanishes.
+          const double slope =
+              e.flowAtRef / (2.0 * std::sqrt(e.refDiff * std::max(std::abs(d), 1.0e-12)));
+          h[v * n + v] += slope;
+          if (e.other >= 0) h[v * n + static_cast<size_t>(var[static_cast<size_t>(e.other)])] -= slope;
+        }
+        r[v] = net;
+      }
+      // A block reached by no fixed pressure has no single balance; a touch
+      // on the diagonal keeps the solve defined.
+      double top = 0.0;
+      for (size_t v = 0; v < n; ++v) top = std::max(top, h[v * n + v]);
+      for (size_t v = 0; v < n; ++v) h[v * n + v] += 1.0e-12 * top;
+      bool factored = true;  // Cholesky, in place in the lower triangle
+      for (size_t c = 0; c < n && factored; ++c) {
+        double d = h[c * n + c];
+        for (size_t k = 0; k < c; ++k) d -= h[c * n + k] * h[c * n + k];
+        if (!(d > 0.0)) {
+          factored = false;
+          break;
+        }
+        d = std::sqrt(d);
+        h[c * n + c] = d;
+        for (size_t row = c + 1; row < n; ++row) {
+          double s = h[row * n + c];
+          for (size_t k = 0; k < c; ++k) s -= h[row * n + k] * h[c * n + k];
+          h[row * n + c] = s / d;
+        }
+      }
+      if (!factored) break;
+      for (size_t row = 0; row < n; ++row) {
+        double s = r[row];
+        for (size_t k = 0; k < row; ++k) s -= h[row * n + k] * step[k];
+        step[row] = s / h[row * n + row];
+      }
+      for (size_t row = n; row-- > 0;) {
+        double s = step[row];
+        for (size_t k = row + 1; k < n; ++k) s -= h[k * n + row] * step[k];
+        step[row] = s / h[row * n + row];
+      }
+      double longest = 0.0;
+      for (size_t v = 0; v < n; ++v) longest = std::max(longest, std::abs(step[v]));
+      if (!std::isfinite(longest)) break;
+      if (longest < kStill) {
+        settled = true;
+        break;
+      }
+      // The step's length: the lowest point of the energy along it, where the
+      // net inflow no longer has a part along the step. That part only falls
+      // as the step lengthens, so bisection finds it. Near a vanishing
+      // difference the full step lands twice as far as the balance, and this
+      // halves it.
+      for (size_t v = 0; v < n; ++v) base[v] = order_[at[v]].pressure;
+      const auto along = [&](double t) {
+        for (size_t v = 0; v < n; ++v) order_[at[v]].pressure = base[v] + t * step[v];
+        double sum = 0.0;
+        for (size_t v = 0; v < n; ++v) {
+          const size_t j = at[v];
+          double net = 0.0;
+          for (const End& e : ends[j]) net += orificeFlow(e.flowAtRef, e.refDiff, pressureAt(e) - order_[j].pressure);
+          sum += net * step[v];
+        }
+        return sum;
+      };
+      double lo = 0.0, hi = 1.0;
+      while (along(hi) > 0.0 && hi < 64.0) {
+        lo = hi;
+        hi *= 2.0;
+      }
+      for (int b = 0; b < 60 && (hi - lo) * longest > 1.0e-13; ++b) {
+        const double mid = 0.5 * (lo + hi);
+        if (along(mid) > 0.0) lo = mid;
+        else hi = mid;
+      }
+      const double t = 0.5 * (lo + hi);
+      for (size_t v = 0; v < n; ++v) order_[at[v]].pressure = base[v] + t * step[v];
+    }
+    if (settled) {
+      lastSweeps_ = sweeps;
       return true;
     }
   }

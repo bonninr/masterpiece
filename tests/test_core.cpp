@@ -19653,6 +19653,66 @@ public:
 };
 static WindSteadyTest g_windSteady;
 
+// A block of chambers joined by wide trunks and fed and vented through narrow
+// openings moves as one body, a hair per sweep, while still far from its
+// balance: the sweeps alone either stop early at the wrong pressure or run
+// out and hand over to integrating 120 seconds of wind. A set built this way,
+// with its bellows' valves shut at load, took 35 to 50 seconds to wire its
+// console (#584). The whole network is now solved at once.
+class WindSteadySlowTest final : public mp::test::Test {
+public:
+  WindSteadySlowTest() : Test("functional.control.wind-steady-slow", Category::Functional) {}
+
+  void run() override {
+    const auto box = [](mp::Id id, bool infinite, double inches) {
+      mp::WindCompartment c;
+      c.compartmentId = id;
+      c.infiniteVolume = infinite;
+      c.defaultPressureInches = inches;
+      c.volumeM3 = 0.15;
+      return c;
+    };
+    const auto pipe = [](mp::Id a, mp::Id b, double kgPerSec, mp::Id valve = 0) {
+      mp::WindCompartmentLink l;
+      l.firstCompartmentId = a;
+      l.secondCompartmentId = b;
+      l.massFlowKgPerSec = kgPerSec;
+      l.refPressureInches = 3.7;
+      l.valveSwitchId = valve;
+      l.valveOpenWhenEngaged = true;
+      return l;
+    };
+    mp::OrganModel m;
+    m.wind[1] = box(1, true, 0.0);  // the open air
+    m.wind[2] = box(2, true, 4.3);  // the blower
+    for (mp::Id id : {10, 11, 12, 13}) m.wind[id] = box(id, false, 0.0);
+    // The bellows' wide outlet behind a valve, and a narrow bypass beside it.
+    m.windLinks = {pipe(2, 10, 3.0, 900), pipe(2, 10, 3e-4), pipe(10, 11, 24.0),
+                   pipe(11, 12, 24.0),    pipe(12, 13, 24.0), pipe(13, 1, 8.5e-4)};
+    mp::WindSolver wind;
+    wind.reset(m);  // every valve open: the chambers sit near the blower
+    MP_CHECK(wind.nominalFor(13) > 4.0, "open, the chambers sit near the blower: " +
+                                             std::to_string(wind.nominalFor(13)));
+    // The load: the valve shut, the block fed through the bypass only.
+    const std::unordered_set<mp::Id> shut;
+    const auto t0 = std::chrono::steady_clock::now();
+    wind.settleWith(shut);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    MP_CHECK(wind.lastSettleSweeps() > 0 && wind.lastSettleSteps() == 0,
+             "solved, not integrated: " + std::to_string(wind.lastSettleSteps()) + " steps, " +
+                 std::to_string(ms) + " ms");
+    // The four chambers sit together where the supply balances the leak:
+    // 3e-4 sqrt((4.3 - p)/3.7) = 8.5e-4 sqrt(p/3.7).
+    const double ratio = (8.5 / 3.0) * (8.5 / 3.0);
+    const double exact = 4.3 / (1.0 + ratio);
+    for (mp::Id id : {10, 11, 12, 13})
+      MP_CHECK(std::abs(wind.nominalFor(id) - exact) < 1e-4,
+               "chamber " + std::to_string(id) + " at " + std::to_string(wind.nominalFor(id)) + " for " +
+                   std::to_string(exact));
+  }
+};
+static WindSteadySlowTest g_windSteadySlow;
+
 // The faster engine is the player's to turn off: on by default (0.7.11), off
 // at once when asked, and the choice saved either way with the program's
 // settings.
