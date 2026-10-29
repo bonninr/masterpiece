@@ -85,7 +85,7 @@ Masterpiece counts blocks that took longer to render than the audio they make. T
 | A sample rate below 44.1 kHz | The program moves such a device to 48 kHz, or 44.1 kHz, at startup and logs it. |
 | Too many voices for the processor | Lower **Polyphony limit** in **Organ settings > Loading**. A new pipe takes the place of a dying one past the limit. |
 | The engine setting | **Faster audio engine** is on by default and renders several samples at a time on AVX2 or NEON processors. Switch it off to test whether it is the cause. |
-| Convolution reverb | **Impulse-response reverb** (**General settings > Room**) is the most expensive stage of the audio callback. Switch it off, or choose **No DSP** in the top bar. |
+| Convolution reverb | **Impulse-response reverb** (**General settings > Room**) is the most expensive stage of the audio callback. Switch it off, or tick **Bypass all effects** in **Organ settings > Loading**. |
 | Release tails read from a slow disk | The status line shows **streamed releases fell behind Nx: turn off "Stream release tails" in Organ settings**. The box is **Stream release tails from disk** in **Organ settings > Loading**. Switch it off, choose **Hold 50% of each release** or **Hold 75% of each release**, or move the samples to an SSD. Streaming needs SSD-class storage. |
 | The cache is written while playing | With **Save the sample cache** set to **In silence, while it plays**, the write waits for silence. **Before the organ plays** moves it before playing. |
 | Memory exhausted and the system swaps | Use 16-bit samples and streamed releases. See [Memory, loading and streaming](memory.md). |

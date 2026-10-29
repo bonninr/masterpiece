@@ -7,6 +7,8 @@
 // docs/screens/ — this exists so the organ can be played and heard now, which
 // is what tells us whether the engine is right.
 #pragma once
+#include <array>
+
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../mp_audio/MasterpieceProcessor.h"
@@ -219,20 +221,48 @@ public:
   // The fader at its narrowest: its 58-pixel readout and a track a hand can
   // still set a level on.
   static constexpr int kFaderMinWidth = 160;
-  // No DSP and the fader at its narrowest, with the bar's margins.
-  static constexpr int kMinWidth = 8 + 88 + 10 + kFaderMinWidth;
+  // The fader at its narrowest, with the bar's margins. Bypassing every
+  // effect is set once, in Organ settings > Loading, and has no place here.
+  static constexpr int kMinWidth = 8 + 6 + kFaderMinWidth;
 
 private:
   MasterpieceProcessor& proc_;
-  // Terse on purpose: everything the console offers has to share one row, and
-  // a slider that reads out in dB does not also need a label saying "Volume".
-  juce::ToggleButton simple_{TRANS("No DSP")};
   LevelMeter meter_;
   // In decibels, because that is the only scale a volume control feels linear
   // on: the useful part of a 0..16 gain range is all crowded below 1.
   juce::Slider volume_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Label status_;
 };
+
+// The band along the top of the window: the menus, the volume bar, the
+// sequencer, the tuning button, save and panic. Worked out
+// from the widths alone, so a test can lay it out in every language with no
+// window.
+constexpr int kTopBandHeight = 36;
+constexpr int kTuningWidth = 140;
+constexpr int kFrameWidth = 96;
+// Around a menu's name: the button's 2 px margin and the text's own inset
+// on each side, with a little air.
+constexpr int kMenuPadding = 20;
+// The widest a menu button grows. A longer translated name is drawn
+// narrower to fit, and past that shortened with an ellipsis: the row holds
+// whatever length a language gives a word.
+constexpr int kMenuMaxWidth = 88;
+
+struct TopBandLayout {
+  std::array<juce::Rectangle<int>, 5> menus;  // File, Organ, View, Settings, Help
+  juce::Rectangle<int> bar;                   // the volume and the meter
+  juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, save, panic;
+  bool stacked = false;  // the menus and the bar took a row of their own
+};
+
+// The width of a button's text, in the font it is drawn in at the band's
+// height.
+int textButtonTextWidth(juce::TextButton& b);
+
+// Takes the band's row, or two rows on a narrow window, from the top of
+// `area`. `menuText`: the five menu names' widths.
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile);
 
 // The width a page tab gives the icon that opens the page in a window of its
 // own. A finger needs a wider target than a mouse: on phones and tablets the
@@ -478,9 +508,12 @@ private:
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —
   // see Settings -> MIDI.
-  // Which console layout the set is drawn at. Only shown when the organ
-  // declares more than one, which most do not.
-  juce::ComboBox layout_;
+  // The names of the console's layouts, for View > Console layout: shown
+  // when the organ declares more than one, which most do not.
+  juce::StringArray layoutNames_;
+  // Draws the console at layout `index`, as a choice the player made: it
+  // holds until the window's shape turns.
+  void chooseLayout(int index);
   // Whether the console last had a tall room (1), a wide one (0), or no
   // shape yet (-1): the layout is chosen again only when this turns.
   int shapeTall_ = -1;

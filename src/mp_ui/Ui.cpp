@@ -504,7 +504,6 @@ void LevelMeter::paint(juce::Graphics& g) {
 
 TopBar::TopBar(MasterpieceProcessor& p)
     : proc_(p), meter_(p) {
-  addAndMakeVisible(simple_);
   addAndMakeVisible(meter_);
   addAndMakeVisible(volume_);
   // The readout is given a fixed, modest width. Left to itself it takes a
@@ -535,11 +534,6 @@ TopBar::TopBar(MasterpieceProcessor& p)
 
   addAndMakeVisible(status_);
   status_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
-  simple_.onClick = [this] {
-    auto sw = proc_.engineSwitch();
-    sw.simpleWavOnly = simple_.getToggleState();
-    proc_.setEngineSwitch(sw);
-  };
 }
 
 namespace {
@@ -756,22 +750,70 @@ void TopBar::setStatus(const juce::String& text) {
 
 void TopBar::resized() {
   auto r = getLocalBounds().reduced(4);
-  simple_.setBounds(r.removeFromLeft(88));
-  r.removeFromLeft(10);
-  // When the console's buttons leave too little room, things give way in
-  // order of how much they are missed: the status line first, then the
-  // meter, and the fader last -- never below a width a hand can still use.
+  r.removeFromLeft(6);
+  // The fader stretches with the room the console's buttons leave: from a
+  // width a hand can still set a level on (#90: too small to use) up to a
+  // generous one. The meter keeps its width until the fader is at its
+  // narrowest, then gives way first.
   const int room = r.getWidth();
-  // Wide enough to set a level by hand (#90: too small to use). The status
-  // line has moved to the bottom of the window, so the fader and the meter
-  // share the rest.
-  const int volumeW = juce::jlimit(kFaderMinWidth, 220, room - 120);
-  const int meterW = juce::jlimit(0, 112, room - volumeW - 8);
+  const int meterW = juce::jlimit(0, 112, room - kFaderMinWidth - 8);
+  const int volumeW = juce::jlimit(kFaderMinWidth, 320, room - meterW - 8);
   volume_.setBounds(r.removeFromLeft(volumeW));
   r.removeFromLeft(8);
   // Beside the fader it answers for: the two are read together.
   meter_.setVisible(meterW >= 40);
   meter_.setBounds(r.removeFromLeft(meterW).reduced(0, 5));
+}
+
+// ---------------------------------------------------------------- top band
+
+int textButtonTextWidth(juce::TextButton& b) {
+  // 32 is the button's height once placed: the band's 36, less 2 a side.
+  return juce::GlyphArrangement::getStringWidthInt(b.getLookAndFeel().getTextButtonFont(b, 32), b.getButtonText());
+}
+
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile) {
+  TopBandLayout out;
+  // Each menu button as wide as its own name, in every language: a width
+  // fitted to the longest English name left the short ones padded and the
+  // band too wide for one row at 1240 pixels. A fingertip wide on a phone or
+  // tablet.
+  int menuWidths[5] = {};
+  int menus = 0;
+  for (size_t i = 0; i < menuText.size(); ++i) {
+    menuWidths[i] = juce::jlimit(mobile ? 84 : 52, juce::jmax(mobile ? 84 : 52, kMenuMaxWidth),
+                                 menuText[i] + kMenuPadding);
+    menus += menuWidths[i];
+  }
+  const int stepW = mobile ? 44 : 30;
+  const int iconW = mobile ? 46 : 38;
+  const int setterW = mobile ? 64 : 56;
+  const int fixed = 2 * iconW + kTuningWidth + 2 * stepW + kFrameWidth + setterW;
+
+  auto row = area.removeFromTop(kTopBandHeight);
+  const int spare = row.getWidth() - menus - fixed - TopBar::kMinWidth;
+  // From a 1024-pixel window up the band is one row: functional.ui.
+  // top-band-one-row holds every language to it. Narrower, the buttons on
+  // the right left the fader too little room (#53): the menus and the
+  // fader take a row of their own.
+  if (spare < 0) {
+    out.stacked = true;
+    for (size_t i = 0; i < menuText.size(); ++i) out.menus[i] = row.removeFromLeft(menuWidths[i]);
+    out.bar = row;
+    row = area.removeFromTop(kTopBandHeight);
+  } else {
+    for (size_t i = 0; i < menuText.size(); ++i) out.menus[i] = row.removeFromLeft(menuWidths[i]);
+  }
+  out.panic = row.removeFromRight(iconW);
+  out.save = row.removeFromRight(iconW);
+  out.tuning = row.removeFromRight(kTuningWidth);
+  // Sequencer, right to left: next, the frame it is on, previous, the setter.
+  out.stepNext = row.removeFromRight(stepW);
+  out.stepFrame = row.removeFromRight(kFrameWidth);
+  out.stepPrev = row.removeFromRight(stepW);
+  out.setter = row.removeFromRight(setterW);
+  if (!out.stacked) out.bar = row;
+  return out;
 }
 
 // ---------------------------------------------------------------- editor
@@ -1027,12 +1069,6 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     // cannot drift apart.
     keyboard_.setMidiChannel(
         proc_.channelForKeyboard(static_cast<Id>(manual_.getSelectedId())));
-  };
-
-  addChildComponent(layout_); // shown only when the organ offers a choice
-  layout_.onChange = [this] {
-    console_.setLayout(layout_.getSelectedId() - 1);
-    resized();
   };
 
   addAndMakeVisible(setter_);
@@ -1769,14 +1805,13 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // empty picture.
   // A set that ships for several console sizes lets the player pick. Rebuilt
   // per organ, because the count is the organ's.
-  layout_.clear(juce::dontSendNotification);
+  layoutNames_.clear();
   for (int i = 0; i < console_.layoutCount(); ++i) {
     juce::String name = i == 0 ? TRANS("Console: main")
                                : TRANS("Console: alt %1").replace("%1", juce::String(i));
     if (console_.isPortrait(i)) name = TRANS("%1 (portrait)").replace("%1", name);
-    layout_.addItem(name, i + 1);
+    layoutNames_.add(name);
   }
-  layout_.setSelectedId(console_.layout() + 1, juce::dontSendNotification);
   shapeTall_ = -1;  // the new organ's layout is chosen for the window's shape
 
   // Which manual the on-screen keys play. Named by division, because "Grand
@@ -1982,57 +2017,19 @@ void MasterpieceEditor::resized() {
   // than the bar's, so they are placed into the right of the same strip and
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
-  auto bar = r.removeFromTop(36);
-  layout_.setVisible(showingConsole_ && !showingStopList_ && console_.layoutCount() > 1);
-  // Wide enough to say "(portrait)" when the organ has a portrait layout.
-  int layoutW = 130;
-  for (int l = 1; l < console_.layoutCount(); ++l)
-    if (console_.isPortrait(l)) layoutW = 190;
-  // On a narrow window -- a monitor stood on end is 1080 wide -- the buttons
-  // on the right left the bar on the left too little room, and the volume
-  // fader went with it (#53). Below that, the buttons take a row of their own.
-  const int menuW = kMobile ? 84 : 70;
-  const int stepW = kMobile ? 44 : 30;
-  bool stacked = false;
-  {
-    // Every button in the band, as placed below: the three menus on the
-    // left; on the right panic, save, the layout, the temperament and the
-    // sequencer. What is left is the bar's, and it needs No DSP and a fader
-    // a hand can use.
-    const int menus = 5 * menuW + 14;
-    const int buttons = 2 * (kMobile ? 46 : 38) + (layout_.isVisible() ? layoutW : 0) + 140 +
-                        2 * stepW + 96 + (kMobile ? 64 : 56);
-    if (bar.getWidth() - menus - buttons < TopBar::kMinWidth) {
-      auto row = bar;
-      fileMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
-      organMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
-      viewMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
-      settingsButton_.setBounds(row.removeFromLeft(menuW + 14).reduced(2));
-      helpMenu_.setBounds(row.removeFromLeft(menuW).reduced(2));
-      top_.setBounds(row);
-      bar = r.removeFromTop(36);
-      stacked = true;
-    }
-  }
-  if (!stacked) {
-    fileMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
-    organMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
-    viewMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
-    settingsButton_.setBounds(bar.removeFromLeft(menuW + 14).reduced(2));
-    helpMenu_.setBounds(bar.removeFromLeft(menuW).reduced(2));
-  }
-  panicButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
-  saveStateButton_.setBounds(bar.removeFromRight(kMobile ? 46 : 38).reduced(2));
-  if (layout_.isVisible())
-    layout_.setBounds(bar.removeFromRight(layoutW).reduced(2));
-  tuningButton_.setBounds(bar.removeFromRight(140).reduced(2));
-  // Sequencer, right to left: next, the frame it is on, previous, the setter.
-  // A fingertip wide on a phone or tablet.
-  stepNext_.setBounds(bar.removeFromRight(stepW).reduced(2));
-  stepFrame_.setBounds(bar.removeFromRight(96).reduced(2));
-  stepPrev_.setBounds(bar.removeFromRight(stepW).reduced(2));
-  setter_.setBounds(bar.removeFromRight(kMobile ? 64 : 56).reduced(2));
-  if (!stacked) top_.setBounds(bar);
+  juce::TextButton* const menuButtons[] = {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_};
+  std::array<int, 5> menuText{};
+  for (size_t i = 0; i < menuText.size(); ++i) menuText[i] = textButtonTextWidth(*menuButtons[i]);
+  const auto band = layoutTopBand(r, menuText, kMobile);
+  for (size_t i = 0; i < menuText.size(); ++i) menuButtons[i]->setBounds(band.menus[i].reduced(2));
+  panicButton_.setBounds(band.panic.reduced(2));
+  saveStateButton_.setBounds(band.save.reduced(2));
+  tuningButton_.setBounds(band.tuning.reduced(2));
+  stepNext_.setBounds(band.stepNext.reduced(2));
+  stepFrame_.setBounds(band.stepFrame.reduced(2));
+  stepPrev_.setBounds(band.stepPrev.reduced(2));
+  setter_.setBounds(band.setter.reduced(2));
+  top_.setBounds(band.bar);
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
@@ -2110,7 +2107,6 @@ void MasterpieceEditor::resized() {
         const int chosen = console_.layoutForShape(tall == 1);
         if (chosen != console_.layout()) {
           console_.setLayout(chosen);
-          layout_.setSelectedId(chosen + 1, juce::dontSendNotification);
         }
       }
     }
@@ -2628,6 +2624,14 @@ void MasterpieceEditor::showViewMenu() {
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
   menu.addItem(18, TRANS("Fit window to page"));
+  // The console's layouts. The window picks one for its shape on its own;
+  // this is for choosing by hand.
+  if (showingConsole_ && console_.layoutCount() > 1) {
+    juce::PopupMenu layouts;
+    for (int i = 0; i < console_.layoutCount() && i < 100; ++i)
+      layouts.addItem(200 + i, layoutNames_[i], true, console_.layout() == i);
+    menu.addSubMenu(TRANS("Console layout"), layouts);
+  }
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -2666,11 +2670,18 @@ void MasterpieceEditor::showViewMenu() {
                          safe->resized();
                        }
                        if (c == 18) safe->fitWindowToPage();
+                       if (c >= 200 && c < 300) safe->chooseLayout(c - 200);
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);
                        }
                      });
+}
+
+void MasterpieceEditor::chooseLayout(int index) {
+  if (index < 0 || index >= console_.layoutCount()) return;
+  console_.setLayout(index);
+  resized();
 }
 
 void MasterpieceEditor::showSettingsMenu() {
@@ -2793,10 +2804,7 @@ void MasterpieceEditor::timerCallback() {
             console_.pageCount());
       break;
     case MidiTargetKind::ConsoleNextLayout:
-      if (console_.layoutCount() > 1)
-        layout_.setSelectedId(
-            console_.layout() + 2 > console_.layoutCount() ? 1
-                                                           : console_.layout() + 2);
+      if (console_.layoutCount() > 1) chooseLayout((console_.layout() + 1) % console_.layoutCount());
       break;
     case MidiTargetKind::ConsoleToggleStopList:
       // The console's own stop-list piston: the first panel and back.
