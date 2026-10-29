@@ -1795,8 +1795,21 @@ public:
   // The sample cache: a previous load of this organ at these settings, kept
   // so the next one is a read instead of twelve thousand decodes. One file by
   // default, replaced as organs change, because these run to gigabytes.
-  void setCacheMode(SampleLibrary::CacheMode m) { samples_.setCacheMode(m); }
-  SampleLibrary::CacheMode cacheMode() const { return samples_.cacheMode(); }
+  //
+  // One choice for the whole program, kept the moment it is made: it is
+  // about the player's disk, and the same disk holds every organ's cache.
+  void setCacheMode(SampleLibrary::CacheMode m) {
+    cacheMode_ = m;
+    cacheOverride_.reset();
+    samples_.setCacheMode(m);
+    writeGlobalFile();
+  }
+  // From the command line: this session only, and never written.
+  void overrideCacheMode(SampleLibrary::CacheMode m) {
+    cacheOverride_ = m;
+    samples_.setCacheMode(m);
+  }
+  SampleLibrary::CacheMode cacheMode() const { return cacheOverride_.value_or(cacheMode_); }
   int64_t cacheBytesRead() const { return samples_.cacheBytesRead(); }
   int64_t cacheBytesWritten() const { return samples_.cacheBytesWritten(); }
   bool cacheWriting() const { return samples_.cacheWriting(); }
@@ -2572,6 +2585,8 @@ private:
   void learnFromPress(const MidiSource& source, int value);
   bool combinationsOnTop_ = false;
   std::atomic<bool> cacheWhilePlaying_{false};
+  SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::Single;
+  std::optional<SampleLibrary::CacheMode> cacheOverride_;
   int releaseCutoffDb_ = -90;
   // MASTERPIECE_BLOCKLOG=<file>: every block's stages timed, with its note-ons,
   // note-offs and voices, kept in memory made at start and written to the
@@ -2698,9 +2713,8 @@ private:
     bool programCouplers = false;
     EngineSwitch engine;
     // The rest of the tab's choices the organ's file also holds (#591): the
-    // sample rate, the cache and the releases.
+    // sample rate and the releases.
     double rate = 0.0;
-    SampleLibrary::CacheMode cache = SampleLibrary::CacheMode::Single;
     SampleLibrary::ReleaseChoice releases{};
     int releaseMs = 0, releaseCutoffDb = 0;
   };
