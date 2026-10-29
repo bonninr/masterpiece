@@ -2,7 +2,7 @@
 
 namespace mp::ui {
 namespace {
-constexpr int kSteps = 3;
+constexpr int kSteps = 4;
 constexpr int kRow = 28;
 }  // namespace
 
@@ -35,6 +35,16 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
       /*showMidiOutputSelector*/ false, /*showChannelsAsStereoPairs*/ true,
       /*hideAdvancedOptions*/ false);
   addChildComponent(*audio_);
+
+  // The display mode comes first: it decides what every later screen and
+  // menu shows.
+  for (auto* b : {&simple_, &advanced_}) {
+    b->setRadioGroupId(1);
+    addChildComponent(*b);
+  }
+  (proc_.simpleMode() ? simple_ : advanced_).setToggleState(true, juce::dontSendNotification);
+  simple_.onClick = [this] { if (simple_.getToggleState()) proc_.setSimpleMode(true); };
+  advanced_.onClick = [this] { if (advanced_.getToggleState()) proc_.setSimpleMode(false); };
 
   addChildComponent(midiHeading_);
   style(midiHeading_, 13.0f, juce::Colours::lightgrey);
@@ -93,15 +103,26 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
 void WizardPanel::showStep(int step) {
   step_ = juce::jlimit(0, kSteps - 1, step);
 
-  audio_->setVisible(step_ == 0);
-  midiHeading_.setVisible(step_ == 1 && !midiInputs_.empty());
-  midiNone_.setVisible(step_ == 1 && midiInputs_.empty());
-  for (auto& b : midiInputs_) b->setVisible(step_ == 1);
-  openOrgan_.setVisible(step_ == 2);
-  organStatus_.setVisible(step_ == 2);
+  simple_.setVisible(step_ == 0);
+  advanced_.setVisible(step_ == 0);
+  audio_->setVisible(step_ == 1);
+  midiHeading_.setVisible(step_ == 2 && !midiInputs_.empty());
+  midiNone_.setVisible(step_ == 2 && midiInputs_.empty());
+  for (auto& b : midiInputs_) b->setVisible(step_ == 2);
+  openOrgan_.setVisible(step_ == 3);
+  organStatus_.setVisible(step_ == 3);
 
   switch (step_) {
     case 0:
+      title_.setText(TRANS("Simple or Advanced"), juce::dontSendNotification);
+      body_.setText(
+          TRANS("Simple shows the settings most players need, with presets for quality and "
+                "performance. Advanced shows every setting: each part of the presets, the sample "
+                "cache's folder, and the MIDI console builder.\n\n"
+                "You can switch at any time under View > Display mode."),
+          juce::dontSendNotification);
+      break;
+    case 1:
       title_.setText(TRANS("Sound"), juce::dontSendNotification);
       body_.setText(
           TRANS("Pick the device you listen through, and a buffer size.\n\n"
@@ -110,7 +131,7 @@ void WizardPanel::showStep(int step) {
                 "this at any time."),
           juce::dontSendNotification);
       break;
-    case 1:
+    case 2:
       title_.setText(TRANS("Your keyboards"), juce::dontSendNotification);
       body_.setText(
           TRANS("Which manual a key plays is decided by its MIDI channel, and no "
@@ -173,10 +194,16 @@ void WizardPanel::resized() {
   r.removeFromTop(8);
 
   if (step_ == 0) {
-    audio_->setBounds(r);
+    simple_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(12).withWidth(300));
+    r.removeFromTop(4);
+    advanced_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(12).withWidth(300));
     return;
   }
   if (step_ == 1) {
+    audio_->setBounds(r);
+    return;
+  }
+  if (step_ == 2) {
     if (midiInputs_.empty()) {
       midiNone_.setBounds(r.removeFromTop(60));
       return;

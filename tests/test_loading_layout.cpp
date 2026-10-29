@@ -57,8 +57,8 @@ public:
     proc.setSimpleMode(false, false);
     {
       mp::ui::EnginePanel organ(proc), performance(proc, mp::ui::EnginePanel::Part::Performance);
-      MP_CHECK(customState(organ) == 1, "Professional mode: Quality's Custom can be chosen");
-      MP_CHECK(customState(performance) == 1, "Professional mode: Performance's Custom can be chosen");
+      MP_CHECK(customState(organ) == 1, "Advanced mode: Quality's Custom can be chosen");
+      MP_CHECK(customState(performance) == 1, "Advanced mode: Performance's Custom can be chosen");
     }
     mp::ui::EnginePanel panel(proc);
     // The width of the Organ settings window and the height its Loading tab

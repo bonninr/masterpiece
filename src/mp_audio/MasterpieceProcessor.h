@@ -939,7 +939,7 @@ public:
   // been: a console drawn small sat at its own size beside the first page.
   bool smallPagesFill() const { return smallPagesFill_.load(std::memory_order_relaxed); }
   // View > Display mode. Simple shows presets in place of the technical
-  // settings; Professional shows every setting. A first start opens Simple;
+  // settings; Advanced shows every setting. A first start opens Simple;
   // a player who had settings before keeps every one in view.
   bool simpleMode() const { return simpleMode_.load(std::memory_order_relaxed); }
   // save false changes the view alone, for a test that must leave the

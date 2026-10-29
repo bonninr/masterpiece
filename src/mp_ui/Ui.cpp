@@ -2611,7 +2611,7 @@ void MasterpieceEditor::showViewMenu() {
   {
     juce::PopupMenu mode;
     mode.addItem(30, TRANS("Simple"), true, proc_.simpleMode());
-    mode.addItem(31, TRANS("Professional"), true, !proc_.simpleMode());
+    mode.addItem(31, TRANS("Advanced"), true, !proc_.simpleMode());
     menu.addSubMenu(TRANS("Display mode"), mode);
   }
   menu.addSeparator();
