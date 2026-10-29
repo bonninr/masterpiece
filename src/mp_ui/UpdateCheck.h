@@ -43,6 +43,10 @@ void checkForUpdateNow(MasterpieceProcessor& proc, std::function<void(const juce
 // This program's version, "0.9.0".
 juce::String programVersion();
 
+// What the program calls itself: its version on a tagged release,
+// "main 3fa91" on a build of main, "dev 3fa91" on any other build.
+juce::String buildLabel();
+
 // The pages Help opens.
 extern const char* const kDocumentationUrl;
 extern const char* const kReleaseNotesUrl;

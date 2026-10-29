@@ -8,6 +8,7 @@
 #include "ManualDialog.h"
 #include "MidiEventDialog.h"
 #include "Ui.h"
+#include "UpdateCheck.h"
 #include "Mobile.h"
 #include "../mp_audio/Translations.h"
 
@@ -3405,7 +3406,7 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
   };
 
   juce::String version = "plug-in";
-  if (auto* app = juce::JUCEApplicationBase::getInstance()) version = app->getApplicationVersion();
+  if (juce::JUCEApplicationBase::getInstance() != nullptr) version = buildLabel();
   out.add("Masterpiece " + version + ", " + juce::SystemStats::getOperatingSystemName() + ", " +
           juce::SystemStats::getDeviceDescription());
   out.add(juce::String(juce::SystemStats::getNumCpus()) + " processors, " +

@@ -2743,7 +2743,7 @@ void MasterpieceEditor::checkForUpdatesNow() {
 void MasterpieceEditor::showAbout() {
   juce::AlertWindow::showMessageBoxAsync(
       juce::MessageBoxIconType::NoIcon, TRANS("About Masterpiece"),
-      "Masterpiece " + programVersion() + "\n" + TRANS("Pipe organ sample player") +
+      "Masterpiece " + buildLabel() + "\n" + TRANS("Pipe organ sample player") +
           "\n\nmasterpieceorgan.com\n" + TRANS("Licence: GNU General Public License, version 3"),
       TRANS("Close"), this);
 }

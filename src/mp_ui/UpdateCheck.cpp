@@ -101,6 +101,11 @@ void checkForUpdateNow(MasterpieceProcessor& proc, std::function<void(const juce
 
 juce::String programVersion() { return MP_VERSION; }
 
+#ifndef MP_BUILD_LABEL
+#define MP_BUILD_LABEL MP_VERSION
+#endif
+juce::String buildLabel() { return MP_BUILD_LABEL; }
+
 const char* const kDocumentationUrl = "https://github.com/bonninr/masterpiece#readme";
 const char* const kReleaseNotesUrl = "https://github.com/bonninr/masterpiece/releases";
 const char* const kDownloadPageUrl = kDownloadUrl;

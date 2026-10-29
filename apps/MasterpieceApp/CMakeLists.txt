@@ -48,6 +48,9 @@ target_compile_features(MasterpieceApp PRIVATE cxx_std_20)
 # One place holds the version: the project() call. It was written out a second
 # time in Main.cpp, and the two drifted apart at nearly every release.
 target_compile_definitions(MasterpieceApp PRIVATE MP_VERSION="${PROJECT_VERSION}")
+# The commit changes with every build: on Main.cpp alone, so the compiler
+# cache keeps every other file.
+set_property(SOURCE Main.cpp APPEND PROPERTY COMPILE_DEFINITIONS MP_BUILD_LABEL="${MP_BUILD_LABEL}")
 target_link_libraries(MasterpieceApp PRIVATE
   mp_audio mp_ui mp_control mp_core
   juce::juce_gui_basics juce::juce_audio_utils juce::juce_audio_devices
