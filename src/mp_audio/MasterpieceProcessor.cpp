@@ -4423,14 +4423,44 @@ void MasterpieceProcessor::applySparseLoadingToModel() {
         juce::String(borrowed) + " pipe(s) play a neighbour's samples, retuned to their own");
 }
 
+namespace {
+// The folder an unpacked organ's archives are marked in, and where the organ's
+// root sits inside it. Usually that is the root itself. A GrandOrgue
+// definition kept in a Hauptwerk package's sample folder has its root there,
+// two folders below the marker, and names its samples from that folder (#637).
+struct PackagedRoot {
+  std::string folder;       // holds the marker; empty for an organ not packaged
+  std::string archivePath;  // the first archive, as the marker names it
+  std::string prefix;       // the root inside the package, "a/b/"; empty at the top
+};
+
+PackagedRoot packagedRootOf(const std::string& organRoot) {
+  PackagedRoot out;
+  const juce::File root(juce::String::fromUTF8(organRoot.c_str()));
+  juce::File dir = root;
+  for (int up = 0; up < 3 && dir.isDirectory(); ++up) {
+    const std::string marked = readArchiveMarker(dir.getFullPathName().toStdString());
+    if (!marked.empty()) {
+      out.folder = dir.getFullPathName().toStdString();
+      out.archivePath = marked;
+      if (dir != root)
+        out.prefix = root.getRelativePathFrom(dir).replaceCharacter('\\', '/').toStdString() + "/";
+      return out;
+    }
+    dir = dir.getParentDirectory();
+  }
+  return out;
+}
+} // namespace
+
 std::vector<SampleLibrary::ShapeJob> MasterpieceProcessor::sampleShapeJobs() const {
   // A packaged organ's samples are in its archives; their saved index is
   // enough to know each file's size.
   std::unique_ptr<OrganArchive> archive;
-  const std::string archivePath = readArchiveMarker(organRootDir_);
-  if (!archivePath.empty()) {
+  const PackagedRoot packaged = packagedRootOf(organRootDir_);
+  if (!packaged.archivePath.empty()) {
     archive = std::make_unique<OrganArchive>();
-    const std::string index = juce::File(juce::String::fromUTF8(organRootDir_.c_str()))
+    const std::string index = juce::File(juce::String::fromUTF8(packaged.folder.c_str()))
                                   .getChildFile("archive-index.txt")
                                   .getFullPathName()
                                   .toStdString();
@@ -7646,11 +7676,12 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     // folder says which archives, and its saved index says where in them.
     {
       std::shared_ptr<OrganArchive> packaged;
-      const std::string archivePath = readArchiveMarker(opts.organRootDir);
+      const PackagedRoot marked = packagedRootOf(opts.organRootDir);
+      const std::string& archivePath = marked.archivePath;
       if (!archivePath.empty()) {
         auto archive = std::make_shared<OrganArchive>();
         std::string error;
-        const std::string index = juce::File(juce::String::fromUTF8(opts.organRootDir.c_str()))
+        const std::string index = juce::File(juce::String::fromUTF8(marked.folder.c_str()))
                                       .getChildFile("archive-index.txt")
                                       .getFullPathName()
                                       .toStdString();
@@ -7679,7 +7710,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
                                         return w.find("from package " + package + " (") != std::string::npos;
                                       }),
                        warnings.end());
-      samples_.setArchive(packaged);
+      samples_.setArchive(packaged, marked.prefix);
     }
     if (model_.hasLicensedSamples && !licenceConfirmed_ && licenceAsker) {
       result.licenceAsked = true;
@@ -8085,7 +8116,7 @@ void MasterpieceProcessor::writePortableCopy(const juce::File& odf) {
   const juce::File root = portableRoot();
   // Already a copy, or opened from its packages: those keep their definition
   // and pictures unpacked, and need only the cache.
-  if (odf.isAChildOf(root) || !readArchiveMarker(organRootDir_).empty()) return;
+  if (odf.isAChildOf(root) || !packagedRootOf(organRootDir_).folder.empty()) return;
   const juce::File bundle = root.getChildFile(juce::String(organKey()));
   const juce::File stamp = bundle.getChildFile("stamp.txt");
   if (stamp.loadFileAsString().trim() == juce::String(loadedStamp_)) return;  // up to date
