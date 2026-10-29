@@ -561,7 +561,7 @@ identity, so a set moved to another drive or renamed keeps its settings.
 
 ### Save state
 
-**Save state** in the top bar (the disk icon, between the layout selector and the
+**Save state** in the top bar (the disk icon, between the tuning button and the
 Panic button) saves
 the organ's starting state. It records every latching switch that is not at its
 default, and the stops drawn, and writes them to the organ's settings file. The

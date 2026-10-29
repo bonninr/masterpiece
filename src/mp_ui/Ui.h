@@ -235,7 +235,7 @@ private:
 };
 
 // The band along the top of the window: the menus, the volume bar, the
-// sequencer, the tuning button, the layout box, save and panic. Worked out
+// sequencer, the tuning button, save and panic. Worked out
 // from the widths alone, so a test can lay it out in every language with no
 // window.
 constexpr int kTopBandHeight = 36;
@@ -252,21 +252,17 @@ constexpr int kMenuMaxWidth = 88;
 struct TopBandLayout {
   std::array<juce::Rectangle<int>, 5> menus;  // File, Organ, View, Settings, Help
   juce::Rectangle<int> bar;                   // the volume and the meter
-  juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, layout, save, panic;
-  bool stacked = false;      // the menus and the bar took a row of their own
-  bool layoutShown = false;  // the layout box has a place; View > Console layout always does
+  juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, save, panic;
+  bool stacked = false;  // the menus and the bar took a row of their own
 };
 
 // The width of a button's text, in the font it is drawn in at the band's
-// height; and of a combo box's current text.
+// height.
 int textButtonTextWidth(juce::TextButton& b);
-int comboTextWidth(juce::ComboBox& box);
 
 // Takes the band's row, or two rows on a narrow window, from the top of
-// `area`. `menuText`: the five menu names' widths; `layoutText`: the layout
-// box's name, or -1 when the box is hidden.
-TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, int layoutText,
-                            bool mobile);
+// `area`. `menuText`: the five menu names' widths.
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile);
 
 // The width a page tab gives the icon that opens the page in a window of its
 // own. A finger needs a wider target than a mouse: on phones and tablets the
@@ -512,9 +508,12 @@ private:
   // all an organist wants from it: the point of a sequencer is that you press
   // one button without looking. Also mappable to a real console's pistons —
   // see Settings -> MIDI.
-  // Which console layout the set is drawn at. Only shown when the organ
-  // declares more than one, which most do not.
-  juce::ComboBox layout_;
+  // The names of the console's layouts, for View > Console layout: shown
+  // when the organ declares more than one, which most do not.
+  juce::StringArray layoutNames_;
+  // Draws the console at layout `index`, as a choice the player made: it
+  // holds until the window's shape turns.
+  void chooseLayout(int index);
   // Whether the console last had a tall room (1), a wide one (0), or no
   // shape yet (-1): the layout is chosen again only when this turns.
   int shapeTall_ = -1;

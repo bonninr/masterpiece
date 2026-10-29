@@ -772,15 +772,7 @@ int textButtonTextWidth(juce::TextButton& b) {
   return juce::GlyphArrangement::getStringWidthInt(b.getLookAndFeel().getTextButtonFont(b, 32), b.getButtonText());
 }
 
-int comboTextWidth(juce::ComboBox& box) {
-  // At the height the box has in the band: before the first layout it has
-  // none, and its own font would measure the text at nothing.
-  const auto font = box.getLookAndFeel().getComboBoxFont(box).withHeight(16.0f);
-  return juce::GlyphArrangement::getStringWidthInt(font, box.getText());
-}
-
-TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, int layoutText,
-                            bool mobile) {
+TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, bool mobile) {
   TopBandLayout out;
   // Each menu button as wide as its own name, in every language: a width
   // fitted to the longest English name left the short ones padded and the
@@ -793,9 +785,6 @@ TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>
                                  menuText[i] + kMenuPadding);
     menus += menuWidths[i];
   }
-  // The layout box as wide as the name it shows, with room for its arrow:
-  // "(portrait)" widens it only while a portrait layout is chosen.
-  int layoutW = layoutText < 0 ? 0 : juce::jlimit(110, 220, layoutText + 44);
   const int stepW = mobile ? 44 : 30;
   const int iconW = mobile ? 46 : 38;
   const int setterW = mobile ? 64 : 56;
@@ -803,18 +792,11 @@ TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>
 
   auto row = area.removeFromTop(kTopBandHeight);
   const int spare = row.getWidth() - menus - fixed - TopBar::kMinWidth;
-  // From 1024 pixels up the band is one row (functional.ui.top-band-one-row
-  // holds every language to it). The layout box is the first to give way:
-  // the layout follows the window's shape on its own, and View > Console
-  // layout always offers the choice.
-  if (layoutW > 0 && spare >= 0 && spare < layoutW) layoutW = 0;
-  out.layoutShown = layoutW > 0;
-  // Narrower still, the buttons on the right left the fader too little room
-  // (#53): the menus and the fader take a row of their own, and the layout
-  // box comes back on the second.
+  // From a 1024-pixel window up the band is one row: functional.ui.
+  // top-band-one-row holds every language to it. Narrower, the buttons on
+  // the right left the fader too little room (#53): the menus and the
+  // fader take a row of their own.
   if (spare < 0) {
-    out.layoutShown = layoutText >= 0;
-    layoutW = out.layoutShown ? juce::jlimit(110, 220, layoutText + 44) : 0;
     out.stacked = true;
     for (size_t i = 0; i < menuText.size(); ++i) out.menus[i] = row.removeFromLeft(menuWidths[i]);
     out.bar = row;
@@ -824,7 +806,6 @@ TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>
   }
   out.panic = row.removeFromRight(iconW);
   out.save = row.removeFromRight(iconW);
-  if (layoutW > 0) out.layout = row.removeFromRight(layoutW);
   out.tuning = row.removeFromRight(kTuningWidth);
   // Sequencer, right to left: next, the frame it is on, previous, the setter.
   out.stepNext = row.removeFromRight(stepW);
@@ -1088,12 +1069,6 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
     // cannot drift apart.
     keyboard_.setMidiChannel(
         proc_.channelForKeyboard(static_cast<Id>(manual_.getSelectedId())));
-  };
-
-  addChildComponent(layout_); // shown only when the organ offers a choice
-  layout_.onChange = [this] {
-    console_.setLayout(layout_.getSelectedId() - 1);
-    resized();
   };
 
   addAndMakeVisible(setter_);
@@ -1830,14 +1805,13 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
   // empty picture.
   // A set that ships for several console sizes lets the player pick. Rebuilt
   // per organ, because the count is the organ's.
-  layout_.clear(juce::dontSendNotification);
+  layoutNames_.clear();
   for (int i = 0; i < console_.layoutCount(); ++i) {
     juce::String name = i == 0 ? TRANS("Console: main")
                                : TRANS("Console: alt %1").replace("%1", juce::String(i));
     if (console_.isPortrait(i)) name = TRANS("%1 (portrait)").replace("%1", name);
-    layout_.addItem(name, i + 1);
+    layoutNames_.add(name);
   }
-  layout_.setSelectedId(console_.layout() + 1, juce::dontSendNotification);
   shapeTall_ = -1;  // the new organ's layout is chosen for the window's shape
 
   // Which manual the on-screen keys play. Named by division, because "Grand
@@ -2043,16 +2017,13 @@ void MasterpieceEditor::resized() {
   // than the bar's, so they are placed into the right of the same strip and
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
-  const bool layoutWanted = showingConsole_ && !showingStopList_ && console_.layoutCount() > 1;
   juce::TextButton* const menuButtons[] = {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_};
   std::array<int, 5> menuText{};
   for (size_t i = 0; i < menuText.size(); ++i) menuText[i] = textButtonTextWidth(*menuButtons[i]);
-  const auto band = layoutTopBand(r, menuText, layoutWanted ? comboTextWidth(layout_) : -1, kMobile);
-  layout_.setVisible(band.layoutShown);
+  const auto band = layoutTopBand(r, menuText, kMobile);
   for (size_t i = 0; i < menuText.size(); ++i) menuButtons[i]->setBounds(band.menus[i].reduced(2));
   panicButton_.setBounds(band.panic.reduced(2));
   saveStateButton_.setBounds(band.save.reduced(2));
-  if (layout_.isVisible()) layout_.setBounds(band.layout.reduced(2));
   tuningButton_.setBounds(band.tuning.reduced(2));
   stepNext_.setBounds(band.stepNext.reduced(2));
   stepFrame_.setBounds(band.stepFrame.reduced(2));
@@ -2136,11 +2107,6 @@ void MasterpieceEditor::resized() {
         const int chosen = console_.layoutForShape(tall == 1);
         if (chosen != console_.layout()) {
           console_.setLayout(chosen);
-          layout_.setSelectedId(chosen + 1, juce::dontSendNotification);
-          // The layout box is sized to its name: lay the window out again
-          // with the new one. The shape is recorded, so this runs once.
-          resized();
-          return;
         }
       }
     }
@@ -2658,12 +2624,12 @@ void MasterpieceEditor::showViewMenu() {
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
   menu.addItem(18, TRANS("Fit window to page"));
-  // The console's layouts, always here: the box in the top bar steps out
-  // when the bar has no room for it in one row.
+  // The console's layouts. The window picks one for its shape on its own;
+  // this is for choosing by hand.
   if (showingConsole_ && console_.layoutCount() > 1) {
     juce::PopupMenu layouts;
     for (int i = 0; i < console_.layoutCount() && i < 100; ++i)
-      layouts.addItem(200 + i, layout_.getItemText(i), true, console_.layout() == i);
+      layouts.addItem(200 + i, layoutNames_[i], true, console_.layout() == i);
     menu.addSubMenu(TRANS("Console layout"), layouts);
   }
   // Pages in windows of their own, for a second screen: the same as a
@@ -2704,17 +2670,18 @@ void MasterpieceEditor::showViewMenu() {
                          safe->resized();
                        }
                        if (c == 18) safe->fitWindowToPage();
-                       if (c >= 200 && c < 300 && c - 200 < safe->console_.layoutCount()) {
-                         // As a choice in the box: it holds until the window's shape turns.
-                         safe->layout_.setSelectedId(c - 200 + 1, juce::dontSendNotification);
-                         safe->console_.setLayout(c - 200);
-                         safe->resized();
-                       }
+                       if (c >= 200 && c < 300) safe->chooseLayout(c - 200);
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);
                        }
                      });
+}
+
+void MasterpieceEditor::chooseLayout(int index) {
+  if (index < 0 || index >= console_.layoutCount()) return;
+  console_.setLayout(index);
+  resized();
 }
 
 void MasterpieceEditor::showSettingsMenu() {
@@ -2837,10 +2804,7 @@ void MasterpieceEditor::timerCallback() {
             console_.pageCount());
       break;
     case MidiTargetKind::ConsoleNextLayout:
-      if (console_.layoutCount() > 1)
-        layout_.setSelectedId(
-            console_.layout() + 2 > console_.layoutCount() ? 1
-                                                           : console_.layout() + 2);
+      if (console_.layoutCount() > 1) chooseLayout((console_.layout() + 1) % console_.layoutCount());
       break;
     case MidiTargetKind::ConsoleToggleStopList:
       // The console's own stop-list piston: the first panel and back.
