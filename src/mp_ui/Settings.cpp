@@ -582,10 +582,21 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(polyphony_);
   polyphony_.setTooltip(TRANS("The most pipes that sound at once, applied as soon as it is chosen. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory the voices take, more with release streaming on; a lower number keeps a small computer from falling behind on full organ."));
   fillPolyphony();
+  // Any number can be typed over the list, for a limit between its steps
+  // (#422).
+  polyphony_.setEditableText(true);
   polyphony_.onChange = [this] {
     const int id = polyphony_.getSelectedId();
-    // Ids above 1000 are a number of voices plus 1000; 1 is every voice.
-    proc_.setPolyphonyLimit(id == 1 ? 0 : id - 1000);
+    if (id == 0) {
+      // Typed: the first number in the text, kept within what the engine
+      // takes; anything else puts the list back as it was.
+      const int typed = polyphony_.getText().retainCharacters("0123456789").getIntValue();
+      if (typed > 0) proc_.setPolyphonyLimit(typed);
+      fillPolyphony();
+    } else {
+      // Ids above 1000 are a number of voices plus 1000; 1 is every voice.
+      proc_.setPolyphonyLimit(id == 1 ? 0 : id - 1000);
+    }
     syncPerformance();
   };
 
