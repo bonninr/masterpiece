@@ -603,13 +603,17 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(performanceLabel_);
   styleLabel(performanceLabel_, TRANS("Performance"));
   addAndMakeVisible(performance_);
-  performance_.addItem(TRANS("Most polyphony: every processor, 8192 voices"), 1);
-  performance_.addItem(TRANS("Balanced (default)"), 2);
-  performance_.addItem(TRANS("Steady: one processor kept for the system"), 3);
-  performance_.addItem(TRANS("Light computer: 1024 voices"), 4);
-  performance_.addItem(TRANS("Small computer, Raspberry Pi, tablet: 512 voices"), 5);
+  // Named by what the player gets, and chosen by ear (#634).
+  performance_.addItem(TRANS("Most voices: every processor core, 8192 voices"), 1);
+  performance_.addItem(TRANS("Balanced (default): every core, the default number of voices"), 2);
+  performance_.addItem(TRANS("Steady: one core left free for the system and other programs"), 3);
+  performance_.addItem(TRANS("Fewer voices: 1024"), 4);
+  performance_.addItem(TRANS("Fewest voices: 512, for a Raspberry Pi or a tablet"), 5);
   performance_.addItem(TRANS("Custom"), 6);
-  performance_.setTooltip(TRANS("Sets the audio engine, its threads and the polyphony together. Applies at once."));
+  performance_.setTooltip(TRANS("Sets the audio engine's threads and the number of voices together, and applies "
+                                "at once. Start with Balanced. If the sound crackles in a full chord, move down "
+                                "the list until it plays clean. Steady helps when other programs run beside the "
+                                "organ."));
   performance_.onChange = [this] {
     if (performance_.getSelectedId() <= 5) applyPerformance(performance_.getSelectedId());
   };
