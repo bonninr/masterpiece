@@ -1248,6 +1248,7 @@ void ConsoleView::pressAt(juce::Point<int> where, bool keys) {
       tappedStop_ = it->switchId;
       tappedStopBounds_ = it->bounds.getUnion(it->hitBounds);
     } else {
+      dragStops_ = proc_.shownSwitchEngaged(it->switchId) ? 0 : 1;
       toggleStop(it->switchId, it->bounds);
     }
     return;
@@ -1479,6 +1480,18 @@ void ConsoleView::dragTo(juce::Point<int> where) {
     setControlFromMouse(where);
     return;
   }
+  if (dragStops_ >= 0) {
+    // One drag across a row of stops draws or retires them all (#637).
+    for (auto it = items_.rbegin(); it != items_.rend(); ++it) {
+      if (!it->clickable || it->switchId == 0 || it->controlId != 0) continue;
+      if (!it->hitBounds.contains(where)) continue;
+      const auto sw = proc_.organModel().switches.find(it->switchId);
+      if (sw == proc_.organModel().switches.end() || !sw->second.latching) break;
+      if (proc_.shownSwitchEngaged(it->switchId) != (dragStops_ == 1)) toggleStop(it->switchId, it->bounds);
+      break;
+    }
+    return;
+  }
   if (heldKey_ < 0) return;
   // Sliding along the manual plays it, the way a hand does. Dragging from one
   // manual onto another switches channel with the key, which is what actually
@@ -1504,6 +1517,7 @@ void ConsoleView::releaseAt(juce::Point<int> where) {
       toggleStop(stop, tappedStopBounds_);
   }
   heldControl_ = 0;
+  dragStops_ = -1;
   if (heldButton_ != 0) {
     proc_.setSwitchEngaged(heldButton_, false);
     repaint(heldButtonBounds_);

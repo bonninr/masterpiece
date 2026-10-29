@@ -55,6 +55,9 @@ public:
   void mouseUp(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
   std::function<void(StopButton&)> onMidiMenu;
+  // A drag from this stop onto others: the jamb sets each one passed over.
+  // True once the drag has left this stop and taken over from the click.
+  std::function<bool(StopButton&, const juce::MouseEvent&)> onDragAcross;
 
   // What the accessibility layer reads: the stop's name, and whether it is
   // drawn.
@@ -74,6 +77,7 @@ protected:
 
 private:
   juce::String accessibleName_;
+  bool draggedAcross_ = false;
 };
 
 // One division's stops, as a column of latching buttons. A stop whose ranks
@@ -114,6 +118,12 @@ private:
   std::vector<std::unique_ptr<juce::Label>> headers_;
   // Move the keyboard focus from one stop to the next.
   void moveFocus(StopButton& from, const juce::KeyPress& key);
+  // A drag across the list: the stop it began on and the state it sets
+  // (1 drawn, 0 retired, -1 not yet off the first stop).
+  bool dragAcross(StopButton& from, const juce::MouseEvent& e);
+  StopButton* dragFrom_ = nullptr;
+  juce::Time dragStart_;
+  int dragState_ = -1;
 };
 
 // One shoe per enclosure, plus whatever else the organ exposes as a

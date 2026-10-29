@@ -327,6 +327,9 @@ private:
   Id heldControl_ = 0;
   // A momentary button held down with the mouse: released with it.
   Id heldButton_ = 0;
+  // A drag that began on a stop: every stop it passes over is set the way
+  // the first one went (1 drawn, 0 retired, -1 no drag).
+  int dragStops_ = -1;
   // Touch: the stop under the finger, drawn or retired as it lifts unless it
   // was held or slid off.
   bool touch_ = touchInput();
