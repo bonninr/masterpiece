@@ -158,6 +158,58 @@ public:
 };
 static SustainPedalTest g_sustain;
 
+// A second Note On for a key still held changes nothing: the pipe keeps
+// speaking, no new attack starts, and the one Note Off lets it go (#565).
+class RepeatedNoteOnTest final : public mp::test::Test {
+public:
+  RepeatedNoteOnTest() : Test("functional.playing.repeated-note-on", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-repeated-on");
+    const juce::File odf = writeOrgan(root);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.setStopEngaged(901, true);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto send = [&](std::initializer_list<juce::MidiMessage> msgs) {
+      juce::MidiBuffer m;
+      for (const auto& msg : msgs) m.addEvent(msg, 0);
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    const auto run = [&](int n) {
+      for (int i = 0; i < n; ++i) send({});
+    };
+    const auto voices = [&] { return proc.voiceStats().activeVoices; };
+    const auto on = [](int note) { return juce::MidiMessage::noteOn(1, note, 0.8f); };
+    const auto off = [](int note) { return juce::MidiMessage::noteOff(1, note); };
+
+    send({on(36)});
+    run(40);
+    MP_CHECK(voices() == 1, "sanity: the key sounds");
+    send({on(36)});
+    MP_CHECK(voices() == 1, "struck again while held: still the one pipe, no second attack");
+    send({off(36)});
+    run(400);
+    MP_CHECK(voices() == 0, "the one Note Off lets it go");
+
+    // A key let go and struck again speaks anew.
+    send({on(36)});
+    send({off(36)});
+    send({on(36)});
+    MP_CHECK(voices() == 2, "sanity: a key let go and struck again starts a new attack");
+    send({off(36)});
+    run(400);
+    MP_CHECK(voices() == 0, "and stops when let go");
+
+    proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static RepeatedNoteOnTest g_repeatedNoteOn;
+
 }  // namespace
 
 #endif  // MP_TEST_HAS_AUDIO

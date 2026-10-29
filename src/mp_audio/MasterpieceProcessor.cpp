@@ -4126,6 +4126,13 @@ void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int playedNote) {
   const CoupledScope coupled(*this);
   if (playedNote < 0) playedNote = midiNote;
+  // A second Note On for a key the hand still holds: the key is already
+  // down, so nothing changes, as GrandOrgue does (#565). A merge of two
+  // controllers or a contact that bounces sends one; striking the pipes
+  // again for it sounded like a new key press.
+  if (soundingNotes_.count(noteKeyId) != 0 &&
+      std::find(sustainedKeys_.begin(), sustainedKeys_.end(), noteKeyId) == sustainedKeys_.end())
+    return;
   // Struck again under the pedal: the hand holds it now.
   if (!sustainedKeys_.empty())
     sustainedKeys_.erase(std::remove(sustainedKeys_.begin(), sustainedKeys_.end(), noteKeyId),
