@@ -88,14 +88,16 @@ MIDI ports).
 | **Set** | Stores what is drawn into the piston or step chosen last. See [Capture](playing.md#capture). | |
 | **<**, frame readout, **>** | The sequencer. The readout reads **Frame 3 / 12**, or **No frames**. A click on the readout asks for a frame number. | Frames 1 to 999 |
 | Tuning button | Shows the temperament, the pitch of A and the transposition, for example `Equal  A 439.8`, or `Equal  A 440.0  +2` with a transposition. A click opens the tuning panel. See [Transposer, temperament and pitch](playing.md#transposer-temperament-and-pitch). | |
-| Layout selector | Chooses the console layout. Shown when the console is on screen and the organ offers more than one layout. | See [Layouts](#layouts) |
+| Layout selector | Chooses the console layout. Shown when the console is on screen, the organ offers more than one layout and the bar has room for it in one row. **View > Console layout** offers the same choice. | See [Layouts](#layouts) |
 | Save button (a disk icon; its name is **Save state**) | Records the stops as they are now as the organ's starting state. See [Remembered between sessions](playing.md#remembered-between-sessions). | |
 | **Panic** (an octagon with a cross, last in the bar) | Releases every key on every channel and silences every note still sounding. | |
 
-The bar shortens in a fixed order when the window narrows. The volume fader
-narrows first, to 160 px, then the level meter gives way. Each menu button is as
-wide as its name. When the sequencer, tuning and utility buttons leave the fader
-less than 160 px, the menus and the fader move to a row of their own.
+The bar is one row from a window 1024 px wide, in every language. It shortens
+in a fixed order when the window narrows: the volume fader narrows to 160 px,
+then the layout selector steps out of the bar, then the level meter gives way.
+Each menu button is as wide as its name, up to 88 px; a longer name is drawn
+narrower. Below that, the menus and the fader move to a row of their own, and
+the layout selector returns on the second row.
 
 Plain sample playback, with the wind model, tremulants, enclosure shading,
 voicing and the room reverb bypassed, is the **Bypass all effects** box in
@@ -179,8 +181,8 @@ Clicks, drags and right-clicks land on the picture at any scale.
 
 A set can draw its pages again for another screen shape, with up to three
 alternate layouts beside the main one. A layout counts as portrait when its
-console is taller than it is wide. The layout selector in the top bar lists
-them as **Console: main**, **Console: alt 1**, **Console: alt 2 (portrait)**
+console is taller than it is wide. The layout selector in the top bar and
+**View > Console layout** list them as **Console: main**, **Console: alt 1**, **Console: alt 2 (portrait)**
 and so on.
 
 The window follows its own shape. When the area for the console turns taller

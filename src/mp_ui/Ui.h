@@ -241,12 +241,20 @@ private:
 constexpr int kTopBandHeight = 36;
 constexpr int kTuningWidth = 140;
 constexpr int kFrameWidth = 96;
+// Around a menu's name: the button's 2 px margin and the text's own inset
+// on each side, with a little air.
+constexpr int kMenuPadding = 20;
+// The widest a menu button grows. A longer translated name is drawn
+// narrower to fit, and past that shortened with an ellipsis: the row holds
+// whatever length a language gives a word.
+constexpr int kMenuMaxWidth = 88;
 
 struct TopBandLayout {
   std::array<juce::Rectangle<int>, 5> menus;  // File, Organ, View, Settings, Help
   juce::Rectangle<int> bar;                   // the volume and the meter
   juce::Rectangle<int> setter, stepPrev, stepFrame, stepNext, tuning, layout, save, panic;
-  bool stacked = false;  // the menus and the bar took a row of their own
+  bool stacked = false;      // the menus and the bar took a row of their own
+  bool layoutShown = false;  // the layout box has a place; View > Console layout always does
 };
 
 // The width of a button's text, in the font it is drawn in at the band's

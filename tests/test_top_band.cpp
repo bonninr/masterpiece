@@ -1,12 +1,13 @@
 // The band along the top of the window stays one row.
 //
-// At the desktop widths every control of the band -- the menus, the volume
-// bar, the sequencer, the tuning button, the layout box, save and panic --
-// sits in one row, in every language the program ships, with the menus as
-// wide as their translated names and the layout box as wide as its longest
-// name. Nothing overlaps, and the volume bar keeps the width a hand can set a
-// level on. A narrow window still gives the menus and the bar a row of their
-// own.
+// From 1024 pixels up every control of the band -- the menus, the volume
+// bar, the sequencer, the tuning button, save and panic -- sits in one row,
+// in every language the program ships, with the menus as wide as their
+// translated names up to a cap. The layout box joins the row where it fits
+// with its longest name and steps out where it does not (View > Console
+// layout offers the same choice). Nothing overlaps, and the volume bar keeps
+// the width a hand can set a level on. A narrow window gives the menus and
+// the bar a row of their own, with the layout box back on the second.
 #ifdef MP_TEST_HAS_AUDIO
 
 #include "MpTest.h"
@@ -14,12 +15,18 @@
 #include "../src/mp_audio/Translations.h"
 #include "../src/mp_ui/Ui.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 
 using mp::test::Category;
 
 namespace {
+
+// The narrowest window the band holds to one row: 1024 pixels with its
+// frame, which takes 8 a side on Windows. The band lays out inside it.
+constexpr int kOneRowFrom = 1024 - 16;
 
 struct Measured {
   std::array<int, 5> menus{};
@@ -65,18 +72,34 @@ public:
       const auto m = measure();
       const std::string lang = code.toStdString();
 
-      // The window opens 1280 wide; 1240 fits a 1280 screen with its frame;
-      // 1080 is a monitor stood on end, where only an organ with several
-      // layouts may need the second row.
+      // One row from 1024 pixels up, for an organ with several layouts and
+      // one without; below 1024 the band may take two rows. The window opens
+      // 1280 wide, and 1240 fits a 1280 screen with its frame.
       struct Case { int width; bool layoutBox; };
-      for (const auto c : {Case{1280, true}, Case{1240, true}, Case{1080, false}}) {
+      for (const auto c : {Case{1280, true}, Case{1240, true}, Case{kOneRowFrom, true}, Case{kOneRowFrom, false}}) {
         juce::Rectangle<int> area(0, 0, c.width, 600);
         const auto band = mp::ui::layoutTopBand(area, m.menus, c.layoutBox ? m.layout : -1, false);
         const std::string where = lang + " at " + std::to_string(c.width) +
                                   (c.layoutBox ? " with the layout box" : "");
+        if (c.width == 1280) {
+          // The row this language needs, without the layout box: the menus,
+          // the fixed buttons and the fader at its narrowest.
+          int menus = 0;
+          for (const auto& r : band.menus) menus += r.getWidth();
+          const int fixed = band.save.getWidth() + band.panic.getWidth() + band.tuning.getWidth() +
+                            band.stepPrev.getWidth() + band.stepFrame.getWidth() + band.stepNext.getWidth() +
+                            band.setter.getWidth();
+          std::printf("        %s: menus %d, row %d, layout box %d\n", lang.c_str(), menus,
+                      menus + fixed + mp::ui::TopBar::kMinWidth, band.layout.getWidth());
+        }
         MP_CHECK(!band.stacked, where + ": the band is one row");
         MP_CHECK(area.getY() == mp::ui::kTopBandHeight, where + ": the band takes one row's height");
-        const auto all = cells(band, c.layoutBox);
+        const auto all = cells(band, band.layoutShown);
+        MP_CHECK(c.layoutBox || !band.layoutShown, where + ": no layout box for an organ with one layout");
+        // In English the box has room at the usual widths: it gives way only
+        // where the row needs it.
+        if (code == "en" && c.layoutBox && c.width >= 1240)
+          MP_CHECK(band.layoutShown, where + ": the layout box is in the row");
         for (size_t i = 0; i < all.size(); ++i) {
           MP_CHECK(all[i].getY() == 0 && all[i].getHeight() == mp::ui::kTopBandHeight,
                    where + ": control " + std::to_string(i) + " sits in the row");
@@ -90,7 +113,7 @@ public:
                  where + ": the volume bar keeps " + std::to_string(mp::ui::TopBar::kMinWidth) + " px, got " +
                      std::to_string(band.bar.getWidth()));
         for (size_t i = 0; i < m.menus.size(); ++i)
-          MP_CHECK(band.menus[i].getWidth() >= m.menus[i] + 28,
+          MP_CHECK(band.menus[i].getWidth() >= std::min(m.menus[i] + mp::ui::kMenuPadding, mp::ui::kMenuMaxWidth),
                    where + ": menu " + std::to_string(i) + " fits its name");
       }
 
@@ -102,6 +125,9 @@ public:
       MP_CHECK(narrow.getY() == 2 * mp::ui::kTopBandHeight, lang + " at 700: two rows' height");
       MP_CHECK(band.bar.getY() == 0 && band.tuning.getY() == mp::ui::kTopBandHeight,
                lang + " at 700: the bar above, the buttons below");
+      MP_CHECK(band.layoutShown && band.layout.getY() == mp::ui::kTopBandHeight &&
+                   !band.layout.intersects(band.tuning) && band.layout.getX() >= 0,
+               lang + " at 700: the layout box is back, on the second row");
     }
     mp::applyLanguage("en");
   }

@@ -771,6 +771,7 @@ countries: nl be sr
 "Not enough memory for this organ" = "Onvoldoende geheugen voor dit orgel"
 "%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\nIts console is shown without sound, so Organ settings can be opened from the Settings menu: leave out perspectives or stops, or on the Loading tab load 16-bit samples, stream the release tails, load in mono or preload less of each sample -- or raise the memory limit on the same tab, if this computer has the memory to spare." = "%1 is niet geladen: de samples hebben meer nodig dan de geheugenlimiet (%2 GB).\n\nDe speeltafel wordt zonder geluid getoond, zodat de Orgelinstellingen via het menu Instellingen kunnen worden geopend: laat perspectieven of registers weg, of laad op het tabblad Laden 16-bit samples, stream de release-staarten, laad in mono of laad minder van elke sample vooraf - of verhoog de geheugenlimiet op hetzelfde tabblad, als deze computer geheugen over heeft."
 "Console: main" = "Speeltafel: hoofd"
+"Console layout" = "Indeling van de speeltafel"
 "Console: alt %1" = "Speeltafel: alt. %1"
 "%1 stops" = "%1 registers"
 "%1 ranks" = "%1 pijpenrijen"

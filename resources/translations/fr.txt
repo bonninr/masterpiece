@@ -771,6 +771,7 @@ countries: fr be ca ch lu mc
 "Not enough memory for this organ" = "Mémoire insuffisante pour cet orgue"
 "%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\nIts console is shown without sound, so Organ settings can be opened from the Settings menu: leave out perspectives or stops, or on the Loading tab load 16-bit samples, stream the release tails, load in mono or preload less of each sample -- or raise the memory limit on the same tab, if this computer has the memory to spare." = "%1 n'a pas été chargé : ses échantillons demandent plus que la limite de mémoire (%2 Go).\n\nSa console est affichée sans son ; les Réglages de l'orgue peuvent donc être ouverts depuis le menu Réglages : excluez des perspectives ou des jeux, ou, dans l'onglet Chargement, chargez des échantillons en 16 bits, lisez les queues de relâchement en streaming, chargez en mono ou préchargez moins de chaque échantillon - ou relevez la limite de mémoire dans le même onglet si cet ordinateur dispose de mémoire en réserve."
 "Console: main" = "Console : principale"
+"Console layout" = "Disposition de la console"
 "Console: alt %1" = "Console : alt. %1"
 "%1 stops" = "%1 jeux"
 "%1 ranks" = "%1 rangs"

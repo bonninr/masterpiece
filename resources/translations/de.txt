@@ -771,6 +771,7 @@ countries: de at ch li lu
 "Not enough memory for this organ" = "Nicht genug Speicher für diese Orgel"
 "%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\nIts console is shown without sound, so Organ settings can be opened from the Settings menu: leave out perspectives or stops, or on the Loading tab load 16-bit samples, stream the release tails, load in mono or preload less of each sample -- or raise the memory limit on the same tab, if this computer has the memory to spare." = "%1 wurde nicht geladen: Die Samples brauchen mehr als das Speicherlimit (%2 GB).\n\nDer Spieltisch der Orgel wird ohne Ton angezeigt, sodass die Orgeleinstellungen im Menü „Einstellungen“ geöffnet werden können: Perspektiven oder Register weglassen, oder auf der Seite „Laden“ 16-Bit-Samples laden, die Release-Samples streamen, in Mono laden oder weniger von jedem Sample vorladen - oder auf derselben Seite das Speicherlimit erhöhen, wenn dieser Computer Speicher übrig hat."
 "Console: main" = "Spieltisch: Haupt"
+"Console layout" = "Spieltisch-Layout"
 "Console: alt %1" = "Spieltisch: Alt. %1"
 "%1 stops" = "%1 Register"
 "%1 ranks" = "%1 Reihen"

@@ -994,6 +994,7 @@ countries: gb us
 "Expression pedals" = "Expression pedals"
 "Highlight played keys" = "Highlight played keys"
 "Scale small pages to fit" = "Scale small pages to fit"
+"Console layout" = "Console layout"
 "Open page in new window" = "Open page in new window"
 "Documentation" = "Documentation"
 "Release notes" = "Release notes"

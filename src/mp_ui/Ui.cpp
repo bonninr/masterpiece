@@ -773,7 +773,10 @@ int textButtonTextWidth(juce::TextButton& b) {
 }
 
 int comboTextWidth(juce::ComboBox& box) {
-  return juce::GlyphArrangement::getStringWidthInt(box.getLookAndFeel().getComboBoxFont(box), box.getText());
+  // At the height the box has in the band: before the first layout it has
+  // none, and its own font would measure the text at nothing.
+  const auto font = box.getLookAndFeel().getComboBoxFont(box).withHeight(16.0f);
+  return juce::GlyphArrangement::getStringWidthInt(font, box.getText());
 }
 
 TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>& menuText, int layoutText,
@@ -786,23 +789,32 @@ TopBandLayout layoutTopBand(juce::Rectangle<int>& area, const std::array<int, 5>
   int menuWidths[5] = {};
   int menus = 0;
   for (size_t i = 0; i < menuText.size(); ++i) {
-    menuWidths[i] = juce::jmax(mobile ? 84 : 52, menuText[i] + 28);
+    menuWidths[i] = juce::jlimit(mobile ? 84 : 52, juce::jmax(mobile ? 84 : 52, kMenuMaxWidth),
+                                 menuText[i] + kMenuPadding);
     menus += menuWidths[i];
   }
   // The layout box as wide as the name it shows, with room for its arrow:
   // "(portrait)" widens it only while a portrait layout is chosen.
-  const int layoutW = layoutText < 0 ? 0 : juce::jlimit(110, 220, layoutText + 44);
+  int layoutW = layoutText < 0 ? 0 : juce::jlimit(110, 220, layoutText + 44);
   const int stepW = mobile ? 44 : 30;
   const int iconW = mobile ? 46 : 38;
   const int setterW = mobile ? 64 : 56;
-  const int buttons = 2 * iconW + layoutW + kTuningWidth + 2 * stepW + kFrameWidth + setterW;
+  const int fixed = 2 * iconW + kTuningWidth + 2 * stepW + kFrameWidth + setterW;
 
   auto row = area.removeFromTop(kTopBandHeight);
-  // On a narrow window the buttons on the right left the fader too little
-  // room (#53). Only then do the menus and the fader take a row of their
-  // own; functional.ui.top-band-one-row holds every language to one row at
-  // the desktop widths.
-  if (row.getWidth() - menus - buttons < TopBar::kMinWidth) {
+  const int spare = row.getWidth() - menus - fixed - TopBar::kMinWidth;
+  // From 1024 pixels up the band is one row (functional.ui.top-band-one-row
+  // holds every language to it). The layout box is the first to give way:
+  // the layout follows the window's shape on its own, and View > Console
+  // layout always offers the choice.
+  if (layoutW > 0 && spare >= 0 && spare < layoutW) layoutW = 0;
+  out.layoutShown = layoutW > 0;
+  // Narrower still, the buttons on the right left the fader too little room
+  // (#53): the menus and the fader take a row of their own, and the layout
+  // box comes back on the second.
+  if (spare < 0) {
+    out.layoutShown = layoutText >= 0;
+    layoutW = out.layoutShown ? juce::jlimit(110, 220, layoutText + 44) : 0;
     out.stacked = true;
     for (size_t i = 0; i < menuText.size(); ++i) out.menus[i] = row.removeFromLeft(menuWidths[i]);
     out.bar = row;
@@ -2031,11 +2043,12 @@ void MasterpieceEditor::resized() {
   // than the bar's, so they are placed into the right of the same strip and
   // the bar lays itself out in whatever is left -- no reparenting, and the
   // status line absorbs the difference.
-  layout_.setVisible(showingConsole_ && !showingStopList_ && console_.layoutCount() > 1);
+  const bool layoutWanted = showingConsole_ && !showingStopList_ && console_.layoutCount() > 1;
   juce::TextButton* const menuButtons[] = {&fileMenu_, &organMenu_, &viewMenu_, &settingsButton_, &helpMenu_};
   std::array<int, 5> menuText{};
   for (size_t i = 0; i < menuText.size(); ++i) menuText[i] = textButtonTextWidth(*menuButtons[i]);
-  const auto band = layoutTopBand(r, menuText, layout_.isVisible() ? comboTextWidth(layout_) : -1, kMobile);
+  const auto band = layoutTopBand(r, menuText, layoutWanted ? comboTextWidth(layout_) : -1, kMobile);
+  layout_.setVisible(band.layoutShown);
   for (size_t i = 0; i < menuText.size(); ++i) menuButtons[i]->setBounds(band.menus[i].reduced(2));
   panicButton_.setBounds(band.panic.reduced(2));
   saveStateButton_.setBounds(band.save.reduced(2));
@@ -2645,6 +2658,14 @@ void MasterpieceEditor::showViewMenu() {
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
   menu.addItem(18, TRANS("Fit window to page"));
+  // The console's layouts, always here: the box in the top bar steps out
+  // when the bar has no room for it in one row.
+  if (showingConsole_ && console_.layoutCount() > 1) {
+    juce::PopupMenu layouts;
+    for (int i = 0; i < console_.layoutCount() && i < 100; ++i)
+      layouts.addItem(200 + i, layout_.getItemText(i), true, console_.layout() == i);
+    menu.addSubMenu(TRANS("Console layout"), layouts);
+  }
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
   if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
@@ -2683,6 +2704,12 @@ void MasterpieceEditor::showViewMenu() {
                          safe->resized();
                        }
                        if (c == 18) safe->fitWindowToPage();
+                       if (c >= 200 && c < 300 && c - 200 < safe->console_.layoutCount()) {
+                         // As a choice in the box: it holds until the window's shape turns.
+                         safe->layout_.setSelectedId(c - 200 + 1, juce::dontSendNotification);
+                         safe->console_.setLayout(c - 200);
+                         safe->resized();
+                       }
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
                          else safe->openPageWindow(c - 300);

@@ -771,6 +771,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Not enough memory for this organ" = "No hay memoria suficiente para este órgano"
 "%1 was not loaded: its samples need more than the memory limit (%2 GB).\n\nIts console is shown without sound, so Organ settings can be opened from the Settings menu: leave out perspectives or stops, or on the Loading tab load 16-bit samples, stream the release tails, load in mono or preload less of each sample -- or raise the memory limit on the same tab, if this computer has the memory to spare." = "%1 no se cargó: sus muestras necesitan más que el límite de memoria (%2 GB).\n\nSu consola se muestra sin sonido, así que se pueden abrir los Ajustes del órgano desde el menú Ajustes: excluye perspectivas o registros, o en la pestaña Carga carga muestras de 16 bits, lee las colas desde el disco, carga en mono o precarga menos de cada muestra; o sube el límite de memoria en la misma pestaña, si este ordenador tiene memoria de sobra."
 "Console: main" = "Consola: principal"
+"Console layout" = "Disposición de la consola"
 "Console: alt %1" = "Consola: alt. %1"
 "%1 stops" = "%1 registros"
 "%1 ranks" = "%1 hileras"
