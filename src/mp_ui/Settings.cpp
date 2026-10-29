@@ -1160,8 +1160,10 @@ void EnginePanel::applyPart() {
                      &cacheDirDefault_, &cacheDelete_, &packageDirLabel_, &packageDirValue_,
                      &packageDirChoose_, &packageDirClear_, &cacheLabel_, &cache_, &cacheWhenLabel_,
                      &cacheWhen_};
+  // The cache's choices too: the first load of a large organ waits on it (#565).
   const List generalSimple{&reopen_, &organRootLabel_, &organRootValue_, &organRootChoose_,
-                           &organRootDefault_};
+                           &organRootDefault_, &cacheLabel_, &cache_, &cacheWhenLabel_,
+                           &cacheWhen_};
   const List& mine = part_ == Part::Organ ? organ : part_ == Part::Performance ? performance : general;
   const List& few = part_ == Part::Organ ? organSimple
                     : part_ == Part::Performance ? performanceSimple
