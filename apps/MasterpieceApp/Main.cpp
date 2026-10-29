@@ -773,10 +773,9 @@ public:
         proc_->overrideSetting("compress");
       } else if (args[i] == "--cache" && i + 1 < args.size()) {
         const auto v = args[++i].unquoted().trim().toLowerCase();
-        proc_->setCacheMode(v == "off"        ? mp::SampleLibrary::CacheMode::Off
-                            : v == "per-organ" ? mp::SampleLibrary::CacheMode::PerOrgan
-                                               : mp::SampleLibrary::CacheMode::Single);
-        proc_->overrideSetting("cache");
+        proc_->overrideCacheMode(v == "off"        ? mp::SampleLibrary::CacheMode::Off
+                                 : v == "per-organ" ? mp::SampleLibrary::CacheMode::PerOrgan
+                                                    : mp::SampleLibrary::CacheMode::Single);
       } else if (args[i] == "--load-rate" && i + 1 < args.size()) {
         proc_->setLoadSampleRate(args[++i].unquoted().getDoubleValue());
         proc_->overrideSetting("rate");

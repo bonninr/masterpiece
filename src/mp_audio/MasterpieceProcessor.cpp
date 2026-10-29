@@ -1856,7 +1856,6 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "reverb " << (convolver_.enabled() ? 1 : 0) << " " << juce::String(convolver_.mix(), 3)
        << " " << convolver_.impulseResponseFile().getFullPathName() << "\n";
   text << "rate " << juce::String(samples_.loadSampleRate(), 0) << "\n";
-  text << "cache " << static_cast<int>(samples_.cacheMode()) << "\n";
   text << "stream " << (samples_.streamReleases() ? 1 : 0) << "\n";
   text << "streamhead " << juce::String(samples_.streamHeadFrames()) << "\n";
   text << "streamheadpct " << samples_.streamHeadPercent() << "\n";
@@ -1963,11 +1962,10 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
     convolver_.setEnabled(wet && convolver_.hasImpulseResponse());
   }
   else if (key == "rate") samples_.setLoadSampleRate(val.getDoubleValue());
+  // "cache" is a program setting now, read from the global file only. The
+  // line every organ's file still carries from earlier versions is passed
+  // over here, so it cannot undo the player's choice at each load.
   else if (key == "cache") {
-    const int v = val.getIntValue();
-    samples_.setCacheMode(v == 0   ? SampleLibrary::CacheMode::Off
-                          : v == 2 ? SampleLibrary::CacheMode::PerOrgan
-                                   : SampleLibrary::CacheMode::Single);
   }
   else if (key == "stream") samples_.setStreamReleases(on);
   else if (key == "streamhead") samples_.setStreamHeadFrames(val.getLargeIntValue());
@@ -2550,6 +2548,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (archiveDays_ != 90) text << "archivedays " << archiveDays_ << "\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
+  text << "samplecache " << static_cast<int>(cacheMode_) << "\n";
   if (setOffAfterStore_.load()) text << "setoffafterstore 1\n";
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
@@ -2631,6 +2630,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   auto sw = graph_.engineSwitch;
   // Settings written before the display mode existed: every one stays shown.
   simpleMode_.store(false);
+  cacheMode_ = SampleLibrary::CacheMode::Single;
   // The file holds them all, so a second read must not add them twice.
   eqPresets_.clearOwn();
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
@@ -2726,6 +2726,14 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       archiveDays_ = juce::jmax(1, val.getIntValue());
     } else if (key == "cachewhileplaying") {
       cacheWhilePlaying_.store(val.getIntValue() != 0);
+    } else if (key == "samplecache" || key == "cache") {
+      // "cache" is the line "Save as global defaults" wrote before the
+      // choice was the program's; "samplecache" is written after the
+      // defaults, so where both are present it is the one that holds.
+      const int v = val.getIntValue();
+      cacheMode_ = v == 0   ? SampleLibrary::CacheMode::Off
+                   : v == 2 ? SampleLibrary::CacheMode::PerOrgan
+                            : SampleLibrary::CacheMode::Single;
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
     } else if (key == "setoffafterstore") {
@@ -2852,6 +2860,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     }
   }
   graph_.engineSwitch = sw;
+  samples_.setCacheMode(cacheMode());
   globalBody_ = body;
   // Only the first read speaks the language: the windows already open were
   // built in the one that was chosen when they were made.
@@ -4610,7 +4619,6 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.programCouplers = programCouplers_;
   c.engine = graph_.engineSwitch;
   c.rate = samples_.loadSampleRate();
-  c.cache = samples_.cacheMode();
   c.releases = samples_.releaseChoice();
   c.releaseMs = samples_.releaseMaxMs();
   c.releaseCutoffDb = releaseCutoffDb_;
@@ -7017,7 +7025,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     programCouplers_ = c.programCouplers;
     graph_.engineSwitch = c.engine;
     samples_.setLoadSampleRate(c.rate);
-    samples_.setCacheMode(c.cache);
     samples_.setReleaseChoice(c.releases);
     samples_.setReleaseMaxMs(c.releaseMs);
     setReleaseCutoffDb(c.releaseCutoffDb);
@@ -7631,7 +7638,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     }
     // An organ kept playable without its files needs a cache of its own: the
     // shared one is replaced by the next organ loaded.
-    if (keepPortable_) samples_.setCacheMode(SampleLibrary::CacheMode::PerOrgan);
+    samples_.setCacheMode(keepPortable_ ? SampleLibrary::CacheMode::PerOrgan : cacheMode());
     samples_.setCacheIdentity(organKey(), odfStamp);
     loadedStamp_ = odfStamp;
 
