@@ -593,6 +593,8 @@ countries: gb us
 "MIDI messages in hex sent when the ready lamp lights, as well as the one above. Several are separated by commas: 90 3C 7F, B0 14 7F" = "MIDI messages in hex sent when the ready lamp lights, as well as the one above. Several are separated by commas: 90 3C 7F, B0 14 7F"
 "MIDI messages in hex sent when the ready lamp goes dark. Several are separated by commas: 80 3C 00, B0 14 00" = "MIDI messages in hex sent when the ready lamp goes dark. Several are separated by commas: 80 3C 00, B0 14 00"
 "On organ load" = "On organ load"
+"On organ unload" = "On organ unload"
+"MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing."
 "Hex messages, F0 ... F7, B0 07 7F" = "Hex messages, F0 ... F7, B0 07 7F"
 "MIDI messages in hex, sent on the MIDI output each time an organ loads, before any stop moves or lamp lights: for a controller that needs a mode set first, such as a pad grid's programmer layout. Several are separated by commas. Empty sends nothing." = "MIDI messages in hex, sent on the MIDI output each time an organ loads, before any stop moves or lamp lights: for a controller that needs a mode set first, such as a pad grid's programmer layout. Several are separated by commas. Empty sends nothing."
 "Score app" = "Score app"

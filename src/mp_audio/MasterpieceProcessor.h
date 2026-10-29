@@ -1122,6 +1122,15 @@ public:
   // with the global settings.
   bool setLoadMessage(const juce::String& hex);
   juce::String loadMessage() const;
+  // MIDI messages sent on the output when an organ unloads: before the next
+  // organ loads, and when the program quits with an organ loaded. For a relay
+  // that turns the speakers off. The same hex form; kept with the global
+  // settings.
+  bool setUnloadMessage(const juce::String& hex);
+  juce::String unloadMessage() const;
+  // Sends the unload message now, when an organ is loaded and the message is
+  // set. The program calls it as it quits.
+  void sendUnloadMessage();
   // What the lamp shows this block: 1 lit, 0 dark.
   int readyLampState() const { return lampState_.load(std::memory_order_relaxed); }
   // The message that sets it: a note on at velocity 127 or off, a controller
@@ -2310,6 +2319,7 @@ private:
   juce::String midiOutputName_;
   bool midiFeedback_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
+  std::vector<uint8_t> unloadMessage_;  // changed under the AudioLock
   // The ready lamp's own messages, changed under the AudioLock; and the
   // block they go out in, sized once so the audio thread allocates nothing.
   std::vector<uint8_t> lampLit_, lampDark_;

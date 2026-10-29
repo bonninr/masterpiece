@@ -968,6 +968,9 @@ public:
     // load that does not stop leaves the processor alive; the program is
     // ending in any case.
     if (proc_ && !proc_->stopLoad(15000)) loadStillRunning_ = true;
+    // The organ unloads with the program: its message, while the MIDI output
+    // is still open.
+    if (proc_ && !loadStillRunning_) proc_->sendUnloadMessage();
 #if MP_ENABLE_API
     // First: its requests are carried out on the message thread, against the
     // processor, and neither may be gone under it.
