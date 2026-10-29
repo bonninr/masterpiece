@@ -1041,6 +1041,8 @@ countries: cz
 "Help" = "Nápověda"
 "No more checks; Settings, Diagnostics turns them on again" = "Žádné další kontroly; Nastavení, Diagnostika je znovu zapne"
 "On organ load" = "Při načtení varhan"
+"On organ unload" = "Při uvolnění varhan"
+"MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "Zprávy MIDI v šestnáctkovém zápisu, odeslané na výstup MIDI při uvolnění varhan: před načtením dalších varhan a při ukončení programu. Pro relé, které vypíná reproduktory. Více zpráv se odděluje čárkami. Prázdné pole nic neodesílá."
 "When off: none" = "Při vypnutí: nic"
 "MIDI messages in hex, one or several separated by commas: a system exclusive message F0 to F7, or any other, for example F0 7D 01 F7, B0 14 7F. Sent again after each load, so a controller's mode message reaches it every time." = "Zprávy MIDI v šestnáctkovém zápisu, jedna nebo více oddělených čárkami: zpráva System Exclusive F0 až F7 nebo jakákoli jiná, například F0 7D 01 F7, B0 14 7F. Odesílají se znovu po každém načtení, aby zpráva o režimu dorazila k ovladači pokaždé."
 "When on: hex messages" = "Při zapnutí: zprávy hex"

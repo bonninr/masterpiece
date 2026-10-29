@@ -1041,6 +1041,8 @@ countries: it ch sm va
 "Help" = "Aiuto"
 "No more checks; Settings, Diagnostics turns them on again" = "Nessun altro controllo; Impostazioni, Diagnostica li riattiva"
 "On organ load" = "Al caricamento dell'organo"
+"On organ unload" = "Allo scaricamento dell'organo"
+"MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "Messaggi MIDI in esadecimale, inviati sull'uscita MIDI quando un organo viene scaricato: prima del caricamento dell'organo successivo e alla chiusura del programma. Per un relè che spegne gli altoparlanti. Più messaggi si separano con virgole. Vuoto non invia nulla."
 "When off: none" = "Alla disattivazione: nessuno"
 "MIDI messages in hex, one or several separated by commas: a system exclusive message F0 to F7, or any other, for example F0 7D 01 F7, B0 14 7F. Sent again after each load, so a controller's mode message reaches it every time." = "Messaggi MIDI in esadecimale, uno o più separati da virgole: un messaggio System exclusive da F0 a F7, o qualsiasi altro, per esempio F0 7D 01 F7, B0 14 7F. Inviati di nuovo dopo ogni caricamento, così il messaggio di modalità di un controller lo raggiunge ogni volta."
 "When on: hex messages" = "All'attivazione: messaggi hex"

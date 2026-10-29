@@ -17168,6 +17168,25 @@ public:
       MP_CHECK(lampAt() >= 0 && modeAt() < lampAt(),
                "ahead of the lamps: mode at " + std::to_string(modeAt()) + ", lamp at " +
                    std::to_string(lampAt()));
+
+      // The unload message: when the next organ loads, and as the program
+      // quits. Nothing goes out while it is empty.
+      MP_CHECK(!proc.setUnloadMessage("B0 15"), "a cut-off unload message is refused");
+      sent.clear();
+      proc.sendUnloadMessage();
+      MP_CHECK(sent.empty(), "with no unload message, unloading sends nothing");
+      MP_CHECK(proc.setUnloadMessage("b0 15 00") && proc.unloadMessage() == "B0 15 00",
+               "the unload message is taken");
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      MP_CHECK(!sent.empty() && sent[0].isController() && sent[0].getControllerNumber() == 21 &&
+                   sent[0].getControllerValue() == 0,
+               "loading the next organ sends the unload message first");
+      blocks(2);
+      sent.clear();
+      proc.sendUnloadMessage();
+      MP_CHECK(sent.size() == 1 && sent[0].isController() && sent[0].getControllerNumber() == 21,
+               "and quitting sends it once");
       proc.outgoingProbe = nullptr;
       proc.releaseResources();
       proc.settingsFileFor(odf).deleteFile();
@@ -17178,6 +17197,7 @@ public:
       mp::MasterpieceProcessor proc;  // the next start
       proc.loadGlobalDefaults();
       MP_CHECK(proc.loadMessage() == "F0 7D 01 F7, B0 07 64", "the load message is kept in the general settings");
+      MP_CHECK(proc.unloadMessage() == "B0 15 00", "and the unload message");
       MP_CHECK(proc.readyLampLitMessages() == "B0 14 7F, 90 3C 7F" && proc.readyLampDarkMessages() == "B0 14 00",
                "so are the lamp's messages");
     }

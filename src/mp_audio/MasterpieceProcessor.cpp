@@ -2514,6 +2514,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "readylamp " << (lamp.kind == MidiSourceKind::Note ? "note" : "cc") << " " << lamp.channel << " "
          << lamp.number << "\n";
   if (!loadMessage_.empty()) text << "loadmessage " << loadMessage() << "\n";
+  if (!unloadMessage_.empty()) text << "unloadmessage " << unloadMessage() << "\n";
   if (!lampLit_.empty()) text << "readylamplit " << readyLampLitMessages() << "\n";
   if (!lampDark_.empty()) text << "readylampdark " << readyLampDarkMessages() << "\n";
   if (remote_.thisComputerOnly) text << "apilocal 1\n";
@@ -2669,6 +2670,9 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
     } else if (key == "loadmessage") {
       std::vector<uint8_t> bytes;
       if (parseMidiText(val.toStdString(), bytes)) loadMessage_ = std::move(bytes);
+    } else if (key == "unloadmessage") {
+      std::vector<uint8_t> bytes;
+      if (parseMidiText(val.toStdString(), bytes)) unloadMessage_ = std::move(bytes);
     } else if (key == "readylamplit" || key == "readylampdark") {
       std::vector<uint8_t> bytes;
       if (parseMidiText(val.toStdString(), bytes)) (key == "readylamplit" ? lampLit_ : lampDark_) = std::move(bytes);
@@ -6907,6 +6911,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // The organ being left keeps what the player just set on it: the file is
   // named after the organ that is loaded, which is about to change.
   saveRememberedStateIfPending();
+  // The organ being left unloads: its message goes out first (#565).
+  sendUnloadMessage();
   // Settings restored from an archive are what this load reads; from here
   // on the program saves again.
   releaseSaves();
@@ -8360,6 +8366,31 @@ bool MasterpieceProcessor::setLoadMessage(const juce::String& hex) {
 }
 
 juce::String MasterpieceProcessor::loadMessage() const { return juce::String(midiText(loadMessage_)); }
+
+bool MasterpieceProcessor::setUnloadMessage(const juce::String& hex) {
+  std::vector<uint8_t> bytes;
+  if (!parseMidiText(hex.toStdString(), bytes)) return false;
+  if (bytes == unloadMessage_) return true;
+  {
+    const AudioLock audio(*this);
+    unloadMessage_.swap(bytes);
+  }
+  writeGlobalFile();
+  return true;
+}
+
+juce::String MasterpieceProcessor::unloadMessage() const { return juce::String(midiText(unloadMessage_)); }
+
+void MasterpieceProcessor::sendUnloadMessage() {
+  if (unloadMessage_.empty() || loadedOdf_ == juce::File()) return;
+  // Under the lock: the audio thread sends on the same output.
+  const AudioLock audio(*this);
+  if (midiOut_ == nullptr && !outgoingProbe) return;
+  juce::MidiBuffer out;
+  addMessages(out, unloadMessage_);
+  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  if (outgoingProbe) outgoingProbe(out);
+}
 
 bool MasterpieceProcessor::setReadyLampMessages(const juce::String& litHex, const juce::String& darkHex) {
   std::vector<uint8_t> lit, dark;

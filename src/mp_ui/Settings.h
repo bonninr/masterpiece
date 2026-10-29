@@ -419,6 +419,9 @@ private:
   juce::Label loadMessageLabel_;
   juce::TextEditor loadMessage_;
   void pushLoadMessage();
+  // And when it unloads: before the next loads, and as the program quits.
+  juce::Label unloadMessageLabel_;
+  juce::TextEditor unloadMessage_;
   // Page turns for a score app on a tablet or another program: a piston
   // learned here sends the message chosen beside it on the MIDI output.
   juce::Label scoreHeading_;

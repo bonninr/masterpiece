@@ -1942,6 +1942,23 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
                                 "such as a pad grid's programmer layout. Several are separated by commas. Empty "
                                 "sends nothing."));
   loadMessage_.onReturnKey = loadMessage_.onFocusLost = [this] { pushLoadMessage(); };
+  addAndMakeVisible(unloadMessageLabel_);
+  styleLabel(unloadMessageLabel_, TRANS("On organ unload"));
+  addAndMakeVisible(unloadMessage_);
+  unloadMessage_.setText(proc_.unloadMessage(), juce::dontSendNotification);
+  unloadMessage_.setTextToShowWhenEmpty(TRANS("Hex messages, F0 ... F7, B0 07 7F"), juce::Colours::grey);
+  unloadMessage_.setTooltip(TRANS("MIDI messages in hex, sent on the MIDI output when an organ unloads: before "
+                                  "the next organ loads, and when the program quits. For a relay that turns the "
+                                  "speakers off. Several are separated by commas. Empty sends nothing."));
+  unloadMessage_.onReturnKey = unloadMessage_.onFocusLost = [this] {
+    if (proc_.setUnloadMessage(unloadMessage_.getText())) {
+      unloadMessage_.removeColour(juce::TextEditor::outlineColourId);
+      unloadMessage_.setText(proc_.unloadMessage(), juce::dontSendNotification);
+    } else {
+      unloadMessage_.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+    }
+    unloadMessage_.repaint();
+  };
   addAndMakeVisible(scoreHeading_);
   styleLabel(scoreHeading_, TRANS("Score app"));
   const ScorePageMessage page = proc_.scorePageMessage();
@@ -1980,7 +1997,8 @@ void MidiPanel::applyPart() {
                                         &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_,
                                         &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_,
                                         &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
-                                        &loadMessage_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
+                                        &loadMessage_, &unloadMessageLabel_, &unloadMessage_,
+                                        &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
                                         &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
@@ -1997,7 +2015,7 @@ void MidiPanel::applyPart() {
       &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
       &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_, &learnPowerOff_,
       &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
-      &loadMessage_, &scoreHeading_, &learnScoreBack_,
+      &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &scoreHeading_, &learnScoreBack_,
       &learnScoreForward_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_, &keyboardsHeading_,
       &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
@@ -2397,6 +2415,10 @@ void MidiPanel::resized() {
     row = r.removeFromTop(kRow);
     loadMessageLabel_.setBounds(row.removeFromLeft(120));
     loadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
+    r.removeFromTop(4);
+    row = r.removeFromTop(kRow);
+    unloadMessageLabel_.setBounds(row.removeFromLeft(120));
+    unloadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
 
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);

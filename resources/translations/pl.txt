@@ -1041,6 +1041,8 @@ countries: pl
 "Help" = "Pomoc"
 "No more checks; Settings, Diagnostics turns them on again" = "Bez dalszych sprawdzeń; Ustawienia, Diagnostyka włącza je ponownie"
 "On organ load" = "Przy wczytaniu organów"
+"On organ unload" = "Przy zwolnieniu organów"
+"MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "Komunikaty MIDI szesnastkowo, wysyłane na wyjście MIDI przy zwolnieniu organów: przed wczytaniem następnych i przy zamknięciu programu. Dla przekaźnika, który wyłącza głośniki. Kilka oddziela się przecinkami. Puste nic nie wysyła."
 "When off: none" = "Po wyłączeniu: brak"
 "MIDI messages in hex, one or several separated by commas: a system exclusive message F0 to F7, or any other, for example F0 7D 01 F7, B0 14 7F. Sent again after each load, so a controller's mode message reaches it every time." = "Komunikaty MIDI w zapisie szesnastkowym, jeden lub kilka rozdzielonych przecinkami: komunikat System Exclusive od F0 do F7 lub dowolny inny, na przykład F0 7D 01 F7, B0 14 7F. Wysyłane ponownie po każdym wczytaniu, aby komunikat trybu docierał do kontrolera za każdym razem."
 "When on: hex messages" = "Po włączeniu: komunikaty hex"
