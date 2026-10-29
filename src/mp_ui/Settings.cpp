@@ -1194,15 +1194,18 @@ void EnginePanel::resized() {
   // to all of them. Cut to the room, the last rows came out with no height
   // and were measured that way (the Loading tab on a Mac, D565).
   r.setHeight(1 << 20);
-  const auto line = [&r](juce::Component& c) {
+  // A setting a preset above it sets is indented under it (#634); its box
+  // stays in line with the others.
+  constexpr int kIndent = 20;
+  const auto line = [&r](juce::Component& c, int indent = 0) {
     if (!c.isVisible()) return;
-    c.setBounds(r.removeFromTop(kRow));
+    c.setBounds(r.removeFromTop(kRow).withTrimmedLeft(indent));
     r.removeFromTop(2);
   };
-  const auto pair = [&r](juce::Component& label, juce::Component& box, int w) {
+  const auto pair = [&r](juce::Component& label, juce::Component& box, int w, int indent = 0) {
     if (!box.isVisible()) return;
     auto row = r.removeFromTop(kRow);
-    label.setBounds(row.removeFromLeft(180));
+    label.setBounds(row.removeFromLeft(180).withTrimmedLeft(indent));
     box.setBounds(row.removeFromLeft(w));
     r.removeFromTop(6);
   };
@@ -1224,22 +1227,24 @@ void EnginePanel::resized() {
   if (simpleWav_.isVisible()) r.removeFromTop(kGap);
   pair(profileLabel_, profile_, 380);
   if (profile_.isVisible()) r.removeFromTop(4);
-  pair(preloadLabel_, preload_, 260);
-  pair(storageLabel_, storage_, 260);
-  pair(rateLabel_, rate_, 260);
-  pair(sparseLabel_, sparse_, 300);
-  pair(releasesLabel_, releases_, 300);
-  pair(releaseLengthLabel_, releaseLength_, 300);
-  pair(releaseCutoffLabel_, releaseCutoff_, 300);
+  // What the quality preset sets, under it.
+  pair(preloadLabel_, preload_, 260, kIndent);
+  pair(storageLabel_, storage_, 260, kIndent);
+  pair(releasesLabel_, releases_, 300, kIndent);
   if (stream_.isVisible()) {
-    auto streamRow = r.removeFromTop(kRow);
+    auto streamRow = r.removeFromTop(kRow).withTrimmedLeft(kIndent);
     streamHead_.setBounds(streamRow.removeFromRight(230).reduced(0, 2));
     stream_.setBounds(streamRow);
     r.removeFromTop(2);
   }
+  line(mono_, kIndent);
+  line(compress_, kIndent);
+  if (profile_.isVisible()) r.removeFromTop(kGap);
+  pair(rateLabel_, rate_, 260);
+  pair(sparseLabel_, sparse_, 300);
+  pair(releaseLengthLabel_, releaseLength_, 300);
+  pair(releaseCutoffLabel_, releaseCutoff_, 300);
   pair(releaseBufferLabel_, releaseBuffer_, 300);
-  line(mono_);
-  line(compress_);
   line(programCouplers_);
   line(portable_);
   // The cache note's row is kept while the organ's rows show, so nothing
@@ -1253,12 +1258,14 @@ void EnginePanel::resized() {
   // Performance: the engine, for every organ.
   pair(performanceLabel_, performance_, 380);
   if (performance_.isVisible()) r.removeFromTop(4);
-  line(faster_);
-  line(realtime_);
-  line(everyProcessor_);
+  // What the performance preset sets, under it.
+  line(faster_, kIndent);
+  line(realtime_, kIndent);
+  line(everyProcessor_, kIndent);
   if (faster_.isVisible()) r.removeFromTop(4);
+  pair(polyphonyLabel_, polyphony_, 300, kIndent);
+  if (performance_.isVisible()) r.removeFromTop(kGap);
   pair(memLimitLabel_, memLimit_, 300);
-  pair(polyphonyLabel_, polyphony_, 300);
 
   // General: start, folders and the cache, for every organ.
   line(reopen_);
