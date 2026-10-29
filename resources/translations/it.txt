@@ -344,7 +344,7 @@ countries: it ch sm va
 "Rename..." = "Rinomina..."
 "MIDI..." = "MIDI..."
 "Loading" = "Caricamento"
-"Stops and perspectives" = "Registri e prospettive"
+"Stops, ranks and perspectives" = "Registri, file e prospettive"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h

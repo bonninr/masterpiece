@@ -344,7 +344,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Rename..." = "Renombrar..."
 "MIDI..." = "MIDI..."
 "Loading" = "Carga"
-"Stops and perspectives" = "Registros y perspectivas"
+"Stops, ranks and perspectives" = "Registros, hileras y perspectivas"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h

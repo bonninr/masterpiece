@@ -344,7 +344,6 @@ countries: nl be sr
 "Rename..." = "Hernoemen..."
 "MIDI..." = "MIDI..."
 "Loading" = "Laden"
-"Stops and perspectives" = "Registers en perspectieven"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h
@@ -1056,3 +1055,4 @@ countries: nl be sr
 
 "On organ unload" = "Bij het ontladen van het orgel"
 "MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "MIDI-berichten in hex, verzonden op de MIDI-uitgang wanneer een orgel wordt ontladen: voor het laden van het volgende orgel en bij het afsluiten van het programma. Voor een relais dat de luidsprekers uitschakelt. Meerdere worden gescheiden door komma's. Leeg verzendt niets."
+"Stops, ranks and perspectives" = "Registers, pijpenrijen en perspectieven"

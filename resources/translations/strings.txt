@@ -342,7 +342,7 @@ countries: gb us
 "Voicing EQ: next preset" = "Voicing EQ: next preset"
 "Voicing EQ: previous preset" = "Voicing EQ: previous preset"
 "Loading" = "Loading"
-"Stops and perspectives" = "Stops and perspectives"
+"Stops, ranks and perspectives" = "Stops, ranks and perspectives"
 "Outputs" = "Outputs"
 "Voicing" = "Voicing"
 "Equalizer" = "Equalizer"

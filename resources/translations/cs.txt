@@ -344,7 +344,7 @@ countries: cz
 "Rename..." = "Přejmenovat..."
 "MIDI..." = "MIDI..."
 "Loading" = "Načítání"
-"Stops and perspectives" = "Rejstříky a perspektivy"
+"Stops, ranks and perspectives" = "Rejstříky, řady a perspektivy"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h
