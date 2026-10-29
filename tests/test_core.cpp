@@ -4384,8 +4384,22 @@ public:
         for (int b = 0; b < 40; ++b) {
           if (b == 4) {
             eng.noteOff(1, mp::NoteRelease{});
-            // Time for the streamer to read the whole tail into the ring.
+            // Time for the streamer to read the whole tail into the ring: at
+            // least 150 ms, then until two of its passes in a row read
+            // nothing more. Up to two seconds: a busy build machine can keep
+            // the thread waiting.
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            int64_t pass = eng.streamerPasses();
+            int64_t reads = eng.streamReads();
+            int quiet = 0;
+            for (int i = 0; i < 400 && quiet < 2; ++i) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(5));
+              if (eng.streamerPasses() == pass) continue;
+              pass = eng.streamerPasses();
+              const int64_t now = eng.streamReads();
+              quiet = now == reads ? quiet + 1 : 0;
+              reads = now;
+            }
           }
           std::fill(l.begin(), l.end(), 0.0f);
           std::fill(r.begin(), r.end(), 0.0f);
