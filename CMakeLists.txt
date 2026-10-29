@@ -13,6 +13,50 @@ if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
+# What the program calls itself in its title, its About box and its log: the
+# version on a tagged release, and the commit on every other build, so a test
+# build is never taken for a release. "main 3fa91" for a build of main,
+# "dev 3fa91" for a pull request or a local build. Five characters: short
+# enough to read off the title bar, and git lengthens it where it would be
+# ambiguous. The version itself stays for the update check and the settings
+# archives.
+set(MP_BUILD_LABEL "${PROJECT_VERSION}")
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short=5 HEAD
+                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                  OUTPUT_VARIABLE _mp_commit OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  execute_process(COMMAND "${GIT_EXECUTABLE}" tag --points-at HEAD
+                  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                  OUTPUT_VARIABLE _mp_tags OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  # CI's checkout carries no tags; it says itself what it is building. A
+  # release published by hand runs on a branch, and is still the release
+  # workflow (the name a called workflow sees is its caller's).
+  if("$ENV{GITHUB_REF_TYPE}" STREQUAL "tag" OR "$ENV{GITHUB_WORKFLOW}" STREQUAL "release")
+    set(_mp_release ON)
+  else()
+    string(FIND "\n${_mp_tags}\n" "\nv${PROJECT_VERSION}\n" _mp_tagged)
+    if(_mp_tagged GREATER -1)
+      set(_mp_release ON)
+    endif()
+  endif()
+  if(_mp_commit AND NOT _mp_release)
+    if(DEFINED ENV{GITHUB_REF_NAME})
+      set(_mp_branch "$ENV{GITHUB_REF_NAME}")
+    else()
+      execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
+                      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                      OUTPUT_VARIABLE _mp_branch OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    endif()
+    if(_mp_branch STREQUAL "main")
+      set(MP_BUILD_LABEL "main ${_mp_commit}")
+    else()
+      set(MP_BUILD_LABEL "dev ${_mp_commit}")
+    endif()
+  endif()
+endif()
+message(STATUS "Masterpiece build label: ${MP_BUILD_LABEL}")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

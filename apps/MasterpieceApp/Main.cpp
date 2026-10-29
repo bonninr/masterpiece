@@ -55,6 +55,12 @@ extern "C" void onQuitSignal(int) { quitSignalled = 1; }
 #endif
 } // namespace
 
+// The version on a tagged release, "main 3fa91" or "dev 3fa91" on any
+// other build: what the title, the log and --help call the program.
+#ifndef MP_BUILD_LABEL
+#define MP_BUILD_LABEL MP_VERSION
+#endif
+
 class MasterpieceApp : public juce::JUCEApplication {
 public:
   const juce::String getApplicationName() override { return "Masterpiece"; }
@@ -171,7 +177,7 @@ public:
     // (#90). Kept beside the parser it describes.
     if (args.contains("--help") || args.contains("-h") || args.contains("/?")) {
       std::cout <<
-          "Masterpiece " MP_VERSION " - pipe organ sample player\n"
+          "Masterpiece " MP_BUILD_LABEL " - pipe organ sample player\n"
           "\n"
           "Usage: Masterpiece [options] [organ file]\n"
           "\n"
@@ -260,7 +266,7 @@ public:
       dir.createDirectory();
       const auto current = dir.getChildFile("masterpiece.log");
       if (current.existsAsFile()) current.moveFileTo(dir.getChildFile("masterpiece.previous.log"));
-      logger_ = std::make_unique<juce::FileLogger>(current, "Masterpiece " MP_VERSION " log");
+      logger_ = std::make_unique<juce::FileLogger>(current, "Masterpiece " MP_BUILD_LABEL " log");
       juce::Logger::setCurrentLogger(logger_.get());
     }
 
@@ -1106,7 +1112,7 @@ private:
   }
   struct DocWindow : juce::DocumentWindow {
     DocWindow(mp::MasterpieceProcessor& p, juce::AudioDeviceManager& dm)
-        : DocumentWindow("Masterpiece " MP_VERSION, juce::Colour(0xff15171c),
+        : DocumentWindow("Masterpiece " MP_BUILD_LABEL, juce::Colour(0xff15171c),
                          allButtons),
           devices_(dm) {
       auto* ed = new mp::ui::MasterpieceEditor(p);
@@ -1136,10 +1142,10 @@ private:
       // a duration, which on a slow disk is the difference between a console
       // and a blank panel.
       ed->onOrganLoaded = [this](const juce::String& name) {
-        // The version stays in the title with the organ's name. Asked for:
-        // a player who has downloaded a build has no other way to tell which
-        // one they are running.
-        setName("Masterpiece " MP_VERSION " - " + name);
+        // The version, or a test build's commit, stays in the title with the
+        // organ's name. Asked for: a player who has downloaded a build has no
+        // other way to tell which one they are running.
+        setName("Masterpiece " MP_BUILD_LABEL " - " + name);
         if (onLoaded) onLoaded();
       };
       editor_ = ed;
