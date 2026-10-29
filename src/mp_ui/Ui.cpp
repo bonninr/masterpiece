@@ -2408,10 +2408,27 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
 #if MP_HAS_SCORE
   onScore = showingConsole_ && showingScore_;
 #endif
-  menu.addItem(1002, console_.hasArtwork() ? TRANS("Console") : TRANS("Stop list"), true,
-               !onPanel && !onScore && !showingStopList_);
-  // The plain list of stops, for a player who cannot see the console. The
-  // key that opens it is named in the manual.
+  const bool onConsole = !onPanel && !onScore && !showingStopList_;
+  // The organ's own pages first, each by its name (#634); an organ that
+  // draws no console has the stop list in their place.
+  if (console_.hasArtwork() && console_.pageCount() > 0) {
+    for (int i = 0; i < console_.pageCount() && i < 100; ++i)
+      menu.addItem(1400 + i, console_.pageName(i), true, onConsole && console_.currentPage() == i);
+  } else {
+    menu.addItem(1002, TRANS("Stop list"), true, onConsole);
+  }
+  // Pages in windows of their own, for a second screen: the same as a
+  // right-click on a page's tab, here where it can be found.
+  if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
+    juce::PopupMenu pages;
+    for (int i = 0; i < console_.pageCount(); ++i)
+      pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
+    menu.addSubMenu(TRANS("Open page in new window"), pages);
+  }
+  // Then what the program draws: the plain list of stops, for a player who
+  // cannot see the console (the key that opens it is named in the manual),
+  // the player's panels and the score.
+  menu.addSeparator();
   if (console_.hasArtwork()) menu.addItem(15, TRANS("Stop list"), true, showingStopList_);
   for (size_t i = 0; i < panels_.size(); ++i)
     menu.addItem(1300 + static_cast<int>(i), panels_[i]->title(), true,
@@ -2428,6 +2445,9 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
       edit.addItem(1100 + static_cast<int>(i), TRANS("Delete %1").replace("%1", panels_[i]->title()));
     menu.addSubMenu(TRANS("Rename or delete a panel"), edit);
   }
+#if MP_HAS_SCORE
+  menu.addItem(16, TRANS("Score"), true, onScore || scoreWindow_ != nullptr);
+#endif
 }
 
 void MasterpieceEditor::panelItemChosen(int r) {
@@ -2452,6 +2472,10 @@ void MasterpieceEditor::panelItemChosen(int r) {
     }
 #endif
     if (showingConsole_ && showingPanel_ >= 0) togglePanel();
+  } else if (r >= 1400) {
+    // One of the organ's pages: back to the console, on that page.
+    panelItemChosen(1002);
+    if (r - 1400 < pageTabs_.getNumTabs()) pageTabs_.setCurrentTabIndex(r - 1400, true);
   } else if (r >= 1300) showPanel(r - 1300);
   else if (r >= 1200) panels_[static_cast<size_t>(r - 1200)]->askForTitle();
   else if (r >= 1100) deletePanel(r - 1100);
@@ -2632,21 +2656,9 @@ void MasterpieceEditor::showViewMenu() {
       layouts.addItem(200 + i, layoutNames_[i], true, console_.layout() == i);
     menu.addSubMenu(TRANS("Console layout"), layouts);
   }
-  // Pages in windows of their own, for a second screen: the same as a
-  // right-click on a page's tab, here where it can be found.
-  if (pagesCanFloat() && showingConsole_ && console_.pageCount() > 0) {
-    juce::PopupMenu pages;
-    for (int i = 0; i < console_.pageCount(); ++i)
-      pages.addItem(300 + i, console_.pageName(i), true, pageWindowFor(i) != nullptr);
-    menu.addSubMenu(TRANS("Open page in new window"), pages);
-  }
   menu.addSeparator();
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
   menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
-#if MP_HAS_SCORE
-  menu.addItem(16, TRANS("Score"), true,
-               (showingConsole_ && showingScore_) || scoreWindow_ != nullptr);
-#endif
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
