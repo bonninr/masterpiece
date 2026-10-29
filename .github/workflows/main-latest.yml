@@ -1,0 +1,92 @@
+name: main-latest
+
+# The newest build of main, at addresses that never change: each successful
+# build of main replaces the files of the prerelease "main-latest", under the
+# same names every time, e.g.
+#   https://github.com/bonninr/masterpiece/releases/download/main-latest/masterpiece-main-windows-setup.exe
+# Testers download without signing in, and the links outlive the build's
+# three-day artifacts.
+#
+# A prerelease is never the latest release: the site's downloads and the
+# program's update check, which read releases/latest, stay on the tagged
+# release.
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+
+# One update at a time, the newest winning.
+concurrency:
+  group: main-latest
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # A push to main only: a pull request's build is never published.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: artifacts
+
+      # As release.yml packages a release, with "main" where the version goes.
+      - name: Package
+        run: |
+          mkdir -p dist
+          for d in artifacts/*/; do
+            name=$(basename "$d")
+            case "$name" in
+              # Not for players: the Play bundle installs on no phone, and the
+              # simulator screenshots are CI's own record.
+              play-bundle|ios-simulator-screenshots) continue ;;
+              masterpiece-windows-setup|*-deb|*-flatpak|masterpiece-macos-*|masterpiece-plugins-macos-*|masterpiece-android|masterpiece-ios)
+                test "$(ls "$d" | wc -l)" = 1 || { echo "$name: expected one file, found:"; ls "$d"; exit 1; }
+                f=$(ls "$d")
+                # The .debs carry their version in their file name; the link
+                # has to stay the same, so the name is the artifact's.
+                case "$f" in *.deb) f="${name%-deb}.deb" ;; esac
+                cp "$d/$(ls "$d")" "dist/$f"
+                continue ;;
+            esac
+            case "$name" in
+              masterpiece-windows|masterpiece-plugins-windows) (cd "$d" && zip -qr "../../dist/${name}.zip" .) ;;
+              *) tar -czf "dist/${name}.tar.gz" -C "$d" . ;;
+            esac
+          done
+          for b in $(ls dist); do mv "dist/$b" "dist/masterpiece-main-${b#masterpiece-}"; done
+          ls -lh dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN: ${{ github.event.workflow_run.html_url }}
+        run: |
+          short=${SHA:0:5}
+          notes="The newest build of main: commit $short, built by $RUN. Replaced on every push to main. A test build, ahead of the latest release."
+          # The tag follows main; a tag outside v* starts no release.
+          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/main-latest" -f sha="$SHA" -F force=true ||
+            gh api "repos/$GH_REPO/git/refs" -f ref=refs/tags/main-latest -f sha="$SHA"
+          if gh release view main-latest > /dev/null 2>&1; then
+            gh release upload main-latest dist/* --clobber
+            gh release edit main-latest --title "Main build $short" --notes "$notes" --prerelease --latest=false
+          else
+            gh release create main-latest dist/* --title "Main build $short" --notes "$notes" \
+              --prerelease --latest=false --verify-tag
+          fi
+          # A file the new build no longer makes goes, so nothing stale is offered.
+          keep=$(ls dist)
+          for a in $(gh release view main-latest --json assets --jq '.assets[].name'); do
+            echo "$keep" | grep -qx "$a" || gh release delete-asset main-latest "$a" -y
+          done
