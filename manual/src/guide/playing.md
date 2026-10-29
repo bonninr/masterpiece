@@ -29,7 +29,7 @@ its alternate recording sounds the held notes again on the other rank.
 
 A tremulant shakes the pipes only when the engine runs its detailed path. The
 **Tremulants** box in **Settings > Organ settings...**, tab **Loading**, is on by
-default, and the **No DSP** box in the top bar bypasses tremulants together with
+default, and the **Bypass all effects** box on the same tab bypasses tremulants together with
 the wind model, enclosure shading and voicing.
 
 A stop that was left out of the load, and a locked stop of a demo set, are
@@ -260,7 +260,7 @@ A swell box is an enclosure. Its shoe is a continuous control with values from
 Every shoe starts open, at 127, when an organ loads, and is forgotten at the next load. The
 effect of the box on the sound is the **Enclosures (swell shades)** box in
 **Settings > Organ settings...**, tab **Loading**; it is on by default, and the
-**No DSP** box bypasses it.
+**Bypass all effects** box bypasses it.
 
 When a pedal does not send the whole of 0 to 127, put the pedal in the closed
 position, right-click the shoe and choose **Closed position: where the pedal is

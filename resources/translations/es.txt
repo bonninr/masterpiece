@@ -826,7 +826,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Output limiter" = "Limitador de salida"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "De la tecla al altavoz: unos %1 ms, de los que el búfer es %2 ms y la salida %3 ms, según informa el dispositivo."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "El tamaño del búfer fija el retardo entre una tecla y su sonido. Cuántos tubos pueden sonar lo fija la polifonía, en Ajustes del órgano, Carga."
-"No DSP" = "Sin DSP"
 "File" = "Archivo"
 "View" = "Ver"
 "Settings" = "Ajustes"

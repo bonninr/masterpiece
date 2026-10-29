@@ -22,8 +22,8 @@ bottom it holds:
 
 ## The top bar
 
-From left to right the bar holds the **File**, **View** and **Settings** menus;
-the **No DSP** box; the volume slider with its dB readout; the level meter;
+From left to right the bar holds the **File**, **Organ**, **View**, **Settings**
+and **Help** menus; the volume slider with its dB readout; the level meter;
 **Set**; the stepper (**<**, the frame readout and **>**); the tuning button,
 which shows the temperament and the pitch of A; the layout selector, when the
 organ offers a choice; the save button; and the Panic button, drawn as an
@@ -83,8 +83,7 @@ MIDI ports).
 
 | Control | What it does | Default and range |
 |---|---|---|
-| **No DSP** | Switches the engine to plain sample playback: the wind model, tremulants, enclosure shading, voicing and the room reverb are bypassed. The same switch is **Simple WAV only (bypass all DSP)** in Organ settings. | Off. Saved per organ. |
-| Volume slider | The master volume, with a readout in dB to its right. The bottom of the slider, -40 dB, is silence. Each organ keeps its own volume. | 0 dB; -40 to +24 dB in steps of 0.1 dB |
+| Volume slider | The master volume, with a readout in dB to its right. It widens with the window, from 160 px to 320 px. The bottom of the slider, -40 dB, is silence. Each organ keeps its own volume. | 0 dB; -40 to +24 dB in steps of 0.1 dB |
 | Level meter | Two rows of 14 lamps, left and right, showing the output level after the master fader. The scale starts at -48 dB; lamps 10 to 12 are amber and lamps 13 and 14 are red. The meter is hidden when less than 40 px remain for it. | |
 | **Set** | Stores what is drawn into the piston or step chosen last. See [Capture](playing.md#capture). | |
 | **<**, frame readout, **>** | The sequencer. The readout reads **Frame 3 / 12**, or **No frames**. A click on the readout asks for a frame number. | Frames 1 to 999 |
@@ -93,10 +92,14 @@ MIDI ports).
 | Save button (a disk icon; its name is **Save state**) | Records the stops as they are now as the organ's starting state. See [Remembered between sessions](playing.md#remembered-between-sessions). | |
 | **Panic** (an octagon with a cross, last in the bar) | Releases every key on every channel and silences every note still sounding. | |
 
-The bar shortens in a fixed order when the window narrows. The level meter
-gives way first and the volume fader keeps at least 90 px. When the sequencer,
-tuning and utility buttons leave less than 350 px for the menus, **No DSP** and
-the fader, the buttons move to a second row of their own.
+The bar shortens in a fixed order when the window narrows. The volume fader
+narrows first, to 160 px, then the level meter gives way. Each menu button is as
+wide as its name. When the sequencer, tuning and utility buttons leave the fader
+less than 160 px, the menus and the fader move to a row of their own.
+
+Plain sample playback, with the wind model, tremulants, enclosure shading,
+voicing and the room reverb bypassed, is the **Bypass all effects** box in
+**Organ settings > Loading**, in Professional mode. It is saved per organ.
 
 The sequencer buttons on a phone or tablet are 44 px wide and the **Panic** and
 **Save state** buttons 46 px wide, as against 30 px and 38 px on a desktop.

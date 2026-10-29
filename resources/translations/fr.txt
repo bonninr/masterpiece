@@ -826,7 +826,6 @@ countries: fr be ca ch lu mc
 "Output limiter" = "Limiteur de sortie"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "De la touche au haut-parleur : environ %1 ms, dont %2 ms de tampon et %3 ms de sortie, selon le périphérique."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "La taille du tampon fixe le délai entre une touche et son son. Le nombre de tuyaux qui peuvent sonner est la polyphonie, dans Réglages de l'orgue, Chargement."
-"No DSP" = "Sans DSP"
 "File" = "Fichier"
 "View" = "Affichage"
 "Settings" = "Réglages"

@@ -826,7 +826,6 @@ countries: cz
 "Output limiter" = "Omezovač výstupu"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Od klávesy k reproduktoru: asi %1 ms, z toho vyrovnávací paměť %2 ms a výstup %3 ms, jak je hlásí zařízení."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "Velikost vyrovnávací paměti určuje zpoždění mezi klávesou a zvukem. Kolik píšťal může znít, určuje polyfonie, v Nastavení varhan, Načítání."
-"No DSP" = "Bez DSP"
 "File" = "Soubor"
 "View" = "Zobrazení"
 "Settings" = "Nastavení"

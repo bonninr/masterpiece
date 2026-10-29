@@ -826,7 +826,6 @@ countries: pl
 "Output limiter" = "Limiter wyjścia"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Od klawisza do głośnika: około %1 ms, z czego bufor to %2 ms, a wyjście %3 ms, według urządzenia."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "Rozmiar bufora wyznacza opóźnienie między klawiszem a dźwiękiem. Ile piszczałek może brzmieć, wyznacza polifonia, w Ustawieniach organów, Wczytywanie."
-"No DSP" = "Bez DSP"
 "File" = "Plik"
 "View" = "Widok"
 "Settings" = "Ustawienia"

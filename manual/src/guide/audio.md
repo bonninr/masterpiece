@@ -19,7 +19,7 @@ Each audio block passes through these stages, in this order.
 | Metronome, load-progress taps, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
 
-The **Simple WAV only (bypass all DSP)** box in **Organ settings > Loading** (also the **No DSP** box in the top bar) switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The equaliser of the **Voicing** tab is a filter, so it needs the DSP. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
+The **Bypass all effects** box in **Organ settings > Loading** switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The equaliser of the **Voicing** tab is a filter, so it needs the DSP. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
 
 ## The audio device
 

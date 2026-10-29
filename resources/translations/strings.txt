@@ -606,6 +606,7 @@ countries: gb us
 "keyboard %1" = "keyboard %1"
 "Channel %1: %2" = "Channel %1: %2"
 "Shared -- %1" = "Shared -- %1"
+"Channel %1 plays %2; choose Channel %1 for %3 to play both." = "Channel %1 plays %2; choose Channel %1 for %3 to play both."
 "%1  -  in use by another program; opened when it is free" = "%1  -  in use by another program; opened when it is free"
 "%1 could not be opened" = "%1 could not be opened"
 "Another program is probably using this MIDI device. Masterpiece keeps it ticked and opens it as soon as the other program lets it go." = "Another program is probably using this MIDI device. Masterpiece keeps it ticked and opens it as soon as the other program lets it go."
@@ -1025,7 +1026,6 @@ countries: gb us
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Keep portable speakers awake"
 "Output limiter" = "Output limiter"
-"No DSP" = "No DSP"
 "File" = "File"
 "View" = "View"
 "Help" = "Help"

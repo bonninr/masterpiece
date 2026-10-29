@@ -94,7 +94,7 @@ The plugin offers two parameters for automation.
 | Name | What it does | Default | Range | Takes effect |
 |---|---|---|---|---|
 | **Master Gain** | The master fader, after the organ's own output trim. | 1.0 (unity, 0 dB) | 0.0 to 16.0 as a linear gain; 16.0 is +24 dB | At once |
-| **Simple WAV (no DSP)** | Bypasses all DSP, including the voicing EQ and the room reverb. Same switch as **No DSP** in the console's top bar. | Off | Off, on | At once |
+| **Simple WAV (no DSP)** | Bypasses all DSP, including the voicing EQ and the room reverb. Same switch as **Bypass all effects** in **Organ settings > Loading**. | Off | Off, on | At once |
 
 The volume slider in the console's top bar moves **Master Gain** and covers -40 dB to +24 dB; -40 dB is silence. Loading an organ resets the fader to unity, then applies the `gain` saved for that organ.
 

@@ -826,7 +826,6 @@ countries: nl be sr
 "Output limiter" = "Uitgangslimiter"
 "Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, as the device reports it." = "Van toets tot luidspreker: ongeveer %1 ms, waarvan %2 ms buffer en %3 ms uitvoer, zoals het apparaat het meldt."
 "The buffer size sets the delay between a key and its sound. How many pipes can sound is the polyphony, in Organ settings, Loading." = "De buffergrootte bepaalt de vertraging tussen een toets en zijn klank. Hoeveel pijpen kunnen klinken bepaalt de polyfonie, in Orgelinstellingen, Laden."
-"No DSP" = "Geen DSP"
 "File" = "Bestand"
 "View" = "Weergave"
 "Settings" = "Instellingen"
