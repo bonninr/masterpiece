@@ -113,6 +113,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::StepperLast: return "stepper-last";
     case MidiTargetKind::StepperForward10: return "stepper-forward-10";
     case MidiTargetKind::StepperBack10: return "stepper-back-10";
+    case MidiTargetKind::StepperDigit: return "stepper-digit";
     case MidiTargetKind::ConsoleNextPage: return "console-next-page";
     case MidiTargetKind::ConsolePrevPage: return "console-prev-page";
     case MidiTargetKind::ConsoleNextLayout: return "console-next-layout";
@@ -159,6 +160,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "stepper-last") return MidiTargetKind::StepperLast;
   if (s == "stepper-forward-10") return MidiTargetKind::StepperForward10;
   if (s == "stepper-back-10") return MidiTargetKind::StepperBack10;
+  if (s == "stepper-digit") return MidiTargetKind::StepperDigit;
   if (s == "console-next-page") return MidiTargetKind::ConsoleNextPage;
   if (s == "console-prev-page") return MidiTargetKind::ConsolePrevPage;
   if (s == "console-next-layout") return MidiTargetKind::ConsoleNextLayout;
@@ -462,6 +464,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::StepperLast:
     case MidiTargetKind::StepperForward10:
     case MidiTargetKind::StepperBack10:
+    case MidiTargetKind::StepperDigit:
     case MidiTargetKind::ConsoleNextPage:
     case MidiTargetKind::ConsolePrevPage:
     case MidiTargetKind::ConsoleNextLayout:

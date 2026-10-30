@@ -141,8 +141,12 @@ public:
   bool stepPrev(bool capturing, const Reader& isEngaged, std::vector<Change>& out);
   bool gotoFrame(int oneBased, bool capturing, const Reader& isEngaged,
                  std::vector<Change>& out);
-  // Make room for a frame before the current one, or take the current one
-  // out; later frames move with it, as they do on a sequencer.
+  // A frame as a player reads it: numbered from 000, as GrandOrgue's setter
+  // numbers them, so frame n here is shown as n - 1.
+  static int shownNumber(int frame) { return frame - 1; }
+  // As GrandOrgue's setter: Insert copies the current frame into a new one
+  // after it, and Delete takes the current one out; later frames move with
+  // them. The current frame stays where it is.
   bool insertFrame();
   bool deleteFrame();
   void rewind() { frame_ = 0; }

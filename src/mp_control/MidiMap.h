@@ -105,6 +105,10 @@ enum class MidiTargetKind {
   RankLevel,
   DivisionLevel,
   PairLevel,
+  // The sequencer's digit buttons: id = the digit, 0 to 9, where 0 is the
+  // tenth frame. With Set on, a digit stores into its frame, the one shown
+  // too.
+  StepperDigit,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -393,6 +397,7 @@ public:
       case MidiTargetKind::StepperLast:
       case MidiTargetKind::StepperForward10:
       case MidiTargetKind::StepperBack10:
+      case MidiTargetKind::StepperDigit:
       case MidiTargetKind::ConsoleNextPage:
       case MidiTargetKind::ConsolePrevPage:
       case MidiTargetKind::ConsoleNextLayout:
