@@ -96,18 +96,18 @@ jobs:
              "arm": true, "debarch": "arm64", "triple": "aarch64-linux-gnu"},
             {"os": "ubuntu-22.04", "preset": "ci-linux-arm", "artifact": "masterpiece-linux-armhf",
              "arm": true, "debarch": "armhf", "triple": "arm-linux-gnueabihf"},
-            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-macos-arm64",
+            {"os": "macos-15", "preset": "ci-macos", "artifact": "masterpiece-macos-arm64",
              "mac": true, "macarch": "arm64", "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
-            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-macos-x86_64",
+            {"os": "macos-15", "preset": "ci-macos", "artifact": "masterpiece-macos-x86_64",
              "mac": true, "macarch": "x86_64", "pr": false,
              "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64"}
           ]'
           plugins='[
             {"os": "ubuntu-22.04", "preset": "ci-linux", "artifact": "masterpiece-plugins-linux-x86_64"},
             {"os": "windows-latest", "preset": "ci-windows", "artifact": "masterpiece-plugins-windows"},
-            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-arm64",
+            {"os": "macos-15", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-arm64",
              "mac": true, "macarch": "arm64", "pr": false, "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
-            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-x86_64",
+            {"os": "macos-15", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-x86_64",
              "mac": true, "macarch": "x86_64", "pr": false,
              "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64"}
           ]'
@@ -761,7 +761,7 @@ jobs:
   # with their own Apple ID through AltStore or Sideloadly; nothing here needs
   # a developer account. Built on release tags too, and published with them.
   ios-device:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
