@@ -16331,6 +16331,52 @@ public:
 };
 static ReleaseBufferChoiceTest g_releaseBufferChoice;
 
+// The voices built after a load stay under the memory limit with the samples
+// (#650). With releases streaming and nothing long enough to stream, the
+// rings kept their 2 s length where the load had counted the shortest:
+// Giubiasco on an iPad held 1158 MB of samples under a limit of 1300 MB, then
+// 1125 MB of voices, and iPadOS ended the program.
+class VoicePoolUnderLimitTest final : public mp::test::Test {
+public:
+  VoicePoolUnderLimitTest() : Test("functional.load.voice-pool-under-limit", Category::Functional) {}
+
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    // The system has memory to spare: only the limit can hold the pool back.
+    proc.memoryProbe = [] { return int64_t{1} << 40; };
+    const juce::File settings = proc.settingsFileFor(odf);
+    const bool had = settings.existsAsFile();
+    const juce::String kept = had ? settings.loadFileAsString() : juce::String();
+    settings.deleteFile();
+
+    proc.setStreamReleases(true);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads with releases streaming");
+    const int voices = proc.voicePool();
+    const int64_t longest = proc.voicePoolBytes(voices, proc.streamSeconds());
+    const int64_t shortest = proc.voicePoolBytes(voices, 0.25);
+    MP_CHECK(proc.streamSeconds() > 1.0 && longest > 2 * shortest,
+             "with memory to spare the rings keep the longest length");
+
+    // A limit with room for the shortest rings and little more.
+    const int limitMB = static_cast<int>((shortest + (int64_t{64} << 20)) >> 20) + 1;
+    proc.overrideMemoryLimitMB(limitMB);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the fixture loads under the limit");
+    const int64_t limit = int64_t{limitMB} << 20;
+    const int64_t pool = proc.voicePoolBytes(proc.voicePool(), proc.streamSeconds());
+    MP_CHECK(proc.streamSeconds() < 1.0,
+             "the rings are shortened to fit, " + std::to_string(proc.streamSeconds()) + " s");
+    MP_CHECK(pool + proc.sampleLibrary().residentBytes() <= limit,
+             "the voices and the samples stay under the limit: " + std::to_string(pool >> 20) +
+                 " MB of voices under " + std::to_string(limitMB) + " MB");
+
+    proc.overrideMemoryLimitMB(0);
+    if (had) settings.replaceWithText(kept);
+    else settings.deleteFile();
+  }
+};
+static VoicePoolUnderLimitTest g_voicePoolUnderLimit;
+
 // A channel no manual claims plays the default manual only while nothing says
 // what the channels are; once they are set, it plays nothing -- a console's
 // piston buttons, sending notes on a channel of their own, played the manual.

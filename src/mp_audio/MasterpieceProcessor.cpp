@@ -153,7 +153,14 @@ void MasterpieceProcessor::sizeStreamRings() {
     return;
   }
   const auto tails = samples_.streamedTails();
-  if (tails.empty()) return;
+  if (tails.empty()) {
+    // Nothing streamed, and the pool still has rings while releases may
+    // stream: the length kept from before has to fit what the load left. The
+    // load counted the shortest; Giubiasco on an iPad (#650) got 2 s rings
+    // for 1536 voices, 1125 MB past its limit, and iPadOS ended it.
+    voices_.setStreamSeconds(ringThatFits(voices_.streamSeconds()));
+    return;
+  }
   const double t0 = juce::Time::getMillisecondCounterHiRes();
   tailReadCost_ = measureTailReads(tails);
   const double took = juce::Time::getMillisecondCounterHiRes() - t0;
@@ -3126,8 +3133,11 @@ int64_t MasterpieceProcessor::roomForPool() const {
 }
 
 int MasterpieceProcessor::voicesThatFit(int voices, bool rings, bool codedWindows) const {
-  const int64_t room = roomForPool();
+  int64_t room = roomForPool();
   if (room < 0) return voices;
+  // The pool is made under the memory limit too, beside the samples: the
+  // load stopped at that limit with the pool counted in.
+  room = std::min(room, memoryLimitBytes() - samples_.residentBytes());
   const int64_t perVoice = VoiceEngine::bytesPerVoice(sampleRate_ > 0.0 ? sampleRate_ : 48000.0,
                                                       voices_.streamSeconds(), rings, codedWindows);
   const int64_t fit = perVoice > 0 && room > 0 ? room / perVoice : 0;

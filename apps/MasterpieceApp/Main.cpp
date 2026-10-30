@@ -17,6 +17,7 @@
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_audio/DataFolder.h"
+#include "../../src/mp_audio/SystemMemory.h"
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/OrganSettings.h"
 #include "../../src/mp_ui/Settings.h"
@@ -801,6 +802,11 @@ public:
                          : juce::String("as recorded")) +
         ", streamReleases=" + (proc_->streamReleases() ? "on" : "off") +
         ", preloadHead=" + juce::String(proc_->preloadHeadFrames()) + " frames");
+    // The share of memory the system allows this program, where it sets one (iOS).
+    if (const int64_t ceiling = mp::processMemoryCeilingBytes(); ceiling > 0)
+      juce::Logger::writeToLog("memory: the system allows this program " +
+                               juce::String(ceiling / (1024 * 1024)) + " MB; loads stop at " +
+                               juce::String(proc_->memoryLimitBytes() / (1024 * 1024)) + " MB");
 
     // --preload-drawn reads only the ranks the recital will actually draw.
     // On a large set that is the difference between a minute and a few
