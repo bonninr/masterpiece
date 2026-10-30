@@ -6000,10 +6000,19 @@ public:
     MP_CHECK(!pc.stepNext(false, read, out) && pc.frame() == 2,
              "and does not run on past the last frame that holds anything");
 
-    MP_CHECK(pc.insertFrame() && pc.frame() == 2 && !pc.frameSet(2) && pc.frameSet(3),
-             "inserting opens an empty frame and moves the later ones up");
-    MP_CHECK(pc.deleteFrame() && pc.frameSet(2) && !pc.frameSet(3) && pc.lastUsedFrame() == 2,
-             "deleting closes the gap again");
+    MP_CHECK(pc.stepPrev(false, read, out) && pc.frame() == 1, "back to frame 1");
+    MP_CHECK(pc.insertFrame() && pc.frame() == 1 && pc.frameSet(2) && pc.lastUsedFrame() == 3,
+             "inserting copies the current frame into a new one after it, as GrandOrgue does");
+    out.clear();
+    MP_CHECK(pc.stepNext(false, read, out) && pc.frame() == 2 && has(out, K::Stop, 1, true) &&
+                 !has(out, K::Stop, 3, true),
+             "the copy recalls the frame it was made from");
+    MP_CHECK(pc.deleteFrame() && pc.frame() == 2 && pc.lastUsedFrame() == 2,
+             "deleting takes the current frame out and closes the gap");
+    MP_CHECK(pc.stepPrev(false, read, out), "back to frame 1");
+    out.clear();
+    MP_CHECK(pc.stepNext(false, read, out) && has(out, K::Stop, 3, true),
+             "the frame after it moved down into its place");
 
     // Persistence: by key, so an organ update that adds stops keeps it.
     pc.setGeneralCount(20);
@@ -14690,8 +14699,8 @@ public:
 };
 static SequencerJumpsTest g_sequencerJumps;
 
-// The digit buttons (#298): 1 to 9 go to that frame, 0 to the tenth, and a
-// digit past the last frame that holds anything goes nowhere.
+// The digit buttons (#298), 0 to 9 as on GrandOrgue's setter: a frame of the
+// ten shown, and a digit past the last frame that holds anything goes nowhere.
 class SequencerDigitsTest final : public mp::test::Test {
 public:
   SequencerDigitsTest() : Test("functional.control.sequencer-digits", Category::Functional) {}
@@ -14707,18 +14716,102 @@ public:
     MP_CHECK(!proc.stepperDigit(3) && pc.frame() == 0, "an empty sequence has nowhere to go");
 
     proc.setCaptureMode(true);
-    for (int f = 1; f <= 10; ++f) proc.stepperGoto(f);
+    for (int f = 1; f <= 25; ++f) proc.stepperGoto(f);
     proc.setCaptureMode(false);
-    MP_CHECK(pc.lastUsedFrame() == 10, "ten frames are stored");
+    MP_CHECK(pc.lastUsedFrame() == 25, "twenty-five frames are stored, shown as 000 to 024");
 
-    MP_CHECK(proc.stepperDigit(4) && pc.frame() == 4, "digit 4 goes to frame 4");
-    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 10, "digit 0 goes to frame 10");
+    // As GrandOrgue's setter: frames shown from 000, a digit picks one of the
+    // ten the current frame is among.
+    MP_CHECK(proc.stepperGoto(1) && proc.stepperDigit(4) && pc.frame() == 5, "on 000, digit 4 goes to 004");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "digit 0 goes to 000");
     MP_CHECK(!proc.stepperDigit(0), "a digit for the frame already shown does nothing");
-    MP_CHECK(proc.stepperDigit(1) && pc.frame() == 1, "digit 1 goes to frame 1");
+    MP_CHECK(proc.stepperGoto(15) && proc.stepperDigit(7) && pc.frame() == 18, "on 014, digit 7 goes to 017");
+    MP_CHECK(proc.stepperGoto(21) && !proc.stepperDigit(9) && pc.frame() == 21,
+             "on 020, digit 9 (029) is past the last frame that holds anything");
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.stepperDigit(9) && pc.frame() == 30 && pc.lastUsedFrame() == 30,
+             "with Set on, it stores there, and the sequence grows");
+    proc.setCaptureMode(false);
     MP_CHECK(!proc.stepperDigit(10) && !proc.stepperDigit(-1), "only 0 to 9 are digits");
   }
 };
 static SequencerDigitsTest g_sequencerDigits;
+
+// A frame is stored into after Insert (a player's report): with Set on, the
+// digit of the frame shown stores into it, and so does the top bar's Set. The
+// digits are learnable, as the other stepper buttons are.
+class SequencerFrameStoreTest final : public mp::test::Test {
+public:
+  SequencerFrameStoreTest() : Test("functional.control.sequencer-frame-store", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+    keepCombinations.file.deleteFile();
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    const auto& pc = proc.playerCombinations();
+
+    MP_CHECK(!proc.stepperInsertFrame(), "with no frame shown there is nothing to copy");
+    proc.setStopEngaged(901, true);
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1 && pc.frameSet(1), "with Set on, digit 0 stores frame 000");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "and stores into the frame shown again");
+    proc.setCaptureMode(false);
+    MP_CHECK(!proc.stepperDigit(0), "with Set off, the digit of the frame shown does nothing");
+
+    // Insert copies the frame shown into a new one after it, as GrandOrgue does.
+    MP_CHECK(proc.stepperInsertFrame() && pc.frame() == 1 && pc.lastUsedFrame() == 2,
+             "Insert copies 000 into a new 001 and stays on 000");
+    proc.setStopEngaged(901, false);
+    MP_CHECK(proc.stepperDigit(1) && pc.frame() == 2 && proc.stopEngaged(901), "001 recalls the copy");
+    proc.setStopEngaged(901, false);
+    proc.setCaptureMode(true);
+    MP_CHECK(proc.stepperDigit(1), "with Set on, digit 1 stores into the copy shown");
+    proc.setCaptureMode(false);
+    MP_CHECK(proc.stepperDigit(0) && proc.stopEngaged(901), "000 still draws the stop");
+    MP_CHECK(proc.stepperDigit(1) && !proc.stopEngaged(901), "001 holds what was drawn when it was stored");
+
+    // The top bar's Set stores into the frame shown after Insert and after Delete.
+    MP_CHECK(proc.stepperInsertFrame() && pc.frame() == 2 && pc.lastUsedFrame() == 3, "Insert on 001");
+    proc.setStopEngaged(901, true);
+    MP_CHECK(proc.storeIntoTarget() && pc.frame() == 2, "Set stores into 001");
+    MP_CHECK(proc.stepperDigit(2) && !proc.stopEngaged(901), "002 is the copy made before it");
+    MP_CHECK(proc.stepperDigit(1) && proc.stopEngaged(901), "001 holds the stop now");
+    MP_CHECK(proc.stepperDeleteFrame() && pc.frame() == 2 && pc.lastUsedFrame() == 2, "Delete takes 001 out");
+    MP_CHECK(proc.storeIntoTarget() && pc.lastUsedFrame() == 2, "Set after Delete stores into the frame shown");
+
+    // A digit learned for a note on the console.
+    MP_CHECK(mp::MidiMap::isConsoleTarget(mp::MidiTargetKind::StepperDigit), "a digit is kept for every organ");
+    proc.stepperDigit(0);
+    mp::MidiBinding b;
+    b.source.kind = mp::MidiSourceKind::Note;
+    b.source.channel = 1;
+    b.source.number = 62;
+    b.targetKind = mp::MidiTargetKind::StepperDigit;
+    b.targetId = 1;
+    proc.midiMap().bind(b);
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto send = [&](const juce::MidiMessage& msg) {
+      juce::MidiBuffer m;
+      m.addEvent(msg, 0);
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    send(juce::MidiMessage::noteOn(1, 62, (juce::uint8)100));
+    MP_CHECK(pc.frame() == 2, "the note learned for digit 1 goes to 001, now " + std::to_string(pc.frame()));
+    send(juce::MidiMessage::noteOff(1, 62));
+    MP_CHECK(pc.frame() == 2, "and its release goes nowhere");
+
+    // The digit keeps its word and its number in a map file.
+    mp::MidiMap copy;
+    MP_CHECK(copy.fromText(proc.midiMap().toText()), "the map reads back");
+    MP_CHECK(copy.bindingsFor(mp::MidiTargetKind::StepperDigit, 1).size() == 1, "with the digit 1 learned");
+    proc.midiMap().unbindTarget(mp::MidiTargetKind::StepperDigit, 1);
+  }
+};
+static SequencerFrameStoreTest g_sequencerFrameStore;
 
 // The noise filter for learning: a failing pedalboard's stray notes of a few
 // milliseconds were learned in place of the key the player pressed. With the

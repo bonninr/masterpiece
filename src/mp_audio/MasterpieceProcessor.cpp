@@ -1378,6 +1378,9 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::StepperBack10:
           stepperJump(-10);
           continue;
+        case MidiTargetKind::StepperDigit:
+          stepperDigit(static_cast<int>(action.targetId));
+          continue;
         case MidiTargetKind::PlayerGeneral:
           pressGeneral(static_cast<int>(action.targetId));
           continue;
@@ -5158,10 +5161,16 @@ bool MasterpieceProcessor::stepperJump(int frames) {
 
 bool MasterpieceProcessor::stepperDigit(int digit) {
   if (digit < 0 || digit > 9) return false;
-  const int to = digit == 0 ? 10 : digit;
+  // As GrandOrgue's setter: a digit picks one of the ten frames the current
+  // one is among, by the last figure of its number as shown (from 000).
+  const int shown = PlayerCombinations::shownNumber(std::max(player_.frame(), 1));
+  const int to = shown - shown % 10 + digit + 1;
+  if (to > PlayerCombinations::kMaxFrames) return false;
   const int last = player_.lastUsedFrame();
   if (!captureMode() && (last < 1 || to > last)) return false;
-  if (to == player_.frame()) return false;
+  // With Set on, the digit of the frame shown stores into it, as any piston
+  // does: how an inserted frame is filled.
+  if (to == player_.frame() && !captureMode()) return false;
   return stepperGoto(to);
 }
 
@@ -5186,6 +5195,7 @@ bool MasterpieceProcessor::stepperGoto(int frame) {
 bool MasterpieceProcessor::stepperInsertFrame() {
   const AudioLock audio(*this);
   if (!player_.insertFrame()) return false;
+  storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
   combinationsDirty_.store(true, std::memory_order_release);
   return true;
 }
@@ -5193,6 +5203,7 @@ bool MasterpieceProcessor::stepperInsertFrame() {
 bool MasterpieceProcessor::stepperDeleteFrame() {
   const AudioLock audio(*this);
   if (!player_.deleteFrame()) return false;
+  storeTarget_ = {StoreTarget::Kind::Step, 0, player_.frame()};
   combinationsDirty_.store(true, std::memory_order_release);
   return true;
 }

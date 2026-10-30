@@ -2925,8 +2925,11 @@ void MasterpieceEditor::timerCallback() {
   stepFrame_.setText(last == 0 && seq.frame() == 0
                          ? TRANS("No frames")
                          : TRANS("Frame %1 / %2")
-                               .replace("%1", juce::String(seq.frame()))
-                               .replace("%2", juce::String(juce::jmax(last, seq.frame()))),
+                               .replace("%1", juce::String::formatted(
+                                                  "%03d", PlayerCombinations::shownNumber(seq.frame())))
+                               .replace("%2", juce::String::formatted(
+                                                  "%03d", PlayerCombinations::shownNumber(
+                                                              juce::jmax(last, seq.frame())))),
                      juce::dontSendNotification);
   stepPrev_.setEnabled(seq.frame() > 1);
   stepNext_.setEnabled(capturing || seq.frame() < last);
