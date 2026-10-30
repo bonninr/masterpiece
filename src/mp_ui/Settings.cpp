@@ -1728,15 +1728,37 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   useAsDefault_.onClick = [this] {
     proc_.useChannelsAsDefaultConsole();
     showDefaultConsole();
+    showDefaultChannels();
   };
   addAndMakeVisible(clearDefault_);
   clearDefault_.onClick = [this] {
     proc_.clearDefaultConsole();
     showDefaultConsole();
+    showDefaultChannels();
   };
   addAndMakeVisible(defaultNote_);
   defaultNote_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   showDefaultConsole();
+  addAndMakeVisible(defaultChannelsLabel_);
+  styleLabel(defaultChannelsLabel_, TRANS("Default channels"));
+  defaultChannelsLabel_.setTooltip(TRANS("The channel each keyboard of an organ comes in on, for organs with "
+                                         "no channels saved for them. An organ's own choice keeps it."));
+  for (int role = 0; role < kDefaultRoles; ++role) {
+    auto& label = defaultRoleLabels_[static_cast<size_t>(role)];
+    auto& box = defaultRoleChannels_[static_cast<size_t>(role)];
+    label.setText(role == 0 ? TRANS("Pedal") : TRANS("Manual %1").replace("%1", juce::String(role)),
+                  juce::dontSendNotification);
+    label.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(label);
+    box.addItem("-", 1);
+    for (int c = 1; c <= 16; ++c) box.addItem(juce::String(c), c + 1);
+    addAndMakeVisible(box);
+    box.onChange = [this, role, &box] {
+      proc_.setDefaultConsoleChannel(role, box.getSelectedId() - 1);
+      showDefaultConsole();
+    };
+  }
+  showDefaultChannels();
   addAndMakeVisible(keyboardsLabel_);
   styleLabel(keyboardsLabel_, TRANS("Keyboards"));
 
@@ -2021,6 +2043,9 @@ void MidiPanel::applyPart() {
                                         &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
                                         &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
+  console.push_back(&defaultChannelsLabel_);
+  for (auto& c : defaultRoleLabels_) console.push_back(&c);
+  for (auto& c : defaultRoleChannels_) console.push_back(&c);
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
                                       &defaultNote_, &keyboardsHeading_, &learnManuals_};
   for (auto& v : keyboardLabels_) organ.push_back(v.get());
@@ -2106,6 +2131,15 @@ void MidiPanel::showDefaultConsole() {
     text << " " << item << ";";
   }
   defaultNote_.setText(text.dropLastCharacters(1), juce::dontSendNotification);
+}
+
+void MidiPanel::showDefaultChannels() {
+  const auto& def = proc_.defaultConsole();
+  for (int role = 0; role < kDefaultRoles; ++role) {
+    const auto it = def.find(role);
+    defaultRoleChannels_[static_cast<size_t>(role)].setSelectedId(it == def.end() ? 1 : it->second + 1,
+                                                                  juce::dontSendNotification);
+  }
 }
 
 void MidiPanel::showSharedChannels() {
@@ -2305,6 +2339,19 @@ void MidiPanel::resized() {
     }
     if (inputs_.empty()) {
       r.removeFromTop(kRow); // leaves room for the "none found" case
+    }
+    // The default channels, three to a row.
+    r.removeFromTop(4);
+    defaultChannelsLabel_.setBounds(r.removeFromTop(kRow));
+    for (int role = 0; role < kDefaultRoles; role += 3) {
+      auto line = r.removeFromTop(kRow).reduced(12, 0);
+      for (int k = role; k < role + 3 && k < kDefaultRoles; ++k) {
+        defaultRoleLabels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(90));
+        line.removeFromLeft(6);
+        defaultRoleChannels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(70).reduced(0, 1));
+        line.removeFromLeft(24);
+      }
+      r.removeFromTop(2);
     }
   } else {
     keyboardsLabel_.setBounds(r.removeFromTop(kRow));
