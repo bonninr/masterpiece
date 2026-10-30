@@ -229,6 +229,7 @@ countries: it ch sm va
 "none" = "nessuno"
 "When on" = "All'attivazione"
 "When off" = "Alla disattivazione"
+"The program sent when the switch goes off" = "Il programma inviato alla disattivazione"
 "Closed" = "Chiuso"
 "Open" = "Aperto"
 "Nothing is sent yet." = "Per ora non viene inviato nulla."

@@ -229,6 +229,7 @@ countries: pl
 "none" = "brak"
 "When on" = "Po włączeniu"
 "When off" = "Po wyłączeniu"
+"The program sent when the switch goes off" = "Program wysyłany po wyłączeniu przełącznika"
 "Closed" = "Zamknięte"
 "Open" = "Otwarte"
 "Nothing is sent yet." = "Nic jeszcze nie jest wysyłane."

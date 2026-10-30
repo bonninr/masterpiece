@@ -9,6 +9,7 @@
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_ui/Settings.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -66,8 +67,14 @@ public:
     panel.setSize(770, 1350);
 
     std::vector<juce::Component*> shown;
-    int left = -1, boxes = 0;
+    int left = -1, boxes = 0, indented = 0;
     bool couplers = false, compressed = false;
+    for (auto* child : panel.getChildren())
+      if (child->isVisible() && dynamic_cast<juce::ToggleButton*>(child) != nullptr)
+        left = left < 0 ? child->getX() : std::min(left, child->getX());
+    // The settings the quality preset changes sit one step in, under it
+    // (#634); every other checkbox at the left edge.
+    constexpr int kIndent = 20;
     for (auto* child : panel.getChildren()) {
       if (!child->isVisible()) continue;
       shown.push_back(child);
@@ -75,12 +82,14 @@ public:
       if (box == nullptr) continue;
       ++boxes;
       const std::string text = box->getButtonText().toStdString();
-      if (left < 0) left = box->getX();
-      MP_CHECK(box->getX() == left, "\"" + text + "\" starts at x " + std::to_string(box->getX()) +
-                                        ", the other checkboxes at " + std::to_string(left));
+      if (box->getX() == left + kIndent) ++indented;
+      MP_CHECK(box->getX() == left || box->getX() == left + kIndent,
+               "\"" + text + "\" starts at x " + std::to_string(box->getX()) + ", the checkboxes at " +
+                   std::to_string(left) + " or one step in");
       if (text == "Program couplers") couplers = true;
       if (text == "Lossless compression in memory") compressed = true;
     }
+    MP_CHECK(indented > 0 && indented < boxes, "some checkboxes sit under the preset, the rest at the edge");
     MP_CHECK(boxes >= 10, "the Loading tab has its checkboxes");
     MP_CHECK(couplers, "Program couplers is on the tab");
     MP_CHECK(compressed, "Lossless compression in memory is on the tab");
