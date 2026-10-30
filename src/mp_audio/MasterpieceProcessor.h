@@ -255,6 +255,13 @@ public:
     loadProgress_.cancelled.store(true, std::memory_order_release);
     juce::Logger::writeToLog("load: cancel requested");
   }
+  // Holds a running load at its next item, or lets it go on. iOS ends an app
+  // that keeps a processor busy in the background (#650), so the program
+  // holds the load there and lets it go on in front again.
+  void holdLoad(bool hold) {
+    if (loadProgress_.held.exchange(hold, std::memory_order_acq_rel) == hold) return;
+    juce::Logger::writeToLog(hold ? "load: held while in the background" : "load: free to run, in front again");
+  }
   // Cancels a load running on another thread and waits for it to end, for
   // the program quitting in the middle of one. False if it still ran after
   // `timeoutMs`.
