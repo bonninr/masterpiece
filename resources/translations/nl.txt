@@ -1059,3 +1059,4 @@ countries: nl be sr
 "Default channels" = "Standaardkanalen"
 "The channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it." = "Het kanaal waarop elk klavier van een orgel binnenkomt, voor orgels zonder opgeslagen kanalen. De eigen keuze van een orgel blijft."
 "Manual %1" = "Klavier %1"
+"The program sent when the switch goes off" = "Het programma dat bij uitschakelen wordt verzonden"

@@ -278,11 +278,14 @@ struct MidiSend {
   // so a controller's mode message (a pad grid's programmer layout) reaches
   // it every time.
   std::vector<uint8_t> sysExOn, sysExOff;
+  // A switch's program change sends `number` when it comes on, and this
+  // program when it goes off; negative sends nothing when it goes off.
+  int offProgram = -1;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
-           sysExOn == o.sysExOn && sysExOff == o.sysExOff;
+           sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram;
   }
 };
 

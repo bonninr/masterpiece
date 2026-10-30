@@ -747,9 +747,12 @@ std::string midiText(const std::vector<uint8_t>& bytes) {
 }
 
 bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
-  // A program change has no "off": it is a button that says which program.
-  if (s.kind == MidiSourceKind::ProgramChange)
-    return on && message(s.kind, s.channel, 0, s.number, out);
+  // A program change is a button that says which program: one when on, and
+  // another when off if one is set (#485).
+  if (s.kind == MidiSourceKind::ProgramChange) {
+    if (on) return message(s.kind, s.channel, 0, s.number, out);
+    return s.offProgram >= 0 && message(s.kind, s.channel, 0, s.offProgram, out);
+  }
   const int value = on ? s.high : s.low;
   if (value < 0) return false;
   return message(s.kind, s.channel, s.number, value, out);
@@ -859,7 +862,11 @@ std::string MidiMap::toText() const {
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
-        << ' ' << s.high << sysExFields(s) << '\n';
+        << ' ' << s.high << sysExFields(s)
+        << (s.kind == MidiSourceKind::ProgramChange && s.offProgram >= 0
+                ? " " + std::to_string(s.offProgram)
+                : std::string())
+        << '\n';
   for (const auto& k : shortcuts_)
     out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
         << ' ' << encodeName(k.key) << '\n';
@@ -1049,6 +1056,11 @@ bool MidiMap::fromText(const std::string& text) {
           sysExOk = static_cast<bool>(sl >> on >> off) && readSysExField(on, snd.sysExOn) &&
                     readSysExField(off, snd.sysExOff);
         }
+        // A program change's program for "off", when it has one: a last
+        // field, which a reader from before it passes over.
+        int offProgram = -1;
+        if (snd.kind == MidiSourceKind::ProgramChange && sl >> offProgram)
+          snd.offProgram = offProgram < 0 ? -1 : std::min(offProgram, 127);
         if (sysExOk && snd.targetKind != MidiTargetKind::None && snd.kind != MidiSourceKind::None) {
           sends_.push_back(snd);
           continue;

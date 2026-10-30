@@ -494,6 +494,15 @@ public:
         sysExOff_.setTextToShowWhenEmpty(TRANS("When off: none"), juce::Colours::grey);
         sysExOn_.setText(juce::String(midiText(s.sysExOn)), juce::dontSendNotification);
         sysExOff_.setText(juce::String(midiText(s.sysExOff)), juce::dontSendNotification);
+        // A program change sends the program in Number when on, and the one
+        // chosen here when off (#485).
+        offProgram_.addItem(TRANS("none"), 1);
+        for (int n = 0; n < 128; ++n) offProgram_.addItem(juce::String(n + 1), n + 2);
+        offProgram_.setSelectedId(s.offProgram < 0 ? 1 : juce::jmin(127, s.offProgram) + 2,
+                                  juce::dontSendNotification);
+        offProgram_.setTooltip(TRANS("The program sent when the switch goes off"));
+        addChildComponent(offProgram_);
+        offProgram_.onChange = [this] { changed(); };
       }
       // A switch: what it sends on and off, and "none" for a console that
       // only wants to hear about the lamp coming on. A control: its range.
@@ -549,7 +558,10 @@ public:
                 {{&event_, cols[0].second}, {&channel_, cols[1].second},
                  {&number_, cols[2].second},
                  {kind_ == MidiTargetKind::Switch ? &high_ : &low_, cols[3].second},
-                 {kind_ == MidiTargetKind::Switch ? &low_ : &high_, cols[4].second},
+                 {kind_ != MidiTargetKind::Switch ? static_cast<juce::Component*>(&high_)
+                  : programChange()               ? static_cast<juce::Component*>(&offProgram_)
+                                                  : static_cast<juce::Component*>(&low_),
+                  cols[4].second},
                  {&delete_, cols[5].second}});
   }
 
@@ -570,6 +582,7 @@ public:
         if (parseMidiText(sysExOn_.getText().toStdString(), bytes)) s.sysExOn = bytes;
         if (parseMidiText(sysExOff_.getText().toStdString(), bytes)) s.sysExOff = bytes;
       }
+      if (programChange()) s.offProgram = offProgram_.getSelectedId() - 2;
     }
     return s;
   }
@@ -578,15 +591,21 @@ private:
   bool sysEx() const {
     return kind_ == MidiTargetKind::Switch && eventKind(event_.getSelectedId()) == MidiSourceKind::SysEx;
   }
+  bool programChange() const {
+    return kind_ == MidiTargetKind::Switch &&
+           eventKind(event_.getSelectedId()) == MidiSourceKind::ProgramChange;
+  }
   void showSysEx() {
     if (kind_ != MidiTargetKind::Switch) return;
-    const bool on = sysEx();
+    const bool on = sysEx(), program = programChange();
     sysExOn_.setVisible(on);
     sysExOff_.setVisible(on);
     channel_.setVisible(!on);
     number_.setVisible(!on);
-    high_.setVisible(!on);
-    low_.setVisible(!on);
+    // A program change has no values: its program is the number.
+    high_.setVisible(!on && !program);
+    low_.setVisible(!on && !program);
+    offProgram_.setVisible(program);
     resized();
   }
   // A message that does not read is outlined in red and left out.
@@ -609,7 +628,7 @@ private:
   MidiTargetKind kind_;
   MidiSend send_;
   juce::TextEditor sysExOn_, sysExOff_;
-  juce::ComboBox event_, channel_, number_;
+  juce::ComboBox event_, channel_, number_, offProgram_;
   juce::Slider low_, high_, transpose_;
   juce::TextButton delete_{"X"};
 };
