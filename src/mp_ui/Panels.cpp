@@ -251,7 +251,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     PanelSection program;
     program.kind = PanelSection::Kind::Program;
     program.key = "program";
-    program.title = TRANS("Program couplers").toStdString();
+    program.title = TRANS("Extra couplers").toStdString();
     for (const auto& pc : p.programCouplerList()) {
       PanelElement e;
       e.kind = PanelElement::Kind::Switch;
@@ -1036,10 +1036,8 @@ void PanelView::rebuild() {
   sections_ = panelSections(proc_);
   sectionButtons_.clear();
   for (const auto& s : sections_) {
-    auto* b = sectionButtons_.add(new juce::TextButton(juce::String::fromUTF8(s.title.c_str())));
-    b->setClickingTogglesState(true);
+    auto* b = sectionButtons_.add(new juce::ToggleButton(juce::String::fromUTF8(s.title.c_str())));
     b->setToggleState(layout_.sectionsOff.count(s.key) == 0, juce::dontSendNotification);
-    b->setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff4a5a78));
     const std::string key = s.key;
     b->onClick = [this, b, key] {
       if (b->getToggleState()) layout_.sectionsOff.erase(key);
@@ -1132,7 +1130,8 @@ void PanelView::changed() {
 
 void PanelView::resized() {
   auto r = getLocalBounds();
-  auto bar = r.removeFromTop(kMobile ? 44 : 34).reduced(2);
+  const int barHeight = kMobile ? 44 : 34;
+  auto bar = r.removeFromTop(barHeight).reduced(2);
   save_.setBounds(bar.removeFromRight(70).reduced(2));
   edit_.setBounds(bar.removeFromRight(60).reduced(2));
   rename_.setBounds(bar.removeFromRight(76).reduced(2));
@@ -1144,10 +1143,26 @@ void PanelView::resized() {
   size_.setBounds(bar.removeFromRight(52).reduced(2));
   bigger_.setBounds(bar.removeFromRight(30).reduced(2));
   smaller_.setBounds(bar.removeFromRight(30).reduced(2));
-  // The section toggles share what is left.
+  // The section toggles, each as wide as its name: the tick, the gap the look
+  // and feel leaves after it, then the text in the font it draws with. Too
+  // wide for the space beside the controls, they take a row of their own,
+  // and only past that do they all narrow in step.
   if (!sectionButtons_.isEmpty()) {
-    const int w = std::max(60, bar.getWidth() / sectionButtons_.size());
-    for (auto* b : sectionButtons_) b->setBounds(bar.removeFromLeft(w).reduced(2));
+    const float fontSize = std::min(15.0f, static_cast<float>(bar.getHeight() - 4) * 0.75f);
+    const juce::Font font{juce::FontOptions(fontSize)};
+    std::vector<int> widths;
+    int total = 0;
+    for (auto* b : sectionButtons_) {
+      const int w = juce::roundToInt(fontSize * 1.1f) + 14 +
+                    juce::GlyphArrangement::getStringWidthInt(font, b->getButtonText());
+      widths.push_back(w);
+      total += w;
+    }
+    if (total > bar.getWidth()) bar = r.removeFromTop(barHeight).reduced(2);
+    const float scale = total > bar.getWidth() ? static_cast<float>(bar.getWidth()) / total : 1.0f;
+    for (int i = 0; i < sectionButtons_.size(); ++i)
+      sectionButtons_[i]->setBounds(
+          bar.removeFromLeft(juce::roundToInt(widths[static_cast<size_t>(i)] * scale)).reduced(2));
   }
   viewport_.setBounds(r);
   refreshSizeControls();

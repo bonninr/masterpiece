@@ -48,7 +48,7 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
 
   addChildComponent(midiHeading_);
   style(midiHeading_, 13.0f, juce::Colours::lightgrey);
-  midiHeading_.setText(TRANS("Tick the keyboards you play from:"),
+  midiHeading_.setText(TRANS("MIDI inputs"),
                        juce::dontSendNotification);
   addChildComponent(midiNone_);
   style(midiNone_, 13.0f, juce::Colours::grey);
@@ -56,6 +56,26 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
       TRANS("No MIDI inputs found. You can still play with the mouse on the "
             "on-screen keyboard, and plug a console in later."),
       juce::dontSendNotification);
+
+  addChildComponent(channelsHeading_);
+  style(channelsHeading_, 13.0f, juce::Colours::lightgrey);
+  channelsHeading_.setText(TRANS("Default channels"), juce::dontSendNotification);
+  const auto& def = proc_.defaultConsole();
+  for (int role = 0; role < kRoles; ++role) {
+    auto& label = roleLabels_[static_cast<size_t>(role)];
+    auto& box = roleChannels_[static_cast<size_t>(role)];
+    style(label, 13.0f, juce::Colours::lightgrey);
+    label.setText(role == 0 ? TRANS("Pedal") : TRANS("Manual %1").replace("%1", juce::String(role)),
+                  juce::dontSendNotification);
+    label.setJustificationType(juce::Justification::centredRight);
+    addChildComponent(label);
+    box.addItem("-", 1);
+    for (int c = 1; c <= 16; ++c) box.addItem(juce::String(c), c + 1);
+    const auto it = def.find(role);
+    box.setSelectedId(it == def.end() ? 1 : it->second + 1, juce::dontSendNotification);
+    box.onChange = [this, role, &box] { proc_.setDefaultConsoleChannel(role, box.getSelectedId() - 1); };
+    addChildComponent(box);
+  }
 
   for (const auto& in : juce::MidiInput::getAvailableDevices()) {
     auto b = std::make_unique<juce::ToggleButton>(in.name);
@@ -109,47 +129,38 @@ void WizardPanel::showStep(int step) {
   midiHeading_.setVisible(step_ == 2 && !midiInputs_.empty());
   midiNone_.setVisible(step_ == 2 && midiInputs_.empty());
   for (auto& b : midiInputs_) b->setVisible(step_ == 2);
+  channelsHeading_.setVisible(step_ == 2);
+  for (auto& c : roleLabels_) c.setVisible(step_ == 2);
+  for (auto& c : roleChannels_) c.setVisible(step_ == 2);
   openOrgan_.setVisible(step_ == 3);
   organStatus_.setVisible(step_ == 3);
 
   switch (step_) {
     case 0:
-      title_.setText(TRANS("Simple or Advanced"), juce::dontSendNotification);
+      title_.setText(TRANS("Display mode"), juce::dontSendNotification);
       body_.setText(
-          TRANS("Simple shows the settings most players need, with presets for quality and "
-                "performance. Advanced shows every setting: each part of the presets, the sample "
-                "cache's folder, and the MIDI console builder.\n\n"
-                "You can switch at any time under View > Display mode."),
+          TRANS("Simple: the main settings, with presets.\nAdvanced: every setting.\n\n"
+                "Also in Settings > General."),
           juce::dontSendNotification);
       break;
     case 1:
-      title_.setText(TRANS("Sound"), juce::dontSendNotification);
+      title_.setText(TRANS("Audio device"), juce::dontSendNotification);
       body_.setText(
-          TRANS("Pick the device you listen through, and a buffer size.\n\n"
-                "A smaller buffer responds faster to a key; too small and the audio "
-                "breaks up. 256 or 512 samples suits most machines. You can change "
-                "this at any time."),
+          TRANS("Output device and buffer size. 256 or 512 samples suit most computers.\n\n"
+                "Also in Settings > Audio."),
           juce::dontSendNotification);
       break;
     case 2:
-      title_.setText(TRANS("Your keyboards"), juce::dontSendNotification);
+      title_.setText(TRANS("MIDI configuration"), juce::dontSendNotification);
       body_.setText(
-          TRANS("Which manual a key plays is decided by its MIDI channel, and no "
-                "organ file can guess how your console is wired.\n\n"
-                "Turn your inputs on here; the channel for each manual is on the "
-                "MIDI page in settings, where you can also right-click a drawstop "
-                "and move the real one to learn it."),
+          TRANS("MIDI channel of the pedal and each manual, for every organ without its own.\n\n"
+                "Also in Settings > MIDI."),
           juce::dontSendNotification);
       break;
     default:
-      title_.setText(TRANS("An organ"), juce::dontSendNotification);
+      title_.setText(TRANS("Organ"), juce::dontSendNotification);
       body_.setText(
-          TRANS("Choose an organ: its definition file, or the package it came in. "
-                "A large set takes a while to load the first time; the console "
-                "appears as soon as it is ready.\n\n"
-                "Afterwards, File > Open... keeps it among your favourites with Add "
-                "the organ now loaded, so getting back to it never means finding it "
-                "again."),
+          TRANS("Definition file or package. The first load of a large set takes longer."),
           juce::dontSendNotification);
       organStatus_.setText(
           proc_.organModel().organName.empty()
@@ -204,6 +215,19 @@ void WizardPanel::resized() {
     return;
   }
   if (step_ == 2) {
+    // The channels first, three to a row, then the inputs, which can be many.
+    channelsHeading_.setBounds(r.removeFromTop(kRow));
+    for (int role = 0; role < kRoles; role += 3) {
+      auto line = r.removeFromTop(kRow).withTrimmedLeft(12);
+      for (int k = role; k < role + 3 && k < kRoles; ++k) {
+        roleLabels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(80));
+        line.removeFromLeft(6);
+        roleChannels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(64).reduced(0, 1));
+        line.removeFromLeft(16);
+      }
+      r.removeFromTop(2);
+    }
+    r.removeFromTop(8);
     if (midiInputs_.empty()) {
       midiNone_.setBounds(r.removeFromTop(60));
       return;

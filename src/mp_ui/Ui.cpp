@@ -211,7 +211,7 @@ void StopJamb::rebuild() {
   // The program couplers, in a section of their own after the organ's own.
   if (!proc_.programCouplerList().empty()) {
     auto header = std::make_unique<juce::Label>();
-    header->setText(TRANS("Program couplers"), juce::dontSendNotification);
+    header->setText(TRANS("Extra couplers"), juce::dontSendNotification);
     header->setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
     header->setColour(juce::Label::textColourId, juce::Colours::orange);
     addAndMakeVisible(*header);
@@ -225,7 +225,7 @@ void StopJamb::rebuild() {
       e.divisionId = 0;  // a group of its own
       e.playable = true;
       e.name = juce::String(it != model.switches.end() ? it->second.name : std::string());
-      e.division = TRANS("Program couplers");
+      e.division = TRANS("Extra couplers");
       e.button = std::make_unique<StopButton>(e.name);
       e.button->setClickingTogglesState(true);
       e.button->setToggleState(proc_.shownSwitchEngaged(pc.switchId),
@@ -732,8 +732,7 @@ void AudioSettingsPanel::showLatency() {
   const int buffer = dev->getCurrentBufferSizeSamples();
   const int output = juce::jmax(0, dev->getOutputLatencyInSamples());
   auto ms = [rate](int samples) { return juce::String(juce::roundToInt(1000.0 * samples / rate)); };
-  latency_.setText(TRANS("Key to speaker: about %1 ms, of which the buffer is %2 ms and the output %3 ms, "
-                         "as the device reports it.")
+  latency_.setText(TRANS("Note delay: %1 ms (buffer %2 ms, output %3 ms)")
                        .replace("%1", ms(buffer + output))
                        .replace("%2", ms(buffer))
                        .replace("%3", ms(output)),
@@ -2619,7 +2618,7 @@ void MasterpieceEditor::showOrganMenu() {
                combinations_ != nullptr && combinations_->isVisible());
   // The program couplers (#468): switches the organ is built with, so
   // changing this loads the organ again.
-  menu.addItem(4, TRANS("Program couplers"), loaded, proc_.programCouplers());
+  menu.addItem(4, TRANS("Extra couplers"), loaded, proc_.programCouplers());
   menu.addSeparator();
   menu.addItem(5, TRANS("Reload organ"), loaded);
   menu.addItem(6, TRANS("Copy settings from another organ..."), loaded && !kMobile);
@@ -2680,13 +2679,6 @@ void MasterpieceEditor::fitWindowToPage() {
 void MasterpieceEditor::showViewMenu() {
   // What the window shows, and the windows beside it.
   juce::PopupMenu menu;
-  {
-    juce::PopupMenu mode;
-    mode.addItem(30, TRANS("Simple"), true, proc_.simpleMode());
-    mode.addItem(31, TRANS("Advanced"), true, !proc_.simpleMode());
-    menu.addSubMenu(TRANS("Display mode"), mode);
-  }
-  menu.addSeparator();
   addPanelItems(menu);
   menu.addSeparator();
   if (expression_.shoeCount() > 0) menu.addItem(11, TRANS("Expression pedals"), true, showingSwell_);
@@ -2712,7 +2704,6 @@ void MasterpieceEditor::showViewMenu() {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
                        // The settings windows follow it on their own.
-                       if (c == 30 || c == 31) safe->proc_.setSimpleMode(c == 30);
                        if (c == 5) safe->toggleRecorder();
                        if (c == 15) safe->toggleStopList();
                        if (c == 11) safe->toggleSwell();
@@ -2751,9 +2742,9 @@ void MasterpieceEditor::showSettingsMenu() {
   juce::PopupMenu menu;
   const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
   const juce::StringArray tabs =
-      standalone ? juce::StringArray{"Audio", "MIDI", "Performance", "General", "Reverb", "Metronome",
+      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome",
                                      "Combination sets", "Console display", "Language", "Remote control"}
-                 : juce::StringArray{"Performance", "General", "Reverb", "Metronome", "Combination sets",
+                 : juce::StringArray{"General", "Performance", "Reverb", "Metronome", "Combination sets",
                                      "Console display", "Language"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
