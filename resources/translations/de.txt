@@ -345,7 +345,7 @@ countries: de at ch li lu
 "Rename..." = "Umbenennen..."
 "MIDI..." = "MIDI..."
 "Loading" = "Laden"
-"Stops and perspectives" = "Register und Perspektiven"
+"Stops, ranks and perspectives" = "Register, Reihen und Perspektiven"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h

@@ -1013,7 +1013,8 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
   engine_.alsoPending = [this] { return stops_.choicePending(); };
   stops_.alsoPending = [this] { return engine_.changesPending(); };
   tabs_.addTab(TRANS("Loading"), kBackground, &engineScroll_, false);
-  tabs_.addTab(TRANS("Stops and perspectives"), kBackground, &stops_, false);
+  // Named for all three, so a first-time player finds the ranks here (#565).
+  tabs_.addTab(TRANS("Stops, ranks and perspectives"), kBackground, &stops_, false);
   tabs_.addTab(TRANS("Outputs"), kBackground, &outputs_, false);
   tabs_.addTab(TRANS("Voicing"), kBackground, &voicing_, false);
   tabs_.addTab(TRANS("Equalizer"), kBackground, &eq_, false);

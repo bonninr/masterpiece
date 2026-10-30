@@ -344,7 +344,6 @@ countries: nl be sr
 "Rename..." = "Hernoemen..."
 "MIDI..." = "MIDI..."
 "Loading" = "Laden"
-"Stops and perspectives" = "Registers en perspectieven"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h
@@ -1058,6 +1057,7 @@ countries: nl be sr
 "Advanced" = "Geavanceerd"
 "Simple or Advanced" = "Eenvoudig of Geavanceerd"
 "Simple shows the settings most players need, with presets for quality and performance. Advanced shows every setting: each part of the presets, the sample cache's folder, and the MIDI console builder.\n\nYou can switch at any time under View > Display mode." = "Eenvoudig toont de instellingen die de meeste organisten nodig hebben, met voorinstellingen voor kwaliteit en prestaties. Geavanceerd toont elke instelling: elk deel van de voorinstellingen, de map van de samplecache en de MIDI-speeltafelbouw.\n\nU kunt op elk moment wisselen via Weergave > Weergavemodus."
+"Stops, ranks and perspectives" = "Registers, pijpenrijen en perspectieven"
 "Default channels" = "Standaardkanalen"
 "The channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it." = "Het kanaal waarop elk klavier van een orgel binnenkomt, voor orgels zonder opgeslagen kanalen. De eigen keuze van een orgel blijft."
 "Manual %1" = "Klavier %1"
