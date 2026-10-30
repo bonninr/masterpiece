@@ -7923,7 +7923,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // A mapping and a set of combinations saved for this organ come back with
   // it. Missing is normal: it means the player has not saved any yet.
   loadMidiMap();
-  split_.organLoaded(organFile(loadedOdf_, "split", ".mpsplit"), &model_);
+  split_.organLoaded(organFile(loadedOdf_, "split", ".mpsplit"), &model_, couplers_.inputKeyboards());
   unloadedSwitches_.clear();
   unavailable_.clear();
   for (Id stopId : unloadedStops_) {

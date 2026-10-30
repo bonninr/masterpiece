@@ -91,9 +91,12 @@ void SplitKeyboardHost::retagReplay(Tagged& messages) const {
 
 // --- message thread ----------------------------------------------------------
 
-bool SplitKeyboardHost::organLoaded(const juce::File& layoutFile, const OrganModel* model) {
+bool SplitKeyboardHost::organLoaded(const juce::File& layoutFile, const OrganModel* model,
+                                    std::vector<Id> keyboards) {
   organFile_ = layoutFile;
   model_ = model;
+  keyboards_ = std::move(keyboards);
+  ++organLoads_;
   proposed_ = false;
   organLayout_ = split::factoryLayout(1);
   organPreset_ = -1;
@@ -227,15 +230,18 @@ void SplitKeyboardHost::setKeyboardFor(split::Role role, Id keyboardId) {
   if (mapChanged_) mapChanged_();
 }
 
-Id SplitKeyboardHost::proposedKeyboard(const OrganModel& model, split::Role role) {
+Id SplitKeyboardHost::proposedKeyboard(const OrganModel& model, const std::vector<Id>& keyboards,
+                                       split::Role role) {
   struct Candidate {
     Id id;
     int code;
     bool pedal;
   };
   std::vector<Candidate> all;
-  for (const auto& [id, kb] : model.keyboards) {
-    if (!kb.accessibleForInput || kb.numKeys <= 0) continue;
+  for (const Id id : keyboards) {
+    const auto it = model.keyboards.find(id);
+    if (it == model.keyboards.end()) continue;
+    const auto& kb = it->second;
     const bool pedal = kb.assignmentCode == 1 || lower(kb.name).find("pedal") != std::string::npos;
     all.push_back({id, kb.assignmentCode > 0 ? kb.assignmentCode : 1000, pedal});
   }
@@ -267,7 +273,7 @@ bool SplitKeyboardHost::proposeMapping() {
   for (int r = 1; r <= split::kRoleCount; ++r) {
     const auto role = static_cast<split::Role>(r);
     if (map_.hasChannelBinding(ownDevice_, split::channelOf(role))) continue;
-    const Id kb = proposedKeyboard(*model_, role);
+    const Id kb = proposedKeyboard(*model_, keyboards_, role);
     if (kb == 0) continue;
     setKeyboardFor(role, kb);
     changed = true;
