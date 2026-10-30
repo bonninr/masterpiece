@@ -287,8 +287,12 @@ struct Keep {
 
 // The engine's output, block by block, with the limiter as told.
 std::vector<float> render(const juce::File& odf, bool limiterOn, float ceilingDb,
-                          float masterGain) {
+                          float masterGain,
+                          juce::AudioProcessor::WrapperType as = juce::AudioProcessor::wrapperType_Undefined) {
+  // The way a plugin wrapper makes the processor, so it knows it is a plugin.
+  juce::AudioProcessor::setTypeOfNextNewPlugin(as);
   mp::MasterpieceProcessor proc;
+  juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
   proc.prepareToPlay(kRate, 256);
   const auto loaded = proc.loadOrgan(odf, 0, false);
   MP_CHECK(loaded.ok, "the organ loads");
@@ -367,6 +371,16 @@ public:
              "the output is held at the ceiling, the peak is " + std::to_string(db(peakHeld)));
     MP_CHECK(std::memcmp(off.data(), held.data(), off.size() * sizeof(float)) != 0,
              "and it is not the same as the engine's own output");
+
+    // In a plugin the host's effects shape the output: the same limiter,
+    // turned on as the program's settings would turn it on, leaves the
+    // output bit for bit the engine's own.
+    const auto plugin = render(organ.odf, /*limiterOn=*/true, -12.0f, gain,
+                               juce::AudioProcessor::wrapperType_VST3);
+    MP_CHECK(plugin.size() == off.size() &&
+                 std::memcmp(off.data(), plugin.data(), off.size() * sizeof(float)) == 0,
+             "in a plugin the limiter leaves the output alone, its peak is " +
+                 std::to_string(db(peakOf(plugin))) + " dBFS");
 
     organ.root.deleteRecursively();
   }
