@@ -605,31 +605,34 @@ bool guardPairingButton(juce::AudioDeviceSelectorComponent& selector) {
     auto* button = dynamic_cast<juce::TextButton*>(child);
     if (button == nullptr || button->getTooltip() != tooltip)
       continue;
-    button->onClick = [] {
-      auto open = [](juce::ModalComponentManager::Callback* closed) {
-        return juce::BluetoothMidiDevicePairingDialogue::open(closed);
-      };
-      // The selector's own steps: ask for the permission first where it is
-      // not yet given.
-      if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi)) {
-        openPairingOnce(open);
-        return;
-      }
-      juce::RuntimePermissions::request(juce::RuntimePermissions::bluetoothMidi, [open](bool) {
-        if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi))
-          openPairingOnce(open);
-      });
-    };
+    button->onClick = [] { openBluetoothMidiPairing(); };
     return true;
   }
   return false;
 }
 
+void openBluetoothMidiPairing() {
+  auto open = [](juce::ModalComponentManager::Callback* closed) {
+    return juce::BluetoothMidiDevicePairingDialogue::open(closed);
+  };
+  // The selector's own steps: ask for the permission first where it is not
+  // yet given.
+  if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi)) {
+    openPairingOnce(open);
+    return;
+  }
+  juce::RuntimePermissions::request(juce::RuntimePermissions::bluetoothMidi, [open](bool) {
+    if (juce::RuntimePermissions::isGranted(juce::RuntimePermissions::bluetoothMidi))
+      openPairingOnce(open);
+  });
+}
+
 AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
                                        MasterpieceProcessor& p)
-    : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, 8, true, true, true, false) {
+    // The audio device only: MIDI inputs, the MIDI output and Bluetooth
+    // pairing are on the MIDI tab (#680).
+    : proc_(p), devices_(devices), selector_(devices, 0, 0, 1, 8, false, false, true, false) {
   addAndMakeVisible(selector_);
-  guardPairingButton(selector_);
   addAndMakeVisible(latency_);
   latency_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   latency_.setTooltip(TRANS("The buffer size sets the delay between a key and its sound. How many "
@@ -714,7 +717,10 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
 
 AudioSettingsPanel::~AudioSettingsPanel() { devices_.removeChangeListener(this); }
 
-void AudioSettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*) { showLatency(); }
+void AudioSettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*) {
+  showLatency();
+  resized();  // another device type can bring more rows
+}
 
 void AudioSettingsPanel::showLatency() {
   auto* dev = devices_.getCurrentAudioDevice();
@@ -751,9 +757,17 @@ void AudioSettingsPanel::updateLimiterControls() {
 void AudioSettingsPanel::resized() {
   auto r = getLocalBounds();
 
-  // The limiter block at the foot of the tab: the switch, then the ceiling
-  // and the release on a row each.
-  auto block = r.removeFromBottom(96).reduced(12, 0);
+  // The device selector sizes itself to its rows, which differ by device
+  // type; the rest of the tab follows straight under it.
+  selector_.setBounds(r);
+  r.removeFromTop(selector_.getHeight());
+  latency_.setBounds(r.removeFromTop(28).reduced(12, 2));
+  auto keep = r.removeFromTop(40).reduced(12, 6);
+  keepAwake_.setBounds(keep.removeFromLeft(240));
+  level_.setBounds(keep);
+
+  // The limiter: the switch, then the ceiling and the release on a row each.
+  auto block = r.removeFromTop(96).reduced(12, 0);
   limiterOn_.setBounds(block.removeFromTop(26));
   block.removeFromTop(6);
   auto row = block.removeFromTop(26);
@@ -764,12 +778,6 @@ void AudioSettingsPanel::resized() {
   releaseLabel_.setBounds(row.removeFromLeft(90));
   row.removeFromLeft(6);
   release_.setBounds(row.removeFromLeft(240));
-
-  auto keep = r.removeFromBottom(40).reduced(12, 6);
-  keepAwake_.setBounds(keep.removeFromLeft(240));
-  level_.setBounds(keep);
-  latency_.setBounds(r.removeFromBottom(28).reduced(12, 2));
-  selector_.setBounds(r);
 }
 
 void TopBar::setStatus(const juce::String& text) {
