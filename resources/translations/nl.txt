@@ -1015,7 +1015,6 @@ countries: nl be sr
 "Licence accepted" = "Licentie geaccepteerd"
 "All notes off" = "Alle noten uit"
 "Simple" = "Eenvoudig"
-"Professional" = "Professioneel"
 "Display mode" = "Weergavemodus"
 "Expression pedals" = "Zwelpedalen"
 "Highlight played keys" = "Gespeelde toetsen markeren"
@@ -1049,6 +1048,9 @@ countries: nl be sr
 
 "On organ unload" = "Bij het ontladen van het orgel"
 "MIDI messages in hex, sent on the MIDI output when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. Several are separated by commas. Empty sends nothing." = "MIDI-berichten in hex, verzonden op de MIDI-uitgang wanneer een orgel wordt ontladen: voor het laden van het volgende orgel en bij het afsluiten van het programma. Voor een relais dat de luidsprekers uitschakelt. Meerdere worden gescheiden door komma's. Leeg verzendt niets."
+"Advanced" = "Geavanceerd"
+"Simple or Advanced" = "Eenvoudig of Geavanceerd"
+"Simple shows the settings most players need, with presets for quality and performance. Advanced shows every setting: each part of the presets, the sample cache's folder, and the MIDI console builder.\n\nYou can switch at any time under View > Display mode." = "Eenvoudig toont de instellingen die de meeste organisten nodig hebben, met voorinstellingen voor kwaliteit en prestaties. Geavanceerd toont elke instelling: elk deel van de voorinstellingen, de map van de samplecache en de MIDI-speeltafelbouw.\n\nU kunt op elk moment wisselen via Weergave > Weergavemodus."
 "Most voices: every processor core, 8192 voices" = "Meeste stemmen: alle processorkernen, 8192 stemmen"
 "Balanced (default): every core, the default number of voices" = "Gebalanceerd (standaard): alle kernen, het standaardaantal stemmen"
 "Steady: one core left free for the system and other programs" = "Stabiel: één kern vrij voor het systeem en andere programma's"

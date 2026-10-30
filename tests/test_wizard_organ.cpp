@@ -53,6 +53,8 @@ public:
     auto* next = findButton(panel, TRANS("Next"));
     MP_CHECK(next != nullptr, "the wizard has a Next button");
     if (next == nullptr) return;
+    // Simple or Advanced, sound, keyboards, then the organ.
+    next->onClick();
     next->onClick();
     next->onClick();
     auto* choose = findButton(panel, TRANS("Choose an organ..."));

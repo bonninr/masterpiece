@@ -1,10 +1,12 @@
-// First-run wizard: the three things that stop a new installation making a
-// sound, in the order they stop it.
+// First-run wizard: how much of the program to show, then the three things
+// that stop a new installation making a sound, in the order they stop it.
 //
 // This is not a tour. Every step is a decision the program genuinely cannot
 // make for the player, and each one is skippable because a player who already
 // knows their rig should not be made to click through it:
 //
+//   0. Simple or Advanced      how many settings the menus show; switched
+//                              later under View > Display mode
 //   1. the audio device        nothing is audible without one
 //   2. the MIDI input          and which channel plays which manual, which no
 //                              organ file can guess
@@ -52,6 +54,9 @@ private:
   int step_ = 0;
   juce::Label title_;
   juce::Label body_;
+  // Step 0: Simple or Advanced.
+  juce::ToggleButton simple_{TRANS("Simple")};
+  juce::ToggleButton advanced_{TRANS("Advanced")};
   // Step 1 embeds JUCE's own device selector rather than reimplementing it:
   // the list of drivers, rates and buffer sizes is the operating system's
   // answer, and a second opinion about it would only ever be wrong.
