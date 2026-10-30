@@ -1,6 +1,7 @@
 // The Settings tabs keep their names whole in a narrow window ("Performanc",
 // "Metronom" and "Languag" before): every word of a name fits its tab, a name
-// of two words on two lines.
+// of two words on two lines. The narrow width is a share of what the names
+// ask for: Linux's font is narrower, and 650 pixels broke nothing there.
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -54,15 +55,34 @@ public:
     return cut;
   }
 
+  // The width the eleven tabs ask for with JUCE's own look, in this
+  // platform's font.
+  static int naturalWidth() {
+    juce::TabbedButtonBar bar(juce::TabbedButtonBar::TabsAtTop);
+    for (auto* name : {"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome", "Combination sets",
+                       "Console display", "Language", "Remote control", "Diagnostics"})
+      bar.addTab(name, juce::Colours::darkgrey, -1);
+    bar.setBounds(0, 0, 4000, 30);
+    int total = 0;
+    for (int i = 0; i < bar.getNumTabs(); ++i) total += bar.getTabButton(i)->getBestTabLength(30);
+    return total;
+  }
+
   void run() override {
     juce::MessageManager::getInstance();
     mp::ui::TabNamesLook look;
-    // 650: the tab bar of the Settings window left at 662 pixels wide.
-    const auto before = cutNames(nullptr, 650);
-    MP_CHECK(!before.empty(), "before: JUCE's own widths broke names at 650 pixels:" + before);
-    MP_CHECK(cutNames(&look, 650).empty(), "every name whole at 650 pixels:" + cutNames(&look, 650));
+    // The tab bar of the Settings window left at 662 pixels wide on Windows,
+    // as a share of what the names ask for, so the narrow case is as narrow
+    // in every platform's font.
+    const int natural = naturalWidth();
+    const int narrow = natural * kNarrowShare / 100;
+    const auto at = " at " + std::to_string(narrow) + " of " + std::to_string(natural) + " pixels:";
+    const auto before = cutNames(nullptr, narrow);
+    MP_CHECK(!before.empty(), "before: JUCE's own widths broke names" + at + before);
+    MP_CHECK(cutNames(&look, narrow).empty(), "every name whole" + at + cutNames(&look, narrow));
     MP_CHECK(cutNames(&look, 940).empty(), "and at the window's first size:" + cutNames(&look, 940));
   }
+  static constexpr int kNarrowShare = 70;  // 650 of 923 pixels on Windows
 };
 static SettingsTabNamesTest g_settingsTabNames;
 
