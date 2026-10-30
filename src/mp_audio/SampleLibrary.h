@@ -258,7 +258,17 @@ public:
   // decompressed into memory in one pass per archive, never written out.
   // Such samples are always resident -- there is no file to stream a tail
   // from. Null for an ordinary organ.
-  void setArchive(std::shared_ptr<const OrganArchive> archive) { archive_ = std::move(archive); }
+  //
+  // `prefix` is where the organ's root sits inside the package, with a
+  // trailing slash: empty when the definition's root is the package's own, and
+  // "OrganInstallationPackages/002759/" for a GrandOrgue definition kept in
+  // a Hauptwerk package's sample folder, whose paths start from there.
+  void setArchive(std::shared_ptr<const OrganArchive> archive, std::string prefix = {}) {
+    archive_ = std::move(archive);
+    archivePrefix_ = std::move(prefix);
+  }
+  // A sample's name in the organ's archives.
+  std::string archiveKey(const std::string& fileName, Id installationPackageId) const;
   // Packages installed somewhere else: their samples are read from that
   // folder's OrganInstallationPackages (a composite definition, #289). The
   // others stay under the organ's own root.
@@ -379,6 +389,7 @@ private:
                  LoadProgress* progress = nullptr) const;
 
   std::shared_ptr<const OrganArchive> archive_;
+  std::string archivePrefix_;
   std::unordered_map<Id, std::string> packageRoots_;
   std::set<std::string> packagesFromElsewhere_;
   const std::string& rootFor(const std::string& organRoot, Id package) const {

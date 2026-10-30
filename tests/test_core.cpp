@@ -18686,6 +18686,71 @@ public:
 };
 static PathsOutsideAsciiTest g_pathsOutsideAscii;
 
+// A GrandOrgue definition kept in a Hauptwerk package's sample folder
+// (Norrfjarden, #637): its root is that folder, two below the one the package
+// was unpacked into, and it names its samples from there. Opened from the
+// package, it read none of them and every stop was silent.
+class GrandOrgueInPackageFolderTest final : public mp::test::Test {
+public:
+  GrandOrgueInPackageFolderTest()
+    : Test("functional.archive.grandorgue-in-sample-folder", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / "mp-go-in-sample-folder";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::create_directories(base, ec);
+
+    juce::MemoryBlock wav;
+    {
+      juce::WavAudioFormat fmt;
+      auto* os = new juce::MemoryOutputStream(wav, false);
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "1000");
+      meta.set("Loop0End", "47000");
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os, 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> tone(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        tone.setSample(0, i, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 48000);
+    }
+    const std::string tone(static_cast<const char*>(wav.getData()), wav.getSize());
+    const std::string organ =
+        "[Organ]\r\nChurchName=T\r\nHasPedals=N\r\nNumberOfManuals=1\r\nNumberOfRanks=1\r\n"
+        "NumberOfWindchestGroups=1\r\n[WindchestGroup001]\r\nName=W\r\n"
+        "[Rank001]\r\nName=P\r\nFirstMidiNoteNumber=36\r\nNumberOfLogicalPipes=1\r\n"
+        "Pipe001=Principal\\036-C.wav\r\n"
+        "[Manual001]\r\nName=I\r\nNumberOfLogicalKeys=1\r\nNumberOfAccessibleKeys=1\r\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\r\nNumberOfStops=1\r\nStop001=1\r\n"
+        "[Stop001]\r\nName=Principal\r\nNumberOfRanks=1\r\nRank001=1\r\nNumberOfAccessiblePipes=1\r\n";
+    const fs::path archive = base / "Nested.Organ.CompPkg.Hauptwerk.rar";
+    std::ofstream(archive, std::ios::binary) << SolidRar4Test::rar4(
+        {{"OrganInstallationPackages\\900291\\Nested.organ", organ},
+         {"OrganInstallationPackages\\900291\\Principal\\036-C.wav", tone}},
+        false);
+
+    mp::MasterpieceProcessor proc;
+    juce::String openError;
+    const auto definitions =
+        proc.openPackagedOrgan(juce::File(juce::String::fromUTF8(mp::utf8Of(archive).c_str())), openError);
+    MP_CHECK(definitions.size() == 1, "the package opens: " + openError.toStdString());
+    if (definitions.size() == 1) {
+      proc.prepareToPlay(48000.0, 256);
+      const auto r = proc.loadOrgan(definitions[0], 0, false);
+      const juce::File unpacked = definitions[0].getParentDirectory().getParentDirectory().getParentDirectory();
+      proc.settingsFileFor(definitions[0]).deleteFile();
+      MP_CHECK(r.ok, "the definition loads: " + r.error);
+      MP_CHECK(r.samples.loaded == 1 && r.samples.missing == 0,
+               "and plays its sample from the package: " + std::to_string(r.samples.loaded) + " loaded, " +
+                   std::to_string(r.samples.missing) + " missing");
+      if (unpacked.getChildFile("masterpiece-archive.txt").existsAsFile()) unpacked.deleteRecursively();
+    }
+    fs::remove_all(base, ec);
+  }
+};
+static GrandOrgueInPackageFolderTest g_grandOrgueInPackageFolder;
+
 // A chord played through a melody coupler couples its top note only (#355).
 // Its keys arrive a few milliseconds apart and each in turn was the top: the
 // coupler played them one after the other, an arpeggio, and again on release.

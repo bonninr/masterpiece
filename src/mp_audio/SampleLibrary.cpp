@@ -868,9 +868,8 @@ std::vector<SampleLibrary::ShapeJob> SampleLibrary::shapeJobs(
     job.wavpack = ext == ".wv";
     job.path = mp::utf8Of(path);
     if (archive != nullptr) {
-      const auto rel = std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
-                           .generic_string();
-      if (const auto* e = archive->find(rel)) job.packageBytes = e->size;
+      if (const auto* e = archive->find(archiveKey(ref.fileName, ref.installationPackageId)))
+        job.packageBytes = e->size;
     }
     jobs.push_back(std::move(job));
   };
@@ -967,11 +966,14 @@ bool SampleLibrary::rankShipped(const Rank& rank, const OrganModel& model, const
                                     ec))
           return true;
         if (archive_ != nullptr &&
-            archive_->find(std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
-                               .generic_string()) != nullptr)
+            archive_->find(archiveKey(ref.fileName, ref.installationPackageId)) != nullptr)
           return true;
       }
   return !named;
+}
+
+std::string SampleLibrary::archiveKey(const std::string& fileName, Id installationPackageId) const {
+  return archivePrefix_ + std::filesystem::path(resolvePath("", fileName, installationPackageId)).generic_string();
 }
 
 bool SampleLibrary::samplePresent(Id sampleId, const OrganModel& model,
@@ -995,9 +997,7 @@ bool SampleLibrary::samplePresent(Id sampleId, const OrganModel& model,
                                                                 ref.fileName, ref.installationPackageId)),
                               ec))
     return true;
-  if (archive_ != nullptr &&
-      archive_->find(std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
-                         .generic_string()) != nullptr)
+  if (archive_ != nullptr && archive_->find(archiveKey(ref.fileName, ref.installationPackageId)) != nullptr)
     return true;
   return false;
 }
@@ -1213,7 +1213,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // stop and blower noises are made here instead.
       if (ref.installationPackageId == 1 && !std::filesystem::exists(path, ec) &&
           (archive_ == nullptr ||
-           archive_->find(std::filesystem::path(resolvePath("", ref.fileName, 1)).generic_string()) == nullptr)) {
+           archive_->find(archiveKey(ref.fileName, 1)) == nullptr)) {
         const juce::File dir = standardNoiseDir_.empty()
                                    ? mp::dataFolder()
                                          .getChildFile("Standard noises")
@@ -1228,8 +1228,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       if (!std::filesystem::exists(path, ec)) {
         std::lock_guard<std::mutex> lock(resultMutex);
         if (archive_ != nullptr) {
-          const auto rel = std::filesystem::path(resolvePath("", ref.fileName, ref.installationPackageId))
-                               .generic_string();
+          const auto rel = archiveKey(ref.fileName, ref.installationPackageId);
           if (archive_->find(rel) != nullptr) {
             fromArchive[OrganArchive::key(rel)].push_back(refIt->first);
             continue;
