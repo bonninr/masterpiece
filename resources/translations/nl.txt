@@ -344,7 +344,6 @@ countries: nl be sr
 "Rename..." = "Hernoemen..."
 "MIDI..." = "MIDI..."
 "Loading" = "Laden"
-"Stops and perspectives" = "Registers en perspectieven"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h
@@ -1056,6 +1055,7 @@ countries: nl be sr
 "Fewer voices: 1024" = "Minder stemmen: 1024"
 "Fewest voices: 512, for a Raspberry Pi or a tablet" = "Minste stemmen: 512, voor een Raspberry Pi of een tablet"
 "Sets the audio engine's threads and the number of voices together, and applies at once. Start with Balanced. If the sound crackles in a full chord, move down the list until it plays clean. Steady helps when other programs run beside the organ." = "Stelt de threads van de audio-engine en het aantal stemmen samen in, en werkt meteen. Begin met Gebalanceerd. Kraakt het geluid in een vol akkoord, ga dan lager in de lijst tot het zuiver klinkt. Stabiel helpt wanneer naast het orgel andere programma's draaien."
+"Stops, ranks and perspectives" = "Registers, pijpenrijen en perspectieven"
 "Default channels" = "Standaardkanalen"
 "The channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it." = "Het kanaal waarop elk klavier van een orgel binnenkomt, voor orgels zonder opgeslagen kanalen. De eigen keuze van een orgel blijft."
 "Manual %1" = "Klavier %1"

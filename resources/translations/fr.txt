@@ -345,7 +345,7 @@ countries: fr be ca ch lu mc
 "Rename..." = "Renommer..."
 "MIDI..." = "MIDI..."
 "Loading" = "Chargement"
-"Stops and perspectives" = "Jeux et perspectives"
+"Stops, ranks and perspectives" = "Jeux, rangs et perspectives"
 "MIDI" = "MIDI"
 
 # src/mp_ui/OrganSettings.h
