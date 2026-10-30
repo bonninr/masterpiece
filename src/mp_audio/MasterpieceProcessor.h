@@ -730,6 +730,14 @@ public:
   // Takes the loaded organ's current assignment as the default, and saves it.
   void useChannelsAsDefaultConsole();
   void clearDefaultConsole();
+  // One role's default channel, set with no organ loaded (#634); 0 takes the
+  // role out of the default.
+  void setDefaultConsoleChannel(int role, int channel) {
+    if (role < 0 || role >= 16) return;
+    if (channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
+    else defaultConsole_.erase(role);
+    writeGlobalFile();
+  }
   // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
   // -1 none.
   int consoleRoleOf(Id keyboardId) const;
