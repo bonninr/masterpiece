@@ -627,14 +627,14 @@ private:
     }
     if (model == nullptr) return;
     std::vector<std::pair<Id, std::string>> kbs;
-    for (const auto& [id, kb] : model->keyboards)
-      if (kb.accessibleForInput && kb.numKeys > 0) kbs.emplace_back(id, kb.name);
+    for (const Id id : host_.keyboards())
+      if (const auto it = model->keyboards.find(id); it != model->keyboards.end()) kbs.emplace_back(id, it->second.name);
     std::sort(kbs.begin(), kbs.end());
     for (const auto& [id, name] : kbs) {
       keyboardIds_.push_back(id);
       for (auto& box : roleKb_) box.addItem(juce::String::fromUTF8(name.c_str()), static_cast<int>(keyboardIds_.size()) + 1);
     }
-    shownModel_ = model;
+    shownLoads_ = host_.organLoads();
   }
 
   void refreshLearnButtons() {
@@ -647,7 +647,7 @@ private:
   void refresh(bool force) {
     const Layout& l = host_.layout();
     const auto& s = host_.state();
-    if (host_.model() != shownModel_) {
+    if (host_.organLoads() != shownLoads_) {
       fillKeyboards();
       force = true;
     }
@@ -754,7 +754,7 @@ private:
   MasterpieceProcessor& proc_;
   SplitKeyboardHost& host_;
   Layout shown_;
-  const OrganModel* shownModel_ = nullptr;
+  uint32_t shownLoads_ = 0;
   int learningSplit_ = -1;
   int laidOutSplits_ = -1;
   uint64_t learnBaseline_[2] = {};

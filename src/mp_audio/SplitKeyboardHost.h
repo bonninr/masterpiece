@@ -51,8 +51,10 @@ public:
   // --- message thread -----------------------------------------------------
   // An organ came up (or went: an empty file). Its layout is read, and if the
   // split is on, its channels get a first mapping. True if the MIDI map
-  // changed and wants saving.
-  bool organLoaded(const juce::File& layoutFile, const OrganModel* model);
+  // changed and wants saving. `keyboards` are the manuals a player plays, as
+  // the key flow found them: a set that leaves out KeyGen_NumberOfKeys (Nancy,
+  // St. Maximin) still has them.
+  bool organLoaded(const juce::File& layoutFile, const OrganModel* model, std::vector<Id> keyboards);
   // From a timer: what the audio thread changed is saved, and a split
   // switched on from MIDI proposes its mapping. True if the MIDI map changed.
   bool service();
@@ -62,6 +64,10 @@ public:
   const split::Layout& layout() const { return organLayout_; }
   int preset() const { return organPreset_; }
   const OrganModel* model() const { return model_; }
+  const std::vector<Id>& keyboards() const { return keyboards_; }
+  // Counts the organs loaded, so a window knows when to refill: the model is
+  // the same object from one organ to the next.
+  uint32_t organLoads() const { return organLoads_; }
   const split::Shared& shared() const { return shared_; }
   bool enabled() const { return shared_.on; }
   int ownDevice() const { return ownDevice_; }
@@ -84,7 +90,7 @@ public:
   Id keyboardFor(split::Role role) const;
   void setKeyboardFor(split::Role role, Id keyboardId);
   // A first mapping of the roles to this organ's manuals.
-  static Id proposedKeyboard(const OrganModel& model, split::Role role);
+  static Id proposedKeyboard(const OrganModel& model, const std::vector<Id>& keyboards, split::Role role);
 
   static juce::File sharedFile();
 
@@ -104,6 +110,8 @@ private:
 
   juce::File organFile_;
   const OrganModel* model_ = nullptr;
+  std::vector<Id> keyboards_;
+  uint32_t organLoads_ = 0;
   split::Layout organLayout_ = split::factoryLayout(1);
   int organPreset_ = -1;
   uint32_t seenLayoutChanges_ = 0, seenTriggerChanges_ = 0;
