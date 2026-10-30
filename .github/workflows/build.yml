@@ -51,34 +51,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
+  # The targets of the build and plugins jobs. A pull request leaves out the
+  # entries marked "pr": false. The account runs only a few macOS jobs at
+  # once, and a run had six of them (the two Macs, their two plugin builds and
+  # the two iOS jobs): with several pull requests pushed together, macOS jobs
+  # waited over an hour for a runner while every other job had finished. A
+  # pull request keeps the Apple-silicon Mac and both iOS jobs; main and the
+  # releases build every target.
+  #
+  # A matrix's own include list cannot drop an entry by event, and a job's
+  # if cannot read the matrix, hence a job to write the lists.
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.lists.outputs.build }}
+      plugins: ${{ steps.lists.outputs.plugins }}
+    steps:
+      - id: lists
+        env:
+          PR: ${{ github.event_name == 'pull_request' }}
+        run: |
           # 22.04 rather than latest: a binary needs the glibc it was built
           # against or newer, and 24.04's (2.39) is newer than Debian 12 and
           # Raspberry Pi OS (2.36) have. Built here, the packages run on both.
-          - os: ubuntu-22.04
-            preset: ci-linux
-            artifact: masterpiece-linux-x86_64
-          - os: windows-latest
-            preset: ci-windows
-            artifact: masterpiece-windows
+          #
           # The Pi, both ways round. arm64 is what a current Raspberry Pi OS
           # install actually is; armhf stays for older 32-bit installs.
-          - os: ubuntu-22.04
-            preset: ci-linux-arm64
-            artifact: masterpiece-linux-arm64
-            arm: true
-            debarch: arm64
-            triple: aarch64-linux-gnu
-          - os: ubuntu-22.04
-            preset: ci-linux-arm
-            artifact: masterpiece-linux-armhf
-            arm: true
-            debarch: armhf
-            triple: arm-linux-gnueabihf
+          #
           # Both Macs, each naming the oldest macOS it runs on. Left to the
           # toolchain, the Apple-silicon build took the build machine's own
           # macOS (14) and would not open on an M1 still on Big Sur, Monterey
@@ -90,18 +89,40 @@ jobs:
           # every run, a release included. The Intel build is compiled for
           # x86_64 here and its tests and its launch run under Rosetta, which
           # is also how a good share of its players run it.
-          - os: macos-14
-            preset: ci-macos
-            artifact: masterpiece-macos-arm64
-            mac: true
-            macarch: arm64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          - os: macos-14
-            preset: ci-macos
-            artifact: masterpiece-macos-x86_64
-            mac: true
-            macarch: x86_64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64
+          build='[
+            {"os": "ubuntu-22.04", "preset": "ci-linux", "artifact": "masterpiece-linux-x86_64"},
+            {"os": "windows-latest", "preset": "ci-windows", "artifact": "masterpiece-windows"},
+            {"os": "ubuntu-22.04", "preset": "ci-linux-arm64", "artifact": "masterpiece-linux-arm64",
+             "arm": true, "debarch": "arm64", "triple": "aarch64-linux-gnu"},
+            {"os": "ubuntu-22.04", "preset": "ci-linux-arm", "artifact": "masterpiece-linux-armhf",
+             "arm": true, "debarch": "armhf", "triple": "arm-linux-gnueabihf"},
+            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-macos-arm64",
+             "mac": true, "macarch": "arm64", "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
+            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-macos-x86_64",
+             "mac": true, "macarch": "x86_64", "pr": false,
+             "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64"}
+          ]'
+          plugins='[
+            {"os": "ubuntu-22.04", "preset": "ci-linux", "artifact": "masterpiece-plugins-linux-x86_64"},
+            {"os": "windows-latest", "preset": "ci-windows", "artifact": "masterpiece-plugins-windows"},
+            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-arm64",
+             "mac": true, "macarch": "arm64", "pr": false, "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"},
+            {"os": "macos-14", "preset": "ci-macos", "artifact": "masterpiece-plugins-macos-x86_64",
+             "mac": true, "macarch": "x86_64", "pr": false,
+             "cmake_extra": "-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64"}
+          ]'
+          keep='if env.PR == "true" then map(select(.pr != false)) else . end | map(del(.pr))'
+          echo "build=$(jq -c "$keep" <<<"$build")" >> "$GITHUB_OUTPUT"
+          echo "plugins=$(jq -c "$keep" <<<"$plugins")" >> "$GITHUB_OUTPUT"
+          jq -r "$keep | .[].artifact" <<<"$build"
+          jq -r "$keep | .[].artifact" <<<"$plugins"
+
+  build:
+    needs: targets
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.build) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -491,28 +512,11 @@ jobs:
   # saves none: the organ libraries compile the same for both, and a cache of
   # their own per job would not fit in the repository's cache allowance.
   plugins:
+    needs: targets
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04
-            preset: ci-linux
-            artifact: masterpiece-plugins-linux-x86_64
-          - os: windows-latest
-            preset: ci-windows
-            artifact: masterpiece-plugins-windows
-          - os: macos-14
-            preset: ci-macos
-            artifact: masterpiece-plugins-macos-arm64
-            mac: true
-            macarch: arm64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          - os: macos-14
-            preset: ci-macos
-            artifact: masterpiece-plugins-macos-x86_64
-            mac: true
-            macarch: x86_64
-            cmake_extra: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES=x86_64
+        include: ${{ fromJSON(needs.targets.outputs.plugins) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
