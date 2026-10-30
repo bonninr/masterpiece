@@ -1546,13 +1546,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // them silenced a whole console from one keyboard: some keyboards and
     // encoders send All Notes Off on their own channel as a matter of
     // course, and every other manual's held notes stopped with it (#33).
+    //
+    // Any other controller moves only what it was learned for, as in
+    // GrandOrgue. A control's id is the organ's own number: taken as a CC
+    // number, a MIDI file's breath controller swung the Ashton demo's Solo
+    // swell and its RPN messages set Nancy's bellows pressure.
     else if (msg.isController() &&
              (msg.getControllerNumber() == 120 || msg.getControllerNumber() >= 123))
       releaseChannel(msg.getChannel(), deviceId);
-    else if (msg.isController())
-      // With no mapping the control id IS the CC number, which is enough to
-      // drive a swell shoe from a real pedal out of the box.
-      setControlValue(msg.getControllerNumber(), msg.getControllerValue());
   }
   // Voices started from anywhere else -- a stop drawn, a pallet -- begin at
   // the block's start.
