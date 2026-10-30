@@ -1838,16 +1838,6 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 
   addAndMakeVisible(stepperLabel_);
   styleLabel(stepperLabel_, TRANS("Sequencer"));
-  addAndMakeVisible(learnNext_);
-  learnNext_.onClick = [this] {
-    // Momentary: a sequencer piston is a button, and a latching binding would
-    // advance a frame only every other press.
-    proc_.midiMap().beginLearn(MidiTargetKind::StepperNext, 0, false);
-  };
-  addAndMakeVisible(learnPrev_);
-  learnPrev_.onClick = [this] {
-    proc_.midiMap().beginLearn(MidiTargetKind::StepperPrev, 0, false);
-  };
   // A console with fewer keyboards than the organ has manuals: a piston makes
   // the keyboard on a channel play another manual (#90). Pick the channel,
   // then the manual, then press the piston.
@@ -1888,31 +1878,49 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   addAndMakeVisible(mapStatus_);
   styleLabel(mapStatus_, "");
 
+  // Shown only where the system can pair one; the Audio tab's device list
+  // carried it before (#680).
+  addChildComponent(bluetooth_);
+  bluetooth_.setTooltip(TRANS("Pairs a Bluetooth MIDI device"));
+  bluetooth_.onClick = [] { openBluetoothMidiPairing(); };
+
   addAndMakeVisible(consoleHeading_);
   styleLabel(consoleHeading_, TRANS("Console"));
-  struct { juce::TextButton* b; MidiTargetKind k; } consoleLearn[] = {
-      {&learnPageNext_, MidiTargetKind::ConsoleNextPage},
-      {&learnPagePrev_, MidiTargetKind::ConsolePrevPage},
-      {&learnLayout_, MidiTargetKind::ConsoleNextLayout},
-      {&learnStopList_, MidiTargetKind::ConsoleToggleStopList},
-      {&learnKeyboard_, MidiTargetKind::ConsoleToggleKeyboard},
-      {&learnCombinations_, MidiTargetKind::ConsoleToggleCombinations},
-      {&learnTransposeDown_, MidiTargetKind::TransposeDown},
-      {&learnTransposeUp_, MidiTargetKind::TransposeUp},
-      {&learnTemperamentPrev_, MidiTargetKind::TemperamentPrev},
-      {&learnTemperamentNext_, MidiTargetKind::TemperamentNext},
-      {&learnScoreBack_, MidiTargetKind::ScorePageBack},
-      {&learnScoreForward_, MidiTargetKind::ScorePageForward},
-      {&learnRecord_, MidiTargetKind::RecorderRecord},
-      {&learnPlay_, MidiTargetKind::RecorderPlay},
+  addAndMakeVisible(recorderHeading_);
+  styleLabel(recorderHeading_, TRANS("Recorder"));
+  // Every one momentary: a piston is a button, and a latching mapping would
+  // act only every other press.
+  learnButtons_ = {
+      {&learnPrev_, MidiTargetKind::StepperPrev, TRANS("Sequencer -")},
+      {&learnNext_, MidiTargetKind::StepperNext, TRANS("Sequencer +")},
+      {&learnPagePrev_, MidiTargetKind::ConsolePrevPage, TRANS("Page -")},
+      {&learnPageNext_, MidiTargetKind::ConsoleNextPage, TRANS("Page +")},
+      {&learnLayout_, MidiTargetKind::ConsoleNextLayout, TRANS("Console size")},
+      {&learnStopList_, MidiTargetKind::ConsoleToggleStopList, TRANS("Panel")},
+      {&learnKeyboard_, MidiTargetKind::ConsoleToggleKeyboard, TRANS("Keyboard")},
+      {&learnCombinations_, MidiTargetKind::ConsoleToggleCombinations, TRANS("Combinations")},
+      {&learnTransposeDown_, MidiTargetKind::TransposeDown, TRANS("Transpose -")},
+      {&learnTransposeUp_, MidiTargetKind::TransposeUp, TRANS("Transpose +")},
+      {&learnTemperament_, MidiTargetKind::Temperament, TRANS("Temperament")},
+      {&learnTemperamentPrev_, MidiTargetKind::TemperamentPrev, TRANS("Temperament -")},
+      {&learnTemperamentNext_, MidiTargetKind::TemperamentNext, TRANS("Temperament +")},
+      {&learnRecord_, MidiTargetKind::RecorderRecord, TRANS("Record")},
+      {&learnPlay_, MidiTargetKind::RecorderPlay, TRANS("Play")},
+      {&learnQuit_, MidiTargetKind::QuitProgram, TRANS("Quit")},
+      {&learnPowerOff_, MidiTargetKind::PowerOffComputer, TRANS("Power off")},
+      {&learnScoreBack_, MidiTargetKind::ScorePageBack, TRANS("Score page -")},
+      {&learnScoreForward_, MidiTargetKind::ScorePageForward, TRANS("Score page +")},
   };
-  for (auto& e : consoleLearn) {
-    addAndMakeVisible(*e.b);
-    const auto kind = e.k;
-    e.b->onClick = [this, kind] {
-      proc_.midiMap().beginLearn(kind, 0, false);
-    };
+  for (size_t i = 0; i < learnButtons_.size(); ++i) {
+    addAndMakeVisible(*learnButtons_[i].button);
+    learnButtons_[i].button->onClick = [this, i] { learnMenu(learnButtons_[i]); };
   }
+  learnPrev_.setTooltip(TRANS("Sequencer: previous frame"));
+  learnNext_.setTooltip(TRANS("Sequencer: next frame"));
+  learnTemperamentPrev_.setTooltip(TRANS("Previous temperament in the list"));
+  learnTemperamentNext_.setTooltip(TRANS("Next temperament in the list"));
+  learnRecord_.setTooltip(TRANS("Starts a recording; pressed again, stops it"));
+  learnPlay_.setTooltip(TRANS("Plays the last recording; pressed again, stops it"));
 
   addAndMakeVisible(temperamentLabel_);
   styleLabel(temperamentLabel_, TRANS("Temperament"));
@@ -1924,25 +1932,15 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     temperamentPick_.addItem(juce::String(t.name), static_cast<int>(temperamentNames_.size()));
   }
   temperamentPick_.setSelectedId(1, juce::dontSendNotification);
-  addAndMakeVisible(learnTemperament_);
-  learnTemperament_.setTooltip(TRANS("A button that chooses this temperament: press Learn, then the button"));
-  learnTemperament_.onClick = [this] {
-    const int i = temperamentPick_.getSelectedId() - 1;
-    if (i < 0 || i >= static_cast<int>(temperamentNames_.size())) return;
-    proc_.midiMap().beginLearn(MidiTargetKind::Temperament,
-                               temperamentTarget(temperamentNames_[static_cast<size_t>(i)]), false);
-  };
+  learnTemperament_.setTooltip(TRANS("Selects the temperament chosen beside it"));
+  temperamentPick_.onChange = [this] { showLearnState(); };
 
   addAndMakeVisible(powerHeading_);
   styleLabel(powerHeading_, TRANS("Power"));
-  for (auto* b : {&learnQuit_, &learnPowerOff_}) {
-    addAndMakeVisible(*b);
+  for (auto* b : {&learnQuit_, &learnPowerOff_})
     b->setTooltip(TRANS("For a console with no screen. Obeyed once Masterpiece has run two minutes, and "
                         "only when the button is held three seconds; a button whose message has no "
                         "release is pressed twice within two seconds. Masterpiece saves before it quits."));
-  }
-  learnQuit_.onClick = [this] { proc_.midiMap().beginLearn(MidiTargetKind::QuitProgram, 0, false); };
-  learnPowerOff_.onClick = [this] { proc_.midiMap().beginLearn(MidiTargetKind::PowerOffComputer, 0, false); };
 
   addAndMakeVisible(lampLabel_);
   styleLabel(lampLabel_, TRANS("Ready lamp"));
@@ -2008,6 +2006,10 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   };
   addAndMakeVisible(scoreHeading_);
   styleLabel(scoreHeading_, TRANS("Score app"));
+  addAndMakeVisible(scoreSendsLabel_);
+  styleLabel(scoreSendsLabel_, TRANS("Sends"));
+  for (auto* b : {&learnScoreBack_, &learnScoreForward_})
+    b->setTooltip(TRANS("Turns the page of a score app: sends the message below on the MIDI output"));
   const ScorePageMessage page = proc_.scorePageMessage();
   addAndMakeVisible(scoreKind_);
   scoreKind_.addItem(TRANS("Note"), 1);
@@ -2029,6 +2031,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   scoreBack_.setTooltip(TRANS("The number sent for the page before"));
   scoreKind_.onChange = scoreChannel_.onChange = [this] { pushScorePage(); };
 
+  for (auto& l : learnButtons_) l.tip = l.button->getTooltip();
   refresh();
   startTimerHz(2);
 }
@@ -2041,11 +2044,11 @@ void MidiPanel::applyPart() {
                                         &learnStopList_, &learnKeyboard_, &learnCombinations_,
                                         &learnTransposeDown_, &learnTransposeUp_, &temperamentLabel_,
                                         &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
-                                        &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_,
-                                        &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_,
-                                        &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
+                                        &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_,
+                                        &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_,
+                                        &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
                                         &loadMessage_, &unloadMessageLabel_, &unloadMessage_,
-                                        &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
+                                        &scoreHeading_, &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_,
                                         &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   console.push_back(&defaultChannelsLabel_);
@@ -2063,15 +2066,82 @@ void MidiPanel::applyPart() {
       &stepperLabel_, &learnPrev_, &learnNext_, &consoleHeading_, &learnPagePrev_, &learnPageNext_,
       &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &learnTransposeDown_,
       &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
-      &learnTemperamentNext_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_, &learnPowerOff_,
-      &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
-      &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &scoreHeading_, &learnScoreBack_,
-      &learnScoreForward_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_, &keyboardsHeading_,
-      &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
+      &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_,
+      &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_,
+      &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &scoreHeading_,
+      &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_,
+      &scoreBack_, &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
   for (auto* c : part_ == Part::Console ? console : organ)
     c->setVisible(!shownSimple_ || std::find(professional.begin(), professional.end(), c) == professional.end());
   for (auto* c : part_ == Part::Console ? organ : console) c->setVisible(false);
+  saveMap_.setVisible(!shownSimple_);
+  clearMap_.setVisible(!shownSimple_);
+  bluetooth_.setVisible(part_ == Part::Console && juce::BluetoothMidiDevicePairingDialogue::isAvailable());
+}
+
+Id MidiPanel::learnTarget(const LearnButton& l) const {
+  if (l.kind != MidiTargetKind::Temperament) return 0;
+  const int i = temperamentPick_.getSelectedId() - 1;
+  if (i < 0 || i >= static_cast<int>(temperamentNames_.size())) return 0;
+  return temperamentTarget(temperamentNames_[static_cast<size_t>(i)]);
+}
+
+// The same menu as a console control's: what it is mapped to, then Learn,
+// Clear and the MIDI window. Pressed while learning, it stops learning.
+void MidiPanel::learnMenu(const LearnButton& l) {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    showLearnState();
+    return;
+  }
+  const MidiTargetKind kind = l.kind;
+  const Id id = learnTarget(l);
+  if (kind == MidiTargetKind::Temperament && id == 0) return;
+  juce::String name = l.name;
+  if (kind == MidiTargetKind::Temperament) name += ": " + temperamentPick_.getText();
+  juce::PopupMenu menu;
+  const auto existing = map.bindingsFor(kind, id);
+  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
+  for (const MidiBinding* b : existing) menu.addSectionHeader(MidiEventDialog::describeBinding(*b));
+  menu.addItem(1, TRANS("Learn"));
+  menu.addItem(2, TRANS("Clear"), !existing.empty());
+  menu.addItem(3, TRANS("MIDI window..."));
+  juce::Component::SafePointer<MidiPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(l.button),
+                     [self, kind, id, name](int choice) {
+                       if (self == nullptr) return;
+                       switch (choice) {
+                         case 1: self->proc_.midiMap().beginLearn(kind, id, false); break;
+                         case 2: self->proc_.setObjectBindings(kind, id, {}); break;
+                         case 3: MidiEventDialog::show(self->proc_, kind, id, name); break;
+                         default: return;
+                       }
+                       self->showLearnState();
+                     });
+}
+
+// Orange while a button learns, green once it is mapped, its tooltip naming
+// the message.
+void MidiPanel::showLearnState() {
+  const auto& map = proc_.midiMap();
+  for (const auto& l : learnButtons_) {
+    const Id id = learnTarget(l);
+    const bool learning = map.learning() && map.learningKind() == l.kind && map.learningTarget() == id;
+    const auto existing = map.bindingsFor(l.kind, id);
+    auto* b = l.button;
+    if (learning)
+      b->setColour(juce::TextButton::buttonColourId, juce::Colours::darkorange);
+    else if (!existing.empty())
+      b->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2f6b3f));
+    else
+      b->removeColour(juce::TextButton::buttonColourId);
+    juce::String tip = l.tip;
+    for (const MidiBinding* m : existing)
+      tip += (tip.isEmpty() ? "" : "\n") + TRANS("Mapped: %1").replace("%1", MidiEventDialog::describeBinding(*m));
+    if (b->getTooltip() != tip) b->setTooltip(tip);
+  }
 }
 
 void MidiPanel::pushReadyLamp() {
@@ -2314,10 +2384,10 @@ void MidiPanel::timerCallback() {
     resized();
   }
   const auto& map = proc_.midiMap();
-  juce::String s = TRANS("%1 binding(s)").replace("%1", juce::String(static_cast<int>(map.size())));
+  juce::String s = TRANS("MIDI mappings: %1").replace("%1", juce::String(static_cast<int>(map.size())));
   if (map.learning()) s += "  -  " + TRANS("LEARNING: move a control now");
   mapStatus_.setText(s, juce::dontSendNotification);
-
+  showLearnState();
 }
 
 void MidiPanel::pushScorePage() {
@@ -2345,6 +2415,7 @@ void MidiPanel::resized() {
     if (inputs_.empty()) {
       r.removeFromTop(kRow); // leaves room for the "none found" case
     }
+    if (bluetooth_.isVisible()) bluetooth_.setBounds(r.removeFromTop(kRow).reduced(12, 0).withWidth(180));
     // The default channels, three to a row.
     r.removeFromTop(4);
     defaultChannelsLabel_.setBounds(r.removeFromTop(kRow));
@@ -2447,7 +2518,7 @@ void MidiPanel::resized() {
     temperamentLabel_.setBounds(row.removeFromLeft(120));
     temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
     row.removeFromLeft(6);
-    learnTemperament_.setBounds(row.removeFromLeft(150).reduced(2, 0));
+    learnTemperament_.setBounds(row.removeFromLeft(180).reduced(2, 0));
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     row.removeFromLeft(120);
@@ -2457,7 +2528,7 @@ void MidiPanel::resized() {
     }
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
-    row.removeFromLeft(120);
+    recorderHeading_.setBounds(row.removeFromLeft(120));
     for (auto* b : {&learnRecord_, &learnPlay_}) {
       b->setBounds(row.removeFromLeft(150).reduced(2, 0));
       row.removeFromLeft(6);
@@ -2502,7 +2573,7 @@ void MidiPanel::resized() {
     // The message sent, on a row of its own, as the ready lamp's.
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
-    row.removeFromLeft(120);
+    scoreSendsLabel_.setBounds(row.removeFromLeft(120));
     scoreKind_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     row.removeFromLeft(6);
     scoreChannel_.setBounds(row.removeFromLeft(150).reduced(2, 0));
@@ -2514,10 +2585,12 @@ void MidiPanel::resized() {
 
   r.removeFromTop(kGap);
   row = r.removeFromTop(kRow);
-  saveMap_.setBounds(row.removeFromLeft(120));
-  row.removeFromLeft(kGap);
-  clearMap_.setBounds(row.removeFromLeft(120));
-  row.removeFromLeft(kGap);
+  if (!shownSimple_) {
+    saveMap_.setBounds(row.removeFromLeft(130));
+    row.removeFromLeft(kGap);
+    clearMap_.setBounds(row.removeFromLeft(150));
+    row.removeFromLeft(kGap);
+  }
   mapStatus_.setBounds(row);
   r.removeFromTop(kGap);
   const int needed = r.getY() + 12;

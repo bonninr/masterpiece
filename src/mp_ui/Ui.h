@@ -168,6 +168,9 @@ bool openPairingOnce(const std::function<bool(juce::ModalComponentManager::Callb
 // Points the selector's "Bluetooth MIDI" button at openPairingOnce. False
 // where the selector has no such button (no Bluetooth MIDI on the platform).
 bool guardPairingButton(juce::AudioDeviceSelectorComponent& selector);
+// The pairing window through openPairingOnce, asking for the permission first
+// where it is not yet given: the MIDI tab's "Bluetooth MIDI" button (#680).
+void openBluetoothMidiPairing();
 
 // The Audio and MIDI dialog: the device selector, and under it what belongs
 // to the output rather than to any organ -- keeping portable speakers awake.

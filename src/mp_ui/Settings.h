@@ -382,8 +382,25 @@ private:
   juce::ToggleButton archive_{TRANS("Archive everything played")};
   juce::ComboBox archiveSilence_, archiveSize_, archiveAge_;
   void applyArchive();
-  juce::TextButton saveMap_{TRANS("Save mapping")};
-  juce::TextButton clearMap_{TRANS("Clear mapping")};
+  // A learned mapping saves itself; these are for the console builder, and
+  // Simple mode leaves them out.
+  juce::TextButton saveMap_{TRANS("Save mappings")};
+  juce::TextButton clearMap_{TRANS("Clear all mappings")};
+  // Pairing a Bluetooth MIDI keyboard, where the system offers it (#680).
+  juce::TextButton bluetooth_{TRANS("Bluetooth MIDI...")};
+  // Every learn button on the page works as a console control's MIDI menu
+  // does (#634): what it is mapped to, Learn, Clear, and the MIDI window. The
+  // button is orange while it learns and green once mapped.
+  struct LearnButton {
+    juce::TextButton* button;
+    MidiTargetKind kind;
+    juce::String name;
+    juce::String tip;  // the button's own tooltip, before what it is mapped to
+  };
+  std::vector<LearnButton> learnButtons_;
+  Id learnTarget(const LearnButton& l) const;
+  void learnMenu(const LearnButton& l);
+  void showLearnState();
   // The sequencer pistons have nothing on the console to right-click, because
   // the organ does not declare them — Hauptwerk provides the sequencer and the
   // player maps it. So they get their own learn buttons.
@@ -410,7 +427,7 @@ private:
   juce::Label temperamentLabel_;
   juce::ComboBox temperamentPick_;
   std::vector<std::string> temperamentNames_;
-  juce::TextButton learnTemperament_{TRANS("Learn")};
+  juce::TextButton learnTemperament_{TRANS("Learn this temperament")};
   // A console with no screen: buttons that quit the program or shut the
   // computer down, and a lamp that lights when the organ is ready.
   juce::Label powerHeading_;
@@ -431,14 +448,16 @@ private:
   juce::TextEditor unloadMessage_;
   // Page turns for a score app on a tablet or another program: a piston
   // learned here sends the message chosen beside it on the MIDI output.
-  juce::Label scoreHeading_;
+  juce::Label scoreHeading_, scoreSendsLabel_;
   juce::TextButton learnScoreBack_{TRANS("Learn score page -")};
   juce::TextButton learnScoreForward_{TRANS("Learn score page +")};
   juce::ComboBox scoreKind_, scoreChannel_;
   juce::TextEditor scoreForward_, scoreBack_;
   void pushScorePage();
-  juce::TextButton learnRecord_{TRANS("Learn record")};
-  juce::TextButton learnPlay_{TRANS("Learn play")};
+  // The recorder's buttons each start and stop: Record a take, Play the last.
+  juce::Label recorderHeading_;
+  juce::TextButton learnRecord_{TRANS("Learn record or stop")};
+  juce::TextButton learnPlay_{TRANS("Learn play or stop")};
   juce::Label mapStatus_;
 };
 
