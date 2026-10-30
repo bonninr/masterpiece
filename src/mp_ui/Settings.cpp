@@ -4095,12 +4095,41 @@ SettingsWindow::~SettingsWindow() {
   if (onClosed) juce::MessageManager::callAsync(std::move(onClosed));
 }
 
+int TabNamesLook::longestWordWidth(juce::TabBarButton& button, int tabDepth) {
+  // The font the tab draws its name in (LookAndFeel_V3::createTabTextLayout).
+  const juce::Font font{button.withDefaultMetrics(juce::FontOptions(static_cast<float>(tabDepth) * 0.5f))};
+  int longest = 0;
+  for (const auto& word : juce::StringArray::fromTokens(button.getButtonText().trim(), " ", ""))
+    longest = std::max(longest, juce::GlyphArrangement::getStringWidthInt(font, word));
+  return longest + 8;
+}
+
+int TabNamesLook::getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth) {
+  const int own = juce::LookAndFeel_V4::getTabButtonBestWidth(button, tabDepth);
+  auto& bar = button.getTabbedButtonBar();
+  // As TabbedButtonBar::updateTabPositions counts the bar's length.
+  const int overlap = getTabButtonOverlap(tabDepth) + getTabButtonSpaceAroundImage() * 2;
+  int wanted = std::max(0, overlap), least = wanted, room = bar.isVertical() ? bar.getHeight() : bar.getWidth();
+  for (int i = 0; i < bar.getNumTabs(); ++i)
+    if (auto* tab = bar.getTabButton(i)) {
+      const int w = juce::LookAndFeel_V4::getTabButtonBestWidth(*tab, tabDepth);
+      wanted += w - overlap;
+      least += std::min(w, longestWordWidth(*tab, tabDepth)) - overlap;
+    }
+  if (wanted <= room) return own;
+  const int floor = std::min(own, longestWordWidth(button, tabDepth));
+  if (least >= room || wanted == least) return floor;
+  // The bar's length past the words, shared as each name wants more.
+  return floor + (own - floor) * (room - least) / (wanted - least);
+}
+
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
     : reverb_(p), metronome_(p), performance_(p, EnginePanel::Part::Performance),
       general_(p, EnginePanel::Part::General), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
+  tabs_.getTabbedButtonBar().setLookAndFeel(&tabNamesLook_);
   // General first: its display mode decides what every other tab shows.
   tabs_.addTab(TRANS("General"), bg, &generalScroll_, false);
   // Without a device manager -- a plugin, whose host owns the audio device
