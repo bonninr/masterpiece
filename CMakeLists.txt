@@ -192,7 +192,7 @@ endif()
 # BSD-licensed, which is what lets it ship inside a GPL program -- unlike the
 # RAR project's own unrar source.
 option(MP_FETCH_LIBARCHIVE "Fetch libarchive via FetchContent" ON)
-set(MP_LIBARCHIVE_TAG "v3.8.1" CACHE STRING "libarchive git tag for FetchContent")
+set(MP_LIBARCHIVE_TAG "v3.8.10" CACHE STRING "libarchive git tag for FetchContent")
 if(MP_FETCH_LIBARCHIVE)
   include(FetchContent)
   foreach(opt ENABLE_MBEDTLS ENABLE_NETTLE ENABLE_OPENSSL ENABLE_LIBB2 ENABLE_LZ4
