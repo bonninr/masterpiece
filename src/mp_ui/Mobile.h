@@ -129,6 +129,8 @@ public:
 
 // Gives a dialog's content tooltips of its own, which go with it.
 void giveOwnTooltips(juce::Component& content);
+// Whether a component's tips are shown by a dialog's own tooltips.
+bool inOwnTooltips(const juce::Component& component);
 
 // macOS: an open or save panel hides while another program is in front, and
 // comes back with this one (#492; MacWindows.mm). The application calls it

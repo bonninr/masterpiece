@@ -22,33 +22,32 @@ public:
     return n;
   }
 
+  // JUCE shows no tip while the program is in the background, as it is on a
+  // build machine, so these check which tooltip window a control belongs to.
   void run() override {
     juce::MessageManager::getInstance();
     mp::ui::DesktopTooltips desktop;
 
     juce::TextButton onConsole("Set");
     onConsole.setTooltip("Stores the drawn stops");
-    MP_CHECK(desktop.getTipFor(onConsole) == "Stores the drawn stops",
-             "the desktop tooltips serve the console's controls");
-
     auto content = std::make_unique<juce::Component>();
     juce::TextButton inDialog("Choose...");
     inDialog.setTooltip("The folder of the organs");
     content->addAndMakeVisible(inDialog);
-    MP_CHECK(desktop.getTipFor(inDialog) == "The folder of the organs",
-             "before: the desktop tooltips served the dialog's controls too");
+    MP_CHECK(!mp::ui::inOwnTooltips(inDialog), "before: the desktop tooltips served the dialog's controls too");
 
     mp::ui::giveOwnTooltips(*content);
     MP_CHECK(tooltipWindowsIn(*content) == 1, "the dialog's content holds a tooltip window of its own");
-    MP_CHECK(desktop.getTipFor(inDialog).isEmpty(), "the desktop tooltips leave the dialog's controls to it");
-    MP_CHECK(desktop.getTipFor(onConsole) == "Stores the drawn stops", "and still serve the console's");
+    MP_CHECK(mp::ui::inOwnTooltips(inDialog), "which serves the dialog's controls");
+    MP_CHECK(desktop.getTipFor(inDialog).isEmpty(), "the desktop tooltips leave them to it");
+    MP_CHECK(!mp::ui::inOwnTooltips(onConsole), "and still serve the console's");
 
     mp::ui::giveOwnTooltips(*content);
     MP_CHECK(tooltipWindowsIn(*content) == 1, "a second call adds no second tooltip window");
 
     content->removeChildComponent(&inDialog);
     content.reset();  // the dialog's tooltip window goes with it
-    MP_CHECK(desktop.getTipFor(onConsole) == "Stores the drawn stops", "the desktop tooltips outlive the dialog");
+    MP_CHECK(!mp::ui::inOwnTooltips(inDialog), "a control taken out of the dialog is the desktop's again");
   }
 };
 static DialogTooltipsTest g_dialogTooltips;

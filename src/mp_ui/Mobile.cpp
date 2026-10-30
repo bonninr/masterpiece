@@ -570,10 +570,14 @@ private:
 };
 }  // namespace
 
-juce::String DesktopTooltips::getTipFor(juce::Component& component) {
+bool inOwnTooltips(const juce::Component& component) {
   for (auto* c = &component; c != nullptr; c = c->getParentComponent())
-    if (c->getProperties().contains(kOwnTooltips)) return {};
-  return juce::TooltipWindow::getTipFor(component);
+    if (c->getProperties().contains(kOwnTooltips)) return true;
+  return false;
+}
+
+juce::String DesktopTooltips::getTipFor(juce::Component& component) {
+  return inOwnTooltips(component) ? juce::String() : juce::TooltipWindow::getTipFor(component);
 }
 
 void giveOwnTooltips(juce::Component& content) {
