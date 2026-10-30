@@ -1063,6 +1063,8 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
     // Over the ceiling on the cache's own size: stopped before reading it.
     if (progress != nullptr && progress->overBudget.load(std::memory_order_acquire))
       return report;
+    // Cancelled part way through the cache: nothing more to read.
+    if (progress != nullptr && progress->isCancelled()) return report;
   }
 
   // Only what the pipework can actually play. A Sample row for a rank with no
@@ -1185,6 +1187,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
       // Checked per file rather than per batch: a file is the granularity at
       // which this work can actually stop, and on a slow disk one of them can
       // take a noticeable moment.
+      if (progress != nullptr) progress->waitWhileHeld();
       if (progress != nullptr && progress->isCancelled()) return;
 
       const size_t i = cursor.fetch_add(1, std::memory_order_relaxed);
@@ -1384,6 +1387,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         // producer is done, or they would wait for it for ever.
         try {
           archive_->read(a, perArchive[a], [&](const std::string& key, std::vector<char>&& bytes) {
+            if (progress != nullptr) progress->waitWhileHeld();
             auto block = std::make_shared<juce::MemoryBlock>(bytes.data(), bytes.size());
             std::unique_lock<std::mutex> lock(queueMutex);
             queueChanged.wait(lock, [&] { return stop || queuedBytes < kQueueCap; });
@@ -1433,6 +1437,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           queueChanged.notify_all();
         }
         for (const Id id : fromArchive[item.key]) {
+          if (progress != nullptr) progress->waitWhileHeld();
           if (progress != nullptr && progress->isCancelled()) {
             std::lock_guard<std::mutex> lock(queueMutex);
             stop = true;
@@ -2270,8 +2275,11 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
   Store loaded;
   loaded.reserve(static_cast<size_t>(count));
   for (uint64_t i = 0; i < count; ++i) {
-    if (progress != nullptr && (i & 63) == 0)
+    if (progress != nullptr && (i & 63) == 0) {
       progress->done.store(static_cast<int>(i), std::memory_order_relaxed);
+      progress->waitWhileHeld();
+      if (progress->isCancelled()) return false;
+    }
     uint32_t id = 0;
     int32_t channels = 0;
     uint8_t width = 0, streams = 0;
