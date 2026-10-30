@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "../mp_audio/DataFolder.h"
+#include "../mp_audio/SystemMemory.h"
 
 #include <cmath>
 #include <map>
@@ -3564,6 +3565,11 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
              ", memory limit " +
              (p.memoryLimitSettingMB() > 0 ? juce::String(p.memoryLimitSettingMB()) + " MB" : juce::String("not set")) +
              ", " + juce::String(p.streamUnderruns()) + " stream underruns");
+  // Where the system ends a program at a share of its own (iOS), that share:
+  // what a report from a device needs first (#650).
+  if (const int64_t ceiling = processMemoryCeilingBytes(); ceiling > 0)
+    row(0, "The system allows this program " + juce::String(ceiling / (1024 * 1024)) + " MB; loads stop at " +
+               juce::String(p.memoryLimitBytes() / (1024 * 1024)) + " MB");
   row(0, "Impulse response: " + (p.convolver().hasImpulseResponse() ? p.convolver().impulseResponseName()
                                                                     : juce::String("none")));
  #if JUCE_IOS
