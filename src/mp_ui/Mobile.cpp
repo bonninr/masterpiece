@@ -548,7 +548,41 @@ private:
   }
   juce::Component::SafePointer<juce::Component> dialog_;
 };
+
+// Marks a component whose tooltips are drawn inside it.
+const juce::Identifier kOwnTooltips{"mpOwnTooltips"};
+
+// A dialog's own tooltips, in its content: a window JUCE manages takes no
+// children of ours. Owned by nobody but itself: it goes with the content.
+class DialogTooltips : public juce::ComponentListener {
+public:
+  explicit DialogTooltips(juce::Component& content) : tips_(&content, 700) {
+    content.getProperties().set(kOwnTooltips, true);
+    content.addComponentListener(this);
+  }
+  void componentBeingDeleted(juce::Component& c) override {
+    c.removeComponentListener(this);
+    delete this;
+  }
+
+private:
+  juce::TooltipWindow tips_;
+};
 }  // namespace
+
+bool inOwnTooltips(const juce::Component& component) {
+  for (auto* c = &component; c != nullptr; c = c->getParentComponent())
+    if (c->getProperties().contains(kOwnTooltips)) return true;
+  return false;
+}
+
+juce::String DesktopTooltips::getTipFor(juce::Component& component) {
+  return inOwnTooltips(component) ? juce::String() : juce::TooltipWindow::getTipFor(component);
+}
+
+void giveOwnTooltips(juce::Component& content) {
+  if (!content.getProperties().contains(kOwnTooltips)) new DialogTooltips(content);
+}
 
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
@@ -578,6 +612,7 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     dialog->addComponentListener(new SizeKeeper(kind));
   }
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
+  if (auto* content = dialog->getContentComponent()) giveOwnTooltips(*content);
   return dialog;
 }
 
