@@ -704,6 +704,18 @@ private:
   std::vector<juce::String> codes_;
 };
 
+// The Settings tabs' names in a narrow window. JUCE narrows every tab by the
+// same factor, and a word wider than its tab lost its last letters
+// ("Performanc"). While the tabs do not fit, each gets its longest word, with
+// a name of two words on two lines, and the rest of the bar is shared out as
+// the names would like it.
+class TabNamesLook : public juce::LookAndFeel_V4 {
+public:
+  int getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth) override;
+  // The narrowest the tab can be with every word of its name whole.
+  static int longestWordWidth(juce::TabBarButton& button, int tabDepth);
+};
+
 class SettingsWindow : public juce::Component {
 public:
   // Without a device manager (a plugin) there are no Audio and MIDI tabs.
@@ -726,6 +738,7 @@ private:
   // Settings: the program, the computer and the player's console, the same
   // for every organ. What belongs to one organ -- how it is loaded, its
   // stops, outputs and voicing -- is OrganSettingsWindow.
+  TabNamesLook tabNamesLook_;
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   // The output device and MIDI inputs: the toolbar's Audio window, which is
   // set up once and seldom visited again (#276).
