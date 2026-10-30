@@ -229,6 +229,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "none" = "ninguno"
 "When on" = "Al activarse"
 "When off" = "Al desactivarse"
+"The program sent when the switch goes off" = "El programa que se envía al desactivarse el interruptor"
 "Closed" = "Cerrado"
 "Open" = "Abierto"
 "Nothing is sent yet." = "Todavía no se envía nada."

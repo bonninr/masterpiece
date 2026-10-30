@@ -19529,6 +19529,33 @@ public:
     MP_CHECK(!mp::MidiMap::switchMessage(m.sendsFor(K::Switch, 5)[1], false, out),
              "a negative off value sends nothing");
 
+    // A program change: program 5 when drawn, and program 9 when cancelled
+    // once one is set for off (#485).
+    mp::MidiSend program;
+    program.kind = mp::MidiSourceKind::ProgramChange;
+    program.channel = 2;
+    program.number = 4;
+    MP_CHECK(mp::MidiMap::switchMessage(program, true, out) && out.size == 2 && out.bytes[0] == 0xC1 &&
+                 out.bytes[1] == 4,
+             "drawing it sends its program");
+    MP_CHECK(!mp::MidiMap::switchMessage(program, false, out), "with no off program, cancelling sends nothing");
+    program.offProgram = 8;
+    MP_CHECK(mp::MidiMap::switchMessage(program, false, out) && out.size == 2 && out.bytes[0] == 0xC1 &&
+                 out.bytes[1] == 8,
+             "with one, cancelling sends it");
+    {
+      mp::MidiMap saved;
+      saved.setSendsFor(K::Switch, 7, {program});
+      mp::MidiMap again;
+      MP_CHECK(again.fromText(saved.toText()) && again.sendsFor(K::Switch, 7).size() == 1 &&
+                   again.sendsFor(K::Switch, 7)[0].offProgram == 8,
+               "the off program is saved and read back");
+      program.offProgram = -1;
+      saved.setSendsFor(K::Switch, 7, {program});
+      MP_CHECK(again.fromText(saved.toText()) && again.sendsFor(K::Switch, 7)[0].offProgram == -1,
+               "and a send with none stays without one");
+    }
+
     // A motorised fader that wants 0..100.
     mp::MidiSend fader;
     fader.kind = mp::MidiSourceKind::ControlChange;

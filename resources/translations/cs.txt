@@ -229,6 +229,7 @@ countries: cz
 "none" = "nic"
 "When on" = "Při zapnutí"
 "When off" = "Při vypnutí"
+"The program sent when the switch goes off" = "Program odeslaný při vypnutí spínače"
 "Closed" = "Zavřeno"
 "Open" = "Otevřeno"
 "Nothing is sent yet." = "Zatím se nic neodesílá."

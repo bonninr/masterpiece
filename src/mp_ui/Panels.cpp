@@ -805,11 +805,23 @@ public:
       p.setSwitchEngaged(e_.id, true);
       repaint();
     } else if (!owner_.touch_) {
+      owner_.dragState_ = engaged() ? 0 : 1;
+      owner_.dragOn_ = this;
       toggle();
     }
   }
-  void mouseDrag(const juce::MouseEvent& ev) override { longPress_.moved(ev.getPosition()); }
+  void mouseDrag(const juce::MouseEvent& ev) override {
+    longPress_.moved(ev.getPosition());
+    // One drag across a row of stops draws or retires them all (#637).
+    if (owner_.dragState_ < 0) return;
+    auto* under = dynamic_cast<Cell*>(owner_.getComponentAt(ev.getEventRelativeTo(&owner_).getPosition()));
+    if (under == nullptr || under->e_.kind == PanelElement::Kind::Piston) return;
+    if (std::exchange(owner_.dragOn_, under) == under) return;
+    if (under->engaged() != (owner_.dragState_ == 1)) under->toggle();
+  }
   void mouseUp(const juce::MouseEvent& ev) override {
+    owner_.dragState_ = -1;
+    owner_.dragOn_ = nullptr;
     longPress_.end();
     if (owner_.touch_ && !longPress_.held() && e_.kind != PanelElement::Kind::Piston && !owner_.editing_ &&
         !ev.mods.isPopupMenu() && getLocalBounds().contains(ev.getPosition()))

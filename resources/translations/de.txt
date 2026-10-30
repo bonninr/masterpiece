@@ -229,6 +229,7 @@ countries: de at ch li lu
 "none" = "kein"
 "When on" = "Beim Einschalten"
 "When off" = "Beim Ausschalten"
+"The program sent when the switch goes off" = "Das Programm, das beim Ausschalten gesendet wird"
 "Closed" = "Geschlossen"
 "Open" = "Offen"
 "Nothing is sent yet." = "Es wird noch nichts gesendet."

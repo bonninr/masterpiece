@@ -229,6 +229,7 @@ countries: fr be ca ch lu mc
 "none" = "aucune"
 "When on" = "À l'activation"
 "When off" = "À la désactivation"
+"The program sent when the switch goes off" = "Le programme envoyé à la désactivation"
 "Closed" = "Fermé"
 "Open" = "Ouvert"
 "Nothing is sent yet." = "Rien n'est encore envoyé."

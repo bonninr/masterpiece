@@ -179,9 +179,20 @@ void StopsLoadPanel::build() {
     if (!s.playable) row.toggle->setTooltip(TRANS("This stop's ranks ship no pipes in this sample set"));
     row.toggle->addMouseListener(this, false);
     row.toggle->addKeyListener(this);
-    row.toggle->onClick = [this, clicked = row.toggle.get()] {
+    row.toggle->onClick = [this, clicked = row.toggle.get(), index = static_cast<int>(rows_.size())] {
       // Released over the stop the drag began on: the drag decided.
-      if (dragging_) clicked->setToggleState(dragState_, juce::dontSendNotification);
+      if (dragging_) {
+        clicked->setToggleState(dragState_, juce::dontSendNotification);
+      } else if (juce::ModifierKeys::currentModifiers.isShiftDown() && lastStop_ >= 0) {
+        // Shift-click: every stop shown from the one clicked before to this
+        // one takes this one's new state.
+        const bool state = clicked->getToggleState();
+        for (int i = std::min(lastStop_, index); i <= std::max(lastStop_, index); ++i) {
+          auto& t = *rows_[static_cast<size_t>(i)].toggle;
+          if (t.isEnabled() && t.isVisible()) t.setToggleState(state, juce::dontSendNotification);
+        }
+      }
+      lastStop_ = index;
       applyStopTicks();
     };
     row.size = std::make_unique<juce::Label>();
@@ -232,9 +243,25 @@ void StopsLoadPanel::build() {
             : TRANS("Played by %1").replace("%1", users->second.joinIntoString(", "));
     row.toggle->setTooltip(playedBy);
     row.toggle->getProperties().set("playedBy", playedBy);
-    row.toggle->onClick = [this, rankId] {
-      for (auto& r : ranks_)
-        if (r.rankId == rankId) r.own = r.toggle->getToggleState();
+    row.toggle->addMouseListener(this, false);
+    row.toggle->onClick = [this, index = static_cast<int>(ranks_.size())] {
+      auto& here = ranks_[static_cast<size_t>(index)];
+      if (dragging_) {
+        // Released over the rank the drag began on: the drag decided.
+        here.toggle->setToggleState(dragState_, juce::dontSendNotification);
+      } else if (juce::ModifierKeys::currentModifiers.isShiftDown() && lastRank_ >= 0) {
+        // Shift-click: every rank shown from the one clicked before to this
+        // one takes this one's new state (#565).
+        const bool state = here.toggle->getToggleState();
+        for (int i = std::min(lastRank_, index); i <= std::max(lastRank_, index); ++i) {
+          auto& r = ranks_[static_cast<size_t>(i)];
+          if (!r.toggle->isVisible()) continue;
+          r.toggle->setToggleState(state, juce::dontSendNotification);
+          r.own = state;
+        }
+      }
+      here.own = here.toggle->getToggleState();
+      lastRank_ = index;
       proc_.setExcludedRanks(ranksOut());
       refreshFigures();
     };
@@ -323,14 +350,23 @@ void StopsLoadPanel::mouseDown(const juce::MouseEvent& e) {
   dragging_ = false;
   for (const auto& r : rows_)
     if (e.eventComponent == r.toggle.get()) dragState_ = !r.toggle->getToggleState();
+  for (const auto& r : ranks_)
+    if (e.eventComponent == r.toggle.get()) dragState_ = !r.toggle->getToggleState();
 }
 
 void StopsLoadPanel::mouseDrag(const juce::MouseEvent& e) {
+  // A drag stays in the list it began in: stops, or ranks (#565).
   juce::ToggleButton* source = nullptr;
+  bool onRanks = false;
   for (auto& r : rows_)
     if (e.eventComponent == r.toggle.get()) source = r.toggle.get();
+  for (auto& r : ranks_)
+    if (e.eventComponent == r.toggle.get()) {
+      source = r.toggle.get();
+      onRanks = true;
+    }
   if (source == nullptr) return;
-  // A press that has moved a few pixels is a drag; the stop it began on takes
+  // A press that has moved a few pixels is a drag; the row it began on takes
   // the new state with the rest.
   if (!dragging_) {
     if (e.getDistanceFromDragStart() < 4) return;
@@ -338,6 +374,16 @@ void StopsLoadPanel::mouseDrag(const juce::MouseEvent& e) {
     source->setToggleState(dragState_, juce::dontSendNotification);
   }
   const auto at = e.getEventRelativeTo(&list_).getPosition();
+  if (onRanks) {
+    for (auto& r : ranks_)
+      if (r.toggle->isVisible() && (r.toggle.get() == source || r.toggle->getBounds().contains(at))) {
+        r.toggle->setToggleState(dragState_, juce::dontSendNotification);
+        r.own = dragState_;
+      }
+    proc_.setExcludedRanks(ranksOut());
+    refreshFigures();
+    return;
+  }
   for (auto& r : rows_)
     if (r.toggle->isEnabled() && r.toggle->isVisible() && r.toggle->getBounds().contains(at))
       r.toggle->setToggleState(dragState_, juce::dontSendNotification);
