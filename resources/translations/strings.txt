@@ -218,6 +218,7 @@ countries: gb us
 "none" = "none"
 "When on" = "When on"
 "When off" = "When off"
+"The program sent when the switch goes off" = "The program sent when the switch goes off"
 "Closed" = "Closed"
 "Open" = "Open"
 "Nothing is sent yet." = "Nothing is sent yet."
