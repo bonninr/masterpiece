@@ -692,6 +692,19 @@ void VoiceEngine::noteOffPipe(uint64_t noteId, Id pipeId,
   releaseVoices(noteId, pipeId, release);
 }
 
+bool narrowSampleBuffer(SampleBuffer& buf) {
+  if (buf.pcm24.empty() || !buf.pcm16.empty()) return false;
+  for (const auto& p : buf.pcm24)
+    if (p.b[0] != 0) return false;
+  std::vector<int16_t> counts(buf.pcm24.size());
+  for (size_t i = 0; i < counts.size(); ++i)
+    counts[i] = static_cast<int16_t>(static_cast<uint16_t>(buf.pcm24[i].b[1] | (buf.pcm24[i].b[2] << 8)));
+  buf.pcm16 = std::move(counts);
+  buf.pcmScale = std::ldexp(buf.pcmScale, 8);
+  std::vector<Pcm24>().swap(buf.pcm24);
+  return true;
+}
+
 bool codeSampleBuffer(SampleBuffer& buf) {
   if (buf.coded != nullptr) return true;
   if (buf.numFrames <= 0 || buf.numChannels < 1 || buf.numChannels > kSplitRiceMaxChannels)

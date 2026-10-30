@@ -899,6 +899,7 @@ SampleLibrary::SampleShape SampleLibrary::readShape(const ShapeJob& job) {
     if (readWavPackShape(path, wav) || (!job.wavpack && readWavShape(path, wav))) {
       shape.channels = wav.channels;
       shape.rate = wav.rate;
+      shape.bits = wav.bits;
       shape.frames = wav.dataBytes / std::max(1, wav.channels * wav.bits / 8);
       return shape;
     }
@@ -927,6 +928,12 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
                       : storage_ == SampleStorage::Int24 ? 3.0
                       : storage_ == SampleStorage::Int20 ? 2.5
                                                          : 4.0;
+  // A 16-bit file read at 24 bits is held at 16 (narrowSampleBuffer). Mixed
+  // down to mono, or converted in rate, it usually is not: those keep three.
+  if (storage_ == SampleStorage::Int24 && shape.bits > 0 && shape.bits <= 16 &&
+      (!loadMono_ || shape.channels == 1) &&
+      (loadRate_ <= 0.0 || shape.rate <= 0.0 || std::abs(loadRate_ - shape.rate) <= 1.0))
+    storeBytes = 2.0;
   // Coded, a sample takes a third to a half of its plain size: the half is
   // the estimate, so a set that fits by it fits.
   if (codeSamples_ && (storage_ == SampleStorage::Int16 || storage_ == SampleStorage::Int24))
@@ -1283,7 +1290,9 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
         dropFromFileCache(mp::utf8Of(path));
       }
 
-      // Held compressed, when asked: coded here, on the reading thread.
+      // A 16-bit file read at 24 bits is held at the 16 it has (#676), then
+      // compressed, when asked: both here, on the reading thread.
+      if (ok) narrowSampleBuffer(*buffer);
       if (ok && codeSamples_) codeSampleBuffer(*buffer);
 
       // Against the memory ceiling, before it is kept: the sample that would
@@ -1436,6 +1445,7 @@ SampleLoadReport SampleLibrary::loadAll(const OrganModel& model,
           const bool ok = reader != nullptr &&
                           readInto(*reader, *buffer, maxFramesPerSample, loopSelection, storage_,
                                    loadMono_, loadRate_, releaseIds.count(id) != 0, releaseMaxMs_);
+          if (ok) narrowSampleBuffer(*buffer);
           if (ok && codeSamples_) codeSampleBuffer(*buffer);
           if (ok && progress != nullptr && !progress->charge(buffer->residentBytes())) {
             std::lock_guard<std::mutex> lock(queueMutex);
@@ -2359,6 +2369,8 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
       }
     }
     if (coded != nullptr) buf->coded = std::move(coded);
+    // A cache written before #676 holds 16-bit files at 24 bits.
+    narrowSampleBuffer(*buf);
 
     if (!getPod(is, streams)) return false;
     if (streams) {

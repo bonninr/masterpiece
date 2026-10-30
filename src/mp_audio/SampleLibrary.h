@@ -312,6 +312,7 @@ public:
     int64_t frames = 0;
     int channels = 0;
     double rate = 0.0;
+    int bits = 0;  // the file's own width, 0 when no header was read
     bool releaseOnly = false;
     // Only in the package the organ was opened from: read out of the archive
     // whole, a release included, with no file to stream from (#594).
