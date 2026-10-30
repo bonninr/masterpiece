@@ -40,12 +40,12 @@ The **Resident format** box chooses what one held frame costs.
 
 | Option | Bytes per sample | What it holds |
 |---|---|---|
-| **24-bit - what the samples are** | 3 | The integers of a 24-bit file unchanged. The audio in memory is bit-for-bit what the file holds. |
+| **As recorded - 16 or 24-bit, as each file is** | 3 for a 24-bit file, 2 for a 16-bit file | The integers of the file unchanged, at the file's own width. The audio in memory is bit-for-bit what the file holds. |
 | **20-bit - a sixth less than the source** | 2.5 | Each sample requantised to 20 bits against its own file's peak, packed so two samples take five bytes. |
 | **16-bit - two thirds of that, inaudible** | 2 | Each sample requantised to 16 bits against its own file's peak, so a stop recorded 20 dB down keeps all sixteen bits. The scale folds into the voice gain and costs nothing while playing. |
 | **32-bit float - larger than the source** | 4 | The decoder's floating-point result. One third larger than 24-bit. |
 
-**Default:** 24-bit. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 20`, `storage 24` or `storage 32`).
+**Default:** As recorded. **Takes effect:** at the next load. The settings file stores the width (`storage 16`, `storage 20`, `storage 24` or `storage 32`).
 
 Measured on 60 files chosen at random from Friesach, 24-bit is bit-for-bit identical to the source file, and 16-bit has a signal to quantisation noise ratio of 78.1 dB (median) and 75.2 dB (lowest). Processing runs in 32-bit float whatever the resident format is.
 

@@ -300,6 +300,55 @@ public:
 };
 static CodedBufferTest g_codedBuffer;
 
+// A 16-bit recording read at the default 24 bits is held at the 16 it has,
+// and plays the same to the bit (#676). A 24-bit one, and 16-bit storage, are
+// left as they are.
+class NarrowBufferTest final : public mp::test::Test {
+public:
+  NarrowBufferTest() : Test("functional.samples.sixteen-held-at-sixteen", Category::Functional) {}
+
+  void run() override {
+    for (const int channels : {1, 2}) {
+      const std::string label = std::to_string(channels) + " channels";
+      const auto plain = plainBuffer(Width::Int16In24, 9001, channels, 220.0, 11);
+      auto narrow = plain;
+      MP_CHECK(mp::narrowSampleBuffer(narrow), label + ": narrowed");
+      MP_CHECK(narrow.pcm24.empty() && narrow.pcm16.size() == plain.pcm24.size(),
+               label + ": held as 16-bit counts");
+      MP_CHECK(narrow.pcmScale == plain.pcmScale * 256.0f, label + ": the scale takes the bits back");
+      MP_CHECK(narrow.residentBytes() * 3 <= plain.residentBytes() * 2 + 64,
+               label + ": " + std::to_string(narrow.residentBytes()) + " bytes against " +
+                   std::to_string(plain.residentBytes()));
+      bool all = true;
+      for (int64_t f = 0; f < plain.numFrames && all; ++f)
+        for (int c = 0; c < channels; ++c) all = all && narrow.sample(f, c) == plain.sample(f, c);
+      MP_CHECK(all, label + ": every value reads back the same");
+
+      Playing a, b;
+      a.attack = &plain;
+      b.attack = &narrow;
+      a.ratios = b.ratios = {1.0, 0.749, 1.335};
+      for (const auto isa : units()) {
+        const Played pa = play(a, false, isa);
+        const Played pb = play(b, false, isa);
+        const double worst = worstDifference(pa.out, pb.out);
+        MP_CHECK(rms(pa.out) > 0.01, label + ", " + mp::simd::isaName(isa) + ": the note sounds");
+        MP_CHECK(same(worst), label + ", " + mp::simd::isaName(isa) +
+                                  ": plays what 24-bit plays (worst difference " +
+                                  std::to_string(worst) + ")");
+      }
+    }
+    auto wide = plainBuffer(Width::Int24, 1000, 2, 220.0, 5);
+    const auto wideBytes = wide.residentBytes();
+    MP_CHECK(!mp::narrowSampleBuffer(wide) && !wide.pcm24.empty() && wide.residentBytes() == wideBytes,
+             "a 24-bit recording stays at 24 bits");
+    auto sixteen = plainBuffer(Width::Int16, 1000, 2, 220.0, 5);
+    MP_CHECK(!mp::narrowSampleBuffer(sixteen) && !sixteen.pcm16.empty(),
+             "16-bit storage is left as it is");
+  }
+};
+static NarrowBufferTest g_narrowBuffer;
+
 // A decoder's kept blocks and a window belong to the stream they were decoded
 // from, and to no other stream that later has its address: other frames coded
 // into the same object read as themselves.
@@ -723,6 +772,84 @@ public:
   }
 };
 static CodedCacheTest g_codedCache;
+
+// Loaded at the default width, a 16-bit file is held at 16 bits and a 24-bit
+// one at 24, each bit-for-bit what its file holds, from the files and from
+// the cache (#676).
+class HeldAsRecordedTest final : public mp::test::Test {
+public:
+  HeldAsRecordedTest() : Test("functional.samples.held-as-recorded", Category::Functional) {}
+
+  void run() override {
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("mp_held_as_recorded");
+    root.deleteRecursively();
+    root.createDirectory();
+    const auto cacheDir = root.getChildFile("cache");
+    cacheDir.createDirectory();
+
+    mp::OrganModel model;
+    const int bitsOf[] = {0, 16, 16, 24};
+    const int channelsOf[] = {0, 1, 2, 2};
+    for (int id = 1; id <= 3; ++id) {
+      const auto name = "s" + std::to_string(id) + ".wav";
+      writeWav(root.getChildFile(name), 9600, channelsOf[id], bitsOf[id], 48000.0);
+      mp::SampleRef ref;
+      ref.sampleId = id;
+      ref.fileName = name;
+      model.samples[id] = ref;
+    }
+    const auto load = [&](mp::SampleStorage storage, bool cache) {
+      auto lib = std::make_unique<mp::SampleLibrary>();
+      lib->setLoadThreads(1);
+      lib->setStorage(storage);
+      if (cache) {
+        lib->setCacheDir(cacheDir.getFullPathName().toStdString());
+        lib->setCacheMode(mp::SampleLibrary::CacheMode::Single);
+        lib->setCacheIdentity("held", "stamp");
+      }
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      const auto report = lib->loadAll(model, root.getFullPathName().toStdString(), 0,
+                                       mp::LoopSelection::Longest, &progress);
+      MP_CHECK(report.loaded == 3, "the samples load");
+      return lib;
+    };
+
+    // The decoder's floats, which are exactly what each file holds.
+    const auto exact = load(mp::SampleStorage::Float32, false);
+    const auto check = [&](const mp::SampleLibrary& lib, const std::string& from) {
+      auto of = lib.provider();
+      auto exactOf = exact->provider();
+      for (int id = 1; id <= 3; ++id) {
+        const std::string label = from + ", " + std::to_string(bitsOf[id]) + "-bit " +
+                                  std::to_string(channelsOf[id]) + " channel(s)";
+        const mp::SampleBuffer* b = of(id);
+        const mp::SampleBuffer* e = exactOf(id);
+        MP_CHECK(b != nullptr && e != nullptr, label + ": resident");
+        if (b == nullptr || e == nullptr) continue;
+        if (bitsOf[id] == 16)
+          MP_CHECK(!b->pcm16.empty() && b->pcm24.empty(), label + ": held at 16 bits");
+        else
+          MP_CHECK(!b->pcm24.empty() && b->pcm16.empty(), label + ": held at 24 bits");
+        bool all = b->numFrames == e->numFrames;
+        for (int64_t f = 0; f < b->numFrames && all; ++f)
+          for (int c = 0; c < b->numChannels; ++c) all = all && b->sample(f, c) == e->sample(f, c);
+        MP_CHECK(all, label + ": bit-for-bit what the file holds");
+      }
+    };
+
+    const auto first = load(mp::SampleStorage::Int24, true);
+    check(*first, "from the files");
+    first->finishCacheWrite(false);
+    const auto second = load(mp::SampleStorage::Int24, true);
+    MP_CHECK(second->cacheBytesRead() > 0, "the second load reads the cache");
+    check(*second, "from the cache");
+    second->finishCacheWrite(false);
+    root.deleteRecursively();
+  }
+};
+static HeldAsRecordedTest g_heldAsRecorded;
 
 #endif  // MP_TEST_HAS_AUDIO
 

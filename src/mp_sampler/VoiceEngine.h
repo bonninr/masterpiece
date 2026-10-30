@@ -266,6 +266,13 @@ struct SampleBuffer {
 // left as it was, for any other storage or when the coding fails.
 bool codeSampleBuffer(SampleBuffer& buf);
 
+// A 16-bit recording held at 24 bits, moved to 16-bit counts: every value
+// has eight zero bits under it, so the counts shift down by eight and the
+// scale takes the factor back. A power of two scales a float exactly, so what
+// plays is the same to the bit, in two thirds of the memory (#676). False,
+// and the buffer left as it was, for anything else.
+bool narrowSampleBuffer(SampleBuffer& buf);
+
 // How the engine gets at audio. Returns nullptr when a sample is not resident
 // (still streaming in, or missing on disk) — the voice then stays silent
 // rather than the engine blocking or faulting.

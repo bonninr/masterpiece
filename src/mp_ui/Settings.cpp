@@ -163,8 +163,8 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   // Named for what they do, not for a machine they suit. The figures that
   // actually decide whether one fits are in the readout below the controls,
   // measured on the organ in front of you rather than assumed.
-  profile_.addItem(TRANS("Best: 24-bit, all in memory"), 1);
-  profile_.addItem(TRANS("High: 24-bit, compressed, releases streamed"), 2);
+  profile_.addItem(TRANS("Best: as recorded, all in memory"), 1);
+  profile_.addItem(TRANS("High: as recorded, compressed, releases streamed"), 2);
   profile_.addItem(TRANS("Recommended: 16-bit, releases streamed"), 3);
   profile_.addItem(TRANS("Compact: 16-bit, compressed, releases streamed"), 4);
   profile_.addItem(TRANS("Small: 16-bit mono, compressed, releases streamed"), 5);
@@ -196,7 +196,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(storageLabel_);
   styleLabel(storageLabel_, TRANS("Resident format"));
   addAndMakeVisible(storage_);
-  storage_.addItem(TRANS("24-bit - what the samples are"), 1);
+  storage_.addItem(TRANS("As recorded - 16 or 24-bit, as each file is"), 1);
   storage_.addItem(TRANS("20-bit - a sixth less than the source"), 4);
   storage_.addItem(TRANS("16-bit - two thirds of that, inaudible"), 2);
   storage_.addItem(TRANS("32-bit float - larger than the source"), 3);
@@ -900,7 +900,7 @@ void EnginePanel::timerCallback() {
   const juce::String format = fmt == SampleStorage::Int16     ? juce::String("16-bit")
                               : fmt == SampleStorage::Int20   ? juce::String("20-bit")
                               : fmt == SampleStorage::Float32 ? TRANS("32-bit float")
-                                                              : juce::String("24-bit");
+                                                              : TRANS("as recorded");
   juce::String text = TRANS("Resident samples: %1 MB (%2 samples, %3, %4%5)")
                           .replace("%1", juce::String(bytes / (1024 * 1024)))
                           .replace("%2", juce::String(proc_.sampleLibrary().residentCount()))
@@ -3555,7 +3555,7 @@ juce::String diagnosticsReport(MasterpieceProcessor& p) {
   row(0, juce::String("Samples kept as ") +
              (storage == SampleStorage::Int16   ? "16-bit"
               : storage == SampleStorage::Int20 ? "20-bit"
-              : storage == SampleStorage::Int24 ? "24-bit"
+              : storage == SampleStorage::Int24 ? "as recorded (16 or 24-bit)"
                                                 : "32-bit float") +
              ", memory limit " +
              (p.memoryLimitSettingMB() > 0 ? juce::String(p.memoryLimitSettingMB()) + " MB" : juce::String("not set")) +
