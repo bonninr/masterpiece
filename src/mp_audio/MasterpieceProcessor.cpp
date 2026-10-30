@@ -8331,6 +8331,7 @@ juce::Array<juce::File> MasterpieceProcessor::openPackagedOrgan(const juce::File
     juce::Logger::writeToLog("archive: reading the file lists");
     const auto progress = [this](double fraction) {
       loadProgress_.archiveFraction.store(fraction, std::memory_order_relaxed);
+      loadProgress_.waitWhileHeld();
       return !loadProgress_.isCancelled();
     };
     loadProgress_.beginPhase(LoadProgress::Phase::ReadingArchive);

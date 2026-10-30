@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <thread>
 
 namespace mp {
 
@@ -106,6 +107,15 @@ struct LoadProgress {
   }
 
   bool isCancelled() const { return cancelled.load(std::memory_order_acquire); }
+
+  // Set while the program is in the background on iOS, which ends an app
+  // that keeps a processor busy there (#650). The loader's loops wait at
+  // their next item until it clears or the load is cancelled.
+  std::atomic<bool> held{false};
+  void waitWhileHeld() const {
+    while (held.load(std::memory_order_acquire) && !isCancelled())
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
 
   // A memory ceiling for the samples of this load, in bytes; 0 is none. The
   // loader charges each sample as it lands, and the first one that takes the

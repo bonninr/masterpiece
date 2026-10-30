@@ -1053,11 +1053,21 @@ public:
   // without calling shutdown(): to the crash guard that looked like a crash,
   // and the organ was not reopened. In the background the session counts as
   // ended cleanly; in front again, as running.
+  //
+  // iOS also ends an app that keeps a processor busy in the background
+  // (80% over a minute): a load left running there was ended part way (#650).
+  // The load waits in the background and goes on in front again.
   void suspended() override {
     if (mp::ui::kMobile && proc_) proc_->clearRunningOrgan();
+   #if JUCE_IOS
+    if (proc_) proc_->holdLoad(true);
+   #endif
   }
   void resumed() override {
     if (mp::ui::kMobile && proc_) proc_->markRunningOrgan();
+   #if JUCE_IOS
+    if (proc_) proc_->holdLoad(false);
+   #endif
   }
 
   // Android's back button closes the panel in front, as Escape does on a
