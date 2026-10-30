@@ -93,7 +93,7 @@ private:
   void showFasterUnit();
   void showRealtimeUnit();
   void layoutFooter(juce::Rectangle<int> footer);
-  // Shows the rows of this part, fewer in Simple mode (View > Display mode).
+  // Shows the rows of this part, fewer in Simple mode (General > Display mode).
   void applyPart();
 
   MasterpieceProcessor& proc_;
@@ -114,7 +114,7 @@ private:
   bool openCompress_ = false;
   // Whether the program couplers are offered. Off by default.
   bool openProgramCouplers_ = false;
-  juce::ToggleButton programCouplers_{TRANS("Program couplers")};
+  juce::ToggleButton programCouplers_{TRANS("Extra couplers")};
   double openRate_ = 0.0;
   SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
   int openReleaseMs_ = 0;
@@ -192,6 +192,10 @@ private:
   juce::TextButton packageDirClear_{TRANS("Clear")};
   std::unique_ptr<juce::FileChooser> packageDirChooser_;
   void showPackageDir();
+  // Simple or Advanced, first on the General tab: it decides what every
+  // settings tab shows (#634).
+  juce::Label displayModeLabel_;
+  juce::ComboBox displayMode_;
   juce::Label organRootLabel_;
   juce::Label organRootValue_;
   juce::TextButton organRootChoose_{TRANS("Choose...")};
@@ -631,6 +635,7 @@ private:
   juce::ToggleButton osc_{TRANS("Answer the same requests over OSC")};
   juce::TextEditor port_, token_, oscPort_;
   juce::TextButton open_{TRANS("Open in the browser")};
+  bool shownSimple_ = false;
 };
 
 class DisplayPanel : public juce::Component, private juce::Timer {
@@ -673,6 +678,8 @@ private:
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   juce::ComboBox language_;
+  // Said on the tab, as well as in the tooltip (#634).
+  juce::Label note_;
   // The codes behind the list, by item id minus 3. Ids 1 and 2 are the system
   // default and English.
   std::vector<juce::String> codes_;

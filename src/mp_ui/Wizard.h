@@ -6,7 +6,7 @@
 // knows their rig should not be made to click through it:
 //
 //   0. Simple or Advanced      how many settings the menus show; switched
-//                              later under View > Display mode
+//                              later under Settings > General > Display mode
 //   1. the audio device        nothing is audible without one
 //   2. the MIDI input          and which channel plays which manual, which no
 //                              organ file can guess
@@ -21,6 +21,7 @@
 
 #include "../mp_audio/MasterpieceProcessor.h"
 
+#include <array>
 #include <functional>
 #include <memory>
 
@@ -64,6 +65,12 @@ private:
   juce::Label midiHeading_;
   std::vector<std::unique_ptr<juce::ToggleButton>> midiInputs_;
   juce::Label midiNone_;
+  // The channel each keyboard comes in on, for every organ with none saved:
+  // the same setting as Settings > MIDI > Default channels (#679).
+  static constexpr int kRoles = 6;
+  juce::Label channelsHeading_;
+  std::array<juce::Label, kRoles> roleLabels_;
+  std::array<juce::ComboBox, kRoles> roleChannels_;
   juce::TextButton openOrgan_{TRANS("Choose an organ...")};
   juce::Label organStatus_;
 

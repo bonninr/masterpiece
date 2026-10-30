@@ -1,5 +1,5 @@
 // Every checkbox on Organ settings > Loading starts at the panel's left edge
-// (#565). "Program couplers" sat in the drop-down column, and "Hold samples
+// (#565). "Program couplers" (now "Extra couplers") sat in the drop-down column, and "Hold samples
 // compressed" and "Real-time render threads" in the right half of rows they
 // shared, so a player reading down the tab missed all three.
 #include "MpTest.h"
@@ -86,12 +86,12 @@ public:
       MP_CHECK(box->getX() == left || box->getX() == left + kIndent,
                "\"" + text + "\" starts at x " + std::to_string(box->getX()) + ", the checkboxes at " +
                    std::to_string(left) + " or one step in");
-      if (text == "Program couplers") couplers = true;
+      if (text == "Extra couplers") couplers = true;
       if (text == "Lossless compression in memory") compressed = true;
     }
     MP_CHECK(indented > 0 && indented < boxes, "some checkboxes sit under the preset, the rest at the edge");
     MP_CHECK(boxes >= 10, "the Loading tab has its checkboxes");
-    MP_CHECK(couplers, "Program couplers is on the tab");
+    MP_CHECK(couplers, "Extra couplers is on the tab");
     MP_CHECK(compressed, "Lossless compression in memory is on the tab");
 
     // Rows were added: nothing runs into its neighbour or under the buttons.

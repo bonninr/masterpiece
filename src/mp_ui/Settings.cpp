@@ -31,6 +31,20 @@ void styleLabel(juce::Label& l, const juce::String& text) {
   l.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
 }
 
+// A rank as the Outputs and Voicing tabs name it (#634): its name, with its
+// number in the definition only where another rank has the same name, and
+// the number alone where it has none.
+juce::String rankTitle(const OrganModel& m, Id rankId) {
+  const auto it = m.ranks.find(rankId);
+  const juce::String number(static_cast<int>(rankId));
+  if (it == m.ranks.end() || it->second.name.empty()) return number;
+  int same = 0;
+  for (const auto& [id, r] : m.ranks)
+    if (r.name == it->second.name) ++same;
+  const juce::String name(it->second.name);
+  return same > 1 ? name + " (" + number + ")" : name;
+}
+
 void styleNote(juce::Label& l, const juce::String& text) {
   l.setText(text, juce::dontSendNotification);
   l.setColour(juce::Label::textColourId, juce::Colours::grey);
@@ -415,8 +429,20 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   // from the definition's path; a set whose folders are linked in from
   // another tree can leave that path pointing nowhere near the audio, and
   // then only the player knows. Takes effect the next time it loads.
+  addAndMakeVisible(displayModeLabel_);
+  styleLabel(displayModeLabel_, TRANS("Display mode"));
+  addAndMakeVisible(displayMode_);
+  displayMode_.addItem(TRANS("Simple"), 1);
+  displayMode_.addItem(TRANS("Advanced"), 2);
+  displayMode_.setTooltip(TRANS("Simple: the main settings, with presets. Advanced: every setting."));
+  displayMode_.onChange = [this] {
+    const bool simple = displayMode_.getSelectedId() == 1;
+    if (simple != proc_.simpleMode()) proc_.setSimpleMode(simple);
+  };
+
   addAndMakeVisible(organRootLabel_);
   styleLabel(organRootLabel_, TRANS("Organ folder"));
+  organRootLabel_.setTooltip(TRANS("Folder holding this organ's OrganInstallationPackages"));
   addAndMakeVisible(organRootValue_);
   organRootValue_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   showOrganRoot();
@@ -1155,20 +1181,20 @@ void EnginePanel::applyPart() {
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
                    &releaseLengthLabel_, &releaseLength_, &releaseCutoffLabel_, &releaseCutoff_,
                    &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
-                   &programCouplers_, &portable_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
+                   &programCouplers_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                   &organRootDefault_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List organSimple{&profileLabel_, &profile_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List performance{&performanceLabel_, &performance_, &faster_, &realtime_, &everyProcessor_,
                          &memLimitLabel_, &memLimit_, &polyphonyLabel_, &polyphony_};
   const List performanceSimple{&performanceLabel_, &performance_};
-  const List general{&reopen_, &loadTicks_, &organRootLabel_, &organRootValue_, &organRootChoose_,
-                     &organRootDefault_, &cacheDirLabel_, &cacheDirValue_, &cacheDirChoose_,
-                     &cacheDirDefault_, &cacheDelete_, &packageDirLabel_, &packageDirValue_,
-                     &packageDirChoose_, &packageDirClear_, &cacheLabel_, &cache_, &cacheWhenLabel_,
-                     &cacheWhen_};
+  const List general{&displayModeLabel_, &displayMode_, &reopen_, &loadTicks_, &cacheDirLabel_,
+                     &cacheDirValue_, &cacheDirChoose_, &cacheDirDefault_, &cacheDelete_, &packageDirLabel_,
+                     &packageDirValue_, &packageDirChoose_, &packageDirClear_, &cacheLabel_, &cache_,
+                     &cacheWhenLabel_, &cacheWhen_};
   // The cache's choices too: the first load of a large organ waits on it (#565).
-  const List generalSimple{&reopen_, &organRootLabel_, &organRootValue_, &organRootChoose_,
-                           &organRootDefault_, &cacheLabel_, &cache_, &cacheWhenLabel_,
-                           &cacheWhen_};
+  const List generalSimple{&displayModeLabel_, &displayMode_, &reopen_, &cacheLabel_, &cache_,
+                           &cacheWhenLabel_, &cacheWhen_};
+  displayMode_.setSelectedId(simple ? 1 : 2, juce::dontSendNotification);
   const List& mine = part_ == Part::Organ ? organ : part_ == Part::Performance ? performance : general;
   const List& few = part_ == Part::Organ ? organSimple
                     : part_ == Part::Performance ? performanceSimple
@@ -1265,6 +1291,7 @@ void EnginePanel::resized() {
   pair(releaseBufferLabel_, releaseBuffer_, 300);
   line(programCouplers_);
   line(portable_);
+  folder(organRootLabel_, organRootValue_, {{&organRootChoose_, 90}, {&organRootDefault_, 80}});
   // The cache note's row is kept while the organ's rows show, so nothing
   // jumps when it appears.
   if (part_ == Part::Organ && !proc_.simpleMode()) rebuildNote_.setBounds(r.removeFromTop(kRow));
@@ -1285,11 +1312,12 @@ void EnginePanel::resized() {
   if (performance_.isVisible()) r.removeFromTop(kGap);
   pair(memLimitLabel_, memLimit_, 300);
 
-  // General: start, folders and the cache, for every organ.
+  // General: the display mode, start, folders and the cache, for every organ.
+  pair(displayModeLabel_, displayMode_, 300);
+  if (displayMode_.isVisible()) r.removeFromTop(kGap);
   line(reopen_);
   line(loadTicks_);
   if (reopen_.isVisible()) r.removeFromTop(4);
-  folder(organRootLabel_, organRootValue_, {{&organRootChoose_, 90}, {&organRootDefault_, 80}});
   folder(cacheDirLabel_, cacheDirValue_, {{&cacheDirChoose_, 90}, {&cacheDirDefault_, 80}, {&cacheDelete_, 130}});
   folder(packageDirLabel_, packageDirValue_, {{&packageDirChoose_, 90}, {&packageDirClear_, 80}});
   pair(cacheLabel_, cache_, 300);
@@ -2801,13 +2829,8 @@ void VoicingPanel::refresh() {
   rank_.clear(juce::dontSendNotification);
   for (const auto& [id, r] : proc_.organModel().ranks) rankIds_.push_back(id);
   std::sort(rankIds_.begin(), rankIds_.end());
-  for (size_t i = 0; i < rankIds_.size(); ++i) {
-    const auto it = proc_.organModel().ranks.find(rankIds_[i]);
-    juce::String name = juce::String(static_cast<int>(rankIds_[i]));
-    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
-      name << "  " << juce::String(it->second.name);
-    rank_.addItem(name, static_cast<int>(i) + 1);
-  }
+  for (size_t i = 0; i < rankIds_.size(); ++i)
+    rank_.addItem(rankTitle(proc_.organModel(), rankIds_[i]), static_cast<int>(i) + 1);
   if (!rankIds_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
   divisionIds_.clear();
   division_.clear(juce::dontSendNotification);
@@ -3377,11 +3400,8 @@ void MixerPanel::refresh() {
 
   for (Id rankId : rankIds_) {
     auto label = std::make_unique<juce::Label>();
-    const auto it = proc_.organModel().ranks.find(rankId);
-    juce::String name = juce::String(static_cast<int>(rankId));
-    if (it != proc_.organModel().ranks.end() && !it->second.name.empty())
-      name << "  " << juce::String(it->second.name);
-    styleLabel(*label, name);
+    styleLabel(*label, rankTitle(proc_.organModel(), rankId));
+    label->setTooltip(TRANS("Rank %1").replace("%1", juce::String(static_cast<int>(rankId))));
     rankHolder_.addAndMakeVisible(*label);
     rankLabels_.push_back(std::move(label));
 
@@ -3764,18 +3784,27 @@ void RemotePanel::apply() {
 void RemotePanel::timerCallback() {
   status_.setText(proc_.remoteStatus ? proc_.remoteStatus() : juce::String(), juce::dontSendNotification);
   open_.setEnabled(proc_.remoteSettings().enabled);
+  if (proc_.simpleMode() != shownSimple_) resized();
 }
 
 void RemotePanel::resized() {
+  // Simple mode keeps the web console in the browser; quitting from the
+  // network, MIDI and OSC are for Advanced (#634).
+  shownSimple_ = proc_.simpleMode();
+  for (juce::Component* c : std::initializer_list<juce::Component*>{&power_, &local_, &sysex_, &osc_, &oscPort_,
+                                                                     &oscPortLabel_})
+    c->setVisible(!shownSimple_);
   auto r = getLocalBounds().reduced(16);
   heading_.setBounds(r.removeFromTop(28));
   r.removeFromTop(6);
   enable_.setBounds(r.removeFromTop(28));
   write_.setBounds(r.removeFromTop(28));
-  power_.setBounds(r.removeFromTop(28));
-  local_.setBounds(r.removeFromTop(28));
-  sysex_.setBounds(r.removeFromTop(28));
-  {
+  if (!shownSimple_) {
+    power_.setBounds(r.removeFromTop(28));
+    local_.setBounds(r.removeFromTop(28));
+    sysex_.setBounds(r.removeFromTop(28));
+  }
+  if (!shownSimple_) {
     auto oscRow = r.removeFromTop(28);
     oscPort_.setBounds(oscRow.removeFromRight(90).reduced(0, 2));
     oscPortLabel_.setBounds(oscRow.removeFromRight(50));
@@ -3944,6 +3973,9 @@ LanguagePanel::LanguagePanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(language_);
   language_.setTooltip(TRANS("The language changes the next time Masterpiece starts. Names of "
                               "organs, stops and pages stay as the organ gives them."));
+  addAndMakeVisible(note_);
+  note_.setText(TRANS("Applies at the next start."), juce::dontSendNotification);
+  note_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
   language_.addItem(TRANS("System default"), 1);
   language_.addItem("English", 2);
   // Each language is named in itself, so a player who cannot read the current
@@ -3969,6 +4001,8 @@ void LanguagePanel::resized() {
   auto r = getLocalBounds().reduced(16);
   heading_.setBounds(r.removeFromTop(kRow));
   language_.setBounds(r.removeFromTop(kRow).removeFromLeft(260).reduced(0, 1));
+  r.removeFromTop(4);
+  note_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
 }
 
@@ -3994,6 +4028,8 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
       general_(p, EnginePanel::Part::General), favourites_(p), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
+  // General first: its display mode decides what every other tab shows.
+  tabs_.addTab(TRANS("General"), bg, &generalScroll_, false);
   // Without a device manager -- a plugin, whose host owns the audio device
   // and the MIDI ports -- the Audio and MIDI tabs are left out.
   if (devices != nullptr) {
@@ -4006,7 +4042,6 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
   }
   tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
-  tabs_.addTab(TRANS("General"), bg, &generalScroll_, false);
   tabs_.addTab(TRANS("Reverb"), bg, &reverb_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);

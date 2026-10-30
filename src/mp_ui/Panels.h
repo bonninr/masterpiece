@@ -169,7 +169,9 @@ private:
   // state shown lags a moment behind a change.
   const juce::Component* dragOn_ = nullptr;
 
-  juce::OwnedArray<juce::TextButton> sectionButtons_;
+  // Tick boxes: each shows or hides its section, and read as switches where
+  // buttons were taken for tabs (#634).
+  juce::OwnedArray<juce::ToggleButton> sectionButtons_;
   juce::TextButton edit_{TRANS("Edit")}, save_{TRANS("Save")}, detach_{TRANS("Detach")}, rename_{TRANS("Rename")};
   juce::ComboBox scheme_;
   juce::Viewport viewport_;
