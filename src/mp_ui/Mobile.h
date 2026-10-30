@@ -116,6 +116,20 @@ constexpr bool kLiveOnTop = true;
 // screen on a phone or tablet. Every dialog opens through here.
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
 
+// The tooltips of the main window and the windows beside it. JUCE raises a
+// modal dialog over any other window brought to the front, a tooltip's too,
+// so a tip shown on the desktop came up behind the dialog it belonged to.
+// launchDialog gives each dialog tooltips of its own, drawn inside it, and
+// these leave that dialog's controls to them.
+class DesktopTooltips : public juce::TooltipWindow {
+public:
+  DesktopTooltips() : juce::TooltipWindow(nullptr, 700) {}
+  juce::String getTipFor(juce::Component& component) override;
+};
+
+// Gives a dialog's content tooltips of its own, which go with it.
+void giveOwnTooltips(juce::Component& content);
+
 // macOS: an open or save panel hides while another program is in front, and
 // comes back with this one (#492; MacWindows.mm). The application calls it
 // once at startup; a plug-in leaves the host's panels alone. Nothing elsewhere.

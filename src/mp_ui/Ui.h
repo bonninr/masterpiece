@@ -23,6 +23,7 @@
 #include "ScorePanel.h"
 #endif
 #include "Icons.h"
+#include "Mobile.h"
 #include "UpdateCheck.h"
 
 #include <memory>
@@ -454,8 +455,8 @@ private:
   void toggleProgramCouplers();
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
-  // window's are shown too.
-  juce::TooltipWindow tooltips_{nullptr, 700};
+  // window's are shown too. A dialog shows its own (DesktopTooltips).
+  DesktopTooltips tooltips_;
   // Opens and closes the combinations window: the player's own pistons, on
   // every organ, floating beside the console rather than drawn over it.
 
