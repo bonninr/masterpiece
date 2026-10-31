@@ -163,6 +163,7 @@ private:
   PanelLayout layout_, saved_;
   std::vector<PanelSection> sections_;
   bool editing_ = false;
+  bool relayingOut_ = false;  // layoutSections, once more for a view that changed
   bool touch_ = touchInput();
   // A drag that began on a stop or switch: each one it passes over is set the
   // way the first went (1 on, 0 off, -1 no drag).

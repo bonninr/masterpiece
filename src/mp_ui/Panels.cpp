@@ -1288,7 +1288,19 @@ void PanelView::layoutSections() {
     }
     x += columnW;
   }
-  body_.setSize(std::max(x, viewW), std::max(tallest, viewport_.getMaximumVisibleHeight()));
+  const int viewH = viewport_.getMaximumVisibleHeight();
+  body_.setSize(std::max(x, viewW), std::max(tallest, viewH));
+  // The new size can bring a scroll bar or take one away, and with it the
+  // view the sizes were worked out for: leaving edit mode, the panel was laid
+  // out once more beside a scroll bar that was going. Once more for the view
+  // it has now.
+  if (!relayingOut_ &&
+      (viewport_.getMaximumVisibleWidth() != viewW || viewport_.getMaximumVisibleHeight() != viewH)) {
+    relayingOut_ = true;
+    layoutSections();
+    relayingOut_ = false;
+    return;
+  }
   repaint();
 }
 
