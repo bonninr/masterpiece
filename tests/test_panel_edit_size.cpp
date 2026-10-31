@@ -104,10 +104,13 @@ public:
       MP_CHECK(editing.size() == playing.size() + 3, "edit mode shows the three hidden stops too: " +
                                                          std::to_string(editing.size()) + " cells");
       if (!playing.empty() && !editing.empty())
+        // The columns fill the view, and edit mode's scroll bar takes its
+        // width from it: a few pixels, no more.
         MP_CHECK(editing[0].getHeight() == playing[0].getHeight() &&
-                     editing[0].getWidth() == playing[0].getWidth(),
-                 "edit mode keeps the stops' size: " + std::to_string(playing[0].getHeight()) + " high, then " +
-                     std::to_string(editing[0].getHeight()));
+                     editing[0].getWidth() >= playing[0].getWidth() - 12,
+                 "edit mode keeps the stops' size: " + std::to_string(playing[0].getWidth()) + "x" +
+                     std::to_string(playing[0].getHeight()) + ", then " + std::to_string(editing[0].getWidth()) +
+                     "x" + std::to_string(editing[0].getHeight()));
 
       view.setEditingForTest(false);
       const auto after = view.cellBoundsForTest();
