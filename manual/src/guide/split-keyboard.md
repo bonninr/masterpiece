@@ -1,6 +1,6 @@
 # Split keyboard
 
-The split keyboard plays a whole organ from one keyboard. It divides the keyboard into up to four zones, sends each zone to a manual or the pedal, transposes each zone, can take a pedal bass from the lowest key the left hand holds, and can move the dividing point to follow the hands. This page covers the window, every field in it, the presets, the MIDI controls that switch the split and its presets, and the files that hold the settings.
+The split keyboard plays a whole organ from one keyboard. It divides the keyboard into up to four zones, sends each zone to a manual or the pedal, transposes each zone, can take a pedal bass from the lowest key the left hand holds and a solo melody from the highest key the right hand holds, and can move the dividing point to follow the hands. This page covers the window, every field in it, the presets, the MIDI controls that switch the split and its presets, and the files that hold the settings.
 
 Open the window with **View > Split keyboard**. The window can stay open or be closed; closing it hides it and the split carries on.
 
@@ -79,7 +79,7 @@ An organ with no saved layout starts from preset 2.
 | **Save as...** | Opens a dialog titled **Save as a preset**: **Name** (default `My layout`) and **Slot** (4 to 9, with the name of any preset already there). The first free slot is offered, otherwise the preset recalled, otherwise slot 4. **Save** replaces the preset in the slot with the organ's current layout and marks it as the preset in use. **Cancel** leaves everything as it was. |
 | **Delete** | Empties the slot of the preset in use. Enabled only when that preset is in slot 4 to 9. |
 
-A preset holds the layout: split points, zones, **Transpose all**, the follow option and the bass settings. It leaves out the on/off state, the keyboard, the manual assignments and the MIDI controls. Recalling a preset copies it, so a later edit of the organ's layout leaves the preset as saved, and the preset highlight goes out. The presets are saved in `split-keyboard.txt`.
+A preset holds the layout: split points, zones, **Transpose all**, the follow option, the bass and the melody settings. It leaves out the on/off state, the keyboard, the manual assignments and the MIDI controls. Recalling a preset copies it, so a later edit of the organ's layout leaves the preset as saved, and the preset highlight goes out. The presets are saved in `split-keyboard.txt`.
 
 ### The keyboard picture
 
@@ -88,6 +88,7 @@ The picture shows 88 keys, A0 to C8, whatever the real keyboard has. Each zone h
 - **Drag a handle** to move a split point. A handle stops before the neighbouring split point.
 - While the split is on, the keys that are held light in the colour of the zone they went to.
 - With bass from the hands on, an amber line under the keys marks the bass range, and a black dot on a key marks the note the pedal is sounding.
+- With melody from the hands on, a blue line under the keys marks the melody range, and a black dot on a key marks the note the solo is sounding.
 - While the split is on, the first handle shows where the split point is at the moment, which differs from the set point when the first split follows the hands.
 
 ### Zones
@@ -132,6 +133,20 @@ The lowest key held in the bass range plays the pedal as well, one pedal note at
 When the lowest key changes, the previous pedal note ends and the new one starts. When the lowest key is released while another key in the range is held, the pedal passes to the lowest key still held and is struck again. A bass held after the hand lifts ends with the next bass note.
 
 The four bass fields are dimmed while the bass is off.
+
+### Melody from the hands
+
+The highest key held in the melody range plays the solo as well, one solo note at a time: the top note of a chord carries the melody on a manual of its own. The solo note is the key plus **Transpose all**; the octave and semitone fields of zones do not apply to it. The note goes to the Solo role (channel 13).
+
+| Name | What it does | Default | Range or options |
+|---|---|---|---|
+| **The highest key held plays the solo** | Switches the melody on. | Off | On, off |
+| **From this key to the top** | The melody range runs from this key up to note 127. With the bass on too, the range starts above the bass range. | C4 (60) | 0 to 127, shown as a note name |
+| **The melody key also plays its manual** | On: the melody key sounds on its manual and the solo. Off: the melody key sounds on the solo only. When the melody key is no longer the highest and is still held, it plays its manual from then on. | On | On, off |
+
+When the highest key changes, the previous solo note ends and the new one starts. When the highest key is released while another key in the range is held, the solo passes to the highest key still held and is struck again. The solo note ends when no key in the range is held.
+
+The two melody fields are dimmed while the melody is off.
 
 ### Manuals on this organ
 
@@ -198,6 +213,7 @@ preset 1
 | `zone` | The zone (0 to 3), the role, the second role (`none`, `lower`, `upper`, `solo`, `pedal`), octaves, semitones |
 | `transpose`, `follow` | **Transpose all**; 1 when the first split follows the hands |
 | `bass` | On (1 or 0), top key, also on the manual (1 or 0), sustain (`off`, `next`, `timed`), time in ms |
+| `melody` | On (1 or 0), bottom key, also on the manual (1 or 0) |
 | `preset` | The slot the layout was recalled from (1 to 9), when there is one |
 
 A line the program does not know is skipped, and a value out of range is brought into range when the file is read: split points sorted and kept between notes 1 and 127, octaves between -3 and 3, semitones between -12 and 12, the hold time between 50 and 10000 ms.
