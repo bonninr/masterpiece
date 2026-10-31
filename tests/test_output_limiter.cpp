@@ -9,11 +9,13 @@
 
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_audio/OutputLimiter.h"
+#include "../src/mp_audio/OutputCompressor.h"
 #include "../src/mp_audio/BassManager.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -288,7 +290,8 @@ struct Keep {
 // The engine's output, block by block, with the limiter as told.
 std::vector<float> render(const juce::File& odf, bool limiterOn, float ceilingDb,
                           float masterGain,
-                          juce::AudioProcessor::WrapperType as = juce::AudioProcessor::wrapperType_Undefined) {
+                          juce::AudioProcessor::WrapperType as = juce::AudioProcessor::wrapperType_Undefined,
+                          const std::function<void(mp::MasterpieceProcessor&)>& setUp = {}) {
   // The way a plugin wrapper makes the processor, so it knows it is a plugin.
   juce::AudioProcessor::setTypeOfNextNewPlugin(as);
   mp::MasterpieceProcessor proc;
@@ -305,6 +308,7 @@ std::vector<float> render(const juce::File& odf, bool limiterOn, float ceilingDb
   // of its own.
   proc.limiter().setCeilingDb(ceilingDb);
   proc.limiter().setEnabled(limiterOn);
+  if (setUp) setUp(proc);
 
   juce::AudioBuffer<float> buffer(2, 256);
   juce::MidiBuffer on;
@@ -621,6 +625,193 @@ public:
 };
 static BassProcessorTest g_bassProcessor;
 
+// ------------------------------------------------------- the compressor alone
+
+// The level of the last tenth of a channel, as a peak in dBFS.
+double tailPeakDb(const std::vector<float>& v) {
+  float peak = 0.0f;
+  for (size_t i = v.size() - v.size() / 10; i < v.size(); ++i) peak = std::max(peak, std::fabs(v[i]));
+  return db(std::max(peak, 1.0e-9f));
+}
+
+// A compressor with the settings a test gives, the detector unfiltered
+// unless the test says.
+void configure(mp::OutputCompressor& c, float thresholdDb, float ratio, float makeupDb, int highPassHz = 0) {
+  c.prepare(kRate);
+  c.setThresholdDb(thresholdDb);
+  c.setRatio(ratio);
+  c.setAttackMs(5.0f);
+  c.setReleaseMs(200.0f);
+  c.setMakeupDb(makeupDb);
+  c.setDetectorHighPassHz(highPassHz);
+}
+
+// Off: the samples come out exactly as they went in.
+class CompressorOffTest final : public mp::test::Test {
+public:
+  CompressorOffTest() : Test("functional.compressor.off", Category::Functional) {}
+  void run() override {
+    const int frames = 4096;
+    mp::OutputCompressor c;
+    configure(c, -30.0f, 4.0f, 12.0f);
+    auto left = sine(440.0, 0.7, frames);
+    auto right = sine(660.0, 0.5, frames);
+    const auto left0 = left;
+    const auto right0 = right;
+    float* channels[2] = {left.data(), right.data()};
+    c.process(channels, 2, frames);
+    MP_CHECK(std::memcmp(left0.data(), left.data(), frames * sizeof(float)) == 0 &&
+                 std::memcmp(right0.data(), right.data(), frames * sizeof(float)) == 0,
+             "off: both channels are untouched");
+    MP_CHECK(c.blocksProcessed() == 0, "off: no block was processed");
+  }
+};
+
+// A level over the threshold comes out over it by a share set by the ratio:
+// 18 dB over at 3:1 comes out 6 dB over.
+class CompressorRatioTest final : public mp::test::Test {
+public:
+  CompressorRatioTest() : Test("functional.compressor.ratio", Category::Functional) {}
+  void run() override {
+    const int frames = static_cast<int>(kRate);
+    mp::OutputCompressor c;
+    configure(c, -24.0f, 3.0f, 0.0f);
+    c.setEnabled(true);
+    auto left = sine(1000.0, std::pow(10.0, -6.0 / 20.0), frames);
+    auto right = left;
+    float* channels[2] = {left.data(), right.data()};
+    for (int at = 0; at < frames; at += 256) {
+      float* block[2] = {channels[0] + at, channels[1] + at};
+      c.process(block, 2, std::min(256, frames - at));
+    }
+    const double out = tailPeakDb(left);
+    MP_CHECK(std::fabs(out + 18.0) < 0.6, "-6 dBFS comes out near -18 dBFS, it is " + std::to_string(out));
+    MP_CHECK(std::fabs(c.gainReductionDb() - 12.0f) < 0.6f,
+             "the readout says 12 dB, it says " + std::to_string(c.gainReductionDb()));
+  }
+};
+
+// Under the threshold only the make-up gain acts, exactly.
+class CompressorMakeupTest final : public mp::test::Test {
+public:
+  CompressorMakeupTest() : Test("functional.compressor.makeup", Category::Functional) {}
+  void run() override {
+    const int frames = 8192;
+    mp::OutputCompressor c;
+    configure(c, -12.0f, 4.0f, 6.0f);
+    c.setEnabled(true);
+    auto left = sine(500.0, std::pow(10.0, -40.0 / 20.0), frames);
+    const auto in = left;
+    float* channels[1] = {left.data()};
+    c.process(channels, 1, frames);
+    const float gain = std::pow(10.0f, 6.0f / 20.0f);
+    float worst = 0.0f;
+    for (int i = 0; i < frames; ++i)
+      worst = std::max(worst, std::fabs(left[static_cast<size_t>(i)] - in[static_cast<size_t>(i)] * gain));
+    MP_CHECK(worst < 1.0e-6f, "a quiet signal is lifted by the make-up gain alone");
+  }
+};
+
+// With the detector high-passed, a deep pedal tone is not turned down: the
+// compressor no longer hears it. Unfiltered, the same tone is.
+class CompressorBassLeftOutTest final : public mp::test::Test {
+public:
+  CompressorBassLeftOutTest() : Test("functional.compressor.bass-left-out", Category::Functional) {}
+  void run() override {
+    const int frames = static_cast<int>(kRate);
+    const auto through = [&](int highPassHz) {
+      mp::OutputCompressor c;
+      configure(c, -24.0f, 4.0f, 0.0f, highPassHz);
+      c.setEnabled(true);
+      auto tone = sine(40.0, std::pow(10.0, -6.0 / 20.0), frames);
+      float* channels[1] = {tone.data()};
+      for (int at = 0; at < frames; at += 256) {
+        float* block[1] = {channels[0] + at};
+        c.process(block, 1, std::min(256, frames - at));
+      }
+      return tailPeakDb(tone);
+    };
+    const double heard = through(0);
+    const double leftOut = through(120);
+    MP_CHECK(heard < -15.0, "unfiltered, a 40 Hz tone at -6 dBFS is held down, to " + std::to_string(heard));
+    MP_CHECK(leftOut > -7.5, "with the bass left out below 120 Hz it stays near -6 dBFS, it is " +
+                                 std::to_string(leftOut));
+  }
+};
+
+// Through the engine: off is the engine's own output, on changes it, and in
+// a plugin it is never used.
+class CompressorProcessorTest final : public mp::test::Test {
+public:
+  CompressorProcessorTest() : Test("functional.compressor.processor", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-compressor-processor");
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organSettings(probe.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+
+    const auto on = [](mp::MasterpieceProcessor& p) {
+      p.compressor().setThresholdDb(-40.0f);
+      p.compressor().setRatio(4.0f);
+      p.compressor().setMakeupDb(6.0f);
+      p.compressor().setDetectorHighPassHz(0);
+      p.compressor().setEnabled(true);
+    };
+    const auto off = render(organ.odf, false, -0.1f, 0.5f);
+    MP_CHECK(peakOf(off) > 0.01f, "the engine's output is audible");
+    const auto quiet = render(organ.odf, false, -0.1f, 0.5f, juce::AudioProcessor::wrapperType_Undefined,
+                              [](mp::MasterpieceProcessor& p) { p.compressor().setMakeupDb(12.0f); });
+    MP_CHECK(quiet.size() == off.size() &&
+                 std::memcmp(off.data(), quiet.data(), off.size() * sizeof(float)) == 0,
+             "settings with the compressor off leave the output bit for bit the same");
+    const auto pressed = render(organ.odf, false, -0.1f, 0.5f, juce::AudioProcessor::wrapperType_Undefined, on);
+    MP_CHECK(std::memcmp(off.data(), pressed.data(), off.size() * sizeof(float)) != 0,
+             "the compressor on changes the output");
+    const auto plugin = render(organ.odf, false, -0.1f, 0.5f, juce::AudioProcessor::wrapperType_VST3, on);
+    MP_CHECK(plugin.size() == off.size() &&
+                 std::memcmp(off.data(), plugin.data(), off.size() * sizeof(float)) == 0,
+             "in a plugin the compressor leaves the output alone");
+    organ.root.deleteRecursively();
+  }
+};
+
+// The settings are kept, and every preset is the one the menu then names.
+class CompressorSettingsTest final : public mp::test::Test {
+public:
+  CompressorSettingsTest() : Test("functional.compressor.settings", Category::Functional) {}
+  void run() override {
+    mp::MasterpieceProcessor proc;
+    Keep global(proc.globalSettingsFile());
+    global.file.getParentDirectory().createDirectory();
+
+    for (size_t i = 0; i < mp::kOutputDynamicsPresets.size(); ++i) {
+      proc.applyOutputDynamicsPreset(static_cast<int>(i));
+      MP_CHECK(proc.outputDynamicsPreset() == static_cast<int>(i),
+               std::string("the preset ") + mp::kOutputDynamicsPresets[i].name + " is named as itself");
+    }
+    // Small speakers, then one value moved: no preset any more.
+    proc.applyOutputDynamicsPreset(3);
+    MP_CHECK(proc.compressorEnabled() && proc.limiterEnabled(), "small speakers turns both on");
+    proc.compressor().setMakeupDb(9.0f);
+    proc.compressorSettingsChanged();
+    MP_CHECK(proc.outputDynamicsPreset() == -1, "a moved value is the player's own setting");
+
+    const auto text = global.file.loadFileAsString();
+    MP_CHECK(text.contains("compressor 1 -24.0 3.0 10 250 9.0 120"),
+             "the global file holds the compressor's settings, it holds: " + text.toStdString());
+    mp::MasterpieceProcessor next;
+    next.loadGlobalDefaults();
+    const auto& c = next.compressor();
+    MP_CHECK(next.compressorEnabled() && std::fabs(c.thresholdDb() + 24.0f) < 0.01f &&
+                 std::fabs(c.ratio() - 3.0f) < 0.01f && std::fabs(c.attackMs() - 10.0f) < 0.01f &&
+                 std::fabs(c.releaseMs() - 250.0f) < 0.01f && std::fabs(c.makeupDb() - 9.0f) < 0.01f &&
+                 c.detectorHighPassHz() == 120,
+             "and they come back at the next start");
+    proc.applyOutputDynamicsPreset(0);
+  }
+};
+
 static LimiterOffTest g_limiterOff;
 static LimiterCeilingTest g_limiterCeiling;
 static LimiterQuietTest g_limiterQuiet;
@@ -629,6 +820,12 @@ static LimiterReleaseTest g_limiterRelease;
 static LimiterSwitchedOnTest g_limiterSwitchedOn;
 static LimiterProcessorTest g_limiterProcessor;
 static LimiterSettingsTest g_limiterSettings;
+static CompressorOffTest g_compressorOff;
+static CompressorRatioTest g_compressorRatio;
+static CompressorMakeupTest g_compressorMakeup;
+static CompressorBassLeftOutTest g_compressorBassLeftOut;
+static CompressorProcessorTest g_compressorProcessor;
+static CompressorSettingsTest g_compressorSettings;
 
 }  // namespace
 

@@ -24,6 +24,8 @@
 
 #include "Convolver.h"
 #include "Metronome.h"
+#include "OutputCompressor.h"
+#include "OutputDynamicsPresets.h"
 #include "OutputLimiter.h"
 #include "BassManager.h"
 #include "AudioRecorder.h"
@@ -1527,6 +1529,20 @@ public:
   // The limiter itself, for a test and for a readout.
   OutputLimiter& limiter() { return limiter_; }
 
+  // The compressor on the final output, ahead of the limiter. Off by
+  // default and not called while off; never run in a plugin. Its settings
+  // are kept in the general settings, on one line.
+  bool compressorEnabled() const { return compressor_.enabled(); }
+  void setCompressorEnabled(bool on);
+  // Writes the settings after a change made on compressor() directly.
+  void compressorSettingsChanged() { writeGlobalFile(); }
+  OutputCompressor& compressor() { return compressor_; }
+  // Sets the compressor and the limiter from one of kOutputDynamicsPresets,
+  // and writes the settings once.
+  void applyOutputDynamicsPreset(int index);
+  // The preset the compressor and limiter hold exactly, or -1 for none.
+  int outputDynamicsPreset() const;
+
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
   void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
@@ -2315,9 +2331,12 @@ private:
   // The peak limiter on the final output. Off until the player turns it on;
   // while it is off the audio thread does not call it at all.
   OutputLimiter limiter_;
-  // In a plugin the host's own effects shape the output, so the limiter is
-  // never used there, whatever the program's settings hold: a limiter turned
-  // on in the program would otherwise work in a DAW with no control for it.
+  // The compressor ahead of it, off in the same way.
+  OutputCompressor compressor_;
+  // In a plugin the host's own effects shape the output, so the limiter and
+  // the compressor are never used there, whatever the program's settings
+  // hold: one turned on in the program would otherwise work in a DAW with
+  // no control for it.
   const bool hostOwnsOutput_ = wrapperType != juce::AudioProcessor::wrapperType_Undefined &&
                                wrapperType != juce::AudioProcessor::wrapperType_Standalone;
   MidiRecorder recorder_;

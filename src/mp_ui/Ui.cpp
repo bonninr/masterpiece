@@ -17,6 +17,23 @@
 namespace mp::ui {
 namespace {
 
+// The Audio tab's compressor block: its switch, five setting rows and the
+// high-pass row, 26 pixels each with a gap above.
+constexpr int kCompressorHeight = 6 + 26 + 6 * 30;
+
+// The output presets' names, spelled out so that they are translated.
+juce::String outputPresetName(size_t i) {
+  switch (i) {
+    case 0: return TRANS("Both off");
+    case 1: return TRANS("Limiter only");
+    case 2: return TRANS("Gentle");
+    case 3: return TRANS("Small speakers");
+    case 4: return TRANS("Laptop speakers");
+    case 5: return TRANS("Headphones, quiet practice");
+    default: return juce::String(kOutputDynamicsPresets[i].name);
+  }
+}
+
 // Divisions are numbered from the pedal upward in Hauptwerk; show that order
 // with a readable name rather than a raw id.
 juce::String divisionLabel(const MasterpieceProcessor& proc, Id divisionId) {
@@ -669,6 +686,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   limiterOn_.onClick = [this] {
     proc_.setLimiterEnabled(limiterOn_.getToggleState());
     updateLimiterControls();
+    showPreset();
   };
 
   addAndMakeVisible(ceilingLabel_);
@@ -687,6 +705,7 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
     proc_.limiter().setCeilingDb(static_cast<float>(ceiling_.getValue()));
     if (!ceiling_.isMouseButtonDown())
       proc_.setLimiterCeilingDb(static_cast<float>(ceiling_.getValue()));
+    showPreset();
   };
   ceiling_.onDragEnd = [this] {
     proc_.setLimiterCeilingDb(static_cast<float>(ceiling_.getValue()));
@@ -706,16 +725,158 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
     proc_.limiter().setReleaseMs(static_cast<float>(release_.getValue()));
     if (!release_.isMouseButtonDown())
       proc_.setLimiterReleaseMs(static_cast<float>(release_.getValue()));
+    showPreset();
   };
   release_.onDragEnd = [this] {
     proc_.setLimiterReleaseMs(static_cast<float>(release_.getValue()));
   };
   updateLimiterControls();
 
+  // One menu for the compressor and the limiter together.
+  addAndMakeVisible(presetLabel_);
+  presetLabel_.setText(TRANS("Output preset"), juce::dontSendNotification);
+  presetLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(preset_);
+  for (size_t i = 0; i < kOutputDynamicsPresets.size(); ++i)
+    preset_.addItem(outputPresetName(i), static_cast<int>(i) + 1);
+  preset_.setTextWhenNothingSelected(TRANS("Own settings"));
+  preset_.setTooltip(TRANS("Sets the compressor and the limiter together. The "
+                           "compressing presets leave the bass out of the level "
+                           "the compressor listens to, so the pedal sounds in full."));
+  preset_.onChange = [this] {
+    const int i = preset_.getSelectedId() - 1;
+    if (i < 0) return;
+    proc_.applyOutputDynamicsPreset(i);
+    showSettings();
+  };
+
+  addAndMakeVisible(compressorOn_);
+  compressorOn_.setToggleState(proc_.compressorEnabled(), juce::dontSendNotification);
+  compressorOn_.setTooltip(
+      TRANS("Brings the loud passages towards the quiet ones, and the make-up "
+            "gain lifts the whole: small speakers can play louder without a "
+            "full organ reaching the limiter. It works after the master fader, "
+            "ahead of the limiter."));
+  compressorOn_.onClick = [this] {
+    proc_.setCompressorEnabled(compressorOn_.getToggleState());
+    updateCompressorControls();
+    showPreset();
+  };
+  addAndMakeVisible(reduction_);
+  reduction_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  reduction_.setJustificationType(juce::Justification::centredRight);
+  reduction_.setTooltip(TRANS("How far the compressor holds the level down now, "
+                              "before the make-up gain."));
+
+  auto& c = proc_.compressor();
+  setUpRow(threshold_, TRANS("Threshold"), -40.0, 0.0, 0.5, c.thresholdDb(), " dBFS",
+           TRANS("The level the compression begins at."),
+           [this](float v) { proc_.compressor().setThresholdDb(v); });
+  setUpRow(ratio_, TRANS("Ratio"), 1.5, 10.0, 0.1, c.ratio(), ":1",
+           TRANS("How much a level over the threshold is held down: at 3:1, "
+                 "3 dB over comes out 1 dB over."),
+           [this](float v) { proc_.compressor().setRatio(v); });
+  setUpRow(attack_, TRANS("Attack"), 1.0, 100.0, 1.0, c.attackMs(), " ms",
+           TRANS("How long the gain takes to come down. A longer one lets "
+                 "the speech of the pipes through."),
+           [this](float v) { proc_.compressor().setAttackMs(v); });
+  setUpRow(compressorRelease_, TRANS("Release"), 50.0, 1000.0, 10.0, c.releaseMs(), " ms",
+           TRANS("How long the gain takes to come back."),
+           [this](float v) { proc_.compressor().setReleaseMs(v); });
+  setUpRow(makeup_, TRANS("Make-up gain"), 0.0, 18.0, 0.5, c.makeupDb(), " dB",
+           TRANS("Lifts the whole output after the compression. The limiter "
+                 "still holds the peaks under its ceiling."),
+           [this](float v) { proc_.compressor().setMakeupDb(v); });
+
+  addAndMakeVisible(highPassLabel_);
+  highPassLabel_.setText(TRANS("Bass left out"), juce::dontSendNotification);
+  highPassLabel_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(highPass_);
+  for (size_t i = 0; i < OutputCompressor::kHighPassChoices.size(); ++i) {
+    const int hz = OutputCompressor::kHighPassChoices[i];
+    highPass_.addItem(hz == 0 ? TRANS("None") : TRANS("Below %1 Hz").replace("%1", juce::String(hz)),
+                      static_cast<int>(i) + 1);
+  }
+  highPass_.setTooltip(TRANS("The compressor does not hear the bass below this "
+                             "pitch, so a 32' or a full pedal does not turn the "
+                             "manuals down. The bass itself sounds in full."));
+  highPass_.onChange = [this] {
+    const int i = highPass_.getSelectedId() - 1;
+    if (i < 0) return;
+    proc_.compressor().setDetectorHighPassHz(OutputCompressor::kHighPassChoices[static_cast<size_t>(i)]);
+    proc_.compressorSettingsChanged();
+    showPreset();
+  };
+
+  showSettings();
+  startTimerHz(10);
   setSize(500, 510);
 }
 
-AudioSettingsPanel::~AudioSettingsPanel() { devices_.removeChangeListener(this); }
+void AudioSettingsPanel::setUpRow(Row& row, const juce::String& name, double lo, double hi,
+                                  double step, double value, const juce::String& suffix,
+                                  const juce::String& tip, std::function<void(float)> set) {
+  addAndMakeVisible(row.label);
+  row.label.setText(name, juce::dontSendNotification);
+  row.label.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(row.slider);
+  row.slider.setRange(lo, hi, step);
+  row.slider.setValue(value, juce::dontSendNotification);
+  row.slider.setTextValueSuffix(suffix);
+  row.slider.setTooltip(tip);
+  // As for the limiter: heard at once, written when the drag ends.
+  auto* slider = &row.slider;
+  row.slider.onValueChange = [this, slider, set] {
+    set(static_cast<float>(slider->getValue()));
+    if (!slider->isMouseButtonDown()) proc_.compressorSettingsChanged();
+    showPreset();
+  };
+  row.slider.onDragEnd = [this] { proc_.compressorSettingsChanged(); };
+}
+
+void AudioSettingsPanel::showSettings() {
+  limiterOn_.setToggleState(proc_.limiterEnabled(), juce::dontSendNotification);
+  ceiling_.setValue(proc_.limiterCeilingDb(), juce::dontSendNotification);
+  release_.setValue(proc_.limiterReleaseMs(), juce::dontSendNotification);
+  const auto& c = proc_.compressor();
+  compressorOn_.setToggleState(c.enabled(), juce::dontSendNotification);
+  threshold_.slider.setValue(c.thresholdDb(), juce::dontSendNotification);
+  ratio_.slider.setValue(c.ratio(), juce::dontSendNotification);
+  attack_.slider.setValue(c.attackMs(), juce::dontSendNotification);
+  compressorRelease_.slider.setValue(c.releaseMs(), juce::dontSendNotification);
+  makeup_.slider.setValue(c.makeupDb(), juce::dontSendNotification);
+  const auto& hp = OutputCompressor::kHighPassChoices;
+  const auto at = std::find(hp.begin(), hp.end(), c.detectorHighPassHz());
+  highPass_.setSelectedId(at == hp.end() ? 0 : static_cast<int>(at - hp.begin()) + 1,
+                          juce::dontSendNotification);
+  updateLimiterControls();
+  updateCompressorControls();
+  showPreset();
+}
+
+void AudioSettingsPanel::showPreset() {
+  preset_.setSelectedId(proc_.outputDynamicsPreset() + 1, juce::dontSendNotification);
+}
+
+void AudioSettingsPanel::updateCompressorControls() {
+  const bool on = compressorOn_.getToggleState();
+  for (auto* row : {&threshold_, &ratio_, &attack_, &compressorRelease_, &makeup_})
+    row->slider.setEnabled(on);
+  highPass_.setEnabled(on);
+  reduction_.setVisible(on);
+}
+
+void AudioSettingsPanel::timerCallback() {
+  if (!compressorOn_.getToggleState()) return;
+  reduction_.setText(TRANS("Reduction %1 dB")
+                         .replace("%1", juce::String(proc_.compressor().gainReductionDb(), 1)),
+                     juce::dontSendNotification);
+}
+
+AudioSettingsPanel::~AudioSettingsPanel() {
+  stopTimer();
+  devices_.removeChangeListener(this);
+}
 
 void AudioSettingsPanel::changeListenerCallback(juce::ChangeBroadcaster*) {
   showLatency();
@@ -746,6 +907,10 @@ void AudioSettingsPanel::apply() {
                                 : 0.0f);
 }
 
+int AudioSettingsPanel::contentHeight() const {
+  return selector_.getHeight() + 28 + 40 + 34 + kCompressorHeight + 10 + 96 + 12;
+}
+
 void AudioSettingsPanel::updateLimiterControls() {
   // The two settings belong to the limiter, so they are greyed out while it
   // is off. Their values are kept either way.
@@ -766,16 +931,41 @@ void AudioSettingsPanel::resized() {
   keepAwake_.setBounds(keep.removeFromLeft(240));
   level_.setBounds(keep);
 
+  // The preset, then the compressor: its switch with the reduction beside
+  // it, a row per setting, and the detector's high-pass.
+  auto top = r.removeFromTop(34).reduced(12, 4);
+  presetLabel_.setBounds(top.removeFromLeft(110));
+  top.removeFromLeft(6);
+  preset_.setBounds(top.removeFromLeft(240));
+  auto comp = r.removeFromTop(kCompressorHeight).reduced(12, 0);
+  comp.removeFromTop(6);
+  auto head = comp.removeFromTop(26);
+  reduction_.setBounds(head.removeFromRight(150));
+  compressorOn_.setBounds(head);
+  for (auto* row : {&threshold_, &ratio_, &attack_, &compressorRelease_, &makeup_}) {
+    comp.removeFromTop(4);
+    auto line = comp.removeFromTop(26);
+    row->label.setBounds(line.removeFromLeft(110));
+    line.removeFromLeft(6);
+    row->slider.setBounds(line.removeFromLeft(240));
+  }
+  comp.removeFromTop(4);
+  auto line = comp.removeFromTop(26);
+  highPassLabel_.setBounds(line.removeFromLeft(110));
+  line.removeFromLeft(6);
+  highPass_.setBounds(line.removeFromLeft(240));
+  r.removeFromTop(10);
+
   // The limiter: the switch, then the ceiling and the release on a row each.
   auto block = r.removeFromTop(96).reduced(12, 0);
   limiterOn_.setBounds(block.removeFromTop(26));
   block.removeFromTop(6);
   auto row = block.removeFromTop(26);
-  ceilingLabel_.setBounds(row.removeFromLeft(90));
+  ceilingLabel_.setBounds(row.removeFromLeft(110));
   row.removeFromLeft(6);
   ceiling_.setBounds(row.removeFromLeft(240));
   row = block.removeFromTop(26);
-  releaseLabel_.setBounds(row.removeFromLeft(90));
+  releaseLabel_.setBounds(row.removeFromLeft(110));
   row.removeFromLeft(6);
   release_.setBounds(row.removeFromLeft(240));
 }
