@@ -376,8 +376,9 @@ static Storage20EngineTest g_storage20Engine;
 
 namespace {
 
-// A wav file with a sustain loop, for the loader to read.
-void writeWav(const juce::File& file, int frames, int channels, double sr) {
+// A wav file with a sustain loop, for the loader to read. Twenty-four bits by
+// default: a 16-bit file is held at its own sixteen bits.
+void writeWav(const juce::File& file, int frames, int channels, double sr, int bits = 24) {
   file.getParentDirectory().createDirectory();
   file.deleteFile();
   juce::WavAudioFormat format;
@@ -388,7 +389,7 @@ void writeWav(const juce::File& file, int frames, int channels, double sr) {
   meta.set("Loop0Start", "1000");
   meta.set("Loop0End", "4000");
   std::unique_ptr<juce::AudioFormatWriter> writer(
-      format.createWriterFor(os.release(), sr, static_cast<unsigned>(channels), 16, meta, 0));
+      format.createWriterFor(os.release(), sr, static_cast<unsigned>(channels), bits, meta, 0));
   MP_CHECK(writer != nullptr, "the wav writer is made");
   juce::AudioBuffer<float> buf(channels, frames);
   for (int c = 0; c < channels; ++c)
@@ -594,6 +595,78 @@ public:
   }
 };
 static Storage20CacheTest g_storage20Cache;
+
+// A 16-bit file at twenty bits is held at its own sixteen, as at 24: the same
+// counts in two bytes a sample, never two and a half. A 24-bit file is still
+// packed. The estimate before a load says the same.
+class Storage20SixteenBitTest final : public mp::test::Test {
+public:
+  Storage20SixteenBitTest()
+    : Test("functional.samples.storage20-sixteen-bit", Category::Functional) {}
+
+  void run() override {
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("mp_storage20_sixteen");
+    root.deleteRecursively();
+    root.createDirectory();
+
+    mp::OrganModel model;
+    for (int i = 1; i <= 2; ++i) {
+      const auto name = "s" + std::to_string(i) + ".wav";
+      writeWav(root.getChildFile(name), 4800, 2, 48000.0, i == 1 ? 16 : 24);
+      mp::SampleRef ref;
+      ref.sampleId = i;
+      ref.fileName = name;
+      model.samples[i] = ref;
+    }
+
+    const auto load = [&](mp::SampleLibrary& lib, mp::SampleStorage storage) {
+      lib.setLoadThreads(1);
+      lib.setStorage(storage);
+      mp::LoadProgress progress;
+      progress.resetBudget(0);
+      return lib.loadAll(model, root.getFullPathName().toStdString(), 0,
+                         mp::LoopSelection::Longest, &progress);
+    };
+    mp::SampleLibrary at20, at24;
+    MP_CHECK(load(at20, mp::SampleStorage::Int20).loaded == 2, "both files load at 20 bits");
+    MP_CHECK(load(at24, mp::SampleStorage::Int24).loaded == 2, "and at 24 bits");
+
+    const mp::SampleBuffer* s20 = at20.provider()(1);
+    const mp::SampleBuffer* s24 = at24.provider()(1);
+    MP_CHECK(s20 != nullptr && s24 != nullptr, "the 16-bit file is resident both ways");
+    if (s20 != nullptr && s24 != nullptr) {
+      MP_CHECK(!s20->packed20() && s20->compact() && !s20->wide(),
+               "the 16-bit file is held at 16 bits under the 20-bit setting");
+      MP_CHECK(s20->residentBytes() == s20->numFrames * s20->numChannels * 2,
+               "two bytes a sample: " + std::to_string(s20->residentBytes()));
+      MP_CHECK(s20->residentBytes() == s24->residentBytes(),
+               "the same as the 24-bit setting holds it");
+      bool same = s20->numFrames == s24->numFrames && s20->numChannels == s24->numChannels;
+      for (int64_t f = 0; same && f < s20->numFrames; ++f)
+        for (int c = 0; c < s20->numChannels; ++c)
+          same = same && s20->sample(f, c) == s24->sample(f, c);
+      MP_CHECK(same, "and every sample is the file's own, exactly");
+    }
+
+    const mp::SampleBuffer* wide = at20.provider()(2);
+    MP_CHECK(wide != nullptr && wide->packed20(), "a 24-bit file is still packed at twenty bits");
+
+    mp::SampleLibrary::SampleShape shape;
+    shape.frames = 4800;
+    shape.channels = 2;
+    shape.rate = 48000.0;
+    shape.bits = 16;
+    MP_CHECK(at20.residentBytes(shape) == at24.residentBytes(shape),
+             "the estimate gives a 16-bit file the same bytes at 20 as at 24 bits");
+    shape.bits = 24;
+    MP_CHECK(at20.residentBytes(shape) < at24.residentBytes(shape),
+             "and a 24-bit file fewer at 20");
+
+    root.deleteRecursively();
+  }
+};
+static Storage20SixteenBitTest g_storage20SixteenBit;
 
 #endif  // MP_TEST_HAS_AUDIO
 
