@@ -1180,9 +1180,11 @@ void PanelView::extentAt(int at, int& width, int& height) const {
     const auto& s = sections_[si];
     const bool faders = s.kind == PanelSection::Kind::Controls;
     const int cols = g.columnsFor(faders);
+    // What shows while playing: edit mode adds the hidden elements below,
+    // in reach by scrolling, and the panel keeps its size.
     int k = 0;
     for (const auto& e : s.elements)
-      if (editing_ || layout_.hidden.count(e.key()) == 0) ++k;
+      if (layout_.hidden.count(e.key()) == 0) ++k;
     if (k == 0) continue;
     const int rows = (k + cols - 1) / cols;
     tallest = std::max(tallest, g.top + rows * (faders ? g.faderH : g.cellH) + 6);

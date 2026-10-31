@@ -116,6 +116,8 @@ public:
   juce::Rectangle<int> viewAreaForTest() const {
     return {viewport_.getMaximumVisibleWidth(), viewport_.getMaximumVisibleHeight()};
   }
+  // For a test: edit mode, as the Edit button sets it.
+  void setEditingForTest(bool on) { setEditing(on); }
   bool hasUnsavedChanges() const { return !(layout_ == saved_); }
   // Keep the current setup as saved (after the editor wrote it).
   void markSaved() { saved_ = layout_; }
@@ -185,7 +187,7 @@ private:
   // five per cent.
   int fittedScale() const;
   // How far the panel's cells reach at a size: the width and the height
-  // they need.
+  // they need, with the hidden elements left out.
   void extentAt(int scale, int& width, int& height) const;
   // Every size of the panel at a scale, shared by the layout and the fit so
   // the two can never disagree.
