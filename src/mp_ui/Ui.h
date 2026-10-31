@@ -175,15 +175,11 @@ void openBluetoothMidiPairing();
 
 // The Audio and MIDI dialog: the device selector, and under it what belongs
 // to the output rather than to any organ -- keeping portable speakers awake.
-class AudioSettingsPanel : public juce::Component,
-                           private juce::ChangeListener,
-                           private juce::Timer {
+class AudioSettingsPanel : public juce::Component, private juce::ChangeListener {
 public:
   AudioSettingsPanel(juce::AudioDeviceManager& devices, MasterpieceProcessor& p);
   ~AudioSettingsPanel() override;
   void resized() override;
-  // The height the rows need, for the tab's scrolling.
-  int contentHeight() const;
 
 private:
   // The delay from a key to the speaker as the open device has it: the
@@ -203,32 +199,9 @@ private:
   juce::Slider ceiling_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Label releaseLabel_;
   juce::Slider release_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  // Ready settings for the compressor and the limiter together.
-  juce::Label presetLabel_;
-  juce::ComboBox preset_;
-  // The compressor ahead of the limiter: the switch, its five settings,
-  // the detector's high-pass, and the reduction it is making now.
-  juce::ToggleButton compressorOn_{TRANS("Output compressor")};
-  juce::Label reduction_;
-  struct Row {
-    juce::Label label;
-    juce::Slider slider{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
-  };
-  Row threshold_, ratio_, attack_, compressorRelease_, makeup_;
-  juce::Label highPassLabel_;
-  juce::ComboBox highPass_;
   void apply();
   // The limiter's two settings are only in use while it is on.
   void updateLimiterControls();
-  void updateCompressorControls();
-  // Every control from the processor, after a preset.
-  void showSettings();
-  // The menu names the preset the settings match, or none.
-  void showPreset();
-  void setUpRow(Row& row, const juce::String& name, double lo, double hi, double step,
-                double value, const juce::String& suffix, const juce::String& tip,
-                std::function<void(float)> set);
-  void timerCallback() override;
 };
 
 // Organ name, load button, audio settings, and what the load actually found.

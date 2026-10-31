@@ -475,7 +475,6 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   expandScratch_.reserve(std::max<size_t>(16, model_.divisions.size() * 4));
   metronome_.prepare(sampleRate_);
   limiter_.prepare(sampleRate_);
-  compressor_.prepare(sampleRate_);
 
   // Meter fall: 0.3 s to decay by 1/e. Computed here so the audio thread
   // never calls a transcendental function for the sake of a lamp.
@@ -2548,15 +2547,6 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "limiter " << (limiter_.enabled() ? 1 : 0) << " "
        << juce::String(limiter_.ceilingDb(), 1) << " "
        << juce::String(limiter_.releaseMs(), 0) << "\n";
-  // The compressor's on one line too: on or off, threshold, ratio, attack,
-  // release, make-up gain and the detector's high-pass.
-  text << "compressor " << (compressor_.enabled() ? 1 : 0) << " "
-       << juce::String(compressor_.thresholdDb(), 1) << " "
-       << juce::String(compressor_.ratio(), 1) << " "
-       << juce::String(compressor_.attackMs(), 0) << " "
-       << juce::String(compressor_.releaseMs(), 0) << " "
-       << juce::String(compressor_.makeupDb(), 1) << " "
-       << compressor_.detectorHighPassHz() << "\n";
   text << "loadticks "
        << (loadTicks_.load(std::memory_order_acquire) ? 1 : 0) << "\n";
   if (cancelResetsKeyboards_.load()) text << "cancelresetskeyboards 1\n";
@@ -2857,19 +2847,6 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         limiter_.setReleaseMs(static_cast<float>(parts[2].getDoubleValue()));
         limiter_.setEnabled(parts[0].getIntValue() != 0);
       }
-    } else if (key == "compressor") {
-      // "compressor <on> <thresholdDb> <ratio> <attackMs> <releaseMs>
-      // <makeupDb> <highPassHz>", the settings kept whatever the switch says.
-      const auto parts = juce::StringArray::fromTokens(val, " ", "");
-      if (parts.size() >= 7) {
-        compressor_.setThresholdDb(static_cast<float>(parts[1].getDoubleValue()));
-        compressor_.setRatio(static_cast<float>(parts[2].getDoubleValue()));
-        compressor_.setAttackMs(static_cast<float>(parts[3].getDoubleValue()));
-        compressor_.setReleaseMs(static_cast<float>(parts[4].getDoubleValue()));
-        compressor_.setMakeupDb(static_cast<float>(parts[5].getDoubleValue()));
-        compressor_.setDetectorHighPassHz(parts[6].getIntValue());
-        compressor_.setEnabled(parts[0].getIntValue() != 0);
-      }
     } else if (key == "openfolder") {
       openFolder_ = val.isEmpty() ? juce::File() : juce::File(val);
     } else if (key == "dialogfolder") {
@@ -3068,50 +3045,6 @@ void MasterpieceProcessor::setLimiterEnabled(bool on) {
   if (limiter_.enabled() == on) return;
   limiter_.setEnabled(on);
   writeGlobalFile();
-}
-
-void MasterpieceProcessor::setCompressorEnabled(bool on) {
-  if (compressor_.enabled() == on) return;
-  compressor_.setEnabled(on);
-  writeGlobalFile();
-}
-
-void MasterpieceProcessor::applyOutputDynamicsPreset(int index) {
-  if (index < 0 || index >= static_cast<int>(kOutputDynamicsPresets.size())) return;
-  const auto& p = kOutputDynamicsPresets[static_cast<size_t>(index)];
-  compressor_.setThresholdDb(p.thresholdDb);
-  compressor_.setRatio(p.ratio);
-  compressor_.setAttackMs(p.attackMs);
-  compressor_.setReleaseMs(p.releaseMs);
-  compressor_.setMakeupDb(p.makeupDb);
-  compressor_.setDetectorHighPassHz(p.highPassHz);
-  compressor_.setEnabled(p.compressorOn);
-  limiter_.setCeilingDb(p.ceilingDb);
-  limiter_.setReleaseMs(p.limiterReleaseMs);
-  limiter_.setEnabled(p.limiterOn);
-  writeGlobalFile();
-}
-
-int MasterpieceProcessor::outputDynamicsPreset() const {
-  // Values off by less than a control's step still count as the preset,
-  // since the settings file keeps them to one decimal.
-  const auto near = [](float a, float b) { return std::abs(a - b) < 0.05f; };
-  for (size_t i = 0; i < kOutputDynamicsPresets.size(); ++i) {
-    const auto& p = kOutputDynamicsPresets[i];
-    if (compressor_.enabled() != p.compressorOn || limiter_.enabled() != p.limiterOn) continue;
-    // A setting that is off is not compared: it makes no sound.
-    if (p.compressorOn &&
-        !(near(compressor_.thresholdDb(), p.thresholdDb) && near(compressor_.ratio(), p.ratio) &&
-          near(compressor_.attackMs(), p.attackMs) && near(compressor_.releaseMs(), p.releaseMs) &&
-          near(compressor_.makeupDb(), p.makeupDb) &&
-          compressor_.detectorHighPassHz() == p.highPassHz))
-      continue;
-    if (p.limiterOn &&
-        !(near(limiter_.ceilingDb(), p.ceilingDb) && near(limiter_.releaseMs(), p.limiterReleaseMs)))
-      continue;
-    return static_cast<int>(i);
-  }
-  return -1;
 }
 
 void MasterpieceProcessor::setLimiterCeilingDb(float db) {
@@ -6894,13 +6827,6 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // set at the level its producer intended.
   buffer.applyGain(organTrimGain_ *
                    *apvts_.getRawParameterValue("masterGain"));
-
-  // The compressor, after the master fader and ahead of the limiter, so
-  // its make-up gain is still held under the limiter's ceiling. Off by
-  // default and not called while off; a plugin leaves it to the host.
-  if (compressor_.enabled() && !hostOwnsOutput_)
-    compressor_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
-                        buffer.getNumSamples());
 
   // The peak limiter, on the final output: after the master fader and
   // before everything that leaves the program. Off by default, and while it
