@@ -17271,6 +17271,115 @@ public:
 };
 static MidiLampsAtLoadTest g_midiLampsAtLoad;
 
+// A console lights its combination buttons too: the player's general that was
+// recalled last, and Set while it is held (#565). A pad learned for them is
+// lit and put out as the program moves, with no sends set up.
+class MidiPistonLampsTest final : public mp::test::Test {
+public:
+  MidiPistonLampsTest() : Test("functional.midi.piston-lamps", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+      const juce::File map = proc.midiMapFileFor(odf);
+      const bool hadMap = map.existsAsFile();
+      const juce::String mapBefore = hadMap ? map.loadFileAsString() : juce::String();
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      // The last message for a pad: 1 lit, 0 out, -1 none.
+      auto note = [&sent](int number) {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.getChannel() == 1 && m.getNoteNumber() == number && (m.isNoteOn() || m.isNoteOff()))
+            state = m.isNoteOn() && m.getVelocity() > 0 ? 1 : 0;
+        return state;
+      };
+      auto controller = [&sent](int number) {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.isController() && m.getChannel() == 1 && m.getControllerNumber() == number)
+            state = m.getControllerValue() > 0 ? 1 : 0;
+        return state;
+      };
+      auto bind = [&proc](mp::MidiTargetKind kind, mp::Id id, mp::MidiSourceKind source, int number) {
+        mp::MidiBinding b;
+        b.source.kind = source;
+        b.source.channel = 1;
+        b.source.number = number;
+        b.targetKind = kind;
+        b.targetId = id;
+        proc.setObjectBindings(kind, id, {b});
+      };
+      bind(mp::MidiTargetKind::PlayerGeneral, 1, mp::MidiSourceKind::Note, 40);
+      bind(mp::MidiTargetKind::PlayerGeneral, 2, mp::MidiSourceKind::Note, 41);
+      bind(mp::MidiTargetKind::Setter, 0, mp::MidiSourceKind::ControlChange, 30);
+
+      blocks(2);
+      MP_CHECK(sent.empty(), "with feedback off, no lamps");
+      proc.setMidiFeedbackEnabled(true);
+      blocks(2);
+      MP_CHECK(note(40) == 0 && note(41) == 0 && controller(30) == 0,
+               "feedback on: every lamp sent, all out: " + std::to_string(sent.size()) + " message(s)");
+
+      sent.clear();
+      blocks(2);
+      MP_CHECK(sent.empty(), "and sent once");
+
+      proc.setCaptureMode(true);
+      blocks(2);
+      MP_CHECK(controller(30) == 1, "Set held: its lamp lit");
+      proc.setSwitchEngaged(1101, true);
+      proc.pressGeneral(1);
+      proc.setCaptureMode(false);
+      proc.setSwitchEngaged(1101, false);
+      blocks(2);
+      MP_CHECK(controller(30) == 0, "Set let go: out");
+
+      sent.clear();
+      proc.pressGeneral(1);
+      blocks(2);
+      MP_CHECK(note(40) == 1 && note(41) == -1, "general 1 recalled: its lamp alone lit");
+
+      sent.clear();
+      proc.setSwitchEngaged(1101, false);
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(note(40) == 0, "a stop moved by hand: the general's lamp goes out");
+
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      blocks(2);
+      MP_CHECK(note(40) == 0 && note(41) == 0 && controller(30) == 0,
+               "after a load, every lamp again: " + std::to_string(sent.size()) + " message(s)");
+
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+      proc.settingsFileFor(odf).deleteFile();
+      if (hadMap) map.replaceWithText(mapBefore);
+      else map.deleteFile();
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiPistonLampsTest g_midiPistonLamps;
+
 // A Send row can be a system exclusive message, one for each state of the
 // switch. A pad grid that shows lamps only in its programmer layout gets that
 // layout's message after every load, ahead of the lamps (#565). The Send tab
