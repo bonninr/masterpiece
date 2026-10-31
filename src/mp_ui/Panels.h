@@ -164,6 +164,7 @@ private:
   std::vector<PanelSection> sections_;
   bool editing_ = false;
   bool relayingOut_ = false;  // layoutSections, once more for a view that changed
+  int editScale_ = 100;       // the fitted size kept through edit mode
   bool touch_ = touchInput();
   // A drag that began on a stop or switch: each one it passes over is set the
   // way the first went (1 on, 0 off, -1 no drag).
@@ -188,7 +189,7 @@ private:
   // five per cent.
   int fittedScale() const;
   // How far the panel's cells reach at a size: the width and the height
-  // they need, with the hidden elements left out.
+  // they need.
   void extentAt(int scale, int& width, int& height) const;
   // Every size of the panel at a scale, shared by the layout and the fit so
   // the two can never disagree.

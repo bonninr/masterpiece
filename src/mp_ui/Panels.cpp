@@ -1120,6 +1120,10 @@ void PanelView::askForTitle() {
 }
 
 void PanelView::setEditing(bool editing) {
+  // Fitted to the window, the panel keeps the size it had: edit mode adds
+  // the hidden elements, in reach by scrolling, and a fit that counted them
+  // shrank every button on pressing Edit.
+  if (editing && !editing_) editScale_ = scale();
   editing_ = editing;
   layoutSections();
 }
@@ -1170,7 +1174,8 @@ void PanelView::resized() {
 }
 
 int PanelView::scale() const {
-  return layout_.fitToWindow ? fittedScale() : layout_.scale;
+  if (!layout_.fitToWindow) return layout_.scale;
+  return editing_ ? editScale_ : fittedScale();
 }
 
 void PanelView::extentAt(int at, int& width, int& height) const {
@@ -1180,11 +1185,9 @@ void PanelView::extentAt(int at, int& width, int& height) const {
     const auto& s = sections_[si];
     const bool faders = s.kind == PanelSection::Kind::Controls;
     const int cols = g.columnsFor(faders);
-    // What shows while playing: edit mode adds the hidden elements below,
-    // in reach by scrolling, and the panel keeps its size.
     int k = 0;
     for (const auto& e : s.elements)
-      if (layout_.hidden.count(e.key()) == 0) ++k;
+      if (editing_ || layout_.hidden.count(e.key()) == 0) ++k;
     if (k == 0) continue;
     const int rows = (k + cols - 1) / cols;
     tallest = std::max(tallest, g.top + rows * (faders ? g.faderH : g.cellH) + 6);
