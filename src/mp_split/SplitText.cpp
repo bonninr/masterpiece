@@ -74,6 +74,14 @@ bool layoutLine(const std::string& key, std::istringstream& in, Layout& l) {
       b.sustain = sustainFromName(sustain);
       l.bass = b;
     }
+  } else if (key == "melody") {
+    int on = 0, also = 1;
+    Melody m = l.melody;
+    if (in >> on >> m.bottomKey >> also) {
+      m.on = on != 0;
+      m.alsoOnManual = also != 0;
+      l.melody = m;
+    }
   } else {
     return false;
   }
@@ -121,6 +129,8 @@ std::string layoutToText(const Layout& l) {
   out << "follow " << (l.followHands ? 1 : 0) << '\n';
   out << "bass " << (l.bass.on ? 1 : 0) << ' ' << l.bass.topKey << ' ' << (l.bass.alsoOnManual ? 1 : 0) << ' '
       << sustainName(l.bass.sustain) << ' ' << l.bass.sustainMs << '\n';
+  out << "melody " << (l.melody.on ? 1 : 0) << ' ' << l.melody.bottomKey << ' ' << (l.melody.alsoOnManual ? 1 : 0)
+      << '\n';
   return out.str();
 }
 
