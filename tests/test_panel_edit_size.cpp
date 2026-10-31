@@ -50,7 +50,8 @@ public:
     {
       mp::MasterpieceProcessor proc;
       const juce::File settings = proc.settingsFileFor(file);
-      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(file, 0, false).ok, "the organ loads");
 
       // Three of the four stops hidden, the panel fitted to a small window.
       mp::ui::PanelLayout layout;
