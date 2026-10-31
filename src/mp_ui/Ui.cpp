@@ -1186,6 +1186,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // window's sliders have it.
   juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
+  // Dialogs open in the middle of this window.
+  setDialogCentre(this);
 
   // The licence question, asked from the loading thread before a sample is
   // read (#164). The box belongs to the message thread, so it is shown there
@@ -1395,6 +1397,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
 
 MasterpieceEditor::~MasterpieceEditor() {
   stopTimer();
+  if (dialogCentre() == this) setDialogCentre(nullptr);
   proc_.licenceAsker = nullptr;
   proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
