@@ -2315,6 +2315,11 @@ private:
   // The peak limiter on the final output. Off until the player turns it on;
   // while it is off the audio thread does not call it at all.
   OutputLimiter limiter_;
+  // In a plugin the host's own effects shape the output, so the limiter is
+  // never used there, whatever the program's settings hold: a limiter turned
+  // on in the program would otherwise work in a DAW with no control for it.
+  const bool hostOwnsOutput_ = wrapperType != juce::AudioProcessor::wrapperType_Undefined &&
+                               wrapperType != juce::AudioProcessor::wrapperType_Standalone;
   MidiRecorder recorder_;
   ScorePlayer scorePlayer_;
   MidiArchive archive_;

@@ -6831,8 +6831,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // The peak limiter, on the final output: after the master fader and
   // before everything that leaves the program. Off by default, and while it
   // is off the call is not made at all, so the output is bit for bit what
-  // the engine made.
-  if (limiter_.enabled())
+  // the engine made. A plugin leaves it to the host's effects.
+  if (limiter_.enabled() && !hostOwnsOutput_)
     limiter_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
                      buffer.getNumSamples());
 
