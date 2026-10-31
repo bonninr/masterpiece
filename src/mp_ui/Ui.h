@@ -517,10 +517,14 @@ private:
   void wirePanel(int index);
   void setPanelDetached(int index, bool detached);
   void rebuildPageTabs();
-  // The panels part of the View menu: each panel, the console, and new,
-  // rename and delete. Item ids from 1000.
-  void addPanelItems(juce::PopupMenu& menu);
   void panelItemChosen(int id);
+
+public:
+  // The panels part of the View menu: each panel, the console, and new,
+  // rename and delete. Item ids from 1000. Public for its test.
+  void addPanelItems(juce::PopupMenu& menu);
+
+private:
   // A panel on screen: its tab, or its window brought to the front.
   void showPanel(int index);
   // The first panel and back to the console; a panel made if there is none.
