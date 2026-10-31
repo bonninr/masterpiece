@@ -162,7 +162,7 @@ constexpr ProgramPropInfo kProgram[] = {
   {ProgramProp::MasterGain, "masterGain", -400, 240, true, "Tenths of a dB"},
   {ProgramProp::Transpose, "transpose", -12, 12, true, "Semitones"},
   {ProgramProp::Temperament, "temperament", 0, 2097151, true, "Index into temperaments"},
-  {ProgramProp::StepperFrame, "stepperFrame", 0, 2097151, true, "The sequencer's frame"},
+  {ProgramProp::StepperFrame, "stepperFrame", 0, 998, true, "The sequencer's frame as shown"},
   {ProgramProp::Setter, "setter", 0, 1, true, "While 1"},
   {ProgramProp::EqOn, "eqOn", 0, 1, true, "The voicing EQ"},
   {ProgramProp::EqPreset, "eqPreset", -1, 2097151, true, "Index into eqpresets"},

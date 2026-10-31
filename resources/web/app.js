@@ -355,7 +355,7 @@ function showProgram(p) {
   if (p === undefined || p === "transpose") $("trans").textContent = s.transpose > 0 ? `+${s.transpose}` : s.transpose;
   if (p === undefined || p === "temperament") $("temperament").value = s.temperament;
   if (p === undefined || p === "eqPreset") $("eqpreset").value = s.eqPreset;
-  if (p === undefined || p === "stepperFrame") { const f = $("frame"); if (f) f.textContent = s.stepperFrame ? `frame ${String(s.stepperFrame - 1).padStart(3, "0")}` : "no frame"; }
+  if (p === undefined || p === "stepperFrame") { const f = $("frame"); if (f) f.textContent = `frame ${String(s.stepperFrame).padStart(3, "0")}`; }
   if (p === undefined || p === "setter") { const b = $("setter"); if (b) b.classList.toggle("lit", s.setter === 1); }
   if (p === undefined || p === "soundingVoices") $("voices").textContent = `${s.soundingVoices ?? 0} voices`;
   if (p === undefined || p === "lateBlocks") $("late").textContent = s.lateBlocks ? `${s.lateBlocks} late blocks` : "";
