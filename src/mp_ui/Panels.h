@@ -116,9 +116,15 @@ public:
   juce::Rectangle<int> viewAreaForTest() const {
     return {viewport_.getMaximumVisibleWidth(), viewport_.getMaximumVisibleHeight()};
   }
+  void setScaleForTest(int at) { setScale(at); }
+  juce::String saveTextForTest() const { return save_.getButtonText(); }
   bool hasUnsavedChanges() const { return !(layout_ == saved_); }
-  // Keep the current setup as saved (after the editor wrote it).
-  void markSaved() { saved_ = layout_; }
+  // Keep the current setup as saved (after the editor wrote it), and the Save
+  // button loses its asterisk.
+  void markSaved() {
+    saved_ = layout_;
+    changed();
+  }
   // Its name: the player's, or "Panel <n>".
   juce::String title() const;
   // Its place among the organ's panels, after one before it was deleted.
