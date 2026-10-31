@@ -90,6 +90,20 @@ public:
     int eqPreset = -2;
     MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::EqPreset), eqPreset, e) && eqPreset == 2,
              "and the program says which");
+    // The sequencer's frame is the number the player sees, from 000.
+    int frame = -1;
+    MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::StepperFrame), frame, e) && frame == 0,
+             "before the first frame reads 000");
+    MP_CHECK(m.setProgram(ProgramProp::Setter, 1) == Error::None, "the setter is on");
+    MP_CHECK(m.setProgram(ProgramProp::StepperFrame, 2) == Error::None && proc.playerCombinations().frame() == 3,
+             "frame 002 is the third frame");
+    MP_CHECK(m.get(Type::Program, static_cast<int>(ProgramProp::StepperFrame), frame, e) && frame == 2,
+             "and reads back as 002");
+    MP_CHECK(m.setProgram(ProgramProp::StepperFrame, 0) == Error::None && proc.playerCombinations().frame() == 1 &&
+                 m.get(Type::Program, static_cast<int>(ProgramProp::StepperFrame), frame, e) && frame == 0,
+             "frame 000 is the first");
+    MP_CHECK(m.setProgram(ProgramProp::StepperFrame, 999) == Error::BadValue, "the last frame is 998");
+    MP_CHECK(m.setProgram(ProgramProp::Setter, 0) == Error::None, "the setter is off again");
     MP_CHECK(m.press(Type::Command, static_cast<int>(Command::Panic)) == Error::None, "panic");
     MP_CHECK(m.press(Type::Command, static_cast<int>(Command::PowerOff)) == Error::NotAllowed &&
                  m.press(Type::Command, static_cast<int>(Command::Quit)) == Error::NotAllowed,

@@ -356,7 +356,9 @@ int ControlModel::programValue(ProgramProp prop) {
         if (temperaments_[i] == proc_.temperamentChoice()) return static_cast<int>(i);
       return 0;
     }
-    case ProgramProp::StepperFrame: return proc_.playerCombinations().frame();
+    // The number the player sees, from 000; before the first frame reads 0 too.
+    case ProgramProp::StepperFrame:
+      return PlayerCombinations::shownNumber(std::max(proc_.playerCombinations().frame(), 1));
     case ProgramProp::Setter: return proc_.captureMode() ? 1 : 0;
     case ProgramProp::EqOn: return proc_.voicingEq().on ? 1 : 0;
     case ProgramProp::EqPreset: {
@@ -786,7 +788,7 @@ Error ControlModel::setProgram(ProgramProp prop, int value) {
       if (value >= static_cast<int>(temperaments_.size())) return Error::BadValue;
       proc_.setTemperament(temperaments_[static_cast<size_t>(value)]);
       break;
-    case ProgramProp::StepperFrame: proc_.stepperGoto(value); break;
+    case ProgramProp::StepperFrame: proc_.stepperGoto(value + 1); break;
     case ProgramProp::Setter: proc_.setCaptureMode(value == 1); break;
     case ProgramProp::EqOn: {
       auto eq = proc_.voicingEq();

@@ -226,7 +226,7 @@ program:
   - {index: 3, name: masterGain, min: -400, max: 240, access: set, doc: Tenths of a dB}
   - {index: 4, name: transpose, min: -12, max: 12, access: set, doc: Semitones}
   - {index: 5, name: temperament, min: 0, max: 2097151, access: set, doc: Index into temperaments}
-  - {index: 6, name: stepperFrame, min: 0, max: 2097151, access: set, doc: The sequencer's frame, from 1; 0 before the first}
+  - {index: 6, name: stepperFrame, min: 0, max: 998, access: set, doc: The sequencer's frame as shown, from 000}
   - {index: 7, name: setter, min: 0, max: 1, access: set, doc: While 1, pistons store}
   - {index: 8, name: eqOn, min: 0, max: 1, access: set, doc: The voicing EQ}
   - {index: 9, name: eqPreset, min: -1, max: 2097151, access: set, doc: Index into eqpresets, or -1 when none matches}
