@@ -7,6 +7,8 @@
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #include "../src/mp_ui/Panels.h"
 
+#include <cmath>
+#include <memory>
 #include <string>
 
 namespace {
@@ -31,6 +33,18 @@ public:
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-panel-edit-size");
     dir.deleteRecursively();
     dir.createDirectory();
+    // A pipe for each stop: a stop with no samples is left off the panel.
+    for (int i = 1; i <= 4; ++i) {
+      const juce::File wav = dir.getChildFile("S" + juce::String(i)).getChildFile("036.wav");
+      wav.getParentDirectory().createDirectory();
+      juce::WavAudioFormat fmt;
+      std::unique_ptr<juce::FileOutputStream> os(wav.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, {}, 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int k = 0; k < 4800; ++k)
+        tone.setSample(0, k, static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 65.41 * k / 48000.0)));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
     const juce::File file = dir.getChildFile("editsize.organ");
     file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
     {
