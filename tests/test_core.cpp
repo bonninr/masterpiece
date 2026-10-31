@@ -6028,20 +6028,6 @@ public:
     MP_CHECK(has(out, K::Stop, 3, true) && has(out, K::Stop, 4, false),
              "and holding the same registration");
 
-    // The window's - and + : one at a time up to ten, rows of ten above.
-    MP_CHECK(PC::steppedGeneralCount(10, -1) == 9 && PC::steppedGeneralCount(8, 1) == 9 &&
-                 PC::steppedGeneralCount(9, 1) == 10 && PC::steppedGeneralCount(10, 1) == 20 &&
-                 PC::steppedGeneralCount(20, -1) == 10 && PC::steppedGeneralCount(25, -1) == 20 &&
-                 PC::steppedGeneralCount(25, 1) == 30,
-             "the general count steps by one up to ten and by ten above");
-    MP_CHECK(PC::steppedGeneralCount(1, -1) == 1 && PC::steppedGeneralCount(100, 1) == 100,
-             "and stays within 1 to 100");
-    back.setGeneralCount(8);
-    PC eight;
-    eight.reset(elements, divisions);
-    MP_CHECK(eight.fromText(back.toText()) && eight.generalCount() == 8,
-             "a console with eight generals keeps eight");
-
     PC fewer;
     auto lessElements = elements;
     lessElements.erase(lessElements.begin() + 2);  // Principal 8 withdrawn

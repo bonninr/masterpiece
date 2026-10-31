@@ -169,8 +169,10 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   moreDivisionals_.setTooltip(TRANS("Show more divisionals on each division"));
   auto changeCounts = [this](int dg, int dd) {
     const auto& pc = proc_.playerCombinations();
-    proc_.setPlayerPistonCounts(PlayerCombinations::steppedGeneralCount(pc.generalCount(), dg),
-                                pc.divisionalCount() + dd);
+    const int g = dg == 0 ? pc.generalCount() : pc.generalCount() + dg * kPerRow;
+    proc_.setPlayerPistonCounts(
+        std::clamp(g, kPerRow, PlayerCombinations::kMaxGenerals),
+        pc.divisionalCount() + dd);
     rebuild();
   };
   fewerGenerals_.onClick = [changeCounts] { changeCounts(-1, 0); };
