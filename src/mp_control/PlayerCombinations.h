@@ -105,6 +105,10 @@ public:
   int divisionalCount() const { return divisionalCount_; }
   void setGeneralCount(int n);
   void setDivisionalCount(int n);
+  // The general count one step up (`direction` 1) or down (-1): by one up
+  // to ten, so a console with six or eight generals has exactly those, and
+  // by whole rows of ten above that.
+  static int steppedGeneralCount(int count, int direction);
 
   // --- pistons ----------------------------------------------------------
   // `isEngaged` reads the live console for an element. Captures return false

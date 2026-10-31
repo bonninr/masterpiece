@@ -327,6 +327,15 @@ void PlayerCombinations::setGeneralCount(int n) {
   generalCount_ = std::clamp(n, 1, kMaxGenerals);
 }
 
+int PlayerCombinations::steppedGeneralCount(int count, int direction) {
+  int n = count;
+  if (direction > 0)
+    n = count < 10 ? count + 1 : (count / 10 + 1) * 10;
+  else if (direction < 0)
+    n = count <= 10 ? count - 1 : (count % 10 != 0 ? count / 10 * 10 : count - 10);
+  return std::clamp(n, 1, kMaxGenerals);
+}
+
 void PlayerCombinations::setDivisionalCount(int n) {
   divisionalCount_ = std::clamp(n, 1, kMaxDivisionals);
 }
