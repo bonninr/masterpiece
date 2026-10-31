@@ -12,13 +12,13 @@ https://github.com/user-attachments/assets/f9e38610-aaf4-4b95-8d1c-e8f7f04b7d77
 **[Watch the demonstration](https://masterpieceorgan.com/#hear)** — thirty-three works on nine organs, recorded from the application's own output · [programme and credits](ATTRIBUTION.md#music)  
 **[Watch "New tested instruments"](https://masterpieceorgan.com/#hear-2)** — thirty works on fifteen organs, filmed from the running console · [programme and credits](https://masterpieceorgan.com/attribution-2.html)
 
-[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-windows-setup.exe)
-[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-macos-arm64.zip)
-[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-macos-x86_64.zip)
-[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-linux-amd64.deb)
-[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-linux-arm64.deb)
-[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-linux-armhf.deb)
-[![Flatpak](https://img.shields.io/badge/Download-Linux%20Flatpak-4A86CF?logo=flatpak&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.8.1/masterpiece-0.8.1-linux-x86_64.flatpak)
+[![Windows](https://img.shields.io/badge/Download-Windows%20installer-0078D6?logo=windows&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-windows-setup.exe)
+[![macOS Apple silicon](https://img.shields.io/badge/Download-macOS%20Apple%20silicon-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-macos-arm64.zip)
+[![macOS Intel](https://img.shields.io/badge/Download-macOS%20Intel-000000?logo=apple&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-macos-x86_64.zip)
+[![Debian and Ubuntu](https://img.shields.io/badge/Download-Debian%20%2F%20Ubuntu%20.deb-A81D33?logo=debian&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-linux-amd64.deb)
+[![Raspberry Pi 64-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2064--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-linux-arm64.deb)
+[![Raspberry Pi 32-bit](https://img.shields.io/badge/Download-Raspberry%20Pi%2032--bit%20.deb-A22846?logo=raspberrypi&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-linux-armhf.deb)
+[![Flatpak](https://img.shields.io/badge/Download-Linux%20Flatpak-4A86CF?logo=flatpak&logoColor=white)](https://github.com/bonninr/masterpiece/releases/download/v0.9.0/masterpiece-0.9.0-linux-x86_64.flatpak)
 
 Portable archives for every platform are on the
 [releases page](https://github.com/bonninr/masterpiece/releases/latest), and
@@ -220,9 +220,9 @@ folders.
 **Debian, Ubuntu, Raspberry Pi OS.**
 
 ```
-sudo apt install ./masterpiece-0.8.1-linux-amd64.deb     # PC
-sudo apt install ./masterpiece-0.8.1-linux-arm64.deb     # Raspberry Pi OS, 64-bit
-sudo apt install ./masterpiece-0.8.1-linux-armhf.deb     # Raspberry Pi OS, 32-bit
+sudo apt install ./masterpiece-0.9.0-linux-amd64.deb     # PC
+sudo apt install ./masterpiece-0.9.0-linux-arm64.deb     # Raspberry Pi OS, 64-bit
+sudo apt install ./masterpiece-0.9.0-linux-armhf.deb     # Raspberry Pi OS, 32-bit
 ```
 
 Runs as `masterpiece`. The VST3 and LV2 plugins for the PC are in
@@ -233,7 +233,7 @@ distribution with Flatpak installed; it uses the freedesktop 24.08 runtime,
 which Flatpak installs with it when it is not there yet:
 
 ```
-flatpak install --user ./masterpiece-0.8.1-linux-x86_64.flatpak
+flatpak install --user ./masterpiece-0.9.0-linux-x86_64.flatpak
 flatpak run io.github.bonninr.Masterpiece
 ```
 
