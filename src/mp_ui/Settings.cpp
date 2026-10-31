@@ -2126,7 +2126,12 @@ void MidiPanel::learnMenu(const LearnButton& l) {
   }
   const MidiTargetKind kind = l.kind;
   const Id id = learnTarget(l);
-  if (kind == MidiTargetKind::Temperament && id == 0) return;
+  // Id 0 is a temperament too, the organ's own (temperamentTarget): only a
+  // pick outside the list leaves the button with nothing to learn.
+  if (kind == MidiTargetKind::Temperament &&
+      (temperamentPick_.getSelectedId() < 1 ||
+       temperamentPick_.getSelectedId() > static_cast<int>(temperamentNames_.size())))
+    return;
   juce::String name = l.name;
   if (kind == MidiTargetKind::Temperament) name += ": " + temperamentPick_.getText();
   juce::PopupMenu menu;
