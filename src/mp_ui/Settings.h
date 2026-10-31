@@ -743,6 +743,7 @@ private:
   // The output device and MIDI inputs: the toolbar's Audio window, which is
   // set up once and seldom visited again (#276).
   std::unique_ptr<juce::Component> audio_;
+  std::unique_ptr<ScrollHost> audioScroll_;  // after audio_: it goes first
   ReverbPanel reverb_;
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;

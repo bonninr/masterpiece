@@ -13,6 +13,8 @@ add_library(mp_audio STATIC
   WavPackFormat.h WavPackFormat.cpp
   Metronome.h Metronome.cpp
   OutputLimiter.h OutputLimiter.cpp
+  OutputCompressor.h OutputCompressor.cpp
+  OutputDynamicsPresets.h
   BassManager.h BassManager.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp

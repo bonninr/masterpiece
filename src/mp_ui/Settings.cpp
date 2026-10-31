@@ -4135,8 +4135,12 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   // Without a device manager -- a plugin, whose host owns the audio device
   // and the MIDI ports -- the Audio and MIDI tabs are left out.
   if (devices != nullptr) {
-    audio_ = std::make_unique<AudioSettingsPanel>(*devices, p);
-    tabs_.addTab(TRANS("Audio"), bg, audio_.get(), false);
+    auto panel = std::make_unique<AudioSettingsPanel>(*devices, p);
+    auto* audio = panel.get();
+    audio_ = std::move(panel);
+    // The compressor and the limiter make the tab taller than the window.
+    audioScroll_ = std::make_unique<ScrollHost>(*audio_, 0, [audio] { return audio->contentHeight(); });
+    tabs_.addTab(TRANS("Audio"), bg, audioScroll_.get(), false);
   }
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Console);
