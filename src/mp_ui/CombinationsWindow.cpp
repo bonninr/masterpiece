@@ -134,13 +134,17 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
     showMidiMenu(stepForward10_, MidiTargetKind::StepperForward10, 0, false);
   };
   for (int i = 0; i < 10; ++i) {
-    // Digit i+1 for 1 to 9; the last one is 0, which is frame 10.
-    const int digit = (i + 1) % 10;
+    // 0 to 9, as GrandOrgue's setter: the frame of the ten shown whose number
+    // ends in the digit.
+    const int digit = i;
     digits_[static_cast<size_t>(i)] = std::make_unique<PistonButton>(juce::String(digit));
     auto& b = *digits_[static_cast<size_t>(i)];
     addAndMakeVisible(b);
-    b.setTooltip(digit == 0 ? TRANS("Go to frame 10") : TRANS("Go to frame %1").replace("%1", juce::String(digit)));
+    b.setTooltip(TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(digit)));
     b.onClick = [this, digit] { proc_.stepperDigit(digit); };
+    b.onRightClick = [this, &b, digit] {
+      showMidiMenu(b, MidiTargetKind::StepperDigit, static_cast<Id>(digit), false);
+    };
   }
   addAndMakeVisible(frame_);
   frame_.setJustificationType(juce::Justification::centred);
@@ -149,7 +153,7 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   frame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
   frame_.onClick = [this] { askForFrame(proc_); };
   addAndMakeVisible(insertFrame_);
-  insertFrame_.setTooltip(TRANS("Open an empty frame here; the frames after it move up one"));
+  insertFrame_.setTooltip(TRANS("Copy this frame into a new one after it; the frames after it move up one"));
   insertFrame_.onClick = [this] { proc_.stepperInsertFrame(); };
   addAndMakeVisible(deleteFrame_);
   deleteFrame_.setTooltip(TRANS("Take this frame out; the frames after it move down one"));
@@ -426,11 +430,15 @@ void CombinationsPanel::refreshState() {
   }
 
   const int last = pc.lastUsedFrame();
+  // Numbered from 000, as GrandOrgue's setter numbers them.
+  const auto shown = [](int f) {
+    return juce::String::formatted("%03d", PlayerCombinations::shownNumber(f));
+  };
   frame_.setText(pc.frame() == 0 ? (last == 0 ? juce::String(TRANS("No frames"))
-                                              : TRANS("- of %1").replace("%1", juce::String(last)))
+                                              : TRANS("- of %1").replace("%1", shown(last)))
                                  : TRANS("Frame %1 of %2")
-                                       .replace("%1", juce::String(pc.frame()))
-                                       .replace("%2", juce::String(std::max(last, pc.frame()))),
+                                       .replace("%1", shown(pc.frame()))
+                                       .replace("%2", shown(std::max(last, pc.frame()))),
                  juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
   stepNext_.setEnabled(capturing || pc.frame() < last);
@@ -471,7 +479,8 @@ void askForFrame(MasterpieceProcessor& p) {
   const int last = p.playerCombinations().lastUsedFrame();
   prompt = std::make_unique<juce::AlertWindow>(
       TRANS("Go to a frame"),
-      last > 0 ? TRANS("A frame number, 1 to %1:").replace("%1", juce::String(last))
+      last > 0 ? TRANS("A frame number, 000 to %1:")
+                     .replace("%1", juce::String::formatted("%03d", PlayerCombinations::shownNumber(last)))
                : TRANS("A frame number:"),
       juce::MessageBoxIconType::NoIcon);
   prompt->addTextEditor("frame", "", TRANS("Frame"));
@@ -482,15 +491,17 @@ void askForFrame(MasterpieceProcessor& p) {
   prompt->addButton(TRANS("Go"), 1, juce::KeyPress(juce::KeyPress::returnKey));
   prompt->addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
   prompt->enterModalState(true, juce::ModalCallbackFunction::create([&p](int result) {
-    const int typed = result == 1 && prompt != nullptr
-                          ? prompt->getTextEditorContents("frame").getIntValue()
-                          : 0;
+    // Typed as shown, from 000.
+    const juce::String text =
+        result == 1 && prompt != nullptr ? prompt->getTextEditorContents("frame").trim() : juce::String();
     prompt.reset();
-    if (typed < 1) return;
+    if (text.isEmpty()) return;
+    const int typed = text.getIntValue() + 1;
     // Past the end is the end, unless the setter is on and the sequence may grow.
     const int last = p.playerCombinations().lastUsedFrame();
     const int to = p.captureMode() ? typed : juce::jmin(typed, last);
-    if (to >= 1 && to != p.playerCombinations().frame()) p.stepperGoto(to);
+    // With Set on, the frame shown is stored into, as its digit does.
+    if (to >= 1 && (p.captureMode() || to != p.playerCombinations().frame())) p.stepperGoto(to);
   }));
 }
 

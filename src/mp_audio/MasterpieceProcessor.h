@@ -614,12 +614,14 @@ public:
   bool stepperFirst();
   bool stepperLast();
   bool stepperJump(int frames);
-  // A digit button: 1 to 9 go to that frame, and 0 to the tenth. Like the
-  // frame prompt, it stops at the last frame that holds anything unless
-  // capture is on. False when there is nowhere to go.
+  // A digit button, 0 to 9, as on GrandOrgue's setter: the frame of the ten
+  // the current one is among whose shown number (from 000) ends in it. Like
+  // the frame prompt, it stops at the last frame that holds anything unless
+  // capture is on; with capture on it stores, into the current frame too.
+  // False when there is nowhere to go.
   bool stepperDigit(int digit);
-  // Open a frame before the current one, or take the current one out; the
-  // frames after it move along.
+  // Copy the current frame into a new one after it, or take the current one
+  // out; the frames after it move along. Set stores into the current frame.
   bool stepperInsertFrame();
   bool stepperDeleteFrame();
   void stepperRewind() { player_.rewind(); }

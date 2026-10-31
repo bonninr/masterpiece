@@ -484,12 +484,13 @@ bool PlayerCombinations::gotoFrame(int oneBased, bool capturing,
 }
 
 bool PlayerCombinations::insertFrame() {
-  const int at = std::max(frame_, 1);
+  if (frame_ < 1 || frame_ >= kMaxFrames) return false;
   if (frames_[kMaxFrames].set) return false;  // the last frame would fall off
   // Rotating within the fixed bank moves every later frame up one and brings
-  // the empty last frame round to `at`, without reallocating anything.
-  std::rotate(frames_.begin() + at, frames_.begin() + kMaxFrames, frames_.end());
-  frame_ = at;
+  // the empty last frame round to just after this one, which takes a copy.
+  // The frames are all the same size, so the copy reallocates nothing.
+  std::rotate(frames_.begin() + frame_ + 1, frames_.begin() + kMaxFrames, frames_.end());
+  frames_[static_cast<size_t>(frame_ + 1)] = frames_[static_cast<size_t>(frame_)];
   return true;
 }
 
