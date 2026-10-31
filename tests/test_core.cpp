@@ -14738,7 +14738,7 @@ public:
     // ten the current frame is among.
     MP_CHECK(proc.stepperGoto(1) && proc.stepperDigit(4) && pc.frame() == 5, "on 000, digit 4 goes to 004");
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "digit 0 goes to 000");
-    MP_CHECK(!proc.stepperDigit(0), "a digit for the frame already shown does nothing");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "a digit for the frame already shown fires it again");
     MP_CHECK(proc.stepperGoto(15) && proc.stepperDigit(7) && pc.frame() == 18, "on 014, digit 7 goes to 017");
     MP_CHECK(proc.stepperGoto(21) && !proc.stepperDigit(9) && pc.frame() == 21,
              "on 020, digit 9 (029) is past the last frame that holds anything");
@@ -14773,7 +14773,12 @@ public:
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1 && pc.frameSet(1), "with Set on, digit 0 stores frame 000");
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "and stores into the frame shown again");
     proc.setCaptureMode(false);
-    MP_CHECK(!proc.stepperDigit(0), "with Set off, the digit of the frame shown does nothing");
+    // General Cancel, then the digit of the frame shown (#692): the frame
+    // comes back, as on GrandOrgue's setter and as any piston pressed again.
+    proc.pressGeneralCancel();
+    MP_CHECK(!proc.stopEngaged(901), "General Cancel pushes the stop in");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1 && proc.stopEngaged(901),
+             "with Set off, the digit of the frame shown recalls it after General Cancel");
 
     // Insert copies the frame shown into a new one after it, as GrandOrgue does.
     MP_CHECK(proc.stepperInsertFrame() && pc.frame() == 1 && pc.lastUsedFrame() == 2,

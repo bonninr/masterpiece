@@ -5236,9 +5236,10 @@ bool MasterpieceProcessor::stepperDigit(int digit) {
   if (to > PlayerCombinations::kMaxFrames) return false;
   const int last = player_.lastUsedFrame();
   if (!captureMode() && (last < 1 || to > last)) return false;
-  // With Set on, the digit of the frame shown stores into it, as any piston
-  // does: how an inserted frame is filled.
-  if (to == player_.frame() && !captureMode()) return false;
+  // The digit of the frame shown fires it again, as any piston does and as
+  // GrandOrgue's setter does: with Set off it recalls the frame, so General
+  // Cancel then 0 brings frame 000 back (#692); with Set on it stores into
+  // it, which is how an inserted frame is filled.
   return stepperGoto(to);
 }
 
