@@ -5,6 +5,7 @@
 #include <cmath>
 #include <map>
 #include <iterator>
+#include <limits>
 
 #include "ManualDialog.h"
 #include "MidiEventDialog.h"
@@ -3449,24 +3450,49 @@ void MixerPanel::refresh() {
   pairFaders_.clear();
   divisionFaders_.clear();
   rankFaders_.clear();
+  rankGroups_.clear();
+  rankGroupAbove_.clear();
   rankHolder_.removeAllChildren();
   for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
 
   for (int i = 0; i < juce::jmin(juce::jmax(1, proc_.mixBusCount()), LiveLevels::kMaxPairs); ++i)
     addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
+  std::vector<juce::String> divisionNames;
   {
     std::vector<Id> divisions;
     for (const auto& [id, d] : proc_.organModel().divisions) divisions.push_back(id);
     std::sort(divisions.begin(), divisions.end());
     for (Id id : divisions) {
       const auto& d = proc_.organModel().divisions.at(id);
-      addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id),
-               d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
+      divisionNames.push_back(d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
+      addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id), divisionNames.back());
     }
   }
 
+  // By division, a stop's tremmed ranks with its others, then by id.
+  const auto divisionOf = [this](Id rankId) {
+    const int d = proc_.liveDivisionOfRank(proc_.liveRankIndexOf(rankId));
+    return d < 0 ? std::numeric_limits<int>::max() : d;
+  };
   for (const auto& [id, rank] : proc_.organModel().ranks) rankIds_.push_back(id);
-  std::sort(rankIds_.begin(), rankIds_.end());
+  std::sort(rankIds_.begin(), rankIds_.end(), [&divisionOf](Id a, Id b) {
+    const int da = divisionOf(a), db = divisionOf(b);
+    return da != db ? da < db : a < b;
+  });
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const int d = divisionOf(rankIds_[i]);
+    if (i > 0 && divisionOf(rankIds_[i - 1]) == d) {
+      rankGroupAbove_.push_back(-1);
+      continue;
+    }
+    auto group = std::make_unique<juce::Label>();
+    styleLabel(*group, d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
+                                                                            : TRANS("Other"));
+    group->setColour(juce::Label::textColourId, juce::Colours::grey);
+    rankHolder_.addAndMakeVisible(*group);
+    rankGroupAbove_.push_back(static_cast<int>(rankGroups_.size()));
+    rankGroups_.push_back(std::move(group));
+  }
 
   const int buses = juce::jmax(1, proc_.mixBusCount());
   busCount_.setSelectedId(buses, juce::dontSendNotification);
@@ -3528,7 +3554,8 @@ void MixerPanel::resized() {
   // The pairs and divisions first, then a row per rank: its name, its pair,
   // its fader. The fader and its MIDI button sit at the right of each row.
   const int rowH = kRow + 2;
-  const int rows = 3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size());
+  const int rows =
+      3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size() + rankGroups_.size());
   rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
   int y = 0;
   const auto line = [&] {
@@ -3548,6 +3575,8 @@ void MixerPanel::resized() {
   for (auto& f : divisionFaders_) place(f, line());
   ranksHeading_.setBounds(line());
   for (size_t i = 0; i < rankIds_.size(); ++i) {
+    if (i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0)
+      rankGroups_[static_cast<size_t>(rankGroupAbove_[i])]->setBounds(line().withTrimmedLeft(8));
     auto l = line();
     if (i < rankFaders_.size()) l = place(rankFaders_[i], l);
     rankBuses_[i]->setBounds(l.removeFromRight(120).reduced(2, 1));

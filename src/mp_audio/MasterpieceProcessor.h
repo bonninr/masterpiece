@@ -1677,6 +1677,8 @@ public:
   }
   int liveRankCount() const { return liveLevels_.rankCount(); }
   int liveDivisionCount() const { return liveLevels_.divisionCount(); }
+  // The division a rank's fader sits under, by those lists' indices; -1 for none.
+  int liveDivisionOfRank(int rankIndex) const { return liveLevels_.rankDivision(rankIndex); }
   // A rank's or a division's place in those lists; -1 for none.
   int liveRankIndexOf(Id rankId) const {
     const auto it = liveRankIndex_.find(rankId);
