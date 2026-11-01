@@ -64,8 +64,10 @@ public:
 static LiveLevelsLawTest g_law;
 
 // Two manuals, a rank on each: A in division G on manual I (channel 1),
-// B in division S on manual II (channel 2).
-juce::File writeOrgan(const juce::File& root) {
+// B in division S on manual II (channel 2). `tremmed` gives stop A a tremmed
+// rank as well, rank 203, which switch 1103 plays in place of A.
+juce::File writeOrgan(const juce::File& root, bool tremmed = false) {
+  const auto ifTremmed = [tremmed](const char* text) { return juce::String(tremmed ? text : ""); };
   root.deleteRecursively();
   const auto defs = root.getChildFile("OrganDefinitions");
   const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
@@ -94,16 +96,21 @@ juce::File writeOrgan(const juce::File& root) {
       "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
       "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
       "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
-      "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>A</Name></Rank><Rank><RankID>202</RankID><Name>B</Name></Rank></ObjectList>"
+      "<ObjectList ObjectType=\"Rank\"><Rank><RankID>201</RankID><Name>A</Name></Rank><Rank><RankID>202</RankID><Name>B</Name></Rank>" +
+      ifTremmed("<Rank><RankID>203</RankID><Name>A trem</Name></Rank>") +
+      "</ObjectList>"
       "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
       "<Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
-      "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+      "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>" +
+      ifTremmed("<Pipe_SoundEngine01><PipeID>303</PipeID><RankID>203</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>") +
       "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
       "<Pipe_SoundEngine01_Layer><LayerID>401</LayerID><PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
-      "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>"
+      "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>" +
+      ifTremmed("<Pipe_SoundEngine01_Layer><LayerID>403</LayerID><PipeID>303</PipeID></Pipe_SoundEngine01_Layer>") +
       "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
       "<Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
-      "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+      "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>" +
+      ifTremmed("<Pipe_SoundEngine01_AttackSample><UniqueID>503</UniqueID><LayerID>403</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>") +
       "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
       "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
       "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
@@ -121,12 +128,15 @@ juce::File writeOrgan(const juce::File& root) {
       "<Stop><StopID>902</StopID><Name>B</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
       "</ObjectList><ObjectList ObjectType=\"StopRank\">"
       "<StopRank><StopID>901</StopID><RankID>201</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
-      "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
+      "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes>" +
+      ifTremmed("<AlternateRankID>203</AlternateRankID><SwitchIDToSwitchToAlternateRank>1103</SwitchIDToSwitchToAlternateRank>") +
+      "</StopRank>"
       "<StopRank><StopID>902</StopID><RankID>202</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
       "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
       "</ObjectList><ObjectList ObjectType=\"Switch\">"
       "<Switch><SwitchID>1101</SwitchID><Name>A</Name><Latching>Y</Latching></Switch>"
-      "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>"
+      "<Switch><SwitchID>1102</SwitchID><Name>B</Name><Latching>Y</Latching></Switch>" +
+      ifTremmed("<Switch><SwitchID>1103</SwitchID><Name>Trem</Name><Latching>Y</Latching></Switch>") +
       "</ObjectList></Hauptwerk>");
   return odf;
 }
@@ -259,6 +269,41 @@ public:
   }
 };
 static LiveLevelsOrganTest g_organ;
+
+// A stop's tremmed rank, swapped in by its switch, is in the stop's division:
+// the division's fader takes it as it takes the plain rank (#637).
+class LiveLevelsTremmedRankTest final : public mp::test::Test {
+public:
+  LiveLevelsTremmedRankTest() : Test("functional.levels.tremmed-rank", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-live-levels-trem");
+    const juce::File odf = writeOrgan(root, true);
+    for (const bool trem : {false, true}) {
+      Rig rig(odf);
+      MP_CHECK(rig.loaded, "the organ loads");
+      auto& p = rig.proc;
+      MP_CHECK(p.liveRankCount() == 3, "a fader for the tremmed rank too");
+      p.setSwitchEngaged(1103, trem);
+      rig.settle(10);
+      juce::MidiBuffer on;
+      on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+      rig.block(on);
+      const std::string what = trem ? "tremmed rank" : "plain rank";
+      const float full = rig.settle(30);
+      MP_CHECK(full > 0.01f, what + " sounds: " + std::to_string(full));
+      p.setLiveDivisionLevel(p.liveDivisionIndexOf(801), 0);
+      const float down = rig.settle(120);
+      MP_CHECK(down < 1.0e-5f, what + ": division G's fader takes it, " + std::to_string(down));
+      p.setLiveDivisionLevel(p.liveDivisionIndexOf(801), 127);
+      const float back = rig.settle();
+      MP_CHECK(std::fabs(back - full) < full * 0.02f, what + " back up: " + std::to_string(back));
+      p.settingsFileFor(odf).deleteFile();
+    }
+    root.deleteRecursively();
+  }
+};
+static LiveLevelsTremmedRankTest g_tremmed;
 
 // The attack's emphasis: each pipe begins louder, or softer, and comes to
 // its own level in a straight line. Off, the organ sounds as without it.

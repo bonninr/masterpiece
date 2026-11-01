@@ -145,7 +145,7 @@ public:
         g.fillRect(r);
         g.setColour(juce::Colour(0xff2a2d33));
         g.drawRect(r, 1.0f);
-        if (live_ && state_.pedalNote == n) {
+        if (live_ && (state_.pedalNote == n || state_.soloNote == n)) {
           g.setColour(juce::Colours::black);
           g.fillEllipse(r.getCentreX() - 3.0f, r.getBottom() - 10.0f, 6.0f, 6.0f);
         }
@@ -156,6 +156,12 @@ public:
       const float right = keyRect(std::min(layout_.bass.topKey, kHighKey), keys, w).getRight();
       g.setColour(juce::Colour(0xffe0a030).withAlpha(0.9f));
       g.fillRect(keys.getX(), keys.getBottom() - 3.0f, right - keys.getX(), 3.0f);
+    }
+    // The melody range, likewise.
+    if (layout_.melody.on && layout_.melody.bottomKey <= kHighKey) {
+      const float left = keyRect(std::max(layout_.melody.bottomKey, kLowKey), keys, w).getX();
+      g.setColour(juce::Colour(0xff40b0e0).withAlpha(0.9f));
+      g.fillRect(left, keys.getBottom() - 3.0f, keys.getRight() - left, 3.0f);
     }
 
     // Split points: handles to drag, and the zones' roles above them.
@@ -420,6 +426,33 @@ public:
       apply(l);
     };
 
+    addAndMakeVisible(melodyHeading_);
+    styleHeading(melodyHeading_, TRANS("Melody from the hands"));
+    addAndMakeVisible(melodyOn_);
+    melodyOn_.setButtonText(TRANS("The highest key held plays the solo"));
+    melodyOn_.onClick = [this] {
+      Layout l = host_.layout();
+      l.melody.on = melodyOn_.getToggleState();
+      apply(l);
+    };
+    addAndMakeVisible(melodyBottomLabel_);
+    styleLabel(melodyBottomLabel_, TRANS("From this key to the top"));
+    addAndMakeVisible(melodyBottom_);
+    noteSlider(melodyBottom_);
+    melodyBottom_.setRange(0, 127, 1);
+    melodyBottom_.onValueChange = [this] {
+      Layout l = host_.layout();
+      l.melody.bottomKey = static_cast<int>(melodyBottom_.getValue());
+      apply(l);
+    };
+    addAndMakeVisible(melodyManual_);
+    melodyManual_.setButtonText(TRANS("The melody key also plays its manual"));
+    melodyManual_.onClick = [this] {
+      Layout l = host_.layout();
+      l.melody.alsoOnManual = melodyManual_.getToggleState();
+      apply(l);
+    };
+
     addAndMakeVisible(rolesHeading_);
     styleHeading(rolesHeading_, TRANS("Manuals on this organ"));
     for (int r = 0; r < split::kRoleCount; ++r) {
@@ -454,7 +487,7 @@ public:
     fillSources();
     fillKeyboards();
     refresh(true);
-    setSize(760, 980);
+    setSize(760, 1080);
     startTimerHz(30);
   }
 
@@ -542,6 +575,16 @@ public:
       sustain_.setBounds(x.removeFromLeft(280));
       x.removeFromLeft(8);
       sustainMs_.setBounds(x.removeFromLeft(150));
+    }
+    r.removeFromTop(6);
+    melodyHeading_.setBounds(row(22));
+    melodyOn_.setBounds(row());
+    {
+      auto x = row();
+      melodyBottomLabel_.setBounds(x.removeFromLeft(170));
+      melodyBottom_.setBounds(x.removeFromLeft(130));
+      x.removeFromLeft(20);
+      melodyManual_.setBounds(x);
     }
     r.removeFromTop(6);
     rolesHeading_.setBounds(row(22));
@@ -718,6 +761,11 @@ private:
     for (juce::Component* c :
          std::initializer_list<juce::Component*>{&bassTop_, &bassManual_, &sustain_, &bassTopLabel_, &sustainLabel_})
       c->setEnabled(l.bass.on);
+    melodyOn_.setToggleState(l.melody.on, juce::dontSendNotification);
+    melodyBottom_.setValue(l.melody.bottomKey, juce::dontSendNotification);
+    melodyManual_.setToggleState(l.melody.alsoOnManual, juce::dontSendNotification);
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&melodyBottom_, &melodyManual_, &melodyBottomLabel_})
+      c->setEnabled(l.melody.on);
   }
 
   void askSave() {
@@ -783,6 +831,9 @@ private:
   juce::ToggleButton bassOn_, bassManual_;
   juce::Slider bassTop_, sustainMs_;
   juce::ComboBox sustain_;
+  juce::Label melodyHeading_, melodyBottomLabel_;
+  juce::ToggleButton melodyOn_, melodyManual_;
+  juce::Slider melodyBottom_;
   juce::Label rolesHeading_;
   std::array<juce::Label, split::kRoleCount> roleKbLabel_;
   std::array<juce::ComboBox, split::kRoleCount> roleKb_;

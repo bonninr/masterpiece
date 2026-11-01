@@ -69,7 +69,9 @@ set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/UpdateCheck.cpp APPEND 
 if(TARGET mp_score)
   target_sources(mp_audio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScorePanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScoreRegistration.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/ScoreRegistration.cpp)
   # And the fonts the page's text is drawn with: Bravura for the music
   # symbols, Liberation Serif for the words.
   file(GLOB MP_SCORE_TEXT_FONTS CONFIGURE_DEPENDS

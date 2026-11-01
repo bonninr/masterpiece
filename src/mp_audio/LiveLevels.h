@@ -71,6 +71,8 @@ public:
   }
 
   int rankCount() const { return static_cast<int>(rankDivision_.size()); }
+  // A rank's division index, or -1 for a rank in none or out of range.
+  int rankDivision(int i) const { return i >= 0 && i < rankCount() ? rankDivision_[static_cast<size_t>(i)] : -1; }
   int divisionCount() const { return static_cast<int>(divisionNow_.size()); }
 
   // Any thread. An index out of range is ignored; a value is held to 0..127.

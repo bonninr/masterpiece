@@ -27,12 +27,12 @@ public:
                "Settings opens on the tab it was closed on; it opened on " +
                    again.currentTab().toStdString());
       // A caller that names a tab gets that tab.
-      again.showTab("Reverb");
-      MP_CHECK(again.currentTab() == "Reverb", "a named tab wins over the remembered one");
+      again.showTab("Metronome");
+      MP_CHECK(again.currentTab() == "Metronome", "a named tab wins over the remembered one");
     }
     {
       mp::ui::SettingsWindow after(proc, nullptr);
-      MP_CHECK(after.currentTab() == "Reverb", "the named tab is remembered in its turn");
+      MP_CHECK(after.currentTab() == "Metronome", "the named tab is remembered in its turn");
     }
   }
 };

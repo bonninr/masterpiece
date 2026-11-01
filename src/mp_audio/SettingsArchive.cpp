@@ -393,4 +393,16 @@ VoicingIds voicingIds(const juce::File& root, const juce::String& key) {
   return ids;
 }
 
+OrganLabel organLabel(const juce::File& root, const juce::String& key) {
+  OrganLabel label;
+  if (!validKey(key)) return label;
+  for (const auto& l : linesOf(fileAt(root, "organs/" + key + ".mporgan").loadFileAsString())) {
+    const auto word = l.upToFirstOccurrenceOf(" ", false, false);
+    const auto rest = l.fromFirstOccurrenceOf(" ", false, false).trim();
+    if (word == "organname") label.name = rest;
+    if (word == "definition" && juce::File::isAbsolutePath(rest)) label.definition = juce::File(rest);
+  }
+  return label;
+}
+
 }  // namespace mp::settings

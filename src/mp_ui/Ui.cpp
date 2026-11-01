@@ -1186,6 +1186,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // window's sliders have it.
   juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
+  juce::Desktop::getInstance().addGlobalMouseListener(&wheelFocus_);
 
   // The licence question, asked from the loading thread before a sample is
   // read (#164). The box belongs to the message thread, so it is shown there
@@ -1393,7 +1394,18 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   startTimerHz(4);
 }
 
+void MasterpieceEditor::WheelFocus::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&) {
+  auto* slider = dynamic_cast<juce::Slider*>(e.eventComponent);
+  // The value box under the pointer is the slider's own child.
+  if (slider == nullptr && e.eventComponent != nullptr)
+    slider = dynamic_cast<juce::Slider*>(e.eventComponent->getParentComponent());
+  if (slider == nullptr || !slider->isEnabled() || !slider->isShowing() || slider->hasKeyboardFocus(true)) return;
+  slider->setWantsKeyboardFocus(true);
+  slider->grabKeyboardFocus();
+}
+
 MasterpieceEditor::~MasterpieceEditor() {
+  juce::Desktop::getInstance().removeGlobalMouseListener(&wheelFocus_);
   stopTimer();
   proc_.licenceAsker = nullptr;
   proc_.packageAsker = nullptr;
@@ -2646,13 +2658,15 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   onScore = showingConsole_ && showingScore_;
 #endif
   const bool onConsole = !onPanel && !onScore && !showingStopList_;
+  // Before any organ is loaded there are no stops to list or to put on a panel.
+  const bool organ = proc_.loadedOrganFile() != juce::File();
   // The organ's own pages first, each by its name (#634); an organ that
   // draws no console has the stop list in their place.
   if (console_.hasArtwork() && console_.pageCount() > 0) {
     for (int i = 0; i < console_.pageCount() && i < 100; ++i)
       menu.addItem(1400 + i, console_.pageName(i), true, onConsole && console_.currentPage() == i);
   } else {
-    menu.addItem(1002, TRANS("Stop list"), true, onConsole);
+    menu.addItem(1002, TRANS("Stop list"), organ, organ && onConsole);
   }
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
@@ -2673,7 +2687,7 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   // The first panel is the whole organ, every stop by division: what the
   // stop list showed, as big buttons to arrange and name.
   menu.addItem(1001, panels_.empty() ? TRANS("Panel of the whole organ") : TRANS("New panel"),
-               static_cast<int>(panels_.size()) < kMaxPanels);
+               organ && static_cast<int>(panels_.size()) < kMaxPanels);
   if (!panels_.empty()) {
     juce::PopupMenu edit;
     for (size_t i = 0; i < panels_.size(); ++i)
@@ -2803,6 +2817,8 @@ void MasterpieceEditor::showOrganMenu() {
   const bool loaded = proc_.loadedOrganFile().existsAsFile();
   juce::PopupMenu menu;
   menu.addItem(1, TRANS("Organ settings..."), loaded);
+  menu.addItem(9, TRANS("Reverb") + "...", loaded);
+  menu.addItem(10, TRANS("Combination sets") + "...", loaded);
   menu.addItem(2, TRANS("Temperament and tuning..."), loaded);
   menu.addItem(3, TRANS("Combinations"), loaded && combinations_ != nullptr,
                combinations_ != nullptr && combinations_->isVisible());
@@ -2823,6 +2839,8 @@ void MasterpieceEditor::showOrganMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
+                       if ((c == 9 || c == 10) && safe->onOrganSettingsTab)
+                         safe->onOrganSettingsTab(c == 9 ? TRANS("Reverb") : TRANS("Combination sets"));
                        if (c == 2) safe->tuningButton_.triggerClick();
                        if (c == 3) safe->toggleCombinations();
                        if (c == 4) safe->toggleProgramCouplers();
@@ -2932,10 +2950,9 @@ void MasterpieceEditor::showSettingsMenu() {
   juce::PopupMenu menu;
   const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
   const juce::StringArray tabs =
-      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome",
-                                     "Combination sets", "Console display", "Language", "Remote control"}
-                 : juce::StringArray{"General", "Performance", "Reverb", "Metronome", "Combination sets",
-                                     "Console display", "Language"};
+      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Metronome",
+                                     "Console display", "Language", "Remote control"}
+                 : juce::StringArray{"General", "Performance", "Metronome", "Console display", "Language"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
@@ -3029,6 +3046,10 @@ void MasterpieceEditor::timerCallback() {
     const int channel = proc_.channelForKeyboard(static_cast<Id>(manual_.getSelectedId()));
     if (channel != keyboard_.getMidiChannel()) keyboard_.setMidiChannel(channel);
   }
+
+  // A voicing step pressed on the console, for the rank chosen on the
+  // Voicing tab.
+  if (const auto step = proc_.takeVoicingStep(); step != MidiTargetKind::None) proc_.applyVoicingStep(step);
 
   // A console piston pressed on a physical manual. Collected here because a
   // component may only be touched from the message thread.
@@ -3272,20 +3293,18 @@ juce::AudioProcessorEditor* MasterpieceProcessor::createEditor() {
   };
   ed->onSettingsTab = [this, safe, launch](const juce::String& tab) {
     auto panel = std::make_unique<ui::SettingsWindow>(*this, nullptr);
-    panel->setOrganLoader([safe](const juce::File& f) {
-      if (auto* e = safe.getComponent()) e->loadOrgan(f, false);
-    });
     if (tab.isNotEmpty()) panel->showTab(tab);
     launch(std::move(panel), TRANS("Settings"));
   };
   ed->onSettings = [ed] { ed->onSettingsTab({}); };
-  ed->onOrganSettings = [this, safe, launch] {
-    launch(std::make_unique<ui::OrganSettingsWindow>(*this,
-                                                     [safe] {
-                                                       if (auto* e = safe.getComponent()) e->reloadOrgan();
-                                                     }),
-           TRANS("Organ settings"));
+  ed->onOrganSettingsTab = [this, safe, launch](const juce::String& tab) {
+    auto panel = std::make_unique<ui::OrganSettingsWindow>(*this, [safe] {
+      if (auto* e = safe.getComponent()) e->reloadOrgan();
+    });
+    if (tab.isNotEmpty()) panel->showTab(tab);
+    launch(std::move(panel), TRANS("Organ settings"));
   };
+  ed->onOrganSettings = [ed] { ed->onOrganSettingsTab({}); };
   return ed;
 }
 } // namespace mp

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <map>
 #include <iterator>
+#include <limits>
 
 #include "ManualDialog.h"
 #include "MidiEventDialog.h"
@@ -211,10 +212,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(storageLabel_);
   styleLabel(storageLabel_, TRANS("Resident format"));
   addAndMakeVisible(storage_);
-  storage_.addItem(TRANS("As recorded - 16 or 24-bit, as each file is"), 1);
-  storage_.addItem(TRANS("20-bit - a sixth less than the source"), 4);
-  storage_.addItem(TRANS("16-bit - two thirds of that, inaudible"), 2);
-  storage_.addItem(TRANS("32-bit float - larger than the source"), 3);
+  storage_.addItem(TRANS("As recorded (16 or 24-bit)"), 1);
+  storage_.addItem(TRANS("20-bit"), 4);
+  storage_.addItem(TRANS("16-bit"), 2);
+  storage_.addItem(TRANS("32-bit float"), 3);
   storage_.setSelectedId(storageItemId(proc_.sampleStorage()), juce::dontSendNotification);
   storage_.onChange = [this] {
     proc_.setSampleStorage(storageOfItem(storage_.getSelectedId()));
@@ -1393,7 +1394,8 @@ void ReverbPanel::resized() {
   enabled_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   auto row = r.removeFromTop(kRow);
-  load_.setBounds(row.removeFromLeft(110));
+  // As wide as its words, in any language.
+  load_.setBounds(row.removeFromLeft(juce::jmax(110, load_.getBestWidthForHeight(kRow))));
   row.removeFromLeft(kGap);
   clear_.setBounds(row.removeFromLeft(80));
   row.removeFromLeft(kGap);
@@ -2126,7 +2128,12 @@ void MidiPanel::learnMenu(const LearnButton& l) {
   }
   const MidiTargetKind kind = l.kind;
   const Id id = learnTarget(l);
-  if (kind == MidiTargetKind::Temperament && id == 0) return;
+  // Id 0 is a temperament too, the organ's own (temperamentTarget): only a
+  // pick outside the list leaves the button with nothing to learn.
+  if (kind == MidiTargetKind::Temperament &&
+      (temperamentPick_.getSelectedId() < 1 ||
+       temperamentPick_.getSelectedId() > static_cast<int>(temperamentNames_.size())))
+    return;
   juce::String name = l.name;
   if (kind == MidiTargetKind::Temperament) name += ": " + temperamentPick_.getText();
   juce::PopupMenu menu;
@@ -2755,6 +2762,12 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(rankLabel_, TRANS("Rank"));
   addAndMakeVisible(rank_);
   rank_.onChange = [this] { loadCurrentIntoSliders(); };
+  addAndMakeVisible(testNote_);
+  testNote_.setTooltip(TRANS("A key plays this rank alone, and the next key stops it. Changes are heard at once."));
+  testNote_.onClick = [this] { proc_.setTestNote(testNote_.getToggleState()); };
+  addAndMakeVisible(midi_);
+  midi_.setTooltip(TRANS("Buttons on the console for level and tuning, acting on the rank or pipe chosen here"));
+  midi_.onClick = [this] { midiMenu(); };
 
   addAndMakeVisible(scopeLabel_);
   styleLabel(scopeLabel_, TRANS("Applies to"));
@@ -2796,6 +2809,8 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   tune_.setValue(0.0, juce::dontSendNotification);
   tune_.onValueChange = [this] { pushCurrent(); };
   addAndMakeVisible(tune_);
+  // A test note is struck again when a drag ends; during it, it would stutter.
+  gain_.onDragEnd = tune_.onDragEnd = [this] { proc_.restartTestNote(); };
 
   // The EQ: shelves of +/-12 dB, the brightness above 3 kHz and the bass
   // below 200 Hz. A rank's and its division's add.
@@ -2968,6 +2983,7 @@ void VoicingPanel::loadCurrentIntoSliders() {
   } else {
     pv = proc_.voicing().live().rank(rankId);
   }
+  pushTarget();
   // dontSendNotification: these are being loaded FROM the model, and letting
   // them call back would write them straight back again, turning a read into
   // a write and a swap into a wipe.
@@ -3019,7 +3035,108 @@ void VoicingPanel::pushCurrent() {
     proc_.voicing().live().setRank(rankId, pv);
     if (eqChanged) proc_.applyVoicingEq();
   }
+  if (!juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()) proc_.restartTestNote();
   updateStatus();
+}
+
+void VoicingPanel::pushTarget() {
+  if (rankIds_.empty()) {
+    proc_.setVoicingTarget(0, 0);
+    return;
+  }
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1, rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+  const Id pipeId =
+      scope_.getSelectedId() == 2 ? pipeAt(proc_.organModel(), rankId, static_cast<int>(note_.getValue())) : 0;
+  if (rankId == proc_.voicingRank() && pipeId == proc_.voicingPipe()) return;
+  proc_.setVoicingTarget(rankId, pipeId);
+  // Another rank chosen: the test note sounds it at the same key.
+  proc_.restartTestNote();
+}
+
+// The four steps as console buttons; the mapping is the console's, the same
+// on every organ, and acts on whatever this tab has chosen.
+void VoicingPanel::midiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  struct Target {
+    MidiTargetKind kind;
+    juce::String name;
+  };
+  const std::vector<Target> targets{{MidiTargetKind::VoicingLevelDown, TRANS("Voicing: level -")},
+                                    {MidiTargetKind::VoicingLevelUp, TRANS("Voicing: level +")},
+                                    {MidiTargetKind::VoicingTuneDown, TRANS("Voicing: tuning -")},
+                                    {MidiTargetKind::VoicingTuneUp, TRANS("Voicing: tuning +")}};
+  juce::PopupMenu menu;
+  int item = 1;
+  for (const auto& t : targets) {
+    juce::PopupMenu sub;
+    const auto existing = map.bindingsFor(t.kind, 0);
+    if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(MidiEventDialog::describeBinding(*b));
+    sub.addItem(item, TRANS("Learn"));
+    sub.addItem(item + 1, TRANS("MIDI window..."));
+    sub.addItem(item + 2, TRANS("Clear mapping"), !existing.empty());
+    menu.addSubMenu(t.name, sub);
+    item += 10;
+  }
+  juce::Component::SafePointer<VoicingPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int choice) {
+    if (self == nullptr || choice <= 0) return;
+    const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
+    auto& m = self->proc_.midiMap();
+    switch ((choice - 1) % 10) {
+      case 0:
+        m.beginLearnAs(t.kind, 0, MidiTrigger::Momentary);
+        break;
+      case 1:
+        MidiEventDialog::show(self->proc_, t.kind, 0, t.name);
+        break;
+      case 2:
+        m.unbindTarget(t.kind, 0);
+        self->proc_.saveMidiMap();
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+// A step from the console shows on the sliders; a test note played in one
+// pipe's scope moves the note to the key played.
+void VoicingPanel::timerCallback() {
+  if (const uint32_t steps = proc_.voicingSteps(); steps != shownSteps_) {
+    shownSteps_ = steps;
+    loadCurrentIntoSliders();
+  }
+  const int key = proc_.testNoteKey();
+  if (key != shownTestKey_) {
+    shownTestKey_ = key;
+    if (key >= 0 && scope_.getSelectedId() == 2 && static_cast<int>(note_.getValue()) != key)
+      note_.setValue(key, juce::sendNotificationSync);
+  }
+}
+
+void VoicingPanel::visibilityChanged() {
+  if (isShowing()) {
+    shownSteps_ = proc_.voicingSteps();
+    startTimerHz(10);
+    return;
+  }
+  stopTimer();
+  // Away from the tab, the keys play the organ again.
+  if (testNote_.getToggleState()) {
+    testNote_.setToggleState(false, juce::dontSendNotification);
+    proc_.setTestNote(false);
+  }
+}
+
+VoicingPanel::~VoicingPanel() {
+  stopTimer();
+  proc_.setTestNote(false);
 }
 
 void VoicingPanel::updateStatus() {
@@ -3043,6 +3160,9 @@ void VoicingPanel::resized() {
   auto row = r.removeFromTop(kRow);
   rankLabel_.setBounds(row.removeFromLeft(labelW));
   rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+  midi_.setBounds(row.removeFromRight(70).reduced(2, 1));
+  row.removeFromLeft(kGap);
+  testNote_.setBounds(row.removeFromLeft(120));
   r.removeFromTop(4);
 
   row = r.removeFromTop(kRow);
@@ -3449,24 +3569,49 @@ void MixerPanel::refresh() {
   pairFaders_.clear();
   divisionFaders_.clear();
   rankFaders_.clear();
+  rankGroups_.clear();
+  rankGroupAbove_.clear();
   rankHolder_.removeAllChildren();
   for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
 
   for (int i = 0; i < juce::jmin(juce::jmax(1, proc_.mixBusCount()), LiveLevels::kMaxPairs); ++i)
     addFader(pairFaders_, MidiTargetKind::PairLevel, i + 1, i, TRANS("Pair %1").replace("%1", juce::String(i + 1)));
+  std::vector<juce::String> divisionNames;
   {
     std::vector<Id> divisions;
     for (const auto& [id, d] : proc_.organModel().divisions) divisions.push_back(id);
     std::sort(divisions.begin(), divisions.end());
     for (Id id : divisions) {
       const auto& d = proc_.organModel().divisions.at(id);
-      addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id),
-               d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
+      divisionNames.push_back(d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
+      addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id), divisionNames.back());
     }
   }
 
+  // By division, a stop's tremmed ranks with its others, then by id.
+  const auto divisionOf = [this](Id rankId) {
+    const int d = proc_.liveDivisionOfRank(proc_.liveRankIndexOf(rankId));
+    return d < 0 ? std::numeric_limits<int>::max() : d;
+  };
   for (const auto& [id, rank] : proc_.organModel().ranks) rankIds_.push_back(id);
-  std::sort(rankIds_.begin(), rankIds_.end());
+  std::sort(rankIds_.begin(), rankIds_.end(), [&divisionOf](Id a, Id b) {
+    const int da = divisionOf(a), db = divisionOf(b);
+    return da != db ? da < db : a < b;
+  });
+  for (size_t i = 0; i < rankIds_.size(); ++i) {
+    const int d = divisionOf(rankIds_[i]);
+    if (i > 0 && divisionOf(rankIds_[i - 1]) == d) {
+      rankGroupAbove_.push_back(-1);
+      continue;
+    }
+    auto group = std::make_unique<juce::Label>();
+    styleLabel(*group, d >= 0 && d < static_cast<int>(divisionNames.size()) ? divisionNames[static_cast<size_t>(d)]
+                                                                            : TRANS("Other"));
+    group->setColour(juce::Label::textColourId, juce::Colours::grey);
+    rankHolder_.addAndMakeVisible(*group);
+    rankGroupAbove_.push_back(static_cast<int>(rankGroups_.size()));
+    rankGroups_.push_back(std::move(group));
+  }
 
   const int buses = juce::jmax(1, proc_.mixBusCount());
   busCount_.setSelectedId(buses, juce::dontSendNotification);
@@ -3528,7 +3673,8 @@ void MixerPanel::resized() {
   // The pairs and divisions first, then a row per rank: its name, its pair,
   // its fader. The fader and its MIDI button sit at the right of each row.
   const int rowH = kRow + 2;
-  const int rows = 3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size());
+  const int rows =
+      3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size() + rankGroups_.size());
   rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
   int y = 0;
   const auto line = [&] {
@@ -3548,6 +3694,8 @@ void MixerPanel::resized() {
   for (auto& f : divisionFaders_) place(f, line());
   ranksHeading_.setBounds(line());
   for (size_t i = 0; i < rankIds_.size(); ++i) {
+    if (i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0)
+      rankGroups_[static_cast<size_t>(rankGroupAbove_[i])]->setBounds(line().withTrimmedLeft(8));
     auto l = line();
     if (i < rankFaders_.size()) l = place(rankFaders_[i], l);
     rankBuses_[i]->setBounds(l.removeFromRight(120).reduced(2, 1));
@@ -4125,8 +4273,8 @@ int TabNamesLook::getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
-    : reverb_(p), metronome_(p), performance_(p, EnginePanel::Part::Performance),
-      general_(p, EnginePanel::Part::General), favourites_(p), display_(p), language_(p), log_(p) {
+    : metronome_(p), performance_(p, EnginePanel::Part::Performance),
+      general_(p, EnginePanel::Part::General), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.getTabbedButtonBar().setLookAndFeel(&tabNamesLook_);
@@ -4148,9 +4296,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
   }
   tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
-  tabs_.addTab(TRANS("Reverb"), bg, &reverb_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
-  tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);
   tabs_.addTab(TRANS("Console display"), bg, &display_, false);
   tabs_.addTab(TRANS("Language"), bg, &language_, false);
   // Only where the program runs the server: the standalone program sets

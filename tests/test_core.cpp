@@ -12830,6 +12830,54 @@ NumberOfAccessiblePipes=1
 };
 static GrandOrgueInPackageTest g_grandOrgueInPackage;
 
+// A Not names its one input as Switch001 with no SwitchCount, which GrandOrgue
+// never reads for it. Norrfjarden's Eb/D# selector works this way: each Eb
+// coupler is the Not of the selector, each D# coupler the selector itself, so
+// exactly one of them sounds (#637).
+class GrandOrgueNotSwitchTest final : public mp::test::Test {
+public:
+  GrandOrgueNotSwitchTest() : Test("functional.odf.grandorgue-not-switch", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfSwitches=1\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=W\n"
+        "[Switch001]\nName=Eb/D# Selector Switch\nDefaultToEngaged=N\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "NumberOfCouplers=1\nCoupler001=1\n"
+        "[Stop001]\nName=Eb\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=Not\nSwitch001=001\n"
+        "[Stop002]\nName=D#\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=And\nSwitchCount=1\nSwitch001=001\n"
+        "[Coupler001]\nName=Eb Coupler\nFunction=Not\nSwitch001=001\nUnisonOff=N\n"
+        "DestinationManual=001\nDestinationKeyshift=12\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.stops.count(2001) && m.stops.count(2002), "both stops are there");
+    const mp::Id eb = m.stops.at(2001).controllingSwitchId;
+    const mp::Id dis = m.stops.at(2002).controllingSwitchId;
+    MP_CHECK(eb != dis, "Eb and D# are driven by two different gates");
+    MP_CHECK(!m.stops.count(2501), "the Not coupler gets no drawstop of its own");
+    mp::SwitchNetwork net;
+    net.reset(m);
+    MP_CHECK(net.engaged(eb), "with the selector off, Eb sounds");
+    MP_CHECK(!net.engaged(dis), "and D# is silent");
+    net.set(8001, true);
+    MP_CHECK(!net.engaged(eb), "drawing the selector silences Eb");
+    MP_CHECK(net.engaged(dis), "and brings in D#");
+    net.set(8001, false);
+    MP_CHECK(net.engaged(eb) && !net.engaged(dis), "pushing it in again goes back to Eb");
+  }
+};
+static GrandOrgueNotSwitchTest g_grandOrgueNotSwitch;
+
 // GrandOrgue switch logic, through the real switch network: a stop that is
 // the And of its drawstop and the blower sounds only while both are on, an
 // effect stop's pipe opens with its switch, and a drawn panel becomes a page
@@ -14738,7 +14786,7 @@ public:
     // ten the current frame is among.
     MP_CHECK(proc.stepperGoto(1) && proc.stepperDigit(4) && pc.frame() == 5, "on 000, digit 4 goes to 004");
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "digit 0 goes to 000");
-    MP_CHECK(!proc.stepperDigit(0), "a digit for the frame already shown does nothing");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "a digit for the frame already shown fires it again");
     MP_CHECK(proc.stepperGoto(15) && proc.stepperDigit(7) && pc.frame() == 18, "on 014, digit 7 goes to 017");
     MP_CHECK(proc.stepperGoto(21) && !proc.stepperDigit(9) && pc.frame() == 21,
              "on 020, digit 9 (029) is past the last frame that holds anything");
@@ -14773,7 +14821,12 @@ public:
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1 && pc.frameSet(1), "with Set on, digit 0 stores frame 000");
     MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1, "and stores into the frame shown again");
     proc.setCaptureMode(false);
-    MP_CHECK(!proc.stepperDigit(0), "with Set off, the digit of the frame shown does nothing");
+    // General Cancel, then the digit of the frame shown (#692): the frame
+    // comes back, as on GrandOrgue's setter and as any piston pressed again.
+    proc.pressGeneralCancel();
+    MP_CHECK(!proc.stopEngaged(901), "General Cancel pushes the stop in");
+    MP_CHECK(proc.stepperDigit(0) && pc.frame() == 1 && proc.stopEngaged(901),
+             "with Set off, the digit of the frame shown recalls it after General Cancel");
 
     // Insert copies the frame shown into a new one after it, as GrandOrgue does.
     MP_CHECK(proc.stepperInsertFrame() && pc.frame() == 1 && pc.lastUsedFrame() == 2,
@@ -17270,6 +17323,115 @@ public:
   }
 };
 static MidiLampsAtLoadTest g_midiLampsAtLoad;
+
+// A console lights its combination buttons too: the player's general that was
+// recalled last, and Set while it is held (#565). A pad learned for them is
+// lit and put out as the program moves, with no sends set up.
+class MidiPistonLampsTest final : public mp::test::Test {
+public:
+  MidiPistonLampsTest() : Test("functional.midi.piston-lamps", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      PlayerPistonsProcessorTest::Keep keepCombinations(proc.combinationFileFor(odf));
+      const juce::File map = proc.midiMapFileFor(odf);
+      const bool hadMap = map.existsAsFile();
+      const juce::String mapBefore = hadMap ? map.loadFileAsString() : juce::String();
+      std::vector<juce::MidiMessage> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) sent.push_back(meta.getMessage());
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto blocks = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+          juce::MidiBuffer m;
+          buf.clear();
+          proc.processBlock(buf, m);
+        }
+      };
+      // The last message for a pad: 1 lit, 0 out, -1 none.
+      auto note = [&sent](int number) {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.getChannel() == 1 && m.getNoteNumber() == number && (m.isNoteOn() || m.isNoteOff()))
+            state = m.isNoteOn() && m.getVelocity() > 0 ? 1 : 0;
+        return state;
+      };
+      auto controller = [&sent](int number) {
+        int state = -1;
+        for (const auto& m : sent)
+          if (m.isController() && m.getChannel() == 1 && m.getControllerNumber() == number)
+            state = m.getControllerValue() > 0 ? 1 : 0;
+        return state;
+      };
+      auto bind = [&proc](mp::MidiTargetKind kind, mp::Id id, mp::MidiSourceKind source, int number) {
+        mp::MidiBinding b;
+        b.source.kind = source;
+        b.source.channel = 1;
+        b.source.number = number;
+        b.targetKind = kind;
+        b.targetId = id;
+        proc.setObjectBindings(kind, id, {b});
+      };
+      bind(mp::MidiTargetKind::PlayerGeneral, 1, mp::MidiSourceKind::Note, 40);
+      bind(mp::MidiTargetKind::PlayerGeneral, 2, mp::MidiSourceKind::Note, 41);
+      bind(mp::MidiTargetKind::Setter, 0, mp::MidiSourceKind::ControlChange, 30);
+
+      blocks(2);
+      MP_CHECK(sent.empty(), "with feedback off, no lamps");
+      proc.setMidiFeedbackEnabled(true);
+      blocks(2);
+      MP_CHECK(note(40) == 0 && note(41) == 0 && controller(30) == 0,
+               "feedback on: every lamp sent, all out: " + std::to_string(sent.size()) + " message(s)");
+
+      sent.clear();
+      blocks(2);
+      MP_CHECK(sent.empty(), "and sent once");
+
+      proc.setCaptureMode(true);
+      blocks(2);
+      MP_CHECK(controller(30) == 1, "Set held: its lamp lit");
+      proc.setSwitchEngaged(1101, true);
+      proc.pressGeneral(1);
+      proc.setCaptureMode(false);
+      proc.setSwitchEngaged(1101, false);
+      blocks(2);
+      MP_CHECK(controller(30) == 0, "Set let go: out");
+
+      sent.clear();
+      proc.pressGeneral(1);
+      blocks(2);
+      MP_CHECK(note(40) == 1 && note(41) == -1, "general 1 recalled: its lamp alone lit");
+
+      sent.clear();
+      proc.setSwitchEngaged(1101, false);
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(note(40) == 0, "a stop moved by hand: the general's lamp goes out");
+
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      blocks(2);
+      MP_CHECK(note(40) == 0 && note(41) == 0 && controller(30) == 0,
+               "after a load, every lamp again: " + std::to_string(sent.size()) + " message(s)");
+
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+      proc.settingsFileFor(odf).deleteFile();
+      if (hadMap) map.replaceWithText(mapBefore);
+      else map.deleteFile();
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiPistonLampsTest g_midiPistonLamps;
 
 // A Send row can be a system exclusive message, one for each state of the
 // switch. A pad grid that shows lamps only in its programmer layout gets that
