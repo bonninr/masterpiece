@@ -1275,7 +1275,7 @@ public:
     if (program) {
       coupler = 0;
       for (const auto& c : proc.programCouplerList())
-        if (c.srcDivision == 1 && c.destDivision == 2 && c.shift == 0) coupler = c.switchId;
+        if (c.srcDivision == 1 && c.destDivision == 2 && c.shift == 0 && c.extreme == 0) coupler = c.switchId;
       MP_CHECK(coupler != 0, "the program offers division I to division II at 8'");
     }
     // The stops are drawn: with nothing drawn there is no pipe to sound, and
@@ -11783,6 +11783,52 @@ public:
   }
 };
 static ExtremeCouplersTest g_extremeCouplers;
+
+// The player's bass and melody couplers (#722): program couplers that pass
+// only the lowest or the highest key held on the manual played, for an
+// organ whose definition has none.
+class ProgramExtremeCouplersTest final : public mp::test::Test {
+public:
+  ProgramExtremeCouplersTest()
+      : Test("functional.control.program-bass-melody-couplers", Category::Functional) {}
+  void run() override {
+    auto m = CouplerGraphTest::organ();
+    m.keyActions.push_back(CouplerGraphTest::edge(2, 1, /*condition*/ 500));  // Great to Pedal, not drawn
+    mp::CouplerMatrix flow;
+    flow.reset(m);
+    MP_CHECK(!flow.hasExtremeActions(), "the organ itself has none");
+    using M = mp::CouplerMatrix;
+    // Bass Pedal to Great, and Melody Swell to Great.
+    flow.setProgramCouplers({{700, 2, 1, 0, M::kLowestHeld}, {701, 2, 3, 0, M::kHighestHeld}});
+    MP_CHECK(flow.hasExtremeActions(), "the program's bass and melody couplers need the held keys");
+
+    const std::unordered_set<mp::Id> drawn{700, 701};
+    mp::KeyFlowScratch scratch;
+    auto reached = [&](int extreme, const std::unordered_set<mp::Id>& engaged) {
+      std::vector<mp::ExpandedNote> out;
+      flow.expandInto(2, 60, 1.0f, engaged, scratch, out, extreme);
+      return out;
+    };
+    auto middle = reached(0, drawn);
+    MP_CHECK(middle.size() == 1 && CouplerGraphTest::reaches(middle, 2, 60),
+             "a key in the middle of a chord plays the Great only");
+    auto bottom = reached(M::kLowestHeld, drawn);
+    MP_CHECK(CouplerGraphTest::reaches(bottom, 1, 60) && !CouplerGraphTest::reaches(bottom, 3, 60),
+             "the lowest key sounds the Pedal, and not the Swell");
+    auto top = reached(M::kHighestHeld, drawn);
+    MP_CHECK(CouplerGraphTest::reaches(top, 3, 60) && !CouplerGraphTest::reaches(top, 1, 60),
+             "the highest key sounds the Swell, and not the Pedal");
+    auto alone = reached(M::kLowestHeld | M::kHighestHeld, drawn);
+    MP_CHECK(CouplerGraphTest::reaches(alone, 1, 60) && CouplerGraphTest::reaches(alone, 3, 60),
+             "a key held alone is both");
+    MP_CHECK(reached(M::kLowestHeld | M::kHighestHeld, {}).size() == 1,
+             "neither acts while it is not drawn");
+
+    flow.setProgramCouplers({{702, 2, 3, 0, 0}});
+    MP_CHECK(!flow.hasExtremeActions(), "plain program couplers alone are not charged for the held keys");
+  }
+};
+static ProgramExtremeCouplersTest g_programExtremeCouplers;
 static DefaultKeyboardTest g_defaultKeyboard;
 static KeyboardBindingTest g_keyboardBinding;
 static LcdPanelTest g_lcdPanels;
