@@ -1708,6 +1708,41 @@ public:
   // -1 for the next, -2 for the one before, or 0 when none is waiting. Reading
   // takes it.
   int takeVoicingEqPresetRequest() { return pendingEqPreset_.exchange(0, std::memory_order_acq_rel); }
+
+  // Voicing from the console (#637): what Organ settings > Voicing has
+  // chosen, a rank or one pipe of it (pipe 0 for the whole rank). The MIDI
+  // steps and the test note act on it. Message thread.
+  void setVoicingTarget(Id rankId, Id pipeId) {
+    voicingRank_.store(rankId, std::memory_order_release);
+    voicingPipe_.store(pipeId, std::memory_order_release);
+  }
+  Id voicingRank() const { return voicingRank_.load(std::memory_order_acquire); }
+  Id voicingPipe() const { return voicingPipe_.load(std::memory_order_acquire); }
+  // A step a MIDI button asked for, collected on the message thread: one of
+  // the four Voicing kinds, or None. Reading takes it.
+  MidiTargetKind takeVoicingStep() {
+    return static_cast<MidiTargetKind>(pendingVoicingStep_.exchange(0, std::memory_order_acq_rel));
+  }
+  // One step of level (0.5 dB) or tuning (1 cent) on the voicing target,
+  // within the Voicing tab's ranges; a test note sounding plays again with
+  // it. False when no rank is chosen. Message thread.
+  bool applyVoicingStep(MidiTargetKind kind);
+  // Counts every change applyVoicingStep makes, so the Voicing tab can show
+  // it.
+  uint32_t voicingSteps() const { return voicingSteps_.load(std::memory_order_acquire); }
+  // The test note: while on, a key on any channel sounds the voicing
+  // target's rank alone at that key, and the next key stops it. The organ
+  // plays nothing else meanwhile. Turned off, a test note sounding stops.
+  void setTestNote(bool on) {
+    testNoteOn_.store(on, std::memory_order_release);
+    testNoteRestart_.store(true, std::memory_order_release);
+  }
+  bool testNote() const { return testNoteOn_.load(std::memory_order_acquire); }
+  // The key the test note sounds at, or -1.
+  int testNoteKey() const { return testNoteKey_.load(std::memory_order_acquire); }
+  // Plays the test note again, so a change to the voicing is heard.
+  void restartTestNote() { testNoteRestart_.store(true, std::memory_order_release); }
+
   VoicingAB& voicing() { return voicing_; }
   // After the voicing's EQ has changed -- a rank's or a division's
   // brightness or bass, a swap of A and B, a reset: hands it to the audio
@@ -2448,6 +2483,18 @@ private:
   // audio thread's own running value and needs no synchronisation; the atomic
   // is the copy the UI is allowed to see.
   std::atomic<int> pendingConsoleAction_{0};
+  // Voicing from the console: the target, a step waiting, and the test note.
+  std::atomic<Id> voicingRank_{0}, voicingPipe_{0};
+  std::atomic<int> pendingVoicingStep_{0};
+  std::atomic<uint32_t> voicingSteps_{0};
+  std::atomic<bool> testNoteOn_{false}, testNoteRestart_{false};
+  std::atomic<int> testNoteKey_{-1};
+  // Audio thread: the test note's voices, and the velocity it was struck at.
+  uint64_t testNoteId_ = 0;
+  int testNoteVelocity_ = 0;
+  bool testNoteKeyDown(int midiNote, int velocity);
+  void serviceTestNote();
+  bool soundTestNote(int midiNote, int velocity);
   // The ready lamp's setting, as atomics the audio thread reads every block,
   // and what it sent last (-1 nothing yet).
   std::atomic<int> lampKind_{0}, lampChannel_{1}, lampNumber_{0};

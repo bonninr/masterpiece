@@ -1462,6 +1462,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::RecorderPlay:
           if (m < takeFrom || m >= takeTo) pendingRecorder_.store(2, std::memory_order_release);
           continue;
+        // A voicing step waits for the message thread, where the Voicing tab
+        // changes the voicing too.
+        case MidiTargetKind::VoicingLevelDown:
+        case MidiTargetKind::VoicingLevelUp:
+        case MidiTargetKind::VoicingTuneDown:
+        case MidiTargetKind::VoicingTuneUp:
+          pendingVoicingStep_.store(static_cast<int>(action.kind), std::memory_order_release);
+          continue;
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::PairLevel:
@@ -3874,6 +3882,7 @@ int MasterpieceProcessor::clickChannelForKeyboard(Id keyboardId) const {
 }
 
 void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
+  if (testNoteOn_.load(std::memory_order_acquire) && testNoteKeyDown(midiNote, velocity)) return;
   // Keyed on the key the player pressed, sounded on the transposed one: the
   // release finds its note by the key, so changing the transposer while a
   // chord is held cannot leave any of it sounding.
@@ -3886,6 +3895,76 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
   }
   startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
                       midiNote);
+}
+
+// The test note (#637): with a rank chosen on the Voicing tab, a key sounds
+// that rank's pipe alone and the next key stops it, which leaves the hands
+// free for the voicing. Any key, on any channel: the pipe is the one the key
+// names. Audio thread.
+bool MasterpieceProcessor::testNoteKeyDown(int midiNote, int velocity) {
+  if (voicingRank() == 0) return false;
+  if (testNoteId_ != 0) {
+    voices_.noteOff(testNoteId_, NoteRelease{});
+    testNoteId_ = 0;
+    testNoteKey_.store(-1, std::memory_order_release);
+    return true;
+  }
+  soundTestNote(midiNote, velocity);
+  return true;
+}
+
+bool MasterpieceProcessor::soundTestNote(int midiNote, int velocity) {
+  const auto rank = model_.ranks.find(voicingRank());
+  if (rank == model_.ranks.end()) return false;
+  for (const auto& pipe : rank->second.pipes) {
+    if (pipe.midiNote != midiNote) continue;
+    const uint64_t noteId = nextNoteId_++;
+    if (!startPipeLayers(pipe, rank->first, midiNote, velocity, noteId)) return false;
+    testNoteId_ = noteId;
+    testNoteVelocity_ = velocity;
+    testNoteKey_.store(midiNote, std::memory_order_release);
+    return true;
+  }
+  return false;
+}
+
+// Voicing is read when a pipe starts, so a test note sounding is struck
+// again to be heard with a change; turned off, it stops. Audio thread.
+void MasterpieceProcessor::serviceTestNote() {
+  if (!testNoteRestart_.exchange(false, std::memory_order_acq_rel) || testNoteId_ == 0) return;
+  const int key = testNoteKey_.load(std::memory_order_acquire);
+  voices_.noteOff(testNoteId_, NoteRelease{});
+  testNoteId_ = 0;
+  testNoteKey_.store(-1, std::memory_order_release);
+  if (testNoteOn_.load(std::memory_order_acquire)) soundTestNote(key, testNoteVelocity_);
+}
+
+bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
+  const Id rankId = voicingRank(), pipeId = voicingPipe();
+  if (rankId == 0) return false;
+  {
+    const AudioLock audio(*this);
+    VoicingSet& v = voicing_.live();
+    PipeVoicing pv = pipeId != 0 ? v.pipe(pipeId) : v.rank(rankId);
+    // Tenths, so a run of steps lands on the figures the sliders show.
+    auto step = [](float value, float by, float limit) {
+      return juce::jlimit(-limit, limit, std::round((value + by) * 10.0f) / 10.0f);
+    };
+    switch (kind) {
+      case MidiTargetKind::VoicingLevelDown: pv.gainDb = step(pv.gainDb, -0.5f, 12.0f); break;
+      case MidiTargetKind::VoicingLevelUp: pv.gainDb = step(pv.gainDb, 0.5f, 12.0f); break;
+      case MidiTargetKind::VoicingTuneDown: pv.tuningCents = step(pv.tuningCents, -1.0f, 50.0f); break;
+      case MidiTargetKind::VoicingTuneUp: pv.tuningCents = step(pv.tuningCents, 1.0f, 50.0f); break;
+      default: return false;
+    }
+    if (pipeId != 0)
+      v.setPipe(pipeId, pv);
+    else
+      v.setRank(rankId, pv);
+  }
+  voicingSteps_.fetch_add(1, std::memory_order_acq_rel);
+  restartTestNote();
+  return true;
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
@@ -6803,6 +6882,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
     t1 = tick();
   }
+  serviceTestNote();
   handleMidi(midi);
   emitScorePageTurns();
   if (archiveOn_.load(std::memory_order_relaxed)) archive_.advance(buffer.getNumSamples());

@@ -141,6 +141,10 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::ScorePageBack: return "score-page-back";
     case MidiTargetKind::RecorderRecord: return "recorder-record";
     case MidiTargetKind::RecorderPlay: return "recorder-play";
+    case MidiTargetKind::VoicingLevelDown: return "voicing-level-down";
+    case MidiTargetKind::VoicingLevelUp: return "voicing-level-up";
+    case MidiTargetKind::VoicingTuneDown: return "voicing-tune-down";
+    case MidiTargetKind::VoicingTuneUp: return "voicing-tune-up";
     case MidiTargetKind::RankLevel: return "rank-level";
     case MidiTargetKind::DivisionLevel: return "division-level";
     case MidiTargetKind::PairLevel: return "pair-level";
@@ -187,6 +191,10 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "score-page-back") return MidiTargetKind::ScorePageBack;
   if (s == "recorder-record") return MidiTargetKind::RecorderRecord;
   if (s == "recorder-play") return MidiTargetKind::RecorderPlay;
+  if (s == "voicing-level-down") return MidiTargetKind::VoicingLevelDown;
+  if (s == "voicing-level-up") return MidiTargetKind::VoicingLevelUp;
+  if (s == "voicing-tune-down") return MidiTargetKind::VoicingTuneDown;
+  if (s == "voicing-tune-up") return MidiTargetKind::VoicingTuneUp;
   if (s == "rank-level") return MidiTargetKind::RankLevel;
   if (s == "division-level") return MidiTargetKind::DivisionLevel;
   if (s == "pair-level") return MidiTargetKind::PairLevel;
@@ -487,6 +495,10 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::ScorePageBack:
     case MidiTargetKind::RecorderRecord:
     case MidiTargetKind::RecorderPlay:
+    case MidiTargetKind::VoicingLevelDown:
+    case MidiTargetKind::VoicingLevelUp:
+    case MidiTargetKind::VoicingTuneDown:
+    case MidiTargetKind::VoicingTuneUp:
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
