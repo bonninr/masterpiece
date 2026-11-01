@@ -821,7 +821,8 @@ void MasterpieceProcessor::publishWindPressures() {
 }
 
 // The ranks and divisions in id order, as the control API lists them, each
-// rank under the division of the first stop (by id) that draws it.
+// rank under the division of the first stop (by id) that draws it, a stop's
+// tremmed rank with it.
 void MasterpieceProcessor::configureRankEq() {
   rankEqIndex_.clear();
   rankEqRanks_.clear();
@@ -840,7 +841,10 @@ void MasterpieceProcessor::configureRankEq() {
     const Stop& stop = model_.stops.at(stopId);
     const auto d = divisionIndex.find(stop.divisionId);
     if (d == divisionIndex.end()) continue;
-    for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+    for (const auto& e : stop.ranks) {
+      rankDivision.emplace(e.rankId, d->second);
+      if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
+    }
   }
   std::vector<int> divisionOfRank;
   for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
@@ -7347,8 +7351,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     windIndexOf_[windOrder_[i]] = static_cast<int>(i);
   windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});
   // The wind sway's waves: one per division, in id order, each rank under the
-  // division of the first stop (by id) that draws it, and the last wave for
-  // ranks in none. Each starts at a phase of its own.
+  // division of the first stop (by id) that draws it, a stop's tremmed rank
+  // with it, and the last wave for ranks in none. Each starts at a phase of its own.
   {
     rankSwayIndex_.clear();
     std::vector<Id> divisions, stops;
@@ -7362,7 +7366,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       const Stop& stop = model_.stops.at(stopId);
       const auto d = divisionIndex.find(stop.divisionId);
       if (d == divisionIndex.end()) continue;
-      for (const auto& e : stop.ranks) rankSwayIndex_.emplace(e.rankId, d->second);
+      for (const auto& e : stop.ranks) {
+        rankSwayIndex_.emplace(e.rankId, d->second);
+        if (e.alternateRankId != 0) rankSwayIndex_.emplace(e.alternateRankId, d->second);
+      }
     }
     swayChannels_ = static_cast<int>(divisions.size()) + 1;
     swayPhaseA_.assign(static_cast<size_t>(swayChannels_), 0.0);
@@ -7382,7 +7389,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   }
   // The live levels: a fader per rank and per division, in id order as the
   // control API lists them, each rank under the division of the first stop
-  // (by id) that draws it. All at full.
+  // (by id) that draws it, a stop's tremmed rank with it. All at full.
   {
     liveRankIndex_.clear();
     liveDivisionIndex_.clear();
@@ -7399,7 +7406,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       const Stop& stop = model_.stops.at(stopId);
       const auto d = liveDivisionIndex_.find(stop.divisionId);
       if (d == liveDivisionIndex_.end()) continue;
-      for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+      for (const auto& e : stop.ranks) {
+        rankDivision.emplace(e.rankId, d->second);
+        if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
+      }
     }
     std::vector<int> divisionOfRank;
     for (size_t i = 0; i < ranks.size(); ++i) {
