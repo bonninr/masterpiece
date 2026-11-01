@@ -1679,9 +1679,10 @@ juce::File MasterpieceProcessor::midiMapFileFor(const juce::File& odf) const {
   return organFile(odf, "midi", ".mpmidi");
 }
 
-void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId) {
+void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId, int row) {
   keyboardLearn_ = keyboardId;
   keyboardLearnLow_ = -1;
+  keyboardLearnRow_ = row;
 }
 
 bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
@@ -1712,8 +1713,19 @@ bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
   if (it != model_.keyboards.end() && it->second.numKeys > 0)
     b.transpose = it->second.firstMidiNote - b.lowKey;
 
-  midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
-  midiMap_.addKeyboardBinding(b);
+  // The row the player selected is filled, and keeps its velocity, debounce
+  // and short octave (#565); with none, the learned row is the manual's only.
+  if (const auto* old = midiMap_.keyboardBindingAt(keyboardLearn_, keyboardLearnRow_)) {
+    b.lowVelocity = old->lowVelocity;
+    b.highVelocity = old->highVelocity;
+    b.ignoreVelocity = old->ignoreVelocity;
+    b.shortOctave = old->shortOctave;
+    b.debounceMs = old->debounceMs;
+    midiMap_.replaceKeyboardBinding(keyboardLearn_, keyboardLearnRow_, b);
+  } else {
+    midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
+    midiMap_.addKeyboardBinding(b);
+  }
   midiMapDirty_.store(true, std::memory_order_release);
   keyboardLearn_ = 0;
   keyboardLearnLow_ = -1;

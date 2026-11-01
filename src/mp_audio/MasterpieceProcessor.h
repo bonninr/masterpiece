@@ -658,7 +658,9 @@ public:
   // highest. Two presses give the device, the channel and the range in one
   // go, and the transpose falls out of where the organ's own compass starts —
   // which is the whole of what a player would otherwise type in by hand.
-  void beginKeyboardLearn(Id keyboardId);
+  // `row` is the manual's row the learn fills, counted among this manual's
+  // rows; -1 sets the manual to the learned row alone.
+  void beginKeyboardLearn(Id keyboardId, int row = -1);
 
   // Which of the player's keyboards is meant, found by playing it: the next
   // key pressed on a console (not on screen) is taken, not played, and its
@@ -2800,6 +2802,7 @@ private:
   // learning; -1 for the note means the low key is still to come.
   Id keyboardLearn_ = 0;
   int keyboardLearnLow_ = -1;
+  int keyboardLearnRow_ = -1;
   int keyboardLearnDevice_ = 0;
   int keyboardLearnChannel_ = 0;
   // Take a key press as part of learning a manual. Returns true when the

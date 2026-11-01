@@ -114,7 +114,8 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     // Learning a manual is two presses: the ends of the range. Anything in
     // between follows, and the transpose is worked out from where the organ's
     // own compass starts.
-    proc_.beginKeyboardLearn(keyboardId_);
+    // The selected row is the one filled.
+    proc_.beginKeyboardLearn(keyboardId_, selected());
   };
 
   addAndMakeVisible(deviceLabel_);
@@ -242,6 +243,16 @@ void ManualDialog::applyEdits() {
 }
 
 void ManualDialog::timerCallback() {
+  // A learn ends on the MIDI side: the list shows its row as soon as it has.
+  const bool learning = proc_.keyboardLearning() == keyboardId_;
+  if (learning_ && !learning) {
+    const int row = selected();
+    list_.updateContent();
+    list_.selectRow(row >= 0 && row < model_->getNumRows() ? row : model_->getNumRows() - 1);
+    list_.repaint();
+  }
+  learning_ = learning;
+
   auto* bl = static_cast<BindingList*>(model_.get());
   const auto mine = bl->rows();
   const int row = selected();

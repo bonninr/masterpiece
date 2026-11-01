@@ -896,6 +896,20 @@ void MidiMap::addKeyboardBinding(const KeyboardBinding& b) {
   keyboardBindings_.push_back(b);
 }
 
+const MidiMap::KeyboardBinding* MidiMap::keyboardBindingAt(Id keyboardId, int row) const {
+  if (row < 0) return nullptr;
+  for (const auto& b : keyboardBindings_)
+    if (b.keyboardId == keyboardId && row-- == 0) return &b;
+  return nullptr;
+}
+
+bool MidiMap::replaceKeyboardBinding(Id keyboardId, int row, const KeyboardBinding& b) {
+  const auto* at = keyboardBindingAt(keyboardId, row);
+  if (at == nullptr || b.keyboardId != keyboardId) return false;
+  keyboardBindings_[static_cast<size_t>(at - keyboardBindings_.data())] = b;
+  return true;
+}
+
 bool MidiMap::hasChannelBinding(int deviceId, int channel) const {
   const bool exclusive = exclusiveDevice_ != 0 && deviceId == exclusiveDevice_;
   for (const auto& b : keyboardBindings_) {
