@@ -65,6 +65,9 @@ jobs:
             if [ "$ext" = zip ]; then
               (cd "$d" && zip -qr "../../dist/${name}.zip" .)
             else
+              # An artifact comes back without its file modes, so the
+              # program is made executable again before it is packed.
+              find "$d" -type f -name Masterpiece -exec chmod +x {} +
               tar -czf "dist/${name}.tar.gz" -C "$d" .
             fi
           done
