@@ -1186,6 +1186,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // window's sliders have it.
   juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
+  juce::Desktop::getInstance().addGlobalMouseListener(&wheelFocus_);
 
   // The licence question, asked from the loading thread before a sample is
   // read (#164). The box belongs to the message thread, so it is shown there
@@ -1393,7 +1394,18 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   startTimerHz(4);
 }
 
+void MasterpieceEditor::WheelFocus::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&) {
+  auto* slider = dynamic_cast<juce::Slider*>(e.eventComponent);
+  // The value box under the pointer is the slider's own child.
+  if (slider == nullptr && e.eventComponent != nullptr)
+    slider = dynamic_cast<juce::Slider*>(e.eventComponent->getParentComponent());
+  if (slider == nullptr || !slider->isEnabled() || !slider->isShowing() || slider->hasKeyboardFocus(true)) return;
+  slider->setWantsKeyboardFocus(true);
+  slider->grabKeyboardFocus();
+}
+
 MasterpieceEditor::~MasterpieceEditor() {
+  juce::Desktop::getInstance().removeGlobalMouseListener(&wheelFocus_);
   stopTimer();
   proc_.licenceAsker = nullptr;
   proc_.packageAsker = nullptr;
