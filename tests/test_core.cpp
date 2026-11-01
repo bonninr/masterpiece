@@ -12830,6 +12830,54 @@ NumberOfAccessiblePipes=1
 };
 static GrandOrgueInPackageTest g_grandOrgueInPackage;
 
+// A Not names its one input as Switch001 with no SwitchCount, which GrandOrgue
+// never reads for it. Norrfjarden's Eb/D# selector works this way: each Eb
+// coupler is the Not of the selector, each D# coupler the selector itself, so
+// exactly one of them sounds (#637).
+class GrandOrgueNotSwitchTest final : public mp::test::Test {
+public:
+  GrandOrgueNotSwitchTest() : Test("functional.odf.grandorgue-not-switch", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=T\nHasPedals=N\nNumberOfManuals=1\nNumberOfRanks=1\n"
+        "NumberOfSwitches=1\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=W\n"
+        "[Switch001]\nName=Eb/D# Selector Switch\nDefaultToEngaged=N\n"
+        "[Rank001]\nName=P\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\nPipe001=p.wav\n"
+        "[Manual001]\nName=I\nNumberOfLogicalKeys=1\nNumberOfAccessibleKeys=1\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "NumberOfCouplers=1\nCoupler001=1\n"
+        "[Stop001]\nName=Eb\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=Not\nSwitch001=001\n"
+        "[Stop002]\nName=D#\nNumberOfRanks=1\nRank001=1\nNumberOfAccessiblePipes=1\n"
+        "Function=And\nSwitchCount=1\nSwitch001=001\n"
+        "[Coupler001]\nName=Eb Coupler\nFunction=Not\nSwitch001=001\nUnisonOff=N\n"
+        "DestinationManual=001\nDestinationKeyshift=12\n";
+    const auto rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "t.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.stops.count(2001) && m.stops.count(2002), "both stops are there");
+    const mp::Id eb = m.stops.at(2001).controllingSwitchId;
+    const mp::Id dis = m.stops.at(2002).controllingSwitchId;
+    MP_CHECK(eb != dis, "Eb and D# are driven by two different gates");
+    MP_CHECK(!m.stops.count(2501), "the Not coupler gets no drawstop of its own");
+    mp::SwitchNetwork net;
+    net.reset(m);
+    MP_CHECK(net.engaged(eb), "with the selector off, Eb sounds");
+    MP_CHECK(!net.engaged(dis), "and D# is silent");
+    net.set(8001, true);
+    MP_CHECK(!net.engaged(eb), "drawing the selector silences Eb");
+    MP_CHECK(net.engaged(dis), "and brings in D#");
+    net.set(8001, false);
+    MP_CHECK(net.engaged(eb) && !net.engaged(dis), "pushing it in again goes back to Eb");
+  }
+};
+static GrandOrgueNotSwitchTest g_grandOrgueNotSwitch;
+
 // GrandOrgue switch logic, through the real switch network: a stop that is
 // the And of its drawstop and the blower sounds only while both are on, an
 // effect stop's pipe opens with its switch, and a drawn panel becomes a page
