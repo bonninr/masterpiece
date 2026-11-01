@@ -73,6 +73,13 @@ struct VoicingIds {
   juce::Array<juce::int64> ranks, pipes;
 };
 VoicingIds voicingIds(const juce::File& root, const juce::String& key);
+// The organ's name and definition file, as its settings recorded them when
+// last saved; empty for settings saved before they were recorded.
+struct OrganLabel {
+  juce::String name;
+  juce::File definition;
+};
+OrganLabel organLabel(const juce::File& root, const juce::String& key);
 
 // This program's version, as an archive records it.
 juce::String programVersion();

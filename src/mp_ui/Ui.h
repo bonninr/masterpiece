@@ -382,6 +382,8 @@ public:
   std::function<void()> onSettings;
   // The organ's own settings: how it is loaded and which stops.
   std::function<void()> onOrganSettings;
+  // Organ > a section: Organ settings, open on the tab of that name.
+  std::function<void(const juce::String& tab)> onOrganSettingsTab;
   // After Panic has silenced the notes: the application opens the MIDI inputs
   // again, for a keyboard that stopped sending (#637).
   std::function<void()> onPanic;
@@ -426,6 +428,13 @@ private:
   bool keyPressed(const juce::KeyPress& key, juce::Component* origin) override;
   void parentHierarchyChanged() override;
   juce::Component::SafePointer<juce::Component> keyWindow_;
+  // A slider moved by the mouse wheel -- a touchpad's two-finger scroll --
+  // takes the keyboard, as a click on it does, so the arrow keys go on
+  // moving it rather than whatever had the keyboard before (#637). Listened
+  // for on the desktop: every window's sliders, settings and console alike.
+  struct WheelFocus final : juce::MouseListener {
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&) override;
+  } wheelFocus_;
 
   MasterpieceProcessor& proc_;
   TopBar top_;
@@ -517,10 +526,14 @@ private:
   void wirePanel(int index);
   void setPanelDetached(int index, bool detached);
   void rebuildPageTabs();
-  // The panels part of the View menu: each panel, the console, and new,
-  // rename and delete. Item ids from 1000.
-  void addPanelItems(juce::PopupMenu& menu);
   void panelItemChosen(int id);
+
+public:
+  // The panels part of the View menu: each panel, the console, and new,
+  // rename and delete. Item ids from 1000. Public for its test.
+  void addPanelItems(juce::PopupMenu& menu);
+
+private:
   // A panel on screen: its tab, or its window brought to the front.
   void showPanel(int index);
   // The first panel and back to the console; a panel made if there is none.

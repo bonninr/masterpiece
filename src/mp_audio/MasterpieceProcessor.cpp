@@ -821,7 +821,8 @@ void MasterpieceProcessor::publishWindPressures() {
 }
 
 // The ranks and divisions in id order, as the control API lists them, each
-// rank under the division of the first stop (by id) that draws it.
+// rank under the division of the first stop (by id) that draws it, a stop's
+// tremmed rank with it.
 void MasterpieceProcessor::configureRankEq() {
   rankEqIndex_.clear();
   rankEqRanks_.clear();
@@ -840,7 +841,10 @@ void MasterpieceProcessor::configureRankEq() {
     const Stop& stop = model_.stops.at(stopId);
     const auto d = divisionIndex.find(stop.divisionId);
     if (d == divisionIndex.end()) continue;
-    for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+    for (const auto& e : stop.ranks) {
+      rankDivision.emplace(e.rankId, d->second);
+      if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
+    }
   }
   std::vector<int> divisionOfRank;
   for (size_t i = 0; i < rankEqRanks_.size(); ++i) {
@@ -1458,6 +1462,14 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::RecorderPlay:
           if (m < takeFrom || m >= takeTo) pendingRecorder_.store(2, std::memory_order_release);
           continue;
+        // A voicing step waits for the message thread, where the Voicing tab
+        // changes the voicing too.
+        case MidiTargetKind::VoicingLevelDown:
+        case MidiTargetKind::VoicingLevelUp:
+        case MidiTargetKind::VoicingTuneDown:
+        case MidiTargetKind::VoicingTuneUp:
+          pendingVoicingStep_.store(static_cast<int>(action.kind), std::memory_order_release);
+          continue;
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::PairLevel:
@@ -1608,7 +1620,7 @@ std::string MasterpieceProcessor::organKey() const {
          "-" + pathHash(loadedOdf_);
 }
 
-std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
+std::string MasterpieceProcessor::organKeyFor(const juce::File& odf, std::string* name) {
   // Only the header is needed, and _General is the first table in the file —
   // so this does not pay for parsing a 60 000-row Sample table just to find
   // out where the settings live.
@@ -1617,8 +1629,9 @@ std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
   opts.headerOnly = true;
   OrganModel m;
   OdfDiagnostics d;
-  if (loader.load(odf.getFullPathName().toStdString(), opts, m, d) &&
-      m.uniqueOrganId != 0)
+  const bool loaded = loader.load(odf.getFullPathName().toStdString(), opts, m, d);
+  if (name != nullptr) *name = m.organName;
+  if (loaded && m.uniqueOrganId != 0)
     return sanitise(m.organName) + "-" + std::to_string(m.uniqueOrganId);
   return sanitise(m.organName.empty()
                       ? odf.getFileNameWithoutExtension().toStdString()
@@ -2155,6 +2168,10 @@ bool MasterpieceProcessor::saveSettings() const {
   f.getParentDirectory().createDirectory();
 
   juce::String text = "# Masterpiece per-organ settings\n";
+  // Which organ these are, for a list of organs to show it by its name and
+  // definition file (Copy settings from another organ). Read by nothing else.
+  text << "organname " << juce::String::fromUTF8(model_.organName.c_str()) << "\n";
+  text << "definition " << loadedOdf_.getFullPathName() << "\n";
   text << settingsBody();
   text << rememberedStateLines();
   for (const auto& [id, on] : snapshotStates_)
@@ -3865,6 +3882,7 @@ int MasterpieceProcessor::clickChannelForKeyboard(Id keyboardId) const {
 }
 
 void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
+  if (testNoteOn_.load(std::memory_order_acquire) && testNoteKeyDown(midiNote, velocity)) return;
   // Keyed on the key the player pressed, sounded on the transposed one: the
   // release finds its note by the key, so changing the transposer while a
   // chord is held cannot leave any of it sounding.
@@ -3877,6 +3895,76 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
   }
   startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
                       midiNote);
+}
+
+// The test note (#637): with a rank chosen on the Voicing tab, a key sounds
+// that rank's pipe alone and the next key stops it, which leaves the hands
+// free for the voicing. Any key, on any channel: the pipe is the one the key
+// names. Audio thread.
+bool MasterpieceProcessor::testNoteKeyDown(int midiNote, int velocity) {
+  if (voicingRank() == 0) return false;
+  if (testNoteId_ != 0) {
+    voices_.noteOff(testNoteId_, NoteRelease{});
+    testNoteId_ = 0;
+    testNoteKey_.store(-1, std::memory_order_release);
+    return true;
+  }
+  soundTestNote(midiNote, velocity);
+  return true;
+}
+
+bool MasterpieceProcessor::soundTestNote(int midiNote, int velocity) {
+  const auto rank = model_.ranks.find(voicingRank());
+  if (rank == model_.ranks.end()) return false;
+  for (const auto& pipe : rank->second.pipes) {
+    if (pipe.midiNote != midiNote) continue;
+    const uint64_t noteId = nextNoteId_++;
+    if (!startPipeLayers(pipe, rank->first, midiNote, velocity, noteId)) return false;
+    testNoteId_ = noteId;
+    testNoteVelocity_ = velocity;
+    testNoteKey_.store(midiNote, std::memory_order_release);
+    return true;
+  }
+  return false;
+}
+
+// Voicing is read when a pipe starts, so a test note sounding is struck
+// again to be heard with a change; turned off, it stops. Audio thread.
+void MasterpieceProcessor::serviceTestNote() {
+  if (!testNoteRestart_.exchange(false, std::memory_order_acq_rel) || testNoteId_ == 0) return;
+  const int key = testNoteKey_.load(std::memory_order_acquire);
+  voices_.noteOff(testNoteId_, NoteRelease{});
+  testNoteId_ = 0;
+  testNoteKey_.store(-1, std::memory_order_release);
+  if (testNoteOn_.load(std::memory_order_acquire)) soundTestNote(key, testNoteVelocity_);
+}
+
+bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
+  const Id rankId = voicingRank(), pipeId = voicingPipe();
+  if (rankId == 0) return false;
+  {
+    const AudioLock audio(*this);
+    VoicingSet& v = voicing_.live();
+    PipeVoicing pv = pipeId != 0 ? v.pipe(pipeId) : v.rank(rankId);
+    // Tenths, so a run of steps lands on the figures the sliders show.
+    auto step = [](float value, float by, float limit) {
+      return juce::jlimit(-limit, limit, std::round((value + by) * 10.0f) / 10.0f);
+    };
+    switch (kind) {
+      case MidiTargetKind::VoicingLevelDown: pv.gainDb = step(pv.gainDb, -0.5f, 12.0f); break;
+      case MidiTargetKind::VoicingLevelUp: pv.gainDb = step(pv.gainDb, 0.5f, 12.0f); break;
+      case MidiTargetKind::VoicingTuneDown: pv.tuningCents = step(pv.tuningCents, -1.0f, 50.0f); break;
+      case MidiTargetKind::VoicingTuneUp: pv.tuningCents = step(pv.tuningCents, 1.0f, 50.0f); break;
+      default: return false;
+    }
+    if (pipeId != 0)
+      v.setPipe(pipeId, pv);
+    else
+      v.setRank(rankId, pv);
+  }
+  voicingSteps_.fetch_add(1, std::memory_order_acq_rel);
+  restartTestNote();
+  return true;
 }
 
 void MasterpieceProcessor::stopNote(int channel, int midiNote, int velocity) {
@@ -5236,9 +5324,10 @@ bool MasterpieceProcessor::stepperDigit(int digit) {
   if (to > PlayerCombinations::kMaxFrames) return false;
   const int last = player_.lastUsedFrame();
   if (!captureMode() && (last < 1 || to > last)) return false;
-  // With Set on, the digit of the frame shown stores into it, as any piston
-  // does: how an inserted frame is filled.
-  if (to == player_.frame() && !captureMode()) return false;
+  // The digit of the frame shown fires it again, as any piston does and as
+  // GrandOrgue's setter does: with Set off it recalls the frame, so General
+  // Cancel then 0 brings frame 000 back (#692); with Set on it stores into
+  // it, which is how an inserted frame is filled.
   return stepperGoto(to);
 }
 
@@ -5578,8 +5667,10 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // A switch that swaps a stop's rank for its alternate -- a tremulant whose
   // pipes were also recorded with it running -- re-sounds the notes held on
   // those stops, when the organ asks for that: what was sounding lets go and
-  // the other rank's pipes speak.
-  if (swapsRanks && !soundingNotes_.empty())
+  // the other rank's pipes speak. Unless the player has asked for held notes
+  // to be left alone: then only the keys pressed afterwards play the other
+  // rank.
+  if (swapsRanks && !soundingNotes_.empty() && !stopsLeaveHeldNotes())
     for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
       (void)nowEngaged;
       const auto alt = alternateStopsBySwitch_.find(movedId);
@@ -6792,6 +6883,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
     t1 = tick();
   }
+  serviceTestNote();
   handleMidi(midi);
   emitScorePageTurns();
   if (archiveOn_.load(std::memory_order_relaxed)) archive_.advance(buffer.getNumSamples());
@@ -7347,8 +7439,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     windIndexOf_[windOrder_[i]] = static_cast<int>(i);
   windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});
   // The wind sway's waves: one per division, in id order, each rank under the
-  // division of the first stop (by id) that draws it, and the last wave for
-  // ranks in none. Each starts at a phase of its own.
+  // division of the first stop (by id) that draws it, a stop's tremmed rank
+  // with it, and the last wave for ranks in none. Each starts at a phase of its own.
   {
     rankSwayIndex_.clear();
     std::vector<Id> divisions, stops;
@@ -7362,7 +7454,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       const Stop& stop = model_.stops.at(stopId);
       const auto d = divisionIndex.find(stop.divisionId);
       if (d == divisionIndex.end()) continue;
-      for (const auto& e : stop.ranks) rankSwayIndex_.emplace(e.rankId, d->second);
+      for (const auto& e : stop.ranks) {
+        rankSwayIndex_.emplace(e.rankId, d->second);
+        if (e.alternateRankId != 0) rankSwayIndex_.emplace(e.alternateRankId, d->second);
+      }
     }
     swayChannels_ = static_cast<int>(divisions.size()) + 1;
     swayPhaseA_.assign(static_cast<size_t>(swayChannels_), 0.0);
@@ -7382,7 +7477,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   }
   // The live levels: a fader per rank and per division, in id order as the
   // control API lists them, each rank under the division of the first stop
-  // (by id) that draws it. All at full.
+  // (by id) that draws it, a stop's tremmed rank with it. All at full.
   {
     liveRankIndex_.clear();
     liveDivisionIndex_.clear();
@@ -7399,7 +7494,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       const Stop& stop = model_.stops.at(stopId);
       const auto d = liveDivisionIndex_.find(stop.divisionId);
       if (d == liveDivisionIndex_.end()) continue;
-      for (const auto& e : stop.ranks) rankDivision.emplace(e.rankId, d->second);
+      for (const auto& e : stop.ranks) {
+        rankDivision.emplace(e.rankId, d->second);
+        if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
+      }
     }
     std::vector<int> divisionOfRank;
     for (size_t i = 0; i < ranks.size(); ++i) {

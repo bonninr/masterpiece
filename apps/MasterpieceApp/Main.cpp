@@ -1139,6 +1139,7 @@ private:
       ed->onSettings = [this, &p] { showSettings(p); };
       ed->onSettingsTab = [this, &p](const juce::String& tab) { showSettings(p, {}, tab); };
       ed->onOrganSettings = [this, &p] { showOrganSettings(p); };
+      ed->onOrganSettingsTab = [this, &p](const juce::String& tab) { showOrganSettings(p, {}, tab); };
       // Each input the player has ticked is closed and opened again, as
       // unticking and ticking it in Settings > MIDI would (#637).
       ed->onPanic = [this, &p] {
@@ -1280,7 +1281,6 @@ private:
       auto panel = std::make_unique<mp::ui::SettingsWindow>(proc, &devices_);
       panel->onClosed = std::move(onClosed);
       if (tab.isNotEmpty()) panel->showTab(tab);
-      panel->setOrganLoader([this](const juce::File& f) { editor().loadOrgan(f, false); });
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = TRANS("Settings");
@@ -1291,10 +1291,12 @@ private:
       mp::ui::launchDialog(opts);
     }
 
-    void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {}) {
+    void showOrganSettings(mp::MasterpieceProcessor& proc, std::function<void()> onClosed = {},
+                           const juce::String& tab = {}) {
       auto panel = std::make_unique<mp::ui::OrganSettingsWindow>(
           proc, [this] { editor_->reloadOrgan(); }, &devices_);
       panel->onClosed = std::move(onClosed);
+      if (tab.isNotEmpty()) panel->showTab(tab);
       panel->onReopen = [this, &proc] { showOrganSettings(proc); };
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());

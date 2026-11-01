@@ -22,7 +22,7 @@ public:
   static std::string cutNames(juce::LookAndFeel* look, int width) {
     juce::TabbedButtonBar bar(juce::TabbedButtonBar::TabsAtTop);
     if (look != nullptr) bar.setLookAndFeel(look);
-    for (auto* name : {"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome", "Combination sets",
+    for (auto* name : {"General", "Audio", "MIDI", "Performance", "Metronome",
                        "Console display", "Language", "Remote control", "Diagnostics"})
       bar.addTab(name, juce::Colours::darkgrey, -1);
     bar.setBounds(0, 0, width, 30);
@@ -55,11 +55,11 @@ public:
     return cut;
   }
 
-  // The width the eleven tabs ask for with JUCE's own look, in this
+  // The width the nine tabs ask for with JUCE's own look, in this
   // platform's font.
   static int naturalWidth() {
     juce::TabbedButtonBar bar(juce::TabbedButtonBar::TabsAtTop);
-    for (auto* name : {"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome", "Combination sets",
+    for (auto* name : {"General", "Audio", "MIDI", "Performance", "Metronome",
                        "Console display", "Language", "Remote control", "Diagnostics"})
       bar.addTab(name, juce::Colours::darkgrey, -1);
     bar.setBounds(0, 0, 4000, 30);

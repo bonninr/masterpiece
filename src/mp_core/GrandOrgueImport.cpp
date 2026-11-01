@@ -205,6 +205,16 @@ double centsAt(const Ini& ini, const std::string& section, const std::string& pr
          ini.real(section, prefix + "PitchCorrection", 0.0);
 }
 
+// How many [SwitchNNN] drive an object, read as GrandOrgue reads them: none
+// for Function=Input, the default; Switch001 alone for Not, whose SwitchCount
+// GrandOrgue never reads; SwitchCount for And, Or and the rest.
+int switchInputCount(const Ini& ini, const std::string& sec) {
+  const std::string fn = lower(ini.str(sec, "Function", "Input"));
+  if (fn == "input") return 0;
+  if (fn == "not") return 1;
+  return ini.num(sec, "SwitchCount", 1);
+}
+
 // The organ id, from the file itself: GrandOrgue declares none. FNV-1a over
 // the bytes, folded into the positive range a Hauptwerk id takes, and kept
 // clear of the small numbers real sets use.
@@ -661,7 +671,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     return g;
   };
   auto functionOf = [&](const std::string& sec, std::vector<int>& in) {
-    const int n = ini.num(sec, "SwitchCount", 0);
+    const int n = switchInputCount(ini, sec);
     for (int i = 1; i <= n; ++i) in.push_back(kGoSwitchBase + ini.num(sec, "Switch" + n3(i), 0));
     return lower(ini.str(sec, "Function", "And"));
   };
@@ -686,7 +696,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     controlMemo[lower(sec)] = id;
     return id;
   };
-  auto hasOwnSwitch = [&](const std::string& sec) { return ini.num(sec, "SwitchCount", 0) == 0; };
+  auto hasOwnSwitch = [&](const std::string& sec) { return switchInputCount(ini, sec) == 0; };
 
   // ---- tremulants, enclosures --------------------------------------------
   const int tremCount = ini.num("Organ", "NumberOfTremulants", 0);
@@ -1077,7 +1087,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
   {
     std::set<int> seen;
     auto keep = [&](const std::string& sec, int sw) {
-      if (sw != 0 && ini.num(sec, "SwitchCount", 0) == 0 && ini.yes(sec, "StoreInGeneral", true) &&
+      if (sw != 0 && switchInputCount(ini, sec) == 0 && ini.yes(sec, "StoreInGeneral", true) &&
           seen.insert(sw).second)
         storable.push_back(sw);
     };
@@ -1593,7 +1603,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       int manual = -1;       // Kind::Manual
       int enclosure = 0;     // Kind::Enclosure
     };
-    auto isReadOnly = [&](const std::string& objectSec) { return ini.num(objectSec, "SwitchCount", 0) > 0; };
+    auto isReadOnly = [&](const std::string& objectSec) { return switchInputCount(ini, objectSec) > 0; };
     auto button = [&](const std::string& sec, const std::string& objectSec, int sw, bool piston) {
       Element e{Kind::Button, sec};
       e.switchId = sw;

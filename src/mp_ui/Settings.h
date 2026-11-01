@@ -472,10 +472,6 @@ public:
   explicit FavouritesPanel(MasterpieceProcessor& p);
   void resized() override;
   void refresh();
-  // Loads an organ the way Open does: its packages, the progress window, the
-  // questions a load can ask. Without it Load started a bare background load
-  // the window never heard of, and nothing seemed to happen (#90).
-  std::function<void(const juce::File&)> onLoad;
 
 private:
   MasterpieceProcessor& proc_;
@@ -494,21 +490,33 @@ private:
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
-class VoicingPanel : public juce::Component {
+class VoicingPanel : public juce::Component, private juce::Timer {
 public:
   explicit VoicingPanel(MasterpieceProcessor& p);
+  ~VoicingPanel() override;
   void resized() override;
+  void visibilityChanged() override;
   void refresh();
 
 private:
   void pushCurrent();
   void loadCurrentIntoSliders();
   void updateStatus();
+  // The rank or pipe shown, handed to the processor for the MIDI steps and
+  // the test note (#637).
+  void pushTarget();
+  void midiMenu();
+  void timerCallback() override;
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   juce::Label rankLabel_;
   juce::ComboBox rank_;
+  // A key plays this rank alone, the next key stops it.
+  juce::ToggleButton testNote_{TRANS("Test note")};
+  juce::TextButton midi_{TRANS("MIDI")};
+  uint32_t shownSteps_ = 0;
+  int shownTestKey_ = -1;
   juce::Label scopeLabel_;
   juce::ComboBox scope_;   // the whole rank, or one note of it
   juce::Label noteLabel_;
@@ -593,9 +601,13 @@ private:
   // One row per rank, inside a viewport: 51 ranks does not fit a dialog.
   juce::Viewport viewport_;
   juce::Component rankHolder_;
+  // The ranks by division, then by id, each division's name above its first
+  // rank; the ranks in no division last.
   std::vector<Id> rankIds_;
   std::vector<std::unique_ptr<juce::Label>> rankLabels_;
   std::vector<std::unique_ptr<juce::ComboBox>> rankBuses_;
+  std::vector<std::unique_ptr<juce::Label>> rankGroups_;
+  std::vector<int> rankGroupAbove_;  // per rank, the heading above its row in rankGroups_, or -1
 };
 
 // The console's own text display: the little 32-character panel on the jamb
@@ -730,21 +742,19 @@ public:
   // Run once the window has closed, on the message thread: an organ's first
   // load waits here for its engine settings.
   std::function<void()> onClosed;
-  // For Favourites: load this organ as Open would.
-  void setOrganLoader(std::function<void(const juce::File&)> load) { favourites_.onLoad = std::move(load); }
   void paint(juce::Graphics& g) override;
 
 private:
   // Settings: the program, the computer and the player's console, the same
   // for every organ. What belongs to one organ -- how it is loaded, its
-  // stops, outputs and voicing -- is OrganSettingsWindow.
+  // stops, outputs, voicing, reverb and combination sets -- is
+  // OrganSettingsWindow (#637).
   TabNamesLook tabNamesLook_;
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   // The output device and MIDI inputs: the toolbar's Audio window, which is
   // set up once and seldom visited again (#276).
   std::unique_ptr<juce::Component> audio_;
   std::unique_ptr<ScrollHost> audioScroll_;  // after audio_: it goes first
-  ReverbPanel reverb_;
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
@@ -752,7 +762,6 @@ private:
   ScrollHost performanceScroll_{performance_, 0, [this] { return performance_.contentHeight(); }};
   EnginePanel general_;
   ScrollHost generalScroll_{general_, 0, [this] { return general_.contentHeight(); }};
-  FavouritesPanel favourites_;
   DisplayPanel display_;
   LanguagePanel language_;
   LogPanel log_;
