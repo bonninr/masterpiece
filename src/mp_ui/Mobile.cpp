@@ -6,6 +6,7 @@
 #include "Mobile.h"
 
 #include <algorithm>
+#include <atomic>
 
 #include "../mp_archive/OrganArchive.h"
 #include "../mp_audio/DataFolder.h"
@@ -349,6 +350,13 @@ void importDocument(const juce::URL& document, std::function<void(juce::File)> d
   (new ImportThread(document, std::move(done)))->launchThread();
 }
 
+namespace {
+std::atomic<bool> g_rememberWindowPlaces{true};
+}
+
+bool rememberWindowPlaces() { return g_rememberWindowPlaces.load(std::memory_order_relaxed); }
+void setRememberWindowPlaces(bool on) { g_rememberWindowPlaces.store(on, std::memory_order_relaxed); }
+
 bool touchInput() {
   static const bool on =
       kMobile || juce::SystemStats::getEnvironmentVariable("MASTERPIECE_TOUCH", "0") == "1";
@@ -674,7 +682,7 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
       const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>();
       const auto size = reopenedDialogSize(saved, dialog->getBounds(), area);
       const auto place = saved.withSize(size.getWidth(), size.getHeight());
-      if (placed && dialogPlaceUsable(place, screens))
+      if (placed && rememberWindowPlaces() && dialogPlaceUsable(place, screens))
         dialog->setBounds(place);
       else
         dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());

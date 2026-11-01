@@ -81,6 +81,29 @@ public:
                  "it opens on the screen at its size, got " +
                      (window != nullptr ? window->getBounds().toString().toStdString() : std::string()));
       }
+
+      // View > Remember window positions off: kept in the settings file,
+      // and the panel opens centred at its size.
+      proc.setRememberWindowPlaces(false);
+      {
+        mp::MasterpieceProcessor again;
+        again.loadGlobalDefaults();
+        MP_CHECK(!again.rememberWindowPlaces(), "the setting is read back off");
+      }
+      layout.x = left.getX();
+      layout.y = left.getY();
+      MP_CHECK(mp::ui::savePanelLayouts(proc, {layout}), "a place on the screen is written");
+      {
+        mp::ui::MasterpieceEditor editor(proc);
+        editor.loadPanelsForTest();
+        auto* window = editor.panelWindowForTest(0);
+        MP_CHECK(window != nullptr && window->getBounds() != left && window->getWidth() == 640 &&
+                     window->getHeight() == 420,
+                 "with the setting off it opens centred, got " +
+                     (window != nullptr ? window->getBounds().toString().toStdString() : std::string()));
+      }
+      proc.setRememberWindowPlaces(true);
+      mp::ui::setRememberWindowPlaces(true);
     }
     mp::setDataFolder(previous);
     data.deleteRecursively();

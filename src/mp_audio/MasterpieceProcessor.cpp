@@ -2593,6 +2593,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (leaveBassAndMelody_) text << "pistonsleavebass 1\n";
   if (!showPlayedKeys_.load()) text << "showkeys 0\n";
   if (smallPagesFill_.load()) text << "smallpagesfill 1\n";
+  if (!rememberWindowPlaces_.load()) text << "rememberwindows 0\n";
   text << "displaymode " << (simpleMode_.load() ? "simple" : "professional") << "\n";
   // Written either way: on is the default since 0.7.11, and a player who
   // turned it off has to find it off.
@@ -2790,6 +2791,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       simpleMode_.store(val.trim() == "simple");
     } else if (key == "smallpagesfill") {
       smallPagesFill_.store(val.getIntValue() != 0);
+    } else if (key == "rememberwindows") {
+      rememberWindowPlaces_.store(val.getIntValue() != 0);
     } else if (key == "fasterengine") {
       fasterEngine_.store(val.getIntValue() != 0);
     } else if (key == "realtimethreads") {

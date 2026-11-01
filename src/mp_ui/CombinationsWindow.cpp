@@ -708,7 +708,7 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
     // Only where a display still is: a window restored onto a monitor that
     // has since been unplugged is a window nobody can reach.
     const auto& displays = juce::Desktop::getInstance().getDisplays();
-    if (displays.getDisplayForRect(r) != nullptr &&
+    if (rememberWindowPlaces() && displays.getDisplayForRect(r) != nullptr &&
         displays.getTotalBounds(true).intersects(r))
       setBounds(r);
     else

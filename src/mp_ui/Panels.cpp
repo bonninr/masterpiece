@@ -1345,7 +1345,7 @@ PanelWindow::PanelWindow(const juce::String& title, PanelView& view)
   juce::Array<juce::Rectangle<int>> screens;
   for (const auto& d : juce::Desktop::getInstance().getDisplays().displays) screens.add(d.userArea);
   const juce::Rectangle<int> place(l.x, l.y, l.w, l.h);
-  if (l.w > 100 && l.h > 100 && dialogPlaceUsable(place, screens)) {
+  if (l.w > 100 && l.h > 100 && rememberWindowPlaces() && dialogPlaceUsable(place, screens)) {
     setBounds(place);
   } else if (l.w > 100 && l.h > 100) {
     centreWithSize(l.w, l.h);

@@ -972,6 +972,14 @@ public:
     smallPagesFill_.store(on, std::memory_order_relaxed);
     writeGlobalFile();
   }
+  // Whether dialogs and the windows beside the console reopen where they
+  // were left (View > Remember window positions). Off, they open centred at
+  // their last size.
+  bool rememberWindowPlaces() const { return rememberWindowPlaces_.load(std::memory_order_relaxed); }
+  void setRememberWindowPlaces(bool on) {
+    rememberWindowPlaces_.store(on, std::memory_order_relaxed);
+    writeGlobalFile();
+  }
   // The faster audio engine: vector runs (AVX2 on a PC, NEON on ARM) where
   // the processor has them. On by default since 0.7.11; off, the per-frame
   // path of the earlier versions plays. Takes effect at once.
@@ -2738,6 +2746,7 @@ private:
   bool leaveBassAndMelody_ = false;
   std::atomic<bool> showPlayedKeys_{true};
   std::atomic<bool> smallPagesFill_{false};
+  std::atomic<bool> rememberWindowPlaces_{true};
   std::atomic<bool> simpleMode_{true};
   // See storeTarget(). Written where a piston or step is chosen, under the
   // audio lock or on the audio thread; read under the lock.

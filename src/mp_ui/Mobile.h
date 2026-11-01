@@ -84,6 +84,10 @@ void fitToScreen(juce::DocumentWindow& window);
 // larger. A window saved on a big screen came back on a small one partly off
 // its edge, and the left of every console page was out of sight.
 void keepOnScreen(juce::Component& window);
+// Whether windows reopen where they were left, the player's View setting; the
+// editor sets it from the processor. Off, they open centred at their size.
+bool rememberWindowPlaces();
+void setRememberWindowPlaces(bool on);
 
 // Shows or hides a window that floats over the console (combinations,
 // recorder), above every other window while `onTop`. On Linux the window is

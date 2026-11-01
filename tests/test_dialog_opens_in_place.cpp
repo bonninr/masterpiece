@@ -163,6 +163,17 @@ public:
              "a size-only line opens centred at its size");
     delete d;
 
+    // View > Remember window positions off: its size, centred, though the
+    // place is on the screen.
+    file.replaceWithText("MIDI=620 400 " + juce::String(left.getX()) + " " + juce::String(left.getY()) + "\n");
+    mp::ui::setRememberWindowPlaces(false);
+    d = open();
+    MP_CHECK(d != nullptr && d->getWidth() == 620 && d->getHeight() == 400 && d->getBounds() != left,
+             "with the setting off it opens centred at its size, got " +
+                 (d != nullptr ? d->getBounds().toString().toStdString() : ""));
+    delete d;
+    mp::ui::setRememberWindowPlaces(true);
+
     mp::setDataFolder(previous);
     data.deleteRecursively();
   }

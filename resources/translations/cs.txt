@@ -1027,6 +1027,7 @@ countries: cz
 "Expression pedals" = "Žaluziové pedály"
 "Highlight played keys" = "Zvýraznit hrané klávesy"
 "Scale small pages to fit" = "Přizpůsobit malé stránky"
+"Remember window positions" = "Pamatovat polohy oken"
 "Open page in new window" = "Otevřít stránku v novém okně"
 "Documentation" = "Dokumentace"
 "Release notes" = "Poznámky k vydání"

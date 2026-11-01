@@ -1027,6 +1027,7 @@ countries: de at ch li lu
 "Expression pedals" = "Schwellpedale"
 "Highlight played keys" = "Gespielte Tasten hervorheben"
 "Scale small pages to fit" = "Kleine Seiten einpassen"
+"Remember window positions" = "Fensterpositionen merken"
 "Open page in new window" = "Seite in neuem Fenster öffnen"
 "Documentation" = "Dokumentation"
 "Release notes" = "Versionshinweise"
