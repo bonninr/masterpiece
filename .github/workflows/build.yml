@@ -285,6 +285,7 @@ jobs:
           else
             "$TESTS" > train-tests.log 2>&1 || echo "training: some tests failed"
           fi
+          grep -F '[FAIL]' train-tests.log || true
           tail -3 train-tests.log
           echo "test suite: $((SECONDS - start)) s"
           start=$SECONDS
