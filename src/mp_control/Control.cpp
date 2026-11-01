@@ -415,6 +415,7 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
         if (pc != programByDest_.end())
           for (const ProgramCoupler& c : pc->second) {
             if (engagedSwitches.count(c.switchId) == 0) continue;
+            if (c.extreme != 0 && (extreme & c.extreme) == 0) continue;
             const int note = step.second + c.shift;
             if (note < 0 || note > 127) continue;
             const int src = static_cast<int>(c.srcDivision);
@@ -495,7 +496,11 @@ void CouplerMatrix::setMasterCoupler(int t, int f, int k, bool e) {
 
 void CouplerMatrix::setProgramCouplers(std::vector<ProgramCoupler> couplers) {
   programByDest_.clear();
-  for (const ProgramCoupler& c : couplers) programByDest_[c.destDivision].push_back(c);
+  hasProgramExtremes_ = false;
+  for (const ProgramCoupler& c : couplers) {
+    programByDest_[c.destDivision].push_back(c);
+    if (c.extreme != 0) hasProgramExtremes_ = true;
+  }
   hasProgramCouplers_ = !programByDest_.empty();
 }
 
