@@ -428,6 +428,13 @@ private:
   bool keyPressed(const juce::KeyPress& key, juce::Component* origin) override;
   void parentHierarchyChanged() override;
   juce::Component::SafePointer<juce::Component> keyWindow_;
+  // A slider moved by the mouse wheel -- a touchpad's two-finger scroll --
+  // takes the keyboard, as a click on it does, so the arrow keys go on
+  // moving it rather than whatever had the keyboard before (#637). Listened
+  // for on the desktop: every window's sliders, settings and console alike.
+  struct WheelFocus final : juce::MouseListener {
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&) override;
+  } wheelFocus_;
 
   MasterpieceProcessor& proc_;
   TopBar top_;
