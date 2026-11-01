@@ -76,6 +76,16 @@ void SplitKeyboardHost::process(Tagged& messages, std::vector<int>& offsets, dou
   offsets.swap(scratchOffsets_);
 }
 
+void SplitKeyboardHost::lamps(juce::MidiBuffer& out, bool send) {
+  int n = 0;
+  const auto* m = engine_.lamps(n);
+  if (send)
+    for (int i = 0; i < n; ++i) out.addEvent(juce::MidiMessage(m[i].status, m[i].data1, m[i].data2), 0);
+  engine_.clearLamps();
+  // Unsent, they are owed: the next block that sends makes them all.
+  if (!send && n > 0) engine_.resendLamps();
+}
+
 void SplitKeyboardHost::retagReplay(Tagged& messages) const {
   // Only while the split keyboard is on. Its own device is the MIDI map's
   // exclusive input, and a message from the exclusive input is matched only

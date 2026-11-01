@@ -371,6 +371,75 @@ public:
 };
 static SplitPresetsTest g_splitPresets;
 
+// The lamps of the learned controls, as status, number and value.
+std::vector<std::vector<int>> lamps(SplitKeyboard& sk) {
+  int n = 0;
+  const auto* m = sk.lamps(n);
+  std::vector<std::vector<int>> v;
+  for (int i = 0; i < n; ++i) v.push_back({m[i].status, m[i].data1, m[i].data2});
+  sk.clearLamps();
+  return v;
+}
+
+std::string show(const std::vector<std::vector<int>>& v) {
+  std::string s;
+  for (const auto& m : v)
+    s += (s.empty() ? "" : " ") + std::to_string(m[0]) + "/" + std::to_string(m[1]) + "/" + std::to_string(m[2]);
+  return s.empty() ? "nothing" : s;
+}
+
+class SplitLampsTest final : public mp::test::Test {
+public:
+  SplitLampsTest() : Test("functional.split.control-lamps", Category::Functional) {}
+  void run() override {
+    Rig r(twoManuals());
+    auto l = lamps(r.sk);
+    MP_CHECK(l.empty(), "nothing learned, no lamps: " + show(l));
+
+    r.sk.learn(static_cast<int>(mp::split::Control::Preset1));
+    r.block();
+    r.on(36, 5);
+    r.off(36, 5);
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l == std::vector<std::vector<int>>({{0x80, 36, 0}}),
+             "preset 1 learned on a note: its lamp goes out dark, no preset recalled: " + show(l));
+
+    r.on(36, 5);
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l == std::vector<std::vector<int>>({{0x90, 36, 127}}), "recalled from its button, it lights: " + show(l));
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l.empty(), "and is sent once: " + show(l));
+
+    r.sk.learn(static_cast<int>(mp::split::Control::Toggle));
+    r.block();
+    r.send(0xB1, 20, 127, 5);
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l == std::vector<std::vector<int>>({{0xB1, 20, 127}}),
+             "on and off learned on a controller: lit while the split is on: " + show(l));
+    r.send(0xB1, 20, 127, 5);
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(!r.sk.enabled() && l == std::vector<std::vector<int>>({{0xB1, 20, 0}}),
+             "pressed, the split goes off and the lamp dark: " + show(l));
+
+    r.sk.setLayout(twoManuals(), -1);
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l == std::vector<std::vector<int>>({{0x80, 36, 0}}),
+             "a layout changed by hand: preset 1's lamp goes out: " + show(l));
+
+    r.sk.resendLamps();
+    r.block();
+    l = lamps(r.sk);
+    MP_CHECK(l.size() == 2, "after a load, every learned lamp again: " + show(l));
+  }
+};
+static SplitLampsTest g_splitLamps;
+
 class SplitTextTest final : public mp::test::Test {
 public:
   SplitTextTest() : Test("functional.split.files", Category::Functional) {}

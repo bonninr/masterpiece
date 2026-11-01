@@ -89,6 +89,7 @@ const char* factoryName(int index) {
 
 SplitKeyboard::SplitKeyboard() {
   std::fill(std::begin(zoneOfKey_), std::end(zoneOfKey_), static_cast<int8_t>(-1));
+  resendLamps();
   for (int i = 0; i < kFactoryPresets; ++i) {
     presets_.layouts[i] = factoryLayout(i);
     presets_.used[i] = true;
@@ -159,7 +160,37 @@ void SplitKeyboard::endBlock() {
     followUntilMs_ = -1.0;
     changed_ = true;
   }
+  updateLamps();
   if (changed_) publish();
+}
+
+void SplitKeyboard::updateLamps() {
+  for (int c = 0; c < kControlCount; ++c) {
+    const auto ci = static_cast<size_t>(c);
+    const Trigger& t = triggers_[ci];
+    // Learned anew: the lamp goes out where it was, and is sent where it is.
+    if (!(t == lampTriggers_[ci])) {
+      const Trigger& old = lampTriggers_[ci];
+      if (lampSent_[c] == 1 && (old.kind == Trigger::Note || old.kind == Trigger::Controller) &&
+          lampCount_ < kControlCount * 2)
+        lampOut_[lampCount_++] = Msg{static_cast<uint8_t>((old.kind == Trigger::Note ? 0x80 : 0xB0) | (old.channel - 1)),
+                                     old.number, 0};
+      lampTriggers_[ci] = t;
+      lampSent_[c] = -1;
+    }
+    int lit = -1;
+    if (c == static_cast<int>(Control::Toggle)) lit = enabled_ ? 1 : 0;
+    else if (c >= static_cast<int>(Control::Preset1)) lit = preset_ == c - static_cast<int>(Control::Preset1) ? 1 : 0;
+    if (lit < 0 || lit == lampSent_[c]) continue;
+    lampSent_[c] = static_cast<int8_t>(lit);
+    if ((t.kind != Trigger::Note && t.kind != Trigger::Controller) || t.channel < 1 || t.channel > 16) continue;
+    if (lampCount_ >= kControlCount * 2) continue;
+    const uint8_t ch = static_cast<uint8_t>(t.channel - 1);
+    lampOut_[lampCount_++] = t.kind == Trigger::Note
+                                 ? Msg{static_cast<uint8_t>((lit != 0 ? 0x90 : 0x80) | ch), t.number,
+                                       static_cast<uint8_t>(lit != 0 ? 127 : 0)}
+                                 : Msg{static_cast<uint8_t>(0xB0 | ch), t.number, static_cast<uint8_t>(lit != 0 ? 127 : 0)};
+  }
 }
 
 bool SplitKeyboard::feed(int device, const uint8_t* data, int size) {

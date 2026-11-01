@@ -6913,6 +6913,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
       if (switches_.engaged(switchId)) palletMoved(switchId, true);
   if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
+  emitPistonLamps();
+  split_.lamps(outgoing_, midiFeedback_ && (midiOut_ != nullptr || outgoingProbe));
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -9053,7 +9055,10 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
 // changes sent on the output, each stop learned on a note or a controller.
 void MasterpieceProcessor::sendLampsAfterLoad() {
   // The explicit sends start over: the system exclusive ones went at the top
-  // of this block, and the others go in emitSends() after the lamps.
+  // of this block, and the others go in emitSends() after the lamps. The
+  // combination buttons' lamps start over too, in emitPistonLamps().
+  pistonLamps_.clear();
+  split_.resendLamps();
   if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
   for (const auto& b : midiMap_.bindings()) {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
@@ -9088,6 +9093,8 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
       now = recorder_.isPlaying() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::ContinuousControl)
       now = controls_.value(s.targetId);
+    else if (const int lamp = pistonLamp(s.targetKind, s.targetId); lamp >= 0)
+      now = lamp;
     else
       continue;
     if (now == sentValues_[i]) continue;
@@ -9105,11 +9112,44 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
   }
 }
 
+int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
+  switch (kind) {
+    case MidiTargetKind::PlayerGeneral: return player_.litGeneral() == static_cast<int>(id) ? 1 : 0;
+    case MidiTargetKind::PlayerDivisional:
+      return player_.litDivisional(playerDivisionalDivision(id)) == playerDivisionalPiston(id) ? 1 : 0;
+    case MidiTargetKind::Setter: return captureMode() ? 1 : 0;
+    case MidiTargetKind::PedalCombinationsCoupled: return pedalCoupled_.load() ? 1 : 0;
+    default: return -1;
+  }
+}
+
+void MasterpieceProcessor::emitPistonLamps() {
+  if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
+  const auto& bindings = midiMap_.bindings();
+  if (pistonLamps_.size() != bindings.size()) pistonLamps_.assign(bindings.size(), -1);
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    const auto& b = bindings[i];
+    const int lit = pistonLamp(b.targetKind, b.targetId);
+    if (lit < 0 || lit == pistonLamps_[i]) continue;
+    pistonLamps_[i] = lit;
+    // A button with sends of its own is lit by those, in emitSends().
+    if (midiMap_.hasSends(b.targetKind, b.targetId)) continue;
+    const int ch = b.source.channel > 0 ? b.source.channel : 1;
+    if (b.source.kind == MidiSourceKind::Note)
+      outgoing_.addEvent(lit != 0 ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
+                                  : juce::MidiMessage::noteOff(ch, b.source.number),
+                         0);
+    else if (b.source.kind == MidiSourceKind::ControlChange)
+      outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, lit != 0 ? 127 : 0), 0);
+  }
+}
+
 void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
                                              const std::vector<MidiBinding>& rows) {
   {
     const AudioLock lock(*this);
     midiMap_.setBindingsFor(kind, id, rows);
+    pistonLamps_.clear();
   }
   saveMidiMap();
 }

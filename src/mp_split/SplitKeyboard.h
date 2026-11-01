@@ -33,6 +33,7 @@
 // over through mailboxes, and reads back what the audio thread did through a
 // snapshot. JUCE-free.
 #pragma once
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -211,6 +212,17 @@ public:
     return out_;
   }
   void clearOutput() { outCount_ = 0; }
+  // The lamps of the learned controls, for a console that lights its
+  // buttons: On and off lit while the split is on, a preset's while it is the
+  // one recalled. A control learned on a note or a controller has one; the
+  // messages are its own, 127 lit and 0 dark. Made in endBlock() when a lamp
+  // changes, and every lamp after resendLamps().
+  const Msg* lamps(int& count) const {
+    count = lampCount_;
+    return lampOut_;
+  }
+  void clearLamps() { lampCount_ = 0; }
+  void resendLamps() { std::fill(std::begin(lampSent_), std::end(lampSent_), static_cast<int8_t>(-1)); }
 
   // For tests and the glue alike.
   bool enabled() const { return enabled_; }
@@ -244,6 +256,7 @@ private:
   void doControl(int control);
   void publish();
   void emit(uint8_t status, uint8_t d1, uint8_t d2);
+  void updateLamps();
   int lowestHeldUpTo(int top) const;
   int highestHeldFrom(int bottom) const;
 
@@ -294,6 +307,10 @@ private:
 
   Msg out_[kOutCapacity];
   int outCount_ = 0;
+  Msg lampOut_[kControlCount * 2];  // a lamp moved by a new learning goes out where it was too
+  int lampCount_ = 0;
+  int8_t lampSent_[kControlCount];  // -1: not sent yet
+  std::array<Trigger, kControlCount> lampTriggers_{};  // what the lamps were sent on
   State state_;
 };
 
