@@ -176,8 +176,6 @@ countries: cz
 "Press the lowest key..." = "Stiskněte nejnižší klávesu..."
 "Pistons that bring the %1 to one of your keyboards" = "Tlačítka, která přivedou „%1“ na jednu z vašich klaviatur"
 "A piston here makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same button added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Tlačítko zde způsobí, že klaviatura hraje „%1“, takže hrací stůl s menším počtem klaviatur, než mají varhany manuálů, se dostane ke všem. Při stisku se nejprve uvolní všechny noty držené na této klaviatuře. Přidejte jedno pro každou klaviaturu, která má umět hrát tento manuál.\n\nStejné tlačítko přidané na několika manuálech přepíná klaviaturu mezi nimi, s každým stiskem o jeden dál. V Nastavení, MIDI lze docílit, aby Generální zrušení vrátilo každou klaviaturu na její vlastní manuál. Ukládá se spolu s těmito varhanami."
-"Controller %1" = "Ovladač %1"
-"on channel %1" = "na kanálu %1"
 "brings the %1 to the keyboard on channel %2" = "přivádí „%1“ na klaviaturu na kanálu %2"
 "No pistons yet." = "Zatím žádná tlačítka."
 "Play any key on the keyboard that should play the %1..." = "Zahrajte libovolnou klávesu na klaviatuře, která má hrát „%1“..."
@@ -1167,3 +1165,4 @@ countries: cz
 "Full screen" = "Celá obrazovka"
 "Exit full screen" = "Ukončit celou obrazovku"
 "Or press Escape or F11" = "Nebo stiskněte Esc nebo F11"
+"Remove this piston" = "Odebrat toto tlačítko"

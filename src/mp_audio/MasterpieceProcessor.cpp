@@ -1297,10 +1297,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       continue;
     }
 
+    // Bank Select, controller 0 or 32, comes just ahead of a program change
+    // from a console that sends banks: Listen and Learn take the program
+    // change that follows it (#565).
+    const bool bankSelect = source.kind == MidiSourceKind::ControlChange &&
+                            (source.number == 0 || source.number == 32);
+
     // Listening for the MIDI window takes the press and keeps it; the
-    // release that follows is swallowed too, while still listening.
+    // release that follows is swallowed too, while still listening. A
+    // controller is taken at any value: a console that sends 0 for off sends
+    // a real message (#565).
     if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
-      if (value > 0) {
+      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange)) {
         heard_ = source;
         heardValue_ = value;
         midiListen_.store(false, std::memory_order_release);
@@ -1314,12 +1322,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
       // Only a press, never a release — otherwise letting go of the key
       // immediately re-learns it to the note-off.
-      if (value > 0 && midiMap_.learnFrom(source)) {
+      if (value > 0 && !bankSelect && midiMap_.learnFrom(source)) {
         // Learned on the audio thread; written by the message thread.
         midiMapDirty_.store(true, std::memory_order_release);
         continue;
       }
-      if (value == 0) continue;
+      if (value == 0 || bankSelect) continue;
     }
 
     const MidiAction action = midiMap_.actionFor(source, value);
@@ -1395,9 +1403,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::PlayerDivisional:
           pressDivisional(playerDivisionalDivision(action.targetId),
                           playerDivisionalPiston(action.targetId));
+          // The same piston on the other manuals it is learned for (#637).
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              pressDivisional(playerDivisionalDivision(b.targetId), playerDivisionalPiston(b.targetId));
           continue;
         case MidiTargetKind::PlayerDivisionalCancel:
           pressDivisionalCancel(action.targetId);
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives) pressDivisionalCancel(b.targetId);
           continue;
         case MidiTargetKind::Setter:
           setCaptureMode(action.toggled ? !captureMode() : action.engage);
@@ -1679,9 +1693,10 @@ juce::File MasterpieceProcessor::midiMapFileFor(const juce::File& odf) const {
   return organFile(odf, "midi", ".mpmidi");
 }
 
-void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId) {
+void MasterpieceProcessor::beginKeyboardLearn(Id keyboardId, int row) {
   keyboardLearn_ = keyboardId;
   keyboardLearnLow_ = -1;
+  keyboardLearnRow_ = row;
 }
 
 bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
@@ -1712,8 +1727,19 @@ bool MasterpieceProcessor::learnKeyboardFrom(int deviceId, int channel,
   if (it != model_.keyboards.end() && it->second.numKeys > 0)
     b.transpose = it->second.firstMidiNote - b.lowKey;
 
-  midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
-  midiMap_.addKeyboardBinding(b);
+  // The row the player selected is filled, and keeps its velocity, debounce
+  // and short octave (#565); with none, the learned row is the manual's only.
+  if (const auto* old = midiMap_.keyboardBindingAt(keyboardLearn_, keyboardLearnRow_)) {
+    b.lowVelocity = old->lowVelocity;
+    b.highVelocity = old->highVelocity;
+    b.ignoreVelocity = old->ignoreVelocity;
+    b.shortOctave = old->shortOctave;
+    b.debounceMs = old->debounceMs;
+    midiMap_.replaceKeyboardBinding(keyboardLearn_, keyboardLearnRow_, b);
+  } else {
+    midiMap_.removeKeyboardBindingsFor(keyboardLearn_);
+    midiMap_.addKeyboardBinding(b);
+  }
   midiMapDirty_.store(true, std::memory_order_release);
   keyboardLearn_ = 0;
   keyboardLearnLow_ = -1;
@@ -9168,7 +9194,9 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     else
       continue;
     if (now == sentValues_[i]) continue;
+    const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
+    if (quiet) continue;
     if (s.kind == MidiSourceKind::SysEx) {
       // A whole message of its own for each state; a control has none.
       if (s.targetKind == MidiTargetKind::ContinuousControl) continue;
@@ -9225,11 +9253,24 @@ void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
 }
 
 void MasterpieceProcessor::setObjectSends(MidiTargetKind kind, Id id,
-                                          const std::vector<MidiSend>& rows) {
+                                          const std::vector<MidiSend>& rows, bool quietNew) {
   {
     const AudioLock lock(*this);
+    const std::vector<MidiSend> before = midiMap_.sends();
+    const std::vector<int> sentBefore = sentValues_;
     midiMap_.setSendsFor(kind, id, rows);
-    sentValues_.clear();
+    const auto& after = midiMap_.sends();
+    // Each row keeps what it last sent, matched by its whole message; a row
+    // with no match is new or changed.
+    sentValues_.assign(after.size(), quietNew ? kTakeStateQuietly : -1);
+    std::vector<bool> used(before.size(), false);
+    for (size_t i = 0; i < after.size(); ++i)
+      for (size_t j = 0; j < before.size(); ++j)
+        if (!used[j] && before[j] == after[i]) {
+          used[j] = true;
+          sentValues_[i] = j < sentBefore.size() ? sentBefore[j] : -1;
+          break;
+        }
   }
   saveMidiMap();
 }

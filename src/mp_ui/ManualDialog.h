@@ -65,6 +65,7 @@ private:
   // Set while the controls are being filled in, so writing to them does not
   // read straight back as an edit.
   bool loading_ = false;
+  bool learning_ = false;  // a learn for this manual was running at the last tick
 };
 
 } // namespace mp::ui

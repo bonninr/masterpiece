@@ -176,8 +176,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Press the lowest key..." = "Pulsa la tecla más grave..."
 "Pistons that bring the %1 to one of your keyboards" = "Pistones que llevan «%1» a uno de tus teclados"
 "A piston here makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same button added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Un pistón aquí hace que un teclado toque «%1», de modo que una consola con menos teclados que manuales del órgano pueda alcanzarlos todos. Al pulsarlo se sueltan primero las notas que ese teclado tuviera sostenidas. Añade uno por cada teclado que deba poder tocar este manual.\n\nEl mismo botón añadido en varios manuales recorre esos manuales uno a uno, con cada pulsación. En Ajustes, MIDI se puede hacer que la Cancelación general devuelva todos los teclados a su manual de origen. Se guarda con este órgano."
-"Controller %1" = "Controlador %1"
-"on channel %1" = "en el canal %1"
 "brings the %1 to the keyboard on channel %2" = "lleva «%1» al teclado del canal %2"
 "No pistons yet." = "Aún no hay pistones."
 "Play any key on the keyboard that should play the %1..." = "Toca cualquier tecla del teclado que debe tocar «%1»..."
@@ -1167,3 +1165,4 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Full screen" = "Pantalla completa"
 "Exit full screen" = "Salir de pantalla completa"
 "Or press Escape or F11" = "O pulse Esc o F11"
+"Remove this piston" = "Quitar este pistón"
