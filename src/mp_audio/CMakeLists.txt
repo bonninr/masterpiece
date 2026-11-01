@@ -45,6 +45,8 @@ add_library(mp_audio STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/OrganSettings.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CombinationsWindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CouplersWindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/CouplersWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/SplitKeyboardWindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../mp_ui/TuningPanel.h

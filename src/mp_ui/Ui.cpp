@@ -1947,6 +1947,18 @@ void MasterpieceEditor::toggleSplitKeyboard() {
   showFloating(*splitWindow_, !splitWindow_->isVisible(), juce::Process::isForegroundProcess());
 }
 
+void MasterpieceEditor::toggleCouplers() {
+  if (couplersWindow_ == nullptr) {
+    couplersWindow_ = std::make_unique<CouplersWindow>(proc_);
+    couplersWindow_->panel().onExtraCouplers = [this] { toggleProgramCouplers(false); };
+    // Beside the main window, at its top right, where it hides the least.
+    const auto b = getScreenBounds();
+    if (!kMobile)
+      couplersWindow_->setTopLeftPosition(b.getRight() - couplersWindow_->getWidth() - 20, b.getY() + 80);
+  }
+  showFloating(*couplersWindow_, !couplersWindow_->isVisible(), juce::Process::isForegroundProcess());
+}
+
 void MasterpieceEditor::reloadOrgan() {
   const juce::File odf = proc_.loadedOrganFile();
   if (odf.existsAsFile()) loadOrgan(odf);
@@ -2037,6 +2049,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     // up on nearly every Open (#90); the Combinations button finds it.
     combinations_->place(getScreenBounds(), false);
   }
+  if (couplersWindow_ != nullptr) couplersWindow_->panel().rebuild();
   juce::Logger::writeToLog(
       "load: artwork       " +
       juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
@@ -2748,13 +2761,13 @@ void MasterpieceEditor::toggleStopList() {
   if (showingStopList_) jamb_.focusFirstStop();
 }
 
-void MasterpieceEditor::toggleProgramCouplers() {
+void MasterpieceEditor::toggleProgramCouplers(bool openStopList) {
   // The organ's own setting, the one on Organ settings > Loading, saved for
   // this organ before it is loaded again with it.
   const bool on = !proc_.programCouplers();
   proc_.setProgramCouplers(on);
   proc_.saveSettings();
-  showCouplersAfterLoad_ = on;
+  showCouplersAfterLoad_ = on && openStopList;
   reloadOrgan();
 }
 
@@ -2904,6 +2917,7 @@ void MasterpieceEditor::showViewMenu() {
   }
   menu.addSeparator();
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
+  menu.addItem(19, TRANS("Couplers"), true, couplersWindow_ != nullptr && couplersWindow_->isVisible());
   menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
@@ -2915,6 +2929,7 @@ void MasterpieceEditor::showViewMenu() {
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
                        if (c == 14) safe->toggleSplitKeyboard();
+                       if (c == 19) safe->toggleCouplers();
 #if MP_HAS_SCORE
                        if (c == 16) safe->showScore();
 #endif
@@ -3164,6 +3179,10 @@ void MasterpieceEditor::timerCallback() {
   if (kLiveOnTop && combinations_ != nullptr && combinations_->isVisible()) {
     const bool front = combinations_->onTopNow();
     if (combinations_->isAlwaysOnTop() != front) combinations_->setAlwaysOnTop(front);
+  }
+  if (kLiveOnTop && couplersWindow_ != nullptr && couplersWindow_->isVisible()) {
+    const bool front = juce::Process::isForegroundProcess();
+    if (couplersWindow_->isAlwaysOnTop() != front) couplersWindow_->setAlwaysOnTop(front);
   }
   if (kLiveOnTop && recorderWindow_ != nullptr && recorderWindow_->isVisible()) {
     const bool front = juce::Process::isForegroundProcess();

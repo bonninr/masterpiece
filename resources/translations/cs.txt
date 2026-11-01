@@ -1123,3 +1123,6 @@ countries: cz
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "Kompresor neslyší basy pod touto výškou: 32' ani plný pedál neztlumí manuály. Samy basy znějí naplno."
 "Reduction %1 dB" = "Snížení %1 dB"
 "Output compressor" = "Výstupní kompresor"
+"Couplers" = "Spojky"
+"16', 8' and 4' couplers between the divisions, and on each division. Turning them on or off loads the organ again." = "Spojky 16', 8' a 4' mezi oddíly a v každém oddílu. Zapnutí nebo vypnutí znovu načte varhany."
+"This organ draws no couplers of its own. The extra couplers add them." = "Tyto varhany nemají vlastní spojky. Další spojky je přidají."

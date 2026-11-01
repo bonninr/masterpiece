@@ -1123,3 +1123,6 @@ countries: pl
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "Kompresor nie słyszy basu poniżej tej wysokości: 32' ani pełny pedał nie ściszają manuałów. Sam bas brzmi w pełni."
 "Reduction %1 dB" = "Obniżenie %1 dB"
 "Output compressor" = "Kompresor wyjścia"
+"Couplers" = "Połączenia"
+"16', 8' and 4' couplers between the divisions, and on each division. Turning them on or off loads the organ again." = "Połączenia 16', 8' i 4' między sekcjami i w każdej sekcji. Włączenie lub wyłączenie wczytuje organy ponownie."
+"This organ draws no couplers of its own. The extra couplers add them." = "Te organy nie mają własnych połączeń. Dodatkowe połączenia je dodają."

@@ -1123,3 +1123,6 @@ countries: fr be ca ch lu mc
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "Le compresseur n'entend pas les basses sous cette hauteur : un 32' ou un plein de pédale ne baisse pas les claviers. Les basses sonnent en entier."
 "Reduction %1 dB" = "Réduction %1 dB"
 "Output compressor" = "Compresseur de sortie"
+"Couplers" = "Accouplements"
+"16', 8' and 4' couplers between the divisions, and on each division. Turning them on or off loads the organ again." = "Accouplements de 16', 8' et 4' entre les plans sonores et sur chaque plan. Les activer ou les désactiver recharge l'orgue."
+"This organ draws no couplers of its own. The extra couplers add them." = "Cet orgue n'a pas d'accouplements propres. Les accouplements supplémentaires les ajoutent."
