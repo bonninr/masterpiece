@@ -1395,9 +1395,15 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::PlayerDivisional:
           pressDivisional(playerDivisionalDivision(action.targetId),
                           playerDivisionalPiston(action.targetId));
+          // The same piston on the other manuals it is learned for (#637).
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives)
+              pressDivisional(playerDivisionalDivision(b.targetId), playerDivisionalPiston(b.targetId));
           continue;
         case MidiTargetKind::PlayerDivisionalCancel:
           pressDivisionalCancel(action.targetId);
+          if (action.alsoDrives != nullptr)
+            for (const auto& b : *action.alsoDrives) pressDivisionalCancel(b.targetId);
           continue;
         case MidiTargetKind::Setter:
           setCaptureMode(action.toggled ? !captureMode() : action.engage);
