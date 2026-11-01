@@ -244,6 +244,19 @@ std::filesystem::path standardNoiseFor(const std::string& fileName, const juce::
   return mp::pathOf(out.getFullPathName().toStdString());
 }
 
+// Whether every sample is a whole 16-bit count, as a 16-bit file decodes:
+// mixed to mono, converted in rate or faded, it usually is not.
+bool holdsSixteenBits(const juce::AudioBuffer<float>& b, int channels, int64_t frames) {
+  for (int c = 0; c < channels; ++c) {
+    const float* d = b.getReadPointer(c);
+    for (int64_t i = 0; i < frames; ++i) {
+      const float v = d[i] * 32768.0f;
+      if (!(v >= -32768.0f && v <= 32767.0f) || v != std::round(v)) return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 SampleLibrary::SampleLibrary() {
@@ -460,6 +473,17 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
         d.b[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
         d.b[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
       }
+  } else if (storage == SampleStorage::Int20 && holdsSixteenBits(scratch, channels, want)) {
+    // A 16-bit file is held at its own sixteen bits, exactly and in two bytes
+    // a sample; twenty would take two and a half and add nothing. The same as
+    // a 16-bit file read at 24 bits (narrowSampleBuffer).
+    constexpr float kFull = 32768.0f;
+    out.pcmScale = 1.0f / kFull;
+    out.pcm16.resize(count);
+    for (int64_t f = 0; f < want; ++f)
+      for (int c = 0; c < channels; ++c)
+        out.pcm16[static_cast<size_t>(f * channels + c)] = static_cast<int16_t>(
+            scratch.getSample(c, static_cast<int>(f)) * kFull);
   } else if (storage == SampleStorage::Int20) {
     // Twenty bits a sample, packed two to five bytes. Quantised against this
     // file's own peak, as 16-bit is: a 24-bit source cannot be held exactly
@@ -928,15 +952,18 @@ int64_t SampleLibrary::residentBytes(const SampleShape& shape) const {
                       : storage_ == SampleStorage::Int24 ? 3.0
                       : storage_ == SampleStorage::Int20 ? 2.5
                                                          : 4.0;
-  // A 16-bit file read at 24 bits is held at 16 (narrowSampleBuffer). Mixed
-  // down to mono, or converted in rate, it usually is not: those keep three.
-  if (storage_ == SampleStorage::Int24 && shape.bits > 0 && shape.bits <= 16 &&
+  // A 16-bit file read at 24 or 20 bits is held at 16 (narrowSampleBuffer,
+  // holdsSixteenBits). Mixed down to mono, or converted in rate, it usually
+  // is not: those keep the wider size.
+  if ((storage_ == SampleStorage::Int24 || storage_ == SampleStorage::Int20) &&
+      shape.bits > 0 && shape.bits <= 16 &&
       (!loadMono_ || shape.channels == 1) &&
       (loadRate_ <= 0.0 || shape.rate <= 0.0 || std::abs(loadRate_ - shape.rate) <= 1.0))
     storeBytes = 2.0;
   // Coded, a sample takes a third to a half of its plain size: the half is
   // the estimate, so a set that fits by it fits.
-  if (codeSamples_ && (storage_ == SampleStorage::Int16 || storage_ == SampleStorage::Int24))
+  if (codeSamples_ && (storage_ == SampleStorage::Int16 || storage_ == SampleStorage::Int24 ||
+                       (storage_ == SampleStorage::Int20 && storeBytes == 2.0)))
     storeBytes *= 0.5;
   int64_t frames = shape.frames;
   if (loadRate_ > 0.0 && shape.rate > 0.0)

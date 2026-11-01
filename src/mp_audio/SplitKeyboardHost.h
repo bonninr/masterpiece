@@ -47,6 +47,12 @@ public:
   // A recording of the split played back comes from no input: its notes on
   // the split's channels are the split's again.
   void retagReplay(Tagged& messages) const;
+  // The lamps of the split's learned controls (On and off, the presets), as
+  // they changed this block, onto `out`; with `send` false they are dropped,
+  // and all of them go out once `send` is true again.
+  void lamps(juce::MidiBuffer& out, bool send);
+  // Every lamp again on the next block: after a load, as the stops' lamps.
+  void resendLamps() { engine_.resendLamps(); }
 
   // --- message thread -----------------------------------------------------
   // An organ came up (or went: an empty file). Its layout is read, and if the

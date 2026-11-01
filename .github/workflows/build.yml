@@ -454,7 +454,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
@@ -465,7 +465,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
       - uses: actions/upload-artifact@v4
         if: matrix.mac
@@ -476,7 +476,7 @@ jobs:
           # A CI build is worth keeping only until someone has looked at it.
           # The default is 90 days, and at a few hundred megabytes a run that
           # fills the account's storage on its own.
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
       # The Windows zip and the Linux tarballs as one folder, the way the Mac
       # zip is. The plugins have packages of their own (the plugins job).
@@ -500,7 +500,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/portable/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
   # The plugins, in jobs and packages of their own: VST3 and LV2 on Windows and
   # Linux, VST3 and the Audio Unit on both Macs. Built beside the program on
@@ -615,7 +615,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.zip
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
       # A folder, as the Windows zip and the Linux tarballs of the program
       # are; the release packs it with the plugins folder at its top.
@@ -625,7 +625,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/portable/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
   # Linux as a Flatpak (discussion #237): one bundle for every distribution,
   # run in a sandbox. Built in the freedesktop SDK's own container from
@@ -657,7 +657,7 @@ jobs:
           name: masterpiece-linux-x86_64-flatpak
           path: masterpiece-linux-x86_64.flatpak
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
   # iOS: the app for the simulator, unsigned. No release ships it yet, so a
   # tagged release skips it; on pull requests it keeps the iOS build honest.
@@ -754,7 +754,7 @@ jobs:
           name: ios-simulator-screenshots
           path: ios-shots/
           if-no-files-found: warn
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
   # iOS for real iPhones and iPads: arm64, unsigned, packed as an .ipa for
   # sideloading. Apple runs nothing it has not signed, so the player signs it
@@ -818,7 +818,7 @@ jobs:
           name: masterpiece-ios
           path: masterpiece-ios.ipa
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}
 
   # Android: the APK for phones, tablets and the emulator. Signed with the
   # release key from the repository's secrets when they are there (a fork's
@@ -895,7 +895,7 @@ jobs:
           name: play-bundle
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}0
 
       # Named for what it is: the release publishes it as it stands.
       - name: Name the APK
@@ -906,4 +906,4 @@ jobs:
           name: masterpiece-android
           path: masterpiece-android.apk
           if-no-files-found: error
-          retention-days: 3
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 3 }}

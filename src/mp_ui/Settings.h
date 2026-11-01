@@ -450,6 +450,8 @@ private:
   // And when it unloads: before the next loads, and as the program quits.
   juce::Label unloadMessageLabel_;
   juce::TextEditor unloadMessage_;
+  juce::TextButton sendLoadMessage_, sendUnloadMessage_;
+  void sendNow(juce::TextEditor& field, juce::TextButton& button);
   // Page turns for a score app on a tablet or another program: a piston
   // learned here sends the message chosen beside it on the MIDI output.
   juce::Label scoreHeading_, scoreSendsLabel_;
