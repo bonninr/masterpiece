@@ -260,7 +260,7 @@ std::vector<PlayerCombinations::Element> PlayerCombinations::collect(
     e.divisionId = div;
     const auto it = model.switches.find(sw);
     e.name = it != model.switches.end() ? it->second.name : std::string();
-    e.bassOrMelody = bassOrMelody.count(sw) != 0;
+    e.bassOrMelody = bassOrMelody.count(sw) != 0 || (it != model.switches.end() && it->second.bassOrMelody);
     out.push_back(std::move(e));
   };
   for (const auto& [sw, vote] : couplers) addSwitch(sw, vote.result());

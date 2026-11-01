@@ -131,7 +131,7 @@ public:
                   int extreme = 0) const;
   // Whether the organ has a bass or a melody coupler at all, so a player
   // without one pays nothing for them.
-  bool hasExtremeActions() const { return hasExtremeActions_; }
+  bool hasExtremeActions() const { return hasExtremeActions_ || hasProgramExtremes_; }
 
   // Same, allocating its own scratch and result. For tests and tools, never
   // for the audio thread.
@@ -176,6 +176,9 @@ public:
     Id destDivision = 0;
     Id srcDivision = 0;
     int shift = 0;  // -12 for 16', 0 for 8', +12 for 4'
+    // 0 for every key; kLowestHeld for a bass coupler, kHighestHeld for a
+    // melody coupler: only the lowest or the highest key held carries it.
+    int extreme = 0;
   };
   // The program couplers, built at load. With none, walk() does no extra
   // work at all beyond the check.
@@ -222,6 +225,7 @@ private:
   // The program couplers by their destination division.
   std::unordered_map<Id, std::vector<ProgramCoupler>> programByDest_;
   bool hasProgramCouplers_ = false;
+  bool hasProgramExtremes_ = false;  // a program bass or melody coupler among them
 };
 
 // Which keyboard the on-screen fallback piano (and an unmapped MIDI channel)

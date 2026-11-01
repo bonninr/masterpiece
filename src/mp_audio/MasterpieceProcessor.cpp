@@ -6225,6 +6225,40 @@ void MasterpieceProcessor::buildProgramCouplers() {
       programCouplersList_.push_back({sw.switchId, div, div, shift});
     }
 
+  // The player's bass and melody couplers, for playing on one keyboard (#722):
+  // on each manual, a bass coupler sounds the pedal's division from the
+  // lowest key held, and a melody coupler sounds another manual's division
+  // from the highest. The pedal is the keyboard the organ assigns to the
+  // pedal (assignment code 1). Numbered after the others, so their ids stay
+  // as they were.
+  Id pedal = 0;
+  for (Id kb : couplers_.inputKeyboards())
+    if (couplers_.assignmentCodeFor(kb) == 1) pedal = couplers_.primaryDivisionFor(kb);
+  for (Id dest : divisions) {
+    if (dest == pedal) continue;
+    if (pedal != 0) {
+      Switch sw;
+      sw.switchId = nextId++;
+      sw.name = "Bass " + nameOf(pedal) + " to " + nameOf(dest);
+      sw.isCoupler = true;
+      sw.programProvided = true;
+      sw.bassOrMelody = true;
+      model_.switches[sw.switchId] = sw;
+      programCouplersList_.push_back({sw.switchId, dest, pedal, 0, CouplerMatrix::kLowestHeld});
+    }
+    for (Id src : divisions) {
+      if (src == dest || src == pedal) continue;
+      Switch sw;
+      sw.switchId = nextId++;
+      sw.name = "Melody " + nameOf(src) + " to " + nameOf(dest);
+      sw.isCoupler = true;
+      sw.programProvided = true;
+      sw.bassOrMelody = true;
+      model_.switches[sw.switchId] = sw;
+      programCouplersList_.push_back({sw.switchId, dest, src, 0, CouplerMatrix::kHighestHeld});
+    }
+  }
+
   // A division whose stops name no rank is reached only through its inputs,
   // on an organ wired through its switches: a program coupler closes them the
   // way the organ's own couplers do (#565). A division with ranked stops keeps
@@ -6233,8 +6267,10 @@ void MasterpieceProcessor::buildProgramCouplers() {
     std::unordered_set<Id> ranked;
     for (const auto& [stopId, stop] : model_.stops)
       if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
+    // A bass or melody coupler carries one key of the chord, which inputs
+    // opened for the coupler as a whole cannot do: it stays on the walk.
     for (const auto& c : programCouplersList_)
-      if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+      if (c.extreme == 0 && ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
   }
 
   // The organ's own generals store the program couplers, and its general
