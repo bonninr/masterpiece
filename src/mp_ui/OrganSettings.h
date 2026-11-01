@@ -185,6 +185,9 @@ public:
   ~OrganSettingsWindow() override;
   void resized() override;
   void paint(juce::Graphics& g) override;
+  // Organ > Reverb and Organ > Combination sets open the window on theirs.
+  void showTab(const juce::String& name);
+  juce::String currentTab() const { return tabs_.getCurrentTabName(); }
 
   // Run once the window has closed, on the message thread: an organ's first
   // load waits here for these choices.
@@ -199,6 +202,8 @@ private:
   void reloadOnClose();
   std::function<void()> reload_;
   bool reloadOnClose_ = false;
+  // Eight names in 780 pixels: each word kept whole, as in Settings.
+  TabNamesLook tabNamesLook_;
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   EnginePanel engine_;
   // Tall enough for every row, the buttons and the whole note above them
@@ -214,6 +219,10 @@ private:
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
   VoicingEqPanel eq_;
+  // The room and the registration books: both saved with this organ, so
+  // they are here with the rest of it (#637).
+  ReverbPanel reverb_;
+  FavouritesPanel sets_;
 };
 
 }  // namespace mp::ui

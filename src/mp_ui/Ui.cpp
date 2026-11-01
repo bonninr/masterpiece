@@ -2803,6 +2803,8 @@ void MasterpieceEditor::showOrganMenu() {
   const bool loaded = proc_.loadedOrganFile().existsAsFile();
   juce::PopupMenu menu;
   menu.addItem(1, TRANS("Organ settings..."), loaded);
+  menu.addItem(9, TRANS("Reverb") + "...", loaded);
+  menu.addItem(10, TRANS("Combination sets") + "...", loaded);
   menu.addItem(2, TRANS("Temperament and tuning..."), loaded);
   menu.addItem(3, TRANS("Combinations"), loaded && combinations_ != nullptr,
                combinations_ != nullptr && combinations_->isVisible());
@@ -2823,6 +2825,8 @@ void MasterpieceEditor::showOrganMenu() {
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
+                       if ((c == 9 || c == 10) && safe->onOrganSettingsTab)
+                         safe->onOrganSettingsTab(c == 9 ? TRANS("Reverb") : TRANS("Combination sets"));
                        if (c == 2) safe->tuningButton_.triggerClick();
                        if (c == 3) safe->toggleCombinations();
                        if (c == 4) safe->toggleProgramCouplers();
@@ -2932,10 +2936,9 @@ void MasterpieceEditor::showSettingsMenu() {
   juce::PopupMenu menu;
   const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
   const juce::StringArray tabs =
-      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Reverb", "Metronome",
-                                     "Combination sets", "Console display", "Language", "Remote control"}
-                 : juce::StringArray{"General", "Performance", "Reverb", "Metronome", "Combination sets",
-                                     "Console display", "Language"};
+      standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Metronome",
+                                     "Console display", "Language", "Remote control"}
+                 : juce::StringArray{"General", "Performance", "Metronome", "Console display", "Language"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
@@ -3276,20 +3279,18 @@ juce::AudioProcessorEditor* MasterpieceProcessor::createEditor() {
   };
   ed->onSettingsTab = [this, safe, launch](const juce::String& tab) {
     auto panel = std::make_unique<ui::SettingsWindow>(*this, nullptr);
-    panel->setOrganLoader([safe](const juce::File& f) {
-      if (auto* e = safe.getComponent()) e->loadOrgan(f, false);
-    });
     if (tab.isNotEmpty()) panel->showTab(tab);
     launch(std::move(panel), TRANS("Settings"));
   };
   ed->onSettings = [ed] { ed->onSettingsTab({}); };
-  ed->onOrganSettings = [this, safe, launch] {
-    launch(std::make_unique<ui::OrganSettingsWindow>(*this,
-                                                     [safe] {
-                                                       if (auto* e = safe.getComponent()) e->reloadOrgan();
-                                                     }),
-           TRANS("Organ settings"));
+  ed->onOrganSettingsTab = [this, safe, launch](const juce::String& tab) {
+    auto panel = std::make_unique<ui::OrganSettingsWindow>(*this, [safe] {
+      if (auto* e = safe.getComponent()) e->reloadOrgan();
+    });
+    if (tab.isNotEmpty()) panel->showTab(tab);
+    launch(std::move(panel), TRANS("Organ settings"));
   };
+  ed->onOrganSettings = [ed] { ed->onOrganSettingsTab({}); };
   return ed;
 }
 } // namespace mp

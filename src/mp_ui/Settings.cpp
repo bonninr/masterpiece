@@ -1394,7 +1394,8 @@ void ReverbPanel::resized() {
   enabled_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
   auto row = r.removeFromTop(kRow);
-  load_.setBounds(row.removeFromLeft(110));
+  // As wide as its words, in any language.
+  load_.setBounds(row.removeFromLeft(juce::jmax(110, load_.getBestWidthForHeight(kRow))));
   row.removeFromLeft(kGap);
   clear_.setBounds(row.removeFromLeft(80));
   row.removeFromLeft(kGap);
@@ -4267,8 +4268,8 @@ int TabNamesLook::getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth
 
 SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
                                juce::AudioDeviceManager* devices)
-    : reverb_(p), metronome_(p), performance_(p, EnginePanel::Part::Performance),
-      general_(p, EnginePanel::Part::General), favourites_(p), display_(p), language_(p), log_(p) {
+    : metronome_(p), performance_(p, EnginePanel::Part::Performance),
+      general_(p, EnginePanel::Part::General), display_(p), language_(p), log_(p) {
   const auto bg = juce::Colour(0xff1b1e24);
   addAndMakeVisible(tabs_);
   tabs_.getTabbedButtonBar().setLookAndFeel(&tabNamesLook_);
@@ -4290,9 +4291,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
     tabs_.addTab(TRANS("MIDI"), bg, midiScroll_.get(), false);
   }
   tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
-  tabs_.addTab(TRANS("Reverb"), bg, &reverb_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
-  tabs_.addTab(TRANS("Combination sets"), bg, &favourites_, false);
   tabs_.addTab(TRANS("Console display"), bg, &display_, false);
   tabs_.addTab(TRANS("Language"), bg, &language_, false);
   // Only where the program runs the server: the standalone program sets
