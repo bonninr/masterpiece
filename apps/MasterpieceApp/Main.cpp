@@ -1011,8 +1011,12 @@ public:
         mp::writeTextFile(f, state->toString());
       }
 
-    // The main window's place, for the next start (#53).
-    if (win_) mp::writeTextFile(windowStateFile(), win_->getWindowStateAsString());
+    // The main window's place, for the next start (#53): where it was before
+    // full screen, if it is full screen now.
+    if (win_) {
+      win_->editor().setFullScreen(false);
+      mp::writeTextFile(windowStateFile(), win_->getWindowStateAsString());
+    }
 
     // The archive's take in progress, while the log can still say where.
     if (proc_) proc_->serviceArchive(true);
@@ -1183,6 +1187,21 @@ private:
         setName("Masterpiece " MP_BUILD_LABEL " - " + name);
         if (onLoaded) onLoaded();
       };
+      // View > Full screen, on a desktop: the window over the whole display
+      // with no title bar, and back where it was.
+      if (!mp::ui::kMobile)
+        ed->onFullScreen = [this](bool on) {
+          if (on) {
+            setTitleBarHeight(0);
+            setResizable(false, false);
+            juce::Desktop::getInstance().setKioskModeComponent(this, false);
+          } else {
+            juce::Desktop::getInstance().setKioskModeComponent(nullptr, false);
+            setUsingNativeTitleBar(true);
+            setTitleBarHeight(26);
+            setResizable(true, true);
+          }
+        };
       editor_ = ed;
       // On a desktop the window takes the console's size. On a phone or
       // tablet the screen gives the size, and the console sits inside the

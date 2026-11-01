@@ -1164,3 +1164,6 @@ countries: nl be sr
 "Voicing EQ" = "Intonatie-EQ"
 "Undo the last change to the marks" = "De laatste wijziging aan de markeringen ongedaan maken"
 "Learn a knob or a pedal for the wet level" = "Een draaiknop of pedaal voor het galmniveau leren"
+"Full screen" = "Volledig scherm"
+"Exit full screen" = "Volledig scherm verlaten"
+"Or press Escape or F11" = "Of druk op Esc of F11"
