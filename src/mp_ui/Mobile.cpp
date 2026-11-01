@@ -688,6 +688,16 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
         dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
     }
     dialog->addComponentListener(new SizeKeeper(kind));
+#if JUCE_LINUX || JUCE_BSD
+    // On X11 the move above is only a request to the window manager, which
+    // can map the window first at the place it was made and move it after
+    // (Openbox did, and the window jumped). Made afresh, the window is
+    // created where it belongs.
+    if (dialog->isOnDesktop()) {
+      dialog->removeFromDesktop();
+      dialog->addToDesktop();
+    }
+#endif
   }
   if (!kMobile) dialog->enterModalState(true, nullptr, true);
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
