@@ -115,6 +115,9 @@ enum class MidiTargetKind {
   VoicingLevelUp,
   VoicingTuneDown,
   VoicingTuneUp,
+  // The reverb's wet level (Organ settings > Reverb), driven like a shoe: a
+  // knob or a pedal across the whole of its range.
+  ReverbWet,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -433,6 +436,7 @@ public:
       case MidiTargetKind::VoicingLevelUp:
       case MidiTargetKind::VoicingTuneDown:
       case MidiTargetKind::VoicingTuneUp:
+      case MidiTargetKind::ReverbWet:
         return true;
       default:
         return false;
@@ -442,7 +446,8 @@ public:
   // them from its value, and one controller can drive several.
   static bool isContinuousTarget(MidiTargetKind k) {
     return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
-           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel;
+           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel ||
+           k == MidiTargetKind::ReverbWet;
   }
   // A raw controller value through a binding's window and sense, 0..127.
   static int controlValue(const MidiBinding& b, int raw) {

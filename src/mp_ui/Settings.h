@@ -237,13 +237,20 @@ private:
 };
 
 // Room: impulse-response convolution.
-class ReverbPanel : public juce::Component {
+class ReverbPanel : public juce::Component, private juce::Timer {
 public:
   explicit ReverbPanel(MasterpieceProcessor& p);
+  ~ReverbPanel() override;
   void resized() override;
 
 private:
+  // The slider follows a knob learned for it; the MIDI button says while it learns.
+  void timerCallback() override;
+  // What the knob or pedal for the wet level is, and Learn and Clear.
+  void midiMenu();
+
   MasterpieceProcessor& proc_;
+  juce::TextButton midi_{TRANS("MIDI")};
   juce::ToggleButton enabled_{TRANS("Impulse-response reverb")};
   juce::TextButton load_{TRANS("Load impulse response...")};
   juce::TextButton clear_{TRANS("Clear")};
