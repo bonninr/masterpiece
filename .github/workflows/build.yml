@@ -230,12 +230,15 @@ jobs:
       # no longer wait in line behind the program's.
       # Link-time optimisation on main and in releases; pull requests build
       # without it, which takes most of the link time out of every run.
+      # The ARM presets leave the test suite out; a profile-guided ARM build
+      # adds it back, for the training to run under emulation.
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}
           -DMP_BUILD_PLUGIN=OFF
           -DMP_ENABLE_LTO=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }}
           -DMP_PGO=${{ env.PGO == 'true' && 'GENERATE' || '' }}
+          ${{ env.PGO == 'true' && matrix.arm && '-DMP_BUILD_TESTS=ON' || '' }}
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
@@ -269,7 +272,8 @@ jobs:
           LLVM_PROFILE_FILE: ${{ github.workspace }}/build/${{ matrix.preset }}/pgo/%p-%m.profraw
         run: |
           B=build/${{ matrix.preset }}
-          TESTS=$(find $B/tests -name 'mp_tests*' -type f | head -1)
+          # By its exact name: MSVC's profile files sit beside it as mp_tests!1.pgc.
+          TESTS=$(find $B/tests -type f \( -name mp_tests -o -name mp_tests.exe \) | head -1)
           test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
           case "${{ matrix.debarch }}" in
             arm64) export LD_LIBRARY_PATH=/usr/aarch64-linux-gnu/lib:/usr/lib/aarch64-linux-gnu ;;
@@ -317,7 +321,7 @@ jobs:
         if: '!matrix.arm'
         shell: bash
         run: |
-          TESTS=$(find build/${{ matrix.preset }}/tests -name 'mp_tests*' -type f | head -1)
+          TESTS=$(find build/${{ matrix.preset }}/tests -type f \( -name mp_tests -o -name mp_tests.exe \) | head -1)
           test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
           "$TESTS" --no-perf
 
