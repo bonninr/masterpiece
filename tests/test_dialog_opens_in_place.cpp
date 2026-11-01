@@ -11,6 +11,20 @@
 using mp::test::Category;
 
 namespace {
+// A screen to put a window on. A build box has none: on Linux, with no X or
+// Wayland server, a window put on the desktop crashes the program.
+bool screenToShowOn() {
+#if JUCE_LINUX || JUCE_BSD
+  if (juce::SystemStats::getEnvironmentVariable("DISPLAY", {}).isEmpty() &&
+      juce::SystemStats::getEnvironmentVariable("WAYLAND_DISPLAY", {}).isEmpty())
+    return false;
+#endif
+  const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+  return primary != nullptr && primary->userArea.getWidth() >= 900 && primary->userArea.getHeight() >= 600;
+}
+}  // namespace
+
+namespace {
 // The dialog's bounds at the moment it becomes visible, and every move or
 // resize while it is visible.
 class Watch final : public juce::ComponentListener {
@@ -52,6 +66,7 @@ public:
   void run() override {
     if (mp::ui::kMobile) return;
     juce::MessageManager::getInstance();
+    if (!screenToShowOn()) return;
     // The remembered sizes are the player's: this test keeps its own.
     const auto data =
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-dialog-opens-in-place");
@@ -109,9 +124,8 @@ public:
 
     if (mp::ui::kMobile) return;
     juce::MessageManager::getInstance();
+    if (!screenToShowOn()) return;
     const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
-    // A machine with no screen (a build box) has nowhere to put the dialog.
-    if (primary == nullptr || primary->userArea.getWidth() < 900 || primary->userArea.getHeight() < 600) return;
     const auto area = primary->userArea;
 
     const auto data =

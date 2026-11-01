@@ -13,6 +13,20 @@
 
 using mp::test::Category;
 
+namespace {
+// A screen to put a window on. A build box has none: on Linux, with no X or
+// Wayland server, a window put on the desktop crashes the program.
+bool screenToShowOn() {
+#if JUCE_LINUX || JUCE_BSD
+  if (juce::SystemStats::getEnvironmentVariable("DISPLAY", {}).isEmpty() &&
+      juce::SystemStats::getEnvironmentVariable("WAYLAND_DISPLAY", {}).isEmpty())
+    return false;
+#endif
+  const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+  return primary != nullptr && primary->userArea.getWidth() >= 900 && primary->userArea.getHeight() >= 600;
+}
+}  // namespace
+
 class PanelWindowPlaceTest final : public mp::test::Test {
 public:
   PanelWindowPlaceTest() : Test("functional.ui.panel-window-place", Category::Functional) {}
@@ -20,9 +34,8 @@ public:
   void run() override {
     if (mp::ui::kMobile) return;
     juce::MessageManager::getInstance();
+    if (!screenToShowOn()) return;
     const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
-    // A machine with no screen (a build box) has nowhere to put the window.
-    if (primary == nullptr || primary->userArea.getWidth() < 900 || primary->userArea.getHeight() < 600) return;
     const auto area = primary->userArea;
 
     const auto data =
