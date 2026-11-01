@@ -34,6 +34,8 @@ struct PanelElement {
   Id id = 0;
   std::string name;     // "Trompete"
   std::string footage;  // "8'", empty when the name has none
+  // A coupler, the organ's or an extra one: what the Couplers window lists.
+  bool coupler = false;
   // Saved with the panel to say which elements are hidden: kind and id,
   // "s12", "w340", "p501", "c7".
   std::string key() const;
@@ -116,6 +118,8 @@ public:
   juce::Rectangle<int> viewAreaForTest() const {
     return {viewport_.getMaximumVisibleWidth(), viewport_.getMaximumVisibleHeight()};
   }
+  // For a test: edit mode, as the Edit button sets it.
+  void setEditingForTest(bool on) { setEditing(on); }
   void setScaleForTest(int at) { setScale(at); }
   juce::String saveTextForTest() const { return save_.getButtonText(); }
   bool hasUnsavedChanges() const { return !(layout_ == saved_); }
@@ -167,6 +171,8 @@ private:
   PanelLayout layout_, saved_;
   std::vector<PanelSection> sections_;
   bool editing_ = false;
+  bool relayingOut_ = false;  // layoutSections, once more for a view that changed
+  int editScale_ = 100;       // the fitted size kept through edit mode
   bool touch_ = touchInput();
   // A drag that began on a stop or switch: each one it passes over is set the
   // way the first went (1 on, 0 off, -1 no drag).

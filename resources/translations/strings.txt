@@ -108,6 +108,15 @@ countries: gb us
 "Move the pedal first" = "Move the pedal first"
 "Masterpiece has not heard from this pedal yet, or both ends would be the same. Move it to the position you want, then choose this again." = "Masterpiece has not heard from this pedal yet, or both ends would be the same. Move it to the position you want, then choose this again."
 
+# src/mp_ui/CouplersWindow.cpp
+"16', 8' and 4' couplers between the divisions, and on each division. Turning them on or off loads the organ again." = "16', 8' and 4' couplers between the divisions, and on each division. Turning them on or off loads the organ again."
+"No organ loaded." = "No organ loaded."
+"This organ draws no couplers of its own. The extra couplers add them." = "This organ draws no couplers of its own. The extra couplers add them."
+"Couplers" = "Couplers"
+
+# src/mp_ui/CouplersWindow.h
+"Extra couplers" = "Extra couplers"
+
 # src/mp_ui/LoadingDialog.cpp
 "The organ opens without its cache" = "The organ opens without its cache"
 "Cancelling..." = "Cancelling..."
@@ -381,7 +390,6 @@ countries: gb us
 "Close" = "Close"
 
 # src/mp_ui/Panels.cpp
-"Extra couplers" = "Extra couplers"
 "Other" = "Other"
 "Piston" = "Piston"
 "Expression" = "Expression"
@@ -1009,7 +1017,6 @@ countries: gb us
 "Stored in %1" = "Stored in %1"
 "The sequencer's frame, out of the frames that hold a registration. Click to go to a frame by its number" = "The sequencer's frame, out of the frames that hold a registration. Click to go to a frame by its number"
 "Temperament, pitch and transposer for this organ" = "Temperament, pitch and transposer for this organ"
-"No organ loaded." = "No organ loaded."
 "Opening %1..." = "Opening %1..."
 "Archive opening cancelled" = "Archive opening cancelled"
 "%1 is damaged" = "%1 is damaged"

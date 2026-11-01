@@ -243,6 +243,10 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     e.kind = PanelElement::Kind::Stop;
     e.id = st.stopId;
     splitFootage(withoutCategory(st.name), e.name, e.footage);
+    // A stop with no ranks whose knob enables a key action, or named "II/P".
+    e.coupler = control && ((model->second.controllingSwitchId != 0 &&
+                             couplerDivision(m, model->second.controllingSwitchId) != 0) ||
+                            couplerTarget(e.name) >= 0);
     sectionFor(st.divisionId).elements.push_back(std::move(e));
   }
 
@@ -259,6 +263,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       const auto sw = m.switches.find(pc.switchId);
       e.name = sw != m.switches.end() ? sw->second.name : std::string();
       splitFootage(withoutCategory(e.name), e.name, e.footage);
+      e.coupler = true;
       program.elements.push_back(std::move(e));
     }
     divisions.push_back(std::move(program));
@@ -335,6 +340,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       if (tremulants ? !isTrem : !isCoupler) continue;
       const Id div = tremulants ? tremulantDivision(m, sw.name) : coupled;
       groupsShown.insert(group);
+      e.coupler = !tremulants;
       if (div != 0 && m.divisions.count(div) != 0)
         sectionFor(div).elements.push_back(std::move(e));
       else
@@ -1120,6 +1126,10 @@ void PanelView::askForTitle() {
 }
 
 void PanelView::setEditing(bool editing) {
+  // Fitted to the window, the panel keeps the size it had: edit mode adds
+  // the hidden elements, in reach by scrolling, and a fit that counted them
+  // shrank every button on pressing Edit.
+  if (editing && !editing_) editScale_ = scale();
   editing_ = editing;
   layoutSections();
 }
@@ -1170,7 +1180,8 @@ void PanelView::resized() {
 }
 
 int PanelView::scale() const {
-  return layout_.fitToWindow ? fittedScale() : layout_.scale;
+  if (!layout_.fitToWindow) return layout_.scale;
+  return editing_ ? editScale_ : fittedScale();
 }
 
 void PanelView::extentAt(int at, int& width, int& height) const {
@@ -1286,7 +1297,19 @@ void PanelView::layoutSections() {
     }
     x += columnW;
   }
-  body_.setSize(std::max(x, viewW), std::max(tallest, viewport_.getMaximumVisibleHeight()));
+  const int viewH = viewport_.getMaximumVisibleHeight();
+  body_.setSize(std::max(x, viewW), std::max(tallest, viewH));
+  // The new size can bring a scroll bar or take one away, and with it the
+  // view the sizes were worked out for: leaving edit mode, the panel was laid
+  // out once more beside a scroll bar that was going. Once more for the view
+  // it has now.
+  if (!relayingOut_ &&
+      (viewport_.getMaximumVisibleWidth() != viewW || viewport_.getMaximumVisibleHeight() != viewH)) {
+    relayingOut_ = true;
+    layoutSections();
+    relayingOut_ = false;
+    return;
+  }
   repaint();
 }
 
