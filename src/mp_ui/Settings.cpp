@@ -212,10 +212,10 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   addAndMakeVisible(storageLabel_);
   styleLabel(storageLabel_, TRANS("Resident format"));
   addAndMakeVisible(storage_);
-  storage_.addItem(TRANS("As recorded - 16 or 24-bit, as each file is"), 1);
-  storage_.addItem(TRANS("20-bit - a sixth less than the source"), 4);
-  storage_.addItem(TRANS("16-bit - two thirds of that, inaudible"), 2);
-  storage_.addItem(TRANS("32-bit float - larger than the source"), 3);
+  storage_.addItem(TRANS("As recorded (16 or 24-bit)"), 1);
+  storage_.addItem(TRANS("20-bit"), 4);
+  storage_.addItem(TRANS("16-bit"), 2);
+  storage_.addItem(TRANS("32-bit float"), 3);
   storage_.setSelectedId(storageItemId(proc_.sampleStorage()), juce::dontSendNotification);
   storage_.onChange = [this] {
     proc_.setSampleStorage(storageOfItem(storage_.getSelectedId()));
@@ -2135,7 +2135,12 @@ void MidiPanel::learnMenu(const LearnButton& l) {
   }
   const MidiTargetKind kind = l.kind;
   const Id id = learnTarget(l);
-  if (kind == MidiTargetKind::Temperament && id == 0) return;
+  // Id 0 is a temperament too, the organ's own (temperamentTarget): only a
+  // pick outside the list leaves the button with nothing to learn.
+  if (kind == MidiTargetKind::Temperament &&
+      (temperamentPick_.getSelectedId() < 1 ||
+       temperamentPick_.getSelectedId() > static_cast<int>(temperamentNames_.size())))
+    return;
   juce::String name = l.name;
   if (kind == MidiTargetKind::Temperament) name += ": " + temperamentPick_.getText();
   juce::PopupMenu menu;

@@ -10,11 +10,19 @@
 // Each staff is played on the manual the player chooses for it (the
 // Manuals... button), on the channel a click on that manual's drawn keys
 // would use, so couplers and the drawn keys follow the playing.
+//
+// The player's marks (ScoreMarks) are icons on their notes: a note, opened
+// and edited with a click, and a registration, which holds the organ's state
+// and sets it as the playing reaches it, as the pages are turned forward, or
+// with the registration buttons. A right click on a note adds one; an icon is
+// dragged to another note. Each change is saved into the score's file, and
+// Ctrl+Z (or Undo in the Mark... menu) takes it back.
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "../mp_score/ScoreEngraver.h"
+#include "../mp_score/ScoreMarks.h"
 #include "../mp_audio/ScorePlayer.h"
 #include "../mp_core/OrganModel.h"
 
@@ -124,6 +132,44 @@ public:
   // pending, and moves the cursor to where the playing is.
   juce::Image render();
 
+  // --- marks ----------------------------------------------------------
+  // The score's marks, in the file's order.
+  const std::vector<ScoreMark>& marks() const { return marks_.marks; }
+  // Adds one on a note; its index, or -1 when the score has no such note.
+  // A registration takes the organ's state at once.
+  int addMark(ScoreMark::Kind kind, const std::string& note, const juce::String& text = {});
+  void setMarkText(int index, const juce::String& text);
+  void moveMark(int index, const std::string& note);
+  void deleteMark(int index);
+  // A registration: the organ's state now, for this organ, beside the
+  // others'; or this organ's taken out.
+  void storeRegistration(int index);
+  void forgetRegistration(int index);
+  // Opens a mark's window, as a click on its icon does. `fresh` for one just
+  // added: closed empty, a note goes without a step to take back.
+  void openMark(int index, bool fresh = false);
+  // A note whose window closed with no text goes.
+  void dropEmptyNote(int index, bool fresh);
+  // Takes back the last change to the marks. False when there is none.
+  bool undo();
+  // Where a mark's icon is drawn on the panel; empty when its note is on no
+  // shown page.
+  juce::Rectangle<float> markBounds(int index) const;
+
+  // The registration marks in the order they are played, and the one set
+  // last (-1 for none). Stepping sets the next or the one before and shows
+  // its page; a page turned forward sets the first one on it.
+  std::vector<int> registrationOrder() const;
+  int currentRegistration() const { return currentReg_; }
+  bool stepRegistration(int step);
+  void recallRegistration(int index);
+
+  // The file the marks are saved into; none for a score opened from bytes.
+  const juce::File& scoreFile() const { return file_; }
+  // Writes the marks into it now; false when there is no file or the write
+  // fails. A change is written by itself a moment after it is made.
+  bool saveMarks();
+
   // A window of its own: Detach and Attach. Never on phones and tablets.
   std::function<void()> onDetachToggle;
   void setDetachable(bool can);
@@ -132,6 +178,9 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
   void mouseDown(const juce::MouseEvent& e) override;
+  void mouseDrag(const juce::MouseEvent& e) override;
+  void mouseUp(const juce::MouseEvent& e) override;
+  bool keyPressed(const juce::KeyPress& key) override;
 
 private:
   void timerCallback() override;
@@ -150,6 +199,15 @@ private:
   juce::Rectangle<int> pageArea() const;
   juce::Rectangle<int> slotArea(int slot) const;
   int slotCount() const { return twoPages_ ? 2 : 1; }
+  std::string noteAt(juce::Point<float> at, float within) const;
+  int markAt(juce::Point<float> at) const;
+  double markMs(int index) const;
+  void drawMarks(juce::Graphics& g);
+  void marksChanged();
+  void remember();
+  void addMarkMenu(const std::string& note, juce::Rectangle<int> screenArea);
+  void registrationsReached(double fromMs, double toMs);
+  void pageTurnedTo(int page);
 
   MasterpieceProcessor& proc_;
   juce::File fonts_;
@@ -186,7 +244,22 @@ private:
   juce::TextButton manuals_{TRANS("Manuals...")};
   juce::TextButton invert_{TRANS("Invert")};
   juce::TextButton detach_{TRANS("Detach")};
+  juce::TextButton mark_{TRANS("Mark...")};
+  juce::TextButton regPrev_{"<"}, regNext_{">"};
+  juce::Label regLabel_;
   std::unique_ptr<juce::FileChooser> chooser_;
+
+  mp::ScoreMarks marks_;
+  std::vector<std::vector<ScoreMark>> undo_;
+  juce::File file_;
+  bool zipped_ = false;
+  bool marksDirty_ = false;
+  juce::uint32 saveDue_ = 0;
+  int currentReg_ = -1;
+  double lastPlayMs_ = -1;
+  int dragging_ = -1;           // the mark being dragged
+  bool dragMoved_ = false;
+  juce::Point<float> dragAt_;
 
   int page_ = 1;
   int zoom_ = 100;

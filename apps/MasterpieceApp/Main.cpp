@@ -1035,6 +1035,12 @@ public:
     }
     // A clean exit: the organ that was loaded did not crash anything.
     if (proc_) proc_->clearRunningOrgan();
+    // The dialogs still open -- Organ settings, the MIDI window -- hold the
+    // processor and call it as they close, so they close while it is here.
+    // Their modal manager lets go of a window deleted under it.
+    auto& desktop = juce::Desktop::getInstance();
+    for (int i = desktop.getNumComponents(); --i >= 0;)
+      if (auto* dialog = dynamic_cast<juce::DialogWindow*>(desktop.getComponent(i))) delete dialog;
     win_.reset();
     player_.reset();
     devices_.reset();
