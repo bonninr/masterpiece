@@ -3030,6 +3030,10 @@ void MasterpieceEditor::timerCallback() {
     if (channel != keyboard_.getMidiChannel()) keyboard_.setMidiChannel(channel);
   }
 
+  // A voicing step pressed on the console, for the rank chosen on the
+  // Voicing tab.
+  if (const auto step = proc_.takeVoicingStep(); step != MidiTargetKind::None) proc_.applyVoicingStep(step);
+
   // A console piston pressed on a physical manual. Collected here because a
   // component may only be touched from the message thread.
   switch (proc_.takeConsoleAction()) {

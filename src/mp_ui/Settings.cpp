@@ -2755,6 +2755,12 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(rankLabel_, TRANS("Rank"));
   addAndMakeVisible(rank_);
   rank_.onChange = [this] { loadCurrentIntoSliders(); };
+  addAndMakeVisible(testNote_);
+  testNote_.setTooltip(TRANS("A key plays this rank alone, and the next key stops it. Changes are heard at once."));
+  testNote_.onClick = [this] { proc_.setTestNote(testNote_.getToggleState()); };
+  addAndMakeVisible(midi_);
+  midi_.setTooltip(TRANS("Buttons on the console for level and tuning, acting on the rank or pipe chosen here"));
+  midi_.onClick = [this] { midiMenu(); };
 
   addAndMakeVisible(scopeLabel_);
   styleLabel(scopeLabel_, TRANS("Applies to"));
@@ -2796,6 +2802,8 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   tune_.setValue(0.0, juce::dontSendNotification);
   tune_.onValueChange = [this] { pushCurrent(); };
   addAndMakeVisible(tune_);
+  // A test note is struck again when a drag ends; during it, it would stutter.
+  gain_.onDragEnd = tune_.onDragEnd = [this] { proc_.restartTestNote(); };
 
   // The EQ: shelves of +/-12 dB, the brightness above 3 kHz and the bass
   // below 200 Hz. A rank's and its division's add.
@@ -2968,6 +2976,7 @@ void VoicingPanel::loadCurrentIntoSliders() {
   } else {
     pv = proc_.voicing().live().rank(rankId);
   }
+  pushTarget();
   // dontSendNotification: these are being loaded FROM the model, and letting
   // them call back would write them straight back again, turning a read into
   // a write and a swap into a wipe.
@@ -3019,7 +3028,108 @@ void VoicingPanel::pushCurrent() {
     proc_.voicing().live().setRank(rankId, pv);
     if (eqChanged) proc_.applyVoicingEq();
   }
+  if (!juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()) proc_.restartTestNote();
   updateStatus();
+}
+
+void VoicingPanel::pushTarget() {
+  if (rankIds_.empty()) {
+    proc_.setVoicingTarget(0, 0);
+    return;
+  }
+  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1, rank_.getSelectedId() - 1);
+  const Id rankId = rankIds_[static_cast<size_t>(idx)];
+  const Id pipeId =
+      scope_.getSelectedId() == 2 ? pipeAt(proc_.organModel(), rankId, static_cast<int>(note_.getValue())) : 0;
+  if (rankId == proc_.voicingRank() && pipeId == proc_.voicingPipe()) return;
+  proc_.setVoicingTarget(rankId, pipeId);
+  // Another rank chosen: the test note sounds it at the same key.
+  proc_.restartTestNote();
+}
+
+// The four steps as console buttons; the mapping is the console's, the same
+// on every organ, and acts on whatever this tab has chosen.
+void VoicingPanel::midiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  struct Target {
+    MidiTargetKind kind;
+    juce::String name;
+  };
+  const std::vector<Target> targets{{MidiTargetKind::VoicingLevelDown, TRANS("Voicing: level -")},
+                                    {MidiTargetKind::VoicingLevelUp, TRANS("Voicing: level +")},
+                                    {MidiTargetKind::VoicingTuneDown, TRANS("Voicing: tuning -")},
+                                    {MidiTargetKind::VoicingTuneUp, TRANS("Voicing: tuning +")}};
+  juce::PopupMenu menu;
+  int item = 1;
+  for (const auto& t : targets) {
+    juce::PopupMenu sub;
+    const auto existing = map.bindingsFor(t.kind, 0);
+    if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(MidiEventDialog::describeBinding(*b));
+    sub.addItem(item, TRANS("Learn"));
+    sub.addItem(item + 1, TRANS("MIDI window..."));
+    sub.addItem(item + 2, TRANS("Clear mapping"), !existing.empty());
+    menu.addSubMenu(t.name, sub);
+    item += 10;
+  }
+  juce::Component::SafePointer<VoicingPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int choice) {
+    if (self == nullptr || choice <= 0) return;
+    const auto& t = targets[static_cast<size_t>((choice - 1) / 10)];
+    auto& m = self->proc_.midiMap();
+    switch ((choice - 1) % 10) {
+      case 0:
+        m.beginLearnAs(t.kind, 0, MidiTrigger::Momentary);
+        break;
+      case 1:
+        MidiEventDialog::show(self->proc_, t.kind, 0, t.name);
+        break;
+      case 2:
+        m.unbindTarget(t.kind, 0);
+        self->proc_.saveMidiMap();
+        break;
+      default:
+        break;
+    }
+  });
+}
+
+// A step from the console shows on the sliders; a test note played in one
+// pipe's scope moves the note to the key played.
+void VoicingPanel::timerCallback() {
+  if (const uint32_t steps = proc_.voicingSteps(); steps != shownSteps_) {
+    shownSteps_ = steps;
+    loadCurrentIntoSliders();
+  }
+  const int key = proc_.testNoteKey();
+  if (key != shownTestKey_) {
+    shownTestKey_ = key;
+    if (key >= 0 && scope_.getSelectedId() == 2 && static_cast<int>(note_.getValue()) != key)
+      note_.setValue(key, juce::sendNotificationSync);
+  }
+}
+
+void VoicingPanel::visibilityChanged() {
+  if (isShowing()) {
+    shownSteps_ = proc_.voicingSteps();
+    startTimerHz(10);
+    return;
+  }
+  stopTimer();
+  // Away from the tab, the keys play the organ again.
+  if (testNote_.getToggleState()) {
+    testNote_.setToggleState(false, juce::dontSendNotification);
+    proc_.setTestNote(false);
+  }
+}
+
+VoicingPanel::~VoicingPanel() {
+  stopTimer();
+  proc_.setTestNote(false);
 }
 
 void VoicingPanel::updateStatus() {
@@ -3043,6 +3153,9 @@ void VoicingPanel::resized() {
   auto row = r.removeFromTop(kRow);
   rankLabel_.setBounds(row.removeFromLeft(labelW));
   rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+  midi_.setBounds(row.removeFromRight(70).reduced(2, 1));
+  row.removeFromLeft(kGap);
+  testNote_.setBounds(row.removeFromLeft(120));
   r.removeFromTop(4);
 
   row = r.removeFromTop(kRow);

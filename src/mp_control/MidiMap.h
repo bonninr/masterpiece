@@ -109,6 +109,12 @@ enum class MidiTargetKind {
   // tenth frame. With Set on, a digit stores into its frame, the one shown
   // too.
   StepperDigit,
+  // Voicing from the console: a step down or up in level or tuning, for the
+  // rank or the pipe chosen on Organ settings > Voicing.
+  VoicingLevelDown,
+  VoicingLevelUp,
+  VoicingTuneDown,
+  VoicingTuneUp,
 };
 
 // A temperament's MIDI target id: 0 for the organ's own, else a hash of the
@@ -423,6 +429,10 @@ public:
       case MidiTargetKind::RecorderRecord:
       case MidiTargetKind::RecorderPlay:
       case MidiTargetKind::PairLevel:
+      case MidiTargetKind::VoicingLevelDown:
+      case MidiTargetKind::VoicingLevelUp:
+      case MidiTargetKind::VoicingTuneDown:
+      case MidiTargetKind::VoicingTuneUp:
         return true;
       default:
         return false;

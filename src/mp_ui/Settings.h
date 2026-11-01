@@ -494,21 +494,33 @@ private:
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
-class VoicingPanel : public juce::Component {
+class VoicingPanel : public juce::Component, private juce::Timer {
 public:
   explicit VoicingPanel(MasterpieceProcessor& p);
+  ~VoicingPanel() override;
   void resized() override;
+  void visibilityChanged() override;
   void refresh();
 
 private:
   void pushCurrent();
   void loadCurrentIntoSliders();
   void updateStatus();
+  // The rank or pipe shown, handed to the processor for the MIDI steps and
+  // the test note (#637).
+  void pushTarget();
+  void midiMenu();
+  void timerCallback() override;
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
   juce::Label rankLabel_;
   juce::ComboBox rank_;
+  // A key plays this rank alone, the next key stops it.
+  juce::ToggleButton testNote_{TRANS("Test note")};
+  juce::TextButton midi_{TRANS("MIDI")};
+  uint32_t shownSteps_ = 0;
+  int shownTestKey_ = -1;
   juce::Label scopeLabel_;
   juce::ComboBox scope_;   // the whole rank, or one note of it
   juce::Label noteLabel_;
