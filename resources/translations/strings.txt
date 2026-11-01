@@ -252,6 +252,9 @@ countries: gb us
 "Receive" = "Receive"
 "Shortcut" = "Shortcut"
 "Switch %1" = "Switch %1"
+"SysEx" = "SysEx"
+"Sends %1" = "Sends %1"
+"Key %1" = "Key %1"
 
 # src/mp_ui/Mobile.cpp
 "Copying the organ" = "Copying the organ"

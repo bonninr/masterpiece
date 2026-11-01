@@ -956,6 +956,22 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
   return what;
 }
 
+juce::StringArray MidiEventDialog::sendAndKeyLines(const MidiMap& map, MidiTargetKind kind, Id id) {
+  juce::StringArray out;
+  for (const MidiSend& s : map.sendsFor(kind, id)) {
+    juce::String what = s.kind == MidiSourceKind::SysEx           ? TRANS("SysEx")
+                        : s.kind == MidiSourceKind::Note          ? TRANS("Note %1")
+                        : s.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
+                                                                  : TRANS("CC %1");
+    what = what.replace("%1", juce::String(s.number));
+    if (s.kind != MidiSourceKind::SysEx) what << " " << TRANS("ch %1").replace("%1", juce::String(s.channel));
+    out.add(TRANS("Sends %1").replace("%1", what));
+  }
+  for (const KeyShortcut& k : map.shortcutsFor(kind, id))
+    out.add(TRANS("Key %1").replace("%1", juce::String::fromUTF8(k.key.c_str())));
+  return out;
+}
+
 juce::String MidiEventDialog::targetName(const MasterpieceProcessor& p, MidiTargetKind kind, Id id) {
   return objectName(p, kind, id);
 }

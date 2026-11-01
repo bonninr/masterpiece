@@ -702,6 +702,9 @@ public:
   void setObjectSends(MidiTargetKind kind, Id id, const std::vector<MidiSend>& rows,
                       bool quietNew = false);
   void setObjectShortcuts(MidiTargetKind kind, Id id, const std::vector<KeyShortcut>& rows);
+  // Clear mapping on a right-click menu: every message received, every
+  // message sent and every key, at once.
+  void clearObjectMapping(MidiTargetKind kind, Id id);
   // A computer key pressed on the console. True when a shortcut used it.
   bool applyKeyShortcut(const std::string& key);
   bool keyPicking() const { return keyPick_.load(std::memory_order_acquire); }

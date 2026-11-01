@@ -1356,13 +1356,13 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   menu.addSeparator();
 
   const auto existing = map.bindingsFor(MidiTargetKind::Switch, switchId);
-  if (existing.empty()) {
+  const auto sendsAndKeys = MidiEventDialog::sendAndKeyLines(map, MidiTargetKind::Switch, switchId);
+  const bool mapped = !existing.empty() || !sendsAndKeys.isEmpty();
+  if (!mapped) {
     menu.addSectionHeader(TRANS("Not mapped"));
   } else {
     for (const MidiBinding* b : existing) {
-      juce::String what = (b->source.kind == MidiSourceKind::Note ? TRANS("Note %1") : TRANS("CC %1"))
-                              .replace("%1", juce::String(b->source.number));
-      if (b->source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b->source.channel));
+      juce::String what = MidiEventDialog::describeBinding(*b);
       switch (b->trigger) {
         case MidiTrigger::Momentary: what << "  " << TRANS("(held)"); break;
         case MidiTrigger::EngageOnly: what << "  " << TRANS("(draws)"); break;
@@ -1371,6 +1371,7 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
       }
       menu.addSectionHeader(what);
     }
+    for (const auto& line : sendsAndKeys) menu.addSectionHeader(line);
   }
   menu.addSeparator();
   // Everything at once: several messages, what the console is sent, a key.
@@ -1389,7 +1390,7 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   other.addItem(4, TRANS("Cancels it only"));
   menu.addSubMenu(TRANS("Learn another way"), other);
   menu.addSeparator();
-  menu.addItem(5, TRANS("Clear mapping"), !existing.empty());
+  menu.addItem(5, TRANS("Clear mapping"), mapped);
 
   menu.showMenuAsync(
       juce::PopupMenu::Options().withTargetScreenArea(area),
@@ -1417,8 +1418,7 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
                            MidiTrigger::DisengageOnly);
             break;
           case 5:
-            m.unbindTarget(MidiTargetKind::Switch, switchId);
-            proc.saveMidiMap();
+            proc.clearObjectMapping(MidiTargetKind::Switch, switchId);
             break;
           default:
             return;
@@ -1541,7 +1541,10 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   menu.addSectionHeader(MidiEventDialog::targetName(proc, MidiTargetKind::ContinuousControl, controlId));
   menu.addSeparator();
   const auto existing = map.bindingsFor(MidiTargetKind::ContinuousControl, controlId);
-  if (existing.empty()) {
+  const auto sendsAndKeys =
+      MidiEventDialog::sendAndKeyLines(map, MidiTargetKind::ContinuousControl, controlId);
+  const bool mapped = !existing.empty() || !sendsAndKeys.isEmpty();
+  if (!mapped) {
     menu.addSectionHeader(TRANS("Not mapped"));
   } else {
     for (const MidiBinding* b : existing) {
@@ -1557,6 +1560,7 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                                 .replace("%2", juce::String(b->invert ? lo : hi));
       menu.addSectionHeader(what);
     }
+    for (const auto& line : sendsAndKeys) menu.addSectionHeader(line);
   }
   menu.addSeparator();
   menu.addItem(6, TRANS("MIDI window..."));
@@ -1570,7 +1574,7 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
   menu.addItem(3, TRANS("Closed position: where the pedal is now"), !existing.empty());
   menu.addItem(4, TRANS("Open position: where the pedal is now"), !existing.empty());
   menu.addItem(5, TRANS("Use the pedal's whole travel"), !existing.empty());
-  menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
+  menu.addItem(2, TRANS("Clear mapping"), mapped);
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(area),
                      [&proc, controlId, after = std::move(after)](int choice) {
                        auto& m = proc.midiMap();
@@ -1582,8 +1586,7 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
                        if (choice == 1) {
                          m.beginLearn(MidiTargetKind::ContinuousControl, controlId, false);
                        } else if (choice == 2) {
-                         m.unbindTarget(MidiTargetKind::ContinuousControl, controlId);
-                         proc.saveMidiMap();
+                         proc.clearObjectMapping(MidiTargetKind::ContinuousControl, controlId);
                        } else if (choice == 3 || choice == 4) {
                          if (proc.setControlPedalEnd(controlId, choice == 4) < 0)
                            juce::AlertWindow::showMessageBoxAsync(
