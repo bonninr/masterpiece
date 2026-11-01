@@ -17588,6 +17588,17 @@ public:
       proc.sendUnloadMessage();
       MP_CHECK(sent.size() == 1 && sent[0].isController() && sent[0].getControllerNumber() == 21,
                "and quitting sends it once");
+      // The test buttons beside the two messages: what the field holds goes
+      // out at once, nothing for text that is not whole messages.
+      sent.clear();
+      MP_CHECK(!proc.sendMidiNow("B0 15") && !proc.sendMidiNow("") && sent.empty(),
+               "a cut-off or empty message is not sent");
+      MP_CHECK(proc.sendMidiNow("f0 7d 01 f7, b0 15 7f") && sent.size() == 2 && sent[0].isSysEx() &&
+                   sent[1].isController() && sent[1].getControllerNumber() == 21 &&
+                   sent[1].getControllerValue() == 127,
+               "Send now sends both messages, in order");
+      MP_CHECK(proc.loadMessage() == "F0 7D 01 F7, B0 07 64" && proc.unloadMessage() == "B0 15 00",
+               "and leaves the stored messages as they were");
       proc.outgoingProbe = nullptr;
       proc.releaseResources();
       proc.settingsFileFor(odf).deleteFile();

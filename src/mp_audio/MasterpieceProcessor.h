@@ -1151,6 +1151,10 @@ public:
   // Sends the unload message now, when an organ is loaded and the message is
   // set. The program calls it as it quits.
   void sendUnloadMessage();
+  // Sends hex MIDI messages, in the same form, on the output now, organ
+  // loaded or not: the test buttons beside the load and unload messages.
+  // False when the text is not whole messages or there is no output.
+  bool sendMidiNow(const juce::String& hex);
   // What the lamp shows this block: 1 lit, 0 dark.
   int readyLampState() const { return lampState_.load(std::memory_order_relaxed); }
   // The message that sets it: a note on at velocity 127 or off, a controller

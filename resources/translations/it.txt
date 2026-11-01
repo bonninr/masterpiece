@@ -1126,6 +1126,11 @@ countries: it ch sm va
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "Il compressore non sente i bassi sotto questa altezza: un 32' o la pedaliera piena non abbassano le tastiere. I bassi suonano pieni."
 "Reduction %1 dB" = "Riduzione %1 dB"
 "Output compressor" = "Compressore di uscita"
+"Send now" = "Invia ora"
+"Sent" = "Inviato"
+"Not sent" = "Non inviato"
+"No MIDI output" = "Nessuna uscita MIDI"
+"Sends the messages on the MIDI output now, to try them" = "Invia ora i messaggi sull'uscita MIDI, per provarli"
 
 # src/mp_ui/ScorePanel.cpp, src/mp_ui/ScoreRegistration.cpp (marks)
 "Mark..." = "Segno..."
