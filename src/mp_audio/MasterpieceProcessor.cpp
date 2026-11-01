@@ -1473,6 +1473,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::PairLevel:
+        case MidiTargetKind::ReverbWet:
           setLiveLevelFromMidi(action.kind, action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
@@ -5324,9 +5325,10 @@ bool MasterpieceProcessor::stepperDigit(int digit) {
   if (to > PlayerCombinations::kMaxFrames) return false;
   const int last = player_.lastUsedFrame();
   if (!captureMode() && (last < 1 || to > last)) return false;
-  // With Set on, the digit of the frame shown stores into it, as any piston
-  // does: how an inserted frame is filled.
-  if (to == player_.frame() && !captureMode()) return false;
+  // The digit of the frame shown fires it again, as any piston does and as
+  // GrandOrgue's setter does: with Set off it recalls the frame, so General
+  // Cancel then 0 brings frame 000 back (#692); with Set on it stores into
+  // it, which is how an inserted frame is filled.
   return stepperGoto(to);
 }
 
@@ -5566,6 +5568,11 @@ void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId
     case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
     case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
     case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
+    // Saved with the organ, as the Reverb tab's slider is.
+    case MidiTargetKind::ReverbWet:
+      convolver_.setMix(static_cast<float>(value) / 127.0f);
+      markSettingsDirty();
+      break;
     default: break;
   }
 }
@@ -6448,6 +6455,12 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   // the organ: a folder per package, and the archives found or chosen.
   const juce::File folderRecord = folder.getChildFile("package-folders.txt");
   const juce::File archiveRecord = folder.getChildFile("joined-packages.txt");
+  // The packages the player chose to play without: not asked for again. The
+  // search below still runs, so one put where it is looked for is found.
+  const juce::File withoutRecord = folder.getChildFile("packages-played-without.txt");
+  std::set<Id> playedWithout;
+  for (const auto& line : juce::StringArray::fromLines(withoutRecord.loadFileAsString()))
+    if (line.trim().isNotEmpty()) playedWithout.insert(static_cast<Id>(line.trim().getLargeIntValue()));
   juce::File lastPicked;
   for (const auto& line : juce::StringArray::fromLines(folderRecord.loadFileAsString())) {
     const Id package = static_cast<Id>(line.upToFirstOccurrenceOf("\t", false, false).getLargeIntValue());
@@ -6598,7 +6611,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   // missing are looked for there too.
   if (packageAsker)
     for (Id package : missing) {
-      if (package == 1 || here(package)) continue;
+      if (package == 1 || here(package) || playedWithout.count(package) != 0) continue;
       const auto named = model_.packages.find(package);
       // The chooser opens where the player last pointed for this organ, or
       // in the folder that holds the organ's.
@@ -6606,7 +6619,14 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
       const std::string chosen =
           packageAsker(dirName(package), named != model_.packages.end() ? named->second.name : std::string(),
                        start.getFullPathName().toStdString());
-      if (chosen.empty()) continue;
+      if (chosen.empty()) {
+        // Played without, unless the load was cancelled while asking.
+        if (!loadProgress().isCancelled()) {
+          playedWithout.insert(package);
+          withoutRecord.appendText(juce::String(static_cast<juce::int64>(package)) + "\n");
+        }
+        continue;
+      }
       const juce::File pick = file(chosen);
       if (pick.isDirectory()) {
         lastPicked = pick;
@@ -6948,6 +6968,8 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
       if (switches_.engaged(switchId)) palletMoved(switchId, true);
   if (lampsAfterLoad_.exchange(false, std::memory_order_acq_rel)) sendLampsAfterLoad();
   emitSends();
+  emitPistonLamps();
+  split_.lamps(outgoing_, midiFeedback_ && (midiOut_ != nullptr || outgoingProbe));
 
   // LCD text, built on the message thread, joins the same outgoing stream so
   // there is one sender to the port. try_lock rather than lock: a panel line
@@ -8667,6 +8689,18 @@ void MasterpieceProcessor::sendUnloadMessage() {
   if (outgoingProbe) outgoingProbe(out);
 }
 
+bool MasterpieceProcessor::sendMidiNow(const juce::String& hex) {
+  std::vector<uint8_t> bytes;
+  if (!parseMidiText(hex.toStdString(), bytes) || bytes.empty()) return false;
+  const AudioLock audio(*this);
+  if (midiOut_ == nullptr && !outgoingProbe) return false;
+  juce::MidiBuffer out;
+  addMessages(out, bytes);
+  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  if (outgoingProbe) outgoingProbe(out);
+  return true;
+}
+
 bool MasterpieceProcessor::setReadyLampMessages(const juce::String& litHex, const juce::String& darkHex) {
   std::vector<uint8_t> lit, dark;
   if (!parseMidiText(litHex.toStdString(), lit) || !parseMidiText(darkHex.toStdString(), dark)) return false;
@@ -9088,7 +9122,10 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
 // changes sent on the output, each stop learned on a note or a controller.
 void MasterpieceProcessor::sendLampsAfterLoad() {
   // The explicit sends start over: the system exclusive ones went at the top
-  // of this block, and the others go in emitSends() after the lamps.
+  // of this block, and the others go in emitSends() after the lamps. The
+  // combination buttons' lamps start over too, in emitPistonLamps().
+  pistonLamps_.clear();
+  split_.resendLamps();
   if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
   for (const auto& b : midiMap_.bindings()) {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
@@ -9123,6 +9160,8 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
       now = recorder_.isPlaying() ? 1 : 0;
     else if (s.targetKind == MidiTargetKind::ContinuousControl)
       now = controls_.value(s.targetId);
+    else if (const int lamp = pistonLamp(s.targetKind, s.targetId); lamp >= 0)
+      now = lamp;
     else
       continue;
     if (now == sentValues_[i]) continue;
@@ -9140,11 +9179,44 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
   }
 }
 
+int MasterpieceProcessor::pistonLamp(MidiTargetKind kind, Id id) const {
+  switch (kind) {
+    case MidiTargetKind::PlayerGeneral: return player_.litGeneral() == static_cast<int>(id) ? 1 : 0;
+    case MidiTargetKind::PlayerDivisional:
+      return player_.litDivisional(playerDivisionalDivision(id)) == playerDivisionalPiston(id) ? 1 : 0;
+    case MidiTargetKind::Setter: return captureMode() ? 1 : 0;
+    case MidiTargetKind::PedalCombinationsCoupled: return pedalCoupled_.load() ? 1 : 0;
+    default: return -1;
+  }
+}
+
+void MasterpieceProcessor::emitPistonLamps() {
+  if (!midiFeedback_ || (midiOut_ == nullptr && !outgoingProbe)) return;
+  const auto& bindings = midiMap_.bindings();
+  if (pistonLamps_.size() != bindings.size()) pistonLamps_.assign(bindings.size(), -1);
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    const auto& b = bindings[i];
+    const int lit = pistonLamp(b.targetKind, b.targetId);
+    if (lit < 0 || lit == pistonLamps_[i]) continue;
+    pistonLamps_[i] = lit;
+    // A button with sends of its own is lit by those, in emitSends().
+    if (midiMap_.hasSends(b.targetKind, b.targetId)) continue;
+    const int ch = b.source.channel > 0 ? b.source.channel : 1;
+    if (b.source.kind == MidiSourceKind::Note)
+      outgoing_.addEvent(lit != 0 ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
+                                  : juce::MidiMessage::noteOff(ch, b.source.number),
+                         0);
+    else if (b.source.kind == MidiSourceKind::ControlChange)
+      outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, lit != 0 ? 127 : 0), 0);
+  }
+}
+
 void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
                                              const std::vector<MidiBinding>& rows) {
   {
     const AudioLock lock(*this);
     midiMap_.setBindingsFor(kind, id, rows);
+    pistonLamps_.clear();
   }
   saveMidiMap();
 }

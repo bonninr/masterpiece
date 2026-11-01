@@ -49,6 +49,8 @@ public:
   void rebuild();
   // The height the content wants at a given width, for the window to size to.
   int preferredHeight(int width) const;
+  // What the processor holds now, and the display mode: on the panel's timer.
+  void refresh() { refreshState(); }
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -57,6 +59,11 @@ private:
   void timerCallback() override;
   void refreshSets();
   void refreshState();
+  // Simple or Advanced, as the display mode is (#692). Simple shows the
+  // sequencer as the generals: Set, GC, the ten generals, - and + through
+  // them and -10 and +10 through their levels. Advanced shows the frames,
+  // Insert and Delete, and the player's generals as well.
+  void applyView();
   // Right-click: what a piston is mapped to, and how to map it.
   void showMidiMenu(PistonButton& b, MidiTargetKind kind, Id targetId,
                     bool offerHold);
@@ -74,6 +81,9 @@ private:
   std::array<std::unique_ptr<PistonButton>, 10> digits_;
   PistonButton stepForward10_{"+10"};
   FrameLabel frame_;
+  // The level of ten generals in use, in the Simple view.
+  juce::Label level_;
+  bool simple_ = false;
   juce::TextButton insertFrame_{TRANS("Insert")};
   juce::TextButton deleteFrame_{TRANS("Delete")};
 
