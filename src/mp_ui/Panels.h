@@ -34,6 +34,8 @@ struct PanelElement {
   Id id = 0;
   std::string name;     // "Trompete"
   std::string footage;  // "8'", empty when the name has none
+  // A coupler, the organ's or an extra one: what the Couplers window lists.
+  bool coupler = false;
   // Saved with the panel to say which elements are hidden: kind and id,
   // "s12", "w340", "p501", "c7".
   std::string key() const;

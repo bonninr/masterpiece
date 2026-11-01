@@ -243,6 +243,10 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
     e.kind = PanelElement::Kind::Stop;
     e.id = st.stopId;
     splitFootage(withoutCategory(st.name), e.name, e.footage);
+    // A stop with no ranks whose knob enables a key action, or named "II/P".
+    e.coupler = control && ((model->second.controllingSwitchId != 0 &&
+                             couplerDivision(m, model->second.controllingSwitchId) != 0) ||
+                            couplerTarget(e.name) >= 0);
     sectionFor(st.divisionId).elements.push_back(std::move(e));
   }
 
@@ -259,6 +263,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       const auto sw = m.switches.find(pc.switchId);
       e.name = sw != m.switches.end() ? sw->second.name : std::string();
       splitFootage(withoutCategory(e.name), e.name, e.footage);
+      e.coupler = true;
       program.elements.push_back(std::move(e));
     }
     divisions.push_back(std::move(program));
@@ -335,6 +340,7 @@ std::vector<PanelSection> panelSections(const MasterpieceProcessor& p) {
       if (tremulants ? !isTrem : !isCoupler) continue;
       const Id div = tremulants ? tremulantDivision(m, sw.name) : coupled;
       groupsShown.insert(group);
+      e.coupler = !tremulants;
       if (div != 0 && m.divisions.count(div) != 0)
         sectionFor(div).elements.push_back(std::move(e));
       else

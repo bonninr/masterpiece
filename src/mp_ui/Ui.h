@@ -14,6 +14,7 @@
 #include "../mp_audio/MasterpieceProcessor.h"
 #include "AccessibleToggle.h"
 #include "CombinationsWindow.h"
+#include "CouplersWindow.h"
 #include "SplitKeyboardWindow.h"
 #include "TuningPanel.h"
 #include "Console.h"
@@ -487,8 +488,9 @@ private:
   // is named in the View menu.
   void toggleStopList();
   // Organ > Extra couplers: turns them on or off for this organ and loads it
-  // again; turned on, the stop list opens on them.
-  void toggleProgramCouplers();
+  // again; turned on, the stop list opens on them, unless the Couplers window
+  // asked, which shows them itself.
+  void toggleProgramCouplers(bool openStopList = true);
   // What shows the tooltips the controls carry. Without one, none of them ever
   // appeared. On the desktop rather than in the editor, so the combinations
   // window's are shown too. A dialog shows its own (DesktopTooltips).
@@ -545,6 +547,9 @@ private:
   // One keyboard playing the whole organ (#358).
   void toggleSplitKeyboard();
   std::unique_ptr<SplitKeyboardWindow> splitWindow_;
+  // The couplers in a window of their own (#722).
+  void toggleCouplers();
+  std::unique_ptr<CouplersWindow> couplersWindow_;
   void toggleCombinations();
   // Temperament, pitch and transposer. Labelled with what is in force, so the
   // panel behind it only has to open to change something.
