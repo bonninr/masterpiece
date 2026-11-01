@@ -1911,7 +1911,7 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
   window->onPlaced = [this] { rememberPageWindows(); };
   // Shortcuts work from a page on another screen as well.
   window->addKeyListener(this);
-  window->setVisible(true);
+  showInPlace(*window);
   pageWindows_.push_back(std::move(window));
   rememberPageWindows();
   refreshPopOutIcons();
@@ -2657,7 +2657,7 @@ void MasterpieceEditor::setPanelDetached(int index, bool detached) {
         if (panelWindows_[i].get() == w) savePanelPlace(static_cast<int>(i));
     };
     view.setVisible(true);
-    window->setVisible(true);
+    showInPlace(*window);
   } else if (!detached && window != nullptr) {
     view.setWindowBounds(window->getBounds());
     window->clearContentComponent();

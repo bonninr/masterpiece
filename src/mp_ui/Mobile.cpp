@@ -357,6 +357,16 @@ std::atomic<bool> g_rememberWindowPlaces{true};
 bool rememberWindowPlaces() { return g_rememberWindowPlaces.load(std::memory_order_relaxed); }
 void setRememberWindowPlaces(bool on) { g_rememberWindowPlaces.store(on, std::memory_order_relaxed); }
 
+void showInPlace(juce::TopLevelWindow& window) {
+#if JUCE_LINUX || JUCE_BSD
+  if (window.isOnDesktop() && !window.isVisible()) {
+    window.removeFromDesktop();
+    window.addToDesktop();
+  }
+#endif
+  window.setVisible(true);
+}
+
 bool touchInput() {
   static const bool on =
       kMobile || juce::SystemStats::getEnvironmentVariable("MASTERPIECE_TOUCH", "0") == "1";
@@ -688,18 +698,12 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
         dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
     }
     dialog->addComponentListener(new SizeKeeper(kind));
-#if JUCE_LINUX || JUCE_BSD
-    // On X11 the move above is only a request to the window manager, which
-    // can map the window first at the place it was made and move it after
-    // (Openbox did, and the window jumped). Made afresh, the window is
-    // created where it belongs.
-    if (dialog->isOnDesktop()) {
-      dialog->removeFromDesktop();
-      dialog->addToDesktop();
-    }
-#endif
   }
-  if (!kMobile) dialog->enterModalState(true, nullptr, true);
+  // Made afresh where it belongs on X11 (showInPlace), then shown modal.
+  if (!kMobile) {
+    showInPlace(*dialog);
+    dialog->enterModalState(true, nullptr, true);
+  }
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
   if (auto* content = dialog->getContentComponent()) giveOwnTooltips(*content);
   return dialog;
