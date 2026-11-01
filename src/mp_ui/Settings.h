@@ -472,10 +472,6 @@ public:
   explicit FavouritesPanel(MasterpieceProcessor& p);
   void resized() override;
   void refresh();
-  // Loads an organ the way Open does: its packages, the progress window, the
-  // questions a load can ask. Without it Load started a bare background load
-  // the window never heard of, and nothing seemed to happen (#90).
-  std::function<void(const juce::File&)> onLoad;
 
 private:
   MasterpieceProcessor& proc_;
@@ -730,21 +726,19 @@ public:
   // Run once the window has closed, on the message thread: an organ's first
   // load waits here for its engine settings.
   std::function<void()> onClosed;
-  // For Favourites: load this organ as Open would.
-  void setOrganLoader(std::function<void(const juce::File&)> load) { favourites_.onLoad = std::move(load); }
   void paint(juce::Graphics& g) override;
 
 private:
   // Settings: the program, the computer and the player's console, the same
   // for every organ. What belongs to one organ -- how it is loaded, its
-  // stops, outputs and voicing -- is OrganSettingsWindow.
+  // stops, outputs, voicing, reverb and combination sets -- is
+  // OrganSettingsWindow (#637).
   TabNamesLook tabNamesLook_;
   juce::TabbedComponent tabs_{juce::TabbedButtonBar::TabsAtTop};
   // The output device and MIDI inputs: the toolbar's Audio window, which is
   // set up once and seldom visited again (#276).
   std::unique_ptr<juce::Component> audio_;
   std::unique_ptr<ScrollHost> audioScroll_;  // after audio_: it goes first
-  ReverbPanel reverb_;
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
@@ -752,7 +746,6 @@ private:
   ScrollHost performanceScroll_{performance_, 0, [this] { return performance_.contentHeight(); }};
   EnginePanel general_;
   ScrollHost generalScroll_{general_, 0, [this] { return general_.contentHeight(); }};
-  FavouritesPanel favourites_;
   DisplayPanel display_;
   LanguagePanel language_;
   LogPanel log_;
