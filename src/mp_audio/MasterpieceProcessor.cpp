@@ -6412,6 +6412,12 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   // the organ: a folder per package, and the archives found or chosen.
   const juce::File folderRecord = folder.getChildFile("package-folders.txt");
   const juce::File archiveRecord = folder.getChildFile("joined-packages.txt");
+  // The packages the player chose to play without: not asked for again. The
+  // search below still runs, so one put where it is looked for is found.
+  const juce::File withoutRecord = folder.getChildFile("packages-played-without.txt");
+  std::set<Id> playedWithout;
+  for (const auto& line : juce::StringArray::fromLines(withoutRecord.loadFileAsString()))
+    if (line.trim().isNotEmpty()) playedWithout.insert(static_cast<Id>(line.trim().getLargeIntValue()));
   juce::File lastPicked;
   for (const auto& line : juce::StringArray::fromLines(folderRecord.loadFileAsString())) {
     const Id package = static_cast<Id>(line.upToFirstOccurrenceOf("\t", false, false).getLargeIntValue());
@@ -6562,7 +6568,7 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
   // missing are looked for there too.
   if (packageAsker)
     for (Id package : missing) {
-      if (package == 1 || here(package)) continue;
+      if (package == 1 || here(package) || playedWithout.count(package) != 0) continue;
       const auto named = model_.packages.find(package);
       // The chooser opens where the player last pointed for this organ, or
       // in the folder that holds the organ's.
@@ -6570,7 +6576,14 @@ std::set<std::string> MasterpieceProcessor::joinPackagesFromElsewhere(
       const std::string chosen =
           packageAsker(dirName(package), named != model_.packages.end() ? named->second.name : std::string(),
                        start.getFullPathName().toStdString());
-      if (chosen.empty()) continue;
+      if (chosen.empty()) {
+        // Played without, unless the load was cancelled while asking.
+        if (!loadProgress().isCancelled()) {
+          playedWithout.insert(package);
+          withoutRecord.appendText(juce::String(static_cast<juce::int64>(package)) + "\n");
+        }
+        continue;
+      }
       const juce::File pick = file(chosen);
       if (pick.isDirectory()) {
         lastPicked = pick;
