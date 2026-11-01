@@ -152,6 +152,9 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   frame_.setTooltip(TRANS("Click to go to a frame by its number"));
   frame_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
   frame_.onClick = [this] { askForFrame(proc_); };
+  addChildComponent(level_);
+  level_.setJustificationType(juce::Justification::centred);
+  level_.setColour(juce::Label::textColourId, kText);
   addAndMakeVisible(insertFrame_);
   insertFrame_.setTooltip(TRANS("Copy this frame into a new one after it; the frames after it move up one"));
   insertFrame_.onClick = [this] { proc_.stepperInsertFrame(); };
@@ -234,7 +237,30 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.setJustificationType(juce::Justification::topLeft);
 
   rebuild();
+  applyView();
   startTimerHz(10);
+}
+
+void CombinationsPanel::applyView() {
+  simple_ = proc_.simpleMode();
+  for (juce::Component* c : std::initializer_list<juce::Component*>{
+           &stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_, &generalsLabel_, &fewerGenerals_,
+           &moreGenerals_})
+    c->setVisible(!simple_);
+  for (auto& b : generals_) b->setVisible(!simple_);
+  level_.setVisible(simple_);
+  stepPrev_.setButtonText(simple_ ? "-" : "<");
+  stepNext_.setButtonText(simple_ ? "+" : ">");
+  stepPrev_.setTooltip(simple_ ? TRANS("The general before") : juce::String());
+  stepNext_.setTooltip(simple_ ? TRANS("The next general") : juce::String());
+  stepBack10_.setTooltip(simple_ ? TRANS("The level before") : TRANS("Ten frames back"));
+  stepForward10_.setTooltip(simple_ ? TRANS("The next level") : TRANS("Ten frames on"));
+  for (int i = 0; i < 10; ++i)
+    digits_[static_cast<size_t>(i)]->setTooltip(
+        simple_ ? TRANS("General %1 of this level").replace("%1", juce::String(i))
+                : TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(i)));
+  setSize(getWidth(), preferredHeight(getWidth()));
+  resized();
 }
 
 CombinationsPanel::~CombinationsPanel() { stopTimer(); }
@@ -250,7 +276,8 @@ void CombinationsPanel::rebuild() {
     b->onRightClick = [this, raw, n] {
       showMidiMenu(*raw, MidiTargetKind::PlayerGeneral, n, false);
     };
-    addAndMakeVisible(*b);
+    addChildComponent(*b);
+    b->setVisible(!simple_);
     generals_.push_back(std::move(b));
   }
 
@@ -305,7 +332,7 @@ void CombinationsPanel::rebuild() {
 int CombinationsPanel::preferredHeight(int /*width*/) const {
   const auto& pc = proc_.playerCombinations();
   int h = kMargin + kRow + kGap + kRow + kSection;
-  h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
+  if (!simple_) h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
   if (!divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
@@ -320,16 +347,24 @@ void CombinationsPanel::resized() {
   row.removeFromLeft(kGap);
   generalCancel_.setBounds(row.removeFromLeft(56).reduced(1));
   row.removeFromLeft(12);
-  stepFirst_.setBounds(row.removeFromLeft(34).reduced(1));
-  stepBack10_.setBounds(row.removeFromLeft(40).reduced(1));
-  stepPrev_.setBounds(row.removeFromLeft(34).reduced(1));
-  frame_.setBounds(row.removeFromLeft(110));
-  stepNext_.setBounds(row.removeFromLeft(34).reduced(1));
-  stepForward10_.setBounds(row.removeFromLeft(40).reduced(1));
-  stepLast_.setBounds(row.removeFromLeft(34).reduced(1));
-  row.removeFromLeft(kGap * 2);
-  insertFrame_.setBounds(row.removeFromLeft(56).reduced(1));
-  deleteFrame_.setBounds(row.removeFromLeft(56).reduced(1));
+  if (simple_) {
+    stepBack10_.setBounds(row.removeFromLeft(48).reduced(1));
+    stepPrev_.setBounds(row.removeFromLeft(48).reduced(1));
+    level_.setBounds(row.removeFromLeft(110));
+    stepNext_.setBounds(row.removeFromLeft(48).reduced(1));
+    stepForward10_.setBounds(row.removeFromLeft(48).reduced(1));
+  } else {
+    stepFirst_.setBounds(row.removeFromLeft(34).reduced(1));
+    stepBack10_.setBounds(row.removeFromLeft(40).reduced(1));
+    stepPrev_.setBounds(row.removeFromLeft(34).reduced(1));
+    frame_.setBounds(row.removeFromLeft(110));
+    stepNext_.setBounds(row.removeFromLeft(34).reduced(1));
+    stepForward10_.setBounds(row.removeFromLeft(40).reduced(1));
+    stepLast_.setBounds(row.removeFromLeft(34).reduced(1));
+    row.removeFromLeft(kGap * 2);
+    insertFrame_.setBounds(row.removeFromLeft(56).reduced(1));
+    deleteFrame_.setBounds(row.removeFromLeft(56).reduced(1));
+  }
 
   // The digits take the row's width in ten equal cells.
   row = r.removeFromTop(kRow);
@@ -337,19 +372,21 @@ void CombinationsPanel::resized() {
   for (auto& b : digits_) b->setBounds(row.removeFromLeft(cell).reduced(1));
   r.removeFromTop(kSection);
 
-  row = r.removeFromTop(kHeading);
-  generalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
-  fewerGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
-  moreGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
-  r.removeFromTop(kGap);
-  for (size_t i = 0; i < generals_.size(); ++i) {
-    const int col = static_cast<int>(i) % kPerRow;
-    const int line = static_cast<int>(i) / kPerRow;
-    generals_[i]->setBounds(r.getX() + kDivisionLabelW + col * (kPistonW + kGap),
-                            r.getY() + line * (kRow + kGap), kPistonW, kRow);
+  if (!simple_) {
+    row = r.removeFromTop(kHeading);
+    generalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
+    fewerGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
+    moreGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
+    r.removeFromTop(kGap);
+    for (size_t i = 0; i < generals_.size(); ++i) {
+      const int col = static_cast<int>(i) % kPerRow;
+      const int line = static_cast<int>(i) / kPerRow;
+      generals_[i]->setBounds(r.getX() + kDivisionLabelW + col * (kPistonW + kGap),
+                              r.getY() + line * (kRow + kGap), kPistonW, kRow);
+    }
+    r.removeFromTop(pistonRows(static_cast<int>(generals_.size())) * (kRow + kGap));
+    r.removeFromTop(kSection);
   }
-  r.removeFromTop(pistonRows(static_cast<int>(generals_.size())) * (kRow + kGap));
-  r.removeFromTop(kSection);
 
   if (!divisions_.empty()) {
     row = r.removeFromTop(kHeading);
@@ -410,6 +447,8 @@ void CombinationsPanel::refreshState() {
     return;
   }
 
+  if (proc_.simpleMode() != simple_) applyView();
+
   const bool capturing = proc_.captureMode();
   setter_.setToggleState(capturing, juce::dontSendNotification);
   setter_.setColour(juce::TextButton::buttonOnColourId, kCapture);
@@ -438,6 +477,15 @@ void CombinationsPanel::refreshState() {
                                        .replace("%1", shown(pc.frame()))
                                        .replace("%2", shown(std::max(last, pc.frame()))),
                  juce::dontSendNotification);
+  // The ten of the level shown: set when the frame holds a registration, lit
+  // for the one drawn now.
+  const int base = PlayerCombinations::shownNumber(std::max(pc.frame(), 1)) / 10 * 10;
+  for (int i = 0; i < 10; ++i) {
+    const int f = base + i + 1;
+    paintPiston(*digits_[static_cast<size_t>(i)], f <= PlayerCombinations::kMaxFrames && pc.frameSet(f),
+                pc.frame() == f);
+  }
+  level_.setText(TRANS("Level %1").replace("%1", juce::String(base / 10 + 1)), juce::dontSendNotification);
   stepPrev_.setEnabled(pc.frame() > 1);
   stepNext_.setEnabled(capturing || pc.frame() < last);
   stepFirst_.setEnabled(pc.frame() != 1 && (last > 0 || capturing));
@@ -451,6 +499,10 @@ void CombinationsPanel::refreshState() {
   note_.setText(map.learning()
                     ? TRANS("Now press the control on your console that should do "
                             "this. Right-click the piston again to cancel.")
+                : simple_
+                    ? TRANS("Press Set, then a general, to store what is drawn. - and + step "
+                            "through the generals, -10 and +10 through the levels. Right-click "
+                            "any piston to map it to your console.")
                     : TRANS("Press Set, then a piston, to store what is drawn. "
                             "A piston never set does nothing. Right-click any piston "
                             "to map it to your console."),
