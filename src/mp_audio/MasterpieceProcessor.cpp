@@ -5582,8 +5582,10 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // A switch that swaps a stop's rank for its alternate -- a tremulant whose
   // pipes were also recorded with it running -- re-sounds the notes held on
   // those stops, when the organ asks for that: what was sounding lets go and
-  // the other rank's pipes speak.
-  if (swapsRanks && !soundingNotes_.empty())
+  // the other rank's pipes speak. Unless the player has asked for held notes
+  // to be left alone: then only the keys pressed afterwards play the other
+  // rank.
+  if (swapsRanks && !soundingNotes_.empty() && !stopsLeaveHeldNotes())
     for (const auto& [movedId, nowEngaged] : switches_.lastChanges()) {
       (void)nowEngaged;
       const auto alt = alternateStopsBySwitch_.find(movedId);
