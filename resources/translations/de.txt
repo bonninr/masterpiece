@@ -176,8 +176,6 @@ countries: de at ch li lu
 "Press the lowest key..." = "Tiefste Taste drücken..."
 "Pistons that bring the %1 to one of your keyboards" = "Setzerknöpfe, die „%1“ auf eine Ihrer Tastaturen legen"
 "A piston here makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same button added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Ein Setzerknopf hier lässt eine Tastatur „%1“ spielen, sodass ein Spieltisch mit weniger Tastaturen, als die Orgel Manuale hat, alle erreichen kann. Beim Betätigen werden zuerst alle auf dieser Tastatur gehaltenen Noten losgelassen. Fügen Sie für jede Tastatur, die dieses Manual spielen können soll, einen hinzu.\n\nDerselbe Knopf, auf mehreren Manualen eingetragen, schaltet die Tastatur mit jedem Druck eines weiter. Unter Einstellungen, MIDI lässt sich festlegen, dass der Generalabsteller alle Tastaturen wieder auf ihr eigenes Manual zurücksetzt. Wird mit dieser Orgel gespeichert."
-"Controller %1" = "Controller %1"
-"on channel %1" = "auf Kanal %1"
 "brings the %1 to the keyboard on channel %2" = "legt „%1“ auf die Tastatur auf Kanal %2"
 "No pistons yet." = "Noch keine Setzerknöpfe."
 "Play any key on the keyboard that should play the %1..." = "Spielen Sie eine beliebige Taste auf der Tastatur, die „%1“ spielen soll..."
@@ -1166,3 +1164,4 @@ countries: de at ch li lu
 "Full screen" = "Vollbild"
 "Exit full screen" = "Vollbild beenden"
 "Or press Escape or F11" = "Oder Esc oder F11 drücken"
+"Remove this piston" = "Diesen Setzerknopf entfernen"
