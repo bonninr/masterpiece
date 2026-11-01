@@ -1151,6 +1151,10 @@ public:
   // Sends the unload message now, when an organ is loaded and the message is
   // set. The program calls it as it quits.
   void sendUnloadMessage();
+  // Sends hex MIDI messages, in the same form, on the output now, organ
+  // loaded or not: the test buttons beside the load and unload messages.
+  // False when the text is not whole messages or there is no output.
+  bool sendMidiNow(const juce::String& hex);
   // What the lamp shows this block: 1 lit, 0 dark.
   int readyLampState() const { return lampState_.load(std::memory_order_relaxed); }
   // The message that sets it: a note on at velocity 127 or off, a controller
@@ -2774,6 +2778,17 @@ private:
   // sysExOnly: the system exclusive sends alone, which go first after a load:
   // a controller's mode message comes before the lamps it lights.
   void emitSends(bool sysExOnly = false);
+  // A combination button's lamp: 1 lit, 0 dark, -1 for a target that has
+  // none. A player's general or divisional is lit while it is the one
+  // recalled or stored last, the setter while it is on, "pedal combinations
+  // coupled" while it is on.
+  int pistonLamp(MidiTargetKind kind, Id id) const;
+  // With stop changes sent on the output, the lamps of the combination
+  // buttons learned on a note or a controller, as the stops' are: sent when
+  // they change, and all of them after a load (#565). -1 sends on the next
+  // block; by the place in the map's list of mappings.
+  void emitPistonLamps();
+  std::vector<int> pistonLamps_;
   void sendKey(Id keyboard, int midiNote, int velocity, bool on);
   // Where each held key switch came from, as (channel, device): a key can be
   // a switch with no note sounding, on an organ played through its pallets.

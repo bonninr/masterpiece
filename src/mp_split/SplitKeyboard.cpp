@@ -40,6 +40,10 @@ void Layout::normalize() {
   bass.topKey = clampInt(bass.topKey, 0, 127);
   if (static_cast<int>(bass.sustain) > static_cast<int>(Sustain::Timed)) bass.sustain = Sustain::Off;
   bass.sustainMs = clampInt(bass.sustainMs, 50, 10000);
+  melody.bottomKey = clampInt(melody.bottomKey, 0, 127);
+  // The bass and the melody take keys of their own: one key giving both
+  // would have two reasons to be silent on its manual.
+  if (bass.on && melody.on && melody.bottomKey <= bass.topKey) melody.bottomKey = std::min(127, bass.topKey + 1);
 }
 
 Layout factoryLayout(int index) {
@@ -85,6 +89,7 @@ const char* factoryName(int index) {
 
 SplitKeyboard::SplitKeyboard() {
   std::fill(std::begin(zoneOfKey_), std::end(zoneOfKey_), static_cast<int8_t>(-1));
+  resendLamps();
   for (int i = 0; i < kFactoryPresets; ++i) {
     presets_.layouts[i] = factoryLayout(i);
     presets_.used[i] = true;
@@ -155,7 +160,37 @@ void SplitKeyboard::endBlock() {
     followUntilMs_ = -1.0;
     changed_ = true;
   }
+  updateLamps();
   if (changed_) publish();
+}
+
+void SplitKeyboard::updateLamps() {
+  for (int c = 0; c < kControlCount; ++c) {
+    const auto ci = static_cast<size_t>(c);
+    const Trigger& t = triggers_[ci];
+    // Learned anew: the lamp goes out where it was, and is sent where it is.
+    if (!(t == lampTriggers_[ci])) {
+      const Trigger& old = lampTriggers_[ci];
+      if (lampSent_[c] == 1 && (old.kind == Trigger::Note || old.kind == Trigger::Controller) &&
+          lampCount_ < kControlCount * 2)
+        lampOut_[lampCount_++] = Msg{static_cast<uint8_t>((old.kind == Trigger::Note ? 0x80 : 0xB0) | (old.channel - 1)),
+                                     old.number, 0};
+      lampTriggers_[ci] = t;
+      lampSent_[c] = -1;
+    }
+    int lit = -1;
+    if (c == static_cast<int>(Control::Toggle)) lit = enabled_ ? 1 : 0;
+    else if (c >= static_cast<int>(Control::Preset1)) lit = preset_ == c - static_cast<int>(Control::Preset1) ? 1 : 0;
+    if (lit < 0 || lit == lampSent_[c]) continue;
+    lampSent_[c] = static_cast<int8_t>(lit);
+    if ((t.kind != Trigger::Note && t.kind != Trigger::Controller) || t.channel < 1 || t.channel > 16) continue;
+    if (lampCount_ >= kControlCount * 2) continue;
+    const uint8_t ch = static_cast<uint8_t>(t.channel - 1);
+    lampOut_[lampCount_++] = t.kind == Trigger::Note
+                                 ? Msg{static_cast<uint8_t>((lit != 0 ? 0x90 : 0x80) | ch), t.number,
+                                       static_cast<uint8_t>(lit != 0 ? 127 : 0)}
+                                 : Msg{static_cast<uint8_t>(0xB0 | ch), t.number, static_cast<uint8_t>(lit != 0 ? 127 : 0)};
+  }
 }
 
 bool SplitKeyboard::feed(int device, const uint8_t* data, int size) {
@@ -299,6 +334,8 @@ void SplitKeyboard::releaseAll() {
   pedalKey_ = -1;
   pedalHeld_ = false;
   pedalUntilMs_ = -1.0;
+  soloNote_ = -1;
+  soloKey_ = -1;
   changed_ = true;
 }
 
@@ -316,6 +353,12 @@ int SplitKeyboard::lowestHeldUpTo(int top) const {
   return -1;
 }
 
+int SplitKeyboard::highestHeldFrom(int bottom) const {
+  for (int n = 127; n >= bottom && n >= 0; --n)
+    if (held_[n]) return n;
+  return -1;
+}
+
 void SplitKeyboard::keyOn(int note, int velocity) {
   held_[note] = true;
   velocity_[note] = static_cast<uint8_t>(velocity);
@@ -327,12 +370,19 @@ void SplitKeyboard::keyOn(int note, int velocity) {
 
   const Bass& bass = layout_.bass;
   const bool inBass = bass.on && note <= bass.topKey;
+  const Melody& melody = layout_.melody;
+  const bool inMelody = melody.on && note >= melody.bottomKey;
   sent_[note] = Sent{};
   // The bass key plays only the pedal when the layout says so; it is the bass
-  // key if it is the lowest held in the bass range.
-  if (inBass && !bass.alsoOnManual && lowestHeldUpTo(bass.topKey) == note) sent_[note].silentOnManual = true;
-  else soundOnManual(note);
+  // key if it is the lowest held in the bass range. The melody key likewise,
+  // the highest held in the melody range, with the solo.
+  if ((inBass && !bass.alsoOnManual && lowestHeldUpTo(bass.topKey) == note) ||
+      (inMelody && !melody.alsoOnManual && highestHeldFrom(melody.bottomKey) == note))
+    sent_[note].silentOnManual = true;
+  else
+    soundOnManual(note);
   if (inBass) updateBass();
+  if (inMelody) updateMelody();
   changed_ = true;
 }
 
@@ -362,6 +412,7 @@ void SplitKeyboard::keyOff(int note) {
   sent_[note] = Sent{};
   zoneOfKey_[note] = -1;
   if (layout_.bass.on && note <= layout_.bass.topKey) updateBass();
+  if (layout_.melody.on && note >= layout_.melody.bottomKey) updateMelody();
   if (followedSplit_ >= 0 && std::none_of(std::begin(held_), std::end(held_), [](bool h) { return h; }))
     followUntilMs_ = nowMs_ + kFollowHoldMs;
   changed_ = true;
@@ -405,6 +456,32 @@ void SplitKeyboard::pedalOff() {
   sendOff(Role::Pedal, pedalNote_);
   pedalNote_ = -1;
   pedalUntilMs_ = -1.0;
+}
+
+void SplitKeyboard::updateMelody() {
+  const int high = highestHeldFrom(layout_.melody.bottomKey);
+  // A key that gave the melody and no longer does, still held, plays its
+  // manual again: a chord pressed from the bottom up keeps its notes.
+  if (soloKey_ >= 0 && soloKey_ != high && held_[soloKey_] && sent_[soloKey_].silentOnManual)
+    soundOnManual(soloKey_);
+  soloKey_ = high;
+  const int target = high + layout_.transpose;
+  if (high < 0 || target < 0 || target > 127) {
+    soloOff();
+    return;
+  }
+  // A new solo note only when the highest key changes.
+  if (target != soloNote_) {
+    soloOff();
+    sendOn(Role::Solo, target, velocity_[high]);
+    soloNote_ = target;
+  }
+}
+
+void SplitKeyboard::soloOff() {
+  if (soloNote_ < 0) return;
+  sendOff(Role::Solo, soloNote_);
+  soloNote_ = -1;
 }
 
 void SplitKeyboard::followHands() {
@@ -454,6 +531,7 @@ void SplitKeyboard::publish() {
   s.preset = preset_;
   s.firstSplit = followedSplit_ >= 0 ? followedSplit_ : layout_.splits[0];
   s.pedalNote = pedalNote_;
+  s.soloNote = soloNote_;
   s.held[0] = s.held[1] = 0;
   for (int n = 0; n < 128; ++n) {
     if (held_[n]) s.held[n / 64] |= uint64_t{1} << (n % 64);

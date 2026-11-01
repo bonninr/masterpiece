@@ -1186,6 +1186,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // window's sliders have it.
   juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
+  // Dialogs open in the middle of this window.
+  setDialogCentre(this);
   juce::Desktop::getInstance().addGlobalMouseListener(&wheelFocus_);
 
   // The licence question, asked from the loading thread before a sample is
@@ -1407,6 +1409,7 @@ void MasterpieceEditor::WheelFocus::mouseWheelMove(const juce::MouseEvent& e, co
 MasterpieceEditor::~MasterpieceEditor() {
   juce::Desktop::getInstance().removeGlobalMouseListener(&wheelFocus_);
   stopTimer();
+  if (dialogCentre() == this) setDialogCentre(nullptr);
   proc_.licenceAsker = nullptr;
   proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
@@ -2671,13 +2674,15 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   onScore = showingConsole_ && showingScore_;
 #endif
   const bool onConsole = !onPanel && !onScore && !showingStopList_;
+  // Before any organ is loaded there are no stops to list or to put on a panel.
+  const bool organ = proc_.loadedOrganFile() != juce::File();
   // The organ's own pages first, each by its name (#634); an organ that
   // draws no console has the stop list in their place.
   if (console_.hasArtwork() && console_.pageCount() > 0) {
     for (int i = 0; i < console_.pageCount() && i < 100; ++i)
       menu.addItem(1400 + i, console_.pageName(i), true, onConsole && console_.currentPage() == i);
   } else {
-    menu.addItem(1002, TRANS("Stop list"), true, onConsole);
+    menu.addItem(1002, TRANS("Stop list"), organ, organ && onConsole);
   }
   // Pages in windows of their own, for a second screen: the same as a
   // right-click on a page's tab, here where it can be found.
@@ -2698,7 +2703,7 @@ void MasterpieceEditor::addPanelItems(juce::PopupMenu& menu) {
   // The first panel is the whole organ, every stop by division: what the
   // stop list showed, as big buttons to arrange and name.
   menu.addItem(1001, panels_.empty() ? TRANS("Panel of the whole organ") : TRANS("New panel"),
-               static_cast<int>(panels_.size()) < kMaxPanels);
+               organ && static_cast<int>(panels_.size()) < kMaxPanels);
   if (!panels_.empty()) {
     juce::PopupMenu edit;
     for (size_t i = 0; i < panels_.size(); ++i)
