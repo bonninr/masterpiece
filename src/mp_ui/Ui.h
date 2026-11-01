@@ -390,6 +390,27 @@ public:
   std::function<void()> onPanic;
   // Settings > a section: the settings window, open on the tab of that name.
   std::function<void(const juce::String& tab)> onSettingsTab;
+  // View > Full screen: the application puts its window over the whole
+  // display without its title bar, or back where it was. Unset, on a phone
+  // or tablet and in a plug-in, the View menu does not offer it.
+  std::function<void(bool on)> onFullScreen;
+  // Full screen: the console alone. The menus and the top bar come over it
+  // while the mouse is at the top edge, with a button to leave; Escape and
+  // F11 leave too.
+  void setFullScreen(bool on);
+  bool fullScreen() const { return fullScreen_; }
+  // For tests: the band brought over the console, or taken away, as the
+  // mouse at the top edge does; and where the menus and the console are.
+  void showFullScreenBandForTest(bool on) {
+    fullScreenBand_ = on;
+    resized();
+  }
+  juce::Rectangle<int> fileMenuBoundsForTest() const { return fileMenu_.getBounds(); }
+  bool exitFullScreenShownForTest() const { return exitFullScreen_.isVisible(); }
+  bool pressKeyForTest(const juce::KeyPress& key) { return keyPressed(key, this); }
+  juce::Rectangle<int> contentBoundsForTest() const {
+    return consoleView_.isVisible() ? consoleView_.getBounds() : jambView_.getBounds();
+  }
   // Load the organ that is loaded now again, with whatever its settings say.
   void reloadOrgan();
   // File > Import and Export, Organ > Copy settings (SettingsBackup.cpp): the
@@ -436,6 +457,22 @@ private:
   struct WheelFocus final : juce::MouseListener {
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&) override;
   } wheelFocus_;
+
+  bool fullScreen_ = false;
+  bool fullScreenBand_ = false;   // the band over the console, the mouse at the top
+  int fullScreenBandBottom_ = 0;  // where the band and the button under it end
+  int fullScreenAway_ = 0;        // checks the mouse has been away from the band
+  juce::TextButton exitFullScreen_{TRANS("Exit full screen")};
+  // Behind the band over the console, so the menus do not sit on the artwork.
+  struct BandBack final : juce::Component {
+    void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xff15171c)); }
+  } fullScreenBack_;
+  // Ten times a second while full screen: the mouse looked for at the top edge.
+  struct FullScreenWatch final : juce::Timer {
+    std::function<void()> tick;
+    void timerCallback() override { tick(); }
+  } fullScreenWatch_;
+  void watchFullScreenMouse();
 
   MasterpieceProcessor& proc_;
   TopBar top_;

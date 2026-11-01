@@ -1300,6 +1300,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   viewMenu_.onClick = [this] { showViewMenu(); };
   settingsButton_.onClick = [this] { showSettingsMenu(); };
   helpMenu_.onClick = [this] { showHelpMenu(); };
+  addChildComponent(fullScreenBack_);
+  addChildComponent(exitFullScreen_);
+  exitFullScreen_.setTooltip(TRANS("Or press Escape or F11"));
+  exitFullScreen_.onClick = [this] { setFullScreen(false); };
+  fullScreenWatch_.tick = [this] { watchFullScreenMouse(); };
 
   // The sequencer. Held with "Set", stepping CAPTURES the frame it lands on,
   // which is how a registration is built for a piece.
@@ -1432,6 +1437,15 @@ void MasterpieceEditor::parentHierarchyChanged() {
 }
 
 bool MasterpieceEditor::keyPressed(const juce::KeyPress& key, juce::Component*) {
+  // F11 goes in and out of full screen, and Escape out of it.
+  if (onFullScreen && key == juce::KeyPress(juce::KeyPress::F11Key)) {
+    setFullScreen(!fullScreen_);
+    return true;
+  }
+  if (fullScreen_ && key == juce::KeyPress(juce::KeyPress::escapeKey)) {
+    setFullScreen(false);
+    return true;
+  }
   // The plain stop list, for a player who cannot see the console: the same
   // place the console's own panel piston goes.
   if (isStopListKey(key)) {
@@ -1442,6 +1456,45 @@ bool MasterpieceEditor::keyPressed(const juce::KeyPress& key, juce::Component*) 
   console_.repaint();
   for (const auto& w : pageWindows_) w->repaint();
   return true;
+}
+
+void MasterpieceEditor::setFullScreen(bool on) {
+  if (on == fullScreen_) return;
+  fullScreen_ = on;
+  fullScreenBand_ = false;
+  fullScreenAway_ = 0;
+  if (onFullScreen) onFullScreen(on);
+  if (on)
+    fullScreenWatch_.startTimerHz(10);
+  else
+    fullScreenWatch_.stopTimer();
+  resized();
+}
+
+void MasterpieceEditor::watchFullScreenMouse() {
+  if (!fullScreen_ || !isShowing()) return;
+  const auto at = getLocalPoint(nullptr, juce::Desktop::getMousePosition());
+  const bool across = at.x >= 0 && at.x < getWidth();
+  if (!fullScreenBand_) {
+    // At the top edge: the band comes over the console.
+    if (across && at.y <= 1) {
+      fullScreenBand_ = true;
+      fullScreenAway_ = 0;
+      resized();
+    }
+    return;
+  }
+  // It stays while the mouse is on it or one of its menus is open, and goes
+  // under a second after the mouse has left it.
+  const bool onBand = across && at.y <= fullScreenBandBottom_;
+  const bool menuOpen = juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0;
+  if (onBand || menuOpen) {
+    fullScreenAway_ = 0;
+    return;
+  }
+  if (++fullScreenAway_ < 8) return;
+  fullScreenBand_ = false;
+  resized();
 }
 
 void MasterpieceEditor::toggleCombinations() {
@@ -2266,6 +2319,8 @@ void MasterpieceEditor::paint(juce::Graphics& g) {
 void MasterpieceEditor::showUpdateNotice(const juce::String& latest) { updateNotice_.show(latest); }
 
 void MasterpieceEditor::resized() {
+  // The band and the status line take their room from `r`; full screen, the
+  // console keeps the whole window and the band is laid over it.
   auto r = getLocalBounds();
   auto statusStrip = r.removeFromBottom(20);
   if (updateNotice_.isVisible()) {
@@ -2295,6 +2350,32 @@ void MasterpieceEditor::resized() {
   stepPrev_.setBounds(band.stepPrev.reduced(2));
   setter_.setBounds(band.setter.reduced(2));
   top_.setBounds(band.bar);
+
+  fullScreenBack_.setVisible(fullScreen_ && fullScreenBand_);
+  exitFullScreen_.setVisible(fullScreen_ && fullScreenBand_);
+  if (fullScreen_) {
+    juce::Component* const bandParts[] = {&top_,       &fileMenu_, &organMenu_,   &viewMenu_,     &settingsButton_,
+                                          &helpMenu_,  &panicButton_, &saveStateButton_, &tuningButton_, &stepPrev_,
+                                          &stepFrame_, &stepNext_, &setter_};
+    top_.statusLabel().setBounds({});
+    updateNotice_.setBounds({});
+    if (fullScreenBand_) {
+      // The band over the top of the console, and the way out under its
+      // right end.
+      const int bandBottom = r.getY();
+      fullScreenBack_.setBounds(0, 0, getWidth(), bandBottom);
+      fullScreenBack_.toFront(false);
+      for (auto* c : bandParts) c->toFront(false);
+      const int w = textButtonTextWidth(exitFullScreen_) + 24;
+      exitFullScreen_.setBounds(getWidth() - w - 8, bandBottom + 6, w, 28);
+      exitFullScreen_.toFront(false);
+      fullScreenBandBottom_ = exitFullScreen_.getBottom() + 6;
+    } else {
+      for (auto* c : bandParts) c->setBounds({});
+      fullScreenBandBottom_ = 0;
+    }
+    r = getLocalBounds();
+  }
 
   // The tabs keep a strip of their own, and only when there is more than one
   // page to choose between -- so a single-page organ shows one row in total.
@@ -2911,7 +2992,13 @@ void MasterpieceEditor::showViewMenu() {
   // Each item its own number: the handler below runs every branch that
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
-  menu.addItem(18, TRANS("Fit window to page"));
+  menu.addItem(18, TRANS("Fit window to page"), !fullScreen_);
+  if (onFullScreen) {
+    juce::PopupMenu::Item full(TRANS("Full screen"));
+    full.setID(20).setTicked(fullScreen_);
+    full.shortcutKeyDescription = "F11";
+    menu.addItem(std::move(full));
+  }
   // The console's layouts. The window picks one for its shape on its own;
   // this is for choosing by hand.
   if (showingConsole_ && console_.layoutCount() > 1) {
@@ -2947,6 +3034,7 @@ void MasterpieceEditor::showViewMenu() {
                          safe->resized();
                        }
                        if (c == 18) safe->fitWindowToPage();
+                       if (c == 20) safe->setFullScreen(!safe->fullScreen_);
                        if (c >= 200 && c < 300) safe->chooseLayout(c - 200);
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);
