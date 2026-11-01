@@ -8631,6 +8631,18 @@ void MasterpieceProcessor::sendUnloadMessage() {
   if (outgoingProbe) outgoingProbe(out);
 }
 
+bool MasterpieceProcessor::sendMidiNow(const juce::String& hex) {
+  std::vector<uint8_t> bytes;
+  if (!parseMidiText(hex.toStdString(), bytes) || bytes.empty()) return false;
+  const AudioLock audio(*this);
+  if (midiOut_ == nullptr && !outgoingProbe) return false;
+  juce::MidiBuffer out;
+  addMessages(out, bytes);
+  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  if (outgoingProbe) outgoingProbe(out);
+  return true;
+}
+
 bool MasterpieceProcessor::setReadyLampMessages(const juce::String& litHex, const juce::String& darkHex) {
   std::vector<uint8_t> lit, dark;
   if (!parseMidiText(litHex.toStdString(), lit) || !parseMidiText(darkHex.toStdString(), dark)) return false;

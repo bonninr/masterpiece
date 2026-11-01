@@ -1123,3 +1123,8 @@ countries: cz
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "Kompresor neslyší basy pod touto výškou: 32' ani plný pedál neztlumí manuály. Samy basy znějí naplno."
 "Reduction %1 dB" = "Snížení %1 dB"
 "Output compressor" = "Výstupní kompresor"
+"Send now" = "Odeslat nyní"
+"Sent" = "Odesláno"
+"Not sent" = "Neodesláno"
+"No MIDI output" = "Žádný výstup MIDI"
+"Sends the messages on the MIDI output now, to try them" = "Odešle zprávy na výstup MIDI nyní, k vyzkoušení"

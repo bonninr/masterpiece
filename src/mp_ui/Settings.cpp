@@ -2034,6 +2034,13 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     }
     unloadMessage_.repaint();
   };
+  for (auto* b : {&sendLoadMessage_, &sendUnloadMessage_}) {
+    addAndMakeVisible(*b);
+    b->setButtonText(TRANS("Send now"));
+    b->setTooltip(TRANS("Sends the messages on the MIDI output now, to try them"));
+  }
+  sendLoadMessage_.onClick = [this] { sendNow(loadMessage_, sendLoadMessage_); };
+  sendUnloadMessage_.onClick = [this] { sendNow(unloadMessage_, sendUnloadMessage_); };
   addAndMakeVisible(scoreHeading_);
   styleLabel(scoreHeading_, TRANS("Score app"));
   addAndMakeVisible(scoreSendsLabel_);
@@ -2077,7 +2084,7 @@ void MidiPanel::applyPart() {
                                         &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_,
                                         &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_,
                                         &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
-                                        &loadMessage_, &unloadMessageLabel_, &unloadMessage_,
+                                        &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_,
                                         &scoreHeading_, &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_,
                                         &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
@@ -2098,7 +2105,7 @@ void MidiPanel::applyPart() {
       &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
       &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_,
       &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_,
-      &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &scoreHeading_,
+      &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_, &scoreHeading_,
       &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_,
       &scoreBack_, &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
@@ -2205,6 +2212,27 @@ void MidiPanel::pushLoadMessage() {
     loadMessage_.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
   }
   loadMessage_.repaint();
+}
+
+void MidiPanel::sendNow(juce::TextEditor& field, juce::TextButton& button) {
+  if (field.isEmpty()) return;
+  if (proc_.sendMidiNow(field.getText())) {
+    button.setButtonText(TRANS("Sent"));
+  } else {
+    // Either the text is not whole messages (the field turns red) or there is
+    // no output to send on.
+    std::vector<uint8_t> bytes;
+    const bool whole = parseMidiText(field.getText().toStdString(), bytes);
+    if (!whole) {
+      field.setColour(juce::TextEditor::outlineColourId, juce::Colours::red);
+      field.repaint();
+    }
+    button.setButtonText(whole ? TRANS("No MIDI output") : TRANS("Not sent"));
+  }
+  juce::Component::SafePointer<juce::TextButton> safe(&button);
+  juce::Timer::callAfterDelay(1500, [safe] {
+    if (safe != nullptr) safe->setButtonText(TRANS("Send now"));
+  });
 }
 
 MidiPanel::~MidiPanel() { stopTimer(); }
@@ -2588,10 +2616,14 @@ void MidiPanel::resized() {
     row = r.removeFromTop(kRow);
     loadMessageLabel_.setBounds(row.removeFromLeft(120));
     loadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
+    row.removeFromLeft(6);
+    sendLoadMessage_.setBounds(row.removeFromLeft(150).reduced(2, 0));
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     unloadMessageLabel_.setBounds(row.removeFromLeft(120));
     unloadMessage_.setBounds(row.removeFromLeft(306).reduced(2, 2));
+    row.removeFromLeft(6);
+    sendUnloadMessage_.setBounds(row.removeFromLeft(150).reduced(2, 0));
 
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
