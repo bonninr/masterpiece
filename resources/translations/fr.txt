@@ -1163,3 +1163,6 @@ countries: fr be ca ch lu mc
 "Voicing EQ" = "Égaliseur d'harmonisation"
 "Undo the last change to the marks" = "Annuler la dernière modification des marques"
 "Learn a knob or a pedal for the wet level" = "Apprendre un bouton ou une pédale pour le niveau de réverbération"
+"SysEx" = "SysEx"
+"Sends %1" = "Envoie %1"
+"Key %1" = "Touche %1"

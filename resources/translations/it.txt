@@ -1163,3 +1163,6 @@ countries: it ch sm va
 "Voicing EQ" = "EQ di intonazione"
 "Undo the last change to the marks" = "Annulla l'ultima modifica ai segni"
 "Learn a knob or a pedal for the wet level" = "Apprendere una manopola o un pedale per il livello del riverbero"
+"SysEx" = "SysEx"
+"Sends %1" = "Invia %1"
+"Key %1" = "Tasto %1"

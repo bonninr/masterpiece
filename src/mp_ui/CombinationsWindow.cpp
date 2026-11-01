@@ -565,8 +565,11 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   }
   juce::PopupMenu menu;
   const auto existing = map.bindingsFor(kind, targetId);
-  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
+  const auto sendsAndKeys = MidiEventDialog::sendAndKeyLines(map, kind, targetId);
+  const bool mapped = !existing.empty() || !sendsAndKeys.isEmpty();
+  if (!mapped) menu.addSectionHeader(TRANS("Not mapped"));
   for (const MidiBinding* binding : existing) menu.addSectionHeader(describe(*binding));
+  for (const auto& line : sendsAndKeys) menu.addSectionHeader(line);
   menu.addSeparator();
   if (offerHold) {
     menu.addItem(1, TRANS("Learn: held while pressed"));
@@ -578,7 +581,7 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
   // Every message, its channel and device, and a key of the computer
   // keyboard, as the console's switches have (#226).
   menu.addItem(4, TRANS("MIDI window..."));
-  menu.addItem(3, TRANS("Clear mapping"), !existing.empty());
+  menu.addItem(3, TRANS("Clear mapping"), mapped);
 
   const juce::String name = b.getButtonText();
   menu.showMenuAsync(
@@ -596,8 +599,7 @@ void CombinationsPanel::showMidiMenu(PistonButton& b, MidiTargetKind kind,
             m.beginLearnAs(kind, targetId, MidiTrigger::Toggle);
             break;
           case 3:
-            m.unbindTarget(kind, targetId);
-            proc_.saveMidiMap();
+            proc_.clearObjectMapping(kind, targetId);
             break;
           default:
             break;

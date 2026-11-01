@@ -39,6 +39,9 @@ public:
   static juce::String switchName(const OrganModel& m, Id switchId);
   // A mapping's message, for a MIDI menu's header: "CC 7 ch 1".
   static juce::String describeBinding(const MidiBinding& b);
+  // The rest of an object's mapping, for the same headers: each message it
+  // sends ("Sends Note 36 ch 2") and each key ("Key ctrl + Q").
+  static juce::StringArray sendAndKeyLines(const MidiMap& map, MidiTargetKind kind, Id id);
 
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,

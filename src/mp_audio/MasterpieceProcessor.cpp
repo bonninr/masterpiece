@@ -9204,6 +9204,18 @@ void MasterpieceProcessor::setObjectShortcuts(MidiTargetKind kind, Id id,
   saveMidiMap();
 }
 
+void MasterpieceProcessor::clearObjectMapping(MidiTargetKind kind, Id id) {
+  {
+    const AudioLock lock(*this);
+    midiMap_.unbindTarget(kind, id);
+    midiMap_.setSendsFor(kind, id, {});
+    midiMap_.setShortcutsFor(kind, id, {});
+    pistonLamps_.clear();
+    sentValues_.clear();
+  }
+  saveMidiMap();
+}
+
 bool MasterpieceProcessor::applyKeyShortcut(const std::string& key) {
   const auto hits = midiMap_.shortcutsForKey(key);
   for (const auto& k : hits) {
