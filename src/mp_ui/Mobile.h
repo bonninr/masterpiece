@@ -113,8 +113,17 @@ constexpr bool kLiveOnTop = true;
 #endif
 
 // DialogWindow::LaunchOptions::launchAsync, with the dialog fitted to the
-// screen on a phone or tablet. Every dialog opens through here.
+// screen on a phone or tablet. Every dialog opens through here. A dialog that
+// names nothing to centre on, opened while a window kept above the others is
+// active, is centred on the main window (setDialogCentre).
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
+// The main window, set by it: dialogs open in its middle, wherever the
+// Recorder or another window of the program is.
+void setDialogCentre(juce::Component* main);
+juce::Component* dialogCentre();
+// What a dialog naming nothing is centred on, with `active` the program's
+// active window: the main window, or null for JUCE's own choice, the active one.
+juce::Component* dialogCentreFor(const juce::TopLevelWindow* active);
 
 // The tooltips of the main window and the windows beside it. JUCE raises a
 // modal dialog over any other window brought to the front, a tooltip's too,

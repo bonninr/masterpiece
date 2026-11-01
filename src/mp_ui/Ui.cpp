@@ -1186,6 +1186,8 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
   // window's sliders have it.
   juce::LookAndFeel::getDefaultLookAndFeel().setColour(juce::Slider::trackColourId,
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
+  // Dialogs open in the middle of this window.
+  setDialogCentre(this);
   juce::Desktop::getInstance().addGlobalMouseListener(&wheelFocus_);
 
   // The licence question, asked from the loading thread before a sample is
@@ -1407,6 +1409,7 @@ void MasterpieceEditor::WheelFocus::mouseWheelMove(const juce::MouseEvent& e, co
 MasterpieceEditor::~MasterpieceEditor() {
   juce::Desktop::getInstance().removeGlobalMouseListener(&wheelFocus_);
   stopTimer();
+  if (dialogCentre() == this) setDialogCentre(nullptr);
   proc_.licenceAsker = nullptr;
   proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
