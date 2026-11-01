@@ -1120,6 +1120,10 @@ void PanelView::askForTitle() {
 }
 
 void PanelView::setEditing(bool editing) {
+  // Fitted to the window, the panel keeps the size it had: edit mode adds
+  // the hidden elements, in reach by scrolling, and a fit that counted them
+  // shrank every button on pressing Edit.
+  if (editing && !editing_) editScale_ = scale();
   editing_ = editing;
   layoutSections();
 }
@@ -1170,7 +1174,8 @@ void PanelView::resized() {
 }
 
 int PanelView::scale() const {
-  return layout_.fitToWindow ? fittedScale() : layout_.scale;
+  if (!layout_.fitToWindow) return layout_.scale;
+  return editing_ ? editScale_ : fittedScale();
 }
 
 void PanelView::extentAt(int at, int& width, int& height) const {
@@ -1286,7 +1291,19 @@ void PanelView::layoutSections() {
     }
     x += columnW;
   }
-  body_.setSize(std::max(x, viewW), std::max(tallest, viewport_.getMaximumVisibleHeight()));
+  const int viewH = viewport_.getMaximumVisibleHeight();
+  body_.setSize(std::max(x, viewW), std::max(tallest, viewH));
+  // The new size can bring a scroll bar or take one away, and with it the
+  // view the sizes were worked out for: leaving edit mode, the panel was laid
+  // out once more beside a scroll bar that was going. Once more for the view
+  // it has now.
+  if (!relayingOut_ &&
+      (viewport_.getMaximumVisibleWidth() != viewW || viewport_.getMaximumVisibleHeight() != viewH)) {
+    relayingOut_ = true;
+    layoutSections();
+    relayingOut_ = false;
+    return;
+  }
   repaint();
 }
 
