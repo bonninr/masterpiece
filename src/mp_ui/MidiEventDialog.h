@@ -39,6 +39,9 @@ public:
   static juce::String switchName(const OrganModel& m, Id switchId);
   // A mapping's message, for a MIDI menu's header: "CC 7 ch 1".
   static juce::String describeBinding(const MidiBinding& b);
+  // "Held while pressed" needs a release: a note off, a controller back at 0.
+  // A program change or a system exclusive message has none.
+  static bool heldOffered(MidiTargetKind kind, MidiSourceKind source);
 
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,
