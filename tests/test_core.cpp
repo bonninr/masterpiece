@@ -15604,6 +15604,125 @@ public:
   }
 };
 static SharedSwitchMessageEngineTest g_sharedSwitchMessageEngine;
+
+// One console piston for the same divisional on two manuals (#637): a CC
+// learned for the first divisional of each recalls both, a CC learned for
+// each cancel cancels both, and both stay learned after a reload.
+class SharedDivisionalMessageTest final : public mp::test::Test {
+public:
+  SharedDivisionalMessageTest() : Test("functional.midi.one-message-several-divisionals", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-shared-divisional");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          wav.createWriterFor(os.release(), 48000.0, 1, 16, juce::StringPairArray(), 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    juce::String organ =
+        "[Organ]\nChurchName=SharedDivisional\nHasPedals=N\nNumberOfManuals=2\nNumberOfWindchestGroups=1\n"
+        "[WindchestGroup001]\nName=Main\n";
+    for (int m = 1; m <= 2; ++m)
+      organ << "[Manual00" << m << "]\nName=Manual " << m << "\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\n"
+            << "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=" << m << "\n";
+    for (int s = 1; s <= 2; ++s)
+      organ << "[Stop00" << s << "]\nName=Stop " << s << "\nDisplayed=Y\nNumberOfLogicalPipes=3\n"
+            << "NumberOfAccessiblePipes=3\nFirstAccessiblePipeLogicalKeyNumber=1\nWindchestGroup=1\n"
+            << "Pipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    const auto odf = dir.getChildFile("shared-divisional.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    std::vector<mp::Id> stops;
+    for (const auto& [id, st] : proc.organModel().stops) stops.push_back(id);
+    std::sort(stops.begin(), stops.end());
+    const auto& divisions = proc.playerCombinations().divisions();
+    MP_CHECK(stops.size() == 2 && divisions.size() == 2, "with two manuals of one stop each");
+    if (stops.size() != 2 || divisions.size() != 2) return;
+    const mp::Id first = divisions[0].divisionId, second = divisions[1].divisionId;
+    auto drawn = [&] { return int(proc.stopEngaged(stops[0])) + int(proc.stopEngaged(stops[1])); };
+
+    // Both stops stored in the first divisional of each manual.
+    proc.setStopEngaged(stops[0], true);
+    proc.setStopEngaged(stops[1], true);
+    proc.setCaptureMode(true);
+    proc.pressDivisional(first, 1);
+    proc.pressDivisional(second, 1);
+    proc.setCaptureMode(false);
+
+    juce::AudioBuffer<float> buf(2, 256);
+    auto send = [&](int cc, int value) {
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage::controllerEvent(1, cc, value), 0);
+      proc.processBlock(buf, midi);
+    };
+    // Learned as the window's menu does it: the piston's message, once for each.
+    for (const mp::Id div : {first, second}) {
+      proc.midiMap().beginLearnAs(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(div, 1),
+                                  mp::MidiTrigger::Momentary);
+      send(20, 127);
+      send(20, 0);
+      proc.midiMap().beginLearnAs(mp::MidiTargetKind::PlayerDivisionalCancel, div, mp::MidiTrigger::Momentary);
+      send(21, 127);
+      send(21, 0);
+    }
+    MP_CHECK(proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(first, 1)).size() == 1 &&
+                 proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(second, 1)).size() == 1,
+             "learning the second manual's divisional leaves the first one's mapping");
+    MP_CHECK(proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisionalCancel, first).size() == 1 &&
+                 proc.midiMap().bindingsFor(mp::MidiTargetKind::PlayerDivisionalCancel, second).size() == 1,
+             "and the same for the cancels");
+
+    // Each divisional holds its own manual's stop only, so one alone draws one.
+    proc.setStopEngaged(stops[0], false);
+    proc.setStopEngaged(stops[1], false);
+    proc.pressDivisional(first, 1);
+    MP_CHECK(drawn() == 1, "one manual's divisional draws one stop");
+
+    send(21, 127);
+    send(21, 0);
+    MP_CHECK(drawn() == 0, "the shared cancel cancels it");
+    send(20, 127);
+    MP_CHECK(drawn() == 2, "the shared piston recalls both manuals");
+    send(20, 0);
+    MP_CHECK(drawn() == 2, "and its release changes nothing");
+    send(21, 127);
+    send(21, 0);
+    MP_CHECK(drawn() == 0, "the shared cancel cancels both");
+
+    // The same after saving and reading the mapping back.
+    proc.saveMidiMap();
+    proc.saveCombinationsIfDirty();
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(drawn() == 2, "and the piston still recalls both");
+
+    // Clear mapping on one divisional leaves the piston on the other.
+    send(21, 127);
+    send(21, 0);
+    proc.midiMap().unbindTarget(mp::MidiTargetKind::PlayerDivisional, mp::playerDivisionalTarget(first, 1));
+    send(20, 127);
+    send(20, 0);
+    MP_CHECK(drawn() == 1 && proc.stopEngaged(stops[0]) != proc.stopEngaged(stops[1]),
+             "clearing one manual's mapping leaves the other manual's");
+
+    proc.midiMapFileFor(odf).deleteFile();
+    proc.settingsFileFor(odf).deleteFile();
+    proc.combinationFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static SharedDivisionalMessageTest g_sharedDivisionalMessage;
 #endif // MP_TEST_HAS_AUDIO
 
 // A WavPack file's size in memory, from its own header (#219). The

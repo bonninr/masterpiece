@@ -261,10 +261,15 @@ void MidiMap::bind(const MidiBinding& binding) {
   //
   // And a button learned for a second stop or coupler: one tab that draws
   // two stops together (#551).
+  //
+  // And a piston learned for a second divisional, or a second division's
+  // cancel: one console piston that sets several manuals at once (#637).
   const auto existing = bySource_.find(binding.source);
   const bool shares = isContinuousTarget(binding.targetKind) ||
                       binding.targetKind == MidiTargetKind::RouteKeyboard ||
-                      binding.targetKind == MidiTargetKind::Switch;
+                      binding.targetKind == MidiTargetKind::Switch ||
+                      binding.targetKind == MidiTargetKind::PlayerDivisional ||
+                      binding.targetKind == MidiTargetKind::PlayerDivisionalCancel;
   // The same target learned again: its binding changes, and whatever else
   // the message works keeps working.
   if (existing != bySource_.end() && existing->second.targetKind == binding.targetKind &&
@@ -488,8 +493,6 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     case MidiTargetKind::TemperamentPrev:
     case MidiTargetKind::PlayerGeneral:
     case MidiTargetKind::PlayerGeneralCancel:
-    case MidiTargetKind::PlayerDivisional:
-    case MidiTargetKind::PlayerDivisionalCancel:
     case MidiTargetKind::VoicingEqPreset:
     case MidiTargetKind::VoicingEqPresetNext:
     case MidiTargetKind::VoicingEqPresetPrev:
@@ -505,6 +508,13 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
       // These fire on the press. Acting on the release too would move two
       // frames, or turn a page and turn it straight back -- exactly the
       // failure an organist would notice mid-piece and could not explain.
+      if (value <= 0) action.kind = MidiTargetKind::None;
+      break;
+    case MidiTargetKind::PlayerDivisional:
+    case MidiTargetKind::PlayerDivisionalCancel:
+      // On the press, with every other division's piston it is learned for.
+      if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
+        action.alsoDrives = &more->second;
       if (value <= 0) action.kind = MidiTargetKind::None;
       break;
     case MidiTargetKind::QuitProgram:
