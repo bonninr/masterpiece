@@ -14988,6 +14988,55 @@ public:
   }
 };
 static LearnNoiseFilterTest g_learnNoiseFilter;
+
+// Listen in the MIDI window (#565): a controller at 0 is a message, the one a
+// console sends for off; a Bank Select ahead of a program change is passed
+// over for the program change. A note let go is still no press.
+class MidiListenValuesTest final : public mp::test::Test {
+public:
+  MidiListenValuesTest() : Test("functional.midi.listen-zero-and-bank", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.setLearnNoiseFilter(false);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto block = [&] {
+      juce::MidiBuffer none;
+      buf.clear();
+      proc.processBlock(buf, none);
+    };
+    mp::MidiSource heard;
+    int value = 0;
+
+    proc.beginMidiListen();
+    proc.pushMidi(1, juce::MidiMessage::controllerEvent(1, 20, 0));
+    block();
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ControlChange &&
+                 heard.number == 20 && value == 0,
+             "a controller at 0 is heard");
+
+    proc.beginMidiListen();
+    proc.pushMidi(1, juce::MidiMessage::controllerEvent(1, 0, 1));
+    proc.pushMidi(1, juce::MidiMessage::controllerEvent(1, 32, 0));
+    proc.pushMidi(1, juce::MidiMessage::programChange(1, 5));
+    block();
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::ProgramChange &&
+                 heard.number == 5,
+             "the program change is heard, past the Bank Select ahead of it");
+
+    proc.beginMidiListen();
+    proc.pushMidi(1, juce::MidiMessage::noteOff(1, 60));
+    block();
+    MP_CHECK(!proc.takeHeardMidi(heard, value) && proc.midiListening(), "a note let go is not heard");
+    proc.cancelMidiListen();
+  }
+};
+static MidiListenValuesTest g_midiListenValues;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {

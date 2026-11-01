@@ -1297,10 +1297,18 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       continue;
     }
 
+    // Bank Select, controller 0 or 32, comes just ahead of a program change
+    // from a console that sends banks: Listen and Learn take the program
+    // change that follows it (#565).
+    const bool bankSelect = source.kind == MidiSourceKind::ControlChange &&
+                            (source.number == 0 || source.number == 32);
+
     // Listening for the MIDI window takes the press and keeps it; the
-    // release that follows is swallowed too, while still listening.
+    // release that follows is swallowed too, while still listening. A
+    // controller is taken at any value: a console that sends 0 for off sends
+    // a real message (#565).
     if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
-      if (value > 0) {
+      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange)) {
         heard_ = source;
         heardValue_ = value;
         midiListen_.store(false, std::memory_order_release);
@@ -1314,12 +1322,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     if (midiMap_.learning() && source.kind != MidiSourceKind::None) {
       // Only a press, never a release — otherwise letting go of the key
       // immediately re-learns it to the note-off.
-      if (value > 0 && midiMap_.learnFrom(source)) {
+      if (value > 0 && !bankSelect && midiMap_.learnFrom(source)) {
         // Learned on the audio thread; written by the message thread.
         midiMapDirty_.store(true, std::memory_order_release);
         continue;
       }
-      if (value == 0) continue;
+      if (value == 0 || bankSelect) continue;
     }
 
     const MidiAction action = midiMap_.actionFor(source, value);
