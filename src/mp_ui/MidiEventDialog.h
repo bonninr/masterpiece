@@ -42,6 +42,9 @@ public:
   // The rest of an object's mapping, for the same headers: each message it
   // sends ("Sends Note 36 ch 2") and each key ("Key ctrl + Q").
   static juce::StringArray sendAndKeyLines(const MidiMap& map, MidiTargetKind kind, Id id);
+  // "Held while pressed" needs a release: a note off, a controller back at 0.
+  // A program change or a system exclusive message has none.
+  static bool heldOffered(MidiTargetKind kind, MidiSourceKind source);
 
   // The Send tab on its own, for the manual window.
   static std::unique_ptr<juce::Component> makeSendPanel(MasterpieceProcessor& p,

@@ -427,6 +427,9 @@ struct Switch {
   // between two manuals, which the organ's own definition does not name.
   // The editor and the stop counts tell them apart from the organ's own.
   bool programProvided = false;
+  // A program coupler that carries only the lowest or the highest key held:
+  // the player's bass and melody couplers.
+  bool bassOrMelody = false;
   // How this switch appears on the console: which drawn instance it owns, and
   // which frame of that instance's image set means on and off. This is the
   // whole mechanism behind a drawstop that moves when you click it.

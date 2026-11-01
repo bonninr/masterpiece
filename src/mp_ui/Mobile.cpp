@@ -598,6 +598,20 @@ juce::Component* dialogCentreFor(const juce::TopLevelWindow* active) {
   return active == nullptr || active->isAlwaysOnTop() ? dialogCentre() : nullptr;
 }
 
+juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectangle<int> own,
+                                        juce::Rectangle<int> screen) {
+  // Never smaller than the dialog's own size: the MIDI windows share one
+  // remembered size, and a manual's narrower window left a drawstop's rows
+  // without their Listen and X buttons (#565).
+  int w = juce::jmax(saved.getWidth(), own.getWidth());
+  int h = juce::jmax(saved.getHeight(), own.getHeight());
+  if (!screen.isEmpty()) {
+    w = juce::jmin(w, screen.getWidth());
+    h = juce::jmin(h, screen.getHeight());
+  }
+  return {w, h};
+}
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
     options.useNativeTitleBar = false;
@@ -624,10 +638,9 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     const auto saved = savedDialogSize(kind);
     if (!saved.isEmpty()) {
       const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(dialog->getScreenBounds());
-      const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>(saved.getWidth(), saved.getHeight());
-      dialog->centreAroundComponent(options.componentToCentreAround,
-                                    juce::jmin(saved.getWidth(), area.getWidth()),
-                                    juce::jmin(saved.getHeight(), area.getHeight()));
+      const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>();
+      const auto size = reopenedDialogSize(saved, dialog->getBounds(), area);
+      dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
     }
     dialog->addComponentListener(new SizeKeeper(kind));
   }

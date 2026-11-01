@@ -117,6 +117,10 @@ constexpr bool kLiveOnTop = true;
 // names nothing to centre on, opened while a window kept above the others is
 // active, is centred on the main window (setDialogCentre).
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
+// The size a resizable dialog opens at: the size it was last left at, never
+// smaller than its own, and no larger than `screen` when that is not empty.
+juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectangle<int> own,
+                                        juce::Rectangle<int> screen);
 // The main window, set by it: dialogs open in its middle, wherever the
 // Recorder or another window of the program is.
 void setDialogCentre(juce::Component* main);

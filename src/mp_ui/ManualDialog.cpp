@@ -114,7 +114,8 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     // Learning a manual is two presses: the ends of the range. Anything in
     // between follows, and the transpose is worked out from where the organ's
     // own compass starts.
-    proc_.beginKeyboardLearn(keyboardId_);
+    // The selected row is the one filled.
+    proc_.beginKeyboardLearn(keyboardId_, selected());
   };
 
   addAndMakeVisible(deviceLabel_);
@@ -242,6 +243,16 @@ void ManualDialog::applyEdits() {
 }
 
 void ManualDialog::timerCallback() {
+  // A learn ends on the MIDI side: the list shows its row as soon as it has.
+  const bool learning = proc_.keyboardLearning() == keyboardId_;
+  if (learning_ && !learning) {
+    const int row = selected();
+    list_.updateContent();
+    list_.selectRow(row >= 0 && row < model_->getNumRows() ? row : model_->getNumRows() - 1);
+    list_.repaint();
+  }
+  learning_ = learning;
+
   auto* bl = static_cast<BindingList*>(model_.get());
   const auto mine = bl->rows();
   const int row = selected();
@@ -345,8 +356,10 @@ public:
     title_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
 
     addAndMakeVisible(list_);
-    list_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
-    list_.setJustificationType(juce::Justification::topLeft);
+    addAndMakeVisible(empty_);
+    empty_.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
+    empty_.setJustificationType(juce::Justification::topLeft);
+    empty_.setText(TRANS("No pistons yet."), juce::dontSendNotification);
 
     addAndMakeVisible(add_);
     add_.onClick = [this] { start(); };
@@ -399,6 +412,8 @@ public:
     r.removeFromTop(8);
     note_.setBounds(r.removeFromBottom(110));
     list_.setBounds(r);
+    empty_.setBounds(r.removeFromTop(kRow));
+    layoutRows();
   }
 
 private:
@@ -446,23 +461,34 @@ private:
     }
   }
 
+  // A row per piston, each with its own X, as the MIDI window has (#565).
   void refresh() {
-    juce::String text;
-    int count = 0;
-    for (int ch = 1; ch <= 16; ++ch)
-      for (const MidiBinding* b : proc_.midiMap().bindingsFor(
-               MidiTargetKind::RouteKeyboard, routeKeyboardTarget(keyboardId_, ch))) {
-        text << (b->source.kind == MidiSourceKind::Note ? TRANS("Note %1") : TRANS("Controller %1"))
-                    .replace("%1", juce::String(b->source.number));
-        if (b->source.channel > 0) text << " " << TRANS("on channel %1").replace("%1", juce::String(b->source.channel));
-        text << "  "
-             << TRANS("brings the %1 to the keyboard on channel %2")
-                    .replace("%1", manual_)
-                    .replace("%2", juce::String(ch))
-             << "\n";
-        ++count;
+    rows_.clear();
+    for (int ch = 1; ch <= 16; ++ch) {
+      const Id target = routeKeyboardTarget(keyboardId_, ch);
+      for (const MidiBinding* b : proc_.midiMap().bindingsFor(MidiTargetKind::RouteKeyboard, target)) {
+        auto row = std::make_unique<PistonRow>();
+        row->text.setText(MidiEventDialog::describeBinding(*b) + "  " +
+                              TRANS("brings the %1 to the keyboard on channel %2")
+                                  .replace("%1", manual_)
+                                  .replace("%2", juce::String(ch)),
+                          juce::dontSendNotification);
+        row->remove.setTooltip(TRANS("Remove this piston"));
+        row->remove.onClick = [this, source = b->source, target] {
+          proc_.midiMap().unbindOne(source, MidiTargetKind::RouteKeyboard, target);
+          proc_.saveMidiMap();
+          // The button is in the row being removed.
+          juce::MessageManager::callAsync([safe = juce::Component::SafePointer(this)] {
+            if (safe != nullptr) safe->refresh();
+          });
+        };
+        list_.addAndMakeVisible(*row);
+        rows_.push_back(std::move(row));
       }
-    list_.setText(count == 0 ? TRANS("No pistons yet.") : text, juce::dontSendNotification);
+    }
+    const int count = static_cast<int>(rows_.size());
+    empty_.setVisible(count == 0);
+    layoutRows();
     remove_.setEnabled(count > 0 && step_ == Step::Idle);
     add_.setEnabled(step_ == Step::Idle);
     cancel_.setVisible(step_ != Step::Idle);
@@ -474,12 +500,34 @@ private:
                     juce::dontSendNotification);
   }
 
+  struct PistonRow : juce::Component {
+    PistonRow() {
+      addAndMakeVisible(text);
+      text.setColour(juce::Label::textColourId, juce::Colour(0xffdfe6f0));
+      addAndMakeVisible(remove);
+    }
+    void resized() override {
+      auto r = getLocalBounds().reduced(0, 2);
+      remove.setBounds(r.removeFromRight(28));
+      text.setBounds(r);
+    }
+    juce::Label text;
+    juce::TextButton remove{"X"};
+  };
+
+  void layoutRows() {
+    for (size_t i = 0; i < rows_.size(); ++i)
+      rows_[i]->setBounds(0, static_cast<int>(i) * kRow, list_.getWidth(), kRow);
+  }
+
   MasterpieceProcessor& proc_;
   Id keyboardId_;
   juce::String manual_;
   Step step_ = Step::Idle;
   int channel_ = 0;
-  juce::Label title_, list_, prompt_, note_;
+  juce::Component list_;
+  std::vector<std::unique_ptr<PistonRow>> rows_;
+  juce::Label title_, empty_, prompt_, note_;
   juce::TextButton add_{TRANS("Add a piston...")}, cancel_{TRANS("Cancel")}, remove_{TRANS("Remove all pistons")};
   juce::ToggleButton tab_{TRANS("It is a drawstop or tab: going on and going off both count")};
 };

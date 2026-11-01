@@ -182,26 +182,12 @@ public:
     event_.onChange = [this] {
       fillNumbers(number_, eventKind(event_.getSelectedId()), number_.getSelectedId() - 1,
                   kind_ == MidiTargetKind::ContinuousControl);
+      if (pressable(kind_)) fillActions(read().trigger);
       changed();
     };
 
-    if (kind == MidiTargetKind::Switch) {
-      action_.addItem(TRANS("Each press toggles"), 1);
-      action_.addItem(TRANS("Held while pressed"), 2);
-      action_.addItem(TRANS("Draws it"), 3);
-      action_.addItem(TRANS("Cancels it"), 4);
-    } else if (pressable(kind)) {
-      // A piston fires when pressed; the setter may also be worked by a
-      // button that toggles it, as its Learn menu offers.
-      action_.addItem(TRANS("Fires when pressed"), 2);
-      if (kind == MidiTargetKind::Setter) action_.addItem(TRANS("Each press toggles"), 1);
-    }
     if (pressable(kind)) {
-      action_.setSelectedId(b.trigger == MidiTrigger::Momentary     ? 2
-                            : b.trigger == MidiTrigger::EngageOnly    ? 3
-                            : b.trigger == MidiTrigger::DisengageOnly ? 4
-                                                                      : 1,
-                            juce::dontSendNotification);
+      fillActions(b.trigger);
       addAndMakeVisible(action_);
       action_.onChange = [this] { changed(); };
     } else {
@@ -286,6 +272,31 @@ private:
   void changed() {
     binding_ = read();
     if (onChange) onChange();
+  }
+
+  // The ways this row's message can work its target. A switch held by a
+  // message with no release would stay drawn, so it toggles.
+  void fillActions(MidiTrigger t) {
+    const auto source = event_.getSelectedId() > 0 ? eventKind(event_.getSelectedId())
+                                                   : MidiSourceKind::None;
+    action_.clear(juce::dontSendNotification);
+    if (kind_ == MidiTargetKind::Switch) {
+      action_.addItem(TRANS("Each press toggles"), 1);
+      if (MidiEventDialog::heldOffered(kind_, source)) action_.addItem(TRANS("Held while pressed"), 2);
+      action_.addItem(TRANS("Draws it"), 3);
+      action_.addItem(TRANS("Cancels it"), 4);
+    } else {
+      // A piston fires when pressed; the setter may also be worked by a
+      // button that toggles it, as its Learn menu offers.
+      action_.addItem(TRANS("Fires when pressed"), 2);
+      if (kind_ == MidiTargetKind::Setter) action_.addItem(TRANS("Each press toggles"), 1);
+    }
+    const int want = t == MidiTrigger::Momentary       ? 2
+                     : t == MidiTrigger::EngageOnly    ? 3
+                     : t == MidiTrigger::DisengageOnly ? 4
+                                                       : 1;
+    action_.setSelectedId(action_.indexOfItemId(want) >= 0 ? want : action_.getItemId(0),
+                          juce::dontSendNotification);
   }
 
   MidiTargetKind kind_;
@@ -425,7 +436,12 @@ private:
     MidiSource heard;
     int value = 0;
     if (proc_.takeHeardMidi(heard, value)) {
-      if (listening_ < static_cast<int>(rows_.size())) rows_[static_cast<size_t>(listening_)].source = heard;
+      if (listening_ < static_cast<int>(rows_.size())) {
+        auto& row = rows_[static_cast<size_t>(listening_)];
+        row.source = heard;
+        if (row.trigger == MidiTrigger::Momentary && !MidiEventDialog::heldOffered(kind_, heard.kind))
+          row.trigger = MidiTrigger::Toggle;
+      }
       listening_ = -1;
       commit();
       rebuild();
@@ -656,8 +672,9 @@ public:
         }
         if (b->source.channel > 0) s.channel = b->source.channel;
       }
+      // Kept, and sent from its first change: an unset row goes nowhere.
       rows_.push_back(s);
-      commit();
+      commit(true);
       rebuild();
     };
     addAndMakeVisible(empty_);
@@ -739,7 +756,7 @@ private:
     layoutList();
   }
 
-  void commit() { proc_.setObjectSends(kind_, id_, rows_); }
+  void commit(bool quietNew = false) { proc_.setObjectSends(kind_, id_, rows_, quietNew); }
 
   MasterpieceProcessor& proc_;
   MidiTargetKind kind_;
@@ -922,6 +939,11 @@ juce::String MidiEventDialog::switchName(const OrganModel& m, Id id) {
   const auto name = mp::switchLabel(m, id);
   if (!name.empty()) return juce::String(name);
   return TRANS("Switch %1").replace("%1", juce::String(static_cast<int>(id)));
+}
+
+bool MidiEventDialog::heldOffered(MidiTargetKind kind, MidiSourceKind source) {
+  return kind == MidiTargetKind::Switch && source != MidiSourceKind::ProgramChange &&
+         source != MidiSourceKind::SysEx;
 }
 
 juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {

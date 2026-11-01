@@ -576,6 +576,10 @@ public:
   bool hasChannelBinding(int deviceId, int channel) const;
 
   void addKeyboardBinding(const KeyboardBinding& b);
+  // A keyboard's `row`th binding, counted in the order keyboardBindings()
+  // lists that keyboard's, or null. Replaced in place, so nothing allocates.
+  const KeyboardBinding* keyboardBindingAt(Id keyboardId, int row) const;
+  bool replaceKeyboardBinding(Id keyboardId, int row, const KeyboardBinding& b);
   void removeKeyboardBindingsFor(Id keyboardId);  // Drop every claim on this channel from a DIFFERENT keyboard, for the same
   // console. Two manuals on one channel make one of them unreachable, and
   // nothing on screen says which, so an assignment takes the channel rather
