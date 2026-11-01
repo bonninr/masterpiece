@@ -672,8 +672,9 @@ public:
         }
         if (b->source.channel > 0) s.channel = b->source.channel;
       }
+      // Kept, and sent from its first change: an unset row goes nowhere.
       rows_.push_back(s);
-      commit();
+      commit(true);
       rebuild();
     };
     addAndMakeVisible(empty_);
@@ -755,7 +756,7 @@ private:
     layoutList();
   }
 
-  void commit() { proc_.setObjectSends(kind_, id_, rows_); }
+  void commit(bool quietNew = false) { proc_.setObjectSends(kind_, id_, rows_, quietNew); }
 
   MasterpieceProcessor& proc_;
   MidiTargetKind kind_;

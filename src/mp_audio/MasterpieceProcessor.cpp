@@ -9173,7 +9173,9 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     else
       continue;
     if (now == sentValues_[i]) continue;
+    const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
+    if (quiet) continue;
     if (s.kind == MidiSourceKind::SysEx) {
       // A whole message of its own for each state; a control has none.
       if (s.targetKind == MidiTargetKind::ContinuousControl) continue;
@@ -9230,11 +9232,24 @@ void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
 }
 
 void MasterpieceProcessor::setObjectSends(MidiTargetKind kind, Id id,
-                                          const std::vector<MidiSend>& rows) {
+                                          const std::vector<MidiSend>& rows, bool quietNew) {
   {
     const AudioLock lock(*this);
+    const std::vector<MidiSend> before = midiMap_.sends();
+    const std::vector<int> sentBefore = sentValues_;
     midiMap_.setSendsFor(kind, id, rows);
-    sentValues_.clear();
+    const auto& after = midiMap_.sends();
+    // Each row keeps what it last sent, matched by its whole message; a row
+    // with no match is new or changed.
+    sentValues_.assign(after.size(), quietNew ? kTakeStateQuietly : -1);
+    std::vector<bool> used(before.size(), false);
+    for (size_t i = 0; i < after.size(); ++i)
+      for (size_t j = 0; j < before.size(); ++j)
+        if (!used[j] && before[j] == after[i]) {
+          used[j] = true;
+          sentValues_[i] = j < sentBefore.size() ? sentBefore[j] : -1;
+          break;
+        }
   }
   saveMidiMap();
 }
