@@ -14642,6 +14642,71 @@ public:
   }
 };
 static DrawnKeyChannelTest g_drawnKeyChannels;
+
+// Learn from a key fills the row the player selected, and keeps that row's
+// velocity settings; the manual's other rows stay (#565). It used to replace
+// every row with the learned one.
+class KeyboardLearnRowTest final : public mp::test::Test {
+public:
+  KeyboardLearnRowTest() : Test("functional.midi.keyboard-learn-row", Category::Functional) {}
+  void run() override {
+    const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("mp-keyboard-learn-row");
+    dir.createDirectory();
+    const juce::File odf = DefaultConsoleTest::organ(dir, "LearnRow", 918273652);
+    mp::MasterpieceProcessor proc;
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    proc.prepareToPlay(48000.0, 64);
+
+    mp::MidiMap::KeyboardBinding first;
+    first.keyboardId = 2;
+    first.channel = 3;
+    mp::MidiMap::KeyboardBinding second = first;
+    second.channel = 4;
+    second.lowVelocity = 10;
+    second.debounceMs = 7;
+    proc.midiMap().removeKeyboardBindingsFor(2);
+    proc.midiMap().addKeyboardBinding(first);
+    proc.midiMap().addKeyboardBinding(second);
+    MP_CHECK(proc.midiMap().keyboardBindingAt(2, 1) != nullptr &&
+                 proc.midiMap().keyboardBindingAt(2, 1)->channel == 4 &&
+                 proc.midiMap().keyboardBindingAt(2, 2) == nullptr &&
+                 proc.midiMap().keyboardBindingAt(2, -1) == nullptr,
+             "the rows are counted among this manual's");
+
+    auto press = [&](int channel, int note) {
+      juce::AudioBuffer<float> audio(2, 64);
+      juce::MidiBuffer midi;
+      midi.addEvent(juce::MidiMessage::noteOn(channel, note, 0.8f), 0);
+      proc.processBlock(audio, midi);
+    };
+    proc.beginKeyboardLearn(2, 1);
+    press(9, 48);
+    press(9, 72);
+    MP_CHECK(proc.keyboardLearning() == 0, "two presses finish the learn");
+    const auto* a = proc.midiMap().keyboardBindingAt(2, 0);
+    const auto* b = proc.midiMap().keyboardBindingAt(2, 1);
+    MP_CHECK(a != nullptr && a->channel == 3, "the first row stays");
+    MP_CHECK(b != nullptr && b->channel == 9 && b->lowKey == 48 && b->highKey == 72,
+             "the selected row takes the learned channel and keys");
+    MP_CHECK(b != nullptr && b->lowVelocity == 10 && b->debounceMs == 7,
+             "and keeps its velocity and debounce");
+
+    proc.beginKeyboardLearn(2);
+    press(5, 36);
+    press(5, 60);
+    MP_CHECK(proc.midiMap().keyboardBindingAt(2, 0) != nullptr &&
+                 proc.midiMap().keyboardBindingAt(2, 0)->channel == 5 &&
+                 proc.midiMap().keyboardBindingAt(2, 1) == nullptr,
+             "with no row selected, the learned row is the manual's only");
+    proc.releaseResources();
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.midiMapFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static KeyboardLearnRowTest g_keyboardLearnRow;
 #endif
 
 #ifdef MP_TEST_HAS_AUDIO
