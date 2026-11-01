@@ -40,6 +40,10 @@ void Layout::normalize() {
   bass.topKey = clampInt(bass.topKey, 0, 127);
   if (static_cast<int>(bass.sustain) > static_cast<int>(Sustain::Timed)) bass.sustain = Sustain::Off;
   bass.sustainMs = clampInt(bass.sustainMs, 50, 10000);
+  melody.bottomKey = clampInt(melody.bottomKey, 0, 127);
+  // The bass and the melody take keys of their own: one key giving both
+  // would have two reasons to be silent on its manual.
+  if (bass.on && melody.on && melody.bottomKey <= bass.topKey) melody.bottomKey = std::min(127, bass.topKey + 1);
 }
 
 Layout factoryLayout(int index) {
@@ -299,6 +303,8 @@ void SplitKeyboard::releaseAll() {
   pedalKey_ = -1;
   pedalHeld_ = false;
   pedalUntilMs_ = -1.0;
+  soloNote_ = -1;
+  soloKey_ = -1;
   changed_ = true;
 }
 
@@ -316,6 +322,12 @@ int SplitKeyboard::lowestHeldUpTo(int top) const {
   return -1;
 }
 
+int SplitKeyboard::highestHeldFrom(int bottom) const {
+  for (int n = 127; n >= bottom && n >= 0; --n)
+    if (held_[n]) return n;
+  return -1;
+}
+
 void SplitKeyboard::keyOn(int note, int velocity) {
   held_[note] = true;
   velocity_[note] = static_cast<uint8_t>(velocity);
@@ -327,12 +339,19 @@ void SplitKeyboard::keyOn(int note, int velocity) {
 
   const Bass& bass = layout_.bass;
   const bool inBass = bass.on && note <= bass.topKey;
+  const Melody& melody = layout_.melody;
+  const bool inMelody = melody.on && note >= melody.bottomKey;
   sent_[note] = Sent{};
   // The bass key plays only the pedal when the layout says so; it is the bass
-  // key if it is the lowest held in the bass range.
-  if (inBass && !bass.alsoOnManual && lowestHeldUpTo(bass.topKey) == note) sent_[note].silentOnManual = true;
-  else soundOnManual(note);
+  // key if it is the lowest held in the bass range. The melody key likewise,
+  // the highest held in the melody range, with the solo.
+  if ((inBass && !bass.alsoOnManual && lowestHeldUpTo(bass.topKey) == note) ||
+      (inMelody && !melody.alsoOnManual && highestHeldFrom(melody.bottomKey) == note))
+    sent_[note].silentOnManual = true;
+  else
+    soundOnManual(note);
   if (inBass) updateBass();
+  if (inMelody) updateMelody();
   changed_ = true;
 }
 
@@ -362,6 +381,7 @@ void SplitKeyboard::keyOff(int note) {
   sent_[note] = Sent{};
   zoneOfKey_[note] = -1;
   if (layout_.bass.on && note <= layout_.bass.topKey) updateBass();
+  if (layout_.melody.on && note >= layout_.melody.bottomKey) updateMelody();
   if (followedSplit_ >= 0 && std::none_of(std::begin(held_), std::end(held_), [](bool h) { return h; }))
     followUntilMs_ = nowMs_ + kFollowHoldMs;
   changed_ = true;
@@ -405,6 +425,32 @@ void SplitKeyboard::pedalOff() {
   sendOff(Role::Pedal, pedalNote_);
   pedalNote_ = -1;
   pedalUntilMs_ = -1.0;
+}
+
+void SplitKeyboard::updateMelody() {
+  const int high = highestHeldFrom(layout_.melody.bottomKey);
+  // A key that gave the melody and no longer does, still held, plays its
+  // manual again: a chord pressed from the bottom up keeps its notes.
+  if (soloKey_ >= 0 && soloKey_ != high && held_[soloKey_] && sent_[soloKey_].silentOnManual)
+    soundOnManual(soloKey_);
+  soloKey_ = high;
+  const int target = high + layout_.transpose;
+  if (high < 0 || target < 0 || target > 127) {
+    soloOff();
+    return;
+  }
+  // A new solo note only when the highest key changes.
+  if (target != soloNote_) {
+    soloOff();
+    sendOn(Role::Solo, target, velocity_[high]);
+    soloNote_ = target;
+  }
+}
+
+void SplitKeyboard::soloOff() {
+  if (soloNote_ < 0) return;
+  sendOff(Role::Solo, soloNote_);
+  soloNote_ = -1;
 }
 
 void SplitKeyboard::followHands() {
@@ -454,6 +500,7 @@ void SplitKeyboard::publish() {
   s.preset = preset_;
   s.firstSplit = followedSplit_ >= 0 ? followedSplit_ : layout_.splits[0];
   s.pedalNote = pedalNote_;
+  s.soloNote = soloNote_;
   s.held[0] = s.held[1] = 0;
   for (int n = 0; n < 128; ++n) {
     if (held_[n]) s.held[n / 64] |= uint64_t{1} << (n % 64);

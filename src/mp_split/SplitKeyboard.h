@@ -17,6 +17,9 @@
 //   up to a chosen key plays the pedal, one note at a time. The key sounds on
 //   its manual too, or only in the pedal. The pedal note can hold after the
 //   hand lifts, until the next bass note or for a set time.
+// - Melody from the hands: the highest key held from a chosen key up plays
+//   the solo, one note at a time. The key sounds on its manual too, or only
+//   in the solo.
 //
 // Presets: nine slots shared by every organ. The first three are the factory
 // layouts and cannot be changed; the others are the player's own. Recalling a
@@ -70,6 +73,13 @@ struct Bass {
   bool operator==(const Bass&) const = default;
 };
 
+struct Melody {
+  bool on = false;
+  int bottomKey = 60;  // the melody is taken from this key to the top of the keyboard
+  bool alsoOnManual = true;
+  bool operator==(const Melody&) const = default;
+};
+
 constexpr int kMaxSplits = 3;
 constexpr int kMaxZones = kMaxSplits + 1;
 
@@ -81,6 +91,7 @@ struct Layout {
   int transpose = 0;  // all zones and the bass, -12..12
   bool followHands = false;
   Bass bass;
+  Melody melody;
   bool operator==(const Layout&) const = default;
 
   // The zone a key falls in, with the first split point at `firstSplit`.
@@ -145,6 +156,7 @@ struct State {
   int preset = -1;        // the preset last recalled and not changed since, or -1
   int firstSplit = 60;    // where the first split point is now, hands followed
   int pedalNote = -1;     // the note the bass sends to the pedal, or -1
+  int soloNote = -1;      // the note the melody sends to the solo, or -1
   uint64_t held[2] = {};  // source keys down
   // Per key, the zone it went to when pressed, +1; 0 when not held.
   uint8_t zoneOfKey[128] = {};
@@ -209,7 +221,7 @@ private:
   struct Sent {
     Role role[2] = {Role::None, Role::None};
     uint8_t note[2] = {0, 0};
-    bool silentOnManual = false;  // the bass key, playing only the pedal
+    bool silentOnManual = false;  // the bass or melody key, playing only the pedal or the solo
   };
 
   void applyLayout(const Layout& l, int preset, bool fromAudio);
@@ -225,12 +237,15 @@ private:
   void soundOnManual(int note);
   void pedalOn(int note, int velocity);
   void pedalOff();
+  void updateMelody();
+  void soloOff();
   void followHands();
   bool matchTrigger(int device, uint8_t status, uint8_t d1, uint8_t d2);
   void doControl(int control);
   void publish();
   void emit(uint8_t status, uint8_t d1, uint8_t d2);
   int lowestHeldUpTo(int top) const;
+  int highestHeldFrom(int bottom) const;
 
   // Mailboxes in.
   struct Choice {
@@ -272,6 +287,8 @@ private:
   int pedalKey_ = -1;  // the source key giving the bass
   bool pedalHeld_ = false;       // a bass key is down
   double pedalUntilMs_ = -1.0;   // a timed sustain ends here
+  int soloNote_ = -1;
+  int soloKey_ = -1;  // the source key giving the melody
   int followedSplit_ = -1;       // the first split point the hands moved, or -1
   double followUntilMs_ = -1.0;
 

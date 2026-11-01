@@ -169,6 +169,62 @@ public:
 };
 static SplitBassTest g_splitBass;
 
+class SplitMelodyTest final : public mp::test::Test {
+public:
+  SplitMelodyTest() : Test("functional.split.melody-from-the-hands", Category::Functional) {}
+  void run() override {
+    // One manual for the whole keyboard; the highest key from C4 up plays
+    // the solo too.
+    Layout l;
+    l.splitCount = 0;
+    l.zones[0].role = Role::Upper;
+    l.melody = {true, 60, true};
+    Rig r(l);
+    auto o = r.on(64);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 64, true}, {kSolo, 64, true}}),
+             "the highest right-hand key plays the solo too: " + show(o));
+    o = r.on(60);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 60, true}}), "a key below it does not: " + show(o));
+    o = r.on(48);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 48, true}}), "nor a key below the melody range: " + show(o));
+    o = r.on(67);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 67, true}, {kSolo, 64, false}, {kSolo, 67, true}}),
+             "a higher key takes the solo, one note at a time: " + show(o));
+    o = r.off(67);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 67, false}, {kSolo, 67, false}, {kSolo, 64, true}}),
+             "and gives it back to the highest still held: " + show(o));
+    o = r.off(60);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 60, false}}), "the highest unchanged, the solo is not struck: " + show(o));
+    o = r.off(64);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 64, false}, {kSolo, 64, false}}), "it ends with the key: " + show(o));
+    o = r.off(48);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 48, false}}), show(o));
+
+    // Only in the solo: a chord plays its manual, its top note the solo.
+    l.melody.alsoOnManual = false;
+    Rig s(l);
+    o = s.on(64);
+    MP_CHECK(o == std::vector<Out>({{kSolo, 64, true}}), "the melody key plays only the solo: " + show(o));
+    o = s.on(60);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 60, true}}), "the keys below it play the manual: " + show(o));
+    o = s.on(72);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 64, true}, {kSolo, 64, false}, {kSolo, 72, true}}),
+             "a higher melody: the former melody key, still held, plays its manual: " + show(o));
+
+    // With the bass on too, each takes keys of its own.
+    Layout both = mp::split::factoryLayout(1);  // bass up to B3
+    both.melody = {true, 40, true};
+    both.normalize();
+    MP_CHECK(both.melody.bottomKey == 60, "the melody starts above the bass: " + std::to_string(both.melody.bottomKey));
+
+    // Off, nothing is sent to the solo.
+    Rig off(twoManuals());
+    o = off.on(72);
+    MP_CHECK(o == std::vector<Out>({{kUpper, 72, true}}), "off, the solo stays silent: " + show(o));
+  }
+};
+static SplitMelodyTest g_splitMelody;
+
 class SplitSustainTest final : public mp::test::Test {
 public:
   SplitSustainTest() : Test("functional.split.pedal-sustain", Category::Functional) {}
@@ -325,6 +381,7 @@ public:
     l.transpose = 2;
     l.followHands = true;
     l.bass = {true, 57, false, mp::split::Sustain::Timed, 900};
+    l.melody = {true, 67, false};
     Layout back;
     int preset = -1;
     mp::split::organFromText(mp::split::organToText(l, 2), back, preset);
@@ -351,6 +408,7 @@ public:
     MP_CHECK(odd.splits[0] == 40 && odd.splits[1] == 41 && odd.splits[2] == 90 && odd.zones[1].layer == Role::None &&
                  odd.zones[1].octave == 3 && odd.zones[1].transpose == -12,
              "a file out of range is brought into it");
+    MP_CHECK(!odd.melody.on, "a file written before the melody leaves it off");
   }
 };
 static SplitTextTest g_splitText;
