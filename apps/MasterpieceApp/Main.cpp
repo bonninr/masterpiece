@@ -24,6 +24,7 @@
 #include "../../src/mp_ui/UpdateCheck.h"
 #include "../../src/mp_ui/Wizard.h"
 #include "JackMidi.h"
+#include "ProfileTraining.h"
 #include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
 #if MP_ENABLE_API
@@ -211,6 +212,8 @@ public:
           "                           OrganInstallationPackages\n"
           "  --log-touches            log every press and what took it\n"
           "  --version                print the version and quit\n"
+          "  --train-profile          play a built-in exercise offline and quit\n"
+          "                           (the training run of a profile-guided build)\n"
           "  -h, --help               print this and quit\n";
       std::cout.flush();
       juce::JUCEApplication::getInstance()->setApplicationReturnValue(0);
@@ -220,6 +223,13 @@ public:
     if (args.contains("--version")) {
       std::cout << "Masterpiece " << MP_VERSION << std::endl;
       juce::JUCEApplication::getInstance()->setApplicationReturnValue(0);
+      quit();
+      return;
+    }
+    // The profile-guided build plays this exercise in the instrumented
+    // program, which is the only way MSVC's profile reaches the program.
+    if (args.contains("--train-profile")) {
+      juce::JUCEApplication::getInstance()->setApplicationReturnValue(mp::app::trainProfile());
       quit();
       return;
     }

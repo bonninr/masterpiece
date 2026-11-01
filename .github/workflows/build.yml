@@ -212,13 +212,76 @@ jobs:
           cmake --preset ${{ matrix.preset }}
           -DMP_BUILD_PLUGIN=OFF
           -DMP_ENABLE_LTO=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }}
+          -DMP_PGO=GENERATE
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
           ${{ matrix.cmake_extra }}
 
-      - name: Build
+      # Profile-guided: this first build is instrumented, the training runs
+      # it, and the build after the training uses what it recorded.
+      - name: Build (instrumented)
         run: cmake --build --preset ${{ matrix.preset }}
+
+      # The cross-built ARM binaries train under emulation, on this runner.
+      - name: Emulation
+        if: runner.os == 'Linux' && matrix.arm
+        uses: docker/setup-qemu-action@v3
+
+      # The test suite exercises the engine in every shape of work, and
+      # --train-profile plays an organ through the program itself, which is
+      # the only training that reaches the program on MSVC. Under emulation
+      # the suite runs without its perf group, which would take most of an
+      # hour there. The suite's own verdict is the run after the second
+      # build; here it only trains.
+      - name: Profile training
+        shell: bash
+        # An instrumented MSVC program that cannot find the profiling runtime
+        # waits on a message box; the time limit ends the job in that case.
+        timeout-minutes: 40
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/build/${{ matrix.preset }}/pgo/%p-%m.profraw
+        run: |
+          B=build/${{ matrix.preset }}
+          TESTS=$(find $B/tests -name 'mp_tests*' -type f | head -1)
+          test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
+          case "${{ matrix.debarch }}" in
+            arm64) export LD_LIBRARY_PATH=/usr/aarch64-linux-gnu/lib:/usr/lib/aarch64-linux-gnu ;;
+            armhf) export LD_LIBRARY_PATH=/usr/arm-linux-gnueabihf/lib:/usr/lib/arm-linux-gnueabihf ;;
+          esac
+          start=$SECONDS
+          if [ -n "${{ matrix.arm }}" ]; then
+            "$TESTS" --no-perf > train-tests.log 2>&1 || echo "training: some tests failed"
+          else
+            "$TESTS" > train-tests.log 2>&1 || echo "training: some tests failed"
+          fi
+          tail -3 train-tests.log
+          echo "test suite: $((SECONDS - start)) s"
+          start=$SECONDS
+          apps=$B/apps/MasterpieceApp/MasterpieceApp_artefacts/Release
+          case "${{ runner.os }}" in
+            Windows) "$apps/Masterpiece.exe" --train-profile ;;
+            macOS)   "$apps/Masterpiece.app/Contents/MacOS/Masterpiece" --train-profile ;;
+            Linux)
+              if [ -z "${{ matrix.arm }}" ]; then
+                xvfb-run -a "$apps/Masterpiece" --train-profile
+              fi ;;
+          esac
+          echo "program: $((SECONDS - start)) s"
+          if [ "${{ runner.os }}" = macOS ]; then
+            xcrun llvm-profdata merge -output=$B/pgo/default.profdata $B/pgo/*.profraw
+          fi
+          case "${{ runner.os }}" in
+            Linux)   echo "$(find $B/pgo -name '*.gcda' | wc -l) profile files" ;;
+            Windows) find $B -name '*.pgc' ;;
+            macOS)   ls -l $B/pgo/default.profdata ;;
+          esac
+
+      - name: Build (profile-guided)
+        shell: bash
+        run: |
+          cmake --preset ${{ matrix.preset }} -DMP_PGO=USE
+          cmake --build --preset ${{ matrix.preset }}
 
       # The suite needs no sample library and runs in about a second, so every
       # target that can execute its own build runs it. The cross-built ARM jobs
@@ -399,10 +462,6 @@ jobs:
 
       # The ARM packages are installed in an emulated container of their own
       # architecture, which is the only honest test of their dependency list.
-      - name: Emulation for the ARM package test
-        if: runner.os == 'Linux' && matrix.arm
-        uses: docker/setup-qemu-action@v3
-
       - name: Package test (Linux .deb)
         if: runner.os == 'Linux'
         run: |
