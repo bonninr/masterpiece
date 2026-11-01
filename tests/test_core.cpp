@@ -18572,6 +18572,9 @@ public:
     fs::remove(base / "Composite" / "joined-packages.txt");
     load({}, [&] { return std::string(); });
     MP_CHECK(asked == 2 && !unreported, "played without it when the player says so, and the package reported");
+    load({}, [&] { return std::string(); });
+    MP_CHECK(asked == 2, "and that answer is kept: not asked again");
+    MP_CHECK(fs::remove(base / "Composite" / "packages-played-without.txt"), "kept beside the organ");
 
     // Four levels below the folder beside the organ: further than the search goes.
     const fs::path installed = base / "Beside" / "deep" / "far" / "Installed";
@@ -18704,6 +18707,12 @@ public:
       proc.processBlock(buf, none);
     }
     MP_CHECK(proc.voiceStats().activeVoices == 1, "and the shipped pipe sounds");
+
+    // "Play without it" is kept for the organ: the next load asks nothing.
+    asked.clear();
+    const auto again = proc.loadOrgan(odfFile, 0, false);
+    proc.settingsFileFor(odfFile).deleteFile();
+    MP_CHECK(again.ok && asked.empty(), "played without once, the package is not asked for again");
     fs::remove_all(base, ec);
   }
 };
