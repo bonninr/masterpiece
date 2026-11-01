@@ -7,7 +7,9 @@
 #include "Mobile.h"
 #include "../mp_audio/SettingsArchive.h"
 
+#include <map>
 #include <unordered_set>
+#include <utility>
 
 namespace mp::ui {
 
@@ -133,8 +135,49 @@ void MasterpieceEditor::copySettingsFrom() {
     juce::ToggleButton midi{TRANS("MIDI map")}, combinations{TRANS("Combinations")},
         voicing{TRANS("Mixer and voicing")};
   };
+  // Each organ by its name and definition file, as Open shows a favourite:
+  // from its settings when they record them, else from a favourite or a
+  // definition in a sample library whose file the key belongs to, else by
+  // its key. Settings saved before they recorded the name have only the key.
+  std::map<juce::String, std::pair<juce::String, juce::File>> known;
+  bool knownRead = false;
+  juce::StringArray shown;
+  for (const auto& key : sources) {
+    auto label = sa::organLabel(root, key);
+    if (label.definition == juce::File()) {
+      if (!knownRead) {
+        knownRead = true;
+        const auto& bank = proc_.favourites().organs;
+        for (int slot : bank.used()) {
+          const juce::File f(juce::String::fromUTF8(bank.at(slot).target.c_str()));
+          if (f.existsAsFile())
+            known.emplace(juce::String(MasterpieceProcessor::organKeyFor(f)),
+                          std::make_pair(juce::String::fromUTF8(bank.at(slot).name.c_str()), f));
+        }
+        for (const auto& lib : proc_.sampleLibraries())
+          for (const auto& f : lib.getChildFile("OrganDefinitions")
+                                   .findChildFiles(juce::File::findFiles, false, "*.Organ_Hauptwerk_xml")) {
+            std::string name;
+            const auto k = juce::String(MasterpieceProcessor::organKeyFor(f, &name));
+            known.emplace(k, std::make_pair(juce::String::fromUTF8(name.c_str()), f));
+          }
+      }
+      if (const auto it = known.find(key); it != known.end()) {
+        if (label.name.isEmpty()) label.name = it->second.first;
+        label.definition = it->second.second;
+      }
+    }
+    juce::String text = label.name.isNotEmpty() ? label.name : key;
+    if (label.definition != juce::File()) text << " - " << label.definition.getFileName();
+    shown.add(text);
+  }
+  // Two the same, the key tells them apart.
+  const juce::StringArray plain = shown;
+  for (int i = 0; i < plain.size(); ++i)
+    if (plain.indexOf(plain[i]) != i || plain.indexOf(plain[i], false, i + 1) >= 0) shown.set(i, plain[i] + " (" + sources[i] + ")");
+
   auto d = std::make_shared<Dialog>();
-  d->window.addComboBox("from", sources, TRANS("From"));
+  d->window.addComboBox("from", shown, TRANS("From"));
   for (auto* t : {&d->midi, &d->combinations, &d->voicing}) {
     t->setToggleState(true, juce::dontSendNotification);
     t->setSize(320, 26);
@@ -144,9 +187,10 @@ void MasterpieceEditor::copySettingsFrom() {
   d->window.addButton(TRANS("Cancel"), 0, juce::KeyPress(juce::KeyPress::escapeKey));
   juce::Component::SafePointer<MasterpieceEditor> self(this);
   d->window.enterModalState(
-      true, juce::ModalCallbackFunction::create([self, d, sources, to, root](int result) {
+      true, juce::ModalCallbackFunction::create([self, d, sources, shown, to, root](int result) {
         if (self == nullptr || result != 1) return;
-        const juce::String from = sources[d->window.getComboBoxComponent("from")->getSelectedItemIndex()];
+        const int chosen = d->window.getComboBoxComponent("from")->getSelectedItemIndex();
+        const juce::String from = sources[chosen], fromShown = shown[chosen];
         const int parts = (d->midi.getToggleState() ? sa::MidiMap : 0) |
                           (d->combinations.getToggleState() ? sa::Combinations : 0) |
                           (d->voicing.getToggleState() ? sa::MixerAndVoicing : 0);
@@ -177,7 +221,7 @@ void MasterpieceEditor::copySettingsFrom() {
         juce::AlertWindow::showOkCancelBox(
             juce::MessageBoxIconType::QuestionIcon, TRANS("Copy settings from another organ"),
             TRANS("Copy from %1 to this organ? What this organ has now is saved in the backups folder first.")
-                    .replace("%1", from) +
+                    .replace("%1", fromShown) +
                 fit,
             TRANS("Copy"), TRANS("Cancel"), nullptr,
             juce::ModalCallbackFunction::create([self, from, to, parts, root](int choice) {

@@ -864,8 +864,9 @@ public:
   // wall of hex.
   std::string organKey() const;
   // The same, for an organ that has not been loaded yet: reads only the
-  // _General table, which is the first thing in the file.
-  static std::string organKeyFor(const juce::File& odf);
+  // _General table, which is the first thing in the file. The organ's own
+  // name goes to `name` when one is asked for.
+  static std::string organKeyFor(const juce::File& odf, std::string* name = nullptr);
 
   // Where one of an organ's files lives, adopting the older filename-based
   // name when that is what is on disk.

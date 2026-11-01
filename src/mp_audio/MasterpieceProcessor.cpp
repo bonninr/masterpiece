@@ -1612,7 +1612,7 @@ std::string MasterpieceProcessor::organKey() const {
          "-" + pathHash(loadedOdf_);
 }
 
-std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
+std::string MasterpieceProcessor::organKeyFor(const juce::File& odf, std::string* name) {
   // Only the header is needed, and _General is the first table in the file —
   // so this does not pay for parsing a 60 000-row Sample table just to find
   // out where the settings live.
@@ -1621,8 +1621,9 @@ std::string MasterpieceProcessor::organKeyFor(const juce::File& odf) {
   opts.headerOnly = true;
   OrganModel m;
   OdfDiagnostics d;
-  if (loader.load(odf.getFullPathName().toStdString(), opts, m, d) &&
-      m.uniqueOrganId != 0)
+  const bool loaded = loader.load(odf.getFullPathName().toStdString(), opts, m, d);
+  if (name != nullptr) *name = m.organName;
+  if (loaded && m.uniqueOrganId != 0)
     return sanitise(m.organName) + "-" + std::to_string(m.uniqueOrganId);
   return sanitise(m.organName.empty()
                       ? odf.getFileNameWithoutExtension().toStdString()
@@ -2159,6 +2160,10 @@ bool MasterpieceProcessor::saveSettings() const {
   f.getParentDirectory().createDirectory();
 
   juce::String text = "# Masterpiece per-organ settings\n";
+  // Which organ these are, for a list of organs to show it by its name and
+  // definition file (Copy settings from another organ). Read by nothing else.
+  text << "organname " << juce::String::fromUTF8(model_.organName.c_str()) << "\n";
+  text << "definition " << loadedOdf_.getFullPathName() << "\n";
   text << settingsBody();
   text << rememberedStateLines();
   for (const auto& [id, on] : snapshotStates_)
