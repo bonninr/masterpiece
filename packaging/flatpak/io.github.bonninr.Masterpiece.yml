@@ -42,13 +42,10 @@ modules:
         sha256: 1e42b9fc4ad7db7befd414d45ab2f8a159c0b30fcd6eee452be662298766a849
 
   - name: masterpiece
-    buildsystem: cmake-ninja
-    builddir: true
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release
-      - -DMP_BUILD_PLUGIN=OFF
-      - -DMP_BUILD_TESTS=OFF
-      - -DMP_BUILD_VALIDATOR=OFF
+    # Profile-guided when CI asks for it (packaging/flatpak/build.sh).
+    buildsystem: simple
+    build-commands:
+      - sh packaging/flatpak/build.sh
     build-options:
       cxxflags: -I/app/include
       build-args:

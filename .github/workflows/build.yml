@@ -28,7 +28,10 @@ on:
       - 'ATTRIBUTION.md'
       - '.github/pages-downloads.py'
       - '.github/workflows/pages.yml'
+  # "labeled" too: the label "pgo" builds the pull request profile-guided
+  # (see PGO below). Any other label builds nothing.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths-ignore:
       - 'README.md'
       - 'COPYING'
@@ -41,13 +44,32 @@ on:
       - '.github/pages-downloads.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
+    inputs:
+      pgo:
+        description: Profile-guided
+        type: boolean
+        default: false
   # release.yml calls this rather than repeating the matrix, so a tagged
   # release is built by exactly the same steps as an ordinary push.
   workflow_call:
+    inputs:
+      pgo:
+        description: Profile-guided
+        type: boolean
+        default: true
+
+# Profile-guided builds take twice as long, so they run when asked for: a
+# release, a run started by hand with the box ticked, and a pull request
+# labelled "pgo" -- the last of a batch merged together, say. The build job
+# is then built instrumented, trained and built again with the profile.
+env:
+  PGO: ${{ inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') }}
 
 # Pushing twice in a minute should not pay for two builds of the older commit.
+# A label run has a group of its own, so labelling a pull request does not
+# cancel the build already running for it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.action == 'labeled' && format('-{0}', github.event.label.name) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -62,6 +84,7 @@ jobs:
   # A matrix's own include list cannot drop an entry by event, and a job's
   # if cannot read the matrix, hence a job to write the lists.
   targets:
+    if: github.event.action != 'labeled' || github.event.label.name == 'pgo'
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.lists.outputs.build }}
@@ -207,18 +230,90 @@ jobs:
       # no longer wait in line behind the program's.
       # Link-time optimisation on main and in releases; pull requests build
       # without it, which takes most of the link time out of every run.
+      # The ARM presets leave the test suite out; a profile-guided ARM build
+      # adds it back, for the training to run under emulation.
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}
           -DMP_BUILD_PLUGIN=OFF
           -DMP_ENABLE_LTO=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }}
+          -DMP_PGO=${{ env.PGO == 'true' && 'GENERATE' || '' }}
+          ${{ env.PGO == 'true' && matrix.arm && '-DMP_BUILD_TESTS=ON' || '' }}
           -DCMAKE_C_COMPILER_LAUNCHER=ccache
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           "-DMP_VEROVIO_CCACHE_DIR=${{ github.workspace }}/.ccache-verovio"
           ${{ matrix.cmake_extra }}
 
+      # Profile-guided (PGO above), this first build is instrumented, the
+      # training runs it, and the build after the training uses what it
+      # recorded.
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
+
+      # The cross-built ARM binaries train under emulation, on this runner,
+      # and their packages are tested in emulated containers further down.
+      - name: Emulation
+        if: runner.os == 'Linux' && matrix.arm
+        uses: docker/setup-qemu-action@v3
+
+      # The test suite exercises the engine in every shape of work, and
+      # --train-profile plays an organ through the program itself, which is
+      # the only training that reaches the program on MSVC. Under emulation
+      # the suite runs without its perf group, which would take most of an
+      # hour there. The suite's own verdict is the run after the second
+      # build; here it only trains.
+      - name: Profile training
+        if: env.PGO == 'true'
+        shell: bash
+        # An instrumented MSVC program that cannot find the profiling runtime
+        # waits on a message box; the time limit ends the job in that case.
+        timeout-minutes: 40
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/build/${{ matrix.preset }}/pgo/%p-%m.profraw
+        run: |
+          B=build/${{ matrix.preset }}
+          # By its exact name: MSVC's profile files sit beside it as mp_tests!1.pgc.
+          TESTS=$(find $B/tests -type f \( -name mp_tests -o -name mp_tests.exe \) | head -1)
+          test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
+          case "${{ matrix.debarch }}" in
+            arm64) export LD_LIBRARY_PATH=/usr/aarch64-linux-gnu/lib:/usr/lib/aarch64-linux-gnu ;;
+            armhf) export LD_LIBRARY_PATH=/usr/arm-linux-gnueabihf/lib:/usr/lib/arm-linux-gnueabihf ;;
+          esac
+          start=$SECONDS
+          if [ -n "${{ matrix.arm }}" ]; then
+            "$TESTS" --no-perf > train-tests.log 2>&1 || echo "training: some tests failed"
+          else
+            "$TESTS" > train-tests.log 2>&1 || echo "training: some tests failed"
+          fi
+          grep -F -A1 '[FAIL]' train-tests.log || true
+          tail -3 train-tests.log
+          echo "test suite: $((SECONDS - start)) s"
+          start=$SECONDS
+          apps=$B/apps/MasterpieceApp/MasterpieceApp_artefacts/Release
+          case "${{ runner.os }}" in
+            Windows) "$apps/Masterpiece.exe" --train-profile ;;
+            macOS)   "$apps/Masterpiece.app/Contents/MacOS/Masterpiece" --train-profile ;;
+            Linux)
+              if [ -z "${{ matrix.arm }}" ]; then
+                xvfb-run -a "$apps/Masterpiece" --train-profile
+              fi ;;
+          esac
+          echo "program: $((SECONDS - start)) s"
+          if [ "${{ runner.os }}" = macOS ]; then
+            xcrun llvm-profdata merge -output=$B/pgo/default.profdata $B/pgo/*.profraw
+          fi
+          case "${{ runner.os }}" in
+            Linux)   echo "$(find $B/pgo -name '*.gcda' | wc -l) profile files" ;;
+            Windows) find $B -name '*.pgc' ;;
+            macOS)   ls -l $B/pgo/default.profdata ;;
+          esac
+
+      - name: Build (profile-guided)
+        if: env.PGO == 'true'
+        shell: bash
+        run: |
+          cmake --preset ${{ matrix.preset }} -DMP_PGO=USE
+          cmake --build --preset ${{ matrix.preset }}
 
       # The suite needs no sample library and runs in about a second, so every
       # target that can execute its own build runs it. The cross-built ARM jobs
@@ -227,7 +322,7 @@ jobs:
         if: '!matrix.arm'
         shell: bash
         run: |
-          TESTS=$(find build/${{ matrix.preset }}/tests -name 'mp_tests*' -type f | head -1)
+          TESTS=$(find build/${{ matrix.preset }}/tests -type f \( -name mp_tests -o -name mp_tests.exe \) | head -1)
           test -n "$TESTS" || { echo "the test suite was not built"; exit 1; }
           "$TESTS" --no-perf
 
@@ -399,10 +494,6 @@ jobs:
 
       # The ARM packages are installed in an emulated container of their own
       # architecture, which is the only honest test of their dependency list.
-      - name: Emulation for the ARM package test
-        if: runner.os == 'Linux' && matrix.arm
-        uses: docker/setup-qemu-action@v3
-
       - name: Package test (Linux .deb)
         if: runner.os == 'Linux'
         run: |
@@ -513,6 +604,8 @@ jobs:
   # their own per job would not fit in the repository's cache allowance.
   plugins:
     needs: targets
+    # Not profile-guided, so the "pgo" label has nothing new for it to build.
+    if: github.event.action != 'labeled'
     strategy:
       fail-fast: false
       matrix:
@@ -631,13 +724,19 @@ jobs:
   # run in a sandbox. Built in the freedesktop SDK's own container from
   # packaging/flatpak; the bundle installs with "flatpak install".
   flatpak:
+    if: github.event.action != 'labeled' || github.event.label.name == 'pgo'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: ${{ (inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo')) && 180 || 90 }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
       options: --privileged
     steps:
       - uses: actions/checkout@v4
+
+      # packaging/flatpak/build.sh builds profile-guided when it finds this.
+      - name: Profile-guided
+        if: env.PGO == 'true'
+        run: touch .pgo
 
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
@@ -662,7 +761,7 @@ jobs:
   # iOS: the app for the simulator, unsigned. No release ships it yet, so a
   # tagged release skips it; on pull requests it keeps the iOS build honest.
   ios:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && github.event.action != 'labeled' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -761,6 +860,7 @@ jobs:
   # with their own Apple ID through AltStore or Sideloadly; nothing here needs
   # a developer account. Built on release tags too, and published with them.
   ios-device:
+    if: github.event.action != 'labeled'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -826,6 +926,7 @@ jobs:
   # will not publish an APK without it. The first step installs JUCE for the
   # runner itself (see android/README.md), which is what takes the time.
   android:
+    if: github.event.action != 'labeled'
     runs-on: ubuntu-22.04
     env:
       KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
