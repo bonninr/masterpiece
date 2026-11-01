@@ -455,6 +455,10 @@ if(MP_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
   add_subdirectory(tests)
 endif()
 
+include(cmake/MpPgo.cmake)
+mp_pgo(mp_core mp_sampler mp_control mp_dsp mp_audio mp_archive mp_split mp_score
+       MasterpieceApp mp_tests)
+
 # Installers (NSIS on Windows, .deb on Linux). See cmake/Packaging.cmake.
 if(NOT MP_MOBILE)
   include(cmake/Packaging.cmake)

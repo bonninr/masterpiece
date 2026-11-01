@@ -8,6 +8,13 @@ add_executable(mp_tests
   ${MP_TEST_SOURCES}
 )
 target_compile_features(mp_tests PRIVATE cxx_std_20)
+# Tests keep processors on the stack, several at once, where the program keeps
+# its one on the heap. Windows gives the main thread 1 MB, and a profile-guided
+# build that inlines a test's scopes into one frame outgrows it; Linux and
+# macOS give 8 MB, and so does this.
+if(MSVC)
+  target_link_options(mp_tests PRIVATE /STACK:8388608)
+endif()
 # mp_control supplies resolvePipes() and the coupler/combination systems the
 # tests exercise; the WSL fast loop compiles it directly, so a missing link
 # here only ever shows up in the full CMake build.
