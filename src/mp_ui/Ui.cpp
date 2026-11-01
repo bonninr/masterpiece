@@ -1419,8 +1419,11 @@ MasterpieceEditor::~MasterpieceEditor() {
   proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
   // Where the page windows are, for the next time; then they go, before the
-  // console they share a processor with.
+  // console they share a processor with. The panels' windows too: one moved
+  // a moment before quitting has not written its place yet.
   rememberPageWindows();
+  for (size_t i = 0; i < panelWindows_.size(); ++i)
+    if (panelWindows_[i] != nullptr) savePanelPlace(static_cast<int>(i));
   proc_.saveSettingsIfDirty();
   pageWindows_.clear();
   // A level moved in the last second before quitting.
@@ -2570,6 +2573,23 @@ void MasterpieceEditor::savePanels() {
     for (auto& p : panels_) p->markSaved();
 }
 
+void MasterpieceEditor::savePanelPlace(int index) {
+  if (index < 0 || index >= static_cast<int>(panels_.size())) return;
+  auto& window = panelWindows_[static_cast<size_t>(index)];
+  if (window == nullptr) return;
+  const auto b = window->getBounds();
+  panels_[static_cast<size_t>(index)]->keepWindowPlace(b);
+  auto layouts = loadPanelLayouts(proc_);
+  if (index >= static_cast<int>(layouts.size())) return;
+  auto& l = layouts[static_cast<size_t>(index)];
+  if (l.x == b.getX() && l.y == b.getY() && l.w == b.getWidth() && l.h == b.getHeight()) return;
+  l.x = b.getX();
+  l.y = b.getY();
+  l.w = b.getWidth();
+  l.h = b.getHeight();
+  savePanelLayouts(proc_, layouts);
+}
+
 void MasterpieceEditor::addPanel() {
   if (static_cast<int>(panels_.size()) >= kMaxPanels) return;
   const int index = static_cast<int>(panels_.size());
@@ -2628,6 +2648,11 @@ void MasterpieceEditor::setPanelDetached(int index, bool detached) {
     window = std::make_unique<PanelWindow>(
         juce::String(proc_.organModel().organName) + " - " + view.title(), view);
     window->onClose = [this, index] { setPanelDetached(index, false); };
+    // Found by its window: a panel deleted before it moves the others along.
+    window->onPlaced = [this, w = window.get()] {
+      for (size_t i = 0; i < panelWindows_.size(); ++i)
+        if (panelWindows_[i].get() == w) savePanelPlace(static_cast<int>(i));
+    };
     view.setVisible(true);
     window->setVisible(true);
   } else if (!detached && window != nullptr) {

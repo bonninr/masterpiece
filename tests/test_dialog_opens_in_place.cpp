@@ -88,4 +88,85 @@ public:
 };
 static DialogOpensInPlaceTest g_dialogOpensInPlace;
 
+// A dialog reopens where it was last left, unless that place is off the
+// screens now (#637, the owner's choice of 2026-11-01).
+class DialogReopensWhereLeftTest final : public mp::test::Test {
+public:
+  DialogReopensWhereLeftTest() : Test("functional.ui.dialog-reopens-where-left", Category::Functional) {}
+
+  void run() override {
+    using R = juce::Rectangle<int>;
+    const juce::Array<R> one{R{0, 0, 1920, 1040}};
+    const juce::Array<R> two{R{0, 0, 1920, 1040}, R{1920, 0, 1280, 1024}};
+    MP_CHECK(mp::ui::dialogPlaceUsable({100, 80, 700, 640}, one), "a place on the screen is kept");
+    MP_CHECK(mp::ui::dialogPlaceUsable({2100, 100, 700, 640}, two), "and one on the second screen");
+    MP_CHECK(!mp::ui::dialogPlaceUsable({2100, 100, 700, 640}, one),
+             "a place on a screen since unplugged is not");
+    MP_CHECK(!mp::ui::dialogPlaceUsable({100, -20, 700, 640}, one), "nor one with its title bar above the top");
+    MP_CHECK(!mp::ui::dialogPlaceUsable({1700, 80, 700, 640}, one), "nor one mostly off the right edge");
+    MP_CHECK(mp::ui::dialogPlaceUsable({1300, 80, 700, 640}, one), "a little over the edge is kept");
+    MP_CHECK(!mp::ui::dialogPlaceUsable({100, 80, 700, 640}, {}), "with no screen known, centred");
+
+    if (mp::ui::kMobile) return;
+    juce::MessageManager::getInstance();
+    const auto* primary = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+    // A machine with no screen (a build box) has nowhere to put the dialog.
+    if (primary == nullptr || primary->userArea.getWidth() < 900 || primary->userArea.getHeight() < 600) return;
+    const auto area = primary->userArea;
+
+    const auto data =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-dialog-reopens-where-left");
+    data.deleteRecursively();
+    data.createDirectory();
+    const auto previous = mp::dataFolder();
+    mp::setDataFolder(data);
+    const auto file = data.getChildFile("dialogs.txt");
+
+    const auto open = [] {
+      juce::DialogWindow::LaunchOptions o;
+      o.dialogTitle = "Test manual - MIDI";
+      auto* content = new juce::Component();
+      content->setSize(500, 300);
+      o.content.setOwned(content);
+      o.resizable = true;
+      o.useNativeTitleBar = true;
+      return mp::ui::launchDialog(o);
+    };
+
+    const R left{area.getX() + 40, area.getY() + 60, 620, 400};
+    file.replaceWithText("MIDI=620 400 " + juce::String(left.getX()) + " " + juce::String(left.getY()) + "\n");
+    auto* d = open();
+    MP_CHECK(d != nullptr && d->getBounds() == left,
+             "it opens where it was left, got " + (d != nullptr ? d->getBounds().toString().toStdString() : ""));
+    // Moved by the player, then closed: the new place is written down.
+    const R moved = left.translated(30, 20);
+    if (d != nullptr) {
+      d->setBounds(moved);
+      delete d;
+    }
+    MP_CHECK(file.loadFileAsString().trim() ==
+                 "MIDI=620 400 " + juce::String(moved.getX()) + " " + juce::String(moved.getY()),
+             "the place it was closed at is kept, file: " + file.loadFileAsString().toStdString());
+
+    // Left on a screen that is gone: centred at its size.
+    file.replaceWithText("MIDI=620 400 -5000 -5000\n");
+    d = open();
+    MP_CHECK(d != nullptr && d->getWidth() == 620 && area.contains(d->getBounds().getTopLeft()),
+             "a place off every screen opens centred, got " +
+                 (d != nullptr ? d->getBounds().toString().toStdString() : ""));
+    delete d;
+
+    // A line from before places were kept: its size, centred.
+    file.replaceWithText("MIDI=620 400\n");
+    d = open();
+    MP_CHECK(d != nullptr && d->getWidth() == 620 && d->getHeight() == 400 && area.contains(d->getBounds().getTopLeft()),
+             "a size-only line opens centred at its size");
+    delete d;
+
+    mp::setDataFolder(previous);
+    data.deleteRecursively();
+  }
+};
+static DialogReopensWhereLeftTest g_dialogReopensWhereLeft;
+
 #endif  // MP_TEST_HAS_AUDIO

@@ -146,6 +146,12 @@ public:
   void setWindowBounds(juce::Rectangle<int> b) {
     layout_.x = b.getX(); layout_.y = b.getY(); layout_.w = b.getWidth(); layout_.h = b.getHeight();
   }
+  // The same, written down as it is: moving the window is not an edit, and
+  // Save keeps no asterisk for it.
+  void keepWindowPlace(juce::Rectangle<int> b) {
+    setWindowBounds(b);
+    saved_.x = layout_.x; saved_.y = layout_.y; saved_.w = layout_.w; saved_.h = layout_.h;
+  }
 
   void resized() override;
   void paint(juce::Graphics& g) override;
@@ -221,11 +227,18 @@ private:
 };
 
 // A panel in a window of its own.
-class PanelWindow : public juce::DocumentWindow {
+class PanelWindow : public juce::DocumentWindow, private juce::Timer {
 public:
   PanelWindow(const juce::String& title, PanelView& view);
   void closeButtonPressed() override;
+  void moved() override;
+  void resized() override;
   std::function<void()> onClose;
+  // Called once the window has stopped moving or changing size.
+  std::function<void()> onPlaced;
+
+private:
+  void timerCallback() override;
 };
 
 }  // namespace mp::ui
