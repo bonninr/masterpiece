@@ -623,7 +623,10 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   // way to the main window; a page or panel window keeps its dialogs.
   if (options.componentToCentreAround == nullptr)
     options.componentToCentreAround = dialogCentreFor(juce::TopLevelWindow::getActiveTopLevelWindow());
-  auto* dialog = options.launchAsync();
+  // On the desktop the dialog is built hidden and shown once it has its
+  // size: shown first and sized after, it appeared where the window manager
+  // put it and then jumped (#637).
+  auto* dialog = kMobile ? options.launchAsync() : options.create();
   if (dialog == nullptr) return dialog;
   if (auto* host = panelHost(); kMobile && host != nullptr) {
     hostIn(*host, *dialog);
@@ -644,6 +647,7 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     }
     dialog->addComponentListener(new SizeKeeper(kind));
   }
+  if (!kMobile) dialog->enterModalState(true, nullptr, true);
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
   if (auto* content = dialog->getContentComponent()) giveOwnTooltips(*content);
   return dialog;
