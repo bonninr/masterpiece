@@ -584,11 +584,31 @@ void giveOwnTooltips(juce::Component& content) {
   if (!content.getProperties().contains(kOwnTooltips)) new DialogTooltips(content);
 }
 
+namespace {
+juce::Component::SafePointer<juce::Component>& centrePointer() {
+  static juce::Component::SafePointer<juce::Component> centre;
+  return centre;
+}
+}  // namespace
+
+void setDialogCentre(juce::Component* main) { centrePointer() = main; }
+juce::Component* dialogCentre() { return centrePointer().getComponent(); }
+
+juce::Component* dialogCentreFor(const juce::TopLevelWindow* active) {
+  return active == nullptr || active->isAlwaysOnTop() ? dialogCentre() : nullptr;
+}
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
     options.useNativeTitleBar = false;
     options.resizable = false;
   }
+  // Left to JUCE, a dialog is centred on whichever of the program's windows
+  // is active: the Recorder placed at the side took the loading dialog there.
+  // The windows kept above the others, the Recorder and Combinations, give
+  // way to the main window; a page or panel window keeps its dialogs.
+  if (options.componentToCentreAround == nullptr)
+    options.componentToCentreAround = dialogCentreFor(juce::TopLevelWindow::getActiveTopLevelWindow());
   auto* dialog = options.launchAsync();
   if (dialog == nullptr) return dialog;
   if (auto* host = panelHost(); kMobile && host != nullptr) {

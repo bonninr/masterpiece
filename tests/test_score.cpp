@@ -733,4 +733,269 @@ public:
 };
 static ScoreSameAsLiveTest g_scoreSameAsLive;
 
+// The marks in the file: read out of the score, left out of what is
+// engraved, and written back each before its note. A score with no marks is
+// saved as it was read, to the byte.
+class ScoreMarksFileTest final : public mp::test::Test {
+public:
+  ScoreMarksFileTest() : Test("functional.score.marks-file", Category::Functional) {}
+
+  void run() override {
+    const std::string plain = readScoreFixture("two-bars.musicxml");
+    mp::ScoreMarks marks;
+    MP_CHECK(marks.load(plain), "the score reads");
+    MP_CHECK(marks.notes().size() == 6, "six notes, got " + std::to_string(marks.notes().size()));
+    MP_CHECK(marks.marks.empty(), "and no marks");
+    MP_CHECK(marks.save() == plain, "saved with no marks, the file is as it was");
+    MP_CHECK(countOf(marks.engraving(), "id=\"mpn") == 6, "each note has an id for the engraver");
+    MP_CHECK(marks.engraving().find("id=\"mpn") != std::string::npos && plain.find("mpn") == std::string::npos,
+             "which the file does not get");
+
+    // A note on the D, over two lines, and a registration on bar 2's G.
+    marks.marks.push_back({mp::ScoreMark::Kind::Note, "mpn2", "Slower\nhere & <softly>", {}});
+    marks.marks.push_back({mp::ScoreMark::Kind::Registration, "mpn5", "Full", "org1\t{\"drawn\":[\"s901\"]}"});
+    const std::string saved = marks.save();
+    MP_CHECK(saved.find("<other-direction print-object=\"no\">masterpiece-note\nSlower\nhere &amp; &lt;softly&gt;") !=
+                 std::string::npos,
+             "the note is written as a direction other programs keep");
+    MP_CHECK(saved.find("masterpiece-note") < saved.find("<step>D</step>") &&
+                 saved.find("masterpiece-note") > saved.find("<step>C</step>"),
+             "just before its note");
+    MP_CHECK(saved.find("masterpiece-registration\nFull\norg1\t") < saved.find("<step>G</step>") &&
+                 saved.find("masterpiece-registration") > saved.find("<measure number=\"2\">"),
+             "and the registration before bar 2's G");
+
+    mp::ScoreMarks again;
+    MP_CHECK(again.load(saved), "the saved score reads");
+    MP_CHECK(again.marks.size() == 2, "with its two marks, got " + std::to_string(again.marks.size()));
+    if (again.marks.size() == 2) {
+      MP_CHECK(again.marks[0].kind == mp::ScoreMark::Kind::Note && again.marks[0].note == "mpn2" &&
+                   again.marks[0].text == "Slower\nhere & <softly>",
+               "the note, on its note, its text whole: " + again.marks[0].note + " " + again.marks[0].text);
+      MP_CHECK(again.marks[1].kind == mp::ScoreMark::Kind::Registration && again.marks[1].note == "mpn5" &&
+                   again.marks[1].text == "Full" && again.marks[1].states == "org1\t{\"drawn\":[\"s901\"]}",
+               "the registration, its name and its states");
+    }
+    MP_CHECK(again.engraving().find("masterpiece-") == std::string::npos, "the engraver never sees a mark");
+    MP_CHECK(again.notes() == marks.notes(), "the notes keep their ids");
+    MP_CHECK(again.save() == saved, "saved again, the same file");
+    again.marks.clear();
+    MP_CHECK(again.save() == plain, "and with its marks deleted, the file it started as");
+
+    // A chord's notes start together and stand together: a mark on its upper
+    // note goes before the chord.
+    std::string chord = plain;
+    const std::string e4 = "<note><pitch><step>E</step>";
+    chord.replace(chord.find(e4), 0,
+                  "<note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>\n      ");
+    const std::string after = "<note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>";
+    chord.replace(chord.find(after) + after.size(), 0,
+                  "<note><chord/><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>");
+    mp::ScoreMarks chords;
+    MP_CHECK(chords.load(chord) && chords.notes().size() == 8, "the score with a chord reads");
+    chords.marks.push_back({mp::ScoreMark::Kind::Note, "mpn5", "chord", {}});  // the B over E
+    const auto withChord = chords.save();
+    MP_CHECK(withChord.find("masterpiece-note") < withChord.find("<step>E</step>"), "the mark goes before the chord");
+    mp::ScoreMarks chordAgain;
+    MP_CHECK(chordAgain.load(withChord) && chordAgain.marks.size() == 1 && chordAgain.marks[0].note == "mpn4",
+             "and belongs to the chord's first note when read again");
+
+    mp::ScoreMarks junk;
+    MP_CHECK(!junk.load("not xml <") && junk.engraving() == "not xml <", "text that is not XML is passed on as it is");
+  }
+};
+static ScoreMarksFileTest g_scoreMarksFile;
+
+// The marks in the panel: a registration sets the organ as the playing
+// reaches it, the buttons step through them, the icons are drawn on their
+// notes, and every change is in the file and can be taken back.
+class ScorePanelMarksTest final : public mp::test::Test {
+public:
+  ScorePanelMarksTest() : Test("functional.score.panel-marks", Category::Functional) {}
+
+  void run() override {
+    juce::ScopedJuceInitialiser_GUI gui;
+    const auto fonts = unpackedFonts();
+    ScoreOrgan organ;
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, kBlock);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+
+    const auto file = organ.root.getChildFile("two-bars.musicxml");
+    const std::string xml = readScoreFixture("two-bars.musicxml");
+    file.replaceWithData(xml.data(), xml.size());
+
+    auto draw = [&](bool subbass, bool principal) {
+      proc.setStopEngaged(901, subbass);
+      proc.setStopEngaged(902, principal);
+      runBlock(proc);
+    };
+    auto drawn = [&] { return std::make_pair(proc.stopEngaged(901), proc.stopEngaged(902)); };
+    {
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      MP_CHECK(panel.openFile(file), "the score opens from its file");
+      panel.render();
+
+      // The Principal for bar 1, the Subbass for bar 2: each registration
+      // keeps the organ as it is when it is added.
+      // The volume too, in decibels: 0 dB for the first, -6 dB for the second.
+      auto* volume = proc.apvts().getParameter("masterGain");
+      auto setDb = [&](float db) { volume->setValueNotifyingHost(volume->convertTo0to1(juce::Decibels::decibelsToGain(db))); };
+      auto db = [&] { return juce::Decibels::gainToDecibels(proc.apvts().getRawParameterValue("masterGain")->load()); };
+      draw(false, true);
+      setDb(0.0f);
+      const int first = panel.addMark(mp::ScoreMark::Kind::Registration, "mpn1");
+      draw(true, false);
+      setDb(-6.0f);
+      const int second = panel.addMark(mp::ScoreMark::Kind::Registration, "mpn5");
+      MP_CHECK(panel.marks()[1].states.find("\"gain\":-6") != std::string::npos,
+               "the volume is kept in decibels: " + panel.marks()[1].states);
+      panel.recallRegistration(first);
+      MP_CHECK(std::abs(db()) < 0.05f, "the first sets 0 dB, got " + std::to_string(db()));
+      panel.recallRegistration(second);
+      MP_CHECK(std::abs(db() + 6.0f) < 0.05f, "the second -6 dB, got " + std::to_string(db()));
+      const int note = panel.addMark(mp::ScoreMark::Kind::Note, "mpn2", "Breathe");
+      MP_CHECK(first == 0 && second == 1 && note == 2, "three marks added");
+      MP_CHECK(panel.addMark(mp::ScoreMark::Kind::Note, "no-such-note") < 0, "a note the score lacks takes none");
+      MP_CHECK(panel.registrationOrder() == std::vector<int>({0, 1}), "the registrations in the order played");
+
+      // Each is drawn on the page, over its note.
+      auto page = panel.render();
+      savePicture(page, "panel-marks.png");
+      for (int i = 0; i < 3; ++i) {
+        const auto r = panel.markBounds(i);
+        MP_CHECK(!r.isEmpty(), "mark " + std::to_string(i) + " has an icon");
+        const auto c = page.getPixelAt(juce::roundToInt(r.getX() + 4), juce::roundToInt(r.getCentreY()));
+        MP_CHECK(c.getBrightness() > 0.4f && c.getSaturation() > 0.3f,
+                 "drawn in colour, got " + c.toDisplayString(false).toStdString());
+        MP_CHECK(std::abs(r.getX() + 2.0f - panel.notePosition(panel.marks()[static_cast<size_t>(i)].note).x) < 30.0f,
+                 "above its note");
+      }
+      MP_CHECK(panel.markBounds(0).getX() < panel.markBounds(2).getX(), "the D's note to the right of the C's");
+
+      // Played from the start: the Principal, then at bar 2 the Subbass.
+      draw(false, false);
+      panel.setStart(0);
+      panel.play();
+      for (int b = 0; b < 4; ++b) runBlock(proc);
+      panel.render();
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(false, true), "bar 1 plays on the Principal");
+      MP_CHECK(panel.currentRegistration() == 0, "the first registration is the current one");
+      for (int b = 0; b < 48000 * 21 / 10 / kBlock; ++b) {
+        runBlock(proc);
+        if (b % 8 == 0) panel.render();
+      }
+      panel.render();
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(true, false), "bar 2 on the Subbass");
+      MP_CHECK(panel.currentRegistration() == 1, "the second is current");
+      panel.stop();
+
+      // The buttons: back to the first, and its note is where Play starts.
+      MP_CHECK(panel.stepRegistration(-1), "a step back");
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(false, true) && panel.currentRegistration() == 0, "sets the first again");
+      MP_CHECK(!panel.stepRegistration(-1), "and there is none before it");
+      MP_CHECK(panel.startSeconds() < 0.01, "playing would start at its note");
+      MP_CHECK(panel.stepRegistration(1), "a step forward");
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(true, false), "sets the second again");
+
+      // Stored again, it holds the organ as it is now.
+      draw(true, true);
+      panel.storeRegistration(0);
+      draw(false, false);
+      panel.recallRegistration(0);
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(true, true), "a registration stored again recalls the new state");
+      // Forgotten for this organ, it changes nothing here.
+      panel.forgetRegistration(0);
+      draw(false, false);
+      panel.recallRegistration(0);
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(false, false), "and forgotten for this organ, it leaves the organ alone");
+      MP_CHECK(panel.undo(), "the forgetting is taken back");
+      panel.recallRegistration(0);
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(true, true), "and the state is there again");
+
+      // Edited, moved, deleted, and each taken back.
+      panel.setMarkText(2, "Breathe\nthen go on");
+      MP_CHECK(panel.marks()[2].text == "Breathe\nthen go on", "a note's text changes");
+      panel.moveMark(2, "mpn3");
+      MP_CHECK(panel.marks()[2].note == "mpn3", "a mark moves to another note");
+      panel.deleteMark(2);
+      MP_CHECK(panel.marks().size() == 2, "a mark is deleted");
+      MP_CHECK(panel.undo() && panel.marks().size() == 3 && panel.marks()[2].note == "mpn3", "the delete is taken back");
+      MP_CHECK(panel.undo() && panel.marks()[2].note == "mpn2", "the move");
+      MP_CHECK(panel.undo() && panel.marks()[2].text == "Breathe", "and the edit");
+      panel.setMarkText(2, "Breathe\nthen go on");
+      MP_CHECK(panel.saveMarks(), "the marks are written into the file");
+    }
+
+    // The file: what was set is there, the score's own content untouched,
+    // and the first version kept beside it.
+    juce::String text = file.loadFileAsString();
+    MP_CHECK(text.contains("masterpiece-note\nBreathe\nthen go on"), "the note is in the file");
+    MP_CHECK(text.contains("masterpiece-registration\nRegistration 1\n") &&
+                 text.contains("masterpiece-registration\nRegistration 2\n"),
+             "and both registrations");
+    MP_CHECK(file.getSiblingFile("two-bars.musicxml.bak").loadFileAsString() == juce::String::fromUTF8(xml.c_str()),
+             "the score as it was is kept beside it");
+    {
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      MP_CHECK(panel.openFile(file), "the marked score opens");
+      MP_CHECK(panel.marks().size() == 3, "with its three marks, got " + std::to_string(panel.marks().size()));
+      draw(false, false);
+      MP_CHECK(panel.stepRegistration(1), "the first registration is stepped to");
+      runBlock(proc);
+      MP_CHECK(drawn() == std::make_pair(true, true), "and sets the organ as it was stored");
+      // A page turned forward sets the page's first registration; a page
+      // turned back leaves the organ as it is (one page here: no turn at all).
+      panel.showPage(1);
+      MP_CHECK(panel.currentRegistration() == 0, "turning to the page shown changes nothing");
+    }
+    // Saved when it closes, with no step needed.
+    {
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      panel.openFile(file);
+      for (int k = 0; k < static_cast<int>(panel.marks().size()); ++k)
+        if (panel.marks()[static_cast<size_t>(k)].kind == mp::ScoreMark::Kind::Note) panel.deleteMark(k);
+    }
+    MP_CHECK(!file.loadFileAsString().contains("masterpiece-note"), "a delete is in the file once the panel closes");
+
+    // A compressed score keeps its marks in the same zip.
+    const auto mxl = organ.root.getChildFile("two-bars.mxl");
+    {
+      juce::ZipFile::Builder zb;
+      const juce::String container =
+          "<?xml version=\"1.0\"?><container><rootfiles><rootfile full-path=\"score.musicxml\"/></rootfiles></container>";
+      zb.addEntry(new juce::MemoryInputStream(container.toRawUTF8(), container.getNumBytesAsUTF8(), true), 9,
+                  "META-INF/container.xml", juce::Time::getCurrentTime());
+      zb.addEntry(new juce::MemoryInputStream(xml.data(), xml.size(), true), 9, "score.musicxml",
+                  juce::Time::getCurrentTime());
+      auto os = mxl.createOutputStream();
+      zb.writeToStream(*os, nullptr);
+    }
+    {
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      MP_CHECK(panel.openFile(mxl), "the compressed score opens");
+      panel.addMark(mp::ScoreMark::Kind::Note, "mpn4", "In the zip");
+      MP_CHECK(panel.saveMarks(), "and its marks are written");
+    }
+    {
+      mp::ui::ScorePanel panel(proc, fonts);
+      panel.setSize(1000, 700);
+      MP_CHECK(panel.openFile(mxl) && panel.marks().size() == 1 && panel.marks()[0].text == "In the zip",
+               "the compressed score opens again with its note");
+    }
+  }
+};
+static ScorePanelMarksTest g_scorePanelMarks;
+
 #endif  // MP_TEST_HAS_SCORE
