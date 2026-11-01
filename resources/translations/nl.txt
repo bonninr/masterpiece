@@ -176,8 +176,6 @@ countries: nl be sr
 "Press the lowest key..." = "Druk op de laagste toets..."
 "Pistons that bring the %1 to one of your keyboards" = "Drukknoppen die “%1” op een van je toetsenborden leggen"
 "A piston here makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same button added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Een drukknop hier laat een toetsenbord “%1” bespelen, zodat een speeltafel met minder toetsenborden dan het orgel klavieren heeft ze toch allemaal kan bereiken. Bij het indrukken worden eerst alle noten losgelaten die op dat toetsenbord werden vastgehouden. Voeg er één toe voor elk toetsenbord dat dit klavier moet kunnen bespelen.\n\nDezelfde knop die op meerdere klavieren is toegevoegd, schakelt het toetsenbord bij elke druk een klavier verder. Bij Instellingen, MIDI kan Generaal af alle toetsenborden terugzetten op hun eigen klavier. Wordt bij dit orgel opgeslagen."
-"Controller %1" = "Controller %1"
-"on channel %1" = "op kanaal %1"
 "brings the %1 to the keyboard on channel %2" = "legt “%1” op het toetsenbord op kanaal %2"
 "No pistons yet." = "Nog geen drukknoppen."
 "Play any key on the keyboard that should play the %1..." = "Speel een willekeurige toets op het toetsenbord dat “%1” moet bespelen..."
@@ -1167,3 +1165,4 @@ countries: nl be sr
 "Full screen" = "Volledig scherm"
 "Exit full screen" = "Volledig scherm verlaten"
 "Or press Escape or F11" = "Of druk op Esc of F11"
+"Remove this piston" = "Deze drukknop verwijderen"

@@ -176,8 +176,6 @@ countries: fr be ca ch lu mc
 "Press the lowest key..." = "Appuyez sur la touche la plus grave..."
 "Pistons that bring the %1 to one of your keyboards" = "Pistons qui amènent « %1 » sur l'un de vos claviers MIDI"
 "A piston here makes a keyboard play the %1, so a console with fewer keyboards than the organ has manuals can reach all of them. Pressing it lets go of any notes held on that keyboard first. Add one for each keyboard that should be able to play this manual.\n\nThe same button added on several manuals steps the keyboard through them, one press at a time. Settings, MIDI can make General Cancel put every keyboard back where it started. Saved with this organ." = "Un piston ici fait jouer « %1 » à un clavier MIDI, de sorte qu'une console qui a moins de claviers MIDI que l'orgue n'a de claviers puisse les atteindre tous. L'appui relâche d'abord les notes tenues sur ce clavier MIDI. Ajoutez-en un pour chaque clavier MIDI qui doit pouvoir jouer ce clavier.\n\nLe même bouton ajouté à plusieurs claviers fait passer le clavier MIDI de l'un à l'autre, d'un cran à chaque appui. Dans Réglages, MIDI, l'annulateur général peut remettre chaque clavier MIDI sur son propre clavier. Enregistré avec cet orgue."
-"Controller %1" = "Contrôleur %1"
-"on channel %1" = "sur le canal %1"
 "brings the %1 to the keyboard on channel %2" = "amène « %1 » sur le clavier MIDI du canal %2"
 "No pistons yet." = "Aucun piston pour l'instant."
 "Play any key on the keyboard that should play the %1..." = "Jouez une touche quelconque du clavier MIDI qui doit jouer « %1 »..."
@@ -1166,3 +1164,4 @@ countries: fr be ca ch lu mc
 "Full screen" = "Plein écran"
 "Exit full screen" = "Quitter le plein écran"
 "Or press Escape or F11" = "Ou appuyez sur Échap ou F11"
+"Remove this piston" = "Retirer ce piston"
