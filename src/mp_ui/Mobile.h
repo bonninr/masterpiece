@@ -84,6 +84,15 @@ void fitToScreen(juce::DocumentWindow& window);
 // larger. A window saved on a big screen came back on a small one partly off
 // its edge, and the left of every console page was out of sight.
 void keepOnScreen(juce::Component& window);
+// Whether windows reopen where they were left, the player's View setting; the
+// editor sets it from the processor. Off, they open centred at their size.
+bool rememberWindowPlaces();
+void setRememberWindowPlaces(bool on);
+// Shows a window built hidden and already placed, at that place. On X11 a
+// move before showing is only a request to the window manager, which can map
+// the window where it was made (the top left) and move it after; the window
+// is made afresh first, so it is created where it belongs.
+void showInPlace(juce::TopLevelWindow& window);
 
 // Shows or hides a window that floats over the console (combinations,
 // recorder), above every other window while `onTop`. On Linux the window is
@@ -121,6 +130,11 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options);
 // smaller than its own, and no larger than `screen` when that is not empty.
 juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectangle<int> own,
                                         juce::Rectangle<int> screen);
+// Whether a window reopens at `place`, where it was last left: enough of its
+// title bar on one of `screens` to grab it, and at least half of it on that
+// screen. Any other place -- a screen unplugged, the resolution lowered --
+// opens centred.
+bool dialogPlaceUsable(juce::Rectangle<int> place, const juce::Array<juce::Rectangle<int>>& screens);
 // The main window, set by it: dialogs open in its middle, wherever the
 // Recorder or another window of the program is.
 void setDialogCentre(juce::Component* main);

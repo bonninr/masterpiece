@@ -1188,6 +1188,7 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
                                                        juce::Colour(0xff42a2c8).withAlpha(0.55f));
   // Dialogs open in the middle of this window.
   setDialogCentre(this);
+  setRememberWindowPlaces(proc_.rememberWindowPlaces());
   juce::Desktop::getInstance().addGlobalMouseListener(&wheelFocus_);
 
   // The licence question, asked from the loading thread before a sample is
@@ -1419,8 +1420,11 @@ MasterpieceEditor::~MasterpieceEditor() {
   proc_.packageAsker = nullptr;
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(this);
   // Where the page windows are, for the next time; then they go, before the
-  // console they share a processor with.
+  // console they share a processor with. The panels' windows too: one moved
+  // a moment before quitting has not written its place yet.
   rememberPageWindows();
+  for (size_t i = 0; i < panelWindows_.size(); ++i)
+    if (panelWindows_[i] != nullptr) savePanelPlace(static_cast<int>(i));
   proc_.saveSettingsIfDirty();
   pageWindows_.clear();
   // A level moved in the last second before quitting.
@@ -1866,11 +1870,13 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
   const int shown = layout >= 0 ? layout : console_.layout();
   const bool portrait = shown >= 0 && shown < 4 && m.consoleHeightPx[shown] > m.consoleWidthPx[shown];
   const auto& displays = juce::Desktop::getInstance().getDisplays();
-  if (!bounds.isEmpty() && displays.getDisplayForRect(bounds) != nullptr &&
+  if (!bounds.isEmpty() && rememberWindowPlaces() && displays.getDisplayForRect(bounds) != nullptr &&
       displays.getTotalBounds(true).intersects(bounds)) {
     window->setBounds(bounds);
     keepOnScreen(*window);
   } else {
+    // Its last size, when places are not kept.
+    if (!bounds.isEmpty()) window->setSize(bounds.getWidth(), bounds.getHeight());
     // A screen other than this window's, if there is one: that is what the
     // window is for. Otherwise beside this one, a little down and across.
     const auto* here = displays.getDisplayForRect(getScreenBounds());
@@ -1905,7 +1911,7 @@ void MasterpieceEditor::openPageWindow(int page, juce::Rectangle<int> bounds, in
   window->onPlaced = [this] { rememberPageWindows(); };
   // Shortcuts work from a page on another screen as well.
   window->addKeyListener(this);
-  window->setVisible(true);
+  showInPlace(*window);
   pageWindows_.push_back(std::move(window));
   rememberPageWindows();
   refreshPopOutIcons();
@@ -2570,6 +2576,23 @@ void MasterpieceEditor::savePanels() {
     for (auto& p : panels_) p->markSaved();
 }
 
+void MasterpieceEditor::savePanelPlace(int index) {
+  if (index < 0 || index >= static_cast<int>(panels_.size())) return;
+  auto& window = panelWindows_[static_cast<size_t>(index)];
+  if (window == nullptr) return;
+  const auto b = window->getBounds();
+  panels_[static_cast<size_t>(index)]->keepWindowPlace(b);
+  auto layouts = loadPanelLayouts(proc_);
+  if (index >= static_cast<int>(layouts.size())) return;
+  auto& l = layouts[static_cast<size_t>(index)];
+  if (l.x == b.getX() && l.y == b.getY() && l.w == b.getWidth() && l.h == b.getHeight()) return;
+  l.x = b.getX();
+  l.y = b.getY();
+  l.w = b.getWidth();
+  l.h = b.getHeight();
+  savePanelLayouts(proc_, layouts);
+}
+
 void MasterpieceEditor::addPanel() {
   if (static_cast<int>(panels_.size()) >= kMaxPanels) return;
   const int index = static_cast<int>(panels_.size());
@@ -2628,8 +2651,13 @@ void MasterpieceEditor::setPanelDetached(int index, bool detached) {
     window = std::make_unique<PanelWindow>(
         juce::String(proc_.organModel().organName) + " - " + view.title(), view);
     window->onClose = [this, index] { setPanelDetached(index, false); };
+    // Found by its window: a panel deleted before it moves the others along.
+    window->onPlaced = [this, w = window.get()] {
+      for (size_t i = 0; i < panelWindows_.size(); ++i)
+        if (panelWindows_[i].get() == w) savePanelPlace(static_cast<int>(i));
+    };
     view.setVisible(true);
-    window->setVisible(true);
+    showInPlace(*window);
   } else if (!detached && window != nullptr) {
     view.setWindowBounds(window->getBounds());
     window->clearContentComponent();
@@ -2993,6 +3021,7 @@ void MasterpieceEditor::showViewMenu() {
   // matches, so a shared number does two things at once. 15 is the stop list.
   menu.addItem(17, TRANS("Scale small pages to fit"), true, proc_.smallPagesFill());
   menu.addItem(18, TRANS("Fit window to page"), !fullScreen_);
+  menu.addItem(21, TRANS("Remember window positions"), true, proc_.rememberWindowPlaces());
   if (onFullScreen) {
     juce::PopupMenu::Item full(TRANS("Full screen"));
     full.setID(20).setTicked(fullScreen_);
@@ -3035,6 +3064,10 @@ void MasterpieceEditor::showViewMenu() {
                        }
                        if (c == 18) safe->fitWindowToPage();
                        if (c == 20) safe->setFullScreen(!safe->fullScreen_);
+                       if (c == 21) {
+                         safe->proc_.setRememberWindowPlaces(!safe->proc_.rememberWindowPlaces());
+                         setRememberWindowPlaces(safe->proc_.rememberWindowPlaces());
+                       }
                        if (c >= 200 && c < 300) safe->chooseLayout(c - 200);
                        if (c >= 300 && c < 1000 && c - 300 < safe->console_.pageCount()) {
                          if (auto* w = safe->pageWindowFor(c - 300)) safe->closePageWindow(w);

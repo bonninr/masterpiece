@@ -1025,6 +1025,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Expression pedals" = "Pedales de expresión"
 "Highlight played keys" = "Resaltar las teclas tocadas"
 "Scale small pages to fit" = "Ajustar las páginas pequeñas"
+"Remember window positions" = "Recordar la posición de las ventanas"
 "Open page in new window" = "Abrir página en una ventana nueva"
 "Documentation" = "Documentación"
 "Release notes" = "Notas de la versión"

@@ -6,6 +6,7 @@
 #include "Mobile.h"
 
 #include <algorithm>
+#include <atomic>
 
 #include "../mp_archive/OrganArchive.h"
 #include "../mp_audio/DataFolder.h"
@@ -349,6 +350,23 @@ void importDocument(const juce::URL& document, std::function<void(juce::File)> d
   (new ImportThread(document, std::move(done)))->launchThread();
 }
 
+namespace {
+std::atomic<bool> g_rememberWindowPlaces{true};
+}
+
+bool rememberWindowPlaces() { return g_rememberWindowPlaces.load(std::memory_order_relaxed); }
+void setRememberWindowPlaces(bool on) { g_rememberWindowPlaces.store(on, std::memory_order_relaxed); }
+
+void showInPlace(juce::TopLevelWindow& window) {
+#if JUCE_LINUX || JUCE_BSD
+  if (window.isOnDesktop() && !window.isVisible()) {
+    window.removeFromDesktop();
+    window.addToDesktop();
+  }
+#endif
+  window.setVisible(true);
+}
+
 bool touchInput() {
   static const bool on =
       kMobile || juce::SystemStats::getEnvironmentVariable("MASTERPIECE_TOUCH", "0") == "1";
@@ -474,8 +492,9 @@ void showFloating(juce::DocumentWindow& window, bool show, bool onTop) {
 }
 
 namespace {
-// The size each kind of dialog was last left at (#153), one "kind=w h" line
-// each, beside the main window's own place.
+// The size and place each kind of dialog was last left at (#153, #637), one
+// "kind=w h x y" line each, beside the main window's own place. A line from
+// before places were kept has the size only.
 juce::File dialogSizesFile() {
   return mp::dataFolder()
       .getChildFile("dialogs.txt");
@@ -487,35 +506,43 @@ juce::String dialogKind(const juce::String& title) {
   return title.contains(" - ") ? title.fromLastOccurrenceOf(" - ", false, false) : title;
 }
 
-juce::Rectangle<int> savedDialogSize(const juce::String& kind) {
+// The bounds a kind of dialog was last left at; `placed` says whether the
+// line had its place.
+juce::Rectangle<int> savedDialogBounds(const juce::String& kind, bool& placed) {
+  placed = false;
   juce::StringArray lines;
   lines.addLines(dialogSizesFile().loadFileAsString());
   for (const auto& line : lines)
     if (line.upToFirstOccurrenceOf("=", false, false) == kind) {
-      const auto wh = juce::StringArray::fromTokens(line.fromFirstOccurrenceOf("=", false, false), " ", "");
-      if (wh.size() == 2) return {wh[0].getIntValue(), wh[1].getIntValue()};
+      const auto v = juce::StringArray::fromTokens(line.fromFirstOccurrenceOf("=", false, false), " ", "");
+      if (v.size() == 4) {
+        placed = true;
+        return {v[2].getIntValue(), v[3].getIntValue(), v[0].getIntValue(), v[1].getIntValue()};
+      }
+      if (v.size() == 2) return {v[0].getIntValue(), v[1].getIntValue()};
     }
   return {};
 }
 
-void saveDialogSize(const juce::String& kind, int w, int h) {
+void saveDialogBounds(const juce::String& kind, juce::Rectangle<int> b) {
   juce::StringArray lines;
   lines.addLines(dialogSizesFile().loadFileAsString());
   lines.removeEmptyStrings();
   for (int i = lines.size(); --i >= 0;)
     if (lines[i].upToFirstOccurrenceOf("=", false, false) == kind) lines.remove(i);
-  lines.add(kind + "=" + juce::String(w) + " " + juce::String(h));
+  lines.add(kind + "=" + juce::String(b.getWidth()) + " " + juce::String(b.getHeight()) + " " +
+            juce::String(b.getX()) + " " + juce::String(b.getY()));
   dialogSizesFile().getParentDirectory().createDirectory();
   mp::writeTextFile(dialogSizesFile(), lines.joinIntoString("\n") + "\n");
 }
 
-// Writes the dialog's size down as it closes. Owned by nobody but itself: it
-// goes with the dialog.
+// Writes the dialog's size and place down as it closes. Owned by nobody but
+// itself: it goes with the dialog.
 class SizeKeeper : public juce::ComponentListener {
 public:
   explicit SizeKeeper(juce::String kind) : kind_(std::move(kind)) {}
   void componentBeingDeleted(juce::Component& c) override {
-    if (c.getWidth() > 0 && c.getHeight() > 0) saveDialogSize(kind_, c.getWidth(), c.getHeight());
+    if (c.getWidth() > 0 && c.getHeight() > 0) saveDialogBounds(kind_, c.getBounds());
     c.removeComponentListener(this);
     delete this;
   }
@@ -612,6 +639,22 @@ juce::Rectangle<int> reopenedDialogSize(juce::Rectangle<int> saved, juce::Rectan
   return {w, h};
 }
 
+bool dialogPlaceUsable(juce::Rectangle<int> place, const juce::Array<juce::Rectangle<int>>& screens) {
+  if (place.isEmpty()) return false;
+  // The strip along the top, where the title bar is grabbed to move it: a
+  // stretch of it on the screen, at its full height.
+  const auto top = place.withHeight(juce::jmin(32, place.getHeight()));
+  for (const auto& screen : screens) {
+    const auto grab = screen.getIntersection(top);
+    if (grab.getHeight() < top.getHeight() || grab.getWidth() < juce::jmin(120, top.getWidth())) continue;
+    const auto shown = screen.getIntersection(place);
+    if (2 * static_cast<juce::int64>(shown.getWidth()) * shown.getHeight() >=
+        static_cast<juce::int64>(place.getWidth()) * place.getHeight())
+      return true;
+  }
+  return false;
+}
+
 juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   if (kMobile) {
     options.useNativeTitleBar = false;
@@ -623,7 +666,10 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
   // way to the main window; a page or panel window keeps its dialogs.
   if (options.componentToCentreAround == nullptr)
     options.componentToCentreAround = dialogCentreFor(juce::TopLevelWindow::getActiveTopLevelWindow());
-  auto* dialog = options.launchAsync();
+  // On the desktop the dialog is built hidden and shown once it has its
+  // size: shown first and sized after, it appeared where the window manager
+  // put it and then jumped (#637).
+  auto* dialog = kMobile ? options.launchAsync() : options.create();
   if (dialog == nullptr) return dialog;
   if (auto* host = panelHost(); kMobile && host != nullptr) {
     hostIn(*host, *dialog);
@@ -631,18 +677,32 @@ juce::DialogWindow* launchDialog(juce::DialogWindow::LaunchOptions& options) {
     dialog->toFront(true);
   }
   fitToScreen(*dialog);
-  // A dialog the player can resize opens at the size they last left it,
-  // as far as the screen it opens on allows.
+  // A dialog the player can resize opens at the size and place they last
+  // left it, as far as the screen it opens on allows; a place no longer on
+  // a screen gives way to the middle of the main window.
   if (options.resizable && !kMobile) {
     const auto kind = dialogKind(options.dialogTitle);
-    const auto saved = savedDialogSize(kind);
+    bool placed = false;
+    const auto saved = savedDialogBounds(kind, placed);
     if (!saved.isEmpty()) {
-      const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(dialog->getScreenBounds());
+      const auto& displays = juce::Desktop::getInstance().getDisplays();
+      juce::Array<juce::Rectangle<int>> screens;
+      for (const auto& d : displays.displays) screens.add(d.userArea);
+      const auto* display = displays.getDisplayForRect(placed ? saved : dialog->getScreenBounds());
       const auto area = display != nullptr ? display->userBounds.toNearestInt() : juce::Rectangle<int>();
       const auto size = reopenedDialogSize(saved, dialog->getBounds(), area);
-      dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
+      const auto place = saved.withSize(size.getWidth(), size.getHeight());
+      if (placed && rememberWindowPlaces() && dialogPlaceUsable(place, screens))
+        dialog->setBounds(place);
+      else
+        dialog->centreAroundComponent(options.componentToCentreAround, size.getWidth(), size.getHeight());
     }
     dialog->addComponentListener(new SizeKeeper(kind));
+  }
+  // Made afresh where it belongs on X11 (showInPlace), then shown modal.
+  if (!kMobile) {
+    showInPlace(*dialog);
+    dialog->enterModalState(true, nullptr, true);
   }
   if (kLiveOnTop && !kMobile && dialog->isAlwaysOnTop()) new FrontFollower(*dialog);
   if (auto* content = dialog->getContentComponent()) giveOwnTooltips(*content);

@@ -1340,12 +1340,38 @@ PanelWindow::PanelWindow(const juce::String& title, PanelView& view)
   setResizable(true, true);
   setContentNonOwned(&view, false);
   const auto& l = view.layout();
-  if (l.w > 100 && l.h > 100) setBounds(l.x, l.y, l.w, l.h);
-  else centreWithSize(1024, 600);
+  // Where it was left, while that place is still on a screen; centred at its
+  // size otherwise, as a monitor unplugged since leaves it.
+  juce::Array<juce::Rectangle<int>> screens;
+  for (const auto& d : juce::Desktop::getInstance().getDisplays().displays) screens.add(d.userArea);
+  const juce::Rectangle<int> place(l.x, l.y, l.w, l.h);
+  if (l.w > 100 && l.h > 100 && rememberWindowPlaces() && dialogPlaceUsable(place, screens)) {
+    setBounds(place);
+  } else if (l.w > 100 && l.h > 100) {
+    centreWithSize(l.w, l.h);
+    keepOnScreen(*this);
+  } else {
+    centreWithSize(1024, 600);
+  }
 }
 
 void PanelWindow::closeButtonPressed() {
   if (onClose) onClose();
+}
+
+void PanelWindow::moved() {
+  juce::DocumentWindow::moved();
+  if (isVisible()) startTimer(500);
+}
+
+void PanelWindow::resized() {
+  juce::DocumentWindow::resized();
+  if (isVisible()) startTimer(500);
+}
+
+void PanelWindow::timerCallback() {
+  stopTimer();
+  if (onPlaced) onPlaced();
 }
 
 }  // namespace mp::ui

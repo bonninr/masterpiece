@@ -408,6 +408,14 @@ public:
   juce::Rectangle<int> fileMenuBoundsForTest() const { return fileMenu_.getBounds(); }
   bool exitFullScreenShownForTest() const { return exitFullScreen_.isVisible(); }
   bool pressKeyForTest(const juce::KeyPress& key) { return keyPressed(key, this); }
+  // For tests: the organ's panels read again, as a load does, and a
+  // detached panel's window (null while it is a tab).
+  void loadPanelsForTest() { loadPanels(); }
+  juce::DocumentWindow* panelWindowForTest(int index) const {
+    return index >= 0 && index < static_cast<int>(panelWindows_.size())
+               ? panelWindows_[static_cast<size_t>(index)].get()
+               : nullptr;
+  }
   juce::Rectangle<int> contentBoundsForTest() const {
     return consoleView_.isVisible() ? consoleView_.getBounds() : jambView_.getBounds();
   }
@@ -559,6 +567,9 @@ private:
 
   void loadPanels();
   void savePanels();
+  // A detached panel's window place, written to the organ's panels on its
+  // own: the rest of the layout waits for Save.
+  void savePanelPlace(int index);
   void addPanel();
   void deletePanel(int index);
   // A panel's callbacks, for the place it has now.

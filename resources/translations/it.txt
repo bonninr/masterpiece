@@ -1025,6 +1025,7 @@ countries: it ch sm va
 "Expression pedals" = "Pedali d'espressione"
 "Highlight played keys" = "Evidenzia i tasti suonati"
 "Scale small pages to fit" = "Adatta le pagine piccole"
+"Remember window positions" = "Ricorda la posizione delle finestre"
 "Open page in new window" = "Apri pagina in una nuova finestra"
 "Documentation" = "Documentazione"
 "Release notes" = "Note di rilascio"

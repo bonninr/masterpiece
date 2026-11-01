@@ -1103,6 +1103,7 @@ countries: gb us
 "Expression pedals" = "Expression pedals"
 "Highlight played keys" = "Highlight played keys"
 "Scale small pages to fit" = "Scale small pages to fit"
+"Remember window positions" = "Remember window positions"
 "Full screen" = "Full screen"
 "Console layout" = "Console layout"
 "Documentation" = "Documentation"

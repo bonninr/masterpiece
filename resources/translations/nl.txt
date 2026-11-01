@@ -1013,6 +1013,7 @@ countries: nl be sr
 "Expression pedals" = "Zwelpedalen"
 "Highlight played keys" = "Gespeelde toetsen markeren"
 "Scale small pages to fit" = "Kleine pagina's passend maken"
+"Remember window positions" = "Vensterposities onthouden"
 "Open page in new window" = "Pagina openen in nieuw venster"
 "Documentation" = "Documentatie"
 "Release notes" = "Release-opmerkingen"
