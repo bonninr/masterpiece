@@ -201,6 +201,22 @@ public:
     MP_CHECK(ids.ranks.size() == 1 && ids.ranks[0] == 201 && ids.pipes.isEmpty(), "the ids B's voicing names");
     MP_CHECK(!sa::copy(root, "Organ-A-12", "Organ-A-12", sa::MidiMap, "9.9.9", backup, error), "not onto itself");
 
+    // The organ's name and definition file, as its settings recorded them.
+    // Settings saved before they were recorded have neither; a copy keeps the
+    // organ's own.
+    MP_CHECK(sa::organLabel(root, "Organ-B-7").name.isEmpty() &&
+                 sa::organLabel(root, "Organ-B-7").definition == juce::File(),
+             "older settings: no name, no file");
+    const juce::File definition = root.getChildFile("A").getChildFile("Organ A.Organ_Hauptwerk_xml");
+    put(root, "organs/Organ-A-12.mporgan",
+        juce::String::fromUTF8("# Masterpiece per-organ settings\norganname Organ A \xc3\xa9\ndefinition ") +
+            definition.getFullPathName() +
+            "\n" + root.getChildFile("organs/Organ-A-12.mporgan").loadFileAsString());
+    MP_CHECK(sa::copy(root, "Organ-B-7", "Organ-A-12", sa::MixerAndVoicing, "9.9.9", backup, error), "copied again");
+    const auto label = sa::organLabel(root, "Organ-A-12");
+    MP_CHECK(label.name == juce::String::fromUTF8("Organ A \xc3\xa9") && label.definition == definition,
+             "A's own name and file, kept through a copy: " + label.name.toStdString());
+
     // The path rules on their own.
     MP_CHECK(sa::allowedPath("combinations/Organ-A-12." + kSet + ".mpcomb", sa::Scope::Organ, "Organ-A-12"),
              "a set with an accent");
