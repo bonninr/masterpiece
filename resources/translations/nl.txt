@@ -1148,3 +1148,4 @@ countries: nl be sr
 "Volume" = "Volume"
 "Voicing EQ" = "Intonatie-EQ"
 "Undo the last change to the marks" = "De laatste wijziging aan de markeringen ongedaan maken"
+"Learn a knob or a pedal for the wet level" = "Een draaiknop of pedaal voor het galmniveau leren"

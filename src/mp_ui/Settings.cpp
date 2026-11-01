@@ -1387,6 +1387,46 @@ ReverbPanel::ReverbPanel(MasterpieceProcessor& p) : proc_(p) {
     proc_.markSettingsDirty();
   };
 
+  addAndMakeVisible(midi_);
+  midi_.setTooltip(TRANS("Learn a knob or a pedal for the wet level"));
+  midi_.onClick = [this] { midiMenu(); };
+  startTimerHz(10);
+}
+
+ReverbPanel::~ReverbPanel() { stopTimer(); }
+
+void ReverbPanel::midiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  juce::PopupMenu menu;
+  const auto existing = map.bindingsFor(MidiTargetKind::ReverbWet, 0);
+  if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
+  for (const MidiBinding* b : existing) menu.addSectionHeader(MidiEventDialog::describeBinding(*b));
+  menu.addItem(1, TRANS("Learn: move the knob or pedal"));
+  menu.addItem(2, TRANS("Clear mapping"), !existing.empty());
+  juce::Component::SafePointer<ReverbPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self](int choice) {
+    if (self == nullptr) return;
+    auto& m = self->proc_.midiMap();
+    if (choice == 1) m.beginLearn(MidiTargetKind::ReverbWet, 0, false);
+    if (choice == 2) {
+      m.unbindTarget(MidiTargetKind::ReverbWet, 0);
+      self->proc_.saveMidiMap();
+    }
+  });
+}
+
+void ReverbPanel::timerCallback() {
+  if (!mix_.isMouseButtonDown()) {
+    const double now = proc_.convolver().mix();
+    if (std::abs(mix_.getValue() - now) > 0.004) mix_.setValue(now, juce::dontSendNotification);
+  }
+  const auto& map = proc_.midiMap();
+  const bool learning = map.learning() && map.learningKind() == MidiTargetKind::ReverbWet;
+  midi_.setButtonText(learning ? TRANS("Move it...") : TRANS("MIDI"));
 }
 
 void ReverbPanel::resized() {
@@ -1404,6 +1444,8 @@ void ReverbPanel::resized() {
   row = r.removeFromTop(kRow);
   mixLabel_.setBounds(row.removeFromLeft(60));
   mix_.setBounds(row.removeFromLeft(320));
+  row.removeFromLeft(kGap);
+  midi_.setBounds(row.removeFromLeft(70));
   r.removeFromTop(kGap);
 }
 

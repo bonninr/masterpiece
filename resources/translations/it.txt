@@ -1147,3 +1147,4 @@ countries: it ch sm va
 "Volume" = "Volume"
 "Voicing EQ" = "EQ di intonazione"
 "Undo the last change to the marks" = "Annulla l'ultima modifica ai segni"
+"Learn a knob or a pedal for the wet level" = "Apprendere una manopola o un pedale per il livello del riverbero"

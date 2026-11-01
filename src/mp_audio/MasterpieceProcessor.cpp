@@ -1473,6 +1473,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::PairLevel:
+        case MidiTargetKind::ReverbWet:
           setLiveLevelFromMidi(action.kind, action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
@@ -5567,6 +5568,11 @@ void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId
     case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
     case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
     case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
+    // Saved with the organ, as the Reverb tab's slider is.
+    case MidiTargetKind::ReverbWet:
+      convolver_.setMix(static_cast<float>(value) / 127.0f);
+      markSettingsDirty();
+      break;
     default: break;
   }
 }
