@@ -10,12 +10,13 @@ name: build
 # has to be shaped around a minute allowance; it is still kept from doing
 # obviously wasted work, because a queue is a cost of its own.
 on:
-  # Main only: a branch with a pull request is built for the pull request,
-  # and building it for the push as well doubled every run, its artifacts and
-  # its caches until the account's Actions storage was full. Tags are built by
-  # release.yml.
+  # Main and dev only: a branch with a pull request is built for the pull
+  # request, and building it for the push as well doubled every run, its
+  # artifacts and its caches until the account's Actions storage was full.
+  # Tags are built by release.yml. A build of dev is published as the rolling
+  # prerelease by dev-latest.yml.
   push:
-    branches: [main]
+    branches: [main, dev]
     paths-ignore:
       - 'README.md'
       - 'COPYING'
@@ -59,11 +60,12 @@ on:
         default: true
 
 # Profile-guided builds take twice as long, so they run when asked for: a
-# release, a run started by hand with the box ticked, and a pull request
-# labelled "pgo" -- the last of a batch merged together, say. The build job
-# is then built instrumented, trained and built again with the profile.
+# release, a run started by hand with the box ticked, a pull request labelled
+# "pgo", and a push to dev. The build job is then built instrumented, trained
+# and built again with the profile. A push to dev waits a while first (see
+# targets), so of several merges made together only the last is built.
 env:
-  PGO: ${{ inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') }}
+  PGO: ${{ inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
 
 # Pushing twice in a minute should not pay for two builds of the older commit.
 # A label run has a group of its own, so labelling a pull request does not
@@ -90,6 +92,14 @@ jobs:
       build: ${{ steps.lists.outputs.build }}
       plugins: ${{ steps.lists.outputs.plugins }}
     steps:
+      # Merges into dev come in series. Each push cancels the run before it
+      # (the concurrency group above), so waiting here lets the merges of a
+      # series cancel one another before any runner is taken: only the last
+      # merge is built, profile-guided, and published.
+      - name: Wait for the rest of a series of merges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        run: sleep 900
+
       - id: lists
         env:
           PR: ${{ github.event_name == 'pull_request' }}
@@ -726,7 +736,7 @@ jobs:
   flatpak:
     if: github.event.action != 'labeled' || github.event.label.name == 'pgo'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ (inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo')) && 180 || 90 }}
+    timeout-minutes: ${{ (inputs.pgo || contains(github.event.pull_request.labels.*.name, 'pgo') || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 180 || 90 }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
       options: --privileged
