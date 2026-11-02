@@ -17,7 +17,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Nancy console in Masterpiece, beside the title The king of instruments, free and open source">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="screenshots/mark.png">
+<link rel="icon" type="image/png" sizes="32x32" href="screenshots/icon-32.png">
+<link rel="apple-touch-icon" href="screenshots/icon-180.png">
 <link rel="stylesheet" href="home.css">
 <!-- What the page is about, for search engines and AI assistants. softwareVersion
      follows the latest release: .github/pages-downloads.py writes it when the site is published. -->
@@ -98,7 +99,7 @@
     "name": "How much memory does a large organ need?",
     "acceptedAnswer": {
      "@type": "Answer",
-     "text": "That depends on the loading settings. Friesach, 17 GB on disk, takes 21.6 GB as 32-bit float, 7.0 GB at 24 bits with streamed release tails, and 2.33 GB at 16 bits in mono. Stops and perspectives can also be left out."
+     "text": "That depends on the loading settings. Friesach, 17 GB on disk, takes 16.2 GB at 24 bits, 5.4 GB at 24 bits held compressed, and 1.66 GB at 16 bits in mono held compressed. Stops and perspectives can also be left out."
     }
    },
    {
@@ -145,8 +146,8 @@
     <a class="brand" href="#top"><img src="screenshots/mark.png" alt=""><span>Masterpiece</span></a>
     <nav class="site-nav">
       <a href="#formats">Formats</a>
+      <a href="#memory">Memory</a>
       <a href="#engine">Engine</a>
-      <a href="#platforms">Platforms</a>
       <a href="#features">Features</a>
       <a href="#action">Sound demos</a>
       <a href="docs/">Docs</a>
@@ -164,8 +165,8 @@
   <div class="wrap">
     <div class="hero-grid">
       <div>
-        <h1>The king of instruments. <span class="tone">Free and open source.</span></h1>
-        <p class="lead">Masterpiece, the player for the two main sample-set formats, Hauptwerk and GrandOrgue: each organ's own console, wiring, wind and swell boxes on a vector-optimised engine, from Windows and macOS to a Raspberry Pi and an iPad.</p>
+        <h1>Hauptwerk-format and GrandOrgue organs <span class="tone">on a free, open-source player</span></h1>
+        <p class="lead">Masterpiece opens a sample set with its own console pages, wiring, wind and swell boxes, and plays it from your MIDI keyboards and pedals. Friesach's 16.2 GB of 24-bit samples play from 5.4 GB of memory, the same to the bit.</p>
         <div class="buttons">
           <a class="btn primary" href="#platforms">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
@@ -176,17 +177,44 @@
         </div>
         <a class="more" href="https://github.com/bonninr/masterpiece/releases/latest">Release notes</a>
       </div>
-      <figure class="frame" style="margin:0">
-        <img src="screenshots/shot-console.jpg" alt="The Nancy console in Masterpiece, with seven stops drawn">
-        <figcaption class="bar"><span>Nancy · Cavaillé-Coll · 65 stops, four manuals · Piotr Grabowski</span><a href="https://piotrgrabowski.pl/nancy/">Sample set</a></figcaption>
+      <figure class="frame stage-frame" style="margin:0">
+        <div class="stage" role="region" aria-roledescription="carousel" aria-label="Organ consoles in Masterpiece" tabindex="0">
+      <figure class="slide on" data-video="hero/nancy.mp4" data-poster="hero/nancy.jpg"><img class="poster" src="hero/nancy.jpg" alt="The Nancy console in Masterpiece, full organ drawn"><figcaption class="cap"><b>Nancy</b><i>Cavaillé-Coll · demonstration set · <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></i><span>Franck, Chorale no. 3 in A minor · sequence by Raffaele Diodati</span></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Kemper.jpg" data-crop="0" data-alt="The Westerland, St. Nicolai console in Masterpiece"><figcaption class="cap"><b>Westerland, St. Nicolai</b><i>Kemper, 1963 · free sample set · <a href="https://hauptwerk-augustine.info/Kemper.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Chorzow.jpg" data-crop="0" data-alt="The Chorzów, St Hedwig of Silesia console in Masterpiece"><figcaption class="cap"><b>Chorzów, St Hedwig of Silesia</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/chorzow-sw-jadwiga-slaska/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-video="hero/friesach.mp4" data-poster="hero/friesach.jpg"><figcaption class="cap"><b>Friesach</b><i>Eisenbarth, 2000 · 44 stops · <a href="https://piotrgrabowski.pl/friesach/">Piotr Grabowski</a></i><span>Widor, Toccata from Symphony no. 5 · sequence by William Shattuck</span></figcaption></figure>
+      <figure class="slide" data-video="hero/krakow.mp4" data-poster="hero/krakow.jpg"><figcaption class="cap"><b>Kraków, St. John Cantius</b><i>40 stops · <a href="https://piotrgrabowski.pl/cracow-st-john-cantius/">Piotr Grabowski</a></i><span>Bach, Toccata and Fugue in D minor, BWV 565 · sequence by Raffaele Diodati</span></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Lazi.jpg" data-crop="0" data-alt="The Lázi, St. Catherine of Alexandria console in Masterpiece"><figcaption class="cap"><b>Lázi, St. Catherine of Alexandria</b><i>Angster, 1938 · demonstration set · <a href="https://hauptwerk-augustine.info/Lazi.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-ErfurtPredigerkirche.jpg" data-crop="0" data-alt="The Erfurt, Predigerkirche console in Masterpiece"><figcaption class="cap"><b>Erfurt, Predigerkirche</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/erfurt-predigerkirche/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-video="hero/lipiny.mp4" data-poster="hero/lipiny.jpg"><figcaption class="cap"><b>Lipiny</b><i>A. Volkmann, 1898 · 25 stops · <a href="https://piotrgrabowski.pl/lipiny/">Piotr Grabowski</a></i><span>Karg-Elert, Nun danket alle Gott · sequence by Andrew Maguire</span></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Remberti.jpg" data-crop="0" data-alt="The Bremen, St. Remberti console in Masterpiece"><figcaption class="cap"><b>Bremen, St. Remberti</b><i>Fischer &amp; Krämer, 1994 · free sample set · <a href="https://hauptwerk-augustine.info/Remberti.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-SwietaLipka.jpg" data-crop="0" data-alt="The Święta Lipka console in Masterpiece"><figcaption class="cap"><b>Święta Lipka</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/swieta-lipka/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-video="hero/strassburg.mp4" data-poster="hero/strassburg.jpg"><figcaption class="cap"><b>Strassburg</b><i>C. Werner, 1743 · 20 stops · <a href="https://piotrgrabowski.pl/strassburg/">Piotr Grabowski</a></i><span>Widor, Marche Pontificale · sequence by F. Borsari</span></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Varsany.jpg" data-crop="0" data-alt="The Veszprémvarsány console in Masterpiece"><figcaption class="cap"><b>Veszprémvarsány</b><i>Péter Peking, 1780 · demonstration set · <a href="https://hauptwerk-augustine.info/Varsany.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Duren.jpg" data-crop="0" data-alt="The Düren console in Masterpiece"><figcaption class="cap"><b>Düren</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/duren/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-video="hero/giubiasco.mp4" data-poster="hero/giubiasco.jpg"><figcaption class="cap"><b>Giubiasco</b><i><a href="https://piotrgrabowski.pl/giubiasco/">Piotr Grabowski</a></i><span>Boëllmann, Suite Gothique · sequence by Andrew Maguire</span></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Bremen-Vahr.jpg" data-crop="0" data-alt="The Bremen-Vahr, Christ Church console in Masterpiece"><figcaption class="cap"><b>Bremen-Vahr, Christ Church</b><i>Beckerath, 1961 · free sample set · <a href="https://hauptwerk-augustine.info/Bremen-Vahr.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Obervellach.jpg" data-crop="0" data-alt="The Obervellach console in Masterpiece"><figcaption class="cap"><b>Obervellach</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/obervellach/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Bacsfa.jpg" data-crop="0" data-alt="The Bacsfa, St. Anthony console in Masterpiece"><figcaption class="cap"><b>Bacsfa, St. Anthony</b><i>1779 · demonstration set · <a href="https://hauptwerk-augustine.info/Bacsfa.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-ErfurtBussleben.jpg" data-crop="0" data-alt="The Erfurt-Büßleben console in Masterpiece"><figcaption class="cap"><b>Erfurt-Büßleben</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/erfurt-bussleben/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/avo-Dortmund.jpg" data-crop="0" data-alt="The Dortmund, St. Paul console in Masterpiece"><figcaption class="cap"><b>Dortmund, St. Paul</b><i>Rieger, 1994 · free sample set · <a href="https://hauptwerk-augustine.info/Dortmund.php">Augustine’s Virtual Organs</a> · <a href="https://hauptwerk-augustine.info/Completely_free_samples.php">Free sets</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Alessandria.jpg" data-crop="0" data-alt="The Alessandria console in Masterpiece"><figcaption class="cap"><b>Alessandria</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/alessandria/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Pinerolo.jpg" data-crop="0" data-alt="The Pinerolo console in Masterpiece"><figcaption class="cap"><b>Pinerolo</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/pinerolo/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Nitra.jpg" data-crop="0" data-alt="The Nitra console in Masterpiece"><figcaption class="cap"><b>Nitra</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/nitra/">Piotr Grabowski</a></i></figcaption></figure>
+      <figure class="slide" data-still="screenshots/console-Goch.jpg" data-crop="0" data-alt="The Goch console in Masterpiece"><figcaption class="cap"><b>Goch</b><i>Demonstration set · <a href="https://piotrgrabowski.pl/goch/">Piotr Grabowski</a></i></figcaption></figure>
+          <button class="nav prev" type="button" aria-label="Previous console"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+          <button class="nav next" type="button" aria-label="Next console"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+          <button class="sound" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="cross" d="m16 9 6 6m0-6-6 6"/></svg><span>Sound</span></button>
+          <div class="progress" aria-hidden="true"><i></i></div>
+        </div>
       </figure>
     </div>
 
     <div class="steps">
-      <div class="step"><h3>Hauptwerk-format and GrandOrgue sets.</h3><p>Definitions, consoles and packages of both formats, read as they ship.</p></div>
-      <div class="step"><h3>AVX2, SSE2 and NEON vector code.</h3><p>Three to five times the rendering speed at 512 voices.</p></div>
-      <div class="step"><h3>Six platforms, four plugin formats.</h3><p>Windows, macOS, Linux, Raspberry Pi, Android and iOS.</p></div>
-      <div class="step"><h3>More than 100 organs tested.</h3><p>Each set loaded, played on every keyboard and its console pages checked.</p></div>
+      <div class="step"><h3>More than 100 organs tested</h3><p>Each set loaded, played on every keyboard, and every console page checked.</p></div>
+      <div class="step"><h3>A third of the memory</h3><p>Samples held in a lossless code and decoded as each pipe speaks.</p></div>
+      <div class="step"><h3>3&ndash;5&times; rendering speed</h3><p>Hand-written AVX2, SSE2 and NEON code, measured at 512 voices.</p></div>
+      <div class="step"><h3>Six platforms</h3><p>Windows, macOS, Linux, Raspberry Pi, Android and iOS, with VST3, AU and LV2 plugins.</p></div>
     </div>
   </div>
 </section>
@@ -195,14 +223,14 @@
   <div class="wrap">
    <div class="split">
     <div>
-      <h2>Two formats. <span class="tone">One player.</span></h2>
-      <p class="lead">Hauptwerk-format and GrandOrgue sample sets with their own consoles and wiring, read straight from the packages they ship in.</p>
+      <h2>Both sample-set formats, <span class="tone">opened from the packages they ship in</span></h2>
+      <p class="lead">Download a set, point Masterpiece at the file, and play. The console comes up as its producer drew it, with every coupler wired the way the definition wires it.</p>
     </div>
       <ul class="points" style="margin-top:0">
-        <li><div><h3>Hauptwerk-format definitions.</h3><p>Full, compact and composite XML, with every console page, jamb and console size the set draws.</p></div></li>
-        <li><div><h3>GrandOrgue organs.</h3><p><code>.organ</code> definitions converted as they load, console included.</p></div></li>
-        <li><div><h3>Packed or unpacked archives.</h3><p>Both formats from an unpacked folder or straight from what they ship in: RAR 4 and 5, solid, multi-part and multi-volume, and GrandOrgue <code>.orgue</code> packages. WAV and WavPack samples at any rate.</p></div></li>
-        <li><div><h3>Each set's own switch network.</h3><p>Couplers, sub- and super-octaves, unison off, reversibles, crescendo and alternate ranks.</p></div></li>
+        <li><div><h3>Hauptwerk-format definitions</h3><p>Full, compact and composite XML, with every console page, jamb and console size the set draws.</p></div></li>
+        <li><div><h3>GrandOrgue organs</h3><p><code>.organ</code> definitions converted as they load, console included, and every manual playable.</p></div></li>
+        <li><div><h3>Archives opened as they are</h3><p>RAR 4 and 5, solid, multi-part and multi-volume, and GrandOrgue <code>.orgue</code> packages. An unpacked folder works too. WAV and WavPack samples at any rate.</p></div></li>
+        <li><div><h3>Each set's own switch network</h3><p>Couplers, sub- and super-octaves, unison off, reversibles, crescendo and alternate ranks.</p></div></li>
       </ul>
    </div>
     <div class="duo">
@@ -219,11 +247,38 @@
   </div>
 </section>
 
+<section class="deep" id="memory">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>A cathedral organ <span class="tone">in a laptop's memory</span></h2>
+    </div>
+    <p class="lead" style="margin-top:-24px">With <i>Lossless compression in memory</i>, every 16- and 24-bit sample stays in memory in a lossless code and is decoded as its pipe speaks. What you hear is the recording, bit for bit.</p>
+    <div class="figures">
+      <div class="figure"><div class="value">5.4 GB</div><p>Friesach in memory, 24-bit samples held compressed, against 16.2 GB as files</p></div>
+      <div class="figure"><div class="value">23 s</div><p>Nancy reopening from the sample cache, 212 s the first time</p></div>
+      <div class="figure"><div class="value">Six presets</div><p>From <i>Best</i> to <i>Smallest</i>, with the organ's own memory figure beside each</p></div>
+    </div>
+    <div class="compare-wrap">
+      <table class="compare">
+        <caption>Friesach, 44 stops, opened from its 7.35 GB package in Masterpiece 0.9.0</caption>
+        <thead><tr><th>Samples</th><th>Held as</th><th class="num">In memory</th></tr></thead>
+        <tbody>
+          <tr><td>24-bit</td><td>As recorded</td><td class="num">16.2 GB</td></tr>
+          <tr class="best"><td>24-bit</td><td>Lossless compression</td><td class="num">5.39 GB</td></tr>
+          <tr><td>16-bit</td><td>Lossless compression</td><td class="num">3.30 GB</td></tr>
+          <tr><td>16-bit, mono</td><td>Lossless compression</td><td class="num">1.66 GB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small" style="margin-top:14px">Measured on a 16 GB Windows PC. The first opening compresses the samples, about three minutes for Friesach; later openings read them from the sample cache. Stops, ranks and microphone perspectives can also be left out of a load.</p>
+  </div>
+</section>
+
 <section id="engine">
   <div class="wrap split flip">
     <div>
-      <h2>A vector-optimised engine. <span class="tone">More pipes on every processor.</span></h2>
-      <p class="lead">Hand-written AVX2, SSE2 and NEON kernels for every voice, on by default on every processor that has them.</p>
+      <h2>More voices on every processor, <span class="tone">from hand-written vector code</span></h2>
+      <p class="lead">Every voice runs through AVX2, SSE2 or NEON kernels, spread over every logical processor at real-time priority where the system grants it.</p>
       <div class="figures">
         <div class="figure"><div class="value">3&ndash;5&times;<sup>1</sup></div><p>AVX2 rendering speed</p></div>
         <div class="figure"><div class="value">&minus;57%<sup>2</sup></div><p>Memory, releases streamed</p></div>
@@ -238,7 +293,7 @@
     </div>
     <table class="spec">
       <tr><td>Vector code</td><td>AVX2, SSE2 (x86), NEON (ARM, Raspberry Pi)</td></tr>
-      <tr><td>Release selection</td><td>By key hold time, crossfaded from the sustain loop</td></tr>
+      <tr><td>Release selection</td><td>By key hold time, in phase with the attack, crossfade length by pitch</td></tr>
       <tr><td>Wind model</td><td>Chests, bellows and valves as one coupled system; pitch and level follow the pressure</td></tr>
       <tr><td>Enclosures</td><td>Level and treble shelf to the set's stated depth</td></tr>
       <tr><td>Tremulants</td><td>Amplitude and pitch modulation per chest and per pipe</td></tr>
@@ -252,7 +307,7 @@
 <section class="deep" id="platforms">
   <div class="wrap">
     <div class="section-head">
-      <h2>One player. <span class="tone">Six platforms.</span></h2>
+      <h2>Download Masterpiece <span class="tone">for your computer, Raspberry Pi or tablet</span></h2>
       <a class="more" href="https://github.com/bonninr/masterpiece/releases">All releases on GitHub</a>
     </div>
     <!-- One tile per system; a click opens its files, and opening one closes the
@@ -293,12 +348,12 @@
 <section class="alt" id="composite">
   <div class="wrap split">
     <div>
-      <h2>Composite organs. <span class="tone">Several sample sets, one instrument.</span></h2>
+      <h2>Composite organs <span class="tone">built from several sample sets</span></h2>
       <p class="lead">Organs assembled from the pipework of several sets, such as Augustine's <a href="https://hauptwerk-augustine.info/Jehmlich_composite.php">Jehmlich</a> and <a href="https://hauptwerk-augustine.info/Zam%C3%A1rdi-Buda_Hills_composite.php">Zamárdi-Buda</a> composites, each set read from its own archive.</p>
       <ul class="points">
-        <li><div><h3>Sets found where you keep them.</h3><p>The composite's folder, your package folder and your sample libraries.</p></div></li>
-        <li><div><h3>One question per set kept elsewhere.</h3><p>An archive or folder chosen once, and remembered for every later load.</p></div></li>
-        <li><div><h3>Standard component noises.</h3><p>Key action, stop action and blower noises made by Masterpiece.</p></div></li>
+        <li><div><h3>Sets found where you keep them</h3><p>The composite's folder, your package folder and your sample libraries.</p></div></li>
+        <li><div><h3>One question per set kept elsewhere</h3><p>An archive or folder chosen once, and remembered for every later load.</p></div></li>
+        <li><div><h3>Standard component noises</h3><p>Key action, stop action and blower noises made by Masterpiece.</p></div></li>
       </ul>
     </div>
     <figure class="frame" style="margin:0">
@@ -311,7 +366,7 @@
 <section id="split">
   <div class="wrap split flip">
     <div>
-      <h2>Split mode. <span class="tone">The whole organ from one keyboard.</span></h2>
+      <h2>The whole organ <span class="tone">from one keyboard</span></h2>
       <p class="lead">Up to three split points, each zone on a manual or the pedal, with a layered second manual, its own octave and transposition, and the pedal from the lowest key held.</p>
     </div>
     <figure class="frame" style="margin:0">
@@ -323,103 +378,132 @@
 <section class="alt" id="features">
   <div class="wrap">
     <div class="section-head">
-      <h2>Everything around the keys.</h2>
+      <h2>Set up once for your console</h2>
       <a class="more" href="https://github.com/bonninr/masterpiece#features">The full feature list</a>
     </div>
     <div class="cards">
       <article class="card">
         <div class="frame"><img src="screenshots/shot-midi.jpg" alt="Organ settings, MIDI tab"></div>
-        <h3>Your keyboards and pedals.</h3>
-        <p>A channel per manual, key range, transposition, velocity window, short octaves and debounce; MIDI learn for every control, drawstop lamps and jamb displays.</p>
-      </article>
-      <article class="card">
-        <div class="frame"><img src="screenshots/shot-combinations.jpg" alt="Combinations window"></div>
-        <h3>Generals, divisionals and stepper.</h3>
-        <p>Up to 100 generals, divisionals per manual, general cancel and a 999-frame sequencer, in named combination sets.</p>
-      </article>
-      <article class="card">
-        <div class="frame contain"><img src="screenshots/shot-panel.jpg" alt="Panel of the whole organ, stops grouped by division"></div>
-        <h3>The whole organ on one panel.</h3>
-        <p>Stops grouped by division, for sets drawn across many jambs, any page in its own window, and automatic portrait layouts.</p>
+        <h3>Your keyboards and pedals</h3>
+        <p>A channel per manual, with key range, transposition, velocity window, short octaves and debounce. Every control can be learned from MIDI, and drawstop lamps and jamb displays answer back.</p>
       </article>
       <article class="card">
         <div class="frame"><img src="screenshots/shot-loading.jpg" alt="Organ settings, Loading tab"></div>
-        <h3>Memory and loading choices.</h3>
-        <p>24 or 16 bits, mono folding, streamed release tails, a sample cache and a memory limit, per organ or as defaults.</p>
+        <h3>Quality presets</h3>
+        <p>Best, High, Recommended, Compact, Small and Smallest, each shown with the memory this organ will take. Every setting can also be set by hand, per organ.</p>
       </article>
       <article class="card">
-        <div class="frame"><img src="screenshots/shot-stops.jpg" alt="Organ settings, Stops and perspectives tab"></div>
-        <h3>Stops, ranks and perspectives.</h3>
-        <p>Any stop, rank or microphone perspective left out of a load, for the largest sets on smaller computers.</p>
+        <div class="frame"><img src="screenshots/shot-stops.jpg" alt="Organ settings, Stops, ranks and perspectives tab"></div>
+        <h3>Stops, ranks and perspectives</h3>
+        <p>Any stop, rank or microphone perspective left out of a load. A note left out borrows its neighbour's samples, retuned.</p>
+      </article>
+      <article class="card">
+        <div class="frame contain"><img src="screenshots/shot-panel.jpg" alt="Panel of the whole organ, stops grouped by division"></div>
+        <h3>The whole organ on one panel</h3>
+        <p>Stops grouped by division for sets drawn across many jambs, sized by hand or fitted to the window, and any page in a window of its own.</p>
       </article>
       <article class="card">
         <div class="frame"><img src="screenshots/shot-temperament.jpg" alt="Temperament, pitch and transposer"></div>
-        <h3>Temperaments, pitch and transposer.</h3>
+        <h3>Temperaments, pitch and transposer</h3>
         <p>The organ's own tuning, nine historical temperaments, Scala files, any pitch for A and &plusmn;12 semitones.</p>
-      </article>
-      <article class="card">
-        <div class="frame"><img src="screenshots/shot-voicing.jpg" alt="Voicing tab"></div>
-        <h3>Voicing per rank and per pipe.</h3>
-        <p>Level and tuning for every rank and pipe, with two voicing sets for A/B comparison.</p>
-      </article>
-      <article class="card">
-        <div class="frame"><img src="screenshots/shot-room.jpg" alt="Room tab"></div>
-        <h3>A room for sets recorded dry.</h3>
-        <p>Convolution reverb with an impulse response of your choice and its wet level, kept with each organ.</p>
-      </article>
-      <article class="card">
-        <div class="frame"><img src="screenshots/shot-recorder.jpg" alt="Recorder window"></div>
-        <h3>MIDI and audio recording.</h3>
-        <p>Performances with every stop and shoe movement, replayable under another registration; audio takes and a metronome.</p>
       </article>
     </div>
     <p class="duo-caption">Windows shown with Nancy · <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></p>
   </div>
 </section>
 
-<section class="deep" id="memory">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Cathedral-sized organs. <span class="tone">Laptop-sized memory.</span></h2>
+<section id="combinations">
+  <div class="wrap split">
+    <div>
+      <h2>A combination action <span class="tone">on every organ you load</span></h2>
+      <p class="lead">Generals, divisionals and a sequencer of your own sit beside the organ's pistons, including on sets that ship with few or none.</p>
+      <ul class="points">
+        <li><div><h3>Up to 100 generals</h3><p>Divisionals per manual, general cancel and named combination sets, saved with each organ.</p></div></li>
+        <li><div><h3>A 999-frame sequencer</h3><p>Next and previous on any MIDI button, with digits and Insert as on a setter board.</p></div></li>
+        <li><div><h3>Combinaison coupler</h3><p>A Great divisional also recalls the Pedal divisional of the same number.</p></div></li>
+        <li><div><h3>Set turns off after storing</h3><p>On every piston, from the screen, the console or MIDI.</p></div></li>
+        <li><div><h3>Couplers where you leave them</h3><p>Pistons can leave the bass and melody couplers alone. The program couplers at 16&prime;, 8&prime; and 4&prime; store with the stops.</p></div></li>
+        <li><div><h3>Held notes kept through a change</h3><p>As an option, a stop change leaves the notes already held alone, and a sustain pedal holds the notes let go.</p></div></li>
+      </ul>
     </div>
-    <p class="lead" style="margin-top:-24px">Samples held at 24 or 16 bits or folded to mono, release tails streamed from disk, and a sample cache for every later opening.</p>
-    <div class="figures">
-      <div class="figure"><div class="value">Up to 9&times;</div><p>Less memory, at 16 bits and in mono with releases streamed</p></div>
-      <div class="figure"><div class="value">Up to 4&times;</div><p>Faster opening from the sample cache</p></div>
-      <div class="figure"><div class="value">Per organ</div><p>Loading settings kept with each set</p></div>
+    <figure class="frame" style="margin:0">
+      <img src="screenshots/shot-combinations.jpg" alt="The Combinations window: sequencer, generals and divisionals on Nancy">
+    </figure>
+  </div>
+</section>
+
+<section class="deep" id="voicing">
+  <div class="wrap split flip">
+    <div>
+      <h2>Voicing and output, <span class="tone">rank by rank</span></h2>
+      <p class="lead">Each control here takes no processor time until you set it, so an organ played as its producer voiced it renders exactly as before.</p>
+      <ul class="points">
+        <li><div><h3>An EQ per rank and per division</h3><p>Ten presets and your own, each on a MIDI button.</p></div></li>
+        <li><div><h3>Pan and stereo width</h3><p>Per rank and per division.</p></div></li>
+        <li><div><h3>Attack emphasis</h3><p>Each pipe begins louder or softer and settles to its own level.</p></div></li>
+        <li><div><h3>Pipe detune and wind sway</h3><p>Per organ, off by default.</p></div></li>
+        <li><div><h3>Live levels</h3><p>Faders for ranks, divisions and output pairs, from MIDI knobs, the Outputs tab or the control API.</p></div></li>
+        <li><div><h3>The output stage</h3><p>Compressor, peak limiter and output presets, bass management to a subwoofer channel, and output pairs on device channels of their own.</p></div></li>
+      </ul>
     </div>
-    <div class="compare-wrap">
-      <table class="compare">
-        <caption>One organ, five ways to hold it: <a href="https://piotrgrabowski.pl/friesach/">Friesach</a>, 44 stops, 17 GB on disk</caption>
-        <thead><tr><th>Samples</th><th>Release tails</th><th class="num">In memory</th><th class="num">Streamed from disk</th><th class="num">Opening</th></tr></thead>
-        <tbody>
-          <tr><td>32-bit float</td><td>In memory</td><td class="num">21.6 GB</td><td class="num">&ndash;</td><td class="num">77 s</td></tr>
-          <tr><td>24-bit</td><td>In memory</td><td class="num">16.2 GB</td><td class="num">&ndash;</td><td class="num">56 s</td></tr>
-          <tr><td>24-bit</td><td>Streamed</td><td class="num">7.0 GB</td><td class="num">8.9 GB</td><td class="num">29 s</td></tr>
-          <tr><td>16-bit</td><td>Streamed</td><td class="num">4.65 GB</td><td class="num">5.9 GB</td><td class="num">28 s</td></tr>
-          <tr class="best"><td>16-bit, mono</td><td>Streamed</td><td class="num">2.33 GB</td><td class="num">3.0 GB</td><td class="num">26 s</td></tr>
-        </tbody>
-      </table>
+    <figure class="frame" style="margin:0">
+      <img src="screenshots/shot-outputs.jpg" alt="Organ settings, Outputs tab: a fader and a MIDI button for each pair, division and rank">
+    </figure>
+  </div>
+</section>
+
+<section id="score">
+  <div class="wrap split">
+    <div>
+      <h2>Scores and recordings <span class="tone">at the console</span></h2>
+      <p class="lead">Open a MusicXML score and the organ plays it, with a cursor on the beat. Record yourself, and the take plays back on the keyboard you played it on.</p>
+      <ul class="points">
+        <li><div><h3>Score panel</h3><p>MusicXML engraved in the program, with the cursor kept in sight through every page.</p></div></li>
+        <li><div><h3>Page-turn piston</h3><p>A console piston turns the page in a score app over MIDI.</p></div></li>
+        <li><div><h3>MIDI recorder</h3><p>Every note, stop and shoe movement, with the console in the file, replayed under another registration or saved for a sequencer.</p></div></li>
+        <li><div><h3>Record and Play on the console</h3><p>Both buttons learnable on any MIDI control.</p></div></li>
+        <li><div><h3>Audio takes and a metronome</h3><p>In the organ's own audio stream.</p></div></li>
+      </ul>
     </div>
-    <p class="small" style="margin-top:14px">Measured on a 16 GB Windows PC. A streamed tail keeps its first second in memory and reads the rest from disk as it plays. From the sample cache, the organ reopens in 18.9 s.</p>
+    <figure class="frame" style="margin:0">
+      <img src="screenshots/shot-score.jpg" alt="The score panel, a trio engraved for manuals and pedal, on Friesach">
+    </figure>
+  </div>
+</section>
+
+<section class="alt" id="remote">
+  <div class="wrap split flip">
+    <div>
+      <h2>The console on a phone, <span class="tone">and an API for your own hardware</span></h2>
+      <p class="lead">Turn on Remote control, and a phone or tablet on your network shows the organ's own console pages in its browser.</p>
+      <ul class="points">
+        <li><div><h3>Web console</h3><p>Every console page or a stop panel per division, with volume, transposer, temperament and EQ presets, and each load with its progress.</p></div></li>
+        <li><div><h3>One protocol over HTTP, MIDI SysEx and OSC</h3><p>Every stop, piston, level and sequencer frame, described in an OpenAPI file.</p></div></li>
+        <li><div><h3>This computer only</h3><p>The API can listen on the computer alone.</p></div></li>
+        <li><div><h3>Messages to the console</h3><p>Lamps lit after a load, a ready lamp, and learnable Quit and Power-off buttons for a console with no screen in reach.</p></div></li>
+      </ul>
+    </div>
+    <figure class="frame" style="margin:0 auto;max-width:320px">
+      <img src="screenshots/shot-web.jpg" alt="The web console on a phone, showing Nancy's left jamb">
+    </figure>
   </div>
 </section>
 
 <section id="action">
   <div class="wrap">
     <div class="section-head">
-      <h2>Masterpiece in action.</h2>
+      <h2>Sound demos <span class="tone">recorded from the program</span></h2>
       <a class="more" href="attribution.html">Organs and programmes</a>
     </div>
     <div class="cards two">
       <article class="card" id="hear">
         <video controls preload="metadata" controlsList="nodownload" disablepictureinpicture poster="screenshots/recital-poster.jpg" src="recital.mp4"><p>Your browser cannot play this video.</p></video>
-        <h3>Sound demo.</h3>
+        <h3>Sound demo</h3>
         <p>Seventeen minutes on nine organs, recorded from Masterpiece's audio output. <a href="attribution.html">Organs and programme</a></p>
       </article>
       <article class="card" id="hear-2">
         <video controls preload="metadata" controlsList="nodownload" disablepictureinpicture poster="screenshots/recital-2-poster.jpg" src="recital-2.mp4"><p>Your browser cannot play this video.</p></video>
-        <h3>Sound demo II.</h3>
+        <h3>Sound demo II</h3>
         <p>Twelve minutes on fifteen organs, filmed from the running console. <a href="attribution-2.html">Organs and programme</a></p>
       </article>
     </div>
@@ -429,8 +513,11 @@
 <section class="alt" id="consoles">
   <div class="wrap">
     <div class="section-head">
-      <h2>Tested with 100+ organs. <span class="tone">A look at some samples.</span></h2>
-      <a class="more" href="attribution.html">Sample set credits</a>
+      <h2>A few of the consoles <span class="tone">from more than 100 organs tested</span></h2>
+      <div class="heads">
+        <a class="more" href="https://hauptwerk-augustine.info/Completely_free_samples.php">Augustine’s free sample sets</a>
+        <a class="more" href="attribution.html">Sample set credits</a>
+      </div>
     </div>
     <div class="gallery">
       <figure><img loading="lazy" src="screenshots/Lipiny.jpg" alt="Lipiny console"><figcaption>Lipiny<span>A. Volkmann, 1898 · <a href="https://piotrgrabowski.pl/lipiny/">Piotr Grabowski</a></span></figcaption></figure>
@@ -438,21 +525,17 @@
       <figure><img loading="lazy" src="screenshots/MelcerChamberMusicHall.jpg" alt="Melcer console"><figcaption>Melcer Chamber Music Hall<span>Chamber organ · <a href="https://piotrgrabowski.pl/melcer-chamber-music-hall/">Piotr Grabowski</a></span></figcaption></figure>
       <figure><img loading="lazy" src="screenshots/Raszczyce.jpg" alt="Raszczyce console"><figcaption>Raszczyce<span>Vermeulen, 1965 · <a href="https://piotrgrabowski.pl/raszczyce/">Piotr Grabowski</a></span></figcaption></figure>
       <figure><img loading="lazy" src="screenshots/Nancy.jpg" alt="Nancy console"><figcaption>Nancy<span>65 stops, four manuals · <a href="https://piotrgrabowski.pl/nancy/">Piotr Grabowski</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/Lemmer.jpg" alt="Lemmer console"><figcaption>Lemmer<span>Flentrop, 1977–78 · <a href="https://hauptwerk-augustine.info/Lemmer.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/AngsterNagyrakos.jpg" alt="Nagyrákos console"><figcaption>Nagyrákos<span>Angster, 1938 · <a href="https://hauptwerk-augustine.info/Angster_Nagyrakos.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/HungarianVillage.jpg" alt="Hungarian village organs console"><figcaption>Hungarian village organs<span>Composite set · <a href="https://hauptwerk-augustine.info/Hungarian_village.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/Zalalovo.jpg" alt="Zalalövő console"><figcaption>Zalalövő<span>Modern baroque · <a href="https://hauptwerk-augustine.info/Zalalovo.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/LuberCsaszar.jpg" alt="Császár console"><figcaption>Császár<span>F. X. Luber, 1793 · <a href="https://hauptwerk-augustine.info/Luber_Csaszar.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/Vasvar.jpg" alt="Vasvár console"><figcaption>Vasvár, Dominican church<span>Demonstration set · <a href="https://hauptwerk-augustine.info/Vasvar.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/DutchHarmonium.jpg" alt="Kézdimartonfalva console"><figcaption>Kézdimartonfalva<span>Dutch harmonium · <a href="https://hauptwerk-augustine.info/Dutch_harmonium.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/EuleSzombathely.jpg" alt="Szombathely console"><figcaption>Szombathely<span>Eule · <a href="https://hauptwerk-augustine.info/Eule_Szombathely.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/AngsterHajos.jpg" alt="Hajós console"><figcaption>Hajós<span>Angster · <a href="https://hauptwerk-augustine.info/Angster_Hajos.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/MauracherSzekesfehervar.jpg" alt="Székesfehérvár, Franciscan church console"><figcaption>Székesfehérvár, Franciscan church<span>Mauracher · <a href="https://hauptwerk-augustine.info/Mauracher_Fehervar.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/AngsterCistercian.jpg" alt="Székesfehérvár, Cistercian church console"><figcaption>Székesfehérvár, Cistercian church<span>Angster · <a href="https://hauptwerk-augustine.info/Angster__Cistercian.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/AngsterJak.jpg" alt="Ják Abbey console"><figcaption>Ják Abbey<span>Angster, 1902 · <a href="https://hauptwerk-augustine.info/Angster_Jak.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/RiegerMonor.jpg" alt="Monor console"><figcaption>Monor, Reformed church<span>Rieger · <a href="https://hauptwerk-augustine.info/Rieger_Monor.php">Augustine's</a></span></figcaption></figure>
-      <figure><img loading="lazy" src="screenshots/HolySpiritBudapest.jpg" alt="Budapest console"><figcaption>Budapest, Church of the Holy Spirit<span>Demonstration set · <a href="https://hauptwerk-augustine.info/Holy_Spirit.php">Augustine's</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Kemper.jpg" alt="Westerland, St. Nicolai console"><figcaption>Westerland, St. Nicolai<span>Kemper, 1963 · free sample set · <a href="https://hauptwerk-augustine.info/Kemper.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Lazi.jpg" alt="Lázi console"><figcaption>Lázi<span>Angster, 1938 · demonstration set · <a href="https://hauptwerk-augustine.info/Lazi.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Remberti.jpg" alt="Bremen, St. Remberti console"><figcaption>Bremen, St. Remberti<span>Fischer &amp; Krämer, 1994 · free sample set · <a href="https://hauptwerk-augustine.info/Remberti.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Varsany.jpg" alt="Veszprémvarsány console"><figcaption>Veszprémvarsány<span>Péter Peking, 1780 · demonstration set · <a href="https://hauptwerk-augustine.info/Varsany.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Bremen-Vahr.jpg" alt="Bremen-Vahr, Christ Church console"><figcaption>Bremen-Vahr, Christ Church<span>Beckerath, 1961 · free sample set · <a href="https://hauptwerk-augustine.info/Bremen-Vahr.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Bacsfa.jpg" alt="Bacsfa, St. Anthony console"><figcaption>Bacsfa, St. Anthony<span>1779 · demonstration set · <a href="https://hauptwerk-augustine.info/Bacsfa.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/avo-Dortmund.jpg" alt="Dortmund, St. Paul console"><figcaption>Dortmund, St. Paul<span>Rieger, 1994 · free sample set · <a href="https://hauptwerk-augustine.info/Dortmund.php">Augustine’s Virtual Organs</a></span></figcaption></figure>
       <figure><img loading="lazy" src="screenshots/Friesach.jpg" alt="Friesach console"><figcaption>Friesach<span>Three manuals · <a href="https://piotrgrabowski.pl/friesach/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Chorzow.jpg" alt="Chorzów console"><figcaption>Chorzów, St Hedwig of Silesia<span>Demonstration set · <a href="https://piotrgrabowski.pl/chorzow-sw-jadwiga-slaska/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/SwietaLipka.jpg" alt="Święta Lipka console"><figcaption>Święta Lipka<span>Demonstration set · <a href="https://piotrgrabowski.pl/swieta-lipka/">Piotr Grabowski</a></span></figcaption></figure>
+      <figure><img loading="lazy" src="screenshots/Obervellach.jpg" alt="Obervellach console"><figcaption>Obervellach<span>Demonstration set · <a href="https://piotrgrabowski.pl/obervellach/">Piotr Grabowski</a></span></figcaption></figure>
     </div>
   </div>
 </section>
@@ -460,7 +543,7 @@
 <section class="deep" id="source">
   <div class="wrap split">
     <div>
-      <h2>Built on open source technologies.</h2>
+      <h2>Open source, GPL-3.0</h2>
       <p class="lead">One code base for every platform and plugin format, built with CMake and tested on every pull request.</p>
       <div class="buttons">
         <a class="btn primary" href="https://github.com/bonninr/masterpiece">
@@ -484,26 +567,27 @@
 <section class="alt" id="questions">
   <div class="wrap">
     <div class="section-head">
-      <h2>Questions organists ask.</h2>
+      <h2>Common questions</h2>
     </div>
     <div class="faq">
-      <div class="qa"><h3>Is Masterpiece free?</h3><p>Yes. Masterpiece is free and open source under the GPL-3.0 licence, with every feature included and nothing to register.</p></div>
-      <div class="qa"><h3>Which sample sets does it play?</h3><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></div>
-      <div class="qa"><h3>Do the sets need unpacking first?</h3><p>Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included.</p></div>
-      <div class="qa"><h3>Does it run on a Raspberry Pi?</h3><p>Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine.</p></div>
-      <div class="qa"><h3>How much memory does a large organ need?</h3><p>That depends on the loading settings. Friesach, 17 GB on disk, takes 21.6 GB as 32-bit float, 7.0 GB at 24 bits with streamed release tails, and 2.33 GB at 16 bits in mono. Stops and perspectives can also be left out.</p></div>
-      <div class="qa"><h3>Can it play my console?</h3><p>Yes: a MIDI channel per manual, any keyboard or pedalboard, and MIDI learn for every stop, piston and swell shoe, consoles that send SysEx included.</p></div>
-      <div class="qa"><h3>Can I play with a single keyboard?</h3><p>Split mode divides one keyboard into up to three zones, each on a manual or the pedal, with a layered second manual and the pedal from the lowest key held.</p></div>
-      <div class="qa"><h3>Is there a plugin version?</h3><p>VST3, LV2 and AU plugins come beside the standalone program, for playing the organ inside a digital audio workstation.</p></div>
-      <div class="qa"><h3>Which systems does it run on?</h3><p>Windows (x64), macOS (Apple silicon and Intel), Linux (Flatpak, .deb and tar.gz), Raspberry Pi, Android 8 and later, and iPhone and iPad with iOS 15 and later, sideloaded.</p></div>
+      <details class="qa"><summary><h3>Is Masterpiece free?</h3></summary><p>Yes. Masterpiece is free and open source under the GPL-3.0 licence, with every feature included and nothing to register.</p></details>
+      <details class="qa"><summary><h3>Which sample sets does it play?</h3></summary><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></details>
+      <details class="qa"><summary><h3>Do the sets need unpacking first?</h3></summary><p>Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included.</p></details>
+      <details class="qa"><summary><h3>Does it run on a Raspberry Pi?</h3></summary><p>Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine.</p></details>
+      <details class="qa"><summary><h3>How much memory does a large organ need?</h3></summary><p>That depends on the loading settings. Friesach, 17 GB on disk, takes 16.2 GB at 24 bits, 5.4 GB at 24 bits held compressed, and 1.66 GB at 16 bits in mono held compressed. Stops and perspectives can also be left out.</p></details>
+      <details class="qa"><summary><h3>Does holding samples compressed change the sound?</h3></summary><p>The sound stays identical. Each sample is held in a lossless code and decodes to the same bits as its file, at the cost of a little more processor work per voice.</p></details>
+      <details class="qa"><summary><h3>Can it play my console?</h3></summary><p>Yes: a MIDI channel per manual, any keyboard or pedalboard, and MIDI learn for every stop, piston and swell shoe, consoles that send SysEx included.</p></details>
+      <details class="qa"><summary><h3>Can I play with a single keyboard?</h3></summary><p>Split mode divides one keyboard into up to three zones, each on a manual or the pedal, with a layered second manual and the pedal from the lowest key held.</p></details>
+      <details class="qa"><summary><h3>Is there a plugin version?</h3></summary><p>VST3, LV2 and AU plugins come beside the standalone program, for playing the organ inside a digital audio workstation.</p></details>
+      <details class="qa"><summary><h3>Which systems does it run on?</h3></summary><p>Windows (x64), macOS (Apple silicon and Intel), Linux (Flatpak, .deb and tar.gz), Raspberry Pi, Android 8 and later, and iPhone and iPad with iOS 15 and later, sideloaded.</p></details>
     </div>
   </div>
 </section>
 
 <section class="closing">
   <div class="wrap">
-    <h2>Masterpiece, free for every organist.</h2>
-    <p class="lead">Windows, macOS, Linux, Raspberry Pi, Android and iPad, each a direct download.</p>
+    <h2>Bring your sample sets</h2>
+    <p class="lead">Masterpiece is free on Windows, macOS, Linux, Raspberry Pi, Android and iPad, each a direct download.</p>
     <div class="buttons">
       <a class="btn primary" href="#platforms">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
@@ -517,7 +601,7 @@
 <section class="alt" id="openpipes">
   <div class="wrap">
     <div class="split">
-      <h2>Powered by openpipes.org. <span class="tone">A complete, full-stack virtual pipe organ platform.</span></h2>
+      <h2>Part of OpenPipes, <span class="tone">for organists who build their own console</span></h2>
       <div>
       <p class="lead" style="margin-top:6px">OpenPipes OS, a 64-bit Linux tuned for real-time organ audio on a Raspberry Pi or a PC; Pipe2C hardware modules for stop tabs, pistons, draw knobs and pedals, chained on one I2C bus; 3D-printed controls to complete them, from the modules' housings to toe pistons; and ready-made console plans with the Organ Designer, a custom console builder with parametric CAD models, cut lists and drawings as its output.</p>
       <div class="buttons"><a class="btn primary" href="https://openpipes.org">Visit OpenPipes</a></div>
@@ -597,6 +681,127 @@
   zoom.querySelector('.zoom-close').addEventListener('click', () => zoom.close());
   // A click on the backdrop lands on the dialog itself, outside the figure.
   zoom.addEventListener('click', e => { if (e.target === zoom) zoom.close(); });
+})();
+(() => {
+  // The hero's stage. Clips play muted until the visitor asks for sound;
+  // with sound, only the clips play, each fading into the next.
+  const stage = document.querySelector('.stage');
+  if (!stage) return;
+  const slides = [...stage.querySelectorAll('.slide')];
+  const bar = stage.querySelector('.progress i');
+  const soundButton = stage.querySelector('.sound');
+  const STILL = 7000, FADE = 1200;
+  let at = 0, sound = false, audio = null, timer = 0, held = false, due = false;
+
+  const isClip = s => 'video' in s.dataset;
+  // A slide's picture or clip is fetched only when it is next or showing.
+  const prepare = s => {
+    if (s.dataset.ready) return;
+    s.dataset.ready = '1';
+    if (isClip(s)) {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.poster = s.dataset.poster; v.src = s.dataset.video;
+      v.setAttribute('aria-hidden', 'true');
+      s.insertBefore(v, s.querySelector('.cap'));
+      return;
+    }
+    const blur = document.createElement('div');
+    blur.className = 'blur';
+    blur.style.backgroundImage = `url("${s.dataset.still}")`;
+    const box = document.createElement('div');
+    box.className = 'still';
+    const img = document.createElement('img');
+    img.src = s.dataset.still; img.alt = s.dataset.alt; img.decoding = 'async';
+    box.append(img);
+    s.prepend(blur, box);
+  };
+  // Sound goes through a gain per clip, so it can fade on every browser.
+  const gain = v => {
+    if (!audio) return null;
+    if (!v.gainNode) {
+      v.gainNode = audio.createGain();
+      audio.createMediaElementSource(v).connect(v.gainNode).connect(audio.destination);
+    }
+    return v.gainNode.gain;
+  };
+  const fadeTo = (v, level, seconds) => {
+    const g = gain(v);
+    if (!g) { v.muted = level === 0; return; }
+    g.cancelScheduledValues(audio.currentTime);
+    g.setValueAtTime(g.value, audio.currentTime);
+    g.linearRampToValueAtTime(level, audio.currentTime + seconds);
+  };
+  const run = ms => {
+    bar.style.transition = 'none'; bar.style.width = '0';
+    void bar.offsetWidth;
+    bar.style.transition = `width ${ms}ms linear`; bar.style.width = '100%';
+  };
+  const next = (from, step) => {
+    for (let k = 1; k <= slides.length; k++) {
+      const n = (from + step * k + slides.length * k) % slides.length;
+      if (!sound || isClip(slides[n])) return n;
+    }
+    return from;
+  };
+  const advance = () => { if (held) { due = true; return; } show(next(at, 1)); };
+  const leave = s => {
+    const v = s.querySelector('video');
+    if (!v) return;
+    v.onended = v.ontimeupdate = null;
+    if (sound) fadeTo(v, 0, 0.8);
+    setTimeout(() => { if (!s.classList.contains('on')) v.pause(); }, FADE);
+  };
+  const show = n => {
+    clearTimeout(timer); due = false;
+    const old = slides[at], cur = slides[n];
+    at = n;
+    prepare(cur); prepare(slides[next(n, 1)]);
+    if (old !== cur) { old.classList.remove('on'); leave(old); }
+    cur.classList.add('on');
+    for (const s of slides) s.inert = s !== cur;
+    const v = cur.querySelector('video');
+    if (!v) { run(STILL); timer = setTimeout(advance, STILL); return; }
+    v.currentTime = 0;
+    if (sound) { v.muted = false; fadeTo(v, 1, 0.3); }
+    // The next slide starts while this clip's own fade-out is playing.
+    let moved = false;
+    v.ontimeupdate = () => {
+      if (!moved && v.duration && v.duration - v.currentTime < FADE / 1000 + 0.3) { moved = true; advance(); }
+    };
+    v.onended = () => { if (!moved) { moved = true; advance(); } };
+    v.onloadedmetadata = () => run(v.duration * 1000);
+    if (v.duration) run(v.duration * 1000);
+    // A browser that will not play it shows the poster as a picture.
+    v.play().catch(() => { run(STILL); timer = setTimeout(advance, STILL); });
+  };
+
+  stage.querySelector('.next').addEventListener('click', () => show(next(at, 1)));
+  stage.querySelector('.prev').addEventListener('click', () => show(next(at, -1)));
+  stage.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') show(next(at, 1));
+    if (e.key === 'ArrowLeft') show(next(at, -1));
+  });
+  // The rotation waits while the pointer rests on the stage.
+  stage.addEventListener('mouseenter', () => { held = true; });
+  stage.addEventListener('mouseleave', () => { held = false; if (due) advance(); });
+  soundButton.addEventListener('click', () => {
+    sound = !sound;
+    soundButton.setAttribute('aria-pressed', sound);
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (sound && !audio && Ctx) audio = new Ctx();
+    if (audio) audio.resume();
+    const v = slides[at].querySelector('video');
+    if (!sound) { if (v) fadeTo(v, 0, 0.4); return; }
+    if (v) { v.muted = false; fadeTo(v, 1, 0.4); } else show(next(at, 1));
+  });
+  document.addEventListener('visibilitychange', () => {
+    const v = slides[at].querySelector('video');
+    if (document.hidden) { clearTimeout(timer); if (v) v.pause(); }
+    else if (v) v.play().catch(() => {});
+    else timer = setTimeout(advance, STILL);
+  });
+  show(0);
 })();
 </script>
 </body>

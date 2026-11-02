@@ -137,7 +137,8 @@ Streaming assumes SSD-class storage; the status line says when a disk falls behi
 Each set below is a separate, freely published library: 23 by
 [Piotr Grabowski](https://piotrgrabowski.pl/), 14 by
 [Augustine's Virtual Organs](https://hauptwerk-augustine.info/). Full credits
-in [ATTRIBUTION.md](ATTRIBUTION.md).
+in [ATTRIBUTION.md](ATTRIBUTION.md). Augustine's free sample sets, each downloaded from its own
+page: [hauptwerk-augustine.info](https://hauptwerk-augustine.info/Completely_free_samples.php).
 
 <details>
 <summary>Screenshots of all 37</summary>
