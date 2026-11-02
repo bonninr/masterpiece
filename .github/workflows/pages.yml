@@ -53,10 +53,11 @@ jobs:
           # The recordings are not rebuilt for every release, so "latest" is
           # not where they necessarily live. For each, take the newest release
           # that actually carries it; a release without it must not blank the
-          # video.
+          # video. Every release is searched: the first recording is on 0.2.0,
+          # and a window of the latest 30 lost it once 41 releases were out.
           fetch () {  # asset name on the release | file name on the site
             local asset="$1" out="$2" tag
-            tag=$(gh release list --limit 30 --json tagName -q '.[].tagName' | while read -r t; do
+            tag=$(gh release list --limit 1000 --json tagName -q '.[].tagName' | while read -r t; do
               if gh release view "$t" --json assets -q '.assets[].name' | grep -qx "$asset"; then
                 echo "$t"; break
               fi
