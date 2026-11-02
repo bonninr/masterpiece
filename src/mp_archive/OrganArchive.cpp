@@ -884,10 +884,15 @@ static std::unique_ptr<Pass> passFor(const std::vector<std::string>& volumes) {
 // once, and the archive is read with unarr from then on. A split set stays
 // as it is: unarr reads no RAR 4 volumes. Its "Internal error extracting RAR
 // file" is the same case under another name: Pekela's archive tests sound
-// and 29 of its samples stopped there.
+// and 29 of its samples stopped there. So are "filter block was not fully
+// decompressed" and a "File CRC error" on a file libarchive decoded: five of
+// Dluga Koscielna's samples, in an archive that tests sound, read whole with
+// unarr. A file that is really damaged fails there too and is said as before.
 static bool switchedForFilters(const std::vector<std::string>& volumes, const Pass& pass) {
-  const bool unarrMayRead = pass.error().find("filters") != std::string::npos ||
-                            pass.error().find("Internal error extracting RAR file") != std::string::npos;
+  const std::string& why = pass.error();
+  const bool unarrMayRead = why.find("filter") != std::string::npos ||
+                            why.find("Internal error extracting RAR file") != std::string::npos ||
+                            why.find("CRC error") != std::string::npos;
   if (volumes.size() != 1 || !unarrMayRead) return false;
   if (inspectArchive(volumes.front()).format != ArchiveKind::Format::Rar4) return false;
   const std::lock_guard<std::mutex> lock(gFilteredMutex);
