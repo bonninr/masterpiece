@@ -13804,6 +13804,103 @@ public:
 };
 static SolidRar4Test g_solidRar4;
 
+// A checksum error from libarchive on a RAR 4 archive that is not solid sends
+// the archive to unarr, once: libarchive's own RAR 4 decoding fails some
+// files that unarr reads whole (five of Dluga Koscielna's samples, in an
+// archive that tests sound). A file that is really damaged is still said, by
+// unarr's reading, and the files after it still arrive. libarchive checks the
+// checksum of compressed files only, so the damaged file here is compressed:
+// sixteen bytes in fifteen, taken from libarchive's own RAR test archive
+// (test_read_format_rar_unicode.rar), its header's checksum then changed.
+class Rar4ChecksumRetryTest final : public mp::test::Test {
+public:
+  Rar4ChecksumRetryTest() : Test("functional.archive.rar4-checksum-retry", Category::Functional) {}
+  using T = SolidRar4Test;
+  static std::string entry(const std::string& name, const std::string& data, uint32_t size, uint32_t crc,
+                           unsigned flags, char version, char method) {
+    return T::header(std::string("\x74", 1) + T::le(flags, 2) + T::le(32 + static_cast<uint32_t>(name.size()), 2) +
+                     T::le(static_cast<uint32_t>(data.size()), 4) + T::le(size, 4) + std::string("\x02", 1) +
+                     T::le(crc, 4) + T::le(0x5A2E0000u, 4) + std::string(1, version) + std::string(1, method) +
+                     T::le(static_cast<uint32_t>(name.size()), 2) + T::le(0x20, 4) + name) +
+           data;
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-rar4-checksum-retry";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::string packed("\x00\x90\xff\x10\x7f\xe4\xb9\xfc\x27\x83\x30\x3d\x2e\x1c\xd2", 15);
+    const std::string unpacked = std::string(15, 'a') + "\n";
+    const std::vector<std::string> names = {"OrganInstallationPackages\\000123\\pipe1.wav",
+                                            "OrganInstallationPackages\\000123\\pipe2.wav",
+                                            "OrganInstallationPackages\\000123\\pipe3.wav"};
+    const std::vector<std::string> contents = {T::pattern(1, 40000), unpacked, T::pattern(3, 20000)};
+    auto archive = [&](uint32_t pipe2Crc) {
+      std::string b("Rar!\x1a\x07\x00", 7);
+      b += T::header(std::string("\x73", 1) + T::le(0, 2) + T::le(13, 2) + std::string(6, '\0'));
+      b += entry(names[0], contents[0], 40000, T::crc32(contents[0]), 0x8000, '\x14', '\x30');
+      b += entry(names[1], packed, 16, pipe2Crc, 0x8020, '\x1d', '\x33');
+      b += entry(names[2], contents[2], 20000, T::crc32(contents[2]), 0x8000, '\x14', '\x30');
+      return b + T::header(std::string("\x7b", 1) + T::le(0x4000, 2) + T::le(7, 2));
+    };
+    MP_CHECK(T::crc32(unpacked) == 0x15b6d005u, "the compressed file's checksum is the fixture's");
+
+    auto readAll = [&](const std::string& fileName, uint32_t pipe2Crc, std::map<std::string, std::string>& got,
+                       std::string& error) {
+      const fs::path file = dir / fileName;
+      std::ofstream(file, std::ios::binary) << archive(pipe2Crc);
+      mp::OrganArchive a;
+      if (!(a.discover(file.string(), error) && a.inspect(error) && a.index(error))) return false;
+      std::unordered_set<std::string> wanted;
+      for (std::string path : names) {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        wanted.insert(mp::OrganArchive::key(path));
+      }
+      a.read(0, wanted,
+             [&got](const std::string& k, std::vector<char>&& data) {
+               got[k] = std::string(data.begin(), data.end());
+               return true;
+             },
+             error);
+      return true;
+    };
+    auto whole = [&](const std::map<std::string, std::string>& got, size_t i) {
+      std::string path = names[i];
+      std::replace(path.begin(), path.end(), '\\', '/');
+      const auto it = got.find(mp::OrganArchive::key(path));
+      return it != got.end() && it->second == contents[i];
+    };
+
+    // The archive as it should be: every file arrives, the compressed one too.
+    {
+      std::map<std::string, std::string> got;
+      std::string error;
+      MP_CHECK(readAll("sound.rar", 0x15b6d005u, got, error), "sound: opened: " + error);
+      MP_CHECK(error.empty() && whole(got, 0) && whole(got, 1) && whole(got, 2),
+               "sound: the three files arrive whole: " + error);
+    }
+
+    // The compressed file's checksum wrong: libarchive fails it, unarr reads
+    // the archive again and fails it too, and it is said once, as damaged.
+    std::map<std::string, std::string> got;
+    std::string error;
+    MP_CHECK(readAll("onebad.rar", 0x15b6d005u ^ 0x00010000u, got, error), "damaged: opened: " + error);
+    MP_CHECK(error.find("pipe2.wav") != std::string::npos && error.find("damaged") != std::string::npos,
+             "damaged: the damaged file is said: " + error);
+    MP_CHECK(error.find("does not decompress") != std::string::npos,
+             "damaged: by the second reading, with unarr: " + error);
+    MP_CHECK(got.count(mp::OrganArchive::key("OrganInstallationPackages/000123/pipe2.wav")) == 0,
+             "damaged: and it is not delivered as if it were whole");
+    MP_CHECK(whole(got, 0) && whole(got, 2), "damaged: the files before and after it arrive whole");
+    MP_CHECK(error.find("pipe1.wav") == std::string::npos && error.find("pipe3.wav") == std::string::npos &&
+                 error.find('\n') == std::string::npos,
+             "damaged: only the damaged file is said, once: " + error);
+    fs::remove_all(dir, ec);
+  }
+};
+static Rar4ChecksumRetryTest g_rar4ChecksumRetry;
+
 // A split RAR 4 set is listed volume by volume, side by side, from each
 // volume's own headers, and its small files unpacked from the volume each
 // begins in (#321: Ashton's 11 volumes, one after another, took 451 s to list
