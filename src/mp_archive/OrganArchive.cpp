@@ -18,6 +18,8 @@
 #include <fstream>
 #include <cstdio>
 #ifndef _WIN32
+ #include <clocale>
+ #include <langinfo.h>
  #include <unistd.h>
 #endif
 #include <map>
@@ -534,10 +536,33 @@ struct VolumeStream {
   }
 };
 
+#ifndef _WIN32
+// libarchive turns a package's Unicode file names into the locale's character
+// set. A program started with no locale, as the macOS Finder starts it, is in
+// the C locale, which holds ASCII alone: a name with an accent then came back
+// as "Pathname cannot be converted from UTF-16BE to current locale" (#565,
+// Kdousov). The character type alone is made UTF-8; numbers and the rest of
+// the locale stay as they are.
+static void readNamesInUtf8() {
+  static std::mutex m;
+  std::lock_guard<std::mutex> lock(m);
+  auto utf8 = [] {
+    const char* set = nl_langinfo(CODESET);
+    return set != nullptr && (std::strcmp(set, "UTF-8") == 0 || std::strcmp(set, "utf8") == 0);
+  };
+  if (utf8()) return;
+  for (const char* name : {"", "C.UTF-8", "en_US.UTF-8", "UTF-8"})
+    if (std::setlocale(LC_CTYPE, name) != nullptr && utf8()) return;
+}
+#endif
+
 struct Reader {
   archive* a = archive_read_new();
   std::unique_ptr<VolumeStream> volumes_;
   Reader() {
+#ifndef _WIN32
+    readNamesInUtf8();
+#endif
     archive_read_support_format_rar(a);
     archive_read_support_format_rar5(a);
     // GrandOrgue's .orgue packages: ZIP, every file stored uncompressed, so
@@ -730,7 +755,8 @@ public:
   bool next(std::string& name, int64_t& size, bool& encrypted) override {
     if (!opened_) return false;
     archive_entry* entry = nullptr;
-    while ((rc_ = archive_read_next_header(r_.a, &entry)) == ARCHIVE_OK) {
+    // A warning is about the entry's name or attributes; the walk goes on.
+    while ((rc_ = archive_read_next_header(r_.a, &entry)) == ARCHIVE_OK || rc_ == ARCHIVE_WARN) {
       if (archive_entry_filetype(entry) != AE_IFREG) continue;
       const char* n = archive_entry_pathname_utf8(entry);
       if (n == nullptr) n = archive_entry_pathname(entry);
