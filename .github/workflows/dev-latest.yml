@@ -1,37 +1,44 @@
-name: main-latest
+name: dev-latest
 
-# The newest build of main, at addresses that never change: each successful
-# build of main replaces the files of the prerelease "main-latest", under the
+# The newest build of dev, at addresses that never change: each successful
+# build of dev replaces the files of the prerelease "0.10.0-dev", under the
 # same names every time, e.g.
-#   https://github.com/bonninr/masterpiece/releases/download/main-latest/masterpiece-main-windows-setup.exe
+#   https://github.com/bonninr/masterpiece/releases/download/0.10.0-dev/masterpiece-0.10.0-dev-windows-setup.exe
 # Testers download without signing in, and the links outlive the build's
-# three-day artifacts.
+# three-day artifacts. A build of dev is profile-guided and waits for the
+# rest of a series of merges first (build.yml), so the release carries the
+# last merge of each series.
 #
 # A prerelease is never the latest release: the site's downloads and the
 # program's update check, which read releases/latest, stay on the tagged
 # release.
+#
+# A workflow_run workflow runs as it stands on the default branch, so this
+# file has to be on main as well as on dev.
 on:
   workflow_run:
     workflows: [build]
     types: [completed]
-    branches: [main]
+    branches: [dev]
 
 # One update at a time, the newest winning.
 concurrency:
-  group: main-latest
+  group: dev-latest
   cancel-in-progress: true
 
 jobs:
   publish:
-    # A push to main only: a pull request's build is never published.
+    # A push to dev only: a pull request's build is never published.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.workflow_run.head_branch == 'dev'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
+    env:
+      TAG: 0.10.0-dev
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -39,7 +46,7 @@ jobs:
           github-token: ${{ github.token }}
           path: artifacts
 
-      # As release.yml packages a release, with "main" where the version goes.
+      # As release.yml packages a release, with the tag where the version goes.
       - name: Package
         run: |
           mkdir -p dist
@@ -60,10 +67,13 @@ jobs:
             esac
             case "$name" in
               masterpiece-windows|masterpiece-plugins-windows) (cd "$d" && zip -qr "../../dist/${name}.zip" .) ;;
-              *) tar -czf "dist/${name}.tar.gz" -C "$d" . ;;
+              # An artifact comes back without its file modes, so the
+              # program is made executable again before it is packed.
+              *) find "$d" -type f -name Masterpiece -exec chmod +x {} +
+                 tar -czf "dist/${name}.tar.gz" -C "$d" . ;;
             esac
           done
-          for b in $(ls dist); do mv "dist/$b" "dist/masterpiece-main-${b#masterpiece-}"; done
+          for b in $(ls dist); do mv "dist/$b" "dist/masterpiece-$TAG-${b#masterpiece-}"; done
           ls -lh dist
 
       - name: Publish
@@ -73,20 +83,20 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
           RUN: ${{ github.event.workflow_run.html_url }}
         run: |
-          short=${SHA:0:5}
-          notes="The newest build of main: commit $short, built by $RUN. Replaced on every push to main. A test build, ahead of the latest release."
-          # The tag follows main; a tag outside v* starts no release.
-          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/main-latest" -f sha="$SHA" -F force=true ||
-            gh api "repos/$GH_REPO/git/refs" -f ref=refs/tags/main-latest -f sha="$SHA"
-          if gh release view main-latest > /dev/null 2>&1; then
-            gh release upload main-latest dist/* --clobber
-            gh release edit main-latest --title "Main build $short" --notes "$notes" --prerelease --latest=false
+          short=${SHA:0:7}
+          notes="The newest build of dev, the work toward 0.10.0: commit $short, built profile-guided by $RUN. Replaced after each series of merges into dev. A test build, ahead of the latest release."
+          # The tag follows dev; a tag outside v* starts no release.
+          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true ||
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --title "0.10.0-dev build $short" --notes "$notes" --prerelease --latest=false
           else
-            gh release create main-latest dist/* --title "Main build $short" --notes "$notes" \
+            gh release create "$TAG" dist/* --title "0.10.0-dev build $short" --notes "$notes" \
               --prerelease --latest=false --verify-tag
           fi
           # A file the new build no longer makes goes, so nothing stale is offered.
           keep=$(ls dist)
-          for a in $(gh release view main-latest --json assets --jq '.assets[].name'); do
-            echo "$keep" | grep -qx "$a" || gh release delete-asset main-latest "$a" -y
+          for a in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
+            echo "$keep" | grep -qx "$a" || gh release delete-asset "$TAG" "$a" -y
           done
