@@ -6,3 +6,7 @@ add_library(mp_archive STATIC
 target_include_directories(mp_archive PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_archive PUBLIC cxx_std_20)
 target_link_libraries(mp_archive PRIVATE ${MP_LIBARCHIVE_TARGET} ${MP_UNARR_TARGET})
+# CoreFoundation composes the names libarchive hands back decomposed on Apple.
+if(APPLE)
+  target_link_libraries(mp_archive PRIVATE "-framework CoreFoundation")
+endif()

@@ -19,8 +19,13 @@
 #include <cstdio>
 #ifndef _WIN32
  #include <clocale>
+ #include <locale.h>
  #include <langinfo.h>
  #include <unistd.h>
+#endif
+#ifdef __APPLE__
+ #include <CoreFoundation/CoreFoundation.h>
+ #include <xlocale.h>
 #endif
 #include <map>
 #include <memory>
@@ -541,28 +546,70 @@ struct VolumeStream {
 // set. A program started with no locale, as the macOS Finder starts it, is in
 // the C locale, which holds ASCII alone: a name with an accent then came back
 // as "Pathname cannot be converted from UTF-16BE to current locale" (#565,
-// Kdousov). The character type alone is made UTF-8; numbers and the rest of
-// the locale stay as they are.
-static void readNamesInUtf8() {
-  static std::mutex m;
-  std::lock_guard<std::mutex> lock(m);
-  auto utf8 = [] {
-    const char* set = nl_langinfo(CODESET);
-    return set != nullptr && (std::strcmp(set, "UTF-8") == 0 || std::strcmp(set, "utf8") == 0);
-  };
-  if (utf8()) return;
-  for (const char* name : {"", "C.UTF-8", "en_US.UTF-8", "UTF-8"})
-    if (std::setlocale(LC_CTYPE, name) != nullptr && utf8()) return;
+// Kdousov). The reading thread alone is put in a UTF-8 character type while
+// libarchive reads a header; the program's own locale is left as it is, since
+// on macOS a UTF-8 locale changes what tolower makes of each byte.
+static locale_t utf8Ctype() {
+  static const locale_t loc = [] {
+    for (const char* name : {"C.UTF-8", "en_US.UTF-8", "UTF-8"}) {
+      const locale_t c = newlocale(LC_CTYPE_MASK, name, static_cast<locale_t>(0));
+      if (c == static_cast<locale_t>(0)) continue;
+      const locale_t was = uselocale(c);
+      const char* set = nl_langinfo(CODESET);
+      const bool utf8 = set != nullptr && (std::strcmp(set, "UTF-8") == 0 || std::strcmp(set, "utf8") == 0);
+      uselocale(was);
+      if (utf8) return c;
+      freelocale(c);
+    }
+    return static_cast<locale_t>(0);
+  }();
+  return loc;
 }
+
+class Utf8Names {
+public:
+  Utf8Names() {
+    if (const locale_t loc = utf8Ctype(); loc != static_cast<locale_t>(0)) was_ = uselocale(loc);
+  }
+  ~Utf8Names() {
+    if (was_ != static_cast<locale_t>(0)) uselocale(was_);
+  }
+  Utf8Names(const Utf8Names&) = delete;
+  Utf8Names& operator=(const Utf8Names&) = delete;
+
+private:
+  locale_t was_ = static_cast<locale_t>(0);
+};
 #endif
+
+// On Apple systems libarchive hands every Unicode name back decomposed, an
+// accent as a letter followed by a combining mark. A definition spells its
+// files composed, so the name is composed again before it is looked up.
+static std::string composedName(const char* n) {
+#ifdef __APPLE__
+  if (std::none_of(n, n + std::strlen(n), [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) return n;
+  CFStringRef s = CFStringCreateWithCString(nullptr, n, kCFStringEncodingUTF8);
+  if (s == nullptr) return n;
+  CFMutableStringRef m = CFStringCreateMutableCopy(nullptr, 0, s);
+  CFRelease(s);
+  if (m == nullptr) return n;
+  CFStringNormalize(m, kCFStringNormalizationFormC);
+  const CFIndex max = CFStringGetMaximumSizeForEncoding(CFStringGetLength(m), kCFStringEncodingUTF8) + 1;
+  std::string out(static_cast<size_t>(max), '\0');
+  const bool ok = CFStringGetCString(m, out.data(), max, kCFStringEncodingUTF8);
+  CFRelease(m);
+  if (!ok) return n;
+  out.resize(std::strlen(out.c_str()));
+  return out;
+#else
+  return n;
+#endif
+}
 
 struct Reader {
   archive* a = archive_read_new();
   std::unique_ptr<VolumeStream> volumes_;
   Reader() {
-#ifndef _WIN32
-    readNamesInUtf8();
-#endif
     archive_read_support_format_rar(a);
     archive_read_support_format_rar5(a);
     // GrandOrgue's .orgue packages: ZIP, every file stored uncompressed, so
@@ -571,6 +618,10 @@ struct Reader {
   }
   ~Reader() { archive_read_free(a); }
   bool open(const std::vector<std::string>& volumes) {
+#ifndef _WIN32
+    // libarchive settles the character set at its first use, which may be here.
+    const Utf8Names utf8;
+#endif
     // A package read through the hook goes the same way as a split set:
     // libarchive's own file opening would ask for it by name.
     bool hooked = false;
@@ -754,6 +805,9 @@ public:
   explicit LibarchivePass(const std::vector<std::string>& volumes) : opened_(r_.open(volumes)) {}
   bool next(std::string& name, int64_t& size, bool& encrypted) override {
     if (!opened_) return false;
+#ifndef _WIN32
+    const Utf8Names utf8;
+#endif
     archive_entry* entry = nullptr;
     // A warning is about the entry's name or attributes; the walk goes on.
     while ((rc_ = archive_read_next_header(r_.a, &entry)) == ARCHIVE_OK || rc_ == ARCHIVE_WARN) {
@@ -761,7 +815,7 @@ public:
       const char* n = archive_entry_pathname_utf8(entry);
       if (n == nullptr) n = archive_entry_pathname(entry);
       if (n == nullptr) continue;
-      name = n;
+      name = composedName(n);
       size = archive_entry_size(entry);
       encrypted = archive_entry_is_encrypted(entry) != 0;
       return true;

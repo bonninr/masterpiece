@@ -13969,6 +13969,7 @@ public:
              },
              error);
 #ifndef _WIN32
+    MP_CHECK(std::string(std::setlocale(LC_CTYPE, nullptr)) == "C", "the program's own locale is left as it was");
     std::setlocale(LC_CTYPE, was.c_str());
 #endif
     MP_CHECK(error.empty(), "read with no error: " + error);
