@@ -47,6 +47,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <clocale>
 #include <ctime>
 #include <thread>
 #include <cstdio>
@@ -13900,6 +13901,85 @@ public:
   }
 };
 static Rar4ChecksumRetryTest g_rar4ChecksumRetry;
+
+// A RAR 4 package whose names are stored in Unicode, read in the C locale, as
+// a program started from the macOS Finder is (#565, Kdousov): every file is
+// listed and read, the one with an accent in its name too.
+class Rar4UnicodeNamesTest final : public mp::test::Test {
+public:
+  Rar4UnicodeNamesTest() : Test("functional.archive.rar4-unicode-names", Category::Functional) {}
+  using T = SolidRar4Test;
+  // The name as RAR 4 stores it with the Unicode flag: the ASCII form, a nul,
+  // then the UTF-16 form, every character as two bytes (flag bits 2).
+  static std::string unicodeName(const std::string& ascii, const std::u16string& wide) {
+    std::string out = ascii + std::string(1, '\0') + std::string(1, '\0');
+    for (size_t i = 0; i < wide.size(); i += 4) {
+      out += '\xaa';
+      for (size_t j = i; j < std::min(wide.size(), i + 4); ++j) {
+        out += static_cast<char>(wide[j] & 0xff);
+        out += static_cast<char>(wide[j] >> 8);
+      }
+    }
+    return out;
+  }
+  void run() override {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "mp-rar4-unicode-names";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir);
+    const std::u16string accented = u"OrganInstallationPackages\\000123\\Kdoušov.wav";
+    const std::string accentedUtf8 = "OrganInstallationPackages/000123/Kdou\xc5\xa1ov.wav";
+    const std::vector<std::string> data = {T::pattern(1, 3000), T::pattern(2, 2000), T::pattern(3, 1000)};
+    std::string b("Rar!\x1a\x07\x00", 7);
+    b += T::header(std::string("\x73", 1) + T::le(0, 2) + T::le(13, 2) + std::string(6, '\0'));
+    auto add = [&](const std::string& name, unsigned flags, const std::string& d) {
+      b += T::header(std::string("\x74", 1) + T::le(0x8000 | flags, 2) +
+                     T::le(32 + static_cast<uint32_t>(name.size()), 2) + T::le(static_cast<uint32_t>(d.size()), 4) +
+                     T::le(static_cast<uint32_t>(d.size()), 4) + std::string("\x02", 1) + T::le(T::crc32(d), 4) +
+                     T::le(0x5A2E0000u, 4) + std::string("\x14\x30", 2) +
+                     T::le(static_cast<uint32_t>(name.size()), 2) + T::le(0x20, 4) + name);
+      b += d;
+    };
+    add("OrganInstallationPackages\\000123\\before.wav", 0, data[0]);
+    add(unicodeName("OrganInstallationPackages\\000123\\Kdou_ov.wav", accented), 0x0200, data[1]);
+    add("OrganInstallationPackages\\000123\\after.wav", 0, data[2]);
+    b += T::header(std::string("\x7b", 1) + T::le(0x4000, 2) + T::le(7, 2));
+    const fs::path file = dir / "unicode.rar";
+    std::ofstream(file, std::ios::binary) << b;
+
+#ifndef _WIN32
+    const std::string was = std::setlocale(LC_CTYPE, nullptr);
+    std::setlocale(LC_CTYPE, "C");
+#endif
+    mp::OrganArchive a;
+    std::string error;
+    const bool indexed = a.discover(file.string(), error) && a.inspect(error) && a.index(error);
+    MP_CHECK(indexed, "the package is indexed: " + error);
+    const std::vector<std::string> names = {"OrganInstallationPackages/000123/before.wav", accentedUtf8,
+                                            "OrganInstallationPackages/000123/after.wav"};
+    std::unordered_set<std::string> wanted;
+    for (const auto& n : names) wanted.insert(mp::OrganArchive::key(n));
+    std::map<std::string, std::string> got;
+    if (indexed)
+      a.read(0, wanted,
+             [&got](const std::string& k, std::vector<char>&& d) {
+               got[k] = std::string(d.begin(), d.end());
+               return true;
+             },
+             error);
+#ifndef _WIN32
+    std::setlocale(LC_CTYPE, was.c_str());
+#endif
+    MP_CHECK(error.empty(), "read with no error: " + error);
+    for (size_t i = 0; i < names.size(); ++i) {
+      const auto it = got.find(mp::OrganArchive::key(names[i]));
+      MP_CHECK(it != got.end() && it->second == data[i], "arrives whole: " + names[i]);
+    }
+    fs::remove_all(dir, ec);
+  }
+};
+static Rar4UnicodeNamesTest g_rar4UnicodeNames;
 
 // A split RAR 4 set is listed volume by volume, side by side, from each
 // volume's own headers, and its small files unpacked from the volume each
