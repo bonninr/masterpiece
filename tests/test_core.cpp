@@ -15616,6 +15616,89 @@ public:
 };
 static GrandOrgueSetterLinkTest g_grandOrgueSetterLink;
 
+// GrandOrgue's setter generals take Set beside protected preset generals
+// (#637, item 35): the demo's [General001] to [General006] are protected
+// presets, and its setter's G1 to G10 are the player's to set.
+class GrandOrgueSetterGeneralsTest final : public mp::test::Test {
+public:
+  GrandOrgueSetterGeneralsTest()
+      : Test("functional.control.grandorgue-setter-generals", Category::Functional) {}
+  void run() override {
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("mp-go-setter-generals");
+    dir.deleteRecursively();
+    dir.getChildFile("pipes").createDirectory();
+    juce::WavAudioFormat wav;
+    for (int key = 36; key <= 38; ++key) {
+      const auto file = dir.getChildFile("pipes").getChildFile(juce::String(key) + ".wav");
+      std::unique_ptr<juce::FileOutputStream> os(file.createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(
+          wav.createWriterFor(os.release(), 48000.0, 1, 16, juce::StringPairArray(), 0));
+      juce::AudioBuffer<float> tone(1, 4800);
+      for (int i = 0; i < 4800; ++i) tone.setSample(0, i, 0.3f * std::sin(2.0 * 3.141592653589793 * 480.0 * i / 48000.0));
+      w->writeFromAudioSampleBuffer(tone, 0, 4800);
+    }
+    const juce::String organ =
+        "[Organ]\nChurchName=Setter generals\nHasPedals=N\nNumberOfManuals=1\nNumberOfWindchestGroups=1\n"
+        "NumberOfGenerals=1\nNumberOfSetterElements=4\n"
+        "[General001]\nName=1\nProtected=Y\nNumberOfStops=1\nStopManual001=1\nStopNumber001=-1\n"
+        "[SetterElement001]\nType=Set\n[SetterElement002]\nType=GC\n"
+        "[SetterElement003]\nType=General01\n[SetterElement004]\nType=General02\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Manual001]\nName=Manual\nNumberOfLogicalKeys=3\nNumberOfAccessibleKeys=3\n"
+        "FirstAccessibleKeyMIDINoteNumber=36\nNumberOfStops=1\nStop001=1\n"
+        "[Stop001]\nName=Sine\nDisplayed=Y\nNumberOfLogicalPipes=3\nNumberOfAccessiblePipes=3\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nWindchestGroup=1\n"
+        "Pipe001=pipes/36.wav\nPipe002=pipes/37.wav\nPipe003=pipes/38.wav\n";
+    const auto odf = dir.getChildFile("setter-generals.organ");
+    odf.replaceWithText(organ);
+
+    mp::MasterpieceProcessor proc;
+    proc.combinationFileFor(odf).deleteFile();
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the organ loads");
+    const auto set = static_cast<mp::Id>(mp::kGrandOrgueSetterSwitch);
+    const auto gc = static_cast<mp::Id>(mp::kGrandOrgueGeneralCancelSwitch);
+    const mp::Id preset = 10001, g1 = 12001, g2 = 12002;
+    for (mp::Id sw : {set, gc, preset, g1, g2})
+      MP_CHECK(proc.organModel().switches.count(sw) == 1, "switch " + std::to_string(sw) + " is made");
+    mp::Id stop = 0;
+    for (const auto& [id, st] : proc.organModel().stops) stop = id;
+    auto press = [&](mp::Id sw) {
+      proc.setSwitchEngaged(sw, true);
+      proc.setSwitchEngaged(sw, false);
+    };
+
+    for (mp::Id g : {g1, g2}) {
+      const std::string name = g == g1 ? "G1" : "G2";
+      proc.setSwitchEngaged(gc, true);
+      proc.setSwitchEngaged(gc, false);
+      proc.engageAllStops();
+      MP_CHECK(proc.stopEngaged(stop), name + ": the stop is drawn");
+      proc.setSwitchEngaged(set, true);
+      press(g);
+      proc.setSwitchEngaged(set, false);
+      press(gc);
+      MP_CHECK(!proc.stopEngaged(stop), name + ": GC cancels it");
+      press(g);
+      MP_CHECK(proc.stopEngaged(stop), name + " set with Set recalls the stop");
+    }
+
+    // The protected preset keeps what the definition gives it.
+    proc.engageAllStops();
+    proc.setSwitchEngaged(set, true);
+    press(preset);
+    proc.setSwitchEngaged(set, false);
+    proc.engageAllStops();
+    press(preset);
+    MP_CHECK(!proc.stopEngaged(stop), "the protected preset still cancels the stop");
+
+    proc.settingsFileFor(odf).deleteFile();
+    proc.combinationFileFor(odf).deleteFile();
+    dir.deleteRecursively();
+  }
+};
+static GrandOrgueSetterGeneralsTest g_grandOrgueSetterGenerals;
+
 // One console tab drawing two stops through the engine (#551): a CC learned
 // for both draws both, cancels both, and a held stop on it follows the tab.
 class SharedSwitchMessageEngineTest final : public mp::test::Test {
