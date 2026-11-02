@@ -162,7 +162,7 @@ The code gives no per-device figure. The measured sizes of a large organ are in 
 | **Recommended: 16-bit, releases streamed** | 4.65 GB |
 | 16-bit mono, releases streamed | 2.33 GB |
 
-**Small: 16-bit mono, compressed, releases streamed** adds lossless compression to the last row, and **Smallest: as Small, short releases only** keeps the short releases alone. <!-- CHECK: measure Friesach under Small and Smallest at 0.9.0 and add the figures -->
+**Small: 16-bit mono, compressed, releases streamed** adds lossless compression to the last row, and **Smallest: as Small, short releases only** keeps the short releases alone. Opened straight from its RAR package, where every release is held whole, Friesach takes 1.66 GB under **Small** and 3.30 GB under **Compact**, measured with Masterpiece 0.9.0.
 
 On a phone or tablet, start from **Small: 16-bit mono, compressed, releases streamed**, choose **Fewest voices: 512, for a Raspberry Pi or a tablet** under **Performance** on **Settings > Performance...**, and leave out the stops and perspectives that the repertoire leaves unused (**Stops, ranks and perspectives**). See [Small, medium and large organs](sizing.md).
 

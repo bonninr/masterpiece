@@ -55,7 +55,7 @@ The **Quality** list sets several of these at once:
 
 ## Compression
 
-With **Lossless compression in memory** on, each sample is cut into blocks of 4,096 frames, each block predicted and its residuals Rice coded, and the voices decode the blocks they play as they play them. The samples a voice plays are bit for bit the file's samples. Measured on a tenth of the Friesach set on a two-core Intel Core i3, the coded samples take a third of the bytes of plain 24-bit storage, and they decode at 224 million frames a second. <!-- CHECK: a whole-organ figure for 0.9.0 (memory held and time to open, compressed against plain) -->
+With **Lossless compression in memory** on, each sample is cut into blocks of 4,096 frames, each block predicted and its residuals Rice coded, and the voices decode the blocks they play as they play them. The samples a voice plays are bit for bit the file's samples. Measured on a tenth of the Friesach set on a two-core Intel Core i3, the coded samples take a third of the bytes of plain 24-bit storage, and they decode at 224 million frames a second. On the whole Friesach set with the 0.9.0 build, the coded samples take 5,394.5 MB at 24 bits (0.333 of plain), 3,301.5 MB at 16 bits (0.306) and 1,661.9 MB at 16 bits mono (0.308). <!-- CHECK: time to open, compressed against plain, on a machine with the memory for the plain load -->
 
 The decoding is done on the render threads, so a compressed organ takes more processor time per voice than a plain one. The benchmarks `perf.voice.coded-playback` and `perf.codec.split-rice-decode` measure it on the machine they run on. See [Architecture](architecture.md#samples-held-compressed).
 

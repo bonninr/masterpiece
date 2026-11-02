@@ -218,6 +218,8 @@ A release tail is several seconds of room sound, played once from its start to i
 
 The toggle **Stream releases from disk** turns streaming on. **Default:** off. **Takes effect:** at the next load. The **Quality** presets from **High** down turn it on.
 
+A release streams from a sample file on disk. An organ opened straight from a RAR package reads its samples from the archive, so its releases are held whole with streaming on or off. Installing the package into a folder lets its releases stream.
+
 The box beside it, enabled while streaming is on, chooses how much of each release stays resident.
 
 | Option | Resident part of each release |
@@ -309,7 +311,15 @@ The settings multiply, and each step is an exact ratio of the one before.
 
 Relative to 24-bit resident, which equals about the size of the WAV files on disk, the other configurations take 1.33 (32-bit float), 0.43 (24-bit streamed), 0.29 (16-bit streamed) and 0.14 (16-bit mono streamed). These ratios depend on how much of a set is release data. [Small, medium and large organs](sizing.md) uses them to estimate organs of other sizes. The figures in this section were measured with Masterpiece 0.3.3.
 
-**Lossless compression in memory** multiplies again: the compressed bytes are a third of plain 24-bit storage on a tenth of Friesach, and the estimate assumes half. Whole Friesach at **As recorded**, compressed, all in memory, takes about 5.3 GB, a third of its uncompressed size. <!-- CHECK: measure Friesach whole with the 0.9.0 build at Best, High, Compact and Small (the "memory: resident" log line) and replace this sentence with a table -->
+**Lossless compression in memory** multiplies again. The estimate counts a compressed sample at half its size; on whole Friesach the codec holds about a third. Measured with Masterpiece 0.9.0, every stop loaded, opened straight from its RAR package, so every release is held whole:
+
+| Configuration | Plain | Compressed | Ratio |
+|---|---:|---:|---:|
+| 24-bit, resident | 16,204.9 MB | 5,394.5 MB | 0.333 |
+| 16-bit, resident | 10,803.3 MB | 3,301.5 MB | 0.306 |
+| 16-bit mono, resident | 5,401.6 MB | 1,661.9 MB | 0.308 |
+
+The plain column is the 24-bit figure above with the exact ratios 0.667 and 0.500. The compressed column is the **memory: resident** line of the log. These three rows are the samples held by **Best** with compression on, **Compact** and **Small** for a set opened from a package.
 
 **Resident format** at 20-bit takes 2.5 bytes a sample, five sixths of 24-bit.
 
@@ -554,7 +564,7 @@ Streaming leaves unread the part of each release that stays on disk, which is mo
 - **Cache disk space.** The cache has the size of the resident memory. A cache per organ for several large organs fills a disk; keep the cache folder on a drive with the room.
 - **Plugins.** Each plugin instance holds its own copy of the organ's samples. In the plugin editor, **Organ > Organ settings...** opens Organ settings without its **MIDI** tab, so the Loading tab is there. A plugin loads an organ with the settings files in the same folder as the standalone application, so choose the loading settings in either and save them for the organ.
 - **Phones and tablets.** The memory limit follows the device's RAM, 80% by default, and the **Memory limit for samples** box offers 50%, 60%, 70% and 90% as well. The sample files are read where they are, from the Files app on iPhone and iPad. [Phones and tablets](mobile.md) covers the platform details.
-- **Process memory.** The memory figures are those of the sample library. The process takes more: the voice pool and its rings, the console artwork and the program itself.
+- **Process memory.** The memory figures are those of the sample library. The process takes more: the voice pool and its rings, the console artwork and the program itself. On whole Friesach with compression on, the pool of 5,800 voices takes 277 MB; with **Stream releases from disk** on, each voice carries a ring as well, and the pool takes 1,198 MB for 1,536 voices.
 - **Streaming and compression.** A compressed sample is decoded into two small windows per voice as it plays, which costs processor time on every voice. <!-- CHECK: measure the polyphony cost of compression (perf suite or mp-render) before saying how many voices it takes -->
 
 Related pages: [Audio, room and mixer](audio.md), [Organ settings](organ-settings.md), [Files and folders](files.md), [Troubleshooting and caveats](troubleshooting.md).

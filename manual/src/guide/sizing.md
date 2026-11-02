@@ -32,7 +32,15 @@ The ratios were measured on Friesach (44 stops, 17.0 GB on disk) with Masterpiec
 
 The 20-bit resident and the 16-bit resident rows follow from the exact ratios 0.833 (24-bit to 20-bit) and 0.667 (24-bit to 16-bit), and the mono rows from 0.500 (stereo to mono). A set recorded at 16 bits takes the 16-bit figure at 24-bit too, because Masterpiece holds its 16-bit samples as recorded.
 
-**Lossless compression in memory** shrinks every resident row further, with the sound unchanged. The estimate counts a compressed sample at half its size; on a tenth of Friesach the codec held 24-bit samples in about a third. <!-- CHECK: measure Friesach whole at High, Compact and Small with the 0.9.0 build (the "memory: resident" log line) and add compressed rows to this table -->
+**Lossless compression in memory** shrinks every resident row further, with the sound unchanged. The estimate counts a compressed sample at half its size. Measured on whole Friesach with Masterpiece 0.9.0, the codec holds 24-bit samples in 0.333 of their plain size and 16-bit samples in 0.306, mono or stereo:
+
+| Configuration | Ratio to 24-bit resident | Small (3 GB) | Medium (12 GB) | Large (30 GB) |
+|---|---:|---:|---:|---:|
+| 24-bit, compressed, resident | 0.33 | 1.0 GB | 4.0 GB | 10.0 GB |
+| 16-bit, compressed, resident | 0.20 | 0.6 GB | 2.4 GB | 6.1 GB |
+| 16-bit mono, compressed, resident | 0.10 | 0.3 GB | 1.2 GB | 3.1 GB |
+
+Those three rows apply the ratios measured on Friesach; the ratio of another set depends on its recordings.
 
 **Notes loaded** set to **Every second note** or **Every third note** takes about a half or a third of any row.
 
@@ -86,7 +94,7 @@ A Raspberry Pi with 16 GB of RAM follows the 16 GB row for memory; its processor
 
 **Medium organs.** An organ of 12 GB does not fit resident at 24-bit on 8 GB. The two lines of attack are 16-bit with streaming (3.4 GB) and, on a slow disk, 16-bit resident (8.0 GB, which fits only from 16 GB). At 16 GB the choice is between 24-bit with streaming (5.2 GB) and 16-bit resident (8.0 GB). The first keeps the 24-bit audio of the attacks and needs a solid-state drive; the second reads nothing from disk while playing. Advice: take streaming on a solid-state drive, and 16-bit resident on a hard disk, a network drive or an SD card. This is a judgement; the two have not been compared by measurement.
 
-**Large organs.** An organ of 30 GB needs streaming on every computer under 64 GB, or 16-bit resident (20 GB) on 32 GB. At 8 GB only 16-bit mono streamed (4.3 GB) fits within the 5.3 GB of room, so a large organ on 8 GB is a trade of the stereo image for the whole organ. With **Lossless compression in memory** the resident part shrinks too, and a 16-bit stereo streamed load may fit with its image kept <!-- CHECK: confirm with a measured compression ratio on a large set -->. The other way is the Stops, ranks and perspectives tab: a set recorded from several positions holds the whole organ for each, and leaving out one or two perspectives cuts the total in proportion while keeping the stereo image of the others. Advice: try leaving out perspectives before folding to mono, because the other perspectives are complete stereo organs.
+**Large organs.** An organ of 30 GB needs streaming on every computer under 64 GB, or 16-bit resident (20 GB) on 32 GB. At 8 GB only 16-bit mono streamed (4.3 GB) fits within the 5.3 GB of room, so a large organ on 8 GB is a trade of the stereo image for the whole organ. With **Lossless compression in memory**, at the ratio measured on Friesach, 16-bit stereo held whole takes 6.1 GB, which keeps the stereo image on 16 GB; on 8 GB, streaming the releases as well cuts it further. The other way is the Stops, ranks and perspectives tab: a set recorded from several positions holds the whole organ for each, and leaving out one or two perspectives cuts the total in proportion while keeping the stereo image of the others. Advice: try leaving out perspectives before folding to mono, because the other perspectives are complete stereo organs.
 
 **Mono.** Folding saves exactly half on stereo files and gives up the recorded image, so it is the last choice for a set recorded in a building. It also leaves the disk reads of streaming unchanged: a streamed tail is read from its stereo file and folded while playing.
 
