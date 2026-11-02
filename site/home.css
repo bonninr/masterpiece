@@ -441,3 +441,5 @@ pre code { font-size: 14px; }
   .steps, .gallery, .credits-grid { grid-template-columns: 1fr; }
   .brand span { display: none; }
 }
+
+.dev-build .platforms { margin-top: 32px; }
