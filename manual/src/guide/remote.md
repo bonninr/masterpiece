@@ -6,7 +6,7 @@ Available in the standalone program on Windows, macOS, Linux and the Raspberry P
 
 ## Turning it on
 
-**Settings > General settings > Remote**:
+**Settings > Remote control...** opens the **Remote control** tab of the settings window:
 
 | Control | What it does | Default |
 |---|---|---|
@@ -15,7 +15,7 @@ Available in the standalone program on Windows, macOS, Linux and the Raspberry P
 | **Allow quitting Masterpiece and shutting the computer down** | The `quit` and `powerOff` commands, for a console with no screen. Masterpiece saves and quits; `powerOff` then shuts the computer down a few seconds later. Both are refused in the first two minutes after Masterpiece starts, so a faulty button cannot shut the computer down at every start. | Off |
 | **This computer only** | The page, the API and OSC answer at `127.0.0.1` only: a browser or a program on this computer reaches them, and no other device on the network does. Windows asks for no firewall rule. | Off |
 | **Port** | The TCP port of the page and the API. Another program already using it shows **Not running** with the reason. | 8080 |
-| **Answer the same requests over MIDI (System Exclusive)** | For a console with a MIDI cable and no network: requests are read on the MIDI inputs, and replies and changes go out on the console's MIDI output, chosen under MIDI. | Off |
+| **Answer the same requests over MIDI (System Exclusive)** | For a console with a MIDI cable and no network: requests are read on the MIDI inputs, and replies and changes go out on the console's MIDI output, chosen on the **MIDI** tab. | Off |
 | **Answer the same requests over OSC** | For control surfaces and apps that speak OSC, such as TouchOSC and Open Stage Control, on the UDP port beside it. | Off, port 9000 |
 | **Token** | When set, every change needs it. Reading needs none. | Empty |
 | **Open in the browser** | Opens the page on this computer. | |
@@ -26,16 +26,27 @@ While the server is on, anyone on the network can open the page. Without a token
 
 ## The web console
 
-The page builds itself from the organ loaded:
+The page builds itself from the organ loaded. **View**, in the top bar, chooses what it shows: **Panels**, the default, or one of the organ's own console pages.
 
-- **One panel per division**, with its stops, couplers and tremulants as lit buttons. Stops a demo does not ship are greyed out and cannot be drawn.
-- **The organ's pistons**, the switches of the organ file that fire and release.
+### Panels
+
+- **One panel per division**, with its stops, couplers and tremulants as lit buttons. Stops a demo does not ship are greyed out and cannot be drawn. A stop drawn on two panels of the organ, or worked through a gate, is listed once.
+- **The organ's pistons**, the switches of the organ file that fire and release: those of no division first, then each division's divisional pistons under the division's name.
 - **Shoes and controls**: the swell shoes, the crescendo and the organ's other continuous controls as sliders.
-- **Combinations**: the player's generals with **0** (general cancel) and **Set**, the divisionals of each division, and the sequencer's frame with its first, previous, next and last buttons.
-- **The top bar**: the volume, transpose, temperament, the voicing EQ preset and **Panic**.
-- **The bottom line**: the connection, the voices sounding and the late blocks.
+- **Levels**: a live fader for each division and each output pair, heard at once.
+- **Tremulants, enclosures, wind and room**: the tremulants as buttons, each swell box's opening, the wind pressures in a folded list headed with the number of reservoirs and chests and updated twice a second, and **Room** with its wet share.
+- **Combinations**: the player's generals with **0** (general cancel) and **Set**, the divisionals of each division under its name, and the sequencer's frame, from `000`, with its first, previous, next and last buttons.
+- **Every switch and control**, folded: every switch, control and rank level of the organ, its internal ones too, with a filter by name or number, and the MIDI channel of each keyboard.
+- **The top bar**: **View**, the volume, transpose, the temperament, the voicing **EQ** preset and **Panic**.
+- **The bottom line**: the connection, the voices sounding, the late blocks, and **Access** with the token and the API description.
 
-Loading another organ rebuilds the page by itself.
+### Console pages
+
+Each of the organ's console pages, drawn by the program with its own console code. Taps and drags on the page work as clicks and drags on the console, and after a change only the parts drawn anew are fetched. **Page only** hides the bars and shows the page as large as the screen allows.
+
+Each device keeps its own choice, so one tablet can stay on the left jamb and another on the right. An address ending in `#page=2` opens the third page directly. On a screen held upright, an organ that ships portrait layouts shows its portrait layout.
+
+A page opened while an organ loads shows **Loading the organ** with the percentage, and builds itself when the organ is ready. Loading another organ rebuilds the page by itself.
 
 ## For console builders and scripts
 
@@ -55,6 +66,9 @@ The API is HTTP with JSON on the same port. Every object of the organ has a type
 | `PUT /api/v1/program/transpose` with `{"value": -2}` | Transposes two semitones down |
 | `POST /api/v1/commands/9/press` | Saves, quits and shuts the computer down, when allowed |
 | `GET /api/v1/events` | A stream of every change, as server-sent events |
+| `GET /api/v1/pages` | The organ's console pages and their layouts |
+| `GET /api/v1/pages/0/picture` | The first console page as a PNG image; `layout`, `x`, `y`, `w` and `h` choose a layout and a part of it |
+| `POST /api/v1/pages/0/pointer` with `{"phase": "down", "x": 120, "y": 340}` | A press on the page at those coordinates; `move` and `up` follow it |
 
 A request that changes something is sent with `Content-Type: application/json`, and with `Authorization: Bearer <token>` when a token is set. The full description is served at `/api/v1/openapi.json` and can be opened in any OpenAPI tool. The protocol, its object types, properties and errors are described in [Control protocol](../dev/control-protocol.md).
 

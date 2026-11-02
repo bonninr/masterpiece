@@ -83,7 +83,7 @@ Every session writes a log without any option. The files are in the settings fol
 | Linux | `~/.config/Masterpiece` |
 | Linux (Flatpak) | The same path inside the application's sandbox storage |
 
-At the start of the next session, `masterpiece.log` becomes `masterpiece.previous.log`, so a crash keeps its log. **Settings > General settings > Log** shows the path of the current log and opens its folder. Attach both files to a bug report.
+At the start of the next session, `masterpiece.log` becomes `masterpiece.previous.log`, so a crash keeps its log. **Help > Diagnostics...** shows the path of the current log and opens its folder. Attach both files to a bug report.
 
 ### `--log <file>`
 
@@ -91,11 +91,11 @@ Writes the log to this file. The log starts before anything else, so it covers t
 
 ### `--log-midi`
 
-Logs every MIDI message and what became of it: the manual, stop or control it reached and, when nothing sounded, the reason. It also logs the MIDI inputs present and, after each load, the playable keyboards with their channels. Use it when a keyboard or a piston does nothing or does the wrong thing. The same switch is the **Log every MIDI message and what became of it** box in **General settings > Log**; both last until the program quits.
+Logs every MIDI message and what became of it: the manual, stop or control it reached and, when nothing sounded, the reason. It also logs the MIDI inputs present and, after each load, the playable keyboards with their channels. Use it when a keyboard or a piston does nothing or does the wrong thing. The same switch is the **Log every MIDI message and what became of it** box on the **Diagnostics** tab of the settings window; both last until the program quits.
 
 ### `--log-releases`
 
-Describes every key release: which of the pipe's releases played, how long that release is, how many releases the pipe has, where in the release it started and how it joined the attack. Use it for a click, a noise or a wrong-sounding tail when keys are released. The same switch is the **Log every key release** box in **General settings > Log**.
+Describes every key release: which of the pipe's releases played, how long that release is, how many releases the pipe has, where in the release it started and how it joined the attack. Use it for a click, a noise or a wrong-sounding tail when keys are released. The same switch is the **Log every key release: the release played, its length and start** box on the **Diagnostics** tab.
 
 ### `--log-touches`
 
@@ -173,18 +173,23 @@ Stays open after the last take has played. Staying open saves loading a large or
 
 ## Loading and memory
 
-These options set how the next organ is loaded. They are the settings of **Organ settings > Loading**. A value given here takes precedence over the saved settings for that run, except `--cache`: a cache mode saved in the organ's settings still applies. The log line `memory config:` shows the values in effect.
+These options set how the next organ is loaded. They are the settings of **Organ settings > Loading**, and `--cache` is **Sample cache** on **Settings > General...**. A value given here holds over the saved settings, the organ's own among them, for the whole run. The log line `memory config:` shows the values in effect.
 
 | Option | Values | Default | Effect |
 |---|---|---|---|
-| `--storage` | `int16`, `int20`, `int24`, `float32` | `int24` | How each sample frame is held in memory. `int16` uses a third less than `int24` and is enough for most sets. `int20` uses a sixth less than `int24`. `float32` uses the most and holds the samples as decoded. Another value is logged and ignored. |
+| `--storage` | `int16`, `int20`, `int24`, `float32` | `int24` | How each sample is held in memory: `int16` in 2 bytes, `int20` in 2.5 bytes, packed, `int24` in 3 bytes, `float32` in 4 bytes, as decoded. With `int24`, a 16-bit recording is held at 16 bits, as recorded, and plays bit for bit the same. `int16` is enough for most sets. Another value is logged and ignored. |
 | `--load-mono` | `on`, `off` | `off` | Folds stereo samples to one channel as they load. Halves the memory and removes the stereo image. `on`, `1`, `true` and `yes` switch it on; any other value switches it off. |
+| `--compress-samples` | `on`, `off` | `off` | Holds the samples in memory with lossless compression and decodes them as they play. About a third of the memory of the same format uncompressed. **Lossless compression in memory** on the **Loading** tab. Applies to `int16` and `int24`. Accepts the same words as `--load-mono`. |
 | `--load-rate` | a rate in Hz, such as `48000`; `0` | `0` (as recorded) | Converts the samples to this rate as they load. Converting a 96 kHz set to 48 kHz halves its memory. |
 | `--stream-releases` | `on`, `off` | `off` | Keeps only the start of each release tail in memory and reads the rest from disk while it plays. Saves a large share of the memory on sets with long releases and needs a fast disk. Accepts the same words as `--load-mono`. |
 | `--preload-head` | a number of frames | `0` (whole files) | The minimum number of frames held in memory at the start of every sample. |
-| `--cache` | `off`, `single`, `per-organ` | `single` | The sample cache keeps decoded samples on disk, so the next load of the same organ is much faster. `single` keeps one cache and replaces it when a different organ loads. `per-organ` keeps one cache per organ and uses more disk. `off` writes none. Any other value means `single`. |
+| `--cache` | `off`, `single`, `per-organ` | The **Sample cache** setting, `single` until it is changed | The sample cache keeps decoded samples on disk, so the next load of the same organ is much faster. `single` keeps one cache and replaces it when a different organ loads. `per-organ` keeps one cache per organ and uses more disk. `off` writes none. Any other value means `single`. |
 
 A load in which some samples failed to read writes no cache, so a damaged installation is never cached as complete.
+
+### `--program-couplers <on|off>`
+
+Switches the program's own couplers between the manuals at 16', 8' and 4' on or off for the run: the **Extra couplers** box on **Organ settings > Loading**, and **Organ > Extra couplers**. Accepts the same words as `--load-mono`. The option is not in the `--help` list.
 
 ## Examples
 

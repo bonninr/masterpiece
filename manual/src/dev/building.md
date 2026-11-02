@@ -6,7 +6,7 @@ This page covers building Masterpiece from the repository: the tools each system
 
 Every desktop build needs:
 
-- A C++20 compiler. `CMakeLists.txt` sets `CMAKE_CXX_STANDARD 20` as required and without extensions, so CMake refuses a compiler that lacks C++20. CI builds with MSVC from Visual Studio 2022 (`windows-latest`), the default GCC of Ubuntu 22.04 (`ubuntu-22.04`, including the ARM cross compilers) and Apple Clang (`macos-14`).
+- A C++20 compiler. `CMakeLists.txt` sets `CMAKE_CXX_STANDARD 20` as required and without extensions, so CMake refuses a compiler that lacks C++20. CI builds with MSVC from Visual Studio 2022 (`windows-latest`), the default GCC of Ubuntu 22.04 (`ubuntu-22.04`, including the ARM cross compilers) and Apple Clang (`macos-15`).
 - CMake 3.22 or later (`cmake_minimum_required(VERSION 3.22)`).
 - Ninja. Every desktop preset uses the Ninja generator.
 - Git and network access. CMake fetches the dependencies at configure time with `FetchContent`.
@@ -16,12 +16,14 @@ CMake fetches these libraries; nothing else needs installing for them:
 | Library | Version | Used by | Option |
 |---|---|---|---|
 | JUCE | tag `9.0.1` | audio, GUI, plugin wrappers | `MP_FETCH_JUCE`, `MP_JUCE_TAG` |
-| pugixml | tag `v1.14` | the definition loader (`mp_core`) | `MP_FETCH_PUGIXML`, `MP_PUGIXML_TAG` |
+| pugixml | tag `v1.16` | the definition loader (`mp_core`) and Verovio | `MP_FETCH_PUGIXML`, `MP_PUGIXML_TAG` |
+| cpp-httplib | tag `v0.18.1` | the control API's HTTP server (`mp_api`); the header only | `MP_ENABLE_API`, `MP_HTTPLIB_TAG` |
 | libarchive | tag `v3.8.10` | RAR 5, non-solid RAR 4 and `.orgue` packages (`mp_archive`) | `MP_FETCH_LIBARCHIVE`, `MP_LIBARCHIVE_TAG` |
 | unarr | commit `9c8e898b...` | solid RAR 4 packages (`mp_archive`); only its RAR 4 reader is compiled | `MP_FETCH_UNARR`, `MP_UNARR_COMMIT` |
 | WavPack | tag `5.8.1` | WavPack-compressed samples | `MP_FETCH_WAVPACK`, `MP_WAVPACK_TAG` |
+| Verovio | tag `version-6.3.0` | the score panel's MusicXML engraving (`mp_score`) | `MP_ENABLE_SCORE`, `MP_VEROVIO_TAG` |
 
-libarchive is configured with every optional codec, crypto backend and command-line tool switched off; its own RAR decoders are the only ones used. WavPack is built as the decoder library only, with support for WavPack 1 to 3 files enabled.
+libarchive is configured with every optional codec, crypto backend and command-line tool switched off; its own RAR decoders are the only ones used. WavPack is built as the decoder library only, with support for WavPack 1 to 3 files enabled. cpp-httplib is used as its single header, with no TLS and no compression. `cmake/MpVerovio.cmake` compiles Verovio's sources into the static library `mp_verovio`: the MusicXML reader alone, the editor code left out, compiled for size (`-Os`, `/O1`) and without link-time optimisation, and linked against the project's own pugixml, which is why the pugixml tag is `v1.16`.
 
 ### Windows
 
@@ -82,7 +84,7 @@ sudo apt-get install -y build-essential git cmake ninja-build pkg-config \
 
 Build presets exist for every preset except `ios-sim`. Test presets exist for `dev`, `dev-fast`, `core-only`, `ci-linux`, `ci-macos`, `ci-windows`, `ci-functional`, `ci-perf` and `ci-linux-arm`. All test presets print the output of failing tests.
 
-The workflow `.github/workflows/build.yml` uses `ci-linux`, `ci-windows`, `ci-macos`, `ci-linux-arm`, `ci-linux-arm64` and `ios-sim`. It has no job for `ci-functional` or `ci-perf`; run those presets locally.
+The workflow `.github/workflows/build.yml` uses `ci-linux`, `ci-windows`, `ci-macos`, `ci-linux-arm`, `ci-linux-arm64` and `ios-sim`. It has no job for `ci-functional` or `ci-perf`; run those presets locally. See [Continuous integration](#continuous-integration).
 
 The two ARM presets set `CMAKE_SYSTEM_PROCESSOR` and the cross compilers (`arm-linux-gnueabihf-gcc` and `aarch64-linux-gnu-gcc`), name their toolchain file, switch off the plugins and the tests, and set `MP_ENABLE_LTO=ON` and `MP_NATIVE_ARCH=OFF`.
 
@@ -106,6 +108,9 @@ A file named `CMakeUserPresets.json` is ignored by Git and holds personal preset
 | `MP_JUCE_REPO_URL` | the JUCE GitHub repository | Where to fetch JUCE from. |
 | `MP_JUCE_SOURCE_DIR` | empty | A local JUCE checkout to use in place of a fetch. Read when `MP_FETCH_JUCE` is `ON`. |
 | `MP_FETCH_PUGIXML`, `MP_FETCH_LIBARCHIVE`, `MP_FETCH_UNARR`, `MP_FETCH_WAVPACK` | `ON` | Fetch the library. With `OFF`, CMake looks for an installed copy with `find_package`. |
+| `MP_ENABLE_API` | `ON`; `OFF` on Android and iOS | Compiles `src/mp_api`: the control API, the web console, MIDI SysEx and OSC. Fetches cpp-httplib. |
+| `MP_ENABLE_SCORE` | `ON` | Compiles the score panel (`src/mp_score`) with Verovio, when the JUCE GUI modules are present. |
+| `MP_VEROVIO_CCACHE_DIR` | the environment variable of the same name | A compiler cache for the Verovio sources alone; CI keeps it apart from the main cache. |
 
 On Android and iOS, CMake sets `MP_MOBILE` and forces `MP_BUILD_PLUGIN` and `MP_BUILD_TESTS` to `OFF`. Phones and tablets build the app alone.
 
@@ -234,7 +239,7 @@ CI also runs the simulator build on iPad and iPhone devices with the scripts in 
 | Runtime and SDK | `org.freedesktop.Platform` and `org.freedesktop.Sdk`, version `24.08` |
 | Command | `masterpiece` |
 | Permissions | `--share=ipc`, `--socket=x11`, `--socket=pulseaudio`, `--filesystem=xdg-run/pipewire-0`, `--device=all`, `--filesystem=home`, `/media`, `/run/media`, `/mnt` |
-| CMake options a Release build with the plugin, the tests and the developer tools switched off |
+| CMake options | A Release build with the plugin, the tests and the developer tools switched off |
 
 The first module installs the JACK headers from the jack2 `v1.9.22` archive into `/app/include/jack`; JUCE needs them to compile and opens `libjack` itself at run time. The second module builds Masterpiece with `cmake-ninja` and `--share=network`, because `FetchContent` downloads JUCE and the other libraries during the build. A Flathub submission would need those sources listed in the manifest. The manifest also installs `io.github.bonninr.Masterpiece.metainfo.xml` and renames the shared MIME file to the app ID.
 
@@ -268,9 +273,29 @@ Its section is `sound`. For native builds `dpkg-shlibdeps` works out the depende
 
 macOS has no CPack package. CI copies `Masterpiece.app` into one folder and zips it with `ditto`, which keeps the bundle's executable bit. The plugins job packs `Masterpiece-plugins` folders: `Masterpiece.component` and `Masterpiece.vst3` on macOS (zipped with `ditto`), `VST3` and `LV2` folders on Windows and Linux. The release publishes them as `masterpiece-<version>-plugins-<platform>`. The macOS build is unsigned.
 
+## Continuous integration
+
+`.github/workflows/build.yml` runs on every pull request and on every push to `main`. Changes that touch only the README, the site, the manual, the screenshots, the licence files or `ATTRIBUTION.md` start no build. A newer push to the same branch cancels the run in progress.
+
+| Job | Runner | What it does |
+|---|---|---|
+| `build` | `ubuntu-22.04`, `windows-latest`, `macos-15` | The app for Linux x86-64, Windows, Raspberry Pi arm64 and armhf (cross-built on Ubuntu), macOS Apple silicon and macOS Intel; then the tests, a launch check, the packages and a package test |
+| `plugins` | the same, with no Raspberry Pi | The VST3, LV2 and AU plugins, configured with `-DMP_BUILD_STANDALONE=OFF`, in packages of their own |
+| `flatpak` | `ubuntu-latest` | The Flatpak bundle |
+| `ios`, `ios-device` | `macos-15` | The simulator build and its run on iPad and iPhone; the unsigned device `.ipa` |
+| `android` | `ubuntu-22.04` | The APK and the Google Play bundle |
+
+Both macOS builds run on an Apple-silicon runner; the Intel build is compiled for `x86_64`, and its tests and launch check run under Rosetta. The Linux builds use Ubuntu 22.04 so the binaries need the glibc of Debian 12 and Raspberry Pi OS at most.
+
+A pull request builds a reduced set: the Intel Mac and both Mac plugin jobs are left out, and every build is configured with `-DMP_ENABLE_LTO=OFF`. A push to `main` and a release build every target with link-time optimisation. The Linux job also runs `python3 tools/gen-protocol.py --check`, which fails when `protocol/control.yaml` and the files generated from it differ.
+
+`.github/workflows/main-latest.yml` runs after each successful build of a push to `main`. It packages the artifacts as a release does, names them `masterpiece-main-<name>`, and replaces the files of the prerelease `main-latest`, so the newest build of `main` stays at the same download addresses. A prerelease is never the latest release, so the site's downloads and the program's update check stay on the tagged release.
+
 ## Versioning
 
 The version is the `project(Masterpiece VERSION x.y.z ...)` line in `CMakeLists.txt`. The app (`MP_VERSION`, printed by `--version`), the installer, the `.deb`, the Android `versionName` and `versionCode`, and the plugin bundles take it from there.
+
+The build label is what the program shows in its title bar, its About box and its log. On a tagged release it is the version. Every other build carries the commit, five characters long: `main 3fa91` for a build of `main`, `dev 3fa91` for a pull request or a local build of another branch. CMake reads the commit with Git at configure time, and CI's own variables say whether the build is a release. The update check and the settings archives use the version itself.
 
 `cmake/set-version.sh <x.y.z>` changes that line and rewrites the download links in `README.md` (the `releases/download/vX.Y.Z/` segment and the `masterpiece-X.Y.Z-` file names), then prints the project line and the number of README references. It uses GNU `sed -i`, so run it on Linux or in Git Bash. Run it on the release branch before tagging, so the README badges point at the files the tag is about to publish.
 

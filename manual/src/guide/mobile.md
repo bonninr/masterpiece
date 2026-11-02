@@ -29,8 +29,8 @@ Controls are enlarged for a finger. The code states the target as about 48 logic
 |---|---|---|
 | Title bar of a panel or dialog | 48 | native |
 | Row of a popup menu | at least 48, font 20 | system default |
-| **File** and **View** buttons | 84 wide | 70 |
-| **Settings** button | 98 wide | 84 |
+| Menu buttons (**File**, **Organ**, **View**, **Settings**, **Help**) | As wide as the name, at least 84 | As wide as the name, 52 to 88 |
+| Icon on a page's tab that opens the page in its own window | 44 wide, the tab's full height | 16 wide |
 | Sequencer step buttons (previous, next) | 44 wide | 30 |
 | **Set** button | 64 wide | 56 |
 | **Panic** and **Save state** buttons | 46 wide | 38 |
@@ -40,7 +40,7 @@ Controls are enlarged for a finger. The code states the target as about 48 logic
 | Toolbar of a panel | 44 high | 34 |
 | Stop cell in a panel | 64 high, columns at least 150 wide | 58 high, 170 wide |
 
-The top bar gives the menus and the volume fader a row of their own when the width left after the buttons on the right is below 350 pixels.
+The top bar is one row while the volume fader keeps at least 174 pixels beside the menus and the buttons on the right. In a narrower window the menus and the fader take a row of their own.
 
 ### Panels and dialogs
 
@@ -52,7 +52,11 @@ Menus and alerts keep windows of their own. On Android, the back button closes t
 
 ### Playing on the screen
 
-The drawn console takes touches: drawstops, pistons, shoes and keys. **View > Keyboard** shows the on-screen keyboard, with a selector for the manual it plays when the organ has several. See [Playing](playing.md) and [A tour of the window](window.md).
+The drawn console takes touches: drawstops, pistons, shoes and keys. A stop changes as the finger lifts. A finger held still for half a second opens what a right-click opens on a desktop, on the drawn console and on the generated panels, such as a stop's MIDI menu; the stop under the finger stays as it was.
+
+On Android, a console label whose typeface the set names and the device lacks is drawn in the system's default typeface.
+
+**View > Keyboard** shows the on-screen keyboard, with a selector for the manual it plays when the organ has several. See [Playing](playing.md) and [A tour of the window](window.md).
 
 ### First start
 
@@ -64,7 +68,7 @@ The first-run wizard appears on a phone or tablet as on a desktop, as a panel. S
 
 A phone or tablet opens an organ from one package: a RAR archive (`.rar`, RAR 4 or 5, including solid and multi-part sets) or a GrandOrgue `.orgue` package. The file chooser is titled **Choose an organ package** and filters `*.rar` and `*.orgue`. A loose installation of thousands of files is slow to bring onto the device and slow to read through the system's document layer, so loose definitions (`.Organ_Hauptwerk_xml`, `.organ`) stay out of the chooser. Masterpiece reads the samples from the package where it is. See [Opening an organ](opening.md).
 
-The favourites window (**File > Open...**) works as on a desktop. Its button **Open an organ file...** opens the chooser. The last organ and the favourites reopen at the next start when their access is still granted.
+The favourites window (**File > Open organ...**) works as on a desktop. Its button **Open an organ file...** opens the chooser. The last organ and the favourites reopen at the next start when their access is still granted.
 
 ![The favourites window](../images/open-window.png)
 
@@ -107,7 +111,7 @@ The build enables file sharing and the document browser, so a package can also b
 | **Could not open the organ**: **The Files app did not lend this document to Masterpiece.** | The system refused the loan. |
 | **The rest of &lt;file&gt;**, with **Choose the folder** and **Cancel** | The package is one volume of a multi-volume set. **Choose the folder** opens a chooser titled **Choose the folder that holds the set**; the folder and everything in it are lent, and the set loads from there. |
 
-The **Log** tab of **General settings** lists the loans under **Documents lent by the Files app**, with a mark for each one that cannot be read now.
+**Run the checks** on the **Diagnostics** tab of the settings window lists the loans under **Documents lent by the Files app**, with a mark for each one that cannot be read now.
 
 ## Audio and MIDI
 
@@ -115,18 +119,20 @@ The **Log** tab of **General settings** lists the loans under **Documents lent b
 
 Audio goes through the device's audio system. On Android the low-latency interface needs Android 8.0 (API level 26), the minimum of the app. The iPhone and iPad app declares background audio: the organ keeps sounding when the screen locks or another app comes to the front.
 
-The first start picks the default output, a rate of at least 44.1 kHz and a buffer of about 10 ms; see [Installing Masterpiece](installing.md#first-start). **Settings > General settings...** opens on the **Audio** tab the first time. See [Audio, room and mixer](audio.md).
+The first start picks the default output, a rate of at least 44.1 kHz and a buffer of about 10 ms; see [Installing Masterpiece](installing.md#first-start). **Settings > Audio...** opens the **Audio** tab. See [Audio, room and mixer](audio.md).
 
 The engine renders with the NEON vector unit on 64-bit ARM, so the **Faster audio engine** box applies on a phone as on a Raspberry Pi. The Android emulator (`x86_64`) uses AVX2 or SSE2.
 
 ### MIDI
 
-At the start the app opens every MIDI input the system reports, except those switched off earlier, and tries again every 3 seconds for an input that failed to open. The wizard's **Your keyboards** step lists them.
+At the start the app opens every MIDI input the system reports, except those switched off earlier, and tries again every 3 seconds for an input that failed to open. The wizard's **MIDI configuration** step lists them.
 
 | System | Inputs |
 |---|---|
-| Android | The system's MIDI interface (Android 6.0 and later; the app needs 8.0). The manifest declares USB host and Bluetooth LE as optional features and requests the Bluetooth permissions. The app lists the inputs the system reports and has no pairing dialog of its own. |
-| iPhone and iPad | The inputs CoreMIDI reports. The app has no pairing dialog of its own. |
+| Android | The system's MIDI interface (Android 6.0 and later; the app needs 8.0). The manifest declares USB host and Bluetooth LE as optional features and requests the Bluetooth permissions. |
+| iPhone and iPad | The inputs CoreMIDI reports. |
+
+**Bluetooth MIDI...** on **Settings > MIDI...** opens the system's pairing window for a Bluetooth MIDI keyboard. One window opens at a time; once it closes, the next press opens it again. A paired keyboard appears among the inputs.
 
 The program remembers an input between sessions by a lasting identifier. On iOS it is the CoreMIDI identifier. Android numbers its devices afresh at each start, so there Masterpiece knows an input by its name, and two keyboards of the same model look alike.
 
@@ -140,31 +146,33 @@ Phones and tablets have no memory setting of their own. The same limit and the s
 
 ### The limit
 
-**Memory limit for samples** on **Settings > Organ settings... > Loading** is the most memory the samples and the voice pool of one organ may take. Its default is **Default: 80% of memory**, computed from the device's total memory with a floor of 512 MB. The other choices are 50%, 60%, 70% and 90% of memory. It takes effect at the next load.
+**Memory limit for samples** on **Settings > Performance...** is the most memory the samples and the voice pool of one organ may take. It shows in the **Advanced** display mode. Its default is **Default: 80% of memory**, computed from the device's total memory with a floor of 512 MB. The other choices are 50%, 60%, 70% and 90% of memory. It takes effect at the next load.
 
-A load that would pass the limit stops with an alert titled **Not enough memory for this organ** and shows the console without sound, so that **Organ settings** can be opened. A load that reaches the limit part-way plays with some stops or notes silent and says so in an alert titled **Only part of this organ fits**, which points to the limit on the Loading tab of Organ settings. **Stops and perspectives** shows **About &lt;size&gt; for this choice (the limit is &lt;size&gt;)** for the stops kept, in red when the choice passes the limit.
+A load that would pass the limit stops with an alert titled **Not enough memory for this organ** and shows the console without sound, so that **Organ settings** can be opened. A load that reaches the limit part-way plays with some stops or notes silent and says so in an alert titled **Only part of this organ fits**, which names the choices that make the organ fit. **Stops, ranks and perspectives** in **Organ settings** shows **About &lt;size&gt; for this choice (the limit is &lt;size&gt;)** for the stops kept, in red when the choice passes the limit.
 
-The limit is measured against the device's total memory. A phone or tablet ends a backgrounded app whenever it needs the memory, and the program treats a backgrounded session as ended cleanly, so the crash guard reads the end as a normal quit. With **Reopen the last organ when Masterpiece starts** on, the organ reopens at the next start.
+The limit is measured against the device's total memory. On iPhone and iPad an organ's load waits while the app is in the background and goes on when it comes to the front again; the system ends an app that keeps a processor busy in the background. A phone or tablet ends a backgrounded app whenever it needs the memory, and the program treats a backgrounded session as ended cleanly, so the crash guard reads the end as a normal quit. With **Reopen the last organ when Masterpiece starts** on, the organ reopens at the next start.
 
 ### What fits
 
 The code gives no per-device figure. The measured sizes of a large organ are in [Memory, loading and streaming](memory.md); Friesach, a 44-stop set of 17 GB on disk, takes these amounts of sample memory:
 
-| Memory profile (on **Loading**) | Samples in memory |
+| **Quality** (on **Organ settings > Loading**) | Samples in memory |
 |---|---|
-| **Best quality - 24-bit, hold everything** (24-bit) | 16.2 GB |
-| **Recommended - 16-bit, stream releases** | 4.65 GB |
-| **Smallest - 16-bit mono, stream releases** | 2.33 GB |
+| **Best: as recorded, all in memory** (24-bit) | 16.2 GB |
+| **Recommended: 16-bit, releases streamed** | 4.65 GB |
+| 16-bit mono, releases streamed | 2.33 GB |
 
-On a phone or tablet, start from **Smallest - 16-bit mono, stream releases**, and leave out the stops and perspectives that the repertoire leaves unused (**Stops and perspectives**). See [Small, medium and large organs](sizing.md).
+**Small: 16-bit mono, compressed, releases streamed** adds lossless compression to the last row, and **Smallest: as Small, short releases only** keeps the short releases alone. <!-- CHECK: measure Friesach under Small and Smallest at 0.9.0 and add the figures -->
 
-The voice pool counts against the limit. With streamed release tails each voice holds a ring buffer of 2 seconds, 768 KB at 48 kHz, and the default pool is 1,536 voices, about 1.1 GB. With streaming off, the default pool is 725 voices per processor thread, at least 1,536. **Polyphony limit** on the same tab lists the memory of each pool size in its choices (256, 512, 768, 1,024 voices and more); a smaller pool leaves more of the limit to the samples, and thins a full registration. The code sets no separate pool default for phones.
+On a phone or tablet, start from **Small: 16-bit mono, compressed, releases streamed**, choose **Fewest voices: 512, for a Raspberry Pi or a tablet** under **Performance** on **Settings > Performance...**, and leave out the stops and perspectives that the repertoire leaves unused (**Stops, ranks and perspectives**). See [Small, medium and large organs](sizing.md).
+
+The voice pool counts against the limit. With streamed release tails each voice holds a ring buffer of 2 seconds, 768 KB at 48 kHz, and the default pool is 1,536 voices, about 1.1 GB. With streaming off, the default pool is 725 voices per processor thread, at least 1,536. **Polyphony limit** on the same tab lists the memory of each pool size in its choices (256, 512, 768, 1,024 voices and more up to 10,240) and takes any number typed into it; it applies at once. A smaller pool leaves more of the limit to the samples, and thins a full registration. The code sets no separate pool default for phones.
 
 ### The sample cache
 
-The sample cache stores the decoded samples so that the next load of the same organ reads one file. Its default folder is `cache` in the app's data folder; **Cache folder** on the **Loading** tab shows the path, **Choose...** picks another folder through the system chooser, and **Default** returns to the standard one. The cache is as large as the samples held in memory. **Sample cache** offers **One cache, replaced as organs change** (the default), **One cache per organ (uses more disk)** and **Off**; **Off** frees the storage and makes every load decode the package again. **Save the sample cache** chooses **Before the organ plays** or **In silence, while it plays**; the second writes the cache at the lowest background priority.
+The sample cache stores the decoded samples so that the next load of the same organ reads one file. Its default folder is `cache` in the app's data folder. The cache settings are on **Settings > General...**: **Cache folder** shows the path, **Choose...** picks another folder through the system chooser, and **Default** returns to the standard one. The cache is as large as the samples held in memory. **Sample cache** offers **One cache, replaced as organs change** (the default), **One cache per organ (uses more disk)** and **Off**; **Off** frees the storage and makes every load decode the package again. **Save the sample cache** chooses **Before the organ plays** or **In silence, while it plays**; the second writes the cache at the lowest background priority.
 
-On Android, iPhone and iPad the `Masterpiece` folder lies in the app's own application-data folder. **Run the checks** on the **Log** tab lists the cache folder and the size of the cache files.
+On Android, iPhone and iPad the `Masterpiece` folder lies in the app's own application-data folder. **Run the checks** on the **Diagnostics** tab lists the cache folder and the size of the cache files.
 
 ## Differences from the desktop program
 
@@ -173,18 +181,18 @@ On Android, iPhone and iPad the `Masterpiece` folder lies in the app's own appli
 | Formats opened | `.rar` and `.orgue` packages | Definitions, `.organ` files, `.rar` and `.orgue` packages |
 | File chooser | **Choose an organ package** | **Choose an organ definition file** |
 | Windows | One full-screen window; panels, dialogs and floating tools open in a layer over the console | Separate windows, resizable, positions remembered |
-| Panels | Cannot be detached | Pop-out button and **A page in its own window** |
+| Panels | Cannot be detached | Pop-out button, and **View > Open page in new window** |
 | Window title bar | None | Native title bar with the version and organ name |
 | Plugins | None | VST3, LV2, Audio Unit |
 | Command line | None | See [Command line](command-line.md) |
 | Virtual MIDI input, JACK | None | macOS and Linux |
-| Log tab | **Send the report and the log** opens the share sheet; no **Open the log folder** | **Open the log folder**; no share button |
+| **Diagnostics** tab | **Send the report and the log** opens the share sheet; no **Open the log folder** | **Open the log folder**; no share button |
 | Load warnings | An alert with **OK** only | An alert with **Show the log** |
 | Favourites search | The field takes no focus when the window opens | The field takes the keyboard focus |
-| Folder of the last **Open...** | Forgotten | Remembered |
+| Folder of the last **Open organ...** | Forgotten | Remembered |
 
 ## Reporting a problem
 
-**Settings > General settings... > Log** shows where the log is kept. **Run the checks** reports the folders Masterpiece writes to, the audio, the organ and its files, and on iOS the documents lent by the Files app. **Copy the report** puts the checks and the last 200 lines of the log on the clipboard. **Send the report and the log** opens the share sheet with `masterpiece-report.txt`, `masterpiece.log` and `masterpiece.previous.log`. See [Troubleshooting and caveats](troubleshooting.md).
+**Help > Diagnostics...** opens the **Diagnostics** tab, which shows where the log is kept. **Run the checks** reports the folders Masterpiece writes to, the audio, the organ and its files, and on iOS the documents lent by the Files app. **Copy the report** puts the checks and the last 200 lines of the log on the clipboard. **Send the report and the log** opens the share sheet with `masterpiece-report.txt`, `masterpiece.log` and `masterpiece.previous.log`. See [Troubleshooting and caveats](troubleshooting.md).
 
-![The Log tab](../images/general-log.png)
+![The Diagnostics tab](../images/general-diagnostics.png)

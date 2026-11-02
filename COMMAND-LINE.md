@@ -82,13 +82,13 @@ Masterpiece always keeps a log, even without any option. It is
 | Linux | `~/.config/Masterpiece` |
 
 The log from the run before is kept beside it as `masterpiece.previous.log`, so
-a crash doesn't lose the session that crashed. **Settings → Log** shows the
+a crash doesn't lose the session that crashed. **Help > Diagnostics...** shows the
 current log in the app. These two files are the most useful thing to attach to
 a bug report.
 
 ### `--log <file>`
 
-Write the log to this file instead. It is set up before anything else, so it
+Write the log to this file. It is set up before anything else, so it
 covers the whole load, including the timing of each stage.
 
 ### `--log-midi`
@@ -144,7 +144,7 @@ takes.
 ### `--record-audio <file>`
 
 Record the organ's output to this WAV file while the current take plays. The
-recording is taken inside the program, not from the sound card, so no other
+recording is taken inside the program, from the organ's own output, so no other
 sound gets in and nothing is lost if the machine stutters. It starts exactly
 with the music. With several takes, put a `--record-audio` after each
 `--play-midi`.
@@ -209,23 +209,40 @@ the music ends. On a large set, staying open saves loading the organ again.
 ## Loading and memory
 
 These options set how the next organ is loaded. They are the same settings as
-the **Loading** tab of the organ's settings. A value given on the command line
-takes precedence over the saved settings for that run, except for `--cache`:
-a cache mode saved in the settings still applies. The log line
+the **Loading** tab of the organ's settings, and `--cache` is **Sample cache**
+on **Settings > General...**. A value given on the command line holds over the
+saved settings, the organ's own among them, for the whole run. The log line
 `memory config:` shows the values in effect.
 
 ### `--storage <int16 | int20 | int24 | float32>`
 
-How each sample frame is held in memory. The default is `int24`. `int16` uses
-a third less memory and is enough for most sets. `int20` uses a sixth less
-than `int24`. `float32` uses the most memory and holds the samples exactly as
-decoded.
+How each sample is held in memory. The default is `int24`.
+
+| Value | Bytes per sample |
+|---|---|
+| `int16` | 2, enough for most sets |
+| `int20` | 2.5, packed |
+| `int24` | 3; a 16-bit recording is held at 16 bits, as recorded, and plays bit for bit the same |
+| `float32` | 4, exactly as decoded |
 
 ### `--load-mono <on | off>`
 
 Fold stereo samples to one channel as they load. It halves the memory, but the
 stereo image is lost. `on`, `1`, `true` and `yes` turn it on; anything else
 turns it off. The default is `off`.
+
+### `--compress-samples <on | off>`
+
+Hold the samples in memory with lossless compression, decoded as they play:
+about a third of the memory of the same format held plain. It applies to
+`int16` and `int24`. The same words as `--load-mono` turn it on. The default is
+`off`.
+
+### `--program-couplers <on | off>`
+
+The program's own couplers between the manuals at 16', 8' and 4', the
+**Extra couplers** of the Organ menu. The same words as `--load-mono` turn them
+on.
 
 ### `--load-rate <Hz>`
 
@@ -249,7 +266,9 @@ the default, holds whole files.
 The sample cache keeps decoded samples on disk, so the next load of the same
 organ is much faster.
 
-- `single` (the default): one cache, replaced when a different organ is loaded.
+Without the option, the **Sample cache** setting applies.
+
+- `single` (the setting's default): one cache, replaced when a different organ is loaded.
 - `per-organ`: one cache for each organ. This uses more disk space and keeps
   every organ fast.
 - `off`: no cache.
@@ -294,4 +313,4 @@ Masterpiece --odf "Friesach.Organ_Hauptwerk_xml" ^
   --draw-stops 12,15,31,40 --play-midi fugue.mid --record-audio fugue.wav
 ```
 
-(On macOS and Linux, end the lines with `\` instead of `^`.)
+(On macOS and Linux, end the lines with `\`.)

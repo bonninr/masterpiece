@@ -1,6 +1,6 @@
 # Masterpiece for Android
 
-Work in progress: the standalone app, built as an APK for 64-bit phones and
+The standalone app, built as an APK for 64-bit phones and
 tablets (`arm64-v8a`) and the emulator (`x86_64`), Android 8.0 or later.
 
 ## Building
@@ -28,7 +28,7 @@ file here containing `sdk.dir=<path to the SDK>`.
   library JUCE's Java side loads.
 - The first build installs JUCE, at the tag `CMakeLists.txt` names, for the
   machine doing the building, into `.juce/`. A JUCE build runs a helper
-  program, juceaide, and it has to run here, not on the phone. The Android
+  program, juceaide, which runs on the build machine. The Android
   build then finds that install with `find_package`, and Gradle compiles
   JUCE's Java glue from the same copy. The output of this step is in
   `.juce/prepare.log`.
@@ -41,4 +41,6 @@ file here containing `sdk.dir=<path to the SDK>`.
   released version. CI reads the key from the repository secrets
   `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`, and a release
   will not publish an APK without it.
+- The control API and the web console are left out of the Android build
+  (`MP_ENABLE_API` is off there); the score panel is built.
 - Play release builds: the engine cannot keep up with an organ unoptimised.

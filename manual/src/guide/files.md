@@ -1,6 +1,6 @@
 # Files and folders
 
-Masterpiece keeps its own files in one settings folder in the user's profile and writes a few files next to an organ's installation. This page lists every file and folder the program reads or writes, where each lives on each system, what it holds, and what happens when it is deleted. It ends with what the program sends over a network: the once-a-day update check, and nothing else.
+Masterpiece keeps its own files in one settings folder in the user's profile and writes a few files next to an organ's installation. This page lists every file and folder the program reads or writes, where each lives on each system, what it holds, and what happens when it is deleted. It ends with what the program sends over a network: the update check, and nothing else.
 
 ## The settings folder
 
@@ -13,7 +13,7 @@ Masterpiece keeps its own files in one settings folder in the user's profile and
 | Android | `Masterpiece` in the app's private storage, which other apps cannot reach |
 | iPhone and iPad | `Masterpiece` in the app's private storage |
 
-The folder is hidden on Windows (`AppData`) and on macOS (`Library`). **Settings > General settings > Log > Open the log folder** opens it on a desktop system.
+The folder is hidden on Windows (`AppData`) and on macOS (`Library`). **Open the log folder**, on the **Diagnostics** tab (**Help > Diagnostics...**), opens it on a desktop system.
 
 The standalone program and the plugins share this folder, so both see the same settings, combinations and MIDI mappings. On a phone or tablet, uninstalling the app removes it.
 
@@ -31,6 +31,7 @@ Masterpiece/
   split-keyboard.txt           split keyboard presets and controls
   masterpiece.log              this session's log (standalone program)
   masterpiece.previous.log     the previous session's log
+  backups/                     settings saved before an import or a copy
   organs/                      <organ>.mporgan, <organ>.mppanels
   midi/                        <organ>.mpmidi, console.mpmidi
   combinations/                <organ>.mpcomb, <organ>.<set>.mpcomb
@@ -59,42 +60,52 @@ A text file, one `key value` per line, lines starting with `#` ignored. It holds
 
 | Key | Holds | Set with |
 |---|---|---|
-| `reopenlastorgan` | `1` to reopen the last organ at startup. Default off. | **Reopen the last organ when Masterpiece starts** |
-| `updatecheck` | `0` turns the once-a-day update check off; written only then. | **Check once a day for a newer version** |
+| `reopenlastorgan` | `1` to reopen the last organ at startup. Default off. | **Reopen the last organ when Masterpiece starts** (**General**) |
+| `displaymode` | `simple` or `professional`. | **Display mode** (**General**) |
+| `loadticks` | `1` for a click at each 10% of a load. | **Click at each 10% while loading** (**General**) |
+| `samplecache` | `0`, `1` or `2`: off, one cache, one cache per organ. | **Sample cache** (**General**) |
+| `cachewhileplaying` | `1` saves the cache in silence while the organ plays. | **Save the sample cache** (**General**) |
+| `cachedir` | Folder of the sample cache. Absent: the `cache` folder here. | **Cache folder** (**General**) |
+| `packagedir` | Package folder where composites look for the organs they play. | **Package folder** (**General**) |
+| `speakerkeepalive` | Level in dB, -80 to -40, of the 20 Hz tone. Absent: off. | **Keep portable speakers awake** (**Audio**) |
+| `limiter` | `<on> <ceiling dB> <release ms>`. | **Output limiter** (**Audio**) |
+| `compressor` | `<on> <threshold dB> <ratio> <attack ms> <release ms> <make-up dB> <high-pass Hz>`. | **Output compressor** (**Audio**) |
+| `midiinputoff` | Name of a MIDI input that is switched off; one line per input. | The inputs list (**MIDI**) |
+| `consolechannel` | A console role and its MIDI channel, set as the player's own console. | **MIDI** |
+| `midioutput` | Name of the MIDI output port. The port opens again at the next start; a port that is not plugged in keeps its name. | **MIDI output** (**MIDI**) |
+| `midifeedback` | `1` when on. | **Send stop changes on the MIDI output** (**MIDI**) |
+| `cancelresetskeyboards`, `stopsleaveheldnotes`, `sustainpedal`, `learnnoisefilter` | `1` when on. | **General Cancel also puts the keyboards back on their own manuals**, **Stop changes leave the notes already held alone**, **Sustain pedal: controller 64 holds the notes let go**, **Noise filter: when learning, a key counts once held a quarter second** (**MIDI**) |
+| `archive`, `archivesilence`, `archivemb`, `archivedays` | `1` when on; the silence that ends a take in seconds (default 30), the folder's size in MB (default 500) and age in days (default 90). | **Archive everything played** (**MIDI**) |
+| `readylamp`, `readylamplit`, `readylampdark`, `loadmessage`, `unloadmessage`, `scorepage` | The ready lamp, the messages sent when an organ loads and unloads, and the page-turn messages. | **Ready lamp** and the console messages (**MIDI**) |
+| `memlimit` | Memory limit for samples, in MB. Absent: 80% of the computer's memory. | **Memory limit for samples** (**Performance**) |
+| `polyphony` | Polyphony limit in voices. Absent: the default. | **Polyphony limit** (**Performance**) |
+| `fasterengine` | `1` or `0`. Default `1`. | **Faster audio engine** (**Performance**) |
+| `realtimethreads` | `1` or `0`. Default `1`. | **Real-time render threads** (**Performance**) |
+| `everyprocessor` | `1` or `0`. Default `1`. | **Render on every logical processor** (**Performance**) |
+| `metronome` | `<bpm> <beats> <level>`: tempo, beats per bar and level. The click itself starts silent. | **Metronome** |
+| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: the console display setup. | **Console display** |
+| `language` | Language code. Absent: the system language. | **Language** |
+| `api`, `apiport`, `apiwrite`, `apitoken`, `apilocal`, `apipoweroff`, `apisysex`, `apisysexunit`, `apiosc`, `apioscport` | The control API, the web console, SysEx and OSC. See [Remote control](remote.md). | **Remote control** |
+| `updatecheck` | `0` turns the once-a-day update check off; written only then. | **Check for updates daily** (**Diagnostics**) |
 | `updatecheckedat` | The time of the last update check, in seconds since 1970. | The update check |
 | `lastorgan` | Path of the last organ that loaded completely. | Automatic, after each load |
 | `running` | Path of the organ being loaded or loaded; the crash guard's mark. Removed at a clean exit. | Automatic (standalone program) |
-| `memlimit` | Memory limit for samples, in MB. Absent: 80% of the computer's memory. | **Memory limit for samples** |
-| `polyphony` | Polyphony limit in voices. Absent: the default. | **Polyphony limit** |
-| `fasterengine` | `1` or `0`. Default `1`. | **Faster audio engine** |
-| `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** |
-| `loadticks` | `1` for a tap at each 10% of a load. | **Tap at each 10% while loading an organ** |
-| `speakerkeepalive` | Level in dB, -80 to -40, of the 20 Hz tone. Absent: off. | **Keep portable speakers awake** |
-| `language` | Language code. Absent: the system language. | **Settings > General settings > Language** |
-| `cancelresetskeyboards`, `learnnoisefilter` | `1` when on. | **Settings > General settings > MIDI** |
-| `combinationsontop`, `setoffafterstore` | `1` when on. | **Always on top**, **Set turns off after storing** in the Combinations window |
-| `pistonsleavebass` | `1` when on. | **Pistons leave the bass coupler** in the Combinations window |
-| `showkeys` | `0` when played keys are hidden. | **View > Show played keys** |
-| `cachewhileplaying` | `1` saves the cache in silence while the organ plays. | **Save the sample cache** |
-| `midiinputoff` | Name of a MIDI input that is switched off; one line per input. | The inputs list in **General settings > MIDI** |
-| `consolechannel` | A console role and its MIDI channel, set as the player's own console. | **General settings > MIDI** |
-| `midioutput` | Name of the MIDI output port. The port opens again at the next start; a port that is not plugged in keeps its name. | **MIDI output** in **General settings > MIDI** |
-| `midifeedback` | `1` when on. | **Send stop changes on the MIDI output** |
-| `metronome` | `<bpm> <beats> <level>`: tempo, beats per bar and level. Written when the Metronome tab closes. The click itself starts silent. | **General settings > Metronome** |
-| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`: the console display setup. | **General settings > Display** |
-| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`: the EQ that every organ without an EQ of its own starts with. Absent while the default is off and flat. | **Save as default** in **Organ settings > Voicing EQ** |
-| `eqpreset` | `<id> <gain> <band 1> ... <band 10> <name>`: one of the player's EQ presets, numbered from 101. One line per preset. | **Save as preset...**, **Update**, **Rename...** in **Organ settings > Voicing EQ** |
+| `combinationsontop`, `setoffafterstore`, `pistonsleavebass`, `pedalcombinationscoupled` | `1` when on. | **Always on top**, **Set turns off after storing**, **Pistons leave the bass coupler** and the pedal coupling of combinations in the Combinations window |
+| `showkeys` | `0` when played keys are hidden. | **View > Highlight played keys** |
+| `smallpagesfill` | `1` when on. | **View > Scale small pages to fit** |
+| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`: the EQ that every organ without an EQ of its own starts with. Absent while the default is off and flat. | **Save as default** on the **Equalizer** tab of Organ settings |
+| `eqpreset` | `<id> <gain> <band 1> ... <band 10> <name>`: one of the player's EQ presets, numbered from 101. One line per preset. | **Save as preset...**, **Update**, **Rename...** on the **Equalizer** tab of Organ settings |
 | `eqpresetnext` | The number the next EQ preset gets, so a deleted one's is not given again. | The same |
 | `library` | A folder of sample sets Masterpiece has seen or been given; one line each. The standard library folder of Hauptwerk-format installations in the home folder, `~/Hauptwerk/HauptwerkSampleSetsAndComponents`, is added when it exists. | Automatic |
-| `cachedir` | Folder of the sample cache. Absent: the `cache` folder here. | **Cache folder** |
-| `packagedir` | Package folder where composites look for the organs they play. | **Package folder** |
 | `openfolder`, `dialogfolder <kind> <path>` | Where the file dialogs opened last. | Automatic |
-| `favourite <kind> <slot> <name> \| <target>` | The favourites of organs, temperaments and combination sets. | **File > Open...**, the favourites window |
-| `storage`, `mono`, `releases`, `releaselength`, `releasecutoff`, `rate`, `cache`, `stream`, `streamhead`, `streamheadpct`, `preload`, `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch`, `buses`, `groups` and others | The defaults that an organ without its own settings starts with. | **Save as default** in **Organ settings > Loading** |
+| `favourite <kind> <slot> <name> \| <target>` | The favourites of organs, temperaments and combination sets. | **File > Open organ...**, the favourites window |
+| `storage`, `mono`, `compress`, `releases`, `releaselength`, `releasecutoff`, `rate`, `stream`, `streamhead`, `streamheadpct`, `releasebuffer`, `preload`, `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch`, `buses`, `groups` and others | The defaults that an organ without its own settings starts with. | **Save as default** on the **Loading** tab of Organ settings |
+
+The tab names in brackets are those of the settings window, opened from the **Settings** menu.
 
 The standalone program rewrites the file at once when most of these change. The plugins read it at each organ load.
 
-Deleting `settings.mpglobal` resets every general setting, empties the favourites and the library list, turns the first-run wizard on again, and removes the crash mark. Organs keep their own files.
+Deleting `settings.mpglobal` resets every program-wide setting, empties the favourites and the library list, turns the first-run wizard on again, and removes the crash mark. Organs keep their own files.
 
 ### `audio.xml`
 
@@ -118,7 +129,7 @@ All files below are in the settings folder, named `<organ>` as described above.
 
 | File | Holds | Written |
 |---|---|---|
-| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and the organ's own voicing EQ (the `eq` line, present once **Save for this organ** has been pressed on the **Voicing EQ** tab), mixer routes, stops and perspectives left out, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
+| `organs/<organ>.mporgan` | The organ's settings: loading choices, engine switches, master gain, reverb impulse response, voicing and the organ's own voicing EQ (the `eq` line, present once **Save for this organ** has been pressed on the **Equalizer** tab), mixer routes, stops, ranks and perspectives left out, the notes loaded, tuning, window places, the registration saved with **Save state**, and the controls and switches the organ marks to be remembered. | **Save for this organ**, **Save state**, the volume slider, and when controls move |
 | `organs/<organ>.mppanels` | The organ's panels (**View** menu panels). | When a panel changes |
 | `midi/<organ>.mpmidi` | The organ's MIDI mapping: manuals, stops, shoes, divisionals. | When the mapping changes |
 | `midi/console.mpmidi` | The player's console on every organ: stepper, generals, setter. | With the organ's MIDI mapping |
@@ -145,9 +156,9 @@ Deleting them makes the next load search again and, if needed, ask for the packa
 
 `cache/samples.mpcache` is the decoded samples of the last organ loaded. With **Sample cache** set to **One cache per organ (uses more disk)**, each organ has `samples-<organ>.mpcache`. A cache is read only when the organ's definition (size and modification time) and every loading setting that changes the stored bytes match; any difference rebuilds it. A file ending in `.part` is a cache being written; the program moves it into place when it is whole.
 
-The folder is the `cache` folder of the settings folder, or the **Cache folder** chosen in **Organ settings > Loading**. If the chosen folder cannot be created, the usual folder is used and **Run the checks** reports it.
+The folder is the `cache` folder of the settings folder, or the **Cache folder** chosen on the **General** tab of the settings window. If the chosen folder cannot be created, the usual folder is used and **Run the checks** reports it. A cache is written only when the disk has room for it and a margin, a twentieth of the disk between 64 MB and 512 MB; the cache it replaces counts as room. **Delete the cache**, beside **Cache folder**, removes the cache files.
 
-Deleting a cache file is safe: the next load of the organ decodes the samples again and writes a new cache, which takes as long as the first load. Caches can reach several gigabytes. An organ set to **Keep this organ playable without its installation files** depends on its cache when its drive is unplugged; deleting that cache ends this until the organ loads completely again with its drive connected.
+Deleting a cache file is safe: the next load of the organ decodes the samples again and writes a new cache, which takes as long as the first load. Caches can reach several gigabytes. An organ set to **Keep a portable copy of this organ** depends on its cache when its drive is unplugged; deleting that cache ends this until the organ loads completely again with its drive connected.
 
 ## Organs opened from packages
 
@@ -166,7 +177,7 @@ Deleting a folder under `Packaged` is safe while the original archives exist: th
 
 ### `Portable/`
 
-Created for organs with **Keep this organ playable without its installation files**. `Portable/<organ>/` holds a copy of everything under the organ's root except the audio files (the definition, the console pictures and masks) and a `stamp.txt`; `Portable/index.txt` maps each original definition to its copy, one `original<TAB>copy` per line. When the original is missing, the program opens the copy and plays from the organ's cache. Deleting the folder removes the option until the next complete load.
+Created for organs with **Keep a portable copy of this organ**. `Portable/<organ>/` holds a copy of everything under the organ's root except the audio files (the definition, the console pictures and masks) and a `stamp.txt`; `Portable/index.txt` maps each original definition to its copy, one `original<TAB>copy` per line. When the original is missing, the program opens the copy and plays from the organ's cache. Deleting the folder removes the option until the next complete load.
 
 ### `Standard noises/`
 
@@ -198,21 +209,40 @@ Masterpiece writes these where the player says.
 
 | Output | Format | Chosen in |
 |---|---|---|
-| Audio recording | 24-bit WAV of the output after the master fader and before the metronome | **File > Recorder...**, Audio |
-| MIDI performance | Standard MIDI file with notes, stops and shoes, with a tempo of 60 bpm (one quarter note per second), so that a take keeps its length | **File > Recorder...**, **Save MIDI...** |
+| Audio recording | 24-bit WAV of the output after the master fader and before the metronome | **View > Recorder**, **Record audio...** |
+| MIDI performance | Standard MIDI file with notes, stops and shoes, with a tempo of 60 bpm (one quarter note per second), so that a take keeps its length | **View > Recorder**, **Save MIDI...** |
+| MIDI file for other programs | Standard MIDI file with a track per keyboard, the registration as markers when **Write the registration as markers** is ticked | **View > Recorder**, **Save for a sequencer...** |
 | `--record-audio`, `--record-midi` | The same formats | The command line |
 
-An existing file with the chosen name is replaced. The file dialogs reopen in the folder last used for each kind.
+A file dialog asks before it replaces a file of the same name; the command line replaces it.
+
+Two outputs go to a fixed folder, `Documents/Masterpiece/Recordings` in the user's documents folder:
+
+| Folder | Holds |
+|---|---|
+| `Recordings/` | The takes saved by the console's Record button, one MIDI file each, named `<organ> <date> <time>.mid`. |
+| `Recordings/Archive/<date>/` | With **Archive everything played** on (**MIDI** tab), every take, one MIDI file each, named by its time and organ. A take begins with the first note and ends after the silence chosen. The oldest files go first when the folder passes its size or age. |
+
+## Settings exported to a file
+
+**File > Export settings...** writes every setting into one `.zip` file, `Masterpiece settings.zip` by default; **File > Export organ settings...** writes the loaded organ's, `<organ> settings.zip`. **File > Import settings...** reads either kind back, after a window says what it holds and which version wrote it. Desktop systems only.
+
+| In the archive | Holds |
+|---|---|
+| `masterpiece-settings.txt` | The manifest: the scope, the organ, the version that wrote it and the path of each file. |
+| `f1`, `f2`, ... | The files: for an organ, its `.mporgan`, `.mppanels`, `.mpmidi`, `.mpcomb` and `.mpsplit` files; for everything, those of every organ and `settings.mpglobal`, `midi/console.mpmidi` and `split-keyboard.txt`. |
+
+The audio device setup stays out, because it belongs to the computer. An import first saves the files it replaces to `backups/` in the settings folder; the message at the end names the file. **Organ > Copy settings from another organ...** saves the organ's files there in the same way. The file dialogs reopen in the folder last used for each kind.
 
 Masterpiece reads the organs the player opens, the MIDI files the player loads, and the impulse responses and Scala `.scl` files the player picks. The paths of an impulse response and a Scala file are stored in the organ's `.mporgan` file.
 
 ## Privacy
 
-Masterpiece's one connection is the update check, from version 0.8.1.
+Masterpiece's one connection is the update check, from version 0.8.1. The control API and the web console, when the player turns them on, serve the local network and send nothing out; see [Remote control](remote.md).
 
-- **The update check.** Once a day, ten seconds after the program starts, it reads `https://masterpieceorgan.com/version.txt`: the number of the newest version, a few bytes, which the site's publishing writes at every release. When that number is newer, the right of the status bar reads **Masterpiece 0.8.1 is out** (with the number) until 30 seconds after the organ has loaded, or for 30 seconds when no organ is loading, with **Download**, which opens the download page, **Never check again** and a close button. Nothing takes the focus or waits for an answer. The request carries nothing about the player or the organs; like any request for a web page, it reaches GitHub Pages, which hosts the site, with the computer's IP address. Masterpiece keeps only the time of the last check (`updatecheckedat`). A check that gets no answer within 5 seconds says nothing and is tried again the next day. The plugins never check, and neither does a scripted run (`--play-midi`, `--gui-only`, `--draw-only`, or the environment variable `MASTERPIECE_UPDATE_CHECK=0`). `MASTERPIECE_UPDATE_URL` reads another address, for a test server.
-- **Turning it off.** **Check once a day for a newer version** on the Log tab of General settings, or **Never check again** in the notice (`updatecheck 0` in `settings.mpglobal`).
-- **On Linux** the file is read with the system's `curl` command; without one, the check does nothing. The build switches off JUCE's web browser and `curl` features.
+- **The update check.** Once a day, ten seconds after the standalone program starts, it asks GitHub for the newest release of Masterpiece, at `https://api.github.com/repos/bonninr/masterpiece/releases/latest`, and reads its version number. When that number is newer, the right of the status bar reads **Masterpiece %1 is out** (with the number) for 30 seconds, with **Download**, which opens the release page, **Never check again** and a close button. Nothing takes the focus or waits for an answer. **Help > Check for updates...** asks at once, and the status line says **Masterpiece %1 is the latest version.** or shows the notice. The request carries nothing about the player or the organs; like any request for a web page, it reaches GitHub with the computer's IP address. Masterpiece keeps only the time of the last check (`updatecheckedat`). A check that gets no answer within 5 seconds says nothing and is tried again the next day. The plugins never check on their own, and neither does a scripted run (`--play-midi`, `--gui-only`, `--draw-only`, or the environment variable `MASTERPIECE_UPDATE_CHECK=0`). `MASTERPIECE_UPDATE_URL` reads another address, for a test server.
+- **Turning it off.** **Check for updates daily** on the **Diagnostics** tab of the settings window, or **Never check again** in the notice (`updatecheck 0` in `settings.mpglobal`).
+- **On Linux** the release is read with the system's `curl` command; without one, the check does nothing. The build switches off JUCE's web browser and `curl` features.
 - **On Android** the app asks for the internet permission for this check, besides Bluetooth (to find Bluetooth MIDI devices), location up to Android 11 (a platform requirement for Bluetooth scanning, never read) and storage up to Android 12 (to open organ files).
 - **The Flatpak bundle** has network access for this check.
 - There is no account, no analytics and no crash reporting.
@@ -227,6 +257,7 @@ The privacy policy is at [masterpieceorgan.com/privacy.html](https://masterpiece
 |---|---|
 | `masterpiece.log`, `masterpiece.previous.log` | None. |
 | `cache/` files | The next load rebuilds the cache. |
+| `backups/` | The settings saved before imports and copies are gone. |
 | `Standard noises/` | Regenerated when needed. |
 | `Packaged/<id>/` | Unpacked again at the next open; needs the original archives. |
 | `Portable/` | An organ kept playable without its files needs a complete load again. |
@@ -235,7 +266,7 @@ The privacy policy is at [masterpieceorgan.com/privacy.html](https://masterpiece
 | `jack-connections.txt` | JACK connections must be made again. |
 | `midi/<organ>.mpmidi`, `midi/console.mpmidi` | MIDI mappings must be made again. |
 | `organs/<organ>.mporgan` | The organ's settings reset; its **Organ settings** open before its next first load. |
-| `settings.mpglobal` | All general settings, favourites and libraries reset; the first-run wizard returns. |
+| `settings.mpglobal` | All program-wide settings, favourites and libraries reset; the first-run wizard returns. |
 | `combinations/*.mpcomb`, `split/*.mpsplit`, `split-keyboard.txt` | The stored pistons, splits and presets are lost for good. |
 
 Close Masterpiece before deleting files in the settings folder: the program rewrites several of them as it runs and at exit.

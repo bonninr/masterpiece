@@ -46,7 +46,7 @@ The first time the split is on for an organ, each role that has no mapping recei
 | Solo | The third manual; the last manual when the organ has fewer than three |
 | Pedal | The organ's pedal keyboard, found by its assignment code or a name that contains "pedal"; no mapping when the organ has none |
 
-Manuals are taken in the organ's own order and only those a player can reach from a MIDI keyboard. The proposal is saved with the organ and can be changed in the **Manuals on this organ** rows.
+Manuals are taken in the organ's own order, from the keyboards its key flow plays: the same manuals the **Keyboards** rows of **Organ > Organ settings...**, tab **MIDI**, list. An organ whose definition gives no key count for its manuals (the Nancy demo, for one) lists them too. The proposal is saved with the organ and can be changed in the **Manuals on this organ** rows.
 
 ## Window fields
 
@@ -137,9 +137,9 @@ The four bass fields are dimmed while the bass is off.
 
 | Name | What it does | Default | Options |
 |---|---|---|---|
-| **Lower**, **Upper**, **Solo**, **Pedal** | The manual of this organ that each role plays. | The proposal described under [Switching it on and off](#switching-it-on-and-off) | **Nothing** and every manual of the organ that has keys and can be played from MIDI |
+| **Lower**, **Upper**, **Solo**, **Pedal** | The manual of this organ that each role plays. | The proposal described under [Switching it on and off](#switching-it-on-and-off) | **Nothing** and every manual the organ's key flow plays |
 
-The choice is a mapping of the `Split keyboard` input and channel to the manual. It is saved in the organ's MIDI map (see [The MIDI map files](midi.md#the-midi-map-files)) and also appears in the **Keys** tab of the manual's dialog, with **Console** set to `Split keyboard`. A role set to **Nothing** plays nothing.
+The lists fill again each time an organ loads, so they always name the manuals of the organ loaded now. The choice is a mapping of the `Split keyboard` input and channel to the manual. It is saved in the organ's MIDI map (see [The MIDI map files](midi.md#the-midi-map-files)) and also appears in the **Keys** tab of the manual's dialog, with **Console** set to `Split keyboard`. A role set to **Nothing** plays nothing.
 
 ### MIDI controls
 

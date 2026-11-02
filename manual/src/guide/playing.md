@@ -3,8 +3,8 @@
 This page covers what a player does at the console: drawing stops, couplers
 and tremulants, the organ's own pistons, the player's own combinations and
 sequencer, the crescendo and the swell boxes, the transposer, temperament and
-pitch, the metronome, the recorder, and what Masterpiece remembers between
-sessions. Each section says how the feature is reached. The window itself is
+pitch, the metronome, the recorder, the score panel, and what Masterpiece
+remembers between sessions. Each section says how the feature is reached. The window itself is
 described on [A tour of the window](window.md).
 
 ## Drawing stops, couplers and tremulants
@@ -19,21 +19,53 @@ A stop, coupler or tremulant is drawn from any of these:
 
 Drawing goes through the organ's own wiring: the click moves the knob a player
 would move, and the stops, couplers and noises that the wiring joins to the knob
-follow it.
+follow it. A drawstop latches when clicked, whatever the definition marks it:
+one click draws it and the next pushes it in. This holds for a clickable switch
+wired to its stop through plain follow linkages; the engine's own nodes,
+registration aids that reach several stops, reversible pistons and switches no
+player can reach keep the setting the definition gives them.
+
+A press dragged across the stops of the console, of a panel or of the stop
+list moves each stop the pointer passes over the way the first one moved: a
+drag that started by drawing a stop draws the others, and one that started by
+pushing a stop in pushes the others in. Each stop is set once, as the pointer
+enters it.
 
 A key that is down answers to the registration as it changes. Drawing a stop
 while a key is held makes that rank speak, and pushing it in silences it. A
 coupler drawn or pushed in while keys are held reaches, or stops reaching, the
 divisions it couples at once. A tremulant switch that swaps a stop's rank for
-its alternate recording sounds the held notes again on the other rank.
+its alternate recording sounds the held notes again on the other rank. With
+**Stop changes leave the notes already held alone** ticked in
+**Settings > MIDI...**, held notes keep what they started with and only the
+keys pressed afterwards play the new registration. Off by default.
+
+**Sustain pedal: controller 64 holds the notes let go**, on the same tab, keeps
+released keys sounding while a sustain pedal is down, for directing a choir from
+the bench. Off by default. See [MIDI and consoles](midi.md#feedback-playing-and-learn-options).
 
 A tremulant shakes the pipes only when the engine runs its detailed path. The
-**Tremulants** box in **Settings > Organ settings...**, tab **Loading**, is on by
+**Tremulants** box in **Organ > Organ settings...**, tab **Loading**, is on by
 default, and the **Bypass all effects** box on the same tab bypasses tremulants together with
-the wind model, enclosure shading and voicing.
+the wind model, enclosure shading and voicing. Both boxes are shown in the
+**Advanced** display mode.
 
 A stop that was left out of the load, and a locked stop of a demo set, are
 described under [Stops that make no sound](window.md#stops-that-make-no-sound).
+
+### Extra couplers
+
+**Organ > Extra couplers** adds couplers of the program's own between the
+divisions a player can play, at 16', 8' and 4', on any organ: a key on the
+destination's keyboard sounds the source division at the key's note an octave
+down, at the same note, or an octave up. They do not chain, as a console's
+couplers do not. The item is ticked while they are on; choosing it saves the
+setting for the organ and loads the organ again with it. It is the same setting
+as the **Extra couplers** box of **Organ > Organ settings...**, tab **Loading**.
+Off by default; while it is off, nothing is added. The extra couplers are drawn
+from a generated panel and the stop list, each once, in a section of its own.
+The player's generals store them and the general cancel pushes them in; the
+organ's own generals and cancels hold them too.
 
 ### Drawing every stop
 
@@ -48,7 +80,10 @@ pushes in every stop, coupler and tremulant of the registration (see
 **Panic** in the top bar releases every key on every channel, as a console's
 cancel does. An organ pipe has no decay, so a note left down by a lost MIDI
 note-off, or by a coupler changed in mid-chord, sounds until something releases
-it.
+it. Panic then closes and opens again every ticked MIDI input, so a keyboard
+that stopped sending plays again without a restart; this part is in the
+standalone program. **Organ > All notes off** releases every key in the same
+way and leaves the inputs open as they are.
 
 ## The organ's own pistons
 
@@ -74,8 +109,11 @@ draws the ones the set draws. They work as follows.
   work from the drawn picture.
 - The General cancel of GrandOrgue organs is the player's own general cancel.
 - Option **General Cancel also puts the keyboards back on their own manuals**
-  (**Settings > General settings > MIDI**, off by default): the cancel then also
-  returns every keyboard moved by a manual button to the manual it started on.
+  (**Settings > MIDI...**, off by default): the cancel then also returns every
+  keyboard moved by a manual button to the manual it started on.
+- **Set turns off after storing** (see [The Combinations window](#the-combinations-window))
+  applies to the organ's own pistons too, pressed on the console, in a panel or
+  over MIDI.
 
 ## The player's own combinations
 
@@ -88,15 +126,18 @@ same setter as the organ's pistons, and are saved per organ in the player's data
 ### What a registration holds
 
 A registration holds the drawn state of stops, couplers and tremulants and
-nothing else. The blower, noises, action sounds and page switches are not part
+nothing else. The blower, noises, action sounds and page switches are left out
 of it, so a general cancel never stops the blower. A stop whose name contains
 `noise` or `blower`, a stop in a division with `noise` in its name, a stop that
 sounds only noise ranks and a stop worked from a switch named `blower` are left
-out.
+out. A coupler whose knob also sounds an action noise stays a coupler and is
+stored; a blower or a motor stays out.
 
 On an organ with a drawn console, the registration holds what has a drawstop on
 the console. An organ that draws no console offers every stop, coupler and
-tremulant.
+tremulant. Unison offs (a knob that gates at least half of a division's key
+inputs), octave couplers and the [extra couplers](#extra-couplers) are stored
+with the rest.
 
 A **divisional** covers one division: its stops, the couplers that feed it
 (counted to the division of the keyboard they are played from), and the
@@ -107,32 +148,35 @@ number.
 
 ### The Combinations window
 
-**View > Combinations** shows or hides the window. It is a window of its own,
-resizable in height, with a close button that hides it. The first time an organ
-opens, the window is closed; after that it opens as the player left it, at the
-position and size saved with the organ. On the first showing it sits at the
-bottom right of the main window.
+**Organ > Combinations** shows or hides the window; the item is ticked while it
+is shown. It is a window of its own, resizable in height, with a close button
+that hides it. The first time an organ opens, the window is closed; after that
+it opens as the player left it, at the position and size saved with the organ.
+On the first showing it sits at the bottom right of the main window.
+
+The three boxes along the top are read from the program each time the window is
+shown, so they match the settings in force.
 
 | Control | What it does |
 |---|---|
 | **Always on top** | Keeps the window above every other program's windows. Off, the window stays above the console while Masterpiece is in front. Off by default; kept for every organ. On Linux the stacking is fixed when the window opens. |
-| **Set turns off after storing** | After a piston clicked in this window has stored a combination, **Set** turns off, so the next click recalls it. Off by default; kept for every organ. A console's own Set stays down until pressed again. |
+| **Set turns off after storing** | After a piston has stored a combination, **Set** turns off, so the next press recalls it: the pistons of this window, the organ's own pistons on the console and in panels, and pistons pressed over MIDI. A sequencer step that stores a frame lets **Set** go as well. Off by default; kept for every organ. |
 | **Pistons leave the bass coupler** | The generals, divisionals and sequencer steps neither store nor recall the organ's bass and melody couplers, which stay as the player set them, as on consoles where they belong to the hands. The cancels still push them in. Off by default; kept for every organ. |
 | **Set** | A toggle. While on, a piston stores what is drawn and recalls nothing. It is lit red while capture is on. |
 | **GC** | The general cancel: pushes in every stop, coupler and tremulant of the registration. |
 | **\|<**, **-10**, **<**, readout, **>**, **+10**, **>\|** | The sequencer: first frame, ten frames back, previous, the frame readout, next, ten frames on, last frame that holds anything. |
-| **Insert**, **Delete** | Open an empty frame at the current frame, or take it out. |
-| Digits **1** to **9**, **0** | Go to frame 1 to 9, and frame 10 for **0**. |
-| **Generals** with **-** and **+** | One button per general, 10 to a row. **-** and **+** show 10 fewer or 10 more. |
+| **Insert**, **Delete** | **Insert** copies the current frame into a new one after it, and the frames after it move up one. **Delete** takes the current frame out, and the frames after it move down one. |
+| Digits **0** to **9** | Go to the frame, among the ten the current frame belongs to, whose number ends in that digit: from frame 012, **5** goes to frame 015. |
+| **Generals** with **-** and **+** | One button per general, 10 to a row. **-** and **+** show one fewer or one more up to 10 generals, then ten fewer or ten more. |
 | **Divisionals** with **-** and **+** | One row per division, with one button per divisional and a **0** at the end of the row that cancels the division. **-** and **+** show one fewer or one more on every division. |
-| **Pedal with** *manual* | The Pedal combinations coupler, the French *combinaison* coupler. While it is lit, each divisional of the first manual also recalls the Pedal divisional of the same number, **Set** stores both, and the manual's **0** cancels the Pedal too. Shown when the organ has a Pedal and a manual with divisionals. Off by default; kept for every organ in the global settings file (`pedalcombinationscoupled 1`). A right-click maps it to a console button, held or toggling, like **Set**. |
+| **Pedal with** *manual* | The Pedal combinations coupler, the French *combinaison* coupler. While it is lit, each divisional of the manual it names also recalls the Pedal divisional of the same number, **Set** stores both, and the manual's **0** cancels the Pedal too. The manual is the division named as the Great (Great, Grand Orgue, Hauptwerk, Hoofdwerk, Huvudverk, Hovedværk, Grand'Organo, Gran Órgano, G.O.), wherever it sits among the manuals, and the first manual on an organ with none of these. Shown when the organ has a Pedal and such a manual with divisionals. Off by default; kept for every organ in the global settings file (`pedalcombinationscoupled 1`). A right-click maps it to a console button, held or toggling, like **Set**; the control API sets it too. |
 | **Set in use**, **Save as...**, **Delete** | The combination sets. See [Combination sets](#combination-sets). |
 
 | Quantity | Default | Range |
 |---|---|---|
-| Generals | 10 | 10 to 100, in steps of 10 |
+| Generals | 10 | 1 to 10 in steps of 1, then up to 100 in steps of 10 |
 | Divisionals per division | 5 | 1 to 20 |
-| Frames of the sequencer | none stored | 1 to 999 |
+| Frames of the sequencer | none stored | 000 to 998 |
 
 The counts are saved with the combination set. A piston button is dim when it
 was never set, lighter when it holds a registration, and amber when it is the one
@@ -157,7 +201,7 @@ There are two ways to store a registration.
    again**).
 
 Names of targets read `General 3`, `Pedal divisional 2` (the division's name) and
-`Step 12`.
+`Step 12`. A step counts from 1, so frame 011 is `Step 12`.
 
 ### Recall
 
@@ -174,36 +218,43 @@ switches alone.
 
 ### The sequencer and its frames
 
-The sequencer holds up to 999 frames, each a registration of the whole console.
-It is walked with two pistons, previous and next, and is meant for the pistons
-of a piece: one press, no looking.
+The sequencer holds 999 frames, numbered 000 to 998, each a registration of the
+whole console. It is walked with two pistons, previous and next, and is meant
+for the pistons of a piece: one press, no looking.
 
-- The frame readout in the top bar reads **Frame 3 / 12** and the one in the
-  Combinations window **Frame 3 of 12**. The second number is the last frame
+- The frame readout in the top bar reads **Frame 003 / 012** and the one in the
+  Combinations window **Frame 003 of 012**. The second number is the last frame
   that holds anything, or the current frame if that is higher. With no frame
-  stored the readouts read **No frames**; the window shows **- of 12** with
-  stored frames and frame 0.
-- Stepping forward stops after the last frame that holds anything, and stepping
-  back stops at frame 1. It never wraps. Stepping from frame 0 goes to frame 1.
+  stored and none current the readouts read **No frames**; with stored frames
+  and none current the window shows **- of 012**.
+- Stepping forward stops at the last frame that holds anything, and stepping
+  back stops at frame 000. It never wraps. The first step forward with no frame
+  current goes to frame 000.
 - With **Set** on, stepping captures what is drawn into the frame it lands on,
-  and may run past the last frame to frame 999. Keep **Set** on, walk forwards and
-  set each frame as you go: that is how a sequence for a piece is built.
-- **\|<** goes to frame 1, **>\|** to the last frame that holds anything, **-10**
-  and **+10** move by ten frames and stop at the ends. The digit buttons go to a
-  frame without leaving the keys; outside capture they stop at the last frame
-  that holds anything.
+  and may run past the last frame up to frame 998. Keep **Set** on, walk forwards
+  and set each frame as you go: that is how a sequence for a piece is built.
+- **\|<** goes to frame 000, **>\|** to the last frame that holds anything,
+  **-10** and **+10** move by ten frames and stop at the ends.
+- The digits **0** to **9** pick among the ten frames the current one belongs
+  to, by the last figure of the number: from frame 012, **5** goes to frame 015
+  and **0** to frame 010. Outside capture they stop at the last frame that holds
+  anything. With **Set** on, the digit goes to its frame and stores what is
+  drawn into it, the digit of the current frame included.
 - A click on the readout, in either place, asks for a frame number of up to 3
-  digits (**Go to a frame**). A number past the last frame goes to the last
-  frame, unless **Set** is on.
-- **Insert** opens an empty frame at the current frame (frame 1 when none is
-  current) and the frames after it move up one. It does nothing when frame 999
-  holds a registration. **Delete** takes the current frame out and the frames
-  after it move down one.
+  digits (**Go to a frame**, **A frame number, 000 to 012:**). A number past the
+  last frame goes to the last frame, unless **Set** is on.
+- **Insert** copies the current frame into a new one just after it, and the
+  frames after it move up one; the current frame stays where it is. It does
+  nothing with no frame current, at frame 998, or when frame 998 holds a
+  registration. **Delete** takes the current frame out and the frames after it
+  move down one.
+- A sequence is edited by stepping to a frame, pressing **Insert**, then
+  stepping on to the copy and setting it with **Set** and its digit.
 - A frame recalled by the sequencer behaves exactly as the same registration
   pressed by hand.
 - The sequencer buttons in the top bar, **<** and **>**, step the same
-  sequencer; **<** is disabled at frame 1 and **>** is disabled at the last
-  frame unless **Set** is on.
+  sequencer; **<** is disabled at frame 000 and with no frame current, and **>**
+  is disabled at the last frame unless **Set** is on.
 
 ### Combination sets
 
@@ -212,8 +263,8 @@ organ has the default set and any number of named sets.
 
 | Control | What it does |
 |---|---|
-| **Set in use** (**Settings > General settings > Combination sets**, **In use**) | Chooses the set. The set being left is saved first. The default set is listed as **(default)**. The choice is kept for the organ. |
-| **Save as...** (**Save as new set...** in General settings) | Asks for a name (**A name for this registration set:**), writes a copy of the live registrations under it and switches to it. |
+| **Set in use** (**Settings > Combination sets...**, **In use**) | Chooses the set. The set being left is saved first. The default set is listed as **(default)**. The choice is kept for the organ. |
+| **Save as...** (**Save as new set...** on the Combination sets tab) | Asks for a name (**A name for this registration set:**), writes a copy of the live registrations under it and switches to it. |
 | **Delete** (**Delete set**) | Deletes the set in use and returns to the default set. The default set cannot be deleted. |
 
 A set holds the organ's own pistons that were captured, the player's generals,
@@ -239,7 +290,7 @@ A right-click on **Set**, **GC**, a general, a divisional, a **0**, or any
 sequencer button opens a menu: the current mappings, **Learn** (for **Set**,
 **Learn: held while pressed** and **Learn: toggles**), **MIDI window...** and
 **Clear mapping**. Press the control on the console after **Learn**; a second
-right-click cancels. **Settings > General settings > MIDI** has the buttons
+right-click cancels. **Settings > MIDI...** has the buttons
 **Learn sequencer +** and **Learn sequencer -**. The mappings of the sequencer,
 generals, setter and the page and tuning buttons are kept for every organ in
 `midi/console.mpmidi`. See [MIDI and consoles](midi.md).
@@ -252,15 +303,16 @@ A swell box is an enclosure. Its shoe is a continuous control with values from
 0 to 127. The shoe is worked in these ways:
 
 - the organ's drawn shoe, dragged on the console;
-- a fader of **View > Swell faders**, one for each shoe;
+- a fader of **View > Expression pedals**, one for each shoe (the item is
+  listed when the organ has a shoe);
 - a fader in the **Expression** section of a panel;
 - a pedal or fader mapped to it (right-click the shoe, see
   [MIDI and consoles](midi.md)).
 
 Every shoe starts open, at 127, when an organ loads, and is forgotten at the next load. The
 effect of the box on the sound is the **Enclosures (swell shades)** box in
-**Settings > Organ settings...**, tab **Loading**; it is on by default, and the
-**Bypass all effects** box bypasses it.
+**Organ > Organ settings...**, tab **Loading**, shown in Advanced mode; it is on
+by default, and the **Bypass all effects** box bypasses it.
 
 When a pedal does not send the whole of 0 to 127, put the pedal in the closed
 position, right-click the shoe and choose **Closed position: where the pedal is
@@ -348,7 +400,9 @@ missing. The dialog opens in the folder last used for Scala files.
 A temperament piston on a console steps through **The organ's own** and the
 eight temperaments in this order and wraps round. A loaded Scala file is not a
 step of the cycle. Learn the pistons with **Learn temperament -** and **Learn
-temperament +** in **Settings > General settings > MIDI**.
+temperament +** in **Settings > MIDI...**. Next to them, a list holds **The
+organ's own** and the temperament library; **Learn this temperament** maps a
+console button that brings in the temperament chosen in the list.
 
 ### Pitch (A)
 
@@ -388,7 +442,7 @@ The control API sets them as the program properties `pipeDetune` and
 ## Metronome
 
 The metronome is a click generated inside the audio callback, so it keeps time
-with what is heard. It is in **Settings > General settings**, tab **Metronome**.
+with what is heard. It is in **Settings > Metronome...**.
 
 | Control | What it does | Default | Range |
 |---|---|---|---|
@@ -408,7 +462,7 @@ box shows whether it is running each time the tab opens.
 
 ## Recorder
 
-**File > Recorder...** shows the Recorder window, a small window of its own that
+**View > Recorder** shows the Recorder window, a small window of its own that
 opens at the top right of the main window and leaves the console playable while
 it records. Its close button hides it.
 
@@ -487,8 +541,9 @@ cannot answer a question, so it is saved as
 `Documents/Masterpiece/Recordings/<organ> <yyyy-mm-dd hh-mm-ss>.mid`, the status
 line names the file and the Recorder window shows it while the new take records.
 A button learned for **Play** plays the take, and stops it. Both are learned in
-the Recorder window under **MIDI...** or on the MIDI tab of General settings,
-and they are the console's, the same on every organ.
+the Recorder window under **MIDI...**, or with **Learn record or stop** and
+**Learn play or stop** under **Recorder** in **Settings > MIDI...**, and they are
+the console's, the same on every organ.
 
 Each can light a lamp: a MIDI send for **recorder-record** or **recorder-play**,
 lit while the recorder records or plays. The buttons' own messages are not
@@ -496,15 +551,14 @@ recorded into a take, and a take played back never presses them.
 
 ### Everything played
 
-**Keep everything played** on the MIDI tab of **Settings > General settings**
-records all the time, in the background, apart from the Recorder window. Off by
-default.
+**Archive everything played** in **Settings > MIDI...** records all the time, in
+the background, apart from the Recorder window. Off by default.
 
 | Setting | Choices | Default |
 |---|---|---|
-| **ends after ... of silence** | 10 s, 30 s, 1 min, 2 min, 5 min, 10 min | 30 s |
-| **up to ...** (the folder's size) | 100 MB, 250 MB, 500 MB, 1 GB, 2 GB, 5 GB | 500 MB |
-| **kept ... days** | 7, 30, 90, 365 | 90 |
+| **ends after 30 s of silence** | 10 s, 30 s, 1 min, 2 min, 5 min, 10 min | 30 s |
+| **up to 500 MB** (the folder's size) | 100 MB, 250 MB, 500 MB, 1 GB, 2 GB, 5 GB | 500 MB |
+| **kept 90 days** | 7, 30, 90, 365 | 90 days |
 
 A take begins with the first note and ends after the silence chosen. Each take
 is a file, `Documents/Masterpiece/Recordings/Archive/<yyyy-mm-dd>/<hh-mm-ss> <organ>.mid`,
@@ -537,6 +591,37 @@ folder of the last file is remembered.
 For scripted recordings with `--play-midi` and `--record-audio`, see
 [Command line](command-line.md).
 
+## Score
+
+**View > Score** opens the score panel: a MusicXML score engraved to the size of
+the panel and played through the organ, with a cursor that follows the playing.
+The panel is a **Score** tab after the console pages and the panels; the tab
+appears the first time **View > Score** is chosen.
+
+| Control | What it does |
+|---|---|
+| **Open score...** | Opens a `.musicxml`, `.xml` or `.mxl` file. |
+| **<**, page readout, **>** | Turn the pages. The readout reads the first page shown and the number of pages. |
+| **-**, zoom, **+** | Make the notation smaller or larger, from 50 % to 250 % in steps of 10 %. The staves fill the panel's width at every zoom, so a larger zoom breaks the lines again and gives more pages. A click on the figure returns to 100 %. |
+| **Two pages** | Shows two pages side by side. |
+| **Play**, **Stop** | Plays the score through the organ from the start chosen, and stops it. |
+| **Manuals...** | One row per staff (**Staff 1**, with the part's name when the score gives one): the manual that staff plays, or **None**. |
+| **Invert** | Draws the page light on dark. |
+| **Detach**, **Attach** | Moves the panel into a window of its own and back. Absent on phones and tablets. |
+
+- A click on a note sets the start there. While the score plays, the click
+  starts it again from that note.
+- The pages turn as the playing reaches them.
+- Each staff plays on the channel a click on its manual's drawn keys uses, so
+  couplers and the drawn keys follow the playing.
+- By default, with three staves or more, the last staff plays the Pedal and the
+  others the organ's preferred manual. With fewer staves, every staff plays the
+  preferred manual.
+
+The panel reads **Open a MusicXML score (.musicxml, .xml or .mxl).** while empty,
+and **No score was found in this file.** or **The file could not be read.** when a
+file cannot be used.
+
 ## Remembered between sessions
 
 Masterpiece keeps the player's data in its data folder, never inside a sample
@@ -555,7 +640,7 @@ identity, so a set moved to another drive or renamed keeps its settings.
 | Registrations, counts, frames | Yes, per set | `combinations/<organ>[.<set>].mpcomb` | When captured |
 | Panels | Yes, per organ | `organs/<organ>.mppanels` | See [Panels](window.md#panels) |
 | Show played keys, **Always on top**, **Set turns off after storing** | Yes, for every organ | The global settings file | When changed |
-| Swell faders and on-screen keyboard shown | No; both are off at each start | | |
+| Expression pedals and on-screen keyboard shown | No; both are off at each start | | |
 | Metronome tempo, beats per bar and level | Yes, for every organ | The global settings file, `metronome` line | When the Metronome tab closes |
 | Metronome running, recorded take | No; the metronome starts silent | | |
 

@@ -23,26 +23,29 @@ GrandOrgue files may be encoded in UTF-8 or in the Western code page of their au
 | Format | Notes |
 |---|---|
 | WAV | Read with the file's own loop and release markers. |
-| WavPack | Recognised by the content of the file, whatever its extension. GrandOrgue sets often name WavPack files `.wav`. The loop, cue and pitch chunks inside are read as they are in a WAV file. |
+| WavPack | Recognised by the content of the file, whatever its extension. GrandOrgue sets often name WavPack files `.wav`. Loaded at full length; the loop, cue and pitch chunks inside are read as they are in a WAV file. |
 | `.hbw`, `.hbx` | Encrypted. Never decoded. See [Encrypted samples](#encrypted-samples). |
 
-Samples may have any sample rate. They are held at the rate they were recorded in unless the **Sample rate** option on the **Loading** tab of Organ settings is set to **48 kHz** or **44.1 kHz**; a file whose rate differs from the chosen one is then converted at load time with Lagrange interpolation, and its loop points and release marker move with the audio. The option takes effect at the next load. See [Memory, loading and streaming](memory.md).
+Samples may have any sample rate. They are held at the rate they were recorded in unless the **Sample rate** option on the **Loading** tab of Organ settings is set to **48 kHz** or **44.1 kHz**; a file whose rate differs from the chosen one is then converted at load time with Lagrange interpolation, and its loop points and release marker move with the audio. The option takes effect at the next load. A file that several pipes name, as in a GrandOrgue rank whose keys all sound one file, is read once and held once. See [Memory, loading and streaming](memory.md).
 
 ## Ways to open an organ
 
-### File > Open...
+### File > Open organ...
 
-**File > Open...** opens the [favourites window](#the-favourites-window). When the favourites list is empty, it opens the file dialog directly.
+**File > Open organ...** opens the [favourites window](#the-favourites-window). When the favourites list is empty, it opens the file dialog directly.
 
 ![The File menu](../images/menu-file.jpg)
 
-The **File** menu holds three items:
+The **File** menu holds:
 
 | Item | What it does |
 |---|---|
-| **Open...** | The favourites window, or the file dialog when there are no favourites. |
-| **Other versions of this organ** | A submenu, present only when the loaded organ has more than one definition beside it. See [Other versions of an organ](#other-versions-of-an-organ). |
-| **Recorder...** | Opens the recorder window. |
+| **Open organ...** | The favourites window, or the file dialog when there are no favourites. |
+| **Open another version** | A submenu, present only when the loaded organ has more than one definition beside it. See [Other versions of an organ](#other-versions-of-an-organ). |
+| **Import settings...**, **Export settings...**, **Export organ settings...** | The settings archives; see [Settings](general-settings.md). Absent on phones and tablets. |
+| **Exit** (Windows), **Quit** (Linux) | Closes the program, as the window's close button does. Absent on macOS, where quitting is in the application menu, on phones and tablets, and in the plugins. |
+
+The recorder is in the **View** menu; see [A tour of the window](window.md).
 
 ### The file dialog
 
@@ -59,7 +62,7 @@ On phones and tablets the list is `*.rar` and `*.orgue`, and any other file is i
 | Command line | Desktop | `Masterpiece <file>` or `Masterpiece --odf <file>` opens the file at start. A file named on the command line takes precedence over **Reopen the last organ when Masterpiece starts**. See [Command line](command-line.md). |
 | Open with | Windows, Linux, macOS | The installer registers `.Organ_Hauptwerk_xml`, `.CustomOrgan_Hauptwerk_xml`, `.organ`, `.orgue` and `.rar` for the Open with list. On Windows Masterpiece appears in that list and is never made the default, so a `.rar` keeps the program that already opens it. On Linux the desktop file declares the same types. On macOS the application declares the same extensions. On macOS, a file chosen with Open With while Masterpiece is running loads in the running window. On Windows and Linux each launch starts a separate instance, which loads the file. |
 | Reopen at start | Standalone application | See [Reopening the last organ](#reopening-the-last-organ). |
-| First-run wizard | Standalone application | The last step has a **Choose an organ...** button that opens the file dialog. |
+| First-run wizard | Standalone application | The last step has a **Choose an organ...** button that closes the wizard and opens the file dialog, so the console is in view while the organ loads. |
 
 Masterpiece does not accept files dropped on its window.
 
@@ -85,7 +88,7 @@ Libraries come from two places:
 
 Libraries are collected automatically. Masterpiece has no setting that lists them by hand.
 
-For a layout that cannot be worked out from the path, the **Organ folder** row on the **Loading** tab of Organ settings names the folder that holds `OrganInstallationPackages`. It is stored with the organ, takes effect at the next load, and has **Choose...** and **Default** buttons. By default it reads `From the definition (<folder>)`.
+For a layout that cannot be worked out from the path, the **Organ folder** row on the **Loading** tab of Organ settings, shown in the Advanced display mode, names the folder that holds `OrganInstallationPackages`. It is stored with the organ, takes effect at the next load, and has **Choose...** and **Default** buttons. By default it reads `From the definition (<folder>)`.
 
 ## Playing from packages
 
@@ -148,7 +151,7 @@ When the unpacked folder holds more than one definition (perspectives, full and 
 
 ### Phones and tablets
 
-On phones and tablets an organ is opened as a package: a `.rar` or `.orgue`. On Android the chosen document is copied into the application's storage under `Masterpiece/Organs` before it opens; a copy of the same size is reused. On iPhone and iPad the Files app lends the document, and a volume of a multi-volume set asks for the folder that holds the rest (**The rest of `<file>`**). See [Phones and tablets](mobile.md).
+On phones and tablets an organ is opened as a package: a `.rar` or `.orgue`. On Android the chosen document is copied into the application's storage under `Masterpiece/Organs` before it opens; a copy of the same size is reused. On iPhone and iPad the Files app lends the document, and a volume of a multi-volume set asks for the folder that holds the rest (**The rest of `<file>`**). On iPhone and iPad a load waits while the app is in the background and goes on when it returns. See [Phones and tablets](mobile.md).
 
 ## Packages found elsewhere
 
@@ -167,7 +170,7 @@ The log records the search: `load: N package(s) not with the organ; looking in <
 
 ### The package folder setting
 
-**Package folder** is on the **Loading** tab of Organ settings. It names a folder where you keep packages. The folder and the folders directly in it are searched. The default is **None**; **Choose...** sets it and **Clear** removes it. The setting is stored at once in `settings.mpglobal` (key `packagedir`) and applies to every organ at its next load.
+**Package folder** is on **Settings > General...**, shown in the Advanced display mode. It names a folder where you keep packages. The folder and the folders directly in it are searched. The default is **None**; **Choose...** sets it and **Clear** removes it. The setting is stored at once in `settings.mpglobal` (key `packagedir`) and applies to every organ at its next load.
 
 ### The missing-package dialog
 
@@ -204,6 +207,8 @@ Sets found in archives are joined to the composite's own archives and read from 
 
 A GrandOrgue organ opens from its `.organ` file in a folder or from an `.orgue` package. The converter translates the organ's manuals, stops, ranks, couplers, tremulants, enclosures and panels into the model the loader reads. Sample and image paths stay relative to the folder of the `.organ` file. Where the two formats differ, the semantics are GrandOrgue's: a manual is a keyboard and a division at once, a pipe's release defaults to the tail of its own attack file found at the file's cue point, and an enclosure lowers the level of its windchest groups with no filter.
 
+Every manual of a GrandOrgue organ plays, each on a channel of its own by default. In a package whose `.organ` file lies in a folder below the package's root, the samples are found in the archive.
+
 ![A GrandOrgue organ](../images/console-grandorgue.jpg)
 
 ## Demo sets
@@ -217,7 +222,7 @@ A demonstration set ships the definition of the whole organ and the samples of s
 - Locked stops also stay in when anything else would draw them: a general, a piston, the crescendo, a tutti, a MIDI message or the organ's own wiring. The switch network holds their switches off. A switch that also draws a stop with pipes stays free, and so does a switch the organ starts engaged.
 - Copies of a locked stop's knob on other console pages follow it.
 - An organ in which no stop has pipes is not treated as a demo, and its stops are left as they are.
-- In the stop list, a locked stop is greyed and its tooltip reads **This stop's ranks ship no pipes in this sample set**. In Organ settings, **Stops and perspectives**, its checkbox is disabled with the same tooltip.
+- In the stop list, a locked stop is greyed and its tooltip reads **This stop's ranks ship no pipes in this sample set**. In Organ settings, **Stops, ranks and perspectives**, its checkbox is disabled with the same tooltip.
 
 A stop left out by your own choice in Organ settings is a different case. It is dimmed on the console, and its tooltip reads **`<stop>` is not loaded: chosen in Organ settings, Stops**.
 
@@ -234,7 +239,7 @@ The question is asked on the loading thread, after the definition is read and be
 | **Load the samples** | The licensed samples load. The answer is stored with the organ (`licenceconfirmed 1` in its settings file) and the question is not asked again. The log says `licence: the player confirmed a licence for this organ`. |
 | **Cancel** | The licensed samples are left out. The status line gains **licensed samples not loaded**, and the count shows **N awaiting a licence**. The question is asked again at the next load. |
 
-The **Settings** menu holds **Licence confirmed for this organ** when the loaded organ has licensed samples. A tick shows that the licence is confirmed. Choosing it while ticked withdraws the licence and loads the organ again without the licensed samples. Choosing it while unticked asks the question again, and a yes loads the organ again with the samples.
+The **Organ** menu holds **Licence accepted** when the loaded organ has licensed samples. A tick shows that the licence is confirmed. Choosing it while ticked withdraws the licence and loads the organ again without the licensed samples. Choosing it while unticked asks the question again, and a yes loads the organ again with the samples.
 
 The sample cache is kept separately for the two states, so withdrawing and confirming does not mix them.
 
@@ -252,7 +257,7 @@ A licence confirmation has no effect on encrypted files.
 
 ## The favourites window
 
-**File > Open...** shows the favourites window, titled **Open**. It is resizable and keeps up to 64 organs in numbered slots.
+**File > Open organ...** shows the favourites window, titled **Open**. It is resizable and keeps up to 64 organs in numbered slots.
 
 ![The favourites window](../images/open-window.png)
 
@@ -266,13 +271,13 @@ A licence confirmation has no effect on encrypted files.
 | **Add the organ now loaded** | Adds the loaded organ under the organ's own name to the lowest free slot. The status line reads **Added on slot N**, or **All 64 slots are taken**. The button is disabled when no organ is loaded or the organ is already listed. |
 | **Open an organ file...** | Closes the window and opens the [file dialog](#the-file-dialog). |
 
-A favourite whose file is gone shows **not found: `<path>`** on its row. Clicking it shows **Not found: `<path>`** in the status line, and the favourite is kept, so a set on a drive that is not plugged in is still listed. When the organ has a kept copy (**Keep this organ playable without its installation files** on the **Loading** tab of Organ settings), a click opens the copy.
+A favourite whose file is gone shows **not found: `<path>`** on its row. Clicking it shows **Not found: `<path>`** in the status line, and the favourite is kept, so a set on a drive that is not plugged in is still listed. When the organ has a kept copy (**Keep a portable copy of this organ** on the **Loading** tab of Organ settings), a click opens the copy.
 
 The list is stored in `settings.mpglobal` as `favourite organ <slot> <name> | <file>` lines and is written at once. The same file holds favourites of temperaments and combination sets. An organ is listed once: the list is matched by file path.
 
 ## Other versions of an organ
 
-**File > Other versions of this organ** lists the definitions beside the loaded one: the other perspectives, or the full and light versions of a set. Each entry shows a file name without extension. The loaded organ is ticked and disabled. A choice loads that definition.
+**File > Open another version** lists the definitions beside the loaded one: the other perspectives, or the full and light versions of a set. Each entry shows a file name without extension. The loaded organ is ticked and disabled. A choice loads that definition.
 
 - For an organ opened from packages, the list holds every definition in the unpacked folder, searched through its subfolders.
 - For an organ in a folder, the list holds the definitions in the folder of the loaded definition, without its subfolders. For an installed Hauptwerk-format organ that folder is `OrganDefinitions`, so it lists every organ installed there.
@@ -281,7 +286,7 @@ The patterns are `*.Organ_Hauptwerk_xml`, `*.CustomOrgan_Hauptwerk_xml`, `*.orga
 
 ## Reopening the last organ
 
-**Reopen the last organ when Masterpiece starts** is on the **Loading** tab of Organ settings. It is off by default, applies to the standalone application, and is stored at once in `settings.mpglobal` (key `reopenlastorgan`). The last organ is recorded when a load completes; a cancelled or failed load leaves the record as it was. At start, a file named on the command line takes precedence. Otherwise the recorded organ opens, provided its file still exists; when it does not, nothing opens.
+**Reopen the last organ when Masterpiece starts** is on **Settings > General...**. It is off by default, applies to the standalone application, and is stored at once in `settings.mpglobal` (key `reopenlastorgan`). The last organ is recorded when a load completes; a cancelled or failed load leaves the record as it was. At start, a file named on the command line takes precedence. Otherwise the recorded organ opens, provided its file still exists; when it does not, nothing opens.
 
 ### The crash guard
 
@@ -296,7 +301,7 @@ start: the last session did not end cleanly while <file> was loaded
 with `; reopened` appended when that organ was opened again by **Reopen the last organ when Masterpiece starts**. The crash writes this log line and changes nothing else: no dialog is shown, and the setting reopens the last organ as after a clean exit.
 ## First load of an organ
 
-The first time an organ loads (it has no settings file yet), Masterpiece reads the definition and draws the console without audio. Organ settings then opens on the organ, so you can choose the resident format, streaming, mono and which stops to load before any memory is spent. Closing Organ settings (**Keep changes**) loads the audio. Later loads of the same organ use the stored choices. See [Organ settings](organ-settings.md).
+The first time an organ loads (it has no settings file yet), Masterpiece reads the definition and draws the console without audio. Organ settings then opens on the organ, so you can choose the resident format, streaming, mono and which stops to load before any memory is spent. Closing Organ settings, with **Keep changes** or otherwise, loads the audio. Later loads of the same organ use the stored choices. See [Organ settings](organ-settings.md).
 
 Organ settings and the other settings files are stored by the organ's identity (its name and unique id; for a definition with no id, its name and a hash of its path), so renaming or moving the set keeps its settings.
 
@@ -304,7 +309,7 @@ Organ settings and the other settings files are stored by the organ's identity (
 
 ![The loading dialog](../images/loading-dialog.png)
 
-While a load runs, the **Loading** dialog stays in front. It shows the file name of the organ, the current phase, a progress bar, a line of detail and a button. The dialog has a native title bar and a fixed size (460 by 190 pixels). It ignores Escape and the title bar's close button; it closes when the load ends. The status line shows `Opening <file>...` for a package and `Loading <file>...` for a definition. The bar moves like a barber pole in a phase with nothing to count.
+While a load runs, the **Loading** dialog stays in front. It shows the file name of the organ, the current phase, a progress bar, a line of detail and a button. The dialog has a native title bar and a fixed size (460 by 190 pixels). It ignores Escape and closes when the load ends. A close by the system while the load runs counts as **Cancel**. The status line shows `Opening <file>...` for a package and `Loading <file>...` for a definition. The bar moves like a barber pole in a phase with nothing to count.
 
 ### Phases
 
@@ -317,10 +322,14 @@ While a load runs, the **Loading** dialog stays in front. It shows the file name
 | **Building the wind model** | Empty. |
 | **Wiring the console** | Empty. |
 | **Finding the samples** | Empty. |
+| **Loading samples from the cache** | `N of M samples`, read from the organ's sample cache. |
 | **Loading samples** | `N of M samples`, followed after three seconds and 2% by the estimate `-   about N minutes left`, `about a minute left` or `less than a minute left`. The estimate is smoothed and is timed from the start of the phase. |
 | **Creating the sample cache** | `N of M MB written   -   N MB/s   -   about N minutes left`. |
-| **Preparing to play** | Empty. |
+| **Preparing to play** | The step under way: **Letting the previous organ go**, **Setting up N voices**, **Checking the releases**, **Checking which stops have samples** or **Restoring the combinations**. |
+| **Building the console** | Empty. |
 | **Ready**, **Cancelled**, **Failed** | The dialog closes. |
+
+In a phase with no count, the detail line adds the seconds spent in it (`N s`) after 2 seconds.
 
 **Creating the sample cache** writes the sample cache and runs only when the cache has to be written and **Save the sample cache** is set to **Before the organ plays**. With **In silence, while it plays**, the organ opens first and the status line shows `creating the sample cache` with a percentage. See [Memory, loading and streaming](memory.md).
 
@@ -334,7 +343,9 @@ The log records the time in each phase after the load, as `stage: <phase name>  
 | Any other phase | **Cancel** | The button changes to **Cancelling...**, and the detail line reads **Finishing the file it is reading**. The load stops after the current file. |
 | Saving the cache | **Skip the cache** | The organ opens, and the detail line reads **The organ opens without its cache**. The next load reads the samples again. |
 
-A cancelled load discards the partly loaded organ, because half an instrument that silently drops notes is worse than none. The status line reads **Load cancelled - no organ is loaded**. Masterpiece then loads the console of the same organ without audio, so Organ settings can be opened from the **Settings** menu. The same happens when a load stops at the memory limit, after the dialog **Not enough memory for this organ**.
+A load cancelled while samples are being read keeps the samples already read. The organ plays with the stops whose samples arrived, and the status line ends with **INCOMPLETE (load cancelled)**.
+
+A load cancelled before any sample is read leaves no organ. The status line reads **Load cancelled - no organ is loaded**. Masterpiece then loads the console of the same organ without audio, so Organ settings can be opened from the **Organ** menu. The same happens when the computer has too little memory free for the samples, after the dialog **Not enough memory for this organ**.
 
 ### Failures
 
@@ -344,7 +355,8 @@ A cancelled load discards the partly loaded organ, because half an instrument th
 | The definition cannot be parsed | The status line reads **Failed to load `<file>`: `<reason>`**. The organ already loaded stays loaded. |
 | A package cannot be opened | A dialog titled **Could not open `<file>`** gives the reason and offers **Show the log**. |
 | Samples missing or unreadable | The organ plays. The status line shows **N missing (named in the log)** and **N unreadable (named in the log)**. A dialog titled **Some samples could not be read** shows the first three. |
-| The memory limit is reached | The dialog **Only part of this organ fits** appears, the status line shows **INCOMPLETE (memory limit)**, and the organ plays with the samples that fit. |
+| The memory limit is reached | The dialog **Only part of this organ fits** appears, the status line shows **INCOMPLETE (memory limit)**, and the organ plays with the samples that fit. The limit is on **Settings > Performance...**. |
+| The computer's free memory runs low | Loading stops with memory kept free for the program and the system. The dialog **Only part of this organ fits** gives the count loaded, the status line shows **INCOMPLETE (memory low)**, and the organ plays with the samples that fit. |
 | An exception in the load | Logged as `load: stopped: <message>` and treated as a failed load. |
 
 The status line after a successful load reads `N stops, N ranks, N samples (N MB)`, followed by the counts above when they apply.
@@ -360,7 +372,7 @@ Every session writes `masterpiece.log` in the Masterpiece folder; the session be
 | `samples:` | `missing <file>`, `unreadable <file>`, and the stand-in noise count. |
 | `stage:` | Time spent in each phase. |
 | `cache:` | Cache reads and writes, and a skipped save. |
-| `portable:` | The kept copy of an organ made with **Keep this organ playable without its installation files**. |
+| `portable:` | The kept copy of an organ made with **Keep a portable copy of this organ**. |
 | `licence:` | A licence confirmed during the load. |
 | `start:` | An unclean end of the previous session. |
 

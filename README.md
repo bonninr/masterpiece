@@ -62,35 +62,65 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
   console sizes where a set ships them
 - Couplers, sub- and super-octaves, unison off, reversible pistons, crescendo
   and alternate ranks, all through the set's own switch network
-- A stop list grouped by division, for sets drawn across many jambs or shipped as text only
+- A stop list grouped by division, for sets drawn across many jambs or shipped as text only;
+  a screen reader reads it, and a key opens it
+- A drag across a row of stops draws or retires each one it passes, on the console,
+  the panels and the stop list
 - Any page in its own window, remembered per organ
+- Simple and Advanced display modes: the main settings with presets, or every setting
+- A score panel: MusicXML engraved and played through the organ, with a cursor on
+  the beat; a console piston turns the page in a score app over MIDI
 
 **Sound**
 - Attack, crossfaded sustain loop, and a release chosen by how long the key was
   held, with a crossfade into it
 - Wind model: chests, bellows and valves solved as a system; a full registration
   lowers the pressure, and pitch and level follow it
-- Tremulants per pipe and per chest; enclosures with level and filter per box
+- Tremulants per pipe and per chest; enclosures with level and filter per box,
+  shaping the closed sound as the set defines it
+- Release alignment for every release, a crossfade length by pitch, and
+  GrandOrgue's short-note level and staccato fade as switches
+- Release length: whole, or kept to a length down to 0.15 s, a tracker action's quick release
+- Options: a sustain pedal; stop changes that leave held notes as they are
+- Unevenness: pipe detune and wind sway, per organ, off by default
+- Attack emphasis: each pipe begins louder or softer and settles to its own level
 - Hermite interpolation; 725 voices a processor thread (at least 1,536), stealing the longest-fading releases first
 - Vectorized engine, AVX2, SSE2 or NEON, 3 to 5 times faster on 512 voices,
-  on by default
+  on by default; rendering on every logical processor, with real-time threads
+  where the system grants them
+- Performance presets, from Most voices (8,192) to Fewest voices (512) for
+  a Raspberry Pi or a tablet; any polyphony limit typed in
 
 **Memory and loading**
-- 24-bit resident (bit-identical to the files), 20-bit or 16-bit; stereo can be
-  folded to mono
+- Quality presets, from Best (as recorded, all in memory) to Smallest (16-bit mono,
+  compressed, short releases only)
+- Samples held as recorded (bit-identical to the files), 20-bit or 16-bit; stereo
+  can be folded to mono
+- Lossless compression in memory, decoded as the samples play: about a third of
+  the plain size, the sound identical to the bit
+- Sparse loading: every second or third note loaded, the others played from a
+  neighbour's samples, retuned
 - Release tails streamed from disk through per-voice ring buffers; keep the
   first second or 25, 50 or 75% of each release in memory
 - Leave out stops, perspectives or single ranks; left-out stops take their
   tremulant ranks with them
-- Decoded sample cache: a second load reads one cache file
-- A memory limit, 80% of RAM by default; a load that reaches it stops and says what to change
+- Decoded sample cache: a second load reads one cache file; one cache, one per
+  organ, or none, written before the organ plays or in silence while it plays
+- A memory limit, 80% of RAM by default; a load that reaches it stops, keeps what it
+  read, and says what to change
+- A file that several pipes play is read and held once
 - Optionally keep an organ playable after its installation files are removed
 
 **Combinations and registration**
 - Player's own generals (up to 100), divisionals per manual, general cancel,
-  and a 999-frame stepper, on any organ, beside the organ's own pistons
+  and a 999-frame sequencer numbered from 000 with Insert, on any organ, beside
+  the organ's own pistons
+- Combinations that hold couplers, unison offs and octave couplers
 - Named combination sets, saved per organ
-- Optional: Set turns off after storing a piston with the mouse
+- Options: Set turns off after storing, on the console and over MIDI; pistons
+  leave the bass and melody couplers alone; a combinaison coupler, the Pedal
+  divisional recalled with the Great's of the same number
+- Extra couplers between the manuals at 16', 8' and 4', on any organ
 
 **Tuning**
 - The organ's temperament, equal, or Werckmeister III, Kirnberger III,
@@ -98,19 +128,41 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
   sixth-comma; Scala `.scl` files
 - Pitch in Hz (415, 440, 442 one click away); transposer ±12 semitones
 - Voicing: level and tuning per rank and per pipe, with A/B sets to compare
+- Voicing EQ: ten presets and the player's own, a MIDI button for each; an EQ,
+  pan and stereo width per rank and per division
 
 **MIDI and consoles**
 - All inputs at once, each mapped to a manual by channel; key range, transpose,
   velocity window, short octaves, debounce, split keyboards
-- MIDI learn for drawstops, pistons, shoes, pages, stepper and transposer;
-  MIDI out lights a console's drawstops
+- MIDI learn for drawstops, pistons, shoes, pages, stepper and transposer; one
+  message can work several stops and couplers
+- MIDI out lights a console's drawstops, from the console and from the program,
+  and sends the lamps once an organ loads
+- Messages sent on organ load, on unload and on a ready lamp; learnable quit and
+  power-off buttons for a console with no screen
+- Live levels for each rank, division and output pair, from MIDI knobs
 - Jamb text displays over system exclusive
 - A virtual MIDI input on macOS and Linux
+- Bluetooth MIDI pairing from the MIDI settings, where the system offers it
 
 **Recording and practice**
 - MIDI recording of notes, stops and shoes, replayable through another registration
+  and on the keyboard each note was played on; Record and Play from console buttons
+- Save for a sequencer: a MIDI file for other programs
 - Audio recording alongside; metronome in the organ's own audio stream
 - Convolution reverb for sets recorded dry
+
+**Output**
+- Mixer pairs on their own device channels, with bass management to a subwoofer channel
+- Output compressor and peak limiter, with presets for small speakers, laptop
+  speakers and headphones; off by default
+- Settings export and import, one organ's or the program's, as one archive
+
+**Remote control**
+- A web console any browser on the network opens: the organ's stops, pistons,
+  shoes and levels as panels, or its own console pages, drawn by the program
+- One control API over HTTP, MIDI system exclusive and OSC, for consoles, scripts
+  and control surfaces
 
 ## Limitations
 
@@ -275,8 +327,8 @@ JACK is listed when a JACK library is installed.
 
 ## Building
 
-C++20 (MSVC 2022, GCC 12+, Clang 14+), CMake 3.22+, Ninja. JUCE, pugixml and
-the archive libraries are fetched by CMake.
+C++20 (MSVC 2022, GCC 12+, Clang 14+), CMake 3.22+, Ninja. JUCE, pugixml,
+cpp-httplib, Verovio, WavPack and the archive libraries are fetched by CMake.
 
 - **Debian, Ubuntu, Raspberry Pi OS:**
   ```bash
@@ -314,8 +366,11 @@ mp_core      definition loader, GrandOrgue import, validator, temperaments
 mp_sampler   voice engine, release streaming
 mp_control   key flow, couplers, switch network, pistons, stepper, crescendo, wind
 mp_archive   RAR and .orgue packages, read in place
+mp_split     split keyboard
 mp_dsp       enclosure filters, tremulant modulation
-mp_audio     audio processor, sample storage, cache, routing
+mp_audio     audio processor, sample storage, cache, routing, output effects
+mp_api       control API over HTTP, MIDI system exclusive and OSC; web console
+mp_score     score panel: MusicXML engraving and playback
 mp_ui        console, settings, MIDI learn
 ```
 

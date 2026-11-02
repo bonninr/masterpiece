@@ -95,7 +95,7 @@ types:
   - code: 10
     name: rank
     plural: ranks
-    doc: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of General settings.
+    doc: Every rank of pipes, with its voicing level in tenths of a dB, heard from the next note played. As the Voicing tab of Organ settings.
     value: {min: -240, max: 120}
     access: set
     dump: values
@@ -143,7 +143,7 @@ types:
   - code: 16
     name: route
     plural: routes
-    doc: Which output pair each rank plays through, one per rank in the order of ranks - the Mixer tab of General settings. Value - the pair, from 1; heard from the next note.
+    doc: Which output pair each rank plays through, one per rank in the order of ranks - the Outputs tab of Organ settings. Value - the pair, from 1; heard from the next note.
     value: {min: 1, max: 8}
     access: set
     dump: values
@@ -151,7 +151,7 @@ types:
   - code: 17
     name: pair
     plural: pairs
-    doc: The mixer's output pairs, as the Mixer tab of General settings counts them. Value - the pair's live level, 0 to 127 with 127 as voiced and 0 silent; heard at once, and back at 127 with each organ.
+    doc: The mixer's output pairs, as the Outputs tab of Organ settings counts them. Value - the pair's live level, 0 to 127 with 127 as voiced and 0 silent; heard at once, and back at 127 with each organ.
     value: {min: 0, max: 127}
     access: set
     dump: values
@@ -216,7 +216,7 @@ properties:
   - {code: 15, name: control, kind: int, doc: Index into controls of the control that moves it, or -1}
   - {code: 16, name: rate, kind: int, doc: A tremulant's rate while it runs, in hundredths of a hertz}
   - {code: 17, name: depth, kind: int, doc: A tremulant's depth, in tenths of a percent}
-  - {code: 18, name: bus, kind: int, doc: The mixer bus a rank's main perspective plays through; routing is changed in the Mixer tab}
+  - {code: 18, name: bus, kind: int, doc: The mixer bus a rank's main perspective plays through; routing is changed in the Outputs tab of Organ settings}
 
 # The program object's properties (type 0). `index` never changes.
 program:
