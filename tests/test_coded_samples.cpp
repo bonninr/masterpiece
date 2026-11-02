@@ -505,6 +505,54 @@ public:
 };
 static CodedReleasesTest g_codedReleases;
 
+// A note let go into a release held at another width than its attack: a
+// 16-bit attack is held at 16 bits and its 24-bit release at 24 (#678), and
+// the attack under the crossfade was read as if it were held as the release
+// is. Kassel-Niederzwehren on 0.9.0 crashed on the first key let go (#565).
+// The crossfade plays what it plays with both held at 24 bits.
+class ReleaseOtherWidthTest final : public mp::test::Test {
+public:
+  ReleaseOtherWidthTest() : Test("functional.voice.release-other-width", Category::Functional) {}
+
+  void run() override {
+    for (const int channels : {1, 2})
+      for (const bool attack16 : {true, false}) {
+        auto attack16Buf = plainBuffer(Width::Int16, 20000, channels, 220.0, 41);
+        auto attack24Buf = plainBuffer(Width::Int16In24, 20000, channels, 220.0, 41);
+        const auto release16Buf = plainBuffer(Width::Int16, 9000, channels, 220.0, 42);
+        const auto release24Buf = plainBuffer(Width::Int16In24, 9000, channels, 220.0, 42);
+        for (auto* b : {&attack16Buf, &attack24Buf}) {
+          b->loopStart = 6000;
+          b->loopEnd = 18000;
+        }
+        for (const auto isa : units()) {
+          const std::string label = std::string(attack16 ? "16-bit attack, 24-bit release" : "24-bit attack, 16-bit release") +
+                                    ", " + std::to_string(channels) + " ch, " + mp::simd::isaName(isa);
+          Playing mixed;
+          mixed.attack = attack16 ? &attack16Buf : &attack24Buf;
+          mixed.release = attack16 ? &release24Buf : &release16Buf;
+          mixed.ratios = {1.0, 0.7491, 1.4983};
+          mixed.releaseCrossfadeMs = 20.0;
+          mixed.holdBlocks = 90;
+          mixed.totalBlocks = 140;
+          Playing even = mixed;
+          even.attack = &attack24Buf;
+          even.release = &release24Buf;
+          const Played a = play(mixed, false, isa);
+          const Played b = play(even, false, isa);
+          MP_CHECK(a.started == 3, label + ": the voices start");
+          // 16 bits scaled by 1/32767 against the same counts at 24 bits
+          // scaled by 1/8388607: a few parts in a million.
+          const double worst = worstDifference(a.out, b.out);
+          MP_CHECK(worst < 1e-4, label + ": the crossfade plays as with both at 24 bits, worst " +
+                                     std::to_string(worst));
+          MP_CHECK(rms(a.out) > 0.01, label + ": and it sounds");
+        }
+      }
+  }
+};
+static ReleaseOtherWidthTest g_releaseOtherWidth;
+
 // Many voices across the render threads, each thread with its own decoder.
 class CodedThreadsTest final : public mp::test::Test {
 public:
