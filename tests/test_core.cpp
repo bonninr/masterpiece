@@ -13928,7 +13928,7 @@ public:
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir);
-    const std::u16string accented = u"OrganInstallationPackages\\000123\\Kdoušov.wav";
+    const std::u16string accented = u"OrganInstallationPackages\\000123\\Kdou\u0161ov.wav";
     const std::string accentedUtf8 = "OrganInstallationPackages/000123/Kdou\xc5\xa1ov.wav";
     const std::vector<std::string> data = {T::pattern(1, 3000), T::pattern(2, 2000), T::pattern(3, 1000)};
     std::string b("Rar!\x1a\x07\x00", 7);
