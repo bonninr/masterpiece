@@ -298,14 +298,14 @@ onto a display that exists.
 ![A panel](../images/panel.png)
 
 A panel shows the organ as equal rectangles with the name in the middle, for a
-touch screen or for a console that is hard to read at a distance. An organ has up to two
+touch screen or for a console that is hard to read at a distance. An organ has up to ten
 panels. Each panel is a tab beside the console pages, or a window of its own on
 any screen. Every rectangle stands for something the organ already has, so its
 MIDI mapping is the stop's, piston's or control's own.
 
 **View > Panel of the whole organ** makes the first panel; **View > New
-panel** makes the second. The panels are named **Panel 1** and **Panel 2**
-until renamed.
+panel** makes each one after it. The panels are named **Panel 1**, **Panel 2**
+and on until renamed.
 
 ### Sections
 
