@@ -23,7 +23,7 @@ figures.
 | Samples | WAV and WavPack, at any sample rate |
 | Systems | Windows, macOS (Apple silicon and Intel), Linux (x86-64, Flatpak, Debian packages), Raspberry Pi (64-bit and 32-bit), Android, iPhone and iPad |
 | Plugins | VST3, LV2, AU |
-| Engine | Hand-written AVX2, SSE2 and NEON vector code; 725 voices per processor thread by default, at least 1,536, up to 16,384 |
+| Engine | Custom AVX2, SSE2 and NEON vector code; 725 voices per processor thread by default, at least 1,536, up to 16,384 |
 | Memory | Samples held as recorded, at 20 or 16 bits, or as 32-bit float; lossless compression in memory; folding to mono; release tails streamed from disk; a sample cache for fast loads |
 | Voicing | Voicing EQ with ten presets, EQ per division and per rank, pan and width, pipe detune and wind sway, attack emphasis, release length, an output compressor and limiter, bass management |
 | Control | A MIDI channel per manual, MIDI learn for every stop, piston and swell shoe (SysEx included), generals, divisionals and a 999-frame stepper, temperaments, pitch and a transposer |
