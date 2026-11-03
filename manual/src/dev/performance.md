@@ -12,7 +12,7 @@ This page reports how much memory a sampled organ needs, how long it takes to op
 | Time to open the organ, from the sample cache | 43.2 s | 3.8 s | **11x faster** |
 | Memory added by drawing all 44 stops | | none | **flat** |
 
-The baseline is the conventional approach: every sample decoded to 32-bit floating point and held in memory.
+The baseline is the conventional approach: every sample decoded to 32-bit floating point and held in memory. For the opening time, the baseline is the first load at the same settings, decoded from the files.
 
 ## Test bed
 
