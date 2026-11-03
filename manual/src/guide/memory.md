@@ -285,41 +285,35 @@ The two places Masterpiece reports a disk that falls behind:
 
 ### Savings
 
-Streaming is the largest single saving. On Friesach it leaves 56% of the sample data on disk. The Loading tab's readout shows how many samples stream and how much stays on disk: **%1 streamed, %2 MB left on disk**.
+Streaming is the largest single saving. On our reference sample set it leaves 56% of the sample data on disk. The Loading tab's readout shows how many samples stream and how much stays on disk: **%1 streamed, %2 MB left on disk**.
 
 The note on the Loading tab states that on the Nancy demo streaming takes the memory from 12.2 GB to 5.6 GB, with the rendered audio identical sample for sample.
 
 ## Memory by configuration
 
-Measured on Friesach: 44 stops, three manuals and pedal, 17.0 GB and 12,148 WAV files on disk, 24-bit, 48 kHz, stereo. Machine with 15.9 GB of RAM, Windows. Masterpiece 0.3.3. The figures are the sample library's own accounting at the end of each load (the log line `memory: resident ...`).
+Measured on our reference sample set: 44 stops, three manuals and pedal, 17.0 GB and 12,148 WAV files on disk, 24-bit, 48 kHz, stereo. Machine with 15.9 GB of RAM, Windows. Masterpiece 0.3.3. The figures are the sample library's own accounting at the end of each load (the log line `memory: resident ...`).
 
 | Configuration | Held in memory | Left on disk | Time to open |
 |---|---:|---:|---:|
 | 32-bit float, resident | 21,606.5 MB | | 77.1 s |
 | 24-bit, resident | 16,204.9 MB | | 55.8 s |
 | 24-bit, streamed | 6,976.0 MB | 8,891.9 MB | 28.9 s |
-| 16-bit, streamed | 4,650.7 MB | 5,927.9 MB | 28.0 s |
-| 16-bit mono, streamed | 2,325.3 MB | 2,964.0 MB | 25.9 s |
 
 The settings multiply, and each step is an exact ratio of the one before.
 
 | Step | Before | After | Ratio |
 |---|---:|---:|---:|
 | 32-bit float to 24-bit | 21,606.5 MB | 16,204.9 MB | 0.750 |
-| 24-bit to 16-bit, streamed | 6,976.0 MB | 4,650.7 MB | 0.667 |
-| Stereo to mono | 4,650.7 MB | 2,325.3 MB | 0.500 |
 
-Relative to 24-bit resident, which equals about the size of the WAV files on disk, the other configurations take 1.33 (32-bit float), 0.43 (24-bit streamed), 0.29 (16-bit streamed) and 0.14 (16-bit mono streamed). These ratios depend on how much of a set is release data. [Small, medium and large organs](sizing.md) uses them to estimate organs of other sizes. The figures in this section were measured with Masterpiece 0.3.3.
+Relative to 24-bit resident, which equals about the size of the WAV files on disk, the other configurations take 1.33 (32-bit float) and 0.43 (24-bit streamed). These ratios depend on how much of a set is release data. [Small, medium and large organs](sizing.md) uses them to estimate organs of other sizes. The figures in this section were measured with Masterpiece 0.3.3.
 
-**Lossless compression in memory** multiplies again. The estimate counts a compressed sample at half its size; on whole Friesach the codec holds about a third. Measured with Masterpiece 0.9.0, every stop loaded, opened straight from its RAR package, so every release is held whole:
+**Lossless compression in memory** multiplies again. The estimate counts a compressed sample at half its size; on the whole reference set the codec holds about a third. Measured with Masterpiece 0.9.0, every stop loaded, opened straight from its RAR package, so every release is held whole:
 
 | Configuration | Plain | Compressed | Ratio |
 |---|---:|---:|---:|
 | 24-bit, resident | 16,204.9 MB | 5,394.5 MB | 0.333 |
-| 16-bit, resident | 10,803.3 MB | 3,301.5 MB | 0.306 |
-| 16-bit mono, resident | 5,401.6 MB | 1,661.9 MB | 0.308 |
 
-The plain column is the 24-bit figure above with the exact ratios 0.667 and 0.500. The compressed column is the **memory: resident** line of the log. These three rows are the samples held by **High**, **Compact** and **Small** for a set opened from a package.
+The compressed column is the **memory: resident** line of the log. Streaming the releases of the installed set as well, the 24-bit samples take 3,615.2 MB (4.5x less than as recorded), and 2,844.7 MB with the shortest release only (5.7x less), bit for bit.
 
 **Resident format** at 20-bit takes 2.5 bytes a sample, five sixths of 24-bit.
 
@@ -331,9 +325,9 @@ Loading decodes every file and converts it. The result depends only on the files
 
 ### What the file holds
 
-The cache holds the resident form of every sample: the audio in the chosen resident format, the channels, the rate, the loop points, the release marker, the pitch the file declares, and a checksum of each sample's audio. For a streamed release it holds the resident head and, beside it, the path of the source file and the rates needed to reopen the tail when a note asks for it. The cache therefore has about the size of the resident memory. On Friesach, 16-bit mono with streaming gives a cache file of 2,439 MB that stands in for about 7 GB of source files. On a five-rank load the cache files were 291.8 MB at 16-bit, 437.7 MB at 24-bit and 146.0 MB at 16-bit mono.
+The cache holds the resident form of every sample: the audio in the chosen resident format, the channels, the rate, the loop points, the release marker, the pitch the file declares, and a checksum of each sample's audio. For a streamed release it holds the resident head and, beside it, the path of the source file and the rates needed to reopen the tail when a note asks for it. The cache therefore has about the size of the resident memory. On a five-rank load the cache file was 437.7 MB at 24-bit.
 
-Time saved on Friesach at 16-bit mono with streaming:
+Time saved on a streamed load of our reference sample set:
 
 | | Decoded from the files | Read from the cache | Speed-up |
 |---|---:|---:|---:|
@@ -551,7 +545,7 @@ On iPhone and iPad a load holds while Masterpiece is in the background and goes 
 
 ### How the cache and streaming change it
 
-Streaming leaves unread the part of each release that stays on disk, which is more than half the data on Friesach, and so shortens the load: 55.8 s at 24-bit resident became 28.9 s at 24-bit streamed. A cache replaces the file reads with one sequential read: sample loading fell from 13.0 s to 2.6 s on Friesach. The time of the other phases remains. These times were measured with Masterpiece 0.3.3 on a Windows computer with 15.9 GB of RAM.
+Streaming leaves unread the part of each release that stays on disk, which is more than half the data on our reference sample set, and so shortens the load: 55.8 s at 24-bit resident became 28.9 s at 24-bit streamed. A cache replaces the file reads with one sequential read: sample loading fell from 13.0 s to 2.6 s on Friesach. The time of the other phases remains. These times were measured with Masterpiece 0.3.3 on a Windows computer with 15.9 GB of RAM.
 
 ## Caveats
 

@@ -68,18 +68,14 @@ The decoding is done on the render threads, so a compressed organ takes more pro
 | 32-bit float, resident (baseline) | 21,606.5 MB | | | |
 | 24-bit, resident | 16,204.9 MB | | 5,401.6 MB | 1.3x |
 | 24-bit, streamed | 6,976.0 MB | 8,891.9 MB | 14,630.5 MB | 3.1x |
-| 16-bit, streamed | 4,650.7 MB | 5,927.9 MB | 16,955.8 MB | 4.6x |
-| 16-bit mono, streamed | 2,325.3 MB | 2,964.0 MB | 19,281.2 MB | 9.3x |
 
-Release streaming is the largest single saving: it leaves **56% of the sample data** on disk. The settings multiply, and each step is an exact ratio of the one before:
+Release streaming is the largest single saving: it leaves **56% of the sample data** on disk. The settings multiply, and each step is an exact ratio of the one before.
 
 | Step | Before | After | Ratio |
 |---|---:|---:|---:|
 | 32-bit float to 24-bit | 21,606.5 MB | 16,204.9 MB | 0.750 |
-| 24-bit to 16-bit (streamed) | 6,976.0 MB | 4,650.7 MB | 0.667 |
-| Stereo to mono | 4,650.7 MB | 2,325.3 MB | 0.500 |
 
-The exact ratios confirm that the accounting measures the sample data itself.
+The exact ratio confirms that the accounting measures the sample data itself.
 
 ### Memory while loading and playing
 
@@ -98,7 +94,6 @@ Every rank is loaded whether its stop is drawn or not, so full organ costs the s
 | Configuration | 1 stop | 44 stops | Change |
 |---|---:|---:|---:|
 | 24-bit, streamed | 8,270 MB | 8,268 MB | −2 MB |
-| 16-bit, streamed | 5,939 MB | 5,927 MB | −12 MB |
 
 Drawing a stop waits for no samples, and a registration change allocates nothing.
 
@@ -111,8 +106,6 @@ Drawing a stop waits for no samples, and a registration change allocates nothing
 | 32-bit float, resident (baseline) | 77.1 s | |
 | 24-bit, resident | 55.8 s | 1.4x |
 | 24-bit, streamed | 28.9 s | 2.7x |
-| 16-bit, streamed | 28.0 s | 2.8x |
-| 16-bit mono, streamed | 25.9 s | 3.0x |
 
 Holding less also opens faster: a streaming load reads no release tails, and they are more than half the data on disk.
 

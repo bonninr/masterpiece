@@ -7,8 +7,8 @@ Key facts:
 - Formats: Hauptwerk-format organ definitions (full, compact and composite) and GrandOrgue organs (.organ definitions and .orgue packages), opened from an unpacked folder or straight from their packages, including solid, multi-part and multi-volume RAR sets. Samples in WAV or WavPack at any rate.
 - Composite organs: organs assembled from the pipework of several sample sets, each set read from its own archive.
 - Split mode: the whole organ from a single keyboard, with up to three split points.
-- Engine: hand-written AVX2, SSE2 and NEON vector code, 3 to 5 times the rendering speed with AVX2 at 512 voices; 725 voices per processor thread by default, up to 16,384.
-- Memory: samples held at 24 or 16 bits or folded to mono, release tails streamed from disk. Friesach (44 stops, 17 GB on disk) needs 21.6 GB as 32-bit float and 2.33 GB at 16 bits in mono with streamed releases.
+- Engine: custom AVX2, SSE2 and NEON vector code, 3 to 5 times the rendering speed with AVX2 at 512 voices; 725 voices per processor thread by default, up to 16,384.
+- Memory: samples held compressed, lossless, with release tails streamed from disk. Our 44-stop reference sample set takes 16.2 GB at 24 bits as recorded, 5.39 GB compressed (3.0x less) and 3.62 GB compressed with releases streamed (4.5x less), bit for bit.
 - Control: a MIDI channel per manual, MIDI learn for every stop, piston and swell shoe (SysEx included), generals, divisionals and a 999-frame stepper, temperaments, pitch and a transposer.
 - Tested with more than 100 organs, among them sets by Piotr Grabowski and Augustine's Virtual Organs.
 
