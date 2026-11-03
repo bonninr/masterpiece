@@ -118,6 +118,94 @@ section.deep { background: var(--surface-deep); }
 }
 .frame .bar a { white-space: nowrap; font-weight: 500; }
 .hero .frame { margin-right: -120px; }
+/* The console stage column. */
+.hero-grid:has(.stage-frame) { grid-template-columns: 5.13fr 6.87fr; gap: 56px; }
+.hero .stage-frame { width: 100%; }
+
+/* The hero's stage: organs playing and consoles, one after another, each
+   fading into the next. A clip is the program's window, toolbar included; a
+   console picture of another shape stands at full height over a blurred,
+   darkened copy of itself. */
+.stage {
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #0d0e11;
+  outline: none;
+}
+.slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity 1.2s ease; }
+.slide.on { opacity: 1; z-index: 1; }
+/* A clip shows the console alone: the program's toolbar (65 of its 598 pixels)
+   above the frame, and the empty sides cropped. */
+.slide .poster, .slide video { position: absolute; left: 0; top: -12.2%; width: 100%; height: 112.2%; object-fit: cover; }
+.slide .blur {
+  position: absolute; inset: -40px; background: center / cover no-repeat;
+  filter: blur(26px) brightness(0.42) saturate(1.2);
+}
+.slide .still {
+  position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+  height: 100%; aspect-ratio: 1196 / 760; overflow: hidden;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+/* The program's title bar is left out of the screenshot: 32 of its 1196 pixels. */
+.slide .still img { width: 100%; height: auto; margin-top: -2.676%; }
+.slide[data-crop="0"] .still { aspect-ratio: 1240 / 607; }
+.slide[data-crop="0"] .still img { margin-top: 0; }
+.slide.on .still { animation: drift 9s ease-out both; }
+@keyframes drift { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.035); } }
+
+.cap {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  padding: 72px 150px 22px 28px;
+  background: linear-gradient(to bottom, rgba(8, 9, 12, 0), rgba(8, 9, 12, 0.62) 45%, rgba(8, 9, 12, 0.86));
+  color: var(--ink); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transform: translateY(8px); opacity: 0; transition: opacity 0.9s ease 0.5s, transform 0.9s ease 0.5s;
+}
+.slide.on .cap { opacity: 1; transform: none; }
+.cap b { display: block; font: 600 clamp(22px, 2.3vw, 32px)/1.1 var(--serif); letter-spacing: 0.01em; }
+.cap i { display: block; margin-top: 4px; font: italic 400 clamp(14px, 1.25vw, 17px)/1.4 var(--serif); color: #ddd6ca; }
+.cap span { display: block; margin-top: 6px; font: 400 13px/1.4 var(--sans); color: var(--muted); }
+.cap a { color: var(--accent-strong); }
+.cap a:hover { color: #fff; }
+
+.stage .nav {
+  position: absolute; top: 50%; z-index: 3; width: 52px; height: 52px; margin-top: -26px;
+  display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 50%;
+  background: rgba(13, 14, 17, 0.45); color: #f3efe8; backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 0.45s ease, background 0.25s ease, transform 0.45s ease;
+}
+.stage .nav svg { width: 26px; height: 26px; }
+.stage .prev { left: 18px; transform: translateX(-8px); }
+.stage .next { right: 18px; transform: translateX(8px); }
+.stage:hover .nav, .stage:focus-within .nav { opacity: 1; transform: none; }
+.stage .nav:hover { background: rgba(156, 122, 75, 0.75); }
+@media (hover: none) { .stage .nav { opacity: 0.8; transform: none; width: 44px; height: 44px; margin-top: -22px; } }
+
+.stage .sound {
+  position: absolute; right: 18px; bottom: 20px; z-index: 3;
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px;
+  background: rgba(13, 14, 17, 0.55); color: #f3efe8; font: 500 14px/1 var(--sans);
+  backdrop-filter: blur(6px); transition: background 0.25s ease;
+}
+.stage .sound:hover { background: rgba(156, 122, 75, 0.75); }
+.stage .sound svg { width: 20px; height: 20px; }
+.stage .sound .wave { display: none; }
+.stage .sound[aria-pressed="true"] .wave { display: inline; }
+.stage .sound[aria-pressed="true"] .cross { display: none; }
+
+.stage .progress { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 2px; background: rgba(255, 255, 255, 0.08); }
+.stage .progress i { display: block; height: 100%; width: 0; background: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide.on .still { animation: none; }
+  .slide, .cap { transition-duration: 0.3s; }
+}
+@media (max-width: 640px) {
+  .cap { padding: 48px 64px 14px 16px; }
+  .cap span { display: none; }
+  .stage .sound span { display: none; }
+  .stage .sound { right: 12px; bottom: 12px; padding: 8px; }
+}
 
 /* One organ in both formats, side by side, each labelled over its console. */
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 56px; }
@@ -143,6 +231,13 @@ section.deep { background: var(--surface-deep); }
 .points li { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .points h3 { font-size: 16px; }
 .points p { font-size: 15px; margin-top: 2px; }
+/* Two pictures beside a long list. */
+.stack { display: grid; gap: 20px; }
+/* The web console in a phone, under a browser's address bar. */
+.phone { margin: 0 auto; max-width: 320px; border: 10px solid #0b0c0f; border-radius: 34px; overflow: hidden; background: #0b0c0f; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0, 0, 0, .45); }
+.phone-bar { background: #2a2d34; padding: 22px 12px 8px; }
+.phone-bar span { display: block; background: #15171c; color: #c9ccd3; border-radius: 14px; padding: 5px 12px; font-size: 12px; text-align: center; }
+.phone img { display: block; width: 100%; height: auto; }
 
 .figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 56px; background: var(--line); border: 1px solid var(--line); }
 .figure { background: var(--canvas); padding: 28px 28px 30px; }
@@ -155,6 +250,7 @@ section.deep .figure { background: var(--surface-deep); }
 
 .section-head { display: flex; justify-content: space-between; align-items: end; gap: 32px; margin-bottom: 48px; }
 .section-head .more { margin-top: 0; white-space: nowrap; }
+.section-head .heads { display: flex; flex-wrap: wrap; gap: 12px 32px; }
 
 /* Numbered rows: number, name, description, arrow. */
 .rows { border-top: 1px solid var(--line); }
@@ -250,9 +346,15 @@ pre code { font-size: 14px; }
 .gallery img, .card .frame img { cursor: pointer; }
 
 /* Questions and answers, two to a row. */
-.faq { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; border-top: 1px solid var(--line); }
+.faq { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; align-items: start; border-top: 1px solid var(--line); }
 .qa { padding: 24px 0; border-bottom: 1px solid var(--line); }
 .qa h3 { font-size: 17px; }
+.qa summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; cursor: pointer; list-style: none; }
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary::after { content: ""; flex: none; width: 8px; height: 8px; margin-top: -4px; border: solid var(--subtle); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform .2s; }
+.qa[open] summary::after { margin-top: 4px; transform: rotate(-135deg); }
+.qa summary:hover h3 { color: var(--accent-strong); }
+.qa summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .qa p { margin-top: 8px; font-size: 15px; line-height: 1.6; color: var(--muted); }
 
 /* A gallery console, centred at half the screen, lifted off the page. */
@@ -307,6 +409,7 @@ pre code { font-size: 14px; }
 
 @media (max-width: 1100px) {
   .hero .frame { margin-right: 0; }
+  .hero .stage-frame { width: 100%; }
   .site-nav { display: none; }
 }
 @media (max-width: 900px) {

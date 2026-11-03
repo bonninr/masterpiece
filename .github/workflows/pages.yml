@@ -56,7 +56,7 @@ jobs:
           # video.
           fetch () {  # asset name on the release | file name on the site
             local asset="$1" out="$2" tag
-            tag=$(gh release list --limit 30 --json tagName -q '.[].tagName' | while read -r t; do
+            tag=$(gh release list --limit 200 --json tagName -q '.[].tagName' | while read -r t; do
               if gh release view "$t" --json assets -q '.assets[].name' | grep -qx "$asset"; then
                 echo "$t"; break
               fi

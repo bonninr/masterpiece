@@ -125,10 +125,11 @@ Friesach, 44 stops, 17 GB, 12,148 files ([method and full figures](PERFORMANCE.m
 |---|---|
 | 32-bit float | 21.6 GB |
 | 24-bit | 16.2 GB |
-| 16-bit, releases streamed | 4.65 GB |
-| 16-bit mono, releases streamed | 2.33 GB |
+| 24-bit, lossless compression | 5.39 GB |
+| 24-bit, lossless compression, releases streamed | 3.62 GB |
+| 24-bit, lossless compression, shortest release streamed | 2.84 GB |
 
-Opening: 77.1 s at 32-bit float, 25.9 s at 16-bit mono streamed, 18.9 s from the
+Opening: 77.1 s at 32-bit float, 18.9 s from the
 sample cache.
 Streaming assumes SSD-class storage; the status line says when a disk falls behind.
 
@@ -137,7 +138,8 @@ Streaming assumes SSD-class storage; the status line says when a disk falls behi
 Each set below is a separate, freely published library: 23 by
 [Piotr Grabowski](https://piotrgrabowski.pl/), 14 by
 [Augustine's Virtual Organs](https://hauptwerk-augustine.info/). Full credits
-in [ATTRIBUTION.md](ATTRIBUTION.md).
+in [ATTRIBUTION.md](ATTRIBUTION.md). Augustine's free sample sets, each downloaded from its own
+page: [hauptwerk-augustine.info](https://hauptwerk-augustine.info/Completely_free_samples.php).
 
 <details>
 <summary>Screenshots of all 37</summary>
