@@ -819,7 +819,7 @@ countries: nl be sr
 "dropped %1" = "gemist %1"
 "no audio %1" = "geen audio %1"
 "late blocks %1" = "late blokken %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "gestreamde releases liepen %1x achter: zet “Release-staarten vanaf schijf streamen” uit bij Orgelinstellingen"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "gestreamde releases liepen %1x achter: zet “Releases van schijf streamen” uit bij Orgelinstellingen"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Draagbare luidsprekers wakker houden"

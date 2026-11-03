@@ -824,7 +824,7 @@ countries: it ch sm va
 "dropped %1" = "persi %1"
 "no audio %1" = "senza audio %1"
 "late blocks %1" = "blocchi in ritardo %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "i rilasci in streaming sono rimasti indietro %1 volte: disattiva «Leggi i rilasci dal disco in streaming» nelle Impostazioni dell'organo"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "i rilasci in streaming sono rimasti indietro %1 volte: disattiva «Leggi i rilasci dal disco» nelle Impostazioni dell'organo"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Mantieni svegli gli altoparlanti portatili"

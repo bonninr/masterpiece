@@ -1133,7 +1133,7 @@ countries: gb us
 "dropped %1" = "dropped %1"
 "no audio %1" = "no audio %1"
 "late blocks %1" = "late blocks %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings"
 "Settings" = "Settings"
 "Organ settings" = "Organ settings"
 

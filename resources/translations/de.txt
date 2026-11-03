@@ -824,7 +824,7 @@ countries: de at ch li lu
 "dropped %1" = "ausgefallen %1"
 "no audio %1" = "kein Audio %1"
 "late blocks %1" = "verspätete Blöcke %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "gestreamte Releases sind %1x zurückgefallen: Schalten Sie „Release-Samples von der Festplatte streamen“ in den Orgeleinstellungen aus"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "gestreamte Releases sind %1x zurückgefallen: Schalten Sie „Releases von der Festplatte streamen“ in den Orgeleinstellungen aus"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Tragbare Lautsprecher wach halten"

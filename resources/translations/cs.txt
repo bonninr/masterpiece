@@ -824,7 +824,7 @@ countries: cz
 "dropped %1" = "vynecháno: %1"
 "no audio %1" = "bez zvuku: %1"
 "late blocks %1" = "opožděné bloky: %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "streamované dozvuky zaostaly %1krát: vypněte „Streamovat dozvuky z disku“ v Nastavení varhan"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "streamované dozvuky zaostaly %1krát: vypněte „Streamovat doznění z disku“ v Nastavení varhan"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Udržovat přenosné reproduktory vzhůru"

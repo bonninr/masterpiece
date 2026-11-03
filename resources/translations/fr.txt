@@ -824,7 +824,7 @@ countries: fr be ca ch lu mc
 "dropped %1" = "perdus %1"
 "no audio %1" = "sans audio %1"
 "late blocks %1" = "blocs en retard %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "les relâchements en streaming ont pris du retard %1 fois : désactivez « Lire les queues de relâchement depuis le disque » dans Réglages de l'orgue"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "les relâchements en streaming ont pris du retard %1 fois : désactivez « Lire les relâchements depuis le disque » dans Réglages de l'orgue"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Garder les enceintes portables éveillées"
