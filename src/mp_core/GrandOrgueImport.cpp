@@ -1130,10 +1130,12 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       const int id = kSetterGeneralBase + n;
       if (setterMade.insert(id).second) {
         // Empty until set: nothing is stored on, so recalling one before it
-        // has been set clears the stops, as a fresh general does.
+        // has been set clears the stops, as a fresh general does. It is the
+        // player's to set: [General001] and on are the definition's preset
+        // generals, whose Protected says nothing about the setter's (#637).
         std::vector<std::pair<int, bool>> off;
         for (int sw : storable) off.emplace_back(sw, false);
-        combination("General" + n3(n), id, "General " + std::to_string(n), off);
+        combination("SetterGeneral" + n3(n), id, "General " + std::to_string(n), off);
       }
       return id;
     }
