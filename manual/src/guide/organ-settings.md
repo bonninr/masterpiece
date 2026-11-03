@@ -2,6 +2,8 @@
 
 **Organ > Organ settings...** opens the settings of the organ that is loaded: how its samples are held in memory, which stops, ranks and perspectives are loaded at all, the output pairs and live levels, the voicing of its ranks and pipes, an equaliser for the whole organ, and the MIDI channels of its keyboards. This page lists every control on every tab in the order the window shows them: what it does, its default, its range or options, when it takes effect and where it is stored. [Memory, loading and streaming](memory.md) explains the loading choices in depth, and [Small, medium and large organs](sizing.md) helps to pick them for a given computer. The settings of the program and of the player's console are in [Settings](general-settings.md).
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/1WAwPrh7YVM?list=PLEi774VY3MkM&rel=0" title="Video tutorial 08 Organ settings, tuning and voicing" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ## Opening the window
 
 The entry **Organ settings...** in the **Organ** menu is available while an organ is loaded.

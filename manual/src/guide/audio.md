@@ -2,6 +2,8 @@
 
 This page covers everything between the organ and the loudspeakers: the audio device and its latency, the signal chain, the output pairs of the mixer, the impulse-response room, the player's voicing of ranks and pipes, the master level, the metronome, and what to do when the sound breaks up. Use it to set up a device for low latency, to place a dry organ in a room, and to find the cause of dropouts.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/VC4Zh6qpZZM?list=PLEi774VY3MkM&rel=0" title="Video tutorial 09 Audio, room and mixer" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 The controls described here are on the **Audio**, **Performance**, **Reverb** and **Metronome** tabs of **Settings**, and on the **Outputs**, **Voicing** and **Equalizer** tabs of **Organ > Organ settings...**. The memory and loading choices that decide how many voices a machine can render are in **Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
 
 ## The signal chain

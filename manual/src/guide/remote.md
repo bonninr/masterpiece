@@ -2,6 +2,8 @@
 
 Masterpiece can serve a page that any browser on the same network opens: a phone or a tablet on the music desk draws stops, presses pistons and moves the shoes, and every change made at the organ shows on it at once. The same server answers the control API, which consoles with a network connection, scripts and other programs use to read and change everything the page can.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/NPlDDhrdDOo?list=PLEi774VY3MkM&rel=0" title="Video tutorial 12 Remote control and the web console" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 Available in the standalone program on Windows, macOS, Linux and the Raspberry Pi. Plugins and the phone and tablet versions do not serve it.
 
 ## Turning it on

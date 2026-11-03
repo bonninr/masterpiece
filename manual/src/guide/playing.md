@@ -121,6 +121,8 @@ Every organ has generals, divisionals, cancels and a sequencer of the player's
 own, whatever its file declares. They are the same on every organ, answer the
 same setter as the organ's pistons, and are saved per organ in the player's data.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/ctZYzwTajPM?list=PLEi774VY3MkM&rel=0" title="Video tutorial 06 Combinations" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ![The Combinations window](../images/combinations.png)
 
 ### What a registration holds
@@ -466,6 +468,8 @@ box shows whether it is running each time the tab opens.
 opens at the top right of the main window and leaves the console playable while
 it records. Its close button hides it.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/_e3GCXITE9g?list=PLEi774VY3MkM&rel=0" title="Video tutorial 10 Recording" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ![The Recorder window](../images/recorder.png)
 
 ### MIDI recording
@@ -597,6 +601,8 @@ For scripted recordings with `--play-midi` and `--record-audio`, see
 the panel and played through the organ, with a cursor that follows the playing.
 The panel is a **Score** tab after the console pages and the panels; the tab
 appears the first time **View > Score** is chosen.
+
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/WQZDVPGoUp4?list=PLEi774VY3MkM&rel=0" title="Video tutorial 11 Playing from a score" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 
 | Control | What it does |
 |---|---|
