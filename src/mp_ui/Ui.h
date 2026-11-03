@@ -411,6 +411,9 @@ public:
   // For tests: the organ's panels read again, as a load does, and a
   // detached panel's window (null while it is a tab).
   void loadPanelsForTest() { loadPanels(); }
+  // For tests: View > New panel, and how many panels there are.
+  void addPanelForTest() { addPanel(); }
+  int panelCountForTest() const { return static_cast<int>(panels_.size()); }
   juce::DocumentWindow* panelWindowForTest(int index) const {
     return index >= 0 && index < static_cast<int>(panelWindows_.size())
                ? panelWindows_[static_cast<size_t>(index)].get()

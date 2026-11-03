@@ -5,7 +5,7 @@
 // rectangles with the name in the middle. A bar along the top switches whole
 // sections on and off; every section that is on is shown side by side, so all
 // of them on is the whole organ on one screen. An edit mode hides single
-// elements. An organ has up to two panels, each a tab beside the console pages
+// elements. An organ has up to ten panels, each a tab beside the console pages
 // or a window of its own on any screen, and Save keeps how each is set up.
 //
 // Every element stands for something the organ already has, so its MIDI
@@ -89,10 +89,11 @@ struct PanelLayout {
   bool operator==(const PanelLayout& o) const;
 };
 
-// Up to two panels per organ, in Masterpiece/organs/<organ>.mppanels.
+// Up to ten panels per organ, in Masterpiece/organs/<organ>.mppanels. The
+// View menu numbers them in blocks of a hundred, so the count stays below that.
 std::vector<PanelLayout> loadPanelLayouts(const MasterpieceProcessor& p);
 bool savePanelLayouts(const MasterpieceProcessor& p, const std::vector<PanelLayout>& panels);
-constexpr int kMaxPanels = 2;
+constexpr int kMaxPanels = 10;
 
 // Colours. In every scheme the text contrasts with its rectangle, lit or not.
 enum class PanelScheme { Dark = 0, Light = 1, HighContrast = 2, ByDivision = 3 };
