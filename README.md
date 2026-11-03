@@ -125,8 +125,10 @@ Friesach, 44 stops, 17 GB, 12,148 files ([method and full figures](PERFORMANCE.m
 |---|---|
 | 32-bit float | 21.6 GB |
 | 24-bit | 16.2 GB |
-| 16-bit, releases streamed | 4.65 GB |
-| 16-bit mono, releases streamed | 2.33 GB |
+| 24-bit, lossless compression | 5.39 GB |
+| 24-bit, lossless compression, releases streamed | 3.62 GB |
+| 16-bit, lossless compression, releases streamed | 2.39 GB |
+| 16-bit mono, lossless compression, releases streamed | 1.21 GB |
 
 Opening: 77.1 s at 32-bit float, 25.9 s at 16-bit mono streamed, 18.9 s from the
 sample cache.
