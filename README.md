@@ -54,7 +54,7 @@ implementation in C++20 and JUCE, licensed GPL-3.0-only.
 - GrandOrgue `.organ` definitions, converted as they load, console included
 - Sets played straight from their packages: RAR 4 and 5 (solid, multi-part,
   multi-volume) and GrandOrgue `.orgue`
-- WAV and WavPack samples, any rate; optional conversion to the device rate on load
+- WAV and WavPack samples, any rate; optional conversion to 48 or 44.1 kHz on load
 - Sets that require a publisher's licence load once you confirm you hold it
 
 **Console**

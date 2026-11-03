@@ -195,7 +195,7 @@ The player's adjustments of level and tuning, for a whole rank or for one pipe, 
 | **Rank** | The rank to adjust, listed as its number and name. | The first rank | The ranks of the loaded organ | At once |
 | **Applies to** | Whether the sliders adjust the whole rank or one pipe of it. | **The whole rank** | **The whole rank**, **One pipe** | At once |
 | **MIDI note** | The pipe, chosen by its note. Active when **One pipe** is selected. A rank without a pipe at that note reports **This rank has no pipe at that note**. | 60 | 0 to 127 | At once |
-| **Level** | The level change. | 0 dB | -12 to +12 dB in steps of 0.1 | On the next note |
+| **Level** | The level change. | 0 dB | -12 to +12 dB in steps of 0.1; the control API reaches -24 dB | On the next note |
 | **Tuning** | The pitch change. | 0 cents | -50 to +50 cents in steps of 0.1 | On the next note |
 | **A / B** | Swaps between the two complete voicing sets A and B, so a change can be compared with what was there before. | Slot A | A, B | At once |
 | **Copy to other** | Copies the live slot to the other, so that B starts as a variation of A. | | | At once |
