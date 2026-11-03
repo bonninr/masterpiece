@@ -99,7 +99,7 @@
     "name": "How much memory does a large organ need?",
     "acceptedAnswer": {
      "@type": "Answer",
-     "text": "That depends on the loading settings. Friesach, 17 GB on disk, takes 16.2 GB at 24 bits, 5.4 GB at 24 bits held compressed, 1.66 GB at 16 bits in mono held compressed, and 1.21 GB with its release tails streamed from the installed folder. Stops and perspectives can also be left out."
+     "text": "That depends on the loading settings. Our 44-stop reference sample set, 17 GB on disk, takes 16.2 GB at 24 bits as recorded, 5.4 GB held compressed (3&times; less), 3.6 GB compressed with its release tails streamed (4.5&times; less, bit for bit), and 2.8 GB streaming only the shortest release of each pipe (5.7&times; less). Stops and perspectives can also be left out."
     }
    },
    {
@@ -252,28 +252,25 @@
     <div class="section-head">
       <h2>A cathedral organ <span class="tone">in a laptop's memory</span></h2>
     </div>
-    <p class="lead" style="margin-top:-24px">With <i>Lossless compression in memory</i>, every 16- and 24-bit sample stays in memory in a lossless code and is decoded as its pipe speaks. What you hear is the recording, bit for bit. With <i>Stream releases</i>, each release keeps its first second in memory and the rest is read from the disk as the note dies away, while attacks and sustains stay in memory for the next key.</p>
+    <p class="lead" style="margin-top:-24px">With <i>Lossless compression in memory</i>, every sample stays in memory in a lossless code and is decoded as its pipe speaks. What you hear is the recording, bit for bit. With <i>Stream releases</i>, each release keeps its first second in memory and the rest is read from the disk as the note dies away, while attacks and sustains stay in memory for the next key.</p>
     <div class="figures">
-      <div class="figure"><div class="value">3.6 GB</div><p>Friesach in memory, 24-bit samples held compressed with releases streamed, against 16.2 GB as files</p></div>
+      <div class="figure"><div class="value">4.5&times;</div><p>Less memory, 24-bit, bit for bit: compression and release streaming in the reference sample set</p></div>
       <div class="figure"><div class="value">23 s</div><p>Nancy reopening from the sample cache, 212 s the first time</p></div>
-      <div class="figure"><div class="value">13&times;</div><p>Less memory with release tails streamed: Friesach in 1.21 GB, 16-bit mono held compressed</p></div>
+      <div class="figure"><div class="value">5.7&times;</div><p>Less memory with compression, release streaming and the shortest release only</p></div>
     </div>
     <div class="compare-wrap">
       <table class="compare">
-        <caption>Friesach, 44 stops, the whole organ in Masterpiece 0.9.0</caption>
-        <thead><tr><th>Samples</th><th>Held as</th><th class="num">In memory</th></tr></thead>
+        <caption>Reference sample set, 44 stops, the whole organ in Masterpiece 0.9.0</caption>
+        <thead><tr><th>Samples</th><th>Held as</th><th class="num">In memory</th><th class="num">Smaller by</th></tr></thead>
         <tbody>
-          <tr><td>24-bit</td><td>As recorded</td><td class="num">16.2 GB</td></tr>
-          <tr class="best"><td>24-bit</td><td>Lossless compression</td><td class="num">5.39 GB</td></tr>
-          <tr><td>16-bit</td><td>Lossless compression</td><td class="num">3.30 GB</td></tr>
-          <tr><td>16-bit, mono</td><td>Lossless compression</td><td class="num">1.66 GB</td></tr>
-          <tr><td>24-bit</td><td>Lossless compression, releases streamed</td><td class="num">3.62 GB</td></tr>
-          <tr><td>16-bit</td><td>Lossless compression, releases streamed</td><td class="num">2.39 GB</td></tr>
-          <tr><td>16-bit, mono</td><td>Lossless compression, releases streamed</td><td class="num">1.21 GB</td></tr>
+          <tr><td>24-bit</td><td>As recorded</td><td class="num">16.2 GB</td><td class="num">1&times;</td></tr>
+          <tr><td>24-bit</td><td>Lossless compression</td><td class="num">5.39 GB</td><td class="num">3.0&times;</td></tr>
+          <tr class="best"><td>24-bit</td><td>Lossless compression, releases streamed</td><td class="num">3.62 GB</td><td class="num">4.5&times;</td></tr>
+          <tr><td>24-bit</td><td>Lossless compression, shortest release streamed</td><td class="num">2.84 GB</td><td class="num">5.7&times;</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="small" style="margin-top:14px">Measured on 16 GB PCs: held in memory on Windows, opened from the 7.35 GB package; releases streamed on Debian, from the installed folder, with the first second of each release held. A set opened straight from its package holds its releases whole. The first opening compresses the samples, about three minutes for Friesach; later openings read them from the sample cache. Stops, ranks and microphone perspectives can also be left out of a load.</p>
+    <p class="small" style="margin-top:14px">Measured on 16 GB PCs: held in memory on Windows, opened from the 7.35 GB package; releases streamed on Debian, from the installed folder, with the first second of each release held. A set opened straight from its package holds its releases whole. The first opening compresses the samples, about three minutes for this set; later openings read them from the sample cache. Stops, ranks and microphone perspectives can also be left out of a load.</p>
   </div>
 </section>
 
@@ -289,8 +286,8 @@
       </div>
       <ol class="notes">
         <li>512 voices on an Intel i7, against the same engine without vector code; 1.7&ndash;3.3&times; with SSE2, about 3&times; with NEON on a Raspberry Pi 4.</li>
-        <li><a href="https://piotrgrabowski.pl/friesach/">Friesach</a>, 24-bit samples: 16.2 GB held in memory as recorded, 3.62 GB held compressed with release tails streamed, bit for bit.</li>
-        <li><a href="https://hauptwerk-augustine.info/Lemmer.php">Lemmer</a> on an eight-core i7-9700, 16-bit samples, streamed releases: each audio block computed in 5.4% of its own length on average, and the slowest 1% still 10&times; faster than real time. The virtuoso test: 1,518 notes in 33 seconds, up to 1,300 notes a second.</li>
+        <li>Reference sample set, 24-bit samples: 16.2 GB held in memory as recorded, 3.62 GB held compressed with release tails streamed, bit for bit.</li>
+        <li><a href="https://hauptwerk-augustine.info/Lemmer.php">Lemmer</a> on an eight-core i7-9700, streamed releases: each audio block computed in 5.4% of its own length on average, and the slowest 1% still 10&times; faster than real time. The virtuoso test: 1,518 notes in 33 seconds, up to 1,300 notes a second.</li>
         <li>Release tail cutoff: tails end once they fall below &minus;90 dB, inaudible in every test, which frees their voices for the notes being played. At &minus;80 dB, the virtuoso test on a two-core i3 runs with 95% fewer late blocks, and a few release recordings with a late sound in them can end a little early.</li>
       </ol>
     </div>
@@ -591,7 +588,7 @@
       <details class="qa"><summary><h3>Which sample sets does it play?</h3></summary><p>Hauptwerk-format sets, from full, compact and composite definitions, and GrandOrgue organs, from .organ definitions and .orgue packages. Samples are WAV or WavPack at any rate; sets with encrypted samples stay with their publisher&#x27;s own player.</p></details>
       <details class="qa"><summary><h3>Do the sets need unpacking first?</h3></summary><p>Masterpiece opens a set from its unpacked folder or straight from its package, solid, multi-part and multi-volume RAR sets included.</p></details>
       <details class="qa"><summary><h3>Does it run on a Raspberry Pi?</h3></summary><p>Yes, on Raspberry Pi OS in 64-bit and 32-bit, from a .deb package, with the NEON vector engine.</p></details>
-      <details class="qa"><summary><h3>How much memory does a large organ need?</h3></summary><p>That depends on the loading settings. Friesach, 17 GB on disk, takes 16.2 GB at 24 bits, 5.4 GB at 24 bits held compressed, 1.66 GB at 16 bits in mono held compressed, and 1.21 GB with its release tails streamed from the installed folder. Stops and perspectives can also be left out.</p></details>
+      <details class="qa"><summary><h3>How much memory does a large organ need?</h3></summary><p>That depends on the loading settings. Our 44-stop reference sample set, 17 GB on disk, takes 16.2 GB at 24 bits as recorded, 5.4 GB held compressed (3&times; less), 3.6 GB compressed with its release tails streamed (4.5&times; less, bit for bit), and 2.8 GB streaming only the shortest release of each pipe (5.7&times; less). Stops and perspectives can also be left out.</p></details>
       <details class="qa"><summary><h3>Does holding samples compressed change the sound?</h3></summary><p>The sound stays identical. Each sample is held in a lossless code and decodes to the same bits as its file, at the cost of a little more processor work per voice.</p></details>
       <details class="qa"><summary><h3>Can it play my console?</h3></summary><p>Yes: a MIDI channel per manual, any keyboard or pedalboard, and MIDI learn for every stop, piston and swell shoe, consoles that send SysEx included.</p></details>
       <details class="qa"><summary><h3>Can I play with a single keyboard?</h3></summary><p>Split mode divides one keyboard into up to three zones, each on a manual or the pedal, with a layered second manual and the pedal from the lowest key held.</p></details>
