@@ -327,12 +327,12 @@ Loading decodes every file and converts it. The result depends only on the files
 
 The cache holds the resident form of every sample: the audio in the chosen resident format, the channels, the rate, the loop points, the release marker, the pitch the file declares, and a checksum of each sample's audio. For a streamed release it holds the resident head and, beside it, the path of the source file and the rates needed to reopen the tail when a note asks for it. The cache therefore has about the size of the resident memory. On a five-rank load the cache file was 437.7 MB at 24-bit.
 
-Time saved on a streamed load of our reference sample set:
+Time saved on our reference sample set at **High**, 24-bit compressed with releases streamed, measured with Masterpiece 0.9.0 on a 4-core Debian machine; the cache file is 3,617 MB:
 
 | | Decoded from the files | Read from the cache | Speed-up |
 |---|---:|---:|---:|
-| Sample loading | 13.0 s | 2.6 s | 5.0x |
-| Whole organ | 25.9 s | 18.9 s | 1.4x |
+| Sample loading | 42.7 s | 3.3 s | 13x |
+| Whole organ | 43.2 s | 3.8 s | 11x |
 
 The rest of a load (reading the definition, building the wind model, wiring the console, building the console artwork) takes the same time whether or not a cache is read, which is why the whole organ gains less than the sample loading.
 
