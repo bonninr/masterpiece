@@ -2129,6 +2129,102 @@ public:
 };
 static VoiceSimdRunTest g_voiceSimdRuns;
 
+// A release crossfade between samples held at different widths (#767). A set
+// that mixes 16-bit and 24-bit files holds each at its own width, so a pipe's
+// attack and its release can differ; the attack fading out under the release
+// is then read in its own storage, never in the release's. Every pairing of
+// float, 16, 20 and 24 bits, with the vector code on and off: the overlap
+// walks from the attack's level to the release's, and nothing faults.
+class VoiceMixedWidthCrossfadeTest final : public mp::test::Test {
+public:
+  VoiceMixedWidthCrossfadeTest()
+      : Test("functional.voice.mixed-width-release-crossfade", Category::Functional) {}
+
+  static void hold(mp::SampleBuffer& b, int width) {
+    if (width == 16) VoiceSimdRunTest::toInt16(b);
+    else if (width == 20) VoiceSimdRunTest::toInt20(b);
+    else if (width == 24) VoiceSimdRunTest::toInt24(b);
+  }
+
+  void run() override {
+    const int widths[] = {32, 16, 20, 24};
+    const mp::simd::Isa units[] = {mp::simd::Isa::None, mp::simd::detect()};
+    for (const int aw : widths) {
+      for (const int rw : widths) {
+        for (const auto isa : units) {
+          // Opposed DC levels, as in the release-crossfade test: the attack
+          // holds +0.5 and loops, the release is recorded at -0.5.
+          mp::SampleBuffer attack = voicetest::makeTone(440.0, 48000.0, 48000, 2);
+          for (auto& s : attack.frames) s = 0.5f;
+          attack.loopStart = 4800;
+          attack.loopEnd = 48000;
+          mp::SampleBuffer tail = voicetest::makeTone(440.0, 48000.0, 48000, 2, false);
+          for (auto& s : tail.frames) s = -0.5f;
+          hold(attack, aw);
+          hold(tail, rw);
+
+          mp::Pipe pipe;
+          pipe.pipeId = 100;
+          pipe.midiNote = 69;
+          mp::PipeLayer layer;
+          layer.layerId = 1;
+          mp::AttackSample a;
+          a.id = 11;
+          a.sample.sampleId = 1;
+          layer.attacks.push_back(a);
+          mp::ReleaseSample r;
+          r.id = 21;
+          r.sample.sampleId = 2;
+          r.releaseCrossfadeMs = 28.0;
+          layer.releases.push_back(r);
+          pipe.layers.push_back(std::move(layer));
+          auto provider = [&](mp::Id id) -> const mp::SampleBuffer* {
+            if (id == 1) return &attack;
+            if (id == 2) return &tail;
+            return nullptr;
+          };
+
+          mp::VoiceEngine eng;
+          eng.setSimdIsa(isa);
+          eng.prepare(48000.0, 4, 2);
+          eng.setSampleProvider(provider);
+          mp::VoiceStart start;
+          start.pipe = &pipe;
+          start.layer = &pipe.layers[0];
+          start.velocity = 90;
+          start.ratio = 1.0;
+          start.gain = 1.0f;
+          const std::string what = std::to_string(aw) + "-bit attack, " + std::to_string(rw) +
+                                   "-bit release, " + mp::simd::isaName(isa);
+          MP_CHECK(eng.startVoice(start, 7) >= 0, what + ": voice started");
+
+          std::vector<float> l(4096, 0.0f), rr(4096, 0.0f);
+          float* out[2] = {l.data(), rr.data()};
+          for (int i = 0; i < 4; ++i) eng.render(out, 2, 4096);
+
+          mp::NoteRelease rel;
+          rel.velocity = 64;
+          eng.noteOff(7, rel);
+          std::fill(l.begin(), l.end(), 0.0f);
+          std::fill(rr.begin(), rr.end(), 0.0f);
+          eng.render(out, 2, 4096);
+
+          double worst = 0.0;
+          for (size_t i = 1; i < 1408; ++i)
+            worst = std::max(worst, static_cast<double>(std::fabs(l[i] - l[i - 1])));
+          MP_CHECK(std::fabs(l[0] - 0.5f) < 0.05f, what + ": the overlap starts at the attack's level");
+          MP_CHECK(worst < 0.05, what + ": the overlap walks the step");
+          double mean = 0.0;
+          for (size_t i = 2048; i < l.size(); ++i) mean += l[i];
+          mean /= static_cast<double>(l.size() - 2048);
+          MP_CHECK(std::fabs(mean + 0.5) < 0.05, what + ": then the release speaks at its level");
+        }
+      }
+    }
+  }
+};
+static VoiceMixedWidthCrossfadeTest g_voiceMixedWidthCrossfade;
+
 // A release tail ends once it has stayed below the cutoff for a twentieth of
 // a second: in a passage on every stop, hundreds of them sound far below
 // hearing, each costing what a note costs. With no cutoff it plays out.

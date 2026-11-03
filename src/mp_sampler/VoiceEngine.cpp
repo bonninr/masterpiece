@@ -2007,6 +2007,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       // At the attack's own storage scale: 16-bit samples are each scaled by
       // their own peak, and the release's scale was used here for both.
       const float oldEnv = xfadeEnv * storageScale(ob) * xfadeOld;
+      // A set that mixes 16-bit and 24-bit files holds each at its own
+      // width, so the attack may be held otherwise than the release (#767).
+      const bool sameStorage = ob.wide() == buf.wide() && ob.compact() == buf.compact() &&
+                               ob.packed20() == buf.packed20();
       // Past the loop end comes the loop start, as on the attack's own path
       // (atSeam): a key let go just after a wrap clicked otherwise.
       const int64_t oldLoopLen = v.xfadeOldLoopEnd - v.xfadeOldLoopStart;
@@ -2025,9 +2029,10 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
         if (ob.coded != nullptr)
           return ow != nullptr ? static_cast<float>(codedValue(*ob.coded, ow, nullptr, g, srcCh, *scratch))
                                : 0.0f;
-        // The release is coded and the attack is not: read as it is held.
+        // The release is coded and the attack is not, or the two are held at
+        // different widths: read the attack as it is held.
         if constexpr (Coded) return rawAny(ob, g, srcCh);
-        else return rawSample<T>(ob, g, srcCh);
+        else return sameStorage ? rawSample<T>(ob, g, srcCh) : rawAny(ob, g, srcCh);
       };
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < ob.numChannels ? ch : ob.numChannels - 1;
