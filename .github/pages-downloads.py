@@ -98,6 +98,8 @@ def main(site):
     # The structured data names the version that the links lead to.
     if version:
         text = re.sub(r'"softwareVersion": "[^"]*"', f'"softwareVersion": "{version}"', text)
+        # And the download section's heading.
+        text = re.sub(r'(<span class="release-version">)[^<]*(</span>)', rf'\g<1>{version}\g<2>', text)
     page.write_text(text, encoding="utf-8", newline="")
     # The number the program's once-a-day check reads (src/mp_ui/UpdateCheck),
     # and nothing else: a few bytes. Left out when the release cannot be read,
