@@ -324,7 +324,7 @@ On a phone or tablet a finger held still for half a second opens what a
 right-click opens, on the drawn console and on the panels. A finger that moves
 more than 8 pixels is sliding and opens nothing. A stop changes as the finger
 lifts, so a stop held for its menu stays as it was. The environment variable
-`MASTERPIECE_TOUCH=1` works presses the same way on a computer.
+`MASTERPIECE_TOUCH=1` makes presses work the same way on a computer.
 
 ### Stops that make no sound
 

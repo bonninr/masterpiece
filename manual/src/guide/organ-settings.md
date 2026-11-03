@@ -45,7 +45,7 @@ Shown in **Advanced**.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
-| **Bypass all effects** | Plays the samples with no wind model, tremulants, enclosures or voicing, for a slow computer. While it is on, the four switches below it are greyed out. The same switch is on the top bar. | Off | On, off | At once |
+| **Bypass all effects** | Plays the samples with no wind model, tremulants, enclosures or voicing, for a slow computer. While it is on, the five switches below it are greyed out. | Off | On, off | At once |
 | **Wind model** | Simulates the wind supply. Off uses the constant-volume fast path. | On | On, off | At once |
 | **Tremulants** | Applies the organ's tremulants. | On | On, off | At once |
 | **Enclosures (swell shades)** | Applies the organ's enclosures. | On | On, off | At once |

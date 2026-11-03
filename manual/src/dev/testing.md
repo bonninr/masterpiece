@@ -1,6 +1,6 @@
 # Testing
 
-This page covers the test binary, how to build and run all or part of it, the fixtures, what continuous integration runs on every pull request, and how to add a test. The suite needs no sample library and runs in about a minute on a desktop <!-- CHECK: the time of a full --no-perf run on a desktop build -->, so run it before every pull request.
+This page covers the test binary, how to build and run all or part of it, the fixtures, what continuous integration runs on every pull request, and how to add a test. The suite needs no sample library and runs in about a minute on a desktop, so run it before every pull request.
 
 ## The test binary
 

@@ -137,7 +137,7 @@ The rows below are shown in **Advanced**. Each learn button opens a menu: the ma
 | **Temperament** | A temperament box (**The organ's own** and the library), **Learn this temperament** | A button that chooses the temperament in the box. |
 | | **Learn temperament -**, **Learn temperament +** | Previous and next temperament. |
 | **Recorder** | **Learn record or stop**, **Learn play or stop** | The recorder's Record and Play. See [Recorder](playing.md#recorder). |
-| **Power** | **Learn quit**, **Learn power off** | Quit Masterpiece, or quit and shut the computer down. Obeyed only 2 minutes after the organ loads, and only on a button held for 3 seconds, or pressed twice within 2 seconds for a button that sends no release. |
+| **Power** | **Learn quit**, **Learn power off** | Quit Masterpiece, or quit and shut the computer down. Obeyed only 2 minutes after Masterpiece starts, and only on a button held for 3 seconds, or pressed twice within 2 seconds for a button that sends no release. |
 | **Score app** | **Learn score page -**, **Learn score page +**, then **Sends**: message, channel and two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen (**Note**, **Controller** or **Program change**) on the MIDI output, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. |
 | | **Save mappings**, **Clear all mappings** | **Save mappings** writes the mapping to disk. **Clear all mappings** removes every binding from the mapping in use. The empty mapping reaches disk with **Save mappings**, or with the next learned binding or channel change. |
 | Status | **MIDI mappings: N** | The number of bindings. While a learn waits it adds **LEARNING: move a control now**. |
@@ -206,7 +206,7 @@ A one-channel response feeds both sides, a two-channel response is read as stere
 
 ![The Metronome tab](../images/general-metronome.png)
 
-A click track for practice. It is generated inside the audio callback so that it stays in time with the organ. The click is a short 1000 Hz sine; the first beat of each bar is an octave and a half higher (1500 Hz) and louder. The click is added after the master fader and is left out of audio recordings made with the recorder.
+A click track for practice. It is generated inside the audio callback so that it stays in time with the organ. The click is a short 1000 Hz sine; the first beat of each bar is a fifth higher (1500 Hz) and louder. The click is added after the master fader and is left out of audio recordings made with the recorder.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -301,7 +301,7 @@ Masterpiece always keeps a log of the session and the previous one beside it. Th
 | **Send the report and the log** | Shares the report, the log and the previous log through the share sheet. Present only on phones and tablets. | | At once |
 | **Log every MIDI message and what became of it** | The same as `--log-midi`: which manual, stop or control each message reached and, when nothing sounded, why. | Off | At once; lasts until Masterpiece closes |
 | **Log every key release: the release played, its length and start** | The same as `--log-releases`: the release chosen for each key release, its length and where it started. | Off | At once; lasts until Masterpiece closes |
-| **Check for updates daily** | Reads the newest version's number from masterpieceorgan.com, a few bytes, once a day, and offers the download page when it is newer. **Help > Check for updates...** checks at once. See [Files and folders](files.md#privacy). | On | At the next start; `updatecheck` in the global file |
+| **Check for updates daily** | Reads the newest version's number from GitHub, a few bytes, once a day, and offers the download page when it is newer. **Help > Check for updates...** checks at once. See [Files and folders](files.md#privacy). | On | At the next start; `updatecheck` in the global file |
 
 The report box is read-only and shows **Run the checks to see what Masterpiece finds on this device.** until the checks have run. See [Command line](command-line.md) for the log and its options.
 
