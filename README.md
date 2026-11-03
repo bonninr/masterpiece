@@ -181,8 +181,8 @@ Friesach, 44 stops, 17 GB, 12,148 files ([method and full figures](PERFORMANCE.m
 | 24-bit, lossless compression, releases streamed | 3.62 GB |
 | 24-bit, lossless compression, shortest release streamed | 2.84 GB |
 
-Opening: 77.1 s at 32-bit float, 18.9 s from the
-sample cache.
+Opening at 24-bit, compressed with releases streamed: 43.2 s, and 3.8 s from
+the sample cache.
 Streaming assumes SSD-class storage; the status line says when a disk falls behind.
 
 ## Tested organs

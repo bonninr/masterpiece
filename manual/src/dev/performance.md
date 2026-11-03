@@ -6,11 +6,10 @@ This page reports how much memory a sampled organ needs, how long it takes to op
 
 | | Baseline | Masterpiece | Gain |
 |---|---:|---:|---:|
-| Sample memory, full organ | 21.6 GB | 2.3 GB | **9.3x less** |
-| Sample memory, stereo kept | 21.6 GB | 4.7 GB | **4.6x less** |
-| Sample memory, bit-exact 24-bit | 21.6 GB | 16.2 GB | **1.3x less** |
-| Time to open the organ | 77.1 s | 25.9 s | **3.0x faster** |
-| Sample loading, from the cache | 13.0 s | 2.6 s | **5.0x faster** |
+| Sample memory, 24-bit as recorded | 21.6 GB | 16.2 GB | **1.3x less** |
+| Sample memory, 24-bit compressed, releases streamed | 21.6 GB | 3.6 GB | **6.0x less** |
+| Sample memory, 24-bit compressed, shortest release streamed | 21.6 GB | 2.8 GB | **7.6x less** |
+| Time to open the organ, from the sample cache | 43.2 s | 3.8 s | **11x faster** |
 | Memory added by drawing all 44 stops | | none | **flat** |
 
 The baseline is the conventional approach: every sample decoded to 32-bit floating point and held in memory.
@@ -111,16 +110,14 @@ Holding less also opens faster: a streaming load reads no release tails, and the
 
 ## Sample cache
 
-![Sample cache load times](../images/performance-cache.png)
-
-| 16-bit mono, streamed | Decoded from WAV | Read from cache | Speed-up |
+| 24-bit, compressed, releases streamed | Decoded from WAV | Read from cache | Speed-up |
 |---|---:|---:|---:|
-| Sample loading | 13.0 s | 2.6 s | **5.0x** |
-| Whole organ | 25.9 s | 18.9 s | **1.4x** |
+| Sample loading | 42.7 s | 3.3 s | **13x** |
+| Whole organ | 43.2 s | 3.8 s | **11x** |
 
-The cache file is 2,439 MB and stands in for about 7 GB of source files.
+Measured with Masterpiece 0.9.0 on a 4-core Debian 13 machine with an NVMe disk, every stop loaded, the source files already in the system's file cache. The cache file is 3,617 MB.
 
-The cache is keyed to a fingerprint of everything that changes the bytes in memory: the organ definition's size and modification time, storage width, mono folding, load rate, preload head, loop selection, release streaming and the ranks requested. Any change is a cache miss that rebuilds the cache, so a stale cache is never read. This was verified on a five-rank load: a 16-bit cache is reused at 16-bit, and rebuilt at 24-bit and at 16-bit mono to exactly the expected sizes (291.8, 437.7 and 146.0 MB).
+The cache is keyed to a fingerprint of everything that changes the bytes in memory: the organ definition's size and modification time, storage width, mono folding, load rate, preload head, loop selection, release streaming and the ranks requested. Any change is a cache miss that rebuilds the cache, so a stale cache is never read. This was verified on a five-rank load: a cache is reused at the settings it was written with, and rebuilt to exactly the expected size when the storage width or the channels change.
 
 By default Masterpiece keeps a single cache file and replaces it when the organ or settings change, so the cache stays the size of one organ. The **Sample cache** list offers **One cache, replaced as organs change**, **One cache per organ (uses more disk)** and **Off**.
 
