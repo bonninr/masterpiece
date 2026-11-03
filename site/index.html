@@ -166,7 +166,7 @@
     <div class="hero-grid">
       <div>
         <h1>The king of instruments. <span class="tone">Free and open source.</span></h1>
-        <p class="lead">Masterpiece plays Hauptwerk-format and GrandOrgue sample sets with their own console pages, wiring, wind and swell boxes, and plays it from your MIDI keyboards and pedals. Friesach's 16.2 GB of 24-bit samples play from 5.4 GB of memory, the same to the bit.</p>
+        <p class="lead">Masterpiece plays Hauptwerk-format and GrandOrgue sample sets with their own console pages, wiring, wind and swell boxes, and plays it from your MIDI keyboards and pedals.</p>
         <div class="buttons">
           <a class="btn primary" href="#platforms">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
@@ -254,7 +254,7 @@
     </div>
     <p class="lead" style="margin-top:-24px">With <i>Lossless compression in memory</i>, every 16- and 24-bit sample stays in memory in a lossless code and is decoded as its pipe speaks. What you hear is the recording, bit for bit. With <i>Stream releases</i>, each release keeps its first second in memory and the rest is read from the disk as the note dies away, while attacks and sustains stay in memory for the next key.</p>
     <div class="figures">
-      <div class="figure"><div class="value">5.4 GB</div><p>Friesach in memory, 24-bit samples held compressed, against 16.2 GB as files</p></div>
+      <div class="figure"><div class="value">3.6 GB</div><p>Friesach in memory, 24-bit samples held compressed with releases streamed, against 16.2 GB as files</p></div>
       <div class="figure"><div class="value">23 s</div><p>Nancy reopening from the sample cache, 212 s the first time</p></div>
       <div class="figure"><div class="value">13&times;</div><p>Less memory with release tails streamed: Friesach in 1.21 GB, 16-bit mono held compressed</p></div>
     </div>
@@ -476,9 +476,14 @@
         <li><div><h3>Audio recorder and metronome</h3><p>In the organ's own audio stream.</p></div></li>
       </ul>
     </div>
-    <figure class="frame" style="margin:0">
-      <img src="screenshots/shot-score.jpg" alt="The score panel, a trio engraved for manuals and pedal, on Friesach">
-    </figure>
+    <div class="stack">
+      <figure class="frame" style="margin:0">
+        <img src="screenshots/shot-score.jpg" alt="The score panel, a trio engraved for manuals and pedal, on Friesach">
+      </figure>
+      <figure class="frame" style="margin:0 auto;max-width:436px">
+        <img src="screenshots/shot-recorder-090.jpg" alt="The Recorder window: MIDI record and play, registration markers, audio recording">
+      </figure>
+    </div>
   </div>
 </section>
 
@@ -486,7 +491,7 @@
   <div class="wrap split flip">
     <div>
       <h2>Console on a phone, <span class="tone">API for your own hardware</span></h2>
-      <p class="lead">Turn on Remote control, and a phone or tablet on your network shows the organ's own console pages in its browser.</p>
+      <p class="lead">Control from a phone, tablet or hardware device. With Remote control on, a phone or tablet on your network shows the organ's own console pages in its browser.</p>
       <ul class="points">
         <li><div><h3>Web console</h3><p>Every console page or a stop panel per division, with volume, transposer, temperament and EQ presets, and each load with its progress.</p></div></li>
         <li><div><h3>HTTP, MIDI SysEx and OSC</h3><p>Every stop, piston, level and sequencer frame, described in an OpenAPI file.</p></div></li>
@@ -525,7 +530,7 @@
 <section class="alt" id="consoles">
   <div class="wrap">
     <div class="section-head">
-      <h2>Consoles <span class="tone">from more than 100 organs tested</span></h2>
+      <h2>More than 100 organs tested, <span class="tone">and counting</span></h2>
       <div class="heads">
         <a class="more" href="https://hauptwerk-augustine.info/Completely_free_samples.php">Augustine’s free sample sets</a>
         <a class="more" href="attribution.html">Sample set credits</a>
