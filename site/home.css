@@ -128,12 +128,14 @@ section.deep { background: var(--surface-deep); }
    darkened copy of itself. */
 .stage {
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
-  position: relative; aspect-ratio: 1226 / 599; overflow: hidden; background: #0d0e11;
+  position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #0d0e11;
   outline: none;
 }
 .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity 1.2s ease; }
 .slide.on { opacity: 1; z-index: 1; }
-.slide .poster, .slide video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* A clip shows the console alone: the program's toolbar (65 of its 598 pixels)
+   above the frame, and the empty sides cropped. */
+.slide .poster, .slide video { position: absolute; left: 0; top: -12.2%; width: 100%; height: 112.2%; object-fit: cover; }
 .slide .blur {
   position: absolute; inset: -40px; background: center / cover no-repeat;
   filter: blur(26px) brightness(0.42) saturate(1.2);
@@ -229,6 +231,13 @@ section.deep { background: var(--surface-deep); }
 .points li { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .points h3 { font-size: 16px; }
 .points p { font-size: 15px; margin-top: 2px; }
+/* Two pictures beside a long list. */
+.stack { display: grid; gap: 20px; }
+/* The web console in a phone, under a browser's address bar. */
+.phone { margin: 0 auto; max-width: 320px; border: 10px solid #0b0c0f; border-radius: 34px; overflow: hidden; background: #0b0c0f; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0, 0, 0, .45); }
+.phone-bar { background: #2a2d34; padding: 22px 12px 8px; }
+.phone-bar span { display: block; background: #15171c; color: #c9ccd3; border-radius: 14px; padding: 5px 12px; font-size: 12px; text-align: center; }
+.phone img { display: block; width: 100%; height: auto; }
 
 .figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 56px; background: var(--line); border: 1px solid var(--line); }
 .figure { background: var(--canvas); padding: 28px 28px 30px; }
