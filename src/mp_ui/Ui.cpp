@@ -3377,7 +3377,7 @@ void MasterpieceEditor::timerCallback() {
   // sight, and whether a machine can stream is only known by playing (#120).
   if (proc_.streamReleases())
     if (const auto under = proc_.streamUnderruns(); under > 0)
-      live += ", " + TRANS("streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings")
+      live += ", " + TRANS("streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings")
                          .replace("%1", juce::String(under));
   const auto now = juce::Time::getMillisecondCounter();
   // The switch is on and the system said no: the log says so once, with its

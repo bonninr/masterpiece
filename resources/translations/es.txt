@@ -824,7 +824,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "dropped %1" = "perdidos %1"
 "no audio %1" = "sin audio %1"
 "late blocks %1" = "bloques tardíos %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "las colas en streaming se retrasaron %1x: desactiva «Leer las colas desde el disco (streaming)» en Ajustes del órgano"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "las colas en streaming se retrasaron %1x: desactiva «Leer las liberaciones desde el disco» en Ajustes del órgano"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Mantener despiertos los altavoces portátiles"

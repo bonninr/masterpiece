@@ -824,7 +824,7 @@ countries: pl
 "dropped %1" = "utracone: %1"
 "no audio %1" = "brak audio: %1"
 "late blocks %1" = "spóźnione bloki: %1"
-"streamed releases fell behind %1x: turn off \"Stream release tails\" in Organ settings" = "strumieniowane wybrzmiewania zostały w tyle %1 razy: wyłącz „Strumieniuj ogony wybrzmiewania z dysku” w Ustawieniach organów"
+"streamed releases fell behind %1x: turn off \"Stream releases from disk\" in Organ settings" = "strumieniowane wybrzmiewania zostały w tyle %1 razy: wyłącz „Strumieniuj wybrzmienia z dysku” w Ustawieniach organów"
 
 # src/mp_ui/Ui.h
 "Keep portable speakers awake" = "Nie usypiaj przenośnych głośników"
