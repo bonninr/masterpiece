@@ -124,7 +124,7 @@ The **Sample rate** box converts every sample to one rate as it is read, with a 
 
 **Default:** **As recorded**. **Takes effect:** at the next load. The settings file stores the rate in Hz (`rate 48000`); `--load-rate <Hz>` accepts any rate.
 
-Memory is in exact proportion to the load rate. A 96 kHz set converted to 48 kHz takes half the memory. Verified on five Friesach ranks converted from their native 48 kHz:
+Memory is in exact proportion to the load rate. A 96 kHz set converted to 48 kHz takes half the memory. Verified on five ranks of our reference sample set, converted from their native 48 kHz:
 
 | Load rate | Held in memory |
 |---|---|
