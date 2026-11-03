@@ -10191,6 +10191,65 @@ public:
   }
 };
 
+// The saved MIDI map reads as a table: each kind of line has a heading that
+// names its fields, one name per field (#565, where a send line did not match
+// the binding heading above it). The headings are comments, so the file
+// still reads back to the same text.
+class MidiMapHeadingsTest final : public mp::test::Test {
+public:
+  MidiMapHeadingsTest() : Test("functional.midi.map-file-headings", Category::Functional) {}
+  void run() override {
+    mp::MidiMap map;
+    MP_CHECK(map.fromText("cc 1 11 control 1 0 0\n"
+                          "manual 2 1 36 96 0 1 127 0 0 0 any\n"
+                          "send switch 5 cc 1 20 0 127\n"
+                          "shortcut switch 5 1 F5\n"),
+             "a map with one line of each kind parses");
+    const std::string text = map.toText();
+
+    std::istringstream in(text);
+    std::string line, heading;
+    int rows = 0;
+    while (std::getline(in, line)) {
+      if (line.rfind("# <", 0) == 0 || line.rfind("# manual ", 0) == 0 ||
+          line.rfind("# send ", 0) == 0 || line.rfind("# shortcut ", 0) == 0) {
+        heading = line.substr(2);
+        continue;
+      }
+      if (line.empty() || line[0] == '#') continue;
+      ++rows;
+      std::istringstream fl(line);
+      std::vector<std::string> fields;
+      for (std::string f; fl >> f;) fields.push_back(f);
+      // Each <name> in a heading is one field, and one inside [ ] may be left
+      // out. A heading that starts with a word names its lines' tag, itself a
+      // field; the binding heading has none.
+      const bool tagged = !heading.empty() && heading[0] != '<';
+      size_t required = tagged ? 1 : 0, optional = 0;
+      int depth = 0;
+      for (char c : heading) {
+        if (c == '[') ++depth;
+        if (c == ']') --depth;
+        if (c == '<') (depth > 0 ? optional : required) += 1;
+      }
+      const std::string tag = tagged ? heading.substr(0, heading.find(' ')) : std::string();
+      MP_CHECK(!heading.empty() && !fields.empty() &&
+                   (tagged ? fields[0] == tag
+                           : fields[0] != "manual" && fields[0] != "send" && fields[0] != "shortcut"),
+               "line \"" + line + "\" sits under the heading of its own kind");
+      MP_CHECK(fields.size() >= required && fields.size() <= required + optional,
+               "line \"" + line + "\" has " + std::to_string(fields.size()) +
+                   " fields, its heading names " + std::to_string(required) + " to " +
+                   std::to_string(required + optional));
+    }
+    MP_CHECK(rows == 4, "four lines written, got " + std::to_string(rows));
+
+    mp::MidiMap again;
+    MP_CHECK(again.fromText(text) && again.toText() == text,
+             "the headed file reads back to the same text");
+  }
+};
+
 // Manuals sharing a MIDI channel. Up to 0.5.3 every binding in such a
 // mapping was dropped on load, which is what a rig with one keyboard and
 // three manuals looks like -- and reported as #29: only two manuals could be
@@ -10854,6 +10913,7 @@ static DisplayEmptyTest g_displayEmpty;
 static DisplayTextTest g_displayText;
 static MidiChannelExclusiveTest g_midiChannelExclusive;
 static MidiMapRepairTest g_midiMapRepair;
+static MidiMapHeadingsTest g_midiMapHeadings;
 static BasePitchZeroTest g_basePitchZero;
 static SamplePitchRouteTest g_samplePitchRoute;
 static SampleFileNameNoteTest g_sampleFileNameNote;

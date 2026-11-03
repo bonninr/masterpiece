@@ -811,7 +811,7 @@ countries: gb us
 "General Cancel also puts the keyboards back on their own manuals" = "General Cancel also puts the keyboards back on their own manuals"
 "Stop changes leave the notes already held alone" = "Stop changes leave the notes already held alone"
 "Sustain pedal: controller 64 holds the notes let go" = "Sustain pedal: controller 64 holds the notes let go"
-"Noise filter: when learning, a key counts once held a quarter second" = "Noise filter: when learning, a key counts once held a quarter second"
+"Debounce: when learning, a key counts once held a quarter second" = "Debounce: when learning, a key counts once held a quarter second"
 "Archive everything played" = "Archive everything played"
 "Save mappings" = "Save mappings"
 "Clear all mappings" = "Clear all mappings"
