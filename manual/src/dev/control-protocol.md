@@ -1,12 +1,12 @@
 # Control protocol
 
-Version 0.1. HTTP is implemented, with the web console; SysEx and OSC follow the same model and are described here for the builders who will use them.
+Version 0.1. HTTP with the web console, MIDI System Exclusive and OSC are implemented in the standalone program on Windows, macOS and Linux. Phones, tablets and the plugins have no control API.
 
 One model of what can be read and changed in a running Masterpiece, and the ways to reach it: HTTP with JSON, MIDI System Exclusive, and OSC. The model is the reference. A transport section only says how the model's operations are written as bytes or paths; it adds no operation of its own, so a console, a script and a web page see the same organ.
 
 **The definition is `protocol/control.yaml`.** Its types, properties, program properties, commands, operations, errors and encodings are the ground truth; `tools/gen-protocol.py` generates `src/mp_api/ControlProtocol.h`, the tables the program uses, and `resources/web/openapi.json`, the HTTP description the program serves at `/api/v1/openapi.json`. `gen-protocol.py --check` fails when either is out of date. A change to the protocol is a change to the YAML file, then the generator, and the three committed together.
 
-In the program, `src/mp_api/ControlModel` is the model and `src/mp_api/ApiServer` the HTTP transport (cpp-httplib, one MIT-licensed header). Every request is carried out on the message thread, as a click in the window is; while an organ loads every call answers `busy`. Changes are found by comparing every value 20 times a second, so a change made anywhere (the window, MIDI, a piston, the sequencer, another client) reaches every subscriber.
+In the program, `src/mp_api/ControlModel` is the model, `src/mp_api/ApiServer` the HTTP transport (cpp-httplib, one MIT-licensed header), `SysexTransport` the MIDI transport and `OscTransport` the OSC one. Every request is carried out on the message thread, as a click in the window is; while an organ loads every call answers `busy`. Changes are found by comparing every value 20 times a second, so a change made anywhere (the window, MIDI, a piston, the sequencer, another client) reaches every subscriber.
 
 The window, the MIDI mapping and these transports all act through the same commands inside the program. A stop drawn over SysEx is drawn exactly as a click or a learned MIDI message draws it, and it is reported to every client as a change.
 
@@ -17,7 +17,7 @@ The window, the MIDI mapping and these transports all act through the same comma
 - **Requests and replies, and events.** Each request has one reply. A client that subscribes also receives an event for every change it subscribed to, whatever caused it.
 - **Small messages.** Every operation fits a 64-byte SysEx message, except names and descriptions, which come one object at a time. A board with 2 KB of RAM can take part.
 - **Integers.** Every value is a whole number in a range the property states; a level in dB is in tenths of a dB, for example.
-- **Reading is always allowed; changing needs permission.** Each transport has its own switch in General settings, off by default, and HTTP adds a token.
+- **Reading is always allowed once a transport is on; changing needs permission.** Each transport has its own switch in **Settings > Remote control**, off by default. **Allow changes from the network** governs every change, and HTTP can add a token.
 
 ## Object types
 
@@ -39,7 +39,7 @@ The window, the MIDI mapping and these transports all act through the same comma
 | 13 | `enclosure` | 0 to enclosures - 1 | how open its shades are, 0 to 127 | no | Moved by its control |
 | 14 | `tremulant` | 0 to tremulants - 1 | 1 while it runs | yes | Moves the switch the player would |
 | 15 | `windchest` | 0 to compartments - 1 | pressure now, in tenths of a percent of nominal | no | Reservoirs and chests of the wind model |
-| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Mixer tab; heard from the next note |
+| 16 | `route` | 0 to ranks - 1, one per rank | the output pair, from 1 | yes | Which pair the rank plays through, as on the Outputs tab of Organ settings; heard from the next note |
 | 17 | `pair` | 0 to pairs - 1 | its live level, 0 to 127 | yes | The mixer's output pairs; the level is heard at once, full again at each load |
 | 18 | `ranklevel` | 0 to ranks - 1 | the rank's live level, 0 to 127 | yes | A fader on top of the rank's voicing, heard at once, full again at each load |
 | 19 | `brightness` | 0 to ranks + divisions - 1 | tenths of a dB, -120 to +120 | yes | The treble shelf of the voicing EQ, above 3 kHz: one per rank, then one per division; a rank hears its division's added to its own. Heard at once |
@@ -59,16 +59,16 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 3 | Master gain | tenths of a dB, -400 to +240 | yes |
 | 4 | Transpose | semitones, -12 to +12 | yes |
 | 5 | Temperament | index into `temperament` | yes |
-| 6 | Stepper frame | 0 to frames - 1 | yes |
+| 6 | Sequencer frame | the frame as the sequencer shows it, from 0 (shown 000) to 998 | yes |
 | 7 | Setter | 0 off, 1 on | yes |
 | 8 | Voicing EQ on | 0, 1 | yes |
 | 9 | Voicing EQ preset | index into `eqpreset`, or -1 when none matches | yes |
-| 10 | Polyphony limit | voices | yes |
+| 10 | Polyphony limit | voices, 64 to 65 536; the program holds it to 16 384 | yes |
 | 11 | Sounding voices | voices | no |
-| 12 | Late blocks since load | count | no |
+| 12 | Late blocks since the program started | count | no |
 | 13 | Real-time render threads | 0, 1 | yes |
-| 14 | MIDI recorder | 0 stopped, 1 recording | yes |
-| 15 | Audio recorder | 0 stopped, 1 recording | yes |
+| 14 | MIDI recorder | 0 stopped, 1 recording | no |
+| 15 | Audio recorder | 0 stopped, 1 recording | no |
 | 16 | Metronome | 0 off, 1 on | yes |
 | 17 | Metronome tempo | beats a minute, 20 to 300 | yes |
 | 18 | Room | 0, 1 | yes |
@@ -76,7 +76,7 @@ A `press` acts like a thumb piston: it does what the object does, once.
 | 20 | Pipe detune | tenths of a cent, 0 (off) to 100 | yes |
 | 21 | Wind sway | tenths of a cent, 0 (off) to 100 | yes |
 | 22 | Sparse loading | 1 every note, 2 every second, 3 every third | yes |
-| 23 | Pedal combinations coupled | 0, 1 | yes |
+| 23 | Pedal combinations coupled: the first manual's divisionals also recall the Pedal's of the same number | 0, 1 | yes |
 | 24 | Attack emphasis | tenths of a dB, -120 to +120, 0 off | yes |
 | 25 | Attack length | milliseconds, 5 to 300 | yes |
 
@@ -88,10 +88,10 @@ New properties are added at the end; an index is never reused.
 |---|---|
 | 0 | Panic: every note off |
 | 1 | General cancel |
-| 2 | Stepper next |
-| 3 | Stepper previous |
-| 4 | Stepper first |
-| 5 | Stepper last |
+| 2 | Sequencer next |
+| 3 | Sequencer previous |
+| 4 | Sequencer first |
+| 5 | Sequencer last |
 | 6 | Voicing EQ next preset |
 | 7 | Voicing EQ previous preset |
 | 8 | Quit: saves and quits Masterpiece. Needs the setting **Allow quitting Masterpiece and shutting the computer down**, and is refused (`busy`) in the first two minutes after the program starts |
@@ -119,7 +119,7 @@ Asked for with **Describe**, one object at a time.
 | `rank`, `key` | pipe | Its rank (an index into `rank`) and the MIDI note it sounds for |
 | `control` | enclosure | The control that moves it, an index into `control`, or -1 |
 | `rate`, `depth` | tremulant | Its rate in hundredths of a hertz, its depth in tenths of a percent |
-| `bus` | rank | The mixer bus its main perspective plays through; routing is changed in the Mixer tab |
+| `bus` | rank | The mixer bus its main perspective plays through; routing is changed on the Outputs tab of Organ settings |
 | `console` | switch, control | 1 for what the organ's console shows: its stops, couplers and tremulants, and what else is drawn and can be clicked. A list gives only these unless asked for all (`?all=1`); every object keeps its index either way |
 
 ## Operations
@@ -164,7 +164,7 @@ The protocol version is a major and a minor number. A minor version adds propert
 
 ## HTTP and JSON
 
-The program serves HTTP on the port chosen in General settings, on the local network.
+The program serves HTTP on the port chosen in **Settings > Remote control** (8080 by default), on the local network, or on `127.0.0.1` alone with **This computer only**. It also serves the web console at `/` and the API description at `/api/v1/openapi.json`.
 
 | Operation | Method and path |
 |---|---|
@@ -175,12 +175,12 @@ The program serves HTTP on the port chosen in General settings, on the local net
 | Set | `PUT /api/v1/{types}/{index}/value` with `{"value": 1}`, or `{"value": "toggle"}` for a switch |
 | Press | `POST /api/v1/{types}/{index}/press` |
 | Dump | `GET /api/v1/{types}/values` |
-| Subscribe, events | `GET /api/v1/events?types=switch,control`, a server-sent event stream; or a WebSocket on the same path |
+| Subscribe, events | `GET /api/v1/events?types=switches,controls`, a server-sent event stream; the program's events always come with it. At most 16 streams are open at once; one more is refused with `busy` |
 | Error | the HTTP status, with `{"error": "out-of-range"}` |
 
 The type in a path is its plural: `switches`, `controls`, `generals`, `eqpresets`. The program is `GET /api/v1/program` and `PUT /api/v1/program/{property}`. A request that changes something is sent as `Content-Type: application/json` (a page of another site cannot send that without the browser asking first, and the server never agrees, so a stray web page cannot change the organ), carries `Authorization: Bearer <token>` when a token is set, and may carry `X-Session: <n>`.
 
-An event:
+A stream opens with `event: hello` and the session. An event:
 
 ```
 event: change
@@ -193,9 +193,20 @@ A Dump of switches:
 {"session": 41, "type": "switch", "first": 0, "count": 60, "values": [0, 1, 1, 0, ...]}
 ```
 
+### Console pages
+
+The web console draws the organ's own console pages with these requests. Coordinates are in the page's own pixels; `layout` picks one of the page's layouts, 0 by default.
+
+| Request | Answer |
+|---|---|
+| `GET /api/v1/pages` | `{session, pages: [{index, name, width, height, layouts: [{layout, portrait}]}]}` |
+| `GET /api/v1/pages/{n}/picture?layout=&x=&y=&w=&h=` | The page, or the part given, as PNG, with the page's change count in `X-Serial` |
+| `GET /api/v1/pages/{n}/changes?layout=&since=` | `{serial, areas: [{x, y, w, h}]}`, the parts drawn again since that count, or `{serial, full: true}` when the page must be fetched whole |
+| `POST /api/v1/pages/{n}/pointer` with `{"phase": "down", "x": 0, "y": 0}` | A tap or a drag (`down`, `move`, `up`) carried out on the page as a click is. It needs permission to change, as a Set does. Drawn manuals are not played from a browser |
+
 ## MIDI System Exclusive
 
-Turned on in General settings, Remote. Read on the MIDI inputs allowed in General settings, answered on the MIDI output chosen there; this protocol's messages are kept from the organ. A message is at most 64 bytes, F0 and F7 included.
+Turned on in **Settings > Remote control** with **Answer the same requests over MIDI (System Exclusive)**. Requests are read on the MIDI inputs and answered on the console's MIDI output; this protocol's messages are kept from the organ. A message is at most 64 bytes, F0 and F7 included.
 
 ### Message layout
 
@@ -267,7 +278,7 @@ F0 7D 4D 50 00 00 0A 00 01 0C 00 01 00 00 F7
 
 ## OSC
 
-UDP on the port chosen in General settings (9000 by default). A client first says where replies and events go, with `/mp/replyto`; until then the program listens and answers nothing. `{type}` is the plural name, as in the HTTP paths.
+Turned on in **Settings > Remote control** with **Answer the same requests over OSC**. UDP on the port chosen there (9000 by default). A client first says where replies and events go, with `/mp/replyto`; until then the program listens and answers nothing. `{type}` is the plural name, as in the HTTP paths.
 
 | Operation | Address and arguments | Reply |
 |---|---|---|
@@ -296,5 +307,4 @@ A later binding for MIDI 2.0 tools: each HTTP resource becomes a property resour
 
 - A registered SysEx manufacturer ID, applied for before version 1.0.
 - Whether notes may be played through these transports, for automation and tests. MIDI is the transport for playing.
-- Whether a web console served by the program is part of the first version.
 - 14-bit values for continuous controls, for consoles with fine shoe sensors.

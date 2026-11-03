@@ -4,7 +4,7 @@ This page lists every file a Masterpiece release offers, the systems each file r
 
 ## Release files
 
-Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.8.1`. Every file name starts with `masterpiece-<version>-`.
+Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.9.0`. Every file name starts with `masterpiece-<version>-`.
 
 | File | System | What it holds |
 |---|---|---|
@@ -67,7 +67,7 @@ Notes:
 - The Windows program links the Visual C++ runtime statically. No redistributable package needs installing.
 - The `.deb` packages were tested in CI by installing them in Debian 12 and Ubuntu 24.04 containers, for all three architectures.
 - Android builds exist for 64-bit processors only. The build file gives the reason: a 32-bit device cannot hold a sample set worth playing.
-- Memory is set by the sample sets. The default limit for the samples of one organ is 80% of the computer's memory, with a floor of 512 MB. See [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
+- Memory is set by the sample sets. The default limit for the samples of one organ is 80% of the computer's memory, with a floor of 512 MB; it is set on **Settings > Performance...**. See [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
 
 ### Processor features and the vector engine
 
@@ -83,7 +83,7 @@ The audio engine renders several samples at a time with the processor's vector u
 
 The release builds target the baseline x86-64 instruction set and choose AVX2 at run time. A processor that lacks AVX2 runs the same program on the SSE2 path.
 
-The box **Faster audio engine** on **Settings > Organ settings... > Loading** turns the vector engine on and off. It is on by default and takes effect at once. When on, the box reads **Faster audio engine: using AVX2** (or SSE2, or NEON); on a processor that has none of them it reads **Faster audio engine: not available on this processor**. Setting the environment variable `MASTERPIECE_SIMD=0` before starting the program forces the per-frame engine.
+The box **Faster audio engine** on **Settings > Performance...**, shown in the Advanced display mode, turns the vector engine on and off. It is on by default and takes effect at once. When on, the box reads **Faster audio engine: using AVX2** (or SSE2, or NEON); on a processor that has none of them it reads **Faster audio engine: not available on this processor**. Setting the environment variable `MASTERPIECE_SIMD=0` before starting the program forces the per-frame engine.
 
 ## Windows
 
@@ -247,7 +247,7 @@ Each archive unpacks to a folder `Masterpiece-plugins`. Copy the bundles into a 
 
 ## File associations
 
-Windows, macOS and Linux register the same five file types: `.Organ_Hauptwerk_xml`, `.CustomOrgan_Hauptwerk_xml`, `.organ`, `.orgue` and `.rar`. Double-clicking or **Open with** passes the file to the program, which opens it as **File > Open...** does. See [Opening an organ](opening.md).
+Windows, macOS and Linux register the same five file types: `.Organ_Hauptwerk_xml`, `.CustomOrgan_Hauptwerk_xml`, `.organ`, `.orgue` and `.rar`. Double-clicking or **Open with** passes the file to the program, which opens it as **File > Open organ...** does. See [Opening an organ](opening.md).
 
 | System | How it is registered |
 |---|---|
@@ -287,19 +287,22 @@ At the start every MIDI input is opened, except those switched off earlier. A co
 
 ### The first-run wizard
 
-On a first start the window opens with a dialog titled **Welcome to Masterpiece**. It has three steps, shown as **Step 1 of 3** and so on. **Back** and **Next** move between steps, **Next** becomes **Finish** on the last one, and **Skip setup** ends the wizard at any step. **Finish** and **Skip setup** both write `settings.mpglobal` with the current defaults, which ends the first-run state.
+On a first start the window opens with a dialog titled **Welcome to Masterpiece**, 560 x 520 pixels. It has four steps, shown as **Step 1 of 4** and so on. **Back** and **Next** move between steps, **Next** becomes **Finish** on the last one, and **Skip setup** ends the wizard at any step. **Finish** and **Skip setup** both write `settings.mpglobal` with the current choices, which ends the first-run state.
 
-![The wizard, step 1: Sound](../images/wizard-sound.png)
+![The wizard, step 1: Display mode](../images/wizard-display-mode.png)
 
 | Step | Title | What it asks | Takes effect |
 |---|---|---|---|
-| 1 | **Sound** | The audio device and the buffer size, in the system's device selector (device type, output device, active output channels, sample rate, audio buffer size). The text suggests 256 or 512 samples for most machines: a smaller buffer answers a key faster and breaks up when it is too small. | At once; stored in `audio.xml` when the program quits |
-| 2 | **Your keyboards** | A box per MIDI input, headed **Tick the keyboards you play from:**. All inputs start on. When the system reports no input, the step reads **No MIDI inputs found. You can still play with the mouse on the on-screen keyboard, and plug a console in later.** The channel of each manual is set on **Settings > General settings... > MIDI**; a drawstop is learned with a right-click. | At once |
-| 3 | **An organ** | The button **Choose an organ...** opens the file dialog. The status line reads **No organ loaded yet** or **Loaded: &lt;name&gt;**. | The organ loads when chosen |
+| 1 | **Display mode** | **Simple**, the main settings with presets, or **Advanced**, every setting. **Simple** is chosen at first. The same choice is on **Settings > General...**. | At once |
+| 2 | **Audio device** | The output device and the buffer size, in the system's device selector (device type, output device, active output channels, sample rate, audio buffer size). The text suggests 256 or 512 samples for most computers. The same choices are on **Settings > Audio...**. | At once; stored in `audio.xml` when the program quits |
+| 3 | **MIDI configuration** | **Default channels**: a box for the **Pedal** and for **Manual 1** to **Manual 5**, each **-** or a channel from 1 to 16, all **-** at first. They give the channel of each keyboard for every organ with no channels of its own. Below them, **MIDI inputs**: a tick box per input, ticked as the input is now. An input unticked here stays closed at later starts. When the system reports no input, the step reads **No MIDI inputs found. You can still play with the mouse on the on-screen keyboard, and plug a console in later.** The same choices are on **Settings > MIDI...**. | At once |
+| 4 | **Organ** | The text reads **Definition file or package. The first load of a large set takes longer.** The button **Choose an organ...** closes the wizard and opens the file dialog, with the console in view while the organ loads. The line under it reads **No organ loaded yet** or **Loaded: &lt;name&gt;**. | The organ loads when chosen |
 
-![The wizard, step 2: Your keyboards](../images/wizard-keyboards.png)
+![The wizard, step 2: Audio device](../images/wizard-audio.png)
 
-![The wizard, step 3: An organ](../images/wizard-organ.png)
+![The wizard, step 3: MIDI configuration](../images/wizard-midi.png)
+
+![The wizard, step 4: Organ](../images/wizard-organ.png)
 
 The wizard is a dialog of the standalone program. The plugins and the `--gui-only` mode skip it. It appears while `settings.mpglobal` is missing, and any write of that file ends the first-run state. **Finish** and **Skip setup** write it.
 
@@ -307,11 +310,13 @@ To see the wizard again, close Masterpiece and remove or rename `settings.mpglob
 
 ### The first organ
 
-The first load of each organ opens **Organ settings** on the **Loading** tab before the samples are read, so the memory profile can be chosen. **Keep changes** starts the load. The organ's console is on screen in seconds, ahead of the samples. See [Opening an organ](opening.md) and [Memory, loading and streaming](memory.md).
+The first load of each organ opens **Organ settings** on the **Loading** tab before the samples are read, so the memory profile can be chosen. The organ's console is on screen in seconds, ahead of the samples, and the tab shows this organ's own stops with what each costs. Closing the window, with **Keep changes** or otherwise, starts the load. See [Opening an organ](opening.md) and [Memory, loading and streaming](memory.md).
 
 ## Updating
 
-The program has no update check. Install a newer release the same way as the first one; settings, favourites and caches stay in the settings folder.
+Once a day, 10 seconds after the start, the standalone program asks the project's release page for the latest version. When a newer one is out, a notice **Masterpiece &lt;version&gt; is out** appears with the buttons **Download**, which opens the latest release page, and **Never check again**. **Help > Check for updates...** asks at once and also answers when the program is up to date. The daily check is the box **Check for updates daily** on the **Diagnostics** tab, on by default; the environment variable `MASTERPIECE_UPDATE_CHECK=0` turns it off for one run. See [The update notice](window.md#the-update-notice).
+
+Install a newer release the same way as the first one; settings, favourites and caches stay in the settings folder.
 
 | System | Procedure |
 |---|---|
@@ -326,7 +331,7 @@ The program has no update check. Install a newer release the same way as the fir
 
 ## Uninstalling
 
-The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place. Delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > Organ settings... > Loading** shows where it is.
+The settings folder holds the saved organ settings, favourites, MIDI maps and the sample cache. The program creates it at run time; the installers and packages place no files in it, and the routes below leave it in place. Delete the folder by hand to remove that data. The sample cache is as large as the decoded samples of an organ and can fill several gigabytes; **Cache folder** on **Settings > General...**, shown in the Advanced display mode, shows where it is, and **Delete the cache** there empties it.
 
 | System | Procedure |
 |---|---|

@@ -16,17 +16,18 @@ The program's own text is translated with one plain-text file per language in
 `de.txt`). Names of organs, stops and pages come from the organ and are never
 translated.
 
-To add a language, copy `resources/translations/strings.txt` (the list of every
-string, in English) to `<code>.txt`, fill in the `language:` line with the
+To add a language, run `python tools/i18n.py --write`, which writes
+`resources/translations/strings.txt` (the list of every string, in English),
+and copy it to `<code>.txt`; fill in the `language:` line with the
 language's name in itself and the `countries:` line, and put the translation on
 the right of each line. `%1`, `%2` stand for numbers and names the program puts
 in; keep them, in whatever order the language wants. A string left out stays
 English. The files are UTF-8 without a byte order mark.
 
-`python tools/i18n.py` reports what each language lacks, and
-`python tools/i18n.py --write` rewrites `strings.txt` after a string is added to
-the code. The test suite fails when a language file is incomplete or the list
-is out of date.
+`python tools/i18n.py` reports what each language lacks, read from the
+`TRANS("...")` strings in the sources. `strings.txt` is a template that Git
+ignores. The test suite fails when a language file lacks a string the code
+has, or holds one the code no longer has.
 
 ## Licence of contributions
 

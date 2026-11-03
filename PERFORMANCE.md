@@ -32,11 +32,12 @@ floating point and held in memory.
 | Technique | What it does |
 |---|---|
 | **Release streaming** | A release tail is several seconds of room sound, played once from its start and never looped. Masterpiece keeps only its first frames in memory and streams the rest from disk into a per-voice ring buffer while it sounds. Attacks and sustain loops stay in memory. |
-| **24-bit storage** | The source files are 24-bit. Samples are held as 24-bit integers instead of being widened to 32-bit float, so the audio in memory is bit-for-bit identical to the file. |
+| **24-bit storage** | The source files are 24-bit. Samples are held as 24-bit integers, three bytes a sample, so the audio in memory is bit-for-bit identical to the file. A 16-bit file is held at 16 bits, as recorded. |
 | **20-bit storage** | Samples are requantised to 20 bits against each file's own peak and packed so two samples take five bytes: two and a half bytes a sample. |
 | **16-bit storage** | Samples are requantised to 16 bits against each file's own peak, so a quiet stop still uses every bit. |
 | **Mono folding** | A stereo sample set is folded to mono as it loads. |
-| **Sample cache** | The decoded, converted samples are written to one file, so the next load of the same organ with the same settings is one sequential read instead of 12,148 decodes. |
+| **Lossless compression** | Each 16- and 24-bit sample is held coded, about a third of its plain size, and decoded as it plays. The output is bit-for-bit identical to the plain samples. |
+| **Sample cache** | The decoded, converted samples are written to one file, so the next load of the same organ with the same settings is one sequential read of that file, where a first load decodes 12,148. |
 | **Load-time rate conversion** | Samples are converted to the audio device's rate as they load, so playback needs no per-voice rate conversion. |
 
 ## Memory
@@ -62,6 +63,34 @@ one before:
 | Stereo to mono | 4,650.7 MB | 2,325.3 MB | 0.500 |
 
 The exact ratios confirm that the accounting measures the sample data itself.
+
+### Lossless compression
+
+Measured on later builds than the table above, with the build's own
+accounting:
+
+| Organ | Plain | Compressed | Ratio |
+|---|---:|---:|---:|
+| Friesach, 16-bit, all 44 stops | 10,424 MB | 3,213 MB | 0.308 |
+
+The output is identical to the bit over a 421-second stress suite. The sample
+cache stores the coded samples and reads them back without decoding them.
+
+### 16-bit recordings
+
+A set recorded at 16 bits is held at 16 bits under the 24-bit format, its scale
+adjusted, so it plays bit for bit the same in two thirds of the memory:
+
+| Organ | Widened to 24 bits | As recorded |
+|---|---:|---:|
+| Wildervank, all in memory | 3,057.3 MB | 2,038.2 MB |
+
+A file that several pipes play is read once and held once. A GrandOrgue rank
+that names one file for every key, as Barton 3-7 does, held a copy per pipe:
+
+| Organ | One copy per pipe | One copy per file |
+|---|---:|---:|
+| Barton 3-7, 24-bit | 2,610 MB | 1,853 MB |
 
 ### Memory while loading and playing
 

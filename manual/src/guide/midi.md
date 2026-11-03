@@ -7,7 +7,9 @@ This page covers connecting a keyboard, a pedalboard or a full console to Master
 Every MIDI input that Masterpiece opens delivers its messages tagged with the input's name. A mapping can match a message on four things: the input (**Any device** or one named device), the channel (any, or 1 to 16), the message type and its number.
 
 - **Notes on a channel that a manual claims** play that manual. A manual claims a channel through its entries in the manual dialog or through the **Keyboards** rows of the MIDI tab. A note on a channel that no manual claims reaches the manual the organ itself assigns to that channel, so a partly mapped console plays every manual.
-- **Notes, controllers, program changes and system exclusive messages that a control claims** operate that control: a stop, coupler, piston, shoe or one of the program's own buttons. A claimed message operates only that control.
+- **Notes, controllers, program changes and system exclusive messages that a control claims** operate that control: a stop, coupler, piston, shoe or one of the program's own buttons. One message can claim several stops, couplers or shoes; see [Message types](#message-types).
+- **A controller that no control claims** does nothing to the organ. A controller moves only what it was learned for. All Notes Off, All Sound Off and the other channel-mode messages (controllers 120 to 127) release the keys of their channel whether or not anything claims them.
+- **A second Note On for a key that is still held** changes nothing: the pipe keeps sounding, and the Note Off that follows releases it.
 
 When several mappings could take the same message, the most specific one wins: device and channel named, then device only, then channel only, then neither.
 
@@ -17,9 +19,16 @@ A Universal Real Time master volume message (`F0 7F <device> 04 01 <lsb> <msb> F
 
 ## MIDI inputs and outputs
 
-The MIDI tab of General settings (**Settings > General settings > MIDI**) holds the input and output choices. The same tab is also in **Settings > Organ settings > MIDI**; both edit the same mapping.
+MIDI is set in two places:
 
-![The MIDI tab of General settings](../images/general-midi.png)
+| Place | Holds |
+|---|---|
+| **Settings > MIDI...**, the **MIDI** tab of the settings window | What belongs to the player's console on every organ: the inputs and the output, the default channels, the feedback and learn options, the archive of everything played, and the learn buttons for the program's own controls. |
+| **Organ > Organ settings...**, tab **MIDI** | What belongs to the organ loaded: the **Keyboards** rows (one MIDI channel per manual), the default console, and **Learn manual buttons...**. |
+
+Both **MIDI** tabs exist in the standalone program; in a plug-in the host owns the MIDI devices. In the **Simple** display mode (**Settings > General...**, **Display mode**) the tab shows the inputs, the output, **Send stop changes on the MIDI output**, the sustain pedal, the default channels and **Bluetooth MIDI...**; **Advanced** shows every row described on this page. The organ's tab shows the **Keyboards** rows in both modes. Both tabs scroll when the window is shorter than their rows.
+
+![The MIDI tab of the settings window](../images/general-midi.png)
 
 ### MIDI inputs
 
@@ -29,7 +38,11 @@ The **MIDI inputs** list has one tick box per input: the inputs the system repor
 |---|---|---|---|---|
 | Input tick box | Opens or closes one input. | Ticked for every input. A console plugged in for the first time plays at once. | Ticked, unticked | At once. The unticked inputs are saved by name in `settings.mpglobal` as `midiinputoff` lines. |
 
-Masterpiece opens its inputs at start. Connect and switch on every console before starting Masterpiece; a console connected later does not play until the next start.
+Masterpiece opens its inputs at start, and looks for new ones every 3 seconds while it runs. A console plugged in or switched on later is opened when it appears, unless it was unticked before, and plays at once; the log records `midi: <name> appeared and has been opened`. On Android a USB keyboard appears once the player has allowed it.
+
+**Panic** in the top bar also closes and opens again every ticked input, as unticking and ticking it would, so a keyboard that stopped sending comes back without a restart. The log names each input opened again.
+
+**Bluetooth MIDI...** on **Settings > MIDI...**, shown on macOS, iPhone and iPad and Android, opens the system's pairing window. On Windows and Linux a Bluetooth MIDI device is paired in the system's own settings. While the pairing window is open, a further press does nothing; once it closes, the next press opens it again.
 
 #### When another program holds an input
 
@@ -69,22 +82,29 @@ Masterpiece opens a JACK client named `Masterpiece MIDI` with one input port, `m
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **MIDI output** | The port Masterpiece sends to: lamp and fader messages, key echo to a sound module, and text displays. | **None** | **None** and every output the system reports. | At once; kept as `midioutput <name>` in `settings.mpglobal`. |
+| **MIDI output** | The port Masterpiece sends to: lamp and fader messages, key echo to a sound module, text displays, the ready lamp, the messages on organ load and unload, and score page turns. | **None** | **None** and every output the system reports. | At once; kept as `midioutput <name>` in `settings.mpglobal`. |
 
 The processor holds the output port, so lamps, motorised faders, key echo and console displays work with any window open or none. The choice is kept in the general settings and the port opens again at the next start. A port that is not plugged in keeps its name and the box shows that name; the log records `midi: the output <name> is not connected; choose it again in Settings, MIDI once it is`.
 
-### Feedback and learn options
+### Feedback, playing and learn options
 
 | Name | What it does | Default | Options | Takes effect |
 |---|---|---|---|---|
-| **Send stop changes on the MIDI output** | For a stop, coupler or piston that has no row on its **Send** tab, sends the stop's state back on the message that operates it, so a console that echoes the message lights the lamp. A note binding sends note on at velocity 127 and note off; a controller binding sends 127 and 0. The channel is the binding's, or 1 when the binding listens on any channel. | Off | On, off | At once; saved in `settings.mpglobal` (`midifeedback 1`, written only while on) and restored at the next start. A console that echoes what it receives can latch itself into a loop, which is why the option is off until it is switched on. |
-| **General Cancel also puts the keyboards back on their own manuals** | After manual buttons have moved a keyboard to another manual (see [Pistons tab](#pistons-tab)), General Cancel restores the keyboards to the assignment the player set by hand. | Off | On, off | At once; saved in `settings.mpglobal` (`cancelresetskeyboards`). |
-| **Stop changes leave the notes already held alone** | A stop or coupler moved while keys are held leaves those notes as they are; only keys pressed afterwards play the new registration. Off, held notes gain and lose pipes at once. | Off | On, off | At once; saved in `settings.mpglobal` (`stopsleaveheldnotes`). |
-| **Noise filter: when learning, a key counts once held a quarter second** | While learning, a note counts only after it has been held 250 ms; a shorter note is dropped. Controllers, program changes and system exclusive messages have no length and count at once. | Off | On, off | At once; saved in `settings.mpglobal` (`learnnoisefilter`). Switch it on for a console whose contacts send stray short notes. Leave it off for pistons that send only a brief note. |
+| **Send stop changes on the MIDI output** | For a stop, coupler or piston that has no row on its **Send** tab, sends the stop's state back on the message that operates it, however the stop moved: from the console, a click on screen, a piston, the crescendo or the control API. A console that echoes the message lights the lamp. A note binding sends note on at velocity 127 and note off; a controller binding sends 127 and 0. The channel is the binding's, or 1 when the binding listens on any channel. | Off | On, off | At once; saved in `settings.mpglobal` (`midifeedback 1`, written only while on) and restored at the next start. A console that echoes what it receives can latch itself into a loop, which is why the option is off until it is switched on. |
+| **General Cancel also puts the keyboards back on their own manuals** | After manual buttons have moved a keyboard to another manual (see [Pistons tab](#pistons-tab)), General Cancel restores the keyboards to the assignment the player set by hand. | Off | On, off | At once; saved in `settings.mpglobal` (`cancelresetskeyboards 1`). |
+| **Stop changes leave the notes already held alone** | A stop or coupler moved while keys are held leaves those notes as they are; only keys pressed afterwards play the new registration. Off, held notes gain and lose pipes at once, as on a console with electric action. | Off | On, off | At once; saved in `settings.mpglobal` (`stopsleaveheldnotes 1`). |
+| **Sustain pedal: controller 64 holds the notes let go** | While a sustain pedal (controller 64, on any channel) is down, the keys let go keep sounding until it is lifted: for directing a choir from the bench. A controller 64 learned for something else keeps doing that. | Off | On, off | At once; saved in `settings.mpglobal` (`sustainpedal 1`). |
+| **Noise filter: when learning, a key counts once held a quarter second** | While learning, a note counts only after it has been held 250 ms; a shorter note is dropped. Controllers, program changes and system exclusive messages have no length and count at once. | Off | On, off | At once; saved in `settings.mpglobal` (`learnnoisefilter 1`). Switch it on for a console whose contacts send stray short notes. Leave it off for pistons that send only a brief note. |
+
+**Archive everything played** and its three boxes are on the same tab; see [Everything played](playing.md#everything-played).
+
+### Default channels
+
+**Default channels** sets the channel each keyboard comes in on for an organ that has no channels saved for it, and while no organ is loaded. It has six boxes: **Pedal** and **Manual 1** to **Manual 5**, each **-** (none) or a channel 1 to 16. An organ's own saved choice keeps it. The boxes and **Use as default for all organs** on the organ's MIDI tab (see [Default console](#default-console)) edit the same default, kept in `settings.mpglobal` as `consolechannel <role> <channel>` lines, role 0 for the pedal and 1 to 5 for the manuals.
 
 ## One MIDI channel per manual
 
-The **Keyboards** heading of the MIDI tab lists every playable manual of the loaded organ, one row each:
+The **Keyboards** heading of **Organ > Organ settings...**, tab **MIDI**, lists every playable manual of the loaded organ, one row each:
 
 | Control | What it does | Default | Options |
 |---|---|---|---|
@@ -95,8 +115,10 @@ The **Keyboards** heading of the MIDI tab lists every playable manual of the loa
 
 A choice takes effect at once and is saved with the organ. Two behaviours are worth knowing:
 
-- Choosing a channel replaces all the manual's entries in its dialog with one entry that covers the whole compass on that channel. Choosing a device replaces them in the same way, and removes the channel from any other manual mapped to the same device.
-- Manuals may share a channel. A line under the rows lists them (`Shared -- Channel 2: Great, Swell`) after a change. One keyboard that plays two divisions is a coupler a player can build in this way.
+- Choosing a channel replaces all the manual's entries in its dialog with one entry that covers the whole compass on that channel. A manual moved to a channel of its own leaves its default channel, so that channel no longer plays it.
+- Choosing a device sets the console on the channel the row shows. The other manuals on that channel keep it.
+- Manuals may share a channel. A line under the rows lists them (`Shared -- Channel 2: Great, Swell`). One keyboard that plays two divisions is a coupler a player can build in this way.
+- A manual left on its default channel after another manual was put on that channel is named in the same line: `Channel 2 plays Swell; choose Channel 2 for Great to play both.`
 
 Channels decide which division sounds, and the couplers work from that. A wrong channel makes a manual sound like another one.
 
@@ -111,7 +133,7 @@ A line beside the buttons reads `Default for organs with no channels saved: Peda
 
 ## The dialog for one manual
 
-Right-click a drawn manual on the console, or press **Range, transpose...** in the MIDI tab. The window is titled `<manual> - MIDI` and has three tabs: **Keys**, **Pistons** and **Send**.
+Right-click a drawn manual on the console, or press **Range, transpose...** in the manual's row of **Organ > Organ settings...**, tab **MIDI**. The window is titled `<manual> - MIDI` and has three tabs: **Keys**, **Pistons** and **Send**.
 
 ### Keys tab
 
@@ -155,7 +177,9 @@ To add one, press **Add a piston...**, play any key on the keyboard that should 
 | **Remove all pistons** | Removes every piston of this manual. | | |
 | **It is a drawstop or tab: going on and going off both count** | For a spare drawstop or tab that sends one message going on and another going off. Each of the two counts as a press. | Off: only the press counts and the release is ignored | On, off |
 
-The tick box is read when **Add a piston...** starts the learn, so set it first. **General Cancel also puts the keyboards back on their own manuals** (MIDI tab) restores the keyboards on General Cancel.
+The tick box is read when **Add a piston...** starts the learn, so set it first. **General Cancel also puts the keyboards back on their own manuals** (**Settings > MIDI...**) restores the keyboards on General Cancel.
+
+A piston for the manual a keyboard already plays leaves it alone, and one press moves the keyboard on every organ, including those whose console draws its manuals as keyboards of their own.
 
 ### Send tab
 
@@ -176,7 +200,7 @@ Note-on velocity is the played velocity, at least 1; the note off goes out as a 
 
 ### Right-click menus
 
-Right-click a drawn stop, coupler, tremulant or piston on the console. The menu's section header names the object; the next lines list its current mappings, for example `Note 36 ch 3  (toggles)`.
+Right-click a drawn stop, coupler, tremulant or piston on the console. The same menu opens on a stop, coupler, tremulant, piston, shoe or slider of a panel, and on a stop in the stop list; there it works the drawstop a player pulls for that stop, also on sets that pair two knobs by name. On a touch screen a long press opens it. The menu's section header names the object; the next lines list its current mappings, for example `Note 36 ch 3  (toggles)`.
 
 ![The right-click menu of a stop](../images/console-menu-stop.jpg)
 
@@ -189,31 +213,32 @@ Right-click a drawn stop, coupler, tremulant or piston on the console. The menu'
 
 Right-click a swell shoe, wheel or slider to see **MIDI window...**, **Learn: move a pedal, knob or fader**, **Closed position: where the pedal is now**, **Open position: where the pedal is now**, **Use the pedal's whole travel** and **Clear mapping**. The two position items set the ends of the pedal's travel from the pedal's last position, so move the pedal to the position first. A box reading **Move the pedal first** appears when Masterpiece has no position yet or both ends would be equal.
 
-Right-click a piston in the Combinations window (generals, divisionals, cancels, the setter and the sequencer buttons) to map it: **Learn**, **MIDI window...** and **Clear mapping**. The setter offers **Learn: held while pressed** and **Learn: toggles** in place of **Learn**. Right-clicking again while a learn is armed cancels it.
+Right-click a piston in the Combinations window (generals, divisionals, cancels, **Pedal with**, the setter and every sequencer button, the digits **0** to **9** among them) to map it: **Learn**, **MIDI window...** and **Clear mapping**. The setter and **Pedal with** offer **Learn: held while pressed** and **Learn: toggles** in place of **Learn**. Right-clicking again while a learn is armed cancels it.
 
-The program's own buttons have no object on the console to right-click. Use the learn buttons of the MIDI tab:
+The program's own buttons have no object on the console to right-click. Use the learn buttons of **Settings > MIDI...**. A click on one opens the same kind of menu: its mappings (or **Not mapped**), **Learn**, **Clear** and **MIDI window...**. A button is orange while it learns and green once it is mapped, and its tooltip names each message it is mapped to.
 
-| Button | What it works |
-|---|---|
-| **Learn sequencer -**, **Learn sequencer +** | Previous and next frame of the registration sequencer |
-| **Learn manual buttons...** | Opens a menu of the 16 channels, each with the manuals; choosing one starts a learn for a piston that brings that manual to the keyboard on that channel (see [Pistons tab](#pistons-tab)) |
-| **Learn page -**, **Learn page +** | The previous and next console page |
-| **Learn console size** | The next console layout |
-| **Learn panel** | The stop-list panel on and off |
-| **Learn keyboard** | The on-screen keyboard on and off |
-| **Learn combinations** | The Combinations window on and off |
-| **Learn transpose -**, **Learn transpose +** | The transposer, one semitone down or up |
-| **Learn temperament -**, **Learn temperament +** | The previous and next temperament |
-| **Temperament** with **Learn** | The temperament chosen in the box beside it, directly |
-| **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
-| **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI output as the message chosen beside them (see below) |
-| **Learn record**, **Learn play** | The recorder's Record and Play, with a lamp each (see [Recorder](playing.md#recorder)) |
+| Heading | Button | What it works |
+|---|---|---|
+| **Sequencer** | **Learn sequencer -**, **Learn sequencer +** | Previous and next frame of the registration sequencer |
+| **Console** | **Learn page -**, **Learn page +** | The previous and next console page |
+| | **Learn console size** | The next console layout |
+| | **Learn panel** | The stop-list panel on and off |
+| | **Learn keyboard** | The on-screen keyboard on and off |
+| | **Learn combinations** | The Combinations window on and off |
+| | **Learn transpose -**, **Learn transpose +** | The transposer, one semitone down or up |
+| **Temperament** | A box of temperaments and **Learn this temperament** | The temperament chosen in the box, directly: **The organ's own** or one of the eight of the tuning panel. Each temperament of the box can have a button of its own. |
+| | **Learn temperament -**, **Learn temperament +** | The previous and next temperament in the list |
+| **Recorder** | **Learn record or stop**, **Learn play or stop** | The recorder's Record and Play: a press starts, the next press stops (see [Record and Play on the console](playing.md#record-and-play-on-the-console)) |
+| **Power** | **Learn quit**, **Learn power off** | Quits Masterpiece, or shuts the computer down; see [A console with no screen](#a-console-with-no-screen) |
+| **Score app** | **Learn score page -**, **Learn score page +** | A page back or forward in a score app, sent on the MIDI output as the message chosen under **Sends** (see below) |
 
-Each of these learns a button that fires on the press and ignores the release. A console may have several buttons for one action (two + and two - thumb pistons): each further learn adds a button. The sequencer's first, last, ten-back and ten-forward moves, the generals and the setter are mapped from the Combinations window.
+**Learn manual buttons...**, under **Manual buttons** on the organ's MIDI tab (**Organ > Organ settings...**, tab **MIDI**), opens a menu of the 16 channels, each with the manuals; choosing one starts a learn for a piston that brings that manual to the keyboard on that channel (see [Pistons tab](#pistons-tab)).
 
-**Score app.** Score apps such as forScore and MobileSheets turn pages on a MIDI message they have learned. The row beside the score-page buttons sets the message Masterpiece sends: a note (struck and let go), a controller (127, then 0) or a program change, on one channel, with one number for the next page and one for the page before. The default is notes 127 and 126 on channel 16, where no keyboard plays. Connect the MIDI output to the device running the app, then let the app learn each page turn. The control API sends the same turns with the commands `scorePageForward` and `scorePageBack`. The message is kept in the global settings as `scorepage <kind> <channel> <forward> <back>`.
+Each of these learns a button that fires on the press and ignores the release. A console may have several buttons for one action (two + and two - thumb pistons): each further learn adds a button. The sequencer's first, last, ten-back and ten-forward moves, its digits, the generals and the setter are mapped from the Combinations window.
 
-The line at the bottom of the MIDI tab reads `N binding(s)`, followed by `LEARNING: move a control now` while a learn is armed.
+**Score app.** Score apps on a tablet or another computer turn pages on a MIDI message they have learned. The **Sends** row under the score-page buttons sets the message Masterpiece sends: **Note** (struck and let go), **Controller** (127, then 0) or **Program change**, on one channel, with one number for the next page and one for the page before. The default is notes 127 and 126 on channel 16, where no keyboard plays. Connect the MIDI output to the device running the app, then let the app learn each page turn. The control API sends the same turns with the commands `scorePageForward` and `scorePageBack`. The message is kept in the global settings as `scorepage <kind> <channel> <forward> <back>`.
+
+The line at the bottom of the tab reads `MIDI mappings: N`, followed by `LEARNING: move a control now` while a learn is armed. **Save mappings** writes the mapping files, and **Clear all mappings** removes every mapping; both are shown in the **Advanced** display mode.
 
 ### Message types
 
@@ -226,7 +251,13 @@ The line at the bottom of the MIDI tab reads `N binding(s)`, followed by `LEARNI
 
 The press threshold is the middle of the binding's value window (above 63 for the default window of 0 to 127). A console that sends 64 for a press registers. Each distinct system exclusive message is one button; a console that sends its pistons this way maps each piston by learning it.
 
-One message operates one object. Learning a message that another object already uses moves it to the new object. The exceptions are shoes, which share a controller (one pedal can move several swell boxes, and learning the same controller for a second shoe keeps the first), and manual buttons, which share a message to step a keyboard through several manuals. A shoe learns only from controllers; a key pressed while a shoe's learn is armed plays as usual.
+One message can work several objects of the same kind:
+
+- **Stops, couplers and tremulants.** Learning a message for a second stop keeps the first: one tab draws both. Each keeps its own behaviour (**Each press toggles**, **Draws it**, and so on), and **Clear mapping** on one leaves the others mapped.
+- **Shoes, faders and levels.** One pedal can move several swell boxes; learning the same controller for a second shoe keeps the first.
+- **Manual buttons.** One message steps a keyboard through several manuals.
+
+Learning a message that an object of another kind uses moves it to the new object. A shoe learns only from controllers; a key pressed while a shoe's learn is armed plays as usual.
 
 ### What a stop does with each message
 
@@ -276,7 +307,7 @@ One row per message that operates the object. **New event** adds a row and start
 | **Listen** | Takes the next press from a console and fills the row with it. The button reads **Listening...** until a message arrives; press it again to cancel. The press is taken, not acted on, and its release is swallowed. | | |
 | **X** | Removes the row. | | |
 
-Add a row for every message that operates the object. A message already used by something else moves here.
+Add a row for every message that operates the object. A message that another stop, coupler or shoe already uses works both; one used by an object of another kind moves here.
 
 ### Send tab
 
@@ -284,7 +315,7 @@ One row per message that Masterpiece sends to the MIDI output when the object ch
 
 ![The Send tab](../images/midi-send.png)
 
-For a stop, coupler or piston, the message goes out whenever the object comes on or goes off, however it moved: the console, a piston, the crescendo or a click. For a lamp in a drawstop or an LED by a piston. For a shoe, the message goes out whenever the shoe moves. When the list changes, Masterpiece sends the present state of every lamp, which a console needs when it is set up.
+For a stop, coupler or piston, the message goes out whenever the object comes on or goes off, however it moved: the console, a piston, the crescendo, a click or the control API. For a lamp in a drawstop or an LED by a piston. For a shoe, the message goes out whenever the shoe moves. When the list changes, and each time an organ has loaded, Masterpiece sends the present state of every lamp, so the console's lamps match the drawn stops.
 
 **New event** adds a row. A new row starts from the object's first receive row (type, number and channel), because a lamp usually answers on the message that operates the stop; a shoe row starts as a controller.
 
@@ -296,8 +327,10 @@ For a stop, coupler or piston, the message goes out whenever the object comes on
 | **When on** (stop) | The velocity (note) or value (controller) sent when the stop comes on. | 127 | 0 to 127 |
 | **When off** (stop) | The velocity or value sent when it goes off. Note on at velocity 0 is the usual lamp off. | 0 | **none**, 0 to 127 |
 | **Closed**, **Open** (shoe) | The values sent at the two ends of the shoe's travel. A shoe is sent across them, so a fader that wants 0 to 100 gets 0 to 100. | 0 and 127 | 0 to 127 |
+| Program when off (stop, **Program change**) | The program sent when the stop goes off. The row's **Number** is the program sent when it comes on. | **none** | **none**, 1 to 128 |
+| **When on: hex messages**, **When off: none** (stop, **System exclusive**) | Whole MIDI messages in hexadecimal, sent when the stop comes on and when it goes off: a system exclusive message `F0` to `F7`, or any other, several separated by commas (`F0 7D 01 F7, B0 14 7F`). These two boxes replace **Channel**, **Number** and the values. | Empty: nothing is sent | Any whole MIDI messages |
 
-With **none** in **When off**, nothing goes out when the stop goes off. A program change has no off: it sends its number when the stop comes on and nothing when it goes off. For a shoe, **Program change** sends the scaled value as the program number. **System exclusive** is listed but is received only; a row of that type sends nothing.
+With **none** in **When off**, nothing goes out when the stop goes off. A program change sends its number when the stop comes on, and the program chosen for off, if any, when it goes off. For a shoe, **Program change** sends the scaled value as the program number. A hex message that does not read is outlined in red, and the one before it is kept. Like every send, the hex messages go out again after each organ load, so a controller that needs a mode message (a pad grid's programmer layout) receives it every time. The hex rows are saved with the organ's MIDI map.
 
 ### Shortcut tab
 
@@ -318,13 +351,13 @@ A stored key operates organ switches (stops, couplers, tremulants and the organ'
 
 ## Sending to a console
 
-Three things send to the MIDI output: the rows of the **Send** tabs (lamps, faders, key echo), the echo option of the MIDI tab, and the text displays. All of them need a **MIDI output**.
+These send to the MIDI output: the rows of the **Send** tabs (lamps, faders, key echo), the echo option of the MIDI tab, the text displays, the ready lamp, the messages on organ load and unload, and the score page turns. All of them need a **MIDI output**.
 
 ### Console displays
 
-Many consoles have text displays on the jamb that a system exclusive message drives. The **Display** tab of General settings (**Settings > General settings > Display**, heading **Console display**) describes one display and what it shows.
+Many consoles have text displays on the jamb that a system exclusive message drives. The **Console display** tab of the settings window (**Settings > Console display...**) describes one display and what it shows.
 
-![The Display tab](../images/general-display.png)
+![The Console display tab](../images/general-display.png)
 
 Each message is `F0 <prefix> <display number> <line number> <text> F7`: the prefix bytes, one byte for the display, one byte for the line (counting from 0), and the line's text as ASCII padded with spaces to the line width. The prefix, display number and line width belong to the console hardware, so the tab asks for them.
 
@@ -344,11 +377,21 @@ Changes in this tab take effect at once. The setup is kept in `settings.mpglobal
 
 ### A console with no screen
 
-The MIDI tab has three things for a console that is turned on and played without a monitor.
+**Settings > MIDI...** has these rows for a console that is turned on and played without a monitor.
 
-- **Ready lamp**: a note or a controller, on a channel, sent to the **MIDI output**. The lamp is lit (note on at velocity 127, or the controller at 127) once an organ is loaded and playable, blinks once a second while an organ loads, blinks four times a second while a quit or power-off button is held, and is dark with no organ (note off, or the controller at 0). Kept in `settings.mpglobal` as `readylamp <note|cc> <channel> <number>`.
-- **Learn quit** and **Learn power off**: buttons that save and quit Masterpiece, or save, quit and shut the computer down. So that a noisy input learned for one cannot turn a console off at every start, a button is obeyed only once Masterpiece has run two minutes, and only when it is held three seconds; letting go sooner does nothing. A button whose message has no release (a program change or a system exclusive message) is pressed twice within two seconds. A press before the two minutes is written to the log with the time left. The power-off button also needs **Allow quitting Masterpiece and shutting the computer down** on the Remote tab, as the control API's power-off does; without it the hold is written to the log and nothing happens. Quitting needs no permission.
-- **Temperament** with **Learn**: a button for one temperament of the list.
+- **Ready lamp**: **Off**, **Note** or **Controller**, a channel and a number, sent to the **MIDI output**. The lamp is lit (note on at velocity 127, or the controller at 127) once an organ is loaded and playable, blinks once a second while an organ loads, blinks four times a second while a quit or power-off button is held, and is dark with no organ (note off, or the controller at 0). Kept in `settings.mpglobal` as `readylamp <note|cc> <channel> <number>`.
+- **Lit: hex messages** and **Dark: hex messages**, beside the ready lamp: further MIDI messages in hexadecimal, sent as the lamp lights and as it goes dark, several separated by commas (`90 3C 7F, B0 14 7F`). Kept as `readylamplit` and `readylampdark` lines.
+- **Learn quit** and **Learn power off**, under **Power**: buttons that save and quit Masterpiece, or save, quit and shut the computer down. So that a noisy input learned for one cannot turn a console off at every start, a button is obeyed only once Masterpiece has run two minutes, and only when it is held three seconds; letting go sooner does nothing. A button whose message has no release (a program change or a system exclusive message) is pressed twice within two seconds. A press before the two minutes is written to the log with the time left. The power-off button also needs **Allow quitting Masterpiece and shutting the computer down** on the **Remote control** tab, as the control API's power-off does; without it the hold is written to the log and nothing happens. Quitting needs no permission.
+- **Temperament** with **Learn this temperament**: a button for one temperament of the list.
+
+### Messages on organ load and unload
+
+| Name | What it sends | Kept as |
+|---|---|---|
+| **On organ load** | MIDI messages in hexadecimal, sent each time an organ loads, in the new organ's first audio block, before any stop moves or lamp lights: for a controller that needs a mode set first, such as a pad grid's programmer layout. | `loadmessage` in `settings.mpglobal` |
+| **On organ unload** | MIDI messages in hexadecimal, sent when an organ unloads: before the next organ loads, and when the program quits. For a relay that turns the speakers off. | `unloadmessage` in `settings.mpglobal` |
+
+Several messages are separated by commas (`F0 ... F7, B0 07 7F`); empty sends nothing. A message takes effect when Enter is pressed or the box loses focus. A text that does not read as whole MIDI messages is outlined in red and the messages before it are kept.
 
 ## The MIDI map files
 
@@ -365,11 +408,11 @@ Two files in the `midi` folder of the data folder hold it:
 | File | Holds |
 |---|---|
 | `midi/<organ>.mpmidi` | What belongs to this organ: the mappings of its stops, couplers, tremulants and shoes, the entries of its manuals, the manual buttons, the divisionals, and the sends and shortcuts of those objects. |
-| `midi/console.mpmidi` | What belongs to the player's console on every organ: the sequencer, the generals and general cancel, the setter, the page, layout, panel, keyboard, combinations, transpose and temperament buttons, and their sends and shortcuts. |
+| `midi/console.mpmidi` | What belongs to the player's console on every organ: the sequencer and its digits, the generals and general cancel, the setter, **Pedal with**, the page, layout, panel, keyboard, combinations, transpose and temperament buttons, the voicing EQ preset buttons, the recorder's Record and Play, quit and power off, the score page turns and the output-pair level faders, and their sends and shortcuts. |
 
 `<organ>` is the organ's name followed by its unique organ id, for example `Nancy-12345`. An organ that declares no id uses its name and a hash of its path. Renaming or moving the sample set keeps the file.
 
-Every change in a MIDI dialog is saved at once, and a learn is saved within a moment of the message arriving. **Save mapping** in the MIDI tab writes both files. **Clear mapping** removes every binding, send and shortcut from memory and keeps the manual entries; the files change at the next save.
+Every change in a MIDI dialog is saved at once, and a learn is saved within a moment of the message arriving. **Save mappings** on the MIDI tab writes both files. **Clear all mappings** removes every binding, send and shortcut from memory and keeps the manual entries; the files change at the next save. Both buttons are shown in the **Advanced** display mode.
 
 When an organ loads, its `.mpmidi` file is read, then `console.mpmidi`. An organ with no file starts from the default console and the organ's own channels. A mapping carries over to another organ or computer by copying the file to the `midi` folder under the other organ's file name; devices travel by name.
 
@@ -388,4 +431,4 @@ The files are plain text, one record per line, with `#` for comments. A binding 
 | `trigger` | `toggle`, `momentary`, `on` (draws it), `off` (cancels it) |
 | `device` | `any`, or the input's name with each space written as `_` |
 
-Other lines start with `manual` (a manual entry: manual id, channel, low key, high key, transpose, low velocity, high velocity, ignore velocity, short octave, debounce, device), `send` (target, id, kind, channel, number, low, high) or `shortcut` (target, id, step, key). Edit through the dialogs; a line that cannot be read is skipped and the rest loads.
+Other lines start with `manual` (a manual entry: manual id, channel, low key, high key, transpose, low velocity, high velocity, ignore velocity, short octave, debounce, device), `send` (target, id, kind, channel, number, low, high, then the hex messages of a system exclusive row or the off program of a program change row) or `shortcut` (target, id, step, key). Edit through the dialogs; a line that cannot be read is skipped and the rest loads.

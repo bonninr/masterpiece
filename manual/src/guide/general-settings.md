@@ -1,31 +1,53 @@
-# General settings
+# Settings
 
-**Settings > General settings...** opens one window with ten tabs: the audio device, the room, the metronome, MIDI, the mixer, voicing, combination sets, the console display, the language and the log. This page lists every control on every tab in the order the window shows them: what it does, its default, its range or options, when it takes effect and where it is stored. The topics behind the controls have pages of their own ([Audio, room and mixer](audio.md), [MIDI and consoles](midi.md), [Memory, loading and streaming](memory.md), [Playing](playing.md)); this page links to them for depth. The settings that decide how a loaded organ is read from disk are in [Organ settings](organ-settings.md).
+The **Settings** window holds the program and the player's console: the display mode and the folders, the audio device and the output dynamics, MIDI, the performance of the audio engine, the reverb, the metronome, combination sets, the console display, the language, remote control and diagnostics. This page lists every control on every tab in the order the window shows them: what it does, its default, its range or options, when it takes effect and where it is stored. The topics behind the controls have pages of their own ([Audio, room and mixer](audio.md), [MIDI and consoles](midi.md), [Memory, loading and streaming](memory.md), [Playing](playing.md), [Remote control](remote.md)); this page links to them for depth. The settings that belong to one organ (how it is read from disk, which stops load, its outputs, voicing and equaliser) are in [Organ settings](organ-settings.md).
 
 ## Opening the window
 
-The **Settings** button in the top bar opens a menu with up to four entries.
+The **Settings** button in the top bar opens a menu with one entry for each tab of the window. Each entry opens the window on that tab.
 
 ![The Settings menu](../images/menu-settings.jpg)
 
-| Entry | What it does |
+| Application | Entries |
 |---|---|
-| **Organ settings...** | Opens [Organ settings](organ-settings.md). Available while an organ is loaded. |
-| **Licence confirmed for this organ** | Appears only for an organ whose samples carry a publisher licence. Ticked once the licence has been confirmed for this organ; choosing it while ticked withdraws the confirmation, saves the organ's settings and loads the organ again. |
-| **General settings...** | Opens the window described on this page. |
+| Standalone | **General...**, **Audio...**, **MIDI...**, **Performance...**, **Reverb...**, **Metronome...**, **Combination sets...**, **Console display...**, **Language...**, **Remote control...** |
+| VST3, LV2 and AU plugins | **General...**, **Performance...**, **Reverb...**, **Metronome...**, **Combination sets...**, **Console display...**, **Language...** |
 
-The window is titled **General settings**, opens at 660 x 560 pixels and can be resized. The Esc key closes it. It has no OK or Cancel button: each control acts when it is changed, and the **Takes effect** column below says whether that is at once or later.
+The **Diagnostics** tab opens from **Help > Diagnostics...**. **Organ settings...** is in the **Organ** menu, with **Temperament and tuning...**, **Combinations**, **Extra couplers**, **Reload organ**, **Copy settings from another organ...**, **Licence accepted** (only for an organ whose samples carry a publisher licence) and **All notes off**.
 
-General settings hold the program and the player's console. Four tabs hold choices that belong to the organ that is loaded and are saved with it: **Room**, **Mixer** (the rank routing), **Voicing** and **Combination sets**. The **MIDI** tab keeps the keyboard channels and learned controls per organ and the rest for every organ. [Where settings are kept](#where-settings-are-kept) lists the files.
+The window is titled **Settings**, opens at 960 x 560 pixels and can be resized. Its tabs, in order: **General**, **Audio**, **MIDI**, **Performance**, **Reverb**, **Metronome**, **Combination sets**, **Console display**, **Language**, **Remote control**, **Diagnostics**. Opened from the top bar's button with no tab named, it shows the tab it was last closed on. In a narrow window each tab name keeps its words whole and a two-word name takes two lines. The Esc key closes the window. It has no OK or Cancel button: each control acts when it is changed, and the **Takes effect** column below says whether that is at once or later.
+
+Two tabs hold choices that belong to the organ that is loaded and are saved with it: **Reverb** and **Combination sets**. The **MIDI** tab keeps the learned controls of the organ with that organ and the console's own for every organ. [Where settings are kept](#where-settings-are-kept) lists the files.
 
 > [!NOTE]
-> In the VST3, LV2 and AU plugins, **General settings...** opens this window without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. **Licence confirmed for this organ** works in both.
+> In the VST3, LV2 and AU plugins the window has no **Audio**, **MIDI** or **Remote control** tab: the host owns the audio device and the MIDI ports. The output limiter and compressor of the **Audio** tab are a standalone feature; in a plugin the host's own effects shape the output.
+
+### Display mode
+
+**Display mode** on the **General** tab chooses how much the window shows. **Simple** shows the main settings, with the **Quality** and **Performance** presets; **Advanced** shows every setting. The tables below mark the rows that only **Advanced** shows. In **Simple**, **Custom** is greyed in both preset boxes: a preset is chosen whole, and the settings under it are set one by one in **Advanced**.
+
+## General
+
+![The General tab](../images/general-general.png)
+
+| Control | What it does | Default | Range or options | Takes effect | Shown in |
+|---|---|---|---|---|---|
+| **Display mode** | How much the Settings and Organ settings windows show. | **Simple** | **Simple**, **Advanced** | At once | Both |
+| **Reopen the last organ when Masterpiece starts** | Loads, at start, the organ that last loaded completely, after an unexpected close too. | Off | On, off | At the next start | Both |
+| **Click at each 10% while loading** | Plays a short click at each 10% of a load, so a large set can be followed by ear. | Off | On, off | At the next load | Advanced |
+| **Cache folder** | Where the sample cache is written. A folder that cannot be created is replaced by the default for that load. | **Default**, the `cache` folder in the data folder | **Choose...** opens a folder chooser; **Default** returns to the default folder | At the next load | Advanced |
+| **Delete the cache** | Deletes the sample cache in the folder shown. Each organ then reads its samples again at its next load. Greyed when the folder holds no cache. | | | At once | Advanced |
+| **Package folder** | Where the player keeps packages. A composite organ looks here, and in the folders directly in it, for the organs it plays. | **None** | **Choose...** opens a folder chooser; **Clear** removes it | At the next load | Advanced |
+| **Sample cache** | How many caches are kept. The cache keeps the decoded samples on disk, so the next load of the same organ is a read. | **One cache, replaced as organs change** | **One cache, replaced as organs change**, **One cache per organ (uses more disk)**, **Off** | At the next load | Both |
+| **Save the sample cache** | When the cache of a new load is written. **Before the organ plays**: the first load takes longer and nothing competes with the sound. **In silence, while it plays**: the organ plays at once and the samples are saved whenever nothing sounds; until they are, the next load reads them again. | **Before the organ plays** | **Before the organ plays**, **In silence, while it plays** | At the next load | Both |
+
+**Stored.** In the global file: `displaymode`, `reopenlastorgan`, `loadticks`, `cachedir`, `packagedir`, `samplecache` and `cachewhileplaying`. The sample cache choice holds for every organ.
 
 ## Audio
 
 ![The Audio tab](../images/general-audio.png)
 
-The upper part of the tab is the device selector of the audio library. It chooses where Masterpiece sends sound and which MIDI inputs are open. Its controls are described here generically; their labels and the choices offered depend on the system and the driver.
+The upper part of the tab is the device selector of the audio library. It chooses where Masterpiece sends sound. Its controls are described here generically; their labels and the choices offered depend on the system and the driver. The MIDI inputs and the MIDI output are on the [MIDI](#midi) tab.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -35,42 +57,148 @@ The upper part of the tab is the device selector of the audio library. It choose
 | Sample rate | The rate the device runs at. | The device's own rate on a first start; a saved setup keeps its rate | The rates the device reports | At once |
 | Buffer size | The block the device processes at a time. It sets the delay between a key and its sound. | The size nearest 10 ms on a first start | The sizes the device reports | At once |
 | Test | Plays a test tone through the selected channels. | | | At once |
-| MIDI inputs | One tick for each MIDI input device. | | The inputs the system reports | At once |
 
-Below the selector, a line reads **Key to speaker: about N ms, of which the buffer is N ms and the output N ms, as the device reports it.** It shows the whole delay from a key to the speaker for the open device.
+Below the selector, a line reads **Note delay: N ms (buffer N ms, output N ms)**. It shows the whole delay from a key to the speaker for the open device.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **Keep portable speakers awake** | Plays a 20 Hz tone, too low and too quiet to hear under the organ, so that a battery speaker does not switch itself off during silence and swallow the first notes. | Off | On, off | At once |
 | Level slider (beside the box) | The level of the tone. Raise it if the speaker still sleeps; lower it if the tone is audible. Active while the box is ticked. | -60 dB when first switched on | -80 to -40 dB in steps of 1 dB | At once |
 
-Under them, the peak limiter on the output. It holds the level that leaves the program under a ceiling, and it adds no delay. [Audio, room and mixer](audio.md#the-output-limiter) describes how it works.
+### Output dynamics
+
+Under them, the compressor and the peak limiter on the output, after the master fader. Both are off until they are switched on, and while off the engine does not call them. [Audio, room and mixer](audio.md#output-compressor-and-limiter) describes how they work.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
-| **Output limiter** | Switches the limiter on or off. | Off | On, off | At once |
-| Ceiling slider | The level the output is held under. | -1 dBFS | -0.1 to -12 dBFS in steps of 0.1 dB | At once |
-| Release slider | How long the gain takes to come back after a peak. | 100 ms | 50 to 1000 ms in steps of 10 ms | At once |
+| **Output preset** | Sets the compressor and the limiter together. Reads **Own settings** when the controls match no preset. | **Both off** | **Both off**, **Limiter only**, **Gentle**, **Small speakers**, **Laptop speakers**, **Headphones, quiet practice** | At once |
+| **Output compressor** | Brings the loud passages towards the quiet ones; the make-up gain lifts the whole. It works ahead of the limiter. | Off | On, off | At once |
+| **Threshold** | The level the compression begins at. | -18 dBFS | -40 to 0 dBFS in steps of 0.5 | At once |
+| **Ratio** | How much a level over the threshold is held down: at 3:1, 3 dB over comes out 1 dB over. | 3:1 | 1.5:1 to 10:1 in steps of 0.1 | At once |
+| **Attack** | How long the gain takes to come down. A longer one lets the speech of the pipes through. | 10 ms | 1 to 100 ms | At once |
+| **Release** | How long the gain takes to come back. | 200 ms | 50 to 1000 ms in steps of 10 | At once |
+| **Make-up gain** | Lifts the whole output after the compression. | 0 dB | 0 to 18 dB in steps of 0.5 | At once |
+| **Bass left out** | The compressor does not hear the bass below this pitch, so a 32' or a full pedal leaves the manuals at their level. The bass itself sounds in full. | **Below 120 Hz** | **None**, **Below 80 Hz**, **Below 120 Hz**, **Below 200 Hz** | At once |
+| Reduction readout | **Reduction N dB**: how far the compressor holds the level down now, before the make-up gain. Shown while the compressor is on. | | | Ten times a second |
+| **Output limiter** | Holds the output below the ceiling. It adds no delay. | Off | On, off | At once |
+| **Ceiling** | The level the output is held under. | -1 dBFS | -12 to -0.1 dBFS in steps of 0.1 | At once |
+| **Release** | How long the limiter's gain takes to come back after a peak. | 100 ms | 50 to 1000 ms in steps of 10 | At once |
 
-**Stored.** The device, rate, buffer size and channel choices are written to `audio.xml` when Masterpiece quits. A saved setup that no longer matches the hardware, or that opens with no live output, is replaced by the defaults. A device that opens below 44.1 kHz is moved to 48 kHz, or to 44.1 kHz where 48 kHz is unavailable. The speaker setting is the key `speakerkeepalive` in the global file, written only while it is on. The limiter's three settings are the key `limiter <on> <ceiling> <release>` in the global file.
+The sliders and the boxes under the compressor are greyed while it is off. The presets:
+
+| Preset | Compressor | Threshold | Ratio | Attack | Release | Make-up | Bass left out | Limiter | Ceiling | Limiter release |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Both off** | Off | | | | | | | Off | | |
+| **Limiter only** | Off | | | | | | | On | -1 dBFS | 100 ms |
+| **Gentle** | On | -18 dBFS | 2:1 | 20 ms | 400 ms | 4 dB | Below 120 Hz | On | -1 dBFS | 100 ms |
+| **Small speakers** | On | -24 dBFS | 3:1 | 10 ms | 250 ms | 8 dB | Below 120 Hz | On | -1 dBFS | 100 ms |
+| **Laptop speakers** | On | -30 dBFS | 4:1 | 5 ms | 200 ms | 12 dB | Below 200 Hz | On | -1 dBFS | 80 ms |
+| **Headphones, quiet practice** | On | -30 dBFS | 2.5:1 | 10 ms | 300 ms | 10 dB | Below 80 Hz | On | -3 dBFS | 150 ms |
+
+**Stored.** The device, rate, buffer size and channel choices are written to `audio.xml` when Masterpiece quits. A saved setup that no longer matches the hardware, or that opens with no live output, is replaced by the defaults. A device that opens below 44.1 kHz is moved to 48 kHz, or to 44.1 kHz where 48 kHz is unavailable. The speaker setting is the key `speakerkeepalive` in the global file, written only while it is on. The limiter is the key `limiter <on> <ceiling> <release>` and the compressor the key `compressor <on> <threshold> <ratio> <attack> <release> <make-up> <Hz>`, both in the global file.
 
 [Audio, room and mixer](audio.md) explains choosing a buffer size and a driver.
 
-## Room
+## MIDI
 
-![The Room tab](../images/general-room.png)
+![The MIDI tab](../images/general-midi.png)
+
+The console's MIDI: the inputs and the output, the default channels, the console's own actions and the messages Masterpiece sends. The keyboards of the loaded organ are on the **MIDI** tab of [Organ settings](organ-settings.md#midi). [MIDI and consoles](midi.md) explains the channel assignment, learning and the console actions in depth.
+
+### Inputs, channels and output
+
+| Control | What it does | Default | Range or options | Takes effect and storage | Shown in |
+|---|---|---|---|---|---|
+| **MIDI inputs** | One tick box per MIDI input device, plus inputs Masterpiece opens itself (the JACK MIDI port on Linux, the port made by `--virtual-midi`). A device another program holds is shown as **NAME  -  in use by another program; opened when it is free** and stays ticked; Masterpiece opens it when it is released. | All inputs ticked | Each input on or off | At once. Unticked inputs are kept in the global file as `midiinputoff <name>`. | Both |
+| **Bluetooth MIDI...** | Opens the system's pairing dialog for a Bluetooth MIDI device. Shown where the system offers it. | | | At once | Both |
+| **Default channels** | One box for the pedal and one for each of manuals 1 to 5: the channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it. | **-** (none) | **-**, 1 to 16 | At the next organ load. Global file key `consolechannel <role> <channel>`, with role 0 for the pedal and 1 onward for the manuals. | Both |
+| **MIDI output** | The port that lights a console's drawstops and receives the console display and the messages below. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. | Both |
+| **Send stop changes on the MIDI output** | Sends each stop change on the MIDI output, on the message the stop was learned on, so that lit drawstops or a pad controller follow the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. | Both |
+| **Sustain pedal: controller 64 holds the notes let go** | For directing a choir. While controller 64 is held down, the keys you let go keep sounding, and they stop when it is lifted. The controller works on any channel. A controller 64 learned for something else keeps doing this. | Off | On, off | At once. Global file key `sustainpedal`, written only while on. | Both |
+| **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. | Advanced |
+| **Stop changes leave the notes already held alone** | Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep the pipes they started with until their keys are let go, and only keys pressed afterwards play the new registration. | Off | On, off | At once. Global file key `stopsleaveheldnotes`, written only while on. | Advanced |
+| **Noise filter: when learning, a key counts once held a quarter second** | For a console whose contacts send stray notes: a shorter note is dropped. Controllers, program changes and system exclusive messages are learned at once. Leave it off for pistons that send only a short note. | Off | On, off | At once. Global file key `learnnoisefilter`, written only while on. | Advanced |
+| **Archive everything played** | Records every MIDI message played into files of their own, one for each stretch of playing. Three boxes beside it: **ends after 10 s of silence**, **30 s**, **1 min**, **2 min**, **5 min** or **10 min** (default 30 s); **up to 100 MB**, **250 MB**, **500 MB**, **1 GB**, **2 GB** or **5 GB** (default 500 MB); **kept 7 days**, **30**, **90** or **365 days** (default 90). Each stretch is a standard MIDI file, `Documents/Masterpiece/Recordings/Archive/<date>/<time> <organ>.mid`. The oldest files go first when the folder passes its size or age. | Off | On, off | At once. Global file keys `archive`, `archivesilence`, `archivemb`, `archivedays`. | Advanced |
+
+
+> [!NOTE]
+> The processor holds the MIDI output port, so lamps, key echo and the console display work with any window open or none. The port opens again at the next start. A port that is not plugged in keeps its name, and the box shows that name until the port is chosen again or **None** is chosen.
+
+### Learning
+
+The rows below are shown in **Advanced**. Each learn button opens a menu: the mapping it has (or **Not mapped**), **Learn**, **Clear** and **MIDI window...**. After **Learn**, press or move the control on the console. The button is orange while it waits and green once it is mapped. [MIDI and consoles](midi.md) covers right-click learning on the console itself.
+
+| Row | Buttons | What each does |
+|---|---|---|
+| **Sequencer** | **Learn sequencer -**, **Learn sequencer +** | The previous and next step of the player's combination sequencer. |
+| **Console** | **Learn page -**, **Learn page +**, **Learn console size** | Previous console page, next console page, next console layout. |
+| | **Learn panel**, **Learn keyboard**, **Learn combinations** | Show the stop-list panel, the on-screen keyboard and the combinations window. |
+| | **Learn transpose -**, **Learn transpose +** | Transpose down and up. |
+| **Temperament** | A temperament box (**The organ's own** and the library), **Learn this temperament** | A button that chooses the temperament in the box. |
+| | **Learn temperament -**, **Learn temperament +** | Previous and next temperament. |
+| **Recorder** | **Learn record or stop**, **Learn play or stop** | The recorder's Record and Play. See [Recorder](playing.md#recorder). |
+| **Power** | **Learn quit**, **Learn power off** | Quit Masterpiece, or quit and shut the computer down. Obeyed only 2 minutes after Masterpiece starts, and only on a button held for 3 seconds, or pressed twice within 2 seconds for a button that sends no release. |
+| **Score app** | **Learn score page -**, **Learn score page +**, then **Sends**: message, channel and two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen (**Note**, **Controller** or **Program change**) on the MIDI output, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. |
+| | **Save mappings**, **Clear all mappings** | **Save mappings** writes the mapping to disk. **Clear all mappings** removes every binding from the mapping in use. The empty mapping reaches disk with **Save mappings**, or with the next learned binding or channel change. |
+| Status | **MIDI mappings: N** | The number of bindings. While a learn waits it adds **LEARNING: move a control now**. |
+
+### Messages to the console
+
+Shown in **Advanced**. Each sends on the **MIDI output**.
+
+| Control | What it sends | Default | Global file key |
+|---|---|---|---|
+| **Ready lamp** | A note or a controller that lights a lamp on the console while an organ is loaded and ready to play: **Off**, **Note** or **Controller**, a channel 1 to 16 and a number 0 to 127. | **Off** | `readylamp note\|cc <channel> <number>` |
+| **Lit**, **Dark** | Messages in hexadecimal sent when the lamp lights and when it goes dark, for a console that needs system exclusive messages. | Empty | `readylamplit`, `readylampdark` |
+| **On organ load** | Messages in hexadecimal sent once an organ has loaded. | Empty | `loadmessage` |
+| **On organ unload** | Messages in hexadecimal sent when the organ is unloaded. | Empty | `unloadmessage` |
+
+The lamp is lit while an organ is ready and dark with none. It blinks once a second while an organ loads, and four times a second while a quit or power-off button is held.
+
+**Stored.** The mapping is written to the user's data folder, and the sample set stays untouched. Bindings for one organ's stops, shoes, manuals and divisionals go to that organ's `.mpmidi` file. Bindings for the console's own actions (the sequencer, generals, page, layout, transpose, temperament, recorder and power buttons) go to `midi/console.mpmidi` and apply to every organ. The files are rewritten after each learned binding. The score app's message is the key `scorepage <kind> <channel> <next> <before>` in the global file.
+
+## Performance
+
+![The Performance tab](../images/general-performance.png)
+
+How the audio engine uses the processor, and how many pipes sound at once. Every setting on this tab holds for every organ.
+
+| Control | What it does | Default | Range or options | Takes effect | Shown in |
+|---|---|---|---|---|---|
+| **Performance** | Sets the audio engine's threads and the number of voices together. Start with **Balanced**. If the sound crackles in a full chord, move down the list until it plays clean. **Steady** helps when other programs run beside the organ. Reads **Custom** when the four settings below match no preset. | **Balanced (default): every core, the default number of voices** | The presets below, and **Custom** | At once | Both |
+| **Faster audio engine** | Renders several samples at a time with the processor's vector unit. The sound is the same, with more polyphony to spare. The label reads **Faster audio engine: using AVX2** (or SSE2, NEON) when the unit is found, and **Faster audio engine: not available on this processor** when it is missing. | On | On, off | At once | Advanced |
+| **Real-time render threads** | Makes the threads that render the organ real-time threads, so the system runs them first, on the fastest cores. The label says what it found: **Real-time render threads: using SCHED_FIFO** (or MMCSS Pro Audio, rtkit, the realtime portal, Mach time constraint), or **Real-time render threads: no real-time rights on this system**. Hidden on Android. | On | On, off | At once | Advanced |
+| **Render on every logical processor** | Renders the organ on every logical processor, with none kept for the interface, disk streaming and the system: more polyphony on a machine doing nothing else. Off: every processor but one, eight at most. | On | On, off | At once | Advanced |
+| **Polyphony limit** | The most pipes that sound at once. Past it, a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory its voices take, which is larger with release streaming on. A lower number keeps a small computer from falling behind on a full organ. A number can be typed in the box: the first number typed is used. | **Default (N voices, N MB)**: 725 voices for each logical processor, at least 1,536, at most 16,384; 1,536 while releases stream | 256, 512, 768, 1024, 2048, 3072, 4096, 6144, 8192, 10240 voices, or a number typed, from 64 to 16,384 | At once | Advanced |
+| **Memory limit for samples** | A load that would take more than this stops and says so, and loads nothing. The voice pool counts toward the figure. | **Default: 80% of memory (N GB)**, with at least 512 MB | **Default: 80% of memory**, **50%**, **60%**, **70%** and **90% of memory**, each with its size; a size set in the file shows as itself | At the next load | Advanced |
+
+The presets:
+
+| Preset | Faster audio engine | Real-time render threads | Every logical processor | Polyphony limit |
+|---|---|---|---|---|
+| **Most voices: every processor core, 8192 voices** | On | On | On | 8192 |
+| **Balanced (default): every core, the default number of voices** | On | On | On | Default |
+| **Steady: one core left free for the system and other programs** | On | On | Off | Default |
+| **Fewer voices: 1024** | On | On | Off | 1024 |
+| **Fewest voices: 512, for a Raspberry Pi or a tablet** | On | On | Off | 512 |
+
+**Stored.** In the global file: `fasterengine`, `realtimethreads` and `everyprocessor`, each always written as `1` or `0`; `polyphony` and `memlimit`, written only when set. [Audio, room and mixer](audio.md#the-audio-engine) describes the engine and the threads.
+
+## Reverb
+
+![The Reverb tab](../images/general-reverb.png)
 
 Impulse-response reverb for a dry set or for headphones. Many sample sets are recorded in the room they live in, and several ship close, far and rear perspectives that already contain the room; for those the wet level wants to be low.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **Impulse-response reverb** | Switches the convolution on or off. | Off | On, off | At once |
-| **Load IR...** | Opens a file chooser for an impulse response and switches the reverb on once it has loaded. A file that cannot be read produces the message **The impulse response was not loaded**. | | WAV, AIFF and FLAC files | At once |
+| **Load impulse response...** | Opens a file chooser for an impulse response and switches the reverb on once it has loaded. A file that cannot be read produces the message **The impulse response was not loaded**. | | WAV, AIFF and FLAC files | At once |
 | **Clear** | Removes the loaded impulse response. The label beside the buttons returns to **No IR loaded**. | | | At once |
 | Name label | Shows **IR:** and the file name of the loaded response. | **No IR loaded** | | |
-| **Wet** | The share of the wet signal in the output. | 0.25 | 0 to 1 in steps of 0.01 | At once |
+| **Wet** | The share of the wet signal in the output. At the default the room's tail follows each release; at 1 the room alone plays, at about the organ's own level. | 0.25 | 0 to 1 in steps of 0.01 | At once |
 
-A one-channel response feeds both sides, a two-channel response is read as stereo, and a four-channel response is read as true stereo (left input to both outputs, then right input to both outputs). The response is normalised by its energy, so a room keeps the loudness of its whole tail. When the file name ends in `-<rate>Hz` and a sibling file with the device's rate in that place exists, the sibling is used.
+A one-channel response feeds both sides, a two-channel response is read as stereo, and a four-channel response is read as true stereo (left input to both outputs, then right input to both outputs). The response is scaled by its power where the organ sounds, octave by octave, with one gain for all channels, so at full wet a pipe's tone comes out of the room at about the level it went in. When the file name ends in `-<rate>Hz` and a sibling file with the device's rate in that place exists, the sibling is used.
 
 **Stored.** In the organ file, as the key `reverb <on> <wet> <path>`. The path refers to the file where it lies: if the file has moved when the organ is loaded, the log records `reverb: the impulse response saved with this organ was not found` and the organ loads with no room. Each organ opens with its own room. The settings of the loaded organ are written shortly after a change.
 
@@ -78,7 +206,7 @@ A one-channel response feeds both sides, a two-channel response is read as stere
 
 ![The Metronome tab](../images/general-metronome.png)
 
-A click track for practice. It is generated inside the audio callback so that it stays in time with the organ. The click is a short 1000 Hz sine; the first beat of each bar is an octave and a half higher (1500 Hz) and louder. The click is added after the master fader and is left out of audio recordings made with the recorder.
+A click track for practice. It is generated inside the audio callback so that it stays in time with the organ. The click is a short 1000 Hz sine; the first beat of each bar is a fifth higher (1500 Hz) and louder. The click is added after the master fader and is left out of audio recordings made with the recorder.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -89,119 +217,6 @@ A click track for practice. It is generated inside the audio callback so that it
 | Beat readout | Shows **Beat N** for the beat just played while the metronome runs. | Empty | | |
 
 **Stored.** The tempo, the beats per bar and the level are the key `metronome <bpm> <beats> <level>` in the global file, written when the Metronome tab closes, and they return at the next start. The click starts silent at each start; the **Metronome** box shows whether it is running each time the tab opens.
-
-## MIDI
-
-![The MIDI tab](../images/general-midi.png)
-
-The same panel appears as the **MIDI** tab of [Organ settings](organ-settings.md); both edit the same mapping. This section lists every control. [MIDI and consoles](midi.md) explains the channel assignment, learning and the console actions in depth.
-
-### Inputs, keyboards and defaults
-
-| Control | What it does | Default | Range or options | Takes effect and storage |
-|---|---|---|---|---|
-| **MIDI inputs** | One tick box per MIDI input device, plus inputs Masterpiece opens itself (the JACK MIDI port on Linux, the port made by `--virtual-midi`). A device another program holds is shown as **NAME  -  in use by another program; opened when it is free** and stays ticked; Masterpiece opens it when it is released. | All inputs ticked | Each input on or off | At once. Unticked inputs are kept in the global file as `midiinputoff <name>`. |
-| **Keyboards** heading, then one row for each playable keyboard of the loaded organ | The row holds the keyboard's name, a channel box, a device box and a button. | | | |
-| Channel box | The MIDI channel that plays this keyboard. The channel decides which division sounds, and couplers work from it. | **Default (channel N)**, the organ's own assignment | **Default (channel N)**, **Channel 1** to **Channel 16** | At once. Saved with the organ's MIDI mapping. |
-| Device box | Which console plays this keyboard, for the case of two consoles that send on the same channel. | **Any device** | **Any device**, or a device by its name | At once. Saved with the organ's MIDI mapping. |
-| **Range, transpose...** | Opens the dialog of one manual: key range, transposition, velocity window, tracker action, short octave and debounce. | | | The dialog's own controls; see [MIDI and consoles](midi.md). |
-| Shared line | When two keyboards answer one channel, a line **Shared -- Channel N: name, name** names them. One keyboard can play two divisions this way. | Empty | | |
-| **Use as default for all organs** | Keeps the channel of each keyboard as the starting channels of every organ that has none saved. | | | At once. Written to the global file as `consolechannel <role> <channel>`, with role 0 for the pedal and 1 onward for the manuals. |
-| **Clear default** | Removes that default. The line beside the buttons returns to **No default: each organ starts from its own channels**. | | | At once |
-
-When a default exists, the line beside the buttons reads **Default for organs with no channels saved:** followed by entries such as `Pedal 1; Manual 1 2`.
-
-### Output and behaviour
-
-| Control | What it does | Default | Range or options | Takes effect and storage |
-|---|---|---|---|---|
-| **MIDI output** | The port that lights a console's drawstops and receives the console display. | **None** | **None** and each output port of the system | At once. Global file key `midioutput <name>`, written while a port is chosen; see the note below. |
-| **Send stop changes on the MIDI output** | Sends each stop change on the MIDI output, on the message the stop was learned on, so that lit drawstops or a pad controller follow the screen. Off by default because a console that echoes what it just received can latch itself into a loop. | Off | On, off | At once. Global file key `midifeedback 1`, written only while on. |
-| **General Cancel also puts the keyboards back on their own manuals** | After pistons have moved a keyboard to another manual, General Cancel returns every keyboard to the manual it started on. | Off | On, off | At once. Global file key `cancelresetskeyboards`, written only while on. |
-| **Stop changes leave the notes already held alone** | Off, a stop or coupler moved while keys are held sounds or stops on those notes at once, as on a console with electric action. On, the held notes keep the pipes they started with until their keys are let go, and only keys pressed afterwards play the new registration. | Off | On, off | At once. Global file key `stopsleaveheldnotes`, written only while on. |
-| **Sustain pedal: controller 64 holds the notes let go** | For directing a choir. While controller 64 is held down, the keys you let go keep sounding, and they stop when it is lifted. The controller works on any channel. A controller 64 learned for something else keeps doing this. | Off | On, off | At once. Global file key `sustainpedal`, written only while on. |
-| **Noise filter: when learning, a key counts once held a quarter second** | For a console whose contacts send stray notes: a shorter note is dropped. Controllers, program changes and system exclusive messages are learned at once. Leave it off for pistons that send only a short note. | Off | On, off | At once. Global file key `learnnoisefilter`, written only while on. |
-
-> [!NOTE]
-> The processor holds the MIDI output port, so lamps, key echo and the console display work with any window open or none. The port opens again at the next start. A port that is not plugged in keeps its name, and the box shows that name until the port is chosen again or **None** is chosen.
-
-### Learning
-
-The buttons below start a learn: click the button, then press or move the control on the console. Each assignment is a momentary binding. [MIDI and consoles](midi.md) covers right-click learning on the console itself.
-
-| Row | Buttons | What each does |
-|---|---|---|
-| **Sequencer** | **Learn sequencer -**, **Learn sequencer +** | Bind the previous and next step of the player's combination sequencer. |
-| **Manual buttons** | **Learn manual buttons...** | Opens a menu of the 16 channels, each with a submenu of the organ's manuals. Choosing a manual and then pressing a piston makes that piston send the keyboard on that channel to that manual. |
-| **Console** | **Learn page -**, **Learn page +**, **Learn console size** | Previous console page, next console page, next console layout. |
-| | **Learn panel**, **Learn keyboard**, **Learn combinations** | Show the stop-list panel, the on-screen keyboard and the combinations window. |
-| | **Learn transpose -**, **Learn transpose +** | Transpose down and up. |
-| | **Learn temperament -**, **Learn temperament +** | Previous and next temperament. |
-| | **Learn record**, **Learn play** | The recorder's Record and Play. See [Recorder](playing.md#recorder). |
-| **Score app** | **Learn score page -**, **Learn score page +**, message, channel, two numbers | A piston learned here turns the page in a score app on a tablet or another program: it sends the message chosen beside it on the MIDI output, the first number for the next page and the second for the page before. Default: notes 127 and 126 on channel 16. Teach the same message to the score app. |
-| | **Save mapping**, **Clear mapping** | **Save mapping** writes the mapping to disk. **Clear mapping** removes every binding from the mapping in use. The empty mapping reaches disk with **Save mapping**, or with the next learned binding or channel change. |
-| Status | **N binding(s)** | The number of bindings. While a learn waits it adds **LEARNING: move a control now**. |
-
-**Stored.** The mapping is written to the user's data folder, and the sample set stays untouched. Bindings for one organ's stops, shoes, manuals and divisionals go to that organ's `.mpmidi` file. Bindings for the console's own actions (the sequencer, generals, page, layout, transpose and temperament buttons) go to `midi/console.mpmidi` and apply to every organ. The files are rewritten after each learned binding.
-
-## Mixer
-
-![The Mixer tab](../images/general-mixer.png)
-
-Routes each rank to a stereo pair of output channels. No sample set declares an audio routing, so the routing is the player's. A rank that is never touched plays through the first pair. Up to eight pairs can be set up. Each plays on its own device channels when the device has them, and the pairs are mixed to channels 1 and 2 on a stereo device. [Audio, room and mixer](audio.md) explains the use of several pairs.
-
-| Control | What it does | Default | Range or options | Takes effect |
-|---|---|---|---|---|
-| **Output pairs** | The number of stereo pairs. Pair N is assigned device channels 2N-1 and 2N, and plays on them when the device has them; otherwise on channels 1 and 2. | **1 (stereo)** | **1 (stereo)**, **2 pairs** to **8 pairs** | At once |
-| Status line | Reads **N rank(s), N pair(s)**, and **N unrouted, N stale** when a rank has no pair or points at a pair that no longer exists. | | | |
-| Outputs line | Each pair's device channels, such as **Pair 2: 3-4**, and **the device gives N outputs: the pairs past them play on 1-2** when the device has fewer channels. | | | |
-| **Spread ranks evenly** | Assigns the ranks to the pairs in turn, so the routing is audible at once. | | | At once |
-| **All to pair 1** | Sends every rank to the first pair. | | | At once |
-| **Save for this organ** | Writes the organ's settings file, including the routing. | | | At once |
-| **Bass management...** | Per pair, the lows under a crossover to a subwoofer channel of the device, and the rest to the pair. | **Off** | **Off**, **40 Hz** to **200 Hz**; **Subwoofer on 1** to **Subwoofer on N** | At once |
-| Rank list | One row per rank, labelled with the rank number and name, with a **Pair N** box, a level fader and a **MIDI** button. A rank that points at a pair removed by lowering **Output pairs** returns to **Pair 1**. | **Pair 1** | **Pair 1** to the chosen number of pairs | At once |
-| Level faders | A live level for each output pair, each division and each rank, heard at once on the pipes sounding. Full is the level as voiced; the steps are even in decibels over the lower 40 dB, and the bottom is silence. A division's fader acts on every rank in it. | Full | **Off** to 0 dB | At once |
-| **MIDI** | Shows the knob or pedal learned for that level. **Learn: move the knob or pedal** waits for a controller to move; a key played meanwhile plays. **Clear mapping** removes it. | | | At once |
-
-The level faders are a performance's balance and are not saved: every fader is full again when an organ loads. The knobs learned for them are kept with the organ's MIDI mapping; a pair's knob is kept for every organ. The control API reads and sets the same faders as `divisions`, `pairs` and `ranklevels`, and the web console shows the division and pair faders under **Levels**.
-
-**Stored.** The number of pairs and their device channels are the key `buses` in the organ file, and in the global file when **Save as default** is used on the Loading tab. Bass management is the key `busbass <pair> <Hz> <channel>` beside `buses`, the channel counted from 0. The rank routes are the keys `route <rank> bus <n>` in the organ file; they are written by **Save for this organ**, and by any other change that makes Masterpiece rewrite the organ file.
-
-## Voicing
-
-![The Voicing tab](../images/general-voicing.png)
-
-The player's adjustments of level and tuning, for a whole rank or for one pipe, in the way a voicer goes round an organ. A rank adjustment and a pipe adjustment add. Level and tuning are applied when a note starts, so they cost nothing while it sounds, and they work with the DSP switched off. Notes already sounding keep what they began with. The tab carries an equaliser as well, a shelf for the treble and one for the bass, for each rank and for each division. The **Voicing** box on the Loading tab of [Organ settings](organ-settings.md#engine-switches) turns every adjustment off while it is cleared; the organ then plays as recorded.
-
-| Control | What it does | Default | Range or options | Takes effect |
-|---|---|---|---|---|
-| **Rank** | The rank to adjust, listed as its number and name. | The first rank | The ranks of the loaded organ | At once |
-| **Applies to** | Whether the sliders adjust the whole rank or one pipe of it. | **The whole rank** | **The whole rank**, **One pipe** | At once |
-| **MIDI note** | The pipe, chosen by its note. Active when **One pipe** is selected. A rank without a pipe at that note reports **This rank has no pipe at that note**. | 60 | 0 to 127 | At once |
-| **Level** | The level change. | 0 dB | -12 to +12 dB in steps of 0.1 | On the next note |
-| **Tuning** | The pitch change. | 0 cents | -50 to +50 cents in steps of 0.1 | On the next note |
-| **A / B** | Swaps between the two complete voicing sets A and B, so a change can be compared with what was there before. | Slot A | A, B | At once |
-| **Copy to other** | Copies the live slot to the other, so that B starts as a variation of A. | | | At once |
-| **Reset this** | Returns the selected rank or pipe to 0 dB and 0 cents. | | | On the next note |
-| **Reset everything** | Clears every adjustment in the live slot. | | | On the next note |
-| **Save for this organ** | Writes the organ's settings file. | | | At once |
-| Status line | **Slot A  -  N rank(s), N pipe(s) adjusted  -  takes effect on the next note** | | | |
-
-**Stored.** In the organ file, as `voicingadj` lines for both slots, `voicingdiv` lines for the divisions and `voicingslot b` when slot B is live, written by **Save for this organ** and by any other change that makes Masterpiece rewrite the organ file. A rank number has no meaning in another instrument, so adjustments never carry across organs.
-
-### The EQ
-
-A shelf for the treble and one for the bass, for each rank and for each division. The treble acts above 3 kHz, the bass below 200 Hz, each from -12 to +12 dB. A rank's shelves are added to those of its division, so a division can shape every rank in it, and a rank can be shaped on its own. The pipes already sounding hear a change at once; a rank given its first shelf is heard with it from its next note. While no shelf is set anywhere, the organ sounds as recorded and the filters cost nothing.
-
-| Control | What it does | Default | Range or options | Takes effect |
-|---|---|---|---|---|
-| **Brightness** | The treble shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
-| **Bass** | The bass shelf of the selected rank. Active when **Applies to** is **The whole rank**. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
-| **Pan** | Where the selected rank stands, from full left to full right. Active when **Applies to** is **The whole rank**. | 0 | -100 to +100 | At once |
-| **Width** | The selected rank's stereo width: 0% mono, 100% as recorded, 200% twice as wide. Active when **Applies to** is **The whole rank**. | 100% | 0 to 200% | At once |
-| **Division EQ** | The division whose shelves are set below. | The first division | The divisions of the loaded organ | At once |
-| Division **Brightness** and **Bass** | The treble and bass shelves of the chosen division. Every rank in it hears them added to its own. | 0 dB | -12 to +12 dB in steps of 0.5 | At once |
-| Division **Pan** and **Width** | Where the chosen division stands and its width. Every rank in it hears them: the pans add, held to full left and full right, and the widths multiply. | 0 and 100% | -100 to +100; 0 to 200% | At once |
 
 ## Combination sets
 
@@ -220,11 +235,11 @@ The favourite organs are kept in the **Open** window.
 
 **Stored.** The set in use is the key `combset <name>` in the organ file. Each set is a file in the `combinations` folder: `<organ key>.mpcomb` for the default set and `<organ key>.<name>.mpcomb` for a named one. [Playing](playing.md) describes how registrations are stored and recalled.
 
-## Display
+## Console display
 
-![The Display tab](../images/general-display.png)
+![The Console display tab](../images/general-display.png)
 
-This tab drives the text display on a console's jamb, such as a 32-character panel, by system exclusive messages through the MIDI output. It drives external hardware only. The heading on the tab is **Console display**. The framing bytes belong to the display hardware, so they are typed in here. Choose the MIDI output on the **MIDI** tab first: the messages leave through the port that lights the drawstops.
+This tab drives the text display on a console's jamb, such as a 32-character panel, by system exclusive messages through the MIDI output. It drives external hardware only. The framing bytes belong to the display hardware, so they are typed in here. Choose the MIDI output on the **MIDI** tab first: the messages leave through the port that lights the drawstops.
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
@@ -246,15 +261,35 @@ The fields show: the organ's name; the temperament's name; the pitch as `A=440.0
 
 | Control | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
-| Language box | The language of the program's own words. Each language is named in itself, so a player who cannot read the current language can find theirs. Names of organs, stops and pages stay as the organ gives them. | **System default** | **System default** (the language of the system when a translation exists, otherwise English), **English**, then the translations in this version: **Čeština**, **Deutsch**, **Español**, **Français**, **Italiano**, **Nederlands**, **Polski** | At the next start |
+| Language box | The language of the program's own words. Each language is named in itself, so a player who cannot read the current language can find theirs. Names of organs, stops and pages stay as the organ gives them. The note beside it reads **Applies at the next start.** | **System default** | **System default** (the language of the system when a translation exists, otherwise English), **English**, then the translations in this version: **Čeština**, **Deutsch**, **Español**, **Français**, **Italiano**, **Nederlands**, **Polski** | At the next start |
 
 A string that a translation lacks appears in English.
 
 **Stored.** In the global file as `language <code>` (`en`, `cs`, `de`, `es`, `fr`, `it`, `nl` or `pl`). The key is absent for **System default**.
 
-## Log
+## Remote control
 
-![The Log tab](../images/general-log.png)
+![The Remote control tab](../images/general-remote.png)
+
+The web console and the control API, for a tablet or another program on the same network. Present in the standalone application. [Remote control](remote.md) describes the web console, the API, SysEx and OSC in depth.
+
+| Control | What it does | Default | Range or options | Takes effect |
+|---|---|---|---|---|
+| **Serve the web console and the control API on this network** | Starts the web server. | Off | On, off | At once |
+| **Port** | The HTTP port of the web console and the API. | 8080 | A port number | At once |
+| **Token** | A word every request that changes something must carry. | Empty | Text | At once |
+| **Allow changes from the network** | Lets the network draw stops and move controls. Off, the network can only read: the stops drawn, the levels, the organ loaded. | On | On, off | At once |
+| **Allow quitting Masterpiece and shutting the computer down** | Lets the API quit the program and power the computer off. | Off | On, off | At once |
+| **This computer only** | Serves the page, the API and OSC on 127.0.0.1 only. | Off | On, off | At once |
+| **Answer the same requests over MIDI (System Exclusive)** | The same protocol over system exclusive messages, on the MIDI inputs and the MIDI output, under a unit number. | Off, unit 0 | On, off; unit 0 to 126 | At once |
+| **Answer the same requests over OSC** | The same protocol over OSC, on a UDP port. | Off, port 9000 | On, off; a port number | At once |
+| **Open in the browser** | Opens the web console in the system's browser. | | | At once |
+
+**Stored.** In the global file: `api`, `apiport`, `apiwrite` (`0` while changes are refused), `apitoken`, `apipoweroff`, `apilocal`, `apisysex`, `apisysexunit`, `apiosc`, `apioscport`.
+
+## Diagnostics
+
+![The Diagnostics tab](../images/general-diagnostics.png)
 
 Masterpiece always keeps a log of the session and the previous one beside it. The log and the report on this tab are what a bug report needs. The text at the top of the tab gives the log's path, or **No log is being written.**
 
@@ -266,7 +301,7 @@ Masterpiece always keeps a log of the session and the previous one beside it. Th
 | **Send the report and the log** | Shares the report, the log and the previous log through the share sheet. Present only on phones and tablets. | | At once |
 | **Log every MIDI message and what became of it** | The same as `--log-midi`: which manual, stop or control each message reached and, when nothing sounded, why. | Off | At once; lasts until Masterpiece closes |
 | **Log every key release: the release played, its length and start** | The same as `--log-releases`: the release chosen for each key release, its length and where it started. | Off | At once; lasts until Masterpiece closes |
-| **Check once a day for a newer version** | Reads the newest version's number from masterpieceorgan.com, a few bytes, once a day, and offers the download page when it is newer. See [Files and folders](files.md#privacy). | On | At the next start; `updatecheck` in the global file |
+| **Check for updates daily** | Reads the newest version's number from GitHub, a few bytes, once a day, and offers the download page when it is newer. **Help > Check for updates...** checks at once. See [Files and folders](files.md#privacy). | On | At the next start; `updatecheck` in the global file |
 
 The report box is read-only and shows **Run the checks to see what Masterpiece finds on this device.** until the checks have run. See [Command line](command-line.md) for the log and its options.
 
@@ -279,7 +314,7 @@ Each line of the report starts with `ok` for a passed test, `FAILED` for a faile
 | Header | The Masterpiece version, the operating system and the device; the number of processors and the memory in MB; the time of the check. Facts only. |
 | **Settings folder** | The user's data folder. The check creates it if it is missing, writes a small file `.masterpiece-check`, reads it back and deletes it. It reports the path, whether it can be written and the free space in GB. |
 | **Sample cache** | The same write test for the cache folder in use, with the free space. |
-| Cache folder chosen in Loading | Appears as `FAILED` when the folder chosen on the Loading tab cannot be used and the usual one is in use instead. |
+| Cache folder chosen | Appears as `FAILED` when the folder chosen under **Cache folder** cannot be used and the usual one is in use instead. |
 | **Temporary folder** | The same write test for the system's temporary folder. |
 | **Cache files** | The number and total size of the `.mpcache` files in the cache folder. A fact. |
 | **Organs unpacked from their archives** | The number of folders in `Packaged`, where package archives are unpacked. A fact. |
@@ -298,12 +333,12 @@ Each line of the report starts with `ok` for a passed test, `FAILED` for a faile
 
 ## Back up and restore
 
-The **Settings** menu has a **Back up and restore** submenu, with four items.
+The **File** menu holds three items for the settings, on computers. **Organ > Copy settings from another organ...** holds the fourth.
 
 | Item | What it does |
 |---|---|
-| **Export this organ's settings...** | Writes a zip file holding the loaded organ's own settings: its MIDI map, its combinations, its split keyboard and its organ settings. |
-| **Export all settings...** | Writes a zip file holding every setting, the program's own and each organ's. The audio device stays with the computer. |
+| **Export organ settings...** | Writes a zip file holding the loaded organ's own settings: its MIDI map, its combinations, its split keyboard and its organ settings. |
+| **Export settings...** | Writes a zip file holding every setting, the program's own and each organ's. The audio device stays with the computer. |
 | **Import settings...** | Reads a zip file written by one of the export items and puts the settings back. A file that is not one of ours is refused, and nothing changes. |
 | **Copy settings from another organ...** | Takes the MIDI map, the combinations, or the mixer and voicing from another organ, each on its own toggle. |
 
@@ -329,42 +364,54 @@ The global file is `settings.mpglobal` in the data folder. It holds what belongs
 
 | Key | Value | Written by |
 |---|---|---|
-| `reopenlastorgan` | `1` or `0`. Always written. | **Reopen the last organ when Masterpiece starts** on the Loading tab |
-| `updatecheck` | `0` when the update check is off; absent while it is on. | **Check once a day for a newer version** on the Log tab |
+| `reopenlastorgan` | `1` or `0`. Always written. | **Reopen the last organ when Masterpiece starts** on the General tab |
+| `updatecheck` | `0` when the update check is off; absent while it is on. | **Check for updates daily** on the Diagnostics tab |
 | `updatecheckedat` | Seconds since 1970 of the last update check. | The update check |
+| `api`, `apiport`, `apiwrite`, `apitoken`, `apipoweroff`, `apilocal`, `apisysex`, `apisysexunit`, `apiosc`, `apioscport` | The remote control settings. | The **Remote control** tab |
+| `readylamp`, `readylamplit`, `readylampdark`, `loadmessage`, `unloadmessage` | The messages to the console. | The **MIDI** tab |
 | `speakerkeepalive` | The level in dB, -80 to -40. Written only while on. | **Keep portable speakers awake** |
-| `memlimit` | The sample memory limit in MB. Written only when set. | **Memory limit for samples** on the Loading tab |
-| `polyphony` | The voice limit. Written only when set. | **Polyphony limit** on the Loading tab |
+| `memlimit` | The sample memory limit in MB. Written only when set. | **Memory limit for samples** on the Performance tab |
+| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`. Written only while the default EQ is on or not flat. | **Save as default** on the **Equalizer** tab of Organ settings |
+| `polyphony` | The voice limit. Written only when set. | **Polyphony limit** on the Performance tab |
 | `running` | The path of the organ being loaded or played. Removed at a clean exit; one still present at the next start means the last session ended unexpectedly, which the log records. | The crash guard |
 | `language` | The language code. Written only when a language is chosen. | **Language** |
-| `loadticks` | `1` or `0`. Always written. | **Tap at each 10% while loading an organ** on the Loading tab |
+| `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
+| `limiter` | `<on> <ceilingDb> <releaseMs>`. | **Output limiter** on the **Audio** tab |
+| `compressor` | `<on> <thresholdDb> <ratio> <attackMs> <releaseMs> <makeupDb> <Hz>`. | **Output compressor** on the **Audio** tab |
+| `loadticks` | `1` or `0`. Always written. | **Click at each 10% while loading** on the General tab |
 | `cancelresetskeyboards` | `1`. Written only while on. | **General Cancel also puts the keyboards back on their own manuals** |
 | `stopsleaveheldnotes` | `1`. Written only while on. | **Stop changes leave the notes already held alone** |
+| `sustainpedal` | `1`. Written only while on. | **Sustain pedal: controller 64 holds the notes let go** |
+| `pedalcombinationscoupled` | `1`. Written only while on. | **Pedal with %1** in the combinations window, named after the manual it ties |
 | `learnnoisefilter` | `1`. Written only while on. | **Noise filter: when learning, a key counts once held a quarter second** |
+| `archive`, `archivesilence`, `archivemb`, `archivedays` | The archive switch, and its silence in seconds, size in MB and age in days, each written when it differs from the default. | **Archive everything played** |
 | `combinationsontop` | `1`. Written only while on. | **Always on top** in the combinations window |
-| `cachewhileplaying` | `1`. Written only while on. | **Save the sample cache** on the Loading tab, set to **In silence, while it plays** |
+| `cachewhileplaying` | `1`. Written only while on. | **Save the sample cache** set to **In silence, while it plays** |
+| `samplecache` | `0` off, `1` one cache, `2` one per organ. Always written. | **Sample cache** on the General tab |
 | `setoffafterstore` | `1`. Written only while on. | **Set turns off after storing** in the combinations window |
 | `pistonsleavebass` | `1`. Written only while on. | **Pistons leave the bass coupler** in the combinations window |
-| `showkeys` | `0`. Written only while off. | **View > Show played keys** |
-| `fasterengine` | `1` or `0`. Always written. | **Faster audio engine** on the Loading tab |
-| `realtimethreads` | `1`. Written only while on. | **Real-time render threads (trial)** on the Loading tab |
+| `showkeys` | `0`. Written only while off. | **View > Highlight played keys** |
+| `smallpagesfill` | `1`. Written only while on. | **View > Scale small pages to fit** |
+| `displaymode` | `simple` or `professional`. Always written. | **Display mode** on the General tab (`professional` is **Advanced**) |
+| `fasterengine`, `realtimethreads`, `everyprocessor` | `1` or `0`. Always written. | The Performance tab |
 | `midiinputoff` | A device name. One line per unticked input. | **MIDI inputs** |
-| `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Use as default for all organs** |
 | `midioutput` | The name of the MIDI output port. Written only while a port is chosen; a port that is not plugged in keeps its name. | **MIDI output** |
+| `scorepage` | `<kind> <channel> <next> <before>`. | **Score app** on the MIDI tab |
 | `midifeedback` | `1`. Written only while on. | **Send stop changes on the MIDI output** |
-| `metronome` | `<bpm> <beats> <level>`: the tempo, the beats per bar and the level. Written when the Metronome tab closes. | The **Metronome** tab |
-| `limiter` | `<on> <ceilingDb> <releaseMs>`: the switch, the ceiling in dBFS and the release in ms. | The **Output limiter** on the **Audio** tab |
-| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Display** tab |
-| `defaulteq` | `<on> <gain> <band 1> ... <band 10>`. Written only while the default EQ is on or not flat. | **Save as default** on the **Voicing EQ** tab of Organ settings |
+| `consolechannel` | A role (0 for the pedal, 1 onward for the manuals) and a channel 1 to 16. | **Default channels** on the MIDI tab, and **Use as default for all organs** in Organ settings |
+| `eqpreset`, `eqpresetnext` | The player's EQ presets. | **Save as preset...** on the **Equalizer** tab of Organ settings |
 | `library` | A folder holding a sample library (an `OrganInstallationPackages` folder beside it). Added when an organ is loaded from such a folder, and for the standard library folder of a Hauptwerk-format installation when it exists. | Opening organs |
-| `cachedir` | The cache folder. Absent for the default. | **Cache folder** on the Loading tab |
-| `packagedir` | The package folder. Absent for none. | **Package folder** on the Loading tab |
+| `lcd` | `<on> <display> <width> <line1> <line2> <line3> <line4> <prefix>`. The prefix is the hexadecimal bytes, separated by spaces. | The **Console display** tab |
+| `cachedir` | The cache folder. Absent for the default. | **Cache folder** on the General tab |
+| `packagedir` | The package folder. Absent for none. | **Package folder** on the General tab |
 | `lastorgan` | The definition of the organ opened last. | Opening an organ |
 | `openfolder` | The folder the last organ was chosen from. | The **Open** window |
-| `dialogfolder` | A kind and a folder: `ir`, `midi`, `recording` or `scala`, then the folder where that kind of file dialog was last used. | The file dialogs of **Load IR...**, the recorder and the tuning panel |
+| `dialogfolder` | A kind and a folder: `ir`, `midi`, `recording` or `scala`, then the folder where that kind of file dialog was last used. | The file dialogs of **Load impulse response...**, the recorder and the tuning panel |
 | `favourite` | `<kind> <slot> <name> \| <target>`: the kind is `organ`, `temperament` or `combinationset`. | The favourites in the **Open** window and the tuning panel |
 
-**Save as default** on the Loading tab adds the organ-level keys below to the global file as well, so that an organ without a file of its own starts from them: `storage`, `mono`, `releases`, `releaselength`, `releasecutoff`, `reverb`, `rate`, `cache`, `stream`, `streamhead`, `streamheadpct`, `preload`, `root`, `simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch`, `gain`, `buses`, `busir` and `groups`. These are described under [Where the organ's settings are kept](organ-settings.md#where-the-organs-settings-are-kept). An organ that has a file of its own takes the values from that file. The obsolete key `reopenlast` is ignored when read.
+
+**Save as default** on the Loading tab of Organ settings adds the organ-level keys to the global file as well, so that an organ without a file of its own starts from them: `storage`, `mono`, `compress`, `programcouplers`, `releases`, `releaselength`, `releasecutoff`, `reverb`, `rate`, `stream`, `streamhead`, `streamheadpct`, `releasebuffer`, `preload`, `root`, the engine switches (`simple`, `wind`, `tremulant`, `enclosure`, `voicing`, `originalpitch`), `gain`, `buses`, `busir`, `busbass` and `groups`. These are described under [Where the organ's settings are kept](organ-settings.md#where-the-organs-settings-are-kept). An organ that has a file of its own takes the values from that file. The obsolete keys `reopenlast`, and `cache` in an organ file, are ignored when read.
+
 
 ### Other files
 

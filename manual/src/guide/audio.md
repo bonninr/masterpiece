@@ -2,28 +2,31 @@
 
 This page covers everything between the organ and the loudspeakers: the audio device and its latency, the signal chain, the output pairs of the mixer, the impulse-response room, the player's voicing of ranks and pipes, the master level, the metronome, and what to do when the sound breaks up. Use it to set up a device for low latency, to place a dry organ in a room, and to find the cause of dropouts.
 
-The controls described here are on the **Audio**, **Room**, **Metronome**, **Mixer** and **Voicing** tabs of **Settings > General settings**. The memory and loading choices that decide how many voices a machine can render are in **Settings > Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
+The controls described here are on the **Audio**, **Performance**, **Reverb** and **Metronome** tabs of **Settings**, and on the **Outputs**, **Voicing** and **Equalizer** tabs of **Organ > Organ settings...**. The memory and loading choices that decide how many voices a machine can render are in **Organ settings > Loading**; see [Memory, loading and streaming](memory.md) and [Small, medium and large organs](sizing.md).
 
 ## The signal chain
 
 Each audio block passes through these stages, in this order.
 
-| Stage | What it does | Bypassed by Simple WAV |
+| Stage | What it does | Bypassed by Bypass all effects |
 |---|---|---|
-| Voices | Every sounding pipe is rendered, assigned to a mixer pair (see [Output routing](#output-routing-and-the-mixer)) and, where its rank is enclosed, filtered by its swell shades | Shades and tremulants are bypassed; the voices play |
-| Voicing EQ | The ten-band equaliser of **Organ settings > Voicing EQ** | Yes |
-| Room | The impulse-response convolution of the **Room** tab | Yes |
+| Voices | Every sounding pipe is rendered, assigned to an output pair (see [Output routing](#output-routing-and-the-mixer)) and, where its rank is enclosed, filtered by its swell shades | Shades and tremulants are bypassed; the voices play |
+| Equalizer | The ten-band equaliser of **Organ settings > Equalizer** | Yes |
+| Reverb | The impulse-response convolution of the **Reverb** tab | Yes |
 | Organ trim and master level | The organ's own output trim and the master fader, applied as one multiplication | No |
+| Output compressor | Brings the loud passages towards the quiet ones, where the compressor is switched on | No |
 | Output limiter | Holds the output under a ceiling, where the limiter is switched on | No |
 | Audio recorder | Captures the signal at this point, so a recording does not contain the metronome | No |
-| Metronome, load-progress taps, speaker keep-alive tone | Added after the fader | No |
+| Metronome, load-progress clicks, speaker keep-alive tone | Added after the fader | No |
 | Level meter | Reads the finished block | No |
 
-The **Bypass all effects** box in **Organ settings > Loading** switches off wind model, tremulants, enclosures, voicing EQ, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The equaliser of the **Voicing** tab is a filter, so it needs the DSP. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to Voicing EQ](#relation-to-voicing-eq).
+The **Bypass all effects** box in **Organ settings > Loading** switches off wind model, tremulants, enclosures, equaliser, convolution and detuning. The per-rank and per-pipe level and tuning of the **Voicing** tab, the organ trim and the master level stay active, because each is a single multiplication or ratio taken when a note starts. The shelves, pan and width of the **Voicing** tab are filters, so they need the effects. The per-rank and per-pipe voicing follows the **Voicing** box of **Organ settings > Loading**; see [Relation to the Equalizer](#relation-to-the-equalizer).
+
+The output compressor and limiter follow their own switches on **Settings > Audio...** and keep working with **Bypass all effects** on.
 
 ## The audio device
 
-Open **Settings > General settings...**, which opens on the **Audio** tab the first time. The tab is the device selector with two additions below it: a latency line and the **Keep portable speakers awake** control.
+Open **Settings > Audio...**. The tab is the device selector with two additions below it, a latency line and the **Keep portable speakers awake** control, and under them the output preset, compressor and limiter ([Output compressor and limiter](#output-compressor-and-limiter)).
 
 ![The Audio tab](../images/general-audio.png)
 
@@ -50,13 +53,12 @@ The **Audio device type** box lists the driver types the system offers. It appea
 | **Audio buffer size** | The buffers the device offers, each shown as `N samples (X ms)` | At once |
 | **Test** | Plays a test tone on the output | At once |
 | **Control Panel**, **Reset Device** | Shown for drivers that have their own control panel (ASIO) | |
-| **Active MIDI inputs**, **MIDI Output** | The MIDI ports; see [MIDI and consoles](midi.md) | |
 
-The selector offers one to eight output channels and no input channels. The advanced options are visible. A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
+The selector offers one to eight output channels and no input channels. The advanced options are visible. The MIDI inputs and the MIDI output are on the **MIDI** tab; see [MIDI and consoles](midi.md). A change to device, rate or buffer size stops the device and starts it again; sounding notes stop while the engine rebuilds its voice pool.
 
 ### Latency
 
-The line under the selector reads: *Key to speaker: about X ms, of which the buffer is Y ms and the output Z ms, as the device reports it.* X is the sum of the buffer length and the output latency the driver reports. The line updates whenever the device changes. The convolution of the room is partitioned with a head at the audio block size, so it adds no latency of its own.
+The line under the selector reads: **Note delay: X ms (buffer Y ms, output Z ms)**. X is the sum of the buffer length and the output latency the driver reports. The line updates whenever the device changes. The convolution of the room is partitioned with a head at the audio block size, so it adds no latency of its own.
 
 The keyboard-to-sound time also contains the delay of the MIDI interface and of the console, which the line does not include.
 
@@ -92,7 +94,9 @@ The program renders at the device's sample rate. A sample set recorded at anothe
 
 ### The audio engine
 
-**Organ settings > Loading > Faster audio engine** renders several samples per instruction with the processor's vector unit. The box label shows what was found: **Faster audio engine: using AVX2**, **using SSE2** or **using NEON**, or **not available on this processor**.
+**Settings > Performance** sets how the engine uses the processor. Its **Performance** preset moves the four settings below together; [Settings](general-settings.md#performance) lists the presets.
+
+**Faster audio engine** renders several samples per instruction with the processor's vector unit. The box label shows what was found: **Faster audio engine: using AVX2**, **using SSE2** or **using NEON**, or **Faster audio engine: not available on this processor**.
 
 | Unit | Processors |
 |---|---|
@@ -110,7 +114,7 @@ The program renders at the device's sample rate. A sample set recorded at anothe
 
 ### Real-time render threads
 
-A large organ is rendered by the audio thread and several render threads that share each block. The audio thread is a real-time thread; the render threads are ordinary threads, and the system may run other work first, or put them on slower cores, while the audio thread waits for them. **Organ settings > Loading > Real-time render threads (trial)**, beside **Faster audio engine**, makes them real-time threads the way each system offers it.
+A large organ is rendered by the audio thread and several render threads that share each block. The audio thread is a real-time thread; the render threads are ordinary threads, and the system may run other work first, or put them on slower cores, while the audio thread waits for them. **Real-time render threads**, under **Faster audio engine**, makes them real-time threads the way each system offers it.
 
 | System | What the box does |
 |---|---|
@@ -121,14 +125,20 @@ A large organ is rendered by the audio thread and several render threads that sh
 
 | Field | Value |
 |---|---|
-| Default | Off, while it is tried |
+| Default | On, where the system offers it |
 | Takes effect | At once: each thread changes at its next share. The state is written to `settings.mpglobal` as `realtimethreads` |
 | Stored | Program-wide |
-| Label | With the box on, it says what it found: **Real-time render threads (trial): using SCHED_FIFO** (or MMCSS Pro Audio, rtkit, the realtime portal, Mach time constraint), or **no real-time rights on this system** |
+| Label | With the box on, it says what it found: **Real-time render threads: using SCHED_FIFO** (or MMCSS Pro Audio, rtkit, the realtime portal, Mach time constraint), or **Real-time render threads: no real-time rights on this system** |
 | Log | `real-time render threads: on (MMCSS Pro Audio)` and the like at load and when it is turned on; each **late blocks** line adds how many render threads are real-time and how many are in the audio workgroup |
-| Advice | Try it with a heavy registration and compare the **late blocks** count in the status bar with the box on and off. Reports are collected in the discussion on GitHub. |
+| Advice | Leave it on. To find out whether it is the cause of a problem, compare the **late blocks** count in the status bar with the box on and off on a heavy registration. |
 
 It helps when another program gets in the way of the organ. A registration too large for the processor stays too large: on a 2-core i3 with every stop of a large organ drawn, half the blocks were late with the box on or off.
+
+### Render threads and polyphony
+
+**Render on every logical processor** (on by default) renders the organ on every logical processor, with none kept for the interface, disk streaming and the system: more polyphony on a machine doing nothing else. Off, the organ renders on every processor but one, eight at most. It is written to `settings.mpglobal` as `everyprocessor`. The **Steady** preset turns it off, for a computer that runs other programs beside the organ.
+
+**Polyphony limit** is the most pipes that sound at once, applied as soon as it is chosen; a number can also be typed in the box. [Audio dropouts](#causes-and-remedies) gives its default and range.
 
 **Real-time rights on Linux.** The label reads **no real-time rights on this system** when the user may not have SCHED_FIFO and no rtkit answers. `ulimit -r` in a terminal prints the user's limit; 0 means none. Most audio distributions give the `audio` group a limit in `/etc/security/limits.d/audio.conf`:
 
@@ -141,9 +151,9 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 
 ## Output routing and the mixer
 
-**Settings > General settings > Mixer** assigns each rank of the loaded organ to one of up to eight pairs. The pairs are rendered separately, each with the enclosure processing of its ranks. On a device with the channels a pair names, the pair plays on them; on a stereo device, and in the plugins, the pairs are mixed together into the first two channels. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
+**Organ settings > Outputs** assigns each rank of the loaded organ to one of up to eight pairs. The pairs are rendered separately, each with the enclosure processing of its ranks. On a device with the channels a pair names, the pair plays on them; on a stereo device, and in the plugins, the pairs are mixed together into the first two channels. No sample set declares an audio routing, so the layout is the player's, in the way a MIDI mapping is.
 
-![The Mixer tab](../images/general-mixer.png)
+![The Outputs tab](../images/organ-outputs.png)
 
 | Control | What it does | Default | Takes effect |
 |---|---|---|---|
@@ -153,10 +163,11 @@ On Debian and Ubuntu the jackd2 package writes this file as `audio.conf.disabled
 | **Spread ranks evenly** | Assigns the ranks in rank-number order to the pairs in turn, so that the routing is audible straight away | | At once |
 | **All to pair 1** | Puts every rank on **Pair 1** | | At once |
 | **Save for this organ** | Writes the organ's settings file, including the routes | | At once |
-| **Bass management...** | One row per pair: **Off**, or a crossover of **40** to **200 Hz**, and **Subwoofer on N**. The lows of both channels of the pair, under the crossover, go to that device channel, and the rest to the pair. Several pairs can share one subwoofer. The crossover is Linkwitz-Riley of the 4th order: the pair and the subwoofer add up flat. | Off | At once |
-| Rank list | One row per rank, labelled with its number and name, with a **Pair** box | **Pair 1** | At once |
+| **Bass management...** | One row per pair: **Off**, or a crossover of **40**, **60**, **80**, **100**, **120**, **150** or **200 Hz**, and **Subwoofer on N**. The lows of both channels of the pair, under the crossover, go to that device channel, and the rest to the pair. Several pairs can share one subwoofer. The crossover is Linkwitz-Riley of the 4th order: the pair and the subwoofer add up flat. | Off | At once |
+| Rank list | One row per rank, labelled with its number and name, with a **Pair** box, a level fader and a **MIDI** button | **Pair 1** | At once |
+| Level faders | Under the headings **Output pairs**, **Divisions** and **Ranks**: a live level for each, heard at once on the pipes sounding, with a knob or pedal learned through **MIDI**. Not saved: every fader is full again when an organ loads. | Full | At once |
 
-A rank is routed when a note starts, so notes already sounding keep the pair they began on. A rank with no entry plays through the first pair, so an organ is audible before the Mixer is opened. The pair of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever pair carries it.
+A rank is routed when a note starts, so notes already sounding keep the pair they began on. A rank with no entry plays through the first pair, so an organ is audible before the Outputs tab is opened. The pair of a rank is independent of its enclosure: a Swell rank stays behind the Swell shades whichever pair carries it.
 
 ### Stored
 
@@ -171,25 +182,25 @@ The sum of the pairs is the whole organ, so splitting the ranks over more pairs 
 
 ## The room
 
-**Settings > General settings > Room** places the organ in a room by convolution with an impulse response (IR). Most sample sets are recorded in the room they live in, and several sets ship close, far and rear perspectives that are the room. Use the Room tab for a dry set or for headphones. A wet fraction far below what a reverb plug-in would use is usually enough.
+**Settings > Reverb** places the organ in a room by convolution with an impulse response (IR). Most sample sets are recorded in the room they live in, and several sets ship close, far and rear perspectives that are the room. Use the Reverb tab for a dry set or for headphones. A wet fraction far below what a reverb plug-in would use is usually enough.
 
-![The Room tab](../images/general-room.png)
+![The Reverb tab](../images/general-reverb.png)
 
 | Name | What it does | Default | Range or options | Takes effect |
 |---|---|---|---|---|
 | **Impulse-response reverb** | Switches the room on | Off | On, off | At once |
-| **Load IR...** | Opens a file chooser for WAV, AIFF or FLAC files, and switches the room on when the file loads | No IR | | At once |
+| **Load impulse response...** | Opens a file chooser for WAV, AIFF or FLAC files, and switches the room on when the file loads | No IR | | At once |
 | **Clear** | Removes the IR; the label reads **No IR loaded** | | | At once |
 | IR label | **IR:** and the file name minus its extension | | | |
 | **Wet** | The share of the convolved signal in the output | 0.25 | 0 to 1 in steps of 0.01 | At once |
 
 How the IR is used:
 
-- **Mix.** The output is the wet signal times **Wet** plus the dry signal times 1 minus **Wet**, an equal-gain crossfade. At 0 the room is bypassed.
+- **Mix.** The output is the wet signal times **Wet** plus the dry signal times 1 minus **Wet**, an equal-gain crossfade. At the default 0.25 the room's tail follows each release, and at 1 the room alone plays, at about the organ's own level. At 0 the room is bypassed.
 - **Channels.** A mono file feeds both sides. A two-channel file is an ordinary stereo room. A file with four or more channels is read as true stereo: channels 1 and 2 carry the left input to the left and right outputs, channels 3 and 4 the right input to the left and right outputs.
-- **Level.** The file is scaled by its total energy with one gain for all channels so that a true-stereo room keeps its balance. Leading silence is trimmed.
+- **Level.** The file is scaled by its power where the organ sounds, octave by octave, with one gain for all channels so that a true-stereo room keeps its balance. At full wet a pipe's tone comes out of the room at about the level it went in. Leading silence is trimmed.
 - **Sample rate.** When the chosen file is named `<room>-48000Hz.wav` (a rate in hertz before the extension) and a sibling for the device's rate exists, that sibling is loaded. The file's own sample rate is passed to the convolution engine with its samples.
-- **Position.** The room follows the voicing EQ and precedes the master fader. Simple WAV bypasses it. Convolution is the most expensive stage of the audio callback; the engine uses partitioned convolution with a 256-sample head.
+- **Position.** The room follows the equaliser and precedes the master fader. **Bypass all effects** bypasses it. Convolution is the most expensive stage of the audio callback; the engine uses partitioned convolution with a 256-sample head.
 
 The chosen file, the wet fraction and the on/off state belong to the loaded organ: they are written to its `.mporgan` file as the `reverb` line, saved automatically, and restored when that organ opens. **Save as default** in **Organ settings > Loading** copies them to the defaults that organs without settings start from. The file is stored as a path, so the IR must stay where it was chosen.
 
@@ -197,9 +208,9 @@ If a file cannot be read, a warning titled **The impulse response was not loaded
 
 ## Voicing
 
-**Settings > General settings > Voicing** is the voicer's tab: a level and a tuning for a whole rank or for one pipe, in two sets for comparison.
+**Organ settings > Voicing** is the voicer's tab: a level and a tuning for a whole rank or for one pipe, in two sets for comparison.
 
-![The Voicing tab](../images/general-voicing.png)
+![The Voicing tab](../images/organ-voicing.png)
 
 | Name | What it does | Default | Range or options |
 |---|---|---|---|
@@ -217,14 +228,14 @@ If a file cannot be read, a warning titled **The impulse response was not loaded
 The line under the buttons reads `Slot A  -  N rank(s), M pipe(s) adjusted  -  takes effect on the next note`. A pipe that does not exist on the chosen rank shows **This rank has no pipe at that note**.
 
 - A rank adjustment and a pipe adjustment add.
-- Level is a gain and tuning a pitch ratio, both taken once when a note starts. Notes already sounding keep what they began with. Both work with Simple WAV on and cost nothing while a note sounds.
+- Level is a gain and tuning a pitch ratio, both taken once when a note starts. Notes already sounding keep what they began with. Both work with **Bypass all effects** on and cost nothing while a note sounds.
 - Voicing is stored per organ, as `voicingadj` lines for both slots, `voicingdiv` lines for the divisions and the live slot (`voicingslot`), because a rank number has no meaning in another instrument. The tab changes the live set at once; **Save for this organ** writes it.
 - The tab sets where each rank and each division stands: **Pan**, a constant-power law with the middle at unity, and **Width**, by mid and side. They are heard at once with the EQ, need the DSP, and are stored with the voicing. In the middle and at 100% nothing is processed.
-- The tab holds an equaliser for each rank and each division: a shelf for the treble and one for the bass. It is heard at once, it needs the DSP, and it is stored with the voicing. See [Voicing](general-settings.md#the-eq).
+- The tab holds an equaliser for each rank and each division: a shelf for the treble and one for the bass. It is heard at once, it needs the effects, and it is stored with the voicing. See [EQ, pan and width](organ-settings.md#eq-pan-and-width).
 
-### Relation to Voicing EQ
+### Relation to the Equalizer
 
-The **Voicing EQ** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The **Voicing** tab of General settings changes single ranks and pipes in level and pitch, and holds an equaliser for each rank and each division. What it changes is stored per organ. See [Organ settings](organ-settings.md#voicing-eq) for the equaliser.
+The **Equalizer** tab of **Organ settings** is a different tool. It is a ten-band equaliser for the whole organ (31.5 Hz to 16 kHz, plus an output gain, up to 12 dB per band), with ten presets and the player's own, off by default, applied before the room. It can be kept for every organ (**Save as default**) or for one organ (**Save for this organ**). The same tab holds the attack's emphasis, which makes each pipe begin louder or softer. The **Voicing** tab changes single ranks and pipes in level and pitch, and holds an equaliser for each rank and each division. What it changes is stored per organ. See [Organ settings](organ-settings.md#equalizer) for the equaliser.
 
 The **Voicing** box among the switches of **Organ settings > Loading** is saved with the organ. With the box off, the organ plays as recorded: the per-rank and per-pipe level and tuning of the **Voicing** tab are not applied. The adjustments stay in the voicing sets and apply again when the box is ticked. A change reaches the notes that start afterwards.
 
@@ -236,29 +247,47 @@ The **Voicing** box among the switches of **Organ settings > Loading** is saved 
 | Organ trim | Not adjustable | The organ definition's own output trim, limited to -24 dB to +24 dB | The definition's value | Not stored |
 | Level meter | Top bar | 14 lamps per channel, from -48 dB; lamps 10 to 12 amber, 13 and 14 red | | |
 
-The organ trim is the producer's calibration, which brings sets recorded at different levels to comparable loudness. It is applied under Simple WAV as well. The meter shows the finished output, metronome included; it rises instantly and falls with a time constant of 0.3 s.
+The organ trim is the producer's calibration, which brings sets recorded at different levels to comparable loudness. It is applied under **Bypass all effects** as well. The meter shows the finished output, metronome included; it rises instantly and falls with a time constant of 0.3 s.
 
 The wind model's depth has no control in the program; the engine uses the physics as solved (depth 1).
 
-## The output limiter
+## Output compressor and limiter
 
-**Settings > General settings > Audio** holds a peak limiter for the output. It is off until it is switched on, and while it is off the engine does not touch the signal at all.
+**Settings > Audio** holds a compressor and a peak limiter for the output, in the standalone application. Both are off until they are switched on, and while off the engine does not touch the signal at all. **Output preset** sets them together: **Both off**, **Limiter only**, **Gentle**, **Small speakers**, **Laptop speakers** and **Headphones, quiet practice**. [Settings](general-settings.md#output-dynamics) lists every control and the values of each preset.
+
+In the VST3, LV2 and AU plugins neither runs, whatever the program's settings hold: the host's own effects shape the output there.
+
+### The compressor
+
+| Control | What it does | Default | Range |
+|---|---|---|---|
+| **Output compressor** | Switches the compressor on | Off | On, off |
+| **Threshold** | The level the compression begins at | -18 dBFS | -40 to 0 dBFS |
+| **Ratio** | How much a level over the threshold is held down | 3:1 | 1.5:1 to 10:1 |
+| **Attack** | How long the gain takes to come down | 10 ms | 1 to 100 ms |
+| **Release** | How long the gain takes to come back | 200 ms | 50 to 1000 ms |
+| **Make-up gain** | Lifts the whole output after the compression | 0 dB | 0 to 18 dB |
+| **Bass left out** | The pitch below which the compressor does not listen | **Below 120 Hz** | **None**, **Below 80 Hz**, **Below 120 Hz**, **Below 200 Hz** |
+
+The compressor brings the loud passages towards the quiet ones, and the make-up gain lifts the whole, so small speakers can play louder without a full organ reaching the limiter. It sits after the master fader and ahead of the limiter. The level it listens to leaves out the bass below **Bass left out**, so a 32' or a full pedal leaves the manuals at their level; the bass itself sounds in full. **Reduction N dB** beside the switch shows how far it holds the level down now, before the make-up gain.
+
+### The limiter
 
 | Control | What it does | Default | Range |
 |---|---|---|---|
 | **Output limiter** | Switches the limiter on | Off | On, off |
-| Ceiling | The level the output is held under | -1 dBFS | -0.1 to -12 dBFS in steps of 0.1 dB |
-| Release | How long the gain takes to come back after a peak | 100 ms | 50 to 1000 ms in steps of 10 ms |
+| **Ceiling** | The level the output is held under | -1 dBFS | -0.1 to -12 dBFS in steps of 0.1 dB |
+| **Release** | How long the gain takes to come back after a peak | 100 ms | 50 to 1000 ms in steps of 10 ms |
 
-The limiter sits after the master fader and before the recorder, so a recording carries it as well. It watches the two channels of a pair together: the louder of them sets the gain and both channels get it, so a loud left channel does not leave the right one to clip on its own.
+The limiter sits after the master fader and the compressor, and before the recorder, so a recording carries it as well. It watches the two channels of a pair together: the louder of them sets the gain and both channels get it, so a loud left channel does not leave the right one to clip on its own.
 
 The gain that holds a sample down is the one that sample asks for, so no part of the signal is delayed and the limiter needs no look-ahead. The knee is 3 dB wide: a level just under the ceiling is barely touched, and the reduction grows smoothly to the full amount. Once the loud passage is over the gain comes back at the release rate; after one release time it has closed about two thirds of the distance back to where it was.
 
-With the limiter off the output is bit for bit what the engine made.
+With the compressor and the limiter off the output is bit for bit what the engine made.
 
 ## The metronome
 
-**Settings > General settings > Metronome** adds a click to the output.
+**Settings > Metronome** adds a click to the output.
 
 ![The Metronome tab](../images/general-metronome.png)
 
@@ -293,7 +322,7 @@ A late block is an audio block that took longer to compute than the audio in it 
 | `Voice pool: N voices, M MB` | Same readout | The size of the voice pool and its memory |
 | `audio: N late block(s) of M; the slowest took P% of its time` | The log, at most once every five seconds | A figure of 100% or more is a late block |
 
-The log is `masterpiece.log` in the `Masterpiece` folder of the application data (the previous session is `masterpiece.previous.log`). The **Open the log folder** button on the **Log** tab of General settings opens that folder.
+The log is `masterpiece.log` in the `Masterpiece` folder of the application data (the previous session is `masterpiece.previous.log`). The **Open the log folder** button on the **Diagnostics** tab of Settings opens that folder.
 
 While an organ loads, the engine answers with silence and drops notes that arrive.
 
@@ -302,19 +331,20 @@ While an organ loads, the engine answers with silence and drops notes that arriv
 | Cause | Sign | What to change |
 |---|---|---|
 | Buffer too small | Late blocks with few voices | Raise the buffer size on the **Audio** tab, one step at a time |
-| Polyphony | `voices` high on full organ, `late blocks` rising, or `dropped` above 0 | **Organ settings > Loading > Polyphony limit**. The default is 725 voices per usable processor core and at least 1,536 (1,536 when release streaming is on); the box offers 256 to 10,240 voices. A lower value keeps a small computer from falling behind; a higher value raises CPU use. Past the limit a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory its voices take; a lower limit applies at once and a higher one rebuilds the pool at once. |
-| Processor | Late blocks on every busy passage | Turn on **Faster audio engine**. Turn off the room, or switch **Simple WAV only** on to find out whether the DSP stages are the cause. Use **Release tails end below** (default -90 dB; at -80 dB the last decay of a full chord can end audibly early), **Releases** and **Release length** to end sounding tails sooner. |
+| Polyphony | `voices` high on full organ, `late blocks` rising, or `dropped` above 0 | A lower **Performance** preset in **Settings > Performance**, or **Polyphony limit** there. The default is 725 voices per logical processor and at least 1,536 (1,536 when release streaming is on), at most 16,384; the box offers 256 to 10,240 voices, and a number from 64 to 16,384 can be typed. A lower value keeps a small computer from falling behind; a higher value raises CPU use. Past the limit a new pipe takes the place of one that is dying away, or of the quietest. Each choice shows the memory its voices take; the limit applies at once. |
+| Processor | Late blocks on every busy passage | Turn on **Faster audio engine**. Turn off the room, or switch **Bypass all effects** on to find out whether the effects are the cause. Use **Release tails end below** (default -90 dB; at -80 dB the last decay of a full chord can end audibly early), **Releases** and **Release length** to end sounding tails sooner. |
 | Convolution | Dropouts after the room is switched on | A shorter IR, or **Clear**; the room is the costliest stage |
-| Disk streaming | `DISK TOO SLOW` or the status line message about streamed releases | Raise the share each release holds in memory (**Hold 25%** to **Hold 75% of each release**), or turn off **Stream release tails from disk** and load the organ again; see [Memory, loading and streaming](memory.md) |
-| Memory | Dropouts together with heavy disk use | Use the **Recommended** or **Smallest** memory profile, or a smaller set of ranks; see [Small, medium and large organs](sizing.md) |
+| Disk streaming | `DISK TOO SLOW` or the status line message about streamed releases | Raise the share each release holds in memory (**Hold 25%** to **Hold 75% of each release**), or a longer **Release buffer**, or turn off **Stream releases from disk** and load the organ again; see [Memory, loading and streaming](memory.md) |
+| Memory | Dropouts together with heavy disk use | A smaller **Quality** preset in **Organ settings > Loading**, such as **Compact** or **Small**, or a smaller set of ranks; see [Small, medium and large organs](sizing.md) |
+| Other work on the computer | Late blocks while other programs run | The **Steady** preset in **Settings > Performance**, which leaves one processor free |
 | Other programs | Irregular late blocks | A native low-latency driver, and the larger buffer |
 
-The voice-rendering threads are chosen automatically: the number of usable processor cores minus one (one thread when there are two or fewer cores), at most eight. The program has no control for the count.
+The voice-rendering threads follow **Render on every logical processor**: on, every logical processor; off, every processor but one, at most eight.
 
-The sample cache writing "in silence, while it plays" waits for silence and takes no voices from the organ; **Save the sample cache** in **Organ settings > Loading** chooses between this and writing before the organ plays.
+The sample cache writing "in silence, while it plays" waits for silence and takes no voices from the organ; **Save the sample cache** on the **General** tab of Settings chooses between this and writing before the organ plays.
 
 ## Platform notes
 
-- **Plug-ins.** The host owns the audio device and the MIDI ports. **Settings > General settings...** in the plug-in editor opens General settings without the **Audio** and **MIDI** tabs, so the device selector of this page is not available there. See [Plugins in a DAW](plugins.md).
+- **Plug-ins.** The host owns the audio device and the MIDI ports. The plug-in's **Settings** window has no **Audio** or **MIDI** tab, so the device selector, the compressor and the limiter of this page are not there: the host's own effects shape the output. See [Plugins in a DAW](plugins.md).
 - **Phones and tablets.** The same selector is used with the driver types above; see [Phones and tablets](mobile.md).
 - **Raspberry Pi.** The faster audio engine uses the NEON unit.

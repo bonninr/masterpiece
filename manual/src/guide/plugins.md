@@ -52,9 +52,9 @@ The plugin window is the console of the standalone program. It opens at 1280 by 
 
 ## Choosing an organ
 
-Open **File > Open...** in the plugin window. The window lists the organs saved as favourites, with a button for the file dialog; with no favourite yet, the file dialog opens at once. The plugin accepts the same files as the standalone program: Hauptwerk-format definitions, GrandOrgue `.organ` files, and `.rar` and `.orgue` packages. See [Opening an organ](opening.md).
+Open **File > Open organ...** in the plugin window. The window lists the organs saved as favourites, with a button for the file dialog; with no favourite yet, the file dialog opens at once. The plugin accepts the same files as the standalone program: Hauptwerk-format definitions, GrandOrgue `.organ` files, and `.rar` and `.orgue` packages. See [Opening an organ](opening.md).
 
-When an organ has several definitions beside it (perspectives, or full and light versions), **File > Other versions of this organ** switches between them.
+When an organ has several definitions beside it (perspectives, or full and light versions), **File > Open another version** switches between them.
 
 While an organ loads, the load dialog is on screen and the plugin outputs silence. MIDI notes that reach the plugin during the load are dropped, because they were played on the organ being replaced.
 
@@ -72,7 +72,7 @@ The state that the plugin hands to the host holds one item: the full path of the
 
 When the project opens, the host hands the state back and the instance loads that organ again:
 
-- With the plugin window open, the load runs through the window, as **File > Open...** does, with its load dialog.
+- With the plugin window open, the load runs through the window, as **File > Open organ...** does, with its load dialog.
 - With no plugin window open, the load starts straight away without it.
 
 An instance that already holds that organ does not load it again. A state with no path, or one that does not belong to Masterpiece, changes nothing.
@@ -118,7 +118,7 @@ The plugin declares a MIDI input and produces no MIDI output.
 | Reported tail length | 5 seconds |
 | MIDI in / out | In only |
 
-The engine renders the organ to this bus. The mixer's pairs, set under **Settings > General settings > Mixer**, play on their own channels when the host gives the bus that many, and are summed to the first two otherwise.
+The engine renders the organ to this bus. The mixer's pairs, set on the **Outputs** tab of **Organ settings**, play on their own channels when the host gives the bus that many, and are summed to the first two otherwise.
 
 The plugin takes the sample rate and the block size from the host. A rate change in the host rebuilds the voice pool.
 
@@ -126,10 +126,13 @@ The plugin takes the sample rate and the block size from the host. A rate change
 
 | Area | Standalone program | Plugin |
 |---|---|---|
-| Audio device, rate, buffer | Chosen in **Settings > General settings > Audio** | Owned by the host |
-| MIDI inputs | All enabled by default; selectable in **General settings > MIDI** | The host's MIDI stream only |
-| MIDI output | Chosen in **General settings > MIDI** | None |
-| Settings windows | **Organ settings...** and **General settings...** in the **Settings** menu | The **Settings** menu lists **Organ settings...** and **General settings...**. **General settings...** opens General settings without the **Audio** and **MIDI** tabs, because the host owns the audio device and the MIDI ports. **Organ settings...** opens Organ settings without its **MIDI** tab. |
+| Audio device, rate, buffer | Chosen in **Settings > Audio...** | Owned by the host |
+| MIDI inputs | All enabled by default; selectable in **Settings > MIDI...** | The host's MIDI stream only |
+| MIDI output | Chosen in **Settings > MIDI...** | None |
+| Output compressor and limiter | On the **Audio** tab, with the output presets | Left to the host's own effects: the plugin never runs them, whatever the saved settings hold |
+| Settings windows | **Organ > Organ settings...**, and the **Settings** menu with one item per tab of the settings window | **Organ > Organ settings...** opens Organ settings without its **MIDI** tab. The **Settings** menu lists **General...**, **Performance...**, **Reverb...**, **Metronome...**, **Combination sets...**, **Console display...** and **Language...**: the settings window has no **Audio**, **MIDI** or **Remote control** tab, because the host owns the audio device and the MIDI ports. |
+| Remote control and the web console | **Settings > Remote control...** | Absent |
+| **Help > Diagnostics...** | Available | Greyed out |
 | First-run wizard | Shown at the first start | Not shown |
 | Startup | Opens the last organ when **Reopen the last organ when Masterpiece starts** is on | Opens the organ stored in the host's project when a project opens, and no organ otherwise |
 | Crash guard | Remembers the organ being loaded and writes a note to the log after a crash | Absent |
@@ -139,7 +142,7 @@ The plugin takes the sample rate and the block size from the host. A rate change
 | Window position | Remembered in `window.txt` | Decided by the host |
 | `--virtual-midi`, JACK MIDI | Available on macOS and Linux | Not applicable |
 
-The recorder (**File > Recorder...**), the **Combinations** window, the split keyboard, the on-screen keyboard and the tuning controls work as in the standalone program. The audio recorder captures the plugin's output after the master fader.
+The recorder (**View > Recorder**), the **Combinations** window (**Organ > Combinations**), the split keyboard, the on-screen keyboard and **Organ > Temperament and tuning...** work as in the standalone program. The audio recorder captures the plugin's output after the master fader.
 
 ## Several instances
 
@@ -150,6 +153,7 @@ All instances share the files in the settings folder. Set **Sample cache** to **
 ## Limitations
 
 - The host's project stores the organ's path and nothing else; the stops drawn and the settings come from the files in the settings folder.
-- General settings has no **Audio** or **MIDI** tab and Organ settings has no **MIDI** tab, because the host owns the audio and MIDI devices.
+- The settings window has no **Audio**, **MIDI** or **Remote control** tab and Organ settings has no **MIDI** tab, because the host owns the audio and MIDI devices.
+- The output compressor and the output limiter are left to the host, which chains its own effects. The voicing EQ and the voicing work as in the standalone program.
 - No log is written, so a fault inside a host leaves no `masterpiece.log`. Reproduce it in the standalone program and attach that log, as described in [Troubleshooting and caveats](troubleshooting.md).
 - A console's lights and displays need the standalone program, which opens the MIDI output.

@@ -16,7 +16,7 @@ Bug reports and organ definitions that do not load are welcome at <https://githu
   | macOS | `~/Library/Masterpiece` |
   | Linux | `~/.config/Masterpiece` |
 
-  **Settings > General settings > Log** shows the current log in the program.
+  The **Diagnostics** tab of **Settings** runs the program's checks and copies them, with the last 200 lines of the log, for a bug report.
 - For a fault in loading, `--log <file>` writes the log from the start with the timing of each stage. For a fault in MIDI, `--log-midi` records every message and what became of it. For a click or a wrong tail on key release, `--log-releases` describes every release. For a stuck note that appears at random, `--record-midi <file>` saves the session as a MIDI file. See [Command line](../guide/command-line.md).
 - The steps that produce the fault, and what you expected.
 
@@ -29,12 +29,12 @@ Questions, ideas, requests for support of a new feature and conversations about 
 ## Pull requests
 
 - Branch from `main`, and keep each pull request to one change.
-- Run the test suite (`mp_tests`; see [Testing](testing.md)). CI runs it on every pull request on Windows, Linux x86-64, Linux arm64 and macOS (Apple silicon and Intel), and builds the 32-bit Raspberry Pi target, the Flatpak, iOS and Android.
+- Run the test suite (`mp_tests`; see [Testing](testing.md)). CI runs it on every pull request on Windows, Linux x86-64 and macOS on Apple silicon, cross-builds Linux arm64 and the 32-bit Raspberry Pi target, and builds the plugins for Windows and Linux, the Flatpak, iOS and Android. The Intel Mac build and the Mac plugins run on `main` and for releases.
 - Add or update a test for behaviour you change. A test that fails without your change documents the fault.
 - Describe in the pull request what the change does for a player, and how you tested it.
 - Run `python tools/i18n.py --check` when you add or change a string the program shows; see [Translating](#translating).
 
-A pull request that touches only `README.md`, `COPYING`, `LICENCE`, `.gitignore`, `screenshots/`, `site/`, `manual/`, `ATTRIBUTION.md` or `.github/workflows/pages.yml` starts no build.
+A pull request that touches only `README.md`, `COPYING`, `LICENCE`, `.gitignore`, `screenshots/`, `site/`, `manual/`, `ATTRIBUTION.md`, `.github/pages-downloads.py` or `.github/workflows/pages.yml` starts no build.
 
 ## Licence of contributions
 
@@ -48,7 +48,7 @@ The program's own text is translated with one plain-text file per language in `r
 
 To add a language:
 
-1. Copy `resources/translations/strings.txt`, the list of every string in English, to `resources/translations/<code>.txt`.
+1. Run `python tools/i18n.py --write`, which writes `resources/translations/strings.txt`, the list of every string in English, and copy it to `resources/translations/<code>.txt`.
 2. Fill in the `language:` line with the language's name in that language, and the `countries:` line with the country codes where it is spoken.
 3. Put the translation on the right of each `"English" = "English"` line.
 4. Keep `%1`, `%2` and the other placeholders; they stand for numbers and names the program puts in, and may come in any order the language needs.
@@ -56,17 +56,17 @@ To add a language:
 
 At run time a string a file leaves out stays English. The tests are stricter: they fail when any language file lacks a string, holds an empty translation, changes the placeholders of a string or contains a string the program no longer has. Translate every line before you open the pull request. Lines beginning with `#` are comments.
 
-The translated text is chosen in **Settings > General settings > Language**.
+The translated text is chosen on the **Language** tab of **Settings**.
 
 `tools/i18n.py` keeps the files in step with the code:
 
 | Command | Effect |
 |---|---|
 | `python tools/i18n.py` | Reports, for each language, how many strings are translated and which are missing, stale, empty or have different placeholders |
-| `python tools/i18n.py --write` | Rewrites `strings.txt` from the `TRANS("...")` strings in `src/` and `apps/`; run it after you add or change a string in the code |
+| `python tools/i18n.py --write` | Writes `strings.txt` from the `TRANS("...")` strings in the `.cpp`, `.h` and `.mm` files under `src/` and `apps/`, as a template to translate from; Git ignores it |
 | `python tools/i18n.py --check` | Reports, and exits with 1 when anything is missing, stale or inconsistent |
 
-Every string a player reads goes through `TRANS("...")`. Write the English text in the code and run `--write`; the test `functional.i18n.template-covers-sources` fails when `strings.txt` is out of date. CMake embeds every `resources/translations/*.txt` except `strings.txt` in the program; the file list is a glob that CMake re-evaluates at each build.
+Every string a player reads goes through `TRANS("...")`. Write the English text in the code and add its translation to every language file; the test `functional.i18n.language-files` reads the strings from the sources and fails when a language file lacks one. CMake embeds every `resources/translations/*.txt` except `strings.txt` in the program; the file list is a glob that CMake re-evaluates at each build.
 
 ## Code style
 
@@ -76,7 +76,7 @@ There is no formatter configuration in the repository. The style below is what t
 
 - C++20, two-space indentation, `#pragma once` in headers, `//` comments.
 - Source files are UTF-8. The repository normalises line endings through `.gitattributes` (`* text=auto`; shell scripts, `.yml` and `.cmake` files are always LF).
-- The code is in namespace `mp`; sub-namespaces are `mp::ui` (interface), `mp::split`, `mp::dsp`, `mp::simd`, `mp::codm` and `mp::test`. File-local helpers sit in an anonymous namespace.
+- The code is in namespace `mp`; sub-namespaces are `mp::ui` (interface), `mp::api` (control API), `mp::split`, `mp::dsp`, `mp::simd`, `mp::codm`, `mp::realtime`, `mp::settings` and `mp::test`. File-local helpers sit in an anonymous namespace.
 
 **Names.**
 
@@ -86,7 +86,7 @@ There is no formatter configuration in the repository. The style below is what t
 
 **Module rules.**
 
-- Keep `mp_core`, `mp_archive`, `mp_sampler`, `mp_control` and `mp_split` free of JUCE headers. A new engine feature goes in one of these when it can, so the test suite covers it with no audio stack.
+- Keep `mp_core`, `mp_archive`, `mp_sampler`, `mp_control`, `mp_split` and `mp_score` free of JUCE headers. A new engine feature goes in one of these when it can, so the test suite covers it with no audio stack.
 - Text the player reads goes through `TRANS("...")`.
 - Code on the audio thread follows the rules in [Architecture](architecture.md#rules-for-the-audio-thread).
 

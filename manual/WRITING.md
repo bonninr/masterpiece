@@ -93,19 +93,19 @@ with the Nancy demo (a Hauptwerk-format demo set) unless noted:
 | `menu-file.png` | The File menu open |
 | `menu-view.png` | The View menu open |
 | `menu-settings.png` | The Settings menu open |
-| `open-window.png` | File > Open...: the favourites window |
+| `open-window.png` | File > Open organ...: the favourites window |
 | `loading-dialog.png` | The load progress dialog |
-| `general-audio.png` ... `general-log.png` | Each tab of General settings: `general-audio`, `general-room`, `general-metronome`, `general-midi`, `general-mixer`, `general-voicing`, `general-combination-sets`, `general-display`, `general-language`, `general-log` |
-| `organ-loading.png`, `organ-stops.png`, `organ-voicing-eq.png`, `organ-midi.png` | Each tab of Organ settings |
+| `general-general.png` ... `general-diagnostics.png` | Tabs of the Settings window: `general-general` (General), `general-audio` (Audio), `general-midi` (MIDI), `general-performance` (Performance), `general-reverb` (Reverb), `general-metronome` (Metronome), `general-combination-sets` (Combination sets), `general-display` (Console display), `general-language` (Language), `general-remote` (Remote control), `general-diagnostics` (Diagnostics) |
+| `organ-loading.png` ... `organ-midi.png` | Tabs of Organ settings: `organ-loading` (Loading), `organ-stops` (Stops, ranks and perspectives), `organ-outputs` (Outputs), `organ-voicing` (Voicing), `organ-equalizer` (Equalizer), `organ-midi` (MIDI) |
 | `manual-keys.png`, `manual-pistons.png`, `manual-send.png` | The dialog for one manual's MIDI, each tab |
 | `midi-receive.png`, `midi-send.png`, `midi-shortcut.png` | The MIDI dialog of one stop, each tab |
 | `split-keyboard.png` | View > Split keyboard |
-| `combinations.png` | View > Combinations |
-| `recorder.png` | File > Recorder... |
+| `combinations.png` | Organ > Combinations |
+| `recorder.png` | View > Recorder |
 | `panel.png` | A panel tab (the plain stop view) |
 | `stop-list.png` | The stop list view |
-| `tuning-panel.png` | The temperament and tuning controls |
-| `swell-faders.png` | View > Swell faders |
+| `tuning-panel.png` | Organ > Temperament and tuning... |
+| `swell-faders.png` | View > Expression pedals |
 | `keyboard.png` | View > Keyboard, the on-screen keyboard |
 
 If a page needs a screenshot that is not in the list, use a new descriptive

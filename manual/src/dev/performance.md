@@ -24,23 +24,40 @@ The baseline is the conventional approach: every sample decoded to 32-bit floati
 | Machine | 15.9 GB RAM, Windows |
 | Build | Masterpiece 0.3.3, Release |
 
-The figures are the project's own measurements, made with Masterpiece 0.3.3.
+The figures are the project's own measurements, made with Masterpiece 0.3.3. The storage formats, release streaming, mono folding, the cache and rate conversion they measure work the same in 0.9.0; lossless compression, added since, is described below with its own figures.
 
 ## Techniques
 
-The settings are on the **Loading** tab of **Organ settings**.
+The settings are on the **Loading** tab of **Organ settings**, and each takes effect at the next load of the organ.
 
 | Technique | Setting | What it does |
 |---|---|---|
-| **Release streaming** | **Stream release tails from disk** | A release tail is several seconds of room sound, played once from its start and never looped. Masterpiece keeps only its first frames in memory and streams the rest from disk into a per-voice ring buffer while it sounds. Attacks and sustain loops stay in memory. |
+| **Release streaming** | **Stream releases from disk** | A release tail is several seconds of room sound, played once from its start and never looped. Masterpiece keeps only its first frames in memory and streams the rest from disk into a per-voice ring buffer while it sounds. Attacks and sustain loops stay in memory. |
 | **24-bit storage** | **Resident format**: **As recorded - 16 or 24-bit, as each file is** | The source files are 24-bit. Samples are held as 24-bit integers, so the audio in memory is bit-for-bit identical to the file. A 16-bit file is held as 16-bit integers, also bit-for-bit. The 32-bit float baseline widens every sample. |
 | **20-bit storage** | **Resident format**: **20-bit - a sixth less than the source** | Samples are requantised to 20 bits against each file's own peak and packed so two samples take five bytes: two and a half bytes a sample. |
 | **16-bit storage** | **Resident format**: **16-bit - two thirds of that, inaudible** | Samples are requantised to 16 bits against each file's own peak, so a quiet stop still uses every bit. |
+| **Lossless compression** | **Lossless compression in memory** | 16-bit and 24-bit samples are held split Rice coded and decoded as they play, bit for bit what the file holds. See [Compression](#compression). Greyed out for 20-bit and 32-bit float storage. |
 | **Mono folding** | **Load in mono (halves memory, gives up the stereo image)** | A stereo sample set is folded to mono as it loads. |
 | **Sample cache** | **Sample cache** | The decoded, converted samples are written to one file, so the next load of the same organ with the same settings is one sequential read in place of 12,148 decodes. |
 | **Load-time rate conversion** | **Sample rate** | Samples are converted to the chosen rate as they load (**As recorded**, **48 kHz** or **44.1 kHz**), so playback needs no per-voice rate conversion. |
 
-The **Memory profile** list sets several of these at once: **Best quality - 24-bit, hold everything**, **Recommended - 16-bit, stream releases** and **Smallest - 16-bit mono, stream releases**.
+The **Quality** list sets several of these at once:
+
+| Quality | What it sets |
+|---|---|
+| **Best: as recorded, all in memory** | As recorded, every sample in memory |
+| **High: as recorded, compressed, releases streamed** | As recorded, compressed, release tails streamed |
+| **Recommended: 16-bit, releases streamed** | 16-bit, release tails streamed |
+| **Compact: 16-bit, compressed, releases streamed** | 16-bit, compressed, release tails streamed |
+| **Small: 16-bit mono, compressed, releases streamed** | 16-bit mono, compressed, release tails streamed |
+| **Smallest: as Small, short releases only** | As Small, with the shortest release of each pipe alone |
+| **Custom** | Shown when the settings below it match none of the above |
+
+## Compression
+
+With **Lossless compression in memory** on, each sample is cut into blocks of 4,096 frames, each block predicted and its residuals Rice coded, and the voices decode the blocks they play as they play them. The samples a voice plays are bit for bit the file's samples. Measured on a tenth of the Friesach set on a two-core Intel Core i3, the coded samples take a third of the bytes of plain 24-bit storage, and they decode at 224 million frames a second. On the whole Friesach set with the 0.9.0 build, the coded samples take 5,394.5 MB at 24 bits (0.333 of plain), 3,301.5 MB at 16 bits (0.306) and 1,661.9 MB at 16 bits mono (0.308).
+
+The decoding is done on the render threads, so a compressed organ takes more processor time per voice than a plain one. The benchmarks `perf.voice.coded-playback` and `perf.codec.split-rice-decode` measure it on the machine they run on. See [Architecture](architecture.md#samples-held-compressed).
 
 ## Memory
 
