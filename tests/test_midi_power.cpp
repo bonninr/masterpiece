@@ -43,7 +43,13 @@ public:
     buf.clear();
     proc.processBlock(buf, none);
     MP_CHECK(proc.readyLampState() == 0, "no organ: dark");
-    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    // Loaded for its console only, as for Organ settings on an organ's first
+    // opening: nothing can be played yet, so the lamp stays dark (#764).
+    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the console loads");
+    buf.clear();
+    proc.processBlock(buf, none);
+    MP_CHECK(proc.readyLampState() == 0, "the console only: dark");
+    MP_CHECK(proc.loadOrgan(fixture(), 0, false).ok, "the organ loads");
     buf.clear();
     proc.processBlock(buf, none);
     MP_CHECK(proc.readyLampState() == 1, "an organ ready: lit");
@@ -59,7 +65,7 @@ public:
     constexpr int kBlock = 4096;
     constexpr double kRate = 48000.0;
     proc.prepareToPlay(kRate, kBlock);
-    MP_CHECK(proc.loadOrgan(fixture(), 0, true).ok, "the organ loads");
+    MP_CHECK(proc.loadOrgan(fixture(), 0, false).ok, "the organ loads");
     std::vector<bool> asked;  // true for power off, false for quit
     proc.onPowerRequest = [&](bool powerOff) { asked.push_back(powerOff); };
 
