@@ -312,7 +312,8 @@ SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
         return {noteToHz(in.fileMidiNote, aHz), PitchRoute::FileMetadata};
       break;
     case 3:
-      if (in.normalMidiNote >= 0) {
+      // 0 is the format's default: a row with no note, in either spelling.
+      if (in.normalMidiNote > 0) {
         // The harmonic number is half of this route, not decoration. A rank
         // declared at 1 1/3' (harmonic 48) sounds 31 semitones above the note
         // its pipes are keyed at, and reading the note without it puts the
@@ -343,7 +344,7 @@ SamplePitchResult resolveSamplePitch(const SamplePitchInputs& in,
   }
   if (in.fileMidiNote >= 0.0)
     return {noteToHz(in.fileMidiNote, aHz), PitchRoute::FileMetadata};
-  if (in.normalMidiNote >= 0) {
+  if (in.normalMidiNote > 0) {
     const int harm = (in.rankBasePitch64ftHarmonicNum > 0)
                          ? in.rankBasePitch64ftHarmonicNum
                          : 8;
