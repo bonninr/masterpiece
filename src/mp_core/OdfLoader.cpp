@@ -1974,8 +1974,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // ---- TextStyle: the font a TextInstance is drawn in ----
-  // Defaults follow Hauptwerk's own: Arial, 10 pixels, normal weight, black,
-  // centred horizontally and aligned to the top vertically.
+  // Defaults follow Hauptwerk's own: Arial, 10 pixels, normal weight, white,
+  // centred both ways.
   forEachRow(odfRoot, "TextStyle", [&](pugi::xml_node row) {
     TextStyle t;
     t.styleId = fieldInt(row, "StyleID", "a", 0);

@@ -11676,6 +11676,20 @@ public:
   }
 };
 static SmallPageScaleTest g_smallPageScale;
+
+// A text style's vertical alignment: 1 top, 2 bottom, 3 middle. A style that
+// writes 3 hung its text from the top of the box.
+class TextVerticalCodesTest final : public mp::test::Test {
+public:
+  TextVerticalCodesTest() : Test("functional.ui.text-vertical-codes", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::ui::ConsoleView::textInMiddle(3), "3 is the middle");
+    MP_CHECK(mp::ui::ConsoleView::textInMiddle(0), "a style that writes none sits in the middle");
+    MP_CHECK(!mp::ui::ConsoleView::textInMiddle(1), "1 is the top");
+    MP_CHECK(!mp::ui::ConsoleView::textInMiddle(2), "2 is the bottom");
+  }
+};
+static TextVerticalCodesTest g_textVerticalCodes;
 static RecordConsoleTest g_recordConsole;
 static PlaybackStopReleasesTest g_playbackStopReleases;
 

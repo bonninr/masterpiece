@@ -837,7 +837,7 @@ struct TextStyle {
   // without one the position is the anchor, and centred text sits astride
   // its XPosPixels.
   int hAlignCode = 0;
-  // 0 centre, 1 top, 2 bottom.
+  // 0 or 3 middle, 1 top, 2 bottom.
   int vAlignCode = 0;
 };
 

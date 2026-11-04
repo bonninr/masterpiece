@@ -172,6 +172,9 @@ public:
   }
   static float fitScale(juce::Rectangle<int> art, juce::Rectangle<int> first,
                        juce::Rectangle<int> area, bool fillSmall = false);
+  // Whether a vertical alignment code puts text in the middle. 1 is the top,
+  // 2 the bottom, 3 the middle, and 0 is what a style that writes none reads.
+  static bool textInMiddle(int vAlignCode) { return vAlignCode == 0 || vAlignCode == 3; }
   // Where the console is drawn in its holder: moved so the artwork's top-left
   // is the holder's, then scaled. The console itself keeps the coordinates
   // the organ gives, so it reaches out to the artwork's far edge.
