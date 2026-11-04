@@ -731,6 +731,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // real set names one.
     layer.ampScalingControlId =
         fieldInt(row, "AmpLvl_ScalingContinuousControlID", "s", 0);
+    layer.attackSelectControlId =
+        fieldInt(row, "Main_AttackSelCriteria_ContinuousControlID", "e", 0);
+    layer.releaseSelectControlId =
+        fieldInt(row, "Main_ReleaseSelCriteria_ContinuousControlID", "f", 0);
     layer.pitchControlId =
         fieldInt(row, "PitchLvl_IncrementingContinuousControlID", "a1", 0);
     layer.pitchSensitivityHzPerUnit = fieldDouble(

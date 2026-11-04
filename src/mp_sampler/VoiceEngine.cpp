@@ -811,6 +811,8 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       rel.attackIndex = v.attackIndex;
       rel.attackId = v.attackId;
       rel.attackVelocity = v.attackVelocity;
+      if (v.layer->releaseSelectControlId != 0 && controlReader_)
+        rel.ctsValue = controlReader_(v.layer->releaseSelectControlId);
       chosen = selectRelease(*v.layer, rel);
     }
 

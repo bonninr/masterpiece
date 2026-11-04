@@ -10957,6 +10957,80 @@ public:
 };
 static ReleaseDefaultLimitTest g_releaseDefaultLimit;
 
+// Rows chosen by a control are bands by ceiling. St. Maximin lists the two
+// tunings of a pipe in either order, so the first row that fits would miss the
+// low band on a pipe that lists the default first. A layer with no control
+// keeps file order.
+class ControlBandsTest final : public mp::test::Test {
+public:
+  ControlBandsTest() : Test("functional.matrix.control-bands", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><o><a>1</a><b>Mixture</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>10</a><b>1</b><c>60</c></o>"
+        "<o><a>11</a><b>1</b><c>61</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
+        "<o><a>20</a><b>10</b><e>14</e><f>15</f></o>"
+        "<Pipe_SoundEngine01_Layer><LayerID>21</LayerID><PipeID>11</PipeID>"
+        "<Main_AttackSelCriteria_ContinuousControlID>16</Main_AttackSelCriteria_ContinuousControlID>"
+        "<Main_ReleaseSelCriteria_ContinuousControlID>17</Main_ReleaseSelCriteria_ContinuousControlID>"
+        "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
+    MP_CHECK(l.loadFromXmlString(odf, "c.Organ_Hauptwerk_xml", o, m, d), "the definition loads");
+    const auto& pipes = m.ranks[1].pipes;
+    MP_CHECK(pipes.size() == 2 && pipes[0].layers.size() == 1 && pipes[1].layers.size() == 1,
+             "both pipes keep their layer");
+    MP_CHECK(pipes[0].layers[0].attackSelectControlId == 14 &&
+                 pipes[0].layers[0].releaseSelectControlId == 15,
+             "a compact layer names its controls in e and f");
+    MP_CHECK(pipes[1].layers[0].attackSelectControlId == 16 &&
+                 pipes[1].layers[0].releaseSelectControlId == 17,
+             "a long layer names them in full");
+
+    mp::PipeLayer tuning;
+    tuning.attacks.resize(2);
+    tuning.attacks[1].ctsHigh = 50;
+    const auto attackAt = [](const mp::PipeLayer& layer, int value) {
+      return mp::selectAttack(layer, mp::NoteStrike{64, 1000, value});
+    };
+    MP_CHECK(attackAt(tuning, 126) == 0, "above the band sounds the default row");
+    MP_CHECK(attackAt(tuning, 1) == 1, "inside it sounds the low row, though listed second");
+    MP_CHECK(attackAt(tuning, 50) == 1, "a ceiling is inclusive");
+
+    mp::PipeLayer takes;
+    takes.attacks.resize(3);
+    takes.attacks[1].ctsHigh = 43;
+    takes.attacks[2].ctsHigh = 85;
+    MP_CHECK(attackAt(takes, 20) == 1 && attackAt(takes, 60) == 2 && attackAt(takes, 100) == 0,
+             "three takes, one for each band, as Nowa Ruda writes its noises");
+
+    mp::PipeLayer plain;
+    plain.attacks.resize(2);
+    MP_CHECK(mp::selectAttack(plain, mp::NoteStrike{}) == 0,
+             "with no control the first row that fits sounds");
+
+    mp::PipeLayer releases;
+    releases.releases.resize(2);
+    releases.releases[1].ctsHigh = 64;
+    mp::NoteRelease up;
+    up.ctsValue = 100;
+    MP_CHECK(mp::selectRelease(releases, up) == 0, "a release above the band takes the default");
+    up.ctsValue = 30;
+    MP_CHECK(mp::selectRelease(releases, up) == 1, "and inside it the low row");
+    releases.releases[0].holdTimeMsHigh = 300;
+    up.holdTimeMs = 100;
+    MP_CHECK(mp::selectRelease(releases, up) == 0, "the tighter hold time still comes first");
+    up.holdTimeMs = 500;
+    MP_CHECK(mp::selectRelease(releases, up) == 1, "and a long note leaves it behind");
+  }
+};
+static ControlBandsTest g_controlBands;
+
 class MatrixCoverageQueryTest final : public mp::test::Test {
 public:
   MatrixCoverageQueryTest()
@@ -15705,6 +15779,167 @@ public:
   }
 };
 static CelesteDetuneTest g_celesteDetune;
+
+// A button that chooses between two attacks and two releases of a pipe, wired
+// as St. Maximin wires its tuning selector: one constant reaches the selector
+// through two conditional linkages, inverted while the button is in and plain
+// while it is out. The default rows come first, so only the ceilings reach the
+// others. A sounding note keeps its attack, and the release is read as the key
+// comes up.
+class AttackByControlTest final : public mp::test::Test {
+public:
+  AttackByControlTest() : Test("functional.audio.attack-by-control", Category::Functional) {}
+
+  void run() override {
+    const auto root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-attack-control");
+    root.deleteRecursively();
+    root.getChildFile("OrganDefinitions").createDirectory();
+    const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+    pkg.createDirectory();
+    juce::WavAudioFormat wav;
+    const auto tone = [&](const char* name, double hz) {
+      juce::StringPairArray meta;
+      meta.set("NumSampleLoops", "1");
+      meta.set("Loop0Start", "0");
+      meta.set("Loop0End", "47999");
+      std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile(name).createOutputStream());
+      std::unique_ptr<juce::AudioFormatWriter> w(wav.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+      juce::AudioBuffer<float> b(1, 48000);
+      for (int i = 0; i < 48000; ++i)
+        b.setSample(0, i, 0.3f * static_cast<float>(std::sin(2.0 * 3.141592653589793 * hz * i / 48000.0)));
+      w->writeFromAudioSampleBuffer(b, 0, 48000);
+    };
+    tone("001-C.wav", 120.0);
+    tone("001-C_Trem.wav", 120.0);
+    tone("002-C.wav", 180.0);
+    tone("002-C_Rel.wav", 240.0);
+
+    const auto sample = [](int id, const char* file) {
+      return juce::String("<Sample><SampleID>") + juce::String(id) +
+             "</SampleID><InstallationPackageID>1</InstallationPackageID><SampleFilename>" + file +
+             "</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+             "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample>";
+    };
+    const juce::String closeAttack = "</Pipe_SoundEngine01_AttackSample>";
+    const juce::String closeRelease = "</Pipe_SoundEngine01_ReleaseSample>";
+    const juce::File fixture(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::String xml =
+        fixture.loadFileAsString()
+            .replaceFirstOccurrenceOf("<Sample>", sample(103, "002-C.wav") + sample(104, "002-C_Rel.wav") + "<Sample>")
+            .replaceFirstOccurrenceOf(
+                "<AmpLvl_LevelAdjustDecibels>0</AmpLvl_LevelAdjustDecibels>",
+                "<AmpLvl_LevelAdjustDecibels>0</AmpLvl_LevelAdjustDecibels>"
+                "<Main_AttackSelCriteria_ContinuousControlID>14</Main_AttackSelCriteria_ContinuousControlID>"
+                "<Main_ReleaseSelCriteria_ContinuousControlID>14</Main_ReleaseSelCriteria_ContinuousControlID>")
+            .replaceFirstOccurrenceOf(
+                closeAttack,
+                closeAttack + "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>401</LayerID>"
+                              "<SampleID>103</SampleID><AttackSelCriteria_HighestCtsCtrlValue>50"
+                              "</AttackSelCriteria_HighestCtsCtrlValue>" + closeAttack)
+            .replaceFirstOccurrenceOf(
+                closeRelease,
+                closeRelease + "<Pipe_SoundEngine01_ReleaseSample><UniqueID>602</UniqueID><LayerID>401</LayerID>"
+                               "<SampleID>104</SampleID><ReleaseSelCriteria_HighestCtsCtrlValue>50"
+                               "</ReleaseSelCriteria_HighestCtsCtrlValue>"
+                               "<ReleaseCrossfadeLengthMs>10</ReleaseCrossfadeLengthMs>" + closeRelease)
+            .replaceFirstOccurrenceOf(
+                "<Switch>",
+                "<Switch><SwitchID>12997</SwitchID><Name>Tuning Selection</Name><Latching>Y</Latching>"
+                "<DefaultToEngaged>Y</DefaultToEngaged></Switch><Switch>")
+            .replaceFirstOccurrenceOf(
+                "<ObjectList ObjectType=\"DisplayPage\">",
+                "<ObjectList ObjectType=\"ContinuousControl\">"
+                "<ContinuousControl><ControlID>10</ControlID><Name>Constant</Name><DefaultValue>1</DefaultValue>"
+                "</ContinuousControl>"
+                "<ContinuousControl><ControlID>14</ControlID><Name>Selector</Name><DefaultValue>127</DefaultValue>"
+                "</ContinuousControl></ObjectList>"
+                "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+                "<ContinuousControlLinkage><SourceControlID>10</SourceControlID><DestControlID>14</DestControlID>"
+                "<Name>In</Name><ConditionSwitchID>12997</ConditionSwitchID>"
+                "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged>"
+                "<InvertSourceControlValue>Y</InvertSourceControlValue></ContinuousControlLinkage>"
+                "<ContinuousControlLinkage><SourceControlID>10</SourceControlID><DestControlID>14</DestControlID>"
+                "<Name>Out</Name><ConditionSwitchID>12997</ConditionSwitchID>"
+                "<ConditionSwitchLinkIfEngaged>N</ConditionSwitchLinkIfEngaged></ContinuousControlLinkage>"
+                "</ObjectList><ObjectList ObjectType=\"DisplayPage\">");
+    const auto odf = root.getChildFile("OrganDefinitions").getChildFile("selector.Organ_Hauptwerk_xml");
+    odf.replaceWithText(xml);
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+    proc.engageAllStops();
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto idle = [&](int blocks) {
+      for (int b = 0; b < blocks; ++b) {
+        juce::MidiBuffer none;
+        proc.processBlock(buf, none);
+      }
+    };
+    const auto key = [&](bool down) {
+      juce::MidiBuffer m;
+      m.addEvent(down ? juce::MidiMessage::noteOn(1, 36, 0.8f) : juce::MidiMessage::noteOff(1, 36), 0);
+      proc.processBlock(buf, m);
+    };
+    const auto hz = [&] {
+      idle(8);  // past the attack, or the crossfade into a release
+      const int blocks = 80;
+      int crossings = 0;
+      float last = 0.0f;
+      for (int b = 0; b < blocks; ++b) {
+        idle(1);
+        for (int i = 0; i < 256; ++i) {
+          const float v = buf.getSample(0, i);
+          if ((last < 0.0f) != (v < 0.0f)) ++crossings;
+          last = v;
+        }
+      }
+      return crossings / 2.0 / (blocks * 256.0 / 48000.0);
+    };
+
+    idle(2);
+    MP_CHECK(proc.continuousControlValue(14) == 126,
+             "the button in gives the inverted constant, got " +
+                 std::to_string(proc.continuousControlValue(14)));
+    key(true);
+    const double in = hz();
+    MP_CHECK(in > 10.0, "the default attack sounds, at " + std::to_string(in) + " Hz");
+    proc.setSwitchEngaged(12997, false);
+    idle(2);
+    MP_CHECK(proc.continuousControlValue(14) == 1,
+             "the button out gives the constant itself, got " +
+                 std::to_string(proc.continuousControlValue(14)));
+    const double heldIn = hz();
+    MP_CHECK(std::abs(heldIn / in - 1.0) < 0.05,
+             "a sounding note keeps its attack, got " + std::to_string(heldIn) + " Hz");
+    key(false);
+    const double releaseLow = hz();
+    MP_CHECK(std::abs(releaseLow / in - 2.0) < 0.15,
+             "the key coming up reads the button, got " + std::to_string(releaseLow) + " Hz");
+    idle(800);  // the release plays out: a second at a quarter of the speed
+
+    key(true);
+    const double out = hz();
+    MP_CHECK(std::abs(out / in - 1.5) < 0.05,
+             "the button out sounds the other attack, got " + std::to_string(out) + " Hz against " +
+                 std::to_string(in) + " Hz");
+    proc.setSwitchEngaged(12997, true);
+    idle(2);
+    const double heldOut = hz();
+    MP_CHECK(std::abs(heldOut / out - 1.0) < 0.05,
+             "and that note keeps it, got " + std::to_string(heldOut) + " Hz");
+    key(false);
+    const double releaseTop = hz();
+    MP_CHECK(std::abs(releaseTop / in - 1.0) < 0.1,
+             "the button back in gives the default release, got " + std::to_string(releaseTop) + " Hz");
+
+    proc.releaseResources();
+    proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static AttackByControlTest g_attackByControl;
 // A setter and pistons drawn on the console and wired to the organ's own, as
 // Klais Szikszo does it (#248): its drawn Set (10068) and the Set the
 // combinations answer to (12) follow each other, and its drawn GC (10069)

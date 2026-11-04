@@ -91,6 +91,7 @@ MasterpieceProcessor::MasterpieceProcessor()
   (void)tails;
   // A cache written while the organ plays waits for silence.
   samples_.setCacheBusy([this] { return soundingVoices_.load(std::memory_order_relaxed) > 0; });
+  voices_.setControlReader([this](Id controlId) { return selectionValue(controlId); });
   setReleaseCutoffDb(releaseCutoffDb_);
   if (const char* path = std::getenv("MASTERPIECE_BLOCKLOG"); path != nullptr && *path != 0) {
     blockLogPath_ = path;
@@ -4195,6 +4196,7 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     NoteStrike strike;
     strike.velocity = velocity;
     strike.timeSinceCloseMs = voices_.msSincePipeClosed(pipe.pipeId);
+    strike.ctsValue = selectionValue(layer.attackSelectControlId);
     const int attackIndex = selectAttack(layer, strike);
     if (attackIndex < 0) continue; // this layer stays silent, by design
 
@@ -6769,6 +6771,7 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
     for (const auto& layer : pipe.layers) {
       NoteStrike strike;
       strike.velocity = noiseVelocity;
+      strike.ctsValue = selectionValue(layer.attackSelectControlId);
       const int attackIndex = selectAttack(layer, strike);
       if (attackIndex < 0) continue;
 
