@@ -74,10 +74,11 @@ struct PipeVoiceState {
   uint64_t noteOnId = 0;      // retrigger tracking (no orphaned reads)
 };
 
-// M2.1 selection matrices (first-match in file order, HW ceiling semantics).
-// A note sounds when velocity <= velHigh, timeSinceCloseMs >=
-// minTimeSinceCloseMs and ctsValue <= ctsHigh. Returns the attack index or
-// -1 when nothing matches (layer stays silent for this note).
+// M2.1 selection matrices (HW ceiling semantics). A note sounds when velocity
+// <= velHigh, timeSinceCloseMs >= minTimeSinceCloseMs and ctsValue <= ctsHigh.
+// Of the rows that fit, the lowest control ceiling, then file order. Returns
+// the attack index or -1 when nothing matches (layer stays silent for this
+// note).
 struct NoteStrike {
   int velocity = 64; // key velocity 0..127
   int64_t timeSinceCloseMs = INT64_MAX; // since this pipe last closed
@@ -99,7 +100,8 @@ struct NoteRelease {
 // Release choice: candidates must match velocity/hold/cts ceilings AND the
 // attack context; releases naming this attackId via
 // ReleaseSelCriteria_PreferThisRelForAttackID win; among the rest, the
-// tightest hold-time ceiling that fits (ties: file order).
+// tightest hold-time ceiling that fits, then the lowest control ceiling (ties:
+// file order).
 int selectRelease(const PipeLayer& layer, const NoteRelease& rel);
 
 } // namespace mp

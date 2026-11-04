@@ -278,6 +278,10 @@ bool narrowSampleBuffer(SampleBuffer& buf);
 // rather than the engine blocking or faulting.
 using SampleProvider = std::function<const SampleBuffer*(Id sampleId)>;
 
+// What a continuous control reads now: a layer can choose its release by one,
+// and only the engine knows which layers a note reached.
+using ControlReader = std::function<int(Id controlId)>;
+
 enum class VoicePhase { Idle, Attack, Loop, Release };
 
 struct Voice {
@@ -497,6 +501,7 @@ public:
   void prepare(double sampleRate, int maxVoices, int numChannels,
                int maxBlockFrames = 2048);
   void setSampleProvider(SampleProvider provider) { provider_ = std::move(provider); }
+  void setControlReader(ControlReader reader) { controlReader_ = std::move(reader); }
   void reset();
   // The engine at rest: the render workers and the streaming thread stopped
   // and joined, every voice silent. For a device that is about to change, so
@@ -918,6 +923,7 @@ private:
   int stealStage_ = 0;
   uint64_t stealBlock_ = 0;
   SampleProvider provider_;
+  ControlReader controlReader_;
   double sampleRate_ = 48000.0;
   int numChannels_ = 2;
   uint64_t blockCounter_ = 0;

@@ -128,6 +128,12 @@ struct PipeLayer {
   // double linkage combines it with the group level, and the answer lands
   // here. 0 means the layer plays at its declared gain and nothing else.
   Id ampScalingControlId = 0;
+  // The controls that choose this layer's attack and release: the rows are
+  // bands by ceiling, read at note-on and at note-off. St. Maximin's tuning
+  // button changes the attacks of her mixtures this way, and Nowa Ruda picks
+  // between takes of a noise. 0 means the top row always.
+  Id attackSelectControlId = 0;
+  Id releaseSelectControlId = 0;
   // Detuning, as a control and a rate. An organ drifts out of tune pipe by
   // pipe, never as a block, so a set declares a control per division and zone
   // and gives each pipe its own sensitivity — Nancy has 245 such controls and

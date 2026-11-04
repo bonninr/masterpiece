@@ -355,6 +355,13 @@ public:
     return static_cast<float>(controls_.normalised(layer.ampScalingControlId));
   }
 
+  // The value a layer's attack or release rows are chosen by. A layer naming no
+  // control, or one the definition does not hold, asks for the top row.
+  int selectionValue(Id controlId) const {
+    if (controlId == 0 || model_.continuousControls.count(controlId) == 0) return 127;
+    return controls_.value(controlId);
+  }
+
   // The same answers the voice engine uses, for tools that want to report on
   // them without starting a note. Shared rather than reimplemented: a
   // diagnostic that computes the figure its own way will eventually disagree
