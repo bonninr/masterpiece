@@ -163,6 +163,7 @@ struct PipeLayer {
   // per-layer trims on top of it, and applying them per layer is what keeps a
   // flute and a reed on the same tremulant wobbling differently.
   double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
+  double tremAmpDepthAdjustPct = 100.0; // AmpLvl_TremulantModDepthAdjustPercent, from version 5
   double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;

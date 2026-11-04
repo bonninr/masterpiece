@@ -4133,6 +4133,26 @@ public:
   CompactTremulantRateTest()
     : Test("functional.odf.compact-tremulant-rate", Category::Functional) {}
   void run() override {
+// The format's own version decides what a layer's tag p holds: decibels up to
+// version 4, a percentage from version 5, where 100 leaves the depth alone.
+class FormatVersionLayerDepthTest final : public mp::test::Test {
+public:
+  FormatVersionLayerDepthTest()
+    : Test("functional.odf.format-version-layer-depth", Category::Functional) {}
+
+  static std::map<mp::Id, mp::PipeLayer> layers(const std::string& rootAttributes) {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\"" + rootAttributes + ">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+        "<o><a>72</a><b>7</b></o><o><a>73</a><b>7</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+        "<o><a>721</a><b>72</b><p>5e+1</p></o>"
+        "<Pipe_SoundEngine01_Layer><LayerID>731</LayerID><PipeID>73</PipeID>"
+        "<AmpLvl_TremulantModDepthAdjustPercent>25</AmpLvl_TremulantModDepthAdjustPercent>"
+        "<AudioOut_OptimalMemoryChannelFormatCode>1</AudioOut_OptimalMemoryChannelFormatCode>"
+        "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
     mp::OrganModel m;
@@ -4155,6 +4175,34 @@ public:
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
+    std::map<mp::Id, mp::PipeLayer> out;
+    if (l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d) && m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) out[layer.layerId] = layer;
+    return out;
+  }
+
+  void run() override {
+    auto v5 = layers(" FileFormatVersion=\"5.00\"");
+    MP_CHECK(v5.size() == 3, "the version 5 definition loads");
+    MP_CHECK(v5[711].tremAmpDepthAdjustPct == 100.0 && v5[711].tremAmpDepthAdjustDb == 0.0,
+             "a version 5 layer with no depth written leaves the depth alone");
+    MP_CHECK(v5[721].tremAmpDepthAdjustPct == 50.0 && v5[721].tremAmpDepthAdjustDb == 0.0,
+             "tag p of a version 5 layer is a percentage");
+    MP_CHECK(v5[731].tremAmpDepthAdjustPct == 25.0 && v5[731].optimalChannel == 1,
+             "the long spellings of version 5 are read");
+    auto v7 = layers(" FileFormatVersion=\"7.00\"");
+    MP_CHECK(v7[721].tremAmpDepthAdjustPct == 50.0, "and so is it from version 7");
+
+    auto v4 = layers(" FileFormatVersion=\"4.20014\"");
+    MP_CHECK(v4[721].tremAmpDepthAdjustDb == 50.0 && v4[721].tremAmpDepthAdjustPct == 100.0,
+             "tag p of a version 4 layer stays in decibels");
+    auto none = layers("");
+    MP_CHECK(none[721].tremAmpDepthAdjustDb == 50.0 && none[721].tremAmpDepthAdjustPct == 100.0,
+             "with no version stated, decibels");
+  }
+};
+static FormatVersionLayerDepthTest g_formatVersionLayerDepth;
 
 // A key let go inside a loop's fade: the sustain goes on under the release,
 // through the rest of its fade and over the seam, with no step on the way.
