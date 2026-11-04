@@ -163,14 +163,17 @@ The **Send** tab of a manual sends every key played on the manual as a note to t
 
 ![The Send tab of a manual](../images/manual-send.png)
 
-The line at the top reads `Sent to <output>` or `No MIDI output is chosen: choose one in Settings, MIDI.` **New event** adds a row; the **X** button removes it.
+The line at the top reads `Sent to <output>` or `No MIDI output is chosen: choose one in Settings, MIDI.` The events are listed on the left: **New event** adds one, **Duplicate** copies the chosen one and **Delete** removes it. The form on the right sets the chosen event.
 
 | Name | What it does | Default | Range |
 |---|---|---|---|
 | **Channel** | The channel the notes go out on. | 1 | 1 to 16 |
 | **Transpose** | Moves the notes by this many semitones. A note outside 0 to 127 is not sent. | 0 | -48 to 48 |
+| **Velocity** | The note-on velocity: the played velocity, at least 1, or a fixed one. | **as played** | **as played**, 1 to 127 |
+| **Sends** | The bytes middle C sends, and its release. | | |
+| **Send middle C**, **Release it** | Send them now, to check the module. | | |
 
-Note-on velocity is the played velocity, at least 1; the note off goes out as a note-off message on the same channel.
+The note off goes out as a note-off message on the same channel.
 
 ## MIDI learn for stops, couplers, pistons and shoes
 
@@ -280,24 +283,29 @@ Add a row for every message that operates the object. A message already used by 
 
 ### Send tab
 
-One row per message that Masterpiece sends to the MIDI output when the object changes. The line at the top reads `Sent to <output>` or `No MIDI output is chosen: choose one in Settings, MIDI.`
+The messages Masterpiece sends to the MIDI output when the object changes, one event each. The line at the top reads `Sent to <output>` or `No MIDI output is chosen: choose one in Settings, MIDI.`
 
 ![The Send tab](../images/midi-send.png)
 
-For a stop, coupler or piston, the message goes out whenever the object comes on or goes off, however it moved: the console, a piston, the crescendo or a click. For a lamp in a drawstop or an LED by a piston. For a shoe, the message goes out whenever the shoe moves. When the list changes, Masterpiece sends the present state of every lamp, which a console needs when it is set up.
+The tab is there for every object with a state a console can show: stops, couplers, tremulants, shoes, the player's generals and divisionals, **Set**, **Pedal with** *manual* and the recorder's buttons. For a stop, coupler or piston, the message goes out whenever the object comes on or goes off, however it moved: the console, a piston, the crescendo or a click. For a lamp in a drawstop or an LED by a piston. A general or divisional is on while it is the piston last pressed. For a shoe, the message goes out whenever the shoe moves. When the list changes, Masterpiece sends the present state of every lamp, which a console needs when it is set up. A piston with no event of its own lights as the message it is learned on: note on at velocity 127, or controller 127, and 0 when it goes out.
 
-**New event** adds a row. A new row starts from the object's first receive row (type, number and channel), because a lamp usually answers on the message that operates the stop; a shoe row starts as a controller.
+The events are listed on the left: **New event** adds one, **Duplicate** copies the chosen one (the same state to a second lamp or device) and **Delete** removes it. A new event starts from the object's first receive row (type, number and channel), because a lamp usually answers on the message that operates the stop; a shoe's starts as a controller. The form on the right sets the chosen event, and shows only the fields its type uses.
 
-| Column | What it does | Default | Options |
+| Field | What it does | Default | Options |
 |---|---|---|---|
-| **Event** | The message type. | The type of the receive row, else **Note** | **Note**, **Controller**, **Program change**, **System exclusive** |
+| **Event** | The message type. | The type of the receive row, else **Note** | **Note**, **Note, off as a Note Off (8n)**, **Controller**, **Program change**, **RPN (registered parameter)**, **NRPN (non-registered parameter)**, **Hex messages, SysEx or any other** |
 | **Channel** | The channel it goes out on. | The receive row's channel, else 1 | 1 to 16 |
-| **Number** | The note, controller or program number. | The receive row's number, else 0 | As for **Number** above |
-| **When on** (stop) | The velocity (note) or value (controller) sent when the stop comes on. | 127 | 0 to 127 |
-| **When off** (stop) | The velocity or value sent when it goes off. Note on at velocity 0 is the usual lamp off. | 0 | **none**, 0 to 127 |
+| **Note**, **Controller**, **Parameter** | The note, controller or parameter number. | The receive row's number, else 0 | 0 to 127; a parameter 0 to 16383 |
+| **When on** (stop, piston) | The velocity (note) or value (controller, parameter) sent when it comes on. On a pad grid, the velocity is the colour. | 127 | 0 to 127 |
+| **When off** (stop, piston) | The velocity or value sent when it goes off. Note on at velocity 0 is the usual lamp off. | 0 | **none**, 0 to 127 |
+| **Program when on**, **When off** (program change) | The program sent when it comes on, and the one sent when it goes off. | 1 and **none** | 1 to 128; **none** |
 | **Closed**, **Open** (shoe) | The values sent at the two ends of the shoe's travel. A shoe is sent across them, so a fader that wants 0 to 100 gets 0 to 100. | 0 and 127 | 0 to 127 |
+| **When on**, **When off** (hex) | Whole MIDI messages in hex, one or several separated by commas: `F0 7D 01 F7, B0 14 7F`. A message that does not read is outlined in red. | Empty: nothing | Any messages |
+| **Sends** | The bytes the event sends in each state, as they will go out. | | |
+| **Copy the received event** | Takes the type, channel and number of the object's first receive row. | | |
+| **Send on**, **Send off** (**Send open**, **Send closed** for a shoe) | Send the bytes now, to check a lamp's colour or a fader. | | |
 
-With **none** in **When off**, nothing goes out when the stop goes off. A program change has no off: it sends its number when the stop comes on and nothing when it goes off. For a shoe, **Program change** sends the scaled value as the program number. **System exclusive** is listed but is received only; a row of that type sends nothing.
+With **none** in **When off**, nothing goes out when the stop goes off. **Note, off as a Note Off (8n)** sends the off state as a note-off message at the **When off** velocity, for a console whose lamps go out only on a note off. An RPN or NRPN event sends three controllers: the parameter number on 101 and 100 (RPN) or 99 and 98 (NRPN), then the value on data entry, controller 6. For a shoe, **Program change** sends the scaled value as the program number. Hex messages go out again after each load, so a controller's mode message reaches it every time.
 
 ### Shortcut tab
 
