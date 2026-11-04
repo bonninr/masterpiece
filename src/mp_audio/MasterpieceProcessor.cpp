@@ -6873,7 +6873,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   // system exclusive sends, go before anything else, so a controller's mode message reaches it before any stop
   // moves and lights a lamp. The other sends follow with the lamps below.
   if (lampsAfterLoad_.load(std::memory_order_acquire)) {
-    if (!loadMessage_.empty() && (midiOut_ != nullptr || outgoingProbe)) addMessages(outgoing_, loadMessage_);
+    if (loadMessageDue_.exchange(false, std::memory_order_acq_rel) && !loadMessage_.empty() &&
+        (midiOut_ != nullptr || outgoingProbe))
+      addMessages(outgoing_, loadMessage_);
     sentValues_.clear();
     emitSends(true);
   }
@@ -7216,15 +7218,20 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     const juce::File& odfFile, int64_t maxFramesPerSample, bool graphicsOnly) {
   // For anything that reads the model from another thread (the control API):
   // hands off while this runs, and a new session once it has.
+  // The ready lamp lights for an organ that can be played: a load for the
+  // console only leaves it dark (#764).
   struct Loading {
     MasterpieceProcessor& p;
-    explicit Loading(MasterpieceProcessor& proc) : p(proc) { p.organLoading_.store(true, std::memory_order_release); }
+    const bool samples;
+    Loading(MasterpieceProcessor& proc, bool withSamples) : p(proc), samples(withSamples) {
+      p.organLoading_.store(true, std::memory_order_release);
+    }
     ~Loading() {
-      p.organReady_.store(p.loadedOdf_ != juce::File(), std::memory_order_release);
+      p.organReady_.store(samples && p.loadedOdf_ != juce::File(), std::memory_order_release);
       p.organLoads_.fetch_add(1, std::memory_order_acq_rel);
       p.organLoading_.store(false, std::memory_order_release);
     }
-  } loading(*this);
+  } loading(*this, !graphicsOnly);
   LoadResult result;
   LoadPhases phases;
   // The organ being left keeps what the player just set on it: the file is
@@ -8375,6 +8382,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   stagesReady_.store(true, std::memory_order_release);
   palletsLive_.store(true, std::memory_order_release);
   palletsOpenEngaged_.store(true, std::memory_order_release);
+  loadMessageDue_.store(!graphicsOnly, std::memory_order_release);
   lampsAfterLoad_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,
                             std::memory_order_release);
@@ -8708,7 +8716,10 @@ bool MasterpieceProcessor::setUnloadMessage(const juce::String& hex) {
 juce::String MasterpieceProcessor::unloadMessage() const { return juce::String(midiText(unloadMessage_)); }
 
 void MasterpieceProcessor::sendUnloadMessage() {
-  if (unloadMessage_.empty() || loadedOdf_ == juce::File()) return;
+  // An organ loaded for its console only had no load message: no unload
+  // message either (#764).
+  if (unloadMessage_.empty() || loadedOdf_ == juce::File() || !organReady_.load(std::memory_order_acquire))
+    return;
   // Under the lock: the audio thread sends on the same output.
   const AudioLock audio(*this);
   if (midiOut_ == nullptr && !outgoingProbe) return;

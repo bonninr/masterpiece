@@ -18110,6 +18110,32 @@ public:
                "ahead of the lamps: mode at " + std::to_string(modeAt()) + ", lamp at " +
                    std::to_string(lampAt()));
 
+      // A load for the console only, as on an organ's first opening with
+      // Organ settings over it: the samples are still to come, so the load
+      // message waits for them and the ready lamp goes dark (#764).
+      auto loadMessageAt = [&sent] {
+        for (size_t i = 0; i < sent.size(); ++i)
+          if (sent[i].isSysEx() && sent[i].getSysExDataSize() == 2 && sent[i].getSysExData()[0] == 0x7D)
+            return static_cast<int>(i);
+        return -1;
+      };
+      auto readyLampSent = [&sent](int value) {
+        for (const auto& m : sent)
+          if (m.isController() && m.getControllerNumber() == 20 && m.getControllerValue() == value) return true;
+        return false;
+      };
+      sent.clear();
+      proc.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      blocks(2);
+      MP_CHECK(loadMessageAt() < 0, "a load for the console only sends no load message");
+      MP_CHECK(!readyLampSent(127) && readyLampSent(0), "and the ready lamp goes dark until the samples are in");
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      proc.setSwitchEngaged(1101, true);
+      blocks(2);
+      MP_CHECK(loadMessageAt() == 0, "the samples loaded, the load message is the first thing sent");
+      MP_CHECK(readyLampSent(127), "and the ready lamp lights");
+
       // The unload message: when the next organ loads, and as the program
       // quits. Nothing goes out while it is empty.
       MP_CHECK(!proc.setUnloadMessage("B0 15"), "a cut-off unload message is refused");
@@ -18118,6 +18144,19 @@ public:
       MP_CHECK(sent.empty(), "with no unload message, unloading sends nothing");
       MP_CHECK(proc.setUnloadMessage("b0 15 00") && proc.unloadMessage() == "B0 15 00",
                "the unload message is taken");
+      auto unloadSent = [&sent] {
+        for (const auto& m : sent)
+          if (m.isController() && m.getControllerNumber() == 21) return true;
+        return false;
+      };
+      sent.clear();
+      proc.loadOrgan(odf, 0, /*graphicsOnly=*/true);
+      MP_CHECK(unloadSent(), "a load for the console only unloads the organ that was playing");
+      blocks(2);
+      sent.clear();
+      proc.loadOrgan(odf, 0, false);
+      MP_CHECK(!unloadSent(), "and the load with samples after it sends no second unload message (#764)");
+      blocks(2);
       sent.clear();
       proc.loadOrgan(odf, 0, false);
       MP_CHECK(!sent.empty() && sent[0].isController() && sent[0].getControllerNumber() == 21 &&

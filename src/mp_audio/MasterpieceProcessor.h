@@ -2981,6 +2981,10 @@ private:
   // Set with palletsLive_: the first block after a load sends every lamp
   // learned on the console as the new organ stands.
   std::atomic<bool> lampsAfterLoad_{false};
+  // Set with lampsAfterLoad_ when the samples were loaded: a load for the
+  // console only (Organ settings on an organ's first opening) leaves the
+  // load message for the load that follows it (#764).
+  std::atomic<bool> loadMessageDue_{false};
   void sendLampsAfterLoad();
   void palletMoved(Id switchId, bool engaged);
   // Pallet switch -> the pipes it opens, with their rank.
