@@ -7838,14 +7838,26 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // knob to its stop through linkages on most sets; on the rest (Friesach)
   // there is no linkage and only the two maps built here know they belong
   // together. Without this a clicked knob animates and sounds nothing.
+  //
+  // A stop's switch that the wiring drives only on a condition is the
+  // condition's to decide: Oloron hangs its reeds and mixtures on a hidden
+  // switch the drawstop engages while the division's Appel d'anches is
+  // drawn. Its knob still lights it, and draws nothing alone (#779).
   stopsBySwitch_.clear();
   stopSources_.clear();
   {
-    auto standsFor = [&](Id switchId, Id stopId) {
+    std::unordered_map<Id, bool> onlyOnCondition;
+    for (const auto& l : model_.switchLinkages) {
+      if (l.sourceSwitchId == l.destSwitchId) continue;
+      const auto [it, added] = onlyOnCondition.emplace(l.destSwitchId, l.conditionSwitchId != 0);
+      if (!added && l.conditionSwitchId == 0) it->second = false;
+    }
+    auto standsFor = [&](Id switchId, Id stopId, bool source = true) {
       if (switchId == 0) return;
       auto& v = stopsBySwitch_[switchId];
       if (std::find(v.begin(), v.end(), stopId) == v.end())
         v.push_back(stopId);
+      if (!source) return;
       auto& sources = stopSources_[stopId];
       if (std::find(sources.begin(), sources.end(), switchId) == sources.end())
         sources.push_back(switchId);
@@ -7853,7 +7865,9 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     for (const auto& [stopId, stop] : model_.stops) {
       if (stop.controllingSwitchId == 0) continue;
       standsFor(stop.controllingSwitchId, stopId);
-      standsFor(playerSwitchFor(stop.controllingSwitchId), stopId);
+      const auto gate = onlyOnCondition.find(stop.controllingSwitchId);
+      standsFor(playerSwitchFor(stop.controllingSwitchId), stopId,
+                gate == onlyOnCondition.end() || !gate->second);
       const auto knob = stopKnob_.find(stopId);
       if (knob != stopKnob_.end()) standsFor(knob->second, stopId);
     }
