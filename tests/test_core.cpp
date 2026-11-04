@@ -888,6 +888,12 @@ public:
         "<o><a>1</a><b>hidden</b></o><o><a>2</a><b>drawn</b><i>Y</i></o>"
         "<o><a>3</a><b>cond</b></o></ObjectList>"
         "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>1</a><b>2</b><c>3</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"KeyAction\"><o><a>1</a><c>2</c></o>"
+        "<o><a>1</a><c>3</c><f>3</f></o><o><a>1</a><c>4</c><f>3</f><g>Y</g></o></ObjectList>"
+        "<ObjectList ObjectType=\"WindCompartment\"><o><a>1</a><c>Y</c><b>blower</b></o>"
+        "<o><a>2</a><b>chest</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"WindCompartmentLinkage\"><o><a>1</a><b>2</b><e>3</e></o>"
+        "<o><a>2</a><b>1</b><e>3</e><f>Y</f></o></ObjectList>"
         "<ObjectList ObjectType=\"KeyboardKey\"><o><a>1</a><b>1</b></o></ObjectList>"
         "<ObjectList ObjectType=\"Division\"><o><a>1</a><b>Great</b></o>"
         "<o><a>2</a><b>Swell</b></o><o><a>3</a><b>Pedal</b></o></ObjectList>"
@@ -928,6 +934,14 @@ public:
     MP_CHECK(m.switchLinkages.size() == 1 && m.switchLinkages[0].conditionSwitchId == 3 &&
                  !m.switchLinkages[0].conditionWhenEngaged,
              "an absent condition sense is 'while disengaged'");
+    MP_CHECK(m.keyActions.size() == 3 && m.keyActions[0].conditionSwitchId == 0 &&
+                 m.keyActions[1].conditionSwitchId == 3 &&
+                 !m.keyActions[1].conditionWhenEngaged &&
+                 m.keyActions[2].conditionWhenEngaged,
+             "a key action with no sense written is live while its switch is off");
+    MP_CHECK(m.windLinks.size() == 2 && !m.windLinks[0].valveOpenWhenEngaged &&
+                 m.windLinks[1].valveOpenWhenEngaged,
+             "a wind valve with no sense written is open while its switch is off");
     MP_CHECK(m.keyboardKeys.count(1) && m.keyboardKeys.at(1).midiNote == 60,
              "a key with no note written is middle C, not dropped");
     MP_CHECK(m.divisions.at(1).keyboardIds.empty(),

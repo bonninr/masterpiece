@@ -1025,7 +1025,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     ka.destDivision = ka.destIsKeyboard ? 0 : destDiv;
     ka.conditionSwitchId = fieldInt(row, "ConditionSwitchID", "f", 0);
     ka.conditionWhenEngaged =
-        fieldBool(row, "ConditionSwitchLinkIfEngaged", "g", true);
+        fieldBool(row, "ConditionSwitchLinkIfEngaged", "g", !isCompact(row));
     ka.actionType = fieldInt(row, "ActionTypeCode", "h", 1);
     ka.effectCode = fieldInt(row, "ActionEffectCode", "i", 0);
     // The source window. NumberOfKeys is routinely written without the note
@@ -1163,7 +1163,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.valveControlId =
         fieldInt(row, "ValveControllingContinuousControlID", "g", 0);
     l.valveOpenWhenEngaged =
-        fieldBool(row, "ValveOpenIfControllingSwitchEngaged", "f", true);
+        fieldBool(row, "ValveOpenIfControllingSwitchEngaged", "f", !isCompact(row));
     l.massFlowKgPerSec = fieldDouble(
         row, "MassFlowRateKilogramsPerSecAtReferencePressureDiff", "h", 0.0);
     l.refPressureInches =
