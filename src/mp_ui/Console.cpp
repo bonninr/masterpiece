@@ -539,6 +539,7 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
 
     const bool centred = style.hAlignCode == 0 || style.hAlignCode == 3;
     const bool rightAligned = style.hAlignCode == 2;
+    const bool middle = style.vAlignCode == 0 || style.vAlignCode == 3;
     // With a box, XPosPixels and YPosPixels are its top-left corner and the
     // alignment codes place the string INSIDE it. Treating that position as a
     // centre anchor pulled every boxed label half its own width to the left,
@@ -556,14 +557,14 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
       h = static_cast<int>(std::ceil(item.font.getHeight()));
       if (centred) x -= w / 2;
       else if (rightAligned) x -= w;
-      if (style.vAlignCode == 0) y -= h / 2;
+      if (middle) y -= h / 2;
       else if (style.vAlignCode == 2) y -= h;
     }
 
     const int horizontal = centred ? juce::Justification::horizontallyCentred
                            : rightAligned ? juce::Justification::right
                                           : juce::Justification::left;
-    const int vertical = style.vAlignCode == 0 ? juce::Justification::verticallyCentred
+    const int vertical = middle ? juce::Justification::verticallyCentred
                          : style.vAlignCode == 2 ? juce::Justification::bottom
                                                  : juce::Justification::top;
     item.justification = juce::Justification(horizontal | vertical);
