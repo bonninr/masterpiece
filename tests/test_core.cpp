@@ -889,6 +889,10 @@ public:
         "<o><a>3</a><b>cond</b></o></ObjectList>"
         "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>1</a><b>2</b><c>3</c></o></ObjectList>"
         "<ObjectList ObjectType=\"KeyboardKey\"><o><a>1</a><b>1</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Division\"><o><a>1</a><b>Great</b></o>"
+        "<o><a>2</a><b>Swell</b></o><o><a>3</a><b>Pedal</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Keyboard\"><o><a>7</a><b>Pedal</b><x>3</x><y>1</y></o>"
+        "<o><a>8</a><b>Swell</b><x>2</x><z>3</z></o></ObjectList>"
         "<ObjectList ObjectType=\"DivisionInput\"><o><a>5</a><b>35059</b><c>59</c></o>"
         "<o><a>5</a><b>35060</b></o><o><a>5</a><b>35061</b><c>61</c></o></ObjectList>"
         "<ObjectList ObjectType=\"ContinuousControl\">"
@@ -926,6 +930,10 @@ public:
              "an absent condition sense is 'while disengaged'");
     MP_CHECK(m.keyboardKeys.count(1) && m.keyboardKeys.at(1).midiNote == 60,
              "a key with no note written is middle C, not dropped");
+    MP_CHECK(m.divisions.at(1).keyboardIds.empty(),
+             "a keyboard's master coupler code (y) names no division");
+    MP_CHECK(m.divisions.at(3).keyboardIds == std::vector<mp::Id>({7, 8}),
+             "a compact keyboard's second division hint is z");
     {
       std::map<mp::Id, int> inputNote;
       for (const auto& in : m.divisionInputs) inputNote[in.switchId] = in.midiNote;
