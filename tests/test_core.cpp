@@ -916,7 +916,16 @@ public:
         "</ObjectList>"
         "<ObjectList ObjectType=\"Stop\"><o><a>5</a><b>voix celestes 8</b></o></ObjectList>"
         "<ObjectList ObjectType=\"StopRank\">"
-        "<o><a>5</a><d>50</d><m>2</m><p>56</p><n>Y</n></o></ObjectList></Hauptwerk>";
+        "<o><a>5</a><d>50</d><m>2</m><p>56</p><n>Y</n></o></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+        "<o><a>72</a><b>7</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+        "<o><a>721</a><b>72</b><y>0</y></o></ObjectList>"
+        "<ObjectList ObjectType=\"Tremulant\"><o><a>9</a><b>trem</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveform\"><o><a>90</a><c>9</c></o></ObjectList>"
+        "<ObjectList ObjectType=\"TremulantWaveformPipe\"><o><a>71</a><b>90</b></o>"
+        "<o><a>72</a><b>90</b><d>4.5e+1</d></o></ObjectList></Hauptwerk>";
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
     mp::OrganModel m;
@@ -974,6 +983,16 @@ public:
     MP_CHECK(m.combinations.count(1537) && m.combinations.at(1537).activatingSwitchId == 100 &&
                  m.combinations.at(1537).isCancel(),
              "with no type written, the switch number stays the type, so a cancel cancels");
+    MP_CHECK(m.tremulantPipes.count(71) && m.tremulantPipes.at(71).pitchDepthPct == 100.0,
+             "a tremulant pipe with no pitch depth written moves at 100 percent");
+    MP_CHECK(m.tremulantPipes.count(72) && m.tremulantPipes.at(72).pitchDepthPct == 45.0,
+             "a pipe's written pitch depth is kept");
+    std::map<mp::Id, double> layerPitch;
+    if (m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) layerPitch[layer.layerId] = layer.tremPitchDepthAdjustPct;
+    MP_CHECK(layerPitch.size() == 2 && layerPitch[711] == 100.0 && layerPitch[721] == 0.0,
+             "a layer's pitch depth is y, and leaving it out means 100 percent");
   }
 };
 static CompactDefaultsTest g_compactDefaults;
