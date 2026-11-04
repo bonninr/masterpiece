@@ -16,6 +16,7 @@ void CouplerMatrix::reset(const OrganModel& m) {
   assignmentCode_.clear();
   inputFor_.clear();
   divisionOfKeyboard_.clear();
+  rowGatedDivisions_.clear();
   needsFallback_.clear();
   switchFed_.clear();
   hasExtremeActions_ = false;
@@ -87,6 +88,22 @@ void CouplerMatrix::reset(const OrganModel& m) {
       }
     }
     if (!changed) break;
+  }
+
+  // The hint stands in for a row the file leaves out. A keyboard whose own
+  // division is written at unison behind a switch has that row to go by: St.
+  // Davids wires its Swell Unison Off this way, as its only route to the pipes,
+  // and the division has to fall silent with the switch. That holds for every
+  // keyboard naming the division: St. Davids also feeds a mirror of the Swell
+  // that carries the same hint. A coupler onto the same division at another
+  // pitch says nothing about the keyboard's own keys.
+  for (const auto& [src, list] : edges_) {
+    const auto own = divisionOfKeyboard_.find(src);
+    if (own == divisionOfKeyboard_.end()) continue;
+    for (const KeyAction* a : list)
+      if (a->actionType == 1 && a->conditionSwitchId != 0 && !a->destIsKeyboard &&
+          a->destDivision == static_cast<int>(own->second) && a->midiIncrement == 0)
+        rowGatedDivisions_.insert(own->second);
   }
 
   // Which keyboards the key flow does not explain. Decided here, once, from
@@ -400,7 +417,8 @@ void CouplerMatrix::walk(int sourceKeyboardId, int midiNote, float velocity,
       // without walking it.
       const auto divIt = divisionOfKeyboard_.find(step.first);
       const bool viaSwitches = depth == 0 && switchFed_.count(step.first) != 0;
-      if (divIt != divisionOfKeyboard_.end() && !viaSwitches) {
+      if (divIt != divisionOfKeyboard_.end() && !viaSwitches &&
+          rowGatedDivisions_.count(divIt->second) == 0) {
         const int div = static_cast<int>(divIt->second);
         if (insertUnique(scratch.emitted, std::pair<int, int>{div, step.second}))
           out.push_back({div, step.second, velocity, gate});
