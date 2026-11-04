@@ -860,7 +860,10 @@ int MidiMap::readDevice(const std::string& name, std::istream& rest) {
 std::string MidiMap::toText() const {
   std::ostringstream out;
   out << "# Masterpiece MIDI map\n";
-  out << "# <source> <channel> <number> <target> <id> <latching> <invert>\n";
+  // One heading per kind of line, naming every field, so the file reads as a
+  // table. The reader skips them.
+  out << "# <source> <channel> <number> <target> <id> <latching> <invert> <trigger> <low> "
+         "<high> <device> [<device identifier>]\n";
   for (const auto& b : ordered_) {
     out << kindName(b.source.kind) << ' ' << b.source.channel << ' '
         << b.source.number << ' ' << targetName(b.targetKind) << ' '
@@ -877,6 +880,10 @@ std::string MidiMap::toText() const {
   }
   // Channel assignments last, so an older reader that does not know the line
   // still gets every binding before it hits one it skips.
+  if (!keyboardBindings_.empty())
+    out << "# manual <keyboard> <channel> <low key> <high key> <transpose> <low velocity> "
+           "<high velocity> <ignore velocity> <short octave> <debounce ms> <device> "
+           "[<device identifier>]\n";
   for (const auto& b : keyboardBindings_)
     out << "manual " << b.keyboardId << ' ' << b.channel << ' ' << b.lowKey
         << ' ' << b.highKey << ' ' << b.transpose << ' ' << b.lowVelocity << ' '
@@ -887,6 +894,9 @@ std::string MidiMap::toText() const {
                 : encodeName(devices_.nameFor(b.deviceId)))
         << deviceIdentifierField(b.deviceId) << '\n';
   // What the console is sent, and the computer keys. Last for the same reason.
+  if (!sends_.empty())
+    out << "# send <target> <id> <message> <channel> <number> <low> <high> "
+           "[<SysEx on> <SysEx off>] [<program when off>]\n";
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
         << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
@@ -895,6 +905,7 @@ std::string MidiMap::toText() const {
                 ? " " + std::to_string(s.offProgram)
                 : std::string())
         << '\n';
+  if (!shortcuts_.empty()) out << "# shortcut <target> <id> <step> <key>\n";
   for (const auto& k : shortcuts_)
     out << "shortcut " << targetName(k.targetKind) << ' ' << k.targetId << ' ' << k.step
         << ' ' << encodeName(k.key) << '\n';

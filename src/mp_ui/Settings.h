@@ -389,7 +389,7 @@ private:
       TRANS("General Cancel also puts the keyboards back on their own manuals")};
   juce::ToggleButton leaveHeld_{TRANS("Stop changes leave the notes already held alone")};
   juce::ToggleButton sustain_{TRANS("Sustain pedal: controller 64 holds the notes let go")};
-  juce::ToggleButton noiseFilter_{TRANS("Noise filter: when learning, a key counts once held a quarter second")};
+  juce::ToggleButton noiseFilter_{TRANS("Debounce: when learning, a key counts once held a quarter second")};
   juce::ToggleButton archive_{TRANS("Archive everything played")};
   juce::ComboBox archiveSilence_, archiveSize_, archiveAge_;
   void applyArchive();
