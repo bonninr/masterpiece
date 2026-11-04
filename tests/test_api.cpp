@@ -531,6 +531,52 @@ public:
 };
 static ApiLinkedPistonDivisionsTest g_apiLinkedPistonDivisions;
 
+// A momentary switch pressed through the API is let go at once, as the
+// console's buttons do. A reversible piston wired 3/7, as Giubiasco's
+// Zimbelstern is, flips its stop at each press; left engaged, the second
+// press found it still down and did nothing, and a noise pallet on it kept
+// sounding (#776).
+class ApiMomentaryPressTest final : public mp::test::Test {
+public:
+  ApiMomentaryPressTest() : Test("functional.api.momentary-press", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>26</a><b>Zimbelstern</b><d>Y</d></o>"
+        "<o><a>31</a><b>Piston: Zimbelstern</b><d>N</d></o></ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\"><o><a>31</a><b>26</b><f>3</f><g>7</g></o></ObjectList>"
+        "</Hauptwerk>";
+    const juce::File dir =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-api-momentary-press");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::File file = dir.getChildFile("reversible.Organ_Hauptwerk_xml");
+    file.replaceWithText(juce::String::fromUTF8(organ.c_str()));
+    {
+      mp::MasterpieceProcessor proc;
+      const juce::File settings = proc.settingsFileFor(file);
+      MP_CHECK(proc.loadOrgan(file, 0, true).ok, "the organ loads");
+      ControlModel m(proc);
+      const int piston = findSwitch(m, "Piston: Zimbelstern");
+      MP_CHECK(piston >= 0, "the piston is listed");
+      MP_CHECK(!proc.switchEngaged(26), "the Zimbelstern starts off");
+
+      MP_CHECK(m.press(Type::Switch, piston) == Error::None, "pressed");
+      MP_CHECK(!proc.switchEngaged(31), "the piston is let go after the press");
+      MP_CHECK(proc.switchEngaged(26), "the first press draws the Zimbelstern");
+
+      MP_CHECK(m.press(Type::Switch, piston) == Error::None, "pressed again");
+      MP_CHECK(!proc.switchEngaged(31), "and let go again");
+      MP_CHECK(!proc.switchEngaged(26), "the second press puts it back in");
+      settings.deleteFile();
+    }
+    dir.deleteRecursively();
+  }
+};
+static ApiMomentaryPressTest g_apiMomentaryPress;
+
 // The organ's own console pages over HTTP: a page with one drawstop, drawn
 // red when in and green when drawn. The picture shows the knob as it stands,
 // a tap draws the stop, and the change comes back as the knob's rectangle
