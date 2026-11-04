@@ -987,12 +987,14 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   });
 
   // keyboard -> division links (Hint Primary/Second/ThirdAssociatedDivisionID).
+  // In a compact row y is the master couplers' assignment code, a small number
+  // that also reads as a division; the second hint is z.
   forEachRow(odfRoot, "Keyboard", [&](pugi::xml_node row) {
     const Id kbId = fieldInt(row, "KeyboardID", "a", 0);
     const Id hints[3] = {
       fieldInt(row, "Hint_PrimaryAssociatedDivisionID", "x", 0),
-      fieldInt(row, "Hint_SecondAssociatedDivisionID", "y", 0),
-      fieldInt(row, "Hint_ThirdAssociatedDivisionID", "z", 0),
+      fieldInt(row, "Hint_SecondAssociatedDivisionID", "z", 0),
+      fieldInt(row, "Hint_ThirdAssociatedDivisionID", nullptr, 0),
     };
     for (Id divId : hints) {
       if (divId == 0) continue;
