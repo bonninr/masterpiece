@@ -2,6 +2,8 @@
 
 This page lists every file a Masterpiece release offers, the systems each file runs on, what it installs and where, what happens at the first start, and how to update and remove the program. Use it to pick the right file for a computer, phone or tablet, to install it, and to find the plugins and the program's data afterwards.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/ICW86IYcv2A?list=PLEi774VY3MkM&rel=0" title="Video tutorial 02 Installing Masterpiece" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ## Release files
 
 Each release on [github.com/bonninr/masterpiece/releases](https://github.com/bonninr/masterpiece/releases) carries the files below. `<version>` is the release number, for example `0.9.0`. Every file name starts with `masterpiece-<version>-`.

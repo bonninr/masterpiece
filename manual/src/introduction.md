@@ -7,6 +7,8 @@ iPhone and iPad, as a standalone program and as VST3, LV2 and AU plugins. It is
 part of [OpenPipes](https://openpipes.org), an open-source virtual pipe organ
 platform, and is published under the GPL-3.0 licence.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/fhQu_pgKQO0?list=PLEi774VY3MkM&rel=0" title="Video tutorial 01 Introduction" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ![The Nancy demo in Masterpiece](images/console-nancy.jpg)
 
 This manual has two parts. The **user guide** covers installing the program,

@@ -2,6 +2,8 @@
 
 This page explains how Masterpiece holds an organ in memory, what each loading choice costs and saves, and how loading, compression, the sample cache, release streaming, the memory limit and the voice pool fit together. Use it to decide the settings on **Organ > Organ settings... > Loading** and **Organ > Organ settings... > Stops, ranks and perspectives**, and on the **Performance** and **General** tabs of the settings window, to read the memory figures Masterpiece shows, and to understand a load that stops for memory or a stream that falls behind. [Small, medium and large organs](sizing.md) turns these mechanisms into recommended settings per computer.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/2us6XxgF46A?list=PLEi774VY3MkM&rel=0" title="Video tutorial 13 Memory, loading and streaming" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ## Where the settings are
 
 The settings on this page are in three places.

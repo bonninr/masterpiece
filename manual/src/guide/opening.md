@@ -2,6 +2,8 @@
 
 This page covers every way an organ reaches the console: the file formats Masterpiece reads, organs installed in folders, organs played straight from their packages, sample sets that live in several places, demo sets, licences, the favourites window, and the load itself with its progress dialog. It tells you which file to pick, where Masterpiece looks for the rest of a set, and what the log says when something is missing.
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/ak40WAd6RgE?list=PLEi774VY3MkM&rel=0" title="Video tutorial 03 Opening an organ" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 Settings that decide how much memory an organ takes, and whether release tails stream from disk, are chosen at load time and are described in [Memory, loading and streaming](memory.md).
 
 ## Formats

@@ -7,6 +7,8 @@ the expression pedals, the on-screen keyboard and the context menus.
 Registration, pistons, tuning and recording are covered on
 [Playing](playing.md).
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/esO60uLf1jE?list=PLEi774VY3MkM&rel=0" title="Video tutorial 04 A tour of the window" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ![The main window with Nancy's console and a few stops drawn](../images/console-nancy.jpg)
 
 The window opens at 1280 x 760 pixels the first time, and afterwards at the

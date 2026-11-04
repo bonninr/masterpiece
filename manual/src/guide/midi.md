@@ -2,6 +2,8 @@
 
 This page covers connecting a keyboard, a pedalboard or a full console to Masterpiece: which MIDI inputs are open, which MIDI channel plays which manual, the dialog that sets the range, transposition and velocity of one manual, MIDI learn for stops, couplers, pistons and swell shoes, what Masterpiece sends back to a console (lamps, motorised faders, key echo, text displays), and where the mapping is stored. Playing a whole organ from one keyboard is covered on [Split keyboard](split-keyboard.md).
 
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/Bf9FXpoKYus?list=PLEi774VY3MkM&rel=0" title="Video tutorial 05 MIDI and consoles" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+
 ## How a message reaches the organ
 
 Every MIDI input that Masterpiece opens delivers its messages tagged with the input's name. A mapping can match a message on four things: the input (**Any device** or one named device), the channel (any, or 1 to 16), the message type and its number.
