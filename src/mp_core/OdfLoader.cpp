@@ -1699,8 +1699,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     t.name = field(row, "Name", "b");
     t.controllingSwitchId = fieldInt(row, "ControllingSwitchID", "c", 0);
     t.engagedHz = fieldDouble(row, "FrequencyWhenEngagedHz", "d", t.engagedHz);
-    t.disengagedHz =
-        fieldDouble(row, "FrequencyWhenDisengagedHz", "e", t.disengagedHz);
+    t.disengagedHz = fieldDouble(row, "FrequencyWhenDisengagedHz", "e",
+                                 isCompact(row) ? 9.0 : t.disengagedHz);
     // StartRatePercent / StopRatePercent are how quickly the tremulant winds
     // up and down, which is what TremulantLfo::depthRampSeconds consumes.
     t.startPercent = fieldDouble(row, "StartRatePercent", "f", t.startPercent);
