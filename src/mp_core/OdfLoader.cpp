@@ -382,6 +382,8 @@ bool OdfLoader::load(const std::string& odfPath, const Options& opts,
     const bool ok = loadFromXmlString(go.xml, odfPath, opts, outModel, outDiag);
     // Its keyboards are all manuals (#638).
     outModel.everyKeyboardPlayable = true;
+    // Its swell boxes follow GrandOrgue's level law (#774).
+    for (auto& [id, e] : outModel.enclosures) e.linearAmplitude = true;
     return ok;
   }
   std::ifstream f(pathOf(odfPath), std::ios::binary);

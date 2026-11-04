@@ -151,9 +151,16 @@ void EnclosureFilter::updateFor(const Enclosure& e) {
   cutoffHz_ = std::clamp(std::exp2(octaves), 20.0, sampleRate_ * 0.45);
 
   // Gain interpolates linearly in dB — that is how the attenuations are
-  // specified, and it is what the ear tracks.
-  const double db = e.closedAttnDb + s * (e.openAttnDb - e.closedAttnDb);
-  gain_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(db), -100.0f));
+  // specified, and it is what the ear tracks. A GrandOrgue box interpolates
+  // its amplitude instead, and its sets are voiced to that (#774).
+  if (e.linearAmplitude) {
+    const double closed = juce::Decibels::decibelsToGain(e.closedAttnDb, -100.0);
+    const double open = juce::Decibels::decibelsToGain(e.openAttnDb, -100.0);
+    gain_.setTargetValue(static_cast<float>(closed + s * (open - closed)));
+  } else {
+    const double db = e.closedAttnDb + s * (e.openAttnDb - e.closedAttnDb);
+    gain_.setTargetValue(juce::Decibels::decibelsToGain(static_cast<float>(db), -100.0f));
+  }
 
   // The shelf's depth, from the set's own figure, shallower as the shades
   // open and gone when open: the shape the format describes, and an open box

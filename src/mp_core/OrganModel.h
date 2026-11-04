@@ -517,6 +517,9 @@ struct Enclosure {
   double openMaxHz = kOpenEnclosureHz, openMinHz = kOpenEnclosureHz;
 
   double closedAttnDb = -24.0, openAttnDb = 0.0;
+  // The level moves evenly in amplitude between the two ends, the way a
+  // GrandOrgue box moves (GOEnclosure::GetAttenuation); otherwise evenly in dB.
+  bool linearAmplitude = false;
   bool filterParamsFromPipes = false;
   // Shade positions the ODF actually declares (EnclosurePipe rows). An
   // enclosure with none is inert — the validator reports it rather than
