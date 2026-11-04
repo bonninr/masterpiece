@@ -181,7 +181,7 @@ Played play(const Playing& p, bool windows, mp::simd::Isa isa) {
     start.ratio = p.ratios[static_cast<size_t>(i)];
     start.loopStartOverride = p.loopStart;
     start.loopEndOverride = p.loopEnd;
-    start.loopCrossfadeFrames = p.loopCrossfade;
+    start.loopCrossfadeMs = p.loopCrossfade / 48.0;
     start.oneShot = p.oneShot;
     if (engine.startVoice(start, static_cast<uint64_t>(i + 1)) >= 0) ++result.started;
   }

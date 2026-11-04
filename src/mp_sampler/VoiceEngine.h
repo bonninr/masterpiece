@@ -19,6 +19,7 @@
 #include "SimdRun.h"
 #include "DecodedWindow.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -330,6 +331,7 @@ struct Voice {
   // it: the release plays at its own recorded pitch, the attack at its own.
   double xfadeRatioScale = 1.0;
   int64_t xfadeOldLoopStart = -1, xfadeOldLoopEnd = -1;
+  int64_t xfadeOldLoopFade = 0;
   int relXfadeLeft = 0;
   int relXfadeLength = 0;
 
@@ -396,17 +398,14 @@ struct Voice {
   int attackTotal = 0;
   int attackLeft = 0;
 
-  // Loop crossfade. On a wrap the outgoing stream keeps reading PAST the loop
-  // end (that material is still in the file) while the incoming stream starts
-  // at the loop start; the two are blended for `xfadeLength` frames. This is
-  // what removes the click at a loop point when the two ends do not match
-  // phase. GrandOrgue does the same blend, but precomputes it into a tail
-  // buffer at load time — we cannot, because the length comes from the ODF
-  // layer and one sample file may be shared by layers that specify different
-  // lengths.
-  double xfadePos = 0.0;   // outgoing read position, past the loop end
-  int xfadeRemaining = 0;  // frames left in the current blend
-  int xfadeLength = 0;     // 0 disables crossfading entirely
+  // Loop crossfade. The loop's last `loopFade` frames fade into the frames one
+  // loop earlier, which lead up to the loop's start: the wrap lands where the
+  // fade has arrived, so the two ends need not match, and nothing past the
+  // loop's end is read, which many files do not have. GrandOrgue fades the
+  // same frames into a tail buffer at load time. Here the blend is worked out
+  // as the voice plays, because the length comes from the ODF layer and one
+  // sample file may be shared by layers that specify different lengths.
+  int64_t loopFade = 0;  // in the file's frames; 0 wraps hard
 
   // Loop actually in force for this voice. Normally copied from the backing
   // store (the file's smpl chunk), but a PipeLayer may override it: the same
@@ -436,6 +435,8 @@ struct Voice {
     return loopStart >= 0 && loopEnd > loopStart && buffer != nullptr &&
            loopEnd <= buffer->numFrames;
   }
+  // Where a straight run stops: short of the loop's seam and of its fade.
+  int64_t loopRunEnd() const { return loopEnd - std::max<int64_t>(3, loopFade); }
 };
 
 // One key press asking for one pipe to speak.
@@ -451,8 +452,9 @@ struct VoiceStart {
   // -1 (the default) means "use the file's own loop".
   int64_t loopStartOverride = -1;
   int64_t loopEndOverride = -1;
-  // Crossfade length at the loop wrap, in frames. 0 = hard wrap.
-  int loopCrossfadeFrames = 0;
+  // Crossfade length at the loop's end, in milliseconds of the file. 0 = hard
+  // wrap.
+  double loopCrossfadeMs = 0.0;
   // Windchest index and air draw; see Voice::windIndex and Voice::windFlow.
   int windIndex = -1;
   float windFlowKgPerSec = 0.0f;

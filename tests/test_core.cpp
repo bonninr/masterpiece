@@ -3975,7 +3975,7 @@ public:
       mp::VoiceStart st;
       st.pipe = &fx.pipe;
       st.layer = &fx.pipe.layers[0];
-      st.loopCrossfadeFrames = crossfadeFrames;
+      st.loopCrossfadeMs = crossfadeFrames / 48.0;
       MP_CHECK(eng.startVoice(st, 1) >= 0, "voice started");
       // Long enough to wrap several times.
       std::vector<float> buf(4096, 0.0f);
@@ -4009,8 +4009,23 @@ public:
              "the crossfade holds level rather than dipping or bulging");
     for (float x : faded) MP_CHECK(std::isfinite(x), "crossfade stays finite");
 
-    // A crossfade longer than the material after the loop end must degrade
-    // gracefully: blend what exists, then stop, never read past the buffer.
+    // A file that stops on its loop's last frame has nothing after the loop:
+    // the fade runs on the frames before the start, and arrives all the same.
+    fx.attack.numFrames = 1900;
+    fx.attack.frames.resize(1900);
+    MP_CHECK(maxStep(renderWith(256)) < 0.1,
+             "a file that stops on its loop's end fades like any other");
+
+    // A few frames after the loop's end are no reason to stop half way.
+    fx.attack = discontinuous();
+    fx.attack.numFrames = 1910;
+    fx.attack.frames.resize(1910);
+    MP_CHECK(maxStep(renderWith(256)) < 0.1,
+             "a fade longer than what follows the loop has no step where that runs out");
+
+    // A crossfade longer than the loop, or than the frames before it, runs as
+    // far as they go, and never reads past the buffer.
+    fx.attack = discontinuous();
     const auto huge = renderWith(100000);
     for (float x : huge)
       MP_CHECK(std::isfinite(x) && std::fabs(x) < 4.0,
@@ -4024,7 +4039,7 @@ public:
     s2.pipe = &fx.pipe;
     s2.layer = &fx.pipe.layers[0];
     s2.oneShot = true;
-    s2.loopCrossfadeFrames = 256;
+    s2.loopCrossfadeMs = 5.0;
     const int idx = os.startVoice(s2, 1);
     MP_CHECK(idx >= 0 && !os.voice(idx).loops(),
              "a one-shot with a crossfade set still does not loop");
@@ -4036,6 +4051,44 @@ class CompactTremulantRateTest final : public mp::test::Test {
 public:
   CompactTremulantRateTest()
     : Test("functional.odf.compact-tremulant-rate", Category::Functional) {}
+// A key let go inside a loop's fade: the sustain goes on under the release,
+// through the rest of its fade and over the seam, with no step on the way.
+class LoopCrossfadeReleaseTest final : public mp::test::Test {
+public:
+  LoopCrossfadeReleaseTest()
+    : Test("functional.voice.loop-crossfade-release", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    fx.attack = LoopCrossfadeTest::discontinuous();
+    fx.pipe.layers[0].releases[0].releaseCrossfadeMs = 100.0;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 4, 1, 4096);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.loopCrossfadeMs = 256 / 48.0;
+    MP_CHECK(eng.startVoice(st, 1) >= 0, "voice started");
+    // A hundred frames before the wrap, and so inside the last 256.
+    std::vector<float> all(1800, 0.0f);
+    float* out[1] = {all.data()};
+    eng.render(out, 1, 1800);
+    eng.noteOff(1, mp::NoteRelease{});
+    std::vector<float> rest(2400, 0.0f);
+    out[0] = rest.data();
+    eng.render(out, 1, 2400);
+    all.insert(all.end(), rest.begin(), rest.end());
+    MP_CHECK(LoopCrossfadeTest::maxStep(all) < 0.1,
+             "the sustain crosses its seam under the release with no step");
+  }
+};
+static LoopCrossfadeReleaseTest g_loopCrossfadeRelease;
+
+// A compact attack row leaves out a crossfade of 80 ms.
+class CompactLoopCrossfadeTest final : public mp::test::Test {
+public:
+  CompactLoopCrossfadeTest()
+    : Test("functional.odf.compact-loop-crossfade", Category::Functional) {}
   void run() override {
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
@@ -4059,6 +4112,26 @@ public:
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
+                 "<ObjectList ObjectType=\"Sample\"><o><a>1</a><c>R/036-c.wav</c></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+                 "<o><a>72</a><b>7</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+                 "<o><a>721</a><b>72</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+                 "<o><a>1</a><b>711</b><c>1</c></o>"
+                 "<o><a>2</a><b>721</b><c>1</c><k>5</k></o></ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    std::map<mp::Id, double> fade;
+    if (m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) fade[layer.layerId] = layer.loopCrossfadeMs;
+    MP_CHECK(fade.size() == 2 && fade[711] == 80.0 && fade[721] == 5.0,
+             "no crossfade written means 80 ms, and a written one is kept");
+  }
+};
+static CompactLoopCrossfadeTest g_compactLoopCrossfade;
 
 // Detuning: an organ drifting out of tune, pipe by pipe. A set declares a
 // control per division and zone and a sensitivity per pipe, so the same

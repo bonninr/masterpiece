@@ -808,7 +808,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     layerIt->second->attacks.push_back(std::move(attack));
     layerIt->second->loopCrossfadeMs =
         fieldDouble(row, "LoopCrossfadeLengthInSrcSampleMs", "k",
-                    layerIt->second->loopCrossfadeMs);
+                    isCompact(row) ? 80.0 : layerIt->second->loopCrossfadeMs);
   });
 
   // ---- M1.2: Release samples (coupled to the played attack per voice, M2.1) ----

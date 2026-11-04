@@ -4341,9 +4341,8 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
       }
     }
     // LoopCrossfadeLengthInSrcSampleMs is stated against the SOURCE
-    // sample rate, so convert with the file's rate, not the engine's.
-    vs.loopCrossfadeFrames = static_cast<int>(
-        layer.loopCrossfadeMs * 0.001 * sampleRate_);
+    // sample rate: the engine converts it with the file's rate.
+    vs.loopCrossfadeMs = layer.loopCrossfadeMs;
     vs.startOffset = eventOffset_;
     // Two keys reaching this pipe, through a coupler and directly, sound it
     // once (#521).
