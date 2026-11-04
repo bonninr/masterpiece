@@ -1,0 +1,107 @@
+name: Crash report
+description: The program quits, freezes or stops responding.
+title: "Crash: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. A crash keeps its log: the session that crashed is masterpiece.previous.log once the program has been started again.
+
+  - type: textarea
+    id: when
+    attributes:
+      label: When it crashes
+      description: "What you were doing: opening the organ, the first note, a stop or a piston, a setting, quitting."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: every-time
+    attributes:
+      label: How often
+      options:
+        - Every time
+        - Sometimes
+        - Once so far
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release (0.9.0) or the development build's number. The first line of masterpiece.log gives both.
+      placeholder: 0.9.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Linux (Flatpak)
+        - Raspberry Pi
+        - iPhone or iPad
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: System version and computer
+      placeholder: macOS 15.1, MacBook Air M2, 16 GB
+    validations:
+      required: false
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: Program
+      options:
+        - Standalone application
+        - Plugin (VST3, AU or LV2)
+    validations:
+      required: true
+
+  - type: input
+    id: organ
+    attributes:
+      label: Sample set
+      description: Its name and producer, and how it was opened. Whether another set opens and plays without a crash helps too.
+    validations:
+      required: true
+
+  - type: textarea
+    id: loading
+    attributes:
+      label: Loading settings
+      description: From the Loading tab of Organ settings, Memory profile, Resident format, Load in mono, Stream release tails from disk, Preloaded per sample and Sample rate.
+    validations:
+      required: false
+
+  - type: textarea
+    id: crash-report
+    attributes:
+      label: The system's crash report
+      description: |
+        macOS: the report window's text (Console > Crash Reports, the file named Masterpiece).
+        Windows: Event Viewer > Windows Logs > Application, the Application Error entry for Masterpiece.exe.
+        Linux: the terminal output, or the lines from journalctl for the crash.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Please attach masterpiece.log and masterpiece.previous.log. Settings > General settings > Log opens their folder (%APPDATA%\Masterpiece on Windows, ~/Library/Masterpiece on macOS, ~/.config/Masterpiece on Linux).
+      placeholder: Drag the files here.
+    validations:
+      required: false

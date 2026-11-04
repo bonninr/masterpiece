@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/bonninr/masterpiece/discussions/categories/q-a
+    about: How to set something up, how a feature works, which settings suit a sample set.
+  - name: Ideas
+    url: https://github.com/bonninr/masterpiece/discussions/categories/ideas
+    about: Broader wishes and directions for the program, open for discussion.
+  - name: Manual
+    url: https://masterpieceorgan.com/docs/
+    about: The user's guide, with the video tutorials.

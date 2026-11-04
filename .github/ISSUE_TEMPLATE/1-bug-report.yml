@@ -1,0 +1,129 @@
+name: Bug report
+description: Something works wrongly, sounds wrong or looks wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. The details below let the problem be played again here, on the same set with the same settings, which is the quickest way to a fix.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you see or hear. For a sound problem, say where in the note it is (the start, while held, or the release) and whether one stop on its own does it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: From opening the program to the problem, one step a line.
+      placeholder: |
+        1. Open the organ ...
+        2. Draw the stops ...
+        3. Play ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release (0.9.0) or the development build's number. The first line of masterpiece.log gives both.
+      placeholder: 0.9.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: earlier
+    attributes:
+      label: In an earlier version
+      options:
+        - Not tried
+        - It worked in an earlier version (please name it below)
+        - It happened in earlier versions too
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Linux (Flatpak)
+        - Raspberry Pi
+        - iPhone or iPad
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: System version and computer
+      placeholder: Windows 11 24H2, Intel i7-12700, 32 GB
+    validations:
+      required: false
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: Program
+      options:
+        - Standalone application
+        - Plugin (VST3, AU or LV2)
+    validations:
+      required: true
+
+  - type: input
+    id: organ
+    attributes:
+      label: Sample set
+      description: Its name and producer, and how it was opened (a RAR package, an installed folder, a GrandOrgue .organ or .orgue file).
+      placeholder: Friesach, from the RAR package
+    validations:
+      required: true
+
+  - type: textarea
+    id: audio
+    attributes:
+      label: Audio settings
+      description: From the audio settings, Audio device type, Output, Sample rate and Audio buffer size. For the plugin, the host and its buffer size.
+      placeholder: |
+        Audio device type: ASIO
+        Output: ...
+        Sample rate: 48000 Hz
+        Audio buffer size: 256 samples
+    validations:
+      required: false
+
+  - type: textarea
+    id: loading
+    attributes:
+      label: Loading settings
+      description: From the Loading tab of Organ settings, Memory profile, Resident format, Load in mono, Stream release tails from disk, Preloaded per sample and Sample rate.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and recordings
+      description: |
+        Please attach masterpiece.log and masterpiece.previous.log: Settings > General settings > Log opens their folder (%APPDATA%\Masterpiece on Windows, ~/Library/Masterpiece on macOS, ~/.config/Masterpiece on Linux).
+        For a sound problem, a recording helps a great deal: File > Recorder... > Record audio... records the organ inside the program. A ZIP or a link works for large files.
+      placeholder: Drag the files here.
+    validations:
+      required: false

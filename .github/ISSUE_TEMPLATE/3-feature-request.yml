@@ -1,0 +1,40 @@
+name: Feature request
+description: A concrete addition or change to the program.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the suggestion. A request with a clear use is the easiest to build. Broader wishes are welcome in Ideas, in the Discussions.
+
+  - type: textarea
+    id: use
+    attributes:
+      label: What you want to do
+      description: The playing, practising or voicing situation it is for.
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work
+      description: Where it sits in the program, and what it does when used. Pictures from another program are welcome.
+    validations:
+      required: false
+
+  - type: input
+    id: organ
+    attributes:
+      label: Sample sets it concerns
+      description: When the request comes from a particular set or console.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version used
+      placeholder: 0.9.0
+    validations:
+      required: false
