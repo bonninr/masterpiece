@@ -746,7 +746,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     layer.tremAmpDepthAdjustDb = fieldDouble(
         row, "AmpLvl_TremulantModDepthAdjustDecibels", "p", 0.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
-        row, "PitchLvl_TremulantModDepthAdjustPercent", nullptr, 100.0);
+        row, "PitchLvl_TremulantModDepthAdjustPercent", "y", 100.0);
     pipeIt->second->layers.push_back(std::move(layer));
     layerById[layerId] = &pipeIt->second->layers.back();
   });
@@ -1762,7 +1762,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       mod.ampDepthDb =
           fieldDouble(row, "AmplitudeModDepthAdjustDecibels", "c", 0.0);
       mod.pitchDepthPct =
-          fieldDouble(row, "PitchModDepthAdjustPercent", "d", 0.0);
+          fieldDouble(row, "PitchModDepthAdjustPercent", "d", isCompact(row) ? 100.0 : 0.0);
       outModel.tremulantPipes[pipeId] = mod;
 
       // The strongest depth any pipe uses is the tremulant's nominal depth,
