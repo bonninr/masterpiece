@@ -378,6 +378,13 @@ struct Voice {
   // Which rank's live level reaches this pipe, as an index into the table
   // setLiveGains() hands over; -1 for none (a noise). See LiveLevels.
   int rankIndex = -1;
+  // Which of the organ's layer levels reaches this pipe, as an index into the
+  // table setLayerLevels() hands over; -1 for a layer that names none.
+  int levelIndex = -1;
+  // The voicing's level for this pipe, and the level it is moving to after
+  // a change to the voicing (retargetVoicing).
+  float voicingGain = 1.0f;
+  float voicingTarget = 1.0f;
   // The attack's emphasis: a level that starts at 1 + attackBoost and falls
   // in a straight line to 1 over attackTotal frames, attackLeft of them to
   // go. 0 left is no emphasis, and then nothing is done for it.
@@ -466,6 +473,8 @@ struct VoiceStart {
   int mixBus = 0;    // mixer output
   int swayIndex = -1;  // wind sway; see Voice::swayIndex
   int rankIndex = -1;  // live level; see Voice::rankIndex
+  int levelIndex = -1;  // the layer's level; see Voice::levelIndex
+  float voicingGain = 1.0f;  // the voicing's level; see Voice::voicingGain
   // The attack's emphasis; see Voice::attackBoost. 0 frames is none.
   float attackBoost = 0.0f;
   int attackFrames = 0;
@@ -685,6 +694,22 @@ public:
     if (v.rankIndex >= 0 && v.rankIndex < liveRankCount_) g = liveRankGains_[v.rankIndex];
     if (v.mixBus >= 0 && v.mixBus < livePairCount_) g *= livePairGains_[v.mixBus];
     return g;
+  }
+  // The organ's own layer levels for the next block (a layer's
+  // AmpLvl_ScalingContinuousControlID): one gain per control, multiplied on
+  // once per voice per block, so a mixer slider or a blower level moves the
+  // pipes already sounding (#765). Null for an organ that declares none.
+  void setLayerLevels(const float* levels, int count) {
+    layerLevels_ = levels;
+    layerLevelCount_ = count;
+  }
+  // After a change to the voicing: each pipe sounding moves to the level
+  // gainOf(pipeId) gives it, by `step` of the way each block (#765).
+  template <class F>
+  void retargetVoicing(float step, F&& gainOf) {
+    voicingStep_ = step;
+    for (Voice& v : voices_)
+      if (v.phase != VoicePhase::Idle) v.voicingTarget = gainOf(v.pipeId);
   }
   // --- streaming --------------------------------------------------------
   // How far ahead of each voice the streamer keeps, in seconds. Generous: a
@@ -912,6 +937,9 @@ private:
   int liveRankCount_ = 0;
   const float* livePairGains_ = nullptr;
   int livePairCount_ = 0;
+  const float* layerLevels_ = nullptr;
+  int layerLevelCount_ = 0;
+  float voicingStep_ = 1.0f;
 
   // --- streaming --------------------------------------------------------
   // One ring per voice, parallel to `voices_`. Per voice and not per sample

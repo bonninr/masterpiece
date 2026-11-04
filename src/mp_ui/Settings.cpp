@@ -3109,6 +3109,7 @@ void VoicingPanel::pushCurrent() {
     proc_.voicing().live().setRank(rankId, pv);
     if (eqChanged) proc_.applyVoicingEq();
   }
+  proc_.voicingChanged();
   if (!juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()) proc_.restartTestNote();
   updateStatus();
 }

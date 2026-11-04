@@ -645,17 +645,19 @@ Error ControlModel::set(Type type, int index, int& value) {
     proc_.setControlValue(static_cast<Id>(controls_[static_cast<size_t>(index)].id), value);
   } else if (type == Type::Rank) {
     if (value < info->min || value > info->max) return Error::BadValue;
-    // As the Voicing tab does: heard from the next note.
+    // As the Voicing tab does: heard at once, on the notes sounding too.
     const auto id = static_cast<Id>(ranks_[static_cast<size_t>(index)].id);
     PipeVoicing pv = proc_.voicing().live().rank(id);
     pv.gainDb = static_cast<float>(value) / 10.0f;
     proc_.voicing().live().setRank(id, pv);
+    proc_.voicingChanged();
   } else if (type == Type::Pipe) {
     if (value < info->min || value > info->max) return Error::BadValue;
     const auto id = static_cast<Id>(pipes_[static_cast<size_t>(index)].id);
     PipeVoicing pv = proc_.voicing().live().pipe(id);
     pv.gainDb = static_cast<float>(value) / 10.0f;
     proc_.voicing().live().setPipe(id, pv);
+    proc_.voicingChanged();
   } else if (type == Type::Brightness || type == Type::Bass) {
     // As the Voicing tab does: heard at once.
     if (value < info->min || value > info->max) return Error::BadValue;

@@ -1017,6 +1017,8 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
                          LiveLevels::kMaxPairs);
   else
     voices_.setLiveGains(nullptr, 0, nullptr, 0);
+  advanceLayerLevels(numFrames);
+  retargetVoicing(numFrames);
   if (!blockLog_.empty())
     blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
 
@@ -3993,6 +3995,7 @@ bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
       v.setRank(rankId, pv);
   }
   voicingSteps_.fetch_add(1, std::memory_order_acq_rel);
+  voicingChanged();
   restartTestNote();
   return true;
 }
@@ -4206,9 +4209,10 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     vs.ratio = playbackRatioFor(
         pipe, layer.attacks[static_cast<size_t>(attackIndex)].sample,
         layer);
-    vs.gain = juce::Decibels::decibelsToGain(
-                  static_cast<float>(layer.gainDb), -100.0f) *
-              layerLevel(layer);
+    // The layer's level is the organ's control, followed while the pipe
+    // sounds (#765); a level that names no control stays at full.
+    vs.gain = juce::Decibels::decibelsToGain(static_cast<float>(layer.gainDb), -100.0f);
+    vs.levelIndex = layerLevelIndexOf(layer);
 
     // How hard the key was struck. The organ states the attenuation at the
     // softest touch; full velocity is unattenuated. Inverted, the sense
@@ -4240,8 +4244,10 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     if (graph_.engineSwitch.enableVoicing && !voicing_.live().empty()) {
       const PipeVoicing pv =
           voicing_.live().effective(rankId, pipe.pipeId);
+      // The level apart from the gain, so a change to it reaches the pipe
+      // while it sounds (voicingChanged).
       if (pv.gainDb != 0.0f)
-        vs.gain *= juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
+        vs.voicingGain = juce::Decibels::decibelsToGain(pv.gainDb, -100.0f);
       if (pv.tuningCents != 0.0f)
         vs.ratio *= centsRatio(pv.tuningCents);
     }
@@ -4599,9 +4605,13 @@ void MasterpieceProcessor::buildPipeIndex() {
   // resolved and when the pipe sounds.
   pipeById_.clear();
   pipeById_.reserve(model_.ranks.size() * 8);
+  rankOfPipe_.clear();
+  rankOfPipe_.reserve(model_.ranks.size() * 8);
   for (const auto& [rankId, rank] : model_.ranks) {
-    (void)rankId;
-    for (const auto& pipe : rank.pipes) pipeById_[pipe.pipeId] = &pipe;
+    for (const auto& pipe : rank.pipes) {
+      pipeById_[pipe.pipeId] = &pipe;
+      rankOfPipe_[pipe.pipeId] = rankId;
+    }
   }
 }
 
@@ -6771,9 +6781,8 @@ void MasterpieceProcessor::triggerNoiseFor(Id switchId, bool engaged) {
       // Noises play at their recorded pitch: they are mechanical sounds, not
       // pipe speech, so temperament must not touch them.
       vs.ratio = 1.0;
-      vs.gain = juce::Decibels::decibelsToGain(
-                    static_cast<float>(layer.gainDb), -100.0f) *
-                layerLevel(layer);
+      vs.gain = juce::Decibels::decibelsToGain(static_cast<float>(layer.gainDb), -100.0f);
+      vs.levelIndex = layerLevelIndexOf(layer);
       // The organ's velocity response reaches noises too, and on every set
       // that declares one it is the NOISE layers that carry it.
       if (layer.velSensMaxAttenDb != 0.0) {
@@ -7592,6 +7601,23 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       divisionOfRank.push_back(d == rankDivision.end() ? -1 : d->second);
     }
     liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()));
+  }
+  // The layer levels: each control that a pipe layer reads as its level,
+  // in id order. An id with no control behind it stays at full, as before.
+  {
+    layerLevelIndex_.clear();
+    std::vector<Id> ids;
+    for (const auto& [rankId, rank] : model_.ranks)
+      for (const auto& pipe : rank.pipes)
+        for (const auto& layer : pipe.layers)
+          if (layer.ampScalingControlId != 0 && model_.continuousControls.count(layer.ampScalingControlId) != 0)
+            ids.push_back(layer.ampScalingControlId);
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    for (size_t i = 0; i < ids.size(); ++i) layerLevelIndex_[ids[i]] = static_cast<int>(i);
+    layerLevelControls_ = std::move(ids);
+    layerLevelGains_.assign(layerLevelControls_.size(), 1.0f);
+    layerLevelsSettled_ = false;
   }
   phases.mark("model: wind");
   stages_.reset(model_);
@@ -9149,6 +9175,48 @@ juce::File MasterpieceProcessor::pressRecorderButton(bool record, const juce::Fi
 // a lamp was sent only when its switch moved (#565). Every lamp is sent once,
 // as the new organ stands: the explicit sends start over, and with stop
 // changes sent on the output, each stop learned on a note or a controller.
+void MasterpieceProcessor::advanceLayerLevels(int numFrames) {
+  if (layerLevelControls_.empty()) {
+    voices_.setLayerLevels(nullptr, 0);
+    return;
+  }
+  // As fast as the live levels follow their faders: a slider swept end to
+  // end, or a tremulant's crossfade, settles in a tenth of a second in small
+  // steps a block.
+  constexpr double kSmoothSeconds = 0.03;
+  const float step = layerLevelsSettled_ && sampleRate_ > 0.0
+                         ? 1.0f - static_cast<float>(std::exp(-numFrames / (kSmoothSeconds * sampleRate_)))
+                         : 1.0f;
+  for (size_t i = 0; i < layerLevelControls_.size(); ++i) {
+    const auto target = static_cast<float>(controls_.normalised(layerLevelControls_[i]));
+    float g = layerLevelGains_[i] + (target - layerLevelGains_[i]) * step;
+    if (std::fabs(target - g) < 1.0e-4f) g = target;
+    layerLevelGains_[i] = g;
+  }
+  layerLevelsSettled_ = true;
+  voices_.setLayerLevels(layerLevelGains_.data(), static_cast<int>(layerLevelGains_.size()));
+}
+
+float MasterpieceProcessor::voicingGainOf(Id rankId, Id pipeId) const {
+  if (!graph_.engineSwitch.enableVoicing || voicing_.live().empty()) return 1.0f;
+  const float db = voicing_.live().effective(rankId, pipeId).gainDb;
+  return db == 0.0f ? 1.0f : juce::Decibels::decibelsToGain(db, -100.0f);
+}
+
+void MasterpieceProcessor::retargetVoicing(int numFrames) {
+  if (!voicingChanged_.exchange(false, std::memory_order_acq_rel)) return;
+  // The same pace as the levels: a slider dragged, or a step of half a
+  // decibel, is a short fade on the pipe sounding.
+  constexpr double kSmoothSeconds = 0.03;
+  const float step = sampleRate_ > 0.0
+                         ? 1.0f - static_cast<float>(std::exp(-numFrames / (kSmoothSeconds * sampleRate_)))
+                         : 1.0f;
+  voices_.retargetVoicing(step, [this](Id pipeId) {
+    const auto r = rankOfPipe_.find(pipeId);
+    return r == rankOfPipe_.end() ? 1.0f : voicingGainOf(r->second, pipeId);
+  });
+}
+
 void MasterpieceProcessor::sendLampsAfterLoad() {
   // The explicit sends start over: the system exclusive ones went at the top
   // of this block, and the others go in emitSends() after the lamps. The

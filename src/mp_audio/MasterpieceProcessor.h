@@ -344,9 +344,10 @@ public:
   // reports what each control resolves to, so the remaining gaps stay
   // measurable.
   //
-  // Read at voice start, never per sample: a level is a control-rate thing
-  // and a note already sounding keeps the gain it began with, exactly as a
-  // pipe does when someone moves a fader.
+  // Followed a block at a time by the pipes that sound (advanceLayerLevels):
+  // a level is a control-rate thing, and a mixer slider or a blower level
+  // moves the notes already sounding, as the format's own player does (#765).
+  // This is the level as it stands, for the diagnostics.
   float layerLevel(const PipeLayer& layer) const {
     if (layer.ampScalingControlId == 0) return 1.0f;
     if (model_.continuousControls.count(layer.ampScalingControlId) == 0)
@@ -1763,14 +1764,22 @@ public:
   int testNoteKey() const { return testNoteKey_.load(std::memory_order_acquire); }
   // Plays the test note again, so a change to the voicing is heard.
   void restartTestNote() { testNoteRestart_.store(true, std::memory_order_release); }
+  // After a pipe's or a rank's level in the voicing has changed: the pipes
+  // sounding take the new level, in a short fade, without being played
+  // again (#765). Message thread.
+  void voicingChanged() { voicingChanged_.store(true, std::memory_order_release); }
 
   VoicingAB& voicing() { return voicing_; }
   // After the voicing's EQ has changed -- a rank's or a division's
   // brightness or bass, a swap of A and B, a reset: hands it to the audio
   // (RankEq.h). Message thread.
   void applyVoicingEq() {
-    const AudioLock audio(*this);
-    pushVoicingEq();
+    {
+      const AudioLock audio(*this);
+      pushVoicingEq();
+    }
+    // A swap or a reset moves the levels too.
+    voicingChanged();
   }
   const VoicingAB& voicing() const { return voicing_; }
 
@@ -2235,6 +2244,13 @@ private:
   // a neighbour's samples has to find that neighbour when it sounds, and a
   // note-on must not search.
   std::unordered_map<Id, const Pipe*> pipeById_;
+  // Each pipe's rank, for the voicing of a pipe already sounding.
+  std::unordered_map<Id, Id> rankOfPipe_;
+  // Set by a change to the voicing; the next block hands the new levels to
+  // the pipes sounding (#765).
+  std::atomic<bool> voicingChanged_{false};
+  // The voicing's level for a pipe, as a gain; 1 for none.
+  float voicingGainOf(Id rankId, Id pipeId) const;
   // How many notes of a rank are loaded: 1 for every note, 2 for every second
   // note, 3 for every third. Saved with the organ.
   int sparseEvery_ = 1;
@@ -2249,6 +2265,22 @@ private:
   LiveLevels liveLevels_;
   std::unordered_map<Id, int> liveRankIndex_;
   std::unordered_map<Id, int> liveDivisionIndex_;
+  // The organ's layer levels (#765): every continuous control a pipe layer
+  // reads as its AmpLvl_ScalingContinuousControlID, each with its place in
+  // the table the voices read, resolved at load. The gains follow their
+  // controls a block at a time, as the live levels follow their faders; the
+  // first block after a load takes them as they stand.
+  std::unordered_map<Id, int> layerLevelIndex_;
+  std::vector<Id> layerLevelControls_;
+  std::vector<float> layerLevelGains_;
+  bool layerLevelsSettled_ = false;
+  int layerLevelIndexOf(const PipeLayer& layer) const {
+    if (layer.ampScalingControlId == 0) return -1;
+    const auto it = layerLevelIndex_.find(layer.ampScalingControlId);
+    return it == layerLevelIndex_.end() ? -1 : it->second;
+  }
+  void advanceLayerLevels(int numFrames);
+  void retargetVoicing(int numFrames);
   // Sets a live level from a MIDI control: a rank or division by its id, a
   // pair by its number from 1.
   void setLiveLevelFromMidi(MidiTargetKind kind, Id targetId, int value);
