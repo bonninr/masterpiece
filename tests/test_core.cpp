@@ -2028,7 +2028,8 @@ public:
   // an octave down to an octave up, and the tone is short beside the render,
   // so every note goes round its loop many times.
   static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa,
-                                   const mp::VoiceEngine::TremMod* trem = nullptr) {
+                                   const mp::VoiceEngine::TremMod* trem = nullptr,
+                                   double loopFadeMs = 0.0) {
     eng.prepare(48000.0, 32, 2);
     eng.setSimdIsa(isa);
     eng.setSampleProvider(fx.provider());
@@ -2041,6 +2042,7 @@ public:
       st.velocity = 80;
       st.ratio = ratios[n];
       st.gain = 0.1f;
+      st.loopCrossfadeMs = loopFadeMs;
       if (trem != nullptr) {
         st.tremIndex = 0;
         st.tremAmpDepth = 0.2f;
@@ -2114,6 +2116,21 @@ public:
             tremApart = std::max(tremApart, static_cast<double>(std::abs(at[i] - af[i])));
           }
 
+          // And a loop's fade on every pass, steady and under the tremulant.
+          // The side a loop earlier keeps a cursor of its own, whose rounding
+          // can differ from the per-frame path's in the last bit of a position.
+          mp::VoiceEngine plainLoop, fastLoop, plainLoopTrem, fastLoopTrem;
+          const std::vector<float> al = render(plainLoop, fx, mp::simd::Isa::None, nullptr, 20.0);
+          const std::vector<float> bl = render(fastLoop, fx, isa, nullptr, 20.0);
+          const std::vector<float> alt = render(plainLoopTrem, fx, mp::simd::Isa::None, &swing, 20.0);
+          const std::vector<float> blt = render(fastLoopTrem, fx, isa, &swing, 20.0);
+          double worstLoop = 0.0, loopApart = 0.0;
+          for (size_t i = 0; i < al.size() && i < bl.size(); ++i) {
+            worstLoop = std::max(worstLoop, static_cast<double>(std::abs(al[i] - bl[i])));
+            worstLoop = std::max(worstLoop, static_cast<double>(std::abs(alt[i] - blt[i])));
+            loopApart = std::max(loopApart, static_cast<double>(std::abs(al[i] - af[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -2121,6 +2138,15 @@ public:
           }
           const std::string what = std::string(mp::simd::isaName(isa)) + " " + formats[format] +
                                    " " + std::to_string(channels) + "ch";
+          MP_CHECK(loopApart > 0.01, what + ": the loop's fade changes the sound");
+          MP_CHECK(worstLoop < 1e-5, what + ": the same loop fade either way (worst difference " +
+                                         std::to_string(worstLoop) + ")");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastLoop.simdFrames() + 8000 > fastFade.simdFrames() &&
+                         fastLoopTrem.simdFrames() + 8000 > fastTrem.simdFrames(),
+                     what + ": a loop's fade goes to the vector code (" +
+                         std::to_string(fastLoop.simdFrames()) + " frames against " +
+                         std::to_string(fastFade.simdFrames()) + " without one)");
           MP_CHECK(plain.simdFrames() == 0, what + ": switched off, the vector code never runs");
           if (mp::simd::runSupports(isa, channels))
             MP_CHECK(fast.simdFrames() > 100000,
@@ -9649,7 +9675,8 @@ class VoiceSimdPerfTest final : public mp::test::Test {
 public:
   VoiceSimdPerfTest() : Test("perf.voice.polyphony-simd", Category::Perf) {}
 
-  static double realtime(mp::simd::Isa isa, voicetest::Fixture& fx, int voices) {
+  static double realtime(mp::simd::Isa isa, voicetest::Fixture& fx, int voices,
+                         double loopFadeMs = 0.0) {
     constexpr double kRate = 48000.0;
     constexpr int kBlock = 256, kBlocks = 400;
     mp::VoiceEngine eng;
@@ -9663,6 +9690,7 @@ public:
       st.velocity = 64 + (i % 60);
       st.ratio = 1.0 + 0.0005 * (i % 97);
       st.gain = 0.02f;
+      st.loopCrossfadeMs = loopFadeMs;
       eng.startVoice(st, static_cast<uint64_t>(i + 1));
     }
     std::vector<float> l(kBlock), r(kBlock);
@@ -9699,6 +9727,20 @@ public:
                     on / off);
         MP_CHECK(off > 0.0 && on > 0.0, "both ways rendered");
       }
+    }
+
+    // A loop's fade on every pass: 80 ms, which is what a compact definition
+    // means by writing none, over a bass loop and two treble loops.
+    if (units.empty()) return;
+    for (const int loopFrames : {48000, 4800, 2400}) {
+      voicetest::Fixture fx;
+      fx.attack = voicetest::makeTone(440.0, 48000.0, 4000 + loopFrames, 2);
+      fx.attack.loopStart = 4000;
+      const double hard = realtime(mp::simd::detect(), fx, 512);
+      const double faded = realtime(mp::simd::detect(), fx, 512, 80.0);
+      std::printf("        512 voices, %5d frame loop: %.1fx realtime hard, %.1fx with a fade (%.2fx)\n",
+                  loopFrames, hard, faded, faded / hard);
+      MP_CHECK(hard > 0.0 && faded > 0.0, "both ways rendered");
     }
   }
 };

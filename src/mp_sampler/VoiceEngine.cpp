@@ -1645,6 +1645,76 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
     }
 
+    // A loop's fade, as two straight runs. A fade can be most of a treble
+    // loop, and a compact definition that writes none means 80 ms, so a held
+    // chord spends much of its time here. The loop's own frames and the frames
+    // a loop earlier each go to the vector code at their side of the ramp,
+    // straight into the output, in the per-frame path's arithmetic. The last
+    // frames before the seam stay with the per-frame path, which reads over it.
+    if (canRun && v.phase != VoicePhase::Release && v.xfadeBuf == nullptr && v.loopFade > 0 &&
+        v.loops() && v.loopEnd <= resident &&
+        v.cursor >= static_cast<double>(v.loopEnd - v.loopFade) &&
+        v.cursor >= static_cast<double>(fbase) + 1.0) {
+      const int64_t loopLen = v.loopEnd - v.loopStart;
+      double limit = static_cast<double>(std::min(readEnd, v.loopEnd - 3));
+      const T* earlier = frames;
+      int64_t earlierBase = fbase;
+      bool held = true;
+      // A coded sample: the frames a loop earlier go in the other window.
+      if constexpr (Coded) {
+        const int64_t x = static_cast<int64_t>(v.cursor) - loopLen;
+        DecodedWindow& w =
+            wins[v.window].holds(coded, x - 1, x + 2) ? wins[v.window] : wins[v.window ^ 1u];
+        held = w.holds(coded, x - 1, x + 2) ||
+               holdFrames(w, *coded, x - 1, x + kHoldAhead, *scratch);
+        if (held) {
+          earlier = reinterpret_cast<const T*>(w.data);
+          earlierBase = w.start;
+          limit = std::min(limit, static_cast<double>(w.start + w.count - simd::kRunMargin + loopLen));
+        }
+      }
+      if (held && v.cursor < limit) {
+        double steps[kTremChunk];
+        float ownEnvs[kTremChunk];
+        float earlierEnvs[kTremChunk];
+        const int want = std::min(numFrames - i, kTremChunk);
+        const float base = v.gain * wind.ampMul;
+        const double end = static_cast<double>(v.loopEnd);
+        const double fade = static_cast<double>(v.loopFade);
+        double p = v.cursor;
+        float phase = tremPhase;
+        double swing = tremRatio;
+        int n = 0;
+        // Every frame of the run reads short of the limit.
+        for (; n < want && p < limit; ++n) {
+          float e = base;
+          if (tremMoving) {
+            e *= 1.0f + ampDepth * phase;
+            if (e < 0.0f) e = 0.0f;
+            phase += ampStep;
+          }
+          const float own = loopFadeOwn(static_cast<float>((end - p) / fade));
+          ownEnvs[n] = (e * own) * storeScale;
+          earlierEnvs[n] = (e * (1.0f - own)) * storeScale;
+          steps[n] = tremMoving ? windRatio * swing : windRatio;
+          p += steps[n];
+          if (tremMoving) swing *= tremRatioStep;
+        }
+        if (n >= kMinSimdRun) {
+          const double before = v.cursor - static_cast<double>(loopLen);
+          v.cursor = simd::renderRunPerFrame(isa_, frames, bufChannels, v.cursor, steps, ownEnvs,
+                                             out, numChannels, i, n, fbase);
+          simd::renderRunPerFrame(isa_, earlier, bufChannels, before, steps, earlierEnvs, out,
+                                  numChannels, i, n, earlierBase);
+          tremPhase = phase;
+          tremRatio = swing;
+          simdFrames_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
+          i += n - 1;
+          continue;
+        }
+      }
+    }
+
     // A streamed release tail, as straight runs over the voice's ring. Past
     // its resident start a release is read from the ring the streamer fills,
     // and every tap of every frame went through streamedSample() and its
@@ -1926,7 +1996,8 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     const bool atSeam = v.phase != VoicePhase::Release && v.loops() &&
                         pos + 2 >= v.loopEnd && pos >= v.loopStart + 1 &&
                         v.loopEnd - v.loopStart > 4 && v.loopEnd <= resident;
-    const bool fading = v.loopFade > 0 && v.loops() && v.cursor < static_cast<double>(v.loopEnd) &&
+    const bool fading = v.loopFade > 0 && v.loops() && v.loopEnd <= resident &&
+                        v.cursor < static_cast<double>(v.loopEnd) &&
                         v.cursor >= static_cast<double>(v.loopEnd - v.loopFade);
     if (fading) {
       // Blending. Weight 1 is fully the loop's own frame, 0 fully the frame a
@@ -1944,16 +2015,19 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
       }
       const float own = loopFadeOwn(static_cast<float>(
           (static_cast<double>(v.loopEnd) - v.cursor) / static_cast<double>(v.loopFade)));
+      const float ownEnv = (envReal * own) * storeScale;
+      const float earlierEnv = (envReal * (1.0f - own)) * storeScale;
       const auto tap = [&](int64_t f, int srcCh) {
-        return raw(f >= v.loopEnd ? f - loopLen : f, srcCh) * storeScale;
+        return raw(f >= v.loopEnd ? f - loopLen : f, srcCh);
       };
       for (int ch = 0; ch < numChannels; ++ch) {
         const int srcCh = ch < bufChannels ? ch : bufChannels - 1;
-        const float ownFrame = hermite(tap(pos - 1, srcCh), tap(pos, srcCh), tap(pos + 1, srcCh),
-                                       tap(pos + 2, srcCh), frac);
-        const float earlier = hermite(tap(x - 1, srcCh), tap(x, srcCh), tap(x + 1, srcCh),
-                                      tap(x + 2, srcCh), frac);
-        out[ch][i] += (ownFrame * own + earlier * (1.0f - own)) * envReal;
+        out[ch][i] += hermite(tap(pos - 1, srcCh), tap(pos, srcCh), tap(pos + 1, srcCh),
+                              tap(pos + 2, srcCh), frac) *
+                      ownEnv;
+        out[ch][i] += hermite(tap(x - 1, srcCh), tap(x, srcCh), tap(x + 1, srcCh),
+                              tap(x + 2, srcCh), frac) *
+                      earlierEnv;
       }
     } else if (atSeam) {
       const int64_t loopLen = v.loopEnd - v.loopStart;
