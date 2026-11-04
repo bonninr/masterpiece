@@ -9958,6 +9958,22 @@ public:
       MP_CHECK(std::abs(r.hz - want) < 1e-6, "harmonic 48 is six times 8 foot");
     }
 
+    // A note of 0 is the format's "no note": both spellings of a row write it,
+    // and read as a pitch it puts the sample at 8 Hz.
+    {
+      mp::SamplePitchInputs in;
+      in.methodCode = 1;
+      in.normalMidiNote = 0;
+      in.fileName = "R/069-A.wav";
+      const auto r = mp::resolveSamplePitch(in, a4);
+      MP_CHECK(r.route == mp::PitchRoute::Filename, "a note of 0 is no note: the name is next");
+      MP_CHECK(std::abs(r.hz - 440.0) < 1e-6, "and the name gives the pitch");
+      in.methodCode = 3;
+      in.fileName = "";
+      MP_CHECK(mp::resolveSamplePitch(in, a4).route == mp::PitchRoute::Unresolved,
+               "code 3 with a note of 0 has nothing to go on");
+    }
+
     // Code 0 says apply nothing, and codes 2 and 5 are tremulant waveforms.
     // All three must resolve to "no pitch", which the caller plays as it is --
     // NOT fall through to a neighbouring field.
@@ -10117,6 +10133,8 @@ public:
                  "<c>X</c><b>1</b></_General></ObjectList>"
                  "<ObjectList ObjectType=\"Sample\">"
                  "<o><a>7</a><c>R/036-c.wav</c><d>4</d><g>261.3</g></o>"
+                 "<o><a>8</a><c>R/037-c.wav</c></o>"
+                 "<o><a>9</a><c>R/038-d.wav</c><d>3</d><e>4</e><f>62</f></o>"
                  "</ObjectList></Hauptwerk>",
                  "a.Organ_Hauptwerk_xml", o, m2, d2),
              "the compact spelling must load too");
@@ -10124,6 +10142,14 @@ public:
     MP_CHECK(it2 != m2.samples.end(), "the compact sample row is registered");
     MP_CHECK(it2->second.pitchMethodCode == 4, "short code d is the method");
     MP_CHECK(std::abs(it2->second.pitchHz - 261.3) < 1e-9, "short code g is the Hz");
+    const auto bare = m2.samples.find(8);
+    MP_CHECK(bare != m2.samples.end() && bare->second.pitchMethodCode == 1 &&
+                 bare->second.midiNote == 0 && bare->second.rankBasePitch64ftHarmonicNum == 0,
+             "a compact row with no pitch fields says the pitch is in the file");
+    const auto full = m2.samples.find(9);
+    MP_CHECK(full != m2.samples.end() && full->second.pitchMethodCode == 3 &&
+                 full->second.midiNote == 62 && full->second.rankBasePitch64ftHarmonicNum == 4,
+             "the written pitch fields are kept");
   }
 };
 

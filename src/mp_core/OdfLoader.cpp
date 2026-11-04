@@ -550,12 +550,13 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     if (s.licenceRequired) outModel.hasLicensedSamples = true;
     s.pitchHz = fieldDouble(row, "Pitch_ExactSamplePitch", "g", 0.0);
     s.installationPackageId = fieldInt(row, "InstallationPackageID", "b", 0);
-    s.midiNote = fieldInt(row, "Pitch_NormalMIDINoteNumber", "f", -1);
+    s.midiNote = fieldInt(row, "Pitch_NormalMIDINoteNumber", "f", isCompact(row) ? 0 : -1);
     // Which of those fields the set means. Friesach declares code 1 on 11400
     // of its 12146 samples and leaves every pitch field empty, so a loader
     // that reads the fields and not the code learns nothing from it at all.
-    s.pitchMethodCode = fieldInt(row, "Pitch_SpecificationMethodCode", "d", -1);
-    s.rankBasePitch64ftHarmonicNum = fieldInt(row, "Pitch_RankBasePitch64ftHarmonicNum", "e", 8);
+    s.pitchMethodCode = fieldInt(row, "Pitch_SpecificationMethodCode", "d", isCompact(row) ? 1 : -1);
+    s.rankBasePitch64ftHarmonicNum =
+        fieldInt(row, "Pitch_RankBasePitch64ftHarmonicNum", "e", isCompact(row) ? 0 : 8);
     if (s.sampleId != 0) outModel.samples[s.sampleId] = s;
     if (s.encrypted) reportEncrypted(outModel, outDiag, s.fileName);
   });
