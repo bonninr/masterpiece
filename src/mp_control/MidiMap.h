@@ -268,6 +268,11 @@ struct MidiAction {
   bool valid() const { return kind != MidiTargetKind::None; }
 };
 
+// A controller send that names a parameter: CC 101/100 (registered) or 99/98
+// (non-registered) carry `number`, 0..16383, and data entry (CC 6) the value.
+// GrandOrgue's RPN and NRPN sends.
+enum class MidiParameter { None, Registered, NonRegistered };
+
 // A message sent when something on the console changes: the lamp in a
 // drawstop, the LED by a piston, a motorised fader following its swell box.
 // GrandOrgue's Send tab. Kept apart from the bindings, because a console very
@@ -277,14 +282,20 @@ struct MidiSend {
   Id targetId = 0;
   MidiSourceKind kind = MidiSourceKind::Note;
   int channel = 1;  // 1..16
-  // The note, controller or program. For a manual, how far the keys played
-  // on it are moved before they are sent: they go out as notes.
+  // The note, controller, program or parameter. For a manual, how far the
+  // keys played on it are moved before they are sent: they go out as notes.
   int number = 0;
   // A switch sends `high` when it comes on and `low` when it goes off; a
   // negative `low` sends nothing when it goes off. A control is sent across
-  // low..high, so a fader that wants 0..100 gets 0..100.
+  // low..high, so a fader that wants 0..100 gets 0..100. A manual sends its
+  // keys at velocity `low`, or as played when it is 0.
   int low = 0;
   int high = 127;
+  // A note's "off" as a Note Off message (8n) in place of a Note On (9n) at
+  // the off velocity: some consoles' lamps go out only on a Note Off.
+  bool noteOff = false;
+  // A controller send that names a parameter, sent by number and data entry.
+  MidiParameter parameter = MidiParameter::None;
   // A switch's hex send: the whole MIDI messages it sends when it comes on
   // and when it goes off, one or several, system exclusive or any other.
   // Empty sends nothing. Like every send, it goes out again after each load,
@@ -298,7 +309,8 @@ struct MidiSend {
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
-           sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram;
+           sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram &&
+           noteOff == o.noteOff && parameter == o.parameter;
   }
 };
 
@@ -484,6 +496,19 @@ public:
   static bool controlMessage(const MidiSend& s, int value, RawMidi& out);
   // A key played on a manual, sent on as a note.
   static bool keyMessage(const MidiSend& s, int note, int velocity, bool on, RawMidi& out);
+  // Every byte a send puts out for `state`: 0 or 1 for a target that is on or
+  // off, 0..127 for a control. Whole messages, one after another: a parameter
+  // send is three controllers, a hex send whatever it holds. Empty when the
+  // state sends nothing.
+  static std::vector<uint8_t> sendBytes(const MidiSend& s, int state);
+  // The targets a send follows as on or off: a stop's switch, and the
+  // program's buttons that light, a general or the setter among them.
+  static bool sendsOnOff(MidiTargetKind k);
+  // Whether a target has a state for a send to follow at all: the on/off ones,
+  // a control and a manual. A button that only acts, a page turn, has none.
+  static bool hasSendState(MidiTargetKind k) {
+    return sendsOnOff(k) || k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::Keyboard;
+  }
 
   // --- computer keyboard ----------------------------------------------------
   const std::vector<KeyShortcut>& shortcuts() const { return shortcuts_; }

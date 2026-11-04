@@ -9254,7 +9254,6 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
   // Sized to the list; a list that changed shape starts over, which sends
   // every lamp's current state -- what a console needs when it is set up.
   if (sentValues_.size() != sends.size()) sentValues_.assign(sends.size(), -1);
-  RawMidi raw;
   for (size_t i = 0; i < sends.size(); ++i) {
     const MidiSend& s = sends[i];
     if (sysExOnly && s.kind != MidiSourceKind::SysEx) continue;
@@ -9276,16 +9275,17 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
     if (quiet) continue;
-    if (s.kind == MidiSourceKind::SysEx) {
-      // A whole message of its own for each state; a control has none.
-      if (s.targetKind == MidiTargetKind::ContinuousControl) continue;
-      addMessages(outgoing_, now != 0 ? s.sysExOn : s.sysExOff);
-      continue;
-    }
-    const bool made = s.targetKind != MidiTargetKind::ContinuousControl
-                          ? MidiMap::switchMessage(s, now != 0, raw)
-                          : MidiMap::controlMessage(s, now, raw);
-    if (made) outgoing_.addEvent(raw.bytes, raw.size, 0);
+    addMessages(outgoing_, MidiMap::sendBytes(s, now));
+  }
+}
+
+void MasterpieceProcessor::sendMidiNow(const std::vector<uint8_t>& bytes) {
+  for (size_t at = 0; at < bytes.size();) {
+    const size_t n = midiMessageLength(bytes, at);
+    if (n == 0) break;
+    sendSysexOut(std::vector<uint8_t>(bytes.begin() + static_cast<long>(at),
+                                      bytes.begin() + static_cast<long>(at + n)));
+    at += n;
   }
 }
 

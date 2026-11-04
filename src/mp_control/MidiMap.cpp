@@ -102,6 +102,25 @@ MidiSourceKind sourceKindFrom(const std::string& s) {
   return MidiSourceKind::None;
 }
 
+// A send's message word: the four a binding uses, and three of its own for a
+// note that goes off with a Note Off and the two parameter controllers.
+const char* sendKindName(const MidiSend& s) {
+  if (s.kind == MidiSourceKind::Note && s.noteOff) return "noteoff";
+  if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::Registered) return "rpn";
+  if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::NonRegistered) return "nrpn";
+  return kindName(s.kind);
+}
+
+void readSendKind(const std::string& word, MidiSend& s) {
+  s.noteOff = word == "noteoff";
+  s.parameter = word == "rpn"    ? MidiParameter::Registered
+                : word == "nrpn" ? MidiParameter::NonRegistered
+                                 : MidiParameter::None;
+  s.kind = s.noteOff                              ? MidiSourceKind::Note
+           : s.parameter != MidiParameter::None ? MidiSourceKind::ControlChange
+                                                : sourceKindFrom(word);
+}
+
 const char* targetName(MidiTargetKind k) {
   switch (k) {
     case MidiTargetKind::Switch: return "switch";
@@ -783,7 +802,56 @@ bool MidiMap::switchMessage(const MidiSend& s, bool on, RawMidi& out) {
   }
   const int value = on ? s.high : s.low;
   if (value < 0) return false;
+  if (s.kind == MidiSourceKind::Note && s.noteOff && !on) {
+    out = {{static_cast<uint8_t>(0x80 | channelBits(s.channel)), clamp7(s.number), clamp7(value)}, 3};
+    return true;
+  }
   return message(s.kind, s.channel, s.number, value, out);
+}
+
+bool MidiMap::sendsOnOff(MidiTargetKind k) {
+  switch (k) {
+    case MidiTargetKind::Switch:
+    case MidiTargetKind::RecorderRecord:
+    case MidiTargetKind::RecorderPlay:
+    case MidiTargetKind::PlayerGeneral:
+    case MidiTargetKind::PlayerDivisional:
+    case MidiTargetKind::Setter:
+    case MidiTargetKind::PedalCombinationsCoupled:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
+  std::vector<uint8_t> out;
+  const bool onOff = s.targetKind != MidiTargetKind::ContinuousControl;
+  // A hex send holds a whole message for each state; a control has none.
+  if (s.kind == MidiSourceKind::SysEx) {
+    if (onOff) out = state != 0 ? s.sysExOn : s.sysExOff;
+    return out;
+  }
+  if (s.kind == MidiSourceKind::ControlChange && s.parameter != MidiParameter::None) {
+    int value;
+    if (onOff) {
+      value = state != 0 ? s.high : s.low;
+      if (value < 0) return out;
+    } else {
+      value = s.low + ((s.high - s.low) * clamp7(state)) / 127;
+    }
+    const auto cc = static_cast<uint8_t>(0xB0 | channelBits(s.channel));
+    const bool registered = s.parameter == MidiParameter::Registered;
+    const int p = std::clamp(s.number, 0, 16383);
+    out = {cc, static_cast<uint8_t>(registered ? 101 : 99), static_cast<uint8_t>((p >> 7) & 127),
+           cc, static_cast<uint8_t>(registered ? 100 : 98), static_cast<uint8_t>(p & 127),
+           cc, 6, clamp7(value)};
+    return out;
+  }
+  RawMidi raw;
+  const bool made = onOff ? switchMessage(s, state != 0, raw) : controlMessage(s, state, raw);
+  if (made) out.assign(raw.bytes, raw.bytes + raw.size);
+  return out;
 }
 
 bool MidiMap::controlMessage(const MidiSend& s, int value, RawMidi& out) {
@@ -797,6 +865,7 @@ bool MidiMap::controlMessage(const MidiSend& s, int value, RawMidi& out) {
 bool MidiMap::keyMessage(const MidiSend& s, int note, int velocity, bool on, RawMidi& out) {
   const int n = note + s.number;
   if (n < 0 || n > 127) return false;
+  if (s.low > 0) velocity = s.low;
   if (on) return message(MidiSourceKind::Note, s.channel, n, velocity < 1 ? 1 : velocity, out);
   out = {{static_cast<uint8_t>(0x80 | channelBits(s.channel)), clamp7(n), 0}, 3};
   return true;
@@ -899,7 +968,7 @@ std::string MidiMap::toText() const {
            "[<SysEx on> <SysEx off>] [<program when off>]\n";
   for (const auto& s : sends_)
     out << "send " << targetName(s.targetKind) << ' ' << s.targetId << ' '
-        << kindName(s.kind) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
+        << sendKindName(s) << ' ' << s.channel << ' ' << s.number << ' ' << s.low
         << ' ' << s.high << sysExFields(s)
         << (s.kind == MidiSourceKind::ProgramChange && s.offProgram >= 0
                 ? " " + std::to_string(s.offProgram)
@@ -1100,7 +1169,7 @@ bool MidiMap::fromText(const std::string& text) {
       if (sl >> tag >> tgt >> id >> kind >> snd.channel >> snd.number >> snd.low >> snd.high) {
         snd.targetKind = targetKindFrom(tgt);
         snd.targetId = static_cast<Id>(id);
-        snd.kind = sourceKindFrom(kind);
+        readSendKind(kind, snd);
         // A system exclusive send carries its two messages after the
         // numbers, as unbroken hex, "-" for none.
         std::string on, off;

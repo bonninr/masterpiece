@@ -1821,6 +1821,9 @@ public:
   // A System Exclusive message to the console's output, sent with the next
   // audio block as the LCD lines are. Dropped when no output is open.
   void sendSysexOut(std::vector<uint8_t> bytes);
+  // Whole MIDI messages of any kind to the console's output, the same way: the
+  // MIDI window's test buttons, which light a lamp to check its colour.
+  void sendMidiNow(const std::vector<uint8_t>& bytes);
   // Re-sends every line regardless, for a console plugged in mid-session and
   // for the settings page's test button.
   int refreshLcdPanels();
