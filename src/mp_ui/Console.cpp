@@ -539,7 +539,7 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
 
     const bool centred = style.hAlignCode == 0 || style.hAlignCode == 3;
     const bool rightAligned = style.hAlignCode == 2;
-    const bool middle = style.vAlignCode == 0 || style.vAlignCode == 3;
+    const bool middle = textInMiddle(style.vAlignCode);
     // With a box, XPosPixels and YPosPixels are its top-left corner and the
     // alignment codes place the string INSIDE it. Treating that position as a
     // centre anchor pulled every boxed label half its own width to the left,
