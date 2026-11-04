@@ -217,6 +217,9 @@ private:
   // The division each keyboard sounds. Usually the organ's own hint; for the
   // internal coupling keyboards, inherited from whatever feeds them.
   std::unordered_map<Id, Id> divisionOfKeyboard_;
+  // Divisions a keyboard reaches at unison through a row behind a switch: a
+  // unison off. That row decides, so no keyboard's hint adds them to the walk.
+  std::unordered_set<Id> rowGatedDivisions_;
   // Keyboards whose key flow reaches no division at all, and which therefore
   // sound every division rather than nothing.
   std::unordered_set<Id> needsFallback_;

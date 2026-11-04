@@ -6924,6 +6924,48 @@ public:
                "and drawing the switch takes the division away");
     }
 
+    // --- a unison off on a keyboard that names its division -----------------
+    // St. Davids' Swell has the hint and this row together, an octave coupler
+    // beside them, and a plain feed into a mirror keyboard with the same hint.
+    // The row decides.
+    {
+      auto m = organ();
+      auto off = edge(2, 2, 503);
+      off.conditionWhenEngaged = false;
+      m.keyActions.push_back(off);
+      m.keyActions.push_back(edge(2, 2, 504, 12));
+      mp::Keyboard mirror;
+      mirror.keyboardId = 131;
+      mirror.primaryDivisionHint = 2;
+      m.keyboards[131] = mirror;
+      mp::KeyAction toMirror;
+      toMirror.sourceKeyboard = 2;
+      toMirror.destIsKeyboard = true;
+      toMirror.destKeyboard = 131;
+      m.keyActions.push_back(toMirror);
+      mp::CouplerMatrix flow;
+      flow.reset(m);
+
+      MP_CHECK(reaches(flow.expand(2, 60, 1.0f, {}), 2, 60),
+               "the keyboard sounds its division with the Unison Off out");
+      MP_CHECK(flow.expand(2, 60, 1.0f, {503}).empty(),
+               "and nothing with the Unison Off drawn");
+      const auto octave = flow.expand(2, 60, 1.0f, {503, 504});
+      MP_CHECK(octave.size() == 1 && reaches(octave, 2, 72),
+               "the octave coupler still sounds with the Unison Off drawn");
+    }
+
+    // An octave coupler onto the same division leaves the hint in place: Klais
+    // and Goch write these with no row for the keyboard's own keys.
+    {
+      auto m = organ();
+      m.keyActions.push_back(edge(2, 2, 504, 12));
+      mp::CouplerMatrix flow;
+      flow.reset(m);
+      MP_CHECK(reaches(flow.expand(2, 60, 1.0f, {}), 2, 60),
+               "a keyboard with only an octave coupler still sounds its division");
+    }
+
     // --- the key window ---------------------------------------------------
     {
       auto m = organ();
