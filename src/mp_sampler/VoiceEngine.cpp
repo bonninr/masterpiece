@@ -623,6 +623,8 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.tremPitchDepth = start.tremPitchDepth;
   v.swayIndex = start.swayIndex;
   v.rankIndex = start.rankIndex;
+  v.levelIndex = start.levelIndex;
+  v.voicingGain = v.voicingTarget = start.voicingGain;
   v.attackBoost = start.attackBoost;
   v.attackTotal = v.attackLeft = start.attackBoost != 0.0f && start.attackFrames > 0 ? start.attackFrames : 0;
   v.startedAtBlock = blockCounter_;
@@ -1180,6 +1182,17 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
   // The player's live levels, once per voice per block like the wind; held
   // tails follow them too. Nothing at all while every fader is at full.
   if (liveRankGains_ != nullptr) wind.ampMul *= liveGainFor(v);
+  // The organ's layer level, the same way: a mixer slider, a blower level, a
+  // tremulant's crossfade between its two recordings (#765).
+  if (layerLevels_ != nullptr && v.levelIndex >= 0 && v.levelIndex < layerLevelCount_)
+    wind.ampMul *= layerLevels_[v.levelIndex];
+  // The voicing's level, which moves toward a new one a block at a time
+  // after a change (retargetVoicing). Nothing for a pipe nobody has voiced.
+  if (v.voicingGain != v.voicingTarget) {
+    v.voicingGain += (v.voicingTarget - v.voicingGain) * voicingStep_;
+    if (std::fabs(v.voicingTarget - v.voicingGain) < 1.0e-4f) v.voicingGain = v.voicingTarget;
+  }
+  if (v.voicingGain != 1.0f) wind.ampMul *= v.voicingGain;
   const double windRatio = v.ratio * wind.pitchRatio;
   // The tremulant, as a ramp across the block. Its own value is a signed
   // swing in -1..1; this pipe's depths turn that into a gain and a pitch.
