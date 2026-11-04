@@ -733,9 +733,16 @@ Error ControlModel::press(Type type, int index) {
       proc_.setTemperament(temperaments_[static_cast<size_t>(index)]);
       return Error::None;
     case Type::Switch: {
-      // A piston's switch, or a drawstop toggled.
+      // A drawstop toggled, or a momentary switch pressed and let go at once,
+      // as the console's buttons do: a piston left engaged would hold its
+      // noise pallet open (#776).
       const auto id = static_cast<Id>(switches_[static_cast<size_t>(index)].id);
-      proc_.setSwitchEngaged(id, switches_[static_cast<size_t>(index)].latching ? !proc_.switchEngaged(id) : true);
+      if (switches_[static_cast<size_t>(index)].latching) {
+        proc_.setSwitchEngaged(id, !proc_.switchEngaged(id));
+      } else {
+        proc_.setSwitchEngaged(id, true);
+        proc_.setSwitchEngaged(id, false);
+      }
       return Error::None;
     }
     case Type::Command:
