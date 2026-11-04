@@ -12592,8 +12592,65 @@ static ReleaseChoiceTest g_releaseChoice;
 static MemoryDefaultsTest g_memoryDefaults;
 static OpenTailPoolTest g_openTailPool;
 #endif
+// A GrandOrgue swell box moves its level evenly in amplitude between
+// AmpMinimumLevel and full (GOEnclosure::GetAttenuation), and its sets are
+// voiced to that. Measured on a box loaded from a GrandOrgue file (#774).
+class GrandOrgueSwellLawTest final : public mp::test::Test {
+public:
+  GrandOrgueSwellLawTest()
+    : Test("functional.dsp.grandorgue-swell-law", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec) / "mp_go_swell_law_4c1e";
+    fs::create_directories(dir, ec);
+    const fs::path file = dir / "swell.organ";
+    {
+      std::ofstream f(file, std::ios::binary);
+      f << "[Organ]\r\nChurchName=Swell\r\nHasPedals=N\r\n"
+           "NumberOfManuals=1\r\nNumberOfEnclosures=1\r\nNumberOfWindchestGroups=1\r\n"
+           "[Enclosure001]\r\nName=Swell\r\nAmpMinimumLevel=20\r\n"
+           "[WindchestGroup001]\r\nName=Main\r\nNumberOfEnclosures=1\r\nEnclosure001=1\r\n"
+           "[Manual001]\r\nName=Swell\r\nNumberOfLogicalKeys=2\r\n"
+           "FirstAccessibleKeyMIDINoteNumber=60\r\nNumberOfAccessibleKeys=2\r\nNumberOfStops=1\r\n"
+           "Stop001=1\r\n"
+           "[Stop001]\r\nName=Gedackt 8\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+           "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\n"
+           "Pipe001=G\\060.wav\r\nPipe002=G\\061.wav\r\n";
+    }
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.load(file.string(), o, m, d), "the GrandOrgue file loads");
+    fs::remove_all(dir, ec);
+    MP_CHECK(m.enclosures.size() == 1, "one swell box");
+    if (m.enclosures.size() != 1) return;
+    const mp::Enclosure& e = m.enclosures.begin()->second;
+    MP_CHECK(e.linearAmplitude, "a GrandOrgue box follows GrandOrgue's law");
+
+    mp::EngineSwitch full;
+    const double open = EnclosureResponseTest::rmsAt(440.0, 1.0, e, full);
+    for (const int shoe : {0, 32, 64, 96}) {
+      const double want = 0.2 + 0.8 * shoe / 127.0;
+      const double got = EnclosureResponseTest::rmsAt(440.0, shoe / 127.0, e, full) / open;
+      MP_CHECK(std::fabs(got - want) < 0.01,
+               "shoe " + std::to_string(shoe) + ": " + std::to_string(got * 100.0) +
+                   " % of open, GrandOrgue gives " + std::to_string(want * 100.0) + " %");
+    }
+
+    // A box from the other format keeps its law, evenly in dB.
+    mp::Enclosure hw = e;
+    hw.linearAmplitude = false;
+    const double half = EnclosureResponseTest::rmsAt(440.0, 0.5, hw, full) / open;
+    MP_CHECK(std::fabs(20.0 * std::log10(half) - 0.5 * e.closedAttnDb) < 0.1,
+             "a box of the other format moves evenly in dB");
+  }
+};
+
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;
+static GrandOrgueSwellLawTest g_grandOrgueSwellLaw;
 static EnclosureModulationTest g_encModulation;
 static TremulantRampTest g_tremRamp;
 #endif
