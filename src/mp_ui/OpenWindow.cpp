@@ -34,6 +34,9 @@ public:
     }
     up_.setEnabled(canUp);
     down_.setEnabled(canDown);
+    // An ArrowButton paints the same enabled or not, so a dead arrow is dimmed.
+    up_.setAlpha(canUp ? 1.0f : 0.3f);
+    down_.setAlpha(canDown ? 1.0f : 0.3f);
     up_.setTooltip(TRANS("Move up the list"));
     down_.setTooltip(TRANS("Move down the list"));
     up_.onClick = [this] { owner_.move(slot_, -1); };
