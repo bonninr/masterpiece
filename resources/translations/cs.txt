@@ -625,6 +625,8 @@ countries: cz
 "The channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it." = "Kanál, na kterém přichází každá klaviatura varhan, pro varhany bez uložených kanálů. Vlastní volba varhan zůstává."
 "Manual %1" = "Manuál %1"
 "Send stop changes on the MIDI output" = "Posílat změny rejstříků na výstup MIDI"
+"Send events leave out a console's own message" = "Události odesílání vynechávají vlastní zprávu hracího stolu"
+"For a console that lights its own lamps: a stop moved from the console leaves out the Send event that repeats the same message" = "Pro hrací stůl, který si sám rozsvěcuje kontrolky: rejstrík přesunutý z hracího stolu vynechá událost odesílání se stejnou zprávou"
 "General Cancel also puts the keyboards back on their own manuals" = "Generální zrušení vrací také klaviatury na jejich vlastní manuály"
 "Sustain pedal: controller 64 holds the notes let go" = "Pedál sustain: ovladač 64 drží noty, které jste uvolnili"
 "Learn sequencer +" = "Učit sekvencer +"

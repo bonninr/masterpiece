@@ -621,6 +621,8 @@ countries: nl be sr
 "Use as default for all organs" = "Als standaard voor alle orgels gebruiken"
 "Clear default" = "Standaard wissen"
 "Send stop changes on the MIDI output" = "Registerwisselingen via de MIDI-uitgang verzenden"
+"Send events leave out a console's own message" = "Verzendgebeurtenissen laten het eigen bericht van de speeltafel weg"
+"For a console that lights its own lamps: a stop moved from the console leaves out the Send event that repeats the same message" = "Voor een speeltafel die zijn eigen lampjes bedient: een register dat vanaf de speeltafel beweegt, laat de verzendgebeurtenis met hetzelfde bericht weg"
 "General Cancel also puts the keyboards back on their own manuals" = "Generaal af zet ook de toetsenborden terug op hun eigen klavieren"
 "Sustain pedal: controller 64 holds the notes let go" = "Sustainpedaal: controller 64 houdt de losgelaten noten vast"
 "Learn sequencer +" = "Sequencer + leren"

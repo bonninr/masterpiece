@@ -70,8 +70,10 @@ public:
       other.kind = mp::MidiSourceKind::Note;
       other.number = 50;
       other.offProgram = -1;
+      block({});  // the first block after a load sends every lamp's state
       proc.setObjectSends(mp::MidiTargetKind::Switch, 1101, {same, other}, true);
       block({});
+      programs = notes = 0;
 
       press();
       MP_CHECK(proc.switchEngaged(1101), "the message draws the stop");
