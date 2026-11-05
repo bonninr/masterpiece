@@ -409,15 +409,11 @@ private:
     juce::String tip;  // the button's own tooltip, before what it is mapped to
   };
   std::vector<LearnButton> learnButtons_;
-  Id learnTarget(const LearnButton& l) const;
   void learnMenu(const LearnButton& l);
   void showLearnState();
   // The sequencer pistons have nothing on the console to right-click, because
   // the organ does not declare them — Hauptwerk provides the sequencer and the
   // player maps it. So they get their own learn buttons.
-  juce::Label stepperLabel_;
-  juce::TextButton learnNext_{TRANS("Learn sequencer +")};
-  juce::TextButton learnPrev_{TRANS("Learn sequencer -")};
   // Pistons that switch which manual a keyboard plays (#90).
   juce::TextButton learnManuals_{TRANS("Learn manual buttons...")};
   // Console actions a real console's thumb pistons would do. A player whose
@@ -430,15 +426,6 @@ private:
   juce::TextButton learnStopList_{TRANS("Learn panel")};
   juce::TextButton learnKeyboard_{TRANS("Learn keyboard")};
   juce::TextButton learnCombinations_{TRANS("Learn combinations")};
-  juce::TextButton learnTransposeDown_{TRANS("Learn transpose -")};
-  juce::TextButton learnTransposeUp_{TRANS("Learn transpose +")};
-  juce::TextButton learnTemperamentPrev_{TRANS("Learn temperament -")};
-  juce::TextButton learnTemperamentNext_{TRANS("Learn temperament +")};
-  // One temperament on a button of its own.
-  juce::Label temperamentLabel_;
-  juce::ComboBox temperamentPick_;
-  std::vector<std::string> temperamentNames_;
-  juce::TextButton learnTemperament_{TRANS("Learn this temperament")};
   // A console with no screen: buttons that quit the program or shut the
   // computer down, and a lamp that lights when the organ is ready.
   juce::Label powerHeading_;
@@ -468,9 +455,6 @@ private:
   juce::TextEditor scoreForward_, scoreBack_;
   void pushScorePage();
   // The recorder's buttons each start and stop: Record a take, Play the last.
-  juce::Label recorderHeading_;
-  juce::TextButton learnRecord_{TRANS("Learn record or stop")};
-  juce::TextButton learnPlay_{TRANS("Learn play or stop")};
   juce::Label mapStatus_;
 };
 
