@@ -1903,6 +1903,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "mono " << (samples_.loadMono() ? 1 : 0) << "\n";
   text << "compress " << (samples_.codeSamples() ? 1 : 0) << "\n";
   text << "programcouplers " << (programCouplers_ ? 1 : 0) << "\n";
+  if (pedalManual_.load() != 0) text << "pedalmanual " << pedalManual_.load() << "\n";
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
   text << "releasecutoff " << releaseCutoffDb_ << "\n";
@@ -1996,6 +1997,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "mono") samples_.setLoadMono(on);
   else if (key == "compress") samples_.setCodeSamples(on);
   else if (key == "programcouplers") programCouplers_ = on;
+  else if (key == "pedalmanual") pedalManual_.store(val.getIntValue());
   else if (key == "releases")
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
   else if (key == "releaselength") samples_.setReleaseMaxMs(val.getIntValue());
@@ -2308,6 +2310,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   voicing_.b.clear();
   voicing_.usingB = false;
   pageWindows_.clear();
+  pedalManual_.store(0);
   combinationSet_.clear();
   combWindow_ = {};
   voicingEqSettings_ = defaultEq_;
@@ -5463,6 +5466,9 @@ void MasterpieceProcessor::resetPlayerCombinations() {
   playerScratch_.reserve(elements.size() + 16);
   rerouteScratch_.reserve(128);
   coupledDivisions_ = mp::coupledDivisions(model_, divisions);
+  if (std::none_of(divisions.begin(), divisions.end(),
+                   [this](const auto& d) { return d.divisionId == pedalManual_.load(); }))
+    pedalManual_.store(0);
   player_.reset(std::move(elements), std::move(divisions));
 }
 

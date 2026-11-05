@@ -103,8 +103,12 @@ juce::File writeOrgan(const juce::File& root) {
       "<Keyboard><KeyboardID>702</KeyboardID><Name>II</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
       "<Hint_PrimaryAssociatedDivisionID>802</Hint_PrimaryAssociatedDivisionID>"
       "<KeyGen_NumberOfKeys>32</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+      "<Keyboard><KeyboardID>703</KeyboardID><Name>III</Name><DefaultInputOutputKeyboardAsgnCode>3</DefaultInputOutputKeyboardAsgnCode>"
+      "<Hint_PrimaryAssociatedDivisionID>803</Hint_PrimaryAssociatedDivisionID>"
+      "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
       "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>Hauptwerk</Name></Division>"
-      "<Division><DivisionID>802</DivisionID><Name>Basse</Name></Division></ObjectList>"
+      "<Division><DivisionID>802</DivisionID><Name>Basse</Name></Division>"
+      "<Division><DivisionID>803</DivisionID><Name>Positiv</Name></Division></ObjectList>"
       "<ObjectList ObjectType=\"KeyAction\">"
       "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
       "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
@@ -113,6 +117,7 @@ juce::File writeOrgan(const juce::File& root) {
       "</ObjectList><ObjectList ObjectType=\"Stop\">"
       "<Stop><StopID>901</StopID><Name>Principal</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
       "<Stop><StopID>902</StopID><Name>Subbass</Name><DivisionID>802</DivisionID><ControllingSwitchID>1102</ControllingSwitchID></Stop>"
+      "<Stop><StopID>903</StopID><Name>Gedackt</Name><DivisionID>803</DivisionID><ControllingSwitchID>1103</ControllingSwitchID></Stop>"
       "</ObjectList><ObjectList ObjectType=\"StopRank\">"
       "<StopRank><StopID>901</StopID><RankID>201</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
       "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>"
@@ -121,6 +126,7 @@ juce::File writeOrgan(const juce::File& root) {
       "</ObjectList><ObjectList ObjectType=\"Switch\">"
       "<Switch><SwitchID>1101</SwitchID><Name>Principal</Name><Latching>Y</Latching></Switch>"
       "<Switch><SwitchID>1102</SwitchID><Name>Subbass</Name><Latching>Y</Latching></Switch>"
+      "<Switch><SwitchID>1103</SwitchID><Name>Gedackt</Name><Latching>Y</Latching></Switch>"
       "</ObjectList></Hauptwerk>");
   return odf;
 }
@@ -175,6 +181,28 @@ public:
       MP_CHECK(pc.litDivisional(801) == 2 && pc.litDivisional(802) == 2, "and lights both");
       proc.pressDivisional(802, 1);
       MP_CHECK(pc.litDivisional(801) == 2, "the Pedal's own piston stays the Pedal's");
+
+      // The list of manuals: the Pedal goes with the one chosen (#838).
+      proc.setPedalManual(803);
+      MP_CHECK(proc.coupledDivisions().manual == 803, "the chosen manual");
+      proc.setStopEngaged(902, true);
+      proc.setStopEngaged(903, true);
+      proc.setCaptureMode(true);
+      proc.pressDivisional(803, 1);
+      proc.setCaptureMode(false);
+      MP_CHECK(pc.divisionalSet(803, 1) && pc.divisionalSet(802, 1), "Set stores the Pedal's with the chosen manual's");
+      proc.pressDivisionalCancel(801);
+      MP_CHECK(proc.stopEngaged(902), "the first manual's cancel leaves the Pedal now");
+      proc.pressDivisionalCancel(803);
+      MP_CHECK(!proc.stopEngaged(902) && !proc.stopEngaged(903), "the chosen manual's cancel takes it");
+      proc.setPedalManual(802);
+      MP_CHECK(proc.coupledDivisions().manual == 801, "the Pedal is no choice");
+      proc.setPedalManual(803);
+      proc.saveSettings();
+      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads again");
+      MP_CHECK(proc.coupledDivisions().manual == 803, "the choice is kept with the organ");
+      proc.setPedalManual(0);
+      MP_CHECK(proc.coupledDivisions().manual == 801, "and goes back to the manual worked out");
 
       // A console button toggles it.
       mp::MidiBinding b;

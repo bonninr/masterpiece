@@ -95,9 +95,11 @@ private:
   juce::Label divisionalsLabel_;
   juce::TextButton fewerDivisionals_{"-"};
   juce::TextButton moreDivisionals_{"+"};
-  // "Pedal combinations coupled": the first manual's divisionals take the
+  // "Pedal combinations coupled": the chosen manual's divisionals take the
   // Pedal's of the same number with them. Shown when the organ has both.
   PistonButton pedalCoupler_;
+  juce::ComboBox pedalManual_;
+  std::vector<Id> pedalManuals_;
   struct DivisionRow {
     Id divisionId = 0;
     std::unique_ptr<juce::Label> name;
