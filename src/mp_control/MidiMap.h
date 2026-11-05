@@ -101,10 +101,12 @@ enum class MidiTargetKind {
   RecorderRecord,
   RecorderPlay,
   // Live levels (LiveLevels.h), driven like a shoe: a rank by its id, a
-  // division by its id, an output pair by its number from 1.
+  // division by its id, an output pair by its number from 1, a perspective
+  // or windchest group by its place from 1 in the organ's list.
   RankLevel,
   DivisionLevel,
   PairLevel,
+  GroupLevel,
   // The sequencer's digit buttons: id = the digit, 0 to 9, where 0 is the
   // tenth frame. With Set on, a digit stores into its frame, the one shown
   // too.
@@ -473,7 +475,7 @@ public:
   // them from its value, and one controller can drive several.
   static bool isContinuousTarget(MidiTargetKind k) {
     return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
-           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel ||
+           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel || k == MidiTargetKind::GroupLevel ||
            k == MidiTargetKind::ReverbWet;
   }
   // A raw controller value through a binding's window and sense, 0..127.

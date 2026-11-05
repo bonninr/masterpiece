@@ -562,8 +562,13 @@ private:
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
-  std::vector<Fader> pairFaders_, divisionFaders_, rankFaders_;
-  juce::Label pairsHeading_, divisionsHeading_, ranksHeading_;
+  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, rankFaders_;
+  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, ranksHeading_;
+  // A perspective's or a windchest group's pair: chosen here, it moves every
+  // rank of the group; it shows the pair while they all share one.
+  std::vector<std::unique_ptr<juce::ComboBox>> groupPairs_;
+  void fillGroupPairs();
+  void showGroupPairs();
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;

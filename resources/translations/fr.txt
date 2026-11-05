@@ -1209,3 +1209,5 @@ countries: fr be ca ch lu mc
 "Every pipe..." = "Chaque tuyau..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tous les tuyaux du rang à la fois, pour tracer leur niveau ou leur accord sur toute l'étendue"
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
+"Several pairs" = "Plusieurs paires"
+"Sends every rank of this group to one pair" = "Envoie tous les rangs de ce groupe vers une paire"

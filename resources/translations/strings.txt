@@ -778,6 +778,8 @@ countries: gb us
 "Pair %1: %2-%3" = "Pair %1: %2-%3"
 "bass to %1" = "bass to %1"
 "the device gives %1 outputs: the pairs past them play on 1-2" = "the device gives %1 outputs: the pairs past them play on 1-2"
+"Several pairs" = "Several pairs"
+"Sends every rank of this group to one pair" = "Sends every rank of this group to one pair"
 "The folders Masterpiece writes to, the audio, the organ and its files" = "The folders Masterpiece writes to, the audio, the organ and its files"
 "The checks and the last 200 lines of the log, to paste into a bug report" = "The checks and the last 200 lines of the log, to paste into a bug report"
 "Run the checks to see what Masterpiece finds on this device." = "Run the checks to see what Masterpiece finds on this device."

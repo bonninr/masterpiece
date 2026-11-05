@@ -169,6 +169,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::RankLevel: return "rank-level";
     case MidiTargetKind::DivisionLevel: return "division-level";
     case MidiTargetKind::PairLevel: return "pair-level";
+    case MidiTargetKind::GroupLevel: return "group-level";
     case MidiTargetKind::ReverbWet: return "reverb-wet";
     case MidiTargetKind::None: break;
   }
@@ -220,6 +221,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "rank-level") return MidiTargetKind::RankLevel;
   if (s == "division-level") return MidiTargetKind::DivisionLevel;
   if (s == "pair-level") return MidiTargetKind::PairLevel;
+  if (s == "group-level") return MidiTargetKind::GroupLevel;
   if (s == "reverb-wet") return MidiTargetKind::ReverbWet;
   return MidiTargetKind::None;
 }
@@ -481,6 +483,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::RankLevel:
     case MidiTargetKind::DivisionLevel:
     case MidiTargetKind::PairLevel:
+    case MidiTargetKind::GroupLevel:
     case MidiTargetKind::ReverbWet:
     case MidiTargetKind::ContinuousControl: {
       // A note sets a control by its velocity as it is struck (#199: the

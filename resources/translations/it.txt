@@ -1209,3 +1209,5 @@ countries: it ch sm va
 "Every pipe..." = "Ogni canna..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tutte le canne della fila insieme, per disegnarne livello o accordatura lungo l'estensione"
 "Voicing: every pipe" = "Intonazione: ogni canna"
+"Several pairs" = "Più coppie"
+"Sends every rank of this group to one pair" = "Invia tutte le file di questo gruppo a una coppia"
