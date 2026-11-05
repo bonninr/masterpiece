@@ -849,6 +849,9 @@ public:
         if (kind_ != MidiTargetKind::Keyboard && b->source.kind != MidiSourceKind::SysEx) {
           s.kind = b->source.kind;
           s.number = b->source.number;
+          // A console that toggles on one program change expects it back both ways.
+          if (s.kind == MidiSourceKind::ProgramChange && b->trigger == MidiTrigger::Toggle)
+            s.offProgram = s.number;
         }
         if (b->source.channel > 0) s.channel = b->source.channel;
       }
