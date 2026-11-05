@@ -2925,6 +2925,8 @@ public:
     MP_CHECK(!proc.keyDownOnKeyboard(702, 40), "and goes dark when let go");
 
     // #804: a key held on manual I lights manual II while II to I is drawn.
+    // Worked out every 33 ms of the block clock, which runs on the block size.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
     const auto lookedAt = [&block] {
       for (int i = 0; i < 40; ++i) block({});
     };
