@@ -585,6 +585,7 @@ countries: de at ch li lu
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "Für ein Knacken, ein Geräusch oder eine Note, die nach dem Loslassen der Tasten weiterklingt. Bis Masterpiece geschlossen wird."
 "Console display" = "Spieltisch-Anzeige"
 "For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "Für eine Textanzeige am Spieltisch: Sie zeigt die unten gewählten Zeilen, gesendet als System-Exclusive-Nachrichten an den MIDI-Ausgang. Nummer, Zeilenlänge und erwartetes Präfix stehen in der Dokumentation der Anzeige."
+"Console events" = "Spieltisch-Ereignisse"
 "Display number" = "Anzeigennummer"
 "Characters per line" = "Zeichen pro Zeile"
 "Sys-ex prefix (hex)" = "Sysex-Präfix (hex)"

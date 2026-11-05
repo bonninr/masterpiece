@@ -803,6 +803,7 @@ countries: gb us
 "General" = "General"
 "Metronome" = "Metronome"
 "Preferences" = "Preferences"
+"Console events" = "Console events"
 "Diagnostics" = "Diagnostics"
 
 # src/mp_ui/Settings.h

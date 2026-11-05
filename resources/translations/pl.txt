@@ -585,6 +585,7 @@ countries: pl
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "Dla trzasku, szumu lub nuty, która brzmi dalej po puszczeniu klawiszy. Do zamknięcia Masterpiece."
 "Console display" = "Wyświetlacz kontuaru"
 "For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "Dla wyświetlacza tekstowego na kontuarze: pokazuje wiersze wybrane poniżej, wysyłane jako komunikaty systemowe na wyjście MIDI. Numer, długość wiersza i oczekiwany prefiks podaje dokumentacja wyświetlacza."
+"Console events" = "Zdarzenia kontuaru"
 "Display number" = "Numer wyświetlacza"
 "Characters per line" = "Znaków w wierszu"
 "Sys-ex prefix (hex)" = "Prefiks sys-ex (hex)"
