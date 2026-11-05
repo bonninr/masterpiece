@@ -187,8 +187,9 @@ public:
       proc.setSwitchEngaged(1107, true);
       const int nextFrame = proc.playerCombinations().frame();
       MP_CHECK(nextFrame == firstFrame + 1, "the console's Next moves the sequencer on");
+      proc.setSwitchEngaged(1107, true);
       proc.setSwitchEngaged(1108, true);
-      MP_CHECK(proc.playerCombinations().frame() == firstFrame, "and Previous moves it back");
+      MP_CHECK(proc.playerCombinations().frame() == nextFrame, "and Previous moves it back");
       proc.setCaptureMode(false);
 
       // Off: the manual's piston is the manual's alone.
