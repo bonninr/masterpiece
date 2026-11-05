@@ -497,6 +497,10 @@ private:
   juce::ComboBox scope_;   // the whole rank, or one note of it
   juce::Label noteLabel_;
   juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  // Every pipe of the rank at once, in a window of its own (#849).
+  juce::TextButton everyPipe_{TRANS("Every pipe...")};
+  juce::Component::SafePointer<juce::DialogWindow> everyPipeWindow_;
+  void showEveryPipe();
   juce::Label gainLabel_, tuneLabel_;
   juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
