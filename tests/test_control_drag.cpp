@@ -18,7 +18,9 @@ public:
   void run() override {
     MP_CHECK(ConsoleView::controlDragSteps(0, 127, 60, 127) == 127.0, "the height of a pedal is its whole travel");
     MP_CHECK(ConsoleView::controlDragSteps(0, 100, 40, 80) == 100.0, "a short pedal goes a step a pixel");
-    MP_CHECK(ConsoleView::controlDragSteps(0, 254, 40, 400) == 127.0, "a tall one at half a step");
+    MP_CHECK(ConsoleView::controlDragSteps(0, 254, 127, 254) == 127.0, "a tall pedal over its height too");
+    MP_CHECK(ConsoleView::controlDragSteps(160, 0, 160, 320) == ConsoleView::controlDragSteps(0, 160, 160, 320),
+             "an upright pedal goes as far sideways as up");
     MP_CHECK(ConsoleView::controlDragSteps(0, 100, 208, 61) == 50.0, "a numeric field drawn wide stays at half a step");
     MP_CHECK(ConsoleView::controlDragSteps(0, -100, 60, 127) == -100.0, "down is less");
     MP_CHECK(ConsoleView::controlDragSteps(200, 0, 254, 40) == 100.0, "sideways goes by the drawn width");
