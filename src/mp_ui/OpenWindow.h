@@ -1,8 +1,8 @@
 // Open: the player's favourite organs, then any other (#276).
 //
 // What the Open button shows once there is a favourite or an organ loaded: the list, in slot
-// order, to open with one touch; a search over it; each one moved up or down
-// the list, renamed or removed; the organ now loaded added; and the file
+// order or by use, to open with one touch; a search over it; each one dragged
+// or moved up or down the list, renamed or removed; the organ now loaded added; and the file
 // dialog for an organ that is not a favourite. Everything to do with getting
 // an organ on the console is here, in the window the player opens to do it.
 #pragma once
@@ -36,6 +36,10 @@ private:
   void refresh();
   void openSlot(int slot);
   void move(int slot, int by);
+  // A row dragged: it follows the mouse, and lands at the place it is let go.
+  bool canDrag() const;
+  void dragRow(Row& row, int y);
+  void dropRow(int slot, int y);
   void rename(int slot);
   void close();
 
@@ -43,6 +47,7 @@ private:
   std::function<void(const juce::File&)> open_;
   std::function<void()> browse_;
   juce::TextEditor search_;
+  juce::ComboBox sort_;
   juce::Viewport viewport_;
   juce::Component rows_;
   std::vector<std::unique_ptr<Row>> rowViews_;

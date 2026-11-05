@@ -1679,6 +1679,12 @@ public:
   // inside the organ you are leaving would be useless.
   Favourites& favourites() { return favourites_; }
   const Favourites& favourites() const { return favourites_; }
+  // How the Open window shows the organs; kept in the global file.
+  FavouriteSort favouriteSort() const { return favouriteSort_; }
+  void setFavouriteSort(FavouriteSort sort) {
+    favouriteSort_ = sort;
+    saveGlobalDefaults();
+  }
   // Put the organ now loaded on a slot, or on the first free one when slot is
   // 0. Returns the slot used, or 0 when the bank is full or nothing is loaded.
   int addCurrentOrganToFavourites(int slot = 0);
@@ -2656,6 +2662,7 @@ private:
   juce::String language_;  // empty: the system's
   int textSize_ = 100;
   juce::String textFont_;
+  FavouriteSort favouriteSort_ = FavouriteSort::Slot;
   juce::File cacheDir_; // empty: the default place
   juce::File packageDir_; // empty: none
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a
