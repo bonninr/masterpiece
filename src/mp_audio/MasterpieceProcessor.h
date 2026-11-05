@@ -1608,6 +1608,15 @@ public:
     writeGlobalFile();
   }
   bool midiFeedbackEnabled() const { return midiFeedback_; }
+  // A switch moved by a message leaves out the send that repeats that message:
+  // a console that lights its own lamp would be turned off by it (#797). Off
+  // by default, kept in the general settings.
+  void setMidiSendsHoldEcho(bool on) {
+    if (midiSendsHoldEcho_ == on) return;
+    midiSendsHoldEcho_ = on;
+    writeGlobalFile();
+  }
+  bool midiSendsHoldEcho() const { return midiSendsHoldEcho_; }
 
   // Console LCD panels. Configured by the player, because the framing belongs
   // to their hardware and not to the organ — see LcdPanel.h.
@@ -2460,6 +2469,7 @@ private:
   std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
   juce::String midiOutputName_;
   bool midiFeedback_ = false;
+  bool midiSendsHoldEcho_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
   std::vector<uint8_t> unloadMessage_;  // changed under the AudioLock
   // The ready lamp's own messages, changed under the AudioLock; and the
@@ -2840,6 +2850,8 @@ private:
   // sysExOnly: the system exclusive sends alone, which go first after a load:
   // a controller's mode message comes before the lamps it lights.
   void emitSends(bool sysExOnly = false);
+  // The sends that repeat this message take the switches' state unsent.
+  void holdEchoOf(const MidiSource& source);
   // A combination button's lamp: 1 lit, 0 dark, -1 for a target that has
   // none. A player's general or divisional is lit while it is the one
   // recalled or stored last, the setter while it is on, "pedal combinations

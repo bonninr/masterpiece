@@ -1364,6 +1364,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
               if (const MidiAction more = midiMap_.switchAction(b, value); more.valid()) apply(more);
+          if (midiSendsHoldEcho_) holdEchoOf(source);
           continue;
         }
         case MidiTargetKind::ContinuousControl:
@@ -2635,6 +2636,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
+  if (midiSendsHoldEcho_) text << "midisendsholdecho 1\n";
   for (const auto& [role, channel] : defaultConsole_)
     text << "consolechannel " << role << " " << channel << "\n";
   for (const auto& lib : libraries_)
@@ -2854,6 +2856,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       midiOutputName_ = val;  // opened by the application at start
     } else if (key == "midifeedback") {
       midiFeedback_ = val.getIntValue() != 0;
+    } else if (key == "midisendsholdecho") {
+      midiSendsHoldEcho_ = val.getIntValue() != 0;
     } else if (key == "library") {
       const juce::File dir(val);
       if (val.isNotEmpty() &&
@@ -9262,6 +9266,17 @@ void MasterpieceProcessor::sendLampsAfterLoad() {
                          0);
     else if (b.source.kind == MidiSourceKind::ControlChange)
       outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, on ? 127 : 0), 0);
+  }
+}
+
+void MasterpieceProcessor::holdEchoOf(const MidiSource& source) {
+  const auto& sends = midiMap_.sends();
+  if (sentValues_.size() != sends.size()) return;
+  for (size_t i = 0; i < sends.size(); ++i) {
+    const MidiSend& s = sends[i];
+    if (s.targetKind == MidiTargetKind::Switch && s.kind == source.kind && s.number == source.number &&
+        s.channel == source.channel)
+      sentValues_[i] = switches_.engaged(s.targetId) ? 1 : 0;
   }
 }
 
