@@ -2942,8 +2942,12 @@ void MasterpieceEditor::showOrganMenu() {
   const bool loaded = proc_.loadedOrganFile().existsAsFile();
   juce::PopupMenu menu;
   menu.addItem(1, TRANS("Organ settings..."), loaded);
-  menu.addItem(9, TRANS("Reverb") + "...", loaded);
-  menu.addItem(10, TRANS("Combination sets") + "...", loaded);
+  // Every tab of that window, each opening it there (#844).
+  const juce::StringArray organTabs{TRANS("Loading"), TRANS("Stops, ranks and perspectives"), TRANS("Outputs"),
+                                    TRANS("Voicing"), TRANS("Equalizer"), TRANS("Reverb"),
+                                    TRANS("Combination sets"), TRANS("MIDI")};
+  for (int i = 0; i < organTabs.size(); ++i) menu.addItem(20 + i, organTabs[i] + "...", loaded);
+  menu.addSeparator();
   menu.addItem(2, TRANS("Temperament and tuning..."), loaded);
   menu.addItem(3, TRANS("Combinations"), loaded && combinations_ != nullptr,
                combinations_ != nullptr && combinations_->isVisible());
@@ -2961,11 +2965,11 @@ void MasterpieceEditor::showOrganMenu() {
   menu.addSeparator();
   menu.addItem(8, TRANS("All notes off"));
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&organMenu_),
-                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
+                     [safe = juce::Component::SafePointer<MasterpieceEditor>(this), organTabs](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c == 1 && safe->onOrganSettings) safe->onOrganSettings();
-                       if ((c == 9 || c == 10) && safe->onOrganSettingsTab)
-                         safe->onOrganSettingsTab(c == 9 ? TRANS("Reverb") : TRANS("Combination sets"));
+                       if (c >= 20 && c - 20 < organTabs.size() && safe->onOrganSettingsTab)
+                         safe->onOrganSettingsTab(organTabs[c - 20]);
                        if (c == 2) safe->tuningButton_.triggerClick();
                        if (c == 3) safe->toggleCombinations();
                        if (c == 4) safe->toggleProgramCouplers();
