@@ -1146,6 +1146,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
   // bass couplers now.
   if (!extremesDue_.empty()) settleExtremes();
   learnHeldKeys();
+  if (blockTimeMs_ >= nextCoupledKeysMs_ && showPlayedKeys_.load(std::memory_order_relaxed)) updateCoupledKeys();
   midiScratch_.clear();
   midiOffsets_.clear();
   for (const auto meta : midi) {
@@ -4332,6 +4333,25 @@ void MasterpieceProcessor::setKeyDown(Id keyboard, int note, bool down) {
   else word.fetch_and(~bit, std::memory_order_relaxed);
 }
 
+void MasterpieceProcessor::updateCoupledKeys() {
+  nextCoupledKeysMs_ = blockTimeMs_ + 33.0;
+  std::array<uint64_t, 64 * 2> lit{};
+  for (const auto& [key, held] : soundingNotes_) {
+    expandScratch_.clear();
+    couplers_.expandInto(static_cast<int>(held.keyboard), held.midiNote, 1.0f, engagedSwitches_, keyFlow_,
+                         expandScratch_, held.extreme);
+    for (const ExpandedNote& reached : expandScratch_) {
+      if (reached.couplerSwitch == 0) continue;
+      const auto kb = std::find_if(keyboardOfDivision_.begin(), keyboardOfDivision_.end(),
+                                   [&reached](const auto& d) { return d.first == reached.divisionId; });
+      const int note = reached.midiNote + held.playedNote - held.midiNote;
+      if (kb == keyboardOfDivision_.end() || note < 0 || note > 127) continue;
+      lit[(static_cast<size_t>(kb->second) & 63u) * 2u + static_cast<size_t>(note >> 6)] |= uint64_t{1} << (note & 63);
+    }
+  }
+  for (size_t i = 0; i < lit.size(); ++i) keysCoupled_[i].store(lit[i], std::memory_order_relaxed);
+}
+
 void MasterpieceProcessor::startNoteOnKeyboard(Id keyboard, int noteKeyId,
                                                int midiNote, int velocity,
                                                int playedNote) {
@@ -6402,6 +6422,10 @@ void MasterpieceProcessor::buildDivisionInputs() {
     }
   }
   couplers_.setSwitchFedKeyboards(std::move(fedKeyboards));
+  keyboardOfDivision_.clear();
+  for (Id keyboard : couplers_.inputKeyboards())
+    if (const Id division = couplers_.primaryDivisionFor(keyboard); division != 0)
+      keyboardOfDivision_.emplace_back(static_cast<int>(division), keyboard);
 }
 
 void MasterpieceProcessor::divisionInputMoved(Id switchId, bool engaged) {
