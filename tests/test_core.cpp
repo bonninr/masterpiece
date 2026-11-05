@@ -1156,9 +1156,15 @@ public:
         "<o><a>541</a><b>shutters</b></o>"
         "<o><a>542</a><b>shoe in</b><d>Y</d><f>1.27e+2</f><h>Y</h><i>Y</i><j>183</j></o>"
         "<o><a>543</a><b>shoe out</b><f>3e+1</f></o>"
+        "<o><a>550</a><b>jamb copy</b></o>"
+        "<o><a>551</a><b>pedal</b><h>Y</h><j>184</j></o>"
+        "<o><a>552</a><b>shutters 2</b></o>"
         "</ObjectList>"
         "<ObjectList ObjectType=\"Enclosure\"><o><a>210</a><b>Exp.1</b><c>541</c></o></ObjectList>"
         "<ObjectList ObjectType=\"ContinuousControlLinkage\">"
+        "<o><a>550</a><b>551</b><c>to pedal</c></o>"
+        "<o><a>551</a><b>550</b><c>to copy</c></o>"
+        "<o><a>551</a><b>552</b><c>shutters</c></o>"
         "<o><a>542</a><b>210</b><c>in</c></o>"
         "<o><a>210</a><b>543</b><c>out</c></o>"
         "<o><a>210</a><b>541</b><c>shutters</c><d>3</d></o>"
@@ -1181,6 +1187,16 @@ public:
     MP_CHECK(proc.playerControlFor(541) == 542,
              "the shutters are moved from the shoe drawn on the console");
     MP_CHECK(proc.playerControlFor(542) == 542, "the shoe is its own player control");
+    // Two controls that feed each other: both name the one drawn (#864).
+    MP_CHECK(proc.playerControlFor(551) == 551, "the drawn pedal of a two-way pair is its own player control");
+    MP_CHECK(proc.playerControlFor(550) == 551, "and its copy names it");
+    MP_CHECK(proc.playerControlFor(552) == 551, "and so do the shutters it drives");
+    proc.setContinuousControl(551, 50);
+    MP_CHECK(proc.continuousControlValue(550) == 50 && proc.continuousControlValue(552) == 50,
+             "the pedal moves its copy and the shutters");
+    proc.setContinuousControl(550, 60);
+    MP_CHECK(proc.continuousControlValue(551) == 60 && proc.continuousControlValue(552) == 60,
+             "the copy moves the pedal and the shutters");
     proc.setContinuousControl(542, 40);
     MP_CHECK(proc.continuousControlValue(541) == 40 &&
                  proc.continuousControlValue(543) == 40,
