@@ -1212,3 +1212,5 @@ countries: nl be sr
 "Voicing: every pipe" = "Intonatie: elke pijp"
 "Controller, one bit" = "Controller, één bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "De bit van de controller die deze schakelaar draagt, 0 voor de laagste"
+"RPN" = "RPN"
+"NRPN" = "NRPN"

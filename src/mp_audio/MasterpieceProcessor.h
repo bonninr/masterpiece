@@ -2467,6 +2467,14 @@ private:
   // Each controller's last value plus one; 0 until it sends anything.
   std::array<std::atomic<int>, 128> lastController_{};
   std::array<std::atomic<int>, 16 * 128> lastControllerOnChannel_{};
+  // The parameter each console's channel has chosen, for RPN and NRPN
+  // received (#921). 127/127 is the null parameter, chosen by none. Consoles
+  // past the sixteenth share the first row. Audio thread only.
+  struct ParameterChoice {
+    int msb = 127, lsb = 127;
+    bool registered = false;
+  };
+  std::array<ParameterChoice, 17 * 16> parameterChoice_{};
   std::unique_ptr<juce::Timer> releaseLog_;
   // How many manual assignments the last load had to discard from a saved
   // mapping. Shown to the player, because a mapping that changes under them

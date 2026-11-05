@@ -41,6 +41,9 @@ juce::String objectName(const MasterpieceProcessor& p, MidiTargetKind kind, Id i
   return juce::String(p.keyboardName(id));
 }
 
+// The parameters, received (#921), sit past the controller's own forms.
+constexpr int kRpnItem = 7;
+constexpr int kNrpnItem = 8;
 void fillEvents(juce::ComboBox& box, bool sysEx = true) {
   box.addItem(TRANS("Note"), 1);
   box.addItem(TRANS("Controller"), 2);
@@ -51,6 +54,8 @@ int eventItem(MidiSourceKind k) {
   return k == MidiSourceKind::ControlChange   ? 2
          : k == MidiSourceKind::ProgramChange ? 3
          : k == MidiSourceKind::SysEx         ? 4
+         : k == MidiSourceKind::Rpn           ? kRpnItem
+         : k == MidiSourceKind::Nrpn          ? kNrpnItem
                                               : 1;
 }
 // A switch's controller at one value (#923): the controller, with the row's
@@ -63,8 +68,11 @@ MidiSourceKind eventKind(int item) {
              ? MidiSourceKind::ControlChange
                    : item == 3 ? MidiSourceKind::ProgramChange
                    : item == 4 ? MidiSourceKind::SysEx
+                   : item == kRpnItem  ? MidiSourceKind::Rpn
+                   : item == kNrpnItem ? MidiSourceKind::Nrpn
                                : MidiSourceKind::Note;
 }
+bool isParameter(MidiSourceKind k) { return k == MidiSourceKind::Rpn || k == MidiSourceKind::Nrpn; }
 
 // 128 numbers, named the way the event names them: a note by its pitch, a
 // program counted from 1 as every console's manual does.
@@ -73,6 +81,14 @@ constexpr int kAnyNoteItem = 1000;
 
 void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool offerAnyNote = false) {
   box.clear(juce::dontSendNotification);
+  // A parameter's number, 0 to 16383, is typed or taken by Listen (#921).
+  box.setEditableText(isParameter(kind));
+  if (isParameter(kind)) {
+    const int n = juce::jlimit(0, 16383, selected);
+    box.addItem(juce::String(n), n + 1);
+    box.setSelectedId(n + 1, juce::dontSendNotification);
+    return;
+  }
   // A control set by a note's velocity can take it from every note (#199).
   if (kind == MidiSourceKind::Note && offerAnyNote) {
     box.addItem(TRANS("Any note"), kAnyNoteItem);
@@ -177,6 +193,8 @@ public:
       event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
       event_.addItem(TRANS("Controller, one bit"), kBitControllerItem);
     }
+    event_.addItem(TRANS("RPN"), kRpnItem);
+    event_.addItem(TRANS("NRPN"), kNrpnItem);
     const bool set = b.source.kind != MidiSourceKind::None;
     const bool cc = b.source.kind == MidiSourceKind::ControlChange;
     if (set)
@@ -299,6 +317,7 @@ public:
       b.bit = event_.getSelectedId() == kBitControllerItem ? juce::jlimit(0, 6, static_cast<int>(high_.getValue()))
                                                            : -1;
       b.source.number = b.source.kind == MidiSourceKind::SysEx ? binding_.source.number
+                        : isParameter(b.source.kind) ? juce::jlimit(0, 16383, number_.getText().getIntValue())
                         : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
                                                                       : juce::jmax(0, number_.getSelectedId() - 1);
     }
@@ -337,7 +356,8 @@ private:
     const int e = event_.getSelectedId();
     const bool bit = e == kBitControllerItem;
     const bool values = e == 0 || eventKind(e) == MidiSourceKind::Note ||
-                        eventKind(e) == MidiSourceKind::ControlChange;
+                        eventKind(e) == MidiSourceKind::ControlChange || eventKind(e) == MidiSourceKind::Rpn ||
+                        eventKind(e) == MidiSourceKind::Nrpn;
     low_.setEnabled(values && !bit);
     high_.setEnabled(values);
     action_.setEnabled(!bit);
@@ -571,6 +591,8 @@ int sendEventOf(const MidiSend& s) {
       return s.parameter == MidiParameter::Registered      ? kSendRpn
              : s.parameter == MidiParameter::NonRegistered ? kSendNrpn
                                                            : kSendController;
+    case MidiSourceKind::Rpn:
+    case MidiSourceKind::Nrpn:
     case MidiSourceKind::None: break;
   }
   return kSendNote;
@@ -1241,6 +1263,8 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
   juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
                       : b.source.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
                       : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
+                      : b.source.kind == MidiSourceKind::Rpn           ? TRANS("RPN %1")
+                      : b.source.kind == MidiSourceKind::Nrpn          ? TRANS("NRPN %1")
                                                                        : TRANS("CC %1");
   what = what.replace("%1", juce::String(b.source.number));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));

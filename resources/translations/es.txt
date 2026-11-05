@@ -1211,3 +1211,5 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Voicing: every pipe" = "Armonización: cada tubo"
 "Controller, one bit" = "Controlador, un bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "El bit del controlador que lleva este interruptor, 0 para el más bajo"
+"RPN" = "RPN"
+"NRPN" = "NRPN"

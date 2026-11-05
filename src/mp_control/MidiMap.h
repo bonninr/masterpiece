@@ -150,7 +150,10 @@ inline Id playerDivisionalDivision(Id target) { return target / 100; }
 inline int playerDivisionalPiston(Id target) { return static_cast<int>(target % 100); }
 
 // The kind of message, reduced to what a mapping needs to match on.
-enum class MidiSourceKind { None, Note, ControlChange, ProgramChange, SysEx };
+// Rpn and Nrpn are received only (#921): a parameter chosen with controllers
+// 101/100 or 99/98 and set with Data Entry, its number 0..16383 and the data
+// as its value. A send sets them through its own parameter field.
+enum class MidiSourceKind { None, Note, ControlChange, ProgramChange, SysEx, Rpn, Nrpn };
 
 // A system exclusive message, identified by all of its bytes. Consoles send
 // their pistons this way (Johannus: F0 00 4A 4F 48 41 53 00 10 nn F7, #138);

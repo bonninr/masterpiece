@@ -1287,6 +1287,27 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         lastControllerOnChannel_[static_cast<size_t>((source.channel - 1) * 128 + source.number)].store(
             value + 1, std::memory_order_relaxed);
     }
+    // RPN and NRPN received (#921): controllers 101/100 or 99/98 choose a
+    // parameter on the channel, and Data Entry, controller 6, sets it. The
+    // data entry is then the parameter's own message, its number with the
+    // value; the controllers that choose it pass on as they are.
+    if (source.kind == MidiSourceKind::ControlChange && source.channel >= 1 && source.channel <= 16) {
+      auto& p = parameterChoice_[static_cast<size_t>((deviceId >= 0 && deviceId <= 16 ? deviceId : 0) * 16 +
+                                                     source.channel - 1)];
+      switch (source.number) {
+        case 101: p.msb = value; p.registered = true; break;
+        case 100: p.lsb = value; p.registered = true; break;
+        case 99: p.msb = value; p.registered = false; break;
+        case 98: p.lsb = value; p.registered = false; break;
+        case 6:
+          if (p.msb != 127 || p.lsb != 127) {
+            source.kind = p.registered ? MidiSourceKind::Rpn : MidiSourceKind::Nrpn;
+            source.number = p.msb << 7 | p.lsb;
+          }
+          break;
+        default: break;
+      }
+    }
 
     const bool logging = logMidi_.load(std::memory_order_acquire);
     if (logging && source.kind != MidiSourceKind::None)
@@ -1296,7 +1317,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           (source.kind == MidiSourceKind::SysEx
                ? "sysex=" + juce::String::toHexString(msg.getRawData(), msg.getRawDataSize()).toUpperCase() +
                      " id=" + juce::String(source.number)
-               : juce::String(msg.isNoteOnOrOff() ? "note" : msg.isController() ? "cc" : "pc") +
+               : juce::String(msg.isNoteOnOrOff()                      ? "note"
+                              : source.kind == MidiSourceKind::Rpn  ? "rpn"
+                              : source.kind == MidiSourceKind::Nrpn ? "nrpn"
+                              : msg.isController()                  ? "cc"
+                                                                    : "pc") +
                      "=" + juce::String(source.number) + " val=" + juce::String(value)));
 
     // The noise filter: while learning, a key is held back until it has been
@@ -1310,15 +1335,19 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // Bank Select, controller 0 or 32, comes just ahead of a program change
     // from a console that sends banks: Listen and Learn take the program
     // change that follows it (#565).
+    // So do the controllers that choose a parameter, 98 to 101: they take its
+    // data entry (#921).
     const bool bankSelect = source.kind == MidiSourceKind::ControlChange &&
-                            (source.number == 0 || source.number == 32);
+                            (source.number == 0 || source.number == 32 ||
+                             (source.number >= 98 && source.number <= 101));
 
     // Listening for the MIDI window takes the press and keeps it; the
     // release that follows is swallowed too, while still listening. A
     // controller is taken at any value: a console that sends 0 for off sends
     // a real message (#565).
     if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
-      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange)) {
+      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange ||
+                          source.kind == MidiSourceKind::Rpn || source.kind == MidiSourceKind::Nrpn)) {
         heard_ = source;
         heardValue_ = value;
         midiListen_.store(false, std::memory_order_release);

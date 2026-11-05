@@ -1211,3 +1211,5 @@ countries: it ch sm va
 "Voicing: every pipe" = "Intonazione: ogni canna"
 "Controller, one bit" = "Controller, un bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "Il bit del controller che porta questo interruttore, 0 per il più basso"
+"RPN" = "RPN"
+"NRPN" = "NRPN"

@@ -1211,3 +1211,5 @@ countries: fr be ca ch lu mc
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
 "Controller, one bit" = "Contrôleur, un bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "Le bit du contrôleur qui porte ce commutateur, 0 pour le plus bas"
+"RPN" = "RPN"
+"NRPN" = "NRPN"
