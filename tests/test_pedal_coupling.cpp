@@ -127,6 +127,12 @@ juce::File writeOrgan(const juce::File& root) {
       "<Switch><SwitchID>1101</SwitchID><Name>Principal</Name><Latching>Y</Latching></Switch>"
       "<Switch><SwitchID>1102</SwitchID><Name>Subbass</Name><Latching>Y</Latching></Switch>"
       "<Switch><SwitchID>1103</SwitchID><Name>Gedackt</Name><Latching>Y</Latching></Switch>"
+      "<Switch><SwitchID>1106</SwitchID><Name>General Cancel</Name><Latching>N</Latching>"
+      "<DefaultInputOutputSwitchAsgnCode>900581</DefaultInputOutputSwitchAsgnCode></Switch>"
+      "<Switch><SwitchID>1107</SwitchID><Name>Next</Name><Latching>N</Latching>"
+      "<DefaultInputOutputSwitchAsgnCode>900366</DefaultInputOutputSwitchAsgnCode></Switch>"
+      "<Switch><SwitchID>1108</SwitchID><Name>Previous</Name><Latching>N</Latching>"
+      "<DefaultInputOutputSwitchAsgnCode>900369</DefaultInputOutputSwitchAsgnCode></Switch>"
       "</ObjectList></Hauptwerk>");
   return odf;
 }
@@ -171,6 +177,19 @@ public:
       MP_CHECK(proc.captureMode() == setterWas, "and back");
       proc.clearObjectMapping(mp::MidiTargetKind::Setter, 0);
       MP_CHECK(!proc.applyKeyShortcut("x"), "a key let go of its piston does nothing");
+      // #778: buttons wired to the player's functions by their code alone.
+      drawBoth();
+      proc.setSwitchEngaged(1106, true);
+      MP_CHECK(!proc.stopEngaged(901) && !proc.stopEngaged(902), "the console's General Cancel clears the stops");
+      MP_CHECK(!proc.switchEngaged(1106), "and lets itself out");
+      proc.setCaptureMode(true);
+      const int firstFrame = proc.playerCombinations().frame();
+      proc.setSwitchEngaged(1107, true);
+      const int nextFrame = proc.playerCombinations().frame();
+      MP_CHECK(nextFrame == firstFrame + 1, "the console's Next moves the sequencer on");
+      proc.setSwitchEngaged(1108, true);
+      MP_CHECK(proc.playerCombinations().frame() == firstFrame, "and Previous moves it back");
+      proc.setCaptureMode(false);
 
       // Off: the manual's piston is the manual's alone.
       proc.setPedalCombinationsCoupled(false);
