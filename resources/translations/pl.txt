@@ -59,6 +59,7 @@ countries: pl
 "MIDI window..." = "Okno MIDI..."
 "Clear mapping" = "Usuń przypisanie"
 "Combinations" = "Kombinacje"
+"Combinations and sequencer" = "Kombinacje i sekwencer"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Gdy przycisk zapamięta kombinację, Set wyłącza się, a następne naciśnięcie ją przywoła: przyciski tutaj, na kontuarze i przez MIDI"
 
 # src/mp_ui/CombinationsWindow.h
