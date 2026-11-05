@@ -113,6 +113,7 @@ countries: cz
 "All" = "Všechny"
 "Every second note" = "Každá druhá nota"
 "Every third note" = "Každá třetí nota"
+"Half, by the sides of the organ" = "Polovina, podle stran varhan"
 "Saves memory: a note that is not loaded plays its nearest loaded neighbour\'s samples, retuned to its own pitch. Applies when the organ is loaded again." = "Šetří paměť: nota, která není načtena, hrává vzorky svého nejbližšího načteného souseda, přeladěné na její vlastní výšku. Projeví se po opětovném načtení varhanů."
 "Releases" = "Doznění"
 "As the organ has them" = "Jak je varhany mají"

@@ -113,6 +113,7 @@ countries: fr be ca ch lu mc
 "All" = "Toutes"
 "Every second note" = "Une note sur deux"
 "Every third note" = "Une note sur trois"
+"Half, by the sides of the organ" = "La moitié, par côtés de l'orgue"
 "Saves memory: a note that is not loaded plays its nearest loaded neighbour\'s samples, retuned to its own pitch. Applies when the organ is loaded again." = "Économise de la mémoire : une note non chargée joue les échantillons de sa voisine chargée la plus proche, accordés à sa propre hauteur. Prend effet au prochain chargement de l\'orgue."
 "Releases" = "Relâchements"
 "As the organ has them" = "Comme l'orgue les a"

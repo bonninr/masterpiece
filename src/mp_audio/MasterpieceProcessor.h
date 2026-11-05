@@ -1898,13 +1898,14 @@ public:
 
   // --- sparse loading -----------------------------------------------------
   // How many notes of a rank are loaded: 1 for every note, 2 for every second
-  // note, 3 for every third. A note that is not loaded plays its nearest
+  // note, 3 for every third, 4 for half by the sides of the organ
+  // (kSparseSides). A note that is not loaded plays its nearest
   // loaded neighbour's samples, retuned to its own pitch, so the samples it
   // would have played are never read.
   //
   // Saved with the organ, and it takes effect at the next load.
   void setSparseEvery(int every) {
-    const int v = every < 1 ? 1 : (every > 3 ? 3 : every);
+    const int v = every < 1 ? 1 : (every > 4 ? 4 : every);
     if (v == sparseEvery_) return;
     sparseEvery_ = v;
     samples_.setSparseEvery(v);

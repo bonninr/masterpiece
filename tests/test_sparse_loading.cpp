@@ -126,6 +126,26 @@ public:
       }
     }
 
+    // By sides, #827: C, C#, E, F, G#, A keep their own samples, and each other
+    // note plays a neighbour a whole tone away, on its own side.
+    {
+      mp::OrganModel model;
+      addRank(model, 205, 36, 60, 1501, 3501);
+      mp::applySparsePlan(model, mp::planSparseLoading(model, mp::kSparseSides, {}, kAllPresent));
+      for (int note = 37; note < 60; ++note) {
+        const mp::Pipe* pipe = pipeForNote(model, 205, note);
+        MP_CHECK(pipe != nullptr, "the pipe is still there");
+        if (pipe == nullptr) continue;
+        const int pc = note % 12;
+        const bool keeps = pc == 0 || pc == 1 || pc == 4 || pc == 5 || pc == 8 || pc == 9;
+        MP_CHECK((pipe->borrowedFromPipeId == 0) == keeps, "note " + std::to_string(note) + " keeps by its pitch class");
+        if (keeps) continue;
+        const mp::Pipe* neighbour = pipeForId(model, 205, pipe->borrowedFromPipeId);
+        MP_CHECK(neighbour != nullptr && std::abs(neighbour->midiNote - note) == 2,
+                 "a borrowed note plays the neighbour a whole tone away, on its own side");
+      }
+    }
+
     // Every third note: 36, 39, 42, 45, 48 keep their own samples, and every
     // dropped pipe borrows from a neighbour at most a semitone away.
     {

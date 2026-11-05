@@ -25,6 +25,11 @@
 
 namespace mp {
 
+// Half the notes, by the sides of the organ: C and C#, E and F, G# and A are
+// kept, and each other note plays its neighbour a whole tone away, which
+// stands on the same side and so keeps a set's stereo image.
+inline constexpr int kSparseSides = 4;
+
 // What a sparse load does, worked out before the model is changed.
 struct SparsePlan {
   struct Rank {
@@ -51,8 +56,8 @@ struct SparseSamples {
 
 // Works out the plan for a model. The model is not changed.
 //
-// `every` is 1 for every note, 2 for every second note, 3 for every third.
-// Anything below 2 leaves the model alone.
+// `every` is 1 for every note, 2 for every second note, 3 for every third, or
+// kSparseSides. Anything below 2 leaves the model alone.
 //
 // `protectedRanks` are the ranks left untouched whatever `every` says: the
 // sampled tremulant ranks, which the caller names.
