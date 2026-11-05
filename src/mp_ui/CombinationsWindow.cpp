@@ -275,6 +275,7 @@ void CombinationsPanel::applyView() {
     if (d.cancel != nullptr) d.cancel->setVisible(combinationsShown());
   }
   pedalCoupler_.setVisible(divisionals && proc_.coupledDivisions().valid());
+  pedalManual_.setVisible(pedalCoupler_.isVisible());
   stepPrev_.setButtonText(simple_ ? "-" : "<");
   stepNext_.setButtonText(simple_ ? "+" : ">");
   stepPrev_.setTooltip(simple_ ? TRANS("The general before") : juce::String());
@@ -353,7 +354,7 @@ void CombinationsPanel::rebuild() {
       if (d.divisionId == cd.manual)
         pedalManual_.setSelectedId(static_cast<int>(pedalManuals_.size()), juce::dontSendNotification);
     }
-    pedalCoupler_.setVisible(cd.valid() && !divisions_.empty());
+    pedalCoupler_.setVisible(cd.valid() && !divisions_.empty() && combinationsShown());
     pedalManual_.setVisible(pedalCoupler_.isVisible());
   }
 
