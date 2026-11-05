@@ -1906,6 +1906,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
   text << "releases " << static_cast<int>(samples_.releaseChoice()) << "\n";
   text << "releaselength " << samples_.releaseMaxMs() << "\n";
   text << "releasecutoff " << releaseCutoffDb_ << "\n";
+  if (releaseShortGain_) text << "releaseshortgain 1\n";
   // The room this organ is played in: kept with the organ, the path last
   // because it can hold spaces.
   text << "reverb " << (convolver_.enabled() ? 1 : 0) << " " << juce::String(convolver_.mix(), 3)
@@ -2000,6 +2001,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
     samples_.setReleaseChoice(static_cast<SampleLibrary::ReleaseChoice>(juce::jlimit(0, 3, val.getIntValue())));
   else if (key == "releaselength") samples_.setReleaseMaxMs(val.getIntValue());
   else if (key == "releasecutoff") setReleaseCutoffDb(val.getIntValue());
+  else if (key == "releaseshortgain") setReleaseShortNoteGain(val.getIntValue() != 0);
   else if (key == "reverb") {
     // "reverb <enabled> <mix> <path...>"
     auto rest = val.trim();

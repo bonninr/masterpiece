@@ -2016,7 +2016,11 @@ public:
   void setReleasePhaseAlign(bool on) { voices_.setReleasePhaseAlign(on); }
   // GrandOrgue's release techniques (VoiceEngine): each off unless switched on.
   void setReleaseAlignTable(bool on) { voices_.setReleaseAlignTable(on); }
-  void setReleaseShortNoteGain(bool on) { voices_.setReleaseShortNoteGain(on); }
+  void setReleaseShortNoteGain(bool on) {
+    releaseShortGain_ = on;
+    voices_.setReleaseShortNoteGain(on);
+  }
+  bool releaseShortNoteGain() const { return releaseShortGain_; }
   void setReleaseStaccatoFade(bool on) { voices_.setReleaseStaccatoFade(on); }
 
   // A learned pedal's ends, from where it is now: a console whose swell shoe
@@ -2752,6 +2756,7 @@ private:
   SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::Single;
   std::optional<SampleLibrary::CacheMode> cacheOverride_;
   int releaseCutoffDb_ = -90;
+  bool releaseShortGain_ = false;
   // MASTERPIECE_BLOCKLOG=<file>: every block's stages timed, with its note-ons,
   // note-offs and voices, kept in memory made at start and written to the
   // file when the program closes. For finding what a late block spent its
