@@ -1192,3 +1192,5 @@ countries: it ch sm va
 "On at" = "Acceso a"
 "The value your console sends for off" = "Il valore che la consolle invia per spento"
 "The value your console sends for on" = "Il valore che la consolle invia per acceso"
+"Debounce ms" = "Antirimbalzo ms"
+"Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Millisecondi dopo una pressione in cui una seconda pressione è ignorata: per un contatto che rimbalza. 0 è spento."

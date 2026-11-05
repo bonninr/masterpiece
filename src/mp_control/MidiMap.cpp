@@ -1,6 +1,7 @@
 #include "MidiMap.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <sstream>
 
@@ -412,7 +413,7 @@ const MidiBinding* MidiMap::bindingFor(MidiTargetKind kind, Id targetId) const {
   return nullptr;
 }
 
-MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
+MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs) const {
   // Most specific first. A mapping that names a device and a channel beats one
   // that names only a device, which beats one that names neither — so a player
   // can map their whole rig loosely and then pin one keyboard exactly, without
@@ -437,6 +438,20 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value) const {
     }
   if (it == bySource_.end()) return {};
   const MidiBinding& b = it->second;
+
+  // Contact chatter: a second press within the binding's debounce time is
+  // dropped, with every switch the message works. A held switch and a shoe
+  // follow every message, so they are left alone.
+  const bool held = b.trigger == MidiTrigger::Momentary &&
+                    (b.targetKind == MidiTargetKind::Switch || b.targetKind == MidiTargetKind::Setter);
+  if (b.debounceMs > 0 && timeMs >= 0.0 && !held && b.targetKind != MidiTargetKind::ContinuousControl &&
+      b.targetKind != MidiTargetKind::Keyboard && b.isOn(value)) {
+    auto [last, fresh] = pressLastMs_.try_emplace(it->first, timeMs);
+    if (!fresh) {
+      if (timeMs - last->second < b.debounceMs) return {};
+      last->second = timeMs;
+    }
+  }
 
   MidiAction action;
   action.kind = b.targetKind;
@@ -932,7 +947,7 @@ std::string MidiMap::toText() const {
   // One heading per kind of line, naming every field, so the file reads as a
   // table. The reader skips them.
   out << "# <source> <channel> <number> <target> <id> <latching> <invert> <trigger> <low> "
-         "<high> <device> [<device identifier>]\n";
+         "<high> <device> [<device identifier>] [| debounce=<ms>]\n";
   for (const auto& b : ordered_) {
     out << kindName(b.source.kind) << ' ' << b.source.channel << ' '
         << b.source.number << ' ' << targetName(b.targetKind) << ' '
@@ -945,7 +960,9 @@ std::string MidiMap::toText() const {
         << (b.source.deviceId == MidiDeviceMap::kAnyDevice
                 ? std::string("any")
                 : encodeName(devices_.nameFor(b.source.deviceId)))
-        << deviceIdentifierField(b.source.deviceId) << '\n';
+        << deviceIdentifierField(b.source.deviceId);
+    if (b.debounceMs > 0) out << " | debounce=" << b.debounceMs;
+    out << '\n';
   }
   // Channel assignments last, so an older reader that does not know the line
   // still gets every binding before it hits one it skips.
@@ -1134,6 +1151,7 @@ bool MidiMap::fromText(const std::string& text) {
   clear();
   keyboardBindings_.clear();
   keyLastMs_.clear();
+  pressLastMs_.clear();
   std::istringstream in(text);
   std::string line;
   bool anyBad = false;
@@ -1232,6 +1250,14 @@ bool MidiMap::fromText(const std::string& text) {
     int channel = 0, number = 0, latching = 1, invert = 0;
     long long id = 0;
     std::string trig;
+    // Options a binding has beyond the fixed fields follow a bar, by name, so
+    // a reader skips the ones it does not know: " | debounce=30".
+    std::string options;
+    if (const auto bar = line.find(" | "); bar != std::string::npos) {
+      options = line.substr(bar + 3);
+      ls.str(line.substr(0, bar));
+      ls.clear();
+    }
     if (!(ls >> src >> channel >> number >> tgt >> id >> latching >> invert)) {
       // A malformed line is skipped rather than aborting the load: losing one
       // binding beats losing the whole map.
@@ -1259,6 +1285,9 @@ bool MidiMap::fromText(const std::string& text) {
     std::string dev;
     if ((ls >> dev) && dev != "any")
       b.source.deviceId = readDevice(dev, ls);
+    std::istringstream os(options);
+    for (std::string opt; os >> opt;)
+      if (opt.rfind("debounce=", 0) == 0) b.debounceMs = std::max(0, std::atoi(opt.c_str() + 9));
     if (b.source.kind == MidiSourceKind::None ||
         b.targetKind == MidiTargetKind::None) {
       anyBad = true;

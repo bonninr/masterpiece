@@ -226,6 +226,11 @@ struct MidiBinding {
   // as pressed. 0..127 is the whole range and the usual case.
   int lowValue = 0;
   int highValue = 127;
+  // A press that comes within this many milliseconds of the last one this
+  // binding took is contact chatter, and is dropped (#926). GrandOrgue's
+  // debounce time: it applies to presses that toggle, draw, cancel or fire,
+  // and never to a release, so a held piston always lets go. 0 is off.
+  int debounceMs = 0;
 
   // A source value, normalised to 0..127 across this binding's own window.
   int scale(int raw) const {
@@ -395,8 +400,9 @@ public:
   void unbindTarget(MidiTargetKind kind, Id targetId);
 
   // Look up what a message should do. `value` is velocity for a note, the
-  // controller value for a CC. A note-off arrives as value 0.
-  MidiAction actionFor(const MidiSource& source, int value) const;
+  // controller value for a CC. A note-off arrives as value 0. `timeMs` is when
+  // the message arrived, for a binding's debounce; negative leaves it out.
+  MidiAction actionFor(const MidiSource& source, int value, double timeMs = -1.0) const;
   // What one switch binding does with a message: engage, disengage, toggle,
   // or nothing (an invalid action). actionFor() uses it for the binding it
   // finds; the engine uses it for each further switch the message works.
@@ -654,6 +660,8 @@ private:
   // matching is const from the caller's point of view — it asks a question —
   // but debouncing is inherently stateful.
   mutable std::unordered_map<int64_t, double> keyLastMs_;
+  // The same for a stop's or a piston's binding, by the source it matched.
+  mutable std::unordered_map<MidiSource, double, MidiSourceHash> pressLastMs_;
   std::unordered_map<MidiSource, MidiBinding, MidiSourceHash> bySource_;
   // A controller learned for a second continuous control keeps the first: one
   // expression pedal commonly works two swell boxes (#90).

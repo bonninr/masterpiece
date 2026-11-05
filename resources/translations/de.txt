@@ -1192,3 +1192,5 @@ countries: de at ch li lu
 "On at" = "Ein bei"
 "The value your console sends for off" = "Der Wert, den Ihr Spieltisch für Aus sendet"
 "The value your console sends for on" = "Der Wert, den Ihr Spieltisch für Ein sendet"
+"Debounce ms" = "Entprellung ms"
+"Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Millisekunden nach einem Druck, in denen ein zweiter Druck ignoriert wird: für einen prellenden Kontakt. 0 ist aus."

@@ -12198,6 +12198,59 @@ public:
   }
 };
 static MidiSwitchValuesTest g_midiSwitchValues;
+// A stop's or a piston's debounce time (#926): a press that bounces within it
+// counts once, a press after it counts, and a held switch's release is never
+// dropped.
+class MidiEventDebounceTest final : public mp::test::Test {
+public:
+  MidiEventDebounceTest() : Test("functional.midi.event-debounce", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    mp::MidiBinding tab;
+    tab.source = {mp::MidiSourceKind::Note, 1, 40};
+    tab.targetKind = mp::MidiTargetKind::Switch;
+    tab.targetId = 5;
+    tab.debounceMs = 30;
+    map.bind(tab);
+    MP_CHECK(map.actionFor(tab.source, 100, 1000.0).engage, "the first press draws the stop");
+    MP_CHECK(!map.actionFor(tab.source, 0, 1005.0).valid(), "its release does nothing, as for any toggle");
+    MP_CHECK(!map.actionFor(tab.source, 100, 1010.0).valid(), "a bounce 10 ms later is dropped");
+    const auto later = map.actionFor(tab.source, 100, 1100.0);
+    MP_CHECK(later.valid() && !later.engage, "a press 100 ms later cancels it");
+    MP_CHECK(map.actionFor(tab.source, 100, 1200.0).engage, "and the next draws it again");
+
+    mp::MidiBinding piston;
+    piston.source = {mp::MidiSourceKind::Note, 1, 41};
+    piston.targetKind = mp::MidiTargetKind::Switch;
+    piston.targetId = 6;
+    piston.trigger = mp::MidiTrigger::Momentary;
+    piston.latching = false;
+    piston.debounceMs = 30;
+    map.bind(piston);
+    MP_CHECK(map.actionFor(piston.source, 100, 2000.0).engage, "a held switch comes on");
+    const auto off = map.actionFor(piston.source, 0, 2005.0);
+    MP_CHECK(off.valid() && !off.engage, "and its quick release is kept");
+
+    mp::MidiBinding plain = tab;
+    plain.source.number = 42;
+    plain.targetId = 7;
+    plain.debounceMs = 0;
+    map.bind(plain);
+    MP_CHECK(map.actionFor(plain.source, 100, 3000.0).engage &&
+                 !map.actionFor(plain.source, 100, 3001.0).engage,
+             "without a debounce time every press counts");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 5);
+    MP_CHECK(rows.size() == 1 && rows.front()->debounceMs == 30, "the time survives saving");
+    const auto none = back.bindingsFor(mp::MidiTargetKind::Switch, 7);
+    MP_CHECK(none.size() == 1 && none.front()->debounceMs == 0, "and a row without one stays without");
+    MP_CHECK(map.toText().find(" | debounce=30") != std::string::npos, "written as a named option");
+  }
+};
+static MidiEventDebounceTest g_midiEventDebounce;
 
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).

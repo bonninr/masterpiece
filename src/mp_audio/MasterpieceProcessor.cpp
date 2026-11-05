@@ -1333,7 +1333,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
       if (value == 0 || bankSelect) continue;
     }
 
-    const MidiAction action = midiMap_.actionFor(source, value);
+    const MidiAction action = midiMap_.actionFor(source, value, blockTimeMs_);
     if (action.valid() && logging)
       juce::Logger::writeToLog("midi:     consumed by a mapping, kind=" +
                                juce::String(static_cast<int>(action.kind)));
