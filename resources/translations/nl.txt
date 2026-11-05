@@ -558,6 +558,7 @@ countries: nl be sr
 "Slot %1  -  %2 rank(s), %3 pipe(s) adjusted" = "Geheugen %1  -  %2 pijpenrij(en), %3 pijp(en) aangepast"
 "takes effect on the next note" = "werkt vanaf de volgende noot"
 "Output pairs" = "Uitgangsparen"
+"Shows only the ranks whose name holds this text" = "Toont alleen de rijen waarvan de naam deze tekst bevat"
 "1 (stereo)" = "1 (stereo)"
 "%1 pairs" = "%1 paren"
 "Pair %1" = "Paar %1"
