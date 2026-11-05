@@ -2981,6 +2981,11 @@ public:
     showRank();
   }
 
+  void selectNote(int note) {
+    view_.selectNote(note);
+    showSelected();
+  }
+
   void resized() override {
     auto r = getLocalBounds().reduced(12);
     auto row = r.removeFromTop(kRow);
@@ -3038,12 +3043,18 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Voicing"));
 
-  addAndMakeVisible(rankLabel_);
-  styleLabel(rankLabel_, TRANS("Rank"));
+  addAndMakeVisible(chooseBy_);
+  chooseBy_.setTitle(TRANS("Choose by"));
+  chooseBy_.setTooltip(TRANS("Choose one rank, or every rank of a stop, a division or a windchest at once"));
+  chooseBy_.onChange = [this] {
+    fillChoices();
+    loadCurrentIntoSliders();
+  };
   addAndMakeVisible(rank_);
   rank_.onChange = [this] { loadCurrentIntoSliders(); };
   addAndMakeVisible(testNote_);
-  testNote_.setTooltip(TRANS("A key plays this rank alone, and the next key stops it. Changes are heard at once."));
+  testNote_.setTooltip(TRANS("A key plays what is chosen here alone; another key moves it there, and the same key "
+                             "again stops it. Changes are heard at once."));
   testNote_.onClick = [this] { proc_.setTestNote(testNote_.getToggleState()); };
   addAndMakeVisible(midi_);
   midi_.setTooltip(TRANS("Buttons on the console for level and tuning, acting on the rank or pipe chosen here"));
@@ -3054,13 +3065,21 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(scope_);
   scope_.addItem(TRANS("The whole rank"), 1);
   scope_.addItem(TRANS("One pipe"), 2);
+  scope_.addItem(TRANS("Pipes on the C side"), 3);
+  scope_.addItem(TRANS("Pipes on the C# side"), 4);
   scope_.setSelectedId(1, juce::dontSendNotification);
   scope_.onChange = [this] {
     const bool perPipe = scope_.getSelectedId() == 2;
     note_.setEnabled(perPipe);
     noteLabel_.setEnabled(perPipe);
+    keysChoose_.setEnabled(perPipe);
     loadCurrentIntoSliders();
   };
+  addAndMakeVisible(keysChoose_);
+  keysChoose_.setToggleState(true, juce::dontSendNotification);
+  keysChoose_.setEnabled(false);
+  keysChoose_.setTooltip(TRANS("A key played with the test note chooses its pipe. Off, the pipe chosen stays, and "
+                               "the keys play its neighbours beside it."));
 
   addAndMakeVisible(noteLabel_);
   styleLabel(noteLabel_, TRANS("MIDI note"));
@@ -3090,7 +3109,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   gain_.setRange(-12.0, 12.0, 0.1);
   gain_.setTextValueSuffix(" dB");
   gain_.setValue(0.0, juce::dontSendNotification);
-  gain_.onValueChange = [this] { pushCurrent(); };
+  gain_.onValueChange = [this] { pushCurrent(kVoicingLevel); };
 
   addAndMakeVisible(tuneLabel_);
   styleLabel(tuneLabel_, TRANS("Tuning"));
@@ -3099,7 +3118,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   tune_.setRange(-50.0, 50.0, 0.1);
   tune_.setTextValueSuffix(" cents");
   tune_.setValue(0.0, juce::dontSendNotification);
-  tune_.onValueChange = [this] { pushCurrent(); };
+  tune_.onValueChange = [this] { pushCurrent(kVoicingTuning); };
   addAndMakeVisible(tune_);
   // A test note is struck again when a drag ends; during it, it would stutter.
   gain_.onDragEnd = tune_.onDragEnd = [this] { proc_.restartTestNote(); };
@@ -3118,7 +3137,8 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(bassLabel_, TRANS("Bass"));
   bright_.setTooltip(TRANS("The rank's treble, above 3 kHz: heard at once, on the pipes sounding too"));
   bass_.setTooltip(TRANS("The rank's bass, below 200 Hz: heard at once, on the pipes sounding too"));
-  bright_.onValueChange = bass_.onValueChange = [this] { pushCurrent(); };
+  bright_.onValueChange = [this] { pushCurrent(kVoicingBrightness); };
+  bass_.onValueChange = [this] { pushCurrent(kVoicingBass); };
   addAndMakeVisible(divisionLabel_);
   styleLabel(divisionLabel_, TRANS("Division EQ"));
   addAndMakeVisible(division_);
@@ -3150,7 +3170,8 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(divWidthLabel_, TRANS("Width"));
   pan_.setTooltip(TRANS("Where the rank stands, from full left to full right: heard at once"));
   width_.setTooltip(TRANS("The rank's stereo width: 0% mono, 100% as recorded, 200% twice as wide"));
-  pan_.onValueChange = width_.onValueChange = [this] { pushCurrent(); };
+  pan_.onValueChange = [this] { pushCurrent(kVoicingPan); };
+  width_.onValueChange = [this] { pushCurrent(kVoicingWidth); };
   divPan_.onValueChange = divWidth_.onValueChange = [this] { pushDivision(); };
 
   addAndMakeVisible(abSwap_);
@@ -3170,7 +3191,7 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   resetOne_.onClick = [this] {
     for (auto* s : {&gain_, &tune_, &bright_, &bass_, &pan_}) s->setValue(0.0, juce::dontSendNotification);
     width_.setValue(100.0, juce::dontSendNotification);
-    pushCurrent();
+    pushCurrent(kVoicingLevel | kVoicingTuning | kVoicingBrightness | kVoicingBass | kVoicingPan | kVoicingWidth);
   };
   addAndMakeVisible(resetAll_);
   resetAll_.onClick = [this] {
@@ -3206,12 +3227,17 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
 
 void VoicingPanel::refresh() {
   rankIds_.clear();
-  rank_.clear(juce::dontSendNotification);
   for (const auto& [id, r] : proc_.organModel().ranks) rankIds_.push_back(id);
   std::sort(rankIds_.begin(), rankIds_.end());
-  for (size_t i = 0; i < rankIds_.size(); ++i)
-    rank_.addItem(rankTitle(proc_.organModel(), rankIds_[i]), static_cast<int>(i) + 1);
-  if (!rankIds_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
+  // A windchest is offered on an organ that has two or more.
+  const int by = chooseBy_.getSelectedId();
+  chooseBy_.clear(juce::dontSendNotification);
+  chooseBy_.addItem(TRANS("One rank"), 1);
+  chooseBy_.addItem(TRANS("Ranks of a stop"), 2);
+  chooseBy_.addItem(TRANS("Ranks of a division"), 3);
+  if (!windchestRanks(proc_.organModel()).empty()) chooseBy_.addItem(TRANS("Ranks of a windchest"), 4);
+  chooseBy_.setSelectedId(by >= 1 && by <= chooseBy_.getNumItems() ? by : 1, juce::dontSendNotification);
+  fillChoices();
   divisionIds_.clear();
   division_.clear(juce::dontSendNotification);
   for (const auto& [id, d] : proc_.organModel().divisions) divisionIds_.push_back(id);
@@ -3252,29 +3278,89 @@ void VoicingPanel::pushDivision() {
   updateStatus();
 }
 
-// The pipe under the current rank and note, or 0 when the rank has no pipe
-// there. A rank does not necessarily span the whole compass.
-static Id pipeAt(const OrganModel& model, Id rankId, int midiNote) {
-  const auto it = model.ranks.find(rankId);
-  if (it == model.ranks.end()) return 0;
-  for (const auto& pipe : it->second.pipes)
-    if (pipe.midiNote == midiNote) return pipe.pipeId;
-  return 0;
+// The items of the second box for what the first has chosen: every rank,
+// every stop with its division's name, every division, or every windchest,
+// each with the ranks it reaches. An item that reaches no rank is left out.
+void VoicingPanel::fillChoices() {
+  const auto& m = proc_.organModel();
+  rank_.clear(juce::dontSendNotification);
+  choiceRanks_.clear();
+  const auto add = [this](const juce::String& name, std::vector<Id> ranks) {
+    if (ranks.empty()) return;
+    choiceRanks_.push_back(std::move(ranks));
+    rank_.addItem(name, static_cast<int>(choiceRanks_.size()));
+  };
+  const auto divisionName = [&m](Id id) {
+    const auto it = m.divisions.find(id);
+    return it == m.divisions.end() ? juce::String() : juce::String(it->second.name);
+  };
+  switch (chooseBy_.getSelectedId()) {
+    case 2: {
+      std::vector<Id> stops;
+      for (const auto& [id, s] : m.stops) stops.push_back(id);
+      std::sort(stops.begin(), stops.end());
+      for (const Id id : stops) {
+        const auto& s = m.stops.at(id);
+        const auto division = divisionName(s.divisionId);
+        add((division.isNotEmpty() ? division + ": " : juce::String()) + juce::String(s.name), ranksOfStop(m, id));
+      }
+      break;
+    }
+    case 3: {
+      std::vector<Id> divisions;
+      for (const auto& [id, d] : m.divisions) divisions.push_back(id);
+      std::sort(divisions.begin(), divisions.end());
+      for (const Id id : divisions) {
+        const auto name = divisionName(id);
+        add(name.isNotEmpty() ? name : juce::String(static_cast<int>(id)), ranksOfDivision(m, id));
+      }
+      break;
+    }
+    case 4:
+      for (auto& [name, ranks] : windchestRanks(m)) add(juce::String(name), ranks);
+      break;
+    default:
+      for (const Id id : rankIds_) add(rankTitle(m, id), {id});
+      break;
+  }
+  if (!choiceRanks_.empty()) rank_.setSelectedId(1, juce::dontSendNotification);
+}
+
+VoicingTarget VoicingPanel::target() const {
+  VoicingTarget t;
+  const int idx = rank_.getSelectedId() - 1;
+  if (idx >= 0 && idx < static_cast<int>(choiceRanks_.size())) t.ranks = choiceRanks_[static_cast<size_t>(idx)];
+  switch (scope_.getSelectedId()) {
+    case 2: t.scope = VoicingScope::Pipe; break;
+    case 3: t.scope = VoicingScope::CSide; break;
+    case 4: t.scope = VoicingScope::CSharpSide; break;
+    default: t.scope = VoicingScope::Rank; break;
+  }
+  t.note = static_cast<int>(note_.getValue());
+  return t;
+}
+
+// A rank chosen elsewhere, in the view of every pipe: kept as it is when it
+// is one of the ranks chosen here, or else chosen alone.
+void VoicingPanel::chooseRank(Id rankId) {
+  const int idx = rank_.getSelectedId() - 1;
+  if (idx >= 0 && idx < static_cast<int>(choiceRanks_.size())) {
+    const auto& ranks = choiceRanks_[static_cast<size_t>(idx)];
+    if (std::find(ranks.begin(), ranks.end(), rankId) != ranks.end()) return;
+  }
+  if (chooseBy_.getSelectedId() != 1) {
+    chooseBy_.setSelectedId(1, juce::dontSendNotification);
+    fillChoices();
+  }
+  for (size_t i = 0; i < choiceRanks_.size(); ++i)
+    if (choiceRanks_[i].size() == 1 && choiceRanks_[i].front() == rankId)
+      rank_.setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
 }
 
 void VoicingPanel::loadCurrentIntoSliders() {
-  if (rankIds_.empty()) return;
-  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
-                               rank_.getSelectedId() - 1);
-  const Id rankId = rankIds_[static_cast<size_t>(idx)];
-  PipeVoicing pv;
-  if (scope_.getSelectedId() == 2) {
-    const Id pipeId = pipeAt(proc_.organModel(), rankId,
-                             static_cast<int>(note_.getValue()));
-    pv = proc_.voicing().live().pipe(pipeId);
-  } else {
-    pv = proc_.voicing().live().rank(rankId);
-  }
+  const auto t = target();
+  if (t.ranks.empty()) return;
+  const PipeVoicing pv = shownVoicing(proc_.voicing().live(), proc_.organModel(), t);
   pushTarget();
   // dontSendNotification: these are being loaded FROM the model, and letting
   // them call back would write them straight back again, turning a read into
@@ -3282,7 +3368,7 @@ void VoicingPanel::loadCurrentIntoSliders() {
   gain_.setValue(pv.gainDb, juce::dontSendNotification);
   tune_.setValue(pv.tuningCents, juce::dontSendNotification);
   // The EQ is a rank's: a pipe of its own would need a filter of its own.
-  const bool rankScope = scope_.getSelectedId() != 2;
+  const bool rankScope = t.scope == VoicingScope::Rank;
   bright_.setValue(rankScope ? pv.brightnessDb : 0.0, juce::dontSendNotification);
   bass_.setValue(rankScope ? pv.bassDb : 0.0, juce::dontSendNotification);
   pan_.setValue(rankScope ? pv.balance * 100.0 : 0.0, juce::dontSendNotification);
@@ -3293,67 +3379,54 @@ void VoicingPanel::loadCurrentIntoSliders() {
   updateStatus();
 }
 
-void VoicingPanel::pushCurrent() {
-  if (rankIds_.empty()) return;
-  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1,
-                               rank_.getSelectedId() - 1);
-  const Id rankId = rankIds_[static_cast<size_t>(idx)];
-
-  if (scope_.getSelectedId() == 2) {
-    const Id pipeId = pipeAt(proc_.organModel(), rankId,
-                             static_cast<int>(note_.getValue()));
-    if (pipeId == 0) {
-      status_.setText(TRANS("This rank has no pipe at that note"),
-                      juce::dontSendNotification);
-      return;
-    }
-    PipeVoicing pv = proc_.voicing().live().pipe(pipeId);
-    pv.gainDb = static_cast<float>(gain_.getValue());
-    pv.tuningCents = static_cast<float>(tune_.getValue());
-    proc_.voicing().live().setPipe(pipeId, pv);
-  } else {
-    PipeVoicing pv = proc_.voicing().live().rank(rankId);
-    pv.gainDb = static_cast<float>(gain_.getValue());
-    pv.tuningCents = static_cast<float>(tune_.getValue());
-    const float pan = static_cast<float>(pan_.getValue() / 100.0);
-    const float width = static_cast<float>(width_.getValue() / 100.0);
-    const bool eqChanged = pv.brightnessDb != static_cast<float>(bright_.getValue()) ||
-                           pv.bassDb != static_cast<float>(bass_.getValue()) || pv.balance != pan ||
-                           pv.width != width;
-    pv.brightnessDb = static_cast<float>(bright_.getValue());
-    pv.bassDb = static_cast<float>(bass_.getValue());
-    pv.balance = pan;
-    pv.width = width;
-    proc_.voicing().live().setRank(rankId, pv);
-    if (eqChanged) proc_.applyVoicingEq();
+void VoicingPanel::pushCurrent(unsigned which) {
+  const auto t = target();
+  if (t.ranks.empty()) return;
+  const auto& model = proc_.organModel();
+  if (t.scope != VoicingScope::Rank && pipesOf(model, t).empty()) {
+    status_.setText(t.scope == VoicingScope::Pipe ? TRANS("This rank has no pipe at that note")
+                                                  : TRANS("No pipe is chosen"),
+                    juce::dontSendNotification);
+    return;
   }
+  PipeVoicing v;
+  v.gainDb = static_cast<float>(gain_.getValue());
+  v.tuningCents = static_cast<float>(tune_.getValue());
+  v.brightnessDb = static_cast<float>(bright_.getValue());
+  v.bassDb = static_cast<float>(bass_.getValue());
+  v.balance = static_cast<float>(pan_.getValue() / 100.0);
+  v.width = static_cast<float>(width_.getValue() / 100.0);
+  {
+    const MasterpieceProcessor::AudioLock audio(proc_);
+    setVoicing(proc_.voicing().live(), model, t, v, which);
+  }
+  if (t.scope == VoicingScope::Rank && (which & (kVoicingBrightness | kVoicingBass | kVoicingPan | kVoicingWidth)))
+    proc_.applyVoicingEq();
   proc_.voicingChanged();
   if (!juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()) proc_.restartTestNote();
   updateStatus();
 }
 
 void VoicingPanel::pushTarget() {
-  if (rankIds_.empty()) {
-    proc_.setVoicingTarget(0, 0);
-    return;
-  }
-  const int idx = juce::jlimit(0, static_cast<int>(rankIds_.size()) - 1, rank_.getSelectedId() - 1);
-  const Id rankId = rankIds_[static_cast<size_t>(idx)];
-  const Id pipeId =
-      scope_.getSelectedId() == 2 ? pipeAt(proc_.organModel(), rankId, static_cast<int>(note_.getValue())) : 0;
-  if (rankId == proc_.voicingRank() && pipeId == proc_.voicingPipe()) return;
-  proc_.setVoicingTarget(rankId, pipeId);
+  const auto t = target();
+  if (t == proc_.voicingTarget()) return;
+  proc_.setVoicingTarget(t);
   // Another rank chosen: the test note sounds it at the same key.
   proc_.restartTestNote();
 }
 
 void VoicingPanel::showEveryPipe() {
-  const Id rankId = rankIds_.empty() ? 0
-                                     : rankIds_[static_cast<size_t>(juce::jlimit(
-                                           0, static_cast<int>(rankIds_.size()) - 1, rank_.getSelectedId() - 1))];
+  const auto t = target();
+  const Id rankId = t.ranks.empty() ? 0 : t.ranks.front();
+  // The pipe these sliders work is the one the view opens on.
+  const auto showPipe = [&t](RankPipesContent& content) {
+    if (t.scope == VoicingScope::Pipe) content.selectNote(t.note);
+  };
   if (everyPipeWindow_ != nullptr) {
-    if (auto* content = dynamic_cast<RankPipesContent*>(everyPipeWindow_->getContentComponent()))
+    if (auto* content = dynamic_cast<RankPipesContent*>(everyPipeWindow_->getContentComponent())) {
       content->selectRank(rankId);
+      showPipe(*content);
+    }
     everyPipeWindow_->toFront(true);
     return;
   }
@@ -3366,13 +3439,12 @@ void VoicingPanel::showEveryPipe() {
       // A pipe chosen there is the pipe these sliders work.
       [self](Id rank, int note) {
         if (self == nullptr) return;
-        const auto it = std::find(self->rankIds_.begin(), self->rankIds_.end(), rank);
-        if (it != self->rankIds_.end())
-          self->rank_.setSelectedId(static_cast<int>(it - self->rankIds_.begin()) + 1, juce::dontSendNotification);
+        self->chooseRank(rank);
         if (self->scope_.getSelectedId() != 2) self->scope_.setSelectedId(2, juce::sendNotificationSync);
         self->note_.setValue(note, juce::dontSendNotification);
         self->loadCurrentIntoSliders();
       });
+  showPipe(*content);
   content->setSize(980, 440);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
@@ -3436,7 +3508,8 @@ void VoicingPanel::midiMenu() {
 }
 
 // A step from the console shows on the sliders; a test note played in one
-// pipe's scope moves the note to the key played.
+// pipe's scope moves the note to the key played, unless the keys are left to
+// play its neighbours.
 void VoicingPanel::timerCallback() {
   if (const uint32_t steps = proc_.voicingSteps(); steps != shownSteps_) {
     shownSteps_ = steps;
@@ -3445,7 +3518,8 @@ void VoicingPanel::timerCallback() {
   const int key = proc_.testNoteKey();
   if (key != shownTestKey_) {
     shownTestKey_ = key;
-    if (key >= 0 && scope_.getSelectedId() == 2 && static_cast<int>(note_.getValue()) != key)
+    if (key >= 0 && scope_.getSelectedId() == 2 && keysChoose_.getToggleState() &&
+        static_cast<int>(note_.getValue()) != key)
       note_.setValue(key, juce::sendNotificationSync);
   }
 }
@@ -3472,6 +3546,14 @@ VoicingPanel::~VoicingPanel() {
 void VoicingPanel::updateStatus() {
   const auto& v = proc_.voicing().live();
   juce::String s;
+  // What a change here reaches, when it is more than one rank or one pipe.
+  const auto t = target();
+  if (t.scope == VoicingScope::Rank && t.ranks.size() > 1)
+    s << TRANS("Changes %1 ranks").replace("%1", juce::String(static_cast<int>(t.ranks.size()))) << "  -  ";
+  else if (t.scope == VoicingScope::CSide || t.scope == VoicingScope::CSharpSide)
+    s << TRANS("Changes %1 pipes")
+             .replace("%1", juce::String(static_cast<int>(pipesOf(proc_.organModel(), t).size())))
+      << "  -  ";
   s << TRANS("Slot %1  -  %2 rank(s), %3 pipe(s) adjusted")
            .replace("%1", proc_.voicing().usingB ? "B" : "A")
            .replace("%2", juce::String(static_cast<int>(v.ranks().size())))
@@ -3488,9 +3570,11 @@ void VoicingPanel::resized() {
   heading_.setBounds(r.removeFromTop(kRow));
 
   auto row = r.removeFromTop(kRow);
-  rankLabel_.setBounds(row.removeFromLeft(labelW));
-  rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+  chooseBy_.setBounds(row.removeFromLeft(170).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  rank_.setBounds(row.removeFromLeft(280).reduced(0, 1));
   midi_.setBounds(row.removeFromRight(70).reduced(2, 1));
+  everyPipe_.setBounds(row.removeFromRight(120).reduced(2, 1));
   row.removeFromLeft(kGap);
   testNote_.setBounds(row.removeFromLeft(120));
   r.removeFromTop(4);
@@ -3502,7 +3586,7 @@ void VoicingPanel::resized() {
   noteLabel_.setBounds(row.removeFromLeft(80));
   note_.setBounds(row.removeFromLeft(110).reduced(0, 1));
   row.removeFromLeft(kGap);
-  everyPipe_.setBounds(row.removeFromLeft(120).reduced(0, 1));
+  keysChoose_.setBounds(row.removeFromLeft(190));
   r.removeFromTop(kGap);
 
   row = r.removeFromTop(kRow);

@@ -475,8 +475,15 @@ public:
   void refresh();
 
 private:
-  void pushCurrent();
+  // The values named, as kVoicingLevel etc. (VoicingSelection.h), from the
+  // sliders to every rank or pipe chosen.
+  void pushCurrent(unsigned which);
   void loadCurrentIntoSliders();
+  // What the sliders work (#848): the ranks chosen, by rank, stop, division
+  // or windchest, and the whole of each, one pipe, or one side of the chest.
+  VoicingTarget target() const;
+  void fillChoices();
+  void chooseRank(Id rankId);
   void updateStatus();
   // The rank or pipe shown, handed to the processor for the MIDI steps and
   // the test note (#637).
@@ -486,15 +493,19 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
-  juce::Label rankLabel_;
-  juce::ComboBox rank_;
+  juce::ComboBox chooseBy_;  // rank, stop, division, windchest
+  juce::ComboBox rank_;      // the rank, stop, division or windchest
+  std::vector<std::vector<Id>> choiceRanks_;  // the ranks of each item in rank_
+  // Off, the keys played with the test note leave the pipe chosen where it
+  // is, so its neighbours can be heard beside it.
+  juce::ToggleButton keysChoose_{TRANS("Keys choose the note")};
   // A key plays this rank alone, the next key stops it.
   juce::ToggleButton testNote_{TRANS("Test note")};
   juce::TextButton midi_{TRANS("MIDI")};
   uint32_t shownSteps_ = 0;
   int shownTestKey_ = -1;
   juce::Label scopeLabel_;
-  juce::ComboBox scope_;   // the whole rank, or one note of it
+  juce::ComboBox scope_;   // the whole rank, one note of it, or one side of the chest
   juce::Label noteLabel_;
   juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
   // Every pipe of the rank at once, in a window of its own (#849).

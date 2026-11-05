@@ -3993,70 +3993,101 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
                       midiNote);
 }
 
+void MasterpieceProcessor::setVoicingTarget(Id rankId, Id pipeId) {
+  VoicingTarget t;
+  if (rankId != 0) t.ranks.push_back(rankId);
+  if (pipeId != 0)
+    if (const auto rank = model_.ranks.find(rankId); rank != model_.ranks.end())
+      for (const auto& pipe : rank->second.pipes)
+        if (pipe.pipeId == pipeId) {
+          t.scope = VoicingScope::Pipe;
+          t.note = pipe.midiNote;
+        }
+  setVoicingTarget(t);
+}
+
+void MasterpieceProcessor::setVoicingTarget(const VoicingTarget& target) {
+  {
+    const AudioLock audio(*this);
+    voicingTarget_ = target;
+    // The audio thread keeps a voice a rank in here, and must never grow it.
+    testNoteIds_.reserve(target.ranks.size());
+  }
+  Id pipeId = 0;
+  if (target.scope == VoicingScope::Pipe)
+    if (const auto pipes = pipesOf(model_, target); !pipes.empty()) pipeId = pipes.front().second;
+  voicingRank_.store(target.ranks.empty() ? 0 : target.ranks.front(), std::memory_order_release);
+  voicingPipe_.store(pipeId, std::memory_order_release);
+}
+
 // The test note (#637): with a rank chosen on the Voicing tab, a key sounds
-// that rank's pipe alone and the next key stops it, which leaves the hands
-// free for the voicing. Any key, on any channel: the pipe is the one the key
-// names. Audio thread.
+// that rank's pipe alone, which leaves the hands free for the voicing. Any
+// key, on any channel: the pipe is the one the key names. Another key moves
+// the test note to its pipe, for comparing neighbours (#848); the same key
+// again stops it. Audio thread.
 bool MasterpieceProcessor::testNoteKeyDown(int midiNote, int velocity) {
-  if (voicingRank() == 0) return false;
-  if (testNoteId_ != 0) {
-    voices_.noteOff(testNoteId_, NoteRelease{});
-    testNoteId_ = 0;
-    testNoteKey_.store(-1, std::memory_order_release);
-    return true;
+  if (voicingTarget_.ranks.empty()) return false;
+  if (!testNoteIds_.empty()) {
+    const bool same = testNoteKey_.load(std::memory_order_acquire) == midiNote;
+    stopTestNote();
+    if (same) return true;
   }
   soundTestNote(midiNote, velocity);
   return true;
 }
 
+void MasterpieceProcessor::stopTestNote() {
+  for (const uint64_t id : testNoteIds_) voices_.noteOff(id, NoteRelease{});
+  testNoteIds_.clear();
+  testNoteKey_.store(-1, std::memory_order_release);
+}
+
+// Every rank of the target at the key, each that has a pipe there.
 bool MasterpieceProcessor::soundTestNote(int midiNote, int velocity) {
-  const auto rank = model_.ranks.find(voicingRank());
-  if (rank == model_.ranks.end()) return false;
-  for (const auto& pipe : rank->second.pipes) {
-    if (pipe.midiNote != midiNote) continue;
-    const uint64_t noteId = nextNoteId_++;
-    if (!startPipeLayers(pipe, rank->first, midiNote, velocity, noteId)) return false;
-    testNoteId_ = noteId;
-    testNoteVelocity_ = velocity;
-    testNoteKey_.store(midiNote, std::memory_order_release);
-    return true;
+  for (const Id rankId : voicingTarget_.ranks) {
+    if (testNoteIds_.size() == testNoteIds_.capacity()) break;
+    const auto rank = model_.ranks.find(rankId);
+    if (rank == model_.ranks.end()) continue;
+    for (const auto& pipe : rank->second.pipes) {
+      if (pipe.midiNote != midiNote) continue;
+      const uint64_t noteId = nextNoteId_++;
+      if (startPipeLayers(pipe, rank->first, midiNote, velocity, noteId)) testNoteIds_.push_back(noteId);
+      break;
+    }
   }
-  return false;
+  if (testNoteIds_.empty()) return false;
+  testNoteVelocity_ = velocity;
+  testNoteKey_.store(midiNote, std::memory_order_release);
+  return true;
 }
 
 // Voicing is read when a pipe starts, so a test note sounding is struck
 // again to be heard with a change; turned off, it stops. Audio thread.
 void MasterpieceProcessor::serviceTestNote() {
-  if (!testNoteRestart_.exchange(false, std::memory_order_acq_rel) || testNoteId_ == 0) return;
+  if (!testNoteRestart_.exchange(false, std::memory_order_acq_rel) || testNoteIds_.empty()) return;
   const int key = testNoteKey_.load(std::memory_order_acquire);
-  voices_.noteOff(testNoteId_, NoteRelease{});
-  testNoteId_ = 0;
-  testNoteKey_.store(-1, std::memory_order_release);
+  stopTestNote();
   if (testNoteOn_.load(std::memory_order_acquire)) soundTestNote(key, testNoteVelocity_);
 }
 
 bool MasterpieceProcessor::applyVoicingStep(MidiTargetKind kind) {
-  const Id rankId = voicingRank(), pipeId = voicingPipe();
-  if (rankId == 0) return false;
   {
     const AudioLock audio(*this);
-    VoicingSet& v = voicing_.live();
-    PipeVoicing pv = pipeId != 0 ? v.pipe(pipeId) : v.rank(rankId);
-    // Tenths, so a run of steps lands on the figures the sliders show.
-    auto step = [](float value, float by, float limit) {
-      return juce::jlimit(-limit, limit, std::round((value + by) * 10.0f) / 10.0f);
-    };
+    if (voicingTarget_.ranks.empty()) return false;
+    // A step moves each rank or pipe reached from where it stands, so a
+    // group keeps its shape; tenths, so a run of steps lands on the figures
+    // the sliders show.
+    VoicingField field = VoicingField::Level;
+    float by = 0.0f;
     switch (kind) {
-      case MidiTargetKind::VoicingLevelDown: pv.gainDb = step(pv.gainDb, -0.5f, 12.0f); break;
-      case MidiTargetKind::VoicingLevelUp: pv.gainDb = step(pv.gainDb, 0.5f, 12.0f); break;
-      case MidiTargetKind::VoicingTuneDown: pv.tuningCents = step(pv.tuningCents, -1.0f, 50.0f); break;
-      case MidiTargetKind::VoicingTuneUp: pv.tuningCents = step(pv.tuningCents, 1.0f, 50.0f); break;
+      case MidiTargetKind::VoicingLevelDown: by = -0.5f; break;
+      case MidiTargetKind::VoicingLevelUp: by = 0.5f; break;
+      case MidiTargetKind::VoicingTuneDown: field = VoicingField::Tuning; by = -1.0f; break;
+      case MidiTargetKind::VoicingTuneUp: field = VoicingField::Tuning; by = 1.0f; break;
       default: return false;
     }
-    if (pipeId != 0)
-      v.setPipe(pipeId, pv);
-    else
-      v.setRank(rankId, pv);
+    if (!stepVoicing(voicing_.live(), model_, voicingTarget_, field, by, field == VoicingField::Level ? 12.0f : 50.0f))
+      return false;
   }
   voicingSteps_.fetch_add(1, std::memory_order_acq_rel);
   voicingChanged();
