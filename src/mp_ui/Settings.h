@@ -690,6 +690,7 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
+  juce::Label note_;
   juce::ToggleButton enable_{TRANS("Drive a console display")};
   juce::Label idLabel_;
   juce::Slider id_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};

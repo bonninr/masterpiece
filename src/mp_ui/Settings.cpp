@@ -4122,6 +4122,10 @@ void RemotePanel::resized() {
 DisplayPanel::DisplayPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Console display"));
+  addAndMakeVisible(note_);
+  styleNote(note_, TRANS("For a text display fitted to the console: it shows the lines chosen below, sent as "
+                         "system exclusive messages to the MIDI output. The display's own documentation gives "
+                         "its number, its line length and the prefix it expects."));
   addAndMakeVisible(enable_);
   enable_.onClick = [this] { rebuild(); };
 
@@ -4226,6 +4230,7 @@ void DisplayPanel::resized() {
   const int labelW = 170;
 
   heading_.setBounds(r.removeFromTop(kRow));
+  note_.setBounds(r.removeFromTop(48));
   enable_.setBounds(r.removeFromTop(kRow).withTrimmedLeft(12));
   r.removeFromTop(kGap);
 
