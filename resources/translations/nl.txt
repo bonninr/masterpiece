@@ -1210,3 +1210,7 @@ countries: nl be sr
 "Every pipe..." = "Elke pijp..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle pijpen van de pijpenrij tegelijk, om hun niveau of stemming over het bereik te tekenen"
 "Voicing: every pipe" = "Intonatie: elke pijp"
+"Learn on and off" = "Aan en uit leren"
+"Move it on..." = "Zet hem aan..."
+"Now move it off..." = "Zet hem nu uit..."
+"Move the tab on, then off: the rows are filled from the two messages" = "Zet de wipschakelaar aan en daarna uit: de regels worden uit de twee berichten gevuld"

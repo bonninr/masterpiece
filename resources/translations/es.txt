@@ -1209,3 +1209,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Every pipe..." = "Cada tubo..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Todos los tubos de la hilera a la vez, para trazar su nivel o afinación a lo largo de la extensión"
 "Voicing: every pipe" = "Armonización: cada tubo"
+"Learn on and off" = "Aprender encendido y apagado"
+"Move it on..." = "Actívelo..."
+"Now move it off..." = "Ahora desactívelo..."
+"Move the tab on, then off: the rows are filled from the two messages" = "Active la pestaña y luego desactívela: las filas se rellenan con los dos mensajes"

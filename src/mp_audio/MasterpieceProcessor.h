@@ -708,7 +708,29 @@ public:
   // row with. GrandOrgue's "Listen for Event".
   void beginMidiListen() {
     heardReady_.store(false, std::memory_order_relaxed);
+    listenPair_.store(false, std::memory_order_relaxed);
     midiListen_.store(true, std::memory_order_release);
+  }
+  // Listen for two messages, a tab moved on and then off (#927), as
+  // GrandOrgue's "Detect complex MIDI setup" does. The second may be a
+  // release; the first sent again is passed over.
+  void beginMidiListenPair() {
+    heardReady_.store(false, std::memory_order_relaxed);
+    pairStep_.store(0, std::memory_order_relaxed);
+    listenPair_.store(true, std::memory_order_relaxed);
+    midiListen_.store(true, std::memory_order_release);
+  }
+  // How many of the pair have been heard so far, for the window to say
+  // which one it waits for.
+  int midiListenPairStep() const { return pairStep_.load(std::memory_order_acquire); }
+  // The pair that answered, once.
+  bool takeHeardMidiPair(MidiSource& on, int& onValue, MidiSource& off, int& offValue) {
+    if (!heardReady_.exchange(false, std::memory_order_acq_rel)) return false;
+    on = heard_;
+    onValue = heardValue_;
+    off = heardOff_;
+    offValue = heardOffValue_;
+    return true;
   }
   void cancelMidiListen() { midiListen_.store(false, std::memory_order_release); }
   bool midiListening() const { return midiListen_.load(std::memory_order_acquire); }
@@ -2901,6 +2923,12 @@ private:
   std::atomic<bool> heardReady_{false};
   MidiSource heard_;
   int heardValue_ = 0;
+  // Listening for an on and an off (#927): the off is kept beside the on.
+  std::atomic<bool> listenPair_{false};
+  std::atomic<int> pairStep_{0};
+  MidiSource heardOff_;
+  int heardOffValue_ = 0;
+  void hearForListen(const MidiSource& source, int value);
   // The value each send last went out with, by its place in the map's list;
   // -1 sends the current state on the next block; kTakeStateQuietly takes it
   // without sending. Kept for the rows a change leaves alone.

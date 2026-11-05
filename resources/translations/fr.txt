@@ -1209,3 +1209,7 @@ countries: fr be ca ch lu mc
 "Every pipe..." = "Chaque tuyau..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tous les tuyaux du rang à la fois, pour tracer leur niveau ou leur accord sur toute l'étendue"
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
+"Learn on and off" = "Apprendre marche et arrêt"
+"Move it on..." = "Activez-le..."
+"Now move it off..." = "Désactivez-le maintenant..."
+"Move the tab on, then off: the rows are filled from the two messages" = "Activez le domino, puis désactivez-le : les lignes sont remplies à partir des deux messages"
