@@ -83,7 +83,9 @@ public:
       ++boxes;
       const std::string text = box->getButtonText().toStdString();
       if (box->getX() == left + kIndent) ++indented;
-      MP_CHECK(box->getX() == left || box->getX() == left + kIndent,
+      // The top boxes run in two columns where the tab is wide enough (#845).
+      const bool secondColumn = box->getX() >= panel.getWidth() / 2 - 12;
+      MP_CHECK(secondColumn || box->getX() == left || box->getX() == left + kIndent,
                "\"" + text + "\" starts at x " + std::to_string(box->getX()) + ", the checkboxes at " +
                    std::to_string(left) + " or one step in");
       if (text == "Extra couplers") couplers = true;
