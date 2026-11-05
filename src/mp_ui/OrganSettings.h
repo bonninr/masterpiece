@@ -185,7 +185,7 @@ public:
   ~OrganSettingsWindow() override;
   void resized() override;
   void paint(juce::Graphics& g) override;
-  // Organ > Reverb and Organ > Combination sets open the window on theirs.
+  // Organ > Reverb opens the window on its tab.
   void showTab(const juce::String& name);
   juce::String currentTab() const { return tabs_.getCurrentTabName(); }
 
@@ -219,10 +219,9 @@ private:
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
   VoicingEqPanel eq_;
-  // The room and the registration books: both saved with this organ, so
-  // they are here with the rest of it (#637).
+  // The room: saved with this organ, so it is here with the rest of it
+  // (#637). Its combination sets are in the Combinations window (#853).
   ReverbPanel reverb_;
-  FavouritesPanel sets_;
 };
 
 }  // namespace mp::ui

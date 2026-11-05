@@ -1007,7 +1007,7 @@ void VoicingEqPanel::paint(juce::Graphics& g) {
 OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<void()> reload,
                                          juce::AudioDeviceManager* devices)
     : reload_(std::move(reload)), engine_(p), stops_(p, [this] { reloadOnClose(); }), outputs_(p), voicing_(p),
-      eq_(p), reverb_(p), sets_(p) {
+      eq_(p), reverb_(p) {
   addAndMakeVisible(tabs_);
   tabs_.getTabbedButtonBar().setLookAndFeel(&tabNamesLook_);
   engine_.onReload = [this] { reloadOnClose(); };
@@ -1020,7 +1020,6 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
   tabs_.addTab(TRANS("Voicing"), kBackground, &voicing_, false);
   tabs_.addTab(TRANS("Equalizer"), kBackground, &eq_, false);
   tabs_.addTab(TRANS("Reverb"), kBackground, &reverb_, false);
-  tabs_.addTab(TRANS("Combination sets"), kBackground, &sets_, false);
   if (devices != nullptr) {
     midi_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Organ);
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });

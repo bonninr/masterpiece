@@ -1,6 +1,6 @@
-// Reverb and Combination sets are saved with each organ, so they are in Organ
-// settings with the rest of it, and Settings keeps what every organ shares
-// (#637).
+// Reverb is saved with each organ, so it is in Organ settings with the rest of
+// it, and Settings keeps what every organ shares (#637). Combination sets are
+// in the Combinations window only (#853).
 #include "MpTest.h"
 
 #ifdef MP_TEST_HAS_AUDIO
@@ -20,13 +20,13 @@ public:
     mp::MasterpieceProcessor proc;
     {
       mp::ui::OrganSettingsWindow organ(proc, {});
-      for (const char* name : {"Reverb", "Combination sets"}) {
-        organ.showTab(name);
-        MP_CHECK(organ.currentTab() == name, std::string("Organ settings has ") + name + "; it showed " +
-                                                 organ.currentTab().toStdString());
-      }
+      organ.showTab("Reverb");
+      MP_CHECK(organ.currentTab() == "Reverb", "Organ settings has Reverb; it showed " +
+                                                   organ.currentTab().toStdString());
       organ.showTab("Loading");
       MP_CHECK(organ.currentTab() == "Loading", "the first tab is still there");
+      organ.showTab("Combination sets");
+      MP_CHECK(organ.currentTab() == "Loading", "Organ settings no longer has Combination sets");
     }
     {
       mp::ui::SettingsWindow settings(proc, nullptr);
