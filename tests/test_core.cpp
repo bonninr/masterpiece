@@ -14996,6 +14996,48 @@ public:
 };
 static DrawstopLatchesTest g_drawstopLatches;
 
+// A latched knob follows its stop switch (#920). Pekela wires a momentary stop
+// with a knob on each page, both driving the stop switch and neither driven
+// back. The general cancel and the combinations move the stop switch; the
+// knobs go with it, on both pages.
+class LatchedKnobsFollowTest final : public mp::test::Test {
+public:
+  LatchedKnobsFollowTest() : Test("functional.switches.latched-knobs-follow", Category::Functional) {}
+  void run() override {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Switch\">"
+        "<o><a>20</a><b>knob, first page</b><d>N</d><i>Y</i><k>1</k></o>"
+        "<o><a>23</a><b>knob, second page</b><d>N</d><i>Y</i><k>2</k></o>"
+        "<o><a>21</a><b>stop</b><d>N</d></o>"
+        "<o><a>22</a><b>node</b><d>N</d></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"SwitchLinkage\">"
+        "<o><a>20</a><b>21</b></o><o><a>23</a><b>21</b></o><o><a>21</a><b>22</b></o>"
+        "</ObjectList>"
+        "<ObjectList ObjectType=\"Stop\"><o><a>1</a><b>one</b><d>22</d></o></ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d), "the definition loads");
+    MP_CHECK(d.latchedDrawstops == std::vector<mp::Id>({20, 21, 23}), "both knobs and the stop switch latch");
+    mp::SwitchNetwork net;
+    net.reset(m);
+    net.set(23, true);
+    MP_CHECK(net.engaged(21) && net.engaged(22), "the second page's knob draws the stop");
+    MP_CHECK(net.engaged(20), "and the first page shows it drawn");
+    net.set(21, false);  // a general cancel
+    MP_CHECK(!net.engaged(20) && !net.engaged(23) && !net.engaged(22), "a general cancel puts both knobs in");
+    net.set(21, true);  // a combination
+    MP_CHECK(net.engaged(20) && net.engaged(23) && net.engaged(22), "a combination draws both knobs");
+    net.set(20, false);
+    MP_CHECK(!net.engaged(21) && !net.engaged(23) && !net.engaged(22), "pushing a knob in takes the stop off");
+  }
+};
+static LatchedKnobsFollowTest g_latchedKnobsFollow;
+
 #ifdef MP_TEST_HAS_AUDIO
 // The player's own console: channels set on one organ, taken as the default,
 // are what an organ with nothing saved for it starts from -- by role, the
