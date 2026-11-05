@@ -12307,6 +12307,65 @@ public:
 };
 static MidiEventDebounceTest g_midiEventDebounce;
 
+// Switches worked by one value of a controller (#923): a console that sends
+// controller 20 with a value per tab.
+class MidiExactValuesTest final : public mp::test::Test {
+public:
+  MidiExactValuesTest() : Test("functional.midi.switch-one-value", Category::Functional) {}
+
+  static mp::MidiBinding tab(mp::Id id, int on) {
+    mp::MidiBinding b;
+    b.source = {mp::MidiSourceKind::ControlChange, 1, 20};
+    b.targetKind = mp::MidiTargetKind::Switch;
+    b.targetId = id;
+    b.exactValues = true;
+    b.lowValue = 0;
+    b.highValue = on;
+    return b;
+  }
+
+  void run() override {
+    mp::MidiMap map;
+    for (int v = 1; v <= 3; ++v) map.bind(tab(static_cast<mp::Id>(10 + v), v));
+    const mp::MidiSource cc20{mp::MidiSourceKind::ControlChange, 1, 20};
+
+    // Which switches a message engages: its own binding, then the others.
+    auto engaged = [&](int value) {
+      std::vector<mp::Id> out;
+      const auto a = map.actionFor(cc20, value);
+      if (a.valid() && !a.idle && a.engage) out.push_back(a.targetId);
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid() && more.engage) out.push_back(more.targetId);
+        }
+      return out;
+    };
+    MP_CHECK(engaged(2) == std::vector<mp::Id>{12}, "value 2 draws the second tab alone");
+    MP_CHECK(engaged(3) == std::vector<mp::Id>{13}, "value 3 draws the third alone");
+    MP_CHECK(engaged(7).empty(), "a value no tab has draws nothing");
+
+    // A held switch at exact values: on at one value, off at another.
+    mp::MidiMap held;
+    auto b = tab(20, 5);
+    b.lowValue = 6;
+    b.trigger = mp::MidiTrigger::Momentary;
+    b.latching = false;
+    held.bind(b);
+    MP_CHECK(held.actionFor(cc20, 5).engage, "5 draws it");
+    const auto off = held.actionFor(cc20, 6);
+    MP_CHECK(off.valid() && !off.engage, "6 cancels it");
+    MP_CHECK(!held.actionFor(cc20, 64).valid(), "64 is not its value, though it is past half-way");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 12);
+    MP_CHECK(rows.size() == 1 && rows.front()->exactValues && rows.front()->highValue == 2,
+             "a one-value row survives saving");
+  }
+};
+static MidiExactValuesTest g_midiExactValues;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {

@@ -53,8 +53,11 @@ int eventItem(MidiSourceKind k) {
          : k == MidiSourceKind::SysEx         ? 4
                                               : 1;
 }
+// A switch's controller at one value (#923): the controller, with the row's
+// exact-values flag.
+constexpr int kExactControllerItem = 5;
 MidiSourceKind eventKind(int item) {
-  return item == 2 ? MidiSourceKind::ControlChange
+  return item == 2 || item == kExactControllerItem ? MidiSourceKind::ControlChange
                    : item == 3 ? MidiSourceKind::ProgramChange
                    : item == 4 ? MidiSourceKind::SysEx
                                : MidiSourceKind::Note;
@@ -167,8 +170,13 @@ public:
     fillChannels(channel_, true);
     channel_.setSelectedId(b.source.channel + 1, juce::dontSendNotification);
     fillEvents(event_);
+    if (kind_ == MidiTargetKind::Switch) event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
     const bool set = b.source.kind != MidiSourceKind::None;
-    if (set) event_.setSelectedId(eventItem(b.source.kind), juce::dontSendNotification);
+    if (set)
+      event_.setSelectedId(b.exactValues && b.source.kind == MidiSourceKind::ControlChange
+                               ? kExactControllerItem
+                               : eventItem(b.source.kind),
+                           juce::dontSendNotification);
     fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number,
                 kind_ == MidiTargetKind::ContinuousControl);
     if (!set) {
@@ -241,7 +249,7 @@ public:
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
     if (pressable(kind))
-      return {{TRANS("Device"), 120}, {TRANS("Channel"), 64}, {TRANS("Event"), 110}, {TRANS("Number"), 90},
+      return {{TRANS("Device"), 120}, {TRANS("Channel"), 64}, {TRANS("Event"), 160}, {TRANS("Number"), 90},
               {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84},
               {TRANS("Debounce ms"), 84}, {"", 84}, {"", 28}};
     return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
@@ -280,6 +288,7 @@ public:
     b.source.channel = juce::jmax(0, channel_.getSelectedId() - 1);
     if (event_.getSelectedId() > 0) {
       b.source.kind = eventKind(event_.getSelectedId());
+      b.exactValues = event_.getSelectedId() == kExactControllerItem;
       b.source.number = b.source.kind == MidiSourceKind::SysEx ? binding_.source.number
                         : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
                                                                       : juce::jmax(0, number_.getSelectedId() - 1);
@@ -482,6 +491,8 @@ private:
       if (listening_ < static_cast<int>(rows_.size())) {
         auto& row = rows_[static_cast<size_t>(listening_)];
         row.source = heard;
+        // A controller at one value takes the value it was pressed at.
+        if (row.exactValues && heard.kind == MidiSourceKind::ControlChange) row.highValue = value;
         if (row.trigger == MidiTrigger::Momentary && !MidiEventDialog::heldOffered(kind_, heard.kind))
           row.trigger = MidiTrigger::Toggle;
       }
@@ -1236,7 +1247,7 @@ void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
   // Wide enough for a switch's or a piston's row with its off and on values
   // and its debounce time.
-  content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 990 : 760, 500);
+  content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 1040 : 760, 500);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
   o.dialogTitle = (name.isNotEmpty() ? name : objectName(p, kind, id)) + " - MIDI";

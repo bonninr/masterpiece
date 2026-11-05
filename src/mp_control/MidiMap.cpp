@@ -445,7 +445,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
   const bool held = b.trigger == MidiTrigger::Momentary &&
                     (b.targetKind == MidiTargetKind::Switch || b.targetKind == MidiTargetKind::Setter);
   if (b.debounceMs > 0 && timeMs >= 0.0 && !held && b.targetKind != MidiTargetKind::ContinuousControl &&
-      b.targetKind != MidiTargetKind::Keyboard && b.isOn(value)) {
+      b.targetKind != MidiTargetKind::Keyboard && (b.exactValues ? value == b.highValue : b.isOn(value))) {
     auto [last, fresh] = pressLastMs_.try_emplace(it->first, timeMs);
     if (!fresh) {
       if (timeMs - last->second < b.debounceMs) return {};
@@ -568,7 +568,9 @@ MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
   action.targetId = b.targetId;
   // A console that sends 64 for a press, or whose button only travels part
   // of the range, still has to register.
-  const bool pressed = b.isOn(value);
+  const bool pressed = b.exactValues ? value == b.highValue : b.isOn(value);
+  // On exact values, any value other than its own two is another switch's.
+  if (b.exactValues && !pressed && value != b.lowValue) return {};
   // A message that only ever engages, or only ever disengages. This is how
   // a console with separate "draw" and "cancel" messages per stop is
   // mapped, and it cannot be expressed by toggling.
@@ -947,7 +949,7 @@ std::string MidiMap::toText() const {
   // One heading per kind of line, naming every field, so the file reads as a
   // table. The reader skips them.
   out << "# <source> <channel> <number> <target> <id> <latching> <invert> <trigger> <low> "
-         "<high> <device> [<device identifier>] [| debounce=<ms>]\n";
+         "<high> <device> [<device identifier>] [| debounce=<ms> exact]\n";
   for (const auto& b : ordered_) {
     out << kindName(b.source.kind) << ' ' << b.source.channel << ' '
         << b.source.number << ' ' << targetName(b.targetKind) << ' '
@@ -961,7 +963,10 @@ std::string MidiMap::toText() const {
                 ? std::string("any")
                 : encodeName(devices_.nameFor(b.source.deviceId)))
         << deviceIdentifierField(b.source.deviceId);
-    if (b.debounceMs > 0) out << " | debounce=" << b.debounceMs;
+    std::string options;
+    if (b.debounceMs > 0) options += " debounce=" + std::to_string(b.debounceMs);
+    if (b.exactValues) options += " exact";
+    if (!options.empty()) out << " |" << options;
     out << '\n';
   }
   // Channel assignments last, so an older reader that does not know the line
@@ -1286,8 +1291,10 @@ bool MidiMap::fromText(const std::string& text) {
     if ((ls >> dev) && dev != "any")
       b.source.deviceId = readDevice(dev, ls);
     std::istringstream os(options);
-    for (std::string opt; os >> opt;)
+    for (std::string opt; os >> opt;) {
       if (opt.rfind("debounce=", 0) == 0) b.debounceMs = std::max(0, std::atoi(opt.c_str() + 9));
+      if (opt == "exact") b.exactValues = true;
+    }
     if (b.source.kind == MidiSourceKind::None ||
         b.targetKind == MidiTargetKind::None) {
       anyBad = true;

@@ -1199,3 +1199,4 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "The value your console sends for on" = "El valor que envía su consola para encendido"
 "Debounce ms" = "Antirrebote ms"
 "Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Milisegundos tras una pulsación en los que se ignora una segunda: para un contacto que rebota. 0 es desactivado."
+"Controller, one value" = "Controlador, un valor"

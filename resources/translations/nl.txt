@@ -1200,3 +1200,4 @@ countries: nl be sr
 "The value your console sends for on" = "De waarde die uw speeltafel stuurt voor aan"
 "Debounce ms" = "Ontdendering ms"
 "Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Milliseconden na een druk waarin een tweede druk wordt genegeerd: voor een contact dat dendert. 0 is uit."
+"Controller, one value" = "Controller, één waarde"
