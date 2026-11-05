@@ -262,8 +262,8 @@ public:
       return {{TRANS("Device"), 120}, {TRANS("Channel"), 64}, {TRANS("Event"), 160}, {TRANS("Number"), 90},
               {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84},
               {TRANS("Debounce ms"), 84}, {"", 84}, {"", 28}};
-    return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
-            {TRANS("Closed at"), 72}, {TRANS("Open at"), 72}, {"", 60}, {"", 84}, {"", 28}};
+    return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 150},
+            {TRANS("Closed at"), 90}, {TRANS("Open at"), 90}, {"", 60}, {"", 84}, {"", 28}};
   }
 
   void resized() override {
@@ -1278,7 +1278,7 @@ void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                            const juce::String& name) {
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
   // Wide enough for a switch's or a piston's row with its off and on values
-  // and its debounce time.
+  // and its debounce time, and for a shoe's range of programs.
   content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 1040 : 760, 500);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
