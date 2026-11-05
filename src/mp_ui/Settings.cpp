@@ -4270,8 +4270,28 @@ LanguagePanel::LanguagePanel(MasterpieceProcessor& p) : proc_(p) {
   language_.setTooltip(TRANS("The language changes the next time Masterpiece starts. Names of "
                               "organs, stops and pages stay as the organ gives them."));
   addAndMakeVisible(note_);
-  note_.setText(TRANS("Applies at the next start."), juce::dontSendNotification);
+  note_.setText(TRANS("Language and font apply at the next start."), juce::dontSendNotification);
   note_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+  addAndMakeVisible(sizeLabel_);
+  styleLabel(sizeLabel_, TRANS("Text size"));
+  addAndMakeVisible(size_);
+  for (int percent : {100, 115, 130, 150, 175, 200}) size_.addItem(juce::String(percent) + " %", percent);
+  size_.setSelectedId(proc_.textSizeSetting(), juce::dontSendNotification);
+  size_.setTooltip(TRANS("Scales the text and the controls of every window"));
+  size_.onChange = [this] {
+    proc_.setTextSizeSetting(size_.getSelectedId());
+#if !JUCE_IOS && !JUCE_ANDROID
+    juce::Desktop::getInstance().setGlobalScaleFactor(static_cast<float>(size_.getSelectedId()) / 100.0f);
+#endif
+  };
+  addAndMakeVisible(fontLabel_);
+  styleLabel(fontLabel_, TRANS("Font"));
+  addAndMakeVisible(font_);
+  font_.addItem(TRANS("The program's own"), 1);
+  const auto fonts = juce::Font::findAllTypefaceNames();
+  for (int i = 0; i < fonts.size(); ++i) font_.addItem(fonts[i], i + 2);
+  font_.setSelectedId(fonts.indexOf(proc_.textFontSetting()) + 2, juce::dontSendNotification);
+  font_.onChange = [this] { proc_.setTextFontSetting(font_.getSelectedId() == 1 ? juce::String() : font_.getText()); };
   language_.addItem(TRANS("System default"), 1);
   language_.addItem("English", 2);
   // Each language is named in itself, so a player who cannot read the current
@@ -4297,7 +4317,15 @@ void LanguagePanel::resized() {
   auto r = getLocalBounds().reduced(16);
   heading_.setBounds(r.removeFromTop(kRow));
   language_.setBounds(r.removeFromTop(kRow).removeFromLeft(260).reduced(0, 1));
+  r.removeFromTop(kGap);
+  auto row = r.removeFromTop(kRow);
+  sizeLabel_.setBounds(row.removeFromLeft(100));
+  size_.setBounds(row.removeFromLeft(160).reduced(0, 1));
   r.removeFromTop(4);
+  row = r.removeFromTop(kRow);
+  fontLabel_.setBounds(row.removeFromLeft(100));
+  font_.setBounds(row.removeFromLeft(260).reduced(0, 1));
+  r.removeFromTop(kGap);
   note_.setBounds(r.removeFromTop(kRow));
   r.removeFromTop(kGap);
 }
@@ -4373,7 +4401,7 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   tabs_.addTab(TRANS("Console display"), bg, &display_, false);
-  tabs_.addTab(TRANS("Language"), bg, &language_, false);
+  tabs_.addTab(TRANS("Preferences"), bg, &language_, false);
   // Only where the program runs the server: the standalone program sets
   // remoteStatus; a plugin does not.
   if (p.remoteStatus) {

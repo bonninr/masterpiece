@@ -1298,6 +1298,13 @@ public:
   // next start.
   juce::String languageSetting() const { return language_; }
   void setLanguageSetting(const juce::String& code);
+  // The size of the windows' text in percent, and the font; an empty name is
+  // the program's own. Read with the language; the standalone program applies
+  // them, and a plugin stays at its host's size.
+  int textSizeSetting() const { return textSize_; }
+  void setTextSizeSetting(int percent);
+  juce::String textFontSetting() const { return textFont_; }
+  void setTextFontSetting(const juce::String& name);
   // Session-only form of the above: flips the switch without writing the
   // global file. Headless tools use this so a measurement render never
   // carries the progress taps, and without changing the player's preference
@@ -2613,6 +2620,8 @@ private:
   int memoryLimitOverrideMB_ = 0;  // this session only; never written
   std::atomic<bool> loadTicks_{false};
   juce::String language_;  // empty: the system's
+  int textSize_ = 100;
+  juce::String textFont_;
   juce::File cacheDir_; // empty: the default place
   juce::File packageDir_; // empty: none
   // Next 10% threshold to tap at, 10 through 100. Reset by whoever starts a

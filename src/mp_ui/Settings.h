@@ -720,6 +720,8 @@ private:
   juce::ComboBox language_;
   // Said on the tab, as well as in the tooltip (#634).
   juce::Label note_;
+  juce::Label sizeLabel_, fontLabel_;
+  juce::ComboBox size_, font_;
   // The codes behind the list, by item id minus 3. Ids 1 and 2 are the system
   // default and English.
   std::vector<juce::String> codes_;

@@ -418,6 +418,9 @@ public:
     // The top bar's labels are translated as the window is made, so the
     // language comes first.
     proc_->applyChosenLanguage();
+    juce::Desktop::getInstance().setGlobalScaleFactor(static_cast<float>(proc_->textSizeSetting()) / 100.0f);
+    if (proc_->textFontSetting().isNotEmpty())
+      juce::LookAndFeel::getDefaultLookAndFeel().setDefaultSansSerifTypefaceName(proc_->textFontSetting());
     mp::ui::installTouchLook();
     mp::ui::keepFileDialogsWithProgram();
     mp::ui::restoreLinkedDocuments();

@@ -3090,8 +3090,8 @@ void MasterpieceEditor::showSettingsMenu() {
   const bool standalone = juce::JUCEApplicationBase::isStandaloneApp();
   const juce::StringArray tabs =
       standalone ? juce::StringArray{"General", "Audio", "MIDI", "Performance", "Metronome",
-                                     "Console display", "Language", "Remote control"}
-                 : juce::StringArray{"General", "Performance", "Metronome", "Console display", "Language"};
+                                     "Console display", "Preferences", "Remote control"}
+                 : juce::StringArray{"General", "Performance", "Metronome", "Console display", "Preferences"};
   for (int i = 0; i < tabs.size(); ++i) menu.addItem(40 + i, TRANS(tabs[i]) + "...");
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this), tabs](int c) {
