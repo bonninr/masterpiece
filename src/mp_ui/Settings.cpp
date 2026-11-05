@@ -1274,7 +1274,7 @@ void EnginePanel::resized() {
                                                            &originalPitch_})
       if (b->isVisible()) boxes.push_back(b);
     // Two columns where the longest label fits in half the width.
-    const size_t columns = r.getWidth() >= 760 ? 2 : 1;
+    const size_t columns = r.getWidth() >= 600 ? 2 : 1;
     for (size_t i = 0; i < boxes.size(); i += columns) {
       auto row = r.removeFromTop(kRow);
       const int w = row.getWidth() / static_cast<int>(columns);
