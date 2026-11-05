@@ -286,6 +286,8 @@ struct MidiAction {
 // (non-registered) carry `number`, 0..16383, and data entry (CC 6) the value.
 // GrandOrgue's RPN and NRPN sends.
 enum class MidiParameter { None, Registered, NonRegistered };
+// A console display a send writes text to (#928).
+enum class MidiDisplay { None, Lcd, Text };
 
 // A message sent when something on the console changes: the lamp in a
 // drawstop, the LED by a piston, a motorised fader following its swell box.
@@ -319,13 +321,20 @@ struct MidiSend {
   // A switch's program change sends `number` when it comes on, and this
   // program when it goes off; negative sends nothing when it goes off.
   int offProgram = -1;
+  // Text for a console display (#928), as GrandOrgue sends it: the object's
+  // name, or a control's value as a percentage. Lcd is the 32-character
+  // panel, F0 7D 01 <id high> <id low> <colour> <text> F7, its id in
+  // `number` and its colour in `low`; Text the 16-character string, F0 7D 19
+  // <id> <text> F7. `high` is 1 for the value, 0 for the name. Kind SysEx.
+  MidiDisplay display = MidiDisplay::None;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
            sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram &&
-           noteOff == o.noteOff && parameter == o.parameter;
+           noteOff == o.noteOff && parameter == o.parameter && display == o.display;
   }
+  bool showsValue() const { return display != MidiDisplay::None && high == 1; }
 };
 
 // Whole MIDI messages from hex bytes: "F0 7D 01 F7, B0 07 7F", spaces and
@@ -516,6 +525,12 @@ public:
   // send is three controllers, a hex send whatever it holds. Empty when the
   // state sends nothing.
   static std::vector<uint8_t> sendBytes(const MidiSend& s, int state);
+  // A display send's message with its text (#928): ASCII, accented letters
+  // without their accents, cut or padded with spaces to the display's width.
+  static std::vector<uint8_t> displayBytes(const MidiSend& s, const std::string& utf8);
+  // The text a display send shows: the object's name, or a control's value
+  // 0..127 as a percentage.
+  static std::string displayText(const MidiSend& s, const std::string& name, int value);
   // The targets a send follows as on or off: a stop's switch, and the
   // program's buttons that light, a general or the setter among them.
   static bool sendsOnOff(MidiTargetKind k);

@@ -1,4 +1,5 @@
 #include "MidiMap.h"
+#include "LcdPanel.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -73,7 +74,7 @@ std::string sysExField(const std::vector<uint8_t>& bytes) {
 }
 
 std::string sysExFields(const MidiSend& s) {
-  if (s.kind != MidiSourceKind::SysEx) return {};
+  if (s.kind != MidiSourceKind::SysEx || s.display != MidiDisplay::None) return {};
   return " " + sysExField(s.sysExOn) + " " + sysExField(s.sysExOff);
 }
 
@@ -110,10 +111,19 @@ const char* sendKindName(const MidiSend& s) {
   if (s.kind == MidiSourceKind::Note && s.noteOff) return "noteoff";
   if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::Registered) return "rpn";
   if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::NonRegistered) return "nrpn";
+  if (s.display == MidiDisplay::Lcd) return "lcd";
+  if (s.display == MidiDisplay::Text) return "lcdtext";
   return kindName(s.kind);
 }
 
 void readSendKind(const std::string& word, MidiSend& s) {
+  s.display = word == "lcd"       ? MidiDisplay::Lcd
+              : word == "lcdtext" ? MidiDisplay::Text
+                                  : MidiDisplay::None;
+  if (s.display != MidiDisplay::None) {
+    s.kind = MidiSourceKind::SysEx;
+    return;
+  }
   s.noteOff = word == "noteoff";
   s.parameter = word == "rpn"    ? MidiParameter::Registered
                 : word == "nrpn" ? MidiParameter::NonRegistered
@@ -845,6 +855,8 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
 std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
   std::vector<uint8_t> out;
   const bool onOff = s.targetKind != MidiTargetKind::ContinuousControl;
+  // A display takes its text from the object: displayBytes().
+  if (s.display != MidiDisplay::None) return out;
   // A hex send holds a whole message for each state; a control has none.
   if (s.kind == MidiSourceKind::SysEx) {
     if (onOff) out = state != 0 ? s.sysExOn : s.sysExOff;
@@ -870,6 +882,28 @@ std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
   const bool made = onOff ? switchMessage(s, state != 0, raw) : controlMessage(s, state, raw);
   if (made) out.assign(raw.bytes, raw.bytes + raw.size);
   return out;
+}
+
+std::vector<uint8_t> MidiMap::displayBytes(const MidiSend& s, const std::string& utf8) {
+  std::string text = LcdPanels::toDisplayAscii(utf8);
+  const bool lcd = s.display == MidiDisplay::Lcd;
+  const size_t width = lcd ? 32 : 16;
+  text.resize(width, ' ');
+  std::vector<uint8_t> out{0xF0, 0x7D};
+  if (lcd) {
+    const int id = std::clamp(s.number, 0, 16383);
+    out.insert(out.end(), {0x01, static_cast<uint8_t>(id >> 7), static_cast<uint8_t>(id & 127), clamp7(s.low)});
+  } else {
+    out.insert(out.end(), {0x19, clamp7(s.number)});
+  }
+  for (char ch : text) out.push_back(static_cast<uint8_t>(ch & 0x7F));
+  out.push_back(0xF7);
+  return out;
+}
+
+std::string MidiMap::displayText(const MidiSend& s, const std::string& name, int value) {
+  if (!s.showsValue()) return name;
+  return std::to_string(clamp7(value) * 100 / 127) + " %";
 }
 
 bool MidiMap::controlMessage(const MidiSend& s, int value, RawMidi& out) {
@@ -1198,7 +1232,7 @@ bool MidiMap::fromText(const std::string& text) {
         // numbers, as unbroken hex, "-" for none.
         std::string on, off;
         bool sysExOk = true;
-        if (snd.kind == MidiSourceKind::SysEx) {
+        if (snd.kind == MidiSourceKind::SysEx && snd.display == MidiDisplay::None) {
           sysExOk = static_cast<bool>(sl >> on >> off) && readSysExField(on, snd.sysExOn) &&
                     readSysExField(off, snd.sysExOff);
         }
