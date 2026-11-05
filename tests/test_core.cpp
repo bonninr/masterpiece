@@ -18997,6 +18997,7 @@ public:
 
     mp::MidiSend value = lcd;
     value.targetKind = mp::MidiTargetKind::ContinuousControl;
+    value.targetId = 7;
     value.high = 1;
     MP_CHECK(mp::MidiMap::displayText(value, "Swell", 127) == "100 %" &&
                  mp::MidiMap::displayText(value, "Swell", 64) == "50 %" &&
