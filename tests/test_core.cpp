@@ -925,7 +925,11 @@ public:
         "<ObjectList ObjectType=\"Tremulant\"><o><a>9</a><b>trem</b></o></ObjectList>"
         "<ObjectList ObjectType=\"TremulantWaveform\"><o><a>90</a><c>9</c></o></ObjectList>"
         "<ObjectList ObjectType=\"TremulantWaveformPipe\"><o><a>71</a><b>90</b></o>"
-        "<o><a>72</a><b>90</b><d>4.5e+1</d></o></ObjectList></Hauptwerk>";
+        "<o><a>72</a><b>90</b><d>4.5e+1</d></o></ObjectList>"
+        "<ObjectList ObjectType=\"Enclosure\"><o><a>4</a><b>swell</b></o>"
+        "<o><a>6</a><b>level only</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"EnclosurePipe\"><o><a>4</a><b>71</b></o>"
+        "<o><a>6</a><b>72</b><f>0</f></o></ObjectList></Hauptwerk>";
     mp::OdfLoader l;
     mp::OdfLoader::Options o;
     mp::OrganModel m;
@@ -993,6 +997,16 @@ public:
         for (const auto& layer : pipe.layers) layerPitch[layer.layerId] = layer.tremPitchDepthAdjustPct;
     MP_CHECK(layerPitch.size() == 2 && layerPitch[711] == 100.0 && layerPitch[721] == 0.0,
              "a layer's pitch depth is y, and leaving it out means 100 percent");
+    MP_CHECK(m.enclosures.count(4) && m.enclosures.at(4).filterParamsFromPipes &&
+                 m.enclosures.at(4).closedAttnDb == -6.0 &&
+                 m.enclosures.at(4).closedMaxHz == 1000.0 &&
+                 m.enclosures.at(4).closedMinHz == 5500.0 &&
+                 m.enclosures.at(4).closedShelfDb == 12.0 &&
+                 m.enclosures.at(4).openMaxHz == 200.0 &&
+                 m.enclosures.at(4).openMinHz == 15000.0,
+             "a swell row with no figures written takes the format's default filter");
+    MP_CHECK(m.enclosures.count(6) && m.enclosures.at(6).closedShelfDb == 0.0,
+             "a written shelf of 0 stays a box that moves only its level");
   }
 };
 static CompactDefaultsTest g_compactDefaults;

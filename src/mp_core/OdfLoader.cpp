@@ -1621,13 +1621,15 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         else
           outModel.pipeEnclosure[pipeId] = encId;
       }
+      // A compact row leaves out whatever holds the format's default filter.
+      const bool compact = isCompact(row);
       std::array<double, 6> v{
-          fieldDouble(row, "FiltParamWhenClsd_OverallAttnDb", "c", 0.0),
-          fieldDouble(row, "FiltParamWhenClsd_MaxFreqHz", "d", 0.0),
-          fieldDouble(row, "FiltParamWhenClsd_MinFreqHz", "e", 0.0),
-          fieldDouble(row, "FiltParamWhenClsd_ExtraAttnAtMinDb", "f", 0.0),
-          fieldDouble(row, "FiltParamWhenOpen_MaxFreqHz", "g", 0.0),
-          fieldDouble(row, "FiltParamWhenOpen_MinFreqHz", "h", 0.0)};
+          fieldDouble(row, "FiltParamWhenClsd_OverallAttnDb", "c", compact ? 6.0 : 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_MaxFreqHz", "d", compact ? 1000.0 : 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_MinFreqHz", "e", compact ? 5500.0 : 0.0),
+          fieldDouble(row, "FiltParamWhenClsd_ExtraAttnAtMinDb", "f", compact ? 12.0 : 0.0),
+          fieldDouble(row, "FiltParamWhenOpen_MaxFreqHz", "g", compact ? 200.0 : 0.0),
+          fieldDouble(row, "FiltParamWhenOpen_MinFreqHz", "h", compact ? 15000.0 : 0.0)};
       if (v[1] > 0.0 || v[4] > 0.0)
         shadeParams[encId].push_back(v);
     });
