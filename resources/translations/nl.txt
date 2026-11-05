@@ -577,6 +577,7 @@ countries: nl be sr
 "For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed." = "Voor toetsen of pedalen die niets of het verkeerde doen. Tot Masterpiece wordt gesloten."
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "Voor een tik, een geluid of een noot die blijft klinken als toetsen worden losgelaten. Tot Masterpiece wordt gesloten."
 "Console display" = "Speeltafeldisplay"
+"For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "Voor een tekstdisplay op de speeltafel: het toont de hieronder gekozen regels, verzonden als systeemexclusieve berichten naar de MIDI-uitgang. De documentatie van het display geeft het nummer, de regellengte en het verwachte voorvoegsel."
 "Display number" = "Displaynummer"
 "Characters per line" = "Tekens per regel"
 "Sys-ex prefix (hex)" = "Sys-ex-prefix (hex)"

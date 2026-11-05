@@ -578,6 +578,7 @@ countries: cz
 "For keys or pedals that do nothing, or the wrong thing. Until Masterpiece is closed." = "Pro klávesy nebo pedály, které nedělají nic nebo dělají něco špatně. Do zavření Masterpiece."
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "Pro lupnutí, zvuk nebo notu, která zní dál po uvolnění kláves. Do zavření Masterpiece."
 "Console display" = "Displej hracího stolu"
+"For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "Pro textový displej na hracím stole: zobrazuje níže zvolené řádky, odesílané jako systémové exkluzivní zprávy na výstup MIDI. Jeho číslo, délku řádku a očekávaný prefix uvádí dokumentace displeje."
 "Display number" = "Číslo displeje"
 "Characters per line" = "Znaků na řádek"
 "Sys-ex prefix (hex)" = "Prefix sys-ex (hex)"
