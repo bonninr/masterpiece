@@ -2516,7 +2516,7 @@ void MidiPanel::resized() {
       }
       r.removeFromTop(2);
     }
-  } else {
+  } else if (part_ == Part::Organ) {
     keyboardsLabel_.setBounds(r.removeFromTop(kRow));
     for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
       auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
