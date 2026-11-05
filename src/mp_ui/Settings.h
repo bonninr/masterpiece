@@ -402,6 +402,11 @@ private:
   // Simple mode leaves them out.
   juce::TextButton saveMap_{TRANS("Save mappings")};
   juce::TextButton clearMap_{TRANS("Clear all mappings")};
+  // A GrandOrgue set's MIDI settings, read from GrandOrgue's own settings file
+  // for it (#865).
+  juce::TextButton fromGrandOrgue_{TRANS("From GrandOrgue...")};
+  std::unique_ptr<juce::FileChooser> grandOrgueChooser_;
+  void importFromGrandOrgue();
   // Pairing a Bluetooth MIDI keyboard, where the system offers it (#680).
   juce::TextButton bluetooth_{TRANS("Bluetooth MIDI...")};
   // Every learn button on the page works as a console control's MIDI menu
