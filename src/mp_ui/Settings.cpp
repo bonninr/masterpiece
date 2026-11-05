@@ -2145,7 +2145,7 @@ void MidiPanel::applyPart() {
       &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
   const auto& mine = part_ == Part::Console ? console : part_ == Part::Organ ? organ : events;
-  for (const auto* list : {&console, &organ, &events})
+  for (const auto* list : std::initializer_list<const std::vector<juce::Component*>*>{&console, &organ, &events})
     if (list != &mine)
       for (auto* c : *list) c->setVisible(false);
   for (auto* c : mine)
