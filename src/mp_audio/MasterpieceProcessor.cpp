@@ -1374,10 +1374,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         }
         case MidiTargetKind::ContinuousControl:
-          setControlValue(action.targetId, action.value);
+          // A program outside a program range leaves its control alone
+          // (#925).
+          if (action.value >= 0) setControlValue(action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
-              setControlValue(b.targetId, MidiMap::controlValue(b, value));
+              if (const int v = MidiMap::controlValue(b, source, value); v >= 0) setControlValue(b.targetId, v);
           // A note that sets a swell from its velocity is still a note: a
           // sequencer writes the expression into the notes it plays, and the
           // manual sounds them (#220).
@@ -1498,10 +1500,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::DivisionLevel:
         case MidiTargetKind::PairLevel:
         case MidiTargetKind::ReverbWet:
-          setLiveLevelFromMidi(action.kind, action.targetId, action.value);
+          if (action.value >= 0) setLiveLevelFromMidi(action.kind, action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
-              setLiveLevelFromMidi(b.targetKind, b.targetId, MidiMap::controlValue(b, value));
+              if (const int v = MidiMap::controlValue(b, source, value); v >= 0)
+                setLiveLevelFromMidi(b.targetKind, b.targetId, v);
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:

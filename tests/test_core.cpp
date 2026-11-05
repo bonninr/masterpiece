@@ -21161,6 +21161,81 @@ public:
 };
 static AnyNoteVelocityTest g_anyNoteVelocity;
 
+// A range of programs moves a shoe or a crescendo (#925), one program a step:
+// the first program closes it, the last opens it fully, a program outside the
+// range leaves it alone, and a piston on one program beats the range.
+class ProgramChangeRangeTest final : public mp::test::Test {
+public:
+  ProgramChangeRangeTest() : Test("functional.midi.program-change-range", Category::Functional) {}
+  void run() override {
+    mp::MidiMap map;
+    mp::MidiBinding crescendo;
+    crescendo.source.kind = mp::MidiSourceKind::ProgramChange;
+    crescendo.source.channel = 5;
+    crescendo.source.number = mp::kProgramRange;
+    crescendo.targetKind = mp::MidiTargetKind::ContinuousControl;
+    crescendo.targetId = 998;
+    crescendo.lowValue = 20;   // program 21
+    crescendo.highValue = 52;  // program 53
+    map.bind(crescendo);
+    auto program = [](int n) {
+      mp::MidiSource s;
+      s.kind = mp::MidiSourceKind::ProgramChange;
+      s.channel = 5;
+      s.number = n;
+      return s;
+    };
+    auto a = map.actionFor(program(20), 127);
+    MP_CHECK(a.kind == mp::MidiTargetKind::ContinuousControl && a.targetId == 998 && a.value == 0,
+             "the first program of the range closes it");
+    MP_CHECK(map.actionFor(program(52), 127).value == 127, "the last opens it fully");
+    MP_CHECK(map.actionFor(program(36), 127).value == 63, "one half way along is half open");
+    MP_CHECK(!map.actionFor(program(19), 127).valid() && !map.actionFor(program(53), 127).valid(),
+             "a program outside the range leaves it where it is");
+    mp::MidiSource other = program(30);
+    other.channel = 6;
+    MP_CHECK(!map.actionFor(other, 127).valid(), "a program on another channel does nothing to it");
+
+    mp::MidiBinding piston;
+    piston.source = program(30);
+    piston.targetKind = mp::MidiTargetKind::Switch;
+    piston.targetId = 77;
+    map.bind(piston);
+    MP_CHECK(map.actionFor(program(30), 127).targetId == 77, "a piston on one program beats the range");
+    MP_CHECK(map.actionFor(program(31), 127).targetId == 998, "the rest of the range still moves it");
+
+    // A swell on the programs above, on the same channel.
+    mp::MidiBinding swell = crescendo;
+    swell.targetId = 997;
+    swell.lowValue = 60;
+    swell.highValue = 67;
+    map.bind(swell);
+    const mp::MidiSource high = program(67);
+    const auto b = map.actionFor(high, 127);
+    MP_CHECK(b.valid() && b.value < 0 && b.alsoDrives != nullptr && b.alsoDrives->size() == 1 &&
+                 mp::MidiMap::controlValue(b.alsoDrives->front(), high, 127) == 127,
+             "a program in the swell's range opens the swell and leaves the crescendo");
+    MP_CHECK(mp::MidiMap::controlValue(b.alsoDrives->front(), program(36), 127) < 0,
+             "a program in the crescendo's range leaves the swell");
+
+    // What a program does to one control: the first binding on the message,
+    // or one it also drives. -1 when it leaves the control where it is.
+    auto valueOf = [&](const mp::MidiMap& m, int n, mp::Id target) {
+      const auto act = m.actionFor(program(n), 127);
+      if (act.valid() && act.targetId == target) return act.value;
+      if (act.alsoDrives != nullptr)
+        for (const auto& more : *act.alsoDrives)
+          if (more.targetId == target) return mp::MidiMap::controlValue(more, program(n), 127);
+      return -1;
+    };
+    mp::MidiMap reread;
+    MP_CHECK(reread.fromText(map.toText()) && valueOf(reread, 52, 998) == 127 && valueOf(reread, 53, 998) < 0 &&
+                 valueOf(reread, 60, 997) == 0 && valueOf(reread, 60, 998) < 0,
+             "the ranges are saved and read back");
+  }
+};
+static ProgramChangeRangeTest g_programChangeRange;
+
 // Keys held while a manual button switches their keyboard sound on the new
 // manual, and let go of there they stop (#206): the struck-again notes were
 // filed under the button's channel, so their release and the next switch

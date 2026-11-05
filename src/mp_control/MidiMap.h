@@ -168,6 +168,10 @@ inline int sysExId(const uint8_t* data, int size) {
 // A note source's number that matches every note on its channel (#199): a
 // swell set from the velocity of whatever note a sequencer plays there.
 constexpr int kAnyNote = -1;
+// A program change source's number that matches every program on its channel
+// (#925): the programs from the binding's low to its high value move a shoe
+// or a crescendo across its travel, one program a step.
+constexpr int kProgramRange = -1;
 
 struct MidiSource {
   MidiSourceKind kind = MidiSourceKind::None;
@@ -480,6 +484,17 @@ public:
   static int controlValue(const MidiBinding& b, int raw) {
     const int v = b.scale(raw);
     return b.invert ? 127 - v : v;
+  }
+  // The same for the message that arrived. A program range reads the program
+  // number, and a program outside the range gives -1: the control stays where
+  // it is, and that program is free for a piston.
+  static int controlValue(const MidiBinding& b, const MidiSource& s, int raw) {
+    if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange) {
+      if (s.number < std::min(b.lowValue, b.highValue) || s.number > std::max(b.lowValue, b.highValue))
+        return -1;
+      raw = s.number;
+    }
+    return controlValue(b, raw);
   }
 
   // --- learn -------------------------------------------------------------

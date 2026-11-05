@@ -1209,3 +1209,7 @@ countries: cz
 "Every pipe..." = "Všechny píšťaly..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Všechny píšťaly řady najednou, pro nakreslení jejich hlasitosti nebo ladění přes celý rozsah"
 "Voicing: every pipe" = "Intonace: všechny píšťaly"
+"Range of programs" = "Rozsah programů"
+"Programs %1 to %2" = "Programy %1 až %2"
+"The program that closes it" = "Program, který jej zavře"
+"The program that opens it fully" = "Program, který jej plně otevře"

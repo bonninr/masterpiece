@@ -1209,3 +1209,7 @@ countries: fr be ca ch lu mc
 "Every pipe..." = "Chaque tuyau..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tous les tuyaux du rang à la fois, pour tracer leur niveau ou leur accord sur toute l'étendue"
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
+"Range of programs" = "Plage de programmes"
+"Programs %1 to %2" = "Programmes %1 à %2"
+"The program that closes it" = "Le programme qui le ferme"
+"The program that opens it fully" = "Le programme qui l'ouvre entièrement"

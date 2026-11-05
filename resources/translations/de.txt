@@ -1209,3 +1209,7 @@ countries: de at ch li lu
 "Every pipe..." = "Jede Pfeife..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle Pfeifen der Reihe auf einmal, um Lautstärke oder Stimmung über den Umfang zu zeichnen"
 "Voicing: every pipe" = "Intonation: jede Pfeife"
+"Range of programs" = "Bereich von Programmen"
+"Programs %1 to %2" = "Programme %1 bis %2"
+"The program that closes it" = "Das Programm, das ihn schließt"
+"The program that opens it fully" = "Das Programm, das ihn ganz öffnet"

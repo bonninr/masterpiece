@@ -79,6 +79,15 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
       return;
     }
   }
+  // And from a range of programs, one program a step (#925).
+  if (kind == MidiSourceKind::ProgramChange && offerAnyNote) {
+    box.addItem(TRANS("Range of programs"), kAnyNoteItem);
+    if (selected == kProgramRange || selected == kAnyNoteItem - 1) {
+      for (int n = 0; n < 128; ++n) box.addItem(juce::String(n + 1), n + 1);
+      box.setSelectedId(kAnyNoteItem, juce::dontSendNotification);
+      return;
+    }
+  }
   // A system exclusive message is identified by its bytes, taken by Listen.
   if (kind == MidiSourceKind::SysEx) {
     box.addItem(TRANS("Learned message"), 1);
@@ -239,6 +248,7 @@ public:
       low_.onValueChange = [this] { changed(); };
       high_.onValueChange = [this] { changed(); };
       invert_.onClick = [this] { changed(); };
+      showProgramRange();
     }
     addAndMakeVisible(listen_);
     listen_.onClick = [this] { if (onListen) onListen(); };
@@ -313,6 +323,7 @@ public:
 private:
   void changed() {
     binding_ = read();
+    if (!pressable(kind_)) showProgramRange();
     if (onChange) onChange();
   }
 
@@ -325,6 +336,23 @@ private:
     low_.setEnabled(values);
     high_.setEnabled(values);
   }
+  // A range of programs is counted from 1, as the Number box counts them,
+  // and its two ends are the first and the last program.
+  void showProgramRange() {
+    const bool programs = event_.getSelectedId() > 0 &&
+                          eventKind(event_.getSelectedId()) == MidiSourceKind::ProgramChange &&
+                          number_.getSelectedId() == kAnyNoteItem;
+    if (programs == showingPrograms_) return;
+    showingPrograms_ = programs;
+    for (auto* s : {&low_, &high_}) {
+      s->textFromValueFunction = [programs](double v) { return juce::String(static_cast<int>(v) + (programs ? 1 : 0)); };
+      s->valueFromTextFunction = [programs](const juce::String& t) { return t.getDoubleValue() - (programs ? 1 : 0); };
+      s->updateText();
+    }
+    low_.setTooltip(programs ? TRANS("The program that closes it") : juce::String());
+    high_.setTooltip(programs ? TRANS("The program that opens it fully") : juce::String());
+  }
+  bool showingPrograms_ = false;
 
   // The ways this row's message can work its target. A switch held by a
   // message with no release would stay drawn, so it toggles.
@@ -1218,6 +1246,10 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
                       : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
                                                                        : TRANS("CC %1");
   what = what.replace("%1", juce::String(b.source.number));
+  if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange)
+    what = TRANS("Programs %1 to %2")
+               .replace("%1", juce::String(std::min(b.lowValue, b.highValue) + 1))
+               .replace("%2", juce::String(std::max(b.lowValue, b.highValue) + 1));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
   return what;
 }

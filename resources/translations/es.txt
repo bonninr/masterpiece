@@ -1209,3 +1209,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Every pipe..." = "Cada tubo..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Todos los tubos de la hilera a la vez, para trazar su nivel o afinación a lo largo de la extensión"
 "Voicing: every pipe" = "Armonización: cada tubo"
+"Range of programs" = "Rango de programas"
+"Programs %1 to %2" = "Programas %1 a %2"
+"The program that closes it" = "El programa que lo cierra"
+"The program that opens it fully" = "El programa que lo abre del todo"

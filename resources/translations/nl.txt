@@ -1210,3 +1210,7 @@ countries: nl be sr
 "Every pipe..." = "Elke pijp..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle pijpen van de pijpenrij tegelijk, om hun niveau of stemming over het bereik te tekenen"
 "Voicing: every pipe" = "Intonatie: elke pijp"
+"Range of programs" = "Reeks programma's"
+"Programs %1 to %2" = "Programma's %1 tot %2"
+"The program that closes it" = "Het programma dat hem sluit"
+"The program that opens it fully" = "Het programma dat hem helemaal opent"

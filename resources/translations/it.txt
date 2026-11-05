@@ -1209,3 +1209,7 @@ countries: it ch sm va
 "Every pipe..." = "Ogni canna..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tutte le canne della fila insieme, per disegnarne livello o accordatura lungo l'estensione"
 "Voicing: every pipe" = "Intonazione: ogni canna"
+"Range of programs" = "Intervallo di programmi"
+"Programs %1 to %2" = "Programmi da %1 a %2"
+"The program that closes it" = "Il programma che lo chiude"
+"The program that opens it fully" = "Il programma che lo apre del tutto"

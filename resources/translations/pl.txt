@@ -1209,3 +1209,7 @@ countries: pl
 "Every pipe..." = "Każda piszczałka..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Wszystkie piszczałki szeregu naraz, aby rysować ich poziom lub strój w całej skali"
 "Voicing: every pipe" = "Intonacja: każda piszczałka"
+"Range of programs" = "Zakres programów"
+"Programs %1 to %2" = "Programy od %1 do %2"
+"The program that closes it" = "Program, który go zamyka"
+"The program that opens it fully" = "Program, który go w pełni otwiera"
