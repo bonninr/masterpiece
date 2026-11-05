@@ -149,6 +149,23 @@ public:
         proc.setStopEngaged(902, true);
       };
 
+      // #859: a computer key on the player's own pistons.
+      mp::KeyShortcut key;
+      key.key = "x";
+      proc.setObjectShortcuts(mp::MidiTargetKind::PlayerGeneralCancel, 0, {key});
+      drawBoth();
+      MP_CHECK(proc.applyKeyShortcut("x"), "the key is the piston's");
+      MP_CHECK(!proc.stopEngaged(901) && !proc.stopEngaged(902), "and clears the stops as General Cancel");
+      proc.clearObjectMapping(mp::MidiTargetKind::PlayerGeneralCancel, 0);
+      proc.setObjectShortcuts(mp::MidiTargetKind::Setter, 0, {key});
+      const bool setterWas = proc.captureMode();
+      proc.applyKeyShortcut("x");
+      MP_CHECK(proc.captureMode() != setterWas, "a key on the setter turns it over");
+      proc.applyKeyShortcut("x");
+      MP_CHECK(proc.captureMode() == setterWas, "and back");
+      proc.clearObjectMapping(mp::MidiTargetKind::Setter, 0);
+      MP_CHECK(!proc.applyKeyShortcut("x"), "a key let go of its piston does nothing");
+
       // Off: the manual's piston is the manual's alone.
       proc.setPedalCombinationsCoupled(false);
       drawBoth();
