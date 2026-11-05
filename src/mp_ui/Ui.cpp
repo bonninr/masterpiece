@@ -1269,9 +1269,11 @@ MasterpieceEditor::MasterpieceEditor(MasterpieceProcessor& p)
       const int panel = panelTabs_[static_cast<size_t>(at)];
       juce::PopupMenu menu;
       menu.addItem(1, TRANS("Rename %1...").replace("%1", panels_[static_cast<size_t>(panel)]->title()));
+      menu.addItem(2, TRANS("Delete %1").replace("%1", panels_[static_cast<size_t>(panel)]->title()));
       menu.showMenuAsync(juce::PopupMenu::Options(), [this, panel](int choice) {
         if (choice == 1 && panel < static_cast<int>(panels_.size()))
           panels_[static_cast<size_t>(panel)]->askForTitle();
+        else if (choice == 2) deletePanel(panel);
       });
       return;
     }
