@@ -1196,3 +1196,7 @@ countries: cz
 "Exit full screen" = "Ukončit celou obrazovku"
 "Or press Escape or F11" = "Nebo stiskněte Esc nebo F11"
 "Remove this piston" = "Odebrat toto tlačítko"
+"Off at" = "Vypnuto při"
+"On at" = "Zapnuto při"
+"The value your console sends for off" = "Hodnota, kterou váš hrací stůl posílá pro vypnutí"
+"The value your console sends for on" = "Hodnota, kterou váš hrací stůl posílá pro zapnutí"

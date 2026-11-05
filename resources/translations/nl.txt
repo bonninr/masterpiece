@@ -1197,3 +1197,7 @@ countries: nl be sr
 "Exit full screen" = "Volledig scherm verlaten"
 "Or press Escape or F11" = "Of druk op Esc of F11"
 "Remove this piston" = "Deze drukknop verwijderen"
+"Off at" = "Uit bij"
+"On at" = "Aan bij"
+"The value your console sends for off" = "De waarde die uw speeltafel stuurt voor uit"
+"The value your console sends for on" = "De waarde die uw speeltafel stuurt voor aan"

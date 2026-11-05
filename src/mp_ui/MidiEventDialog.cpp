@@ -184,7 +184,10 @@ public:
     event_.onChange = [this] {
       fillNumbers(number_, eventKind(event_.getSelectedId()), number_.getSelectedId() - 1,
                   kind_ == MidiTargetKind::ContinuousControl);
-      if (pressable(kind_)) fillActions(read().trigger);
+      if (pressable(kind_)) {
+        fillActions(read().trigger);
+        showValues();
+      }
       changed();
     };
 
@@ -192,6 +195,20 @@ public:
       fillActions(b.trigger);
       addAndMakeVisible(action_);
       action_.onChange = [this] { changed(); };
+      // The values a button sends for off and for on (#922): a console that
+      // sends 1 and 2, or 127 for off and 0 for on, as GrandOrgue's on/off
+      // events take them. A press counts from half-way between the two.
+      styleValue(low_, 0, 127);
+      styleValue(high_, 0, 127);
+      low_.setValue(b.lowValue, juce::dontSendNotification);
+      high_.setValue(b.highValue, juce::dontSendNotification);
+      low_.setTooltip(TRANS("The value your console sends for off"));
+      high_.setTooltip(TRANS("The value your console sends for on"));
+      for (juce::Slider* v : {&low_, &high_}) {
+        addAndMakeVisible(*v);
+        v->onValueChange = [this] { changed(); };
+      }
+      showValues();
     } else {
       // A shoe's travel, closed to open: a console's pedal rarely sends the
       // whole 0..127 (#90 sent 55..127, so the box only half closed).
@@ -217,8 +234,8 @@ public:
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
     if (pressable(kind))
-      return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
-              {TRANS("What it does"), 150}, {"", 84}, {"", 28}};
+      return {{TRANS("Device"), 130}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
+              {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84}, {"", 84}, {"", 28}};
     return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
             {TRANS("Closed at"), 72}, {TRANS("Open at"), 72}, {"", 60}, {"", 84}, {"", 28}};
   }
@@ -230,6 +247,8 @@ public:
         {&event_, cols[2].second}, {&number_, cols[3].second}};
     if (pressable(kind_)) {
       cells.push_back({&action_, cols[4].second});
+      cells.push_back({&low_, cols[5].second});
+      cells.push_back({&high_, cols[6].second});
     } else {
       cells.push_back({&low_, cols[4].second});
       cells.push_back({&high_, cols[5].second});
@@ -262,6 +281,8 @@ public:
                   : a == 3 ? MidiTrigger::EngageOnly
                   : a == 4 ? MidiTrigger::DisengageOnly
                            : MidiTrigger::Toggle;
+      b.lowValue = static_cast<int>(low_.getValue());
+      b.highValue = static_cast<int>(high_.getValue());
     } else {
       b.lowValue = static_cast<int>(low_.getValue());
       b.highValue = static_cast<int>(high_.getValue());
@@ -274,6 +295,16 @@ private:
   void changed() {
     binding_ = read();
     if (onChange) onChange();
+  }
+
+  // A program change or a system exclusive message carries no value to
+  // read on or off from.
+  void showValues() {
+    const int e = event_.getSelectedId();
+    const bool values = e == 0 || eventKind(e) == MidiSourceKind::Note ||
+                        eventKind(e) == MidiSourceKind::ControlChange;
+    low_.setEnabled(values);
+    high_.setEnabled(values);
   }
 
   // The ways this row's message can work its target. A switch held by a
@@ -1190,7 +1221,8 @@ juce::String MidiEventDialog::targetName(const MasterpieceProcessor& p, MidiTarg
 void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                            const juce::String& name) {
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
-  content->setSize(MidiMap::hasSendState(kind) ? 860 : 760, 500);
+  // Wide enough for a switch's or a piston's row with its off and on values.
+  content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 920 : 760, 500);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
   o.dialogTitle = (name.isNotEmpty() ? name : objectName(p, kind, id)) + " - MIDI";

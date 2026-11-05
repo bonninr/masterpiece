@@ -1196,3 +1196,7 @@ countries: it ch sm va
 "Exit full screen" = "Esci da schermo intero"
 "Or press Escape or F11" = "Oppure premi Esc o F11"
 "Remove this piston" = "Rimuovi questo pulsante"
+"Off at" = "Spento a"
+"On at" = "Acceso a"
+"The value your console sends for off" = "Il valore che la consolle invia per spento"
+"The value your console sends for on" = "Il valore che la consolle invia per acceso"

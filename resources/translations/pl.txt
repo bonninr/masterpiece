@@ -1196,3 +1196,7 @@ countries: pl
 "Exit full screen" = "Zamknij pełny ekran"
 "Or press Escape or F11" = "Albo naciśnij Esc lub F11"
 "Remove this piston" = "Usuń ten przycisk"
+"Off at" = "Wył. przy"
+"On at" = "Wł. przy"
+"The value your console sends for off" = "Wartość, którą stół gry wysyła dla wyłączenia"
+"The value your console sends for on" = "Wartość, którą stół gry wysyła dla włączenia"
