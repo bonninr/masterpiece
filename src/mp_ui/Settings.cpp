@@ -2860,7 +2860,16 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   styleLabel(noteLabel_, TRANS("MIDI note"));
   addAndMakeVisible(note_);
   note_.setRange(0, 127, 1);
+  // The note's name beside its number; either can be typed as a number.
+  note_.textFromValueFunction = [](double v) {
+    const int n = static_cast<int>(v);
+    return juce::MidiMessage::getMidiNoteName(n, true, true, 4) + " (" + juce::String(n) + ")";
+  };
+  note_.valueFromTextFunction = [](const juce::String& text) {
+    return (text.containsChar('(') ? text.fromFirstOccurrenceOf("(", false, false) : text).getDoubleValue();
+  };
   note_.setValue(60, juce::dontSendNotification);
+  note_.updateText();
   note_.setEnabled(false);
   note_.onValueChange = [this] { loadCurrentIntoSliders(); };
 
