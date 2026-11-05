@@ -60,6 +60,8 @@ countries: it ch sm va
 "Clear mapping" = "Cancella associazione"
 "Combinations" = "Combinazioni"
 "Combinations and sequencer" = "Combinazioni e sequencer"
+"Combinations only" = "Solo combinazioni"
+"Sequencer only" = "Solo sequencer"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Dopo che un pulsante ha memorizzato una combinazione, Set si disattiva e la pressione successiva la richiama: pulsanti qui, sulla consolle e via MIDI"
 
 # src/mp_ui/CombinationsWindow.h

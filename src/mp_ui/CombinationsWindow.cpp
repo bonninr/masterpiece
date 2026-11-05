@@ -704,8 +704,8 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   leaveBass_.onClick = [this] { proc_.setLeaveBassAndMelody(leaveBass_.getToggleState()); };
   content_.addAndMakeVisible(leaveBass_);
   show_.addItem(TRANS("Combinations and sequencer"), 1);
-  show_.addItem(TRANS("Combinations"), 2);
-  show_.addItem(TRANS("Sequencer"), 3);
+  show_.addItem(TRANS("Combinations only"), 2);
+  show_.addItem(TRANS("Sequencer only"), 3);
   show_.onChange = [this] {
     proc_.setCombinationsView(show_.getSelectedId() - 1);
     panel_->showView();

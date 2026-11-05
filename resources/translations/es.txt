@@ -60,6 +60,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Clear mapping" = "Borrar asignación"
 "Combinations" = "Combinaciones"
 "Combinations and sequencer" = "Combinaciones y secuenciador"
+"Combinations only" = "Solo combinaciones"
+"Sequencer only" = "Solo secuenciador"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Tras guardar una combinación con un pistón, Set se desactiva y la siguiente pulsación la recupera: pistones de aquí, de la consola y por MIDI"
 
 # src/mp_ui/CombinationsWindow.h

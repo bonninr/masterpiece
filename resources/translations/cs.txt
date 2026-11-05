@@ -60,6 +60,8 @@ countries: cz
 "Clear mapping" = "Smazat přiřazení"
 "Combinations" = "Kombinace"
 "Combinations and sequencer" = "Kombinace a sekvencer"
+"Combinations only" = "Pouze kombinace"
+"Sequencer only" = "Pouze sekvencer"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Poté, co tlačítko uloží kombinaci, Set se vypne a další stisk ji vyvolá: tlačítka zde, na hracím stole i přes MIDI"
 
 # src/mp_ui/CombinationsWindow.h
