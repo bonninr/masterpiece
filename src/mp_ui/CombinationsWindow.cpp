@@ -267,8 +267,10 @@ void CombinationsPanel::applyView() {
     digits_[static_cast<size_t>(i)]->setTooltip(
         simple_ ? TRANS("General %1 of this level").replace("%1", juce::String(i))
                 : TRANS("The frame ending in %1, among the ten shown").replace("%1", juce::String(i)));
-  setSize(getWidth(), preferredHeight(getWidth()));
+  const int w = std::max(getWidth(), preferredWidth());
+  setSize(w, preferredHeight(w));
   resized();
+  if (onWidthChanged) onWidthChanged();
 }
 
 CombinationsPanel::~CombinationsPanel() { stopTimer(); }
@@ -339,8 +341,10 @@ void CombinationsPanel::rebuild() {
 
   refreshSets();
   refreshState();
-  setSize(getWidth() > 0 ? getWidth() : 620, preferredHeight(getWidth() > 0 ? getWidth() : 620));
+  const int w = std::max(getWidth(), preferredWidth());
+  setSize(w, preferredHeight(w));
   resized();
+  if (onWidthChanged) onWidthChanged();
 }
 
 int CombinationsPanel::preferredHeight(int /*width*/) const {
@@ -350,6 +354,21 @@ int CombinationsPanel::preferredHeight(int /*width*/) const {
   if (!divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
+}
+
+// The widths resized() lays out, row by row.
+int CombinationsPanel::preferredWidth() const {
+  const auto& pc = proc_.playerCombinations();
+  int w = simple_ ? 56 + kGap + 56 + 12 + 48 + 48 + 110 + 48 + 48
+                  : 56 + kGap + 56 + 12 + 34 + 40 + 34 + 110 + 34 + 40 + 34 + kGap * 2 + 56 + 56;
+  if (!simple_)
+    w = std::max(w, kDivisionLabelW + std::min(pc.generalCount(), kPerRow) * (kPistonW + kGap));
+  if (!divisions_.empty()) {
+    w = std::max(w, kDivisionLabelW + 26 + 26 + kGap * 2 + 170);
+    w = std::max(w, kDivisionLabelW + pc.divisionalCount() * (kPistonW + kGap) + kGap * 2 + kPistonW);
+  }
+  w = std::max(w, kDivisionLabelW + 200 + kGap + 90 + 70);
+  return w + 2 * kMargin;
 }
 
 void CombinationsPanel::resized() {
@@ -632,7 +651,8 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
   setUsingNativeTitleBar(true);
   setResizable(true, false);
   viewport_.setViewedComponent(panel_.get(), false);
-  viewport_.setScrollBarsShown(true, false);
+  // Sideways too, on a screen narrower than a long row of divisionals.
+  viewport_.setScrollBarsShown(true, true);
   viewport_.setScrollBarThickness(10);
   // The same slim, dark bar as the stop list: JUCE's default blue thumb reads
   // as a control beside an organ console.
@@ -672,8 +692,10 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
     viewport_.setBounds(r);
   };
   setContentNonOwned(&content_, false);
-  setSize(660, std::min(panel_->preferredHeight(660) + 26, 640));
+  const int w = neededWidth();
+  setSize(w, std::min(panel_->preferredHeight(w) + 26, 640));
   fitToScreen(*this);
+  panel_->onWidthChanged = [this] { widenToFit(); };
   placing_ = false;
   // Off the screen until shown (showFloating). Built hidden, it is still a
   // desktop window: on Linux, setUsingNativeTitleBar and setResizable above
@@ -686,9 +708,44 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
 
 void CombinationsWindow::resized() {
   juce::DocumentWindow::resized();
-  const int w = viewport_.getMaximumVisibleWidth();
-  if (w > 0) panel_->setSize(w, panel_->preferredHeight(w));
+  const int visible = viewport_.getMaximumVisibleWidth();
+  if (visible > 0) {
+    const int w = std::max(visible, panel_->preferredWidth());
+    panel_->setSize(w, panel_->preferredHeight(w));
+  }
   remember();
+}
+
+int CombinationsWindow::neededWidth() const {
+  // The boxes' row: each box its text and its tick, as resized() lays them.
+  const juce::Font font(juce::FontOptions(15.0f));
+  auto box = [&font](const juce::ToggleButton& b) {
+    return juce::GlyphArrangement::getStringWidthInt(font, b.getButtonText()) + 34;
+  };
+  const int boxes = 16 + box(leaveBass_) + std::max(260, box(setOff_)) + std::max(150, box(onTop_));
+  int w = std::max(boxes, panel_->preferredWidth() + viewport_.getScrollBarThickness());
+  const auto& displays = juce::Desktop::getInstance().getDisplays();
+  const auto* d = displays.getDisplayForRect(getScreenBounds());
+  if (d == nullptr) d = displays.getPrimaryDisplay();
+  if (d != nullptr) w = std::min(w, d->userArea.getWidth());
+  return w;
+}
+
+void CombinationsWindow::widenToFit() {
+  if (kMobile) return;
+  const int w = neededWidth();
+  // Sizing is not the player moving it: a load rebuilds the panel before the
+  // window is placed, and remembering then saved it closed, so a window left
+  // open stayed shut.
+  const bool wasPlacing = placing_;
+  placing_ = true;
+  setResizeLimits(w, 160, 16384, 16384);
+  if (getWidth() < w) {
+    setSize(w, getHeight());
+    keepOnScreen(*this);
+  }
+  placing_ = wasPlacing;
+  if (open_) remember();
 }
 
 void CombinationsWindow::moved() {
@@ -741,6 +798,9 @@ void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTi
     setBounds(besideThis.getRight() - getWidth() - 20,
               besideThis.getBottom() - getHeight() - 20, getWidth(), getHeight());
   }
+  // A width kept from before this organ's pistons, or from an older version,
+  // grows to show them whole.
+  widenToFit();
   open_ = saved.w > 0 ? saved.open : openFirstTime;
   if (open_) refreshToggles();
   // Opened with the organ, while the program is still coming to the front:

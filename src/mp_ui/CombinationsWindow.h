@@ -49,6 +49,11 @@ public:
   void rebuild();
   // The height the content wants at a given width, for the window to size to.
   int preferredHeight(int width) const;
+  // The width every row needs to be seen whole: the steps, ten generals a
+  // line, a division's pistons and its cancel.
+  int preferredWidth() const;
+  // After the rows change, a count or the view: the window widens to them.
+  std::function<void()> onWidthChanged;
   // What the processor holds now, and the display mode: on the panel's timer.
   void refresh() { refreshState(); }
 
@@ -142,6 +147,10 @@ private:
   // The three boxes above the pistons, from what the processor holds now.
   void refreshToggles();
   void remember();
+  // The width the boxes and the pistons need, as far as the screen allows;
+  // a window narrower than that is widened, and kept at least that wide.
+  int neededWidth() const;
+  void widenToFit();
   MasterpieceProcessor& proc_;
   // The checkbox above the pistons, then the pistons.
   struct Content : juce::Component {
