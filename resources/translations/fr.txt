@@ -625,6 +625,8 @@ countries: fr be ca ch lu mc
 "The channel each keyboard of an organ comes in on, for organs with no channels saved for them. An organ's own choice keeps it." = "Le canal de chaque clavier d'un orgue, pour les orgues sans canaux enregistrés. Le choix propre à un orgue est conservé."
 "Manual %1" = "Clavier %1"
 "Send stop changes on the MIDI output" = "Envoyer les changements de jeux sur la sortie MIDI"
+"Send events leave out a console's own message" = "Les événements d'envoi omettent le message propre de la console"
+"For a console that lights its own lamps: a stop moved from the console leaves out the Send event that repeats the same message" = "Pour une console qui allume ses propres voyants : un jeu actionné depuis la console omet l'événement d'envoi qui répète le même message"
 "General Cancel also puts the keyboards back on their own manuals" = "L'annulateur général remet aussi les claviers MIDI sur leurs propres claviers"
 "Sustain pedal: controller 64 holds the notes let go" = "Pédale de sustain : le contrôleur 64 maintient les notes relâchées"
 "Learn sequencer +" = "Apprendre séquenceur +"

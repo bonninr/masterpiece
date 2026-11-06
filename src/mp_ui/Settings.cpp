@@ -1865,6 +1865,11 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   feedback_.onClick = [this] {
     proc_.setMidiFeedbackEnabled(feedback_.getToggleState());
   };
+  addAndMakeVisible(holdEcho_);
+  holdEcho_.setToggleState(proc_.midiSendsHoldEcho(), juce::dontSendNotification);
+  holdEcho_.setTooltip(TRANS("For a console that lights its own lamps: a stop moved from the console leaves out "
+                             "the Send event that repeats the same message"));
+  holdEcho_.onClick = [this] { proc_.setMidiSendsHoldEcho(holdEcho_.getToggleState()); };
   addAndMakeVisible(cancelResets_);
   cancelResets_.setToggleState(proc_.cancelResetsKeyboards(), juce::dontSendNotification);
   cancelResets_.onClick = [this] {
@@ -2129,7 +2134,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 }
 
 void MidiPanel::applyPart() {
-  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &cancelResets_,
+  std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
                                         &archiveSize_, &archiveAge_, &stepperLabel_, &learnPrev_, &learnNext_,
                                         &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
@@ -2590,6 +2595,7 @@ void MidiPanel::resized() {
     output_.setBounds(row.removeFromLeft(300));
     r.removeFromTop(4);
     feedback_.setBounds(r.removeFromTop(kRow));
+    holdEcho_.setBounds(r.removeFromTop(kRow));
     sustain_.setBounds(r.removeFromTop(kRow));
   }
   if (part_ == Part::Console && !shownSimple_) {
