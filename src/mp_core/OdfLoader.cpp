@@ -62,7 +62,7 @@ const std::unordered_set<std::string>& knownTables() {
     "DisplayPage", "ImageSet", "ImageSetElement", "ImageSetInstance",
     "TextInstance", "TextStyle",
     // Masterpiece's own, written by the GrandOrgue import
-    "MasterpieceRankWindchest", "MasterpieceSwitchDisplay",
+    "MasterpieceRankWindchest", "MasterpieceSwitchDisplay", "MasterpieceGrandOrgueObject",
     // combinations
     "Combination", "CombinationElement",
     // physical modelling (parsed in M2/M3; recognised now so they don't warn)
@@ -1151,6 +1151,18 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     const Id shown = fieldInt(row, "ShownSwitchID", "b", 0);
     if (it != outModel.switches.end() && outModel.switches.count(shown) != 0)
       it->second.dispShownSwitchId = shown;
+  });
+  // A GrandOrgue set's objects by section, for its MIDI settings (#865).
+  forEachRow(odfRoot, "MasterpieceGrandOrgueObject", [&](pugi::xml_node row) {
+    OrganModel::GrandOrgueObject object;
+    const int kind = fieldInt(row, "Kind", "b", 0);
+    object.id = fieldInt(row, "ObjectID", "c", 0);
+    if (kind < OrganModel::GrandOrgueObject::Switch || kind > OrganModel::GrandOrgueObject::Keyboard) return;
+    object.kind = static_cast<OrganModel::GrandOrgueObject::Kind>(kind);
+    std::string section = field(row, "Section", "a");
+    std::transform(section.begin(), section.end(), section.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!section.empty()) outModel.grandOrgueObjects[section] = object;
   });
 
   // ---- M3.1: the wind system. Compartments, the pipes between them, and

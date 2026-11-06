@@ -46,12 +46,18 @@ juce::File writeOrgan(const juce::File& root) {
       "<ObjectList ObjectType=\"Pipe_SoundEngine01\">"
       "<Pipe_SoundEngine01><PipeID>301</PipeID><RankID>201</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
       "<Pipe_SoundEngine01><PipeID>302</PipeID><RankID>202</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+      "<Pipe_SoundEngine01><PipeID>303</PipeID><RankID>201</RankID><NormalMIDINoteNumber>37</NormalMIDINoteNumber></Pipe_SoundEngine01>"
+      "<Pipe_SoundEngine01><PipeID>304</PipeID><RankID>202</RankID><NormalMIDINoteNumber>37</NormalMIDINoteNumber></Pipe_SoundEngine01>"
       "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
       "<Pipe_SoundEngine01_Layer><LayerID>401</LayerID><PipeID>301</PipeID></Pipe_SoundEngine01_Layer>"
       "<Pipe_SoundEngine01_Layer><LayerID>402</LayerID><PipeID>302</PipeID></Pipe_SoundEngine01_Layer>"
+      "<Pipe_SoundEngine01_Layer><LayerID>403</LayerID><PipeID>303</PipeID></Pipe_SoundEngine01_Layer>"
+      "<Pipe_SoundEngine01_Layer><LayerID>404</LayerID><PipeID>304</PipeID></Pipe_SoundEngine01_Layer>"
       "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
       "<Pipe_SoundEngine01_AttackSample><UniqueID>501</UniqueID><LayerID>401</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
       "<Pipe_SoundEngine01_AttackSample><UniqueID>502</UniqueID><LayerID>402</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+      "<Pipe_SoundEngine01_AttackSample><UniqueID>503</UniqueID><LayerID>403</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
+      "<Pipe_SoundEngine01_AttackSample><UniqueID>504</UniqueID><LayerID>404</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>"
       "</ObjectList><ObjectList ObjectType=\"Keyboard\">"
       "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
       "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
@@ -219,8 +225,75 @@ public:
   }
 };
 
+// Several ranks chosen at once, a stop's or a chest's (#848): the test note
+// sounds every one of them, another key moves it to its neighbour, and a
+// step from the console moves each rank or pipe reached.
+class VoicingGroupTest final : public mp::test::Test {
+public:
+  VoicingGroupTest() : Test("functional.voicing.group", Category::Functional) {}
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-voicing-group");
+    const juce::File odf = writeOrgan(root);
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto block = [&](juce::MidiBuffer m = {}) {
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+    const auto run = [&](int n) {
+      for (int i = 0; i < n; ++i) block();
+    };
+    const auto voices = [&] { return proc.voiceStats().activeVoices; };
+    const auto press = [&](int key) {
+      juce::MidiBuffer on, off;
+      on.addEvent(juce::MidiMessage::noteOn(1, key, 0.8f), 0);
+      off.addEvent(juce::MidiMessage::noteOff(1, key), 0);
+      block(on);
+      block(off);
+      run(400);
+    };
+
+    mp::VoicingTarget both;
+    both.ranks = {201, 202};
+    proc.setVoicingTarget(both);
+    MP_CHECK(proc.voicingRank() == 201 && proc.voicingPipe() == 0, "the first rank is reported");
+    proc.setTestNote(true);
+    press(36);
+    MP_CHECK(voices() == 2 && proc.testNoteKey() == 36, "the test note sounds both ranks");
+    press(37);
+    MP_CHECK(voices() == 2 && proc.testNoteKey() == 37, "another key moves it to its neighbour");
+    press(37);
+    MP_CHECK(voices() == 0 && proc.testNoteKey() == -1, "the same key again stops it");
+    press(37);
+    MP_CHECK(voices() == 2, "and plays it again");
+    proc.setTestNote(false);
+    run(400);
+    MP_CHECK(voices() == 0, "turned off, it stops");
+
+    // A step on both ranks, then on the C# side of both chests.
+    MP_CHECK(proc.applyVoicingStep(mp::MidiTargetKind::VoicingLevelDown), "a step is taken");
+    MP_CHECK(proc.voicing().live().rank(201).gainDb == -0.5f && proc.voicing().live().rank(202).gainDb == -0.5f,
+             "both ranks move half a decibel");
+    both.scope = mp::VoicingScope::CSharpSide;
+    proc.setVoicingTarget(both);
+    MP_CHECK(proc.applyVoicingStep(mp::MidiTargetKind::VoicingTuneUp), "a step on one side is taken");
+    const auto& v = proc.voicing().live();
+    MP_CHECK(v.pipe(303).tuningCents == 1.0f && v.pipe(304).tuningCents == 1.0f, "the C# pipes move a cent");
+    MP_CHECK(v.pipe(301).isNeutral() && v.pipe(302).isNeutral(), "the C pipes stay");
+    both.scope = mp::VoicingScope::Pipe;
+    both.note = 48;
+    proc.setVoicingTarget(both);
+    MP_CHECK(!proc.applyVoicingStep(mp::MidiTargetKind::VoicingTuneUp), "a note with no pipe takes no step");
+  }
+};
+
 VoicingTestNoteTest g_testNote;
 VoicingStepsTest g_steps;
+VoicingGroupTest g_group;
 
 }  // namespace
 

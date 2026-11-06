@@ -387,7 +387,10 @@ private:
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
   void showDefaultChannels();
-  juce::ComboBox output_;
+  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
+  juce::TextButton output_;
+  void showOutputMenu();
+  void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
@@ -402,6 +405,11 @@ private:
   // Simple mode leaves them out.
   juce::TextButton saveMap_{TRANS("Save mappings")};
   juce::TextButton clearMap_{TRANS("Clear all mappings")};
+  // A GrandOrgue set's MIDI settings, read from GrandOrgue's own settings file
+  // for it (#865).
+  juce::TextButton fromGrandOrgue_{TRANS("From GrandOrgue...")};
+  std::unique_ptr<juce::FileChooser> grandOrgueChooser_;
+  void importFromGrandOrgue();
   // Pairing a Bluetooth MIDI keyboard, where the system offers it (#680).
   juce::TextButton bluetooth_{TRANS("Bluetooth MIDI...")};
   // Every learn button on the page works as a console control's MIDI menu
@@ -475,8 +483,15 @@ public:
   void refresh();
 
 private:
-  void pushCurrent();
+  // The values named, as kVoicingLevel etc. (VoicingSelection.h), from the
+  // sliders to every rank or pipe chosen.
+  void pushCurrent(unsigned which);
   void loadCurrentIntoSliders();
+  // What the sliders work (#848): the ranks chosen, by rank, stop, division
+  // or windchest, and the whole of each, one pipe, or one side of the chest.
+  VoicingTarget target() const;
+  void fillChoices();
+  void chooseRank(Id rankId);
   void updateStatus();
   // The rank or pipe shown, handed to the processor for the MIDI steps and
   // the test note (#637).
@@ -486,15 +501,19 @@ private:
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
-  juce::Label rankLabel_;
-  juce::ComboBox rank_;
+  juce::ComboBox chooseBy_;  // rank, stop, division, windchest
+  juce::ComboBox rank_;      // the rank, stop, division or windchest
+  std::vector<std::vector<Id>> choiceRanks_;  // the ranks of each item in rank_
+  // Off, the keys played with the test note leave the pipe chosen where it
+  // is, so its neighbours can be heard beside it.
+  juce::ToggleButton keysChoose_{TRANS("Keys choose the note")};
   // A key plays this rank alone, the next key stops it.
   juce::ToggleButton testNote_{TRANS("Test note")};
   juce::TextButton midi_{TRANS("MIDI")};
   uint32_t shownSteps_ = 0;
   int shownTestKey_ = -1;
   juce::Label scopeLabel_;
-  juce::ComboBox scope_;   // the whole rank, or one note of it
+  juce::ComboBox scope_;   // the whole rank, one note of it, or one side of the chest
   juce::Label noteLabel_;
   juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
   // Every pipe of the rank at once, in a window of its own (#849).
@@ -562,8 +581,13 @@ private:
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
-  std::vector<Fader> pairFaders_, divisionFaders_, rankFaders_;
-  juce::Label pairsHeading_, divisionsHeading_, ranksHeading_;
+  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, rankFaders_;
+  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, ranksHeading_;
+  // A perspective's or a windchest group's pair: chosen here, it moves every
+  // rank of the group; it shows the pair while they all share one.
+  std::vector<std::unique_ptr<juce::ComboBox>> groupPairs_;
+  void fillGroupPairs();
+  void showGroupPairs();
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;
