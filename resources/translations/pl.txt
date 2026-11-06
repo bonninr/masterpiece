@@ -1209,6 +1209,8 @@ countries: pl
 "Every pipe..." = "Każda piszczałka..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Wszystkie piszczałki szeregu naraz, aby rysować ich poziom lub strój w całej skali"
 "Voicing: every pipe" = "Intonacja: każda piszczałka"
+"Several pairs" = "Kilka par"
+"Sends every rank of this group to one pair" = "Kieruje wszystkie szeregi tej grupy do jednej pary"
 "From GrandOrgue..." = "Z GrandOrgue..."
 "From GrandOrgue" = "Z GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Ustawienia MIDI tych organów w GrandOrgue, z ich pliku ustawień (.cmb)"

@@ -3810,6 +3810,7 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
   for (auto* h : {&pairsHeading_, &divisionsHeading_, &ranksHeading_}) rankHolder_.addAndMakeVisible(*h);
   styleLabel(pairsHeading_, TRANS("Output pairs"));
   styleLabel(divisionsHeading_, TRANS("Divisions"));
+  styleLabel(groupsHeading_, TRANS("Perspectives"));
   styleLabel(ranksHeading_, TRANS("Ranks"));
 
   refresh();
@@ -3852,6 +3853,7 @@ int MixerPanel::faderLevel(const Fader& f) const {
   switch (f.kind) {
     case MidiTargetKind::PairLevel: return proc_.livePairLevel(f.index);
     case MidiTargetKind::DivisionLevel: return proc_.liveDivisionLevel(f.index);
+    case MidiTargetKind::GroupLevel: return proc_.liveGroupLevel(f.index);
     case MidiTargetKind::RankLevel: return proc_.liveRankLevel(f.index);
     default: return LiveLevels::kFull;
   }
@@ -3861,6 +3863,7 @@ void MixerPanel::setFaderLevel(const Fader& f, int value) {
   switch (f.kind) {
     case MidiTargetKind::PairLevel: proc_.setLivePairLevel(f.index, value); break;
     case MidiTargetKind::DivisionLevel: proc_.setLiveDivisionLevel(f.index, value); break;
+    case MidiTargetKind::GroupLevel: proc_.setLiveGroupLevel(f.index, value); break;
     case MidiTargetKind::RankLevel: proc_.setLiveRankLevel(f.index, value); break;
     default: break;
   }
@@ -3896,7 +3899,7 @@ void MixerPanel::faderMidiMenu(Fader& f) {
 }
 
 void MixerPanel::timerCallback() {
-  for (auto* list : {&pairFaders_, &divisionFaders_, &rankFaders_})
+  for (auto* list : {&pairFaders_, &divisionFaders_, &groupFaders_, &rankFaders_})
     for (auto& f : *list) {
       if (f.slider->isMouseButtonDown()) continue;
       const int now = faderLevel(f);
@@ -3941,7 +3944,32 @@ void MixerPanel::setBusCount(int buses) {
     rankBuses_[i]->setSelectedId(sel >= 1 && sel <= buses ? sel : 1,
                                  juce::dontSendNotification);
   }
+  fillGroupPairs();
   pushRouting();
+}
+
+void MixerPanel::fillGroupPairs() {
+  const int buses = juce::jmax(1, proc_.mixBusCount());
+  for (auto& box : groupPairs_) {
+    box->clear(juce::dontSendNotification);
+    for (int i = 1; i <= buses; ++i) box->addItem(TRANS("Pair %1").replace("%1", juce::String(i)), i);
+  }
+}
+
+// Each group's box shows the pair its ranks share, or nothing while they
+// play through several.
+void MixerPanel::showGroupPairs() {
+  for (size_t g = 0; g < groupPairs_.size(); ++g) {
+    int shared = 0;
+    bool mixed = false;
+    for (size_t i = 0; i < rankIds_.size() && !mixed; ++i) {
+      if (proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) != static_cast<int>(g)) continue;
+      const int pair = rankBuses_[i]->getSelectedId();
+      if (shared == 0) shared = pair;
+      else if (pair != shared) mixed = true;
+    }
+    groupPairs_[g]->setSelectedId(mixed ? 0 : shared, juce::dontSendNotification);
+  }
 }
 
 void MixerPanel::pushRouting() {
@@ -3962,6 +3990,7 @@ void MixerPanel::pushRouting() {
                           .replace("%2", juce::String((int)d.ranksRoutedToMissingBus.size()));
   status_.setText(text, juce::dontSendNotification);
   showOutputs();
+  showGroupPairs();
 }
 
 void MixerPanel::showOutputs() {
@@ -3998,6 +4027,8 @@ void MixerPanel::refresh() {
   rankBuses_.clear();
   pairFaders_.clear();
   divisionFaders_.clear();
+  groupFaders_.clear();
+  groupPairs_.clear();
   rankFaders_.clear();
   rankGroups_.clear();
   rankGroupAbove_.clear();
@@ -4016,6 +4047,35 @@ void MixerPanel::refresh() {
       divisionNames.push_back(d.name.empty() ? juce::String(static_cast<int>(id)) : juce::String(d.name));
       addFader(divisionFaders_, MidiTargetKind::DivisionLevel, id, proc_.liveDivisionIndexOf(id), divisionNames.back());
     }
+  }
+  // The perspectives, front against rear in one move (#930), or a
+  // GrandOrgue set's windchest groups, named as the set names them.
+  {
+    const auto& names = proc_.liveGroupNames();
+    if (!names.empty()) {
+      groupsHeading_.setText(groupedByWindchest(proc_.organModel()) ? TRANS("Windchest groups") : TRANS("Perspectives"),
+                             juce::dontSendNotification);
+      rankHolder_.addAndMakeVisible(groupsHeading_);
+    }
+    for (size_t g = 0; g < names.size(); ++g) {
+      juce::String name(juce::CharPointer_UTF8(names[g].c_str()));
+      name = name.substring(0, 1).toUpperCase() + name.substring(1);
+      addFader(groupFaders_, MidiTargetKind::GroupLevel, static_cast<Id>(g + 1), static_cast<int>(g), name);
+      auto box = std::make_unique<juce::ComboBox>();
+      box->setTextWhenNothingSelected(TRANS("Several pairs"));
+      box->setTooltip(TRANS("Sends every rank of this group to one pair"));
+      box->onChange = [this, g] {
+        const int pair = groupPairs_[g]->getSelectedId();
+        if (pair <= 0) return;
+        for (size_t i = 0; i < rankIds_.size(); ++i)
+          if (proc_.liveGroupOfRank(proc_.liveRankIndexOf(rankIds_[i])) == static_cast<int>(g))
+            rankBuses_[i]->setSelectedId(pair, juce::dontSendNotification);
+        pushRouting();
+      };
+      rankHolder_.addAndMakeVisible(*box);
+      groupPairs_.push_back(std::move(box));
+    }
+    fillGroupPairs();
   }
 
   // By division, a stop's tremmed ranks with its others, then by id.
@@ -4113,8 +4173,9 @@ void MixerPanel::resized() {
   const bool filtering = filter_.getText().trim().isNotEmpty();
   int shownRanks = 0;
   for (size_t i = 0; i < rankIds_.size(); ++i) shownRanks += rankShown(i) ? 1 : 0;
-  const int rows = 3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size()) + shownRanks +
-                   (filtering ? 0 : static_cast<int>(rankGroups_.size()));
+  const int rows = 3 + (groupFaders_.empty() ? 0 : 1) +
+                   static_cast<int>(pairFaders_.size() + divisionFaders_.size() + groupFaders_.size()) +
+                   shownRanks + (filtering ? 0 : static_cast<int>(rankGroups_.size()));
   rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
   int y = 0;
   const auto line = [&] {
@@ -4132,6 +4193,14 @@ void MixerPanel::resized() {
   for (auto& f : pairFaders_) place(f, line());
   divisionsHeading_.setBounds(line());
   for (auto& f : divisionFaders_) place(f, line());
+  if (!groupFaders_.empty()) {
+    groupsHeading_.setBounds(line());
+    for (size_t g = 0; g < groupFaders_.size(); ++g) {
+      auto l = place(groupFaders_[g], line());
+      if (g < groupPairs_.size()) groupPairs_[g]->setBounds(l.removeFromRight(120).reduced(2, 1));
+      if (groupFaders_[g].label != nullptr) groupFaders_[g].label->setBounds(l);
+    }
+  }
   ranksHeading_.setBounds(line());
   // Division headings mean nothing in a filtered list.
   for (auto& g : rankGroups_) g->setVisible(!filtering);

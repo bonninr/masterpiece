@@ -1209,6 +1209,8 @@ countries: de at ch li lu
 "Every pipe..." = "Jede Pfeife..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle Pfeifen der Reihe auf einmal, um Lautstärke oder Stimmung über den Umfang zu zeichnen"
 "Voicing: every pipe" = "Intonation: jede Pfeife"
+"Several pairs" = "Mehrere Paare"
+"Sends every rank of this group to one pair" = "Leitet alle Reihen dieser Gruppe auf ein Paar"
 "From GrandOrgue..." = "Aus GrandOrgue..."
 "From GrandOrgue" = "Aus GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Die MIDI-Einstellungen dieser Orgel in GrandOrgue, aus ihrer Einstellungsdatei (.cmb)"

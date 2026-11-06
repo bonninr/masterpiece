@@ -1794,6 +1794,16 @@ public:
   }
   int liveRankCount() const { return liveLevels_.rankCount(); }
   int liveDivisionCount() const { return liveLevels_.divisionCount(); }
+  // A fader for each perspective, or each windchest group on a GrandOrgue
+  // set, in perspectives() order; none on an organ recorded from one place.
+  // MIDI names one by its place from 1.
+  int liveGroupLevel(int index) const { return liveLevels_.group(index); }
+  void setLiveGroupLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setGroup(index, value);
+  }
+  int liveGroupCount() const { return liveLevels_.groupCount(); }
+  const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
+  int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
   int liveDivisionOfRank(int rankIndex) const { return liveLevels_.rankDivision(rankIndex); }
   // A rank's or a division's place in those lists; -1 for none.
@@ -2371,6 +2381,7 @@ private:
   LiveLevels liveLevels_;
   std::unordered_map<Id, int> liveRankIndex_;
   std::unordered_map<Id, int> liveDivisionIndex_;
+  std::vector<std::string> liveGroupNames_;
   // The organ's layer levels (#765): every continuous control a pipe layer
   // reads as its AmpLvl_ScalingContinuousControlID, each with its place in
   // the table the voices read, resolved at load. The gains follow their

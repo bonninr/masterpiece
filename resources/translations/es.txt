@@ -1209,6 +1209,8 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Every pipe..." = "Cada tubo..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Todos los tubos de la hilera a la vez, para trazar su nivel o afinación a lo largo de la extensión"
 "Voicing: every pipe" = "Armonización: cada tubo"
+"Several pairs" = "Varios pares"
+"Sends every rank of this group to one pair" = "Envía todas las hileras de este grupo a un par"
 "From GrandOrgue..." = "Desde GrandOrgue..."
 "From GrandOrgue" = "Desde GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Los ajustes MIDI de este órgano en GrandOrgue, desde su archivo de ajustes (.cmb)"

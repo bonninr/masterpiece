@@ -1496,6 +1496,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
+        case MidiTargetKind::GroupLevel:
         case MidiTargetKind::PairLevel:
         case MidiTargetKind::ReverbWet:
           setLiveLevelFromMidi(action.kind, action.targetId, action.value);
@@ -5731,6 +5732,7 @@ void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId
   switch (kind) {
     case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
     case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
+    case MidiTargetKind::GroupLevel: liveLevels_.setGroup(static_cast<int>(targetId) - 1, value); break;
     case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
     // Saved with the organ, as the Reverb tab's slider is.
     case MidiTargetKind::ReverbWet:
@@ -7782,13 +7784,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
       }
     }
-    std::vector<int> divisionOfRank;
+    // The perspectives, or a GrandOrgue set's windchest groups, in the order
+    // perspectives() lists them: a rank in more than one takes the first.
+    liveGroupNames_.clear();
+    std::unordered_map<Id, int> rankGroup;
+    for (const auto& [name, groupRanks] : perspectivesOf(model_)) {
+      for (Id rankId : groupRanks) rankGroup.emplace(rankId, static_cast<int>(liveGroupNames_.size()));
+      liveGroupNames_.push_back(name);
+    }
+    std::vector<int> divisionOfRank, groupOfRank;
     for (size_t i = 0; i < ranks.size(); ++i) {
       liveRankIndex_[ranks[i]] = static_cast<int>(i);
       const auto d = rankDivision.find(ranks[i]);
       divisionOfRank.push_back(d == rankDivision.end() ? -1 : d->second);
+      const auto g = rankGroup.find(ranks[i]);
+      groupOfRank.push_back(g == rankGroup.end() ? -1 : g->second);
     }
-    liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()));
+    liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()), std::move(groupOfRank),
+                          static_cast<int>(liveGroupNames_.size()));
   }
   // The layer levels: each control that a pipe layer reads as its level,
   // in id order. An id with no control behind it stays at full, as before.

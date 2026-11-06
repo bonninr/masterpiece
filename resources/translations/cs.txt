@@ -1209,6 +1209,8 @@ countries: cz
 "Every pipe..." = "Všechny píšťaly..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Všechny píšťaly řady najednou, pro nakreslení jejich hlasitosti nebo ladění přes celý rozsah"
 "Voicing: every pipe" = "Intonace: všechny píšťaly"
+"Several pairs" = "Více párů"
+"Sends every rank of this group to one pair" = "Pošle všechny řady této skupiny do jednoho páru"
 "From GrandOrgue..." = "Z GrandOrgue..."
 "From GrandOrgue" = "Z GrandOrgue"
 "The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)" = "Nastavení MIDI, která má tento varhanový nástroj v GrandOrgue, z jeho souboru nastavení (.cmb)"
