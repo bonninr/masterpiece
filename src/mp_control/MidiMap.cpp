@@ -563,6 +563,43 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
   return action;
 }
 
+std::vector<MidiBinding> MidiMap::bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
+                                                   int onValue, const MidiSource& off, int offValue) {
+  MidiBinding b = base;
+  b.source = on;
+  if (on == off) {
+    // A controller at two values: on at the one, off at the other, in
+    // whichever direction the console sends them (#922).
+    if (on.kind == MidiSourceKind::ControlChange) {
+      b.lowValue = offValue;
+      b.highValue = onValue;
+      b.trigger = MidiTrigger::Momentary;
+    } else if (on.kind == MidiSourceKind::Note) {
+      // A key pressed for on and let go for off.
+      b.trigger = MidiTrigger::Momentary;
+    } else {
+      // A program or a system exclusive message sent for on and again for off.
+      b.trigger = MidiTrigger::Toggle;
+    }
+    return {b};
+  }
+  // A controller whose press is a low value counts it as on the other way
+  // round, so a cancel sent as 0 still cancels.
+  const auto pressAt = [](MidiBinding& row, int v) {
+    if (row.source.kind == MidiSourceKind::ControlChange && v < 64) {
+      row.lowValue = 127;
+      row.highValue = 0;
+    }
+  };
+  b.trigger = MidiTrigger::EngageOnly;
+  pressAt(b, onValue);
+  MidiBinding cancel = base;
+  cancel.source = off;
+  cancel.trigger = MidiTrigger::DisengageOnly;
+  pressAt(cancel, offValue);
+  return {b, cancel};
+}
+
 MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
   MidiAction action;
   action.kind = b.targetKind;

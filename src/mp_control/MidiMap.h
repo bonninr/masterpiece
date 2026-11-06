@@ -486,6 +486,12 @@ public:
     const int v = b.scale(raw);
     return b.invert ? 127 - v : v;
   }
+  // A tab moved on and then off, as the MIDI window heard it (#927), made
+  // into the rows that work a switch. One message at two values is one row
+  // that follows the tab; two messages are a row that draws it and a row that
+  // cancels it. `base` carries the switch's own settings.
+  static std::vector<MidiBinding> bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
+                                                   int onValue, const MidiSource& off, int offValue);
 
   // --- learn -------------------------------------------------------------
   // Arm a target, then feed it the next message that arrives. This is how a

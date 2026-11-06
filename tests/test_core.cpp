@@ -16362,6 +16362,106 @@ public:
   }
 };
 static MidiListenValuesTest g_midiListenValues;
+
+// Learn on and off in the MIDI window (#927): a tab moved on and then off is
+// heard as two messages, and they become the rows that work the stop. One
+// controller at two values is one row that follows the tab; a note pressed
+// and let go is one held row; two messages are a draw row and a cancel row.
+class MidiListenPairTest final : public mp::test::Test {
+public:
+  MidiListenPairTest() : Test("functional.midi.listen-on-and-off", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.setLearnNoiseFilter(true);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto blocks = [&](int n) {
+      for (int i = 0; i < n; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
+    };
+    mp::MidiSource on, off;
+    int onValue = 0, offValue = 0;
+
+    // A controller at 65 for on, sent twice, then 64 for off.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    blocks(1);
+    MP_CHECK(proc.midiListenPairStep() == 1 && !proc.takeHeardMidiPair(on, onValue, off, offValue),
+             "the on is heard, and the window waits for the off");
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 64));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && onValue == 65 &&
+                 offValue == 64 && !proc.midiListening(),
+             "the on sent again is passed over, and the off is heard");
+    mp::MidiBinding base;
+    base.targetKind = mp::MidiTargetKind::Switch;
+    base.targetId = 1;
+    auto rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary && rows[0].highValue == 65 &&
+                 rows[0].lowValue == 64,
+             "one controller at two values is one row, on at 65 and off at 64");
+    mp::MidiMap map;
+    map.bind(rows[0]);
+    MP_CHECK(map.actionFor(on, 65).engage && map.actionFor(on, 65).valid() && !map.actionFor(on, 64).engage,
+             "65 draws the stop and 64 retires it");
+
+    // A key held through the noise filter, then let go.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 40, 0.8f));
+    blocks(60);
+    MP_CHECK(proc.midiListenPairStep() == 1, "the key is heard once held a quarter second");
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 40));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && on.number == 40 &&
+                 offValue == 0,
+             "and letting it go is the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary, "a key is one held row");
+
+    // Two notes: one draws, the other cancels.
+    proc.setLearnNoiseFilter(false);
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 50));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off,
+             "a button pressed and let go is a pair of one message");
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    blocks(1);
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 51, 0.8f));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on.number == 50 && off.number == 51,
+             "two notes are heard as the on and the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 2 && rows[0].trigger == mp::MidiTrigger::EngageOnly &&
+                 rows[1].trigger == mp::MidiTrigger::DisengageOnly && rows[1].source.number == 51,
+             "two messages are a row that draws and a row that cancels");
+
+    // A controller that cancels with 0 on another number.
+    mp::MidiSource draw, cancel;
+    draw.kind = cancel.kind = mp::MidiSourceKind::ControlChange;
+    draw.channel = cancel.channel = 1;
+    draw.number = 30;
+    cancel.number = 31;
+    rows = mp::MidiMap::bindingsForOnOff(base, draw, 127, cancel, 0);
+    mp::MidiMap two;
+    for (const auto& r : rows) two.bind(r);
+    const auto a = two.actionFor(cancel, 0);
+    MP_CHECK(a.valid() && !a.engage, "a cancel sent as 0 still cancels");
+    MP_CHECK(two.actionFor(draw, 127).valid() && two.actionFor(draw, 127).engage, "and the draw draws");
+  }
+};
+static MidiListenPairTest g_midiListenPair;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {

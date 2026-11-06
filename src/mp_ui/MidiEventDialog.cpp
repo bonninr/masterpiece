@@ -397,6 +397,12 @@ public:
     viewport_.setScrollBarsShown(true, false);
     addAndMakeVisible(add_);
     add_.onClick = [this] { addRow(); };
+    // A tab moved on and then off fills its rows from both messages (#927).
+    if (kind == MidiTargetKind::Switch) {
+      addAndMakeVisible(pair_);
+      pair_.setTooltip(TRANS("Move the tab on, then off: the rows are filled from the two messages"));
+      pair_.onClick = [this] { listenPair(); };
+    }
     addAndMakeVisible(empty_);
     styleNote(empty_, TRANS("Nothing works this yet. Press New event, then press the button, pull the "
                             "drawstop or move the pedal on your console."));
@@ -422,7 +428,7 @@ public:
     startTimerHz(20);
   }
   ~ReceivePanel() override {
-    if (listening_ >= 0) proc_.cancelMidiListen();
+    if (listening_ >= 0 || pairListening_) proc_.cancelMidiListen();
   }
 
   void paint(juce::Graphics& g) override { g.fillAll(kBg); }
@@ -432,7 +438,10 @@ public:
     header_.setBounds(r.removeFromTop(20));
     note_.setBounds(r.removeFromBottom(64));
     r.removeFromBottom(6);
-    add_.setBounds(r.removeFromBottom(kRow + 2).removeFromLeft(140));
+    auto buttons = r.removeFromBottom(kRow + 2);
+    add_.setBounds(buttons.removeFromLeft(140));
+    buttons.removeFromLeft(kGap);
+    pair_.setBounds(buttons.removeFromLeft(200));
     r.removeFromBottom(6);
     viewport_.setBounds(r);
     empty_.setBounds(r.removeFromTop(48));
@@ -482,6 +491,7 @@ private:
     } else if (pressable(kind_)) {
       b.trigger = MidiTrigger::Momentary;
     }
+    if (pairListening_) stopListening();
     rows_.push_back(b);
     listening_ = static_cast<int>(rows_.size()) - 1;
     proc_.midiMap().cancelLearn();
@@ -489,11 +499,33 @@ private:
     rebuild();
   }
 
+  void listenPair() {
+    if (pairListening_) {
+      stopListening();
+      return;
+    }
+    stopListening();
+    proc_.midiMap().cancelLearn();
+    proc_.beginMidiListenPair();
+    pairListening_ = true;
+    showPairStep(0);
+  }
+
+  void showPairStep(int step) {
+    pairShown_ = step;
+    pair_.setButtonText(!pairListening_ ? TRANS("Learn on and off")
+                        : step == 0     ? TRANS("Move it on...")
+                                        : TRANS("Now move it off..."));
+    pair_.setColour(juce::TextButton::buttonColourId,
+                    pairListening_ ? juce::Colours::darkorange : juce::Colour(0xff2a2f38));
+  }
+
   void listen(int row) {
     if (listening_ == row) {
       stopListening();
       return;
     }
+    if (pairListening_) stopListening();
     proc_.midiMap().cancelLearn();
     proc_.beginMidiListen();
     listening_ = row;
@@ -502,6 +534,11 @@ private:
   }
 
   void stopListening() {
+    if (pairListening_) {
+      proc_.cancelMidiListen();
+      pairListening_ = false;
+      showPairStep(0);
+    }
     if (listening_ < 0) return;
     proc_.cancelMidiListen();
     listening_ = -1;
@@ -509,6 +546,26 @@ private:
   }
 
   void timerCallback() override {
+    if (pairListening_) {
+      MidiSource on, off;
+      int onValue = 0, offValue = 0;
+      if (proc_.takeHeardMidiPair(on, onValue, off, offValue)) {
+        pairListening_ = false;
+        showPairStep(0);
+        MidiBinding base;
+        const auto sw = proc_.organModel().switches.find(id_);
+        base.latching = sw == proc_.organModel().switches.end() || sw->second.latching;
+        for (const MidiBinding& b : MidiMap::bindingsForOnOff(base, on, onValue, off, offValue))
+          rows_.push_back(b);
+        commit();
+        rebuild();
+      } else if (!proc_.midiListening()) {
+        stopListening();
+      } else if (const int step = proc_.midiListenPairStep(); step != pairShown_) {
+        showPairStep(step);
+      }
+      return;
+    }
     if (listening_ < 0) return;
     MidiSource heard;
     int value = 0;
@@ -537,10 +594,13 @@ private:
   std::vector<MidiBinding> rows_;
   std::vector<std::unique_ptr<ReceiveRow>> rowViews_;
   int listening_ = -1;
+  bool pairListening_ = false;
+  int pairShown_ = 0;
   Header header_;
   juce::Viewport viewport_;
   juce::Component list_;
   juce::TextButton add_{TRANS("New event")};
+  juce::TextButton pair_{TRANS("Learn on and off")};
   juce::Label empty_, note_;
 };
 

@@ -1300,9 +1300,13 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                      "=" + juce::String(source.number) + " val=" + juce::String(value)));
 
     // The noise filter: while learning, a key is held back until it has been
-    // down a quarter second, and one let go sooner is dropped.
+    // down a quarter second, and one let go sooner is dropped. Listening for
+    // an off (#927), a key let go is the off itself.
+    const bool pairOff = value <= 0 && midiListen_.load(std::memory_order_acquire) &&
+                         listenPair_.load(std::memory_order_acquire) &&
+                         pairStep_.load(std::memory_order_acquire) == 1;
     if (source.kind == MidiSourceKind::Note && learnNoiseFilter_.load(std::memory_order_acquire) &&
-        learningFrom(deviceId)) {
+        learningFrom(deviceId) && !pairOff) {
       holdForLearn(source, value);
       continue;
     }
@@ -1318,12 +1322,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // controller is taken at any value: a console that sends 0 for off sends
     // a real message (#565).
     if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
-      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange)) {
-        heard_ = source;
-        heardValue_ = value;
-        midiListen_.store(false, std::memory_order_release);
-        heardReady_.store(true, std::memory_order_release);
-      }
+      if (!bankSelect) hearForListen(source, value);
       continue;
     }
 
@@ -1797,14 +1796,34 @@ void MasterpieceProcessor::learnHeldKeys() {
   if (learningFrom(chosen.source.deviceId)) learnFromPress(chosen.source, chosen.value);
 }
 
+// The MIDI window's Listen takes a message. A press, or a controller at any
+// value; and listening for a pair (#927), the off that follows, which may be
+// a release. The on sent again is passed over.
+void MasterpieceProcessor::hearForListen(const MidiSource& source, int value) {
+  const bool pair = listenPair_.load(std::memory_order_acquire);
+  if (pair && pairStep_.load(std::memory_order_relaxed) == 1) {
+    if (source == heard_ && value == heardValue_) return;
+    heardOff_ = source;
+    heardOffValue_ = value;
+    pairStep_.store(2, std::memory_order_release);
+  } else {
+    if (value <= 0 && source.kind != MidiSourceKind::ControlChange) return;
+    heard_ = source;
+    heardValue_ = value;
+    if (pair) {
+      pairStep_.store(1, std::memory_order_release);
+      return;
+    }
+  }
+  midiListen_.store(false, std::memory_order_release);
+  heardReady_.store(true, std::memory_order_release);
+}
+
 // What a press does to whichever learn is waiting, in the order the MIDI
 // handling asks them.
 void MasterpieceProcessor::learnFromPress(const MidiSource& source, int value) {
   if (midiListen_.load(std::memory_order_acquire)) {
-    heard_ = source;
-    heardValue_ = value;
-    midiListen_.store(false, std::memory_order_release);
-    heardReady_.store(true, std::memory_order_release);
+    hearForListen(source, value);
     return;
   }
   if (midiMap_.learning()) {
