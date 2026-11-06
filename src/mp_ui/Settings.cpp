@@ -1869,12 +1869,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   styleLabel(keyboardsLabel_, TRANS("Keyboards"));
 
   addAndMakeVisible(output_);
-  output_.onChange = [this] {
-    // The processor holds the port and keeps the choice: the console's lamps
-    // and displays follow it after this window closes, and at the next start.
-    const int id = output_.getSelectedId();
-    proc_.openMidiOutput(id > 1 ? output_.getItemText(output_.indexOfItemId(id)) : juce::String());
-  };
+  output_.onClick = [this] { showOutputMenu(); };
 
   addAndMakeVisible(feedback_);
   feedback_.setToggleState(proc_.midiFeedbackEnabled(), juce::dontSendNotification);
@@ -2519,22 +2514,42 @@ void MidiPanel::refresh() {
   }
   showSharedChannels();
 
-  output_.clear(juce::dontSendNotification);
-  output_.addItem(TRANS("None"), 1);
-  int id = 2, chosen = 1;
-  for (const auto& out : juce::MidiOutput::getAvailableDevices()) {
-    if (out.name == proc_.midiOutputName()) chosen = id;
-    output_.addItem(out.name, id++);
-  }
-  // The port chosen before, though it is not plugged in now: the choice is
-  // kept, and shown as it is.
-  if (chosen == 1 && proc_.midiOutputName().isNotEmpty()) {
-    chosen = id;
-    output_.addItem(proc_.midiOutputName(), id++);
-  }
-  output_.setSelectedId(chosen, juce::dontSendNotification);
+  showOutputs();
   applyPart();
   resized();
+}
+
+void MidiPanel::showOutputs() {
+  const auto& names = proc_.midiOutputNames();
+  output_.setButtonText(names.isEmpty() ? TRANS("None") : names.joinIntoString(", "));
+}
+
+void MidiPanel::showOutputMenu() {
+  // The ports plugged in, then those chosen before and not plugged in now:
+  // the choice is kept, and shown as it is.
+  juce::StringArray ports;
+  for (const auto& out : juce::MidiOutput::getAvailableDevices()) ports.addIfNotAlreadyThere(out.name);
+  for (const auto& name : proc_.midiOutputNames()) ports.addIfNotAlreadyThere(name);
+  const auto& chosen = proc_.midiOutputNames();
+  juce::PopupMenu menu;
+  menu.addItem(1, TRANS("None"), true, chosen.isEmpty());
+  menu.addSeparator();
+  for (int i = 0; i < ports.size(); ++i) menu.addItem(i + 2, ports[i], true, chosen.contains(ports[i]));
+  juce::Component::SafePointer<MidiPanel> safe(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&output_), [safe, ports](int result) {
+    if (safe == nullptr || result == 0) return;
+    // The processor holds the ports and keeps the choice: the console's lamps
+    // and displays follow it after this window closes, and at the next start.
+    juce::StringArray next;
+    if (result > 1) {
+      next = safe->proc_.midiOutputNames();
+      const juce::String port = ports[result - 2];
+      if (next.contains(port)) next.removeString(port);
+      else next.add(port);
+    }
+    safe->proc_.openMidiOutputs(next);
+    safe->showOutputs();
+  });
 }
 
 void MidiPanel::timerCallback() {

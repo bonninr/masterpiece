@@ -58,6 +58,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using mp::test::Category;
 
@@ -12753,6 +12757,50 @@ public:
 };
 static MidiExactValuesTest g_midiExactValues;
 
+// Switches carried by the bits of one controller (#924).
+class MidiControllerBitsTest final : public mp::test::Test {
+public:
+  MidiControllerBitsTest() : Test("functional.midi.controller-bitfield", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    const mp::MidiSource cc30{mp::MidiSourceKind::ControlChange, 2, 30};
+    for (int bit = 0; bit < 3; ++bit) {
+      mp::MidiBinding b;
+      b.source = cc30;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = static_cast<mp::Id>(40 + bit);
+      b.bit = bit;
+      map.bind(b);
+    }
+    // Each switch and whether the message leaves it drawn.
+    auto states = [&](int value) {
+      std::vector<std::pair<mp::Id, bool>> out;
+      const auto a = map.actionFor(cc30, value);
+      if (a.valid() && !a.idle) out.push_back({a.targetId, a.engage});
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid()) out.push_back({more.targetId, more.engage});
+        }
+      std::sort(out.begin(), out.end());
+      return out;
+    };
+    using S = std::vector<std::pair<mp::Id, bool>>;
+    MP_CHECK(states(0b101) == S({{40, true}, {41, false}, {42, true}}), "5 draws the first and third");
+    MP_CHECK(states(0b010) == S({{40, false}, {41, true}, {42, false}}), "2 draws the second alone");
+    MP_CHECK(states(0) == S({{40, false}, {41, false}, {42, false}}), "0 cancels all three");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 42);
+    MP_CHECK(rows.size() == 1 && rows.front()->bit == 2, "the bit survives saving");
+    const auto plain = back.bindingsFor(mp::MidiTargetKind::Switch, 40);
+    MP_CHECK(plain.size() == 1 && plain.front()->bit == 0, "bit 0 too");
+  }
+};
+static MidiControllerBitsTest g_midiControllerBits;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {
@@ -14492,7 +14540,24 @@ public:
     k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
     MP_CHECK(k.format == F::Zip, "a ZIP");
     k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
-    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(k.format == F::Unknown && !k.unreadable, "not an archive at all");
+#ifndef _WIN32
+    // There, and refused: what Android 13 does to a shared file the app was
+    // never lent (#966). Said as a refusal, never as an unknown format. Root
+    // reads anything, so the check is for an ordinary user.
+    if (::geteuid() != 0) {
+      const std::string refused = put("refused.rar", rar4(0, 0));
+      ::chmod(refused.c_str(), 0);
+      k = mp::inspectArchive(refused);
+      MP_CHECK(k.unreadable, "a file the system will not open is said to be refused");
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(refused, error) && !a.inspect(error) &&
+                   error.find("cannot be read") != std::string::npos,
+               "and the error says so: " + error);
+      ::chmod(refused.c_str(), 0644);
+    }
+#endif
     MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
              "and it can say so in words");
 
@@ -16419,6 +16484,106 @@ public:
   }
 };
 static MidiListenValuesTest g_midiListenValues;
+
+// Learn on and off in the MIDI window (#927): a tab moved on and then off is
+// heard as two messages, and they become the rows that work the stop. One
+// controller at two values is one row that follows the tab; a note pressed
+// and let go is one held row; two messages are a draw row and a cancel row.
+class MidiListenPairTest final : public mp::test::Test {
+public:
+  MidiListenPairTest() : Test("functional.midi.listen-on-and-off", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.setLearnNoiseFilter(true);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto blocks = [&](int n) {
+      for (int i = 0; i < n; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
+    };
+    mp::MidiSource on, off;
+    int onValue = 0, offValue = 0;
+
+    // A controller at 65 for on, sent twice, then 64 for off.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    blocks(1);
+    MP_CHECK(proc.midiListenPairStep() == 1 && !proc.takeHeardMidiPair(on, onValue, off, offValue),
+             "the on is heard, and the window waits for the off");
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 64));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && onValue == 65 &&
+                 offValue == 64 && !proc.midiListening(),
+             "the on sent again is passed over, and the off is heard");
+    mp::MidiBinding base;
+    base.targetKind = mp::MidiTargetKind::Switch;
+    base.targetId = 1;
+    auto rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary && rows[0].highValue == 65 &&
+                 rows[0].lowValue == 64,
+             "one controller at two values is one row, on at 65 and off at 64");
+    mp::MidiMap map;
+    map.bind(rows[0]);
+    MP_CHECK(map.actionFor(on, 65).engage && map.actionFor(on, 65).valid() && !map.actionFor(on, 64).engage,
+             "65 draws the stop and 64 retires it");
+
+    // A key held through the noise filter, then let go.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 40, 0.8f));
+    blocks(60);
+    MP_CHECK(proc.midiListenPairStep() == 1, "the key is heard once held a quarter second");
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 40));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && on.number == 40 &&
+                 offValue == 0,
+             "and letting it go is the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary, "a key is one held row");
+
+    // Two notes: one draws, the other cancels.
+    proc.setLearnNoiseFilter(false);
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 50));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off,
+             "a button pressed and let go is a pair of one message");
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    blocks(1);
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 51, 0.8f));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on.number == 50 && off.number == 51,
+             "two notes are heard as the on and the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 2 && rows[0].trigger == mp::MidiTrigger::EngageOnly &&
+                 rows[1].trigger == mp::MidiTrigger::DisengageOnly && rows[1].source.number == 51,
+             "two messages are a row that draws and a row that cancels");
+
+    // A controller that cancels with 0 on another number.
+    mp::MidiSource draw, cancel;
+    draw.kind = cancel.kind = mp::MidiSourceKind::ControlChange;
+    draw.channel = cancel.channel = 1;
+    draw.number = 30;
+    cancel.number = 31;
+    rows = mp::MidiMap::bindingsForOnOff(base, draw, 127, cancel, 0);
+    mp::MidiMap two;
+    for (const auto& r : rows) two.bind(r);
+    const auto a = two.actionFor(cancel, 0);
+    MP_CHECK(a.valid() && !a.engage, "a cancel sent as 0 still cancels");
+    MP_CHECK(two.actionFor(draw, 127).valid() && two.actionFor(draw, 127).engage, "and the draw draws");
+  }
+};
+static MidiListenPairTest g_midiListenPair;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {
@@ -18989,6 +19154,18 @@ public:
       MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
       MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
       MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+      // Two consoles, such as two pad controllers (#942): both names kept.
+      MP_CHECK(!proc.openMidiOutputs({"Pads left", "Pads right", "Pads left"}),
+               "ports that are not there do not open");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames() == juce::StringArray({"Pads left", "Pads right"}),
+               "both outputs are kept, once each, in order");
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames().size() == 2, "a second read adds none");
+      MP_CHECK(proc.openMidiOutputs({}) && proc.midiOutputNames().isEmpty(), "None closes them all");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();

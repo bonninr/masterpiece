@@ -236,6 +236,11 @@ struct MidiBinding {
   // other value is for another switch. A console that sends controller 20
   // with values 1 to 40 for its forty tabs is forty rows on one controller.
   bool exactValues = false;
+  // A switch carried by one bit of its controller (#924), GrandOrgue's
+  // bitfield event: a console that reports a group of tabs as one value,
+  // bit 0 for the first tab. The switch follows its bit on every message.
+  // -1 is not a bitfield.
+  int bit = -1;
 
   // A source value, normalised to 0..127 across this binding's own window.
   int scale(int raw) const {
@@ -481,6 +486,12 @@ public:
     const int v = b.scale(raw);
     return b.invert ? 127 - v : v;
   }
+  // A tab moved on and then off, as the MIDI window heard it (#927), made
+  // into the rows that work a switch. One message at two values is one row
+  // that follows the tab; two messages are a row that draws it and a row that
+  // cancels it. `base` carries the switch's own settings.
+  static std::vector<MidiBinding> bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
+                                                   int onValue, const MidiSource& off, int offValue);
 
   // --- learn -------------------------------------------------------------
   // Arm a target, then feed it the next message that arrives. This is how a
