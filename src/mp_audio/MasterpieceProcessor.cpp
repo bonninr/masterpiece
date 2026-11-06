@@ -2630,6 +2630,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (archiveMegabytes_ != 500) text << "archivemb " << archiveMegabytes_ << "\n";
   if (archiveDays_ != 90) text << "archivedays " << archiveDays_ << "\n";
   if (combinationsOnTop_) text << "combinationsontop 1\n";
+  if (combinationsView_ != 0) text << "combinationsview " << combinationsView_ << "\n";
   if (cacheWhilePlaying_.load()) text << "cachewhileplaying 1\n";
   text << "samplecache " << static_cast<int>(cacheMode_) << "\n";
   if (setOffAfterStore_.load()) text << "setoffafterstore 1\n";
@@ -2836,6 +2837,8 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
                             : SampleLibrary::CacheMode::Single;
     } else if (key == "combinationsontop") {
       combinationsOnTop_ = val.getIntValue() != 0;
+    } else if (key == "combinationsview") {
+      combinationsView_ = juce::jlimit(0, 2, val.getIntValue());
     } else if (key == "setoffafterstore") {
       setOffAfterStore_.store(val.getIntValue() != 0);
     } else if (key == "pistonsleavebass") {

@@ -59,6 +59,9 @@ countries: de at ch li lu
 "MIDI window..." = "MIDI-Fenster..."
 "Clear mapping" = "Zuordnung löschen"
 "Combinations" = "Kombinationen"
+"Combinations and sequencer" = "Kombinationen und Sequenzer"
+"Combinations only" = "Nur Kombinationen"
+"Sequencer only" = "Nur Sequenzer"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "Nachdem ein Setzerknopf eine Kombination gespeichert hat, schaltet sich Set aus, und der nächste Druck ruft sie ab: Knöpfe hier, am Spieltisch und über MIDI"
 
 # src/mp_ui/CombinationsWindow.h

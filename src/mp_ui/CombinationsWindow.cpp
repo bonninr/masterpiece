@@ -251,12 +251,31 @@ CombinationsPanel::CombinationsPanel(MasterpieceProcessor& p) : proc_(p) {
 
 void CombinationsPanel::applyView() {
   simple_ = proc_.simpleMode();
-  for (juce::Component* c : std::initializer_list<juce::Component*>{
-           &stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_, &generalsLabel_, &fewerGenerals_,
-           &moreGenerals_})
-    c->setVisible(!simple_);
-  for (auto& b : generals_) b->setVisible(!simple_);
-  level_.setVisible(simple_);
+  const bool frames = !simple_ && sequencerShown();
+  for (juce::Component* c :
+       std::initializer_list<juce::Component*>{&stepFirst_, &stepLast_, &frame_, &insertFrame_, &deleteFrame_})
+    c->setVisible(frames);
+  for (juce::Component* c :
+       std::initializer_list<juce::Component*>{&stepPrev_, &stepNext_, &stepBack10_, &stepForward10_})
+    c->setVisible(sequencerShown());
+  for (auto& b : digits_) b->setVisible(sequencerShown());
+  level_.setVisible(simple_ && sequencerShown());
+  const bool generals = !simple_ && combinationsShown();
+  for (juce::Component* c :
+       std::initializer_list<juce::Component*>{&generalsLabel_, &fewerGenerals_, &moreGenerals_})
+    c->setVisible(generals);
+  for (auto& b : generals_) b->setVisible(generals);
+  const bool divisionals = combinationsShown() && !divisions_.empty();
+  for (juce::Component* c :
+       std::initializer_list<juce::Component*>{&divisionalsLabel_, &fewerDivisionals_, &moreDivisionals_})
+    c->setVisible(divisionals);
+  for (auto& d : divisions_) {
+    d.name->setVisible(combinationsShown());
+    for (auto& b : d.pistons) b->setVisible(combinationsShown());
+    if (d.cancel != nullptr) d.cancel->setVisible(combinationsShown());
+  }
+  pedalCoupler_.setVisible(divisionals && proc_.coupledDivisions().valid());
+  pedalManual_.setVisible(pedalCoupler_.isVisible());
   stepPrev_.setButtonText(simple_ ? "-" : "<");
   stepNext_.setButtonText(simple_ ? "+" : ">");
   stepPrev_.setTooltip(simple_ ? TRANS("The general before") : juce::String());
@@ -335,12 +354,13 @@ void CombinationsPanel::rebuild() {
       if (d.divisionId == cd.manual)
         pedalManual_.setSelectedId(static_cast<int>(pedalManuals_.size()), juce::dontSendNotification);
     }
-    pedalCoupler_.setVisible(cd.valid() && !divisions_.empty());
+    pedalCoupler_.setVisible(cd.valid() && !divisions_.empty() && combinationsShown());
     pedalManual_.setVisible(pedalCoupler_.isVisible());
   }
 
   refreshSets();
   refreshState();
+  applyView();
   const int w = std::max(getWidth(), preferredWidth());
   setSize(w, preferredHeight(w));
   resized();
@@ -349,9 +369,10 @@ void CombinationsPanel::rebuild() {
 
 int CombinationsPanel::preferredHeight(int /*width*/) const {
   const auto& pc = proc_.playerCombinations();
-  int h = kMargin + kRow + kGap + kRow + kSection;
-  if (!simple_) h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
-  if (!divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
+  int h = kMargin + kRow + kSection;
+  if (sequencerShown()) h += kGap + kRow;
+  if (!simple_ && combinationsShown()) h += kHeading + kGap + pistonRows(pc.generalCount()) * (kRow + kGap) + kSection;
+  if (combinationsShown() && !divisions_.empty()) h += kHeading + kGap + static_cast<int>(divisions_.size()) * (kRow + kGap) + kSection;
   h += kRow + kGap + kNoteH + kMargin;
   return h;
 }
@@ -400,12 +421,14 @@ void CombinationsPanel::resized() {
   }
 
   // The digits take the row's width in ten equal cells.
-  row = r.removeFromTop(kRow);
-  const int cell = row.getWidth() / 10;
-  for (auto& b : digits_) b->setBounds(row.removeFromLeft(cell).reduced(1));
+  if (sequencerShown()) {
+    row = r.removeFromTop(kRow);
+    const int cell = row.getWidth() / 10;
+    for (auto& b : digits_) b->setBounds(row.removeFromLeft(cell).reduced(1));
+  }
   r.removeFromTop(kSection);
 
-  if (!simple_) {
+  if (!simple_ && combinationsShown()) {
     row = r.removeFromTop(kHeading);
     generalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
     fewerGenerals_.setBounds(row.removeFromLeft(26).reduced(1));
@@ -421,7 +444,7 @@ void CombinationsPanel::resized() {
     r.removeFromTop(kSection);
   }
 
-  if (!divisions_.empty()) {
+  if (combinationsShown() && !divisions_.empty()) {
     row = r.removeFromTop(kHeading);
     divisionalsLabel_.setBounds(row.removeFromLeft(kDivisionLabelW));
     fewerDivisionals_.setBounds(row.removeFromLeft(26).reduced(1));
@@ -681,6 +704,14 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
                               "couplers, which stay as the player set them. The cancels still push them in."));
   leaveBass_.onClick = [this] { proc_.setLeaveBassAndMelody(leaveBass_.getToggleState()); };
   content_.addAndMakeVisible(leaveBass_);
+  show_.addItem(TRANS("Combinations and sequencer"), 1);
+  show_.addItem(TRANS("Combinations only"), 2);
+  show_.addItem(TRANS("Sequencer only"), 3);
+  show_.onChange = [this] {
+    proc_.setCombinationsView(show_.getSelectedId() - 1);
+    panel_->showView();
+  };
+  content_.addAndMakeVisible(show_);
   refreshToggles();
   content_.addAndMakeVisible(viewport_);
   content_.layout = [this] {
@@ -689,11 +720,12 @@ CombinationsWindow::CombinationsWindow(MasterpieceProcessor& p)
     onTop_.setBounds(row.removeFromRight(150));
     setOff_.setBounds(row.removeFromRight(260));
     leaveBass_.setBounds(row);
+    show_.setBounds(r.removeFromTop(26).reduced(8, 2).removeFromLeft(240));
     viewport_.setBounds(r);
   };
   setContentNonOwned(&content_, false);
   const int w = neededWidth();
-  setSize(w, std::min(panel_->preferredHeight(w) + 26, 640));
+  setSize(w, std::min(panel_->preferredHeight(w) + 52, 640));
   fitToScreen(*this);
   panel_->onWidthChanged = [this] { widenToFit(); };
   placing_ = false;
@@ -772,6 +804,8 @@ void CombinationsWindow::refreshToggles() {
   onTop_.setToggleState(proc_.combinationsOnTop(), juce::dontSendNotification);
   setOff_.setToggleState(proc_.setOffAfterStore(), juce::dontSendNotification);
   leaveBass_.setToggleState(proc_.leaveBassAndMelody(), juce::dontSendNotification);
+  show_.setSelectedId(proc_.combinationsView() + 1, juce::dontSendNotification);
+  panel_->showView();
 }
 
 void CombinationsWindow::place(juce::Rectangle<int> besideThis, bool openFirstTime) {

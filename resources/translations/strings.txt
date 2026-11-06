@@ -73,6 +73,9 @@ countries: gb us
 "Combinations" = "Combinations"
 "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI" = "After a piston has stored a combination, Set turns off, so the next press recalls it: pistons here, on the console and over MIDI"
 "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in." = "The pistons and the sequencer neither store nor recall the bass and melody couplers, which stay as the player set them. The cancels still push them in."
+"Combinations and sequencer" = "Combinations and sequencer"
+"Combinations only" = "Combinations only"
+"Sequencer only" = "Sequencer only"
 
 # src/mp_ui/CombinationsWindow.h
 "Set" = "Set"
@@ -671,6 +674,7 @@ countries: gb us
 "up to %1 MB" = "up to %1 MB"
 "up to %1 GB" = "up to %1 GB"
 "kept %1 days" = "kept %1 days"
+"Sequencer" = "Sequencer"
 "Manual buttons" = "Manual buttons"
 "Pistons that switch which manual a keyboard plays: choose the keyboard's channel and the manual, then press the piston" = "Pistons that switch which manual a keyboard plays: choose the keyboard's channel and the manual, then press the piston"
 "Keyboard on channel %1 (plays %2)" = "Keyboard on channel %1 (plays %2)"

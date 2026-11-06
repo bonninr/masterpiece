@@ -967,6 +967,13 @@ public:
     combinationsOnTop_ = on;
     writeGlobalFile();
   }
+  // What the combinations window shows: 0 everything, 1 the combinations,
+  // 2 the sequencer (#841).
+  int combinationsView() const { return combinationsView_; }
+  void setCombinationsView(int view) {
+    combinationsView_ = view;
+    writeGlobalFile();
+  }
   // Whether Set lets go once a piston has stored, so the next press recalls
   // instead of overwriting a combination by mistake (#130, #591): pistons on
   // the console, over MIDI and in the combinations window alike. Off by
@@ -2811,6 +2818,7 @@ private:
   void learnHeldKeys();
   void learnFromPress(const MidiSource& source, int value);
   bool combinationsOnTop_ = false;
+  int combinationsView_ = 0;
   std::atomic<bool> cacheWhilePlaying_{false};
   SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::Single;
   std::optional<SampleLibrary::CacheMode> cacheOverride_;
