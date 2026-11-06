@@ -23085,7 +23085,7 @@ public:
         "es", {{"es.zz.txt", "\"Late\" = \"Tarde\""},
                {"de.txt", "language: Deutsch\n\"Settings\" = \"Einstellungen\"\n"},
                {"es.aa.txt", "\"Early\" = \"Pronto\"\n"},
-               {"es.txt", "language: Espa\xc3\xb1ol\ncountries: es\n\"Settings\" = \"Ajustes\"\n"}});
+               {"es.txt", juce::String::fromUTF8("language: Espa\xc3\xb1ol\ncountries: es\n\"Settings\" = \"Ajustes\"\n")}});
     MP_CHECK(joined.startsWith("language:"), "the main file comes first");
     MP_CHECK(joined.indexOf("Pronto") < joined.indexOf("Tarde"), "the parts follow in name order");
     MP_CHECK(!joined.contains("Einstellungen"), "another language is left out");

@@ -14,13 +14,18 @@ bool hasLanguage(const juce::String& code) {
 }
 }  // namespace
 
+// The name after the last folder separator, of either kind on every system:
+// resource names carry '/', Windows paths '\'.
+static juce::String baseName(const juce::String& fileName) {
+  return fileName.substring(juce::jmax(fileName.lastIndexOfChar('/'), fileName.lastIndexOfChar('\\')) + 1);
+}
+
 juce::String languageOfFile(const juce::String& fileName) {
-  return juce::File::createFileWithoutCheckingPath(fileName).getFileName().upToFirstOccurrenceOf(
-      ".", false, false);
+  return baseName(fileName).upToFirstOccurrenceOf(".", false, false);
 }
 
 bool isMainLanguageFile(const juce::String& fileName) {
-  const auto name = juce::File::createFileWithoutCheckingPath(fileName).getFileName();
+  const auto name = baseName(fileName);
   return name == languageOfFile(name) + ".txt";
 }
 
