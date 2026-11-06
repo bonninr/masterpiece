@@ -6315,10 +6315,11 @@ void MasterpieceProcessor::buildProgramCouplers() {
     std::unordered_set<Id> ranked;
     for (const auto& [stopId, stop] : model_.stops)
       if (!stop.ranks.empty()) ranked.insert(stop.divisionId);
-    // A bass or melody coupler carries one key of the chord, which inputs
-    // opened for the coupler as a whole cannot do: it stays on the walk.
+    // A bass or melody coupler too (#862): its input is closed note by note,
+    // for the key the walk carries, and moves with the chord's lowest or
+    // highest key (reflowExtremes).
     for (const auto& c : programCouplersList_)
-      if (c.extreme == 0 && ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
+      if (ranked.count(c.srcDivision) == 0) addCoupledInputs(c.switchId, c.srcDivision, true);
   }
 
   // The organ's own generals store the program couplers, and its general

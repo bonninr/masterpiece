@@ -1203,7 +1203,8 @@ public:
 // #565: the same for a coupler that names a keyboard, the way Pinerolo's
 // couplers do: it reaches the division that keyboard plays, whose own keys
 // are wired through the switches as well. And for a program coupler, which
-// reaches a division the same way.
+// reaches a division the same way, the player's bass coupler among them: it
+// closes the pedal's input for the lowest key held (#862).
 class CoupledInputTest final : public mp::test::Test {
 public:
   CoupledInputTest()
@@ -1221,11 +1222,17 @@ public:
     } catch (const mp::test::Failure& f) {
       throw mp::test::Failure("a program coupler: " + f.what());
     }
+    try {
+      scenario(false, true, true);
+    } catch (const mp::test::Failure& f) {
+      throw mp::test::Failure("the program's bass coupler: " + f.what());
+    }
   }
 
-  void scenario(bool toKeyboard, bool program) {
+  void scenario(bool toKeyboard, bool program, bool bass = false) {
     const juce::File dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                               .getChildFile(program ? "mp-coupled-input-pc"
+                               .getChildFile(bass ? "mp-coupled-input-bass"
+                                             : program ? "mp-coupled-input-pc"
                                              : toKeyboard ? "mp-coupled-input-kb" : "mp-coupled-input");
     dir.getChildFile("OrganDefinitions").createDirectory();
     const juce::File odf =
@@ -1321,18 +1328,25 @@ public:
     mp::MasterpieceProcessor proc;
     const juce::File settings = proc.settingsFileFor(odf);
     const bool hadSettings = settings.existsAsFile();
+    // The block size as a host reports it: the clock that settles a chord for
+    // the bass coupler counts in blocks.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
     proc.prepareToPlay(48000.0, 256);
     if (program) proc.setProgramCouplers(true);
     auto r = proc.loadOrgan(odf, 0, false);
     MP_CHECK(r.ok, "the two-manual organ loads");
     // The coupler under test: the organ's own, or the program's division I
-    // to division II at 8', which a key on manual II plays division I through.
+    // to division II at 8', which a key on manual II plays division I through,
+    // or its bass coupler from the pedal, division I, to division II.
     mp::Id coupler = 300;
     if (program) {
+      const int extreme = bass ? mp::CouplerMatrix::kLowestHeld : 0;
       coupler = 0;
       for (const auto& c : proc.programCouplerList())
-        if (c.srcDivision == 1 && c.destDivision == 2 && c.shift == 0 && c.extreme == 0) coupler = c.switchId;
-      MP_CHECK(coupler != 0, "the program offers division I to division II at 8'");
+        if (c.srcDivision == 1 && c.destDivision == 2 && c.shift == 0 && c.extreme == extreme)
+          coupler = c.switchId;
+      MP_CHECK(coupler != 0, bass ? "the program offers the bass coupler from the pedal to division II"
+                                  : "the program offers division I to division II at 8'");
     }
     // The stops are drawn: with nothing drawn there is no pipe to sound, and
     // the key flow is not consulted at all.
@@ -1343,6 +1357,13 @@ public:
     auto block = [&](juce::MidiBuffer m) {
       buf.clear();
       proc.processBlock(buf, m);
+      // A bass coupler takes the lowest key once the chord has settled, a
+      // few blocks on.
+      for (int i = 0; bass && i < 10; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
     };
     juce::MidiBuffer on;
     on.addEvent(juce::MidiMessage::noteOn(2, 60, 0.8f), 0);
@@ -1388,6 +1409,17 @@ public:
     // Every key released at once.
     block(on);
     MP_CHECK(proc.switchEngaged(900), "held again");
+    if (bass) {
+      // A lower key joins the chord: the bass moves to it, and the pedal's
+      // input at the key above lets go; that key let go, it is the bass again.
+      juce::MidiBuffer lowOn, lowOff;
+      lowOn.addEvent(juce::MidiMessage::noteOn(2, 48, 0.8f), 0);
+      lowOff.addEvent(juce::MidiMessage::noteOff(2, 48), 0);
+      block(lowOn);
+      MP_CHECK(!proc.switchEngaged(900), "a lower key held: the key above is no longer the bass");
+      block(lowOff);
+      MP_CHECK(proc.switchEngaged(900), "the lower key let go: the key above is the bass again");
+    }
     proc.releaseResources();
     MP_CHECK(!proc.switchEngaged(900), "the audio stopping lets the coupled input go");
 
