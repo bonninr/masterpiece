@@ -225,6 +225,10 @@ private:
     // The frame last seen by the timer, which repaints this item alone when
     // it differs; -1 before the first look.
     int shownIndex = -1;
+    // Written on the plain button drawn when the control's picture is not
+    // here: its stop's name, or its own. Empty when the set writes a text of
+    // its own over the control.
+    juce::String fallbackLabel;
   };
 
   // One drawn key of a drawn manual. Assembled from the KeyImageSet's
@@ -271,6 +275,8 @@ private:
 
   // Lay out the text written over the current page.
   void buildTexts(const OrganModel& model, Id pageId);
+  // Name each control for the plain button drawn when its picture is missing.
+  void labelControls(const OrganModel& model);
   // The invisible components over the drawn controls, so a screen reader
   // finds them.
   void buildControls(const OrganModel& model);

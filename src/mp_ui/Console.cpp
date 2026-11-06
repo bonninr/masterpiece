@@ -394,7 +394,35 @@ void ConsoleView::rebuild() {
   else
     stopTimer();
 
+  labelControls(model);
   buildControls(model);
+}
+
+// A set whose stop labels are pictures -- porcelain plates, engraved knobs --
+// shows a row of blank buttons when its artwork package is missing (#826).
+// Each control gets its stop's name, or its own, for that case. A control the
+// set already writes a text over keeps that text alone: the pages built from
+// standard components write black labels meant for these buttons.
+void ConsoleView::labelControls(const OrganModel& model) {
+  std::unordered_map<Id, juce::String> stopNames;
+  for (const auto& [stopId, stop] : model.stops) {
+    (void)stopId;
+    const Id knob = proc_.playerSwitchFor(stop.controllingSwitchId);
+    if (knob != 0 && !stop.name.empty()) stopNames[knob] = juce::String::fromUTF8(stop.name.c_str());
+  }
+  for (auto& item : items_) {
+    item.fallbackLabel = {};
+    if (item.switchId == 0 || item.tiled) continue;
+    const bool written = std::any_of(texts_.begin(), texts_.end(), [&item](const TextItem& t) {
+      return item.bounds.contains(t.bounds.getCentre());
+    });
+    if (written) continue;
+    if (const auto it = stopNames.find(item.switchId); it != stopNames.end()) {
+      item.fallbackLabel = it->second;
+    } else if (const auto sw = model.switches.find(item.switchId); sw != model.switches.end()) {
+      item.fallbackLabel = juce::String::fromUTF8(sw->second.name.c_str());
+    }
+  }
 }
 
 // The invisible components over the drawn controls: what a screen reader
@@ -1070,6 +1098,15 @@ void ConsoleView::paint(juce::Graphics& g) {
         g.fillRoundedRectangle(r, 3.0f);
         g.setColour(juce::Colour(0xff5a5446));
         g.drawRoundedRectangle(r, 3.0f, 1.0f);
+        if (item.fallbackLabel.isNotEmpty()) {
+          // Sized to the button: up to three lines, as a stop plate writes
+          // a long name.
+          const auto box = item.bounds.reduced(4, 2);
+          const float height = juce::jlimit(9.0f, 16.0f, static_cast<float>(item.bounds.getHeight()) * 0.3f);
+          g.setFont(juce::FontOptions(height));
+          g.setColour(juce::Colour(0xff2a261e));
+          g.drawFittedText(item.fallbackLabel, box, juce::Justification::centred, 3, 0.7f);
+        }
       }
       continue;
     }
@@ -1168,10 +1205,15 @@ void ConsoleView::paint(juce::Graphics& g) {
   // Say so rather than showing a mysteriously empty console: a set whose
   // images did not resolve looks identical to one that has none.
   if (drawn == 0 && missing > 0) {
+    // On a band of its own: across the plain buttons it could not be read.
+    const auto band = getLocalBounds().reduced(20, 0).withSizeKeepingCentre(getWidth() - 40, 30);
+    g.setColour(juce::Colour(0xe6101216));
+    g.fillRoundedRectangle(band.toFloat(), 4.0f);
     g.setColour(juce::Colours::orangered);
+    g.setFont(juce::FontOptions(14.0f));
     g.drawText(TRANS("Console artwork could not be loaded (%1 images). Check OrganInstallationPackages.")
                    .replace("%1", juce::String(missing)),
-               getLocalBounds().reduced(20), juce::Justification::centred);
+               band.reduced(8, 0), juce::Justification::centred);
   }
 }
 
