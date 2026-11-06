@@ -3913,14 +3913,26 @@ void MixerPanel::addFader(std::vector<Fader>& into, MidiTargetKind kind, Id id, 
     rankHolder_.addAndMakeVisible(*f.label);
   }
   f.slider = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
-  f.slider->setRange(0.0, LiveLevels::kFull, 1.0);
+  // Silence to 24 dB over the voicing, as the master volume reaches (#971);
+  // a double-click puts the level back as voiced.
+  f.slider->setRange(0.0, LiveLevels::kTop, 1.0);
+  f.slider->setDoubleClickReturnValue(true, LiveLevels::kFull);
   f.slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, kRow - 6);
   f.slider->textFromValueFunction = [](double v) {
     const int n = juce::roundToInt(v);
-    return n <= 0 ? TRANS("Off") : juce::String(LiveLevels::dbOf(n), 1) + " dB";
+    if (n <= 0) return TRANS("Off");
+    return juce::String(n > LiveLevels::kFull ? "+" : "") + juce::String(LiveLevels::dbOf(n), 1) + " dB";
+  };
+  // A level typed in dB, "+6" or "-12 dB"; "Off" is silence. Anything else
+  // leaves the level where it was.
+  f.slider->valueFromTextFunction = [s = f.slider.get()](const juce::String& text) {
+    const auto t = text.trim();
+    if (t.equalsIgnoreCase(TRANS("Off"))) return 0.0;
+    if (!t.containsAnyOf("0123456789")) return s->getValue();
+    return static_cast<double>(LiveLevels::valueOf(static_cast<float>(t.getDoubleValue())));
   };
   f.slider->setValue(faderLevel(f), juce::dontSendNotification);
-  f.slider->setTooltip(TRANS("A live level, heard at once: full is the level as voiced"));
+  f.slider->setTooltip(TRANS("A live level, heard at once: 0 dB is the level as voiced"));
   f.midi = std::make_unique<juce::TextButton>(TRANS("MIDI"));
   f.midi->setTooltip(TRANS("Learn a knob or a pedal for this level"));
   rankHolder_.addAndMakeVisible(*f.slider);

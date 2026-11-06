@@ -1,0 +1,1 @@
+"A live level, heard at once: 0 dB is the level as voiced" = "Een live niveau, meteen te horen: 0 dB is het niveau zoals geïntoneerd"

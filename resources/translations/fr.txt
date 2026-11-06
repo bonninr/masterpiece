@@ -989,7 +989,6 @@ countries: fr be ca ch lu mc
 "Learn score page -" = "Apprendre page de partition -"
 "Learn score page +" = "Apprendre page de partition +"
 "Divisions" = "Claviers"
-"A live level, heard at once: full is the level as voiced" = "Un niveau en direct, entendu aussitôt : au maximum, c'est le niveau tel qu'harmonisé"
 "Learn a knob or a pedal for this level" = "Apprendre un bouton ou une pédale pour ce niveau"
 "Learn: move the knob or pedal" = "Apprendre : bougez le bouton ou la pédale"
 "Move it..." = "Bougez-le..."

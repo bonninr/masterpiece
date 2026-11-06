@@ -1,0 +1,1 @@
+"A live level, heard at once: 0 dB is the level as voiced" = "Ein Live-Pegel, sofort zu hören: 0 dB ist der Pegel wie intoniert"

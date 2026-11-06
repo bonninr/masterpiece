@@ -227,13 +227,17 @@ function controlPanel() {
 }
 
 // The live levels: a fader for each division and each output pair, heard at
-// once; full is the organ as voiced.
-function levelText(v) { return v <= 0 ? "off" : `${(-40 * (1 - v / 127)).toFixed(1)} dB`; }
+// once; 127 is the organ as voiced, 203 is 24 dB over it (LiveLevels.h).
+function levelText(v) {
+  if (v <= 0) return "off";
+  if (v > 127) return `+${(24 * (Math.min(v, 203) - 127) / 76).toFixed(1)} dB`;
+  return `${(-40 * (1 - v / 127)).toFixed(1)} dB`;
+}
 function levelPanel() {
   const box = el("div", { class: "controls" });
   const fader = (kind, plural, item, name) => {
     const out = el("span", { class: "dim" }, levelText(item.value));
-    const r = el("input", { type: "range", min: 0, max: 127, value: item.value });
+    const r = el("input", { type: "range", min: 0, max: 203, value: item.value });
     r.addEventListener("input", () => { out.textContent = levelText(Number(r.value)); setValue(plural, item.index, Number(r.value)); });
     state.el[kind][item.index] = { r, out };
     box.append(el("label", { class: "control" }, el("span", {}, name), r, out));

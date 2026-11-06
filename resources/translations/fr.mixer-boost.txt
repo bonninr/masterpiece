@@ -1,0 +1,1 @@
+"A live level, heard at once: 0 dB is the level as voiced" = "Un niveau en direct, entendu aussitôt : 0 dB est le niveau tel qu'harmonisé"
