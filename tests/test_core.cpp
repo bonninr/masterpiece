@@ -7718,15 +7718,30 @@ public:
                "at the top of the window it is full velocity - a console that "
                "never sends more than 100 still reaches the loudest layer");
 
-      // Tracker action: down or not down, and nothing in between.
+      // Tracker action: down or not down, and nothing in between. A new
+      // manual starts that way.
       mp::MidiMap t;
       auto tb = whole(1);
-      tb.ignoreVelocity = true;
+      MP_CHECK(tb.ignoreVelocity, "a new manual ignores velocity");
       t.addKeyboardBinding(tb);
       out.clear();
       t.matchKeyboards(0, 1, 60, 3, 0.0, out);
       MP_CHECK(!out.empty() && out.front().velocity == 127,
                "ignoring velocity reports full, not what the console sent");
+
+      // Turned off, the console's velocity comes through.
+      mp::MidiMap s;
+      auto sb = whole(1);
+      sb.ignoreVelocity = false;
+      s.addKeyboardBinding(sb);
+      out.clear();
+      s.matchKeyboards(0, 1, 60, 64, 0.0, out);
+      MP_CHECK(!out.empty() && out.front().velocity == 63,
+               "with velocity on, a half-way key reports half, scaled across 1 to 127");
+      mp::MidiMap sl;
+      MP_CHECK(sl.fromText(s.toText()) && sl.keyboardBindings().size() == 1 &&
+                   !sl.keyboardBindings().front().ignoreVelocity,
+               "a manual saved with velocity on stays on when read back");
 
       // An inverted window reverses the sense, which is how a
       // normally-closed key contact is read.
