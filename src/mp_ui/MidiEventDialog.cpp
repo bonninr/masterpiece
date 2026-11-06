@@ -82,6 +82,15 @@ void fillNumbers(juce::ComboBox& box, MidiSourceKind kind, int selected, bool of
       return;
     }
   }
+  // And from a range of programs, one program a step (#925).
+  if (kind == MidiSourceKind::ProgramChange && offerAnyNote) {
+    box.addItem(TRANS("Range of programs"), kAnyNoteItem);
+    if (selected == kProgramRange || selected == kAnyNoteItem - 1) {
+      for (int n = 0; n < 128; ++n) box.addItem(juce::String(n + 1), n + 1);
+      box.setSelectedId(kAnyNoteItem, juce::dontSendNotification);
+      return;
+    }
+  }
   // A system exclusive message is identified by its bytes, taken by Listen.
   if (kind == MidiSourceKind::SysEx) {
     box.addItem(TRANS("Learned message"), 1);
@@ -246,6 +255,7 @@ public:
       low_.onValueChange = [this] { changed(); };
       high_.onValueChange = [this] { changed(); };
       invert_.onClick = [this] { changed(); };
+      showProgramRange();
     }
     addAndMakeVisible(listen_);
     listen_.onClick = [this] { if (onListen) onListen(); };
@@ -259,8 +269,8 @@ public:
       return {{TRANS("Device"), 120}, {TRANS("Channel"), 64}, {TRANS("Event"), 160}, {TRANS("Number"), 90},
               {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84},
               {TRANS("Debounce ms"), 84}, {"", 84}, {"", 28}};
-    return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
-            {TRANS("Closed at"), 72}, {TRANS("Open at"), 72}, {"", 60}, {"", 84}, {"", 28}};
+    return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 150},
+            {TRANS("Closed at"), 90}, {TRANS("Open at"), 90}, {"", 60}, {"", 84}, {"", 28}};
   }
 
   void resized() override {
@@ -325,6 +335,7 @@ public:
 private:
   void changed() {
     binding_ = read();
+    if (!pressable(kind_)) showProgramRange();
     if (onChange) onChange();
   }
 
@@ -349,6 +360,23 @@ private:
                            : TRANS("The value your console sends for on"));
     }
   }
+  // A range of programs is counted from 1, as the Number box counts them,
+  // and its two ends are the first and the last program.
+  void showProgramRange() {
+    const bool programs = event_.getSelectedId() > 0 &&
+                          eventKind(event_.getSelectedId()) == MidiSourceKind::ProgramChange &&
+                          number_.getSelectedId() == kAnyNoteItem;
+    if (programs == showingPrograms_) return;
+    showingPrograms_ = programs;
+    for (auto* s : {&low_, &high_}) {
+      s->textFromValueFunction = [programs](double v) { return juce::String(static_cast<int>(v) + (programs ? 1 : 0)); };
+      s->valueFromTextFunction = [programs](const juce::String& t) { return t.getDoubleValue() - (programs ? 1 : 0); };
+      s->updateText();
+    }
+    low_.setTooltip(programs ? TRANS("The program that closes it") : juce::String());
+    high_.setTooltip(programs ? TRANS("The program that opens it fully") : juce::String());
+  }
+  bool showingPrograms_ = false;
   bool showingBit_ = false;
 
   // The ways this row's message can work its target. A switch held by a
@@ -620,13 +648,18 @@ enum SendEvent {
   kSendRpn,
   kSendNrpn,
   kSendHex,
+  kSendLcd,
+  kSendText,
 };
 
 int sendEventOf(const MidiSend& s) {
   switch (s.kind) {
     case MidiSourceKind::Note: return s.noteOff ? kSendNoteOff : kSendNote;
     case MidiSourceKind::ProgramChange: return kSendProgram;
-    case MidiSourceKind::SysEx: return kSendHex;
+    case MidiSourceKind::SysEx:
+      return s.display == MidiDisplay::Lcd    ? kSendLcd
+             : s.display == MidiDisplay::Text ? kSendText
+                                              : kSendHex;
     case MidiSourceKind::ControlChange:
       return s.parameter == MidiParameter::Registered      ? kSendRpn
              : s.parameter == MidiParameter::NonRegistered ? kSendNrpn
@@ -641,10 +674,16 @@ void applySendEvent(int event, MidiSend& s) {
   s.parameter = event == kSendRpn    ? MidiParameter::Registered
                 : event == kSendNrpn ? MidiParameter::NonRegistered
                                      : MidiParameter::None;
-  s.kind = event == kSendNote || event == kSendNoteOff ? MidiSourceKind::Note
-           : event == kSendProgram                     ? MidiSourceKind::ProgramChange
-           : event == kSendHex                         ? MidiSourceKind::SysEx
-                                                       : MidiSourceKind::ControlChange;
+  const auto display = event == kSendLcd    ? MidiDisplay::Lcd
+                       : event == kSendText ? MidiDisplay::Text
+                                            : MidiDisplay::None;
+  // A display starts on its first id, showing the object's name.
+  if (display != s.display) s.number = s.low = s.high = 0;
+  s.display = display;
+  s.kind = event == kSendNote || event == kSendNoteOff      ? MidiSourceKind::Note
+           : event == kSendProgram                          ? MidiSourceKind::ProgramChange
+           : event == kSendHex || display != MidiDisplay::None ? MidiSourceKind::SysEx
+                                                            : MidiSourceKind::ControlChange;
 }
 
 juce::String describeSend(MidiTargetKind kind, const MidiSend& s) {
@@ -656,6 +695,12 @@ juce::String describeSend(MidiTargetKind kind, const MidiSend& s) {
   juce::String what;
   switch (sendEventOf(s)) {
     case kSendHex: return TRANS("Hex messages");
+    case kSendLcd:
+    case kSendText: {
+      juce::String t = (s.display == MidiDisplay::Lcd ? TRANS("Display %1") : TRANS("Text display %1"))
+                           .replace("%1", juce::String(s.number));
+      return t + ", " + (s.showsValue() ? TRANS("its value") : TRANS("its name"));
+    }
     case kSendProgram: what = TRANS("Program %1").replace("%1", juce::String(s.number + 1)); break;
     case kSendRpn: what = TRANS("RPN %1").replace("%1", juce::String(s.number)); break;
     case kSendNrpn: what = TRANS("NRPN %1").replace("%1", juce::String(s.number)); break;
@@ -671,8 +716,8 @@ public:
   // The bytes a state puts out, sent at once by the test buttons.
   std::function<void(const std::vector<uint8_t>&)> onTest;
 
-  SendForm(MidiTargetKind kind, std::optional<MidiSource> received)
-      : kind_(kind), onOff_(MidiMap::sendsOnOff(kind)), received_(received) {
+  SendForm(MidiTargetKind kind, std::optional<MidiSource> received, std::string name)
+      : kind_(kind), onOff_(MidiMap::sendsOnOff(kind)), received_(received), name_(std::move(name)) {
     if (kind_ != MidiTargetKind::Keyboard) {
       event_.addItem(TRANS("Note"), kSendNote);
       if (onOff_) event_.addItem(TRANS("Note, off as a Note Off (8n)"), kSendNoteOff);
@@ -683,6 +728,12 @@ public:
       // A hex send is a whole message for each state, so only a target with
       // two states offers it.
       if (onOff_) event_.addItem(TRANS("Hex messages, SysEx or any other"), kSendHex);
+      // A console's text displays, in the GrandOrgue messages: a stop's or a
+      // control's name, or a control's value.
+      if (kind_ == MidiTargetKind::Switch || kind_ == MidiTargetKind::ContinuousControl) {
+        event_.addItem(TRANS("Display, 32 characters"), kSendLcd);
+        event_.addItem(TRANS("Display, 16 characters"), kSendText);
+      }
       event_.onChange = [this] {
         applySendEvent(event_.getSelectedId(), send_);
         fillNumbers(number_, send_.kind, send_.number);
@@ -696,6 +747,9 @@ public:
     offProgram_.addItem(TRANS("none"), 1);
     for (int n = 0; n < 128; ++n) offProgram_.addItem(juce::String(n + 1), n + 2);
     offProgram_.onChange = [this] { changed(); };
+    shows_.addItem(TRANS("Its name"), 1);
+    shows_.addItem(TRANS("Its value, in per cent"), 2);
+    shows_.onChange = [this] { changed(); };
 
     styleValue(parameter_, 0, 16383);
     parameter_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 56, kRow - 4);
@@ -738,7 +792,7 @@ public:
     bytes_.setJustificationType(juce::Justification::topLeft);
 
     for (juce::Component* c : std::initializer_list<juce::Component*>{
-             &event_, &channel_, &number_, &parameter_, &transpose_, &offProgram_, &high_, &low_,
+             &event_, &channel_, &number_, &parameter_, &transpose_, &offProgram_, &shows_, &high_, &low_,
              &hexOn_, &hexOff_, &bytes_, &copy_, &testOn_, &testOff_})
       addChildComponent(*c);
 
@@ -775,6 +829,7 @@ public:
     transpose_.setValue(s.number, juce::dontSendNotification);
     offProgram_.setSelectedId(s.offProgram < 0 ? 1 : juce::jmin(127, s.offProgram) + 2,
                               juce::dontSendNotification);
+    shows_.setSelectedId(s.showsValue() ? 2 : 1, juce::dontSendNotification);
     high_.setValue(s.high, juce::dontSendNotification);
     low_.setValue(s.low, juce::dontSendNotification);
     low_.updateText();
@@ -806,12 +861,15 @@ public:
     } else {
       put(line(), channelLabel_, channel_, 80);
       juce::Component& number = kind_ == MidiTargetKind::Keyboard ? static_cast<juce::Component&>(transpose_)
-                                : parameterSend()                ? static_cast<juce::Component&>(parameter_)
+                                : parameterSend() || display()   ? static_cast<juce::Component&>(parameter_)
                                                                  : static_cast<juce::Component&>(number_);
       if (numberLabel_.isVisible()) put(line(), numberLabel_, number, 140);
       auto values = line();
       if (highLabel_.isVisible()) {
-        values = put(values, highLabel_, programPair() ? static_cast<juce::Component&>(number_) : high_, 110);
+        juce::Component& high = programPair() ? static_cast<juce::Component&>(number_)
+                                : display()   ? static_cast<juce::Component&>(shows_)
+                                              : static_cast<juce::Component&>(high_);
+        values = put(values, highLabel_, high, display() ? 200 : 110);
       }
       if (lowLabel_.isVisible()) {
         values.removeFromLeft(kGap);
@@ -834,7 +892,8 @@ public:
   }
 
 private:
-  bool hex() const { return send_.kind == MidiSourceKind::SysEx; }
+  bool hex() const { return send_.kind == MidiSourceKind::SysEx && !display(); }
+  bool display() const { return send_.display != MidiDisplay::None; }
   bool parameterSend() const {
     return send_.kind == MidiSourceKind::ControlChange && send_.parameter != MidiParameter::None;
   }
@@ -849,35 +908,48 @@ private:
     event_.setVisible(!keys);
     hexOn_.setVisible(h);
     hexOff_.setVisible(h);
-    channelLabel_.setVisible(!h);
-    channel_.setVisible(!h);
-    // The number: a note, controller or parameter; a manual's transpose. A
-    // control sending programs sends them across its range, with no number.
+    const bool d = display(), lcd = send_.display == MidiDisplay::Lcd;
+    channelLabel_.setVisible(!h && !d);
+    channel_.setVisible(!h && !d);
+    // The number: a note, controller or parameter; a manual's transpose; a
+    // display's id. A control sending programs sends them across its range,
+    // with no number.
     const bool number = !h && !programPair() && !(program && !onOff_);
     numberLabel_.setVisible(number);
-    number_.setVisible(!h && !keys && !parameterSend() && (number || programPair()));
-    parameter_.setVisible(!h && parameterSend());
+    number_.setVisible(!h && !d && !keys && !parameterSend() && (number || programPair()));
+    parameter_.setRange(0, d && !lcd ? 127 : 16383, 1);
+    parameter_.setVisible(!h && (parameterSend() || d));
     transpose_.setVisible(keys);
     numberLabel_.setText(keys                                      ? TRANS("Transpose")
+                         : d                                       ? TRANS("Display")
                          : parameterSend()                         ? TRANS("Parameter")
                          : send_.kind == MidiSourceKind::ControlChange ? TRANS("Controller")
                                                                    : TRANS("Note"),
                          juce::dontSendNotification);
-    // The values: on and off; closed and open; a manual's velocity.
-    highLabel_.setVisible(!keys);
-    high_.setVisible(!h && !keys && !programPair());
-    lowLabel_.setVisible(true);
-    low_.setVisible(!h && !programPair());
+    // The values: on and off; closed and open; a manual's velocity; what a
+    // display shows, and in what colour. Only a control has a value to show.
+    highLabel_.setVisible(!keys && (!d || kind_ == MidiTargetKind::ContinuousControl));
+    high_.setVisible(!h && !d && !keys && !programPair());
+    shows_.setVisible(d && kind_ == MidiTargetKind::ContinuousControl);
+    lowLabel_.setVisible(!d || lcd);
+    low_.setRange(onOff_ && !d ? -1 : 0, 127, 1);
+    low_.setVisible(!h && !programPair() && (!d || lcd));
     offProgram_.setVisible(programPair());
-    highLabel_.setText(programPair() ? TRANS("Program when on") : onOff_ ? TRANS("When on") : TRANS("Open"),
+    highLabel_.setText(d               ? TRANS("Shows")
+                       : programPair() ? TRANS("Program when on")
+                       : onOff_        ? TRANS("When on")
+                                       : TRANS("Open"),
                        juce::dontSendNotification);
-    lowLabel_.setText(keys ? TRANS("Velocity") : onOff_ ? TRANS("When off") : TRANS("Closed"),
+    lowLabel_.setText(keys     ? TRANS("Velocity")
+                      : d      ? TRANS("Colour")
+                      : onOff_ ? TRANS("When off")
+                               : TRANS("Closed"),
                       juce::dontSendNotification);
     bytesLabel_.setVisible(true);
     bytes_.setVisible(true);
     copy_.setVisible(true);
     copy_.setButtonText(TRANS("Copy the received event"));
-    copy_.setEnabled(received_.has_value() && !h);
+    copy_.setEnabled(received_.has_value() && !h && !d);
     testOn_.setVisible(true);
     testOff_.setVisible(true);
     showBytes();
@@ -891,12 +963,21 @@ private:
       if (!MidiMap::keyMessage(send_, 60, 100, on, raw)) return {};
       return {raw.bytes, raw.bytes + raw.size};
     }
-    return MidiMap::sendBytes(send_, onOff_ ? (on ? 1 : 0) : (on ? 127 : 0));
+    const int value = onOff_ ? (on ? 1 : 0) : (on ? 127 : 0);
+    if (display()) return MidiMap::displayBytes(send_, MidiMap::displayText(send_, name_, value));
+    return MidiMap::sendBytes(send_, value);
   }
 
   void showBytes() {
-    auto text = [](const std::vector<uint8_t>& b) {
-      return b.empty() ? TRANS("nothing") : juce::String(midiText(b));
+    // A display's message shows its text as text: in hex it runs past the form.
+    const size_t head = send_.display == MidiDisplay::Lcd ? 6 : 4;
+    auto text = [this, head](const std::vector<uint8_t>& b) {
+      if (b.empty()) return TRANS("nothing");
+      if (!display() || b.size() <= head + 1) return juce::String(midiText(b));
+      const std::string chars(b.begin() + static_cast<long>(head), b.end() - 1);
+      const std::vector<uint8_t> prefix(b.begin(), b.begin() + static_cast<long>(head));
+      return juce::String(midiText(prefix)) + " \"" +
+             juce::String(chars).trimEnd() + "\" F7";
     };
     const bool keys = kind_ == MidiTargetKind::Keyboard;
     juce::String on = keys ? TRANS("Middle C: %1") : onOff_ ? TRANS("When on: %1") : TRANS("Open: %1");
@@ -930,10 +1011,11 @@ private:
       s.number = static_cast<int>(transpose_.getValue());
       s.low = juce::jmax(0, static_cast<int>(low_.getValue()));
     } else {
-      s.number = parameterSend() ? static_cast<int>(parameter_.getValue())
-                                 : juce::jmax(0, number_.getSelectedId() - 1);
+      s.number = parameterSend() || display() ? static_cast<int>(parameter_.getValue())
+                                              : juce::jmax(0, number_.getSelectedId() - 1);
       s.low = static_cast<int>(low_.getValue());
-      s.high = static_cast<int>(high_.getValue());
+      s.high = display() ? (kind_ == MidiTargetKind::ContinuousControl && shows_.getSelectedId() == 2 ? 1 : 0)
+                         : static_cast<int>(high_.getValue());
       if (programPair()) s.offProgram = offProgram_.getSelectedId() - 2;
       if (hex()) {
         // A message that does not read keeps the one before.
@@ -950,9 +1032,10 @@ private:
   MidiTargetKind kind_;
   bool onOff_;
   std::optional<MidiSource> received_;
+  std::string name_;  // what a display of the object's name shows
   MidiSend send_;
   juce::Label eventLabel_, channelLabel_, numberLabel_, highLabel_, lowLabel_, bytesLabel_, bytes_;
-  juce::ComboBox event_, channel_, number_, offProgram_;
+  juce::ComboBox event_, channel_, number_, offProgram_, shows_;
   juce::Slider parameter_, transpose_, high_, low_;
   juce::TextEditor hexOn_, hexOff_;
   juce::TextButton copy_, testOn_, testOff_;
@@ -963,7 +1046,7 @@ private:
 class SendPanel : public juce::Component, private juce::ListBoxModel, private juce::Timer {
 public:
   SendPanel(MasterpieceProcessor& p, MidiTargetKind kind, Id id)
-      : proc_(p), kind_(kind), id_(id), form_(kind, received(p, kind, id)) {
+      : proc_(p), kind_(kind), id_(id), form_(kind, received(p, kind, id), p.displayNameOf(kind, id)) {
     rows_ = p.midiMap().sendsFor(kind, id);
     list_.setModel(this);
     list_.setRowHeight(kRow);
@@ -1303,6 +1386,10 @@ juce::String MidiEventDialog::describeBinding(const MidiBinding& b) {
                       : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
                                                                        : TRANS("CC %1");
   what = what.replace("%1", juce::String(b.source.number));
+  if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange)
+    what = TRANS("Programs %1 to %2")
+               .replace("%1", juce::String(std::min(b.lowValue, b.highValue) + 1))
+               .replace("%2", juce::String(std::max(b.lowValue, b.highValue) + 1));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));
   return what;
 }
@@ -1331,7 +1418,7 @@ void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                            const juce::String& name) {
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
   // Wide enough for a switch's or a piston's row with its off and on values
-  // and its debounce time.
+  // and its debounce time, and for a shoe's range of programs.
   content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 1040 : 760, 500);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
