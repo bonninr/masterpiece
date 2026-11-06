@@ -363,6 +363,164 @@ public:
 };
 static AttackEmphasisTest g_attack;
 
+// One stop of six ranks, three recorded from the front and three from the
+// rear (#930): a fader for each perspective takes its three ranks at once.
+juce::File writePerspectiveOrgan(const juce::File& root) {
+  root.deleteRecursively();
+  const auto defs = root.getChildFile("OrganDefinitions");
+  const auto pkg = root.getChildFile("OrganInstallationPackages").getChildFile("000001");
+  defs.createDirectory();
+  pkg.createDirectory();
+  {
+    juce::WavAudioFormat fmt;
+    std::unique_ptr<juce::FileOutputStream> os(pkg.getChildFile("tone.wav").createOutputStream());
+    juce::StringPairArray meta;
+    meta.set("NumSampleLoops", "1");
+    meta.set("Loop0Start", "1000");
+    meta.set("Loop0End", "47000");
+    std::unique_ptr<juce::AudioFormatWriter> w(fmt.createWriterFor(os.release(), 48000.0, 1, 16, meta, 0));
+    juce::AudioBuffer<float> tone(1, 48000);
+    for (int i = 0; i < 48000; ++i)
+      tone.setSample(0, i, static_cast<float>(0.05 * std::sin(2.0 * 3.14159265 * 130.81 * i / 48000.0)));
+    w->writeFromAudioSampleBuffer(tone, 0, 48000);
+  }
+  juce::String ranks, pipes, layers, attacks, stopRanks;
+  const char* names[] = {"Prestant 8 (front)", "Octave 4 (front)", "Mixture (front)",
+                         "Prestant 8 (rear)",  "Octave 4 (rear)",  "Mixture (rear)"};
+  for (int i = 0; i < 6; ++i) {
+    const juce::String n(i + 1);
+    ranks += "<Rank><RankID>20" + n + "</RankID><Name>" + names[i] + "</Name></Rank>";
+    pipes += "<Pipe_SoundEngine01><PipeID>30" + n + "</PipeID><RankID>20" + n +
+             "</RankID><NormalMIDINoteNumber>36</NormalMIDINoteNumber></Pipe_SoundEngine01>";
+    layers += "<Pipe_SoundEngine01_Layer><LayerID>40" + n + "</LayerID><PipeID>30" + n +
+              "</PipeID></Pipe_SoundEngine01_Layer>";
+    attacks += "<Pipe_SoundEngine01_AttackSample><UniqueID>50" + n + "</UniqueID><LayerID>40" + n +
+               "</LayerID><SampleID>101</SampleID></Pipe_SoundEngine01_AttackSample>";
+    stopRanks += "<StopRank><StopID>901</StopID><RankID>20" + n +
+                 "</RankID><MIDINoteNumOfFirstMappedDivisionInputNode>36</MIDINoteNumOfFirstMappedDivisionInputNode>"
+                 "<NumberOfMappedDivisionInputNodes>1</NumberOfMappedDivisionInputNodes></StopRank>";
+  }
+  const auto odf = defs.getChildFile("perspectives.Organ_Hauptwerk_xml");
+  odf.replaceWithText(
+      "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+      "<ObjectList ObjectType=\"_General\"><_General><Identification_Name>Perspectives</Identification_Name>"
+      "<Identification_UniqueOrganID>35</Identification_UniqueOrganID></_General></ObjectList>"
+      "<ObjectList ObjectType=\"RequiredInstallationPackage\"><RequiredInstallationPackage>"
+      "<InstallationPackageID>1</InstallationPackageID><Name>P</Name></RequiredInstallationPackage></ObjectList>"
+      "<ObjectList ObjectType=\"Sample\"><Sample><SampleID>101</SampleID><InstallationPackageID>1</InstallationPackageID>"
+      "<SampleFilename>tone.wav</SampleFilename><Pitch_SpecificationMethodCode>1</Pitch_SpecificationMethodCode>"
+      "<Pitch_ExactSamplePitch>130.81</Pitch_ExactSamplePitch></Sample></ObjectList>"
+      "<ObjectList ObjectType=\"Rank\">" + ranks + "</ObjectList>"
+      "<ObjectList ObjectType=\"Pipe_SoundEngine01\">" + pipes + "</ObjectList>"
+      "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">" + layers + "</ObjectList>"
+      "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">" + attacks + "</ObjectList>"
+      "<ObjectList ObjectType=\"Keyboard\">"
+      "<Keyboard><KeyboardID>701</KeyboardID><Name>I</Name><DefaultInputOutputKeyboardAsgnCode>1</DefaultInputOutputKeyboardAsgnCode>"
+      "<KeyGen_NumberOfKeys>61</KeyGen_NumberOfKeys><KeyGen_MIDINoteNumberOfFirstKey>36</KeyGen_MIDINoteNumberOfFirstKey></Keyboard>"
+      "</ObjectList><ObjectList ObjectType=\"Division\"><Division><DivisionID>801</DivisionID><Name>G</Name></Division></ObjectList>"
+      "<ObjectList ObjectType=\"KeyAction\">"
+      "<KeyAction><SourceKeyboardID>701</SourceKeyboardID><DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>801</DestDivisionID>"
+      "<ActionTypeCode>1</ActionTypeCode><ActionEffectCode>1</ActionEffectCode><MIDINoteNumOfFirstSourceKey>36</MIDINoteNumOfFirstSourceKey><NumberOfKeys>61</NumberOfKeys></KeyAction>"
+      "</ObjectList><ObjectList ObjectType=\"Stop\">"
+      "<Stop><StopID>901</StopID><Name>Plenum</Name><DivisionID>801</DivisionID><ControllingSwitchID>1101</ControllingSwitchID></Stop>"
+      "</ObjectList><ObjectList ObjectType=\"StopRank\">" + stopRanks + "</ObjectList>"
+      "<ObjectList ObjectType=\"Switch\"><Switch><SwitchID>1101</SwitchID><Name>Plenum</Name><Latching>Y</Latching></Switch>"
+      "</ObjectList></Hauptwerk>");
+  return odf;
+}
+
+class LiveLevelsGroupsTest final : public mp::test::Test {
+public:
+  LiveLevelsGroupsTest() : Test("functional.levels.perspective-groups", Category::Functional) {}
+  void run() override {
+    // The table on its own: a group's fader reaches its ranks and no others.
+    mp::LiveLevels l;
+    l.configure({0, 0, 0}, 1, {0, 1, -1}, 2);
+    MP_CHECK(l.groupCount() == 2 && l.rankGroup(0) == 0 && l.rankGroup(2) == -1, "a group per rank, or none");
+    l.setGroup(1, 0);
+    for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+    MP_CHECK(l.rankGain(1) == 0.0f && l.rankGain(0) == 1.0f && l.rankGain(2) == 1.0f, "group 2 takes its rank only");
+    l.setDivision(0, 64);
+    for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+    MP_CHECK(std::fabs(l.rankGain(0) - mp::LiveLevels::gainOf(64)) < 1.0e-5f, "the division's fader on top");
+    l.setGroup(1, 127);
+    l.setDivision(0, 127);
+    for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+    MP_CHECK(!l.advance(256, 48000.0), "all back at full: nothing to apply");
+    mp::LiveLevels none;
+    none.configure({0, -1}, 1);
+    MP_CHECK(none.groupCount() == 0 && none.rankGroup(0) == -1, "an organ with no groups has no group faders");
+
+    // On the organ: front and rear found from the rank names.
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-live-groups");
+    const juce::File odf = writePerspectiveOrgan(root);
+    Rig plain(odf), rig(odf);
+    MP_CHECK(rig.loaded && plain.loaded, "the organ loads");
+    auto& p = rig.proc;
+    p.setStopEngaged(901, true);
+    plain.proc.setStopEngaged(901, true);
+    const auto& names = p.liveGroupNames();
+    MP_CHECK(names.size() == 2 && names[0] == "front" && names[1] == "rear" && p.liveGroupCount() == 2,
+             "a fader for each perspective, front and rear");
+    for (int i = 0; i < 6; ++i)
+      MP_CHECK(p.liveGroupOfRank(p.liveRankIndexOf(201 + i)) == (i < 3 ? 0 : 1),
+               "rank " + std::to_string(201 + i) + " under its perspective");
+
+    // Rear pulled down and put back before playing: the same to the bit.
+    p.setLiveGroupLevel(1, 0);
+    rig.settle(100);
+    plain.settle(100);
+    p.setLiveGroupLevel(1, 127);
+    rig.settle(100);
+    plain.settle(100);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    bool same = true;
+    for (int i = 0; i < 60; ++i) {
+      plain.block(i == 0 ? on : juce::MidiBuffer());
+      rig.block(i == 0 ? on : juce::MidiBuffer());
+      for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < 256; ++s) same = same && plain.buf.getSample(ch, s) == rig.buf.getSample(ch, s);
+    }
+    MP_CHECK(same, "the rear's fader back at full: bit-identical to an organ never touched");
+
+    // The six ranks play one tone in phase: the rear's three away halve it.
+    const float all = rig.settle(30);
+    MP_CHECK(all > 0.01f, "all six sound: " + std::to_string(all));
+    p.setLiveGroupLevel(1, 0);
+    const float front = rig.settle(120);
+    MP_CHECK(std::fabs(front - all * 0.5f) < all * 0.05f,
+             "the rear's fader takes its three ranks: " + std::to_string(front) + " of " + std::to_string(all));
+    p.setLiveGroupLevel(0, 0);
+    MP_CHECK(rig.settle(120) < 1.0e-5f, "and the front's takes the rest");
+
+    // A knob learned for the front, by its place from 1.
+    mp::MidiBinding knob;
+    knob.source.kind = mp::MidiSourceKind::ControlChange;
+    knob.source.channel = 3;
+    knob.source.number = 7;
+    knob.targetKind = mp::MidiTargetKind::GroupLevel;
+    knob.targetId = 1;
+    p.midiMap().bind(knob);
+    juce::MidiBuffer cc;
+    cc.addEvent(juce::MidiMessage::controllerEvent(3, 7, 127), 0);
+    rig.block(cc);
+    MP_CHECK(p.liveGroupLevel(0) == 127 && p.liveGroupLevel(1) == 0, "the knob sets the front's fader only");
+    const float knobbed = rig.settle(120);
+    MP_CHECK(std::fabs(knobbed - front) < all * 0.05f, "the front heard again: " + std::to_string(knobbed));
+    const std::string text = p.midiMap().toText();
+    mp::MidiMap reread;
+    MP_CHECK(text.find("group-level") != std::string::npos && reread.fromText(text) &&
+                 !reread.bindingsFor(mp::MidiTargetKind::GroupLevel, 1).empty(),
+             "saved in the map file by name and read back");
+
+    plain.proc.settingsFileFor(odf).deleteFile();
+    root.deleteRecursively();
+  }
+};
+static LiveLevelsGroupsTest g_groups;
+
 }  // namespace
 
 #endif  // MP_TEST_HAS_AUDIO

@@ -101,10 +101,12 @@ enum class MidiTargetKind {
   RecorderRecord,
   RecorderPlay,
   // Live levels (LiveLevels.h), driven like a shoe: a rank by its id, a
-  // division by its id, an output pair by its number from 1.
+  // division by its id, an output pair by its number from 1, a perspective
+  // or windchest group by its place from 1 in the organ's list.
   RankLevel,
   DivisionLevel,
   PairLevel,
+  GroupLevel,
   // The sequencer's digit buttons: id = the digit, 0 to 9, where 0 is the
   // tenth frame. With Set on, a digit stores into its frame, the one shown
   // too.
@@ -236,6 +238,11 @@ struct MidiBinding {
   // other value is for another switch. A console that sends controller 20
   // with values 1 to 40 for its forty tabs is forty rows on one controller.
   bool exactValues = false;
+  // A switch carried by one bit of its controller (#924), GrandOrgue's
+  // bitfield event: a console that reports a group of tabs as one value,
+  // bit 0 for the first tab. The switch follows its bit on every message.
+  // -1 is not a bitfield.
+  int bit = -1;
 
   // A source value, normalised to 0..127 across this binding's own window.
   int scale(int raw) const {
@@ -482,7 +489,7 @@ public:
   // them from its value, and one controller can drive several.
   static bool isContinuousTarget(MidiTargetKind k) {
     return k == MidiTargetKind::ContinuousControl || k == MidiTargetKind::RankLevel ||
-           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel ||
+           k == MidiTargetKind::DivisionLevel || k == MidiTargetKind::PairLevel || k == MidiTargetKind::GroupLevel ||
            k == MidiTargetKind::ReverbWet;
   }
   // A raw controller value through a binding's window and sense, 0..127.
@@ -490,6 +497,12 @@ public:
     const int v = b.scale(raw);
     return b.invert ? 127 - v : v;
   }
+  // A tab moved on and then off, as the MIDI window heard it (#927), made
+  // into the rows that work a switch. One message at two values is one row
+  // that follows the tab; two messages are a row that draws it and a row that
+  // cancels it. `base` carries the switch's own settings.
+  static std::vector<MidiBinding> bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
+                                                   int onValue, const MidiSource& off, int offValue);
 
   // --- learn -------------------------------------------------------------
   // Arm a target, then feed it the next message that arrives. This is how a
