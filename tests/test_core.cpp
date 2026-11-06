@@ -11738,6 +11738,51 @@ public:
   }
 };
 
+// The view of every pipe of a rank (#849): a drag draws a straight stroke
+// across the columns, and every pipe it passes takes its place on the line.
+class VoicingPipeStrokeTest final : public mp::test::Test {
+public:
+  VoicingPipeStrokeTest() : Test("functional.voicing.pipe-stroke", Category::Functional) {}
+
+  void run() override {
+    const std::vector<mp::Id> pipes{301, 302, 303, 304, 305};
+    mp::VoicingSet v;
+    mp::PipeVoicing tuned;
+    tuned.tuningCents = 4.0f;
+    v.setPipe(302, tuned);
+
+    // From the first pipe at -4 dB to the last at 0: the three between are
+    // on the line, though the mouse only reported the ends.
+    mp::drawPipeStroke(v, pipes, 0, -4.0f, 4, 0.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(301).gainDb == -4.0f && v.pipe(302).gainDb == -3.0f && v.pipe(303).gainDb == -2.0f &&
+                 v.pipe(304).gainDb == -1.0f,
+             "every pipe the stroke passes takes its place on the line");
+    MP_CHECK(v.pipes().count(305) == 0, "a pipe drawn to 0 stays unvoiced");
+    MP_CHECK(v.pipe(302).tuningCents == 4.0f, "the level drawn leaves the pipe's tuning alone");
+
+    // Right to left, as a drag back across the rank goes.
+    mp::drawPipeStroke(v, pipes, 3, 10.0f, 1, 0.0f, mp::VoicingField::Tuning);
+    MP_CHECK(v.pipe(304).tuningCents == 10.0f && v.pipe(303).tuningCents == 5.0f && v.pipe(302).tuningCents == 0.0f,
+             "a stroke drawn leftwards fills the same way");
+    MP_CHECK(v.pipe(301).tuningCents == 0.0f && v.pipe(305).tuningCents == 0.0f,
+             "the pipes beyond its ends are left as they were");
+    MP_CHECK(v.pipe(304).gainDb == -1.0f, "and the tuning drawn leaves the level alone");
+
+    // Tenths, the steps the sliders show.
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(302).gainDb == 0.5f, "a value between lands on a tenth");
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 0.22f, mp::VoicingField::Level);
+    MP_CHECK(std::abs(v.pipe(302).gainDb - 0.1f) < 1e-6f && std::abs(v.pipe(303).gainDb - 0.2f) < 1e-6f,
+             "a place between lands on its nearest tenth");
+
+    // One pipe, and the ends past the rank, as a drag off its edge reports.
+    mp::drawPipeStroke(v, pipes, 9, -2.0f, 9, -2.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(305).gainDb == -2.0f, "a place past the last pipe is the last pipe");
+    mp::drawPipeStroke(v, {}, 0, 1.0f, 3, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(true, "a rank with no pipes takes no stroke");
+  }
+};
+
 // Favourites. A slot number is something a thumb piston can be mapped to; a
 // path is not. So the numbering is the feature, and the tests are about the
 // numbering holding still.
@@ -12838,6 +12883,7 @@ static TemperamentLibraryTest g_tempLibrary;
 static AudioOutTrimTest g_audioOutTrim;
 static MixerRoutingTest g_mixerRouting;
 static VoicingTest g_voicingSet;
+static VoicingPipeStrokeTest g_voicingPipeStroke;
 static FavouritesTest g_favourites;
 static RegistrationTest g_registration;
 static MixBusRenderTest g_mixBusRender;
