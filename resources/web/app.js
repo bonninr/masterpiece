@@ -5,6 +5,9 @@
 
 const api = "api/v1";
 const $ = (id) => document.getElementById(id);
+// The views of one section alone, its buttons large: a phone beside the music
+// desk works the pistons or the sequencer (#784).
+const SOLO = ["combinations", "sequencer"];
 const state = { session: -1, divisions: [], switches: [], controls: [], generals: [], divisionals: [],
   eqpresets: [], temperaments: [], program: {}, el: { switch: [], control: [], general: [], divisional: [] },
   all: { switch: [], control: [], rank: [] } };
@@ -114,6 +117,7 @@ function build() {
   main.append(levelPanel());
   main.append(organPanel());
   main.append(combinationPanel());
+  main.append(sequencerPanel());
   if (others.length) {
     const p = switchPanel("Other switches", others);
     p.classList.add("wide");
@@ -283,7 +287,7 @@ function organPanel() {
 }
 
 function combinationPanel() {
-  const sec = el("section", { class: "wide" }, el("h2", {}, "Combinations"));
+  const sec = el("section", { class: "wide combinations" }, el("h2", {}, "Combinations"));
   const gen = el("div", { class: "stops pistons" });
   for (const g of state.generals) {
     const b = el("button", { title: `General ${g.name}` }, g.name);
@@ -313,9 +317,14 @@ function combinationPanel() {
     const name = state.divisions[div] ? state.divisions[div].name : "Divisionals";
     sec.append(el("div", { class: "dim" }, name), row);
   }
+  return sec;
+}
 
+// The sequencer, a section of its own so that a device can show it alone (#784).
+function sequencerPanel() {
+  const sec = el("section", { class: "wide sequencer" }, el("h2", {}, "Sequencer"));
   const frame = el("span", { id: "frame" }, "");
-  sec.append(el("div", { class: "dim" }, "Sequencer"), el("div", { class: "stepper" },
+  sec.append(el("div", { class: "stepper" },
     el("button", { onclick: () => press("commands", 4), title: "First frame" }, "|<"),
     el("button", { onclick: () => press("commands", 3), title: "Previous frame" }, "<"),
     frame,
@@ -387,6 +396,8 @@ const page = { list: [], index: -1, layout: 0, serial: -1, busy: false, again: f
 function chosenView() {
   const m = location.hash.match(/page=(\d+)/);
   if (m) return m[1];
+  const s = location.hash.match(/view=(\w+)/);
+  if (s && SOLO.includes(s[1])) return s[1];
   try { return localStorage.getItem("mp-view") || "panels"; } catch { return "panels"; }
 }
 
@@ -395,9 +406,10 @@ async function loadPages() {
   page.index = -1;
   const v = $("view");
   v.replaceChildren(el("option", { value: "panels" }, "Panels"),
+    el("option", { value: "combinations" }, "Combinations"), el("option", { value: "sequencer" }, "Sequencer"),
     ...page.list.map((p) => el("option", { value: String(p.index) }, p.name || `Page ${p.index + 1}`)));
   const want = chosenView();
-  v.value = page.list.some((p) => String(p.index) === want) ? want : "panels";
+  v.value = SOLO.includes(want) || page.list.some((p) => String(p.index) === want) ? want : "panels";
   showView();
 }
 
@@ -410,7 +422,8 @@ function layoutFor(p) {
 
 function showView() {
   const v = $("view").value;
-  const i = v === "panels" ? -1 : Number(v);
+  const i = /^\d+$/.test(v) ? Number(v) : -1;
+  for (const s of SOLO) document.body.classList.toggle(`solo-${s}`, v === s);
   $("panels").hidden = i >= 0;
   $("page").hidden = i < 0;
   $("pageOnly").hidden = i < 0;
@@ -516,7 +529,8 @@ function sendPointer(phase, at) {
 $("view").addEventListener("change", () => {
   const v = $("view").value;
   try { localStorage.setItem("mp-view", v); } catch {}
-  history.replaceState(null, "", v === "panels" ? location.pathname + location.search : `#page=${v}`);
+  history.replaceState(null, "", v === "panels" ? location.pathname + location.search
+    : SOLO.includes(v) ? `#view=${v}` : `#page=${v}`);
   showView();
 });
 $("pageOnly").addEventListener("click", () => document.body.classList.add("pageonly"));

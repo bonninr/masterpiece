@@ -36,6 +36,12 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--dim); text-transform: upperc
 .control { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
 .control input { width: 100%; }
 .stepper { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+body.solo-combinations main > section:not(.combinations), body.solo-sequencer main > section:not(.sequencer) { display: none; }
+body.solo-combinations .pistons { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); }
+body.solo-combinations .pistons button { min-width: 0; min-height: 64px; font-size: 22px; }
+body.solo-sequencer .stepper { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
+body.solo-sequencer .stepper button { min-height: 96px; font-size: 32px; }
+body.solo-sequencer #frame { grid-column: 1 / -1; order: -1; font-size: 40px; text-align: center; }
 #conn.on { color: #7cc48a; }
 #conn.off { color: var(--warn); }
 details { margin-left: auto; }
