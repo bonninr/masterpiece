@@ -297,6 +297,19 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
       proc_.markSettingsDirty();
     };
   }
+  addAndMakeVisible(releaseShortLabel_);
+  styleLabel(releaseShortLabel_, TRANS("Release of a short note"));
+  addAndMakeVisible(releaseShort_);
+  releaseShort_.addItem(TRANS("At the recorded level"), 1);
+  releaseShort_.addItem(TRANS("Scaled to the time held"), 2);
+  releaseShort_.setSelectedId(proc_.releaseShortNoteGain() ? 2 : 1, juce::dontSendNotification);
+  releaseShort_.setTooltip(TRANS("A note let go during its attack has not reached the level its "
+                                 "release was recorded from. Scaled, the release starts lower, up "
+                                 "to the recorded level at the end of the attack."));
+  releaseShort_.onChange = [this] {
+    proc_.setReleaseShortNoteGain(releaseShort_.getSelectedId() == 2);
+    proc_.markSettingsDirty();
+  };
   releaseLength_.onChange = [this] {
     const int id = releaseLength_.getSelectedId();
     if (id >= 1 && id <= kReleaseLengthCount) proc_.setReleaseMaxMs(kReleaseLengthsMs[id - 1]);
@@ -1181,7 +1194,7 @@ void EnginePanel::applyPart() {
   const List organ{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_, &originalPitch_,
                    &profileLabel_, &profile_, &preloadLabel_, &preload_, &storageLabel_, &storage_,
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
-                   &releaseLengthLabel_, &releaseLength_, &releaseCutoffLabel_, &releaseCutoff_,
+                   &releaseLengthLabel_, &releaseLength_, &releaseShortLabel_, &releaseShort_, &releaseCutoffLabel_, &releaseCutoff_,
                    &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
                    &programCouplers_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
                    &organRootDefault_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
@@ -1303,6 +1316,7 @@ void EnginePanel::resized() {
   pair(sparseLabel_, sparse_, 300);
   pair(releaseLengthLabel_, releaseLength_, 300);
   pair(releaseCutoffLabel_, releaseCutoff_, 300);
+  pair(releaseShortLabel_, releaseShort_, 300);
   pair(releaseBufferLabel_, releaseBuffer_, 300);
   line(programCouplers_);
   line(portable_);

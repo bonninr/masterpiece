@@ -165,6 +165,8 @@ private:
   juce::ComboBox releaseLength_;
   juce::Label releaseCutoffLabel_;
   juce::ComboBox releaseCutoff_;
+  juce::Label releaseShortLabel_;
+  juce::ComboBox releaseShort_;
   void showReleaseLength(int ms);
   // How many notes of a rank are loaded.
   juce::Label sparseLabel_;
