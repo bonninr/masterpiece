@@ -565,7 +565,9 @@ public:
   //                     flips the sense, which is how a normally-closed
   //                     contact is handled.
   //   ignoreVelocity    Tracker action: the key is down or it is not, and a
-  //                     velocity-sensitive sample would be wrong.
+  //                     velocity-sensitive sample would be wrong. On by
+  //                     default: a pipe speaks the same however the key is
+  //                     struck. A saved binding keeps what it was saved with.
   //   shortOctave       Historic keyboards whose bottom octave omits the
   //                     accidentals and puts other notes on those keys.
   //   debounceMs        Old contacts chatter. Without this one key press
@@ -576,7 +578,7 @@ public:
     int lowKey = 0, highKey = 127;
     int transpose = 0;
     int lowVelocity = 1, highVelocity = 127;
-    bool ignoreVelocity = false;
+    bool ignoreVelocity = true;
     bool shortOctave = false;
     int debounceMs = 0;
     Id keyboardId = 0;
