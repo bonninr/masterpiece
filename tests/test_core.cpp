@@ -2060,7 +2060,8 @@ public:
   // an octave down to an octave up, and the tone is short beside the render,
   // so every note goes round its loop many times.
   static std::vector<float> render(mp::VoiceEngine& eng, voicetest::Fixture& fx, mp::simd::Isa isa,
-                                   const mp::VoiceEngine::TremMod* trem = nullptr) {
+                                   const mp::VoiceEngine::TremMod* trem = nullptr,
+                                   double loopFadeMs = 0.0) {
     eng.prepare(48000.0, 32, 2);
     eng.setSimdIsa(isa);
     eng.setSampleProvider(fx.provider());
@@ -2073,6 +2074,7 @@ public:
       st.velocity = 80;
       st.ratio = ratios[n];
       st.gain = 0.1f;
+      st.loopCrossfadeMs = loopFadeMs;
       if (trem != nullptr) {
         st.tremIndex = 0;
         st.tremAmpDepth = 0.2f;
@@ -2146,6 +2148,21 @@ public:
             tremApart = std::max(tremApart, static_cast<double>(std::abs(at[i] - af[i])));
           }
 
+          // And a loop's fade on every pass, steady and under the tremulant.
+          // The side a loop earlier keeps a cursor of its own, whose rounding
+          // can differ from the per-frame path's in the last bit of a position.
+          mp::VoiceEngine plainLoop, fastLoop, plainLoopTrem, fastLoopTrem;
+          const std::vector<float> al = render(plainLoop, fx, mp::simd::Isa::None, nullptr, 20.0);
+          const std::vector<float> bl = render(fastLoop, fx, isa, nullptr, 20.0);
+          const std::vector<float> alt = render(plainLoopTrem, fx, mp::simd::Isa::None, &swing, 20.0);
+          const std::vector<float> blt = render(fastLoopTrem, fx, isa, &swing, 20.0);
+          double worstLoop = 0.0, loopApart = 0.0;
+          for (size_t i = 0; i < al.size() && i < bl.size(); ++i) {
+            worstLoop = std::max(worstLoop, static_cast<double>(std::abs(al[i] - bl[i])));
+            worstLoop = std::max(worstLoop, static_cast<double>(std::abs(alt[i] - blt[i])));
+            loopApart = std::max(loopApart, static_cast<double>(std::abs(al[i] - af[i])));
+          }
+
           double worst = 0.0, level = 0.0;
           for (size_t i = 0; i < a.size() && i < b.size(); ++i) {
             worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
@@ -2153,6 +2170,15 @@ public:
           }
           const std::string what = std::string(mp::simd::isaName(isa)) + " " + formats[format] +
                                    " " + std::to_string(channels) + "ch";
+          MP_CHECK(loopApart > 0.01, what + ": the loop's fade changes the sound");
+          MP_CHECK(worstLoop < 1e-5, what + ": the same loop fade either way (worst difference " +
+                                         std::to_string(worstLoop) + ")");
+          if (mp::simd::runSupports(isa, channels))
+            MP_CHECK(fastLoop.simdFrames() + 8000 > fastFade.simdFrames() &&
+                         fastLoopTrem.simdFrames() + 8000 > fastTrem.simdFrames(),
+                     what + ": a loop's fade goes to the vector code (" +
+                         std::to_string(fastLoop.simdFrames()) + " frames against " +
+                         std::to_string(fastFade.simdFrames()) + " without one)");
           MP_CHECK(plain.simdFrames() == 0, what + ": switched off, the vector code never runs");
           if (mp::simd::runSupports(isa, channels))
             MP_CHECK(fast.simdFrames() > 100000,
@@ -4030,7 +4056,7 @@ public:
       mp::VoiceStart st;
       st.pipe = &fx.pipe;
       st.layer = &fx.pipe.layers[0];
-      st.loopCrossfadeFrames = crossfadeFrames;
+      st.loopCrossfadeMs = crossfadeFrames / 48.0;
       MP_CHECK(eng.startVoice(st, 1) >= 0, "voice started");
       // Long enough to wrap several times.
       std::vector<float> buf(4096, 0.0f);
@@ -4064,8 +4090,23 @@ public:
              "the crossfade holds level rather than dipping or bulging");
     for (float x : faded) MP_CHECK(std::isfinite(x), "crossfade stays finite");
 
-    // A crossfade longer than the material after the loop end must degrade
-    // gracefully: blend what exists, then stop, never read past the buffer.
+    // A file that stops on its loop's last frame has nothing after the loop:
+    // the fade runs on the frames before the start, and arrives all the same.
+    fx.attack.numFrames = 1900;
+    fx.attack.frames.resize(1900);
+    MP_CHECK(maxStep(renderWith(256)) < 0.1,
+             "a file that stops on its loop's end fades like any other");
+
+    // A few frames after the loop's end are no reason to stop half way.
+    fx.attack = discontinuous();
+    fx.attack.numFrames = 1910;
+    fx.attack.frames.resize(1910);
+    MP_CHECK(maxStep(renderWith(256)) < 0.1,
+             "a fade longer than what follows the loop has no step where that runs out");
+
+    // A crossfade longer than the loop, or than the frames before it, runs as
+    // far as they go, and never reads past the buffer.
+    fx.attack = discontinuous();
     const auto huge = renderWith(100000);
     for (float x : huge)
       MP_CHECK(std::isfinite(x) && std::fabs(x) < 4.0,
@@ -4079,7 +4120,7 @@ public:
     s2.pipe = &fx.pipe;
     s2.layer = &fx.pipe.layers[0];
     s2.oneShot = true;
-    s2.loopCrossfadeFrames = 256;
+    s2.loopCrossfadeMs = 5.0;
     const int idx = os.startVoice(s2, 1);
     MP_CHECK(idx >= 0 && !os.voice(idx).loops(),
              "a one-shot with a crossfade set still does not loop");
@@ -4114,6 +4155,73 @@ public:
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
+
+// A key let go inside a loop's fade: the sustain goes on under the release,
+// through the rest of its fade and over the seam, with no step on the way.
+class LoopCrossfadeReleaseTest final : public mp::test::Test {
+public:
+  LoopCrossfadeReleaseTest()
+    : Test("functional.voice.loop-crossfade-release", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    fx.attack = LoopCrossfadeTest::discontinuous();
+    fx.pipe.layers[0].releases[0].releaseCrossfadeMs = 100.0;
+    mp::VoiceEngine eng;
+    eng.prepare(48000.0, 4, 1, 4096);
+    eng.setSampleProvider(fx.provider());
+    mp::VoiceStart st;
+    st.pipe = &fx.pipe;
+    st.layer = &fx.pipe.layers[0];
+    st.loopCrossfadeMs = 256 / 48.0;
+    MP_CHECK(eng.startVoice(st, 1) >= 0, "voice started");
+    // A hundred frames before the wrap, and so inside the last 256.
+    std::vector<float> all(1800, 0.0f);
+    float* out[1] = {all.data()};
+    eng.render(out, 1, 1800);
+    eng.noteOff(1, mp::NoteRelease{});
+    std::vector<float> rest(2400, 0.0f);
+    out[0] = rest.data();
+    eng.render(out, 1, 2400);
+    all.insert(all.end(), rest.begin(), rest.end());
+    MP_CHECK(LoopCrossfadeTest::maxStep(all) < 0.1,
+             "the sustain crosses its seam under the release with no step");
+  }
+};
+static LoopCrossfadeReleaseTest g_loopCrossfadeRelease;
+
+// A compact attack row leaves out a crossfade of 80 ms.
+class CompactLoopCrossfadeTest final : public mp::test::Test {
+public:
+  CompactLoopCrossfadeTest()
+    : Test("functional.odf.compact-loop-crossfade", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Sample\"><o><a>1</a><c>R/036-c.wav</c></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+                 "<o><a>72</a><b>7</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+                 "<o><a>721</a><b>72</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
+                 "<o><a>1</a><b>711</b><c>1</c></o>"
+                 "<o><a>2</a><b>721</b><c>1</c><k>5</k></o></ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    std::map<mp::Id, double> fade;
+    if (m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) fade[layer.layerId] = layer.loopCrossfadeMs;
+    MP_CHECK(fade.size() == 2 && fade[711] == 80.0 && fade[721] == 5.0,
+             "no crossfade written means 80 ms, and a written one is kept");
+  }
+};
+static CompactLoopCrossfadeTest g_compactLoopCrossfade;
 
 // Detuning: an organ drifting out of tune, pipe by pipe. A set declares a
 // control per division and zone and a sensitivity per pipe, so the same
@@ -9631,7 +9739,8 @@ class VoiceSimdPerfTest final : public mp::test::Test {
 public:
   VoiceSimdPerfTest() : Test("perf.voice.polyphony-simd", Category::Perf) {}
 
-  static double realtime(mp::simd::Isa isa, voicetest::Fixture& fx, int voices) {
+  static double realtime(mp::simd::Isa isa, voicetest::Fixture& fx, int voices,
+                         double loopFadeMs = 0.0) {
     constexpr double kRate = 48000.0;
     constexpr int kBlock = 256, kBlocks = 400;
     mp::VoiceEngine eng;
@@ -9645,6 +9754,7 @@ public:
       st.velocity = 64 + (i % 60);
       st.ratio = 1.0 + 0.0005 * (i % 97);
       st.gain = 0.02f;
+      st.loopCrossfadeMs = loopFadeMs;
       eng.startVoice(st, static_cast<uint64_t>(i + 1));
     }
     std::vector<float> l(kBlock), r(kBlock);
@@ -9681,6 +9791,20 @@ public:
                     on / off);
         MP_CHECK(off > 0.0 && on > 0.0, "both ways rendered");
       }
+    }
+
+    // A loop's fade on every pass: 80 ms, which is what a compact definition
+    // means by writing none, over a bass loop and two treble loops.
+    if (units.empty()) return;
+    for (const int loopFrames : {48000, 4800, 2400}) {
+      voicetest::Fixture fx;
+      fx.attack = voicetest::makeTone(440.0, 48000.0, 4000 + loopFrames, 2);
+      fx.attack.loopStart = 4000;
+      const double hard = realtime(mp::simd::detect(), fx, 512);
+      const double faded = realtime(mp::simd::detect(), fx, 512, 80.0);
+      std::printf("        512 voices, %5d frame loop: %.1fx realtime hard, %.1fx with a fade (%.2fx)\n",
+                  loopFrames, hard, faded, faded / hard);
+      MP_CHECK(hard > 0.0 && faded > 0.0, "both ways rendered");
     }
   }
 };

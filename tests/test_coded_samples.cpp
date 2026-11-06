@@ -181,7 +181,7 @@ Played play(const Playing& p, bool windows, mp::simd::Isa isa) {
     start.ratio = p.ratios[static_cast<size_t>(i)];
     start.loopStartOverride = p.loopStart;
     start.loopEndOverride = p.loopEnd;
-    start.loopCrossfadeFrames = p.loopCrossfade;
+    start.loopCrossfadeMs = p.loopCrossfade / 48.0;
     start.oneShot = p.oneShot;
     if (engine.startVoice(start, static_cast<uint64_t>(i + 1)) >= 0) ++result.started;
   }
@@ -623,6 +623,39 @@ public:
       MP_CHECK(coded.started == 256, std::string(widthName(width)) + ": every coded voice starts");
       MP_CHECK(same(worstDifference(plain.out, coded.out)),
                std::string(widthName(width)) + ": coded plays what plain plays");
+    }
+
+    // A fade of 80 ms on every pass of a tenth of a second's loop, the most a
+    // compact definition asks of a treble pipe: every voice decodes the frames
+    // before its loop's start as well as the loop.
+    for (const Width width : {Width::Int16, Width::Int24}) {
+      auto attackPlain = plainBuffer(width, 24000, 2, 220.0, 41);
+      attackPlain.loopStart = 12000;
+      attackPlain.loopEnd = 16800;
+      const auto attackCoded = codedCopy(attackPlain);
+      Playing a;
+      a.attack = &attackPlain;
+      a.ratios.clear();
+      for (int i = 0; i < 256; ++i) a.ratios.push_back(0.9 + 0.2 * i / 255.0);
+      a.holdBlocks = 750;
+      a.totalBlocks = 751;
+      Playing b = a;
+      b.attack = &attackCoded;
+      Playing af = a, bf = b;
+      af.loopCrossfade = 3840;
+      bf.loopCrossfade = 3840;
+      const Played plainHard = play(a, false, isa);
+      const Played plainFade = play(af, false, isa);
+      const Played codedHard = play(b, true, isa);
+      const Played codedFade = play(bf, true, isa);
+      std::printf("    %s, 80 ms fade on a 0.1 s loop: plain %.0f ms, faded %.0f ms; coded %.0f ms, "
+                  "faded %.0f ms; %llu blocks decoded, %llu faded\n",
+                  widthName(width), plainHard.seconds * 1e3, plainFade.seconds * 1e3,
+                  codedHard.seconds * 1e3, codedFade.seconds * 1e3,
+                  static_cast<unsigned long long>(codedHard.decoded),
+                  static_cast<unsigned long long>(codedFade.decoded));
+      MP_CHECK(same(worstDifference(plainFade.out, codedFade.out)),
+               std::string(widthName(width)) + ": a coded fade plays what a plain one plays");
     }
   }
 };
