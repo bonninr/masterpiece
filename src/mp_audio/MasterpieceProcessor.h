@@ -285,6 +285,14 @@ public:
     const auto slot = (static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6);
     return (keysDown_[slot].load(std::memory_order_relaxed) >> (note & 63)) & 1u;
   }
+  // Whether a key held elsewhere reaches this key through a coupler. Worked out
+  // while the keys are shown, so it follows a coupler drawn under held keys, a
+  // little behind them. Any thread.
+  bool keyCoupledOnKeyboard(Id keyboard, int note) const {
+    if (note < 0 || note > 127) return false;
+    const auto slot = (static_cast<size_t>(keyboard) & 63u) * 2u + static_cast<size_t>(note >> 6);
+    return (keysCoupled_[slot].load(std::memory_order_relaxed) >> (note & 63)) & 1u;
+  }
 
   // Let go of every key on every channel, the way a console's cancel does.
   //
@@ -2975,6 +2983,11 @@ private:
   // read by the drawn manuals, so a key lights on the manual it reached
   // whatever device or channel brought it (#240).
   std::array<std::atomic<uint64_t>, 64 * 2> keysDown_{};
+  std::array<std::atomic<uint64_t>, 64 * 2> keysCoupled_{};
+  // The keyboard played for each division, for showing what a coupler reaches.
+  std::vector<std::pair<int, Id>> keyboardOfDivision_;
+  double nextCoupledKeysMs_ = 0.0;
+  void updateCoupledKeys();
   void setKeyDown(Id keyboard, int note, bool down);
   // The keys held on a channel whose manual a piston is switching, to strike
   // again on the new one. Reserved at prepare, so the switch does not allocate.

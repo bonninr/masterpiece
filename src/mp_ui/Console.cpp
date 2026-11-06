@@ -787,7 +787,7 @@ bool ConsoleView::lookForChanges() {
 
   // The engine marks each key down on the manual it played, every block, so a
   // key lights up whether it was pressed on screen or on the player's own
-  // console, and only on the manual it reached.
+  // console, on the manual it reached and on those its couplers carry it to.
   //
   // Every other look, fifteen times a second: a key lit a fifteenth of a
   // second late reads as played, and drawing keys was the window's largest
@@ -796,7 +796,8 @@ bool ConsoleView::lookForChanges() {
   const bool showKeys = proc_.showPlayedKeys();
   if (!showKeys || (++keyTick_ & 1) == 0) {
     for (auto& k : keys_) {
-      const bool down = showKeys && proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote);
+      const bool down = showKeys && (proc_.keyDownOnKeyboard(k.keyboardId, k.midiNote) ||
+                                      proc_.keyCoupledOnKeyboard(k.keyboardId, k.midiNote));
       if (down == k.shownDown) continue;
       k.shownDown = down;
       mark(k.bounds);

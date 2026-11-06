@@ -2939,6 +2939,29 @@ public:
     proc.pushMidi(6, juce::MidiMessage::noteOff(1, 40));
     block({});
     MP_CHECK(!proc.keyDownOnKeyboard(702, 40), "and goes dark when let go");
+
+    // #804: a key held on manual I lights manual II while II to I is drawn.
+    // Worked out every 33 ms of the block clock, which runs on the block size.
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    const auto lookedAt = [&block] {
+      for (int i = 0; i < 40; ++i) block({});
+    };
+    proc.pushMidi(5, juce::MidiMessage::noteOn(1, 43, 0.8f));
+    lookedAt();
+    MP_CHECK(proc.keyDownOnKeyboard(701, 43) && !proc.keyCoupledOnKeyboard(702, 43),
+             "with the coupler in, the key lights its own manual only");
+    proc.setSwitchEngaged(1103, true);
+    lookedAt();
+    MP_CHECK(proc.keyCoupledOnKeyboard(702, 43), "drawing the coupler lights the key on the coupled manual");
+    MP_CHECK(!proc.keyCoupledOnKeyboard(701, 43), "and the manual played counts as played");
+    proc.setShowPlayedKeys(false);
+    proc.pushMidi(5, juce::MidiMessage::noteOff(1, 43));
+    lookedAt();
+    MP_CHECK(proc.keyCoupledOnKeyboard(702, 43), "with the keys not shown, nothing is worked out");
+    proc.setShowPlayedKeys(true);
+    lookedAt();
+    MP_CHECK(!proc.keyCoupledOnKeyboard(702, 43), "and the coupled key goes dark with the key let go");
+    proc.setSwitchEngaged(1103, false);
     proc.pushMidi(5, juce::MidiMessage::noteOn(1, 41, 0.8f));
     block({});
     MP_CHECK(proc.keyDownOnKeyboard(701, 41) && !proc.keyDownOnKeyboard(702, 41),
