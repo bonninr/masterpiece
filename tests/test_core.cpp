@@ -23096,7 +23096,7 @@ public:
              "every part's strings are read, a part without a final newline too");
 
     for (const auto& l : mp::availableLanguages())
-      MP_CHECK(l.code.containsNoneOf("."), "a part is never listed as a language: " + utf8(l.code));
+      MP_CHECK(!l.code.containsChar('.'), "a part is never listed as a language: " + utf8(l.code));
   }
 };
 static LanguagePartsTest g_languageParts;
