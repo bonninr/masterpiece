@@ -344,6 +344,10 @@ public:
   void refresh();
   // The height the panel's rows and note need at its present width.
   int contentHeight() const { return contentHeight_; }
+  // What the Organ part shows for each manual, then each manual button, as
+  // the player reads it.
+  juce::StringArray manualRows() const;
+  juce::StringArray pistonRows() const;
 
 private:
   void timerCallback() override;
@@ -357,18 +361,21 @@ private:
   int contentHeight_ = 0;
   juce::Label inputsLabel_, outputsLabel_, keyboardsLabel_;
   std::vector<std::unique_ptr<juce::ToggleButton>> inputs_;
-  // One row per playable keyboard: which MIDI channel plays it. This is the
-  // setting that decides whether the manual under your hands sounds the Great
-  // or the Pedal, and no organ can guess it for you.
+  // One row per playable keyboard: what plays it now, in the words of the
+  // manual's own MIDI window, and the button that opens that window -- the
+  // one place a manual's MIDI is set, as in GrandOrgue's list of MIDI objects
+  // (#850). The row is read only, so it never stands for less than the
+  // window holds: a split or a transpose shows here as it is.
+  std::vector<Id> keyboardIds_;
   std::vector<std::unique_ptr<juce::Label>> keyboardLabels_;
-  std::vector<std::unique_ptr<juce::ComboBox>> keyboardChannels_;
-  // Which physical console plays this manual. Two keyboards both sending on
-  // channel 1 is the ordinary case for anyone with more than one plugged in,
-  // and the channel alone cannot separate them.
-  std::vector<std::unique_ptr<juce::ComboBox>> keyboardDevices_;
-  // Everything the two boxes cannot say: key range, transpose, velocity
-  // window, tracker action, short octave, debounce.
+  std::vector<std::unique_ptr<juce::Label>> keyboardSummaries_;
   std::vector<std::unique_ptr<juce::TextButton>> keyboardMore_;
+  // The manual buttons (#90), each in its Pistons tab's words.
+  std::vector<std::unique_ptr<juce::Label>> pistonLines_;
+  juce::Label noPistons_;
+  // Fills the rows above from the mapping; true when any text changed
+  // height, so the panel lays out again.
+  bool showManuals();
   // Which manuals share a channel, said out loud. Sharing one is allowed --
   // it is how a single keyboard plays two divisions -- but a player who did
   // it by accident would otherwise hear two divisions and not know why.
