@@ -790,6 +790,7 @@ countries: gb us
 "Token" = "Token"
 "When set, a change needs it: the web page asks for it under Access, a console sends it as Authorization: Bearer and the token. Reading needs none." = "When set, a change needs it: the web page asks for it under Access, a console sends it as Authorization: Bearer and the token. Reading needs none."
 "Console display" = "Console display"
+"For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects."
 "Display number" = "Display number"
 "Characters per line" = "Characters per line"
 "Sys-ex prefix (hex)" = "Sys-ex prefix (hex)"
