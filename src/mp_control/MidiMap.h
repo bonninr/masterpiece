@@ -231,6 +231,11 @@ struct MidiBinding {
   // debounce time: it applies to presses that toggle, draw, cancel or fire,
   // and never to a release, so a held piston always lets go. 0 is off.
   int debounceMs = 0;
+  // A switch worked by one value of its message (#923), GrandOrgue's fixed
+  // value events: highValue works it, lowValue lets a held one go, and every
+  // other value is for another switch. A console that sends controller 20
+  // with values 1 to 40 for its forty tabs is forty rows on one controller.
+  bool exactValues = false;
 
   // A source value, normalised to 0..127 across this binding's own window.
   int scale(int raw) const {

@@ -1195,3 +1195,4 @@ countries: pl
 "The value your console sends for on" = "Wartość, którą stół gry wysyła dla włączenia"
 "Debounce ms" = "Drgania ms"
 "Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Milisekundy po naciśnięciu, w których drugie naciśnięcie jest pomijane: dla drgającego styku. 0 to wyłączone."
+"Controller, one value" = "Kontroler, jedna wartość"
