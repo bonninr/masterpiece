@@ -799,8 +799,29 @@ VoicingEqPanel::VoicingEqPanel(MasterpieceProcessor& p) : proc_(p) {
     addAndMakeVisible(*sl);
   }
   showValues();
-  // A preset recalled from MIDI while the panel is open.
-  startTimerHz(4);
+  // A preset recalled from MIDI while the panel is open, and the spectrum.
+  startTimerHz(20);
+}
+
+VoicingEqPanel::~VoicingEqPanel() {
+  if (tapOpen_) proc_.spectrum().close();
+}
+
+void VoicingEqPanel::followSpectrum() {
+  const bool want = isShowing();
+  if (want != tapOpen_) {
+    tapOpen_ = want;
+    if (want) proc_.spectrum().open();
+    else proc_.spectrum().close();
+    spectrum_.clear();
+    repaint(curveArea_);
+  }
+  if (!tapOpen_) return;
+  const auto now = proc_.spectrum().spectrumDb();
+  if (spectrum_.size() != now.size()) spectrum_.assign(now.size(), -120.0f);
+  // Up at once, down 1.5 dB a frame: 30 dB a second at 20 frames.
+  for (size_t k = 0; k < now.size(); ++k) spectrum_[k] = std::max(now[k], spectrum_[k] - 1.5f);
+  repaint(curveArea_);
 }
 
 void VoicingEqPanel::showValues() {
@@ -857,6 +878,7 @@ void VoicingEqPanel::fillPresets() {
 }
 
 void VoicingEqPanel::timerCallback() {
+  followSpectrum();
   if (proc_.voicingEqChanges() == seenChanges_) return;
   showValues();
   repaint(curveArea_);
@@ -984,6 +1006,28 @@ void VoicingEqPanel::paint(juce::Graphics& g) {
   g.fillRoundedRectangle(a, 4.0f);
   g.setColour(juce::Colour(0xff3a4150));
   g.drawHorizontalLine(juce::roundToInt(a.getCentreY()), a.getX(), a.getRight());
+  // The organ's spectrum now, on the same frequency scale: -96 dBFS at the
+  // bottom, 0 dBFS at the top. Each column shows the loudest bin under it.
+  if (!spectrum_.empty() && proc_.getSampleRate() > 0.0) {
+    const double binHz = proc_.getSampleRate() / mp::SpectrumTap::kFft;
+    const int columns = juce::jmax(2, juce::roundToInt(a.getWidth()));
+    juce::Path area;
+    area.startNewSubPath(a.getX(), a.getBottom());
+    for (int c = 0; c < columns; ++c) {
+      const double lo = 20.0 * std::pow(1000.0, static_cast<double>(c) / columns);
+      const double hi = 20.0 * std::pow(1000.0, static_cast<double>(c + 1) / columns);
+      size_t k0 = static_cast<size_t>(lo / binHz + 0.5);
+      size_t k1 = juce::jmax(k0, static_cast<size_t>(hi / binHz + 0.5));
+      float level = -120.0f;
+      for (size_t k = k0; k <= k1 && k < spectrum_.size(); ++k) level = juce::jmax(level, spectrum_[k]);
+      const float y = a.getBottom() - juce::jlimit(0.0f, 1.0f, (level + 96.0f) / 96.0f) * a.getHeight();
+      area.lineTo(a.getX() + a.getWidth() * static_cast<float>(c) / (columns - 1), y);
+    }
+    area.lineTo(a.getRight(), a.getBottom());
+    area.closeSubPath();
+    g.setColour(juce::Colour(0x5550a0e0));
+    g.fillPath(area);
+  }
   VoicingEqSettings eq;
   eq.on = true;
   for (size_t i = 0; i < bands_.size(); ++i) eq.bandsDb[i] = bands_[i].getValue();
