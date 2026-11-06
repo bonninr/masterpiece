@@ -1150,7 +1150,16 @@ void MasterpieceEditor::chooseAndLoadOrgan(const juce::File& startIn) {
                             return;
                           }
                          #endif
-                          if (f.existsAsFile()) {
+                          // Some Android pickers hand back a plain path in the
+                          // shared storage, which the system shows but will not
+                          // let the app read (Android 13 and later, #966): such a
+                          // file goes the document's way, below, like any other.
+                          const bool readable = f.existsAsFile()
+                                               #if JUCE_ANDROID
+                                                && juce::FileInputStream(f).openedOk()
+                                               #endif
+                                                ;
+                          if (readable) {
                             if (!isMobilePackage(f.getFileName())) return;
                            #if !JUCE_IOS && !JUCE_ANDROID
                             proc_.setOpenFolder(f.getParentDirectory());
