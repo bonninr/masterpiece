@@ -67,6 +67,26 @@ inline float rawSample(const SampleBuffer& buf, int64_t frame, int channel) {
 // 1 down to 0: an S-curve, within a percent of GrandOrgue's raised cosine.
 inline float loopFadeOwn(float left) { return left * left * (3.0f - 2.0f * left); }
 
+// A held voice that has just wrapped to `cursor` picks the loop it plays next
+// from the file's loops (#824), as GrandOrgue's PickEndSegment does: a random
+// one among those whose end, and the fade before it, still lie ahead. The
+// voice keeps the loop it has when none does.
+void pickNextLoop(Voice& v) {
+  const auto wrapped = static_cast<int64_t>(v.cursor);
+  v.loopRandom = v.loopRandom * 1664525u + 1013904223u;
+  const uint32_t first = (v.loopRandom >> 8) % v.loopSetSize;
+  for (uint32_t i = 0; i < v.loopSetSize; ++i) {
+    const SampleBuffer::LoopSpan& l = v.loopSet[(first + i) % v.loopSetSize];
+    const int64_t fade =
+        std::max<int64_t>(0, std::min({v.loopFadeWanted, l.start - 1, l.end - l.start - 1}));
+    if (l.end - std::max<int64_t>(3, fade) <= wrapped + 1) continue;
+    v.loopStart = l.start;
+    v.loopEnd = l.end;
+    v.loopFade = fade;
+    return;
+  }
+}
+
 // Twenty-bit samples are packed: they are not an array of values, so they
 // are read through the decoder and never indexed as one.
 template <>
@@ -653,10 +673,20 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   }
   // A fade stated longer than the loop, or than the frames before it, runs as
   // far as they go.
-  if (v.loops())
+  if (v.loops()) {
+    v.loopFadeWanted = static_cast<int64_t>(start.loopCrossfadeMs * 0.001 * buf->sampleRate);
     v.loopFade = std::max<int64_t>(
-        0, std::min({static_cast<int64_t>(start.loopCrossfadeMs * 0.001 * buf->sampleRate),
-                     v.loopStart - 1, v.loopEnd - v.loopStart - 1}));
+        0, std::min({v.loopFadeWanted, v.loopStart - 1, v.loopEnd - v.loopStart - 1}));
+    // The file's loops, when it holds several and the layer names none of its
+    // own (#824). The first pass plays the buffer's loop; each wrap picks.
+    if (v.loopStart == buf->loopStart && v.loopEnd == buf->loopEnd &&
+        buf->allLoops.size() > 1) {
+      v.loopSet = buf->allLoops.data();
+      v.loopSetSize = static_cast<uint32_t>(buf->allLoops.size());
+      v.loopRandom = static_cast<uint32_t>(noteId * 2654435761u) ^
+                     static_cast<uint32_t>(v.pipeId * 40503u) ^ static_cast<uint32_t>(slot);
+    }
+  }
   // With no loop in force and no release to go to, there is nothing for a
   // held key to sustain or to let go into: the pipe is struck, as a bell is,
   // and its recording plays to its end, as GrandOrgue plays it. A pipe with a
@@ -1906,6 +1936,7 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
               (v.cursor - static_cast<double>(v.loopStart)) / loopLen);
         }
         v.phase = VoicePhase::Loop;
+        if (v.loopSet != nullptr) pickNextLoop(v);
         // A coded sample: the window moves where the cursor lands, and the
         // one it leaves keeps the loop's end for the next time round.
         if constexpr (Coded) {

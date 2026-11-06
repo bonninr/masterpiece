@@ -179,6 +179,14 @@ struct SampleBuffer {
   // Loop points in frames; -1 disables looping (percussive ranks, releases).
   int64_t loopStart = -1;
   int64_t loopEnd = -1;
+  // Every loop of the file a voice may play, the one above among them, when
+  // the file holds more than one (#824). A held voice picks one of these at
+  // random at each wrap, as GrandOrgue does. Empty for a file with one loop.
+  struct LoopSpan {
+    int64_t start;
+    int64_t end;
+  };
+  std::vector<LoopSpan> allLoops;
 
   // Where the streamed remainder lives, and the two rates needed to read it
   // back. Only meaningful when `tail` is set. Held as data rather than only
@@ -406,6 +414,14 @@ struct Voice {
   // as the voice plays, because the length comes from the ODF layer and one
   // sample file may be shared by layers that specify different lengths.
   int64_t loopFade = 0;  // in the file's frames; 0 wraps hard
+  // The fade the layer asks for, before a loop shortens it: a voice that
+  // moves to another loop works its fade out again from this.
+  int64_t loopFadeWanted = 0;
+  // The file's loops a held voice picks from at each wrap (#824), and the
+  // state of its own random sequence. Null when the voice keeps one loop.
+  const SampleBuffer::LoopSpan* loopSet = nullptr;
+  uint32_t loopSetSize = 0;
+  uint32_t loopRandom = 0;
 
   // Loop actually in force for this voice. Normally copied from the backing
   // store (the file's smpl chunk), but a PipeLayer may override it: the same

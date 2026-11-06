@@ -344,11 +344,16 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
   int64_t want = (maxFrames > 0) ? std::min(maxFrames, total) : total;
 
   const int64_t loopEnd = selectLoopEnd(reader, total, selection);
+  // Every loop a held voice may move to has to be resident too (#824).
+  int64_t lastLoopEnd = loopEnd;
+  if (loopEnd > 0)
+    for (const SampleBuffer::LoopSpan& loop : usableLoops(reader))
+      if (loop.end <= total) lastLoopEnd = std::max(lastLoopEnd, loop.end);
   if (loopEnd > 0) {
     // A few frames past the loop end so the crossfade has material to read
     // from; without them the blend at the wrap has nothing to fade out of.
     constexpr int64_t kCrossfadeMargin = 8192;
-    want = std::max(want, std::min(total, loopEnd + kCrossfadeMargin));
+    want = std::max(want, std::min(total, lastLoopEnd + kCrossfadeMargin));
   }
 
   // A file that carries its own release after the loop has to be read whole:
@@ -441,6 +446,14 @@ bool SampleLibrary::readInto(juce::AudioFormatReader& reader, SampleBuffer& out,
       if (out.loopEnd > newFrames) out.loopEnd = newFrames;
       if (out.loopStart >= out.loopEnd) { out.loopStart = -1; out.loopEnd = -1; }
     }
+    std::vector<SampleBuffer::LoopSpan> moved;
+    for (const SampleBuffer::LoopSpan& loop : out.allLoops) {
+      const SampleBuffer::LoopSpan m{static_cast<int64_t>(std::llround(loop.start / ratio)),
+                                     std::min<int64_t>(newFrames, std::llround(loop.end / ratio))};
+      if (m.end > m.start) moved.push_back(m);
+    }
+    out.allLoops = moved.size() > 1 && out.loopStart >= 0 ? std::move(moved)
+                                                          : std::vector<SampleBuffer::LoopSpan>{};
     // The release marker is a position in the same audio, so it moves with it.
     if (out.releaseCue > 0) {
       out.releaseCue = static_cast<int64_t>(std::llround(out.releaseCue / ratio));
@@ -572,9 +585,34 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
                              int64_t limitFrames, LoopSelection selection,
                              int64_t& outStart, int64_t& outEnd) {
   outStart = outEnd = -1;
+  for (const SampleBuffer::LoopSpan& loop : usableLoops(reader)) {
+    const int64_t s = loop.start;
+    const int64_t e = loop.end;
+    if (e > limitFrames) continue;
+
+    if (outStart < 0) {
+      outStart = s;
+      outEnd = e;
+      if (selection == LoopSelection::First) return;
+      continue;
+    }
+    const bool better = (selection == LoopSelection::Conservative)
+                            ? (e - s < outEnd - outStart)
+                            : (e - s > outEnd - outStart);
+    if (better) {
+      outStart = s;
+      outEnd = e;
+    }
+  }
+}
+
+std::vector<SampleBuffer::LoopSpan> SampleLibrary::usableLoops(
+    const juce::AudioFormatReader& reader) {
+  using Span = SampleBuffer::LoopSpan;
+  std::vector<Span> loops;
   const auto& md = reader.metadataValues;
   const int declared = md.getValue("NumSampleLoops", "0").getIntValue();
-  if (declared <= 0) return;
+  if (declared <= 0) return loops;
 
   // Every loop the file declares, before any is chosen. Two kinds are left
   // out, both from sets that play in other programs (#53):
@@ -589,8 +627,6 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
   //    the others. A file whose loops are all apart keeps them all.
   // Judged on the whole file, so the read that sizes the head and the one
   // that applies it choose from the same loops.
-  struct Span { int64_t start, end; };
-  std::vector<Span> loops;
   const int64_t lastCue = lastCueInFile(reader);
   const int cap = juce::jmin(declared, 64);
   for (int i = 0; i < cap; ++i) {
@@ -612,26 +648,7 @@ void SampleLibrary::pickLoop(const juce::AudioFormatReader& reader,
         }
     if (!linked.empty()) loops = std::move(linked);
   }
-
-  for (const Span& loop : loops) {
-    const int64_t s = loop.start;
-    const int64_t e = loop.end;
-    if (e > limitFrames) continue;
-
-    if (outStart < 0) {
-      outStart = s;
-      outEnd = e;
-      if (selection == LoopSelection::First) return;
-      continue;
-    }
-    const bool better = (selection == LoopSelection::Conservative)
-                            ? (e - s < outEnd - outStart)
-                            : (e - s > outEnd - outStart);
-    if (better) {
-      outStart = s;
-      outEnd = e;
-    }
-  }
+  return loops;
 }
 
 int64_t SampleLibrary::lastCueInFile(const juce::AudioFormatReader& reader) {
@@ -703,6 +720,12 @@ void SampleLibrary::readLoopPoints(const juce::AudioFormatReader& reader,
   if (start < 0) return;
   out.loopStart = start;
   out.loopEnd = end;
+  // Every loop that fits what is resident, for a held voice to pick from at
+  // each wrap (#824). One loop needs no list.
+  out.allLoops.clear();
+  for (const SampleBuffer::LoopSpan& loop : usableLoops(reader))
+    if (loop.end <= out.numFrames) out.allLoops.push_back(loop);
+  if (out.allLoops.size() < 2) out.allLoops.clear();
 }
 
 void SampleLibrary::readFileMidiNote(const juce::AudioFormatReader& reader,
@@ -1954,7 +1977,7 @@ constexpr char kCacheMagic[4] = {'M', 'P', 'S', 'C'};
 // the caches players already have stay valid.
 // 6: a cache written while WavPack samples were cut to their file's byte count
 //    holds them short; it is rebuilt from the files.
-constexpr uint32_t kCacheVersion = 7; // 7 writes a buffer shared by several samples once; 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
+constexpr uint32_t kCacheVersion = 8; // 8 keeps every loop of a sample (#824); 7 writes a buffer shared by several samples once; 5 adds a checksum per sample; 4 fixes release cues; 3 added file pitch
 
 // A checksum of one sample's audio in the cache, so audio damaged on the
 // disk is found as it is read back: a flipped bit there plays as a click or
@@ -2198,6 +2221,11 @@ bool SampleLibrary::writeCache(const Store& store, const std::string& fingerprin
       putPod<double>(os, buf->sampleRate);
       putPod<int64_t>(os, buf->loopStart);
       putPod<int64_t>(os, buf->loopEnd);
+      putPod<uint32_t>(os, static_cast<uint32_t>(buf->allLoops.size()));
+      for (const SampleBuffer::LoopSpan& loop : buf->allLoops) {
+        putPod<int64_t>(os, loop.start);
+        putPod<int64_t>(os, loop.end);
+      }
       putPod<int64_t>(os, buf->releaseCue);
       putPod<double>(os, buf->fileMidiNote);
       putPod<float>(os, buf->pcmScale);
@@ -2325,7 +2353,17 @@ bool SampleLibrary::readCache(Store& out, const std::string& fingerprint,
     }
     if (!getPod(is, channels) ||
         !getPod(is, buf->sampleRate) || !getPod(is, buf->loopStart) ||
-        !getPod(is, buf->loopEnd) || !getPod(is, buf->releaseCue) ||
+        !getPod(is, buf->loopEnd))
+      return false;
+    uint32_t loopCount = 0;
+    if (!getPod(is, loopCount) || loopCount > 64) return false;
+    for (uint32_t k = 0; k < loopCount; ++k) {
+      SampleBuffer::LoopSpan loop{};
+      if (!getPod(is, loop.start) || !getPod(is, loop.end)) return false;
+      if (loop.start < 0 || loop.end <= loop.start || loop.end > buf->numFrames) return false;
+      buf->allLoops.push_back(loop);
+    }
+    if (!getPod(is, buf->releaseCue) ||
         !getPod(is, buf->fileMidiNote) || !getPod(is, buf->pcmScale) ||
         !getPod(is, width))
       return false;

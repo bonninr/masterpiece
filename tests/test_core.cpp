@@ -4223,6 +4223,71 @@ public:
 };
 static CompactLoopCrossfadeTest g_compactLoopCrossfade;
 
+// A file with several loops plays them all (#824): a held voice picks one at
+// random at each wrap, as GrandOrgue does, and the same notes pick the same
+// loops on every run. The buffer is a ramp, so a sample's value is its frame.
+class EveryLoopTest final : public mp::test::Test {
+public:
+  EveryLoopTest() : Test("functional.voice.every-loop", Category::Functional) {}
+  void run() override {
+    voicetest::Fixture fx;
+    constexpr int kFrames = 4000;
+    fx.attack.numChannels = 1;
+    fx.attack.sampleRate = 48000.0;
+    fx.attack.numFrames = kFrames;
+    fx.attack.frames.resize(kFrames);
+    for (int i = 0; i < kFrames; ++i)
+      fx.attack.frames[static_cast<size_t>(i)] = static_cast<float>(i) / 10000.0f;
+    fx.attack.loopStart = 1000;
+    fx.attack.loopEnd = 3000;
+    fx.attack.allLoops = {{1000, 3000}, {1500, 2200}, {1200, 2600}};
+
+    auto render = [&]() {
+      mp::VoiceEngine eng;
+      eng.prepare(48000.0, 4, 1, 4096);
+      eng.setSampleProvider(fx.provider());
+      mp::VoiceStart st;
+      st.pipe = &fx.pipe;
+      st.layer = &fx.pipe.layers[0];
+      MP_CHECK(eng.startVoice(st, 1) >= 0, "voice started");
+      std::vector<float> buf(4096, 0.0f);
+      float* out[1] = {buf.data()};
+      std::vector<float> all;
+      for (int b = 0; b < 40; ++b) {
+        std::fill(buf.begin(), buf.end(), 0.0f);
+        eng.render(out, 1, 4096);
+        all.insert(all.end(), buf.begin(), buf.end());
+      }
+      return all;
+    };
+    const auto a = render();
+    // Where each pass ends and where the next begins, read off the ramp.
+    std::set<int> ends, starts;
+    for (size_t i = 1; i < a.size(); ++i)
+      if (a[i] < a[i - 1] - 0.01f) {
+        ends.insert(static_cast<int>(std::lround(a[i - 1] * 10000.0f)) / 100);
+        starts.insert(static_cast<int>(std::lround(a[i] * 10000.0f)) / 100);
+      }
+    MP_CHECK(ends.count(29) && ends.count(21) && ends.count(25),
+             "the voice reaches the end of every loop");
+    MP_CHECK(starts.count(10) && starts.count(15) && starts.count(12),
+             "the voice returns to the start of every loop");
+    for (float x : a)
+      MP_CHECK(x >= 0.0f && x < 0.31f, "the voice never reads past the longest loop");
+    MP_CHECK(render() == a, "the same notes pick the same loops on every run");
+
+    // One loop: the list is empty and the voice keeps its loop.
+    fx.attack.allLoops.clear();
+    const auto one = render();
+    std::set<int> oneStarts;
+    for (size_t i = 1; i < one.size(); ++i)
+      if (one[i] < one[i - 1] - 0.01f)
+        oneStarts.insert(static_cast<int>(std::lround(one[i] * 10000.0f)) / 100);
+    MP_CHECK(oneStarts.size() == 1 && oneStarts.count(10), "a single loop plays as before");
+  }
+};
+static EveryLoopTest g_everyLoop;
+
 // Detuning: an organ drifting out of tune, pipe by pipe. A set declares a
 // control per division and zone and a sensitivity per pipe, so the same
 // request moves every pipe by a slightly different amount — which is the
