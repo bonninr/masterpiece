@@ -24,6 +24,7 @@
 #include "../../src/mp_ui/UpdateCheck.h"
 #include "../../src/mp_ui/Wizard.h"
 #include "JackMidi.h"
+#include "UsableDevices.h"
 #include "ProfileTraining.h"
 #include "../../src/mp_ui/Mobile.h"
 #include "../../src/mp_control/Registration.h"
@@ -292,7 +293,7 @@ public:
     // must be prepared for, and asking for them before the organ loads means
     // the voice pool and DSP are sized once rather than twice.
     player_ = std::make_unique<juce::AudioProcessorPlayer>();
-    devices_ = std::make_unique<juce::AudioDeviceManager>();
+    devices_ = std::make_unique<UsableDeviceManager>();
     // The driver, rate and buffer a player chose are properties of the
     // machine, not of any organ, and re-choosing them every launch is the
     // kind of thing that makes a program feel unfinished. JUCE serialises
