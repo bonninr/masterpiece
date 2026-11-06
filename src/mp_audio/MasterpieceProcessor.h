@@ -589,13 +589,24 @@ public:
   // manual's divisionals recall, store and cancel the Pedal's of the same
   // number with their own. The program's, kept for every organ; off by
   // default. The two divisions it ties are worked out at each load; both 0
-  // when the organ has no pedal or no manual with divisionals.
+  // when the organ has no pedal or no manual with divisionals. The player may
+  // name another manual (#838), kept with the organ; 0 goes back to the
+  // manual worked out.
   bool pedalCombinationsCoupled() const { return pedalCoupled_.load(); }
   void setPedalCombinationsCoupled(bool on) {
     pedalCoupled_.store(on);
     writeGlobalFile();
   }
-  CoupledDivisions coupledDivisions() const { return coupledDivisions_; }
+  CoupledDivisions coupledDivisions() const {
+    CoupledDivisions cd = coupledDivisions_;
+    const Id chosen = pedalManual_.load();
+    if (chosen != 0 && chosen != cd.pedal) cd.manual = chosen;
+    return cd;
+  }
+  void setPedalManual(Id division) {
+    pedalManual_.store(division);
+    markSettingsDirty();
+  }
   // A change made on the audio thread (a MIDI button) raises a flag; the
   // window's save tick writes the global file.
   bool saveGlobalIfDirty() {
@@ -2235,11 +2246,11 @@ private:
   std::atomic<bool> pedalCoupled_{false};
   std::atomic<bool> globalDirty_{false};
   CoupledDivisions coupledDivisions_;
+  std::atomic<Id> pedalManual_{0};
   // The Pedal's divisional that goes with this one, while coupled; 0 for none.
   Id coupledPedalFor(Id divisionId) const {
-    return pedalCoupled_.load() && coupledDivisions_.valid() && divisionId == coupledDivisions_.manual
-               ? coupledDivisions_.pedal
-               : 0;
+    const CoupledDivisions cd = coupledDivisions();
+    return pedalCoupled_.load() && cd.valid() && divisionId == cd.manual ? cd.pedal : 0;
   }
   void resetPlayerCombinations();
   void applyPlayerChanges();
