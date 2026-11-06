@@ -9,6 +9,7 @@
 
 #include "ManualDialog.h"
 #include "MidiEventDialog.h"
+#include "../mp_control/GrandOrgueMidi.h"
 #include "Ui.h"
 #include "UpdateCheck.h"
 #include "Mobile.h"
@@ -1972,6 +1973,9 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   saveMap_.onClick = [this] { proc_.saveMidiMap(); };
   addAndMakeVisible(clearMap_);
   clearMap_.onClick = [this] { proc_.midiMap().clear(); };
+  addChildComponent(fromGrandOrgue_);
+  fromGrandOrgue_.setTooltip(TRANS("The MIDI settings this organ has in GrandOrgue, from its settings file (.cmb)"));
+  fromGrandOrgue_.onClick = [this] { importFromGrandOrgue(); };
 
   addAndMakeVisible(mapStatus_);
   styleLabel(mapStatus_, "");
@@ -2147,6 +2151,7 @@ void MidiPanel::applyPart() {
     c->setVisible(!shownSimple_ || std::find(professional.begin(), professional.end(), c) == professional.end());
   saveMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   clearMap_.setVisible(!shownSimple_ && part_ != Part::Events);
+  fromGrandOrgue_.setVisible(part_ == Part::Organ);
   bluetooth_.setVisible(part_ == Part::Console && juce::BluetoothMidiDevicePairingDialogue::isAvailable());
 }
 
@@ -2260,6 +2265,75 @@ void MidiPanel::sendNow(juce::TextEditor& field, juce::TextButton& button) {
 }
 
 MidiPanel::~MidiPanel() { stopTimer(); }
+
+// GrandOrgue keeps a set's MIDI settings in its settings file for that set,
+// <hash>-0.cmb in its Data folder, compressed or plain (#865). The events this
+// program has a binding for replace the mappings of the objects they name;
+// the window then says what was taken and what was left out.
+void MidiPanel::importFromGrandOrgue() {
+  if (proc_.organModel().grandOrgueObjects.empty()) {
+    juce::AlertWindow::showAsync(
+        juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::InfoIcon)
+            .withTitle(TRANS("From GrandOrgue"))
+            .withMessage(TRANS("Load this organ from its GrandOrgue .organ file to bring its MIDI settings over."))
+            .withButton(TRANS("OK"))
+            .withAssociatedComponent(this),
+        nullptr);
+    return;
+  }
+  grandOrgueChooser_ = std::make_unique<juce::FileChooser>(TRANS("GrandOrgue's settings for this organ"),
+                                                           proc_.dialogFolder("grandorgue"), "*.cmb");
+  juce::Component::SafePointer<MidiPanel> self(this);
+  grandOrgueChooser_->launchAsync(
+      juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+      [self](const juce::FileChooser& fc) {
+        if (self == nullptr) return;
+        const juce::File f = fc.getResult();
+        if (!f.existsAsFile()) return;
+        self->proc_.rememberDialogFolder("grandorgue", f);
+        juce::MemoryBlock bytes;
+        f.loadFileAsData(bytes);
+        const auto* b = static_cast<const uint8_t*>(bytes.getData());
+        if (bytes.getSize() > 2 && b[0] == 0x1f && b[1] == 0x8b) {
+          juce::MemoryInputStream packed(bytes, false);
+          juce::GZIPDecompressorInputStream unpacked(&packed, false,
+                                                     juce::GZIPDecompressorInputStream::gzipFormat);
+          juce::MemoryBlock plain;
+          unpacked.readIntoMemoryBlock(plain);
+          bytes = std::move(plain);
+        }
+        const std::string text(static_cast<const char*>(bytes.getData()), bytes.getSize());
+        const GrandOrgueMidiReport r = importGrandOrgueMidi(text, self->proc_.organModel(), self->proc_.midiMap());
+        juce::StringArray lines;
+        if (!r.ok) {
+          lines.add(TRANS("This file holds no MIDI settings from GrandOrgue."));
+        } else {
+          self->proc_.saveMidiMap();
+          if (!r.organName.empty())
+            lines.add(TRANS("Saved by GrandOrgue for %1.").replace("%1", juce::String::fromUTF8(r.organName.c_str())));
+          lines.add(TRANS("Stops, pistons and swells: %1 events").replace("%1", juce::String(r.bindings)));
+          lines.add(TRANS("Manuals: %1 events").replace("%1", juce::String(r.keyboards)));
+          lines.add(TRANS("Lamps and messages sent: %1").replace("%1", juce::String(r.sends)));
+          if (r.leftOut > 0)
+            lines.add(TRANS("Events of other kinds, left out: %1").replace("%1", juce::String(r.leftOut)));
+          if (r.otherObjects > 0)
+            lines.add(TRANS("Objects of another organ, left out: %1").replace("%1", juce::String(r.otherObjects)));
+          if (r.shortcuts > 0)
+            lines.add(TRANS("Computer key shortcuts, left out: %1").replace("%1", juce::String(r.shortcuts)));
+          if (r.anyDevice > 0)
+            lines.add(TRANS("Devices not connected now, taken as any console: %1").replace("%1", juce::String(r.anyDevice)));
+        }
+        self->refresh();
+        juce::AlertWindow::showAsync(juce::MessageBoxOptions()
+                                         .withIconType(juce::MessageBoxIconType::InfoIcon)
+                                         .withTitle(TRANS("From GrandOrgue"))
+                                         .withMessage(lines.joinIntoString("\n"))
+                                         .withButton(TRANS("OK"))
+                                         .withAssociatedComponent(self.getComponent()),
+                                     nullptr);
+      });
+}
 
 // Manuals that answer the same channel, named. Sharing one is a way of
 // playing two divisions from one keyboard; doing it unawares is how a manual
@@ -2663,6 +2737,10 @@ void MidiPanel::resized() {
     saveMap_.setBounds(row.removeFromLeft(130));
     row.removeFromLeft(kGap);
     clearMap_.setBounds(row.removeFromLeft(150));
+    row.removeFromLeft(kGap);
+  }
+  if (part_ == Part::Organ) {
+    fromGrandOrgue_.setBounds(row.removeFromLeft(150));
     row.removeFromLeft(kGap);
   }
   mapStatus_.setBounds(row);
