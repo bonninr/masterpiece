@@ -1268,7 +1268,20 @@ void EnginePanel::resized() {
   };
 
   // This organ: what it plays through, then how it is loaded.
-  for (auto* b : {&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_, &originalPitch_}) line(*b);
+  {
+    std::vector<juce::Component*> boxes;
+    for (auto* b : std::initializer_list<juce::Component*>{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
+                                                           &originalPitch_})
+      if (b->isVisible()) boxes.push_back(b);
+    // Two columns where the longest label fits in half the width.
+    const size_t columns = r.getWidth() >= 600 ? 2 : 1;
+    for (size_t i = 0; i < boxes.size(); i += columns) {
+      auto row = r.removeFromTop(kRow);
+      const int w = row.getWidth() / static_cast<int>(columns);
+      for (size_t c = 0; c < columns && i + c < boxes.size(); ++c) boxes[i + c]->setBounds(row.removeFromLeft(w));
+      r.removeFromTop(2);
+    }
+  }
   if (simpleWav_.isVisible()) r.removeFromTop(kGap);
   pair(profileLabel_, profile_, 380);
   if (profile_.isVisible()) r.removeFromTop(4);
