@@ -2482,7 +2482,7 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     if (key == "sparse") {
       // How many notes are loaded: 1 for every note, 2 for every second, 3 for
       // every third. Absent means every note.
-      sparseEvery_ = juce::jlimit(1, 3, val.getIntValue());
+      sparseEvery_ = juce::jlimit(1, 4, val.getIntValue());
       samples_.setSparseEvery(sparseEvery_);
       continue;
     }

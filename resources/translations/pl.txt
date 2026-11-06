@@ -114,6 +114,7 @@ countries: pl
 "All" = "Wszystkie"
 "Every second note" = "Co druga nuta"
 "Every third note" = "Co trzecia nuta"
+"Half, by the sides of the organ" = "Połowa, według stron organów"
 "Saves memory: a note that is not loaded plays its nearest loaded neighbour\'s samples, retuned to its own pitch. Applies when the organ is loaded again." = "Oszczędza pamięć: nuta, która nie jest wczytana, brzmi próbkami swojej najbliższej wczytanej sąsiadki, dostrojonymi do jej własnej wysokości. Działa po ponownym wczytaniu organu."
 "Releases" = "Wybrzmienia"
 "As the organ has them" = "Tak, jak ma je instrument"

@@ -311,6 +311,7 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   sparse_.addItem(TRANS("All"), 1);
   sparse_.addItem(TRANS("Every second note"), 2);
   sparse_.addItem(TRANS("Every third note"), 3);
+  sparse_.addItem(TRANS("Half, by the sides of the organ"), 4);
   sparse_.setSelectedId(proc_.sparseEvery(), juce::dontSendNotification);
   sparse_.setTooltip(TRANS("Saves memory: a note that is not loaded plays its nearest loaded "
                             "neighbour's samples, retuned to its own pitch. Applies when the "

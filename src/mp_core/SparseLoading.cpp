@@ -87,10 +87,12 @@ SparsePlan planSparseLoading(const OrganModel& model, int every,
 
     // The pipes that keep their own samples: every `every` notes from the
     // lowest, and the lowest and the highest whatever the rule says.
+    const bool sides = every == kSparseSides;
     std::vector<bool> kept(n, false);
     for (size_t i = 0; i < n; ++i) {
-      const int d = rank.pipes[byNote[i]].midiNote - lowest;
-      if (d >= 0 && d % every == 0) kept[byNote[i]] = true;
+      const int note = rank.pipes[byNote[i]].midiNote;
+      const int d = note - lowest;
+      if (sides ? (note % 12) / 2 % 2 == 0 : d >= 0 && d % every == 0) kept[byNote[i]] = true;
     }
     kept[byNote.front()] = true;
     kept[byNote.back()] = true;
@@ -122,14 +124,15 @@ SparsePlan planSparseLoading(const OrganModel& model, int every,
       for (size_t j = 0; j < n; ++j) {
         if (!kept[j]) continue;
         const int d = std::abs(rank.pipes[j].midiNote - pipe.midiNote);
+        if (sides && d % 2 != 0) continue;  // the other side of the organ
         if (neighbour < 0 || d < distance) {
           neighbour = static_cast<int>(j);
           distance = d;
         }
       }
       if (neighbour < 0) continue;
-      // Never further than every - 1 semitones.
-      if (distance > every - 1) continue;
+      // Never further than every - 1 semitones; a whole tone by sides.
+      if (distance > (sides ? 2 : every - 1)) continue;
       // The same footage: a mixture break or a transposed pipe changes it,
       // and borrowing across it would jump an octave or a fifth.
       if (rank.pipes[static_cast<size_t>(neighbour)].basePitch64ftHarmonicNum !=
