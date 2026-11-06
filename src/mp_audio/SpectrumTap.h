@@ -46,6 +46,26 @@ public:
   // The analysis itself, for a block of kFft samples.
   static std::vector<float> analyse(const float* samples);
 
+  // Any thread: the newest n samples, oldest first; n is at most kPitchSpan.
+  // The writer moves on while they are copied, so the span stays a block
+  // short of the ring.
+  static constexpr int kPitchSpan = 6144;  // 128 ms at 48 kHz
+  void latest(float* out, int n) const;
+
+  // The pitch of the lowest note sounding, and the levels of its first
+  // harmonics. The fundamental is the lowest peak within 25 dB of the
+  // loudest, read to a fraction of a cent from the peak of the windowed
+  // transform; n is at least kFft.
+  struct Pitch {
+    bool found = false;
+    double hz = 0.0;
+    float levelDb = -120.0f;  // the fundamental, dBFS
+    static constexpr int kHarmonics = 8;
+    // Each harmonic's level against the fundamental's; harmonic 1 reads 0 dB.
+    std::array<float, kHarmonics> harmonicsDb{};
+  };
+  static Pitch measurePitch(const float* samples, int n, double sampleRate);
+
 private:
   std::atomic<int> viewers_{0};
   std::atomic<int> write_{0};

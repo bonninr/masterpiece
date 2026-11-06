@@ -1,0 +1,4 @@
+"Tuner" = "Ladička"
+"cents" = "centů"
+"Harmonics" = "Harmonické"
+"Hold a key to measure its pitch." = "Podržte klávesu pro změření výšky tónu."

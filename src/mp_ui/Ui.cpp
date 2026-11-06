@@ -2092,6 +2092,16 @@ void MasterpieceEditor::toggleRecorder() {
                juce::Process::isForegroundProcess());
 }
 
+void MasterpieceEditor::toggleTuner() {
+  if (tunerWindow_ == nullptr) {
+    tunerWindow_ = std::make_unique<TunerWindow>(proc_);
+    // At the main window's top left, clear of the recorder at its top right.
+    const auto b = getScreenBounds();
+    if (!kMobile) tunerWindow_->setTopLeftPosition(b.getX() + 40, b.getY() + 80);
+  }
+  showFloating(*tunerWindow_, !tunerWindow_->isVisible(), juce::Process::isForegroundProcess());
+}
+
 void MasterpieceEditor::toggleSplitKeyboard() {
   if (splitWindow_ == nullptr) {
     splitWindow_ = std::make_unique<SplitKeyboardWindow>(proc_);
@@ -3128,12 +3138,14 @@ void MasterpieceEditor::showViewMenu() {
   menu.addItem(14, TRANS("Split keyboard"), true, splitWindow_ != nullptr && splitWindow_->isVisible());
   menu.addItem(19, TRANS("Couplers"), true, couplersWindow_ != nullptr && couplersWindow_->isVisible());
   menu.addItem(5, TRANS("Recorder"), true, recorderWindow_ != nullptr && recorderWindow_->isVisible());
+  menu.addItem(22, TRANS("Tuner"), true, tunerWindow_ != nullptr && tunerWindow_->isVisible());
   menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&viewMenu_),
                      [safe = juce::Component::SafePointer<MasterpieceEditor>(this)](int c) {
                        if (safe == nullptr || c == 0) return;
                        if (c >= 1000) safe->panelItemChosen(c);
                        // The settings windows follow it on their own.
                        if (c == 5) safe->toggleRecorder();
+                       if (c == 22) safe->toggleTuner();
                        if (c == 15) safe->toggleStopList();
                        if (c == 11) safe->toggleSwell();
                        if (c == 12) safe->toggleKeyboard();
@@ -3401,6 +3413,10 @@ void MasterpieceEditor::timerCallback() {
   if (kLiveOnTop && recorderWindow_ != nullptr && recorderWindow_->isVisible()) {
     const bool front = juce::Process::isForegroundProcess();
     if (recorderWindow_->isAlwaysOnTop() != front) recorderWindow_->setAlwaysOnTop(front);
+  }
+  if (kLiveOnTop && tunerWindow_ != nullptr && tunerWindow_->isVisible()) {
+    const bool front = juce::Process::isForegroundProcess();
+    if (tunerWindow_->isAlwaysOnTop() != front) tunerWindow_->setAlwaysOnTop(front);
   }
 
   // The swell strip follows a pedal moved over MIDI.

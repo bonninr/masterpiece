@@ -178,6 +178,22 @@ double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double baseP
   return basePitchHz * std::pow(2.0, cents / 1200.0);
 }
 
+TemperedNote nearestTemperedNote(double hz, double aHz, const Temperament& t) {
+  TemperedNote best;
+  if (hz <= 0.0 || aHz <= 0.0) return best;
+  // A temperament moves a note by less than a semitone, so the nearest note
+  // is the equal-tempered one or a neighbour.
+  const int equal = static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / aHz)));
+  bool first = true;
+  for (int n = equal - 1; n <= equal + 1; ++n) {
+    const double target = pipeTargetHz(n, 8, aHz, 0.0, t, 0);
+    const double cents = 1200.0 * std::log2(hz / target);
+    if (first || std::fabs(cents) < std::fabs(best.cents)) best = {n, target, cents};
+    first = false;
+  }
+  return best;
+}
+
 double playbackRatio(double targetHz, double recordedHz) {
   if (recordedHz <= 0.0) return 1.0;
   return targetHz / recordedHz;

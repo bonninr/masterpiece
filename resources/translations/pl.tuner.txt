@@ -1,0 +1,4 @@
+"Tuner" = "Stroik"
+"cents" = "centów"
+"Harmonics" = "Harmoniczne"
+"Hold a key to measure its pitch." = "Przytrzymaj klawisz, aby zmierzyć wysokość dźwięku."
