@@ -1559,13 +1559,18 @@ void showControlMidiMenu(MasterpieceProcessor& proc, Id controlId,
     menu.addSectionHeader(TRANS("Not mapped"));
   } else {
     for (const MidiBinding* b : existing) {
-      juce::String what = b->source.kind != MidiSourceKind::Note ? TRANS("CC %1").replace("%1", juce::String(b->source.number))
-                          : b->source.number == kAnyNote        ? juce::String(TRANS("Velocity of any note"))
-                                                                : TRANS("Velocity of note %1").replace("%1", juce::String(b->source.number));
+      const int lo = std::min(b->lowValue, b->highValue), hi = std::max(b->lowValue, b->highValue);
+      const bool programs = b->source.kind == MidiSourceKind::ProgramChange;
+      juce::String what =
+          programs && b->source.number == kProgramRange
+              ? TRANS("Programs %1 to %2").replace("%1", juce::String(lo + 1)).replace("%2", juce::String(hi + 1))
+          : programs                             ? TRANS("Program %1").replace("%1", juce::String(b->source.number + 1))
+          : b->source.kind != MidiSourceKind::Note ? TRANS("CC %1").replace("%1", juce::String(b->source.number))
+          : b->source.number == kAnyNote           ? juce::String(TRANS("Velocity of any note"))
+                                                   : TRANS("Velocity of note %1").replace("%1", juce::String(b->source.number));
       if (b->source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b->source.channel));
       // The pedal's travel, when it is not the whole 0..127, closed to open.
-      const int lo = std::min(b->lowValue, b->highValue), hi = std::max(b->lowValue, b->highValue);
-      if (lo != 0 || hi != 127 || b->invert)
+      if (!programs && (lo != 0 || hi != 127 || b->invert))
         what << "  " << TRANS("(closed at %1, open at %2)")
                                 .replace("%1", juce::String(b->invert ? hi : lo))
                                 .replace("%2", juce::String(b->invert ? lo : hi));
