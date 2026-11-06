@@ -207,6 +207,7 @@ countries: gb us
 "Learned message" = "Learned message"
 "Any" = "Any"
 "Any console" = "Any console"
+"Controller, one value" = "Controller, one value"
 "Listen..." = "Listen..."
 "The value your console sends for off" = "The value your console sends for off"
 "The value your console sends for on" = "The value your console sends for on"
@@ -814,8 +815,8 @@ countries: gb us
 "System default" = "System default"
 "General" = "General"
 "Metronome" = "Metronome"
-"Preferences" = "Preferences"
 "Console events" = "Console events"
+"Preferences" = "Preferences"
 "Diagnostics" = "Diagnostics"
 
 # src/mp_ui/Settings.h
