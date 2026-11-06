@@ -10,10 +10,14 @@
 //
 // The law is the MIDI master volume's: 127 leaves the level as voiced, 0 is
 // silence, and the steps between are even in decibels over the lower 40.
+// Above 127, up to 203, the Mixer tab and the control API raise a level by up
+// to 24 dB in steps of about the same size, as far as the master volume goes
+// (#971). MIDI sends 127 at most, so a knob or a pedal at its top leaves the
+// level as voiced.
 //
 // Costs nothing while every fader is at full: advance() says so, the engine
 // is then handed no table, and no voice multiplies by anything. With one
-// fader down, each voice takes one multiply a block.
+// fader moved, each voice takes one multiply a block.
 //
 // JUCE-free, so the fast tests can drive it without audio.
 #pragma once
@@ -29,22 +33,35 @@ namespace mp {
 
 class LiveLevels {
 public:
+  // The level as voiced, and the most MIDI can send.
   static constexpr int kFull = 127;
+  // The loudest a level goes: 24 dB over the voicing, 76 steps above full.
+  static constexpr int kTop = 203;
+  static constexpr float kBoostDb = 24.0f;
   // Output pairs: a fixed table, so the mixer can gain or lose pairs while
   // the audio runs without the table moving under it.
   static constexpr int kMaxPairs = 64;
 
   static float gainOf(int value) {
     if (value <= 0) return 0.0f;
-    if (value >= kFull) return 1.0f;
+    if (value == kFull) return 1.0f;
     return std::pow(10.0f, dbOf(value) / 20.0f);
   }
   // The level in dB; -inf is not representable, so 0 reads as -100. Full is
   // exactly 0 dB: the law below gives -0 there, which prints as "-0.0".
   static float dbOf(int value) {
     if (value <= 0) return -100.0f;
-    if (value >= kFull) return 0.0f;
-    return -40.0f * (1.0f - static_cast<float>(std::min(value, kFull)) / static_cast<float>(kFull));
+    if (value == kFull) return 0.0f;
+    if (value > kFull)
+      return kBoostDb * static_cast<float>(std::min(value, kTop) - kFull) / static_cast<float>(kTop - kFull);
+    return -40.0f * (1.0f - static_cast<float>(value) / static_cast<float>(kFull));
+  }
+  // The step nearest a level in dB, for a level typed in: -40 dB and below is
+  // the lowest step above silence, +24 dB and above the top.
+  static int valueOf(float db) {
+    if (db >= 0.0f)
+      return kFull + static_cast<int>(std::lround(std::min(db, kBoostDb) / kBoostDb * (kTop - kFull)));
+    return std::max(1, static_cast<int>(std::lround(kFull * (1.0f + std::max(db, -40.0f) / 40.0f))));
   }
 
   LiveLevels() { configure({}, 0); }
@@ -87,7 +104,7 @@ public:
   int rankGroup(int i) const { return i >= 0 && i < rankCount() ? rankGroup_[static_cast<size_t>(i)] : -1; }
   int groupCount() const { return static_cast<int>(groupNow_.size()); }
 
-  // Any thread. An index out of range is ignored; a value is held to 0..127.
+  // Any thread. An index out of range is ignored; a value is held to 0..kTop.
   void setRank(int i, int value) { set(rankSet_.get(), rankCount(), i, value); }
   void setDivision(int i, int value) { set(divisionSet_.get(), divisionCount(), i, value); }
   void setGroup(int i, int value) { set(groupSet_.get(), groupCount(), i, value); }
@@ -99,15 +116,15 @@ public:
 
   // Audio thread, once a block before the voices render: each gain moves
   // toward its fader, smoothly enough that a knob turned fast does not click.
-  // Returns whether any level is below full; while none is and none has been
-  // touched since, this returns at once.
+  // Returns whether any level is away from full, below or above; while none
+  // is and none has been touched since, this returns at once.
   bool advance(int numFrames, double sampleRate) {
     const bool touched = dirty_.exchange(false, std::memory_order_acq_rel);
     if (!touched && !moving_) return active_;
     const float step = sampleRate > 0.0
                            ? 1.0f - static_cast<float>(std::exp(-numFrames / (kSmoothSeconds * sampleRate)))
                            : 1.0f;
-    bool moving = false, below = false;
+    bool moving = false, away = false;
     const auto follow = [&](const std::atomic<int>* set, std::vector<float>& now) {
       for (size_t i = 0; i < now.size(); ++i) {
         const float target = gainOf(set[i].load(std::memory_order_relaxed));
@@ -115,7 +132,7 @@ public:
         if (std::fabs(target - g) < 1.0e-4f) g = target;
         else moving = true;
         now[i] = g;
-        if (g != 1.0f) below = true;
+        if (g != 1.0f) away = true;
       }
     };
     follow(rankSet_.get(), rankNow_);
@@ -129,7 +146,7 @@ public:
                      (g >= 0 ? groupNow_[static_cast<size_t>(g)] : 1.0f);
     }
     moving_ = moving;
-    active_ = below;
+    active_ = away;
     return active_;
   }
 
@@ -157,7 +174,7 @@ private:
   }
   void set(std::atomic<int>* faders, int count, int i, int value) {
     if (i < 0 || i >= count) return;
-    faders[i].store(std::clamp(value, 0, kFull), std::memory_order_relaxed);
+    faders[i].store(std::clamp(value, 0, kTop), std::memory_order_relaxed);
     dirty_.store(true, std::memory_order_release);
   }
   static int get(const std::atomic<int>* faders, int count, int i) {

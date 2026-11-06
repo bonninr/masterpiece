@@ -32,6 +32,23 @@ public:
                  !std::signbit(LiveLevels::dbOf(200)),
              "full reads 0 dB, with no minus sign");
     MP_CHECK(LiveLevels::gainOf(64) < LiveLevels::gainOf(65) && LiveLevels::gainOf(65) < 1.0f, "rising");
+    // Above full, up to 24 dB over the voicing (#971), in steps about the
+    // size of those below.
+    MP_CHECK(std::fabs(LiveLevels::dbOf(LiveLevels::kTop) - 24.0f) < 1.0e-4f &&
+                 std::fabs(LiveLevels::gainOf(LiveLevels::kTop) - std::pow(10.0f, 24.0f / 20.0f)) < 1.0e-3f,
+             "the top is +24 dB");
+    MP_CHECK(std::fabs(LiveLevels::dbOf(165) - 12.0f) < 1.0e-4f, "halfway up the boost is +12 dB");
+    const float stepUp = LiveLevels::dbOf(LiveLevels::kFull + 1), stepDown = -LiveLevels::dbOf(LiveLevels::kFull - 1);
+    MP_CHECK(stepUp > 0.0f && std::fabs(stepUp - stepDown) < 0.01f,
+             "a step above full is the size of one below: " + std::to_string(stepUp) + " and " +
+                 std::to_string(stepDown) + " dB");
+    MP_CHECK(LiveLevels::dbOf(LiveLevels::kTop + 50) == LiveLevels::dbOf(LiveLevels::kTop), "nothing past the top");
+    bool roundTrip = true;
+    for (int v = 1; v <= LiveLevels::kTop; ++v) roundTrip = roundTrip && LiveLevels::valueOf(LiveLevels::dbOf(v)) == v;
+    MP_CHECK(roundTrip, "a level typed in dB lands on its own step, every step");
+    MP_CHECK(LiveLevels::valueOf(0.0f) == LiveLevels::kFull && LiveLevels::valueOf(-90.0f) == 1 &&
+                 LiveLevels::valueOf(90.0f) == LiveLevels::kTop,
+             "0 dB is full; past either end, the end step");
 
     LiveLevels l;
     l.configure({0, 1, -1}, 2);
@@ -58,7 +75,13 @@ public:
     l.setRank(-1, 0);
     MP_CHECK(l.rank(7) == 127 && !l.advance(256, 48000.0), "an index out of range is ignored");
     l.setRank(1, 300);
-    MP_CHECK(l.rank(1) == 127, "held to 0..127");
+    MP_CHECK(l.rank(1) == LiveLevels::kTop, "held to 0..203");
+    for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+    MP_CHECK(l.advance(256, 48000.0) && std::fabs(l.rankGain(1) - LiveLevels::gainOf(LiveLevels::kTop)) < 1.0e-3f,
+             "a fader raised is applied as one lowered: " + std::to_string(l.rankGain(1)));
+    l.setRank(1, LiveLevels::kFull);
+    for (int i = 0; i < 200; ++i) l.advance(256, 48000.0);
+    MP_CHECK(!l.advance(256, 48000.0), "and back at full, nothing to apply");
   }
 };
 static LiveLevelsLawTest g_law;
@@ -191,11 +214,13 @@ public:
     touched.proc.setLiveRankLevel(0, 0);
     touched.proc.setLiveDivisionLevel(1, 10);
     touched.proc.setLivePairLevel(0, 30);
+    touched.proc.setLiveRankLevel(1, mp::LiveLevels::kTop);
     plain.settle(100);
     touched.settle(100);
     touched.proc.setLiveRankLevel(0, 127);
     touched.proc.setLiveDivisionLevel(1, 127);
     touched.proc.setLivePairLevel(0, 127);
+    touched.proc.setLiveRankLevel(1, 127);
     plain.settle(100);
     touched.settle(100);
     juce::MidiBuffer on;
@@ -231,6 +256,19 @@ public:
     p.setLivePairLevel(0, 127);
     touched.settle();
 
+    // Raised above full (#971): rank A alone, then 12 dB over its voicing.
+    p.setLiveDivisionLevel(p.liveDivisionIndexOf(802), 0);
+    const float aAlone = touched.settle(120);
+    p.setLiveRankLevel(p.liveRankIndexOf(201), 165);
+    const float aRaised = touched.settle(120);
+    const float ratio = aAlone > 0.0f ? aRaised / aAlone : 0.0f;
+    MP_CHECK(aAlone > 1.0e-4f && std::fabs(ratio - mp::LiveLevels::gainOf(165)) < 0.02f * mp::LiveLevels::gainOf(165),
+             "rank A raised 12 dB while held: x" + std::to_string(ratio) + ", law x" +
+                 std::to_string(mp::LiveLevels::gainOf(165)));
+    p.setLiveRankLevel(p.liveRankIndexOf(201), 127);
+    p.setLiveDivisionLevel(p.liveDivisionIndexOf(802), 127);
+    touched.settle();
+
     // A knob: controller 7 on channel 3 learned for rank B.
     mp::MidiBinding knob;
     knob.source.kind = mp::MidiSourceKind::ControlChange;
@@ -256,8 +294,11 @@ public:
     MP_CHECK(model.set(mp::api::Type::Division, 0, v) == mp::api::Error::None &&
                  p.liveDivisionLevel(p.liveDivisionIndexOf(801)) == 90,
              "a division's fader set");
-    v = 128;
-    MP_CHECK(model.set(mp::api::Type::Pair, 0, v) == mp::api::Error::BadValue, "0..127 only");
+    v = 203;
+    MP_CHECK(model.set(mp::api::Type::Pair, 0, v) == mp::api::Error::None && p.livePairLevel(0) == 203,
+             "a pair raised to the top, +24 dB");
+    v = 204;
+    MP_CHECK(model.set(mp::api::Type::Pair, 0, v) == mp::api::Error::BadValue, "0..203 only");
 #endif
 
     // A new organ starts every fader at full.

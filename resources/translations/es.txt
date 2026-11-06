@@ -989,7 +989,6 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Learn score page -" = "Aprender página de partitura -"
 "Learn score page +" = "Aprender página de partitura +"
 "Divisions" = "Divisiones"
-"A live level, heard at once: full is the level as voiced" = "Un nivel en vivo, que se oye al instante: al máximo es el nivel tal como está armonizado"
 "Learn a knob or a pedal for this level" = "Aprender una perilla o un pedal para este nivel"
 "Learn: move the knob or pedal" = "Aprender: mueva la perilla o el pedal"
 "Move it..." = "Muévalo..."

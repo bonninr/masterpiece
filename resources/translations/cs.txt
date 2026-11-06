@@ -989,7 +989,6 @@ countries: cz
 "Learn score page -" = "Naučit stránku not -"
 "Learn score page +" = "Naučit stránku not +"
 "Divisions" = "Manuály"
-"A live level, heard at once: full is the level as voiced" = "Živá úroveň, slyšet hned: plná je úroveň podle intonace"
 "Learn a knob or a pedal for this level" = "Naučit otočný ovladač nebo pedál pro tuto úroveň"
 "Learn: move the knob or pedal" = "Učení: pohněte ovladačem nebo pedálem"
 "Move it..." = "Pohněte jím..."

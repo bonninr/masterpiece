@@ -1,0 +1,1 @@
+"A live level, heard at once: 0 dB is the level as voiced" = "Živá úroveň, slyšet hned: 0 dB je úroveň podle intonace"

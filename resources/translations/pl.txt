@@ -989,7 +989,6 @@ countries: pl
 "Learn score page -" = "Naucz stronę nut -"
 "Learn score page +" = "Naucz stronę nut +"
 "Divisions" = "Manuały"
-"A live level, heard at once: full is the level as voiced" = "Poziom na żywo, słyszalny od razu: pełny to poziom jak zaintonowany"
 "Learn a knob or a pedal for this level" = "Naucz pokrętło lub pedał dla tego poziomu"
 "Learn: move the knob or pedal" = "Nauka: porusz pokrętłem lub pedałem"
 "Move it..." = "Porusz nim..."

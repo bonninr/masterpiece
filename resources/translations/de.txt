@@ -989,7 +989,6 @@ countries: de at ch li lu
 "Learn score page -" = "Notenseite - anlernen"
 "Learn score page +" = "Notenseite + anlernen"
 "Divisions" = "Werke"
-"A live level, heard at once: full is the level as voiced" = "Ein Live-Pegel, sofort zu hören: voll ist der Pegel wie intoniert"
 "Learn a knob or a pedal for this level" = "Einen Drehregler oder ein Pedal für diesen Pegel anlernen"
 "Learn: move the knob or pedal" = "Anlernen: Drehregler oder Pedal bewegen"
 "Move it..." = "Jetzt bewegen..."
