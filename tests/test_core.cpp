@@ -4077,6 +4077,30 @@ class CompactTremulantRateTest final : public mp::test::Test {
 public:
   CompactTremulantRateTest()
     : Test("functional.odf.compact-tremulant-rate", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Tremulant\">"
+                 "<o><a>1</a><b>left out</b><d>6.5e+0</d></o>"
+                 "<o><a>2</a><b>written</b><d>6.5e+0</d><e>4.5e+0</e></o>"
+                 "<Tremulant><TremulantID>3</TremulantID><Name>long</Name>"
+                 "<FrequencyWhenEngagedHz>6.5</FrequencyWhenEngagedHz></Tremulant>"
+                 "</ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.tremulants.size() == 3, "all three tremulants are read");
+    MP_CHECK(m.tremulants.at(1).disengagedHz == 9.0, "no rate written means 9 Hz");
+    MP_CHECK(m.tremulants.at(2).disengagedHz == 4.5, "a written rate is kept");
+    MP_CHECK(m.tremulants.at(3).disengagedHz == 5.0, "a long-form row keeps its own default");
+  }
+};
+static CompactTremulantRateTest g_compactTremulantRate;
+
 // A key let go inside a loop's fade: the sustain goes on under the release,
 // through the rest of its fade and over the seam, with no step on the way.
 class LoopCrossfadeReleaseTest final : public mp::test::Test {
@@ -4123,21 +4147,6 @@ public:
     MP_CHECK(l.loadFromXmlString(
                  "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
                  "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
-                 "<ObjectList ObjectType=\"Tremulant\">"
-                 "<o><a>1</a><b>left out</b><d>6.5e+0</d></o>"
-                 "<o><a>2</a><b>written</b><d>6.5e+0</d><e>4.5e+0</e></o>"
-                 "<Tremulant><TremulantID>3</TremulantID><Name>long</Name>"
-                 "<FrequencyWhenEngagedHz>6.5</FrequencyWhenEngagedHz></Tremulant>"
-                 "</ObjectList></Hauptwerk>",
-                 "a.Organ_Hauptwerk_xml", o, m, d),
-             "the definition loads");
-    MP_CHECK(m.tremulants.size() == 3, "all three tremulants are read");
-    MP_CHECK(m.tremulants.at(1).disengagedHz == 9.0, "no rate written means 9 Hz");
-    MP_CHECK(m.tremulants.at(2).disengagedHz == 4.5, "a written rate is kept");
-    MP_CHECK(m.tremulants.at(3).disengagedHz == 5.0, "a long-form row keeps its own default");
-  }
-};
-static CompactTremulantRateTest g_compactTremulantRate;
                  "<ObjectList ObjectType=\"Sample\"><o><a>1</a><c>R/036-c.wav</c></o></ObjectList>"
                  "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
                  "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
