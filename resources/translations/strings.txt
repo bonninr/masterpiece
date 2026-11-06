@@ -678,7 +678,6 @@ countries: gb us
 "up to %1 MB" = "up to %1 MB"
 "up to %1 GB" = "up to %1 GB"
 "kept %1 days" = "kept %1 days"
-"Sequencer" = "Sequencer"
 "Manual buttons" = "Manual buttons"
 "Pistons that switch which manual a keyboard plays: choose the keyboard's channel and the manual, then press the piston" = "Pistons that switch which manual a keyboard plays: choose the keyboard's channel and the manual, then press the piston"
 "Keyboard on channel %1 (plays %2)" = "Keyboard on channel %1 (plays %2)"
