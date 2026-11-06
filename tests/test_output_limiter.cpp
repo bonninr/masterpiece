@@ -839,6 +839,7 @@ public:
     proc.prepareToPlay(kRate, 256);
     MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
     proc.setStopEngaged(901, true);
+    if (auto* gain = proc.apvts().getParameter("masterGain")) gain->setValueNotifyingHost(0.5f);
     juce::AudioBuffer<float> buffer(2, 256);
     juce::MidiBuffer on;
     on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
@@ -849,15 +850,22 @@ public:
     }
     MP_CHECK(proc.spectrum().samplesPushed() == 0, "closed, the processor feeds it nothing");
     proc.spectrum().open();
+    std::vector<float> heard;  // what the processor put out, folded to mono
     for (int block = 0; block < 32; ++block) {
       buffer.clear();
       proc.processBlock(buffer, none);
+      for (int i = 0; i < 256; ++i) heard.push_back(0.5f * (buffer.getSample(0, i) + buffer.getSample(1, i)));
     }
     MP_CHECK(proc.spectrum().samplesPushed() == 32 * 256, "open, every frame");
+    const auto peakBin = [](const std::vector<float>& d) {
+      return static_cast<size_t>(std::max_element(d.begin() + 1, d.end()) - d.begin());
+    };
     const auto db = proc.spectrum().spectrumDb();
-    const size_t k = static_cast<size_t>(std::max_element(db.begin() + 1, db.end()) - db.begin());
-    const double hz = static_cast<double>(k) * kRate / mp::SpectrumTap::kFft;
-    MP_CHECK(std::fabs(hz - 130.81) < 12.0, "it shows the note at 130.81 Hz: " + std::to_string(hz));
+    const auto out = mp::SpectrumTap::analyse(heard.data() + heard.size() - mp::SpectrumTap::kFft);
+    const size_t k = peakBin(db);
+    MP_CHECK(db[k] > -60.0f, "the note is audible in it: " + std::to_string(db[k]) + " dBFS");
+    MP_CHECK(k == peakBin(out), "it shows the note where the output has it: bin " + std::to_string(k) +
+                                    ", the output's bin " + std::to_string(peakBin(out)));
     proc.spectrum().close();
     proc.releaseResources();
   }
