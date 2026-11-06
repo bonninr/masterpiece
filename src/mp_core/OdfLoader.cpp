@@ -2025,6 +2025,33 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       t.attachedInstanceId = 0;
     t.posRelativeToInstance =
         fieldBool(row, "PosRelativeToTopLeftOfImageSetInstance", "l", false);
+    // The other console layouts: text, style, position and box for each.
+    static constexpr const char* kAltText[3][6] = {
+        {"AlternateScreenLayout1_Text", "AlternateScreenLayout1_TextStyleID",
+         "AlternateScreenLayout1_XPosPixels", "AlternateScreenLayout1_YPosPixels",
+         "AlternateScreenLayout1_BoundingBoxWidthPixelsIfWordWrap",
+         "AlternateScreenLayout1_BoundingBoxHeightPixelsIfWordWrap"},
+        {"AlternateScreenLayout2_Text", "AlternateScreenLayout2_TextStyleID",
+         "AlternateScreenLayout2_XPosPixels", "AlternateScreenLayout2_YPosPixels",
+         "AlternateScreenLayout2_BoundingBoxWidthPixelsIfWordWrap",
+         "AlternateScreenLayout2_BoundingBoxHeightPixelsIfWordWrap"},
+        {"AlternateScreenLayout3_Text", "AlternateScreenLayout3_TextStyleID",
+         "AlternateScreenLayout3_XPosPixels", "AlternateScreenLayout3_YPosPixels",
+         "AlternateScreenLayout3_BoundingBoxWidthPixelsIfWordWrap",
+         "AlternateScreenLayout3_BoundingBoxHeightPixelsIfWordWrap"}};
+    static constexpr const char* kAltTextCodes[3][6] = {
+        {"m", "n", "p", "q", "r", "s"},
+        {"t", "u", "v", "w", "x", "y"},
+        {"z", "a1", "b1", "c1", "d1", "e1"}};
+    for (int a = 0; a < 3; ++a) {
+      auto& alt = t.alternates[a];
+      alt.text = field(row, kAltText[a][0], kAltTextCodes[a][0]);
+      alt.styleId = fieldInt(row, kAltText[a][1], kAltTextCodes[a][1], 0);
+      alt.xPx = fieldInt(row, kAltText[a][2], kAltTextCodes[a][2], 0);
+      alt.yPx = fieldInt(row, kAltText[a][3], kAltTextCodes[a][3], 0);
+      alt.boxWidthPx = fieldInt(row, kAltText[a][4], kAltTextCodes[a][4], 0);
+      alt.boxHeightPx = fieldInt(row, kAltText[a][5], kAltTextCodes[a][5], 0);
+    }
     pageIt->second.texts.push_back(std::move(t));
   });
 

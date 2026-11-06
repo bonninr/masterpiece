@@ -865,6 +865,41 @@ struct TextInstance {
   // drawn at another console size.
   Id attachedInstanceId = 0;
   bool posRelativeToInstance = false;
+
+  // The same label on the set's other console layouts: its own position and
+  // box, and its own text and style where the layout gives them. A layout
+  // that gives none of these draws the label as the primary one does.
+  struct Alternate {
+    std::string text;
+    Id styleId = 0;
+    int xPx = 0, yPx = 0;
+    int boxWidthPx = 0, boxHeightPx = 0;
+    bool declared() const {
+      return !text.empty() || styleId != 0 || xPx != 0 || yPx != 0 || boxWidthPx != 0 ||
+             boxHeightPx != 0;
+    }
+  };
+  Alternate alternates[3];
+
+  bool hasLayout(int layout) const {
+    return layout > 0 && layout <= 3 && alternates[layout - 1].declared();
+  }
+  const std::string& textFor(int layout) const {
+    return hasLayout(layout) && !alternates[layout - 1].text.empty() ? alternates[layout - 1].text
+                                                                     : text;
+  }
+  Id styleFor(int layout) const {
+    return hasLayout(layout) && alternates[layout - 1].styleId != 0 ? alternates[layout - 1].styleId
+                                                                    : styleId;
+  }
+  int xFor(int layout) const { return hasLayout(layout) ? alternates[layout - 1].xPx : xPx; }
+  int yFor(int layout) const { return hasLayout(layout) ? alternates[layout - 1].yPx : yPx; }
+  int boxWidthFor(int layout) const {
+    return hasLayout(layout) ? alternates[layout - 1].boxWidthPx : boxWidthPx;
+  }
+  int boxHeightFor(int layout) const {
+    return hasLayout(layout) ? alternates[layout - 1].boxHeightPx : boxHeightPx;
+  }
 };
 
 struct DisplayPage {
