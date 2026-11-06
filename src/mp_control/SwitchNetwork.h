@@ -144,6 +144,10 @@ private:
   // wire asserts its destination on the edges, not on the level.
   std::vector<uint8_t> fired_;
 
+  // Each switch of an exclusive group, and its group in model_->exclusiveGroups.
+  // Empty on a set with no groups, which costs drain() one empty() check.
+  std::unordered_map<Id, size_t> groupOf_;
+
   std::unordered_set<Id> engaged_;
   std::unordered_set<Id> heldOff_;
   std::vector<std::pair<Id, bool>> changes_;

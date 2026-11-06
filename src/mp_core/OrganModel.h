@@ -911,6 +911,9 @@ struct OrganModel {
   // Ordered, because solving the network applies them in order and the answer
   // must not depend on a hash table's layout.
   std::vector<SwitchLinkage> switchLinkages;
+  // SwitchExclusiveSelectGroup: the switches of each group, in file order.
+  // Engaging one releases the others (#814). Empty on most sets.
+  std::vector<std::vector<Id>> exclusiveGroups;
   std::unordered_map<Id, Division> divisions;
   std::unordered_map<Id, Keyboard> keyboards; // M1.3: manuals/pedal + division links
   // Every keyboard is a manual a player plays, whatever its assignment code:

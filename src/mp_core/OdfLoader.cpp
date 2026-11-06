@@ -57,6 +57,7 @@ const std::unordered_set<std::string>& knownTables() {
     "Division", "DivisionInput", "Keyboard", "KeyboardKey", "KeyImageSet",
     // stops / switches
     "Stop", "StopRank", "KeyAction", "Switch", "SwitchLinkage",
+    "SwitchExclusiveSelectGroup", "SwitchExclusiveSelectGroupElement",
     // display
     "DisplayPage", "ImageSet", "ImageSetElement", "ImageSetInstance",
     "TextInstance", "TextStyle",
@@ -1256,6 +1257,23 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
 
     outModel.switchLinkages.push_back(l);
   });
+
+  // ---- SwitchExclusiveSelectGroupElement: radio groups of switches (#814) ----
+  {
+    std::map<Id, std::vector<Id>> groups;
+    forEachRow(odfRoot, "SwitchExclusiveSelectGroupElement", [&](pugi::xml_node row) {
+      const Id switchId = fieldInt(row, "SwitchID", "a", 0);
+      const Id groupId = fieldInt(row, "GroupID", "b", 0);
+      if (switchId == 0 || groupId == 0) return;
+      if (outModel.switches.count(switchId) == 0) {
+        outDiag.switchLinkageDangling.push_back(switchId);
+        return;
+      }
+      groups[groupId].push_back(switchId);
+    });
+    for (auto& [id, members] : groups)
+      if (members.size() > 1) outModel.exclusiveGroups.push_back(std::move(members));
+  }
 
   // ---- Stop -> Rank through Hint_PrimaryAssociatedRankID ----
   // A set — and every demo set that ships only part of its pipework — may
