@@ -1025,8 +1025,8 @@ OrganSettingsWindow::OrganSettingsWindow(MasterpieceProcessor& p, std::function<
     midiScroll_ = std::make_unique<ScrollHost>(*midi_, 0, [this] { return midi_->contentHeight(); });
     tabs_.addTab(TRANS("MIDI"), kBackground, midiScroll_.get(), false);
   }
-  // Wide enough for a keyboard's row on the MIDI tab at its full widths:
-  // name, channel, device and the range button (#493). The tabs scroll, so
+  // Wide enough for a keyboard's row on the MIDI tab: name, what plays it and
+  // its MIDI window button (#493, #850). The tabs scroll, so
   // the height stays what a 720-pixel screen holds whole.
   setSize(780, 560);
 }

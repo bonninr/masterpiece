@@ -1209,3 +1209,4 @@ countries: fr be ca ch lu mc
 "Every pipe..." = "Chaque tuyau..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tous les tuyaux du rang à la fois, pour tracer leur niveau ou leur accord sur toute l'étendue"
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
+"Choose the manual: its MIDI window opens at the Pistons tab" = "Choisissez le clavier : sa fenêtre MIDI s'ouvre sur l'onglet Pistons"

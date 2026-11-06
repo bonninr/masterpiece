@@ -1210,3 +1210,4 @@ countries: nl be sr
 "Every pipe..." = "Elke pijp..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle pijpen van de pijpenrij tegelijk, om hun niveau of stemming over het bereik te tekenen"
 "Voicing: every pipe" = "Intonatie: elke pijp"
+"Choose the manual: its MIDI window opens at the Pistons tab" = "Kies het manuaal: het MIDI-venster opent op het tabblad Drukknoppen"

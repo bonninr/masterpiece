@@ -1942,34 +1942,22 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   }
 
   // A console with fewer keyboards than the organ has manuals: a piston makes
-  // the keyboard on a channel play another manual (#90). Pick the channel,
-  // then the manual, then press the piston.
+  // a keyboard play another manual (#90). Listed here as the manual's Pistons
+  // tab lists them, and learned there, the one way (#850): choose the manual,
+  // play a key on the keyboard, press the piston.
   addAndMakeVisible(keyboardsHeading_);
   styleLabel(keyboardsHeading_, TRANS("Manual buttons"));
+  addAndMakeVisible(noPistons_);
+  styleLabel(noPistons_, TRANS("No pistons yet."));
   addAndMakeVisible(learnManuals_);
-  learnManuals_.setTooltip(TRANS("Pistons that switch which manual a keyboard plays: choose the keyboard's "
-                                 "channel and the manual, then press the piston"));
+  learnManuals_.setTooltip(TRANS("Choose the manual: its MIDI window opens at the Pistons tab"));
   learnManuals_.onClick = [this] {
     juce::PopupMenu menu;
-    const auto manuals = proc_.playableKeyboards();
-    for (int channel = 1; channel <= 16; ++channel) {
-      juce::PopupMenu sub;
-      for (Id kb : manuals) {
-        const bool now = proc_.keyboardForChannel(channel) == kb;
-        sub.addItem(static_cast<int>(routeKeyboardTarget(kb, channel)),
-                    juce::String(proc_.keyboardName(kb)), true, now);
-      }
-      const Id playing = proc_.keyboardForChannel(channel);
-      menu.addSubMenu(playing != 0 ? TRANS("Keyboard on channel %1 (plays %2)")
-                                           .replace("%1", juce::String(channel))
-                                           .replace("%2", juce::String(proc_.keyboardName(playing)))
-                                   : TRANS("Keyboard on channel %1").replace("%1", juce::String(channel)),
-                      sub);
-    }
+    for (Id kb : proc_.playableKeyboards())
+      menu.addItem(static_cast<int>(kb), juce::String(proc_.keyboardName(kb)));
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&learnManuals_),
-                       [this](int target) {
-                         if (target <= 0) return;
-                         proc_.midiMap().beginLearn(MidiTargetKind::RouteKeyboard, target, false);
+                       [this](int kb) {
+                         if (kb > 0) ManualDialog::show(proc_, static_cast<Id>(kb), ManualDialog::Tab::Pistons);
                        });
   };
 
@@ -2132,17 +2120,17 @@ void MidiPanel::applyPart() {
   for (auto& c : defaultRoleLabels_) console.push_back(&c);
   for (auto& c : defaultRoleChannels_) console.push_back(&c);
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
-                                      &defaultNote_, &keyboardsHeading_, &learnManuals_};
+                                      &defaultNote_, &keyboardsHeading_, &learnManuals_, &noPistons_};
   for (auto& v : keyboardLabels_) organ.push_back(v.get());
-  for (auto& v : keyboardChannels_) organ.push_back(v.get());
-  for (auto& v : keyboardDevices_) organ.push_back(v.get());
+  for (auto& v : keyboardSummaries_) organ.push_back(v.get());
   for (auto& v : keyboardMore_) organ.push_back(v.get());
+  for (auto& v : pistonLines_) organ.push_back(v.get());
   // What Simple mode leaves out: the console builder's settings.
   const std::vector<juce::Component*> professional{
       &cancelResets_, &leaveHeld_, &noiseFilter_, &archive_, &archiveSilence_, &archiveSize_, &archiveAge_,
       &consoleHeading_, &learnPagePrev_, &learnPageNext_,
       &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_,
-      &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
+      &keyboardsHeading_, &learnManuals_, &noPistons_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
   const auto& mine = part_ == Part::Console ? console : part_ == Part::Organ ? organ : events;
   for (const auto* list : std::initializer_list<const std::vector<juce::Component*>*>{&console, &organ, &events})
@@ -2150,6 +2138,9 @@ void MidiPanel::applyPart() {
       for (auto* c : *list) c->setVisible(false);
   for (auto* c : mine)
     c->setVisible(!shownSimple_ || std::find(professional.begin(), professional.end(), c) == professional.end());
+  // The pistons' lines go with their heading, and "none yet" only when none.
+  for (auto& v : pistonLines_) v->setVisible(part_ == Part::Organ && !shownSimple_);
+  noPistons_.setVisible(part_ == Part::Organ && !shownSimple_ && pistonLines_.empty());
   saveMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   clearMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   bluetooth_.setVisible(part_ == Part::Console && juce::BluetoothMidiDevicePairingDialogue::isAvailable());
@@ -2379,70 +2370,31 @@ void MidiPanel::refresh() {
   }
 
   // Which channel plays which manual. The organ ships a default assignment
-  // (Hauptwerk's own: the pedal is channel 1, the manuals follow), and this is
-  // where a player whose console disagrees says so.
+  // (Hauptwerk's own: the pedal is channel 1, the manuals follow), and the
+  // manual's window is where a player whose console disagrees says so.
+  keyboardIds_ = proc_.playableKeyboards();
   keyboardLabels_.clear();
-  keyboardChannels_.clear();
-  keyboardDevices_.clear();
+  keyboardSummaries_.clear();
   keyboardMore_.clear();
-  for (Id kb : proc_.playableKeyboards()) {
+  for (Id kb : keyboardIds_) {
     auto label = std::make_unique<juce::Label>();
     styleLabel(*label, juce::String(proc_.keyboardName(kb)));
     addAndMakeVisible(*label);
     keyboardLabels_.push_back(std::move(label));
 
-    auto box = std::make_unique<juce::ComboBox>();
-    box->addItem(TRANS("Default (channel %1)").replace("%1", juce::String(proc_.channelForKeyboard(kb))), 1);
-    for (int ch = 1; ch <= 16; ++ch)
-      box->addItem(TRANS("Channel %1").replace("%1", juce::String(ch)), ch + 1);
-    const auto& assigned = proc_.channelAssignments();
-    int selected = 1;
-    for (const auto& b : assigned)
-      if (b.keyboardId == kb && b.channel > 0) selected = b.channel + 1;
-    box->setSelectedId(selected, juce::dontSendNotification);
-    auto* raw = box.get();
-    box->onChange = [this, kb, raw] {
-      // Shared, not taken: a channel chosen here may already belong to another
-      // manual, and one keyboard playing two divisions is a coupler a player
-      // can build for themselves. The line under the row says who else is on
-      // it, so nothing is hidden.
-      // A channel chosen keeps the player's routing. Default is channel 0,
-      // which removes this manual's own binding and leaves the organ's.
-      if (raw->getSelectedId() > 1) proc_.keepRouting();
-      proc_.setKeyboardForChannel(raw->getSelectedId() - 1, kb, 0, false);
-      proc_.saveMidiMap();
-      showSharedChannels();
-    };
-    addAndMakeVisible(*box);
-    keyboardChannels_.push_back(std::move(box));
+    auto summary = std::make_unique<juce::Label>();
+    styleLabel(*summary, {});
+    summary->setJustificationType(juce::Justification::topLeft);
+    addAndMakeVisible(*summary);
+    keyboardSummaries_.push_back(std::move(summary));
 
-    // And which console. Named by the device itself, because a saved mapping
-    // refers to it by name and an id means nothing across runs.
-    auto dev = std::make_unique<juce::ComboBox>();
-    dev->addItem(TRANS("Any device"), 1);
-    const auto& known = proc_.midiDevices();
-    for (size_t i = 0; i < known.names().size(); ++i)
-      dev->addItem(juce::String(known.displayName(static_cast<int>(i) + 1)), static_cast<int>(i) + 2);
-    int selectedDev = 1;
-    for (const auto& b : proc_.channelAssignments())
-      if (b.keyboardId == kb && b.deviceId != 0) selectedDev = b.deviceId + 1;
-    dev->setSelectedId(selectedDev, juce::dontSendNotification);
-    auto* rawDev = dev.get();
-    auto* rawBox = keyboardChannels_.back().get();
-    dev->onChange = [this, kb, rawDev] {
-      // On the channel the row shows; the manuals sharing it keep it (#637).
-      proc_.setKeyboardDevice(kb, rawDev->getSelectedId() - 1);
-      proc_.saveMidiMap();
-      showSharedChannels();
-    };
-    addAndMakeVisible(*dev);
-    keyboardDevices_.push_back(std::move(dev));
-
-    auto more = std::make_unique<juce::TextButton>(TRANS("Range, transpose..."));
+    auto more = std::make_unique<juce::TextButton>(TRANS("MIDI window..."));
     more->onClick = [this, kb] { ManualDialog::show(proc_, kb); };
     addAndMakeVisible(*more);
     keyboardMore_.push_back(std::move(more));
   }
+  pistonLines_.clear();
+  showManuals();
   showSharedChannels();
 
   output_.clear(juce::dontSendNotification);
@@ -2463,9 +2415,58 @@ void MidiPanel::refresh() {
   resized();
 }
 
+bool MidiPanel::showManuals() {
+  if (part_ != Part::Organ) return false;
+  bool relayout = false;
+  for (size_t i = 0; i < keyboardIds_.size() && i < keyboardSummaries_.size(); ++i) {
+    const auto text = ManualDialog::describeManual(proc_, keyboardIds_[i]).joinIntoString("\n");
+    auto& label = *keyboardSummaries_[i];
+    if (label.getText() == text) continue;
+    // A row grows a line per entry.
+    if (label.getText().isEmpty() ||
+        juce::StringArray::fromLines(label.getText()).size() != juce::StringArray::fromLines(text).size())
+      relayout = true;
+    label.setText(text, juce::dontSendNotification);
+  }
+  juce::StringArray pistons;
+  for (Id kb : keyboardIds_) pistons.addArray(ManualDialog::describePistons(proc_, kb));
+  if (pistons != pistonRows()) {
+    pistonLines_.clear();
+    for (const auto& line : pistons) {
+      auto label = std::make_unique<juce::Label>();
+      styleLabel(*label, line);
+      addChildComponent(*label);
+      pistonLines_.push_back(std::move(label));
+    }
+    relayout = true;
+  }
+  return relayout;
+}
+
+juce::StringArray MidiPanel::manualRows() const {
+  juce::StringArray out;
+  for (const auto& l : keyboardSummaries_) out.add(l->getText());
+  return out;
+}
+
+juce::StringArray MidiPanel::pistonRows() const {
+  juce::StringArray out;
+  for (const auto& l : pistonLines_) out.add(l->getText());
+  return out;
+}
+
 void MidiPanel::timerCallback() {
   // A tab of the settings window that is not the one on show.
   if (!isShowing()) return;
+  // The manual windows edit what the rows show: they follow, so the tab never
+  // says less than the window holds.
+  if (showManuals()) {
+    showSharedChannels();
+    applyPart();
+    resized();
+  } else if (part_ == Part::Organ) {
+    showSharedChannels();
+  }
   if (proc_.simpleMode() != shownSimple_) {
     applyPart();
     resized();
@@ -2518,19 +2519,16 @@ void MidiPanel::resized() {
     }
   } else if (part_ == Part::Organ) {
     keyboardsLabel_.setBounds(r.removeFromTop(kRow));
-    for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
-      auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
-      keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150));
-      keyboardChannels_[i]->setBounds(kbRow.removeFromLeft(170));
-      kbRow.removeFromLeft(6);
-      // In a narrow window the device box gives way first: the range button's
-      // text shrank to a few pixels when it took the remainder (#493).
-      const int deviceWidth = juce::jlimit(140, 200, kbRow.getWidth() - 6 - 160);
-      if (i < keyboardDevices_.size())
-        keyboardDevices_[i]->setBounds(kbRow.removeFromLeft(deviceWidth));
-      kbRow.removeFromLeft(6);
+    // Name, what plays it (a line per row of its window), and the window.
+    constexpr int kLine = 20;
+    for (size_t i = 0; i < keyboardSummaries_.size(); ++i) {
+      const int lines = juce::jmax(1, juce::StringArray::fromLines(keyboardSummaries_[i]->getText()).size());
+      auto kbRow = r.removeFromTop(juce::jmax(kRow, lines * kLine + 6)).reduced(12, 0);
       if (i < keyboardMore_.size())
-        keyboardMore_[i]->setBounds(kbRow.removeFromLeft(160).reduced(0, 1));
+        keyboardMore_[i]->setBounds(kbRow.removeFromRight(140).withHeight(kRow).reduced(0, 1));
+      kbRow.removeFromRight(6);
+      keyboardLabels_[i]->setBounds(kbRow.removeFromLeft(150).withHeight(kRow));
+      keyboardSummaries_[i]->setBounds(kbRow.withTrimmedTop(3));
       r.removeFromTop(2);
     }
 
@@ -2549,6 +2547,8 @@ void MidiPanel::resized() {
       row = r.removeFromTop(kRow);
       keyboardsHeading_.setBounds(row.removeFromLeft(120));
       learnManuals_.setBounds(row.removeFromLeft(190).reduced(2, 0));
+      for (auto& l : pistonLines_) l->setBounds(r.removeFromTop(kRow).reduced(12, 0));
+      if (pistonLines_.empty()) noPistons_.setBounds(r.removeFromTop(kRow).reduced(12, 0));
     }
   }
 

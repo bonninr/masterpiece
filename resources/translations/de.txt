@@ -1209,3 +1209,4 @@ countries: de at ch li lu
 "Every pipe..." = "Jede Pfeife..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle Pfeifen der Reihe auf einmal, um Lautstärke oder Stimmung über den Umfang zu zeichnen"
 "Voicing: every pipe" = "Intonation: jede Pfeife"
+"Choose the manual: its MIDI window opens at the Pistons tab" = "Manual wählen: sein MIDI-Fenster öffnet sich auf der Registerkarte Setzerknöpfe"

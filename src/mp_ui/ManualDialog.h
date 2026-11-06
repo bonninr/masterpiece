@@ -1,7 +1,8 @@
 // What reaches a manual, in full.
 //
-// A channel number is nowhere near enough for a real rig, and the settings tab
-// only offers that. This is the rest of it, following GrandOrgue's manual
+// A channel number is nowhere near enough for a real rig. This window is the
+// one place a manual's MIDI is set, reached by right-clicking the manual or
+// from Organ settings' MIDI tab (#850). It follows GrandOrgue's manual
 // receiver — the one place any of this is written down — with a field per
 // thing a console actually does wrong:
 //
@@ -36,8 +37,22 @@ public:
   void resized() override;
   void paint(juce::Graphics& g) override;
 
-  // Open it in its own window, sized to fit.
-  static void show(MasterpieceProcessor& p, Id keyboardId);
+  // Open it in its own window, sized to fit. `tab` is the tab shown first:
+  // Keys, Pistons or Send.
+  enum class Tab { Keys, Pistons, Send };
+  static void show(MasterpieceProcessor& p, Id keyboardId, Tab tab = Tab::Keys);
+
+  // The one way a manual's MIDI is written out, wherever it is shown (#850):
+  // the Keys tab's rows, and Organ settings' MIDI tab, which lists every
+  // manual and opens this window, as GrandOrgue's list of MIDI objects does.
+  //   describeKeys   one row: "Any device  ch 2  keys C4 (60) to C7 (96)  transposed -24"
+  //   describeManual every row of the manual, one per line, or the organ's
+  //                  default channel when the player has set none
+  //   describePistons every piston that brings the manual to a keyboard, one
+  //                  per line, in the Pistons tab's words
+  static juce::String describeKeys(const MasterpieceProcessor& p, const MidiMap::KeyboardBinding& b);
+  static juce::StringArray describeManual(const MasterpieceProcessor& p, Id keyboardId);
+  static juce::StringArray describePistons(const MasterpieceProcessor& p, Id keyboardId);
 
 private:
   void timerCallback() override;
@@ -53,6 +68,9 @@ private:
   juce::Label title_;
   juce::ListBox list_;
   std::unique_ptr<juce::ListBoxModel> model_;
+  // In the empty list: the organ's channel that plays the manual meanwhile,
+  // as Organ settings says it.
+  juce::Label empty_;
   juce::TextButton add_{TRANS("Add")}, remove_{TRANS("Remove")}, learn_{TRANS("Learn from a key")};
 
   juce::Label deviceLabel_, channelLabel_, rangeLabel_, transposeLabel_,

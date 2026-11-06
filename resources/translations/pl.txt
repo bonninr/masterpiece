@@ -1209,3 +1209,4 @@ countries: pl
 "Every pipe..." = "Każda piszczałka..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Wszystkie piszczałki szeregu naraz, aby rysować ich poziom lub strój w całej skali"
 "Voicing: every pipe" = "Intonacja: każda piszczałka"
+"Choose the manual: its MIDI window opens at the Pistons tab" = "Wybierz manuał: jego okno MIDI otworzy się na karcie Przyciski"

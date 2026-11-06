@@ -1209,3 +1209,4 @@ countries: it ch sm va
 "Every pipe..." = "Ogni canna..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tutte le canne della fila insieme, per disegnarne livello o accordatura lungo l'estensione"
 "Voicing: every pipe" = "Intonazione: ogni canna"
+"Choose the manual: its MIDI window opens at the Pistons tab" = "Scegliete la tastiera: la sua finestra MIDI si apre sulla scheda Pulsanti"
