@@ -1351,6 +1351,10 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
   // itself says -- so Learn follows the organ. Plenty of consoles send a
   // separate message to draw and to cancel, so every way stays on offer. The
   // list is GrandOrgue's, which documents these properly.
+  //
+  // A stop's copy on another page shows and learns the stop's own events:
+  // one stop, one set, from either page (#870).
+  switchId = proc.midiSwitchFor(switchId);
   auto& map = proc.midiMap();
   juce::PopupMenu menu;
   // What was clicked, so a player can see it is the right one (#346).

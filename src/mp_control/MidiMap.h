@@ -673,4 +673,17 @@ private:
   void rebuildOrdered();
 };
 
+// A stop drawn on two pages is two switches on a Hauptwerk console: the stop
+// itself, and a copy on the other page that the organ marks as taking no MIDI
+// (AccessibleForInput N), each following the other through a plain linkage.
+// The copy's MIDI is the stop's: one set of events, learned and shown from
+// either page (#870). Maps each such copy to its stop; a switch with no
+// single stop to follow is left out and keeps its own.
+std::unordered_map<Id, Id> switchMidiOwners(const OrganModel& model);
+
+// Moves whatever a saved map holds for a copy onto its stop: the events it
+// answers, what it sends, its computer keys. A stop that already has its own
+// keeps them, beside the copy's. Returns how many rows moved.
+int moveSwitchMidiToOwners(MidiMap& map, const std::unordered_map<Id, Id>& owners);
+
 } // namespace mp

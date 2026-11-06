@@ -838,6 +838,12 @@ public:
   void setMidiLogging(bool on) { logMidi_.store(on, std::memory_order_release); }
   bool midiLogging() const { return logMidi_.load(std::memory_order_acquire); }
   int midiMapRepairedOnLoad() const { return midiMapRepaired_; }
+  // The switch whose MIDI a drawn switch shows and learns: the stop itself
+  // for its copy on another page (#870), else the switch. Message thread.
+  Id midiSwitchFor(Id switchId) const {
+    const auto it = switchMidiOwner_.find(switchId);
+    return it == switchMidiOwner_.end() ? switchId : it->second;
+  }
   // Register a console and get its id. Message thread, at device setup.
   // The identifier is the one the system gives the device (MidiDeviceInfo),
   // passed only where it lasts across runs (MidiDevices.h).
@@ -2427,6 +2433,9 @@ private:
   // mapping. Shown to the player, because a mapping that changes under them
   // without a word would cost more trust than the fault it fixes.
   int midiMapRepaired_ = 0;
+  // Each copy of a stop drawn on another page, to the stop (#870). Built with
+  // the MIDI map at load.
+  std::unordered_map<Id, Id> switchMidiOwner_;
   // The organ's switch wiring, and its resolved output. A drawstop rarely
   // drives anything directly: it drives an internal node, and everything else
   // reads that. `engagedSwitches_` is the network's answer, kept as a set
