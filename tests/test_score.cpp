@@ -234,6 +234,72 @@ public:
 };
 static ScoreEngraverTest g_scoreEngraver;
 
+// Two tempos on the same beat, as a score from a notation program can carry:
+// a marking that says 120 and a plain tempo of 60 after it. The MIDI keeps
+// the last and Verovio's own time map the first, so the cursor ran at twice
+// the speed of the keys (#964). The time map and the cursor now keep to the
+// MIDI, which is what the keys play.
+class ScoreTwoTemposTest final : public mp::test::Test {
+public:
+  ScoreTwoTemposTest() : Test("functional.score.two-tempos", Category::Functional) {}
+
+  void run() override {
+    std::string notes;
+    for (const char* step : {"C", "D", "E", "F"})
+      notes += std::string("<note><pitch><step>") + step +
+               "</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>";
+    const std::string xml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\">"
+        "<part-list><score-part id=\"P1\"><part-name>Organ</part-name></score-part></part-list>"
+        "<part id=\"P1\"><measure number=\"1\"><attributes><divisions>1</divisions>"
+        "<time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef>"
+        "</attributes><direction placement=\"above\"><direction-type><words>Adagio</words></direction-type>"
+        "<sound tempo=\"120\"/></direction><sound tempo=\"60\"/>" +
+        notes + "</measure></part></score-partwise>";
+    mp::ScoreEngraver eng(MP_TEST_SCORE_DATA_DIR);
+    eng.setPage(800, 600, 40);
+    MP_CHECK(eng.load(xml), "the score loads: " + eng.error());
+
+    // When the MIDI plays each note, in seconds.
+    std::vector<double> played;
+    juce::MemoryOutputStream decoded;
+    MP_CHECK(juce::Base64::convertFromBase64(decoded, juce::String(eng.midiBase64())), "the MIDI decodes");
+    juce::MemoryInputStream in(decoded.getData(), decoded.getDataSize(), false);
+    juce::MidiFile file;
+    MP_CHECK(file.readFrom(in), "the MIDI reads");
+    file.convertTimestampTicksToSeconds();
+    for (int t = 0; t < file.getNumTracks(); ++t)
+      for (const auto* ev : *file.getTrack(t))
+        if (ev->message.isNoteOn()) played.push_back(ev->message.getTimeStamp());
+    std::sort(played.begin(), played.end());
+    MP_CHECK(played.size() == 4 && std::fabs(played[1] - 1.0) < 0.01,
+             "the keys play at 60 a minute: the second note at " +
+                 std::to_string(played.size() > 1 ? played[1] : -1.0) + " s");
+
+    // The time map, where each note starts.
+    std::vector<std::pair<double, std::string>> starts;
+    const auto map = juce::JSON::parse(juce::String(eng.timemapJson()));
+    if (const auto* entries = map.getArray())
+      for (const auto& entry : *entries)
+        if (const auto* on = entry["on"].getArray())
+          for (const auto& id : *on) starts.emplace_back(static_cast<double>(entry["tstamp"]), id.toString().toStdString());
+    MP_CHECK(starts.size() == 4, "four notes in the time map, got " + std::to_string(starts.size()));
+    if (starts.size() != 4) return;
+    for (size_t i = 0; i < 4; ++i)
+      MP_CHECK(std::fabs(starts[i].first - played[i] * 1000.0) < 2.0,
+               "note " + std::to_string(i + 1) + " starts in the time map when the MIDI plays it: " +
+                   std::to_string(starts[i].first) + " ms, played at " + std::to_string(played[i] * 1000.0));
+
+    // The cursor half-way through the third note shows the third note.
+    const auto at = juce::JSON::parse(juce::String(eng.elementsAtTime(2500)));
+    bool third = false;
+    if (const auto* ids = at["notes"].getArray())
+      for (const auto& id : *ids) third = third || id.toString().toStdString() == starts[2].second;
+    MP_CHECK(third, "at 2.5 s the cursor is on the third note: " + eng.elementsAtTime(2500));
+  }
+};
+static ScoreTwoTemposTest g_scoreTwoTempos;
+
 // The player alone: idle it adds nothing; each note lands at its own sample;
 // a key held by two staves at once sounds once and is let go by the last;
 // Stop and the end of the score let go of every key held.
