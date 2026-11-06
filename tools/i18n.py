@@ -9,6 +9,14 @@ resources/translations/.
   python tools/i18n.py --write    write resources/translations/strings.txt
   python tools/i18n.py --check    as the report, and exit 1 if anything is
                                           missing, stale or inconsistent
+  python tools/i18n.py --fold     move every part file's lines into its
+                                          language's main file and delete the part
+
+A language is its main file, de.txt, plus any part files beside it,
+de.<topic>.txt. The program reads them as one. A change that adds strings
+puts their translations in part files named for the change (de.reverb.txt,
+fr.reverb.txt ...), so two changes never edit the same lines and never
+conflict; --fold tidies the parts into the main files now and then.
 
 strings.txt is the list translators start from: a copy of it, with the
 language: and countries: lines filled in and the right-hand side of each line
@@ -133,11 +141,58 @@ def extract():
     return keys, problems
 
 
-def parse_language_file(path):
-    """(header dict, {key: translation}, [problems]) as JUCE would read it."""
+def language_files():
+    """{code: [main file, parts in name order]} for every language."""
+    groups = {}
+    for path in sorted(TRANSLATIONS.glob("*.txt")):
+        if path == TEMPLATE:
+            continue
+        groups.setdefault(path.name.split(".")[0], []).append(path)
+    for code, paths in groups.items():
+        paths.sort(key=lambda p: (p.name != code + ".txt", p.name))
+    return groups
+
+
+def parse_language(paths):
+    """(header dict, {key: translation}, [problems]) for a main file and its
+    parts read as one, the way the program joins them."""
+    header, table, problems = {}, {}, []
+    for path in paths:
+        h, t, p = parse_language_file(path, table)
+        problems += p
+        if path is not paths[0] and h:
+            problems.append(f"{path.name}: a part file holds no language: or countries: line")
+        for k, v in h.items():
+            header.setdefault(k, v)
+        table.update(t)
+    if paths[0].name.count(".") != 1:
+        problems.append(f"{paths[0].name}: a part file with no main file {paths[0].name.split('.')[0]}.txt")
+    return header, table, problems
+
+
+def fold(paths):
+    """Appends each part's string lines to the main file and deletes the part."""
+    NL = chr(10)
+    main = paths[0]
+    text = main.read_text(encoding="utf-8")
+    for part in paths[1:]:
+        lines = [l for l in part.read_text(encoding="utf-8").splitlines() if l.strip().startswith('"')]
+        if lines:
+            if not text.endswith(NL):
+                text += NL
+            text += NL.join(lines) + NL
+        part.unlink()
+        print(f"folded {part.name} into {main.name}: {len(lines)} strings")
+    main.write_bytes(text.encode("utf-8"))
+
+
+def parse_language_file(path, seen=None):
+    """(header dict, {key: translation}, [problems]) as JUCE would read it.
+    `seen` holds the keys earlier files of the same language already gave."""
     header = {}
     table = {}
     problems = []
+    seen = seen or {}
     for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if line.startswith('"'):
@@ -146,7 +201,7 @@ def parse_language_file(path):
                 problems.append(f"{path.name}:{n}: cannot read the line")
                 continue
             key, value = file_unescape(m.group(1)), file_unescape(m.group(2))
-            if key in table:
+            if key in table or key in seen:
                 problems.append(f"{path.name}:{n}: {key!r} appears twice")
             table[key] = value
         elif line.lower().startswith("language:"):
@@ -181,6 +236,10 @@ def template_text(keys):
 def main(argv):
     write = "--write" in argv
     check = "--check" in argv
+    if "--fold" in argv:
+        for paths in language_files().values():
+            if len(paths) > 1 and paths[0].name.count(".") == 1:
+                fold(paths)
     keys, problems = extract()
     ok = not problems
 
@@ -193,10 +252,9 @@ def main(argv):
         print(f"wrote {TEMPLATE.relative_to(ROOT)}: {len(keys)} strings")
 
     print(f"{len(keys)} strings in the sources")
-    for path in sorted(TRANSLATIONS.glob("*.txt")):
-        if path == TEMPLATE:
-            continue
-        header, table, file_problems = parse_language_file(path)
+    for code, paths in sorted(language_files().items()):
+        path = paths[0]
+        header, table, file_problems = parse_language(paths)
         for p in file_problems:
             print("problem:", p)
             ok = False
@@ -208,7 +266,8 @@ def main(argv):
             print(f"{path.name}: no language: line")
             ok = False
         done = len(keys) - len(missing)
-        print(f"{path.name} ({header.get('language', '?')}): {done}/{len(keys)} translated")
+        parts = f" + {len(paths) - 1} parts" if len(paths) > 1 else ""
+        print(f"{path.name}{parts} ({header.get('language', '?')}): {done}/{len(keys)} translated")
         for label, items in (("missing", missing), ("not in the sources", stale),
                              ("empty", empty), ("placeholders differ", bad)):
             if items:
