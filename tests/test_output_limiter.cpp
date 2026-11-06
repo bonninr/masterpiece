@@ -812,6 +812,35 @@ public:
   }
 };
 
+// The curve the Audio tab draws is the compressor's own: below the knee a
+// level comes out as it went in plus the make-up gain, well above it the
+// ratio holds it down; and the detector's level is there to mark on it.
+class CompressorCurveTest final : public mp::test::Test {
+public:
+  CompressorCurveTest() : Test("functional.compressor.curve", Category::Functional) {}
+  void run() override {
+    mp::OutputCompressor c;
+    configure(c, -20.0f, 4.0f, 6.0f);
+    MP_CHECK(std::fabs(c.outputDbFor(-40.0f) - (-34.0f)) < 0.01f, "below the knee: input plus make-up");
+    MP_CHECK(std::fabs(c.outputDbFor(-4.0f) - (-20.0f + 16.0f / 4.0f + 6.0f)) < 0.01f,
+             "well above: 16 dB over comes out 4 dB over, plus make-up");
+    float last = c.outputDbFor(-60.0f);
+    for (float in = -59.5f; in <= 6.0f; in += 0.5f) {
+      const float out = c.outputDbFor(in);
+      MP_CHECK(out > last, "the curve rises everywhere, through the knee too");
+      last = out;
+    }
+    MP_CHECK(c.detectorLevelDb() <= -119.0f, "nothing heard yet");
+    c.setEnabled(true);
+    auto left = sine(1000.0, 0.5, 48000);
+    auto right = sine(1000.0, 0.25, 48000);
+    float* ch[2] = {left.data(), right.data()};
+    c.process(ch, 2, 48000);
+    MP_CHECK(std::fabs(c.detectorLevelDb() - db(0.5)) < 1.0,
+             "the detector's level is the louder side's peak: " + std::to_string(c.detectorLevelDb()));
+  }
+};
+
 static LimiterOffTest g_limiterOff;
 static LimiterCeilingTest g_limiterCeiling;
 static LimiterQuietTest g_limiterQuiet;
@@ -826,6 +855,7 @@ static CompressorMakeupTest g_compressorMakeup;
 static CompressorBassLeftOutTest g_compressorBassLeftOut;
 static CompressorProcessorTest g_compressorProcessor;
 static CompressorSettingsTest g_compressorSettings;
+static CompressorCurveTest g_compressorCurve;
 
 }  // namespace
 

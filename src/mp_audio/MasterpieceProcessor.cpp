@@ -1374,10 +1374,12 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         }
         case MidiTargetKind::ContinuousControl:
-          setControlValue(action.targetId, action.value);
+          // A program outside a program range leaves its control alone
+          // (#925).
+          if (action.value >= 0) setControlValue(action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
-              setControlValue(b.targetId, MidiMap::controlValue(b, value));
+              if (const int v = MidiMap::controlValue(b, source, value); v >= 0) setControlValue(b.targetId, v);
           // A note that sets a swell from its velocity is still a note: a
           // sequencer writes the expression into the notes it plays, and the
           // manual sounds them (#220).
@@ -1499,10 +1501,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
         case MidiTargetKind::GroupLevel:
         case MidiTargetKind::PairLevel:
         case MidiTargetKind::ReverbWet:
-          setLiveLevelFromMidi(action.kind, action.targetId, action.value);
+          if (action.value >= 0) setLiveLevelFromMidi(action.kind, action.targetId, action.value);
           if (action.alsoDrives != nullptr)
             for (const auto& b : *action.alsoDrives)
-              setLiveLevelFromMidi(b.targetKind, b.targetId, MidiMap::controlValue(b, value));
+              if (const int v = MidiMap::controlValue(b, source, value); v >= 0)
+                setLiveLevelFromMidi(b.targetKind, b.targetId, v);
           continue;
         case MidiTargetKind::Keyboard:
         case MidiTargetKind::None:
@@ -9573,12 +9576,30 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
       now = lamp;
     else
       continue;
+    // A display showing the object's name is written once, as the console starts over.
+    if (s.display != MidiDisplay::None && !s.showsValue()) now = 0;
     if (now == sentValues_[i]) continue;
     const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
     if (quiet) continue;
-    addMessages(outgoing_, MidiMap::sendBytes(s, now));
+    if (s.display != MidiDisplay::None)
+      addMessages(outgoing_, MidiMap::displayBytes(s, MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now)));
+    else
+      addMessages(outgoing_, MidiMap::sendBytes(s, now));
   }
+}
+
+std::string MasterpieceProcessor::displayNameOf(MidiTargetKind kind, Id id) const {
+  if (kind == MidiTargetKind::Switch) {
+    // The stop a switch works reads better than the switch's own name.
+    for (const auto& [stopId, stop] : model_.stops)
+      if (stop.controllingSwitchId == id && !stop.name.empty()) return stop.name;
+    if (const auto it = model_.switches.find(id); it != model_.switches.end()) return it->second.name;
+  } else if (kind == MidiTargetKind::ContinuousControl) {
+    if (const auto it = model_.continuousControls.find(id); it != model_.continuousControls.end())
+      return it->second.name;
+  }
+  return {};
 }
 
 void MasterpieceProcessor::sendMidiNow(const std::vector<uint8_t>& bytes) {

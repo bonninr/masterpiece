@@ -170,6 +170,10 @@ inline int sysExId(const uint8_t* data, int size) {
 // A note source's number that matches every note on its channel (#199): a
 // swell set from the velocity of whatever note a sequencer plays there.
 constexpr int kAnyNote = -1;
+// A program change source's number that matches every program on its channel
+// (#925): the programs from the binding's low to its high value move a shoe
+// or a crescendo across its travel, one program a step.
+constexpr int kProgramRange = -1;
 
 struct MidiSource {
   MidiSourceKind kind = MidiSourceKind::None;
@@ -293,6 +297,8 @@ struct MidiAction {
 // (non-registered) carry `number`, 0..16383, and data entry (CC 6) the value.
 // GrandOrgue's RPN and NRPN sends.
 enum class MidiParameter { None, Registered, NonRegistered };
+// A console display a send writes text to (#928).
+enum class MidiDisplay { None, Lcd, Text };
 
 // A message sent when something on the console changes: the lamp in a
 // drawstop, the LED by a piston, a motorised fader following its swell box.
@@ -326,13 +332,20 @@ struct MidiSend {
   // A switch's program change sends `number` when it comes on, and this
   // program when it goes off; negative sends nothing when it goes off.
   int offProgram = -1;
+  // Text for a console display (#928), as GrandOrgue sends it: the object's
+  // name, or a control's value as a percentage. Lcd is the 32-character
+  // panel, F0 7D 01 <id high> <id low> <colour> <text> F7, its id in
+  // `number` and its colour in `low`; Text the 16-character string, F0 7D 19
+  // <id> <text> F7. `high` is 1 for the value, 0 for the name. Kind SysEx.
+  MidiDisplay display = MidiDisplay::None;
 
   bool operator==(const MidiSend& o) const {
     return targetKind == o.targetKind && targetId == o.targetId && kind == o.kind &&
            channel == o.channel && number == o.number && low == o.low && high == o.high &&
            sysExOn == o.sysExOn && sysExOff == o.sysExOff && offProgram == o.offProgram &&
-           noteOff == o.noteOff && parameter == o.parameter;
+           noteOff == o.noteOff && parameter == o.parameter && display == o.display;
   }
+  bool showsValue() const { return display != MidiDisplay::None && high == 1; }
 };
 
 // Whole MIDI messages from hex bytes: "F0 7D 01 F7, B0 07 7F", spaces and
@@ -488,6 +501,17 @@ public:
     const int v = b.scale(raw);
     return b.invert ? 127 - v : v;
   }
+  // The same for the message that arrived. A program range reads the program
+  // number, and a program outside the range gives -1: the control stays where
+  // it is, and that program is free for a piston.
+  static int controlValue(const MidiBinding& b, const MidiSource& s, int raw) {
+    if (b.source.kind == MidiSourceKind::ProgramChange && b.source.number == kProgramRange) {
+      if (s.number < std::min(b.lowValue, b.highValue) || s.number > std::max(b.lowValue, b.highValue))
+        return -1;
+      raw = s.number;
+    }
+    return controlValue(b, raw);
+  }
   // A tab moved on and then off, as the MIDI window heard it (#927), made
   // into the rows that work a switch. One message at two values is one row
   // that follows the tab; two messages are a row that draws it and a row that
@@ -529,6 +553,12 @@ public:
   // send is three controllers, a hex send whatever it holds. Empty when the
   // state sends nothing.
   static std::vector<uint8_t> sendBytes(const MidiSend& s, int state);
+  // A display send's message with its text (#928): ASCII, accented letters
+  // without their accents, cut or padded with spaces to the display's width.
+  static std::vector<uint8_t> displayBytes(const MidiSend& s, const std::string& utf8);
+  // The text a display send shows: the object's name, or a control's value
+  // 0..127 as a percentage.
+  static std::string displayText(const MidiSend& s, const std::string& name, int value);
   // The targets a send follows as on or off: a stop's switch, and the
   // program's buttons that light, a general or the setter among them.
   static bool sendsOnOff(MidiTargetKind k);
