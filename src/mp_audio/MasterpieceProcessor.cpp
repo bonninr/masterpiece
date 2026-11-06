@@ -26,6 +26,11 @@
 #endif
 
 namespace mp {
+namespace {
+// A switch's DefaultInputOutputSwitchAsgnCode for a function of the player's
+// own, for a console button with no combination behind it.
+constexpr int kAsgnSequencerNext = 900366, kAsgnSequencerPrevious = 900369, kAsgnGeneralCancel = 900581;
+}  // namespace
 
 // The cores this program may run on. The machine's count is the usual
 // answer; on Linux a program can be held to fewer of them -- taskset, a
@@ -5773,7 +5778,7 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
     if (movedId == setterSwitchId_ && setterSwitchId_ != 0)
       combinations_.setCaptureMode(nowEngaged);
     else if (nowEngaged && wiredCount < wiredPistons.size() &&
-             combinations_.combinationForSwitch(movedId) != 0)
+             (combinations_.combinationForSwitch(movedId) != 0 || consoleFunctions_.count(movedId) != 0))
       wiredPistons[wiredCount++] = movedId;
   }
   const bool swapsRanks = !alternateStopsBySwitch_.empty();
@@ -5867,14 +5872,27 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // A piston fires on the way in, never on the way out, and then lets itself
   // out again: it is a button, not a drawstop, and leaving it latched would
   // make the second press do nothing.
-  if (engaged && firePiston(switchId)) {
+  if (engaged && (firePiston(switchId) || fireConsoleFunction(switchId))) {
     const auto sw = model_.switches.find(switchId);
     const bool momentary = sw == model_.switches.end() || !sw->second.latching;
     if (momentary) setSwitchEngaged(switchId, false);
   }
   // A piston reached through the wiring fires as if pressed; the button that
   // drives it lets it out again when released.
-  for (size_t i = 0; i < wiredCount; ++i) firePiston(wiredPistons[i]);
+  for (size_t i = 0; i < wiredCount; ++i)
+    if (!firePiston(wiredPistons[i])) fireConsoleFunction(wiredPistons[i]);
+}
+
+bool MasterpieceProcessor::fireConsoleFunction(Id switchId) {
+  const auto it = consoleFunctions_.find(switchId);
+  if (it == consoleFunctions_.end()) return false;
+  switch (it->second) {
+    case kAsgnSequencerNext: stepperNext(); break;
+    case kAsgnSequencerPrevious: stepperPrev(); break;
+    case kAsgnGeneralCancel: pressGeneralCancel(); break;
+    default: return false;
+  }
+  return true;
 }
 
 namespace {
@@ -7800,6 +7818,11 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
       setterSwitchId_ = id;
       break;
     }
+  consoleFunctions_.clear();
+  for (const auto& [id, sw] : model_.switches)
+    if (sw.asgnCode == kAsgnSequencerNext || sw.asgnCode == kAsgnSequencerPrevious ||
+        sw.asgnCode == kAsgnGeneralCancel)
+      consoleFunctions_[id] = sw.asgnCode;
   // Worst case a general moves every switch the organ has.
   recallScratch_.reserve(model_.switches.empty() ? 64 : model_.switches.size());
 

@@ -2258,6 +2258,10 @@ private:
   // The organ's own setter switch, if it has one, so holding it turns a
   // recall into a capture exactly as the console does.
   Id setterSwitchId_ = 0;
+  // The console buttons wired to the player's own functions by their
+  // assignment code alone, with their code.
+  std::unordered_map<Id, int> consoleFunctions_;
+  bool fireConsoleFunction(Id switchId);
   std::atomic<bool> combinationsDirty_{false};
   std::atomic<bool> settingsDirty_{false};
   std::atomic<bool> midiMapDirty_{false};
