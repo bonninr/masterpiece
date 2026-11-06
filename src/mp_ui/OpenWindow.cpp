@@ -34,6 +34,9 @@ public:
     }
     up_.setEnabled(canUp);
     down_.setEnabled(canDown);
+    // An ArrowButton paints the same enabled or not, so a dead arrow is dimmed.
+    up_.setAlpha(canUp ? 1.0f : 0.3f);
+    down_.setAlpha(canDown ? 1.0f : 0.3f);
     up_.setTooltip(TRANS("Move up the list"));
     down_.setTooltip(TRANS("Move down the list"));
     up_.onClick = [this] { owner_.move(slot_, -1); };
@@ -83,7 +86,19 @@ public:
   void mouseEnter(const juce::MouseEvent&) override { repaint(); }
   void mouseExit(const juce::MouseEvent&) override { repaint(); }
   void mouseUp(const juce::MouseEvent& e) override {
-    if (e.mouseWasClicked() && !e.mods.isPopupMenu()) owner_.openSlot(slot_);
+    if (dragging_) {
+      dragging_ = false;
+      owner_.dropRow(slot_, e.getEventRelativeTo(getParentComponent()).y);
+    } else if (e.mouseWasClicked() && !e.mods.isPopupMenu()) {
+      owner_.openSlot(slot_);
+    }
+  }
+  void mouseDrag(const juce::MouseEvent& e) override {
+    if (!dragging_ && e.mouseWasDraggedSinceMouseDown() && e.getDistanceFromDragStartY() != 0 && owner_.canDrag()) {
+      dragging_ = true;
+      toFront(false);
+    }
+    if (dragging_) owner_.dragRow(*this, e.getEventRelativeTo(getParentComponent()).y);
   }
 
 private:
@@ -91,6 +106,7 @@ private:
   int slot_;
   juce::String name_, detail_;
   int textRight_ = 0;
+  bool dragging_ = false;
   juce::ArrowButton up_{"Up", 0.75f, kDim}, down_{"Down", 0.25f, kDim};
   juce::TextButton rename_{TRANS("Rename")}, remove_{TRANS("Remove")};
 };
@@ -111,6 +127,16 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
     if (!rowViews_.empty()) openSlot(rowViews_.front()->slot());
   };
   search_.onEscapeKey = [this] { close(); };
+
+  addAndMakeVisible(sort_);
+  sort_.addItem(TRANS("Slot order"), 1);
+  sort_.addItem(TRANS("Last used"), 2);
+  sort_.addItem(TRANS("Most used"), 3);
+  sort_.setSelectedId(static_cast<int>(proc_.favouriteSort()) + 1, juce::dontSendNotification);
+  sort_.onChange = [this] {
+    proc_.setFavouriteSort(static_cast<FavouriteSort>(sort_.getSelectedId() - 1));
+    refresh();
+  };
 
   addAndMakeVisible(viewport_);
   viewport_.setViewedComponent(&rows_, false);
@@ -147,7 +173,7 @@ OpenPanel::OpenPanel(MasterpieceProcessor& p, std::function<void(const juce::Fil
 void OpenPanel::refresh() {
   rowViews_.clear();
   const auto& bank = proc_.favourites().organs;
-  const auto slots = bank.used();
+  const auto slots = bank.ordered(proc_.favouriteSort());
   const auto query = search_.getText().trim().toLowerCase();
   std::map<std::string, int> named;
   for (int s : slots) ++named[bank.at(s).name];
@@ -165,8 +191,9 @@ void OpenPanel::refresh() {
       if (const auto kind = formatOf(f); kind.isNotEmpty()) detail = kind + ": " + detail;
     if (!f.existsAsFile() && !MasterpieceProcessor::portableCopyFor(f).existsAsFile())
       detail = TRANS("not found: %1").replace("%1", f.getFullPathName());
-    // Moving is by place in the whole list, so it is offered only unfiltered.
-    const bool canMove = query.isEmpty();
+    // Moving is by place in the whole list, so it is offered only unfiltered
+    // and in slot order.
+    const bool canMove = canDrag();
     auto row = std::make_unique<Row>(*this, slot, name, detail, canMove && i > 0,
                                      canMove && i + 1 < slots.size());
     rows_.addAndMakeVisible(*row);
@@ -216,6 +243,24 @@ void OpenPanel::move(int slot, int by) {
   refresh();
 }
 
+bool OpenPanel::canDrag() const {
+  return search_.getText().trim().isEmpty() && proc_.favouriteSort() == FavouriteSort::Slot;
+}
+
+void OpenPanel::dragRow(Row& row, int y) {
+  row.setTopLeftPosition(0, juce::jlimit(0, rows_.getHeight() - kRowH, y - kRowH / 2));
+}
+
+void OpenPanel::dropRow(int slot, int y) {
+  auto& bank = proc_.favourites().organs;
+  if (bank.moveToPlace(slot, y / kRowH)) proc_.saveGlobalDefaults();
+  // Posted: the row that asked is inside what is being rebuilt.
+  juce::Component::SafePointer<OpenPanel> self(this);
+  juce::MessageManager::callAsync([self] {
+    if (self != nullptr) self->refresh();
+  });
+}
+
 void OpenPanel::rename(int slot) {
   const auto& fav = proc_.favourites().organs.at(slot);
   auto* w = new juce::AlertWindow(TRANS("Rename"), TRANS("The name this favourite shows."),
@@ -256,7 +301,10 @@ void OpenPanel::paint(juce::Graphics& g) { g.fillAll(kBg); }
 
 void OpenPanel::resized() {
   auto r = getLocalBounds().reduced(14);
-  search_.setBounds(r.removeFromTop(kMobile ? 44 : 34));
+  auto top = r.removeFromTop(kMobile ? 44 : 34);
+  sort_.setBounds(top.removeFromRight(130));
+  top.removeFromRight(8);
+  search_.setBounds(top);
   r.removeFromTop(10);
   auto bottom = r.removeFromBottom(kMobile ? 44 : 34);
   another_.setBounds(bottom.removeFromRight(200));

@@ -2677,8 +2677,12 @@ bool MasterpieceProcessor::writeGlobalFile() const {
       text << "favourite " << Favourites::kindKey(kind) << " " << slot << " "
            << juce::String(fav.name).replaceCharacter('|', '/') << " | "
            << juce::String(fav.target) << "\n";
+      if (fav.uses > 0)
+        text << "favouriteuse " << Favourites::kindKey(kind) << " " << slot << " " << fav.uses << " "
+             << juce::String(static_cast<juce::int64>(fav.lastUsed)) << "\n";
     }
   }
+  if (favouriteSort_ != FavouriteSort::Slot) text << "favouritesort " << static_cast<int>(favouriteSort_) << "\n";
   return mp::writeTextFile(f, text);
 }
 
@@ -2962,6 +2966,19 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (slot > 0 && !fav.target.empty())
         favourites_.bank(Favourites::kindFromKey(kindKey.toStdString()))
             .set(slot, std::move(fav));
+    } else if (key == "favouriteuse") {
+      // "favouriteuse <kind> <slot> <uses> <last used>", after its favourite.
+      const auto parts = juce::StringArray::fromTokens(val, " ", "");
+      if (parts.size() == 4) {
+        auto& bank = favourites_.bank(Favourites::kindFromKey(parts[0].toStdString()));
+        const int slot = parts[1].getIntValue();
+        auto fav = bank.at(slot);
+        fav.uses = parts[2].getIntValue();
+        fav.lastUsed = parts[3].getLargeIntValue();
+        if (!fav.empty()) bank.set(slot, std::move(fav));
+      }
+    } else if (key == "favouritesort") {
+      favouriteSort_ = static_cast<FavouriteSort>(juce::jlimit(0, 2, val.getIntValue()));
     } else {
       applySettingsLine(key, val, sw);
       body << line << "\n";
@@ -7507,6 +7524,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     juce::Logger::writeToLog("load: releases kept up to " + juce::String(samples_.releaseMaxMs()) + " ms");
   organRootDir_ = opts.organRootDir;
   loadedOdf_ = effectiveOdf;
+  favourites_.organs.markUsed(loadedOdf_.getFullPathName().toStdString(), juce::Time::currentTimeMillis() / 1000);
 
   // Console click -> stop. Without this a drawstop would move on screen and
   // the organ would stay silent, which is the worst of both.

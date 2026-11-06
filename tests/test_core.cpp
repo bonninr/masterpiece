@@ -11590,6 +11590,31 @@ public:
     MP_CHECK(bank.slotOf("D:/organs/Cracow/y.xml") == 5,
              "a duplicate target still resolves to the FIRST slot holding it");
 
+    // --- dragged into place, and sorted by use (#843) -------------------------
+    mp::FavouriteBank order;
+    order.set(1, {"a", "ta"});
+    order.set(3, {"b", "tb"});
+    order.set(9, {"c", "tc"});
+    MP_CHECK(order.moveToPlace(1, 2) && order.at(1).name == "b" && order.at(3).name == "c" && order.at(9).name == "a",
+             "dragged to the end, the first goes last and the others close up");
+    MP_CHECK(order.at(2).empty() && order.count() == 3, "and the gaps stay where they are");
+    MP_CHECK(order.moveToPlace(9, 0) && order.at(1).name == "a" && order.at(3).name == "b",
+             "dragged to the top, it comes back");
+    MP_CHECK(!order.moveToPlace(1, 0) && !order.moveToPlace(2, 0), "its own place or an empty slot moves nothing");
+    MP_CHECK(order.moveToPlace(3, 99) && order.at(9).name == "b", "a place past the end is the end");
+    order.markUsed("tc", 100);
+    order.markUsed("ta", 200);
+    order.markUsed("ta", 300);
+    order.markUsed("not here", 400);
+    MP_CHECK(order.ordered(mp::FavouriteSort::LastUsed) == std::vector<int>({1, 3, 9}),
+             "last used shows the latest first");
+    order.markUsed("tc", 500);
+    order.markUsed("tc", 600);
+    MP_CHECK(order.ordered(mp::FavouriteSort::LastUsed).front() == 3, "and follows a later opening");
+    MP_CHECK(order.ordered(mp::FavouriteSort::MostUsed).front() == 3 && order.at(3).uses == 3,
+             "most used counts the openings");
+    MP_CHECK(order.ordered(mp::FavouriteSort::Slot) == order.used(), "slot order is the slots");
+
     // --- full ---------------------------------------------------------------
     mp::FavouriteBank full;
     for (int i = 1; i <= mp::kFavouriteSlots; ++i)
