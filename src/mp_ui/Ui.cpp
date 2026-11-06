@@ -2014,7 +2014,7 @@ void MasterpieceEditor::toggleSplitKeyboard() {
 void MasterpieceEditor::toggleCouplers() {
   if (couplersWindow_ == nullptr) {
     couplersWindow_ = std::make_unique<CouplersWindow>(proc_);
-    couplersWindow_->panel().onExtraCouplers = [this] { toggleProgramCouplers(false); };
+    couplersWindow_->panel().onExtraCouplers = [this] { toggleProgramCouplers(); };
     // Beside the main window, at its top right, where it hides the least.
     const auto b = getScreenBounds();
     if (!kMobile)
@@ -2172,12 +2172,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
 
   showingConsole_ = console_.hasArtwork();
   // A new organ brings its own console; the plain stop list is asked for
-  // again if the player wants it. Program couplers just turned on from the
-  // View menu are the exception: the list opens on them.
+  // again if the player wants it.
   showingStopList_ = false;
-  if (std::exchange(showCouplersAfterLoad_, false) && proc_.programCouplers() &&
-      !proc_.programCouplerList().empty() && console_.hasArtwork())
-    showingStopList_ = true;
   resized();
   if (showingStopList_) jamb_.focusFirstStop();
 
@@ -2877,13 +2873,11 @@ void MasterpieceEditor::toggleStopList() {
   if (showingStopList_) jamb_.focusFirstStop();
 }
 
-void MasterpieceEditor::toggleProgramCouplers(bool openStopList) {
+void MasterpieceEditor::toggleProgramCouplers() {
   // The organ's own setting, the one on Organ settings > Loading, saved for
   // this organ before it is loaded again with it.
-  const bool on = !proc_.programCouplers();
-  proc_.setProgramCouplers(on);
+  proc_.setProgramCouplers(!proc_.programCouplers());
   proc_.saveSettings();
-  showCouplersAfterLoad_ = on && openStopList;
   reloadOrgan();
 }
 
@@ -2953,9 +2947,8 @@ void MasterpieceEditor::showOrganMenu() {
   menu.addItem(2, TRANS("Temperament and tuning..."), loaded);
   menu.addItem(3, TRANS("Combinations"), loaded && combinations_ != nullptr,
                combinations_ != nullptr && combinations_->isVisible());
-  // The program couplers (#468): switches the organ is built with, so
-  // changing this loads the organ again.
-  menu.addItem(4, TRANS("Extra couplers"), loaded, proc_.programCouplers());
+  // The program couplers (#468) live on Organ settings > Loading and in the
+  // Couplers window (#842).
   menu.addSeparator();
   menu.addItem(5, TRANS("Reload organ"), loaded);
   menu.addItem(6, TRANS("Copy settings from another organ..."), loaded && !kMobile);
@@ -2974,7 +2967,6 @@ void MasterpieceEditor::showOrganMenu() {
                          safe->onOrganSettingsTab(organTabs[c - 20]);
                        if (c == 2) safe->tuningButton_.triggerClick();
                        if (c == 3) safe->toggleCombinations();
-                       if (c == 4) safe->toggleProgramCouplers();
                        if (c == 5) safe->reloadOrgan();
                        if (c == 6) safe->copySettingsFrom();
                        if (c == 8) safe->proc_.releaseAllKeys();
