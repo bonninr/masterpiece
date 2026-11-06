@@ -719,11 +719,18 @@ int CombinationsWindow::neededWidth() const {
 void CombinationsWindow::widenToFit() {
   if (kMobile) return;
   const int w = neededWidth();
+  // Sizing is not the player moving it: a load rebuilds the panel before the
+  // window is placed, and remembering then saved it closed, so a window left
+  // open stayed shut.
+  const bool wasPlacing = placing_;
+  placing_ = true;
   setResizeLimits(w, 160, 16384, 16384);
   if (getWidth() < w) {
     setSize(w, getHeight());
     keepOnScreen(*this);
   }
+  placing_ = wasPlacing;
+  if (open_) remember();
 }
 
 void CombinationsWindow::moved() {
