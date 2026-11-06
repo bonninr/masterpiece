@@ -57,6 +57,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using mp::test::Category;
 
@@ -14370,7 +14374,24 @@ public:
     k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
     MP_CHECK(k.format == F::Zip, "a ZIP");
     k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
-    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(k.format == F::Unknown && !k.unreadable, "not an archive at all");
+#ifndef _WIN32
+    // There, and refused: what Android 13 does to a shared file the app was
+    // never lent (#966). Said as a refusal, never as an unknown format. Root
+    // reads anything, so the check is for an ordinary user.
+    if (::geteuid() != 0) {
+      const std::string refused = put("refused.rar", rar4(0, 0));
+      ::chmod(refused.c_str(), 0);
+      k = mp::inspectArchive(refused);
+      MP_CHECK(k.unreadable, "a file the system will not open is said to be refused");
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(refused, error) && !a.inspect(error) &&
+                   error.find("cannot be read") != std::string::npos,
+               "and the error says so: " + error);
+      ::chmod(refused.c_str(), 0644);
+    }
+#endif
     MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
              "and it can say so in words");
 
