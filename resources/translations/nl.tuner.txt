@@ -1,0 +1,4 @@
+"Tuner" = "Stemapparaat"
+"cents" = "cent"
+"Harmonics" = "Boventonen"
+"Hold a key to measure its pitch." = "Houd een toets ingedrukt om de toonhoogte te meten."

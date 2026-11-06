@@ -30,6 +30,15 @@ bool parseScala(const std::string& text, Temperament& out, std::string& error);
 double pipeTargetHz(int midiNote, int rankBasePitch64ftHarmonicNum, double basePitchHz,
                     double deviationCents, const Temperament& t, int transposeSemitones = 0);
 
+// The note a measured pitch is nearest to in a temperament with A at aHz, and
+// how far it lies from that note, in cents: what a tuner reads.
+struct TemperedNote {
+  int midiNote = 69;
+  double targetHz = 440.0;
+  double cents = 0.0;
+};
+TemperedNote nearestTemperedNote(double hz, double aHz, const Temperament& t);
+
 // Resample ratio: targetHz / recordedHz. Returns 1.0 if recordedHz <= 0.
 double playbackRatio(double targetHz, double recordedHz);
 

@@ -1,0 +1,4 @@
+"Tuner" = "Stimmgerät"
+"cents" = "Cent"
+"Harmonics" = "Obertöne"
+"Hold a key to measure its pitch." = "Halten Sie eine Taste, um ihre Tonhöhe zu messen."

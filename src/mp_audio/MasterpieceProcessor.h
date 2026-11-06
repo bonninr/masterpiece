@@ -528,6 +528,8 @@ public:
   const std::string& temperamentChoice() const { return temperamentChoice_; }
   // The name of the temperament that sounds, for display.
   std::string temperamentName() const;
+  // The temperament that sounds, for the tuner. Message thread.
+  Temperament soundingTemperament() const { return activeTuning(); }
   // The next or previous in the list: the organ's own, then the library.
   void stepTemperament(int direction);
   // A in Hz; 0 is the organ's own pitch.
