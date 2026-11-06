@@ -52,6 +52,7 @@ struct ArchiveKind {
   bool firstVolume = false;      // ...and the first one (RAR 4 says so)
   bool encryptedHeaders = false; // even the file names are locked
   bool encryptedFiles = false;   // the first file is password-protected
+  bool unreadable = false;       // there, and the system refused to open it
   int64_t bytes = 0;
   // "RAR 4, solid, 6.70 GB"
   std::string describe() const;

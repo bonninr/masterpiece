@@ -56,8 +56,11 @@ int eventItem(MidiSourceKind k) {
 // A switch's controller at one value (#923): the controller, with the row's
 // exact-values flag.
 constexpr int kExactControllerItem = 5;
+// A switch carried by one bit of a controller (#924).
+constexpr int kBitControllerItem = 6;
 MidiSourceKind eventKind(int item) {
-  return item == 2 || item == kExactControllerItem ? MidiSourceKind::ControlChange
+  return item == 2 || item == kExactControllerItem || item == kBitControllerItem
+             ? MidiSourceKind::ControlChange
                    : item == 3 ? MidiSourceKind::ProgramChange
                    : item == 4 ? MidiSourceKind::SysEx
                                : MidiSourceKind::Note;
@@ -179,12 +182,16 @@ public:
     fillChannels(channel_, true);
     channel_.setSelectedId(b.source.channel + 1, juce::dontSendNotification);
     fillEvents(event_);
-    if (kind_ == MidiTargetKind::Switch) event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
+    if (kind_ == MidiTargetKind::Switch) {
+      event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
+      event_.addItem(TRANS("Controller, one bit"), kBitControllerItem);
+    }
     const bool set = b.source.kind != MidiSourceKind::None;
+    const bool cc = b.source.kind == MidiSourceKind::ControlChange;
     if (set)
-      event_.setSelectedId(b.exactValues && b.source.kind == MidiSourceKind::ControlChange
-                               ? kExactControllerItem
-                               : eventItem(b.source.kind),
+      event_.setSelectedId(cc && b.bit >= 0          ? kBitControllerItem
+                           : cc && b.exactValues ? kExactControllerItem
+                                                 : eventItem(b.source.kind),
                            juce::dontSendNotification);
     fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number,
                 kind_ == MidiTargetKind::ContinuousControl);
@@ -299,6 +306,8 @@ public:
     if (event_.getSelectedId() > 0) {
       b.source.kind = eventKind(event_.getSelectedId());
       b.exactValues = event_.getSelectedId() == kExactControllerItem;
+      b.bit = event_.getSelectedId() == kBitControllerItem ? juce::jlimit(0, 6, static_cast<int>(high_.getValue()))
+                                                           : -1;
       b.source.number = b.source.kind == MidiSourceKind::SysEx ? binding_.source.number
                         : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
                                                                       : juce::jmax(0, number_.getSelectedId() - 1);
@@ -309,8 +318,11 @@ public:
                   : a == 3 ? MidiTrigger::EngageOnly
                   : a == 4 ? MidiTrigger::DisengageOnly
                            : MidiTrigger::Toggle;
-      b.lowValue = static_cast<int>(low_.getValue());
-      b.highValue = static_cast<int>(high_.getValue());
+      // On a bitfield row, On at holds the bit, and the values stay as they were.
+      if (b.bit < 0) {
+        b.lowValue = static_cast<int>(low_.getValue());
+        b.highValue = static_cast<int>(high_.getValue());
+      }
       b.debounceMs = static_cast<int>(debounce_.getValue());
     } else {
       b.lowValue = static_cast<int>(low_.getValue());
@@ -329,12 +341,24 @@ private:
 
   // A program change or a system exclusive message carries no value to
   // read on or off from.
+  // A bitfield row has a bit in place of its values: On at is the bit, 0 to
+  // 6, and the switch follows it, so there is nothing to choose for what the
+  // message does.
   void showValues() {
     const int e = event_.getSelectedId();
+    const bool bit = e == kBitControllerItem;
     const bool values = e == 0 || eventKind(e) == MidiSourceKind::Note ||
                         eventKind(e) == MidiSourceKind::ControlChange;
-    low_.setEnabled(values);
+    low_.setEnabled(values && !bit);
     high_.setEnabled(values);
+    action_.setEnabled(!bit);
+    if (bit != showingBit_) {
+      showingBit_ = bit;
+      high_.setRange(0, bit ? 6 : 127, 1);
+      high_.setValue(bit ? juce::jmax(0, binding_.bit) : binding_.highValue, juce::dontSendNotification);
+      high_.setTooltip(bit ? TRANS("The bit of the controller that carries this switch, 0 for the lowest")
+                           : TRANS("The value your console sends for on"));
+    }
   }
   // A range of programs is counted from 1, as the Number box counts them,
   // and its two ends are the first and the last program.
@@ -353,6 +377,7 @@ private:
     high_.setTooltip(programs ? TRANS("The program that opens it fully") : juce::String());
   }
   bool showingPrograms_ = false;
+  bool showingBit_ = false;
 
   // The ways this row's message can work its target. A switch held by a
   // message with no release would stay drawn, so it toggles.
@@ -400,6 +425,12 @@ public:
     viewport_.setScrollBarsShown(true, false);
     addAndMakeVisible(add_);
     add_.onClick = [this] { addRow(); };
+    // A tab moved on and then off fills its rows from both messages (#927).
+    if (kind == MidiTargetKind::Switch) {
+      addAndMakeVisible(pair_);
+      pair_.setTooltip(TRANS("Move the tab on, then off: the rows are filled from the two messages"));
+      pair_.onClick = [this] { listenPair(); };
+    }
     addAndMakeVisible(empty_);
     styleNote(empty_, TRANS("Nothing works this yet. Press New event, then press the button, pull the "
                             "drawstop or move the pedal on your console."));
@@ -425,7 +456,7 @@ public:
     startTimerHz(20);
   }
   ~ReceivePanel() override {
-    if (listening_ >= 0) proc_.cancelMidiListen();
+    if (listening_ >= 0 || pairListening_) proc_.cancelMidiListen();
   }
 
   void paint(juce::Graphics& g) override { g.fillAll(kBg); }
@@ -435,7 +466,10 @@ public:
     header_.setBounds(r.removeFromTop(20));
     note_.setBounds(r.removeFromBottom(64));
     r.removeFromBottom(6);
-    add_.setBounds(r.removeFromBottom(kRow + 2).removeFromLeft(140));
+    auto buttons = r.removeFromBottom(kRow + 2);
+    add_.setBounds(buttons.removeFromLeft(140));
+    buttons.removeFromLeft(kGap);
+    pair_.setBounds(buttons.removeFromLeft(200));
     r.removeFromBottom(6);
     viewport_.setBounds(r);
     empty_.setBounds(r.removeFromTop(48));
@@ -485,6 +519,7 @@ private:
     } else if (pressable(kind_)) {
       b.trigger = MidiTrigger::Momentary;
     }
+    if (pairListening_) stopListening();
     rows_.push_back(b);
     listening_ = static_cast<int>(rows_.size()) - 1;
     proc_.midiMap().cancelLearn();
@@ -492,11 +527,33 @@ private:
     rebuild();
   }
 
+  void listenPair() {
+    if (pairListening_) {
+      stopListening();
+      return;
+    }
+    stopListening();
+    proc_.midiMap().cancelLearn();
+    proc_.beginMidiListenPair();
+    pairListening_ = true;
+    showPairStep(0);
+  }
+
+  void showPairStep(int step) {
+    pairShown_ = step;
+    pair_.setButtonText(!pairListening_ ? TRANS("Learn on and off")
+                        : step == 0     ? TRANS("Move it on...")
+                                        : TRANS("Now move it off..."));
+    pair_.setColour(juce::TextButton::buttonColourId,
+                    pairListening_ ? juce::Colours::darkorange : juce::Colour(0xff2a2f38));
+  }
+
   void listen(int row) {
     if (listening_ == row) {
       stopListening();
       return;
     }
+    if (pairListening_) stopListening();
     proc_.midiMap().cancelLearn();
     proc_.beginMidiListen();
     listening_ = row;
@@ -505,6 +562,11 @@ private:
   }
 
   void stopListening() {
+    if (pairListening_) {
+      proc_.cancelMidiListen();
+      pairListening_ = false;
+      showPairStep(0);
+    }
     if (listening_ < 0) return;
     proc_.cancelMidiListen();
     listening_ = -1;
@@ -512,6 +574,26 @@ private:
   }
 
   void timerCallback() override {
+    if (pairListening_) {
+      MidiSource on, off;
+      int onValue = 0, offValue = 0;
+      if (proc_.takeHeardMidiPair(on, onValue, off, offValue)) {
+        pairListening_ = false;
+        showPairStep(0);
+        MidiBinding base;
+        const auto sw = proc_.organModel().switches.find(id_);
+        base.latching = sw == proc_.organModel().switches.end() || sw->second.latching;
+        for (const MidiBinding& b : MidiMap::bindingsForOnOff(base, on, onValue, off, offValue))
+          rows_.push_back(b);
+        commit();
+        rebuild();
+      } else if (!proc_.midiListening()) {
+        stopListening();
+      } else if (const int step = proc_.midiListenPairStep(); step != pairShown_) {
+        showPairStep(step);
+      }
+      return;
+    }
     if (listening_ < 0) return;
     MidiSource heard;
     int value = 0;
@@ -540,10 +622,13 @@ private:
   std::vector<MidiBinding> rows_;
   std::vector<std::unique_ptr<ReceiveRow>> rowViews_;
   int listening_ = -1;
+  bool pairListening_ = false;
+  int pairShown_ = 0;
   Header header_;
   juce::Viewport viewport_;
   juce::Component list_;
   juce::TextButton add_{TRANS("New event")};
+  juce::TextButton pair_{TRANS("Learn on and off")};
   juce::Label empty_, note_;
 };
 
