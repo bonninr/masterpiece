@@ -56,6 +56,8 @@ public:
   std::function<void()> onWidthChanged;
   // What the processor holds now, and the display mode: on the panel's timer.
   void refresh() { refreshState(); }
+  // After the window's choice of what to show has changed.
+  void showView() { applyView(); }
 
   void paint(juce::Graphics& g) override;
   void resized() override;
@@ -69,6 +71,8 @@ private:
   // them and -10 and +10 through their levels. Advanced shows the frames,
   // Insert and Delete, and the player's generals as well.
   void applyView();
+  bool sequencerShown() const { return proc_.combinationsView() != 1; }
+  bool combinationsShown() const { return proc_.combinationsView() != 2; }
   // Right-click: what a piston is mapped to, and how to map it.
   void showMidiMenu(PistonButton& b, MidiTargetKind kind, Id targetId,
                     bool offerHold);
@@ -162,6 +166,7 @@ private:
   juce::ToggleButton onTop_{TRANS("Always on top")};
   juce::ToggleButton setOff_{TRANS("Set turns off after storing")};
   juce::ToggleButton leaveBass_{TRANS("Pistons leave the bass coupler")};
+  juce::ComboBox show_;
   juce::Viewport viewport_;
   std::unique_ptr<CombinationsPanel> panel_;
   bool placing_ = true;  // until constructed: sizing is not the player moving it

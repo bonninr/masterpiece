@@ -163,6 +163,7 @@ struct PipeLayer {
   // per-layer trims on top of it, and applying them per layer is what keeps a
   // flute and a reed on the same tremulant wobbling differently.
   double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
+  double tremAmpDepthAdjustPct = 100.0; // AmpLvl_TremulantModDepthAdjustPercent, from version 5
   double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;
@@ -954,6 +955,17 @@ struct OrganModel {
   std::unordered_map<Id, DisplayPage> displayPages; // M1.4: console pages
   std::unordered_map<Id, ImageSet> imageSets; // M1.4: shared control artwork
   std::unordered_map<Id, KeyImageSet> keyImageSets; // drawn manuals
+
+  // A GrandOrgue set's objects by their section in its .organ file, written by
+  // the import: how a GrandOrgue settings file, which names its MIDI events by
+  // section ([Stop012], [Manual001]), finds what each one works (#865). The
+  // section is in lower case. Empty for a set from anywhere else.
+  struct GrandOrgueObject {
+    enum Kind { Switch = 1, Control = 2, Keyboard = 3 };
+    Kind kind = Switch;
+    Id id = 0;
+  };
+  std::unordered_map<std::string, GrandOrgueObject> grandOrgueObjects;
 
   std::unordered_map<Id, SampleRef> samples; // Sample table registry (M1.1/M1.2)
   std::unordered_map<Id, InstallationPackage> packages; // where the audio lives

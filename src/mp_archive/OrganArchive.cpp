@@ -1024,6 +1024,7 @@ ArchiveKind inspectArchive(const std::string& path) {
     std::fclose(in);
   } else {
     b.clear();
+    k.unreadable = !ec;  // its size was read, so it is there
   }
   if (b.size() >= 4 && b[0] == 'P' && b[1] == 'K') {
     k.format = ArchiveKind::Format::Zip;
@@ -1084,6 +1085,7 @@ std::string ArchiveKind::describe() const {
   std::string s = format == Format::Rar4   ? "RAR 4"
                   : format == Format::Rar5 ? "RAR 5"
                   : format == Format::Zip  ? "ZIP"
+                  : unreadable             ? "refused to Masterpiece by the system"
                                            : "not an archive Masterpiece knows";
   if (solid) s += ", solid";
   if (multiVolume) s += firstVolume ? ", first volume of a set" : ", a volume of a set";
@@ -1550,8 +1552,13 @@ bool OrganArchive::inspect(std::string& error) {
     std::string line = name + " -- " + kind.describe();
     if (group.size() > 1) line += ", " + std::to_string(group.size()) + " volumes";
     report_.push_back(line);
+    if (kind.unreadable) {
+      error = "\"" + name + "\" cannot be read: the system did not give Masterpiece access to it. "
+              "Open it again from the organ package dialog.";
+      return false;
+    }
     if (kind.format == ArchiveKind::Format::Unknown) {
-      error = "\"" + name + "\" is not a RAR or ZIP archive that Masterpiece can read.";
+      error ="\"" + name + "\" is not a RAR or ZIP archive that Masterpiece can read.";
       return false;
     }
     if (kind.encryptedHeaders || kind.encryptedFiles) {

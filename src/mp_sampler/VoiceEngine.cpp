@@ -648,6 +648,10 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   v.swayIndex = start.swayIndex;
   v.rankIndex = start.rankIndex;
   v.levelIndex = start.levelIndex;
+  v.pitchIndex = start.pitchIndex;
+  v.pitchFrom = start.pitchFrom;
+  v.pitchPerUnit = start.pitchPerUnit;
+  v.pitchFloor = start.pitchFloor;
   v.voicingGain = v.voicingTarget = start.voicingGain;
   v.attackBoost = start.attackBoost;
   v.attackTotal = v.attackLeft = start.attackBoost != 0.0f && start.attackFrames > 0 ? start.attackFrames : 0;
@@ -1217,6 +1221,15 @@ void VoiceEngine::renderVoiceFrom(Voice& v, size_t voiceIndex,
     // straight runs.
     if (swayRatios_ != nullptr && v.swayIndex >= 0 && v.swayIndex < swayCount_)
       wind.pitchRatio *= swayRatios_[v.swayIndex];
+    // The organ's pitch control, from where it stood when the pipe started:
+    // a detune slider, or a key's pitch settling once it is down (#828).
+    // Nothing at all while the control has not moved, so the pipe renders
+    // exactly as it started.
+    if (pitchValues_ != nullptr && v.pitchIndex >= 0 && v.pitchIndex < pitchCount_) {
+      const int now = pitchValues_[v.pitchIndex];
+      if (now != v.pitchFrom)
+        wind.pitchRatio *= std::max(v.pitchFloor, 1.0 + (now - v.pitchFrom) * v.pitchPerUnit);
+    }
     v.heldWindAmp = wind.ampMul;
     v.heldWindPitch = wind.pitchRatio;
   }

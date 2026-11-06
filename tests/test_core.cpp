@@ -17,10 +17,12 @@
 #include "../src/mp_audio/AudioGraph.h"
 #include "../src/mp_audio/MixerConfig.h"
 #include "../src/mp_audio/VoicingSet.h"
+#include "../src/mp_audio/VoicingSelection.h"
 #include "../src/mp_audio/Favourites.h"
 #include "../src/mp_control/Control.h"
 #include "../src/mp_control/Registration.h"
 #include "../src/mp_control/MidiMap.h"
+#include "../src/mp_control/GrandOrgueMidi.h"
 #include "../src/mp_control/LcdPanel.h"
 #include "../src/mp_control/Combinations.h"
 
@@ -57,6 +59,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using mp::test::Category;
 
@@ -4188,6 +4194,59 @@ public:
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
+
+// The format's own version decides what a layer's tag p holds: decibels up to
+// version 4, a percentage from version 5, where 100 leaves the depth alone.
+class FormatVersionLayerDepthTest final : public mp::test::Test {
+public:
+  FormatVersionLayerDepthTest()
+    : Test("functional.odf.format-version-layer-depth", Category::Functional) {}
+
+  static std::map<mp::Id, mp::PipeLayer> layers(const std::string& rootAttributes) {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\"" + rootAttributes + ">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+        "<o><a>72</a><b>7</b></o><o><a>73</a><b>7</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+        "<o><a>721</a><b>72</b><p>5e+1</p></o>"
+        "<Pipe_SoundEngine01_Layer><LayerID>731</LayerID><PipeID>73</PipeID>"
+        "<AmpLvl_TremulantModDepthAdjustPercent>25</AmpLvl_TremulantModDepthAdjustPercent>"
+        "<AudioOut_OptimalMemoryChannelFormatCode>1</AudioOut_OptimalMemoryChannelFormatCode>"
+        "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    std::map<mp::Id, mp::PipeLayer> out;
+    if (l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d) && m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) out[layer.layerId] = layer;
+    return out;
+  }
+
+  void run() override {
+    auto v5 = layers(" FileFormatVersion=\"5.00\"");
+    MP_CHECK(v5.size() == 3, "the version 5 definition loads");
+    MP_CHECK(v5[711].tremAmpDepthAdjustPct == 100.0 && v5[711].tremAmpDepthAdjustDb == 0.0,
+             "a version 5 layer with no depth written leaves the depth alone");
+    MP_CHECK(v5[721].tremAmpDepthAdjustPct == 50.0 && v5[721].tremAmpDepthAdjustDb == 0.0,
+             "tag p of a version 5 layer is a percentage");
+    MP_CHECK(v5[731].tremAmpDepthAdjustPct == 25.0 && v5[731].optimalChannel == 1,
+             "the long spellings of version 5 are read");
+    auto v7 = layers(" FileFormatVersion=\"7.00\"");
+    MP_CHECK(v7[721].tremAmpDepthAdjustPct == 50.0, "and so is it from version 7");
+
+    auto v4 = layers(" FileFormatVersion=\"4.20014\"");
+    MP_CHECK(v4[721].tremAmpDepthAdjustDb == 50.0 && v4[721].tremAmpDepthAdjustPct == 100.0,
+             "tag p of a version 4 layer stays in decibels");
+    auto none = layers("");
+    MP_CHECK(none[721].tremAmpDepthAdjustDb == 50.0 && none[721].tremAmpDepthAdjustPct == 100.0,
+             "with no version stated, decibels");
+  }
+};
+static FormatVersionLayerDepthTest g_formatVersionLayerDepth;
 
 // A key let go inside a loop's fade: the sustain goes on under the release,
 // through the rest of its fade and over the seam, with no step on the way.
@@ -11685,6 +11744,147 @@ public:
   }
 };
 
+// The view of every pipe of a rank (#849): a drag draws a straight stroke
+// across the columns, and every pipe it passes takes its place on the line.
+class VoicingPipeStrokeTest final : public mp::test::Test {
+public:
+  VoicingPipeStrokeTest() : Test("functional.voicing.pipe-stroke", Category::Functional) {}
+
+  void run() override {
+    const std::vector<mp::Id> pipes{301, 302, 303, 304, 305};
+    mp::VoicingSet v;
+    mp::PipeVoicing tuned;
+    tuned.tuningCents = 4.0f;
+    v.setPipe(302, tuned);
+
+    // From the first pipe at -4 dB to the last at 0: the three between are
+    // on the line, though the mouse only reported the ends.
+    mp::drawPipeStroke(v, pipes, 0, -4.0f, 4, 0.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(301).gainDb == -4.0f && v.pipe(302).gainDb == -3.0f && v.pipe(303).gainDb == -2.0f &&
+                 v.pipe(304).gainDb == -1.0f,
+             "every pipe the stroke passes takes its place on the line");
+    MP_CHECK(v.pipes().count(305) == 0, "a pipe drawn to 0 stays unvoiced");
+    MP_CHECK(v.pipe(302).tuningCents == 4.0f, "the level drawn leaves the pipe's tuning alone");
+
+    // Right to left, as a drag back across the rank goes.
+    mp::drawPipeStroke(v, pipes, 3, 10.0f, 1, 0.0f, mp::VoicingField::Tuning);
+    MP_CHECK(v.pipe(304).tuningCents == 10.0f && v.pipe(303).tuningCents == 5.0f && v.pipe(302).tuningCents == 0.0f,
+             "a stroke drawn leftwards fills the same way");
+    MP_CHECK(v.pipe(301).tuningCents == 0.0f && v.pipe(305).tuningCents == 0.0f,
+             "the pipes beyond its ends are left as they were");
+    MP_CHECK(v.pipe(304).gainDb == -1.0f, "and the tuning drawn leaves the level alone");
+
+    // Tenths, the steps the sliders show.
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(302).gainDb == 0.5f, "a value between lands on a tenth");
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 0.22f, mp::VoicingField::Level);
+    MP_CHECK(std::abs(v.pipe(302).gainDb - 0.1f) < 1e-6f && std::abs(v.pipe(303).gainDb - 0.2f) < 1e-6f,
+             "a place between lands on its nearest tenth");
+
+    // One pipe, and the ends past the rank, as a drag off its edge reports.
+    mp::drawPipeStroke(v, pipes, 9, -2.0f, 9, -2.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(305).gainDb == -2.0f, "a place past the last pipe is the last pipe");
+    mp::drawPipeStroke(v, {}, 0, 1.0f, 3, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(true, "a rank with no pipes takes no stroke");
+  }
+};
+
+// What a voicing change reaches (#848): a stop's, a division's or a chest's
+// ranks, and in them the whole rank, one pipe, or one side of the chest.
+class VoicingSelectionTest final : public mp::test::Test {
+public:
+  VoicingSelectionTest() : Test("functional.voicing.selection", Category::Functional) {}
+
+  void run() override {
+    mp::OrganModel m;
+    // Two ranks of four pipes, C to D#, on two chests; a third rank on the
+    // second chest alone.
+    for (const mp::Id r : {201, 202, 203}) {
+      mp::Rank rank;
+      rank.rankId = r;
+      for (int k = 0; k < 4; ++k) {
+        mp::Pipe p;
+        p.pipeId = r * 10 + k;
+        p.midiNote = 36 + k;
+        p.windSourceCompartmentId = r == 201 ? 1 : 2;
+        rank.pipes.push_back(p);
+      }
+      m.ranks[r] = rank;
+    }
+    m.wind[1].name = "Hoofdwerk";
+    m.wind[2].name = "Rugwerk";
+    m.divisions[801].name = "G";
+    m.divisions[802].name = "P";
+    auto stop = [&](mp::Id id, mp::Id division, std::vector<mp::Id> ranks) {
+      mp::Stop s;
+      s.stopId = id;
+      s.divisionId = division;
+      for (const mp::Id r : ranks) {
+        mp::StopRankEntry e;
+        e.rankId = r;
+        s.ranks.push_back(e);
+      }
+      m.stops[id] = s;
+    };
+    stop(901, 801, {202, 201, 202});
+    stop(902, 801, {203});
+    stop(903, 802, {999});
+
+    MP_CHECK((mp::ranksOfStop(m, 901) == std::vector<mp::Id>{202, 201}),
+             "a stop's ranks in its own order, each once");
+    MP_CHECK(mp::ranksOfStop(m, 903).empty(), "a rank the organ does not have is left out");
+    MP_CHECK((mp::ranksOfDivision(m, 801) == std::vector<mp::Id>{201, 202, 203}), "a division's ranks by id");
+    const auto chests = mp::windchestRanks(m);
+    MP_CHECK(chests.size() == 2 && (chests.at("Hoofdwerk") == std::vector<mp::Id>{201}) &&
+                 (chests.at("Rugwerk") == std::vector<mp::Id>{202, 203}),
+             "the chests by the compartments the pipes draw from");
+
+    mp::VoicingTarget t;
+    t.ranks = {201, 202};
+    t.scope = mp::VoicingScope::CSide;
+    MP_CHECK((mp::pipesOf(m, t) == std::vector<std::pair<mp::Id, mp::Id>>{{201, 2010}, {201, 2012}, {202, 2020}, {202, 2022}}),
+             "the C side is C and D of each rank");
+    t.scope = mp::VoicingScope::CSharpSide;
+    MP_CHECK(mp::pipesOf(m, t).size() == 4 && mp::pipesOf(m, t).front().second == 2011, "the C# side the others");
+    t.scope = mp::VoicingScope::Pipe;
+    t.note = 38;
+    MP_CHECK((mp::pipesOf(m, t) == std::vector<std::pair<mp::Id, mp::Id>>{{201, 2012}, {202, 2022}}),
+             "one pipe is the pipe at that note of each rank");
+
+    // A level for both ranks leaves their different tunings alone.
+    mp::VoicingSet v;
+    mp::PipeVoicing tuned;
+    tuned.tuningCents = 5.0f;
+    v.setRank(202, tuned);
+    t.scope = mp::VoicingScope::Rank;
+    mp::PipeVoicing level;
+    level.gainDb = -2.0f;
+    mp::setVoicing(v, m, t, level, mp::kVoicingLevel);
+    MP_CHECK(v.rank(201).gainDb == -2.0f && v.rank(202).gainDb == -2.0f, "every rank takes the level");
+    MP_CHECK(v.rank(201).tuningCents == 0.0f && v.rank(202).tuningCents == 5.0f, "and keeps its own tuning");
+    MP_CHECK(mp::shownVoicing(v, m, t).gainDb == -2.0f, "the sliders show the first rank");
+
+    // One side: every pipe on it, and only a level and a tuning.
+    t.scope = mp::VoicingScope::CSharpSide;
+    mp::PipeVoicing side;
+    side.gainDb = 1.5f;
+    side.brightnessDb = 6.0f;
+    mp::setVoicing(v, m, t, side, mp::kVoicingLevel | mp::kVoicingBrightness);
+    MP_CHECK(v.pipe(2011).gainDb == 1.5f && v.pipe(2023).gainDb == 1.5f, "the C# pipes take the level");
+    MP_CHECK(v.pipe(2011).brightnessDb == 0.0f, "a pipe takes no EQ of its own");
+    MP_CHECK(v.pipes().count(2010) == 0 && v.pipes().count(2030) == 0, "the C pipes and the rank not chosen stay");
+
+    // A step keeps the group's shape.
+    MP_CHECK(mp::stepVoicing(v, m, t, mp::VoicingField::Level, -0.5f, 12.0f), "a step is taken");
+    MP_CHECK(v.pipe(2011).gainDb == 1.0f, "each pipe moves from where it stands");
+    t.scope = mp::VoicingScope::Rank;
+    MP_CHECK(mp::stepVoicing(v, m, t, mp::VoicingField::Tuning, 1.0f, 50.0f), "a step on the ranks");
+    MP_CHECK(v.rank(201).tuningCents == 1.0f && v.rank(202).tuningCents == 6.0f, "each rank from its own tuning");
+    t.ranks.clear();
+    MP_CHECK(!mp::stepVoicing(v, m, t, mp::VoicingField::Level, 0.5f, 12.0f), "nothing chosen takes no step");
+  }
+};
+
 // Favourites. A slot number is something a thumb piston can be mapped to; a
 // path is not. So the numbering is the feature, and the tests are about the
 // numbering holding still.
@@ -12654,6 +12854,50 @@ public:
 };
 static MidiExactValuesTest g_midiExactValues;
 
+// Switches carried by the bits of one controller (#924).
+class MidiControllerBitsTest final : public mp::test::Test {
+public:
+  MidiControllerBitsTest() : Test("functional.midi.controller-bitfield", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    const mp::MidiSource cc30{mp::MidiSourceKind::ControlChange, 2, 30};
+    for (int bit = 0; bit < 3; ++bit) {
+      mp::MidiBinding b;
+      b.source = cc30;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = static_cast<mp::Id>(40 + bit);
+      b.bit = bit;
+      map.bind(b);
+    }
+    // Each switch and whether the message leaves it drawn.
+    auto states = [&](int value) {
+      std::vector<std::pair<mp::Id, bool>> out;
+      const auto a = map.actionFor(cc30, value);
+      if (a.valid() && !a.idle) out.push_back({a.targetId, a.engage});
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid()) out.push_back({more.targetId, more.engage});
+        }
+      std::sort(out.begin(), out.end());
+      return out;
+    };
+    using S = std::vector<std::pair<mp::Id, bool>>;
+    MP_CHECK(states(0b101) == S({{40, true}, {41, false}, {42, true}}), "5 draws the first and third");
+    MP_CHECK(states(0b010) == S({{40, false}, {41, true}, {42, false}}), "2 draws the second alone");
+    MP_CHECK(states(0) == S({{40, false}, {41, false}, {42, false}}), "0 cancels all three");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 42);
+    MP_CHECK(rows.size() == 1 && rows.front()->bit == 2, "the bit survives saving");
+    const auto plain = back.bindingsFor(mp::MidiTargetKind::Switch, 40);
+    MP_CHECK(plain.size() == 1 && plain.front()->bit == 0, "bit 0 too");
+  }
+};
+static MidiControllerBitsTest g_midiControllerBits;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {
@@ -12785,6 +13029,8 @@ static TemperamentLibraryTest g_tempLibrary;
 static AudioOutTrimTest g_audioOutTrim;
 static MixerRoutingTest g_mixerRouting;
 static VoicingTest g_voicingSet;
+static VoicingPipeStrokeTest g_voicingPipeStroke;
+static VoicingSelectionTest g_voicingSelection;
 static FavouritesTest g_favourites;
 static RegistrationTest g_registration;
 static MixBusRenderTest g_mixBusRender;
@@ -13645,6 +13891,127 @@ public:
   }
 };
 static GrandOrgueImportTest g_grandOrgueImport;
+// #865: a player's MIDI settings from GrandOrgue's settings file for the same
+// organ. Each section names the object of the .organ file it belongs to; the
+// events with a binding here are taken, the others counted and left out, and
+// objects the file does not name keep their own bindings.
+class GrandOrgueMidiImportTest final : public mp::test::Test {
+public:
+  GrandOrgueMidiImportTest() : Test("functional.midi.grandorgue-import", Category::Functional) {}
+  void run() override {
+    const std::string organ =
+        "[Organ]\nChurchName=Test\nHasPedals=N\nNumberOfManuals=1\nNumberOfEnclosures=1\n"
+        "NumberOfWindchestGroups=1\nNumberOfRanks=1\nNumberOfGenerals=2\n"
+        "[Enclosure001]\nName=Swell\n"
+        "[WindchestGroup001]\nName=Main\n"
+        "[Rank001]\nName=Principal 8\nFirstMidiNoteNumber=36\nNumberOfLogicalPipes=1\n"
+        "WindchestGroup=1\nPipe001=P8.wav\n"
+        "[Manual001]\nName=Great\nNumberOfLogicalKeys=1\nFirstAccessibleKeyMIDINoteNumber=36\n"
+        "NumberOfAccessibleKeys=1\nNumberOfStops=2\nStop001=1\nStop002=2\n"
+        "[Stop001]\nName=Principal 8\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n"
+        "[Stop002]\nName=Octave 4\nNumberOfRanks=1\nRank001=1\n"
+        "FirstAccessiblePipeLogicalKeyNumber=1\nNumberOfAccessiblePipes=1\n"
+        "[General001]\nName=Tutti\nNumberOfStops=1\nStopManual001=1\nStopNumber001=1\n"
+        "[General002]\nName=Piano\nNumberOfStops=0\n";
+    const mp::GrandOrgueImportReport rep = mp::convertGrandOrgueText(organ);
+    MP_CHECK(rep.ok, "conversion failed: " + rep.error);
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(rep.xml, "test.organ", o, m, d), "converted definition must load");
+    MP_CHECK(m.grandOrgueObjects.count("stop001") && m.grandOrgueObjects.count("manual001") &&
+                 m.grandOrgueObjects.count("enclosure001") && m.grandOrgueObjects.count("general002"),
+             "the import records the object each section became");
+    const mp::Id principal = m.grandOrgueObjects.at("stop001").id;
+    const mp::Id octave = m.grandOrgueObjects.at("stop002").id;
+    const mp::Id great = m.grandOrgueObjects.at("manual001").id;
+    const mp::Id swell = m.grandOrgueObjects.at("enclosure001").id;
+    const mp::Id piano = m.grandOrgueObjects.at("general002").id;
+
+    mp::MidiMap map;
+    map.devices().claim("Arduino Leonardo");
+    // A binding the file replaces, and one it leaves alone.
+    mp::MidiBinding old;
+    old.source = {mp::MidiSourceKind::Note, 1, 60, 0};
+    old.targetKind = mp::MidiTargetKind::Switch;
+    old.targetId = principal;
+    map.bind(old);
+    mp::MidiBinding kept;
+    kept.source = {mp::MidiSourceKind::Note, 1, 61, 0};
+    kept.targetKind = mp::MidiTargetKind::Switch;
+    kept.targetId = octave;
+    map.bind(kept);
+
+    // As GrandOrgue writes it: a byte-order mark, sorted keys, CR LF.
+    const std::string cmb =
+        "\xEF\xBB\xBF[Enclosure001]\r\nMIDIChannel001=1\r\nMIDIDevice001=Somewhere Else 20:0\r\n"
+        "MIDIEventType001=ControlChange\r\nMIDIKey001=7\r\nMIDILowerLimit001=127\r\n"
+        "MIDIUpperLimit001=0\r\nNumberOfMIDIEvents=1\r\n"
+        "[General002]\r\nMIDIChannel001=3\r\nMIDIEventType001=ProgramChange\r\nMIDIKey001=5\r\n"
+        "NumberOfMIDIEvents=1\r\n"
+        "[Manual001]\r\nMIDIChannel001=2\r\nMIDIDevice001=Origin61 CA3DC798:0\r\n"
+        "MIDIEventType001=Note\r\nMIDIKeyShift001=-12\r\nMIDILowerKey001=36\r\n"
+        "MIDILowerLimit001=1\r\nMIDIUpperKey001=96\r\nMIDIUpperLimit001=127\r\nNumberOfMIDIEvents=1\r\n"
+        "[Organ]\r\nChurchName=Test\r\n"
+        "[Stop001]\r\nMIDIChannel001=2\r\nMIDIChannel002=2\r\nMIDIChannel003=2\r\n"
+        "MIDIDevice001=winmm: Arduino Leonardo\r\nMIDIEventType001=Note\r\nMIDIEventType002=Note\r\n"
+        "MIDIEventType003=ControlChangeFixed\r\nMIDIKey001=90\r\nMIDIKey002=90\r\nMIDIKey003=20\r\n"
+        "MIDILowerLimit001=0\r\nMIDILowerLimit002=127\r\nMIDIUpperLimit001=1\r\nMIDIUpperLimit002=1\r\n"
+        "MIDISendChannel001=2\r\nMIDISendEventType001=Note\r\nMIDISendHighValue001=127\r\n"
+        "MIDISendKey001=90\r\nMIDISendLowValue001=0\r\nNumberOfMIDIEvents=3\r\n"
+        "NumberOfMIDISendEvents=1\r\nShortcutKey=65\r\n"
+        "[Stop099]\r\nMIDIEventType001=Note\r\nMIDIKey001=1\r\nNumberOfMIDIEvents=1\r\n";
+    const mp::GrandOrgueMidiReport r = mp::importGrandOrgueMidi(cmb, m, map);
+    MP_CHECK(r.ok && r.organName == "Test", "a GrandOrgue settings file, saved for Test");
+    MP_CHECK(r.bindings == 3 && r.keyboards == 1 && r.sends == 1,
+             "three bindings, one manual and one send taken: " + std::to_string(r.bindings) + " " +
+                 std::to_string(r.keyboards) + " " + std::to_string(r.sends));
+    MP_CHECK(r.leftOut == 2, "the reversed note and the one-value controller are left out: " +
+                                 std::to_string(r.leftOut));
+    MP_CHECK(r.otherObjects == 1, "a section this organ does not have is counted");
+    MP_CHECK(r.shortcuts == 1, "a computer key shortcut is counted");
+    MP_CHECK(r.anyDevice == 2, "two devices not known here are taken as any console");
+
+    // The stop follows note 90 on channel 2 from the Arduino, held as GrandOrgue holds it.
+    const int arduino = map.devices().lookup("Arduino Leonardo");
+    MP_CHECK(arduino != 0, "the known device is found");
+    const mp::MidiAction on = map.actionFor({mp::MidiSourceKind::Note, 2, 90, arduino}, 100);
+    MP_CHECK(on.valid() && on.targetId == principal && on.engage, "note 90 draws the stop");
+    const mp::MidiAction off = map.actionFor({mp::MidiSourceKind::Note, 2, 90, arduino}, 0);
+    MP_CHECK(off.valid() && !off.engage, "its release puts the stop in");
+    MP_CHECK(!map.actionFor({mp::MidiSourceKind::Note, 1, 60, 0}, 100).valid(),
+             "the stop's old binding is replaced");
+    MP_CHECK(map.actionFor({mp::MidiSourceKind::Note, 1, 61, 0}, 100).targetId == octave,
+             "a stop the file does not name keeps its binding");
+    const auto sends = map.sendsFor(mp::MidiTargetKind::Switch, principal);
+    MP_CHECK(sends.size() == 1 && sends[0].kind == mp::MidiSourceKind::Note && sends[0].channel == 2 &&
+                 sends[0].number == 90 && sends[0].high == 127 && sends[0].low == 0,
+             "its lamp is note 90 on channel 2");
+
+    // The swell, reversed: controller 7 at 0 is open.
+    const mp::MidiAction shoe = map.actionFor({mp::MidiSourceKind::ControlChange, 1, 7, 0}, 0);
+    MP_CHECK(shoe.valid() && shoe.kind == mp::MidiTargetKind::ContinuousControl && shoe.targetId == swell &&
+                 shoe.value == 127,
+             "controller 7 at 0 opens the swell");
+    // GrandOrgue counts programs from 1.
+    const mp::MidiAction pc = map.actionFor({mp::MidiSourceKind::ProgramChange, 3, 4, 0}, 127);
+    MP_CHECK(pc.valid() && pc.targetId == piano, "program 5 in GrandOrgue is program change 4");
+
+    MP_CHECK(map.keyboardBindings().size() == 1, "one manual binding");
+    const auto& k = map.keyboardBindings()[0];
+    MP_CHECK(k.keyboardId == great && k.channel == 2 && k.deviceId == 0 && k.lowKey == 36 &&
+                 k.highKey == 96 && k.transpose == -12,
+             "the Great on channel 2, keys 36 to 96, an octave down");
+
+    // Not a settings file.
+    mp::MidiMap untouched;
+    MP_CHECK(!mp::importGrandOrgueMidi("[Organ]\nChurchName=Test\n", m, untouched).ok,
+             "a file with no MIDI events is not taken");
+  }
+};
+static GrandOrgueMidiImportTest g_grandOrgueMidiImport;
 
 // A GrandOrgue set has no perspectives; its windchest groups stand in for
 // them in the stop list, by their own names (#136).
@@ -14271,7 +14638,24 @@ public:
     k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
     MP_CHECK(k.format == F::Zip, "a ZIP");
     k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
-    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(k.format == F::Unknown && !k.unreadable, "not an archive at all");
+#ifndef _WIN32
+    // There, and refused: what Android 13 does to a shared file the app was
+    // never lent (#966). Said as a refusal, never as an unknown format. Root
+    // reads anything, so the check is for an ordinary user.
+    if (::geteuid() != 0) {
+      const std::string refused = put("refused.rar", rar4(0, 0));
+      ::chmod(refused.c_str(), 0);
+      k = mp::inspectArchive(refused);
+      MP_CHECK(k.unreadable, "a file the system will not open is said to be refused");
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(refused, error) && !a.inspect(error) &&
+                   error.find("cannot be read") != std::string::npos,
+               "and the error says so: " + error);
+      ::chmod(refused.c_str(), 0644);
+    }
+#endif
     MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
              "and it can say so in words");
 
@@ -16198,6 +16582,106 @@ public:
   }
 };
 static MidiListenValuesTest g_midiListenValues;
+
+// Learn on and off in the MIDI window (#927): a tab moved on and then off is
+// heard as two messages, and they become the rows that work the stop. One
+// controller at two values is one row that follows the tab; a note pressed
+// and let go is one held row; two messages are a draw row and a cancel row.
+class MidiListenPairTest final : public mp::test::Test {
+public:
+  MidiListenPairTest() : Test("functional.midi.listen-on-and-off", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.setLearnNoiseFilter(true);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto blocks = [&](int n) {
+      for (int i = 0; i < n; ++i) {
+        juce::MidiBuffer none;
+        buf.clear();
+        proc.processBlock(buf, none);
+      }
+    };
+    mp::MidiSource on, off;
+    int onValue = 0, offValue = 0;
+
+    // A controller at 65 for on, sent twice, then 64 for off.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    blocks(1);
+    MP_CHECK(proc.midiListenPairStep() == 1 && !proc.takeHeardMidiPair(on, onValue, off, offValue),
+             "the on is heard, and the window waits for the off");
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 65));
+    proc.pushMidi(2, juce::MidiMessage::controllerEvent(3, 21, 64));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && onValue == 65 &&
+                 offValue == 64 && !proc.midiListening(),
+             "the on sent again is passed over, and the off is heard");
+    mp::MidiBinding base;
+    base.targetKind = mp::MidiTargetKind::Switch;
+    base.targetId = 1;
+    auto rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary && rows[0].highValue == 65 &&
+                 rows[0].lowValue == 64,
+             "one controller at two values is one row, on at 65 and off at 64");
+    mp::MidiMap map;
+    map.bind(rows[0]);
+    MP_CHECK(map.actionFor(on, 65).engage && map.actionFor(on, 65).valid() && !map.actionFor(on, 64).engage,
+             "65 draws the stop and 64 retires it");
+
+    // A key held through the noise filter, then let go.
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 40, 0.8f));
+    blocks(60);
+    MP_CHECK(proc.midiListenPairStep() == 1, "the key is heard once held a quarter second");
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 40));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off && on.number == 40 &&
+                 offValue == 0,
+             "and letting it go is the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 1 && rows[0].trigger == mp::MidiTrigger::Momentary, "a key is one held row");
+
+    // Two notes: one draws, the other cancels.
+    proc.setLearnNoiseFilter(false);
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    proc.pushMidi(2, juce::MidiMessage::noteOff(1, 50));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on == off,
+             "a button pressed and let go is a pair of one message");
+    proc.beginMidiListenPair();
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 50, 0.8f));
+    blocks(1);
+    proc.pushMidi(2, juce::MidiMessage::noteOn(1, 51, 0.8f));
+    blocks(1);
+    MP_CHECK(proc.takeHeardMidiPair(on, onValue, off, offValue) && on.number == 50 && off.number == 51,
+             "two notes are heard as the on and the off");
+    rows = mp::MidiMap::bindingsForOnOff(base, on, onValue, off, offValue);
+    MP_CHECK(rows.size() == 2 && rows[0].trigger == mp::MidiTrigger::EngageOnly &&
+                 rows[1].trigger == mp::MidiTrigger::DisengageOnly && rows[1].source.number == 51,
+             "two messages are a row that draws and a row that cancels");
+
+    // A controller that cancels with 0 on another number.
+    mp::MidiSource draw, cancel;
+    draw.kind = cancel.kind = mp::MidiSourceKind::ControlChange;
+    draw.channel = cancel.channel = 1;
+    draw.number = 30;
+    cancel.number = 31;
+    rows = mp::MidiMap::bindingsForOnOff(base, draw, 127, cancel, 0);
+    mp::MidiMap two;
+    for (const auto& r : rows) two.bind(r);
+    const auto a = two.actionFor(cancel, 0);
+    MP_CHECK(a.valid() && !a.engage, "a cancel sent as 0 still cancels");
+    MP_CHECK(two.actionFor(draw, 127).valid() && two.actionFor(draw, 127).engage, "and the draw draws");
+  }
+};
+static MidiListenPairTest g_midiListenPair;
 // Save state (toolbar): the stops as the player left them are the organ's
 // starting state, and a new session brings them back.
 class SavedStateTest final : public mp::test::Test {
@@ -18768,6 +19252,18 @@ public:
       MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
       MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
       MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+      // Two consoles, such as two pad controllers (#942): both names kept.
+      MP_CHECK(!proc.openMidiOutputs({"Pads left", "Pads right", "Pads left"}),
+               "ports that are not there do not open");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames() == juce::StringArray({"Pads left", "Pads right"}),
+               "both outputs are kept, once each, in order");
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames().size() == 2, "a second read adds none");
+      MP_CHECK(proc.openMidiOutputs({}) && proc.midiOutputNames().isEmpty(), "None closes them all");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();
