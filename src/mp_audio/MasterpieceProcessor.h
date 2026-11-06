@@ -2364,6 +2364,17 @@ private:
     return it == layerLevelIndex_.end() ? -1 : it->second;
   }
   void advanceLayerLevels(int numFrames);
+  // The organ's pitch controls (#828): every continuous control a pipe layer
+  // reads as its PitchLvl_IncrementingContinuousControlID, with its place in
+  // the table the voices read, resolved at load. Read whole each block, so a
+  // pipe already sounding follows a detune slider, or a key's own pitch
+  // control as it moves once the key is down.
+  std::unordered_map<Id, int> pitchControlIndex_;
+  std::vector<Id> pitchControlIds_;
+  std::vector<int> pitchControlValues_;
+  void advancePitchControls();
+  // Fills `vs` so the voice follows its layer's pitch control from here on.
+  void followPitchControl(const Pipe& pipe, const PipeLayer& layer, VoiceStart& vs) const;
   void retargetVoicing(int numFrames);
   // Sets a live level from a MIDI control: a rank or division by its id, a
   // pair by its number from 1.

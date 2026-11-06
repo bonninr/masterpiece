@@ -1024,6 +1024,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   else
     voices_.setLiveGains(nullptr, 0, nullptr, 0);
   advanceLayerLevels(numFrames);
+  advancePitchControls();
   retargetVoicing(numFrames);
   if (!blockLog_.empty())
     blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
@@ -4294,6 +4295,8 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     // sounds (#765); a level that names no control stays at full.
     vs.gain = juce::Decibels::decibelsToGain(static_cast<float>(layer.gainDb), -100.0f);
     vs.levelIndex = layerLevelIndexOf(layer);
+    // Its pitch control, the same way (#828).
+    followPitchControl(pipe, layer, vs);
 
     // How hard the key was struck. The organ states the attenuation at the
     // softest touch; full velocity is unattenuated. Inverted, the sense
@@ -7785,6 +7788,22 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     layerLevelGains_.assign(layerLevelControls_.size(), 1.0f);
     layerLevelsSettled_ = false;
   }
+  // The pitch controls, the same way (#828).
+  {
+    pitchControlIndex_.clear();
+    std::vector<Id> ids;
+    for (const auto& [rankId, rank] : model_.ranks)
+      for (const auto& pipe : rank.pipes)
+        for (const auto& layer : pipe.layers)
+          if (layer.pitchControlId != 0 && layer.pitchSensitivityHzPerUnit != 0.0 &&
+              model_.continuousControls.count(layer.pitchControlId) != 0)
+            ids.push_back(layer.pitchControlId);
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    for (size_t i = 0; i < ids.size(); ++i) pitchControlIndex_[ids[i]] = static_cast<int>(i);
+    pitchControlIds_ = std::move(ids);
+    pitchControlValues_.assign(pitchControlIds_.size(), 0);
+  }
   phases.mark("model: wind");
   stages_.reset(model_);
   stageScratch_.reserve(64);
@@ -9384,6 +9403,37 @@ void MasterpieceProcessor::advanceLayerLevels(int numFrames) {
   }
   layerLevelsSettled_ = true;
   voices_.setLayerLevels(layerLevelGains_.data(), static_cast<int>(layerLevelGains_.size()));
+}
+
+void MasterpieceProcessor::advancePitchControls() {
+  // simpleWavOnly plays every pipe at its plain pitch, detune included.
+  if (pitchControlIds_.empty() || graph_.engineSwitch.simpleWavOnly) {
+    voices_.setPitchControls(nullptr, 0);
+    return;
+  }
+  for (size_t i = 0; i < pitchControlIds_.size(); ++i)
+    pitchControlValues_[i] = controls_.value(pitchControlIds_[i]);
+  voices_.setPitchControls(pitchControlValues_.data(), static_cast<int>(pitchControlValues_.size()));
+}
+
+void MasterpieceProcessor::followPitchControl(const Pipe& pipe, const PipeLayer& layer,
+                                              VoiceStart& vs) const {
+  if (layer.pitchControlId == 0 || graph_.engineSwitch.simpleWavOnly) return;
+  const auto it = pitchControlIndex_.find(layer.pitchControlId);
+  if (it == pitchControlIndex_.end()) return;
+  // The pitch the pipe starts at, its control included, and the pitch it
+  // would have with the control at the centre: detunedTargetHz() moves the
+  // second by the sensitivity for each step, never below half of it.
+  const bool originalPitch =
+      graph_.engineSwitch.playAtOriginalOrganPitch && pipe.originalOrganPitchHz > 0.0;
+  const double startHz = pipeTargetHzFor(pipe, layer, originalPitch);
+  if (startHz <= 0.0) return;
+  const int from = detuneControlValue(layer);
+  const double centreHz = startHz - (from - detuneCentre(layer)) * layer.pitchSensitivityHzPerUnit;
+  vs.pitchIndex = it->second;
+  vs.pitchFrom = from;
+  vs.pitchPerUnit = layer.pitchSensitivityHzPerUnit / startHz;
+  vs.pitchFloor = centreHz > 0.0 ? 0.5 * centreHz / startHz : 0.5;
 }
 
 float MasterpieceProcessor::voicingGainOf(Id rankId, Id pipeId) const {
