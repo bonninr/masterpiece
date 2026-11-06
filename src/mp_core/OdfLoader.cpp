@@ -37,6 +37,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <map>
+#include <set>
 #include <unordered_set>
 
 namespace mp {
@@ -347,6 +348,28 @@ void latchDrawstops(OrganModel& model, OdfDiagnostics& diag) {
     }
   }
   std::sort(latched.begin(), latched.end());
+
+  // A latched knob follows the stop switch it draws (#920). Pekela's knobs, one
+  // on each page, drive the stop switch with no link back: a momentary knob
+  // needs none, as it goes in by itself. Latched, it would stay out when a
+  // general cancel or a combination moves the stop switch, which is the one
+  // the combinations hold. A latching stop's knobs are wired both ways, and a
+  // link back gives a latched knob the same wiring.
+  const std::unordered_set<Id> isLatched(latched.begin(), latched.end());
+  std::set<std::pair<Id, Id>> linked;
+  for (const auto& l : model.switchLinkages) linked.insert({l.sourceSwitchId, l.destSwitchId});
+  std::vector<SwitchLinkage> back;
+  for (const auto& l : model.switchLinkages) {
+    const Id knob = l.sourceSwitchId, stop = l.destSwitchId;
+    if (isLatched.count(knob) == 0 || isLatched.count(stop) == 0 || !drawn(knob)) continue;
+    if (!l.sourceWhenEngaged || l.conditionSwitchId != 0 || l.engageAction != 1 || l.disengageAction != 2) continue;
+    if (!linked.insert({stop, knob}).second) continue;
+    SwitchLinkage follow;
+    follow.sourceSwitchId = stop;
+    follow.destSwitchId = knob;
+    back.push_back(follow);
+  }
+  model.switchLinkages.insert(model.switchLinkages.end(), back.begin(), back.end());
   diag.latchedDrawstops = std::move(latched);
 }
 
