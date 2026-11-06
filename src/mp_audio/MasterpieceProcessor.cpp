@@ -9491,6 +9491,25 @@ bool MasterpieceProcessor::applyKeyShortcut(const std::string& key) {
     } else if (k.targetKind == MidiTargetKind::ContinuousControl) {
       setContinuousControl(k.targetId,
                            juce::jlimit(0, 127, continuousControlValue(k.targetId) + k.step));
+    } else {
+      // The player's own pistons: the same press their MIDI message makes.
+      switch (k.targetKind) {
+        case MidiTargetKind::PlayerGeneral: pressGeneral(static_cast<int>(k.targetId)); break;
+        case MidiTargetKind::PlayerGeneralCancel: pressGeneralCancel(); break;
+        case MidiTargetKind::PlayerDivisional:
+          pressDivisional(playerDivisionalDivision(k.targetId), playerDivisionalPiston(k.targetId));
+          break;
+        case MidiTargetKind::PlayerDivisionalCancel: pressDivisionalCancel(k.targetId); break;
+        case MidiTargetKind::Setter: setCaptureMode(!captureMode()); break;
+        case MidiTargetKind::StepperNext: stepperNext(); break;
+        case MidiTargetKind::StepperPrev: stepperPrev(); break;
+        case MidiTargetKind::StepperFirst: stepperFirst(); break;
+        case MidiTargetKind::StepperLast: stepperLast(); break;
+        case MidiTargetKind::StepperForward10: stepperJump(10); break;
+        case MidiTargetKind::StepperBack10: stepperJump(-10); break;
+        case MidiTargetKind::StepperDigit: stepperDigit(static_cast<int>(k.targetId)); break;
+        default: break;
+      }
     }
   }
   return !hits.empty();
