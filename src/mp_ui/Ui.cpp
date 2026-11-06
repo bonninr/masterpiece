@@ -644,6 +644,73 @@ void openBluetoothMidiPairing() {
   });
 }
 
+namespace {
+
+// The compressor's transfer curve: input level across, output level up, both
+// in dBFS. The straight line is no compression; the curve bends at the
+// threshold, and the make-up gain lifts it. A dot marks the level the
+// detector hears now, and a bar under it the reduction it makes.
+class CompressorCurve final : public juce::Component, public juce::SettableTooltipClient {
+public:
+  explicit CompressorCurve(OutputCompressor& c) : c_(c) {
+    setTooltip(TRANS("Input level across, output level up. The dot is the level "
+                     "heard now; the red bar under it is the reduction."));
+  }
+
+  static constexpr float kLowDb = -60.0f;
+  static constexpr float kHighDb = 6.0f;
+
+  void paint(juce::Graphics& g) override {
+    const auto area = getLocalBounds().toFloat().reduced(1.0f);
+    g.setColour(juce::Colour(0xff15171c));
+    g.fillRect(area);
+    const auto x = [&](float db) {
+      return area.getX() + area.getWidth() * (db - kLowDb) / (kHighDb - kLowDb);
+    };
+    const auto y = [&](float db) {
+      return area.getBottom() - area.getHeight() * (std::clamp(db, kLowDb, kHighDb) - kLowDb) / (kHighDb - kLowDb);
+    };
+    // A line every 12 dB, and 0 dBFS a little brighter.
+    for (float db = -48.0f; db <= 0.0f; db += 12.0f) {
+      g.setColour(db == 0.0f ? juce::Colour(0xff4a505c) : juce::Colour(0xff2a2e36));
+      g.drawVerticalLine(juce::roundToInt(x(db)), area.getY(), area.getBottom());
+      g.drawHorizontalLine(juce::roundToInt(y(db)), area.getX(), area.getRight());
+    }
+    g.setColour(juce::Colour(0xff3a3f4a));
+    g.drawLine(x(kLowDb), y(kLowDb), x(kHighDb), y(kHighDb), 1.0f);
+
+    const bool on = c_.enabled();
+    juce::Path curve;
+    for (int i = 0; i <= 132; ++i) {
+      const float in = kLowDb + (kHighDb - kLowDb) * static_cast<float>(i) / 132.0f;
+      const float px = x(in), py = y(c_.outputDbFor(in));
+      if (i == 0) curve.startNewSubPath(px, py);
+      else curve.lineTo(px, py);
+    }
+    g.setColour(on ? juce::Colour(0xff7fb2ff) : juce::Colour(0xff5a606c));
+    g.strokePath(curve, juce::PathStrokeType(2.0f));
+
+    const float level = c_.detectorLevelDb();
+    if (on && level > kLowDb) {
+      const float in = std::min(level, kHighDb);
+      const float out = c_.outputDbFor(in);
+      const float straight = in + c_.makeupDb();
+      g.setColour(juce::Colour(0xffe05050));
+      g.fillRect(juce::Rectangle<float>(x(in) - 2.0f, y(straight), 4.0f,
+                                        std::max(0.0f, y(out) - y(straight))));
+      g.setColour(juce::Colours::white);
+      g.fillEllipse(x(in) - 4.0f, y(out) - 4.0f, 8.0f, 8.0f);
+    }
+    g.setColour(juce::Colour(0xff3a3f4a));
+    g.drawRect(area, 1.0f);
+  }
+
+private:
+  OutputCompressor& c_;
+};
+
+}  // namespace
+
 AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
                                        MasterpieceProcessor& p)
     // The audio device only: MIDI inputs, the MIDI output and Bluetooth
@@ -816,72 +883,6 @@ AudioSettingsPanel::AudioSettingsPanel(juce::AudioDeviceManager& devices,
   setSize(500, 510);
 }
 
-namespace {
-
-// The compressor's transfer curve: input level across, output level up, both
-// in dBFS. The straight line is no compression; the curve bends at the
-// threshold, and the make-up gain lifts it. A dot marks the level the
-// detector hears now, and a bar under it the reduction it makes.
-class CompressorCurve final : public juce::Component {
-public:
-  explicit CompressorCurve(OutputCompressor& c) : c_(c) {
-    setTooltip(TRANS("Input level across, output level up. The dot is the level "
-                     "heard now; the red bar under it is the reduction."));
-  }
-
-  static constexpr float kLowDb = -60.0f;
-  static constexpr float kHighDb = 6.0f;
-
-  void paint(juce::Graphics& g) override {
-    const auto area = getLocalBounds().toFloat().reduced(1.0f);
-    g.setColour(juce::Colour(0xff15171c));
-    g.fillRect(area);
-    const auto x = [&](float db) {
-      return area.getX() + area.getWidth() * (db - kLowDb) / (kHighDb - kLowDb);
-    };
-    const auto y = [&](float db) {
-      return area.getBottom() - area.getHeight() * (std::clamp(db, kLowDb, kHighDb) - kLowDb) / (kHighDb - kLowDb);
-    };
-    // A line every 12 dB, and 0 dBFS a little brighter.
-    for (float db = -48.0f; db <= 0.0f; db += 12.0f) {
-      g.setColour(db == 0.0f ? juce::Colour(0xff4a505c) : juce::Colour(0xff2a2e36));
-      g.drawVerticalLine(juce::roundToInt(x(db)), area.getY(), area.getBottom());
-      g.drawHorizontalLine(juce::roundToInt(y(db)), area.getX(), area.getRight());
-    }
-    g.setColour(juce::Colour(0xff3a3f4a));
-    g.drawLine(x(kLowDb), y(kLowDb), x(kHighDb), y(kHighDb), 1.0f);
-
-    const bool on = c_.enabled();
-    juce::Path curve;
-    for (int i = 0; i <= 132; ++i) {
-      const float in = kLowDb + (kHighDb - kLowDb) * static_cast<float>(i) / 132.0f;
-      const float px = x(in), py = y(c_.outputDbFor(in));
-      if (i == 0) curve.startNewSubPath(px, py);
-      else curve.lineTo(px, py);
-    }
-    g.setColour(on ? juce::Colour(0xff7fb2ff) : juce::Colour(0xff5a606c));
-    g.strokePath(curve, juce::PathStrokeType(2.0f));
-
-    const float level = c_.detectorLevelDb();
-    if (on && level > kLowDb) {
-      const float in = std::min(level, kHighDb);
-      const float out = c_.outputDbFor(in);
-      const float straight = in + c_.makeupDb();
-      g.setColour(juce::Colour(0xffe05050));
-      g.fillRect(juce::Rectangle<float>(x(in) - 2.0f, y(straight), 4.0f,
-                                        std::max(0.0f, y(out) - y(straight))));
-      g.setColour(juce::Colours::white);
-      g.fillEllipse(x(in) - 4.0f, y(out) - 4.0f, 8.0f, 8.0f);
-    }
-    g.setColour(juce::Colour(0xff3a3f4a));
-    g.drawRect(area, 1.0f);
-  }
-
-private:
-  OutputCompressor& c_;
-};
-
-}  // namespace
 
 void AudioSettingsPanel::setUpRow(Row& row, const juce::String& name, double lo, double hi,
                                   double step, double value, const juce::String& suffix,
