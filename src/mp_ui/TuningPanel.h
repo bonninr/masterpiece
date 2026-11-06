@@ -25,12 +25,14 @@ private:
   void timerCallback() override;
   void refresh();
   void fillTemperaments();
+  void showMidiMenu();
 
   MasterpieceProcessor& proc_;
   juce::Label temperamentLabel_, pitchLabel_, transposeLabel_;
   juce::ComboBox temperament_;
   std::vector<std::string> choices_;  // by item id - 1
   juce::TextButton scala_{TRANS("Scala file...")};
+  juce::TextButton midi_{"MIDI"};
   std::unique_ptr<juce::FileChooser> chooser_;
 
   juce::Slider pitch_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};

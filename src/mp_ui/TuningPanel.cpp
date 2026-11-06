@@ -1,4 +1,5 @@
 #include "TuningPanel.h"
+#include "MidiEventDialog.h"
 #include "Mobile.h"
 
 #include "../mp_core/Temperament.h"
@@ -46,6 +47,9 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
     if (choices_[static_cast<size_t>(i)] != proc_.temperamentChoice())
       proc_.setTemperament(choices_[static_cast<size_t>(i)]);
   };
+  addAndMakeVisible(midi_);
+  midi_.setTooltip(TRANS("Learn console buttons for the temperament and the transposer"));
+  midi_.onClick = [this] { showMidiMenu(); };
   addAndMakeVisible(scala_);
   scala_.setTooltip(TRANS("A temperament from a Scala .scl file: twelve notes, repeating at the octave"));
   scala_.onClick = [this] {
@@ -125,7 +129,7 @@ TuningPanel::TuningPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.setColour(juce::Label::textColourId, kTextDim);
   note_.setJustificationType(juce::Justification::topLeft);
 
-  setSize(460, 340);
+  setSize(520, 340);
   refresh();
   startTimerHz(4);
 }
@@ -183,12 +187,59 @@ void TuningPanel::timerCallback() {
 
 void TuningPanel::paint(juce::Graphics& g) { g.fillAll(kBackground); }
 
+// The temperament chosen above, the two that step through the list, and the
+// transposer: each with what it is mapped to, Learn, Clear and the MIDI window.
+void TuningPanel::showMidiMenu() {
+  auto& map = proc_.midiMap();
+  if (map.learning()) {
+    map.cancelLearn();
+    return;
+  }
+  struct Target {
+    MidiTargetKind kind;
+    Id id;
+    juce::String name;
+  };
+  std::vector<Target> targets{
+      {MidiTargetKind::Temperament, temperamentTarget(proc_.temperamentChoice()),
+       TRANS("Temperament") + ": " + temperament_.getText()},
+      {MidiTargetKind::TemperamentPrev, 0, TRANS("Temperament -")},
+      {MidiTargetKind::TemperamentNext, 0, TRANS("Temperament +")},
+      {MidiTargetKind::TransposeDown, 0, TRANS("Transpose -")},
+      {MidiTargetKind::TransposeUp, 0, TRANS("Transpose +")}};
+  juce::PopupMenu menu;
+  int item = 1;
+  for (const auto& target : targets) {
+    juce::PopupMenu sub;
+    const auto existing = map.bindingsFor(target.kind, target.id);
+    if (existing.empty()) sub.addSectionHeader(TRANS("Not mapped"));
+    for (const MidiBinding* b : existing) sub.addSectionHeader(MidiEventDialog::describeBinding(*b));
+    sub.addItem(item, TRANS("Learn"));
+    sub.addItem(item + 1, TRANS("Clear"), !existing.empty());
+    sub.addItem(item + 2, TRANS("MIDI window..."));
+    menu.addSubMenu(target.name, sub);
+    item += 3;
+  }
+  juce::Component::SafePointer<TuningPanel> self(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midi_), [self, targets](int chosen) {
+    if (self == nullptr || chosen <= 0) return;
+    const Target& target = targets[static_cast<size_t>((chosen - 1) / 3)];
+    switch ((chosen - 1) % 3) {
+      case 0: self->proc_.midiMap().beginLearn(target.kind, target.id, false); break;
+      case 1: self->proc_.setObjectBindings(target.kind, target.id, {}); break;
+      default: MidiEventDialog::show(self->proc_, target.kind, target.id, target.name); break;
+    }
+  });
+}
+
 void TuningPanel::resized() {
   auto r = getLocalBounds().reduced(12);
   constexpr int kLabel = 110, kRow = 28, kGap = 8;
 
   auto row = r.removeFromTop(kRow);
   temperamentLabel_.setBounds(row.removeFromLeft(kLabel));
+  midi_.setBounds(row.removeFromRight(54).reduced(0, 2));
+  row.removeFromRight(6);
   scala_.setBounds(row.removeFromRight(100).reduced(0, 2));
   row.removeFromRight(6);
   temperament_.setBounds(row.reduced(0, 2));

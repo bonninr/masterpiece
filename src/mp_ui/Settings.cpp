@@ -1926,8 +1926,6 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     }
   }
 
-  addAndMakeVisible(stepperLabel_);
-  styleLabel(stepperLabel_, TRANS("Sequencer"));
   // A console with fewer keyboards than the organ has manuals: a piston makes
   // the keyboard on a channel play another manual (#90). Pick the channel,
   // then the manual, then press the piston.
@@ -1976,26 +1974,15 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 
   addAndMakeVisible(consoleHeading_);
   styleLabel(consoleHeading_, TRANS("Console"));
-  addAndMakeVisible(recorderHeading_);
-  styleLabel(recorderHeading_, TRANS("Recorder"));
   // Every one momentary: a piston is a button, and a latching mapping would
   // act only every other press.
   learnButtons_ = {
-      {&learnPrev_, MidiTargetKind::StepperPrev, TRANS("Sequencer -")},
-      {&learnNext_, MidiTargetKind::StepperNext, TRANS("Sequencer +")},
       {&learnPagePrev_, MidiTargetKind::ConsolePrevPage, TRANS("Page -")},
       {&learnPageNext_, MidiTargetKind::ConsoleNextPage, TRANS("Page +")},
       {&learnLayout_, MidiTargetKind::ConsoleNextLayout, TRANS("Console size")},
       {&learnStopList_, MidiTargetKind::ConsoleToggleStopList, TRANS("Panel")},
       {&learnKeyboard_, MidiTargetKind::ConsoleToggleKeyboard, TRANS("Keyboard")},
       {&learnCombinations_, MidiTargetKind::ConsoleToggleCombinations, TRANS("Combinations")},
-      {&learnTransposeDown_, MidiTargetKind::TransposeDown, TRANS("Transpose -")},
-      {&learnTransposeUp_, MidiTargetKind::TransposeUp, TRANS("Transpose +")},
-      {&learnTemperament_, MidiTargetKind::Temperament, TRANS("Temperament")},
-      {&learnTemperamentPrev_, MidiTargetKind::TemperamentPrev, TRANS("Temperament -")},
-      {&learnTemperamentNext_, MidiTargetKind::TemperamentNext, TRANS("Temperament +")},
-      {&learnRecord_, MidiTargetKind::RecorderRecord, TRANS("Record")},
-      {&learnPlay_, MidiTargetKind::RecorderPlay, TRANS("Play")},
       {&learnQuit_, MidiTargetKind::QuitProgram, TRANS("Quit")},
       {&learnPowerOff_, MidiTargetKind::PowerOffComputer, TRANS("Power off")},
       {&learnScoreBack_, MidiTargetKind::ScorePageBack, TRANS("Score page -")},
@@ -2005,25 +1992,6 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     addAndMakeVisible(*learnButtons_[i].button);
     learnButtons_[i].button->onClick = [this, i] { learnMenu(learnButtons_[i]); };
   }
-  learnPrev_.setTooltip(TRANS("Sequencer: previous frame"));
-  learnNext_.setTooltip(TRANS("Sequencer: next frame"));
-  learnTemperamentPrev_.setTooltip(TRANS("Previous temperament in the list"));
-  learnTemperamentNext_.setTooltip(TRANS("Next temperament in the list"));
-  learnRecord_.setTooltip(TRANS("Starts a recording; pressed again, stops it"));
-  learnPlay_.setTooltip(TRANS("Plays the last recording; pressed again, stops it"));
-
-  addAndMakeVisible(temperamentLabel_);
-  styleLabel(temperamentLabel_, TRANS("Temperament"));
-  addAndMakeVisible(temperamentPick_);
-  temperamentNames_.push_back("");
-  temperamentPick_.addItem(TRANS("The organ's own"), 1);
-  for (const auto& t : temperamentLibrary()) {
-    temperamentNames_.push_back(t.name);
-    temperamentPick_.addItem(juce::String(t.name), static_cast<int>(temperamentNames_.size()));
-  }
-  temperamentPick_.setSelectedId(1, juce::dontSendNotification);
-  learnTemperament_.setTooltip(TRANS("Selects the temperament chosen beside it"));
-  temperamentPick_.onChange = [this] { showLearnState(); };
 
   addAndMakeVisible(powerHeading_);
   styleLabel(powerHeading_, TRANS("Power"));
@@ -2136,12 +2104,8 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
 void MidiPanel::applyPart() {
   std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
-                                        &archiveSize_, &archiveAge_, &stepperLabel_, &learnPrev_, &learnNext_,
-                                        &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
+                                        &archiveSize_, &archiveAge_, &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
                                         &learnStopList_, &learnKeyboard_, &learnCombinations_,
-                                        &learnTransposeDown_, &learnTransposeUp_, &temperamentLabel_,
-                                        &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
-                                        &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_,
                                         &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_,
                                         &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
                                         &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_,
@@ -2160,10 +2124,8 @@ void MidiPanel::applyPart() {
   // What Simple mode leaves out: the console builder's settings.
   const std::vector<juce::Component*> professional{
       &cancelResets_, &leaveHeld_, &noiseFilter_, &archive_, &archiveSilence_, &archiveSize_, &archiveAge_,
-      &stepperLabel_, &learnPrev_, &learnNext_, &consoleHeading_, &learnPagePrev_, &learnPageNext_,
-      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &learnTransposeDown_,
-      &learnTransposeUp_, &temperamentLabel_, &temperamentPick_, &learnTemperament_, &learnTemperamentPrev_,
-      &learnTemperamentNext_, &recorderHeading_, &learnRecord_, &learnPlay_, &powerHeading_, &learnQuit_,
+      &consoleHeading_, &learnPagePrev_, &learnPageNext_,
+      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &powerHeading_, &learnQuit_,
       &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_,
       &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_, &scoreHeading_,
       &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_,
@@ -2177,13 +2139,6 @@ void MidiPanel::applyPart() {
   bluetooth_.setVisible(part_ == Part::Console && juce::BluetoothMidiDevicePairingDialogue::isAvailable());
 }
 
-Id MidiPanel::learnTarget(const LearnButton& l) const {
-  if (l.kind != MidiTargetKind::Temperament) return 0;
-  const int i = temperamentPick_.getSelectedId() - 1;
-  if (i < 0 || i >= static_cast<int>(temperamentNames_.size())) return 0;
-  return temperamentTarget(temperamentNames_[static_cast<size_t>(i)]);
-}
-
 // The same menu as a console control's: what it is mapped to, then Learn,
 // Clear and the MIDI window. Pressed while learning, it stops learning.
 void MidiPanel::learnMenu(const LearnButton& l) {
@@ -2194,15 +2149,8 @@ void MidiPanel::learnMenu(const LearnButton& l) {
     return;
   }
   const MidiTargetKind kind = l.kind;
-  const Id id = learnTarget(l);
-  // Id 0 is a temperament too, the organ's own (temperamentTarget): only a
-  // pick outside the list leaves the button with nothing to learn.
-  if (kind == MidiTargetKind::Temperament &&
-      (temperamentPick_.getSelectedId() < 1 ||
-       temperamentPick_.getSelectedId() > static_cast<int>(temperamentNames_.size())))
-    return;
-  juce::String name = l.name;
-  if (kind == MidiTargetKind::Temperament) name += ": " + temperamentPick_.getText();
+  constexpr Id id = 0;
+  const juce::String name = l.name;
   juce::PopupMenu menu;
   const auto existing = map.bindingsFor(kind, id);
   if (existing.empty()) menu.addSectionHeader(TRANS("Not mapped"));
@@ -2229,7 +2177,7 @@ void MidiPanel::learnMenu(const LearnButton& l) {
 void MidiPanel::showLearnState() {
   const auto& map = proc_.midiMap();
   for (const auto& l : learnButtons_) {
-    const Id id = learnTarget(l);
+    constexpr Id id = 0;
     const bool learning = map.learning() && map.learningKind() == l.kind && map.learningTarget() == id;
     const auto existing = map.bindingsFor(l.kind, id);
     auto* b = l.button;
@@ -2608,15 +2556,8 @@ void MidiPanel::resized() {
     archiveSize_.setBounds(row.removeFromLeft(110).reduced(2, 1));
     archiveAge_.setBounds(row.removeFromLeft(120).reduced(2, 1));
     r.removeFromTop(kGap);
-    row = r.removeFromTop(kRow);
-    stepperLabel_.setBounds(row.removeFromLeft(120));
-    learnPrev_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-    row.removeFromLeft(6);
-    learnNext_.setBounds(row.removeFromLeft(150).reduced(2, 0));
-
     // Console actions, on their own row under the same idea: things a physical
     // console's thumb pistons do that the organ file never mentions.
-    r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     consoleHeading_.setBounds(row.removeFromLeft(120));
     for (auto* b : {&learnPagePrev_, &learnPageNext_, &learnLayout_}) {
@@ -2627,33 +2568,6 @@ void MidiPanel::resized() {
     row = r.removeFromTop(kRow);
     row.removeFromLeft(120);
     for (auto* b : {&learnStopList_, &learnKeyboard_, &learnCombinations_}) {
-      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-      row.removeFromLeft(6);
-    }
-    r.removeFromTop(4);
-    row = r.removeFromTop(kRow);
-    row.removeFromLeft(120);
-    for (auto* b : {&learnTransposeDown_, &learnTransposeUp_}) {
-      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-      row.removeFromLeft(6);
-    }
-    r.removeFromTop(4);
-    row = r.removeFromTop(kRow);
-    temperamentLabel_.setBounds(row.removeFromLeft(120));
-    temperamentPick_.setBounds(row.removeFromLeft(306).reduced(2, 0));
-    row.removeFromLeft(6);
-    learnTemperament_.setBounds(row.removeFromLeft(180).reduced(2, 0));
-    r.removeFromTop(4);
-    row = r.removeFromTop(kRow);
-    row.removeFromLeft(120);
-    for (auto* b : {&learnTemperamentPrev_, &learnTemperamentNext_}) {
-      b->setBounds(row.removeFromLeft(150).reduced(2, 0));
-      row.removeFromLeft(6);
-    }
-    r.removeFromTop(4);
-    row = r.removeFromTop(kRow);
-    recorderHeading_.setBounds(row.removeFromLeft(120));
-    for (auto* b : {&learnRecord_, &learnPlay_}) {
       b->setBounds(row.removeFromLeft(150).reduced(2, 0));
       row.removeFromLeft(6);
     }
