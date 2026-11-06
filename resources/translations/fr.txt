@@ -1209,3 +1209,4 @@ countries: fr be ca ch lu mc
 "Every pipe..." = "Chaque tuyau..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tous les tuyaux du rang à la fois, pour tracer leur niveau ou leur accord sur toute l'étendue"
 "Voicing: every pipe" = "Harmonisation : chaque tuyau"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Niveau d'entrée en abscisse, niveau de sortie en ordonnée. Le point est le niveau entendu maintenant ; la barre rouge en dessous est la réduction."

@@ -1040,6 +1040,7 @@ countries: gb us
 "Bass left out" = "Bass left out"
 "Below %1 Hz" = "Below %1 Hz"
 "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full." = "The compressor does not hear the bass below this pitch, so a 32' or a full pedal does not turn the manuals down. The bass itself sounds in full."
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction."
 "Reduction %1 dB" = "Reduction %1 dB"
 "Note delay: %1 ms (buffer %2 ms, output %3 ms)" = "Note delay: %1 ms (buffer %2 ms, output %3 ms)"
 "The rest of %1" = "The rest of %1"

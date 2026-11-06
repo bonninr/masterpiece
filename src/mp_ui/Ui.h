@@ -218,6 +218,8 @@ private:
   Row threshold_, ratio_, attack_, compressorRelease_, makeup_;
   juce::Label highPassLabel_;
   juce::ComboBox highPass_;
+  // The transfer curve beside the settings, with the level heard now on it.
+  std::unique_ptr<juce::Component> curve_;
   void apply();
   // The limiter's two settings are only in use while it is on.
   void updateLimiterControls();

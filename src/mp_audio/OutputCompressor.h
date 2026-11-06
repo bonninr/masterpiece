@@ -76,6 +76,17 @@ public:
     return lastReductionDb_.load(std::memory_order_relaxed);
   }
 
+  // The level the detector heard at the end of the last block, in dBFS: the
+  // loudest pair's. -120 while it hears nothing. For the curve's readout.
+  float detectorLevelDb() const {
+    return lastLevelDb_.load(std::memory_order_relaxed);
+  }
+
+  // The output level a steady input level comes out at, in dBFS, with the
+  // settings as they are now: the transfer curve, knee and make-up gain
+  // included.
+  float outputDbFor(float inputDb) const;
+
   // How many blocks it has processed. It stays at zero while the processor
   // leaves it alone.
   unsigned long long blocksProcessed() const {
@@ -114,6 +125,7 @@ private:
   std::atomic<bool> enabled_{false};
   std::atomic<bool> resetRequested_{false};
   std::atomic<float> lastReductionDb_{0.0f};
+  std::atomic<float> lastLevelDb_{-120.0f};
   std::atomic<unsigned long long> blocksProcessed_{0};
   std::array<Pair, kMaxPairs> pairs_{};
   double sampleRate_ = 48000.0;

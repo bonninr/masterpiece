@@ -1210,3 +1210,4 @@ countries: nl be sr
 "Every pipe..." = "Elke pijp..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle pijpen van de pijpenrij tegelijk, om hun niveau of stemming over het bereik te tekenen"
 "Voicing: every pipe" = "Intonatie: elke pijp"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Ingangsniveau horizontaal, uitgangsniveau verticaal. De stip is het niveau dat nu klinkt; de rode balk eronder is de reductie."
