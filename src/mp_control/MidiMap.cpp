@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstdio>
+#include <set>
 #include <sstream>
 
 namespace mp {
@@ -1296,6 +1297,70 @@ bool MidiMap::fromText(const std::string& text) {
     bind(b);
   }
   return !anyBad;
+}
+
+std::unordered_map<Id, Id> switchMidiOwners(const OrganModel& model) {
+  // A plain follow: unconditional, on the source's engaged state, engaging
+  // and disengaging the destination with it (1/2 or 4/7).
+  std::set<std::pair<Id, Id>> follows;
+  std::unordered_map<Id, std::vector<Id>> followedBy;  // destination -> sources
+  for (const auto& l : model.switchLinkages) {
+    if (l.conditionSwitchId != 0 || !l.sourceWhenEngaged) continue;
+    const bool engages = l.engageAction == 1 || l.engageAction == 4;
+    const bool disengages = l.disengageAction == 2 || l.disengageAction == 7;
+    if (engages && disengages && follows.insert({l.sourceSwitchId, l.destSwitchId}).second)
+      followedBy[l.destSwitchId].push_back(l.sourceSwitchId);
+  }
+  std::unordered_map<Id, Id> owners;
+  for (const auto& [copyId, copy] : model.switches) {
+    if (copy.accessibleForInput) continue;
+    const auto sources = followedBy.find(copyId);
+    if (sources == followedBy.end()) continue;
+    Id owner = 0;
+    int found = 0;
+    for (const Id from : sources->second) {
+      if (follows.count({copyId, from}) == 0) continue;
+      const auto stop = model.switches.find(from);
+      if (stop == model.switches.end() || !stop->second.accessibleForInput) continue;
+      owner = from;
+      ++found;
+    }
+    if (found == 1) owners[copyId] = owner;
+  }
+  return owners;
+}
+
+int moveSwitchMidiToOwners(MidiMap& map, const std::unordered_map<Id, Id>& owners) {
+  const auto kind = MidiTargetKind::Switch;
+  int moved = 0;
+  for (const auto& [copyId, owner] : owners) {
+    const auto received = map.bindingsFor(kind, copyId);
+    if (!received.empty()) {
+      std::vector<MidiBinding> rows;
+      for (const MidiBinding* b : map.bindingsFor(kind, owner)) rows.push_back(*b);
+      for (const MidiBinding* b : received) rows.push_back(*b);
+      moved += static_cast<int>(received.size());
+      map.unbindTarget(kind, copyId);
+      map.setBindingsFor(kind, owner, rows);
+    }
+    auto sent = map.sendsFor(kind, copyId);
+    if (!sent.empty()) {
+      auto rows = map.sendsFor(kind, owner);
+      moved += static_cast<int>(sent.size());
+      rows.insert(rows.end(), sent.begin(), sent.end());
+      map.setSendsFor(kind, copyId, {});
+      map.setSendsFor(kind, owner, rows);
+    }
+    auto keys = map.shortcutsFor(kind, copyId);
+    if (!keys.empty()) {
+      auto rows = map.shortcutsFor(kind, owner);
+      moved += static_cast<int>(keys.size());
+      rows.insert(rows.end(), keys.begin(), keys.end());
+      map.setShortcutsFor(kind, copyId, {});
+      map.setShortcutsFor(kind, owner, rows);
+    }
+  }
+  return moved;
 }
 
 } // namespace mp

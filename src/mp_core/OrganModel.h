@@ -429,6 +429,9 @@ struct Switch {
   int asgnCode = 0;
   bool rememberState = false;
   bool clickable = true;
+  // Whether the console's MIDI may drive it. A copy of a stop drawn on a
+  // second page is marked N: the organ's MIDI belongs to the stop it mirrors.
+  bool accessibleForInput = true;
   // A switch the program provides rather than the organ: a program coupler
   // between two manuals, which the organ's own definition does not name.
   // The editor and the stop counts tell them apart from the organ's own.

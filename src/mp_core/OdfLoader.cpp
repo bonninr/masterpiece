@@ -1128,6 +1128,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     sw.asgnCode = fieldInt(row, "DefaultInputOutputSwitchAsgnCode", "c", 0);
     sw.rememberState = fieldBool(row, "RememberStateFromLastLoad", "f", false);
     sw.clickable = fieldBool(row, "Clickable", "i", !isCompact(row));
+    sw.accessibleForInput = fieldBool(row, "AccessibleForInput", "g", true);
     // [verified against the Nancy ODF] the console binding.
     sw.dispInstanceId = fieldInt(row, "Disp_ImageSetInstanceID", "k", 0);
     sw.dispIndexEngaged = fieldInt(row, "Disp_ImageSetIndexEngaged", "l", 0);

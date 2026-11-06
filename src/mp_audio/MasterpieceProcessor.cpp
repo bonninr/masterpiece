@@ -3644,6 +3644,7 @@ void MasterpieceProcessor::clearDefaultConsole() {
 
 bool MasterpieceProcessor::loadMidiMap() {
   midiMapRepaired_ = 0;
+  switchMidiOwner_ = switchMidiOwners(model_);
   // The last organ's stops and shoes go: their switch and control numbers
   // mean other things here. They lingered when this organ had no file.
   midiMap_.removeBindings([](const MidiBinding&) { return true; });
@@ -3661,6 +3662,11 @@ bool MasterpieceProcessor::loadMidiMap() {
   const auto text = f.loadFileAsString();
   const bool ok = midiMap_.fromText(text.toStdString());
   applyConsoleMidi();
+  // Events learned on a stop's copy on another page, before the two shared
+  // one set, join the stop's own; the next save writes them there.
+  if (const int moved = moveSwitchMidiToOwners(midiMap_, switchMidiOwner_); moved > 0)
+    juce::Logger::writeToLog("midi: " + juce::String(moved) +
+                             " event(s) of a stop's copy on another page moved to the stop");
   // A mapping saved for other things -- pistons, stops -- but no manuals.
   if (midiMap_.keyboardBindings().empty()) applyDefaultConsole();
 
