@@ -4133,6 +4133,29 @@ public:
   CompactTremulantRateTest()
     : Test("functional.odf.compact-tremulant-rate", Category::Functional) {}
   void run() override {
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+                 "<ObjectList ObjectType=\"Tremulant\">"
+                 "<o><a>1</a><b>left out</b><d>6.5e+0</d></o>"
+                 "<o><a>2</a><b>written</b><d>6.5e+0</d><e>4.5e+0</e></o>"
+                 "<Tremulant><TremulantID>3</TremulantID><Name>long</Name>"
+                 "<FrequencyWhenEngagedHz>6.5</FrequencyWhenEngagedHz></Tremulant>"
+                 "</ObjectList></Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "the definition loads");
+    MP_CHECK(m.tremulants.size() == 3, "all three tremulants are read");
+    MP_CHECK(m.tremulants.at(1).disengagedHz == 9.0, "no rate written means 9 Hz");
+    MP_CHECK(m.tremulants.at(2).disengagedHz == 4.5, "a written rate is kept");
+    MP_CHECK(m.tremulants.at(3).disengagedHz == 5.0, "a long-form row keeps its own default");
+  }
+};
+static CompactTremulantRateTest g_compactTremulantRate;
+
 // The format's own version decides what a layer's tag p holds: decibels up to
 // version 4, a percentage from version 5, where 100 leaves the depth alone.
 class FormatVersionLayerDepthTest final : public mp::test::Test {
@@ -4157,24 +4180,6 @@ public:
     mp::OdfLoader::Options o;
     mp::OrganModel m;
     mp::OdfDiagnostics d;
-    MP_CHECK(l.loadFromXmlString(
-                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
-                 "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
-                 "<ObjectList ObjectType=\"Tremulant\">"
-                 "<o><a>1</a><b>left out</b><d>6.5e+0</d></o>"
-                 "<o><a>2</a><b>written</b><d>6.5e+0</d><e>4.5e+0</e></o>"
-                 "<Tremulant><TremulantID>3</TremulantID><Name>long</Name>"
-                 "<FrequencyWhenEngagedHz>6.5</FrequencyWhenEngagedHz></Tremulant>"
-                 "</ObjectList></Hauptwerk>",
-                 "a.Organ_Hauptwerk_xml", o, m, d),
-             "the definition loads");
-    MP_CHECK(m.tremulants.size() == 3, "all three tremulants are read");
-    MP_CHECK(m.tremulants.at(1).disengagedHz == 9.0, "no rate written means 9 Hz");
-    MP_CHECK(m.tremulants.at(2).disengagedHz == 4.5, "a written rate is kept");
-    MP_CHECK(m.tremulants.at(3).disengagedHz == 5.0, "a long-form row keeps its own default");
-  }
-};
-static CompactTremulantRateTest g_compactTremulantRate;
     std::map<mp::Id, mp::PipeLayer> out;
     if (l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d) && m.ranks.count(7))
       for (const auto& pipe : m.ranks.at(7).pipes)
