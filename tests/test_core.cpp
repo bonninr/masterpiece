@@ -19363,6 +19363,93 @@ public:
 };
 static MidiLampFromProgramTest g_midiLampFromProgram;
 
+// A stop's name, or a control's value, sent to a console display in the
+// GrandOrgue messages (#928): F0 7D 01 for a 32-character display, F0 7D 19
+// for a 16-character one.
+class MidiDisplaySendTest final : public mp::test::Test {
+public:
+  MidiDisplaySendTest() : Test("functional.midi.display-send", Category::Functional) {}
+  void run() override {
+    mp::MidiSend lcd;
+    lcd.targetKind = mp::MidiTargetKind::Switch;
+    lcd.targetId = 1101;
+    lcd.kind = mp::MidiSourceKind::SysEx;
+    lcd.display = mp::MidiDisplay::Lcd;
+    lcd.number = 130;  // two bytes: 1, 2
+    lcd.low = 3;       // the colour
+    const auto bytes = mp::MidiMap::displayBytes(lcd, "Fl\xc3\xbbte 8");
+    const std::vector<uint8_t> head{0xF0, 0x7D, 0x01, 0x01, 0x02, 0x03, 'F', 'l', 'u', 't', 'e', ' ', '8', ' '};
+    MP_CHECK(bytes.size() == 39 && std::equal(head.begin(), head.end(), bytes.begin()) && bytes.back() == 0xF7 &&
+                 bytes[37] == ' ',
+             "a 32-character display: its id in two bytes, the colour, the name without its accent, padded");
+    MP_CHECK(mp::MidiMap::sendBytes(lcd, 1).empty(), "a display has no on and off messages of its own");
+
+    mp::MidiSend text = lcd;
+    text.display = mp::MidiDisplay::Text;
+    text.number = 5;
+    const auto shortOne = mp::MidiMap::displayBytes(text, "Principal 8 and something long");
+    MP_CHECK(shortOne.size() == 21 && shortOne[2] == 0x19 && shortOne[3] == 5 && shortOne[4] == 'P' &&
+                 shortOne[18] == 'd' && shortOne[19] == ' ' && shortOne[20] == 0xF7,
+             "a 16-character display: one id byte, the name cut at 16");
+
+    mp::MidiSend value = lcd;
+    value.targetKind = mp::MidiTargetKind::ContinuousControl;
+    value.targetId = 7;
+    value.high = 1;
+    MP_CHECK(mp::MidiMap::displayText(value, "Swell", 127) == "100 %" &&
+                 mp::MidiMap::displayText(value, "Swell", 64) == "50 %" &&
+                 mp::MidiMap::displayText(lcd, "Principal 8", 127) == "Principal 8",
+             "a value reads in per cent, a name as itself");
+
+    mp::MidiMap map;
+    map.setSendsFor(mp::MidiTargetKind::Switch, 1101, {lcd, text});
+    map.setSendsFor(mp::MidiTargetKind::ContinuousControl, 7, {value});
+    mp::MidiMap reread;
+    MP_CHECK(reread.fromText(map.toText()) &&
+                 (reread.sendsFor(mp::MidiTargetKind::Switch, 1101) == std::vector<mp::MidiSend>{lcd, text}) &&
+                 (reread.sendsFor(mp::MidiTargetKind::ContinuousControl, 7) == std::vector<mp::MidiSend>{value}),
+             "the displays are saved and read back");
+
+    // The processor writes the stop's name once, as the console starts over.
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    const juce::File global = mp::dataFolder().getChildFile("settings.mpglobal");
+    const bool had = global.existsAsFile();
+    const juce::String before = had ? global.loadFileAsString() : juce::String();
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadOrgan(odf, 0, false);
+      proc.prepareToPlay(48000.0, 256);
+      std::vector<std::vector<uint8_t>> sent;
+      proc.outgoingProbe = [&sent](const juce::MidiBuffer& b) {
+        for (const auto meta : b) {
+          const auto m = meta.getMessage();
+          sent.emplace_back(m.getRawData(), m.getRawData() + m.getRawDataSize());
+        }
+      };
+      juce::AudioBuffer<float> buf(2, 256);
+      auto block = [&] {
+        juce::MidiBuffer m;
+        buf.clear();
+        proc.processBlock(buf, m);
+      };
+      MP_CHECK(proc.displayNameOf(mp::MidiTargetKind::Switch, 1101) == "Principal 8", "a switch is named by its stop");
+      proc.midiMap().setSendsFor(mp::MidiTargetKind::Switch, 1101, {lcd});
+      block();
+      MP_CHECK(sent.size() == 1 && sent[0] == mp::MidiMap::displayBytes(lcd, "Principal 8"),
+               "the display shows the stop's name");
+      sent.clear();
+      proc.setSwitchEngaged(1101, true);
+      block();
+      MP_CHECK(sent.empty(), "drawing the stop leaves the display alone");
+      proc.outgoingProbe = nullptr;
+      proc.releaseResources();
+    }
+    if (had) global.replaceWithText(before);
+    else global.deleteFile();
+  }
+};
+static MidiDisplaySendTest g_midiDisplaySend;
+
 // A console's lamps show the organ that has just loaded: every stop learned on
 // the console sends its state once the load is done, so a lamp lit by the
 // organ before goes out, and a stop that comes up drawn is lit (#565).
