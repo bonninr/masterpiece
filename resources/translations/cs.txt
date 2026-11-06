@@ -1197,3 +1197,5 @@ countries: cz
 "On at" = "Zapnuto při"
 "The value your console sends for off" = "Hodnota, kterou váš hrací stůl posílá pro vypnutí"
 "The value your console sends for on" = "Hodnota, kterou váš hrací stůl posílá pro zapnutí"
+"Debounce ms" = "Odskok ms"
+"Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Milisekundy po stisku, během nichž se další stisk ignoruje: pro kontakt, který zakmitává. 0 je vypnuto."

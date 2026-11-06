@@ -1197,3 +1197,5 @@ countries: fr be ca ch lu mc
 "On at" = "Marche à"
 "The value your console sends for off" = "La valeur que votre console envoie pour l'arrêt"
 "The value your console sends for on" = "La valeur que votre console envoie pour la marche"
+"Debounce ms" = "Anti-rebond ms"
+"Milliseconds after a press in which a second press is ignored: for a contact that bounces. 0 is off." = "Millisecondes après un appui pendant lesquelles un second appui est ignoré : pour un contact qui rebondit. 0 désactive."

@@ -209,6 +209,13 @@ public:
         v->onValueChange = [this] { changed(); };
       }
       showValues();
+      // Contact chatter (#926): a second press within this time is dropped.
+      styleValue(debounce_, 0, 500);
+      debounce_.setValue(b.debounceMs, juce::dontSendNotification);
+      debounce_.setTooltip(TRANS("Milliseconds after a press in which a second press is ignored: for a "
+                                 "contact that bounces. 0 is off."));
+      addAndMakeVisible(debounce_);
+      debounce_.onValueChange = [this] { changed(); };
     } else {
       // A shoe's travel, closed to open: a console's pedal rarely sends the
       // whole 0..127 (#90 sent 55..127, so the box only half closed).
@@ -234,8 +241,9 @@ public:
 
   static std::vector<std::pair<juce::String, int>> columns(MidiTargetKind kind) {
     if (pressable(kind))
-      return {{TRANS("Device"), 130}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
-              {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84}, {"", 84}, {"", 28}};
+      return {{TRANS("Device"), 120}, {TRANS("Channel"), 64}, {TRANS("Event"), 110}, {TRANS("Number"), 90},
+              {TRANS("What it does"), 140}, {TRANS("Off at"), 84}, {TRANS("On at"), 84},
+              {TRANS("Debounce ms"), 84}, {"", 84}, {"", 28}};
     return {{TRANS("Device"), 150}, {TRANS("Channel"), 64}, {TRANS("Event"), 116}, {TRANS("Number"), 96},
             {TRANS("Closed at"), 72}, {TRANS("Open at"), 72}, {"", 60}, {"", 84}, {"", 28}};
   }
@@ -249,6 +257,7 @@ public:
       cells.push_back({&action_, cols[4].second});
       cells.push_back({&low_, cols[5].second});
       cells.push_back({&high_, cols[6].second});
+      cells.push_back({&debounce_, cols[7].second});
     } else {
       cells.push_back({&low_, cols[4].second});
       cells.push_back({&high_, cols[5].second});
@@ -283,6 +292,7 @@ public:
                            : MidiTrigger::Toggle;
       b.lowValue = static_cast<int>(low_.getValue());
       b.highValue = static_cast<int>(high_.getValue());
+      b.debounceMs = static_cast<int>(debounce_.getValue());
     } else {
       b.lowValue = static_cast<int>(low_.getValue());
       b.highValue = static_cast<int>(high_.getValue());
@@ -335,7 +345,7 @@ private:
   MidiTargetKind kind_;
   MidiBinding binding_;
   juce::ComboBox device_, channel_, event_, number_, action_;
-  juce::Slider low_, high_;
+  juce::Slider low_, high_, debounce_;
   juce::ToggleButton invert_{TRANS("Invert")};
   juce::TextButton listen_{TRANS("Listen")}, delete_{"X"};
 };
@@ -1224,8 +1234,9 @@ juce::String MidiEventDialog::targetName(const MasterpieceProcessor& p, MidiTarg
 void MidiEventDialog::show(MasterpieceProcessor& p, MidiTargetKind kind, Id id,
                            const juce::String& name) {
   auto content = std::make_unique<MidiEventContent>(p, kind, id);
-  // Wide enough for a switch's or a piston's row with its off and on values.
-  content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 920 : 760, 500);
+  // Wide enough for a switch's or a piston's row with its off and on values
+  // and its debounce time.
+  content->setSize(MidiMap::hasSendState(kind) || pressable(kind) ? 990 : 760, 500);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());
   o.dialogTitle = (name.isNotEmpty() ? name : objectName(p, kind, id)) + " - MIDI";
