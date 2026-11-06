@@ -118,6 +118,44 @@ class VoicingSet {
   Map divisions_;
 };
 
+// The two adjustments a pipe of its own has, level and tuning, as the view of
+// every pipe of a rank shows them one at a time (#849).
+enum class VoicingField { Level, Tuning };
+
+inline float voicingValue(const PipeVoicing& v, VoicingField f) {
+  return f == VoicingField::Level ? v.gainDb : v.tuningCents;
+}
+
+inline void setVoicingValue(PipeVoicing& v, VoicingField f, float value) {
+  if (f == VoicingField::Level) v.gainDb = value;
+  else v.tuningCents = value;
+}
+
+// A stroke across the pipes of a rank, as a drag over the view of every pipe
+// draws it: from the pipe at `from` holding `fromValue` to the pipe at `to`
+// holding `toValue`, `pipes` in the order of their notes. Every pipe between
+// takes its place on the straight line, so a quick drag that passes over
+// columns between two mouse events leaves none of them behind. Only the field
+// drawn changes; the pipe's other adjustments stay.
+inline void drawPipeStroke(VoicingSet& set, const std::vector<Id>& pipes, int from, float fromValue, int to,
+                           float toValue, VoicingField field) {
+  const int n = static_cast<int>(pipes.size());
+  if (n == 0) return;
+  from = std::clamp(from, 0, n - 1);
+  to = std::clamp(to, 0, n - 1);
+  const int step = to >= from ? 1 : -1;
+  const int span = std::abs(to - from);
+  for (int i = from;; i += step) {
+    const float t = span == 0 ? 1.0f : static_cast<float>(std::abs(i - from)) / static_cast<float>(span);
+    // Tenths, the steps the sliders and the console buttons land on.
+    const float value = std::round((fromValue + (toValue - fromValue) * t) * 10.0f) / 10.0f;
+    PipeVoicing pv = set.pipe(pipes[static_cast<size_t>(i)]);
+    setVoicingValue(pv, field, value);
+    set.setPipe(pipes[static_cast<size_t>(i)], pv);
+    if (i == to) break;
+  }
+}
+
 // Cents to a frequency ratio. A pipe pulled 10 cents flat plays at 0.9942 of
 // its pitch; this is the whole of what tuningCents does.
 inline double centsRatio(double cents) {

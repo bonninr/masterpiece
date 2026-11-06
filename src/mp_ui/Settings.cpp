@@ -1868,12 +1868,7 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
   styleLabel(keyboardsLabel_, TRANS("Keyboards"));
 
   addAndMakeVisible(output_);
-  output_.onChange = [this] {
-    // The processor holds the port and keeps the choice: the console's lamps
-    // and displays follow it after this window closes, and at the next start.
-    const int id = output_.getSelectedId();
-    proc_.openMidiOutput(id > 1 ? output_.getItemText(output_.indexOfItemId(id)) : juce::String());
-  };
+  output_.onClick = [this] { showOutputMenu(); };
 
   addAndMakeVisible(feedback_);
   feedback_.setToggleState(proc_.midiFeedbackEnabled(), juce::dontSendNotification);
@@ -2445,22 +2440,42 @@ void MidiPanel::refresh() {
   }
   showSharedChannels();
 
-  output_.clear(juce::dontSendNotification);
-  output_.addItem(TRANS("None"), 1);
-  int id = 2, chosen = 1;
-  for (const auto& out : juce::MidiOutput::getAvailableDevices()) {
-    if (out.name == proc_.midiOutputName()) chosen = id;
-    output_.addItem(out.name, id++);
-  }
-  // The port chosen before, though it is not plugged in now: the choice is
-  // kept, and shown as it is.
-  if (chosen == 1 && proc_.midiOutputName().isNotEmpty()) {
-    chosen = id;
-    output_.addItem(proc_.midiOutputName(), id++);
-  }
-  output_.setSelectedId(chosen, juce::dontSendNotification);
+  showOutputs();
   applyPart();
   resized();
+}
+
+void MidiPanel::showOutputs() {
+  const auto& names = proc_.midiOutputNames();
+  output_.setButtonText(names.isEmpty() ? TRANS("None") : names.joinIntoString(", "));
+}
+
+void MidiPanel::showOutputMenu() {
+  // The ports plugged in, then those chosen before and not plugged in now:
+  // the choice is kept, and shown as it is.
+  juce::StringArray ports;
+  for (const auto& out : juce::MidiOutput::getAvailableDevices()) ports.addIfNotAlreadyThere(out.name);
+  for (const auto& name : proc_.midiOutputNames()) ports.addIfNotAlreadyThere(name);
+  const auto& chosen = proc_.midiOutputNames();
+  juce::PopupMenu menu;
+  menu.addItem(1, TRANS("None"), true, chosen.isEmpty());
+  menu.addSeparator();
+  for (int i = 0; i < ports.size(); ++i) menu.addItem(i + 2, ports[i], true, chosen.contains(ports[i]));
+  juce::Component::SafePointer<MidiPanel> safe(this);
+  menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&output_), [safe, ports](int result) {
+    if (safe == nullptr || result == 0) return;
+    // The processor holds the ports and keeps the choice: the console's lamps
+    // and displays follow it after this window closes, and at the next start.
+    juce::StringArray next;
+    if (result > 1) {
+      next = safe->proc_.midiOutputNames();
+      const juce::String port = ports[result - 2];
+      if (next.contains(port)) next.removeString(port);
+      else next.add(port);
+    }
+    safe->proc_.openMidiOutputs(next);
+    safe->showOutputs();
+  });
 }
 
 void MidiPanel::timerCallback() {
@@ -2661,6 +2676,379 @@ void MidiPanel::resized() {
 
 // --------------------------------------------------------------- voicing
 
+namespace {
+
+juce::String noteName(int midiNote) {
+  return juce::MidiMessage::getMidiNoteName(midiNote, true, true, 4);
+}
+
+// Every pipe of one rank at once, a column each, lowest note on the left
+// (#849): how a voicer in a church evens out a rank, seeing the whole compass
+// and drawing across it. A column shows the pipe's own level or tuning; the
+// rank's trim is added on top of it, as everywhere on the Voicing tab.
+class RankPipesView final : public juce::Component, private juce::Timer {
+public:
+  std::function<void()> onChanged;          // a pipe's value was changed here
+  std::function<void(int note)> onChosen;   // a pipe was clicked or chosen with the keys
+
+  explicit RankPipesView(MasterpieceProcessor& p) : proc_(p) {
+    setWantsKeyboardFocus(true);
+    setTitle(TRANS("Every pipe of the rank"));
+    startTimerHz(10);
+  }
+
+  void setRank(Id rankId) {
+    rankId_ = rankId;
+    pipes_.clear();
+    notes_.clear();
+    const auto it = proc_.organModel().ranks.find(rankId);
+    if (it != proc_.organModel().ranks.end()) {
+      std::vector<std::pair<int, Id>> byNote;
+      for (const auto& pipe : it->second.pipes) byNote.push_back({pipe.midiNote, pipe.pipeId});
+      std::sort(byNote.begin(), byNote.end());
+      for (const auto& [note, id] : byNote) {
+        notes_.push_back(note);
+        pipes_.push_back(id);
+      }
+    }
+    selected_ = pipes_.empty() ? -1 : juce::jlimit(0, static_cast<int>(pipes_.size()) - 1, selected_);
+    repaint();
+  }
+
+  void setField(VoicingField f) {
+    field_ = f;
+    repaint();
+  }
+  VoicingField field() const { return field_; }
+  float range() const { return field_ == VoicingField::Level ? 12.0f : 50.0f; }
+  juce::String unit() const { return field_ == VoicingField::Level ? " dB" : " cents"; }
+
+  // The note and value of the pipe chosen, for the line under the view.
+  juce::String describeSelected() const {
+    if (selected_ < 0) return {};
+    const size_t i = static_cast<size_t>(selected_);
+    const float v = valueAt(selected_);
+    return noteName(notes_[i]) + " (" + juce::String(notes_[i]) + "):  " +
+           (v > 0.0f ? "+" : "") + juce::String(v, 1) + unit();
+  }
+
+  void selectNote(int note) {
+    for (size_t i = 0; i < notes_.size(); ++i)
+      if (notes_[i] == note) {
+        selected_ = static_cast<int>(i);
+        repaint();
+        return;
+      }
+  }
+
+  void resetAll() {
+    {
+      const MasterpieceProcessor::AudioLock audio(proc_);
+      for (const Id pipe : pipes_) {
+        PipeVoicing pv = proc_.voicing().live().pipe(pipe);
+        setVoicingValue(pv, field_, 0.0f);
+        proc_.voicing().live().setPipe(pipe, pv);
+      }
+    }
+    changed(true);
+  }
+
+  void paint(juce::Graphics& g) override {
+    g.fillAll(juce::Colour(0xff15171c));
+    const auto plot = plotArea();
+    g.setFont(juce::FontOptions(12.0f));
+    // The scale: the middle line is the pipe as the set has it.
+    const float r = range();
+    for (const float v : {-r, -r / 2, 0.0f, r / 2, r}) {
+      const float y = yOf(v);
+      g.setColour(v == 0.0f ? juce::Colours::grey : juce::Colour(0xff2c3038));
+      g.drawHorizontalLine(static_cast<int>(y), static_cast<float>(plot.getX()), static_cast<float>(plot.getRight()));
+      g.setColour(juce::Colours::grey);
+      g.drawText((v > 0 ? "+" : "") + juce::String(v, 0), 0, static_cast<int>(y) - 7, plot.getX() - 6, 14,
+                 juce::Justification::centredRight);
+    }
+    if (pipes_.empty()) {
+      g.setColour(juce::Colours::grey);
+      g.drawText(TRANS("This rank has no pipes"), plot, juce::Justification::centred);
+      return;
+    }
+    const int sounding = proc_.testNoteKey();
+    const float w = columnWidth();
+    const float zero = yOf(0.0f);
+    for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) {
+      const float x = static_cast<float>(plot.getX()) + w * static_cast<float>(i);
+      const auto column = juce::Rectangle<float>(x, static_cast<float>(plot.getY()), w, static_cast<float>(plot.getHeight()));
+      const int note = notes_[static_cast<size_t>(i)];
+      // The black keys a shade darker, so the compass reads like a keyboard.
+      if (juce::MidiMessage::isMidiNoteBlack(note)) {
+        g.setColour(juce::Colour(0xff1b1e24));
+        g.fillRect(column);
+      }
+      if (note == sounding) {
+        g.setColour(juce::Colour(0xff2e4a3a));
+        g.fillRect(column);
+      }
+      const float y = yOf(valueAt(i));
+      g.setColour(juce::Colour(0xffe8a33d));
+      g.fillRect(juce::Rectangle<float>(x + 1.0f, std::min(y, zero), std::max(1.0f, w - 2.0f),
+                                        std::max(1.0f, std::abs(y - zero))));
+      if (i == selected_) {
+        g.setColour(juce::Colours::white);
+        g.drawRect(column.reduced(0.5f), 1.5f);
+      }
+      // A name under every C, and under every pipe when there is room.
+      if (note % 12 == 0 || w >= 30.0f) {
+        g.setColour(note % 12 == 0 ? juce::Colours::lightgrey : juce::Colours::grey);
+        g.drawText(noteName(note), juce::Rectangle<float>(x - 10.0f, static_cast<float>(plot.getBottom()) + 2.0f,
+                                                          w + 20.0f, 14.0f),
+                   juce::Justification::centred);
+      }
+    }
+  }
+
+  void mouseDown(const juce::MouseEvent& e) override {
+    grabKeyboardFocus();
+    const int i = indexAt(e.x);
+    if (i < 0) return;
+    choose(i);
+    lastIndex_ = i;
+    lastValue_ = valueFromY(e.y);
+    stroke(i, lastValue_, i, lastValue_);
+  }
+
+  void mouseDrag(const juce::MouseEvent& e) override {
+    if (lastIndex_ < 0) return;
+    const int i = juce::jlimit(0, static_cast<int>(pipes_.size()) - 1, indexAt(e.x, true));
+    const float v = valueFromY(e.y);
+    stroke(lastIndex_, lastValue_, i, v);
+    lastIndex_ = i;
+    lastValue_ = v;
+    if (i != selected_) choose(i);
+  }
+
+  void mouseUp(const juce::MouseEvent&) override {
+    if (lastIndex_ >= 0) proc_.restartTestNote();
+    lastIndex_ = -1;
+  }
+
+  // A double-click puts the pipe back as the set has it.
+  void mouseDoubleClick(const juce::MouseEvent& e) override {
+    const int i = indexAt(e.x);
+    if (i >= 0) setOne(i, 0.0f);
+  }
+
+  void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override {
+    const int i = indexAt(e.x);
+    if (i < 0 || wheel.deltaY == 0.0f) return;
+    choose(i);
+    setOne(i, valueAt(i) + (wheel.deltaY > 0 ? stepSize() : -stepSize()));
+  }
+
+  bool keyPressed(const juce::KeyPress& key) override {
+    if (pipes_.empty()) return false;
+    const int last = static_cast<int>(pipes_.size()) - 1;
+    const int code = key.getKeyCode();
+    if (code == juce::KeyPress::leftKey || code == juce::KeyPress::rightKey) {
+      choose(juce::jlimit(0, last, std::max(0, selected_) + (code == juce::KeyPress::leftKey ? -1 : 1)));
+      return true;
+    }
+    if (selected_ < 0) return false;
+    if (code == juce::KeyPress::upKey || code == juce::KeyPress::downKey) {
+      setOne(selected_, valueAt(selected_) + (code == juce::KeyPress::upKey ? stepSize() : -stepSize()));
+      return true;
+    }
+    if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey) {
+      setOne(selected_, 0.0f);
+      return true;
+    }
+    return false;
+  }
+
+private:
+  void timerCallback() override {
+    // A slider, a console button or the other slot of A/B may have moved a
+    // pipe; the test note may have moved to another key.
+    std::vector<float> now;
+    now.reserve(pipes_.size() + 1);
+    for (int i = 0; i < static_cast<int>(pipes_.size()); ++i) now.push_back(valueAt(i));
+    now.push_back(static_cast<float>(proc_.testNoteKey()));
+    if (now != shown_) {
+      shown_ = std::move(now);
+      repaint();
+    }
+  }
+
+  juce::Rectangle<int> plotArea() const { return getLocalBounds().withTrimmedLeft(40).withTrimmedRight(6).withTrimmedTop(8).withTrimmedBottom(20); }
+  float columnWidth() const {
+    return pipes_.empty() ? 1.0f : static_cast<float>(plotArea().getWidth()) / static_cast<float>(pipes_.size());
+  }
+  float yOf(float value) const {
+    const auto plot = plotArea().toFloat();
+    return plot.getCentreY() - juce::jlimit(-1.0f, 1.0f, value / range()) * plot.getHeight() * 0.5f;
+  }
+  float valueFromY(int y) const {
+    const auto plot = plotArea().toFloat();
+    float v = (plot.getCentreY() - static_cast<float>(y)) / (plot.getHeight() * 0.5f) * range();
+    v = juce::jlimit(-range(), range(), v);
+    // Near the middle is the middle: putting a pipe back is the commonest stroke.
+    if (std::abs(v) < range() * 0.03f) v = 0.0f;
+    return v;
+  }
+  float stepSize() const { return field_ == VoicingField::Level ? 0.5f : 1.0f; }
+  int indexAt(int x, bool clampOutside = false) const {
+    const auto plot = plotArea();
+    if (pipes_.empty() || (!clampOutside && (x < plot.getX() || x >= plot.getRight()))) return -1;
+    return juce::jlimit(0, static_cast<int>(pipes_.size()) - 1,
+                        static_cast<int>(static_cast<float>(x - plot.getX()) / columnWidth()));
+  }
+  float valueAt(int i) const {
+    return voicingValue(proc_.voicing().live().pipe(pipes_[static_cast<size_t>(i)]), field_);
+  }
+  void choose(int i) {
+    selected_ = i;
+    proc_.setVoicingTarget(rankId_, pipes_[static_cast<size_t>(i)]);
+    if (onChosen) onChosen(notes_[static_cast<size_t>(i)]);
+    repaint();
+  }
+  void stroke(int from, float fromValue, int to, float toValue) {
+    {
+      const MasterpieceProcessor::AudioLock audio(proc_);
+      drawPipeStroke(proc_.voicing().live(), pipes_, from, fromValue, to, toValue, field_);
+    }
+    changed(false);
+  }
+  void setOne(int i, float value) {
+    value = juce::jlimit(-range(), range(), value);
+    stroke(i, value, i, value);
+    proc_.restartTestNote();
+  }
+  void changed(bool restart) {
+    // The pipes sounding take a new level in a short fade; a new tuning is
+    // heard when the test note is struck again.
+    proc_.voicingChanged();
+    if (restart) proc_.restartTestNote();
+    repaint();
+    if (onChanged) onChanged();
+  }
+
+  MasterpieceProcessor& proc_;
+  Id rankId_ = 0;
+  std::vector<Id> pipes_;
+  std::vector<int> notes_;
+  VoicingField field_ = VoicingField::Level;
+  int selected_ = -1;
+  int lastIndex_ = -1;
+  float lastValue_ = 0.0f;
+  std::vector<float> shown_;
+};
+
+// The window around the view: which rank, level or tuning, and the pipe
+// chosen in words.
+class RankPipesContent final : public juce::Component, private juce::Timer {
+public:
+  RankPipesContent(MasterpieceProcessor& p, Id rankId, std::function<void()> changed,
+                   std::function<void(Id rank, int note)> chosen)
+      : proc_(p), view_(p), changed_(std::move(changed)), chosen_(std::move(chosen)) {
+    addAndMakeVisible(rankLabel_);
+    styleLabel(rankLabel_, TRANS("Rank"));
+    addAndMakeVisible(rank_);
+    for (const auto& [id, r] : proc_.organModel().ranks) rankIds_.push_back(id);
+    std::sort(rankIds_.begin(), rankIds_.end());
+    for (size_t i = 0; i < rankIds_.size(); ++i)
+      rank_.addItem(rankTitle(proc_.organModel(), rankIds_[i]), static_cast<int>(i) + 1);
+    rank_.onChange = [this] { showRank(); };
+    addAndMakeVisible(fieldLabel_);
+    styleLabel(fieldLabel_, TRANS("Shows"));
+    addAndMakeVisible(field_);
+    field_.addItem(TRANS("Level"), 1);
+    field_.addItem(TRANS("Tuning"), 2);
+    field_.setSelectedId(1, juce::dontSendNotification);
+    field_.onChange = [this] {
+      view_.setField(field_.getSelectedId() == 2 ? VoicingField::Tuning : VoicingField::Level);
+      showSelected();
+    };
+    addAndMakeVisible(reset_);
+    reset_.setTooltip(TRANS("Puts every pipe of this rank back as the set has it, for the value shown"));
+    reset_.onClick = [this] { view_.resetAll(); };
+    addAndMakeVisible(view_);
+    view_.onChanged = [this] {
+      showSelected();
+      if (changed_) changed_();
+    };
+    view_.onChosen = [this](int note) {
+      showSelected();
+      if (chosen_) chosen_(currentRank(), note);
+    };
+    addAndMakeVisible(selected_);
+    styleLabel(selected_, "");
+    addAndMakeVisible(help_);
+    styleNote(help_, TRANS("Drag across the pipes to set them; a double-click puts one back. "
+                           "The wheel and the arrow keys move the pipe chosen in steps. "
+                           "With Test note on, the key played is marked. The rank's own trim is added to each pipe."));
+    selectRank(rankId);
+    startTimerHz(10);
+  }
+
+  void selectRank(Id rankId) {
+    const auto it = std::find(rankIds_.begin(), rankIds_.end(), rankId);
+    rank_.setSelectedId(it == rankIds_.end() ? 1 : static_cast<int>(it - rankIds_.begin()) + 1,
+                        juce::dontSendNotification);
+    showRank();
+  }
+
+  void resized() override {
+    auto r = getLocalBounds().reduced(12);
+    auto row = r.removeFromTop(kRow);
+    rankLabel_.setBounds(row.removeFromLeft(50));
+    rank_.setBounds(row.removeFromLeft(320).reduced(0, 1));
+    row.removeFromLeft(kGap * 2);
+    fieldLabel_.setBounds(row.removeFromLeft(56));
+    field_.setBounds(row.removeFromLeft(120).reduced(0, 1));
+    reset_.setBounds(row.removeFromRight(170).reduced(0, 1));
+    r.removeFromTop(kGap);
+    help_.setBounds(r.removeFromBottom(36));
+    selected_.setBounds(r.removeFromBottom(kRow));
+    view_.setBounds(r);
+  }
+
+private:
+  Id currentRank() const {
+    const int idx = rank_.getSelectedId() - 1;
+    return idx >= 0 && idx < static_cast<int>(rankIds_.size()) ? rankIds_[static_cast<size_t>(idx)] : 0;
+  }
+  void showRank() {
+    view_.setRank(currentRank());
+    showSelected();
+  }
+  void showSelected() {
+    const auto text = view_.describeSelected();
+    selected_.setText(text.isEmpty() ? TRANS("Click a pipe, or play it with Test note on") : text,
+                      juce::dontSendNotification);
+  }
+  // The key played with the test note chooses its pipe here too.
+  void timerCallback() override {
+    const int key = proc_.testNoteKey();
+    if (key == shownKey_) return;
+    shownKey_ = key;
+    if (key >= 0 && proc_.voicingRank() == currentRank()) {
+      view_.selectNote(key);
+      showSelected();
+    }
+  }
+
+  MasterpieceProcessor& proc_;
+  RankPipesView view_;
+  std::function<void()> changed_;
+  std::function<void(Id, int)> chosen_;
+  juce::Label rankLabel_, fieldLabel_, selected_, help_;
+  juce::ComboBox rank_, field_;
+  juce::TextButton reset_{TRANS("Reset these pipes")};
+  std::vector<Id> rankIds_;
+  int shownKey_ = -1;
+};
+
+} // namespace
+
 VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   addAndMakeVisible(heading_);
   styleLabel(heading_, TRANS("Voicing"));
@@ -2705,6 +3093,9 @@ VoicingPanel::VoicingPanel(MasterpieceProcessor& p) : proc_(p) {
   note_.updateText();
   note_.setEnabled(false);
   note_.onValueChange = [this] { loadCurrentIntoSliders(); };
+  addAndMakeVisible(everyPipe_);
+  everyPipe_.setTooltip(TRANS("Every pipe of the rank at once, to draw their levels or tunings across the compass"));
+  everyPipe_.onClick = [this] { showEveryPipe(); };
 
   addAndMakeVisible(gainLabel_);
   styleLabel(gainLabel_, TRANS("Level"));
@@ -2971,6 +3362,43 @@ void VoicingPanel::pushTarget() {
   proc_.restartTestNote();
 }
 
+void VoicingPanel::showEveryPipe() {
+  const Id rankId = rankIds_.empty() ? 0
+                                     : rankIds_[static_cast<size_t>(juce::jlimit(
+                                           0, static_cast<int>(rankIds_.size()) - 1, rank_.getSelectedId() - 1))];
+  if (everyPipeWindow_ != nullptr) {
+    if (auto* content = dynamic_cast<RankPipesContent*>(everyPipeWindow_->getContentComponent()))
+      content->selectRank(rankId);
+    everyPipeWindow_->toFront(true);
+    return;
+  }
+  juce::Component::SafePointer<VoicingPanel> self(this);
+  auto content = std::make_unique<RankPipesContent>(
+      proc_, rankId,
+      [self] {
+        if (self != nullptr) self->loadCurrentIntoSliders();
+      },
+      // A pipe chosen there is the pipe these sliders work.
+      [self](Id rank, int note) {
+        if (self == nullptr) return;
+        const auto it = std::find(self->rankIds_.begin(), self->rankIds_.end(), rank);
+        if (it != self->rankIds_.end())
+          self->rank_.setSelectedId(static_cast<int>(it - self->rankIds_.begin()) + 1, juce::dontSendNotification);
+        if (self->scope_.getSelectedId() != 2) self->scope_.setSelectedId(2, juce::sendNotificationSync);
+        self->note_.setValue(note, juce::dontSendNotification);
+        self->loadCurrentIntoSliders();
+      });
+  content->setSize(980, 440);
+  juce::DialogWindow::LaunchOptions o;
+  o.content.setOwned(content.release());
+  o.dialogTitle = TRANS("Voicing: every pipe");
+  o.dialogBackgroundColour = juce::Colour(0xff1b1e24);
+  o.escapeKeyTriggersCloseButton = true;
+  o.useNativeTitleBar = true;
+  o.resizable = true;
+  everyPipeWindow_ = launchDialog(o);
+}
+
 // The four steps as console buttons; the mapping is the console's, the same
 // on every organ, and acts on whatever this tab has chosen.
 void VoicingPanel::midiMenu() {
@@ -3088,6 +3516,8 @@ void VoicingPanel::resized() {
   row.removeFromLeft(kGap);
   noteLabel_.setBounds(row.removeFromLeft(80));
   note_.setBounds(row.removeFromLeft(110).reduced(0, 1));
+  row.removeFromLeft(kGap);
+  everyPipe_.setBounds(row.removeFromLeft(120).reduced(0, 1));
   r.removeFromTop(kGap);
 
   row = r.removeFromTop(kRow);

@@ -57,6 +57,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using mp::test::Category;
 
@@ -4188,6 +4192,59 @@ public:
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
+
+// The format's own version decides what a layer's tag p holds: decibels up to
+// version 4, a percentage from version 5, where 100 leaves the depth alone.
+class FormatVersionLayerDepthTest final : public mp::test::Test {
+public:
+  FormatVersionLayerDepthTest()
+    : Test("functional.odf.format-version-layer-depth", Category::Functional) {}
+
+  static std::map<mp::Id, mp::PipeLayer> layers(const std::string& rootAttributes) {
+    const std::string odf =
+        "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\"" + rootAttributes + ">"
+        "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
+        "<ObjectList ObjectType=\"Rank\"><o><a>7</a><b>flute</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01\"><o><a>71</a><b>7</b></o>"
+        "<o><a>72</a><b>7</b></o><o><a>73</a><b>7</b></o></ObjectList>"
+        "<ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\"><o><a>711</a><b>71</b></o>"
+        "<o><a>721</a><b>72</b><p>5e+1</p></o>"
+        "<Pipe_SoundEngine01_Layer><LayerID>731</LayerID><PipeID>73</PipeID>"
+        "<AmpLvl_TremulantModDepthAdjustPercent>25</AmpLvl_TremulantModDepthAdjustPercent>"
+        "<AudioOut_OptimalMemoryChannelFormatCode>1</AudioOut_OptimalMemoryChannelFormatCode>"
+        "</Pipe_SoundEngine01_Layer></ObjectList></Hauptwerk>";
+    mp::OdfLoader l;
+    mp::OdfLoader::Options o;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    std::map<mp::Id, mp::PipeLayer> out;
+    if (l.loadFromXmlString(odf, "a.Organ_Hauptwerk_xml", o, m, d) && m.ranks.count(7))
+      for (const auto& pipe : m.ranks.at(7).pipes)
+        for (const auto& layer : pipe.layers) out[layer.layerId] = layer;
+    return out;
+  }
+
+  void run() override {
+    auto v5 = layers(" FileFormatVersion=\"5.00\"");
+    MP_CHECK(v5.size() == 3, "the version 5 definition loads");
+    MP_CHECK(v5[711].tremAmpDepthAdjustPct == 100.0 && v5[711].tremAmpDepthAdjustDb == 0.0,
+             "a version 5 layer with no depth written leaves the depth alone");
+    MP_CHECK(v5[721].tremAmpDepthAdjustPct == 50.0 && v5[721].tremAmpDepthAdjustDb == 0.0,
+             "tag p of a version 5 layer is a percentage");
+    MP_CHECK(v5[731].tremAmpDepthAdjustPct == 25.0 && v5[731].optimalChannel == 1,
+             "the long spellings of version 5 are read");
+    auto v7 = layers(" FileFormatVersion=\"7.00\"");
+    MP_CHECK(v7[721].tremAmpDepthAdjustPct == 50.0, "and so is it from version 7");
+
+    auto v4 = layers(" FileFormatVersion=\"4.20014\"");
+    MP_CHECK(v4[721].tremAmpDepthAdjustDb == 50.0 && v4[721].tremAmpDepthAdjustPct == 100.0,
+             "tag p of a version 4 layer stays in decibels");
+    auto none = layers("");
+    MP_CHECK(none[721].tremAmpDepthAdjustDb == 50.0 && none[721].tremAmpDepthAdjustPct == 100.0,
+             "with no version stated, decibels");
+  }
+};
+static FormatVersionLayerDepthTest g_formatVersionLayerDepth;
 
 // A key let go inside a loop's fade: the sustain goes on under the release,
 // through the rest of its fade and over the seam, with no step on the way.
@@ -11685,6 +11742,51 @@ public:
   }
 };
 
+// The view of every pipe of a rank (#849): a drag draws a straight stroke
+// across the columns, and every pipe it passes takes its place on the line.
+class VoicingPipeStrokeTest final : public mp::test::Test {
+public:
+  VoicingPipeStrokeTest() : Test("functional.voicing.pipe-stroke", Category::Functional) {}
+
+  void run() override {
+    const std::vector<mp::Id> pipes{301, 302, 303, 304, 305};
+    mp::VoicingSet v;
+    mp::PipeVoicing tuned;
+    tuned.tuningCents = 4.0f;
+    v.setPipe(302, tuned);
+
+    // From the first pipe at -4 dB to the last at 0: the three between are
+    // on the line, though the mouse only reported the ends.
+    mp::drawPipeStroke(v, pipes, 0, -4.0f, 4, 0.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(301).gainDb == -4.0f && v.pipe(302).gainDb == -3.0f && v.pipe(303).gainDb == -2.0f &&
+                 v.pipe(304).gainDb == -1.0f,
+             "every pipe the stroke passes takes its place on the line");
+    MP_CHECK(v.pipes().count(305) == 0, "a pipe drawn to 0 stays unvoiced");
+    MP_CHECK(v.pipe(302).tuningCents == 4.0f, "the level drawn leaves the pipe's tuning alone");
+
+    // Right to left, as a drag back across the rank goes.
+    mp::drawPipeStroke(v, pipes, 3, 10.0f, 1, 0.0f, mp::VoicingField::Tuning);
+    MP_CHECK(v.pipe(304).tuningCents == 10.0f && v.pipe(303).tuningCents == 5.0f && v.pipe(302).tuningCents == 0.0f,
+             "a stroke drawn leftwards fills the same way");
+    MP_CHECK(v.pipe(301).tuningCents == 0.0f && v.pipe(305).tuningCents == 0.0f,
+             "the pipes beyond its ends are left as they were");
+    MP_CHECK(v.pipe(304).gainDb == -1.0f, "and the tuning drawn leaves the level alone");
+
+    // Tenths, the steps the sliders show.
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(302).gainDb == 0.5f, "a value between lands on a tenth");
+    mp::drawPipeStroke(v, pipes, 0, 0.0f, 2, 0.22f, mp::VoicingField::Level);
+    MP_CHECK(std::abs(v.pipe(302).gainDb - 0.1f) < 1e-6f && std::abs(v.pipe(303).gainDb - 0.2f) < 1e-6f,
+             "a place between lands on its nearest tenth");
+
+    // One pipe, and the ends past the rank, as a drag off its edge reports.
+    mp::drawPipeStroke(v, pipes, 9, -2.0f, 9, -2.0f, mp::VoicingField::Level);
+    MP_CHECK(v.pipe(305).gainDb == -2.0f, "a place past the last pipe is the last pipe");
+    mp::drawPipeStroke(v, {}, 0, 1.0f, 3, 1.0f, mp::VoicingField::Level);
+    MP_CHECK(true, "a rank with no pipes takes no stroke");
+  }
+};
+
 // Favourites. A slot number is something a thumb piston can be mapped to; a
 // path is not. So the numbering is the feature, and the tests are about the
 // numbering holding still.
@@ -12656,6 +12758,50 @@ public:
 };
 static MidiExactValuesTest g_midiExactValues;
 
+// Switches carried by the bits of one controller (#924).
+class MidiControllerBitsTest final : public mp::test::Test {
+public:
+  MidiControllerBitsTest() : Test("functional.midi.controller-bitfield", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    const mp::MidiSource cc30{mp::MidiSourceKind::ControlChange, 2, 30};
+    for (int bit = 0; bit < 3; ++bit) {
+      mp::MidiBinding b;
+      b.source = cc30;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = static_cast<mp::Id>(40 + bit);
+      b.bit = bit;
+      map.bind(b);
+    }
+    // Each switch and whether the message leaves it drawn.
+    auto states = [&](int value) {
+      std::vector<std::pair<mp::Id, bool>> out;
+      const auto a = map.actionFor(cc30, value);
+      if (a.valid() && !a.idle) out.push_back({a.targetId, a.engage});
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid()) out.push_back({more.targetId, more.engage});
+        }
+      std::sort(out.begin(), out.end());
+      return out;
+    };
+    using S = std::vector<std::pair<mp::Id, bool>>;
+    MP_CHECK(states(0b101) == S({{40, true}, {41, false}, {42, true}}), "5 draws the first and third");
+    MP_CHECK(states(0b010) == S({{40, false}, {41, true}, {42, false}}), "2 draws the second alone");
+    MP_CHECK(states(0) == S({{40, false}, {41, false}, {42, false}}), "0 cancels all three");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 42);
+    MP_CHECK(rows.size() == 1 && rows.front()->bit == 2, "the bit survives saving");
+    const auto plain = back.bindingsFor(mp::MidiTargetKind::Switch, 40);
+    MP_CHECK(plain.size() == 1 && plain.front()->bit == 0, "bit 0 too");
+  }
+};
+static MidiControllerBitsTest g_midiControllerBits;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {
@@ -12787,6 +12933,7 @@ static TemperamentLibraryTest g_tempLibrary;
 static AudioOutTrimTest g_audioOutTrim;
 static MixerRoutingTest g_mixerRouting;
 static VoicingTest g_voicingSet;
+static VoicingPipeStrokeTest g_voicingPipeStroke;
 static FavouritesTest g_favourites;
 static RegistrationTest g_registration;
 static MixBusRenderTest g_mixBusRender;
@@ -14273,7 +14420,24 @@ public:
     k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
     MP_CHECK(k.format == F::Zip, "a ZIP");
     k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
-    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(k.format == F::Unknown && !k.unreadable, "not an archive at all");
+#ifndef _WIN32
+    // There, and refused: what Android 13 does to a shared file the app was
+    // never lent (#966). Said as a refusal, never as an unknown format. Root
+    // reads anything, so the check is for an ordinary user.
+    if (::geteuid() != 0) {
+      const std::string refused = put("refused.rar", rar4(0, 0));
+      ::chmod(refused.c_str(), 0);
+      k = mp::inspectArchive(refused);
+      MP_CHECK(k.unreadable, "a file the system will not open is said to be refused");
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(refused, error) && !a.inspect(error) &&
+                   error.find("cannot be read") != std::string::npos,
+               "and the error says so: " + error);
+      ::chmod(refused.c_str(), 0644);
+    }
+#endif
     MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
              "and it can say so in words");
 
@@ -18774,6 +18938,18 @@ public:
       MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
       MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
       MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+      // Two consoles, such as two pad controllers (#942): both names kept.
+      MP_CHECK(!proc.openMidiOutputs({"Pads left", "Pads right", "Pads left"}),
+               "ports that are not there do not open");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames() == juce::StringArray({"Pads left", "Pads right"}),
+               "both outputs are kept, once each, in order");
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames().size() == 2, "a second read adds none");
+      MP_CHECK(proc.openMidiOutputs({}) && proc.midiOutputNames().isEmpty(), "None closes them all");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();
@@ -19777,28 +19953,47 @@ public:
         "<Switch><SwitchID>101</SwitchID><Name>Principal 8</Name></Switch>"
         "<Switch><SwitchID>102</SwitchID><Name>Trumpet 8</Name></Switch>"
         "<Switch><SwitchID>103</SwitchID><Name>Bourdon 8</Name></Switch>"
+        "<Switch><SwitchID>104</SwitchID><Name>Ped + I</Name></Switch>"
+        "<Switch><SwitchID>105</SwitchID><Name>Coupler node</Name></Switch>"
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">"
+        "<SwitchLinkage><SourceSwitchID>104</SourceSwitchID><DestSwitchID>105</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList><ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>1</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ConditionSwitchID>105</ConditionSwitchID>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged></KeyAction>"
         "</ObjectList><ObjectList ObjectType=\"Stop\">" +
         stop(1, "Principal 8", 7) + stop(2, "Trumpet 8", 8) + stop(3, "Bourdon 8", 9) +
+        stop(4, "Ped + I", 10) +
         "</ObjectList><ObjectList ObjectType=\"StopRank\">"
         "<StopRank><StopID>1</StopID><RankID>7</RankID></StopRank>"
         "<StopRank><StopID>2</StopID><RankID>8</RankID></StopRank>"
         "<StopRank><StopID>3</StopID><RankID>9</RankID></StopRank>"
+        "<StopRank><StopID>4</StopID><RankID>10</RankID></StopRank>"
         "</ObjectList><ObjectList ObjectType=\"Sample\">"
         "<Sample><SampleID>71</SampleID><InstallationPackageID>2</InstallationPackageID>"
         "<SampleFilename>shipped.wav</SampleFilename></Sample>"
         "<Sample><SampleID>81</SampleID><InstallationPackageID>2</InstallationPackageID>"
         "<SampleFilename>Trumpet\\060.wav</SampleFilename></Sample>"
+        "<Sample><SampleID>91</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>Noise\\coupler.wav</SampleFilename></Sample>"
         "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
         "<Rank><RankID>8</RankID><Name>Trumpet</Name></Rank><Rank><RankID>9</RankID><Name>Bourdon</Name></Rank>"
+        "<Rank><RankID>10</RankID><Name>Coupler noise</Name></Rank>"
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
-        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) +
+        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) + pipe(1001, 10) +
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
         "<Pipe_SoundEngine01_Layer><LayerID>7011</LayerID><PipeID>701</PipeID></Pipe_SoundEngine01_Layer>"
         "<Pipe_SoundEngine01_Layer><LayerID>8011</LayerID><PipeID>801</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>10011</LayerID><PipeID>1001</PipeID></Pipe_SoundEngine01_Layer>"
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
         "<Pipe_SoundEngine01_AttackSample><UniqueID>1</UniqueID><LayerID>7011</LayerID><SampleID>71</SampleID>"
         "</Pipe_SoundEngine01_AttackSample>"
         "<Pipe_SoundEngine01_AttackSample><UniqueID>2</UniqueID><LayerID>8011</LayerID><SampleID>81</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>3</UniqueID><LayerID>10011</LayerID><SampleID>91</SampleID>"
         "</Pipe_SoundEngine01_AttackSample>"
         "</ObjectList></Hauptwerk>";
     const juce::File file = defs.getChildFile("unshipped.Organ_Hauptwerk_xml");
@@ -19815,6 +20010,11 @@ public:
       MP_CHECK(playable[3], "a rank whose pipes name no sample is left as it was");
       const auto* why = proc.unavailableFor(102);
       MP_CHECK(why != nullptr && why->noPipes && why->stopId == 2, "the console names the unshipped stop");
+      // A coupler whose noise rank ships nothing still couples (#835).
+      MP_CHECK(playable[4], "a coupler stop with an unshipped noise rank stays available");
+      MP_CHECK(proc.unavailableFor(104) == nullptr, "its knob takes a click");
+      proc.setSwitchEngaged(104, true);
+      MP_CHECK(proc.switchEngaged(104) && proc.switchEngaged(105), "drawing it engages the coupler");
       settings.deleteFile();
     }
     root.deleteRecursively();

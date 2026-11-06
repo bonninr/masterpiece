@@ -50,6 +50,19 @@ public:
     MP_CHECK(buttonCalled(panel, ">") != nullptr, "Advanced: > steps through the frames");
     MP_CHECK(panel.preferredHeight(620) > simpleHeight, "Advanced: the player's generals take room");
 
+    // #841: one side of the window at a time.
+    const int viewWas = proc.combinationsView();
+    const int bothHeight = panel.preferredHeight(620);
+    proc.setCombinationsView(2);
+    panel.showView();
+    MP_CHECK(insert != nullptr && insert->isVisible(), "the sequencer alone keeps Insert");
+    MP_CHECK(panel.preferredHeight(620) < bothHeight, "and takes less room");
+    proc.setCombinationsView(1);
+    panel.showView();
+    MP_CHECK(insert != nullptr && !insert->isVisible(), "the combinations alone leave the sequencer out");
+    MP_CHECK(panel.preferredHeight(620) < bothHeight, "and take less room");
+    proc.setCombinationsView(viewWas);
+
     proc.setSimpleMode(was, false);
   }
 };

@@ -967,6 +967,13 @@ public:
     combinationsOnTop_ = on;
     writeGlobalFile();
   }
+  // What the combinations window shows: 0 everything, 1 the combinations,
+  // 2 the sequencer (#841).
+  int combinationsView() const { return combinationsView_; }
+  void setCombinationsView(int view) {
+    combinationsView_ = view;
+    writeGlobalFile();
+  }
   // Whether Set lets go once a piston has stored, so the next press recalls
   // instead of overwriting a combination by mistake (#130, #591): pistons on
   // the console, over MIDI and in the combinations window alike. Off by
@@ -1607,7 +1614,10 @@ public:
 
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
-  void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
+  void setMidiOutput(juce::MidiOutput* out) {
+    midiOut_ = out;
+    moreMidiOuts_.clear();
+  }
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
@@ -1629,8 +1639,16 @@ public:
   // open or none, and the port opens again at the next start (Main.cpp). An
   // empty name closes it. False when no port of that name is there; the name
   // is kept for when the console is plugged in.
-  bool openMidiOutput(const juce::String& name);
-  const juce::String& midiOutputName() const { return midiOutputName_; }
+  bool openMidiOutput(const juce::String& name) {
+    return openMidiOutputs(name.isEmpty() ? juce::StringArray() : juce::StringArray(name));
+  }
+  // Several consoles at once, such as two pad controllers that each light
+  // their own stops (#942): every message goes to every port. False when
+  // a port named is not there; its name is kept, as for one.
+  bool openMidiOutputs(const juce::StringArray& names);
+  const juce::StringArray& midiOutputNames() const { return midiOutputNames_; }
+  // The ports chosen, joined for display.
+  juce::String midiOutputName() const { return midiOutputNames_.joinIntoString(", "); }
   // Echo switch changes to the console. Off by default: a console that echoes
   // what it just sent can latch itself into a loop. Kept in the general
   // settings.
@@ -2346,6 +2364,17 @@ private:
     return it == layerLevelIndex_.end() ? -1 : it->second;
   }
   void advanceLayerLevels(int numFrames);
+  // The organ's pitch controls (#828): every continuous control a pipe layer
+  // reads as its PitchLvl_IncrementingContinuousControlID, with its place in
+  // the table the voices read, resolved at load. Read whole each block, so a
+  // pipe already sounding follows a detune slider, or a key's own pitch
+  // control as it moves once the key is down.
+  std::unordered_map<Id, int> pitchControlIndex_;
+  std::vector<Id> pitchControlIds_;
+  std::vector<int> pitchControlValues_;
+  void advancePitchControls();
+  // Fills `vs` so the voice follows its layer's pitch control from here on.
+  void followPitchControl(const Pipe& pipe, const PipeLayer& layer, VoiceStart& vs) const;
   void retargetVoicing(int numFrames);
   // Sets a live level from a MIDI control: a rank or division by its id, a
   // pair by its number from 1.
@@ -2515,9 +2544,15 @@ private:
   std::atomic<bool> organLoading_{false};
   std::atomic<int> organLoads_{0};
   bool applyOrganTrim_ = true;
-  juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
-  std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
-  juce::String midiOutputName_;
+  juce::MidiOutput* midiOut_ = nullptr; // the first of ownedMidiOuts_, or the application's
+  // The ports after the first, sent the same messages (sendOut).
+  std::vector<juce::MidiOutput*> moreMidiOuts_;
+  std::vector<std::unique_ptr<juce::MidiOutput>> ownedMidiOuts_;
+  juce::StringArray midiOutputNames_;
+  void sendOut(const juce::MidiBuffer& messages) {
+    if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(messages);
+    for (auto* out : moreMidiOuts_) out->sendBlockOfMessagesNow(messages);
+  }
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
@@ -2811,6 +2846,7 @@ private:
   void learnHeldKeys();
   void learnFromPress(const MidiSource& source, int value);
   bool combinationsOnTop_ = false;
+  int combinationsView_ = 0;
   std::atomic<bool> cacheWhilePlaying_{false};
   SampleLibrary::CacheMode cacheMode_ = SampleLibrary::CacheMode::Single;
   std::optional<SampleLibrary::CacheMode> cacheOverride_;

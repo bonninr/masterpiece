@@ -439,6 +439,7 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
   // is accepted as a degenerate single-table document.
   pugi::xml_node docEl = doc.document_element();
   pugi::xml_node odfRoot = docEl;
+  const bool formatFrom5 = docEl.attribute("FileFormatVersion").as_double() >= 5.0;
   const std::string docName = docEl.name();
   const std::string fileFormat = docEl.attribute("FileFormat").value();
   if (docName == "Hauptwerk" && fileFormat == "CustomOrgan")
@@ -750,6 +751,8 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     layer.layerId = layerId;
     layer.gainDb = fieldDouble(row, "AmpLvl_LevelAdjustDecibels", "h", 0.0);
     layer.optimalChannel = fieldInt(row, "AudioOut_OptimalChannelFormatCode", "o1", 0);
+    if (layer.optimalChannel == 0)
+      layer.optimalChannel = fieldInt(row, "AudioOut_OptimalMemoryChannelFormatCode", nullptr, 0);
     layer.optimalResolution = fieldInt(row, "AudioOut_OptimalSampleResolutionCode", "p1", 0);
     // How the organ's own level sliders reach this layer. Every layer of a
     // real set names one.
@@ -772,8 +775,12 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         row, "AmpLvl_VelocitySensitivityMaxAttenuationDecibels", "i", 0.0);
     layer.invertVelocitySens =
         fieldBool(row, "AmpLvl_InvertVelocitySensitivity", "j", false);
+    // Decibels up to version 4, a percentage from version 5: a compact row
+    // writes either in the same tag.
     layer.tremAmpDepthAdjustDb = fieldDouble(
-        row, "AmpLvl_TremulantModDepthAdjustDecibels", "p", 0.0);
+        row, "AmpLvl_TremulantModDepthAdjustDecibels", formatFrom5 ? nullptr : "p", 0.0);
+    layer.tremAmpDepthAdjustPct = fieldDouble(
+        row, "AmpLvl_TremulantModDepthAdjustPercent", formatFrom5 ? "p" : nullptr, 100.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", "y", 100.0);
     pipeIt->second->layers.push_back(std::move(layer));

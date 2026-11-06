@@ -387,7 +387,10 @@ private:
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
   void showDefaultChannels();
-  juce::ComboBox output_;
+  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
+  juce::TextButton output_;
+  void showOutputMenu();
+  void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
@@ -497,6 +500,10 @@ private:
   juce::ComboBox scope_;   // the whole rank, or one note of it
   juce::Label noteLabel_;
   juce::Slider note_{juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft};
+  // Every pipe of the rank at once, in a window of its own (#849).
+  juce::TextButton everyPipe_{TRANS("Every pipe...")};
+  juce::Component::SafePointer<juce::DialogWindow> everyPipeWindow_;
+  void showEveryPipe();
   juce::Label gainLabel_, tuneLabel_;
   juce::Slider gain_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
   juce::Slider tune_{juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight};
