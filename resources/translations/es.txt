@@ -1188,3 +1188,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Exit full screen" = "Salir de pantalla completa"
 "Or press Escape or F11" = "O pulse Esc o F11"
 "Remove this piston" = "Quitar este pistón"
+"Off at" = "Apagado en"
+"On at" = "Encendido en"
+"The value your console sends for off" = "El valor que envía su consola para apagado"
+"The value your console sends for on" = "El valor que envía su consola para encendido"

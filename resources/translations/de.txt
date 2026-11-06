@@ -1188,3 +1188,7 @@ countries: de at ch li lu
 "Exit full screen" = "Vollbild beenden"
 "Or press Escape or F11" = "Oder Esc oder F11 drücken"
 "Remove this piston" = "Diesen Setzerknopf entfernen"
+"Off at" = "Aus bei"
+"On at" = "Ein bei"
+"The value your console sends for off" = "Der Wert, den Ihr Spieltisch für Aus sendet"
+"The value your console sends for on" = "Der Wert, den Ihr Spieltisch für Ein sendet"

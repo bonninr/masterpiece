@@ -1188,3 +1188,7 @@ countries: fr be ca ch lu mc
 "Exit full screen" = "Quitter le plein écran"
 "Or press Escape or F11" = "Ou appuyez sur Échap ou F11"
 "Remove this piston" = "Retirer ce piston"
+"Off at" = "Arrêt à"
+"On at" = "Marche à"
+"The value your console sends for off" = "La valeur que votre console envoie pour l'arrêt"
+"The value your console sends for on" = "La valeur que votre console envoie pour la marche"

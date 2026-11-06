@@ -12151,6 +12151,54 @@ static KeyboardBindingTest g_keyboardBinding;
 static LcdPanelTest g_lcdPanels;
 static MidiMapTest g_midiMap;
 
+// A switch's off and on values (#922): a console button that sends 1 for off
+// and 2 for on, and one that sends 127 for off and 0 for on.
+class MidiSwitchValuesTest final : public mp::test::Test {
+public:
+  MidiSwitchValuesTest() : Test("functional.midi.switch-on-off-values", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    mp::MidiBinding small;
+    small.source = {mp::MidiSourceKind::ControlChange, 1, 20};
+    small.targetKind = mp::MidiTargetKind::Switch;
+    small.targetId = 5;
+    small.trigger = mp::MidiTrigger::Momentary;
+    small.latching = false;
+    small.lowValue = 1;
+    small.highValue = 2;
+    map.bind(small);
+    MP_CHECK(map.actionFor(small.source, 2).engage, "2 is on");
+    MP_CHECK(!map.actionFor(small.source, 1).engage, "1 is off");
+
+    mp::MidiBinding reversed = small;
+    reversed.source.number = 21;
+    reversed.targetId = 6;
+    reversed.lowValue = 127;
+    reversed.highValue = 0;
+    map.bind(reversed);
+    MP_CHECK(map.actionFor(reversed.source, 0).engage, "0 is on when on is the lower value");
+    MP_CHECK(!map.actionFor(reversed.source, 127).engage, "127 is off when off is the higher value");
+
+    mp::MidiBinding plain = small;
+    plain.source.number = 22;
+    plain.targetId = 7;
+    plain.lowValue = 0;
+    plain.highValue = 127;
+    map.bind(plain);
+    MP_CHECK(map.actionFor(plain.source, 64).engage && !map.actionFor(plain.source, 63).engage,
+             "the whole range still presses from half-way");
+
+    // The values are kept with the mapping.
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 6);
+    MP_CHECK(rows.size() == 1 && rows.front()->lowValue == 127 && rows.front()->highValue == 0,
+             "the reversed pair survives saving");
+  }
+};
+static MidiSwitchValuesTest g_midiSwitchValues;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {

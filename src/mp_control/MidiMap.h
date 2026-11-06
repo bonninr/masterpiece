@@ -236,11 +236,15 @@ struct MidiBinding {
     return ((clamped - lo) * 127) / (hi - lo);
   }
   // Whether a raw value counts as "pressed" for a switch. Half-way up its own
-  // window, so a console that sends 64 for a press still registers.
+  // window, so a console that sends 64 for a press still registers. For a
+  // switch the window is its off value and its on value (#922), and a button
+  // that sends the higher value for off is read the other way round, as
+  // GrandOrgue's on/off events do.
   bool isOn(int raw) const {
     const int lo = std::min(lowValue, highValue);
     const int hi = std::max(lowValue, highValue);
-    return raw > lo + (hi - lo) / 2;
+    const bool high = raw > lo + (hi - lo) / 2;
+    return lowValue > highValue ? !high : high;
   }
 };
 
