@@ -10949,6 +10949,71 @@ public:
   }
 };
 
+// A label on the set's other console layouts (#817): each layout gives its own
+// position and box, and may give its own text and style. A layout that gives
+// nothing leaves the label as the primary layout draws it.
+class DisplayTextLayoutsTest final : public mp::test::Test {
+public:
+  DisplayTextLayoutsTest()
+    : Test("functional.display.text-layouts", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"DisplayPage\">"
+                 "<DisplayPage><PageID>1</PageID><Name>Console</Name></DisplayPage>"
+                 "</ObjectList>"
+                 "<ObjectList ObjectType=\"TextInstance\">"
+                 // Long form: layout 1 moves the label and renames it.
+                 "<TextInstance><TextInstanceID>7</TextInstanceID>"
+                 "<Text>Bourdon 8</Text><TextStyleID>5</TextStyleID>"
+                 "<DisplayPageID>1</DisplayPageID>"
+                 "<XPosPixels>40</XPosPixels><YPosPixels>60</YPosPixels>"
+                 "<AlternateScreenLayout1_Text>Bdn 8</AlternateScreenLayout1_Text>"
+                 "<AlternateScreenLayout1_XPosPixels>400</AlternateScreenLayout1_XPosPixels>"
+                 "<AlternateScreenLayout1_YPosPixels>30</AlternateScreenLayout1_YPosPixels>"
+                 "</TextInstance></ObjectList>"
+                 // Compact form: layout 2 gives a style and a box, layout 3 a position.
+                 "<ObjectList ObjectType=\"TextInstance\">"
+                 "<o><a>8</a><d>Flute 4</d><e>1</e><f>10</f><g>20</g><c>5</c>"
+                 "<u>6</u><v>100</v><w>200</w><x>80</x><y>24</y>"
+                 "<b1>11</b1><c1>22</c1></o></ObjectList>"
+                 "</Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "an organ with labels on other layouts loads");
+
+    const auto page = m.displayPages.find(1);
+    MP_CHECK(page != m.displayPages.end() && page->second.texts.size() == 2, "both labels reach the page");
+    if (page == m.displayPages.end() || page->second.texts.size() != 2) return;
+    const auto& bourdon = page->second.texts[0];
+    MP_CHECK(bourdon.textFor(0) == "Bourdon 8" && bourdon.xFor(0) == 40 && bourdon.yFor(0) == 60,
+             "the primary layout keeps the primary text and place");
+    MP_CHECK(bourdon.hasLayout(1) && bourdon.textFor(1) == "Bdn 8" && bourdon.xFor(1) == 400 &&
+                 bourdon.yFor(1) == 30,
+             "layout 1 has its own text and place");
+    MP_CHECK(bourdon.styleFor(1) == 5, "a layout that names no style keeps the primary one");
+    MP_CHECK(!bourdon.hasLayout(2) && bourdon.textFor(2) == "Bourdon 8" && bourdon.xFor(2) == 40,
+             "a layout that gives nothing draws the label as the primary one does");
+
+    const auto& flute = page->second.texts[1];
+    MP_CHECK(flute.textFor(0) == "Flute 4" && flute.xFor(0) == 10 && flute.styleFor(0) == 5,
+             "the compact row reads its primary fields");
+    MP_CHECK(flute.hasLayout(2) && flute.styleFor(2) == 6 && flute.xFor(2) == 100 &&
+                 flute.yFor(2) == 200 && flute.boxWidthFor(2) == 80 && flute.boxHeightFor(2) == 24,
+             "compact layout 2: style, place and box");
+    MP_CHECK(flute.textFor(2) == "Flute 4", "a layout with no text of its own keeps the primary text");
+    MP_CHECK(flute.hasLayout(3) && flute.xFor(3) == 11 && flute.yFor(3) == 22,
+             "compact layout 3: place");
+  }
+};
+static DisplayTextLayoutsTest g_displayTextLayouts;
+
 class DisplayEmptyTest final : public mp::test::Test {
 public:
   DisplayEmptyTest()

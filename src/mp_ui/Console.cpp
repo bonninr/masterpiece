@@ -195,6 +195,8 @@ void ConsoleView::rebuild() {
       (void)kid;
       if (kb.displayPageId == showing && kb.keyImageSetFor(layout_) != 0) declared = true;
     }
+    for (const auto& t : pageIt->second.texts)
+      if (t.hasLayout(layout_)) declared = true;
     if (!declared) drawLayout_ = 0;
   }
 
@@ -492,17 +494,18 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
     byId[inst.instanceId] = &inst;
 
   for (const auto& t : pageIt->second.texts) {
-    if (t.text.empty()) continue;
+    const std::string& text = t.textFor(drawLayout_);
+    if (text.empty()) continue;
 
     // A missing style is not a missing label: the defaults are Arial 10,
     // normal weight, white, centred.
     TextStyle style;
-    if (const auto sit = model.textStyles.find(t.styleId);
+    if (const auto sit = model.textStyles.find(t.styleFor(drawLayout_));
         sit != model.textStyles.end())
       style = sit->second;
 
     TextItem item;
-    item.text = juce::String::fromUTF8(t.text.c_str());
+    item.text = juce::String::fromUTF8(text.c_str());
     // The set names a Windows, a Mac and a Linux face for the same style.
     // Whichever this machine has is the one the engraver meant; JUCE falls
     // back to the default face when none of them is installed.
@@ -527,8 +530,8 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
 
     // The position is an anchor, and the alignment codes say which part of
     // the text sits on it.
-    int x = t.xPx;
-    int y = t.yPx;
+    int x = t.xFor(drawLayout_);
+    int y = t.yFor(drawLayout_);
     if (t.attachedInstanceId != 0 && t.posRelativeToInstance) {
       const auto ait = byId.find(t.attachedInstanceId);
       if (ait != byId.end()) {
@@ -549,8 +552,8 @@ void ConsoleView::buildTexts(const OrganModel& model, Id pageId) {
     // astride it, right-aligned text ends on it. Hajós centres "GREAT" on
     // x=508, the middle of its 252..764 manual, and "Exp.1" on the middle of
     // its shoe; hung from their left edge they sat half a word to the right.
-    int w = t.boxWidthPx;
-    int h = t.boxHeightPx;
+    int w = t.boxWidthFor(drawLayout_);
+    int h = t.boxHeightFor(drawLayout_);
     item.wrap = w > 0 && h > 0;
     if (!item.wrap) {
       w = juce::GlyphArrangement::getStringWidthInt(item.font, item.text) + 2;
