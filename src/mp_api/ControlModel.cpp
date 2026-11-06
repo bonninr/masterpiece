@@ -214,7 +214,7 @@ void ControlModel::rebuild() {
   }
   for (int64_t id : sortedIds(m.enclosures)) {
     const Enclosure& e = m.enclosures.at(static_cast<Id>(id));
-    enclosures_.push_back({id, static_cast<int64_t>(e.continuousControlId), readable(e.name)});
+    enclosures_.push_back({id, static_cast<int64_t>(proc_.playerControlFor(e.continuousControlId)), readable(e.name)});
   }
   for (int64_t id : sortedIds(m.tremulants)) {
     const Tremulant& t = m.tremulants.at(static_cast<Id>(id));

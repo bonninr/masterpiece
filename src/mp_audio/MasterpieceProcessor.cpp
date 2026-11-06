@@ -7187,7 +7187,7 @@ void MasterpieceProcessor::setContinuousControl(Id controlId, int value) {
 
 Id MasterpieceProcessor::playerControlFor(Id controlId) const {
   Id at = controlId;
-  std::unordered_set<Id> seen{at};
+  std::vector<Id> path{at};
   for (;;) {
     // Prefer a feeder the player can click, since that is the one drawn on
     // the console; otherwise any unconditional one will do.
@@ -7200,7 +7200,21 @@ Id MasterpieceProcessor::playerControlFor(Id controlId) const {
       if (next == 0 || clickable) next = l.sourceControlId;
       if (clickable) break;
     }
-    if (next == 0 || !seen.insert(next).second) return at;
+    if (next == 0) return at;
+    // Controls that feed each other, as a drawn pedal and a simple jamb's copy
+    // of it do: every one of the ring gives the same answer, the one drawn,
+    // else the lowest id.
+    if (const auto ring = std::find(path.begin(), path.end(), next); ring != path.end()) {
+      Id best = *ring;
+      const auto drawn = [this](Id id) {
+        const auto c = model_.continuousControls.find(id);
+        return c != model_.continuousControls.end() && c->second.clickable && c->second.imageSetInstanceId != 0;
+      };
+      for (auto it = ring; it != path.end(); ++it)
+        if ((drawn(*it) && !drawn(best)) || (drawn(*it) == drawn(best) && *it < best)) best = *it;
+      return best;
+    }
+    path.push_back(next);
     at = next;
   }
 }
