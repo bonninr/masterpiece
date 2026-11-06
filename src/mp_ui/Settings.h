@@ -387,7 +387,10 @@ private:
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
   void showDefaultChannels();
-  juce::ComboBox output_;
+  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
+  juce::TextButton output_;
+  void showOutputMenu();
+  void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
