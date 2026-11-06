@@ -1210,3 +1210,5 @@ countries: nl be sr
 "Every pipe..." = "Elke pijp..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle pijpen van de pijpenrij tegelijk, om hun niveau of stemming over het bereik te tekenen"
 "Voicing: every pipe" = "Intonatie: elke pijp"
+"Controller, one bit" = "Controller, één bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "De bit van de controller die deze schakelaar draagt, 0 voor de laagste"

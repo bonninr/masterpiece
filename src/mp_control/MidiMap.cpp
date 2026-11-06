@@ -445,7 +445,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
   // follow every message, so they are left alone.
   const bool held = b.trigger == MidiTrigger::Momentary &&
                     (b.targetKind == MidiTargetKind::Switch || b.targetKind == MidiTargetKind::Setter);
-  if (b.debounceMs > 0 && timeMs >= 0.0 && !held && b.targetKind != MidiTargetKind::ContinuousControl &&
+  if (b.debounceMs > 0 && timeMs >= 0.0 && !held && b.bit < 0 && b.targetKind != MidiTargetKind::ContinuousControl &&
       b.targetKind != MidiTargetKind::Keyboard && (b.exactValues ? value == b.highValue : b.isOn(value))) {
     auto [last, fresh] = pressLastMs_.try_emplace(it->first, timeMs);
     if (!fresh) {
@@ -569,6 +569,12 @@ MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
   action.targetId = b.targetId;
   // A console that sends 64 for a press, or whose button only travels part
   // of the range, still has to register.
+  // A bitfield's switch follows its bit, whatever the other bits do.
+  if (b.bit >= 0 && b.bit < 7) {
+    action.engage = ((value >> b.bit) & 1) != 0;
+    latchState_[b.targetId] = action.engage;
+    return action;
+  }
   const bool pressed = b.exactValues ? value == b.highValue : b.isOn(value);
   // On exact values, any value other than its own two is another switch's.
   if (b.exactValues && !pressed && value != b.lowValue) return {};
@@ -950,7 +956,7 @@ std::string MidiMap::toText() const {
   // One heading per kind of line, naming every field, so the file reads as a
   // table. The reader skips them.
   out << "# <source> <channel> <number> <target> <id> <latching> <invert> <trigger> <low> "
-         "<high> <device> [<device identifier>] [| debounce=<ms> exact]\n";
+         "<high> <device> [<device identifier>] [| debounce=<ms> exact bit=<0-6>]\n";
   for (const auto& b : ordered_) {
     out << kindName(b.source.kind) << ' ' << b.source.channel << ' '
         << b.source.number << ' ' << targetName(b.targetKind) << ' '
@@ -967,6 +973,7 @@ std::string MidiMap::toText() const {
     std::string options;
     if (b.debounceMs > 0) options += " debounce=" + std::to_string(b.debounceMs);
     if (b.exactValues) options += " exact";
+    if (b.bit >= 0) options += " bit=" + std::to_string(b.bit);
     if (!options.empty()) out << " |" << options;
     out << '\n';
   }
@@ -1295,6 +1302,7 @@ bool MidiMap::fromText(const std::string& text) {
     for (std::string opt; os >> opt;) {
       if (opt.rfind("debounce=", 0) == 0) b.debounceMs = std::max(0, std::atoi(opt.c_str() + 9));
       if (opt == "exact") b.exactValues = true;
+      if (opt.rfind("bit=", 0) == 0) b.bit = std::clamp(std::atoi(opt.c_str() + 4), 0, 6);
     }
     if (b.source.kind == MidiSourceKind::None ||
         b.targetKind == MidiTargetKind::None) {
