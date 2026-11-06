@@ -615,6 +615,15 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
   // function becomes a gate: a switch set by linkages, which re-evaluate when
   // any of their inputs moves. Several linkages into one switch are an Or.
   std::map<int, pugi::xml_node> switchRows;
+  // What a section of the .organ file became, for a GrandOrgue settings file
+  // that names its MIDI events by section (#865). 1 a switch, 2 a continuous
+  // control, 3 a keyboard.
+  auto goObject = [&](const std::string& sec, int kind, int id) {
+    auto o = out.row("MasterpieceGrandOrgueObject");
+    Emitter::set(o, "Section", sec);
+    Emitter::set(o, "Kind", kind);
+    Emitter::set(o, "ObjectID", id);
+  };
   auto emitSwitch = [&](int id, const std::string& name, bool engaged) {
     auto sw = out.row("Switch");
     switchRows[id] = sw;
@@ -679,6 +688,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
   for (int n = 1; n <= switchCount; ++n) {
     const std::string sec = "Switch" + n3(n);
     emitSwitch(kGoSwitchBase + n, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
+    goObject(sec, 1, kGoSwitchBase + n);
     std::vector<int> in;
     const std::string fn = functionOf(sec, in);
     if (!in.empty()) link(gate(fn, in), kGoSwitchBase + n, 0, true);
@@ -691,8 +701,12 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     std::vector<int> in;
     const std::string fn = functionOf(sec, in);
     int id = ownId;
-    if (in.empty()) emitSwitch(ownId, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
-    else id = gate(fn, in);
+    if (in.empty()) {
+      emitSwitch(ownId, ini.str(sec, "Name", sec), ini.yes(sec, "DefaultToEngaged", false));
+      goObject(sec, 1, ownId);
+    } else {
+      id = gate(fn, in);
+    }
     controlMemo[lower(sec)] = id;
     return id;
   };
@@ -731,6 +745,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     Emitter::set(en, "EnclosureID", kEnclosureBase + e);
     Emitter::set(en, "Name", ini.str(sec, "Name", sec));
     Emitter::set(en, "ShutterPositionContinuousControlID", kEnclosureControlBase + e);
+    goObject(sec, 2, kEnclosureControlBase + e);
   }
   // Every pipe on an enclosed or tremulated windchest group, now that the
   // pipes of the explicit ranks exist; a stop's own pipes add theirs below.
@@ -783,6 +798,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     info.firstMidi = firstAccessibleMidi - (firstAccessibleKey - 1);
     info.keys = ini.num(sec, "NumberOfLogicalKeys", ini.num(sec, "NumberOfAccessibleKeys", 61));
     manualInfo[m] = info;
+    goObject(sec, 3, info.kb);
     const std::string name = ini.str(sec, "Name", sec);
 
     auto div = out.row("Division");
@@ -1004,6 +1020,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
                          const std::vector<std::pair<int, bool>>& elements) {
     emitSwitch(piston, name, false);
     Emitter::yn(switchRows[piston], "Latching", false);
+    goObject(sec, 1, piston);
     const int id = nextCombination++;
     auto c = out.row("Combination");
     Emitter::set(c, "CombinationID", id);
@@ -1164,6 +1181,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
     const int piston = kReversibleBase + r;
     emitSwitch(piston, ini.str(sec, "Name", "Reversible " + std::to_string(r)), false);
     Emitter::yn(switchRows[piston], "Latching", false);
+    goObject(sec, 1, piston);
     link(piston, target, 0, true, 3, 7);
     auto shown = out.row("MasterpieceSwitchDisplay");
     Emitter::set(shown, "SwitchID", piston);

@@ -39,8 +39,9 @@ public:
   // The score as a standard MIDI file, base64: staff n plays on track n,
   // at the tempo the score asks for. Empty when nothing is loaded.
   std::string midiBase64();
-  // When each note starts and stops, by element id, in milliseconds: a JSON
-  // array of {"tstamp": ms, "on": [ids], "off": [ids], ...}.
+  // When each note starts and stops, by element id, in milliseconds of the
+  // MIDI above: a JSON array of {"tstamp": ms, "on": [ids], "off": [ids], ...}.
+  // The MIDI is what the keys play, so the cursor keeps to it (#964).
   std::string timemapJson();
   // The page an element is engraved on, 0 if none. Searches the whole
   // score: for the odd lookup, never per note.

@@ -387,7 +387,10 @@ private:
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
   void showDefaultChannels();
-  juce::ComboBox output_;
+  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
+  juce::TextButton output_;
+  void showOutputMenu();
+  void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
@@ -402,6 +405,11 @@ private:
   // Simple mode leaves them out.
   juce::TextButton saveMap_{TRANS("Save mappings")};
   juce::TextButton clearMap_{TRANS("Clear all mappings")};
+  // A GrandOrgue set's MIDI settings, read from GrandOrgue's own settings file
+  // for it (#865).
+  juce::TextButton fromGrandOrgue_{TRANS("From GrandOrgue...")};
+  std::unique_ptr<juce::FileChooser> grandOrgueChooser_;
+  void importFromGrandOrgue();
   // Pairing a Bluetooth MIDI keyboard, where the system offers it (#680).
   juce::TextButton bluetooth_{TRANS("Bluetooth MIDI...")};
   // Every learn button on the page works as a console control's MIDI menu
