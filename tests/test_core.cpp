@@ -18421,6 +18421,18 @@ public:
       MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
       MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
       MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+      // Two consoles, such as two pad controllers (#942): both names kept.
+      MP_CHECK(!proc.openMidiOutputs({"Pads left", "Pads right", "Pads left"}),
+               "ports that are not there do not open");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames() == juce::StringArray({"Pads left", "Pads right"}),
+               "both outputs are kept, once each, in order");
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames().size() == 2, "a second read adds none");
+      MP_CHECK(proc.openMidiOutputs({}) && proc.midiOutputNames().isEmpty(), "None closes them all");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();

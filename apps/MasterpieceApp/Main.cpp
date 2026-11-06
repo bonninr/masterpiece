@@ -455,9 +455,9 @@ public:
     proc_->loadGlobalDefaults();
     // The console's output, as the player left it: its lamps and displays
     // follow the organ from the start.
-    if (const auto out = proc_->midiOutputName(); out.isNotEmpty() && !proc_->openMidiOutput(out))
-      juce::Logger::writeToLog("midi: the output " + out + " is not connected; choose it again in "
-                               "Settings, MIDI once it is");
+    if (const auto outs = proc_->midiOutputNames(); !outs.isEmpty() && !proc_->openMidiOutputs(outs))
+      juce::Logger::writeToLog("midi: an output of " + outs.joinIntoString(", ") +
+                               " is not connected; choose it again in Settings, MIDI once it is");
     // Whether a newer version is out, once a day, ten seconds in: after the
     // window and well clear of an organ's load. Not for a scripted run.
     if (!args.contains("--play-midi") && !args.contains("--gui-only") && !args.contains("--draw-only") &&

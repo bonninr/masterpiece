@@ -2640,7 +2640,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "realtimethreads " << (realtimeThreads_.load() ? 1 : 0) << "\n";
   text << "everyprocessor " << (everyProcessor_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
-  if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
+  for (const auto& name : midiOutputNames_) text << "midioutput " << name << "\n";
   if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
@@ -2717,6 +2717,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   cacheMode_ = SampleLibrary::CacheMode::Single;
   // The file holds them all, so a second read must not add them twice.
   eqPresets_.clearOwn();
+  midiOutputNames_.clear();
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
     const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
@@ -2869,7 +2870,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         scorePage_.store(packScorePage(m), std::memory_order_release);
       }
     } else if (key == "midioutput") {
-      midiOutputName_ = val;  // opened by the application at start
+      if (val.isNotEmpty()) midiOutputNames_.addIfNotAlreadyThere(val);  // opened by the application at start
     } else if (key == "midifeedback") {
       midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "midisendsholdecho") {
@@ -3106,26 +3107,41 @@ void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
   writeGlobalFile();
 }
 
-bool MasterpieceProcessor::openMidiOutput(const juce::String& name) {
-  std::unique_ptr<juce::MidiOutput> opened;
-  if (name.isNotEmpty())
-    for (const auto& d : juce::MidiOutput::getAvailableDevices())
-      if (d.name == name) {
-        opened = juce::MidiOutput::openDevice(d.identifier);
+bool MasterpieceProcessor::openMidiOutputs(const juce::StringArray& names) {
+  juce::StringArray wanted;
+  for (const auto& n : names)
+    if (n.isNotEmpty()) wanted.addIfNotAlreadyThere(n);
+  // The old ports close before the new ones open: a port is opened once.
+  std::vector<std::unique_ptr<juce::MidiOutput>> old;
+  {
+    // The audio thread sends through them: swapped between blocks.
+    const AudioLock audio(*this);
+    midiOut_ = nullptr;
+    moreMidiOuts_.clear();
+    old.swap(ownedMidiOuts_);
+  }
+  old.clear();  // outside the lock
+  std::vector<std::unique_ptr<juce::MidiOutput>> opened;
+  const auto devices = juce::MidiOutput::getAvailableDevices();
+  for (const auto& n : wanted)
+    for (const auto& d : devices)
+      if (d.name == n) {
+        if (auto port = juce::MidiOutput::openDevice(d.identifier)) opened.push_back(std::move(port));
         break;
       }
+  const bool all = opened.size() == static_cast<size_t>(wanted.size());
   {
-    // The audio thread sends through it: swapped between blocks.
     const AudioLock audio(*this);
-    midiOut_ = opened.get();
-    ownedMidiOut_.swap(opened);
+    ownedMidiOuts_.swap(opened);
+    for (const auto& port : ownedMidiOuts_)
+      if (midiOut_ == nullptr) midiOut_ = port.get();
+      else moreMidiOuts_.push_back(port.get());
   }
-  opened.reset();  // the old port closes outside the lock
-  if (midiOutputName_ != name) {
-    midiOutputName_ = name;
+  if (midiOutputNames_ != wanted) {
+    midiOutputNames_ = wanted;
     writeGlobalFile();
   }
-  return name.isEmpty() || midiOut_ != nullptr;
+  return all;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -7089,7 +7105,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
-    midiOut_->sendBlockOfMessagesNow(outgoing_);
+    sendOut(outgoing_);
   if (outgoingProbe && !outgoing_.isEmpty()) outgoingProbe(outgoing_);
   outgoing_.clear();
 
@@ -8841,7 +8857,7 @@ void MasterpieceProcessor::sendUnloadMessage() {
   if (midiOut_ == nullptr && !outgoingProbe) return;
   juce::MidiBuffer out;
   addMessages(out, unloadMessage_);
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  sendOut(out);
   if (outgoingProbe) outgoingProbe(out);
 }
 
@@ -8852,7 +8868,7 @@ bool MasterpieceProcessor::sendMidiNow(const juce::String& hex) {
   if (midiOut_ == nullptr && !outgoingProbe) return false;
   juce::MidiBuffer out;
   addMessages(out, bytes);
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  sendOut(out);
   if (outgoingProbe) outgoingProbe(out);
   return true;
 }
@@ -8944,7 +8960,7 @@ void MasterpieceProcessor::pumpReadyLamp(int numFrames) {
   if (readyLampMessage(lamp, lit == 1, raw)) lampOut_.addEvent(raw.bytes, raw.size, 0);
   addMessages(lampOut_, lit == 1 ? lampLit_ : lampDark_);
   if (lampOut_.isEmpty()) return;
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(lampOut_);
+  sendOut(lampOut_);
   if (outgoingProbe) outgoingProbe(lampOut_);
 }
 

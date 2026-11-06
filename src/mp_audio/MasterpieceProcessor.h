@@ -1601,7 +1601,10 @@ public:
 
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
-  void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
+  void setMidiOutput(juce::MidiOutput* out) {
+    midiOut_ = out;
+    moreMidiOuts_.clear();
+  }
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
@@ -1623,8 +1626,16 @@ public:
   // open or none, and the port opens again at the next start (Main.cpp). An
   // empty name closes it. False when no port of that name is there; the name
   // is kept for when the console is plugged in.
-  bool openMidiOutput(const juce::String& name);
-  const juce::String& midiOutputName() const { return midiOutputName_; }
+  bool openMidiOutput(const juce::String& name) {
+    return openMidiOutputs(name.isEmpty() ? juce::StringArray() : juce::StringArray(name));
+  }
+  // Several consoles at once, such as two pad controllers that each light
+  // their own stops (#942): every message goes to every port. False when
+  // a port named is not there; its name is kept, as for one.
+  bool openMidiOutputs(const juce::StringArray& names);
+  const juce::StringArray& midiOutputNames() const { return midiOutputNames_; }
+  // The ports chosen, joined for display.
+  juce::String midiOutputName() const { return midiOutputNames_.joinIntoString(", "); }
   // Echo switch changes to the console. Off by default: a console that echoes
   // what it just sent can latch itself into a loop. Kept in the general
   // settings.
@@ -2496,9 +2507,15 @@ private:
   std::atomic<bool> organLoading_{false};
   std::atomic<int> organLoads_{0};
   bool applyOrganTrim_ = true;
-  juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
-  std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
-  juce::String midiOutputName_;
+  juce::MidiOutput* midiOut_ = nullptr; // the first of ownedMidiOuts_, or the application's
+  // The ports after the first, sent the same messages (sendOut).
+  std::vector<juce::MidiOutput*> moreMidiOuts_;
+  std::vector<std::unique_ptr<juce::MidiOutput>> ownedMidiOuts_;
+  juce::StringArray midiOutputNames_;
+  void sendOut(const juce::MidiBuffer& messages) {
+    if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(messages);
+    for (auto* out : moreMidiOuts_) out->sendBlockOfMessagesNow(messages);
+  }
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
