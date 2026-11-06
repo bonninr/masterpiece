@@ -461,28 +461,6 @@ private:
   juce::Label mapStatus_;
 };
 
-// Combination sets: the registration books of the organ loaded. The favourite
-// organs that shared this tab are in Open (OpenWindow.h).
-class FavouritesPanel : public juce::Component {
-public:
-  explicit FavouritesPanel(MasterpieceProcessor& p);
-  void resized() override;
-  void refresh();
-
-private:
-  MasterpieceProcessor& proc_;
-  void refreshSets();
-
-  juce::Label setsHeading_;
-  juce::Label setLabel_;
-  juce::ComboBox setBox_;
-  juce::TextButton setNew_{TRANS("Save as new set...")};
-  juce::TextButton setDelete_{TRANS("Delete set")};
-  juce::Label setStatus_;
-  std::vector<std::string> setNames_;
-  std::unique_ptr<juce::AlertWindow> setPrompt_;
-};
-
 // Voicing: the player's own adjustments to a rank or a single pipe, the way a
 // voicer goes round an organ with a knife and a tuning cone. Rank level here;
 // the per-pipe rows are reached by picking a rank and a note.
