@@ -41,26 +41,8 @@ public:
     g.setColour(juce::Colour(0xffdfe6f0));
     g.setFont(13.0f);
 
-    const auto& b = list[static_cast<size_t>(row)];
-    juce::String text;
-    text << (b.deviceId == 0 ? juce::String(TRANS("Any device"))
-                             : juce::String(proc_.midiDevices().displayName(b.deviceId)));
-    text << "  "
-         << TRANS("ch %1").replace("%1", b.channel == 0 ? juce::String(TRANS("any"))
-                                                        : juce::String(b.channel));
-    text << "  "
-         << TRANS("keys %1 to %2")
-                .replace("%1", noteName(b.lowKey))
-                .replace("%2", noteName(b.highKey));
-    if (b.transpose != 0)
-      text << "  "
-           << TRANS("transposed %1")
-                  .replace("%1", juce::String(b.transpose > 0 ? "+" : "") + juce::String(b.transpose));
-    if (b.ignoreVelocity) text << "  " << TRANS("no velocity");
-    if (b.shortOctave) text << "  " << TRANS("short octave");
-    if (b.debounceMs > 0)
-      text << "  " << TRANS("debounce %1 ms").replace("%1", juce::String(b.debounceMs));
-    g.drawText(text, 6, 0, w - 12, h, juce::Justification::centredLeft, true);
+    g.drawText(ManualDialog::describeKeys(proc_, list[static_cast<size_t>(row)]), 6, 0, w - 12, h,
+               juce::Justification::centredLeft, true);
   }
 
   // Only the bindings for this manual, and their indices in the full list.
@@ -76,7 +58,57 @@ private:
   Id keyboardId_;
 };
 
+// A piston's row, the same in the Pistons tab and in Organ settings.
+juce::String pistonText(const MidiBinding& b, const juce::String& manual, int channel) {
+  return MidiEventDialog::describeBinding(b) + "  " +
+         TRANS("brings the %1 to the keyboard on channel %2")
+             .replace("%1", manual)
+             .replace("%2", juce::String(channel));
+}
+
 } // namespace
+
+juce::String ManualDialog::describeKeys(const MasterpieceProcessor& p, const MidiMap::KeyboardBinding& b) {
+  juce::String text;
+  text << (b.deviceId == 0 ? juce::String(TRANS("Any device"))
+                           : juce::String(p.midiDevices().displayName(b.deviceId)));
+  text << "  "
+       << TRANS("ch %1").replace("%1", b.channel == 0 ? juce::String(TRANS("any"))
+                                                      : juce::String(b.channel));
+  text << "  "
+       << TRANS("keys %1 to %2")
+              .replace("%1", noteName(b.lowKey))
+              .replace("%2", noteName(b.highKey));
+  if (b.transpose != 0)
+    text << "  "
+         << TRANS("transposed %1")
+                .replace("%1", juce::String(b.transpose > 0 ? "+" : "") + juce::String(b.transpose));
+  if (b.ignoreVelocity) text << "  " << TRANS("no velocity");
+  if (b.shortOctave) text << "  " << TRANS("short octave");
+  if (b.debounceMs > 0)
+    text << "  " << TRANS("debounce %1 ms").replace("%1", juce::String(b.debounceMs));
+  return text;
+}
+
+juce::StringArray ManualDialog::describeManual(const MasterpieceProcessor& p, Id keyboardId) {
+  juce::StringArray lines;
+  for (const auto& b : p.midiMap().keyboardBindings())
+    if (b.keyboardId == keyboardId) lines.add(describeKeys(p, b));
+  // No row of the player's: the organ's own channel plays it.
+  if (lines.isEmpty())
+    lines.add(TRANS("Default (channel %1)").replace("%1", juce::String(p.channelForKeyboard(keyboardId))));
+  return lines;
+}
+
+juce::StringArray ManualDialog::describePistons(const MasterpieceProcessor& p, Id keyboardId) {
+  juce::StringArray lines;
+  const juce::String manual(p.keyboardName(keyboardId));
+  for (int ch = 1; ch <= 16; ++ch)
+    for (const MidiBinding* b : p.midiMap().bindingsFor(MidiTargetKind::RouteKeyboard,
+                                                        routeKeyboardTarget(keyboardId, ch)))
+      lines.add(pistonText(*b, manual, ch));
+  return lines;
+}
 
 ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
     : proc_(p), keyboardId_(keyboardId) {
@@ -89,6 +121,10 @@ ManualDialog::ManualDialog(MasterpieceProcessor& p, Id keyboardId)
   list_.setModel(model_.get());
   list_.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xff141820));
   list_.setRowHeight(22);
+  addChildComponent(empty_);
+  empty_.setInterceptsMouseClicks(false, false);
+  empty_.setColour(juce::Label::textColourId, juce::Colour(0xff8b93a3));
+  empty_.setJustificationType(juce::Justification::topLeft);
 
   addAndMakeVisible(add_);
   add_.onClick = [this] { addBinding(); };
@@ -257,6 +293,11 @@ void ManualDialog::timerCallback() {
   const auto mine = bl->rows();
   const int row = selected();
   const bool has = row >= 0 && row < static_cast<int>(mine.size());
+  empty_.setVisible(mine.empty());
+  if (mine.empty()) {
+    const auto text = describeManual(proc_, keyboardId_)[0];
+    if (empty_.getText() != text) empty_.setText(text, juce::dontSendNotification);
+  }
 
   const std::initializer_list<juce::Component*> editable{
       &device_,   &channel_,   &lowKey_,      &highKey_,    &transpose_,
@@ -299,6 +340,7 @@ void ManualDialog::resized() {
 
   auto listArea = r.removeFromTop(110);
   list_.setBounds(listArea);
+  empty_.setBounds(listArea.reduced(2));
   r.removeFromTop(6);
   auto buttons = r.removeFromTop(kRow);
   add_.setBounds(buttons.removeFromLeft(80));
@@ -468,11 +510,7 @@ private:
       const Id target = routeKeyboardTarget(keyboardId_, ch);
       for (const MidiBinding* b : proc_.midiMap().bindingsFor(MidiTargetKind::RouteKeyboard, target)) {
         auto row = std::make_unique<PistonRow>();
-        row->text.setText(MidiEventDialog::describeBinding(*b) + "  " +
-                              TRANS("brings the %1 to the keyboard on channel %2")
-                                  .replace("%1", manual_)
-                                  .replace("%2", juce::String(ch)),
-                          juce::dontSendNotification);
+        row->text.setText(pistonText(*b, manual_, ch), juce::dontSendNotification);
         row->remove.setTooltip(TRANS("Remove this piston"));
         row->remove.onClick = [this, source = b->source, target] {
           proc_.midiMap().unbindOne(source, MidiTargetKind::RouteKeyboard, target);
@@ -535,7 +573,7 @@ private:
 // GrandOrgue's shape: one window per manual, a tab per kind of thing.
 class ManualWindowContent : public juce::Component {
 public:
-  ManualWindowContent(MasterpieceProcessor& p, Id keyboardId)
+  ManualWindowContent(MasterpieceProcessor& p, Id keyboardId, ManualDialog::Tab first)
       : tabs_(juce::TabbedButtonBar::TabsAtTop) {
     addAndMakeVisible(tabs_);
     const auto bg = juce::Colour(0xff1b1e24);
@@ -544,6 +582,7 @@ public:
     tabs_.addTab(TRANS("Send"), bg,
                  MidiEventDialog::makeSendPanel(p, MidiTargetKind::Keyboard, keyboardId).release(),
                  true);
+    tabs_.setCurrentTabIndex(static_cast<int>(first));
   }
   void resized() override { tabs_.setBounds(getLocalBounds()); }
 
@@ -553,8 +592,8 @@ private:
 
 } // namespace
 
-void ManualDialog::show(MasterpieceProcessor& p, Id keyboardId) {
-  auto content = std::make_unique<ManualWindowContent>(p, keyboardId);
+void ManualDialog::show(MasterpieceProcessor& p, Id keyboardId, Tab tab) {
+  auto content = std::make_unique<ManualWindowContent>(p, keyboardId, tab);
   content->setSize(600, 600);
   juce::DialogWindow::LaunchOptions o;
   o.content.setOwned(content.release());

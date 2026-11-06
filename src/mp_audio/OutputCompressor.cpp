@@ -28,6 +28,11 @@ float coefficient(float ms, double sampleRate) {
 
 }  // namespace
 
+float OutputCompressor::outputDbFor(float inputDb) const {
+  const float slope = 1.0f - 1.0f / ratio();
+  return inputDb - reductionFor(inputDb, thresholdDb(), slope) + makeupDb();
+}
+
 void OutputCompressor::setThresholdDb(float db) {
   thresholdDb_.store(std::clamp(db, -40.0f, 0.0f), std::memory_order_relaxed);
 }
@@ -65,6 +70,7 @@ void OutputCompressor::prepare(double sampleRate) {
 void OutputCompressor::reset() {
   for (auto& pair : pairs_) pair = Pair{};
   lastReductionDb_.store(0.0f, std::memory_order_relaxed);
+  lastLevelDb_.store(-120.0f, std::memory_order_relaxed);
 }
 
 float OutputCompressor::filter(HighPass& s, const Coefficients& c, float x) {
@@ -133,6 +139,7 @@ void OutputCompressor::process(float* const* channels, int numChannels, int numF
   }
 
   float worst = 0.0f;
+  float loudest = 0.0f;
   int index = 0;
   for (int ch = 0; ch < numChannels && index < kMaxPairs; ch += 2) {
     float* left = channels[ch];
@@ -140,9 +147,12 @@ void OutputCompressor::process(float* const* channels, int numChannels, int numF
     auto& pair = pairs_[static_cast<size_t>(index)];
     processPair(pair, left, right, numFrames, b);
     worst = std::max(worst, pair.reductionDb);
+    loudest = std::max(loudest, pair.envelope);
     ++index;
   }
   lastReductionDb_.store(worst, std::memory_order_relaxed);
+  lastLevelDb_.store(loudest > 1.0e-6f ? 20.0f * std::log10(loudest) : -120.0f,
+                     std::memory_order_relaxed);
   blocksProcessed_.fetch_add(1, std::memory_order_relaxed);
 }
 

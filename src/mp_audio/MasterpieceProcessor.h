@@ -271,6 +271,8 @@ public:
   // `timeoutMs`.
   bool stopLoad(int timeoutMs);
   const OrganModel& organModel() const { return model_; }
+  // What a display send writes for its object: the stop or control's name.
+  std::string displayNameOf(MidiTargetKind kind, Id id) const;
   const SampleLibrary& sampleLibrary() const { return samples_; }
 
   // The on-screen keyboard plays through the same path as a MIDI device: its
