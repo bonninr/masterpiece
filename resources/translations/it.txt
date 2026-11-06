@@ -582,6 +582,7 @@ countries: it ch sm va
 "For a click, a noise or a note that goes on sounding when keys are let go. Until Masterpiece is closed." = "Per un clic, un rumore o una nota che continua a suonare quando si lasciano i tasti. Fino alla chiusura di Masterpiece."
 "Console display" = "Display della consolle"
 "For a text display fitted to the console: it shows the lines chosen below, sent as system exclusive messages to the MIDI output. The display's own documentation gives its number, its line length and the prefix it expects." = "Per un display di testo montato sulla consolle: mostra le righe scelte qui sotto, inviate come messaggi di sistema esclusivo all'uscita MIDI. La documentazione del display indica il numero, la lunghezza di riga e il prefisso atteso."
+"Console events" = "Eventi della consolle"
 "Display number" = "Numero del display"
 "Characters per line" = "Caratteri per riga"
 "Sys-ex prefix (hex)" = "Prefisso sys-ex (hex)"

@@ -2120,12 +2120,13 @@ void MidiPanel::applyPart() {
   std::vector<juce::Component*> console{&inputsLabel_, &outputsLabel_, &output_, &feedback_, &holdEcho_, &cancelResets_,
                                         &leaveHeld_, &sustain_, &noiseFilter_, &archive_, &archiveSilence_,
                                         &archiveSize_, &archiveAge_, &consoleHeading_, &learnPagePrev_, &learnPageNext_, &learnLayout_,
-                                        &learnStopList_, &learnKeyboard_, &learnCombinations_,
-                                        &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_,
-                                        &lampChannel_, &lampNumber_, &lampLit_, &lampDark_, &loadMessageLabel_,
-                                        &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_,
-                                        &scoreHeading_, &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_,
-                                        &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
+                                        &learnStopList_, &learnKeyboard_, &learnCombinations_};
+  // The tab's whole purpose, so Simple mode shows these too.
+  const std::vector<juce::Component*> events{
+      &powerHeading_, &learnQuit_, &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_,
+      &lampLit_, &lampDark_, &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_,
+      &sendLoadMessage_, &sendUnloadMessage_, &scoreHeading_, &learnScoreBack_, &learnScoreForward_,
+      &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_, &scoreBack_};
   for (auto& b : inputs_) console.push_back(b.get());
   console.push_back(&defaultChannelsLabel_);
   for (auto& c : defaultRoleLabels_) console.push_back(&c);
@@ -2140,17 +2141,17 @@ void MidiPanel::applyPart() {
   const std::vector<juce::Component*> professional{
       &cancelResets_, &leaveHeld_, &noiseFilter_, &archive_, &archiveSilence_, &archiveSize_, &archiveAge_,
       &consoleHeading_, &learnPagePrev_, &learnPageNext_,
-      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_, &powerHeading_, &learnQuit_,
-      &learnPowerOff_, &lampLabel_, &lampKind_, &lampChannel_, &lampNumber_, &lampLit_, &lampDark_,
-      &loadMessageLabel_, &loadMessage_, &unloadMessageLabel_, &unloadMessage_, &sendLoadMessage_, &sendUnloadMessage_, &scoreHeading_,
-      &learnScoreBack_, &learnScoreForward_, &scoreSendsLabel_, &scoreKind_, &scoreChannel_, &scoreForward_,
-      &scoreBack_, &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
+      &learnLayout_, &learnStopList_, &learnKeyboard_, &learnCombinations_,
+      &keyboardsHeading_, &learnManuals_, &useAsDefault_, &clearDefault_, &defaultNote_};
   shownSimple_ = proc_.simpleMode();
-  for (auto* c : part_ == Part::Console ? console : organ)
+  const auto& mine = part_ == Part::Console ? console : part_ == Part::Organ ? organ : events;
+  for (const auto* list : std::initializer_list<const std::vector<juce::Component*>*>{&console, &organ, &events})
+    if (list != &mine)
+      for (auto* c : *list) c->setVisible(false);
+  for (auto* c : mine)
     c->setVisible(!shownSimple_ || std::find(professional.begin(), professional.end(), c) == professional.end());
-  for (auto* c : part_ == Part::Console ? organ : console) c->setVisible(false);
-  saveMap_.setVisible(!shownSimple_);
-  clearMap_.setVisible(!shownSimple_);
+  saveMap_.setVisible(!shownSimple_ && part_ != Part::Events);
+  clearMap_.setVisible(!shownSimple_ && part_ != Part::Events);
   bluetooth_.setVisible(part_ == Part::Console && juce::BluetoothMidiDevicePairingDialogue::isAvailable());
 }
 
@@ -2515,7 +2516,7 @@ void MidiPanel::resized() {
       }
       r.removeFromTop(2);
     }
-  } else {
+  } else if (part_ == Part::Organ) {
     keyboardsLabel_.setBounds(r.removeFromTop(kRow));
     for (size_t i = 0; i < keyboardChannels_.size(); ++i) {
       auto kbRow = r.removeFromTop(kRow).reduced(12, 0);
@@ -2586,7 +2587,8 @@ void MidiPanel::resized() {
       b->setBounds(row.removeFromLeft(150).reduced(2, 0));
       row.removeFromLeft(6);
     }
-
+  }
+  if (part_ == Part::Events) {
     r.removeFromTop(4);
     row = r.removeFromTop(kRow);
     powerHeading_.setBounds(row.removeFromLeft(120));
@@ -4273,6 +4275,11 @@ SettingsWindow::SettingsWindow(MasterpieceProcessor& p,
   tabs_.addTab(TRANS("Performance"), bg, &performanceScroll_, false);
   tabs_.addTab(TRANS("Metronome"), bg, &metronome_, false);
   tabs_.addTab(TRANS("Console display"), bg, &display_, false);
+  if (devices != nullptr) {
+    events_ = std::make_unique<MidiPanel>(p, *devices, MidiPanel::Part::Events);
+    eventsScroll_ = std::make_unique<ScrollHost>(*events_, 0, [this] { return events_->contentHeight(); });
+    tabs_.addTab(TRANS("Console events"), bg, eventsScroll_.get(), false);
+  }
   tabs_.addTab(TRANS("Preferences"), bg, &language_, false);
   // Only where the program runs the server: the standalone program sets
   // remoteStatus; a plugin does not.

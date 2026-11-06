@@ -334,8 +334,10 @@ private:
 class MidiPanel : public juce::Component, private juce::Timer {
 public:
   // Console: the devices, and what the console does on every organ, for
-  // Settings. Organ: this organ's keyboards, for Organ settings.
-  enum class Part { Console, Organ };
+  // Settings. Organ: this organ's keyboards, for Organ settings. Events: what
+  // the console does around playing, its power, lamp, messages and page
+  // turns, for a tab of its own in Settings.
+  enum class Part { Console, Organ, Events };
   MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices, Part part);
   ~MidiPanel() override;
   void resized() override;
@@ -739,6 +741,8 @@ private:
   MetronomePanel metronome_;
   std::unique_ptr<MidiPanel> midi_;
   std::unique_ptr<ScrollHost> midiScroll_;  // after midi_: it goes first
+  std::unique_ptr<MidiPanel> events_;
+  std::unique_ptr<ScrollHost> eventsScroll_;  // after events_: it goes first
   EnginePanel performance_;
   ScrollHost performanceScroll_{performance_, 0, [this] { return performance_.contentHeight(); }};
   EnginePanel general_;
