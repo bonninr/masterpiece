@@ -23068,6 +23068,39 @@ public:
 };
 static LanguageFilesTest g_languageFiles;
 
+// A language may come in parts: es.txt and any es.<topic>.txt beside it, so
+// two changes that each add strings write different files. The parts read as
+// one language, the main file first, and only the main file names a language.
+class LanguagePartsTest final : public mp::test::Test {
+public:
+  LanguagePartsTest() : Test("functional.i18n.language-parts", Category::Functional) {}
+  void run() override {
+    MP_CHECK(mp::languageOfFile("es.txt") == "es", "es.txt is Spanish");
+    MP_CHECK(mp::languageOfFile("es.reverb.txt") == "es", "es.reverb.txt is Spanish");
+    MP_CHECK(mp::languageOfFile("dir/de.midi-ports.txt") == "de", "a folder in the name is ignored");
+    MP_CHECK(mp::isMainLanguageFile("es.txt"), "es.txt is the main file");
+    MP_CHECK(!mp::isMainLanguageFile("es.reverb.txt"), "es.reverb.txt is a part");
+
+    const auto joined = mp::joinLanguageFiles(
+        "es", {{"es.zz.txt", "\"Late\" = \"Tarde\""},
+               {"de.txt", "language: Deutsch\n\"Settings\" = \"Einstellungen\"\n"},
+               {"es.aa.txt", "\"Early\" = \"Pronto\"\n"},
+               {"es.txt", "language: Espa\xc3\xb1ol\ncountries: es\n\"Settings\" = \"Ajustes\"\n"}});
+    MP_CHECK(joined.startsWith("language:"), "the main file comes first");
+    MP_CHECK(joined.indexOf("Pronto") < joined.indexOf("Tarde"), "the parts follow in name order");
+    MP_CHECK(!joined.contains("Einstellungen"), "another language is left out");
+    juce::LocalisedStrings file(joined, false);
+    MP_CHECK(file.getLanguageName() == juce::String::fromUTF8("Espa\xc3\xb1ol"), "the language keeps its name");
+    MP_CHECK(file.translate("Settings") == "Ajustes" && file.translate("Early") == "Pronto" &&
+                 file.translate("Late") == "Tarde",
+             "every part's strings are read, a part without a final newline too");
+
+    for (const auto& l : mp::availableLanguages())
+      MP_CHECK(l.code.containsNoneOf("."), "a part is never listed as a language: " + utf8(l.code));
+  }
+};
+static LanguagePartsTest g_languageParts;
+
 // Choosing a language makes TRANS() answer in it, a string the file lacks stays
 // English, and a placeholder survives the trip.
 class ChooseLanguageTest final : public mp::test::Test {
