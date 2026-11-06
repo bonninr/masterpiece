@@ -709,7 +709,29 @@ public:
   // row with. GrandOrgue's "Listen for Event".
   void beginMidiListen() {
     heardReady_.store(false, std::memory_order_relaxed);
+    listenPair_.store(false, std::memory_order_relaxed);
     midiListen_.store(true, std::memory_order_release);
+  }
+  // Listen for two messages, a tab moved on and then off (#927), as
+  // GrandOrgue's "Detect complex MIDI setup" does. The second may be a
+  // release; the first sent again is passed over.
+  void beginMidiListenPair() {
+    heardReady_.store(false, std::memory_order_relaxed);
+    pairStep_.store(0, std::memory_order_relaxed);
+    listenPair_.store(true, std::memory_order_relaxed);
+    midiListen_.store(true, std::memory_order_release);
+  }
+  // How many of the pair have been heard so far, for the window to say
+  // which one it waits for.
+  int midiListenPairStep() const { return pairStep_.load(std::memory_order_acquire); }
+  // The pair that answered, once.
+  bool takeHeardMidiPair(MidiSource& on, int& onValue, MidiSource& off, int& offValue) {
+    if (!heardReady_.exchange(false, std::memory_order_acq_rel)) return false;
+    on = heard_;
+    onValue = heardValue_;
+    off = heardOff_;
+    offValue = heardOffValue_;
+    return true;
   }
   void cancelMidiListen() { midiListen_.store(false, std::memory_order_release); }
   bool midiListening() const { return midiListen_.load(std::memory_order_acquire); }
@@ -1615,7 +1637,10 @@ public:
 
   // MIDI OUT. A physical console lights its own drawstops from what the organ
   // sends back, so engaging a stop on screen has to reach the hardware.
-  void setMidiOutput(juce::MidiOutput* out) { midiOut_ = out; }
+  void setMidiOutput(juce::MidiOutput* out) {
+    midiOut_ = out;
+    moreMidiOuts_.clear();
+  }
   // Page turns for a score app (ScorePageMessage): sent on the MIDI output
   // with the next audio block, from any thread. The message is kept in the
   // global settings.
@@ -1637,8 +1662,16 @@ public:
   // open or none, and the port opens again at the next start (Main.cpp). An
   // empty name closes it. False when no port of that name is there; the name
   // is kept for when the console is plugged in.
-  bool openMidiOutput(const juce::String& name);
-  const juce::String& midiOutputName() const { return midiOutputName_; }
+  bool openMidiOutput(const juce::String& name) {
+    return openMidiOutputs(name.isEmpty() ? juce::StringArray() : juce::StringArray(name));
+  }
+  // Several consoles at once, such as two pad controllers that each light
+  // their own stops (#942): every message goes to every port. False when
+  // a port named is not there; its name is kept, as for one.
+  bool openMidiOutputs(const juce::StringArray& names);
+  const juce::StringArray& midiOutputNames() const { return midiOutputNames_; }
+  // The ports chosen, joined for display.
+  juce::String midiOutputName() const { return midiOutputNames_.joinIntoString(", "); }
   // Echo switch changes to the console. Off by default: a console that echoes
   // what it just sent can latch itself into a loop. Kept in the general
   // settings.
@@ -1762,6 +1795,16 @@ public:
   }
   int liveRankCount() const { return liveLevels_.rankCount(); }
   int liveDivisionCount() const { return liveLevels_.divisionCount(); }
+  // A fader for each perspective, or each windchest group on a GrandOrgue
+  // set, in perspectives() order; none on an organ recorded from one place.
+  // MIDI names one by its place from 1.
+  int liveGroupLevel(int index) const { return liveLevels_.group(index); }
+  void setLiveGroupLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setGroup(index, value);
+  }
+  int liveGroupCount() const { return liveLevels_.groupCount(); }
+  const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
+  int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
   int liveDivisionOfRank(int rankIndex) const { return liveLevels_.rankDivision(rankIndex); }
   // A rank's or a division's place in those lists; -1 for none.
@@ -2347,6 +2390,7 @@ private:
   LiveLevels liveLevels_;
   std::unordered_map<Id, int> liveRankIndex_;
   std::unordered_map<Id, int> liveDivisionIndex_;
+  std::vector<std::string> liveGroupNames_;
   // The organ's layer levels (#765): every continuous control a pipe layer
   // reads as its AmpLvl_ScalingContinuousControlID, each with its place in
   // the table the voices read, resolved at load. The gains follow their
@@ -2362,6 +2406,17 @@ private:
     return it == layerLevelIndex_.end() ? -1 : it->second;
   }
   void advanceLayerLevels(int numFrames);
+  // The organ's pitch controls (#828): every continuous control a pipe layer
+  // reads as its PitchLvl_IncrementingContinuousControlID, with its place in
+  // the table the voices read, resolved at load. Read whole each block, so a
+  // pipe already sounding follows a detune slider, or a key's own pitch
+  // control as it moves once the key is down.
+  std::unordered_map<Id, int> pitchControlIndex_;
+  std::vector<Id> pitchControlIds_;
+  std::vector<int> pitchControlValues_;
+  void advancePitchControls();
+  // Fills `vs` so the voice follows its layer's pitch control from here on.
+  void followPitchControl(const Pipe& pipe, const PipeLayer& layer, VoiceStart& vs) const;
   void retargetVoicing(int numFrames);
   // Sets a live level from a MIDI control: a rank or division by its id, a
   // pair by its number from 1.
@@ -2531,9 +2586,15 @@ private:
   std::atomic<bool> organLoading_{false};
   std::atomic<int> organLoads_{0};
   bool applyOrganTrim_ = true;
-  juce::MidiOutput* midiOut_ = nullptr; // ownedMidiOut_, or the application's
-  std::unique_ptr<juce::MidiOutput> ownedMidiOut_;
-  juce::String midiOutputName_;
+  juce::MidiOutput* midiOut_ = nullptr; // the first of ownedMidiOuts_, or the application's
+  // The ports after the first, sent the same messages (sendOut).
+  std::vector<juce::MidiOutput*> moreMidiOuts_;
+  std::vector<std::unique_ptr<juce::MidiOutput>> ownedMidiOuts_;
+  juce::StringArray midiOutputNames_;
+  void sendOut(const juce::MidiBuffer& messages) {
+    if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(messages);
+    for (auto* out : moreMidiOuts_) out->sendBlockOfMessagesNow(messages);
+  }
   bool midiFeedback_ = false;
   bool midiSendsHoldEcho_ = false;
   std::vector<uint8_t> loadMessage_;  // changed under the AudioLock
@@ -2914,6 +2975,12 @@ private:
   std::atomic<bool> heardReady_{false};
   MidiSource heard_;
   int heardValue_ = 0;
+  // Listening for an on and an off (#927): the off is kept beside the on.
+  std::atomic<bool> listenPair_{false};
+  std::atomic<int> pairStep_{0};
+  MidiSource heardOff_;
+  int heardOffValue_ = 0;
+  void hearForListen(const MidiSource& source, int value);
   // The value each send last went out with, by its place in the map's list;
   // -1 sends the current state on the next block; kTakeStateQuietly takes it
   // without sending. Kept for the rows a change leaves alone.

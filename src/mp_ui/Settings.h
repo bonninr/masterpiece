@@ -387,7 +387,10 @@ private:
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
   void showDefaultChannels();
-  juce::ComboBox output_;
+  // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
+  juce::TextButton output_;
+  void showOutputMenu();
+  void showOutputs();
   juce::ToggleButton feedback_{TRANS("Send stop changes on the MIDI output")};
   juce::ToggleButton holdEcho_{TRANS("Send events leave out a console's own message")};
   juce::ToggleButton cancelResets_{
@@ -402,6 +405,11 @@ private:
   // Simple mode leaves them out.
   juce::TextButton saveMap_{TRANS("Save mappings")};
   juce::TextButton clearMap_{TRANS("Clear all mappings")};
+  // A GrandOrgue set's MIDI settings, read from GrandOrgue's own settings file
+  // for it (#865).
+  juce::TextButton fromGrandOrgue_{TRANS("From GrandOrgue...")};
+  std::unique_ptr<juce::FileChooser> grandOrgueChooser_;
+  void importFromGrandOrgue();
   // Pairing a Bluetooth MIDI keyboard, where the system offers it (#680).
   juce::TextButton bluetooth_{TRANS("Bluetooth MIDI...")};
   // Every learn button on the page works as a console control's MIDI menu
@@ -573,8 +581,13 @@ private:
   int faderLevel(const Fader& f) const;
   void setFaderLevel(const Fader& f, int value);
   void faderMidiMenu(Fader& f);
-  std::vector<Fader> pairFaders_, divisionFaders_, rankFaders_;
-  juce::Label pairsHeading_, divisionsHeading_, ranksHeading_;
+  std::vector<Fader> pairFaders_, divisionFaders_, groupFaders_, rankFaders_;
+  juce::Label pairsHeading_, divisionsHeading_, groupsHeading_, ranksHeading_;
+  // A perspective's or a windchest group's pair: chosen here, it moves every
+  // rank of the group; it shows the pair while they all share one.
+  std::vector<std::unique_ptr<juce::ComboBox>> groupPairs_;
+  void fillGroupPairs();
+  void showGroupPairs();
 
   MasterpieceProcessor& proc_;
   juce::Label heading_;

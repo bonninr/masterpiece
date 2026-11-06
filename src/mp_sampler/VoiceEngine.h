@@ -395,6 +395,16 @@ struct Voice {
   // Which of the organ's layer levels reaches this pipe, as an index into the
   // table setLayerLevels() hands over; -1 for a layer that names none.
   int levelIndex = -1;
+  // Which of the organ's pitch controls moves this pipe while it sounds
+  // (PitchLvl_IncrementingContinuousControlID), as an index into the table
+  // setPitchControls() hands over; -1 for a layer that names none. The pipe
+  // started with the control at pitchFrom. Each step away from it moves the
+  // pitch by pitchPerUnit of the pitch it started at, never below pitchFloor:
+  // the same arithmetic as detunedTargetHz(), carried on from the start.
+  int pitchIndex = -1;
+  int pitchFrom = 0;
+  double pitchPerUnit = 0.0;
+  double pitchFloor = 0.0;
   // The voicing's level for this pipe, and the level it is moving to after
   // a change to the voicing (retargetVoicing).
   float voicingGain = 1.0f;
@@ -496,6 +506,11 @@ struct VoiceStart {
   int swayIndex = -1;  // wind sway; see Voice::swayIndex
   int rankIndex = -1;  // live level; see Voice::rankIndex
   int levelIndex = -1;  // the layer's level; see Voice::levelIndex
+  // The layer's pitch control; see Voice::pitchIndex.
+  int pitchIndex = -1;
+  int pitchFrom = 0;
+  double pitchPerUnit = 0.0;
+  double pitchFloor = 0.0;
   float voicingGain = 1.0f;  // the voicing's level; see Voice::voicingGain
   // The attack's emphasis; see Voice::attackBoost. 0 frames is none.
   float attackBoost = 0.0f;
@@ -725,6 +740,13 @@ public:
   void setLayerLevels(const float* levels, int count) {
     layerLevels_ = levels;
     layerLevelCount_ = count;
+  }
+  // The organ's pitch controls for the next block: one value per control, in
+  // the control's own steps. A pipe already sounding follows its control from
+  // the value it started with (#828). Null for an organ that declares none.
+  void setPitchControls(const int* values, int count) {
+    pitchValues_ = values;
+    pitchCount_ = count;
   }
   // After a change to the voicing: each pipe sounding moves to the level
   // gainOf(pipeId) gives it, by `step` of the way each block (#765).
@@ -963,6 +985,8 @@ private:
   int livePairCount_ = 0;
   const float* layerLevels_ = nullptr;
   int layerLevelCount_ = 0;
+  const int* pitchValues_ = nullptr;
+  int pitchCount_ = 0;
   float voicingStep_ = 1.0f;
 
   // --- streaming --------------------------------------------------------

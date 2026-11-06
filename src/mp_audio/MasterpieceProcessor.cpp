@@ -1024,6 +1024,7 @@ void MasterpieceProcessor::renderBuses(juce::AudioBuffer<float>& output) {
   else
     voices_.setLiveGains(nullptr, 0, nullptr, 0);
   advanceLayerLevels(numFrames);
+  advancePitchControls();
   retargetVoicing(numFrames);
   if (!blockLog_.empty())
     blockWindUs_ = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - w0) * 1.0e6;
@@ -1299,9 +1300,13 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
                      "=" + juce::String(source.number) + " val=" + juce::String(value)));
 
     // The noise filter: while learning, a key is held back until it has been
-    // down a quarter second, and one let go sooner is dropped.
+    // down a quarter second, and one let go sooner is dropped. Listening for
+    // an off (#927), a key let go is the off itself.
+    const bool pairOff = value <= 0 && midiListen_.load(std::memory_order_acquire) &&
+                         listenPair_.load(std::memory_order_acquire) &&
+                         pairStep_.load(std::memory_order_acquire) == 1;
     if (source.kind == MidiSourceKind::Note && learnNoiseFilter_.load(std::memory_order_acquire) &&
-        learningFrom(deviceId)) {
+        learningFrom(deviceId) && !pairOff) {
       holdForLearn(source, value);
       continue;
     }
@@ -1317,12 +1322,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // controller is taken at any value: a console that sends 0 for off sends
     // a real message (#565).
     if (midiListen_.load(std::memory_order_acquire) && source.kind != MidiSourceKind::None) {
-      if (!bankSelect && (value > 0 || source.kind == MidiSourceKind::ControlChange)) {
-        heard_ = source;
-        heardValue_ = value;
-        midiListen_.store(false, std::memory_order_release);
-        heardReady_.store(true, std::memory_order_release);
-      }
+      if (!bankSelect) hearForListen(source, value);
       continue;
     }
 
@@ -1496,6 +1496,7 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
           continue;
         case MidiTargetKind::RankLevel:
         case MidiTargetKind::DivisionLevel:
+        case MidiTargetKind::GroupLevel:
         case MidiTargetKind::PairLevel:
         case MidiTargetKind::ReverbWet:
           setLiveLevelFromMidi(action.kind, action.targetId, action.value);
@@ -1796,14 +1797,34 @@ void MasterpieceProcessor::learnHeldKeys() {
   if (learningFrom(chosen.source.deviceId)) learnFromPress(chosen.source, chosen.value);
 }
 
+// The MIDI window's Listen takes a message. A press, or a controller at any
+// value; and listening for a pair (#927), the off that follows, which may be
+// a release. The on sent again is passed over.
+void MasterpieceProcessor::hearForListen(const MidiSource& source, int value) {
+  const bool pair = listenPair_.load(std::memory_order_acquire);
+  if (pair && pairStep_.load(std::memory_order_relaxed) == 1) {
+    if (source == heard_ && value == heardValue_) return;
+    heardOff_ = source;
+    heardOffValue_ = value;
+    pairStep_.store(2, std::memory_order_release);
+  } else {
+    if (value <= 0 && source.kind != MidiSourceKind::ControlChange) return;
+    heard_ = source;
+    heardValue_ = value;
+    if (pair) {
+      pairStep_.store(1, std::memory_order_release);
+      return;
+    }
+  }
+  midiListen_.store(false, std::memory_order_release);
+  heardReady_.store(true, std::memory_order_release);
+}
+
 // What a press does to whichever learn is waiting, in the order the MIDI
 // handling asks them.
 void MasterpieceProcessor::learnFromPress(const MidiSource& source, int value) {
   if (midiListen_.load(std::memory_order_acquire)) {
-    heard_ = source;
-    heardValue_ = value;
-    midiListen_.store(false, std::memory_order_release);
-    heardReady_.store(true, std::memory_order_release);
+    hearForListen(source, value);
     return;
   }
   if (midiMap_.learning()) {
@@ -2646,7 +2667,7 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   text << "realtimethreads " << (realtimeThreads_.load() ? 1 : 0) << "\n";
   text << "everyprocessor " << (everyProcessor_.load() ? 1 : 0) << "\n";
   for (const auto& name : inputsOff_) text << "midiinputoff " << name << "\n";
-  if (midiOutputName_.isNotEmpty()) text << "midioutput " << midiOutputName_ << "\n";
+  for (const auto& name : midiOutputNames_) text << "midioutput " << name << "\n";
   if (const auto page = scorePageMessage(); !(page == ScorePageMessage{}))
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
@@ -2727,6 +2748,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
   cacheMode_ = SampleLibrary::CacheMode::Single;
   // The file holds them all, so a second read must not add them twice.
   eqPresets_.clearOwn();
+  midiOutputNames_.clear();
   for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
     if (line.trim().isEmpty() || line.trimStart().startsWith("#")) continue;
     const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
@@ -2881,7 +2903,7 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
         scorePage_.store(packScorePage(m), std::memory_order_release);
       }
     } else if (key == "midioutput") {
-      midiOutputName_ = val;  // opened by the application at start
+      if (val.isNotEmpty()) midiOutputNames_.addIfNotAlreadyThere(val);  // opened by the application at start
     } else if (key == "midifeedback") {
       midiFeedback_ = val.getIntValue() != 0;
     } else if (key == "midisendsholdecho") {
@@ -3131,26 +3153,41 @@ void MasterpieceProcessor::setOpenFolder(const juce::File& folder) {
   writeGlobalFile();
 }
 
-bool MasterpieceProcessor::openMidiOutput(const juce::String& name) {
-  std::unique_ptr<juce::MidiOutput> opened;
-  if (name.isNotEmpty())
-    for (const auto& d : juce::MidiOutput::getAvailableDevices())
-      if (d.name == name) {
-        opened = juce::MidiOutput::openDevice(d.identifier);
+bool MasterpieceProcessor::openMidiOutputs(const juce::StringArray& names) {
+  juce::StringArray wanted;
+  for (const auto& n : names)
+    if (n.isNotEmpty()) wanted.addIfNotAlreadyThere(n);
+  // The old ports close before the new ones open: a port is opened once.
+  std::vector<std::unique_ptr<juce::MidiOutput>> old;
+  {
+    // The audio thread sends through them: swapped between blocks.
+    const AudioLock audio(*this);
+    midiOut_ = nullptr;
+    moreMidiOuts_.clear();
+    old.swap(ownedMidiOuts_);
+  }
+  old.clear();  // outside the lock
+  std::vector<std::unique_ptr<juce::MidiOutput>> opened;
+  const auto devices = juce::MidiOutput::getAvailableDevices();
+  for (const auto& n : wanted)
+    for (const auto& d : devices)
+      if (d.name == n) {
+        if (auto port = juce::MidiOutput::openDevice(d.identifier)) opened.push_back(std::move(port));
         break;
       }
+  const bool all = opened.size() == static_cast<size_t>(wanted.size());
   {
-    // The audio thread sends through it: swapped between blocks.
     const AudioLock audio(*this);
-    midiOut_ = opened.get();
-    ownedMidiOut_.swap(opened);
+    ownedMidiOuts_.swap(opened);
+    for (const auto& port : ownedMidiOuts_)
+      if (midiOut_ == nullptr) midiOut_ = port.get();
+      else moreMidiOuts_.push_back(port.get());
   }
-  opened.reset();  // the old port closes outside the lock
-  if (midiOutputName_ != name) {
-    midiOutputName_ = name;
+  if (midiOutputNames_ != wanted) {
+    midiOutputNames_ = wanted;
     writeGlobalFile();
   }
-  return name.isEmpty() || midiOut_ != nullptr;
+  return all;
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -4309,6 +4346,8 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
     // sounds (#765); a level that names no control stays at full.
     vs.gain = juce::Decibels::decibelsToGain(static_cast<float>(layer.gainDb), -100.0f);
     vs.levelIndex = layerLevelIndexOf(layer);
+    // Its pitch control, the same way (#828).
+    followPitchControl(pipe, layer, vs);
 
     // How hard the key was struck. The organ states the attenuation at the
     // softest touch; full velocity is unattenuated. Inverted, the sense
@@ -5724,6 +5763,7 @@ void MasterpieceProcessor::setLiveLevelFromMidi(MidiTargetKind kind, Id targetId
   switch (kind) {
     case MidiTargetKind::RankLevel: liveLevels_.setRank(liveRankIndexOf(targetId), value); break;
     case MidiTargetKind::DivisionLevel: liveLevels_.setDivision(liveDivisionIndexOf(targetId), value); break;
+    case MidiTargetKind::GroupLevel: liveLevels_.setGroup(static_cast<int>(targetId) - 1, value); break;
     case MidiTargetKind::PairLevel: liveLevels_.setPair(static_cast<int>(targetId) - 1, value); break;
     // Saved with the organ, as the Reverb tab's slider is.
     case MidiTargetKind::ReverbWet:
@@ -7186,7 +7226,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
   // Send anything the console should reflect (lit drawstops, moved shoes).
   if (midiOut_ != nullptr && !outgoing_.isEmpty())
-    midiOut_->sendBlockOfMessagesNow(outgoing_);
+    sendOut(outgoing_);
   if (outgoingProbe && !outgoing_.isEmpty()) outgoingProbe(outgoing_);
   outgoing_.clear();
 
@@ -7775,13 +7815,24 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         if (e.alternateRankId != 0) rankDivision.emplace(e.alternateRankId, d->second);
       }
     }
-    std::vector<int> divisionOfRank;
+    // The perspectives, or a GrandOrgue set's windchest groups, in the order
+    // perspectives() lists them: a rank in more than one takes the first.
+    liveGroupNames_.clear();
+    std::unordered_map<Id, int> rankGroup;
+    for (const auto& [name, groupRanks] : perspectivesOf(model_)) {
+      for (Id rankId : groupRanks) rankGroup.emplace(rankId, static_cast<int>(liveGroupNames_.size()));
+      liveGroupNames_.push_back(name);
+    }
+    std::vector<int> divisionOfRank, groupOfRank;
     for (size_t i = 0; i < ranks.size(); ++i) {
       liveRankIndex_[ranks[i]] = static_cast<int>(i);
       const auto d = rankDivision.find(ranks[i]);
       divisionOfRank.push_back(d == rankDivision.end() ? -1 : d->second);
+      const auto g = rankGroup.find(ranks[i]);
+      groupOfRank.push_back(g == rankGroup.end() ? -1 : g->second);
     }
-    liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()));
+    liveLevels_.configure(std::move(divisionOfRank), static_cast<int>(divisions.size()), std::move(groupOfRank),
+                          static_cast<int>(liveGroupNames_.size()));
   }
   // The layer levels: each control that a pipe layer reads as its level,
   // in id order. An id with no control behind it stays at full, as before.
@@ -7799,6 +7850,22 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     layerLevelControls_ = std::move(ids);
     layerLevelGains_.assign(layerLevelControls_.size(), 1.0f);
     layerLevelsSettled_ = false;
+  }
+  // The pitch controls, the same way (#828).
+  {
+    pitchControlIndex_.clear();
+    std::vector<Id> ids;
+    for (const auto& [rankId, rank] : model_.ranks)
+      for (const auto& pipe : rank.pipes)
+        for (const auto& layer : pipe.layers)
+          if (layer.pitchControlId != 0 && layer.pitchSensitivityHzPerUnit != 0.0 &&
+              model_.continuousControls.count(layer.pitchControlId) != 0)
+            ids.push_back(layer.pitchControlId);
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    for (size_t i = 0; i < ids.size(); ++i) pitchControlIndex_[ids[i]] = static_cast<int>(i);
+    pitchControlIds_ = std::move(ids);
+    pitchControlValues_.assign(pitchControlIds_.size(), 0);
   }
   phases.mark("model: wind");
   stages_.reset(model_);
@@ -8944,7 +9011,7 @@ void MasterpieceProcessor::sendUnloadMessage() {
   if (midiOut_ == nullptr && !outgoingProbe) return;
   juce::MidiBuffer out;
   addMessages(out, unloadMessage_);
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  sendOut(out);
   if (outgoingProbe) outgoingProbe(out);
 }
 
@@ -8955,7 +9022,7 @@ bool MasterpieceProcessor::sendMidiNow(const juce::String& hex) {
   if (midiOut_ == nullptr && !outgoingProbe) return false;
   juce::MidiBuffer out;
   addMessages(out, bytes);
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(out);
+  sendOut(out);
   if (outgoingProbe) outgoingProbe(out);
   return true;
 }
@@ -9047,7 +9114,7 @@ void MasterpieceProcessor::pumpReadyLamp(int numFrames) {
   if (readyLampMessage(lamp, lit == 1, raw)) lampOut_.addEvent(raw.bytes, raw.size, 0);
   addMessages(lampOut_, lit == 1 ? lampLit_ : lampDark_);
   if (lampOut_.isEmpty()) return;
-  if (midiOut_ != nullptr) midiOut_->sendBlockOfMessagesNow(lampOut_);
+  sendOut(lampOut_);
   if (outgoingProbe) outgoingProbe(lampOut_);
 }
 
@@ -9399,6 +9466,37 @@ void MasterpieceProcessor::advanceLayerLevels(int numFrames) {
   }
   layerLevelsSettled_ = true;
   voices_.setLayerLevels(layerLevelGains_.data(), static_cast<int>(layerLevelGains_.size()));
+}
+
+void MasterpieceProcessor::advancePitchControls() {
+  // simpleWavOnly plays every pipe at its plain pitch, detune included.
+  if (pitchControlIds_.empty() || graph_.engineSwitch.simpleWavOnly) {
+    voices_.setPitchControls(nullptr, 0);
+    return;
+  }
+  for (size_t i = 0; i < pitchControlIds_.size(); ++i)
+    pitchControlValues_[i] = controls_.value(pitchControlIds_[i]);
+  voices_.setPitchControls(pitchControlValues_.data(), static_cast<int>(pitchControlValues_.size()));
+}
+
+void MasterpieceProcessor::followPitchControl(const Pipe& pipe, const PipeLayer& layer,
+                                              VoiceStart& vs) const {
+  if (layer.pitchControlId == 0 || graph_.engineSwitch.simpleWavOnly) return;
+  const auto it = pitchControlIndex_.find(layer.pitchControlId);
+  if (it == pitchControlIndex_.end()) return;
+  // The pitch the pipe starts at, its control included, and the pitch it
+  // would have with the control at the centre: detunedTargetHz() moves the
+  // second by the sensitivity for each step, never below half of it.
+  const bool originalPitch =
+      graph_.engineSwitch.playAtOriginalOrganPitch && pipe.originalOrganPitchHz > 0.0;
+  const double startHz = pipeTargetHzFor(pipe, layer, originalPitch);
+  if (startHz <= 0.0) return;
+  const int from = detuneControlValue(layer);
+  const double centreHz = startHz - (from - detuneCentre(layer)) * layer.pitchSensitivityHzPerUnit;
+  vs.pitchIndex = it->second;
+  vs.pitchFrom = from;
+  vs.pitchPerUnit = layer.pitchSensitivityHzPerUnit / startHz;
+  vs.pitchFloor = centreHz > 0.0 ? 0.5 * centreHz / startHz : 0.5;
 }
 
 float MasterpieceProcessor::voicingGainOf(Id rankId, Id pipeId) const {
