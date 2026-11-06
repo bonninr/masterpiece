@@ -1209,3 +1209,5 @@ countries: cz
 "Every pipe..." = "Všechny píšťaly..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Všechny píšťaly řady najednou, pro nakreslení jejich hlasitosti nebo ladění přes celý rozsah"
 "Voicing: every pipe" = "Intonace: všechny píšťaly"
+"Controller, one bit" = "Kontrolér, jeden bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "Bit kontroléru, který nese tento spínač, 0 pro nejnižší"

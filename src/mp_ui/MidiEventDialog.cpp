@@ -56,8 +56,11 @@ int eventItem(MidiSourceKind k) {
 // A switch's controller at one value (#923): the controller, with the row's
 // exact-values flag.
 constexpr int kExactControllerItem = 5;
+// A switch carried by one bit of a controller (#924).
+constexpr int kBitControllerItem = 6;
 MidiSourceKind eventKind(int item) {
-  return item == 2 || item == kExactControllerItem ? MidiSourceKind::ControlChange
+  return item == 2 || item == kExactControllerItem || item == kBitControllerItem
+             ? MidiSourceKind::ControlChange
                    : item == 3 ? MidiSourceKind::ProgramChange
                    : item == 4 ? MidiSourceKind::SysEx
                                : MidiSourceKind::Note;
@@ -170,12 +173,16 @@ public:
     fillChannels(channel_, true);
     channel_.setSelectedId(b.source.channel + 1, juce::dontSendNotification);
     fillEvents(event_);
-    if (kind_ == MidiTargetKind::Switch) event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
+    if (kind_ == MidiTargetKind::Switch) {
+      event_.addItem(TRANS("Controller, one value"), kExactControllerItem);
+      event_.addItem(TRANS("Controller, one bit"), kBitControllerItem);
+    }
     const bool set = b.source.kind != MidiSourceKind::None;
+    const bool cc = b.source.kind == MidiSourceKind::ControlChange;
     if (set)
-      event_.setSelectedId(b.exactValues && b.source.kind == MidiSourceKind::ControlChange
-                               ? kExactControllerItem
-                               : eventItem(b.source.kind),
+      event_.setSelectedId(cc && b.bit >= 0          ? kBitControllerItem
+                           : cc && b.exactValues ? kExactControllerItem
+                                                 : eventItem(b.source.kind),
                            juce::dontSendNotification);
     fillNumbers(number_, set ? b.source.kind : MidiSourceKind::Note, b.source.number,
                 kind_ == MidiTargetKind::ContinuousControl);
@@ -289,6 +296,8 @@ public:
     if (event_.getSelectedId() > 0) {
       b.source.kind = eventKind(event_.getSelectedId());
       b.exactValues = event_.getSelectedId() == kExactControllerItem;
+      b.bit = event_.getSelectedId() == kBitControllerItem ? juce::jlimit(0, 6, static_cast<int>(high_.getValue()))
+                                                           : -1;
       b.source.number = b.source.kind == MidiSourceKind::SysEx ? binding_.source.number
                         : number_.getSelectedId() == kAnyNoteItem    ? kAnyNote
                                                                       : juce::jmax(0, number_.getSelectedId() - 1);
@@ -299,8 +308,11 @@ public:
                   : a == 3 ? MidiTrigger::EngageOnly
                   : a == 4 ? MidiTrigger::DisengageOnly
                            : MidiTrigger::Toggle;
-      b.lowValue = static_cast<int>(low_.getValue());
-      b.highValue = static_cast<int>(high_.getValue());
+      // On a bitfield row, On at holds the bit, and the values stay as they were.
+      if (b.bit < 0) {
+        b.lowValue = static_cast<int>(low_.getValue());
+        b.highValue = static_cast<int>(high_.getValue());
+      }
       b.debounceMs = static_cast<int>(debounce_.getValue());
     } else {
       b.lowValue = static_cast<int>(low_.getValue());
@@ -318,13 +330,26 @@ private:
 
   // A program change or a system exclusive message carries no value to
   // read on or off from.
+  // A bitfield row has a bit in place of its values: On at is the bit, 0 to
+  // 6, and the switch follows it, so there is nothing to choose for what the
+  // message does.
   void showValues() {
     const int e = event_.getSelectedId();
+    const bool bit = e == kBitControllerItem;
     const bool values = e == 0 || eventKind(e) == MidiSourceKind::Note ||
                         eventKind(e) == MidiSourceKind::ControlChange;
-    low_.setEnabled(values);
+    low_.setEnabled(values && !bit);
     high_.setEnabled(values);
+    action_.setEnabled(!bit);
+    if (bit != showingBit_) {
+      showingBit_ = bit;
+      high_.setRange(0, bit ? 6 : 127, 1);
+      high_.setValue(bit ? juce::jmax(0, binding_.bit) : binding_.highValue, juce::dontSendNotification);
+      high_.setTooltip(bit ? TRANS("The bit of the controller that carries this switch, 0 for the lowest")
+                           : TRANS("The value your console sends for on"));
+    }
   }
+  bool showingBit_ = false;
 
   // The ways this row's message can work its target. A switch held by a
   // message with no release would stay drawn, so it toggles.

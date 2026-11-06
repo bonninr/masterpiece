@@ -12756,6 +12756,50 @@ public:
 };
 static MidiExactValuesTest g_midiExactValues;
 
+// Switches carried by the bits of one controller (#924).
+class MidiControllerBitsTest final : public mp::test::Test {
+public:
+  MidiControllerBitsTest() : Test("functional.midi.controller-bitfield", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    const mp::MidiSource cc30{mp::MidiSourceKind::ControlChange, 2, 30};
+    for (int bit = 0; bit < 3; ++bit) {
+      mp::MidiBinding b;
+      b.source = cc30;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = static_cast<mp::Id>(40 + bit);
+      b.bit = bit;
+      map.bind(b);
+    }
+    // Each switch and whether the message leaves it drawn.
+    auto states = [&](int value) {
+      std::vector<std::pair<mp::Id, bool>> out;
+      const auto a = map.actionFor(cc30, value);
+      if (a.valid() && !a.idle) out.push_back({a.targetId, a.engage});
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid()) out.push_back({more.targetId, more.engage});
+        }
+      std::sort(out.begin(), out.end());
+      return out;
+    };
+    using S = std::vector<std::pair<mp::Id, bool>>;
+    MP_CHECK(states(0b101) == S({{40, true}, {41, false}, {42, true}}), "5 draws the first and third");
+    MP_CHECK(states(0b010) == S({{40, false}, {41, true}, {42, false}}), "2 draws the second alone");
+    MP_CHECK(states(0) == S({{40, false}, {41, false}, {42, false}}), "0 cancels all three");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 42);
+    MP_CHECK(rows.size() == 1 && rows.front()->bit == 2, "the bit survives saving");
+    const auto plain = back.bindingsFor(mp::MidiTargetKind::Switch, 40);
+    MP_CHECK(plain.size() == 1 && plain.front()->bit == 0, "bit 0 too");
+  }
+};
+static MidiControllerBitsTest g_midiControllerBits;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {
