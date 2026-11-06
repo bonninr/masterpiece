@@ -15,6 +15,7 @@ add_library(mp_audio STATIC
   OutputLimiter.h OutputLimiter.cpp
   OutputCompressor.h OutputCompressor.cpp
   OutputDynamicsPresets.h
+  SpectrumTap.h SpectrumTap.cpp
   BassManager.h BassManager.cpp
   AudioRecorder.h AudioRecorder.cpp
   MidiRecorder.h MidiRecorder.cpp

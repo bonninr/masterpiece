@@ -143,6 +143,7 @@ juce::String voicingEqPresetName(const VoicingEqPreset& p);
 class VoicingEqPanel : public juce::Component, private juce::Timer {
 public:
   explicit VoicingEqPanel(MasterpieceProcessor& p);
+  ~VoicingEqPanel() override;
   void resized() override;
   void paint(juce::Graphics& g) override;
 
@@ -169,6 +170,11 @@ private:
   juce::Slider gain_;
   juce::Label gainName_;
   juce::Rectangle<int> curveArea_;
+  // The live spectrum drawn under the curve, in dBFS per FFT bin, falling
+  // back slowly from its peaks. The tap is open while the tab is on screen.
+  void followSpectrum();
+  std::vector<float> spectrum_;
+  bool tapOpen_ = false;
   // The attack's emphasis: how much louder, or softer, each pipe begins,
   // and over how long it comes to its own level.
   juce::Label attackName_, attackOver_;

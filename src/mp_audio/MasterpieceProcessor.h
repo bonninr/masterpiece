@@ -27,6 +27,7 @@
 #include "OutputCompressor.h"
 #include "OutputDynamicsPresets.h"
 #include "OutputLimiter.h"
+#include "SpectrumTap.h"
 #include "BassManager.h"
 #include "AudioRecorder.h"
 #include "MidiArchive.h"
@@ -1706,6 +1707,9 @@ public:
   // Moves on with every change, so a panel open on it can follow a preset
   // recalled from MIDI.
   int voicingEqChanges() const { return voicingEqChanges_; }
+  // The organ's sound after the voicing EQ and before the room, for the
+  // Equalizer tab's spectrum. Fed only while a window has it open.
+  SpectrumTap& spectrum() { return spectrum_; }
   // Every organ starts from the default EQ -- the speakers and the room are
   // the same whatever is played -- until one is saved for it. Saved for the
   // organ, the EQ is its own, On box included, whatever it is.
@@ -2546,6 +2550,7 @@ private:
   std::atomic<float> attackDb_{0.0f};
   std::atomic<int> attackMs_{40};
   VoicingEq voicingEq_;
+  SpectrumTap spectrum_;
   Favourites favourites_;
   // Empty means the organ's default set.
   std::vector<PagePlace> pageWindows_;

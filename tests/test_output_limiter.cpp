@@ -823,9 +823,50 @@ static LimiterSettingsTest g_limiterSettings;
 static CompressorOffTest g_compressorOff;
 static CompressorRatioTest g_compressorRatio;
 static CompressorMakeupTest g_compressorMakeup;
+// The processor feeds the Equalizer tab's spectrum only while it is open,
+// and what it feeds is the organ's note.
+class SpectrumProcessorTest final : public mp::test::Test {
+public:
+  SpectrumProcessorTest() : Test("functional.spectrum.processor", Category::Functional) {}
+  void run() override {
+    const Organ organ("mp-spectrum-processor");
+    mp::MasterpieceProcessor probe;
+    Keep global(probe.globalSettingsFile());
+    Keep organSettings(probe.settingsFileFor(organ.odf));
+    global.file.getParentDirectory().createDirectory();
+
+    mp::MasterpieceProcessor proc;
+    proc.prepareToPlay(kRate, 256);
+    MP_CHECK(proc.loadOrgan(organ.odf, 0, false).ok, "the organ loads");
+    proc.setStopEngaged(901, true);
+    juce::AudioBuffer<float> buffer(2, 256);
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 36, 0.8f), 0);
+    juce::MidiBuffer none;
+    for (int block = 0; block < 10; ++block) {
+      buffer.clear();
+      proc.processBlock(buffer, block == 0 ? on : none);
+    }
+    MP_CHECK(proc.spectrum().samplesPushed() == 0, "closed, the processor feeds it nothing");
+    proc.spectrum().open();
+    for (int block = 0; block < 32; ++block) {
+      buffer.clear();
+      proc.processBlock(buffer, none);
+    }
+    MP_CHECK(proc.spectrum().samplesPushed() == 32 * 256, "open, every frame");
+    const auto db = proc.spectrum().spectrumDb();
+    const size_t k = static_cast<size_t>(std::max_element(db.begin() + 1, db.end()) - db.begin());
+    const double hz = static_cast<double>(k) * kRate / mp::SpectrumTap::kFft;
+    MP_CHECK(std::fabs(hz - 130.81) < 12.0, "it shows the note at 130.81 Hz: " + std::to_string(hz));
+    proc.spectrum().close();
+    proc.releaseResources();
+  }
+};
+
 static CompressorBassLeftOutTest g_compressorBassLeftOut;
 static CompressorProcessorTest g_compressorProcessor;
 static CompressorSettingsTest g_compressorSettings;
+static SpectrumProcessorTest g_spectrumProcessor;
 
 }  // namespace
 

@@ -7166,6 +7166,9 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   if (!graph_.engineSwitch.simpleWavOnly)
     voicingEq_.process(buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
                        buffer.getNumSamples());
+  // The Equalizer tab's spectrum, with the EQ heard and the room not yet.
+  // One atomic load while no window shows it.
+  spectrum_.push(buffer.getArrayOfReadPointers(), buffer.getNumChannels(), buffer.getNumSamples());
 
   // Room before level: the convolver is part of the instrument's sound, and
   // the master fader is the last thing in the chain.
