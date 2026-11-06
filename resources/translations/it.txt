@@ -1208,6 +1208,7 @@ countries: it ch sm va
 "Every pipe..." = "Ogni canna..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Tutte le canne della fila insieme, per disegnarne livello o accordatura lungo l'estensione"
 "Voicing: every pipe" = "Intonazione: ogni canna"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Livello d'ingresso in orizzontale, livello d'uscita in verticale. Il punto è il livello sentito ora; la barra rossa sotto è la riduzione."
 "Display, 32 characters" = "Display, 32 caratteri"
 "Display, 16 characters" = "Display, 16 caratteri"
 "Its name" = "Il suo nome"

@@ -1208,6 +1208,7 @@ countries: pl
 "Every pipe..." = "Każda piszczałka..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Wszystkie piszczałki szeregu naraz, aby rysować ich poziom lub strój w całej skali"
 "Voicing: every pipe" = "Intonacja: każda piszczałka"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Poziom wejściowy w poziomie, wyjściowy w pionie. Kropka to poziom słyszany teraz, czerwony pasek pod nią to redukcja."
 "Display, 32 characters" = "Wyświetlacz, 32 znaki"
 "Display, 16 characters" = "Wyświetlacz, 16 znaków"
 "Its name" = "Jego nazwa"

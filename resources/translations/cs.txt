@@ -1208,6 +1208,7 @@ countries: cz
 "Every pipe..." = "Všechny píšťaly..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Všechny píšťaly řady najednou, pro nakreslení jejich hlasitosti nebo ladění přes celý rozsah"
 "Voicing: every pipe" = "Intonace: všechny píšťaly"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Vstupní úroveň vodorovně, výstupní svisle. Bod je právě slyšená úroveň, červený pruh pod ním je potlačení."
 "Display, 32 characters" = "Displej, 32 znaků"
 "Display, 16 characters" = "Displej, 16 znaků"
 "Its name" = "Jeho název"

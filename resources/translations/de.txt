@@ -1208,6 +1208,7 @@ countries: de at ch li lu
 "Every pipe..." = "Jede Pfeife..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Alle Pfeifen der Reihe auf einmal, um Lautstärke oder Stimmung über den Umfang zu zeichnen"
 "Voicing: every pipe" = "Intonation: jede Pfeife"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Eingangspegel waagerecht, Ausgangspegel senkrecht. Der Punkt ist der gerade gehörte Pegel, der rote Balken darunter die Absenkung."
 "Display, 32 characters" = "Anzeige, 32 Zeichen"
 "Display, 16 characters" = "Anzeige, 16 Zeichen"
 "Its name" = "Sein Name"

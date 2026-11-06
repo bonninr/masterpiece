@@ -1208,6 +1208,7 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Every pipe..." = "Cada tubo..."
 "Every pipe of the rank at once, to draw their levels or tunings across the compass" = "Todos los tubos de la hilera a la vez, para trazar su nivel o afinación a lo largo de la extensión"
 "Voicing: every pipe" = "Armonización: cada tubo"
+"Input level across, output level up. The dot is the level heard now; the red bar under it is the reduction." = "Nivel de entrada en horizontal, nivel de salida en vertical. El punto es el nivel que se oye ahora; la barra roja debajo es la reducción."
 "Display, 32 characters" = "Pantalla, 32 caracteres"
 "Display, 16 characters" = "Pantalla, 16 caracteres"
 "Its name" = "Su nombre"
