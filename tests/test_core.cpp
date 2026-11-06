@@ -12280,6 +12280,7 @@ static VoiceReleaseCrossfadeTest g_voiceReleaseCrossfade;
 static VoiceReleasePhaseAlignTest g_voiceReleasePhaseAlign;
 static VoiceEngineStealingTest g_voiceStealing;
 
+#ifdef MP_TEST_HAS_AUDIO
 // A larger polyphony is built when it is chosen (#320): the player who raised
 // it and played on heard the old pool, with no word that a reload was due.
 class PolyphonyAppliesAtOnceTest final : public mp::test::Test {
@@ -12304,6 +12305,7 @@ public:
   }
 };
 static PolyphonyAppliesAtOnceTest g_polyphonyAtOnce;
+#endif  // MP_TEST_HAS_AUDIO
 static VoiceRetriggerTest g_voiceRetrigger;
 static LoopCrossfadeTest g_loopCrossfade;
 static DetuningTest g_detuning;
@@ -17065,6 +17067,7 @@ public:
 static SharedDivisionalMessageTest g_sharedDivisionalMessage;
 #endif // MP_TEST_HAS_AUDIO
 
+#ifdef MP_TEST_HAS_AUDIO
 // A WavPack file's size in memory, from its own header (#219). The
 // GrandOrgue demo names its WavPack files ".wav", and the estimate read them
 // as plain audio: 212 MB for an organ that loads 1373 MB.
@@ -17131,6 +17134,7 @@ public:
   }
 };
 static ShapeAnyCaseTest g_shapeAnyCase;
+#endif  // MP_TEST_HAS_AUDIO
 
 // A temperament from a Scala file, the format tuning libraries publish.
 class ScalaTemperamentTest final : public mp::test::Test {
@@ -17179,6 +17183,7 @@ public:
   }
 };
 static ScalaTemperamentTest g_scalaTemperament;
+#ifdef MP_TEST_HAS_AUDIO
 
 // #55: a battery speaker sleeps after a few seconds of silence and swallows
 // the first notes while it wakes. With the option on, a 20 Hz tone at the
@@ -17619,6 +17624,7 @@ public:
   }
 };
 static PluginStateTest g_pluginState;
+#endif  // MP_TEST_HAS_AUDIO
 
 #ifdef MP_TEST_HAS_AUDIO
 // Issue #43: temperament, pitch and transposer, chosen by the player over the
@@ -21903,6 +21909,7 @@ public:
   }
 };
 static WindSteadySlowTest g_windSteadySlow;
+#ifdef MP_TEST_HAS_AUDIO
 
 // The faster engine is the player's to turn off: on by default (0.7.11), off
 // at once when asked, and the choice saved either way with the program's
@@ -21976,6 +21983,7 @@ public:
   }
 };
 static RealtimeThreadsDefaultTest g_realtimeThreadsDefault;
+#endif  // MP_TEST_HAS_AUDIO
 
 // How long a key was held decides which release a set's pipe plays: Nancy
 // records a release after short, medium and held notes (#120). Nothing
