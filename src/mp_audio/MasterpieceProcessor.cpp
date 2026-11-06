@@ -6252,9 +6252,31 @@ void MasterpieceProcessor::findControlStops() {
         trems.insert(entry.alternateSwitchId);
     }
   if (works.empty()) return;
+  // And what a coupler stop works whatever ranks it has: the switches that
+  // gate the key flow, and every switch wired to drive one. Wildervank gives
+  // Ped + I a rank for the coupler's noise, from a package of its own; with
+  // that package missing the stop was locked, its knob held in, and the
+  // coupler never engaged (#835).
+  std::unordered_set<Id> couplers;
+  {
+    std::unordered_multimap<Id, Id> drivers;
+    for (const auto& l : model_.switchLinkages) drivers.emplace(l.destSwitchId, l.sourceSwitchId);
+    std::vector<Id> todo;
+    for (const auto& ka : model_.keyActions)
+      if (ka.conditionSwitchId != 0 && couplers.insert(ka.conditionSwitchId).second)
+        todo.push_back(ka.conditionSwitchId);
+    while (!todo.empty()) {
+      const Id at = todo.back();
+      todo.pop_back();
+      const auto [first, last] = drivers.equal_range(at);
+      for (auto it = first; it != last; ++it)
+        if (couplers.insert(it->second).second) todo.push_back(it->second);
+    }
+  }
   for (const auto& [stopId, stop] : model_.stops)
     if (stop.ranks.empty() ? works.count(stop.controllingSwitchId) != 0
-                           : trems.count(stop.controllingSwitchId) != 0)
+                           : trems.count(stop.controllingSwitchId) != 0 ||
+                                 couplers.count(stop.controllingSwitchId) != 0)
       controlStops_.insert(stopId);
 }
 

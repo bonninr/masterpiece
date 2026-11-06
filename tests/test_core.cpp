@@ -19371,28 +19371,47 @@ public:
         "<Switch><SwitchID>101</SwitchID><Name>Principal 8</Name></Switch>"
         "<Switch><SwitchID>102</SwitchID><Name>Trumpet 8</Name></Switch>"
         "<Switch><SwitchID>103</SwitchID><Name>Bourdon 8</Name></Switch>"
+        "<Switch><SwitchID>104</SwitchID><Name>Ped + I</Name></Switch>"
+        "<Switch><SwitchID>105</SwitchID><Name>Coupler node</Name></Switch>"
+        "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">"
+        "<SwitchLinkage><SourceSwitchID>104</SourceSwitchID><DestSwitchID>105</DestSwitchID>"
+        "<EngageLinkActionCode>1</EngageLinkActionCode>"
+        "<DisengageLinkActionCode>2</DisengageLinkActionCode></SwitchLinkage>"
+        "</ObjectList><ObjectList ObjectType=\"KeyAction\">"
+        "<KeyAction><SourceKeyboardID>1</SourceKeyboardID>"
+        "<DestIsKeyboardNotDivision>N</DestIsKeyboardNotDivision><DestDivisionID>1</DestDivisionID>"
+        "<ActionTypeCode>1</ActionTypeCode><ConditionSwitchID>105</ConditionSwitchID>"
+        "<ConditionSwitchLinkIfEngaged>Y</ConditionSwitchLinkIfEngaged></KeyAction>"
         "</ObjectList><ObjectList ObjectType=\"Stop\">" +
         stop(1, "Principal 8", 7) + stop(2, "Trumpet 8", 8) + stop(3, "Bourdon 8", 9) +
+        stop(4, "Ped + I", 10) +
         "</ObjectList><ObjectList ObjectType=\"StopRank\">"
         "<StopRank><StopID>1</StopID><RankID>7</RankID></StopRank>"
         "<StopRank><StopID>2</StopID><RankID>8</RankID></StopRank>"
         "<StopRank><StopID>3</StopID><RankID>9</RankID></StopRank>"
+        "<StopRank><StopID>4</StopID><RankID>10</RankID></StopRank>"
         "</ObjectList><ObjectList ObjectType=\"Sample\">"
         "<Sample><SampleID>71</SampleID><InstallationPackageID>2</InstallationPackageID>"
         "<SampleFilename>shipped.wav</SampleFilename></Sample>"
         "<Sample><SampleID>81</SampleID><InstallationPackageID>2</InstallationPackageID>"
         "<SampleFilename>Trumpet\\060.wav</SampleFilename></Sample>"
+        "<Sample><SampleID>91</SampleID><InstallationPackageID>2</InstallationPackageID>"
+        "<SampleFilename>Noise\\coupler.wav</SampleFilename></Sample>"
         "</ObjectList><ObjectList ObjectType=\"Rank\"><Rank><RankID>7</RankID><Name>Principal</Name></Rank>"
         "<Rank><RankID>8</RankID><Name>Trumpet</Name></Rank><Rank><RankID>9</RankID><Name>Bourdon</Name></Rank>"
+        "<Rank><RankID>10</RankID><Name>Coupler noise</Name></Rank>"
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01\">" +
-        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) +
+        pipe(701, 7) + pipe(801, 8) + pipe(901, 9) + pipe(1001, 10) +
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_Layer\">"
         "<Pipe_SoundEngine01_Layer><LayerID>7011</LayerID><PipeID>701</PipeID></Pipe_SoundEngine01_Layer>"
         "<Pipe_SoundEngine01_Layer><LayerID>8011</LayerID><PipeID>801</PipeID></Pipe_SoundEngine01_Layer>"
+        "<Pipe_SoundEngine01_Layer><LayerID>10011</LayerID><PipeID>1001</PipeID></Pipe_SoundEngine01_Layer>"
         "</ObjectList><ObjectList ObjectType=\"Pipe_SoundEngine01_AttackSample\">"
         "<Pipe_SoundEngine01_AttackSample><UniqueID>1</UniqueID><LayerID>7011</LayerID><SampleID>71</SampleID>"
         "</Pipe_SoundEngine01_AttackSample>"
         "<Pipe_SoundEngine01_AttackSample><UniqueID>2</UniqueID><LayerID>8011</LayerID><SampleID>81</SampleID>"
+        "</Pipe_SoundEngine01_AttackSample>"
+        "<Pipe_SoundEngine01_AttackSample><UniqueID>3</UniqueID><LayerID>10011</LayerID><SampleID>91</SampleID>"
         "</Pipe_SoundEngine01_AttackSample>"
         "</ObjectList></Hauptwerk>";
     const juce::File file = defs.getChildFile("unshipped.Organ_Hauptwerk_xml");
@@ -19409,6 +19428,11 @@ public:
       MP_CHECK(playable[3], "a rank whose pipes name no sample is left as it was");
       const auto* why = proc.unavailableFor(102);
       MP_CHECK(why != nullptr && why->noPipes && why->stopId == 2, "the console names the unshipped stop");
+      // A coupler whose noise rank ships nothing still couples (#835).
+      MP_CHECK(playable[4], "a coupler stop with an unshipped noise rank stays available");
+      MP_CHECK(proc.unavailableFor(104) == nullptr, "its knob takes a click");
+      proc.setSwitchEngaged(104, true);
+      MP_CHECK(proc.switchEngaged(104) && proc.switchEngaged(105), "drawing it engages the coupler");
       settings.deleteFile();
     }
     root.deleteRecursively();
