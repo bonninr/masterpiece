@@ -17,6 +17,7 @@
 #include "../src/mp_audio/AudioGraph.h"
 #include "../src/mp_audio/MixerConfig.h"
 #include "../src/mp_audio/VoicingSet.h"
+#include "../src/mp_audio/VoicingSelection.h"
 #include "../src/mp_audio/Favourites.h"
 #include "../src/mp_control/Control.h"
 #include "../src/mp_control/Registration.h"
@@ -11788,6 +11789,102 @@ public:
   }
 };
 
+// What a voicing change reaches (#848): a stop's, a division's or a chest's
+// ranks, and in them the whole rank, one pipe, or one side of the chest.
+class VoicingSelectionTest final : public mp::test::Test {
+public:
+  VoicingSelectionTest() : Test("functional.voicing.selection", Category::Functional) {}
+
+  void run() override {
+    mp::OrganModel m;
+    // Two ranks of four pipes, C to D#, on two chests; a third rank on the
+    // second chest alone.
+    for (const mp::Id r : {201, 202, 203}) {
+      mp::Rank rank;
+      rank.rankId = r;
+      for (int k = 0; k < 4; ++k) {
+        mp::Pipe p;
+        p.pipeId = r * 10 + k;
+        p.midiNote = 36 + k;
+        p.windSourceCompartmentId = r == 201 ? 1 : 2;
+        rank.pipes.push_back(p);
+      }
+      m.ranks[r] = rank;
+    }
+    m.wind[1].name = "Hoofdwerk";
+    m.wind[2].name = "Rugwerk";
+    m.divisions[801].name = "G";
+    m.divisions[802].name = "P";
+    auto stop = [&](mp::Id id, mp::Id division, std::vector<mp::Id> ranks) {
+      mp::Stop s;
+      s.stopId = id;
+      s.divisionId = division;
+      for (const mp::Id r : ranks) {
+        mp::StopRankEntry e;
+        e.rankId = r;
+        s.ranks.push_back(e);
+      }
+      m.stops[id] = s;
+    };
+    stop(901, 801, {202, 201, 202});
+    stop(902, 801, {203});
+    stop(903, 802, {999});
+
+    MP_CHECK((mp::ranksOfStop(m, 901) == std::vector<mp::Id>{202, 201}),
+             "a stop's ranks in its own order, each once");
+    MP_CHECK(mp::ranksOfStop(m, 903).empty(), "a rank the organ does not have is left out");
+    MP_CHECK((mp::ranksOfDivision(m, 801) == std::vector<mp::Id>{201, 202, 203}), "a division's ranks by id");
+    const auto chests = mp::windchestRanks(m);
+    MP_CHECK(chests.size() == 2 && (chests.at("Hoofdwerk") == std::vector<mp::Id>{201}) &&
+                 (chests.at("Rugwerk") == std::vector<mp::Id>{202, 203}),
+             "the chests by the compartments the pipes draw from");
+
+    mp::VoicingTarget t;
+    t.ranks = {201, 202};
+    t.scope = mp::VoicingScope::CSide;
+    MP_CHECK((mp::pipesOf(m, t) == std::vector<std::pair<mp::Id, mp::Id>>{{201, 2010}, {201, 2012}, {202, 2020}, {202, 2022}}),
+             "the C side is C and D of each rank");
+    t.scope = mp::VoicingScope::CSharpSide;
+    MP_CHECK(mp::pipesOf(m, t).size() == 4 && mp::pipesOf(m, t).front().second == 2011, "the C# side the others");
+    t.scope = mp::VoicingScope::Pipe;
+    t.note = 38;
+    MP_CHECK((mp::pipesOf(m, t) == std::vector<std::pair<mp::Id, mp::Id>>{{201, 2012}, {202, 2022}}),
+             "one pipe is the pipe at that note of each rank");
+
+    // A level for both ranks leaves their different tunings alone.
+    mp::VoicingSet v;
+    mp::PipeVoicing tuned;
+    tuned.tuningCents = 5.0f;
+    v.setRank(202, tuned);
+    t.scope = mp::VoicingScope::Rank;
+    mp::PipeVoicing level;
+    level.gainDb = -2.0f;
+    mp::setVoicing(v, m, t, level, mp::kVoicingLevel);
+    MP_CHECK(v.rank(201).gainDb == -2.0f && v.rank(202).gainDb == -2.0f, "every rank takes the level");
+    MP_CHECK(v.rank(201).tuningCents == 0.0f && v.rank(202).tuningCents == 5.0f, "and keeps its own tuning");
+    MP_CHECK(mp::shownVoicing(v, m, t).gainDb == -2.0f, "the sliders show the first rank");
+
+    // One side: every pipe on it, and only a level and a tuning.
+    t.scope = mp::VoicingScope::CSharpSide;
+    mp::PipeVoicing side;
+    side.gainDb = 1.5f;
+    side.brightnessDb = 6.0f;
+    mp::setVoicing(v, m, t, side, mp::kVoicingLevel | mp::kVoicingBrightness);
+    MP_CHECK(v.pipe(2011).gainDb == 1.5f && v.pipe(2023).gainDb == 1.5f, "the C# pipes take the level");
+    MP_CHECK(v.pipe(2011).brightnessDb == 0.0f, "a pipe takes no EQ of its own");
+    MP_CHECK(v.pipes().count(2010) == 0 && v.pipes().count(2030) == 0, "the C pipes and the rank not chosen stay");
+
+    // A step keeps the group's shape.
+    MP_CHECK(mp::stepVoicing(v, m, t, mp::VoicingField::Level, -0.5f, 12.0f), "a step is taken");
+    MP_CHECK(v.pipe(2011).gainDb == 1.0f, "each pipe moves from where it stands");
+    t.scope = mp::VoicingScope::Rank;
+    MP_CHECK(mp::stepVoicing(v, m, t, mp::VoicingField::Tuning, 1.0f, 50.0f), "a step on the ranks");
+    MP_CHECK(v.rank(201).tuningCents == 1.0f && v.rank(202).tuningCents == 6.0f, "each rank from its own tuning");
+    t.ranks.clear();
+    MP_CHECK(!mp::stepVoicing(v, m, t, mp::VoicingField::Level, 0.5f, 12.0f), "nothing chosen takes no step");
+  }
+};
+
 // Favourites. A slot number is something a thumb piston can be mapped to; a
 // path is not. So the numbering is the feature, and the tests are about the
 // numbering holding still.
@@ -12933,6 +13030,7 @@ static AudioOutTrimTest g_audioOutTrim;
 static MixerRoutingTest g_mixerRouting;
 static VoicingTest g_voicingSet;
 static VoicingPipeStrokeTest g_voicingPipeStroke;
+static VoicingSelectionTest g_voicingSelection;
 static FavouritesTest g_favourites;
 static RegistrationTest g_registration;
 static MixBusRenderTest g_mixBusRender;

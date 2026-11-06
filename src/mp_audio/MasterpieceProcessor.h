@@ -36,6 +36,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "VoicingSelection.h"
 #include "RankEq.h"
 #include "LiveLevels.h"
 #include "VoicingEq.h"
@@ -1838,10 +1839,16 @@ public:
   // Voicing from the console (#637): what Organ settings > Voicing has
   // chosen, a rank or one pipe of it (pipe 0 for the whole rank). The MIDI
   // steps and the test note act on it. Message thread.
-  void setVoicingTarget(Id rankId, Id pipeId) {
-    voicingRank_.store(rankId, std::memory_order_release);
-    voicingPipe_.store(pipeId, std::memory_order_release);
+  void setVoicingTarget(Id rankId, Id pipeId);
+  // The same for several ranks, a stop's or a chest's, and for one side of
+  // the chest (#848): the steps move every rank or pipe it reaches, and the
+  // test note sounds every rank of it. Message thread.
+  void setVoicingTarget(const VoicingTarget& target);
+  VoicingTarget voicingTarget() const {
+    const juce::ScopedLock lock(getCallbackLock());
+    return voicingTarget_;
   }
+  // The first rank chosen, and the pipe when one pipe is chosen.
   Id voicingRank() const { return voicingRank_.load(std::memory_order_acquire); }
   Id voicingPipe() const { return voicingPipe_.load(std::memory_order_acquire); }
   // A step a MIDI button asked for, collected on the message thread: one of
@@ -1857,8 +1864,10 @@ public:
   // it.
   uint32_t voicingSteps() const { return voicingSteps_.load(std::memory_order_acquire); }
   // The test note: while on, a key on any channel sounds the voicing
-  // target's rank alone at that key, and the next key stops it. The organ
-  // plays nothing else meanwhile. Turned off, a test note sounding stops.
+  // target's ranks alone at that key. Another key moves it there, so the
+  // neighbouring pipes can be compared one after another, and the same key
+  // again stops it. The organ plays nothing else meanwhile. Turned off, a
+  // test note sounding stops.
   void setTestNote(bool on) {
     testNoteOn_.store(on, std::memory_order_release);
     testNoteRestart_.store(true, std::memory_order_release);
@@ -2676,13 +2685,17 @@ private:
   std::atomic<int> pendingConsoleAction_{0};
   // Voicing from the console: the target, a step waiting, and the test note.
   std::atomic<Id> voicingRank_{0}, voicingPipe_{0};
+  // Written under the audio lock, read by the audio thread.
+  VoicingTarget voicingTarget_;
   std::atomic<int> pendingVoicingStep_{0};
   std::atomic<uint32_t> voicingSteps_{0};
   std::atomic<bool> testNoteOn_{false}, testNoteRestart_{false};
   std::atomic<int> testNoteKey_{-1};
-  // Audio thread: the test note's voices, and the velocity it was struck at.
-  uint64_t testNoteId_ = 0;
+  // Audio thread: the test note's voices, one a rank, and the velocity it
+  // was struck at. Room for every rank is kept when the target is set.
+  std::vector<uint64_t> testNoteIds_;
   int testNoteVelocity_ = 0;
+  void stopTestNote();
   bool testNoteKeyDown(int midiNote, int velocity);
   void serviceTestNote();
   bool soundTestNote(int midiNote, int velocity);
