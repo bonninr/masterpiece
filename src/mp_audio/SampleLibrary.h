@@ -447,6 +447,10 @@ private:
   static void pickLoop(const juce::AudioFormatReader& reader,
                        int64_t limitFrames, LoopSelection selection,
                        int64_t& outStart, int64_t& outEnd);
+  // Every loop of the file a voice may play: the smpl chunk's loops less those
+  // reaching past the release cue and those that overlap no other.
+  static std::vector<SampleBuffer::LoopSpan> usableLoops(
+      const juce::AudioFormatReader& reader);
   // Where the chosen loop ends in the FULL file — this is what decides how
   // much has to be preloaded for a note to sustain.
   static int64_t selectLoopEnd(const juce::AudioFormatReader& reader,
