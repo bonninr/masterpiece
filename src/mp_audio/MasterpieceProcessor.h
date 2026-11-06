@@ -36,6 +36,7 @@
 #include "SampleLibrary.h"
 #include "MixerConfig.h"
 #include "VoicingSet.h"
+#include "VoicingSelection.h"
 #include "RankEq.h"
 #include "LiveLevels.h"
 #include "VoicingEq.h"
@@ -269,6 +270,8 @@ public:
   // `timeoutMs`.
   bool stopLoad(int timeoutMs);
   const OrganModel& organModel() const { return model_; }
+  // What a display send writes for its object: the stop or control's name.
+  std::string displayNameOf(MidiTargetKind kind, Id id) const;
   const SampleLibrary& sampleLibrary() const { return samples_; }
 
   // The on-screen keyboard plays through the same path as a MIDI device: its
@@ -708,7 +711,29 @@ public:
   // row with. GrandOrgue's "Listen for Event".
   void beginMidiListen() {
     heardReady_.store(false, std::memory_order_relaxed);
+    listenPair_.store(false, std::memory_order_relaxed);
     midiListen_.store(true, std::memory_order_release);
+  }
+  // Listen for two messages, a tab moved on and then off (#927), as
+  // GrandOrgue's "Detect complex MIDI setup" does. The second may be a
+  // release; the first sent again is passed over.
+  void beginMidiListenPair() {
+    heardReady_.store(false, std::memory_order_relaxed);
+    pairStep_.store(0, std::memory_order_relaxed);
+    listenPair_.store(true, std::memory_order_relaxed);
+    midiListen_.store(true, std::memory_order_release);
+  }
+  // How many of the pair have been heard so far, for the window to say
+  // which one it waits for.
+  int midiListenPairStep() const { return pairStep_.load(std::memory_order_acquire); }
+  // The pair that answered, once.
+  bool takeHeardMidiPair(MidiSource& on, int& onValue, MidiSource& off, int& offValue) {
+    if (!heardReady_.exchange(false, std::memory_order_acq_rel)) return false;
+    on = heard_;
+    onValue = heardValue_;
+    off = heardOff_;
+    offValue = heardOffValue_;
+    return true;
   }
   void cancelMidiListen() { midiListen_.store(false, std::memory_order_release); }
   bool midiListening() const { return midiListen_.load(std::memory_order_acquire); }
@@ -1772,6 +1797,16 @@ public:
   }
   int liveRankCount() const { return liveLevels_.rankCount(); }
   int liveDivisionCount() const { return liveLevels_.divisionCount(); }
+  // A fader for each perspective, or each windchest group on a GrandOrgue
+  // set, in perspectives() order; none on an organ recorded from one place.
+  // MIDI names one by its place from 1.
+  int liveGroupLevel(int index) const { return liveLevels_.group(index); }
+  void setLiveGroupLevel(int index, int value) {
+    if (!organLoading()) liveLevels_.setGroup(index, value);
+  }
+  int liveGroupCount() const { return liveLevels_.groupCount(); }
+  const std::vector<std::string>& liveGroupNames() const { return liveGroupNames_; }
+  int liveGroupOfRank(int rankIndex) const { return liveLevels_.rankGroup(rankIndex); }
   // The division a rank's fader sits under, by those lists' indices; -1 for none.
   int liveDivisionOfRank(int rankIndex) const { return liveLevels_.rankDivision(rankIndex); }
   // A rank's or a division's place in those lists; -1 for none.
@@ -1806,10 +1841,16 @@ public:
   // Voicing from the console (#637): what Organ settings > Voicing has
   // chosen, a rank or one pipe of it (pipe 0 for the whole rank). The MIDI
   // steps and the test note act on it. Message thread.
-  void setVoicingTarget(Id rankId, Id pipeId) {
-    voicingRank_.store(rankId, std::memory_order_release);
-    voicingPipe_.store(pipeId, std::memory_order_release);
+  void setVoicingTarget(Id rankId, Id pipeId);
+  // The same for several ranks, a stop's or a chest's, and for one side of
+  // the chest (#848): the steps move every rank or pipe it reaches, and the
+  // test note sounds every rank of it. Message thread.
+  void setVoicingTarget(const VoicingTarget& target);
+  VoicingTarget voicingTarget() const {
+    const juce::ScopedLock lock(getCallbackLock());
+    return voicingTarget_;
   }
+  // The first rank chosen, and the pipe when one pipe is chosen.
   Id voicingRank() const { return voicingRank_.load(std::memory_order_acquire); }
   Id voicingPipe() const { return voicingPipe_.load(std::memory_order_acquire); }
   // A step a MIDI button asked for, collected on the message thread: one of
@@ -1825,8 +1866,10 @@ public:
   // it.
   uint32_t voicingSteps() const { return voicingSteps_.load(std::memory_order_acquire); }
   // The test note: while on, a key on any channel sounds the voicing
-  // target's rank alone at that key, and the next key stops it. The organ
-  // plays nothing else meanwhile. Turned off, a test note sounding stops.
+  // target's ranks alone at that key. Another key moves it there, so the
+  // neighbouring pipes can be compared one after another, and the same key
+  // again stops it. The organ plays nothing else meanwhile. Turned off, a
+  // test note sounding stops.
   void setTestNote(bool on) {
     testNoteOn_.store(on, std::memory_order_release);
     testNoteRestart_.store(true, std::memory_order_release);
@@ -2349,6 +2392,7 @@ private:
   LiveLevels liveLevels_;
   std::unordered_map<Id, int> liveRankIndex_;
   std::unordered_map<Id, int> liveDivisionIndex_;
+  std::vector<std::string> liveGroupNames_;
   // The organ's layer levels (#765): every continuous control a pipe layer
   // reads as its AmpLvl_ScalingContinuousControlID, each with its place in
   // the table the voices read, resolved at load. The gains follow their
@@ -2651,13 +2695,17 @@ private:
   std::atomic<int> pendingConsoleAction_{0};
   // Voicing from the console: the target, a step waiting, and the test note.
   std::atomic<Id> voicingRank_{0}, voicingPipe_{0};
+  // Written under the audio lock, read by the audio thread.
+  VoicingTarget voicingTarget_;
   std::atomic<int> pendingVoicingStep_{0};
   std::atomic<uint32_t> voicingSteps_{0};
   std::atomic<bool> testNoteOn_{false}, testNoteRestart_{false};
   std::atomic<int> testNoteKey_{-1};
-  // Audio thread: the test note's voices, and the velocity it was struck at.
-  uint64_t testNoteId_ = 0;
+  // Audio thread: the test note's voices, one a rank, and the velocity it
+  // was struck at. Room for every rank is kept when the target is set.
+  std::vector<uint64_t> testNoteIds_;
   int testNoteVelocity_ = 0;
+  void stopTestNote();
   bool testNoteKeyDown(int midiNote, int velocity);
   void serviceTestNote();
   bool soundTestNote(int midiNote, int velocity);
@@ -2937,6 +2985,12 @@ private:
   std::atomic<bool> heardReady_{false};
   MidiSource heard_;
   int heardValue_ = 0;
+  // Listening for an on and an off (#927): the off is kept beside the on.
+  std::atomic<bool> listenPair_{false};
+  std::atomic<int> pairStep_{0};
+  MidiSource heardOff_;
+  int heardOffValue_ = 0;
+  void hearForListen(const MidiSource& source, int value);
   // The value each send last went out with, by its place in the map's list;
   // -1 sends the current state on the next block; kTakeStateQuietly takes it
   // without sending. Kept for the rows a change leaves alone.

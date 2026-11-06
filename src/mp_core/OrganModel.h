@@ -956,6 +956,17 @@ struct OrganModel {
   std::unordered_map<Id, ImageSet> imageSets; // M1.4: shared control artwork
   std::unordered_map<Id, KeyImageSet> keyImageSets; // drawn manuals
 
+  // A GrandOrgue set's objects by their section in its .organ file, written by
+  // the import: how a GrandOrgue settings file, which names its MIDI events by
+  // section ([Stop012], [Manual001]), finds what each one works (#865). The
+  // section is in lower case. Empty for a set from anywhere else.
+  struct GrandOrgueObject {
+    enum Kind { Switch = 1, Control = 2, Keyboard = 3 };
+    Kind kind = Switch;
+    Id id = 0;
+  };
+  std::unordered_map<std::string, GrandOrgueObject> grandOrgueObjects;
+
   std::unordered_map<Id, SampleRef> samples; // Sample table registry (M1.1/M1.2)
   std::unordered_map<Id, InstallationPackage> packages; // where the audio lives
 

@@ -1,4 +1,5 @@
 #include "MidiMap.h"
+#include "LcdPanel.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -73,7 +74,7 @@ std::string sysExField(const std::vector<uint8_t>& bytes) {
 }
 
 std::string sysExFields(const MidiSend& s) {
-  if (s.kind != MidiSourceKind::SysEx) return {};
+  if (s.kind != MidiSourceKind::SysEx || s.display != MidiDisplay::None) return {};
   return " " + sysExField(s.sysExOn) + " " + sysExField(s.sysExOff);
 }
 
@@ -114,10 +115,19 @@ const char* sendKindName(const MidiSend& s) {
   if (s.kind == MidiSourceKind::Note && s.noteOff) return "noteoff";
   if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::Registered) return "rpn";
   if (s.kind == MidiSourceKind::ControlChange && s.parameter == MidiParameter::NonRegistered) return "nrpn";
+  if (s.display == MidiDisplay::Lcd) return "lcd";
+  if (s.display == MidiDisplay::Text) return "lcdtext";
   return kindName(s.kind);
 }
 
 void readSendKind(const std::string& word, MidiSend& s) {
+  s.display = word == "lcd"       ? MidiDisplay::Lcd
+              : word == "lcdtext" ? MidiDisplay::Text
+                                  : MidiDisplay::None;
+  if (s.display != MidiDisplay::None) {
+    s.kind = MidiSourceKind::SysEx;
+    return;
+  }
   s.noteOff = word == "noteoff";
   s.parameter = word == "rpn"    ? MidiParameter::Registered
                 : word == "nrpn" ? MidiParameter::NonRegistered
@@ -173,6 +183,7 @@ const char* targetName(MidiTargetKind k) {
     case MidiTargetKind::RankLevel: return "rank-level";
     case MidiTargetKind::DivisionLevel: return "division-level";
     case MidiTargetKind::PairLevel: return "pair-level";
+    case MidiTargetKind::GroupLevel: return "group-level";
     case MidiTargetKind::ReverbWet: return "reverb-wet";
     case MidiTargetKind::None: break;
   }
@@ -224,6 +235,7 @@ MidiTargetKind targetKindFrom(const std::string& s) {
   if (s == "rank-level") return MidiTargetKind::RankLevel;
   if (s == "division-level") return MidiTargetKind::DivisionLevel;
   if (s == "pair-level") return MidiTargetKind::PairLevel;
+  if (s == "group-level") return MidiTargetKind::GroupLevel;
   if (s == "reverb-wet") return MidiTargetKind::ReverbWet;
   return MidiTargetKind::None;
 }
@@ -441,6 +453,16 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
       it = bySource_.find(probe);
     }
+  // And a program range, last: a piston on one program beats a shoe moved by
+  // all of them (#925).
+  if (it == bySource_.end() && source.kind == MidiSourceKind::ProgramChange)
+    for (int step = 0; step < steps && it == bySource_.end(); ++step) {
+      MidiSource probe = source;
+      probe.number = kProgramRange;
+      if (step & 1) probe.channel = 0;
+      if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
+      it = bySource_.find(probe);
+    }
   if (it == bySource_.end()) return {};
   const MidiBinding& b = it->second;
 
@@ -485,6 +507,7 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
     case MidiTargetKind::RankLevel:
     case MidiTargetKind::DivisionLevel:
     case MidiTargetKind::PairLevel:
+    case MidiTargetKind::GroupLevel:
     case MidiTargetKind::ReverbWet:
     case MidiTargetKind::ContinuousControl: {
       // A note sets a control by its velocity as it is struck (#199: the
@@ -497,9 +520,13 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       }
       // Across the binding's own window, so a shoe that only travels 20..100
       // still reaches both ends of the swell.
-      action.value = controlValue(b, value);
+      // A program range gives -1 for a program outside it, and the control
+      // stays where it is; another control on the same programs may still
+      // take it.
+      action.value = controlValue(b, source, value);
       if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
         action.alsoDrives = &more->second;
+      if (action.value < 0 && action.alsoDrives == nullptr) return {};
       break;
     }
     case MidiTargetKind::Keyboard:
@@ -565,6 +592,43 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       break;
   }
   return action;
+}
+
+std::vector<MidiBinding> MidiMap::bindingsForOnOff(const MidiBinding& base, const MidiSource& on,
+                                                   int onValue, const MidiSource& off, int offValue) {
+  MidiBinding b = base;
+  b.source = on;
+  if (on == off) {
+    // A controller at two values: on at the one, off at the other, in
+    // whichever direction the console sends them (#922).
+    if (on.kind == MidiSourceKind::ControlChange) {
+      b.lowValue = offValue;
+      b.highValue = onValue;
+      b.trigger = MidiTrigger::Momentary;
+    } else if (on.kind == MidiSourceKind::Note) {
+      // A key pressed for on and let go for off.
+      b.trigger = MidiTrigger::Momentary;
+    } else {
+      // A program or a system exclusive message sent for on and again for off.
+      b.trigger = MidiTrigger::Toggle;
+    }
+    return {b};
+  }
+  // A controller whose press is a low value counts it as on the other way
+  // round, so a cancel sent as 0 still cancels.
+  const auto pressAt = [](MidiBinding& row, int v) {
+    if (row.source.kind == MidiSourceKind::ControlChange && v < 64) {
+      row.lowValue = 127;
+      row.highValue = 0;
+    }
+  };
+  b.trigger = MidiTrigger::EngageOnly;
+  pressAt(b, onValue);
+  MidiBinding cancel = base;
+  cancel.source = off;
+  cancel.trigger = MidiTrigger::DisengageOnly;
+  pressAt(cancel, offValue);
+  return {b, cancel};
 }
 
 MidiAction MidiMap::switchAction(const MidiBinding& b, int value) const {
@@ -858,6 +922,8 @@ bool MidiMap::sendsOnOff(MidiTargetKind k) {
 std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
   std::vector<uint8_t> out;
   const bool onOff = s.targetKind != MidiTargetKind::ContinuousControl;
+  // A display takes its text from the object: displayBytes().
+  if (s.display != MidiDisplay::None) return out;
   // A hex send holds a whole message for each state; a control has none.
   if (s.kind == MidiSourceKind::SysEx) {
     if (onOff) out = state != 0 ? s.sysExOn : s.sysExOff;
@@ -883,6 +949,28 @@ std::vector<uint8_t> MidiMap::sendBytes(const MidiSend& s, int state) {
   const bool made = onOff ? switchMessage(s, state != 0, raw) : controlMessage(s, state, raw);
   if (made) out.assign(raw.bytes, raw.bytes + raw.size);
   return out;
+}
+
+std::vector<uint8_t> MidiMap::displayBytes(const MidiSend& s, const std::string& utf8) {
+  std::string text = LcdPanels::toDisplayAscii(utf8);
+  const bool lcd = s.display == MidiDisplay::Lcd;
+  const size_t width = lcd ? 32 : 16;
+  text.resize(width, ' ');
+  std::vector<uint8_t> out{0xF0, 0x7D};
+  if (lcd) {
+    const int id = std::clamp(s.number, 0, 16383);
+    out.insert(out.end(), {0x01, static_cast<uint8_t>(id >> 7), static_cast<uint8_t>(id & 127), clamp7(s.low)});
+  } else {
+    out.insert(out.end(), {0x19, clamp7(s.number)});
+  }
+  for (char ch : text) out.push_back(static_cast<uint8_t>(ch & 0x7F));
+  out.push_back(0xF7);
+  return out;
+}
+
+std::string MidiMap::displayText(const MidiSend& s, const std::string& name, int value) {
+  if (!s.showsValue()) return name;
+  return std::to_string(clamp7(value) * 100 / 127) + " %";
 }
 
 bool MidiMap::controlMessage(const MidiSend& s, int value, RawMidi& out) {
@@ -1212,7 +1300,7 @@ bool MidiMap::fromText(const std::string& text) {
         // numbers, as unbroken hex, "-" for none.
         std::string on, off;
         bool sysExOk = true;
-        if (snd.kind == MidiSourceKind::SysEx) {
+        if (snd.kind == MidiSourceKind::SysEx && snd.display == MidiDisplay::None) {
           sysExOk = static_cast<bool>(sl >> on >> off) && readSysExField(on, snd.sysExOn) &&
                     readSysExField(off, snd.sysExOff);
         }
