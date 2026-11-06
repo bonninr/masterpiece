@@ -16,6 +16,9 @@ void SwitchNetwork::reset(const OrganModel& model) {
   conditionWork_.clear();
   ranAway_ = false;
   fired_.assign(links_.size(), 0);
+  groupOf_.clear();
+  for (size_t g = 0; g < model.exclusiveGroups.size(); ++g)
+    for (Id id : model.exclusiveGroups[g]) groupOf_.emplace(id, g);
 
   for (const SwitchLinkage& l : links_) {
     bySource_[l.sourceSwitchId].push_back(&l);
@@ -161,6 +164,14 @@ void SwitchNetwork::drain() {
     if (want) engaged_.insert(id);
     else engaged_.erase(id);
     changes_.emplace_back(id, want);
+
+    // An exclusive group: the switch just engaged releases the others.
+    if (want && !groupOf_.empty()) {
+      const auto g = groupOf_.find(id);
+      if (g != groupOf_.end())
+        for (Id other : model_->exclusiveGroups[g->second])
+          if (other != id && engaged_.count(other) != 0) work_.emplace_back(other, false);
+    }
 
     // Everything this switch can swing: the wires it drives, and the wires it
     // gates. Each is re-evaluated from its own source and condition, and

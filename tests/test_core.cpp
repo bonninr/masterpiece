@@ -140,6 +140,39 @@ public:
   }
 };
 
+// SwitchExclusiveSelectGroupElement rows become the model's groups (#814).
+class LoaderExclusiveGroupsTest final : public mp::test::Test {
+public:
+  LoaderExclusiveGroupsTest()
+    : Test("functional.odf.exclusive-switch-groups", Category::Functional) {}
+  void run() override {
+    mp::OdfLoader l;
+    mp::OrganModel m;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options o;
+    MP_CHECK(l.loadFromXmlString(
+                 "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
+                 "<ObjectList ObjectType=\"_General\"><_General>"
+                 "<Identification_UniqueOrganID>1</Identification_UniqueOrganID>"
+                 "</_General></ObjectList>"
+                 "<ObjectList ObjectType=\"Switch\">"
+                 "<o><a>1</a><b>A</b></o><o><a>2</a><b>B</b></o><o><a>3</a><b>C</b></o>"
+                 "<o><a>4</a><b>D</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"SwitchExclusiveSelectGroup\">"
+                 "<o><a>5</a><b>Group 5</b></o><o><a>6</a><b>Group 6</b></o></ObjectList>"
+                 "<ObjectList ObjectType=\"SwitchExclusiveSelectGroupElement\">"
+                 "<o><a>3</a><b>5</b></o><o><a>1</a><b>5</b></o><o><a>2</a><b>5</b></o>"
+                 "<o><a>4</a><b>6</b></o></ObjectList>"
+                 "</Hauptwerk>",
+                 "a.Organ_Hauptwerk_xml", o, m, d),
+             "loads");
+    MP_CHECK(m.exclusiveGroups.size() == 1, "a group of one switch is no group");
+    MP_CHECK((m.exclusiveGroups[0] == std::vector<mp::Id>{3, 1, 2}), "members in file order");
+    for (const auto& w : d.warnings)
+      MP_CHECK(w.find("SwitchExclusiveSelectGroup") == std::string::npos, "the tables are read now");
+  }
+};
+
 // An EMPTY unknown table is a placeholder, not a feature the set uses.
 // Hauptwerk writes several object lists with nothing in them -- every one of
 // the 22 sets on hand carries six such -- and warning about each sent an
@@ -6716,6 +6749,31 @@ public:
       MP_CHECK(net.lastChanges().size() == 1, "one switch moved");
     }
 
+    // --- an exclusive group (#814): Burton-Hill's Matrix Swell 1/2/3 --------
+    // Knob 20 drives node 11; 11, 12 and 13 form a group, 12 engaged at load.
+    // Node 12 drives 30. Drawing the knob engages 11 and releases 12, and 30
+    // follows 12 out. Engaging 13 releases 11; a disengage moves no other.
+    {
+      mp::OrganModel m;
+      for (mp::Id id : {mp::Id{20}, mp::Id{11}, mp::Id{13}, mp::Id{30}}) addSwitch(m, id);
+      addSwitch(m, 12, true);
+      m.switchLinkages.push_back(wire(20, 11));
+      m.switchLinkages.push_back(wire(12, 30));
+      m.exclusiveGroups.push_back({11, 12, 13});
+      mp::SwitchNetwork net;
+      net.reset(m);
+      MP_CHECK(net.engaged(12) && net.engaged(30), "the default member and what it drives are in");
+      net.set(20, true);
+      MP_CHECK(net.engaged(11), "the knob engages its member");
+      MP_CHECK(!net.engaged(12), "and the member that was in is released");
+      MP_CHECK(!net.engaged(30), "with what it drives");
+      net.set(13, true);
+      MP_CHECK(net.engaged(13) && !net.engaged(11) && !net.engaged(12), "one member at a time");
+      net.set(13, false);
+      MP_CHECK(!net.engaged(11) && !net.engaged(12) && !net.engaged(13),
+               "releasing a member engages no other");
+    }
+
     // --- a 1/7 link gated by a pulse at load (Oloron, #263) -------------
     // "Enable Appels d'anches on load" (142) reaches the reed ventil (30)
     // while the load pulse (108) is on. The pulse ending leaves the ventil
@@ -11839,6 +11897,7 @@ public:
 static DetectTypeTest g_detect;
 static LoaderRejectsUnknownTest g_rejectUnknown;
 static LoaderToleranceTest g_tolerance;
+static LoaderExclusiveGroupsTest g_exclusiveGroups;
 static LoaderEmptyTableTest g_emptyTable;
 static LoaderUnreadFieldsTest g_unreadFields;
 static PalletSwitchTest g_palletSwitch;
