@@ -1428,6 +1428,16 @@ void showSwitchMidiMenu(MasterpieceProcessor& proc, Id switchId,
       });
 }
 
+double ConsoleView::controlDragSteps(int dx, int dy, int width, int height) {
+  const bool sideways = std::abs(dx) > std::abs(dy);
+  const int along = sideways ? dx : dy;
+  // A control drawn upright, a swell pedal among them, goes through its travel
+  // over its drawn height, whichever way the hand moves.
+  if (height > width) return along * juce::jlimit(0.3, 1.0, 127.0 / juce::jmax(40, height));
+  if (sideways) return dx * juce::jlimit(0.3, 1.0, 127.0 / juce::jmax(40, width));
+  return dy * 0.5;
+}
+
 void ConsoleView::setControlFromMouse(juce::Point<int> p) {
   if (heldControl_ == 0) return;
 
@@ -1449,16 +1459,11 @@ void ConsoleView::setControlFromMouse(juce::Point<int> p) {
   // down -- Green Positiv's noise levels, "Original" to "Silent" -- is dragged
   // sideways, and reading only the vertical left it all but immovable (#54).
   // Sideways, right is more, scaled to the drawn width so the handle keeps
-  // up with the hand across its length; up and down stay exactly as above.
-  const int dy = heldControlStartY_ - p.getY(); // up is positive
-  const int dx = p.getX() - heldControlStartX_; // right is positive
-  double delta = 0.0;
-  if (std::abs(dx) > std::abs(dy)) {
-    const double width = juce::jmax(40, heldControlBounds_.getWidth());
-    delta = dx * juce::jlimit(0.3, 1.0, 127.0 / width);
-  } else {
-    delta = dy * 0.5;
-  }
+  // up with the hand across its length. A control drawn upright, a swell
+  // pedal among them, goes by its height on both axes, so a drag across it
+  // is no faster than a drag down it (#871).
+  double delta = controlDragSteps(p.getX() - heldControlStartX_, heldControlStartY_ - p.getY(),
+                                  heldControlBounds_.getWidth(), heldControlBounds_.getHeight());
   if (!heldControlHigherIsMore_) delta = -delta;
   const int v = juce::jlimit(0, 127, heldControlStartValue_ + juce::roundToInt(delta));
 

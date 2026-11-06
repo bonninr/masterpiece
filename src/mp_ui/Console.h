@@ -96,6 +96,9 @@ private:
 class ConsoleView : public juce::Component, public juce::TooltipClient, private juce::Timer {
 public:
   explicit ConsoleView(MasterpieceProcessor& p);
+  // How far a drag moves a control of that drawn size, in steps of 0..127.
+  // dx is right of the press, dy above it.
+  static double controlDragSteps(int dx, int dy, int width, int height);
   // Over a stop that makes no sound: its name, and why.
   juce::String getTooltip() override;
 
