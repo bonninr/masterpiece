@@ -789,10 +789,15 @@ countries: gb us
 "What the display reads" = "What the display reads"
 "Language" = "Language"
 "The language changes the next time Masterpiece starts. Names of organs, stops and pages stay as the organ gives them." = "The language changes the next time Masterpiece starts. Names of organs, stops and pages stay as the organ gives them."
-"Applies at the next start." = "Applies at the next start."
+"Language and font apply at the next start." = "Language and font apply at the next start."
+"Text size" = "Text size"
+"Scales the text and the controls of every window" = "Scales the text and the controls of every window"
+"Font" = "Font"
+"The program's own" = "The program's own"
 "System default" = "System default"
 "General" = "General"
 "Metronome" = "Metronome"
+"Preferences" = "Preferences"
 "Diagnostics" = "Diagnostics"
 
 # src/mp_ui/Settings.h

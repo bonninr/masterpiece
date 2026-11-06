@@ -2592,6 +2592,8 @@ bool MasterpieceProcessor::writeGlobalFile() const {
   if (runningOrgan_.getFullPathName().isNotEmpty())
     text << "running " << runningOrgan_.getFullPathName() << "\n";
   if (language_.isNotEmpty()) text << "language " << language_ << "\n";
+  if (textSize_ != 100) text << "textsize " << textSize_ << "\n";
+  if (textFont_.isNotEmpty()) text << "textfont " << textFont_ << "\n";
   text << "metronome " << juce::String(metronome_.tempo(), 1) << " " << metronome_.beatsPerBar() << " "
        << juce::String(metronome_.level(), 2) << "\n";
   // The limiter's three settings on one line: it is on or off, it holds the
@@ -2687,9 +2689,13 @@ bool MasterpieceProcessor::saveGlobalDefaults() {
 void MasterpieceProcessor::applyChosenLanguage() {
   const auto f = globalSettingsFile();
   if (f.existsAsFile())
-    for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString()))
-      if (line.upToFirstOccurrenceOf(" ", false, false).trim() == "language")
-        language_ = line.fromFirstOccurrenceOf(" ", false, false).trim().toLowerCase();
+    for (const auto& line : juce::StringArray::fromLines(f.loadFileAsString())) {
+      const auto key = line.upToFirstOccurrenceOf(" ", false, false).trim();
+      const auto val = line.fromFirstOccurrenceOf(" ", false, false).trim();
+      if (key == "language") language_ = val.toLowerCase();
+      else if (key == "textsize") textSize_ = juce::jlimit(100, 200, val.getIntValue());
+      else if (key == "textfont") textFont_ = val;
+    }
   applyLanguage(language_);
 }
 
@@ -2782,6 +2788,10 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
     } else if (key == "language") {
       language_ = val.toLowerCase();
+    } else if (key == "textsize") {
+      textSize_ = juce::jlimit(100, 200, val.getIntValue());
+    } else if (key == "textfont") {
+      textFont_ = val;
     } else if (key == "loadticks") {
       loadTicks_.store(val.getIntValue() != 0, std::memory_order_release);
     } else if (key == "cancelresetskeyboards") {
@@ -3431,6 +3441,18 @@ void MasterpieceProcessor::setLoadTicks(bool on) {
   loadTicks_.store(on, std::memory_order_release);
   // Written at once, like the startup preference above: a general config is
   // not something a player sets per organ.
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setTextSizeSetting(int percent) {
+  if (textSize_ == percent) return;
+  textSize_ = percent;
+  writeGlobalFile();
+}
+
+void MasterpieceProcessor::setTextFontSetting(const juce::String& name) {
+  if (textFont_ == name) return;
+  textFont_ = name;
   writeGlobalFile();
 }
 

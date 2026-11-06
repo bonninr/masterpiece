@@ -23,7 +23,7 @@ public:
     juce::TabbedButtonBar bar(juce::TabbedButtonBar::TabsAtTop);
     if (look != nullptr) bar.setLookAndFeel(look);
     for (auto* name : {"General", "Audio", "MIDI", "Performance", "Metronome",
-                       "Console display", "Language", "Remote control", "Diagnostics"})
+                       "Console display", "Preferences", "Remote control", "Diagnostics"})
       bar.addTab(name, juce::Colours::darkgrey, -1);
     bar.setBounds(0, 0, width, 30);
     bar.resized();
@@ -60,7 +60,7 @@ public:
   static int naturalWidth() {
     juce::TabbedButtonBar bar(juce::TabbedButtonBar::TabsAtTop);
     for (auto* name : {"General", "Audio", "MIDI", "Performance", "Metronome",
-                       "Console display", "Language", "Remote control", "Diagnostics"})
+                       "Console display", "Preferences", "Remote control", "Diagnostics"})
       bar.addTab(name, juce::Colours::darkgrey, -1);
     bar.setBounds(0, 0, 4000, 30);
     int total = 0;
