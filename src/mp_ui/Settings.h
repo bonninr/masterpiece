@@ -587,6 +587,10 @@ private:
   // Where each pair plays: its device channels, and whether the device has them.
   juce::Label outputs_;
   void showOutputs();
+  // The filter: rank rows whose name holds the text stay, the rest are hidden.
+  // Spread and All to pair 1 act on the rows on show.
+  juce::TextEditor filter_;
+  bool rankShown(size_t row) const;
   juce::TextButton save_{TRANS("Save for this organ")};
   juce::TextButton spread_{TRANS("Spread ranks evenly")};
   juce::TextButton reset_{TRANS("All to pair 1")};

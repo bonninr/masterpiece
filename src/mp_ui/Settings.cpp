@@ -3362,17 +3362,22 @@ MixerPanel::MixerPanel(MasterpieceProcessor& p) : proc_(p) {
     // suggestion about how this organ should be mixed: it makes the routing
     // audible immediately so the player can hear what they are adjusting.
     const int buses = juce::jmax(1, proc_.mixBusCount());
+    int next = 0;
     for (size_t i = 0; i < rankIds_.size(); ++i)
-      rankBuses_[i]->setSelectedId(static_cast<int>(i % buses) + 1,
-                                   juce::dontSendNotification);
+      if (rankShown(i)) rankBuses_[i]->setSelectedId(next++ % buses + 1, juce::dontSendNotification);
     pushRouting();
   };
   addAndMakeVisible(reset_);
   reset_.onClick = [this] {
-    for (auto& box : rankBuses_)
-      box->setSelectedId(1, juce::dontSendNotification);
+    for (size_t i = 0; i < rankIds_.size(); ++i)
+      if (rankShown(i)) rankBuses_[i]->setSelectedId(1, juce::dontSendNotification);
     pushRouting();
   };
+  addAndMakeVisible(filter_);
+  filter_.setTextToShowWhenEmpty(TRANS("Filter, for example: Rear, tremmed, Pedal"),
+                                 juce::Colours::grey);
+  filter_.setTooltip(TRANS("Shows only the ranks whose name holds this text"));
+  filter_.onTextChange = [this] { resized(); };
   addAndMakeVisible(save_);
   save_.onClick = [this] { proc_.saveSettings(); };
   addAndMakeVisible(bass_);
@@ -3657,6 +3662,11 @@ void MixerPanel::refresh() {
   resized();
 }
 
+bool MixerPanel::rankShown(size_t row) const {
+  const auto text = filter_.getText().trim();
+  return text.isEmpty() || (row < rankLabels_.size() && rankLabels_[row]->getText().containsIgnoreCase(text));
+}
+
 void MixerPanel::resized() {
   auto r = getLocalBounds().reduced(12);
   heading_.setBounds(r.removeFromTop(kRow));
@@ -3679,6 +3689,8 @@ void MixerPanel::resized() {
   bass_.setBounds(row.removeFromLeft(170).reduced(0, 1));
   r.removeFromTop(4);
   outputs_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(4);
+  filter_.setBounds(r.removeFromTop(kRow).reduced(0, 1));
   r.removeFromTop(kGap);
 
   // The note keeps a little space; the rank list takes the rest, which is what
@@ -3690,8 +3702,11 @@ void MixerPanel::resized() {
   // The pairs and divisions first, then a row per rank: its name, its pair,
   // its fader. The fader and its MIDI button sit at the right of each row.
   const int rowH = kRow + 2;
-  const int rows =
-      3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size() + rankIds_.size() + rankGroups_.size());
+  const bool filtering = filter_.getText().trim().isNotEmpty();
+  int shownRanks = 0;
+  for (size_t i = 0; i < rankIds_.size(); ++i) shownRanks += rankShown(i) ? 1 : 0;
+  const int rows = 3 + static_cast<int>(pairFaders_.size() + divisionFaders_.size()) + shownRanks +
+                   (filtering ? 0 : static_cast<int>(rankGroups_.size()));
   rankHolder_.setSize(juce::jmax(0, viewport_.getWidth() - 12), rows * rowH);
   int y = 0;
   const auto line = [&] {
@@ -3710,8 +3725,18 @@ void MixerPanel::resized() {
   divisionsHeading_.setBounds(line());
   for (auto& f : divisionFaders_) place(f, line());
   ranksHeading_.setBounds(line());
+  // Division headings mean nothing in a filtered list.
+  for (auto& g : rankGroups_) g->setVisible(!filtering);
   for (size_t i = 0; i < rankIds_.size(); ++i) {
-    if (i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0)
+    const bool on = rankShown(i);
+    rankLabels_[i]->setVisible(on);
+    rankBuses_[i]->setVisible(on);
+    if (i < rankFaders_.size()) {
+      rankFaders_[i].slider->setVisible(on);
+      rankFaders_[i].midi->setVisible(on);
+    }
+    if (!on) continue;
+    if (!filtering && i < rankGroupAbove_.size() && rankGroupAbove_[i] >= 0)
       rankGroups_[static_cast<size_t>(rankGroupAbove_[i])]->setBounds(line().withTrimmedLeft(8));
     auto l = line();
     if (i < rankFaders_.size()) l = place(rankFaders_[i], l);

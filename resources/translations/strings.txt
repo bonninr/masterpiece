@@ -747,6 +747,7 @@ countries: gb us
 "Output pairs" = "Output pairs"
 "1 (stereo)" = "1 (stereo)"
 "%1 pairs" = "%1 pairs"
+"Shows only the ranks whose name holds this text" = "Shows only the ranks whose name holds this text"
 "Divisions" = "Divisions"
 "A live level, heard at once: full is the level as voiced" = "A live level, heard at once: full is the level as voiced"
 "Learn a knob or a pedal for this level" = "Learn a knob or a pedal for this level"
