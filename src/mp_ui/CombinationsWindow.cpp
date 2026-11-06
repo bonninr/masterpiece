@@ -44,6 +44,8 @@ juce::String describe(const MidiBinding& b) {
   juce::String what = b.source.kind == MidiSourceKind::Note            ? TRANS("Note %1")
                       : b.source.kind == MidiSourceKind::ProgramChange ? TRANS("Program %1")
                       : b.source.kind == MidiSourceKind::SysEx         ? TRANS("SysEx #%1")
+                      : b.source.kind == MidiSourceKind::Rpn           ? TRANS("RPN %1")
+                      : b.source.kind == MidiSourceKind::Nrpn          ? TRANS("NRPN %1")
                                                                        : TRANS("CC %1");
   what = what.replace("%1", juce::String(b.source.number));
   if (b.source.channel > 0) what << " " << TRANS("ch %1").replace("%1", juce::String(b.source.channel));

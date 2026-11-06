@@ -92,6 +92,8 @@ const char* kindName(MidiSourceKind k) {
     case MidiSourceKind::ControlChange: return "cc";
     case MidiSourceKind::ProgramChange: return "pgm";
     case MidiSourceKind::SysEx: return "sysex";
+    case MidiSourceKind::Rpn: return "rpn";
+    case MidiSourceKind::Nrpn: return "nrpn";
     case MidiSourceKind::None: break;
   }
   return "none";
@@ -102,6 +104,8 @@ MidiSourceKind sourceKindFrom(const std::string& s) {
   if (s == "cc") return MidiSourceKind::ControlChange;
   if (s == "pgm") return MidiSourceKind::ProgramChange;
   if (s == "sysex") return MidiSourceKind::SysEx;
+  if (s == "rpn") return MidiSourceKind::Rpn;
+  if (s == "nrpn") return MidiSourceKind::Nrpn;
   return MidiSourceKind::None;
 }
 
@@ -701,7 +705,8 @@ bool MidiMap::learnFrom(const MidiSource& source) {
   // A shoe or a level is moved by a controller. A key pressed while one is
   // armed is the player playing, not teaching: it plays, and the learn waits
   // for the pedal.
-  if (isContinuousTarget(learnKind_) && source.kind != MidiSourceKind::ControlChange)
+  if (isContinuousTarget(learnKind_) && source.kind != MidiSourceKind::ControlChange &&
+      source.kind != MidiSourceKind::Rpn && source.kind != MidiSourceKind::Nrpn)
     return false;
 
   // Learning normally replaces whatever that target had: a player re-touching
@@ -806,6 +811,8 @@ bool message(MidiSourceKind kind, int channel, int number, int value, RawMidi& o
       out = {{static_cast<uint8_t>(0xC0 | ch), clamp7(value), 0}, 2};
       return true;
     case MidiSourceKind::SysEx:  // received only; nothing is sent this way
+    case MidiSourceKind::Rpn:    // a send sets these through its parameter
+    case MidiSourceKind::Nrpn:
     case MidiSourceKind::None:
       break;
   }

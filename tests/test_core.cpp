@@ -16650,6 +16650,78 @@ public:
 };
 static MidiListenValuesTest g_midiListenValues;
 
+// RPN and NRPN received (#921): a console that chooses a parameter with
+// controllers 99/98 and sends its data with controller 6 works a stop by that
+// parameter, Listen takes the parameter, and the binding is saved.
+class MidiParameterReceiveTest final : public mp::test::Test {
+public:
+  MidiParameterReceiveTest() : Test("functional.midi.rpn-nrpn-received", Category::Functional) {}
+  void run() override {
+    const juce::File odf(juce::String(MP_TEST_FIXTURES_DIR) + "/minimal.Organ_Hauptwerk_xml");
+    mp::MasterpieceProcessor proc;
+    PlayerPistonsProcessorTest::Keep keepSettings(proc.settingsFileFor(odf));
+    PlayerPistonsProcessorTest::Keep keepGlobal(proc.globalSettingsFile());
+    proc.setRateAndBufferSizeDetails(48000.0, 256);
+    proc.prepareToPlay(48000.0, 256);
+    MP_CHECK(proc.loadOrgan(odf, 0, true).ok, "the fixture loads");
+    proc.setLearnNoiseFilter(false);
+    juce::AudioBuffer<float> buf(2, 256);
+    auto nrpn = [&](int channel, int parameter, int data) {
+      juce::MidiBuffer m;
+      m.addEvent(juce::MidiMessage::controllerEvent(channel, 99, parameter >> 7), 0);
+      m.addEvent(juce::MidiMessage::controllerEvent(channel, 98, parameter & 127), 1);
+      m.addEvent(juce::MidiMessage::controllerEvent(channel, 6, data), 2);
+      buf.clear();
+      proc.processBlock(buf, m);
+    };
+
+    mp::MidiBinding tab;
+    tab.source.kind = mp::MidiSourceKind::Nrpn;
+    tab.source.channel = 4;
+    tab.source.number = 1000;
+    tab.targetKind = mp::MidiTargetKind::Switch;
+    tab.targetId = 1101;
+    tab.trigger = mp::MidiTrigger::Momentary;
+    proc.midiMap().bind(tab);
+    MP_CHECK(!proc.switchEngaged(1101), "the stop starts in");
+    nrpn(4, 1000, 127);
+    MP_CHECK(proc.switchEngaged(1101), "NRPN 1000 at 127 draws it");
+    nrpn(4, 1000, 0);
+    MP_CHECK(!proc.switchEngaged(1101), "and at 0 retires it");
+    nrpn(4, 1001, 127);
+    MP_CHECK(!proc.switchEngaged(1101), "another parameter leaves it");
+    nrpn(5, 1000, 127);
+    MP_CHECK(!proc.switchEngaged(1101), "so does the same parameter on another channel");
+
+    mp::MidiSource heard;
+    int value = 0;
+    proc.beginMidiListen();
+    nrpn(2, 300, 90);
+    MP_CHECK(proc.takeHeardMidi(heard, value) && heard.kind == mp::MidiSourceKind::Nrpn && heard.number == 300 &&
+                 heard.channel == 2 && value == 90,
+             "Listen takes the parameter, past the controllers that choose it");
+
+    // An RPN moves a shoe across its values, and both are saved.
+    mp::MidiMap map;
+    mp::MidiBinding shoe;
+    shoe.source.kind = mp::MidiSourceKind::Rpn;
+    shoe.source.channel = 1;
+    shoe.source.number = 5;
+    shoe.targetKind = mp::MidiTargetKind::ContinuousControl;
+    shoe.targetId = 998;
+    map.bind(shoe);
+    map.bind(tab);
+    mp::MidiMap reread;
+    MP_CHECK(reread.fromText(map.toText()), "the map reads back");
+    MP_CHECK(reread.actionFor(shoe.source, 64).value == 64 && reread.actionFor(tab.source, 127).engage,
+             "with the RPN shoe and the NRPN tab");
+    mp::MidiSource cc = shoe.source;
+    cc.kind = mp::MidiSourceKind::ControlChange;
+    MP_CHECK(!reread.actionFor(cc, 64).valid(), "controller 5 is a controller of its own");
+  }
+};
+static MidiParameterReceiveTest g_midiParameterReceive;
+
 // Learn on and off in the MIDI window (#927): a tab moved on and then off is
 // heard as two messages, and they become the rows that work the stop. One
 // controller at two values is one row that follows the tab; a note pressed

@@ -1256,3 +1256,5 @@ countries: de at ch li lu
 "Move the tab on, then off: the rows are filled from the two messages" = "Den Registerschalter ein- und dann ausschalten: die Zeilen werden aus den beiden Meldungen gefüllt"
 "Controller, one bit" = "Controller, ein Bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "Das Bit des Controllers, das diesen Schalter trägt, 0 für das niedrigste"
+"RPN" = "RPN"
+"NRPN" = "NRPN"

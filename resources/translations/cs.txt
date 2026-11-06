@@ -1256,3 +1256,5 @@ countries: cz
 "Move the tab on, then off: the rows are filled from the two messages" = "Zapněte páčku a pak ji vypněte: řádky se vyplní z obou zpráv"
 "Controller, one bit" = "Kontrolér, jeden bit"
 "The bit of the controller that carries this switch, 0 for the lowest" = "Bit kontroléru, který nese tento spínač, 0 pro nejnižší"
+"RPN" = "RPN"
+"NRPN" = "NRPN"
