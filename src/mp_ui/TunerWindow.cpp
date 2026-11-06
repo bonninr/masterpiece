@@ -55,9 +55,16 @@ void TunerPanel::timerCallback() {
   if (!tapOpen_) return;
   const double rate = proc_.getSampleRate();
   if (rate <= 0.0 || proc_.spectrum().samplesPushed() - openedAt_ < SpectrumTap::kPitchSpan) return;
-  samples_.resize(static_cast<size_t>(SpectrumTap::kPitchSpan));
-  proc_.spectrum().latest(samples_.data(), SpectrumTap::kPitchSpan);
-  const auto pitch = SpectrumTap::measurePitch(samples_.data(), SpectrumTap::kPitchSpan, rate);
+  // A held key is the note to read. The blower and the reverb sound on with
+  // no key down, and a 32' stop sounds two octaves under the key.
+  const int key = lowestHeldKey();
+  SpectrumTap::Pitch pitch;
+  if (key >= 0) {
+    const double keyHz = proc_.masterPitchHz() * std::pow(2.0, (key - 69) / 12.0);
+    samples_.resize(static_cast<size_t>(SpectrumTap::kPitchSpan));
+    proc_.spectrum().latest(samples_.data(), SpectrumTap::kPitchSpan);
+    pitch = SpectrumTap::measurePitch(samples_.data(), SpectrumTap::kPitchSpan, rate, 0.9 * keyHz / 4.0);
+  }
   if (pitch.found) {
     // The same note a moment later settles the needle; another note moves it at once.
     if (showing_ && std::fabs(1200.0 * std::log2(pitch.hz / hz_)) < 20.0) {
@@ -74,6 +81,20 @@ void TunerPanel::timerCallback() {
     showing_ = false;
   }
   repaint();
+}
+
+int TunerPanel::lowestHeldKey() const {
+  int lowest = 128;
+  for (const auto& [id, keyboard] : proc_.organModel().keyboards) {
+    (void)keyboard;
+    for (int note = 0; note < lowest; ++note) {
+      if (proc_.keyDownOnKeyboard(id, note)) {
+        lowest = note;
+        break;
+      }
+    }
+  }
+  return lowest < 128 ? lowest + proc_.transpose() : -1;
 }
 
 void TunerPanel::paint(juce::Graphics& g) {

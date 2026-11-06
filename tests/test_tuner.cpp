@@ -92,6 +92,19 @@ public:
     const auto low2 = mp::nearestTemperedNote(q.hz, 440.0, mp::Temperament{"Equal", std::vector<double>(12, 0.0)});
     MP_CHECK(low2.midiNote == 36 && std::fabs(low2.cents + 12.0) < 0.5, "and named C2, 12 cents flat");
 
+    // A blower's rumble at 70 Hz 16 dB under A4 is the lowest peak; with the
+    // floor the window sets from the held key, a 32' stop's pitch under it,
+    // the note is read.
+    auto rumble = pipe(70.0, {0.05}, n);
+    const auto a4 = pipe(440.0, {0.3, 0.1, 0.05}, n);
+    for (size_t i = 0; i < rumble.size(); ++i) rumble[i] += a4[i];
+    const auto unbounded = mp::SpectrumTap::measurePitch(rumble.data(), n, kRate);
+    MP_CHECK(unbounded.found && std::fabs(unbounded.hz - 70.0) < 1.0,
+             "with no floor the rumble is the lowest peak: " + std::to_string(unbounded.hz));
+    const auto bounded = mp::SpectrumTap::measurePitch(rumble.data(), n, kRate, 0.9 * 440.0 / 4.0);
+    MP_CHECK(bounded.found && std::fabs(centsBetween(bounded.hz, 440.0)) < 0.2,
+             "above the floor the note is read: " + std::to_string(bounded.hz));
+
     // Silence, and a blower 100 dB down, are no note.
     const std::vector<float> silence(static_cast<size_t>(n), 0.0f);
     MP_CHECK(!mp::SpectrumTap::measurePitch(silence.data(), n, kRate).found, "silence is no note");

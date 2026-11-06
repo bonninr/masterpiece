@@ -137,13 +137,13 @@ double peakBetween(const float* x, const std::vector<double>& window, double rat
 
 }  // namespace
 
-SpectrumTap::Pitch SpectrumTap::measurePitch(const float* samples, int n, double sampleRate) {
+SpectrumTap::Pitch SpectrumTap::measurePitch(const float* samples, int n, double sampleRate, double lowestHz) {
   Pitch out;
   if (samples == nullptr || n < kFft || sampleRate <= 0.0) return out;
   // The bins of the last kFft samples find the note; the whole span reads it.
   const auto db = analyse(samples + (n - kFft));
   const double binHz = sampleRate / kFft;
-  const size_t first = static_cast<size_t>(std::ceil(25.0 / binHz));
+  const size_t first = static_cast<size_t>(std::ceil(std::max(25.0, lowestHz) / binHz));
   const size_t last = std::min(db.size() - 2, static_cast<size_t>(5000.0 / binHz));
   if (first >= last) return out;
   const float loudest = *std::max_element(db.begin() + static_cast<std::ptrdiff_t>(first),

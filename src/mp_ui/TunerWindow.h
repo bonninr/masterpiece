@@ -19,6 +19,9 @@ public:
 
 private:
   void timerCallback() override;
+  // The lowest key held on any keyboard, as it sounds after the transposer;
+  // -1 when none is.
+  int lowestHeldKey() const;
 
   MasterpieceProcessor& proc_;
   bool tapOpen_ = false;

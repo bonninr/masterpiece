@@ -53,9 +53,10 @@ public:
   void latest(float* out, int n) const;
 
   // The pitch of the lowest note sounding, and the levels of its first
-  // harmonics. The fundamental is the lowest peak within 25 dB of the
-  // loudest, read to a fraction of a cent from the peak of the windowed
-  // transform; n is at least kFft.
+  // harmonics. The fundamental is the lowest peak at or above lowestHz within
+  // 25 dB of the loudest there, read to a fraction of a cent from the peak of
+  // the windowed transform; n is at least kFft. lowestHz keeps a blower's
+  // rumble under the note out of the reading.
   struct Pitch {
     bool found = false;
     double hz = 0.0;
@@ -64,7 +65,7 @@ public:
     // Each harmonic's level against the fundamental's; harmonic 1 reads 0 dB.
     std::array<float, kHarmonics> harmonicsDb{};
   };
-  static Pitch measurePitch(const float* samples, int n, double sampleRate);
+  static Pitch measurePitch(const float* samples, int n, double sampleRate, double lowestHz = 25.0);
 
 private:
   std::atomic<int> viewers_{0};
