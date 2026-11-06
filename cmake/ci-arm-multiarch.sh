@@ -62,8 +62,21 @@ DEV_LIBS="libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
   libxcursor-dev libxcomposite-dev libfreetype6-dev libfontconfig1-dev \
   libxi-dev libjack-jackd2-dev"
 
+# linux-libc-dev is Multi-Arch: same, so the host's and the target's copies
+# must be one version. When the ports mirror lags the main archive by one
+# kernel-headers update, libc6-dev for the target cannot be installed beside
+# the host's newer copy ("held broken packages"). Then both are put on the
+# version ports has, and the install runs again.
 # shellcheck disable=SC2086
-sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done)
+if ! sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done); then
+  V=$(apt-cache policy "linux-libc-dev:$ARCH" | awk '/Candidate:/ {print $2}')
+  : "${V:?no linux-libc-dev candidate for $ARCH}"
+  echo "Aligning linux-libc-dev on $V for amd64 and $ARCH"
+  sudo apt-get install -y --allow-downgrades \
+    "linux-libc-dev:amd64=$V" "linux-libc-dev:$ARCH=$V"
+  # shellcheck disable=SC2086
+  sudo apt-get install -y $(for p in $DEV_LIBS; do printf '%s:%s ' "$p" "$ARCH"; done)
+fi
 
 # ...and the same set for the HOST, which is not optional and is easy to
 # think it is. A cross-build still builds one thing natively: juceaide, the
