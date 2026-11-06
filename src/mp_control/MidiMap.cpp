@@ -449,6 +449,16 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
       it = bySource_.find(probe);
     }
+  // And a program range, last: a piston on one program beats a shoe moved by
+  // all of them (#925).
+  if (it == bySource_.end() && source.kind == MidiSourceKind::ProgramChange)
+    for (int step = 0; step < steps && it == bySource_.end(); ++step) {
+      MidiSource probe = source;
+      probe.number = kProgramRange;
+      if (step & 1) probe.channel = 0;
+      if (step & 2) probe.deviceId = MidiDeviceMap::kAnyDevice;
+      it = bySource_.find(probe);
+    }
   if (it == bySource_.end()) return {};
   const MidiBinding& b = it->second;
 
@@ -506,9 +516,13 @@ MidiAction MidiMap::actionFor(const MidiSource& source, int value, double timeMs
       }
       // Across the binding's own window, so a shoe that only travels 20..100
       // still reaches both ends of the swell.
-      action.value = controlValue(b, value);
+      // A program range gives -1 for a program outside it, and the control
+      // stays where it is; another control on the same programs may still
+      // take it.
+      action.value = controlValue(b, source, value);
       if (const auto more = alsoDrives_.find(it->first); more != alsoDrives_.end())
         action.alsoDrives = &more->second;
+      if (action.value < 0 && action.alsoDrives == nullptr) return {};
       break;
     }
     case MidiTargetKind::Keyboard:
