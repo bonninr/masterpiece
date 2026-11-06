@@ -3,6 +3,8 @@
 // frequency, and the tap takes nothing while no window has it open.
 #include "MpTest.h"
 
+// The tap is compiled into mp_audio, which only the full build has.
+#ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_audio/SpectrumTap.h"
 
 #include <algorithm>
@@ -83,3 +85,5 @@ SpectrumAnalyseTest g_spectrumAnalyse;
 SpectrumTapTest g_spectrumTap;
 
 }  // namespace
+
+#endif  // MP_TEST_HAS_AUDIO
