@@ -1213,3 +1213,5 @@ countries: pl
 "Move it on..." = "Włącz go..."
 "Now move it off..." = "Teraz go wyłącz..."
 "Move the tab on, then off: the rows are filled from the two messages" = "Włącz klawisz, potem go wyłącz: wiersze zostaną wypełnione z obu komunikatów"
+"Controller, one bit" = "Kontroler, jeden bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "Bit kontrolera, który niesie ten przełącznik, 0 dla najniższego"

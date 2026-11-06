@@ -1213,3 +1213,5 @@ countries: fr be ca ch lu mc
 "Move it on..." = "Activez-le..."
 "Now move it off..." = "Désactivez-le maintenant..."
 "Move the tab on, then off: the rows are filled from the two messages" = "Activez le domino, puis désactivez-le : les lignes sont remplies à partir des deux messages"
+"Controller, one bit" = "Contrôleur, un bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "Le bit du contrôleur qui porte ce commutateur, 0 pour le plus bas"

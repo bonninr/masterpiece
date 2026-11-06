@@ -1213,3 +1213,5 @@ countries: es ar bo cl co cr cu do ec gt hn mx ni pa pe pr py sv uy ve
 "Move it on..." = "Actívelo..."
 "Now move it off..." = "Ahora desactívelo..."
 "Move the tab on, then off: the rows are filled from the two messages" = "Active la pestaña y luego desactívela: las filas se rellenan con los dos mensajes"
+"Controller, one bit" = "Controlador, un bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "El bit del controlador que lleva este interruptor, 0 para el más bajo"

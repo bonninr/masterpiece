@@ -57,6 +57,10 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 using mp::test::Category;
 
@@ -12752,6 +12756,50 @@ public:
 };
 static MidiExactValuesTest g_midiExactValues;
 
+// Switches carried by the bits of one controller (#924).
+class MidiControllerBitsTest final : public mp::test::Test {
+public:
+  MidiControllerBitsTest() : Test("functional.midi.controller-bitfield", Category::Functional) {}
+
+  void run() override {
+    mp::MidiMap map;
+    const mp::MidiSource cc30{mp::MidiSourceKind::ControlChange, 2, 30};
+    for (int bit = 0; bit < 3; ++bit) {
+      mp::MidiBinding b;
+      b.source = cc30;
+      b.targetKind = mp::MidiTargetKind::Switch;
+      b.targetId = static_cast<mp::Id>(40 + bit);
+      b.bit = bit;
+      map.bind(b);
+    }
+    // Each switch and whether the message leaves it drawn.
+    auto states = [&](int value) {
+      std::vector<std::pair<mp::Id, bool>> out;
+      const auto a = map.actionFor(cc30, value);
+      if (a.valid() && !a.idle) out.push_back({a.targetId, a.engage});
+      if (a.alsoDrives != nullptr)
+        for (const auto& b : *a.alsoDrives) {
+          const auto more = map.switchAction(b, value);
+          if (more.valid()) out.push_back({more.targetId, more.engage});
+        }
+      std::sort(out.begin(), out.end());
+      return out;
+    };
+    using S = std::vector<std::pair<mp::Id, bool>>;
+    MP_CHECK(states(0b101) == S({{40, true}, {41, false}, {42, true}}), "5 draws the first and third");
+    MP_CHECK(states(0b010) == S({{40, false}, {41, true}, {42, false}}), "2 draws the second alone");
+    MP_CHECK(states(0) == S({{40, false}, {41, false}, {42, false}}), "0 cancels all three");
+
+    mp::MidiMap back;
+    back.fromText(map.toText());
+    const auto rows = back.bindingsFor(mp::MidiTargetKind::Switch, 42);
+    MP_CHECK(rows.size() == 1 && rows.front()->bit == 2, "the bit survives saving");
+    const auto plain = back.bindingsFor(mp::MidiTargetKind::Switch, 40);
+    MP_CHECK(plain.size() == 1 && plain.front()->bit == 0, "bit 0 too");
+  }
+};
+static MidiControllerBitsTest g_midiControllerBits;
+
 // One expression pedal for two swell boxes, and a shoe that only sends
 // 55..127 still closing its box (#90).
 class PedalRangeTest final : public mp::test::Test {
@@ -14370,7 +14418,24 @@ public:
     k = mp::inspectArchive(put("zip.orgue", std::string("PK\x03\x04", 4) + std::string(40, '\0')));
     MP_CHECK(k.format == F::Zip, "a ZIP");
     k = mp::inspectArchive(put("junk.rar", std::string(100, 'x')));
-    MP_CHECK(k.format == F::Unknown, "not an archive at all");
+    MP_CHECK(k.format == F::Unknown && !k.unreadable, "not an archive at all");
+#ifndef _WIN32
+    // There, and refused: what Android 13 does to a shared file the app was
+    // never lent (#966). Said as a refusal, never as an unknown format. Root
+    // reads anything, so the check is for an ordinary user.
+    if (::geteuid() != 0) {
+      const std::string refused = put("refused.rar", rar4(0, 0));
+      ::chmod(refused.c_str(), 0);
+      k = mp::inspectArchive(refused);
+      MP_CHECK(k.unreadable, "a file the system will not open is said to be refused");
+      mp::OrganArchive a;
+      std::string error;
+      MP_CHECK(a.discover(refused, error) && !a.inspect(error) &&
+                   error.find("cannot be read") != std::string::npos,
+               "and the error says so: " + error);
+      ::chmod(refused.c_str(), 0644);
+    }
+#endif
     MP_CHECK(mp::inspectArchive((dir / "solid.rar").string()).describe().find("RAR 4, solid") == 0,
              "and it can say so in words");
 
@@ -18967,6 +19032,18 @@ public:
       MP_CHECK(proc.midiOutputName() == "A console that is not plugged in", "the output's name is kept");
       MP_CHECK(proc.midiFeedbackEnabled(), "and the echo to the console");
       MP_CHECK(proc.openMidiOutput({}) && proc.midiOutput() == nullptr, "None closes it");
+      // Two consoles, such as two pad controllers (#942): both names kept.
+      MP_CHECK(!proc.openMidiOutputs({"Pads left", "Pads right", "Pads left"}),
+               "ports that are not there do not open");
+    }
+    {
+      mp::MasterpieceProcessor proc;
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames() == juce::StringArray({"Pads left", "Pads right"}),
+               "both outputs are kept, once each, in order");
+      proc.loadGlobalDefaults();
+      MP_CHECK(proc.midiOutputNames().size() == 2, "a second read adds none");
+      MP_CHECK(proc.openMidiOutputs({}) && proc.midiOutputNames().isEmpty(), "None closes them all");
     }
     if (had) global.replaceWithText(before);
     else global.deleteFile();

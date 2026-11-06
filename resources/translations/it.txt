@@ -1213,3 +1213,5 @@ countries: it ch sm va
 "Move it on..." = "Attivatelo..."
 "Now move it off..." = "Ora disattivatelo..."
 "Move the tab on, then off: the rows are filled from the two messages" = "Attivate la placchetta, poi disattivatela: le righe vengono compilate dai due messaggi"
+"Controller, one bit" = "Controller, un bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "Il bit del controller che porta questo interruttore, 0 per il più basso"

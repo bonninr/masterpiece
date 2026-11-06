@@ -1214,3 +1214,5 @@ countries: nl be sr
 "Move it on..." = "Zet hem aan..."
 "Now move it off..." = "Zet hem nu uit..."
 "Move the tab on, then off: the rows are filled from the two messages" = "Zet de wipschakelaar aan en daarna uit: de regels worden uit de twee berichten gevuld"
+"Controller, one bit" = "Controller, één bit"
+"The bit of the controller that carries this switch, 0 for the lowest" = "De bit van de controller die deze schakelaar draagt, 0 voor de laagste"
