@@ -1769,7 +1769,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     t.tremulantId = fieldInt(row, "TremulantID", "a", 0);
     t.name = field(row, "Name", "b");
     t.controllingSwitchId = fieldInt(row, "ControllingSwitchID", "c", 0);
-    t.engagedHz = fieldDouble(row, "FrequencyWhenEngagedHz", "d", t.engagedHz);
+    // The format's tables give the engaged rate no compact default, and real
+    // compact rows leave it out (#822). Every such row writes 6.5 Hz for the
+    // disengaged rate, so 6.5 Hz keeps the tremulant at one speed.
+    t.engagedHz = fieldDouble(row, "FrequencyWhenEngagedHz", "d", isCompact(row) ? 6.5 : t.engagedHz);
     t.disengagedHz = fieldDouble(row, "FrequencyWhenDisengagedHz", "e",
                                  isCompact(row) ? 9.0 : t.disengagedHz);
     // StartRatePercent / StopRatePercent are how quickly the tremulant winds

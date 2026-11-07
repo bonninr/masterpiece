@@ -4167,7 +4167,8 @@ public:
   }
 };
 
-// A compact tremulant row leaves out a disengaged rate of 9 Hz.
+// A compact tremulant row leaves out a disengaged rate of 9 Hz, and an engaged
+// rate of 6.5 Hz (#822).
 class CompactTremulantRateTest final : public mp::test::Test {
 public:
   CompactTremulantRateTest()
@@ -4181,17 +4182,23 @@ public:
                  "<?xml version=\"1.0\"?><Hauptwerk FileFormat=\"Organ\">"
                  "<ObjectList ObjectType=\"_General\"><o><a>1</a></o></ObjectList>"
                  "<ObjectList ObjectType=\"Tremulant\">"
-                 "<o><a>1</a><b>left out</b><d>6.5e+0</d></o>"
+                 "<o><a>1</a><b>left out</b><d>5.5e+0</d></o>"
                  "<o><a>2</a><b>written</b><d>6.5e+0</d><e>4.5e+0</e></o>"
                  "<Tremulant><TremulantID>3</TremulantID><Name>long</Name>"
                  "<FrequencyWhenEngagedHz>6.5</FrequencyWhenEngagedHz></Tremulant>"
+                 "<o><a>4</a><b>no engaged rate</b><e>6.5e+0</e></o>"
+                 "<Tremulant><TremulantID>5</TremulantID><Name>long, no rate</Name></Tremulant>"
                  "</ObjectList></Hauptwerk>",
                  "a.Organ_Hauptwerk_xml", o, m, d),
              "the definition loads");
-    MP_CHECK(m.tremulants.size() == 3, "all three tremulants are read");
+    MP_CHECK(m.tremulants.size() == 5, "all five tremulants are read");
     MP_CHECK(m.tremulants.at(1).disengagedHz == 9.0, "no rate written means 9 Hz");
     MP_CHECK(m.tremulants.at(2).disengagedHz == 4.5, "a written rate is kept");
     MP_CHECK(m.tremulants.at(3).disengagedHz == 5.0, "a long-form row keeps its own default");
+    MP_CHECK(m.tremulants.at(4).engagedHz == 6.5 && m.tremulants.at(4).disengagedHz == 6.5,
+             "no engaged rate written means 6.5 Hz, one speed with the rate written");
+    MP_CHECK(m.tremulants.at(1).engagedHz == 5.5, "a written engaged rate is kept");
+    MP_CHECK(m.tremulants.at(5).engagedHz == 6.0, "a long-form row keeps its own engaged default");
   }
 };
 static CompactTremulantRateTest g_compactTremulantRate;
