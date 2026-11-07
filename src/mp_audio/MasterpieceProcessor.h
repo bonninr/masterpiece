@@ -2340,9 +2340,11 @@ private:
   // Sized at load, like recallScratch_: a piston pressed on the audio thread
   // must not allocate.
   std::vector<PlayerCombinations::Change> playerScratch_;
-  // The switches a player's registration is made of. Moving one by hand
-  // means no piston describes what is drawn any more, so it unlights them.
-  std::unordered_set<Id> registrationSwitches_;
+  // The switches and stops a player's registration is made of, each with its
+  // division (PlayerCombinations::kEveryDivision for one in several). Moving
+  // one by hand unlights the general and that division's divisional.
+  std::unordered_map<Id, Id> registrationSwitches_;
+  std::unordered_map<Id, Id> registrationStops_;
   // True while a piston applies its registration, so the switches it moves do
   // not count as the player moving them.
   bool applyingPistons_ = false;

@@ -430,9 +430,14 @@ int PlayerCombinations::litDivisional(Id divisionId) const {
   return d < 0 ? 0 : litDivisional_[static_cast<size_t>(d)];
 }
 
-void PlayerCombinations::registrationMoved() {
+void PlayerCombinations::registrationMoved(Id divisionId) {
   litGeneral_ = 0;
-  std::fill(litDivisional_.begin(), litDivisional_.end(), 0);
+  if (divisionId == kEveryDivision) {
+    std::fill(litDivisional_.begin(), litDivisional_.end(), 0);
+    return;
+  }
+  const int d = divisionIndex(divisionId);
+  if (d >= 0) litDivisional_[static_cast<size_t>(d)] = 0;
 }
 
 // A general describes the whole console, so it replaces every lit piston; a
