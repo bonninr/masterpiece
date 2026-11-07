@@ -1963,6 +1963,21 @@ public:
     if (sessionLoading_) sessionLoading_->programCouplers = on;
   }
   bool programCouplers() const { return programCouplers_; }
+  // A GrandOrgue set's tremulant pitch and swell filter (#833), chosen on
+  // the same tab: off by default, saved with the organ, applied at its load
+  // (OdfLoader::Options).
+  void setGrandOrgueTremulantPitch(bool on) {
+    goTremulantPitch_ = on;
+    if (sessionLoading_) sessionLoading_->goTremulantPitch = on;
+  }
+  bool grandOrgueTremulantPitch() const { return goTremulantPitch_; }
+  void setGrandOrgueSwellFilter(bool on) {
+    goSwellFilter_ = on;
+    if (sessionLoading_) sessionLoading_->goSwellFilter = on;
+  }
+  bool grandOrgueSwellFilter() const { return goSwellFilter_; }
+  // The organ loaded is a GrandOrgue definition.
+  bool grandOrgueSet() const { return grandOrgueSet_; }
   // The program couplers this organ has, in the order they were numbered.
   const std::vector<CouplerMatrix::ProgramCoupler>& programCouplerList() const {
     return programCouplersList_;
@@ -2753,6 +2768,10 @@ private:
   int64_t preloadHead_ = 0;
   // Whether the program couplers are offered. Off by default.
   bool programCouplers_ = false;
+  // A GrandOrgue set's tremulant pitch and swell filter (#833). Off by
+  // default; grandOrgueSet_ is the loaded definition's kind.
+  bool goTremulantPitch_ = false, goSwellFilter_ = false;
+  bool grandOrgueSet_ = false;
   // The program couplers this organ has, in the order they were numbered.
   std::vector<CouplerMatrix::ProgramCoupler> programCouplersList_;
   // Off unless asked for: reopening at start is what turns one crash into a
@@ -3063,6 +3082,7 @@ private:
     // The program couplers: chosen on the same tab, and lost with the rest
     // when the organ's own settings are read again at the load.
     bool programCouplers = false;
+    bool goTremulantPitch = false, goSwellFilter = false;
     EngineSwitch engine;
     // The rest of the tab's choices the organ's file also holds (#591): the
     // sample rate and the releases.

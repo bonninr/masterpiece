@@ -13787,10 +13787,105 @@ public:
              "a box of the other format moves evenly in dB");
   }
 };
+// A GrandOrgue set's tremulant pitch and swell filter, chosen per organ
+// (#833). Off, the set loads as GrandOrgue plays it: the tremulant moves the
+// level only and the box the level only. On, each tremulated pipe swings in
+// pitch in proportion to its level swing, and a closed box darkens the
+// treble while its level law stays GrandOrgue's.
+class GrandOrgueTremulantPitchSwellToneTest final : public mp::test::Test {
+public:
+  GrandOrgueTremulantPitchSwellToneTest()
+    : Test("functional.odf.grandorgue-tremulant-pitch-swell-tone", Category::Functional) {}
+  void run() override {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = fs::temp_directory_path(ec) / "mp_go_trem_swell_8d2a";
+    fs::create_directories(dir, ec);
+    const fs::path file = dir / "effects.organ";
+    {
+      std::ofstream f(file, std::ios::binary);
+      f << "[Organ]\r\nChurchName=Effects\r\nHasPedals=N\r\n"
+           "NumberOfManuals=1\r\nNumberOfEnclosures=1\r\nNumberOfTremulants=2\r\n"
+           "NumberOfWindchestGroups=2\r\n"
+           "[Enclosure001]\r\nName=Swell\r\nAmpMinimumLevel=20\r\n"
+           "[Tremulant001]\r\nName=Trem\r\nPeriod=200\r\nAmpModDepth=15\r\n"
+           "[Tremulant002]\r\nName=Gentle\r\nPeriod=200\r\nAmpModDepth=6\r\n"
+           "[WindchestGroup001]\r\nName=Swell\r\nNumberOfEnclosures=1\r\nEnclosure001=1\r\n"
+           "NumberOfTremulants=1\r\nTremulant001=1\r\n"
+           "[WindchestGroup002]\r\nName=Choir\r\nNumberOfTremulants=1\r\nTremulant001=2\r\n"
+           "[Manual001]\r\nName=Swell\r\nNumberOfLogicalKeys=2\r\n"
+           "FirstAccessibleKeyMIDINoteNumber=60\r\nNumberOfAccessibleKeys=2\r\nNumberOfStops=2\r\n"
+           "Stop001=1\r\nStop002=2\r\n"
+           "[Stop001]\r\nName=Gedackt 8\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+           "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=1\r\n"
+           "Pipe001=G\\060.wav\r\nPipe002=G\\061.wav\r\n"
+           "[Stop002]\r\nName=Flute 4\r\nNumberOfLogicalPipes=2\r\nNumberOfAccessiblePipes=2\r\n"
+           "FirstAccessiblePipeLogicalKeyNumber=1\r\nWindchestGroup=2\r\n"
+           "Pipe001=F\\072.wav\r\nPipe002=F\\073.wav\r\n";
+    }
+    mp::OdfLoader l;
+    mp::OdfDiagnostics d;
+    mp::OdfLoader::Options off;
+    mp::OrganModel plain;
+    MP_CHECK(l.load(file.string(), off, plain, d), "the GrandOrgue file loads");
+    mp::OdfLoader::Options on;
+    on.grandOrgueTremulantPitch = true;
+    on.grandOrgueSwellFilter = true;
+    mp::OrganModel shaped;
+    mp::OdfDiagnostics d2;
+    MP_CHECK(l.load(file.string(), on, shaped, d2), "the GrandOrgue file loads with both options");
+    fs::remove_all(dir, ec);
+    MP_CHECK(plain.tremulantPipes.size() == 4 && shaped.tremulantPipes.size() == 4,
+             "four tremulated pipes either way");
+    MP_CHECK(plain.enclosures.size() == 1 && shaped.enclosures.size() == 1, "one swell box either way");
+    if (plain.tremulantPipes.size() != 4 || shaped.enclosures.size() != 1 || plain.enclosures.size() != 1)
+      return;
+
+    for (const auto& [pipe, mod] : plain.tremulantPipes)
+      MP_CHECK(mod.pitchDepthPct == 0.0, "off: pipe " + std::to_string(pipe) + " swings in level only");
+    // Each stop's pipes, by their tremulant's depth: 15% is the recorded
+    // waveform's own swing, 6% is 40 % of it.
+    for (const auto& [pipe, mod] : shaped.tremulantPipes) {
+      const auto& trem = shaped.tremulants.at(mod.tremulantId);
+      const double want = trem.name == "Gentle" ? 40.0 : 100.0;
+      MP_CHECK(std::fabs(mod.pitchDepthPct - want) < 1e-6,
+               "on: " + trem.name + " pipe swings " + std::to_string(mod.pitchDepthPct) +
+                   " % of the waveform's pitch, want " + std::to_string(want));
+      MP_CHECK(mod.ampDepthDb == plain.tremulantPipes.at(pipe).ampDepthDb,
+               "on: the level swing stays the definition's");
+    }
+
+    const mp::Enclosure& a = plain.enclosures.begin()->second;
+    const mp::Enclosure& b = shaped.enclosures.begin()->second;
+    MP_CHECK(a.closedShelfDb == 0.0, "off: the box moves the level only");
+    MP_CHECK(b.closedShelfDb == 12.0 && b.closedMaxHz == 1000.0 && b.closedMinHz == 5500.0,
+             "on: the closed box shades 12 dB from 1 kHz to 5.5 kHz");
+    MP_CHECK(b.closedAttnDb == a.closedAttnDb && b.linearAmplitude,
+             "on: the level law stays GrandOrgue's");
+
+    // Measured through the box: closed, the treble falls further than the
+    // level alone takes it; open, nothing changes.
+    mp::EngineSwitch full;
+    const auto drop = [&full](const mp::Enclosure& e, double hz) {
+      return 20.0 * std::log10(EnclosureResponseTest::rmsAt(hz, 0.0, e, full) /
+                               EnclosureResponseTest::rmsAt(hz, 1.0, e, full));
+    };
+    const double levelOnly = drop(a, 4000.0);
+    const double shaded = drop(b, 4000.0);
+    MP_CHECK(shaded < levelOnly - 6.0,
+             "closed, 4 kHz falls " + std::to_string(-shaded) + " dB with the filter, " +
+                 std::to_string(-levelOnly) + " dB without");
+    const double openA = EnclosureResponseTest::rmsAt(4000.0, 1.0, a, full);
+    const double openB = EnclosureResponseTest::rmsAt(4000.0, 1.0, b, full);
+    MP_CHECK(std::fabs(20.0 * std::log10(openB / openA)) < 0.5,
+             "open, the filter leaves 4 kHz within 0.5 dB");
+  }
+};
 
 static DspFastPathTest g_dspFastPath;
 static EnclosureResponseTest g_encResponse;
 static GrandOrgueSwellLawTest g_grandOrgueSwellLaw;
+static GrandOrgueTremulantPitchSwellToneTest g_grandOrgueTremulantPitchSwellTone;
 static EnclosureModulationTest g_encModulation;
 static TremulantRampTest g_tremRamp;
 #endif

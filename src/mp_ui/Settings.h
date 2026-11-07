@@ -115,6 +115,11 @@ private:
   // Whether the program couplers are offered. Off by default.
   bool openProgramCouplers_ = false;
   juce::ToggleButton programCouplers_{TRANS("Extra couplers")};
+  // A GrandOrgue set's tremulant pitch and swell filter (#833), shown for
+  // a GrandOrgue set only.
+  bool openGoTremulantPitch_ = false, openGoSwellFilter_ = false;
+  juce::ToggleButton goTremulantPitch_{TRANS("Tremulant pitch")};
+  juce::ToggleButton goSwellFilter_{TRANS("Swell filter")};
   double openRate_ = 0.0;
   SampleLibrary::ReleaseChoice openReleases_ = SampleLibrary::ReleaseChoice::All;
   int openReleaseMs_ = 0;

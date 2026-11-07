@@ -143,6 +143,22 @@ EnginePanel::EnginePanel(MasterpieceProcessor& p, Part part) : proc_(p), part_(p
   programCouplers_.onClick = [this] {
     proc_.setProgramCouplers(programCouplers_.getToggleState());
   };
+  openGoTremulantPitch_ = proc_.grandOrgueTremulantPitch();
+  openGoSwellFilter_ = proc_.grandOrgueSwellFilter();
+  addAndMakeVisible(goTremulantPitch_);
+  goTremulantPitch_.setToggleState(openGoTremulantPitch_, juce::dontSendNotification);
+  goTremulantPitch_.setTooltip(TRANS("Adds a pitch swing to this organ's tremulants, in step with the level "
+                                     "swing its definition sets"));
+  goTremulantPitch_.onClick = [this] {
+    proc_.setGrandOrgueTremulantPitch(goTremulantPitch_.getToggleState());
+  };
+  addAndMakeVisible(goSwellFilter_);
+  goSwellFilter_.setToggleState(openGoSwellFilter_, juce::dontSendNotification);
+  goSwellFilter_.setTooltip(TRANS("Darkens the tone of this organ's swell boxes as they close, on top of the "
+                                  "level change its definition sets"));
+  goSwellFilter_.onClick = [this] {
+    proc_.setGrandOrgueSwellFilter(goSwellFilter_.getToggleState());
+  };
   openRate_ = proc_.loadSampleRate();
   openReleases_ = proc_.releaseChoice();
   openReleaseMs_ = proc_.releaseMaxMs();
@@ -769,6 +785,10 @@ void EnginePanel::revert() {
   compress_.setToggleState(openCompress_, juce::dontSendNotification);
   proc_.setProgramCouplers(openProgramCouplers_);
   programCouplers_.setToggleState(openProgramCouplers_, juce::dontSendNotification);
+  proc_.setGrandOrgueTremulantPitch(openGoTremulantPitch_);
+  goTremulantPitch_.setToggleState(openGoTremulantPitch_, juce::dontSendNotification);
+  proc_.setGrandOrgueSwellFilter(openGoSwellFilter_);
+  goSwellFilter_.setToggleState(openGoSwellFilter_, juce::dontSendNotification);
   proc_.setLoadTicks(openLoadTicks_);
   loadTicks_.setToggleState(openLoadTicks_, juce::dontSendNotification);
   proc_.setReopenLastOrgan(openReopen_);
@@ -896,6 +916,8 @@ bool EnginePanel::loadingChanged() const {
          proc_.loadMono() != openMono_ || proc_.loadSampleRate() != openRate_ ||
          proc_.codeSamples() != openCompress_ ||
          proc_.programCouplers() != openProgramCouplers_ ||
+         proc_.grandOrgueTremulantPitch() != openGoTremulantPitch_ ||
+         proc_.grandOrgueSwellFilter() != openGoSwellFilter_ ||
          proc_.preloadHeadFrames() != openPreload_ ||
          proc_.polyphonyLimit() != openPolyphony_ ||
          sw.simpleWavOnly != openSwitch_.simpleWavOnly ||
@@ -1198,7 +1220,7 @@ void EnginePanel::applyPart() {
                    &rateLabel_, &rate_, &sparseLabel_, &sparse_, &releasesLabel_, &releases_,
                    &releaseLengthLabel_, &releaseLength_, &releaseShortLabel_, &releaseShort_, &releaseCutoffLabel_, &releaseCutoff_,
                    &stream_, &streamHead_, &releaseBufferLabel_, &releaseBuffer_, &mono_, &compress_,
-                   &programCouplers_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
+                   &programCouplers_, &goTremulantPitch_, &goSwellFilter_, &portable_, &organRootLabel_, &organRootValue_, &organRootChoose_,
                    &organRootDefault_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List organSimple{&profileLabel_, &profile_, &memory_, &revert_, &keep_, &saveOrgan_, &saveGlobal_};
   const List performance{&performanceLabel_, &performance_, &faster_, &realtime_, &everyProcessor_,
@@ -1222,6 +1244,7 @@ void EnginePanel::applyPart() {
     if (c == &reload_ || c == &rebuildNote_) continue;
     bool show = in(mine, c) && (!simple || in(few, c));
     if (c == &realtime_) show = show && MasterpieceProcessor::realtimeThreadsSupported();
+    if (c == &goTremulantPitch_ || c == &goSwellFilter_) show = show && proc_.grandOrgueSet();
     c->setVisible(show);
   }
   // Simple mode hides the controls that Custom stands for, so there Custom
@@ -1286,8 +1309,10 @@ void EnginePanel::resized() {
   // This organ: what it plays through, then how it is loaded.
   {
     std::vector<juce::Component*> boxes;
+    // A GrandOrgue set's two (#833) make a row of their own, each under the
+    // effect it adds to.
     for (auto* b : std::initializer_list<juce::Component*>{&simpleWav_, &wind_, &tremulant_, &enclosure_, &voicing_,
-                                                           &originalPitch_})
+                                                           &originalPitch_, &goTremulantPitch_, &goSwellFilter_})
       if (b->isVisible()) boxes.push_back(b);
     // Two columns where the longest label fits in half the width.
     const size_t columns = r.getWidth() >= 600 ? 2 : 1;

@@ -1,0 +1,4 @@
+"Tremulant pitch" = "Tremulant-toonhoogte"
+"Swell filter" = "Zwelfilter"
+"Adds a pitch swing to this organ's tremulants, in step with the level swing its definition sets" = "Geeft de tremulanten van dit orgel een toonhoogteschommeling, in de maat van de volumeschommeling die de definitie vastlegt"
+"Darkens the tone of this organ's swell boxes as they close, on top of the level change its definition sets" = "Maakt de klank van de zwelkasten van dit orgel donkerder bij het sluiten, bovenop de volumeverandering die de definitie vastlegt"

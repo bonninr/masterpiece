@@ -2352,6 +2352,8 @@ bool MasterpieceProcessor::saveSettings() const {
     if (transpose() != 0) text << "transpose " << transpose() << "\n";
     if (pipeDetuneCents() > 0.0f) text << "pipedetune " << juce::String(pipeDetuneCents(), 1) << "\n";
     if (windSwayCents() > 0.0f) text << "windsway " << juce::String(windSwayCents(), 1) << "\n";
+    if (goTremulantPitch_) text << "gotremulantpitch 1\n";
+    if (goSwellFilter_) text << "goswellfilter 1\n";
     // Written whatever it is, off and flat too: an organ with a line keeps
     // it, and one without plays the default EQ.
     if (organOwnsEq_) text << "eq " << juce::String(voicingEqSettings_.toLine()) << "\n";
@@ -2398,6 +2400,8 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
   transpose_.store(0, std::memory_order_relaxed);
   pipeDetuneCents_.store(0.0f, std::memory_order_relaxed);
   windSwayCents_.store(0.0f, std::memory_order_relaxed);
+  goTremulantPitch_ = false;
+  goSwellFilter_ = false;
   const auto f = settingsFileFor(odf);
   if (f.getFullPathName().isEmpty() || !f.existsAsFile()) return false;
 
@@ -2519,6 +2523,14 @@ bool MasterpieceProcessor::loadSettingsFor(const juce::File& odf) {
     }
     if (key == "windsway") {
       windSwayCents_.store(juce::jlimit(0.0f, kMaxUnevennessCents, val.getFloatValue()), std::memory_order_relaxed);
+      continue;
+    }
+    if (key == "gotremulantpitch") {
+      goTremulantPitch_ = val.getIntValue() != 0;
+      continue;
+    }
+    if (key == "goswellfilter") {
+      goSwellFilter_ = val.getIntValue() != 0;
       continue;
     }
     if (key == "attack") {
@@ -5064,6 +5076,8 @@ void MasterpieceProcessor::keepLoadingChoiceForSession() {
   c.preload = preloadHead_;
   c.sparse = sparseEvery_;
   c.programCouplers = programCouplers_;
+  c.goTremulantPitch = goTremulantPitch_;
+  c.goSwellFilter = goSwellFilter_;
   c.engine = graph_.engineSwitch;
   c.rate = samples_.loadSampleRate();
   c.releases = samples_.releaseChoice();
@@ -7623,6 +7637,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     sparseEvery_ = c.sparse;
     samples_.setSparseEvery(c.sparse);
     programCouplers_ = c.programCouplers;
+    goTremulantPitch_ = c.goTremulantPitch;
+    goSwellFilter_ = c.goSwellFilter;
     graph_.engineSwitch = c.engine;
     samples_.setLoadSampleRate(c.rate);
     samples_.setReleaseChoice(c.releases);
@@ -7639,6 +7655,8 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   OdfLoader::Options opts;
   opts.organRootDir = root.getFullPathName().toStdString();
   opts.reportUnreadFields = reportUnreadFields_;
+  opts.grandOrgueTremulantPitch = goTremulantPitch_;
+  opts.grandOrgueSwellFilter = goSwellFilter_;
   // A folder the player named for this organ wins over anything derived from
   // the definition's own path. Some layouts cannot be worked out from the
   // path at all: a link followed on the way in can leave the definition in a
@@ -7659,6 +7677,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   }
 
   phases.mark("odf parse");
+  grandOrgueSet_ = isGrandOrgueDefinition(effectiveOdf.getFullPathName().toStdString());
   if (!result.diagnostics.latchedDrawstops.empty())
     juce::Logger::writeToLog("load: " + juce::String(static_cast<int>(result.diagnostics.latchedDrawstops.size())) +
                              " drawstop switch(es) the definition marks momentary latch");
