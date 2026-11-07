@@ -1116,7 +1116,6 @@ countries: nl be sr
 "Audio device" = "Audioapparaat"
 "Output device and buffer size. 256 or 512 samples suit most computers.\n\nAlso in Settings > Audio." = "Uitvoerapparaat en buffergrootte. 256 of 512 samples passen bij de meeste computers.\n\nOok in Instellingen > Audio."
 "MIDI configuration" = "MIDI-configuratie"
-"MIDI channel of the pedal and each manual, for every organ without its own.\n\nAlso in Settings > MIDI." = "MIDI-kanaal van het pedaal en elk manuaal, voor elk orgel zonder eigen kanalen.\n\nOok in Instellingen > MIDI."
 "Definition file or package. The first load of a large set takes longer." = "Definitiebestand of pakket. De eerste keer laden van een grote set duurt langer."
 
 # src/mp_ui/Ui.cpp (output compressor)

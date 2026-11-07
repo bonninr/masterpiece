@@ -1,5 +1,7 @@
 #include "Wizard.h"
 
+#include "ManualDialog.h"
+
 namespace mp::ui {
 namespace {
 constexpr int kSteps = 4;
@@ -73,9 +75,20 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
     for (int c = 1; c <= 16; ++c) box.addItem(juce::String(c), c + 1);
     const auto it = def.find(role);
     box.setSelectedId(it == def.end() ? 1 : it->second + 1, juce::dontSendNotification);
-    box.onChange = [this, role, &box] { proc_.setDefaultConsoleChannel(role, box.getSelectedId() - 1); };
+    box.onChange = [this, role, &box] {
+      proc_.setDefaultConsoleChannel(role, box.getSelectedId() - 1);
+      showRoleDevices();
+    };
     addChildComponent(box);
+    auto& device = roleDevices_[static_cast<size_t>(role)];
+    device.setTooltip(TRANS("The MIDI device this keyboard comes from. Any device: every device sending on "
+                            "the channel plays it."));
+    device.onChange = [this, role, &device] {
+      proc_.setDefaultConsoleDevice(role, ManualDialog::deviceInBox(device, proc_));
+    };
+    addChildComponent(device);
   }
+  showRoleDevices();
 
   for (const auto& in : juce::MidiInput::getAvailableDevices()) {
     auto b = std::make_unique<juce::ToggleButton>(in.name);
@@ -132,6 +145,7 @@ void WizardPanel::showStep(int step) {
   channelsHeading_.setVisible(step_ == 2);
   for (auto& c : roleLabels_) c.setVisible(step_ == 2);
   for (auto& c : roleChannels_) c.setVisible(step_ == 2);
+  for (auto& c : roleDevices_) c.setVisible(step_ == 2);
   openOrgan_.setVisible(step_ == 3);
   organStatus_.setVisible(step_ == 3);
 
@@ -151,9 +165,12 @@ void WizardPanel::showStep(int step) {
           juce::dontSendNotification);
       break;
     case 2:
+      // The devices there are now: one ticked a moment ago is listed too.
+      showRoleDevices();
       title_.setText(TRANS("MIDI configuration"), juce::dontSendNotification);
       body_.setText(
-          TRANS("MIDI channel of the pedal and each manual, for every organ without its own.\n\n"
+          TRANS("MIDI channel and device of the pedal and each manual, for every organ without "
+                "its own. A keyboard with no channel plays from no MIDI device.\n\n"
                 "Also in Settings > MIDI."),
           juce::dontSendNotification);
       break;
@@ -177,6 +194,18 @@ void WizardPanel::showStep(int step) {
                         .replace("%2", juce::String(kSteps)),
                     juce::dontSendNotification);
   resized();
+}
+
+void WizardPanel::showRoleDevices() {
+  const auto& def = proc_.defaultConsole();
+  const auto& devices = proc_.defaultConsoleDevices();
+  for (int role = 0; role < kRoles; ++role) {
+    auto& device = roleDevices_[static_cast<size_t>(role)];
+    const auto dev = devices.find(role);
+    ManualDialog::fillDeviceBox(device, proc_, dev == devices.end() ? std::string() : dev->second);
+    // The box opens once the keyboard has a channel.
+    device.setEnabled(def.count(role) != 0);
+  }
 }
 
 void WizardPanel::finish() {
@@ -215,15 +244,19 @@ void WizardPanel::resized() {
     return;
   }
   if (step_ == 2) {
-    // The channels first, three to a row, then the inputs, which can be many.
+    // The channels first, two to a row with their devices, then the inputs,
+    // which can be many.
     channelsHeading_.setBounds(r.removeFromTop(kRow));
-    for (int role = 0; role < kRoles; role += 3) {
+    const int half = (r.getWidth() - 12) / 2;
+    for (int role = 0; role < kRoles; role += 2) {
       auto line = r.removeFromTop(kRow).withTrimmedLeft(12);
-      for (int k = role; k < role + 3 && k < kRoles; ++k) {
-        roleLabels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(80));
-        line.removeFromLeft(6);
-        roleChannels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(64).reduced(0, 1));
-        line.removeFromLeft(16);
+      for (int k = role; k < role + 2 && k < kRoles; ++k) {
+        auto cell = line.removeFromLeft(half);
+        roleLabels_[static_cast<size_t>(k)].setBounds(cell.removeFromLeft(72));
+        cell.removeFromLeft(4);
+        roleChannels_[static_cast<size_t>(k)].setBounds(cell.removeFromLeft(56).reduced(0, 1));
+        cell.removeFromLeft(4);
+        roleDevices_[static_cast<size_t>(k)].setBounds(cell.withTrimmedRight(12).reduced(0, 1));
       }
       r.removeFromTop(2);
     }

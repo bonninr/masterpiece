@@ -813,6 +813,17 @@ public:
     else defaultConsole_.erase(role);
     writeGlobalFile();
   }
+  // The device each role's channel comes from, by the name the MIDI map gives
+  // it ("Launchpad Mini MK3-1" for the second of two); none means any device.
+  // A console with controllers beside its keyboards names the keyboards'
+  // interface here, so the controllers' notes play no manual (#942).
+  const std::map<int, std::string>& defaultConsoleDevices() const { return defaultConsoleDevice_; }
+  void setDefaultConsoleDevice(int role, const std::string& name) {
+    if (role < 0 || role >= 16) return;
+    if (!name.empty()) defaultConsoleDevice_[role] = name;
+    else defaultConsoleDevice_.erase(role);
+    writeGlobalFile();
+  }
   // The role a keyboard plays on a console: 0 the pedal, 1 the first manual,
   // -1 none.
   int consoleRoleOf(Id keyboardId) const;
@@ -887,6 +898,9 @@ public:
     return id;
   }
   const MidiDeviceMap& midiDevices() const { return midiMap_.devices(); }
+  // Inside a host: its MIDI comes with no device, and plays by the organ's
+  // own channels until the player sets others.
+  bool inPlugin() const { return hostOwnsOutput_; }
 
   // An input the app opens itself, beside the system's own: its JACK MIDI
   // port and a virtual port. The system's inputs are switched on and off in
@@ -2559,6 +2573,7 @@ private:
   std::unordered_map<Id, std::vector<Id>> stopSources_;
   bool stopSourcesEngaged(Id stopId) const;
   std::map<int, int> defaultConsole_;  // role -> channel
+  std::map<int, std::string> defaultConsoleDevice_;  // role -> device name
   void applyDefaultConsole();
   // Switches that swap a stop's rank for its alternate and re-sound held
   // notes when they do, with the stops concerned; and the switch state just

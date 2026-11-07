@@ -94,10 +94,44 @@ juce::StringArray ManualDialog::describeManual(const MasterpieceProcessor& p, Id
   juce::StringArray lines;
   for (const auto& b : p.midiMap().keyboardBindings())
     if (b.keyboardId == keyboardId) lines.add(describeKeys(p, b));
-  // No row of the player's: the organ's own channel plays it.
+  // No row of the player's: in a plugin the host's MIDI plays it on the
+  // organ's own channel; in the program no MIDI device does (#942).
   if (lines.isEmpty())
-    lines.add(TRANS("Default (channel %1)").replace("%1", juce::String(p.channelForKeyboard(keyboardId))));
+    lines.add(p.inPlugin()
+                  ? TRANS("Default (channel %1)").replace("%1", juce::String(p.channelForKeyboard(keyboardId)))
+                  : TRANS("No MIDI device plays it"));
   return lines;
+}
+
+namespace {
+constexpr int kAbsentDeviceItem = 1000;
+}
+
+void ManualDialog::fillDeviceBox(juce::ComboBox& box, const MasterpieceProcessor& p, const std::string& selected) {
+  box.clear(juce::dontSendNotification);
+  box.addItem(TRANS("Any device"), 1);
+  const auto& names = p.midiDevices().names();
+  int chosen = 1;
+  for (size_t i = 0; i < names.size(); ++i) {
+    const int id = static_cast<int>(i) + 2;
+    box.addItem(juce::String(p.midiDevices().displayName(static_cast<int>(i) + 1)), id);
+    if (names[i] == selected) chosen = id;
+  }
+  box.getProperties().remove("absent");
+  if (!selected.empty() && chosen == 1) {
+    box.addItem(TRANS("%1 (not connected)").replace("%1", juce::String(selected)), kAbsentDeviceItem);
+    box.getProperties().set("absent", juce::String(selected));
+    chosen = kAbsentDeviceItem;
+  }
+  box.setSelectedId(chosen, juce::dontSendNotification);
+}
+
+std::string ManualDialog::deviceInBox(const juce::ComboBox& box, const MasterpieceProcessor& p) {
+  const int id = box.getSelectedId();
+  if (id == kAbsentDeviceItem) return box.getProperties()["absent"].toString().toStdString();
+  const auto& names = p.midiDevices().names();
+  const int i = id - 2;
+  return i >= 0 && i < static_cast<int>(names.size()) ? names[static_cast<size_t>(i)] : std::string();
 }
 
 juce::StringArray ManualDialog::describePistons(const MasterpieceProcessor& p, Id keyboardId) {

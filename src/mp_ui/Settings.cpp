@@ -1863,6 +1863,15 @@ MidiPanel::MidiPanel(MasterpieceProcessor& p, juce::AudioDeviceManager& devices,
     box.onChange = [this, role, &box] {
       proc_.setDefaultConsoleChannel(role, box.getSelectedId() - 1);
       showDefaultConsole();
+      showDefaultChannels();
+    };
+    auto& device = defaultRoleDevices_[static_cast<size_t>(role)];
+    device.setTooltip(TRANS("The MIDI device this keyboard comes from. Any device: every device sending on "
+                            "the channel plays it."));
+    addAndMakeVisible(device);
+    device.onChange = [this, role, &device] {
+      proc_.setDefaultConsoleDevice(role, ManualDialog::deviceInBox(device, proc_));
+      showDefaultConsole();
     };
   }
   showDefaultChannels();
@@ -2119,6 +2128,7 @@ void MidiPanel::applyPart() {
   console.push_back(&defaultChannelsLabel_);
   for (auto& c : defaultRoleLabels_) console.push_back(&c);
   for (auto& c : defaultRoleChannels_) console.push_back(&c);
+  for (auto& c : defaultRoleDevices_) console.push_back(&c);
   std::vector<juce::Component*> organ{&keyboardsLabel_, &sharedNote_, &useAsDefault_, &clearDefault_,
                                       &defaultNote_, &keyboardsHeading_, &learnManuals_, &noPistons_};
   for (auto& v : keyboardLabels_) organ.push_back(v.get());
@@ -2347,10 +2357,12 @@ void MidiPanel::showDefaultConsole() {
     return;
   }
   juce::String text = TRANS("Default for organs with no channels saved:");
+  const auto& devices = proc_.defaultConsoleDevices();
   for (const auto& [role, channel] : def) {
-    const juce::String item =
+    juce::String item =
         role == 0 ? TRANS("Pedal %1").replace("%1", juce::String(channel))
                   : TRANS("Manual %1 %2").replace("%1", juce::String(role)).replace("%2", juce::String(channel));
+    if (const auto dev = devices.find(role); dev != devices.end()) item << " (" << juce::String(dev->second) << ")";
     text << " " << item << ";";
   }
   defaultNote_.setText(text.dropLastCharacters(1), juce::dontSendNotification);
@@ -2358,10 +2370,17 @@ void MidiPanel::showDefaultConsole() {
 
 void MidiPanel::showDefaultChannels() {
   const auto& def = proc_.defaultConsole();
+  const auto& devices = proc_.defaultConsoleDevices();
   for (int role = 0; role < kDefaultRoles; ++role) {
     const auto it = def.find(role);
     defaultRoleChannels_[static_cast<size_t>(role)].setSelectedId(it == def.end() ? 1 : it->second + 1,
                                                                   juce::dontSendNotification);
+    auto& device = defaultRoleDevices_[static_cast<size_t>(role)];
+    const auto dev = devices.find(role);
+    ManualDialog::fillDeviceBox(device, proc_, dev == devices.end() ? std::string() : dev->second);
+    // A device for a keyboard with no channel plays nothing: the box opens
+    // once a channel is chosen.
+    device.setEnabled(it != def.end());
   }
 }
 
@@ -2438,6 +2457,8 @@ void MidiPanel::refresh() {
     addAndMakeVisible(*b);
     inputs_.push_back(std::move(b));
   }
+  // The default console's device boxes list the devices there are now.
+  showDefaultChannels();
 
   // Which channel plays which manual. The organ ships a default assignment
   // (Hauptwerk's own: the pedal is channel 1, the manuals follow), and the
@@ -2594,15 +2615,20 @@ void MidiPanel::resized() {
       r.removeFromTop(kRow); // leaves room for the "none found" case
     }
     if (bluetooth_.isVisible()) bluetooth_.setBounds(r.removeFromTop(kRow).reduced(12, 0).withWidth(180));
-    // The default channels, three to a row.
+    // The default channels, each with its device, as many to a row as fit.
     r.removeFromTop(4);
     defaultChannelsLabel_.setBounds(r.removeFromTop(kRow));
-    for (int role = 0; role < kDefaultRoles; role += 3) {
+    const int lineWidth = r.getWidth() - 24;
+    const int perRow = juce::jlimit(1, 3, lineWidth / 420);
+    const int deviceWidth = juce::jlimit(120, 260, lineWidth / perRow - 90 - 6 - 70 - 6 - 24);
+    for (int role = 0; role < kDefaultRoles; role += perRow) {
       auto line = r.removeFromTop(kRow).reduced(12, 0);
-      for (int k = role; k < role + 3 && k < kDefaultRoles; ++k) {
+      for (int k = role; k < role + perRow && k < kDefaultRoles; ++k) {
         defaultRoleLabels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(90));
         line.removeFromLeft(6);
         defaultRoleChannels_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(70).reduced(0, 1));
+        line.removeFromLeft(6);
+        defaultRoleDevices_[static_cast<size_t>(k)].setBounds(line.removeFromLeft(deviceWidth).reduced(0, 1));
         line.removeFromLeft(24);
       }
       r.removeFromTop(2);

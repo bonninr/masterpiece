@@ -1,0 +1,4 @@
+"%1 (not connected)" = "%1 (nepřipojeno)"
+"The MIDI device this keyboard comes from. Any device: every device sending on the channel plays it." = "Zařízení MIDI, ze kterého tato klaviatura hraje. Libovolné zařízení: hraje každé zařízení vysílající na tomto kanálu."
+"MIDI channel and device of the pedal and each manual, for every organ without its own. A keyboard with no channel plays from no MIDI device.\n\nAlso in Settings > MIDI." = "Kanál a zařízení MIDI pedálu a každého manuálu, pro každé varhany bez vlastního nastavení. Klaviatura bez kanálu nehraje z žádného zařízení MIDI.\n\nTaké v Nastavení > MIDI."
+"No MIDI device plays it" = "Nehraje ji žádné zařízení MIDI"

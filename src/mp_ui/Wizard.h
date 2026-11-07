@@ -71,6 +71,9 @@ private:
   juce::Label channelsHeading_;
   std::array<juce::Label, kRoles> roleLabels_;
   std::array<juce::ComboBox, kRoles> roleChannels_;
+  // And the device each one comes from, or any device (#942).
+  std::array<juce::ComboBox, kRoles> roleDevices_;
+  void showRoleDevices();
   juce::TextButton openOrgan_{TRANS("Choose an organ...")};
   juce::Label organStatus_;
 

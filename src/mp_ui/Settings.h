@@ -393,6 +393,8 @@ private:
   juce::Label defaultChannelsLabel_;
   std::array<juce::Label, kDefaultRoles> defaultRoleLabels_;
   std::array<juce::ComboBox, kDefaultRoles> defaultRoleChannels_;
+  // The device each one comes from, or any device (#942).
+  std::array<juce::ComboBox, kDefaultRoles> defaultRoleDevices_;
   void showDefaultChannels();
   // The MIDI outputs: a menu of the ports, each ticked on or off (#942).
   juce::TextButton output_;

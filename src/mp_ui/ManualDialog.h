@@ -53,6 +53,11 @@ public:
   static juce::String describeKeys(const MasterpieceProcessor& p, const MidiMap::KeyboardBinding& b);
   static juce::StringArray describeManual(const MasterpieceProcessor& p, Id keyboardId);
   static juce::StringArray describePistons(const MasterpieceProcessor& p, Id keyboardId);
+  // A box of the MIDI devices, "Any device" first, with `selected` (a name the
+  // MIDI map gives) chosen; a saved device not connected now stays listed.
+  // deviceInBox gives back the chosen name, empty for any device.
+  static void fillDeviceBox(juce::ComboBox& box, const MasterpieceProcessor& p, const std::string& selected);
+  static std::string deviceInBox(const juce::ComboBox& box, const MasterpieceProcessor& p);
 
 private:
   void timerCallback() override;

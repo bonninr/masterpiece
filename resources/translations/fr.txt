@@ -1115,7 +1115,6 @@ countries: fr be ca ch lu mc
 "Audio device" = "Périphérique audio"
 "Output device and buffer size. 256 or 512 samples suit most computers.\n\nAlso in Settings > Audio." = "Périphérique de sortie et taille du tampon. 256 ou 512 échantillons conviennent à la plupart des ordinateurs.\n\nAussi dans Réglages > Audio."
 "MIDI configuration" = "Configuration MIDI"
-"MIDI channel of the pedal and each manual, for every organ without its own.\n\nAlso in Settings > MIDI." = "Canal MIDI du pédalier et de chaque clavier, pour tout orgue sans canaux propres.\n\nAussi dans Réglages > MIDI."
 "Definition file or package. The first load of a large set takes longer." = "Fichier de définition ou paquet. Le premier chargement d'un grand ensemble prend plus de temps."
 
 # src/mp_ui/Ui.cpp (output compressor)
