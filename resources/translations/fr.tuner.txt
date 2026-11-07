@@ -1,0 +1,4 @@
+"Tuner" = "Accordeur"
+"cents" = "cents"
+"Harmonics" = "Harmoniques"
+"Hold a key to measure its pitch." = "Maintenez une touche pour mesurer sa hauteur."

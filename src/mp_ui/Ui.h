@@ -16,6 +16,7 @@
 #include "CombinationsWindow.h"
 #include "CouplersWindow.h"
 #include "SplitKeyboardWindow.h"
+#include "TunerWindow.h"
 #include "TuningPanel.h"
 #include "Console.h"
 #include "PageWindow.h"
@@ -596,6 +597,8 @@ private:
   // a settings dialog it took the console away while it recorded.
   std::unique_ptr<juce::DocumentWindow> recorderWindow_;
   void toggleRecorder();
+  std::unique_ptr<juce::DocumentWindow> tunerWindow_;
+  void toggleTuner();
   // One keyboard playing the whole organ (#358).
   void toggleSplitKeyboard();
   std::unique_ptr<SplitKeyboardWindow> splitWindow_;
