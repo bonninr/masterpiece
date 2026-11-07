@@ -5,7 +5,8 @@
 // three, so drawing any rank draws it, and General Cancel, which knows only
 // the drawstop, puts all three in. Each rank's crescendo path waits on
 // Crescendo Plus, a drawn knob, which is no rank's knob. A Tutti over two
-// divisions stays an aid.
+// divisions stays an aid, and so does a Tutti over one division whose stops
+// are paired with knobs by name.
 #ifdef MP_TEST_HAS_AUDIO
 
 #include "MpTest.h"
@@ -85,7 +86,8 @@ std::string organText() {
          "<ObjectList ObjectType=\"ImageSet\">" +
          imageSet(1, 200, 190) + imageSet(2, 1, 1) +
          "</ObjectList><ObjectList ObjectType=\"ImageSetInstance\">" + instance(1, 1, 10) + instance(2, 2, 0) +
-         instance(3, 2, 0) + instance(4, 1, 300) + instance(5, 1, 500) +
+         instance(3, 2, 0) + instance(4, 1, 300) + instance(5, 1, 500) + instance(6, 1, 700) +
+         instance(7, 1, 900) + instance(8, 1, 1100) +
          "</ObjectList><ObjectList ObjectType=\"Switch\">" + sw(13059, "GT. Mixture", true, true, 1) +
          sw(13085, "GT. Mixture rank 2", true, true, 2) + sw(13086, "GT. Mixture rank 3", true, true, 3) +
          sw(19059, "Slider rank 1", false, false, 0) + sw(19085, "Slider rank 2", false, false, 0) +
@@ -93,12 +95,16 @@ std::string organText() {
          sw(19003, "Slider GT. Flute", false, false, 0) + sw(19004, "Slider SW. Oboe", false, false, 0) +
          sw(1448, "Gen. Cancel", false, false, 0) + sw(13038, "Crescendo Plus", true, true, 5) +
          crescendoSwitches(59) + crescendoSwitches(85) + crescendoSwitches(86) +
+         sw(13007, "SW. Principal", true, true, 6) + sw(13008, "SW. Octave", true, true, 7) +
+         sw(132, "Swell Tutti", true, true, 8) + sw(19007, "Slider SW. Principal", false, false, 0) +
+         sw(19008, "Slider SW. Octave", false, false, 0) +
          "</ObjectList><ObjectList ObjectType=\"SwitchLinkage\">" + link(13059, 19059) + link(13059, 19085) +
          link(13059, 19086) + link(13085, 19085) + link(13086, 19086) + link(130, 19003) + link(130, 19004) +
-         crescendoPath(59) + crescendoPath(85) + crescendoPath(86) +
+         crescendoPath(59) + crescendoPath(85) + crescendoPath(86) + link(132, 19007) + link(132, 19008) +
          "</ObjectList><ObjectList ObjectType=\"Stop\">" + stop(59, "GT. Mixture rank 1", 3, 19059) +
          stop(85, "GT. Mixture rank 2", 3, 19085) + stop(86, "GT. Mixture rank 3", 3, 19086) +
-         stop(3, "GT. Flute", 3, 19003) + stop(4, "SW. Oboe", 4, 19004) +
+         stop(3, "GT. Flute", 3, 19003) + stop(4, "SW. Oboe", 4, 19004) + stop(7, "SW. Principal", 4, 19007) +
+         stop(8, "SW. Octave", 4, 19008) +
          "</ObjectList><ObjectList ObjectType=\"Combination\">"
          "<Combination><CombinationID>1448</CombinationID><Name>General cancel</Name>"
          "<CombinationTypeCode>6</CombinationTypeCode><ActivatingSwitchID>1448</ActivatingSwitchID>"
@@ -140,6 +146,9 @@ public:
                "each rank leads to the mixture's drawstop");
       MP_CHECK(proc.playerSwitchFor(19003) != 130 && proc.playerSwitchFor(19004) != 130,
                "a Tutti over two divisions is no stop's knob");
+      MP_CHECK(proc.playerSwitchFor(19007) != 132 && proc.playerSwitchFor(19008) != 132,
+               "a Tutti over one division is no stop's knob where the stops have knobs of their names");
+      MP_CHECK(proc.stopKnobFor(7) == 13007 && proc.stopKnobFor(8) == 13008, "and those knobs stand for the stops");
 
       proc.setStopEngaged(85, true);
       proc.processBlock(buf, none);

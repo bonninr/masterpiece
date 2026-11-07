@@ -8076,36 +8076,6 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     playerSwitch_[id] = isKnob(id) ? id : walk(id, false);
   }
 
-  // A knob wired into the nodes of several stops of one division, none of
-  // which found a knob of its own, is their knob: a mixture drawn as one
-  // drawstop over a stop per rank, as Hill's Great Mixture III is. Taken for
-  // an aid, the drawstop was nobody's knob, and the console and the control
-  // API offered the ranks without it (#832). A Tutti or a general feeds stops
-  // that have knobs of their own, and stays an aid.
-  // Before the conditions: Hill gates each rank's crescendo path on Crescendo
-  // Plus, and the second walk took that knob for the first rank's own.
-  {
-    std::map<Id, std::vector<Id>> nodesOf;
-    for (const auto& [src, dest] : wired)
-      if (isAid(src) && isKnob(src)) nodesOf[src].push_back(dest);
-    std::unordered_map<Id, Id> divisionOfNode;
-    for (const auto& [sid, stop] : model_.stops)
-      if (stop.controllingSwitchId != 0) divisionOfNode.emplace(stop.controllingSwitchId, stop.divisionId);
-    for (const auto& [knob, nodes] : nodesOf) {
-      bool theirs = true;
-      for (Id node : nodes)
-        if (isKnob(playerSwitchFor(node)) || divisionOfNode[node] != divisionOfNode[nodes.front()]) {
-          theirs = false;
-          break;
-        }
-      if (theirs)
-        for (Id node : nodes) playerSwitch_[node] = knob;
-    }
-  }
-  if (!conditions.empty())
-    for (auto& [id, found] : playerSwitch_)
-      if (found == id && !isKnob(id)) found = walk(id, true);
-
   // The knob that belongs to each stop, for the cases where the wiring does
   // not lead to one.
   //
@@ -8135,6 +8105,46 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
     // either lights the same stop anyway.
     knobByName.emplace(tidy(sw.name), id);
   }
+
+  // A knob wired into the nodes of several stops of one division, none of
+  // which found a knob of its own, is their knob: a mixture drawn as one
+  // drawstop over a stop per rank, as Hill's Great Mixture III is. Taken for
+  // an aid, the drawstop was nobody's knob, and the console and the control
+  // API offered the ranks without it (#832). A Tutti or a general feeds stops
+  // that have knobs of their own, by wiring or by name, and stays an aid.
+  // Before the conditions: Hill gates each rank's crescendo path on Crescendo
+  // Plus, and the second walk took that knob for the first rank's own.
+  {
+    std::map<Id, std::vector<Id>> nodesOf;
+    for (const auto& [src, dest] : wired)
+      if (isAid(src) && isKnob(src)) nodesOf[src].push_back(dest);
+    std::unordered_map<Id, Id> divisionOfNode;
+    std::unordered_multimap<Id, const Stop*> stopsOfNode;
+    for (const auto& [sid, stop] : model_.stops)
+      if (stop.controllingSwitchId != 0) {
+        divisionOfNode.emplace(stop.controllingSwitchId, stop.divisionId);
+        stopsOfNode.emplace(stop.controllingSwitchId, &stop);
+      }
+    for (const auto& [knob, nodes] : nodesOf) {
+      bool theirs = true;
+      for (Id node : nodes) {
+        if (isKnob(playerSwitchFor(node)) || divisionOfNode[node] != divisionOfNode[nodes.front()])
+          theirs = false;
+        const auto [from, to] = stopsOfNode.equal_range(node);
+        for (auto it = from; it != to && theirs; ++it) {
+          const auto named = knobByName.find(tidy(it->second->name));
+          if (named != knobByName.end() && named->second != knob) theirs = false;
+        }
+        if (!theirs) break;
+      }
+      if (theirs)
+        for (Id node : nodes) playerSwitch_[node] = knob;
+    }
+  }
+  if (!conditions.empty())
+    for (auto& [id, found] : playerSwitch_)
+      if (found == id && !isKnob(id)) found = walk(id, true);
+
   stopKnob_.clear();
   for (const auto& [stopId, stop] : model_.stops) {
     if (stop.controllingSwitchId == 0) continue;
