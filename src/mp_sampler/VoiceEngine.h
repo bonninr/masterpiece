@@ -589,6 +589,16 @@ public:
   // motor noise, which would otherwise stay silent until the switch moved.
   template <class Keep>
   void releaseAll(Keep keep) {
+    // A pipe whose release is independent and that no kept key holds lets go
+    // in silence: Panic sounds no key noises.
+    for (size_t e = 0; e < heldReleaseCount_;) {
+      HeldRelease& h = heldReleases_[e];
+      for (int n = 0; n < h.noteCount;)
+        if (keep(h.notes[n])) ++n;
+        else h.notes[n] = h.notes[--h.noteCount];
+      if (h.noteCount == 0) heldReleases_[e] = heldReleases_[--heldReleaseCount_];
+      else ++e;
+    }
     for (size_t i = 0; i < scanEnd_; ++i) {
       Voice& v = voices_[i];
       if (!v.active() || v.phase == VoicePhase::Release || keep(v.noteId)) continue;
@@ -614,8 +624,29 @@ private:
   // The body of both: one pipe of a note, or all of them. A voice another
   // key still holds stays open.
   void releaseVoices(uint64_t noteId, Id pipeId, const NoteRelease& release);
-  // One voice into its release.
-  void releaseVoice(Voice& v, const NoteRelease& release);
+  // One voice into its release. `independent` is a release sounding as a
+  // voice of its own (PipeLayer::independentRelease): from its head, at full
+  // level, with no attack to fade from or to align with.
+  void releaseVoice(Voice& v, const NoteRelease& release, bool independent = false);
+
+  // A pipe struck with an independent release, held by its keys. Its release
+  // sounds when the last of them lets go, whether the attack still plays or
+  // has ended (#978); the attack's voice may be long gone by then, so what
+  // the release needs is kept here, the attack's voice as it started.
+  // Empty for every organ without such pipes, so a note-off pays one compare.
+  struct HeldRelease {
+    Voice start;
+    uint64_t notes[Voice::kMaxHolders + 1] = {};
+    int noteCount = 0;
+  };
+  std::vector<HeldRelease> heldReleases_;  // sized at prepare(), never grown
+  size_t heldReleaseCount_ = 0;
+  // A key reaching a pipe with an independent release: held by it from now.
+  void holdRelease(const Voice& started, uint64_t noteId);
+  // A key letting go: the pipes it was the last to hold sound their releases.
+  void letGoReleases(uint64_t noteId, Id pipeId, const NoteRelease& release);
+  // The release of a pipe let go, in a voice of its own.
+  void startIndependentRelease(const Voice& started, const NoteRelease& release);
   // The voice already speaking this pipe's layer, which the key press then
   // holds too; -1 when there is none, or it has no room for another holder.
   int joinSpeakingPipe(const VoiceStart& start, uint64_t noteId);
