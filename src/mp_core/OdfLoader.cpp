@@ -783,6 +783,10 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
         row, "AmpLvl_TremulantModDepthAdjustPercent", formatFrom5 ? "p" : nullptr, 100.0);
     layer.tremPitchDepthAdjustPct = fieldDouble(
         row, "PitchLvl_TremulantModDepthAdjustPercent", "y", 100.0);
+    // Masterpiece's own, written by the GrandOrgue import.
+    layer.percussive = fieldBool(row, "MasterpiecePercussive", nullptr, false);
+    layer.independentRelease =
+        layer.percussive && fieldBool(row, "MasterpieceIndependentRelease", nullptr, false);
     pipeIt->second->layers.push_back(std::move(layer));
     layerById[layerId] = &pipeIt->second->layers.back();
   });

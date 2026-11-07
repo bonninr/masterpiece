@@ -165,6 +165,13 @@ struct PipeLayer {
   double tremAmpDepthAdjustDb = 0.0;    // AmpLvl_TremulantModDepthAdjustDecibels
   double tremAmpDepthAdjustPct = 100.0; // AmpLvl_TremulantModDepthAdjustPercent, from version 5
   double tremPitchDepthAdjustPct = 100.0; // PitchLvl_TremulantModDepthAdjustPercent
+  // GrandOrgue's Percussive: the pipe is struck, and its attack plays its
+  // recording to the end, any loop in the file unused. Let go, it rings on.
+  bool percussive = false;
+  // GrandOrgue's HasIndependentRelease, on a percussive pipe: letting go
+  // sounds the release as a voice of its own, whether the attack still plays
+  // or has ended (#978). Key and stop action noises are written this way.
+  bool independentRelease = false;
   // M2+: enclosure/trem/wind depth, EQ, AudioOut codes, reverb-tail truncation.
   double enclosureDepth01 = 1.0;
   double tremDepthDb = 0.0;

@@ -483,6 +483,15 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
       if (db != 0.0) Emitter::set(layer, "AmpLvl_LevelAdjustDecibels", db);
 
       const bool percussive = ini.yes(sec, key + "Percussive", rankPercussive);
+      // A percussive pipe is struck and plays its recording to the end, its
+      // loops unused. Its release sounds only where the pipe says it is
+      // independent: then letting go sounds it as a sound of its own, as
+      // GrandOrgue's key and stop action noises are written (#978).
+      // GrandOrgue plays no release for any other percussive pipe.
+      const bool independentRelease =
+          percussive && ini.yes(sec, key + "HasIndependentRelease", ini.yes(sec, "HasIndependentRelease", false));
+      if (percussive) Emitter::yn(layer, "MasterpiecePercussive", true);
+      if (independentRelease) Emitter::yn(layer, "MasterpieceIndependentRelease", true);
       // The attacks: the pipe's own file, then PipeNNNAttackNNN. A velocity
       // threshold in GrandOrgue is the lowest velocity an attack is used
       // for; in Hauptwerk it is the highest, so they are sorted and each one
@@ -566,7 +575,7 @@ GrandOrgueImportReport convertGrandOrgueText(const std::string& rawText, const s
         }
       }
       // Separate release files.
-      for (int r = 1; r <= ini.num(sec, key + "ReleaseCount", 0); ++r) {
+      for (int r = 1; r <= (percussive && !independentRelease ? 0 : ini.num(sec, key + "ReleaseCount", 0)); ++r) {
         const std::string pre = key + "Release" + n3(r);
         const std::string f = ini.str(sec, pre);
         if (f.empty() || !inThisTake(pre)) continue;

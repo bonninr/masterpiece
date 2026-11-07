@@ -160,6 +160,10 @@ void VoiceEngine::prepare(double sampleRate, int maxVoices, int numChannels,
   maxFrames_ = maxBlockFrames > 0 ? maxBlockFrames : 2048;
   voices_.assign(static_cast<size_t>(std::max(1, maxVoices)), Voice{});
   speaking_.assign(voices_.size(), SpeakingPipe{});
+  // Pipes held at once with an independent release: a key noise per key and
+  // a few stop actions. Past this, a release is not sounded.
+  heldReleases_.assign(std::min<size_t>(voices_.size(), 512), HeldRelease{});
+  heldReleaseCount_ = 0;
   jobList_.clear();
   jobList_.reserve(voices_.size());
   for (auto& list : busLists_) {
@@ -483,6 +487,7 @@ void VoiceEngine::reset() {
   for (size_t i = 0; i < voices_.size(); ++i) disarmStream(i);
   for (auto& v : voices_) v = Voice{};
   for (auto& s : speaking_) s = SpeakingPipe{};
+  heldReleaseCount_ = 0;
   stats_ = EngineStats{};
   freeHint_ = 0;
   liveCount_ = 0;
@@ -583,7 +588,10 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   // open, it does not sound a second pipe (#521).
   if (start.joinSpeaking && !start.oneShot) {
     const int joined = joinSpeakingPipe(start, noteId);
-    if (joined >= 0) return joined;
+    if (joined >= 0) {
+      if (start.layer->independentRelease) holdRelease(voices_[static_cast<size_t>(joined)], noteId);
+      return joined;
+    }
   }
 
   const AttackSample& attack =
@@ -667,9 +675,12 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   // author edited the ODF to fix a bad or missing chunk. A declared loop that
   // does not fit the resident audio is ignored rather than clamped — a clamped
   // loop invents a pitch, which is worse than a note that stops.
-  v.loopStart = start.oneShot ? -1 : buf->loopStart;
-  v.loopEnd = start.oneShot ? -1 : buf->loopEnd;
-  if (!start.oneShot && start.loopStartOverride >= 0 &&
+  // A percussive pipe is struck: its file's loop is not used, as GrandOrgue
+  // leaves it unread.
+  const bool once = start.oneShot || start.layer->percussive;
+  v.loopStart = once ? -1 : buf->loopStart;
+  v.loopEnd = once ? -1 : buf->loopEnd;
+  if (!once && start.loopStartOverride >= 0 &&
       start.loopEndOverride > start.loopStartOverride &&
       start.loopEndOverride <= buf->numFrames) {
     v.loopStart = start.loopStartOverride;
@@ -696,11 +707,84 @@ int VoiceEngine::startVoice(const VoiceStart& start, uint64_t noteId) {
   // and its recording plays to its end, as GrandOrgue plays it. A pipe with a
   // release sample keeps its release at key-up, and a forced one-shot (a
   // noise) already says it for itself.
-  v.percussive = !start.oneShot && !v.loops() &&
-                 (start.layer == nullptr || start.layer->releases.empty());
+  // A pipe the definition calls percussive rings on whatever releases it
+  // has: an independent one sounds beside it (holdRelease).
+  v.percussive = start.layer->percussive ||
+                 (!start.oneShot && !v.loops() && start.layer->releases.empty());
   speaking_[static_cast<size_t>(slot)] =
       start.joinSpeaking && !start.oneShot ? SpeakingPipe{v.pipeId, v.layer} : SpeakingPipe{};
+  if (start.layer->independentRelease) holdRelease(v, noteId);
   return slot;
+}
+
+void VoiceEngine::holdRelease(const Voice& started, uint64_t noteId) {
+  for (size_t e = 0; e < heldReleaseCount_; ++e) {
+    HeldRelease& h = heldReleases_[e];
+    if (h.start.pipeId != started.pipeId || h.start.layer != started.layer) continue;
+    for (int n = 0; n < h.noteCount; ++n)
+      if (h.notes[n] == noteId) return;
+    if (h.noteCount < Voice::kMaxHolders + 1) h.notes[h.noteCount++] = noteId;
+    return;
+  }
+  if (heldReleaseCount_ >= heldReleases_.size()) return;
+  HeldRelease& h = heldReleases_[heldReleaseCount_++];
+  h.start = started;
+  h.notes[0] = noteId;
+  h.noteCount = 1;
+}
+
+void VoiceEngine::letGoReleases(uint64_t noteId, Id pipeId, const NoteRelease& release) {
+  for (size_t e = 0; e < heldReleaseCount_;) {
+    HeldRelease& h = heldReleases_[e];
+    int n = h.noteCount;
+    if (pipeId == 0 || h.start.pipeId == pipeId)
+      for (n = 0; n < h.noteCount && h.notes[n] != noteId; ++n) {
+      }
+    // Not this key's, or another key still holds the pipe.
+    if (n == h.noteCount) {
+      ++e;
+      continue;
+    }
+    h.notes[n] = h.notes[--h.noteCount];
+    if (h.noteCount > 0) {
+      ++e;
+      continue;
+    }
+    startIndependentRelease(h.start, release);
+    h = heldReleases_[--heldReleaseCount_];
+  }
+}
+
+void VoiceEngine::startIndependentRelease(const Voice& started, const NoteRelease& release) {
+  if (started.layer == nullptr || started.layer->releases.empty()) return;
+  const int slot = allocateVoice();
+  if (slot < 0) {
+    ++stats_.startsDropped;
+    return;
+  }
+  const auto s = static_cast<size_t>(slot);
+  Voice& r = voices_[s];
+  // The attack's voice as it started: its pipe, level, routing and pitch,
+  // and the moment of the strike, from which the hold time is read.
+  r = started;
+  if (!windows_.empty()) {
+    windows_[s * 2].clear();
+    windows_[s * 2 + 1].clear();
+  }
+  r.window = 0;
+  r.cursor = 0.0;
+  r.holderCount = 0;
+  r.delayFrames = 0;
+  r.attackLeft = r.attackTotal = 0;
+  r.percussive = false;
+  r.quietFrames = 0;
+  speaking_[s] = SpeakingPipe{};
+  releaseVoice(r, release, true);
+  // No release to sound, or not resident: nothing plays.
+  if (!r.releaseIsSample) {
+    r.phase = VoicePhase::Idle;
+    disarmStream(s);
+  }
 }
 
 int VoiceEngine::joinSpeakingPipe(const VoiceStart& start, uint64_t noteId) {
@@ -800,6 +884,7 @@ void VoiceEngine::noteOff(uint64_t noteId, const NoteRelease& release) {
 // pipeId 0 means every pipe of the note; otherwise only that one.
 void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
                                 const NoteRelease& release) {
+  if (heldReleaseCount_ > 0) letGoReleases(noteId, pipeId, release);
   for (size_t slot = 0; slot < scanEnd_; ++slot) {
     Voice& v = voices_[slot];
     if (!v.active() || v.phase == VoicePhase::Release) continue;
@@ -829,7 +914,7 @@ void VoiceEngine::releaseVoices(uint64_t noteId, Id pipeId,
   }
 }
 
-void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
+void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release, bool independent) {
   {
     speaking_[static_cast<size_t>(&v - voices_.data())] = SpeakingPipe{};
     stealStage_ = 0;  // the voices to take first have changed
@@ -847,7 +932,9 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       heldMs = static_cast<int64_t>(
           static_cast<double>(framesRendered_ - v.startedAtFrame) * 1000.0 / sampleRate_);
     int chosen = -1;
-    if (v.layer != nullptr) {
+    // A struck pipe's release sounds only as a voice of its own: cut short
+    // by Panic, its attack fades.
+    if (v.layer != nullptr && (independent || !v.layer->percussive)) {
       NoteRelease rel = release;
       rel.holdTimeMs = heldMs;
       rel.attackIndex = v.attackIndex;
@@ -894,7 +981,13 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
     v.phase = VoicePhase::Release;
     v.releasedAtBlock = blockCounter_;
     v.releaseIsSample = (relBuf != nullptr && relBuf->numFrames > 0);
-    if (v.releaseIsSample) {
+    if (v.releaseIsSample && independent) {
+      // A sound of its own, at full level from its first frame.
+      v.releaseGain = 1.0f;
+      v.xfadeBuf = nullptr;
+      v.relXfadeLength = 0;
+      v.relXfadeLeft = 0;
+    } else if (v.releaseIsSample) {
       v.xfadeBuf = oldBuf;
       v.xfadeOldCursor = oldCursor;
       v.xfadeOldLoopStart = oldLoopStart;
@@ -964,7 +1057,7 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       // swelled at the note-off by the moment the key let go (#565). The
       // attack keeps its own speed under the release; one release frame is
       // xfadeRatioScale of its frames.
-      if (oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
+      if (!independent && oldBuf != nullptr && phaseAlign_.load(std::memory_order_relaxed)) {
         const double hz = releaseHz > 0.0 ? releaseHz : attackHz;
         if (hz > 0.0 && relBuf->sampleRate > 0.0 &&
             (oldBuf->coded != nullptr || relBuf->coded != nullptr)) {
@@ -992,7 +1085,8 @@ void VoiceEngine::releaseVoice(Voice& v, const NoteRelease& release) {
       // during the attack: the release was recorded after a full-grown note,
       // so it is scaled down, from 0.2 at once to 1 at the attack's end, the
       // attack taken as 500 ms in the bass to 50 ms from MIDI 96.
-      {
+      // An independent release is a noise of its own, played as recorded.
+      if (!independent) {
         const bool shortGain = shortNoteGain_.load(std::memory_order_relaxed);
         const bool staccato = staccatoFade_.load(std::memory_order_relaxed);
         if (shortGain || staccato) {
