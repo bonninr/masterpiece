@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "../mp_audio/DataFolder.h"
+#include "../mp_audio/MidiPorts.h"
 #include "../mp_audio/SystemMemory.h"
 
 #include <cmath>
@@ -2519,8 +2520,8 @@ void MidiPanel::showOutputs() {
 void MidiPanel::showOutputMenu() {
   // The ports plugged in, then those chosen before and not plugged in now:
   // the choice is kept, and shown as it is.
-  juce::StringArray ports;
-  for (const auto& out : juce::MidiOutput::getAvailableDevices()) ports.addIfNotAlreadyThere(out.name);
+  // Two ports of one name are two rows, each with its own label (#980).
+  auto ports = midiPortLabels(juce::MidiOutput::getAvailableDevices());
   for (const auto& name : proc_.midiOutputNames()) ports.addIfNotAlreadyThere(name);
   const auto& chosen = proc_.midiOutputNames();
   juce::PopupMenu menu;
