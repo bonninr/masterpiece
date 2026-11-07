@@ -17,6 +17,7 @@
 
 #include "../../src/mp_audio/MasterpieceProcessor.h"
 #include "../../src/mp_audio/DataFolder.h"
+#include "../../src/mp_audio/MidiPorts.h"
 #include "../../src/mp_audio/SystemMemory.h"
 #include "../../src/mp_ui/Ui.h"
 #include "../../src/mp_ui/OrganSettings.h"
@@ -32,10 +33,6 @@
 #include "../../src/mp_api/ApiServer.h"
 #include "../../src/mp_api/OscTransport.h"
 #include "../../src/mp_api/SysexTransport.h"
-#endif
-
-#if JUCE_LINUX
- #include <alsa/asoundlib.h>
 #endif
 
 namespace {
@@ -93,57 +90,6 @@ public:
     const auto f = organFileIn(juce::StringArray::fromTokens(commandLine, true));
     if (f != juce::File() && win_ != nullptr) win_->editor().loadOrgan(f, false);
   }
-
-  // A MIDI input's identifier where it names the same device in the next run:
-  // Windows' interface path (which includes the USB socket) and macOS's
-  // CoreMIDI id. Linux numbers its ports in the order the devices appear, so
-  // there the identifier is the USB socket of the card behind the port, with
-  // the port's number on that card. Android numbers its devices afresh.
-  static juce::String lastingIdentifier(const juce::MidiDeviceInfo& in) {
-   #if JUCE_WINDOWS || JUCE_MAC || JUCE_IOS
-    return in.identifier;
-   #elif JUCE_LINUX
-    return alsaUsbSocket(in.identifier);
-   #else
-    juce::ignoreUnused(in);
-    return {};
-   #endif
-  }
-
- #if JUCE_LINUX
-  // "usb-0000:00:1d.0-1.2.3/0" for port 0 of the USB device in socket 1.2.3,
-  // from the ALSA sequencer port JUCE names "client-port". Two keyboards of
-  // the same model, which have the same name and often the same serial
-  // number, are told apart by the socket each is plugged into, and keep it
-  // when they are plugged in again in another order. The socket is read from
-  // the card's long name, which the USB audio driver writes as
-  // "<product> at usb-<socket>, <speed>". A device that is not on USB, or a
-  // port that is not a card's, has none and is known by its name.
-  static juce::String alsaUsbSocket(const juce::String& juceId) {
-    const auto numbers = juce::StringArray::fromTokens(juceId, "-:", "");
-    if (numbers.size() < 2 || !numbers[0].containsOnly("0123456789") ||
-        !numbers[1].containsOnly("0123456789"))
-      return {};
-    snd_seq_t* seq = nullptr;
-    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_INPUT, 0) < 0) return {};
-    snd_seq_client_info_t* info = nullptr;
-    snd_seq_client_info_alloca(&info);
-    int card = -1;
-    if (snd_seq_get_any_client_info(seq, numbers[0].getIntValue(), info) == 0)
-      card = snd_seq_client_info_get_card(info);
-    snd_seq_close(seq);
-    if (card < 0) return {};
-    char* longName = nullptr;
-    if (snd_card_get_longname(card, &longName) < 0 || longName == nullptr) return {};
-    const juce::String name(longName);
-    std::free(longName);
-    if (!name.contains(" at usb-")) return {};
-    const auto socket = name.fromFirstOccurrenceOf(" at usb-", false, false)
-                            .upToFirstOccurrenceOf(",", false, false)
-                            .trim();
-    return socket.isEmpty() ? juce::String() : "usb-" + socket + "/" + numbers[1];
-  }
- #endif
 
   void initialise(const juce::String& commandLine) override {
     // A shutdown or reboot ends the program with SIGTERM. Left to its default
@@ -1148,7 +1094,7 @@ private:
     else if (later && proc_->midiInputEnabled(in.name))
       juce::Logger::writeToLog("midi: " + in.name + " appeared and has been opened");
     auto route = std::make_unique<DeviceRoute>(
-        *this, proc_->registerMidiDevice(in.name, lastingIdentifier(in)));
+        *this, proc_->registerMidiDevice(in.name, mp::lastingMidiIdentifier(in)));
     devices_->addMidiInputDeviceCallback(in.identifier, route.get());
     routes_.push_back({in.identifier, std::move(route)});
   }

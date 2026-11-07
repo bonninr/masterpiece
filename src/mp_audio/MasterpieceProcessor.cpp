@@ -1,5 +1,6 @@
 #include "MasterpieceProcessor.h"
 #include "DataFolder.h"
+#include "MidiPorts.h"
 #include "SystemMemory.h"
 #include "../mp_archive/OrganArchive.h"
 
@@ -3201,13 +3202,18 @@ bool MasterpieceProcessor::openMidiOutputs(const juce::StringArray& names) {
   }
   old.clear();  // outside the lock
   std::vector<std::unique_ptr<juce::MidiOutput>> opened;
+  // Chosen by label: two ports of one name are two choices (#980). A choice
+  // saved as a bare name is kept from then on as the label of the port it
+  // opened.
   const auto devices = juce::MidiOutput::getAvailableDevices();
-  for (const auto& n : wanted)
-    for (const auto& d : devices)
-      if (d.name == n) {
-        if (auto port = juce::MidiOutput::openDevice(d.identifier)) opened.push_back(std::move(port));
-        break;
-      }
+  const auto labels = midiPortLabels(devices);
+  const auto chosen = midiPortsForLabels(wanted, devices, labels);
+  for (int k = 0; k < wanted.size(); ++k) {
+    const int i = chosen[k];
+    if (i < 0) continue;
+    wanted.set(k, labels[i]);
+    if (auto port = juce::MidiOutput::openDevice(devices[i].identifier)) opened.push_back(std::move(port));
+  }
   const bool all = opened.size() == static_cast<size_t>(wanted.size());
   {
     const AudioLock audio(*this);

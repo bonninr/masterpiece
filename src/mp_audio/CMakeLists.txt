@@ -21,6 +21,7 @@ add_library(mp_audio STATIC
   MidiRecorder.h MidiRecorder.cpp
   ScorePlayer.h ScorePlayer.cpp
   MidiArchive.h MidiArchive.cpp
+  MidiPorts.h MidiPorts.cpp
   SplitKeyboardHost.h SplitKeyboardHost.cpp
   DataFolder.h DataFolder.cpp
   SystemMemory.h SystemMemory.cpp

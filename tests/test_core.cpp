@@ -42,6 +42,7 @@
 #ifdef MP_TEST_HAS_AUDIO
 #include "../src/mp_audio/AudioRecorder.h"
 #include "../src/mp_audio/DataFolder.h"
+#include "../src/mp_audio/MidiPorts.h"
 #include "../src/mp_audio/SampleLibrary.h"
 #include "../src/mp_audio/MasterpieceProcessor.h"
 #endif
@@ -19413,6 +19414,80 @@ public:
   }
 };
 static MidiOutputKeptTest g_midiOutputKept;
+
+// Two pad controllers of one model: Linux names their ports alike, and the
+// output menu listed one row for both, so only the first could be chosen
+// (#980). Each port gets a label of its own, by the USB socket it is plugged
+// into, and a choice saved by name still finds its port.
+class MidiOutputTwinsTest final : public mp::test::Test {
+public:
+  MidiOutputTwinsTest() : Test("functional.midi.output-twins", Category::Functional) {}
+  void run() override {
+    using Info = juce::MidiDeviceInfo;
+    // The sockets as the Linux identifier gives them, by ALSA port.
+    juce::StringPairArray sockets;
+    sockets.set("24-0", "usb-0000:00:1d.0-1.2/0");
+    sockets.set("24-1", "usb-0000:00:1d.0-1.2/1");
+    sockets.set("28-0", "usb-0000:00:1d.0-1.3/0");
+    sockets.set("28-1", "usb-0000:00:1d.0-1.3/1");
+    const auto lasting = [&](const Info& p) { return sockets.getValue(p.identifier, {}); };
+    juce::Array<Info> pads;
+    pads.add(Info("UM-ONE MIDI 1", "20-0"));
+    pads.add(Info("Launchpad Mini MK3 LPMiniMK3 DA", "24-0"));
+    pads.add(Info("Launchpad Mini MK3 LPMiniMK3 MI", "24-1"));
+    pads.add(Info("Launchpad Mini MK3 LPMiniMK3 DA", "28-0"));
+    pads.add(Info("Launchpad Mini MK3 LPMiniMK3 MI", "28-1"));
+    const auto labels = mp::midiPortLabels(pads, lasting);
+    MP_CHECK(labels == juce::StringArray({"UM-ONE MIDI 1", "Launchpad Mini MK3 LPMiniMK3 DA (USB 1.2)",
+                                          "Launchpad Mini MK3 LPMiniMK3 MI (USB 1.2)",
+                                          "Launchpad Mini MK3 LPMiniMK3 DA (USB 1.3)",
+                                          "Launchpad Mini MK3 LPMiniMK3 MI (USB 1.3)"}),
+             "each pad's ports are labelled with its socket; a port alone keeps its name: " +
+                 labels.joinIntoString(" | ").toStdString());
+
+    // Both pads chosen, by label.
+    MP_CHECK(mp::midiPortsForLabels({"Launchpad Mini MK3 LPMiniMK3 MI (USB 1.3)",
+                                     "Launchpad Mini MK3 LPMiniMK3 MI (USB 1.2)"},
+                                    pads, labels) == juce::Array<int>({4, 2}),
+             "two pads of one name are two choices");
+    // A choice saved by name before ports had labels takes a pad no label has.
+    MP_CHECK(mp::midiPortsForLabels({"Launchpad Mini MK3 LPMiniMK3 MI",
+                                     "Launchpad Mini MK3 LPMiniMK3 MI (USB 1.2)"},
+                                    pads, labels) == juce::Array<int>({4, 2}),
+             "a saved name finds the pad the label leaves");
+    MP_CHECK(mp::midiPortsForLabels({"Launchpad Mini MK3 LPMiniMK3 MI"}, pads, labels) ==
+                 juce::Array<int>({2}),
+             "a saved name alone finds the first pad");
+    MP_CHECK(mp::midiPortsForLabels({"A console that is not plugged in"}, pads, labels) ==
+                 juce::Array<int>({-1}),
+             "a port that is not there is not found");
+
+    // Without sockets the twins are numbered in the system's order.
+    const auto numbered = mp::midiPortLabels(pads, [](const Info&) { return juce::String(); });
+    MP_CHECK(numbered[2] == "Launchpad Mini MK3 LPMiniMK3 MI #1" &&
+                 numbered[4] == "Launchpad Mini MK3 LPMiniMK3 MI #2",
+             "twins with no socket are numbered: " + numbered.joinIntoString(" | ").toStdString());
+
+    // Windows numbers a second port of one name itself: the names stand.
+    juce::Array<Info> windows;
+    windows.add(Info("LPMiniMK3 MIDI", "\\\\?\\usb#a"));
+    windows.add(Info("LPMiniMK3 MIDI-2", "\\\\?\\usb#b"));
+    MP_CHECK(mp::midiPortLabels(windows, [](const Info& p) { return p.identifier; }) ==
+                 juce::StringArray({"LPMiniMK3 MIDI", "LPMiniMK3 MIDI-2"}),
+             "names that differ are their own labels");
+
+    // A device named like another's label still has a row of its own.
+    juce::Array<Info> odd;
+    odd.add(Info("Pads", "1-0"));
+    odd.add(Info("Pads", "2-0"));
+    odd.add(Info("Pads #2", "3-0"));
+    const auto oddLabels = mp::midiPortLabels(odd, [](const Info&) { return juce::String(); });
+    juce::StringArray unique(oddLabels);
+    unique.removeDuplicates(false);
+    MP_CHECK(unique.size() == 3, "no two rows read alike: " + oddLabels.joinIntoString(" | ").toStdString());
+  }
+};
+static MidiOutputTwinsTest g_midiOutputTwins;
 
 // A stop moved in the program lights its lamp on the console, as one moved
 // from the console does: a click on screen, the remote or a piston. The window
