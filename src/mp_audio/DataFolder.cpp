@@ -25,11 +25,48 @@ bool writeThrough(const juce::File& target, const void* data, size_t size) {
   return temp.overwriteTargetFileWithTemporary();
 }
 
+// JUCE finds the configuration folder in user-dirs.dirs alone, so a Flatpak
+// and a native install shared ~/.config/Masterpiece. Flatpak names the
+// sandbox's own in XDG_CONFIG_HOME.
+juce::File playerFolder() {
+  const auto shared =
+      juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Masterpiece");
+ #if JUCE_LINUX
+  if (juce::File("/.flatpak-info").existsAsFile()) {
+    const auto configHome = juce::SystemStats::getEnvironmentVariable("XDG_CONFIG_HOME", {});
+    if (juce::File::isAbsolutePath(configHome)) return sandboxFolder(juce::File(configHome), shared);
+  }
+ #endif
+  return shared;
+}
+
 }  // namespace
+
+juce::File sandboxFolder(const juce::File& configHome, const juce::File& shared) {
+  const auto own = configHome.getChildFile("Masterpiece");
+  if (own.isDirectory() || !shared.isDirectory()) return own;
+  const auto partial = configHome.getChildFile("Masterpiece.part");
+  partial.deleteRecursively();
+  static const juce::StringArray remade{"cache", "Packaged", "Portable", "masterpiece.log",
+                                        "masterpiece.previous.log"};
+  bool copied = partial.createDirectory().wasOk();
+  for (const auto& item : shared.findChildFiles(juce::File::findFilesAndDirectories, false)) {
+    if (!copied) break;
+    if (remade.contains(item.getFileName())) continue;
+    const auto into = partial.getChildFile(item.getFileName());
+    copied = item.isDirectory() ? item.copyDirectoryTo(into) : item.copyFileTo(into);
+  }
+  if (copied && partial.moveFileTo(own)) return own;
+  // A full disk or a folder it cannot write: this start keeps to the shared
+  // folder, and the next one tries again.
+  partial.deleteRecursively();
+  return shared;
+}
 
 juce::File dataFolder() {
   if (chosen().getFullPathName().isNotEmpty()) return chosen();
-  return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Masterpiece");
+  static const juce::File player = playerFolder();
+  return player;
 }
 
 void setDataFolder(const juce::File& folder) { chosen() = folder; }
