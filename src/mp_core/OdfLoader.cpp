@@ -2013,6 +2013,35 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     pageIt->second.instances.push_back(std::move(inst));
   });
 
+  // A switch drawn with a click area of a pixel or two, on every layout, is a
+  // placeholder no player can hit. Hill's Great Mixture III is one drawstop
+  // over three ranks; the second and third rank each carry a clickable switch
+  // drawn as a one-pixel image. Taken for knobs, they stood in for the
+  // drawstop, and General Cancel, which knows only the drawstop, left them
+  // drawn (#832).
+  {
+    std::unordered_map<Id, const ImageSetInstance*> instances;
+    for (const auto& [pid, page] : outModel.displayPages)
+      for (const auto& inst : page.instances) instances.emplace(inst.instanceId, &inst);
+    auto tiny = [&outModel](Id setId) {
+      const auto it = outModel.imageSets.find(setId);
+      if (it == outModel.imageSets.end()) return false;
+      const ImageSet& s = it->second;
+      const int left = std::max(0, s.clickLeftPx), top = std::max(0, s.clickTopPx);
+      return (s.clickRightPx >= 0 && s.clickRightPx - left < 3) ||
+             (s.clickBottomPx >= 0 && s.clickBottomPx - top < 3);
+    };
+    for (auto& [sid, sw] : outModel.switches) {
+      if (sw.dispInstanceId == 0 || !sw.clickable) continue;
+      const auto it = instances.find(sw.dispInstanceId);
+      if (it == instances.end() || it->second->imageSetId == 0 || !tiny(it->second->imageSetId)) continue;
+      bool anyHittable = false;
+      for (const auto& alt : it->second->alternates)
+        if (alt.imageSetId != 0 && !tiny(alt.imageSetId)) anyHittable = true;
+      if (!anyHittable) sw.clickable = false;
+    }
+  }
+
   // ---- M1.4: TextInstance table ----
   forEachRow(odfRoot, "TextInstance", [&](pugi::xml_node row) {
     const Id pageId = fieldInt(row, "DisplayPageID", "e", 0);
