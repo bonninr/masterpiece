@@ -12,6 +12,7 @@
 #include "../src/mp_audio/DataFolder.h"
 #include "../src/mp_control/PedalCoupling.h"
 
+#include <optional>
 #include <string>
 
 namespace {
@@ -283,6 +284,85 @@ public:
   }
 };
 static PedalCouplingOrganTest g_organ;
+
+// A divisional stays lit until a stop of its own division moves; a stop moved
+// on another division leaves it lit and puts out only the general (#979).
+class DivisionalLampScopeTest final : public mp::test::Test {
+public:
+  DivisionalLampScopeTest() : Test("functional.control.divisional-lamp-scope", Category::Functional) {}
+
+  struct Keep {
+    juce::File file;
+    bool existed = false;
+    juce::MemoryBlock content;
+    explicit Keep(juce::File f) : file(std::move(f)) {
+      existed = file.existsAsFile();
+      if (existed) file.loadFileAsData(content);
+    }
+    ~Keep() {
+      if (existed) file.replaceWithData(content.getData(), content.getSize());
+      else file.deleteFile();
+    }
+  };
+
+  void run() override {
+    const juce::File root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mp-divisional-lamps");
+    const juce::File odf = writeOrgan(root);
+    // Put back after the processor has gone, whatever it saves on the way out.
+    Keep global(mp::dataFolder().getChildFile("settings.mpglobal"));
+    std::optional<Keep> settings, combinations;
+    {
+      mp::MasterpieceProcessor proc;
+      settings.emplace(proc.settingsFileFor(odf));
+      combinations.emplace(proc.combinationFileFor(odf));
+      combinations->file.deleteFile();
+      proc.prepareToPlay(48000.0, 256);
+      MP_CHECK(proc.loadOrgan(odf, 0, false).ok, "the organ loads");
+      proc.setPedalCombinationsCoupled(false);
+      const auto& pc = proc.playerCombinations();
+
+      // Divisional 1 on the manual holds the Principal, on the Pedal the
+      // Subbass; general 1 holds both. Set is pressed for each: the player's
+      // "Set lets go after storing" may be on.
+      proc.setStopEngaged(901, true);
+      proc.setStopEngaged(902, true);
+      proc.setCaptureMode(true);
+      proc.pressDivisional(801, 1);
+      proc.setCaptureMode(true);
+      proc.pressDivisional(802, 1);
+      proc.setCaptureMode(true);
+      proc.pressGeneral(1);
+      proc.setCaptureMode(false);
+      MP_CHECK(pc.divisionalSet(801, 1) && pc.divisionalSet(802, 1) && pc.generalSet(1), "Set stores the three");
+
+      proc.pressGeneralCancel();
+      MP_CHECK(!proc.stopEngaged(901) && !proc.stopEngaged(902), "the general cancel pushes both in");
+      proc.pressDivisional(801, 1);
+      proc.pressDivisional(802, 1);
+      MP_CHECK(proc.stopEngaged(901) && proc.stopEngaged(902), "the two divisionals draw their stops");
+      MP_CHECK(pc.litDivisional(801) == 1 && pc.litDivisional(802) == 1, "and both light");
+
+      proc.setStopEngaged(902, false);
+      MP_CHECK(pc.litDivisional(802) == 0, "the Subbass pushed in by hand puts the Pedal's divisional out");
+      MP_CHECK(pc.litDivisional(801) == 1, "and leaves the manual's lit");
+      proc.setSwitchEngaged(1102, true);
+      MP_CHECK(proc.stopEngaged(902) && pc.litDivisional(801) == 1,
+               "the Subbass drawknob pulled leaves the manual's lit");
+
+      proc.setSwitchEngaged(1101, false);
+      MP_CHECK(!proc.stopEngaged(901) && pc.litDivisional(801) == 0,
+               "the Principal's drawknob puts the manual's out");
+
+      proc.pressGeneral(1);
+      MP_CHECK(pc.litGeneral() == 1, "the general lights");
+      proc.setStopEngaged(902, false);
+      MP_CHECK(pc.litGeneral() == 0, "any stop moved by hand puts the general out");
+    }
+    root.deleteRecursively();
+  }
+};
+static DivisionalLampScopeTest g_lampScope;
 
 }  // namespace
 

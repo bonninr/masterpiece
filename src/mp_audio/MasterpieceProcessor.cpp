@@ -4750,7 +4750,11 @@ void MasterpieceProcessor::applyStopChangeToHeldNotes() {
 void MasterpieceProcessor::setStopEngaged(Id stopId, bool engaged) {
   const AudioLock audio(*this);
   if (engaged && lockedStops_.count(stopId) != 0) return;  // held in: holdOff
-  if (!applyingPistons_) player_.registrationMoved();
+  if (!applyingPistons_) {
+    const auto own = registrationStops_.find(stopId);
+    player_.registrationMoved(own != registrationStops_.end() ? own->second
+                                                              : PlayerCombinations::kEveryDivision);
+  }
   if (engaged) engagedStops_.insert(stopId);
   else engagedStops_.erase(stopId);
   shownStale_ = true;
@@ -5633,16 +5637,22 @@ void MasterpieceProcessor::resetPlayerCombinations() {
       model_, [this](Id sw) { return playerSwitchFor(sw); }, onConsole);
   auto divisions = PlayerCombinations::divisionsOf(model_, elements);
   registrationSwitches_.clear();
+  registrationStops_.clear();
+  const auto belongs = [](std::unordered_map<Id, Id>& map, Id id, Id division) {
+    const auto [it, fresh] = map.emplace(id, division);
+    if (!fresh && it->second != division) it->second = PlayerCombinations::kEveryDivision;
+  };
   for (const auto& e : elements) {
     if (e.kind == PlayerCombinations::ElementKind::Switch) {
-      registrationSwitches_.insert(e.id);
+      belongs(registrationSwitches_, e.id, e.divisionId);
       continue;
     }
+    belongs(registrationStops_, e.id, e.divisionId);
     const auto it = model_.stops.find(e.id);
     if (it != model_.stops.end() && it->second.controllingSwitchId != 0)
-      registrationSwitches_.insert(playerSwitchFor(it->second.controllingSwitchId));
+      belongs(registrationSwitches_, playerSwitchFor(it->second.controllingSwitchId), e.divisionId);
     const auto knob = stopKnob_.find(e.id);
-    if (knob != stopKnob_.end()) registrationSwitches_.insert(knob->second);
+    if (knob != stopKnob_.end()) belongs(registrationSwitches_, knob->second, e.divisionId);
   }
   playerScratch_.clear();
   playerScratch_.reserve(elements.size() + 16);
@@ -5860,8 +5870,10 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
   // The couplers' inputs this move reaches are moved after it, not inside it.
   const CoupledScope coupled(*this);
   if (switches_.engaged(switchId) == engaged) return; // no edge, no noise
-  if (!applyingPistons_ && registrationSwitches_.count(switchId) != 0)
-    player_.registrationMoved();
+  if (!applyingPistons_) {
+    const auto own = registrationSwitches_.find(switchId);
+    if (own != registrationSwitches_.end()) player_.registrationMoved(own->second);
+  }
 
   // The organ's own setter. Holding it turns every piston press into a
   // capture, which is how a console works and how a player expects it to.

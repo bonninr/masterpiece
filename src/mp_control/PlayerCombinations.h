@@ -127,9 +127,12 @@ public:
   // one a console lights. 0 when the registration has since moved on.
   int litGeneral() const { return litGeneral_; }
   int litDivisional(Id divisionId) const;
-  // Any hand-drawn change unlights everything: the pistons no longer describe
-  // what is drawn.
-  void registrationMoved();
+  // A hand-drawn change in one division: the general no longer describes the
+  // console, and that division's divisional no longer describes the division.
+  // The other divisions' pistons still describe theirs and stay lit (#979).
+  // kEveryDivision unlights them all; 0 is an element only generals reach.
+  static constexpr Id kEveryDivision = -1;
+  void registrationMoved(Id divisionId = kEveryDivision);
   // Light the piston just recalled.
   void lightGeneral(int n);
   void lightDivisional(Id divisionId, int n);
