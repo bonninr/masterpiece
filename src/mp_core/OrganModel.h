@@ -4,6 +4,8 @@
 // User data (combinations/voicing/MIDI) lives OUTSIDE this model (ValueTree).
 #pragma once
 
+#include "RandomWalk.h"
+
 #include <cmath>
 
 #include <cstdint>
@@ -212,6 +214,9 @@ struct Pipe {
   // its own. The pipe keeps its own id, note, footage and tuning: only the
   // samples travel.
   Id borrowedFromPipeId = 0;
+  // The slow drift of this pipe's share of its tremulant (#806); see
+  // RandomWalk.
+  RandomWalk tremDepthRandom;
 };
 
 struct Rank {
@@ -671,6 +676,9 @@ struct Tremulant {
   Id waveformId = 0;
   double depthPercent = 0.0; // amplitude swing; 0 with the stop enabled is a fault
   Id controllingSwitchId = 0;
+  // The slow drift of the rate and of the depth (#806); see RandomWalk.
+  RandomWalk rateRandom;
+  RandomWalk depthRandom;
 };
 
 // One body of air in the organ's wind system: the blower's output, a

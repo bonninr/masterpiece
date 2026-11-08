@@ -730,6 +730,19 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // out of tune means it.
     p.originalOrganPitchHz =
         fieldDouble(row, "Pitch_OriginalOrgan_PitchHz", "m", 0.0);
+    // The drift of this pipe's share of its tremulant (#806).
+    p.tremDepthRandom.on =
+        fieldBool(row, "TremulantDepthRandomisation_RandomiseTremDepth", "f1", false);
+    if (p.tremDepthRandom.on) {
+      p.tremDepthRandom.accel = fieldDouble(
+          row, "TremulantDepthRandomisation_PositiveAcceleratingCoeff", "g1", 0.0);
+      p.tremDepthRandom.damping = fieldDouble(
+          row, "TremulantDepthRandomisation_PositiveDampingCoeff", "h1", 0.0);
+      p.tremDepthRandom.fn = fieldInt(
+          row, "TremulantDepthRandomisation_IndexGeneratingProbabilityFn", "i1", 0);
+      p.tremDepthRandom.maxPct = fieldDouble(
+          row, "TremulantDepthRandomisation_MaxDepthFluctuationPct", "j1", 0.0);
+    }
     // M2: harmonicNum (f), original-organ pitch (l/m) feed the temperament solver.
     if (p.pipeId == 0) return;
     auto rankIt = outModel.ranks.find(rankId);
@@ -1817,6 +1830,29 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     // up and down, which is what TremulantLfo::depthRampSeconds consumes.
     t.startPercent = fieldDouble(row, "StartRatePercent", "f", t.startPercent);
     t.stopPercent = fieldDouble(row, "StopRatePercent", "g", t.stopPercent);
+    // The slow drift of the rate and the depth (#806).
+    t.rateRandom.on = fieldBool(row, "FrequencyRandomisation_RandomiseFrequency", "h", false);
+    if (t.rateRandom.on) {
+      t.rateRandom.accel =
+          fieldDouble(row, "FrequencyRandomisation_PositiveAcceleratingCoeff", "i", 0.0);
+      t.rateRandom.damping =
+          fieldDouble(row, "FrequencyRandomisation_PositiveDampingCoeff", "j", 0.0);
+      t.rateRandom.fn =
+          fieldInt(row, "FrequencyRandomisation_IndexGeneratingProbabilityFn", "k", 0);
+      t.rateRandom.maxPct =
+          fieldDouble(row, "FrequencyRandomisation_MaxFreqFluctuationPct", "l", 0.0);
+    }
+    t.depthRandom.on = fieldBool(row, "DepthRandomisation_RandomiseDepth", "m", false);
+    if (t.depthRandom.on) {
+      t.depthRandom.accel =
+          fieldDouble(row, "DepthRandomisation_PositiveAcceleratingCoeff", "n", 0.0);
+      t.depthRandom.damping =
+          fieldDouble(row, "DepthRandomisation_PositiveDampingCoeff", "p", 0.0);
+      t.depthRandom.fn =
+          fieldInt(row, "DepthRandomisation_IndexGeneratingProbabilityFn", "q", 0);
+      t.depthRandom.maxPct =
+          fieldDouble(row, "DepthRandomisation_fMaxDepthFluctuationPct", "r", 0.0);
+    }
     // There is NO depth field on the Tremulant row. HW puts modulation depth on
     // TremulantWaveformPipe, per pipe (AmplitudeModDepthAdjustDecibels), which
     // is a different model from one depth per tremulant. Linked below.

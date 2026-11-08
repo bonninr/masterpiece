@@ -386,6 +386,9 @@ struct Voice {
   int tremIndex = -1;
   float tremAmpDepth = 0.0f;   // linear gain swing, already out of decibels
   double tremPitchDepth = 0.0; // semitones
+  // The slow drift of this pipe's share of the tremulant (#806), stepped
+  // once a block; off for every pipe whose set states none.
+  RandomWalkState tremWalk;
   // Which wind sway moves this pipe's pitch, as an index into the table
   // setSwayRatios() hands over; -1 for none.
   int swayIndex = -1;
@@ -488,6 +491,10 @@ struct VoiceStart {
   int tremIndex = -1;
   float tremAmpDepth = 0.0f;
   double tremPitchDepth = 0.0;
+  // The pipe's drift of its tremulant depth (#806), and the seed this voice
+  // starts it from.
+  RandomWalk tremDepthRandom;
+  uint64_t tremRandomSeed = 0;
   // How many frames into the next rendered block the voice begins: the place
   // of its note-on in that block, when the note came with one.
   int startOffset = 0;

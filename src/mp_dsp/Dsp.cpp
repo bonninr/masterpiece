@@ -50,6 +50,9 @@ void TremulantLfo::prepare(const juce::dsp::ProcessSpec& spec) {
   depthEnv_.setCurrentAndTargetValue(0.0f);
   lastStartPercent_ = lastStopPercent_ = -1.0;
   lastEngaged_ = false;
+  walksStarted_ = false;
+  rateMul_ = 1.0;
+  depthMul_ = 1.0f;
   sineTable(); // build the shared table off the audio thread
 }
 
@@ -61,6 +64,18 @@ void TremulantLfo::snapTo(const Tremulant& t, bool engaged) {
   rateHz_.setCurrentAndTargetValue(engaged ? t.engagedHz : t.disengagedHz);
   depthEnv_.setCurrentAndTargetValue(engaged ? 1.0f : 0.0f);
   lastEngaged_ = engaged;
+}
+
+void TremulantLfo::drift(const Tremulant& t, int numFrames) {
+  if (!walksStarted_) {
+    const auto id = static_cast<uint64_t>(t.tremulantId);
+    rateWalk_.start(t.rateRandom, id * 2u);
+    depthWalk_.start(t.depthRandom, id * 2u + 1u);
+    walksStarted_ = true;
+  }
+  const double dt = static_cast<double>(std::max(0, numFrames)) / sampleRate_;
+  rateMul_ = rateWalk_.step(dt);
+  depthMul_ = static_cast<float>(depthWalk_.step(dt));
 }
 
 float TremulantLfo::nextSample(const Tremulant& t, bool engaged,
@@ -82,13 +97,13 @@ float TremulantLfo::nextSample(const Tremulant& t, bool engaged,
 
   // A rate of zero or a nonsense rate from a malformed ODF must not spin the
   // phase accumulator out of range; clamp to something an organ can produce.
-  const double hz = std::clamp(rateHz_.getNextValue(), 0.0, 40.0);
+  const double hz = std::clamp(rateHz_.getNextValue() * rateMul_, 0.0, 40.0);
   const float depth = std::clamp(depthEnv_.getNextValue(), 0.0f, 1.0f);
 
   phase_ += kTwoPi * hz / sampleRate_;
   if (phase_ >= kTwoPi) phase_ -= kTwoPi * std::floor(phase_ / kTwoPi);
 
-  return depth * sineTable()(static_cast<float>(phase_));
+  return depth * depthMul_ * sineTable()(static_cast<float>(phase_));
 }
 
 // ----------------------------------------------------------- enclosure

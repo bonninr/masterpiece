@@ -2443,6 +2443,9 @@ private:
     float depthStart = 0.0f, depthEnd = 0.0f;
   };
   std::vector<TremEnds> tremEnds_;
+  // Counts the voices that start a tremulant drift (#806), so each one is
+  // seeded apart; touched by the voice-start path only.
+  uint64_t tremSeedCount_ = 0;
   // Read the waveform files and make their shapes, at load.
   void loadTremulantShapes(const std::string& organRootDir);
   // The live levels, and each rank's and division's place in them, resolved
