@@ -190,4 +190,91 @@ public:
 };
 InertiaLinkageTest g_inertia;
 
+// While only timed linkages move, the bank carries just the controls they moved
+// (#811). It must land where a full pass would, block for block: on each block
+// where it did so, a twin bank changes an unconnected control first, which
+// makes its pass a full one, and the two are compared on every control.
+class MovedOnlyPassTest final : public mp::test::Test {
+public:
+  MovedOnlyPassTest() : Test("functional.control.timed-linkage-moved-pass", Category::Functional) {}
+  void run() override {
+    mp::OrganModel m;
+    for (mp::Id id : {1, 2, 3, 4, 5, 6, 7, 8, 10, 99}) m.continuousControls[id] = control(id, 0);
+    // Listed first, so the full pass reaches it before the chain feeding it:
+    // a change arrives here in the following pass.
+    m.controlLinkages.push_back(wire(7, 8));
+    auto lag = wire(1, 2);
+    lag.linkType = 2;
+    lag.willisMsPerStep = 50.0;
+    m.controlLinkages.push_back(lag);
+    auto spring = wire(1, 3);
+    spring.linkType = 3;
+    spring.inertiaAccel = 44.7;
+    spring.inertiaDamping = 4.6;
+    m.controlLinkages.push_back(spring);
+    auto half = wire(2, 4);
+    half.coefficient = 0.5;
+    m.controlLinkages.push_back(half);
+    m.controlLinkages.push_back(wire(4, 5));
+    // A button: while switch 50 is engaged, control 10 sets control 4.
+    auto button = wire(10, 4);
+    button.conditionSwitchId = 50;
+    m.controlLinkages.push_back(button);
+    m.controlLinkages.push_back(wire(6, 7));
+    mp::ContinuousControlDoubleLinkage sum;
+    sum.firstControlId = 2;
+    sum.secondControlId = 3;
+    sum.destControlId = 6;
+    sum.operationCode = 1;
+    sum.destCoefficient = 0.5;
+    m.controlDoubleLinkages.push_back(sum);
+
+    mp::ContinuousControlBank moved, full;
+    moved.reset(m);
+    full.reset(m);
+    moved.setTimed(true);
+    full.setTimed(true);
+    std::unordered_set<mp::Id> sw;
+    int mismatches = 0, movingBlocks = 0;
+    std::string first;
+    for (int b = 0; b < 1200; ++b) {
+      // The source moves now and then, and the button is pressed once.
+      if (b == 1 || b == 300 || b == 700 || b == 710) {
+        const int v = b == 300 ? 20 : (b == 700 ? 127 : (b == 710 ? 60 : 100));
+        moved.setValue(1, v);
+        full.setValue(1, v);
+      }
+      if (b == 500) {
+        moved.setValue(10, 33);
+        full.setValue(10, 33);
+        sw.insert(50);
+      }
+      if (b == 520) sw.erase(50);
+      moved.advance(kBlock);
+      full.advance(kBlock);
+      const size_t before = moved.movedPasses();
+      moved.propagate(0, &sw);
+      if (moved.movedPasses() != before) full.setValue(99, full.value(99) == 0 ? 1 : 0);
+      full.propagate(0, &sw);
+      if (moved.moving()) ++movingBlocks;
+      for (mp::Id id : {2, 3, 4, 5, 6, 7, 8}) {
+        if (moved.value(id) == full.value(id)) continue;
+        if (mismatches++ == 0)
+          first = "block " + std::to_string(b) + " control " + std::to_string(id) + ": " +
+                  std::to_string(moved.value(id)) + " against " + std::to_string(full.value(id));
+      }
+    }
+    MP_CHECK(movingBlocks > 200, "the linkages were on their way for a good part of the run: " +
+             std::to_string(movingBlocks) + " blocks");
+    MP_CHECK(moved.movedPasses() > 100 && full.movedPasses() == 0,
+             "one bank carried the moved controls alone, " + std::to_string(moved.movedPasses()) +
+             " times, and its twin always ran the full pass");
+    MP_CHECK(mismatches == 0, "every control matches the full pass on every block (" +
+             std::to_string(mismatches) + " differ; first " + first + ")");
+    MP_CHECK(moved.value(8) == full.value(8) && moved.value(8) != 0,
+             "the chain reaches its far end: " + std::to_string(moved.value(8)));
+  }
+};
+MovedOnlyPassTest g_movedPass;
+
 }  // namespace

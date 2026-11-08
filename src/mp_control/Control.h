@@ -5,6 +5,7 @@
 #pragma once
 #include "../mp_core/OdfLoader.h"
 #include "../mp_core/OrganModel.h"
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <unordered_map>
@@ -312,6 +313,8 @@ public:
   void advance(double seconds);
   // Whether a timed linkage is still on its way.
   bool moving() const { return !movingList_.empty(); }
+  // How many propagates carried only the controls timed linkages moved.
+  size_t movedPasses() const { return movedPasses_; }
 
   // Convenience for the audio graph: shutter position 0..1 for an enclosure,
   // via whichever continuous control drives it. An enclosure with no control
@@ -373,6 +376,39 @@ private:
   // ran with: with neither changed, the settled graph is left as it is.
   bool dirty_ = true;
   std::unordered_set<Id> lastSwitches_;
+  // Whether the last pass left the graph settled: a pass from moved controls
+  // builds on that, and a graph still changing at the pass cap has none.
+  bool settled_ = false;
+
+  // Controls a timed linkage moved since the last propagate, with a flag per
+  // control so each is listed once. From a settled graph these are all that
+  // can change anything, and propagateMoved() carries only them (#811).
+  std::vector<int32_t> moved_, frontier_;
+  std::vector<char> movedFlag_;
+  size_t movedPasses_ = 0;
+  void markMoved(int32_t slot);
+  void clearMoved();
+  void propagateMoved(const std::unordered_set<Id>& switches);
+  // Per control, the single linkages that read or write it, and the double
+  // linkages that read or write it, each in the order the full pass runs them.
+  std::vector<std::vector<int32_t>> singlesBySlot_, doublesBySlot_;
+  // A pass's queues, smallest index first, and whether each linkage is queued.
+  std::vector<int32_t> singleHeap_, doubleHeap_;
+  std::vector<char> singleQueued_, doubleQueued_;
+
+  // One linkage applied, as a pass applies it: true when its destination
+  // changed.
+  bool runSingle(size_t li, const std::unordered_set<Id>& switches, int pinnedSlot);
+  bool runDouble(size_t di, int pinnedSlot);
+  // What a linkage reads from a control: the reading between two steps when
+  // setExact() gave one, the step otherwise.
+  double reading(int i) const {
+    return std::isnan(exact_[i]) ? static_cast<double>(vals_[i]) : exact_[i];
+  }
+  int clampSlot(int i, double scaled) const {
+    const int v = static_cast<int>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
+    return v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
+  }
 
   int clampToRange(const ContinuousControl& c, int v) const;
 };
