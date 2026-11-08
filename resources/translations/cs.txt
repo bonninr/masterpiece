@@ -1115,7 +1115,6 @@ countries: cz
 "Audio device" = "Zvukové zařízení"
 "Output device and buffer size. 256 or 512 samples suit most computers.\n\nAlso in Settings > Audio." = "Výstupní zařízení a velikost vyrovnávací paměti. 256 nebo 512 vzorků vyhovuje většině počítačů.\n\nTaké v Nastavení > Zvuk."
 "MIDI configuration" = "Konfigurace MIDI"
-"MIDI channel of the pedal and each manual, for every organ without its own.\n\nAlso in Settings > MIDI." = "Kanál MIDI pedálu a každého manuálu, pro každé varhany bez vlastního nastavení.\n\nTaké v Nastavení > MIDI."
 "Definition file or package. The first load of a large set takes longer." = "Definiční soubor nebo balíček. První načtení velké sady trvá déle."
 
 # src/mp_ui/Ui.cpp (output compressor)

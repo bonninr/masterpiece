@@ -1,0 +1,4 @@
+"%1 (not connected)" = "%1 (nicht verbunden)"
+"The MIDI device this keyboard comes from. Any device: every device sending on the channel plays it." = "Das MIDI-Gerät, von dem diese Klaviatur spielt. Beliebiges Gerät: jedes Gerät, das auf dem Kanal sendet, spielt sie."
+"MIDI channel and device of the pedal and each manual, for every organ without its own. A keyboard with no channel plays from no MIDI device.\n\nAlso in Settings > MIDI." = "MIDI-Kanal und Gerät des Pedals und jedes Manuals, für jede Orgel ohne eigene Kanäle. Eine Klaviatur ohne Kanal spielt von keinem MIDI-Gerät.\n\nAuch unter Einstellungen > MIDI."
+"No MIDI device plays it" = "Kein MIDI-Gerät spielt sie"

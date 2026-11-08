@@ -2696,6 +2696,10 @@ public:
     proc.prepareToPlay(48000.0, 256);
     juce::AudioBuffer<float> buf(2, 256);
     juce::MidiBuffer none;
+    // The recorder takes a console's messages as they arrive, before anything
+    // routes them: a count of what came through the queue. (A console set to
+    // no keyboard lights no key, #942, so the drawn keys cannot count them.)
+    proc.recorder().startRecording();
     // Four consoles, a channel each, 96 keys apiece, all at the same time.
     std::vector<std::thread> consoles;
     for (int c = 0; c < 4; ++c)
@@ -2708,10 +2712,8 @@ public:
       buf.clear();
       proc.processBlock(buf, none);
     }
-    int arrived = 0;
-    for (int c = 0; c < 4; ++c)
-      for (int note = 16; note < 112; ++note)
-        if (proc.keyboardState().isNoteOn(c + 1, note)) ++arrived;
+    proc.recorder().stopRecording();
+    const int arrived = static_cast<int>(proc.recorder().eventCount());
     MP_CHECK(arrived == 4 * 96, "every press from every console arrives, got " +
                                     std::to_string(arrived) + " of 384");
     proc.releaseResources();
@@ -2940,9 +2942,26 @@ public:
     MP_CHECK(proc.voiceStats().activeVoices == 1,
              "manual I is still held after manual II's All Notes Off");
 
-    // And the same arriving from a device, the way a console delivers it.
+    // #942: a device nobody has set up plays no manual and lights no key, on
+    // the organ's own channel too. Many controllers send their pads as notes.
     proc.pushMidi(3, juce::MidiMessage::noteOn(2, 36, 0.8f));
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(proc.voiceStats().activeVoices == 1 && !proc.keyDownOnKeyboard(702, 36) &&
+                 !proc.keyboardState().isNoteOn(2, 36),
+             "a device with no keyboard set for it plays nothing, got " +
+                 std::to_string(proc.voiceStats().activeVoices) + " voices");
+    proc.pushMidi(3, juce::MidiMessage::noteOff(2, 36));
     block({});
+
+    // And the same arriving from a device, the way a console delivers it,
+    // once the player has chosen channel 2 for manual II: with no device
+    // named, every device plays it.
+    proc.setKeyboardForChannel(2, 702);
+    proc.pushMidi(3, juce::MidiMessage::noteOn(2, 36, 0.8f));
+    for (int i = 0; i < 4; ++i) block({});
+    MP_CHECK(proc.voiceStats().activeVoices == 2,
+             "with channel 2 chosen for manual II, the device plays it, got " +
+                 std::to_string(proc.voiceStats().activeVoices) + " voices");
     proc.pushMidi(3, juce::MidiMessage::allNotesOff(2));
     for (int i = 0; i < 400; ++i) block({});
     MP_CHECK(proc.voiceStats().activeVoices == 1,
@@ -16069,10 +16088,35 @@ public:
     MP_CHECK(proc.channelForKeyboard(1) == 5 && proc.channelForKeyboard(2) == 1,
              "an organ with nothing saved starts from the default console");
 
-    proc.clearDefaultConsole();
-    MP_CHECK(proc.defaultConsole().empty(), "and the default can be cleared");
+    // #942: each role can name its device. Saved with the default, and an
+    // organ with nothing saved takes the first manual from that device alone.
+    const int one = proc.registerMidiDevice("Console One");
+    const int two = proc.registerMidiDevice("Console Two");
+    proc.setDefaultConsoleDevice(1, "Console Two");
+    MP_CHECK(global.loadFileAsString().contains("consolechannel 1 1 Console Two"),
+             "the device is saved after the channel, spaces and all");
+    {
+      mp::MasterpieceProcessor fresh;
+      fresh.loadGlobalDefaults();
+      MP_CHECK(fresh.defaultConsole().at(1) == 1 && fresh.defaultConsoleDevices().count(1) == 1 &&
+                   fresh.defaultConsoleDevices().at(1) == "Console Two" &&
+                   fresh.defaultConsoleDevices().count(0) == 0,
+               "and read back: the first manual from Console Two, the pedal from any device");
+    }
+    const juce::File c = organ(dir, "ConsoleC", 918273643);
+    MP_CHECK(proc.loadOrgan(c, 0, true).ok, "organ C loads");
+    MP_CHECK(proc.keyboardForChannel(1, two) == 2, "channel 1 of Console Two plays the first manual");
+    MP_CHECK(proc.keyboardForChannel(1, one) == 0, "channel 1 of Console One plays nothing");
+    MP_CHECK(proc.keyboardForChannel(5, one) == 1 && proc.keyboardForChannel(5, two) == 1,
+             "the pedal, set with no device, plays from either");
+    MP_CHECK(proc.keyboardForChannel(2, one) == 0,
+             "channel 2, the Great's own number, plays nothing from a device");
 
-    for (const auto& f : {a, b}) {
+    proc.clearDefaultConsole();
+    MP_CHECK(proc.defaultConsole().empty() && proc.defaultConsoleDevices().empty(),
+             "and the default can be cleared, devices too");
+
+    for (const auto& f : {a, b, c}) {
       proc.settingsFileFor(f).deleteFile();
       proc.midiMapFileFor(f).deleteFile();
     }
@@ -18918,12 +18962,15 @@ public:
     MP_CHECK(proc.keyboardForChannel(11) == 702 && proc.keyboardForChannel(1) == 0,
              "the Pedal moved to 11 leaves channel 1");
 
-    // Placed for console 5 only: another console still finds it on its default.
+    // Placed for console 5 only: the on-screen keys still find it on its
+    // default. Console 6, set to nothing, plays nothing (#942).
     proc.clearChannelAssignments();
     proc.setKeyboardForChannel(12, 701, 5, false);
     MP_CHECK(proc.keyboardForChannel(12, 5) == 701, "console 5 plays Manual I on 12");
     MP_CHECK(proc.keyboardForChannel(2, 5) == 0, "and not on 2");
-    MP_CHECK(proc.keyboardForChannel(2, 6) == 701, "console 6 still plays it on 2");
+    MP_CHECK(proc.keyboardForChannel(2) == 701, "the on-screen keys still play it on 2");
+    MP_CHECK(proc.keyboardForChannel(2, 6) == 0 && proc.keyboardForChannel(12, 6) == 0,
+             "console 6, set to nothing, plays it on neither");
 
     if (had) settings.replaceWithText(kept);
     else settings.deleteFile();

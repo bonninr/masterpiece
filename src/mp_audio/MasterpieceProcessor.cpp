@@ -1234,7 +1234,11 @@ void MasterpieceProcessor::handleMidi(const juce::MidiBuffer& midi) {
     // the next block; host-buffer messages already passed through the state
     // fold above and are skipped. A side benefit: Panic now releases
     // externally held notes too, instead of leaving them ciphering.
-    if (deviceId != MidiDeviceMap::kAnyDevice)
+    // A note from a device that plays no keyboard lights none either: a
+    // Launchpad's pads on channel 1 lit the drawn pedalboard (#942).
+    if (deviceId != MidiDeviceMap::kAnyDevice &&
+        (!msg.isNoteOnOrOff() || midiMap_.hasChannelBinding(deviceId, msg.getChannel()) ||
+         keyboardForChannel(msg.getChannel(), deviceId) != 0))
       keyboardState_.processNextMidiEvent(msg);
 
     // What kind of message is this, in the terms the map matches on?
@@ -2706,8 +2710,13 @@ bool MasterpieceProcessor::writeGlobalFile() const {
     text << "scorepage " << page.kind << " " << page.channel << " " << page.forward << " " << page.back << "\n";
   if (midiFeedback_) text << "midifeedback 1\n";
   if (midiSendsHoldEcho_) text << "midisendsholdecho 1\n";
-  for (const auto& [role, channel] : defaultConsole_)
-    text << "consolechannel " << role << " " << channel << "\n";
+  for (const auto& [role, channel] : defaultConsole_) {
+    text << "consolechannel " << role << " " << channel;
+    // The device last: its name can hold spaces.
+    if (const auto dev = defaultConsoleDevice_.find(role); dev != defaultConsoleDevice_.end())
+      text << " " << juce::String(dev->second);
+    text << "\n";
+  }
   for (const auto& lib : libraries_)
     text << "library " << lib.getFullPathName() << "\n";
   // The prefix last: it is hex bytes with spaces between them.
@@ -2851,10 +2860,16 @@ bool MasterpieceProcessor::loadGlobalDefaults() {
       // nothing about a crash.
       if (!globalsReadOnce_) crashedOrgan_ = juce::File(val);
     } else if (key == "consolechannel") {
-      // "consolechannel <role> <channel>": the player's own console.
+      // "consolechannel <role> <channel> [<device>]": the player's own console.
       const int role = val.upToFirstOccurrenceOf(" ", false, false).getIntValue();
-      const int channel = val.fromFirstOccurrenceOf(" ", false, false).getIntValue();
-      if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) defaultConsole_[role] = channel;
+      const auto rest = val.fromFirstOccurrenceOf(" ", false, false);
+      const int channel = rest.upToFirstOccurrenceOf(" ", false, false).getIntValue();
+      const auto device = rest.containsChar(' ') ? rest.fromFirstOccurrenceOf(" ", false, false).trim() : juce::String();
+      if (role >= 0 && role < 16 && channel >= 1 && channel <= 16) {
+        defaultConsole_[role] = channel;
+        if (device.isNotEmpty()) defaultConsoleDevice_[role] = device.toStdString();
+        else defaultConsoleDevice_.erase(role);
+      }
     } else if (key == "language") {
       language_ = val.toLowerCase();
     } else if (key == "textsize") {
@@ -3707,22 +3722,37 @@ void MasterpieceProcessor::applyDefaultConsole() {
   // Shared, not exclusive: a default that puts two roles on one channel was
   // the player's choice, and the MIDI page says so.
   for (Id kb : couplers_.inputKeyboards()) {
-    const auto it = defaultConsole_.find(consoleRoleOf(kb));
-    if (it != defaultConsole_.end()) setKeyboardForChannel(it->second, kb, 0, false);
+    const int role = consoleRoleOf(kb);
+    const auto it = defaultConsole_.find(role);
+    if (it == defaultConsole_.end()) continue;
+    const auto dev = defaultConsoleDevice_.find(role);
+    const int deviceId = dev == defaultConsoleDevice_.end() ? MidiDeviceMap::kAnyDevice
+                                                            : midiMap_.devices().idFor(dev->second);
+    setKeyboardForChannel(it->second, kb, deviceId, false);
   }
 }
 
 void MasterpieceProcessor::useChannelsAsDefaultConsole() {
   defaultConsole_.clear();
+  defaultConsoleDevice_.clear();
+  const auto& names = midiMap_.devices().names();
   for (Id kb : couplers_.inputKeyboards()) {
     const int role = consoleRoleOf(kb);
-    if (role >= 0) defaultConsole_[role] = channelForKeyboard(kb);
+    if (role < 0) continue;
+    defaultConsole_[role] = channelForKeyboard(kb);
+    // The console the keyboard is set to, if one is: the default keeps it.
+    for (const auto& b : midiMap_.keyboardBindings())
+      if (b.keyboardId == kb && b.deviceId > 0 && b.deviceId <= static_cast<int>(names.size())) {
+        defaultConsoleDevice_[role] = names[static_cast<size_t>(b.deviceId) - 1];
+        break;
+      }
   }
   writeGlobalFile();
 }
 
 void MasterpieceProcessor::clearDefaultConsole() {
   defaultConsole_.clear();
+  defaultConsoleDevice_.clear();
   writeGlobalFile();
 }
 
@@ -3968,9 +3998,18 @@ Id MasterpieceProcessor::keyboardForChannel(int channel, int deviceId) const {
   }
   if (loose != 0) return loose;
 
-  // Hauptwerk's own default: the assignment code IS the channel. Code 1 is the
-  // pedal, 2 the first manual, and so on, so an organ plays the way its author
-  // expected before anyone maps anything.
+  // A MIDI device plays only what the player has chosen for it: a channel set
+  // for a keyboard, on this organ or in the default console. Many controllers
+  // send their pads as notes on channel 1, which is the pedal in the organ's
+  // own numbering: two Launchpads used for stops played the pedals (#942). So
+  // a device nobody has set up reaches its learned controls and no keyboard,
+  // as in GrandOrgue and rusty-pipes.
+  if (deviceId != MidiDeviceMap::kAnyDevice) return 0;
+
+  // Hauptwerk's own default, for what comes with no device: the on-screen
+  // keys, the web console and a plugin's host. The assignment code IS the
+  // channel. Code 1 is the pedal, 2 the first manual, and so on, so an organ
+  // plays the way its author expected before anyone maps anything.
   for (Id kb : couplers_.inputKeyboards())
     if (couplers_.assignmentCodeFor(kb) == channel && !placedByPlayer(kb, deviceId)) return kb;
 
@@ -4062,7 +4101,10 @@ void MasterpieceProcessor::startNote(int channel, int midiNote, int velocity) {
   if (keyboard == 0) {
     if (logMidi_.load(std::memory_order_acquire))
       juce::Logger::writeToLog("midi:     channel " + juce::String(channel) +
-                               " plays no manual: not set in Settings > MIDI, nor by the organ");
+                               (noteDeviceId_ != MidiDeviceMap::kAnyDevice
+                                    ? " plays no manual: no keyboard is set for this device and channel"
+                                      " in Settings > MIDI or Organ settings > MIDI"
+                                    : " plays no manual: not set in Settings > MIDI, nor by the organ"));
     return;
   }
   startNoteOnKeyboard(keyboard, noteKey(channel, midiNote), transposed(midiNote), velocity,
