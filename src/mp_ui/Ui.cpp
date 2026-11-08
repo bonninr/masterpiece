@@ -2123,6 +2123,64 @@ void MasterpieceEditor::toggleCouplers() {
   showFloating(*couplersWindow_, !couplersWindow_->isVisible(), juce::Process::isForegroundProcess());
 }
 
+void MasterpieceEditor::showLearnInTurn() {
+  if (learnInTurn_ == nullptr) {
+    learnInTurn_ = std::make_unique<LearnInTurnWindow>(proc_);
+    const auto b = getScreenBounds();
+    if (!kMobile) learnInTurn_->setTopLeftPosition(b.getRight() - learnInTurn_->getWidth() - 20, b.getY() + 80);
+  }
+  showFloating(*learnInTurn_, true, juce::Process::isForegroundProcess());
+}
+
+void MasterpieceEditor::showConsoleProfile() {
+  if (consoleProfile_ == nullptr) {
+    consoleProfile_ = std::make_unique<ConsoleProfileWindow>(proc_);
+    consoleProfile_->panel().onMapNow = [this] { showProfileMatches(); };
+    const auto b = getScreenBounds();
+    if (!kMobile) consoleProfile_->setTopLeftPosition(b.getX() + 40, b.getY() + 80);
+  } else {
+    consoleProfile_->panel().reload();
+  }
+  showFloating(*consoleProfile_, true, juce::Process::isForegroundProcess());
+}
+
+void MasterpieceEditor::showProfileMatches() {
+  if (profileMatches_ == nullptr) {
+    profileMatches_ = std::make_unique<ProfileMatchWindow>(proc_);
+    const auto b = getScreenBounds();
+    if (!kMobile)
+      profileMatches_->setTopLeftPosition(b.getRight() - profileMatches_->getWidth() - 20, b.getY() + 80);
+  } else {
+    profileMatches_->panel().refresh();
+  }
+  showFloating(*profileMatches_, true, juce::Process::isForegroundProcess());
+}
+
+void MasterpieceEditor::offerConsoleProfile() {
+  // Once per profile and organ: again only after the profile changes.
+  const auto file = activeConsoleProfile();
+  ConsoleProfile profile;
+  if (!file.existsAsFile() || !loadConsoleProfile(file, profile)) return;
+  const auto stamp = profileStampFor(file, profile);
+  if (organProfileStamp(proc_) == stamp) return;
+  if (profileMatches_ == nullptr) {
+    profileMatches_ = std::make_unique<ProfileMatchWindow>(proc_);
+    const auto b = getScreenBounds();
+    if (!kMobile)
+      profileMatches_->setTopLeftPosition(b.getRight() - profileMatches_->getWidth() - 20, b.getY() + 80);
+  }
+  auto& panel = profileMatches_->panel();
+  panel.refresh();
+  const int strong = panel.applyStrong();
+  setOrganProfileStamp(proc_, stamp);
+  juce::Logger::writeToLog("console profile: " + juce::String(strong) + " mapped, " +
+                           juce::String(panel.matchCount()) + " to confirm");
+  if (panel.matchCount() == 0) return;
+  panel.setNote(TRANS("%1 mapped from the profile. Tick the matches below to map them too.")
+                    .replace("%1", juce::String(strong)));
+  showFloating(*profileMatches_, true, juce::Process::isForegroundProcess());
+}
+
 void MasterpieceEditor::reloadOrgan() {
   const juce::File odf = proc_.loadedOrganFile();
   if (odf.existsAsFile()) loadOrgan(odf);
@@ -2214,6 +2272,7 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
     combinations_->place(getScreenBounds(), false);
   }
   if (couplersWindow_ != nullptr) couplersWindow_->panel().rebuild();
+  if (learnInTurn_ != nullptr) learnInTurn_->panel().rebuild();
   juce::Logger::writeToLog(
       "load: artwork       " +
       juce::String(juce::Time::getMillisecondCounterHiRes() - artStart, 1) +
@@ -2223,6 +2282,8 @@ void MasterpieceEditor::finishLoad(const juce::File& odf, bool graphicsOnly,
 
   loadPanels();
   rebuildPageTabs();
+  if (consoleProfile_ != nullptr) consoleProfile_->panel().reload();
+  offerConsoleProfile();
   if (pageTabs_.getNumTabs() > 0) pageTabs_.setCurrentTabIndex(0, false);
   addPopOutIcons();
   restorePageWindows();
@@ -3052,6 +3113,10 @@ void MasterpieceEditor::showOrganMenu() {
   menu.addSeparator();
   menu.addItem(5, TRANS("Reload organ"), loaded);
   menu.addItem(6, TRANS("Copy settings from another organ..."), loaded && !kMobile);
+  // The console's tabs mapped one after another (#866).
+  menu.addItem(9, TRANS("Learn tabs in turn..."), loaded);
+  menu.addItem(11, TRANS("Console profile..."));
+  menu.addItem(10, TRANS("Map from console profile..."), loaded && activeConsoleProfile().existsAsFile());
   // A licence confirmed for this organ can be taken back here.
   if (proc_.organModel().hasLicensedSamples) {
     menu.addSeparator();
@@ -3069,6 +3134,9 @@ void MasterpieceEditor::showOrganMenu() {
                        if (c == 3) safe->toggleCombinations();
                        if (c == 5) safe->reloadOrgan();
                        if (c == 6) safe->copySettingsFrom();
+                       if (c == 9) safe->showLearnInTurn();
+                       if (c == 10) safe->showProfileMatches();
+                       if (c == 11) safe->showConsoleProfile();
                        if (c == 8) safe->proc_.releaseAllKeys();
                        if (c == 7) {
                          if (safe->proc_.licenceConfirmed()) {

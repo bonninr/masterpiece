@@ -10079,6 +10079,16 @@ void MasterpieceProcessor::setObjectBindings(MidiTargetKind kind, Id id,
   saveMidiMap();
 }
 
+void MasterpieceProcessor::addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows) {
+  if (rows.empty()) return;
+  {
+    const AudioLock lock(*this);
+    for (const auto& b : rows) midiMap_.bindFrom(other, b);
+    pistonLamps_.clear();
+  }
+  saveMidiMap();
+}
+
 void MasterpieceProcessor::setObjectSends(MidiTargetKind kind, Id id,
                                           const std::vector<MidiSend>& rows, bool quietNew) {
   {

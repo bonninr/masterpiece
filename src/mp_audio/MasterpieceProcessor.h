@@ -752,6 +752,9 @@ public:
   // keyboard, replaced at once and saved. Taken under the audio lock: the
   // audio thread reads all three every block.
   void setObjectBindings(MidiTargetKind kind, Id id, const std::vector<MidiBinding>& rows);
+  // Bindings taken from another map, a console profile's (#866): each one's
+  // device named again in this map, all added at once and saved.
+  void addBindingsFrom(const MidiMap& other, const std::vector<MidiBinding>& rows);
   // A row already sent stays sent; a changed row goes out with its object's
   // state. `quietNew` takes a new row's state without sending it: the
   // player has not set its message yet.

@@ -15,6 +15,8 @@
 #include "AccessibleToggle.h"
 #include "CombinationsWindow.h"
 #include "CouplersWindow.h"
+#include "LearnInTurnWindow.h"
+#include "ConsoleProfileWindow.h"
 #include "SplitKeyboardWindow.h"
 #include "TunerWindow.h"
 #include "TuningPanel.h"
@@ -605,6 +607,16 @@ private:
   // The couplers in a window of their own (#722).
   void toggleCouplers();
   std::unique_ptr<CouplersWindow> couplersWindow_;
+  // The console's tabs learned one after another (#866).
+  void showLearnInTurn();
+  std::unique_ptr<LearnInTurnWindow> learnInTurn_;
+  // The console profile (#866): set up in its window, and offered to each
+  // organ as it opens.
+  void showConsoleProfile();
+  void showProfileMatches();
+  void offerConsoleProfile();
+  std::unique_ptr<ConsoleProfileWindow> consoleProfile_;
+  std::unique_ptr<ProfileMatchWindow> profileMatches_;
   void toggleCombinations();
   // Temperament, pitch and transposer. Labelled with what is in force, so the
   // panel behind it only has to open to change something.
