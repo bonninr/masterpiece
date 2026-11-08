@@ -10,7 +10,8 @@
 //   1. the audio device        nothing is audible without one
 //   2. the MIDI input          and which channel plays which manual, which no
 //                              organ file can guess
-//   3. an organ                the sample set lives wherever the player put it
+//   3. an organ                the sample set lives wherever the player put it,
+//                              or the Test Sound organ, generated here (#882)
 //
 // Shown once, when there is no global settings file yet, and reachable again
 // afterwards — a rig changes, and "run it again" should not mean deleting
@@ -40,6 +41,8 @@ public:
   // Asks the host to open an organ, because the file dialog and what happens
   // after a load belong to the application, not to this panel.
   std::function<void()> onOpenOrgan;
+  // Loads an organ the wizard made: the Test Sound organ.
+  std::function<void(const juce::File&)> onLoadOrgan;
 
   // Whether this installation has been through the wizard. A file the player
   // has never had is the only honest signal of a first run.
@@ -47,7 +50,9 @@ public:
 
 private:
   void showStep(int step);
-  void finish();
+  // Closes the wizard; with `testSound`, the Test Sound organ is created and
+  // loaded after it.
+  void finish(bool testSound);
 
   MasterpieceProcessor& proc_;
   juce::AudioDeviceManager& devices_;
@@ -76,11 +81,22 @@ private:
   void showRoleDevices();
   juce::TextButton openOrgan_{TRANS("Choose an organ...")};
   juce::Label organStatus_;
+  // Ticked from the start on a phone or tablet, where a sample set takes
+  // longest to bring in.
+  juce::ToggleButton testSound_{TRANS("Create the Test Sound organ")};
+  juce::Label testSoundNote_;
 
   juce::TextButton back_{TRANS("Back")};
   juce::TextButton next_{TRANS("Next")};
   juce::TextButton skip_{TRANS("Skip setup")};
   juce::Label progress_;
 };
+
+// Generates the Test Sound organ in the program's "Test Sound" folder on every core,
+// with a progress bar and a Cancel button, and gives `done` its definition
+// file, or an empty file when it was cancelled or failed. The first time, the
+// organ's settings start with its room as the reverb. Runs on the message
+// thread; `done` does too.
+void createTestSound(MasterpieceProcessor& proc, std::function<void(const juce::File&)> done);
 
 }  // namespace mp::ui

@@ -1,0 +1,4 @@
+"Create the Test Sound organ" = "Crear el órgano Test Sound"
+"Creating the Test Sound organ" = "Creando el órgano Test Sound"
+"Test Sound organ not created" = "Órgano Test Sound no creado"
+"A small organ generated on this device in a few seconds, to check the audio and MIDI setup before a sample set is installed. One manual, one stop and a swell pedal, in a large stone room. Created and loaded on Finish." = "Un pequeño órgano generado en este dispositivo en pocos segundos, para comprobar el audio y el MIDI antes de instalar un conjunto de muestras. Un teclado, un registro y un pedal de expresión, en una gran sala de piedra. Se crea y se carga con Terminar."
