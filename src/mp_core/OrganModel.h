@@ -174,6 +174,11 @@ struct PipeLayer {
   double voicingShelfKHz = 2.0;          // VoicingEQ01_TransitionFrequencyKHertz
   double voicingShelfWidthPct = 100.0;   // VoicingEQ01_TransitionWidthAsPercentOfTransitionFrequency
   double voicingShelfDb = 0.0;           // VoicingEQ01_HighFrequencyBoostDecibels
+  // The level of the pipe's third and upper harmonics against its first two
+  // (#809), a fixed part of the layer's timbre: Luedingworth lifts 600 layers
+  // 1.25 dB. Heard as a high shelf between the second and third harmonic of
+  // the pipe's own pitch. 0 dB is no shelf at all.
+  double harmonicLevelDb = 0.0;  // HarmonicShaping_ThirdAndUpperHarmonicsLevelAdjustDecibels
   // GrandOrgue's Percussive: the pipe is struck, and its attack plays its
   // recording to the end, any loop in the file unused. Let go, it rings on.
   bool percussive = false;

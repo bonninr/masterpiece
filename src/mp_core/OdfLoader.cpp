@@ -843,6 +843,9 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     layer.voicingShelfWidthPct = fieldDouble(
         row, "VoicingEQ01_TransitionWidthAsPercentOfTransitionFrequency", "j1", 100.0);
     layer.voicingShelfDb = fieldDouble(row, "VoicingEQ01_HighFrequencyBoostDecibels", "k1", 0.0);
+    // The level of the third and upper harmonics (#809).
+    layer.harmonicLevelDb =
+        fieldDouble(row, "HarmonicShaping_ThirdAndUpperHarmonicsLevelAdjustDecibels", "c1", 0.0);
     // Masterpiece's own, written by the GrandOrgue import.
     layer.percussive = fieldBool(row, "MasterpiecePercussive", nullptr, false);
     layer.independentRelease =
