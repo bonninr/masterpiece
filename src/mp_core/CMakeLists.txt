@@ -10,6 +10,7 @@ add_library(mp_core STATIC
   PathCase.h PathCase.cpp
   SparseLoading.h SparseLoading.cpp
   TremulantShape.h TremulantShape.cpp
+  TestSound.h TestSound.cpp
 )
 target_include_directories(mp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(mp_core PUBLIC cxx_std_20)

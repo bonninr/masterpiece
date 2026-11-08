@@ -1299,6 +1299,7 @@ private:
       // Opening the organ is the application's business: the file dialog and
       // what happens after a load both live out here.
       panel->onOpenOrgan = [this] { editor_->chooseAndLoadOrgan(); };
+      panel->onLoadOrgan = [this](const juce::File& organ) { editor_->loadOrgan(organ); };
       juce::DialogWindow::LaunchOptions opts;
       opts.content.setOwned(panel.release());
       opts.dialogTitle = TRANS("Welcome to Masterpiece");

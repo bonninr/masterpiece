@@ -1,12 +1,71 @@
 #include "Wizard.h"
 
 #include "ManualDialog.h"
+#include "Mobile.h"
+
+#include "../mp_audio/DataFolder.h"
+#include "../mp_core/TestSound.h"
 
 namespace mp::ui {
 namespace {
 constexpr int kSteps = 4;
 constexpr int kRow = 28;
+
+// The room's share of the sound when the Test Sound organ first loads.
+constexpr float kTestSoundReverbMix = 0.5f;
+
+class TestSoundThread : public juce::ThreadWithProgressWindow {
+public:
+  TestSoundThread(MasterpieceProcessor& proc, juce::File folder, std::function<void(const juce::File&)> done)
+      : juce::ThreadWithProgressWindow(TRANS("Creating the Test Sound organ"), true, true),
+        proc_(proc), folder_(std::move(folder)), done_(std::move(done)) {}
+
+  void run() override {
+    result_ = mp::writeTestSound(folder_.getFullPathName().toStdString(), {}, [this](double p) {
+      setProgress(p);
+      return !threadShouldExit();
+    });
+  }
+
+  void threadComplete(bool cancelled) override {
+    juce::File organ;
+    if (result_.ok) {
+      organ = juce::File(juce::String::fromUTF8(result_.organFile.u8string().c_str()));
+      // Its own room as the reverb, the first time only: after that the
+      // organ's settings are the player's. Named once the definition is
+      // there: the name comes from the organ's own name and id.
+      const juce::File settings = proc_.settingsFileFor(organ);
+      if (!settings.existsAsFile()) {
+        const juce::File room(juce::String::fromUTF8(result_.roomFile.u8string().c_str()));
+        settings.getParentDirectory().createDirectory();
+        settings.replaceWithText("reverb 1 " + juce::String(kTestSoundReverbMix) + " " +
+                                 room.getFullPathName() + "\n");
+      }
+    } else if (!cancelled && !threadShouldExit()) {
+      juce::Logger::writeToLog("Test Sound organ not created: " + juce::String(result_.error));
+      juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                             TRANS("Test Sound organ not created"),
+                                             juce::String::fromUTF8(result_.error.c_str()));
+    }
+    if (done_) done_(organ);
+    delete this;
+  }
+
+private:
+  MasterpieceProcessor& proc_;
+  juce::File folder_;
+  std::function<void(const juce::File&)> done_;
+  mp::TestSoundResult result_;
+};
 }  // namespace
+
+void createTestSound(MasterpieceProcessor& proc, std::function<void(const juce::File&)> done) {
+  // A folder of its own: "Organs" is the same folder as the per-organ
+  // settings ("organs") wherever names ignore case.
+  const juce::File folder = mp::dataFolder().getChildFile("Test Sound");
+  folder.createDirectory();
+  (new TestSoundThread(proc, folder, std::move(done)))->launchThread();
+}
 
 bool WizardPanel::isFirstRun(const MasterpieceProcessor& proc) {
   // No global settings file means the program has never been configured here.
@@ -112,23 +171,32 @@ WizardPanel::WizardPanel(MasterpieceProcessor& proc,
   // organ chooser opens, so the console is in view while the organ loads (#591).
   openOrgan_.onClick = [this] {
     auto open = onOpenOrgan;  // finish() may delete this panel
-    finish();
+    finish(false);
     if (open) open();
   };
   addChildComponent(organStatus_);
   style(organStatus_, 12.0f, juce::Colours::grey);
+  addChildComponent(testSound_);
+  testSound_.setToggleState(kMobile, juce::dontSendNotification);
+  addChildComponent(testSoundNote_);
+  style(testSoundNote_, 13.0f, juce::Colours::grey);
+  testSoundNote_.setText(TRANS("A small organ generated on this device in a few seconds, to check the audio and "
+                               "MIDI setup before a sample set is installed. One manual, one stop and a swell "
+                               "pedal, in a large stone room. Created and loaded on Finish."),
+                         juce::dontSendNotification);
 
   addAndMakeVisible(back_);
   back_.onClick = [this] { showStep(step_ - 1); };
   addAndMakeVisible(next_);
   next_.onClick = [this] {
-    if (step_ + 1 >= kSteps) finish();
+    if (step_ + 1 >= kSteps) finish(testSound_.getToggleState());
     else showStep(step_ + 1);
   };
   addAndMakeVisible(skip_);
   // Skipping is a first-class answer. A player who knows their rig should not
-  // have to click through three screens to reach an organ.
-  skip_.onClick = [this] { finish(); };
+  // have to click through three screens to reach an organ. The Test Sound
+  // box keeps its say: ticked on a phone or tablet, the organ is made anyway.
+  skip_.onClick = [this] { finish(testSound_.getToggleState()); };
 
   showStep(0);
 }
@@ -148,6 +216,8 @@ void WizardPanel::showStep(int step) {
   for (auto& c : roleDevices_) c.setVisible(step_ == 2);
   openOrgan_.setVisible(step_ == 3);
   organStatus_.setVisible(step_ == 3);
+  testSound_.setVisible(step_ == 3);
+  testSoundNote_.setVisible(step_ == 3);
 
   switch (step_) {
     case 0:
@@ -208,12 +278,19 @@ void WizardPanel::showRoleDevices() {
   }
 }
 
-void WizardPanel::finish() {
+void WizardPanel::finish(bool testSound) {
   // Writing the defaults is what makes this a first run that has happened.
   proc_.saveGlobalDefaults();
   if (onFinished) onFinished();
+  // Held here: closing the dialog deletes this panel.
+  auto load = onLoadOrgan;
+  auto& proc = proc_;
   if (auto* dw = findParentComponentOfClass<juce::DialogWindow>())
     dw->closeButtonPressed();
+  if (testSound)
+    createTestSound(proc, [load](const juce::File& organ) {
+      if (organ != juce::File() && load) load(organ);
+    });
 }
 
 void WizardPanel::paint(juce::Graphics& g) {
@@ -275,6 +352,9 @@ void WizardPanel::resized() {
   openOrgan_.setBounds(r.removeFromTop(kRow + 4).withWidth(200));
   r.removeFromTop(8);
   organStatus_.setBounds(r.removeFromTop(kRow));
+  r.removeFromTop(16);
+  testSound_.setBounds(r.removeFromTop(kRow).withWidth(320));
+  testSoundNote_.setBounds(r.removeFromTop(72).withTrimmedLeft(24));
 }
 
 }  // namespace mp::ui

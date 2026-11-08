@@ -1,0 +1,4 @@
+"Create the Test Sound organ" = "Vytvořit varhany Test Sound"
+"Creating the Test Sound organ" = "Vytváření varhan Test Sound"
+"Test Sound organ not created" = "Varhany Test Sound nebyly vytvořeny"
+"A small organ generated on this device in a few seconds, to check the audio and MIDI setup before a sample set is installed. One manual, one stop and a swell pedal, in a large stone room. Created and loaded on Finish." = "Malé varhany vytvořené v tomto zařízení za několik sekund, pro kontrolu zvuku a MIDI před instalací sady samplů. Jeden manuál, jeden rejstřík a žaluziový pedál, ve velkém kamenném sále. Vytvoří se a načtou tlačítkem Dokončit."

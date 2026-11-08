@@ -1,0 +1,4 @@
+"Create the Test Sound organ" = "Test Sound-orgel maken"
+"Creating the Test Sound organ" = "Test Sound-orgel wordt gemaakt"
+"Test Sound organ not created" = "Test Sound-orgel niet gemaakt"
+"A small organ generated on this device in a few seconds, to check the audio and MIDI setup before a sample set is installed. One manual, one stop and a swell pedal, in a large stone room. Created and loaded on Finish." = "Een klein orgel, in enkele seconden op dit apparaat gemaakt, om audio en MIDI te controleren voordat een sampleset is geïnstalleerd. Eén manuaal, één register en een zwelpedaal, in een grote stenen ruimte. Gemaakt en geladen bij Voltooien."
