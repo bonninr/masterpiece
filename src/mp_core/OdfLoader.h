@@ -84,6 +84,12 @@ public:
     // Fill OdfDiagnostics::unreadFields. Off for an ordinary load: it walks
     // the whole definition a second time.
     bool reportUnreadFields = false;
+    // A GrandOrgue set's own tremulant moves the level only, and its swell
+    // box the level only. A player can ask for more, per organ (#833):
+    // a pitch swing in step with each pipe's level swing, and the format's
+    // default shade filter on every box.
+    bool grandOrgueTremulantPitch = false;
+    bool grandOrgueSwellFilter = false;
   };
 
   // Detect by header/extension: full vs CODM vs SQLite-exported XML.

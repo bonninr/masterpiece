@@ -408,6 +408,24 @@ bool OdfLoader::load(const std::string& odfPath, const Options& opts,
     outModel.everyKeyboardPlayable = true;
     // Its swell boxes follow GrandOrgue's level law (#774).
     for (auto& [id, e] : outModel.enclosures) e.linearAmplitude = true;
+    // The pitch swings in proportion to the level: a pipe's level swing over
+    // the recorded waveform's own (tremulantAmpSwing) scales that waveform's
+    // pitch swing (tremulantPitchSwingSemitones). GrandOrgue's default 15%
+    // swings 8.4 cents, 6% swings 3.4.
+    if (opts.grandOrgueTremulantPitch)
+      for (auto& [pipeId, mod] : outModel.tremulantPipes)
+        mod.pitchDepthPct = 100.0 * std::pow(10.0, mod.ampDepthDb / 20.0);
+    // The shade filter a definition gets when its EnclosurePipe rows state
+    // nothing (the compact defaults): closed, 12 dB down from 1 kHz to
+    // 5.5 kHz; open, out of the way. The level stays GrandOrgue's.
+    if (opts.grandOrgueSwellFilter)
+      for (auto& [id, e] : outModel.enclosures) {
+        e.closedMaxHz = 1000.0;
+        e.closedMinHz = 5500.0;
+        e.closedShelfDb = 12.0;
+        e.openMaxHz = 200.0;
+        e.openMinHz = 15000.0;
+      }
     return ok;
   }
   std::ifstream f(pathOf(odfPath), std::ios::binary);
