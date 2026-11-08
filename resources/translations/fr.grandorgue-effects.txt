@@ -1,0 +1,4 @@
+"Tremulant pitch" = "Hauteur du tremblant"
+"Swell filter" = "Filtre des boîtes"
+"Adds a pitch swing to this organ's tremulants, in step with the level swing its definition sets" = "Ajoute aux tremblants de cet orgue une ondulation de hauteur, au rythme de l'ondulation de niveau fixée par sa définition"
+"Darkens the tone of this organ's swell boxes as they close, on top of the level change its definition sets" = "Assombrit le timbre des boîtes expressives de cet orgue à la fermeture, en plus du changement de niveau fixé par sa définition"
