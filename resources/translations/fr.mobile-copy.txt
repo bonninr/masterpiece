@@ -1,0 +1,1 @@
+"Masterpiece cannot write to its organ folder." = "Masterpiece ne peut pas écrire dans son dossier d'orgues."
