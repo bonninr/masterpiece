@@ -31,6 +31,13 @@ constexpr double kPitchPerFractionalSag = 0.25;
 // than pitch does.
 constexpr double kAmpPerFractionalSag = 0.7;
 
+// A moving board (#812). One inch of water in pascals, and the atmosphere in
+// inches: a compartment whose volume grows by dV at a fixed amount of air
+// loses p_atm * dV / V of pressure, the same isothermal law as the 339 above.
+constexpr double kPaPerInch = 249.09;
+constexpr double kAtmInches = 101325.0 / kPaPerInch;
+constexpr double kGravity = 9.81;
+
 } // namespace
 
 void WindSolver::reset(const OrganModel& model) {
@@ -70,8 +77,127 @@ void WindSolver::reset(const OrganModel& model) {
   }
 
   resolveLinks();
+  boards_.clear();
+  boardValve_.clear();
+  boardValveLink_.clear();
+  if (boardWanted_) resetBoards(model);
   chooseStep();
   settle();
+}
+
+void WindSolver::resetBoards(const OrganModel& model) {
+  for (const auto& [id, wc] : model.wind) {
+    const int at = indexOf(id);
+    if (at < 0 || !wc.hasBellows) continue;
+    const double area = wc.bellowsWidthM * wc.bellowsLengthM;
+    const double inertia = wc.bellowsMassKg > 0.0 ? wc.bellowsMassKg : wc.bellowsGravityMassKg;
+    // A board the file leaves without a weight, a frame or a travel stays
+    // the swallowed volume it is with the option off.
+    if (area <= 0.0 || wc.bellowsExtensionM <= 0.0 || wc.bellowsGravityMassKg <= 0.0 || inertia <= 0.0)
+      continue;
+    Board b;
+    b.at = at;
+    b.outputControlId = wc.bellowsExtensionOutputControlId;
+    b.fixedVolumeM3 = wc.volumeM3 > 0.0 ? wc.volumeM3 : 1.0;
+    if (wc.bellowsShapeCode == 2 && wc.bellowsHingeDistanceM > 0.0) {
+      // Hinged at one edge, opening by the frame's length: the board turns by
+      // theta and displaces a * theta, a = area * length / 2. The pressure
+      // turns it with p * a, its weight with m g q, and its mass acts at its
+      // centre of mass, q from the hinge.
+      const double a = area * wc.bellowsLengthM * 0.5;
+      const double q = wc.bellowsHingeDistanceM;
+      b.travelM3 = area * wc.bellowsExtensionM * 0.5;
+      b.regulatedInches = wc.bellowsGravityMassKg * kGravity * q / a / kPaPerInch;
+      b.massPerInch = inertia * q * q / (kPaPerInch * a * a);
+    } else {
+      // Rising flat: it displaces area * height.
+      b.travelM3 = area * wc.bellowsExtensionM;
+      b.regulatedInches = wc.bellowsGravityMassKg * kGravity / area / kPaPerInch;
+      b.massPerInch = inertia / (kPaPerInch * area * area);
+    }
+    // The damping is a rate per second, the speed it takes off the board,
+    // as with a control linkage's inertia model: Klais's 10 settles its board
+    // in a few swings. Read as a force it left every set's boards ringing for
+    // tens of seconds.
+    b.dampRate = std::max(0.0, wc.bellowsDamping);
+    b.u = 0.5 * b.travelM3;
+    order_[static_cast<size_t>(at)].volumeM3 = b.fixedVolumeM3 + b.u;
+    boards_.push_back(b);
+  }
+  if (boards_.empty()) return;
+
+  // The valves the boards drive: a link whose valve control is a board's
+  // extension output, or is fed from one by an unconditional control linkage.
+  boardValve_.assign(resolved_.size(), -1);
+  boardValveLink_.assign(resolved_.size(), ContinuousControlLinkage{});
+  for (size_t k = 0; k < resolved_.size(); ++k) {
+    const Id valve = links_[resolved_[k].link].valveControlId;
+    if (valve == 0) continue;
+    for (size_t j = 0; j < boards_.size() && boardValve_[k] < 0; ++j) {
+      const Id out = boards_[j].outputControlId;
+      if (out == 0) continue;
+      if (out == valve) {
+        boardValve_[k] = static_cast<int>(j);
+        continue;
+      }
+      for (const ContinuousControlLinkage& l : model.controlLinkages)
+        if (l.sourceControlId == out && l.destControlId == valve && l.conditionSwitchId == 0) {
+          boardValve_[k] = static_cast<int>(j);
+          boardValveLink_[k] = l;
+          break;
+        }
+    }
+  }
+}
+
+double WindSolver::boardValveOpening(size_t link) const {
+  const Board& b = boards_[static_cast<size_t>(boardValve_[link])];
+  const double extension = b.travelM3 > 0.0 ? 127.0 * b.u / b.travelM3 : 0.0;
+  return std::clamp(boardValveLink_[link].apply(extension), 0.0, 127.0) / 127.0;
+}
+
+void WindSolver::stepBoards(double dt) {
+  for (Board& b : boards_) {
+    State& st = order_[static_cast<size_t>(b.at)];
+    double damp = b.dampRate;
+    if (settlingBoards_) {
+      // Critical damping on the board's bounce against its own air.
+      const double stiffness = kAtmInches / st.volumeM3;
+      damp = std::max(damp, 2.0 * std::sqrt(stiffness / b.massPerInch));
+    }
+    // Damped implicitly, so a heavy damping cannot overshoot.
+    b.uDot = (b.uDot + (st.pressure - b.regulatedInches) / b.massPerInch * dt) / (1.0 + damp * dt);
+    double u = b.u + b.uDot * dt;
+    if (u <= 0.0) {
+      u = 0.0;
+      b.uDot = std::max(b.uDot, 0.0);
+    } else if (u >= b.travelM3) {
+      u = b.travelM3;
+      b.uDot = std::min(b.uDot, 0.0);
+    }
+    if (!std::isfinite(u) || !std::isfinite(b.uDot)) {
+      u = b.u;
+      b.uDot = 0.0;
+    }
+    const double du = u - b.u;
+    b.u = u;
+    st.volumeM3 = b.fixedVolumeM3 + u;
+    st.pressure -= kAtmInches * du / st.volumeM3;
+  }
+}
+
+double WindSolver::extensionFor(Id compartmentId) const {
+  const int i = indexOf(compartmentId);
+  for (const Board& b : boards_)
+    if (b.at == i && i >= 0) return b.travelM3 > 0.0 ? 127.0 * b.u / b.travelM3 : 0.0;
+  return -1.0;
+}
+
+std::vector<std::pair<Id, Id>> WindSolver::extensionOutputs() const {
+  std::vector<std::pair<Id, Id>> out;
+  for (const Board& b : boards_)
+    if (b.outputControlId != 0) out.emplace_back(order_[static_cast<size_t>(b.at)].id, b.outputControlId);
+  return out;
 }
 
 void WindSolver::resolveLinks() {
@@ -130,6 +256,20 @@ void WindSolver::chooseStep() {
       smallest = std::min(smallest, tau * 0.02);
     }
   }
+  // A moving board (#812): its reservoir is smallest with the board down, and
+  // the board bounces on its own air at sqrt(stiffness / mass). A twentieth
+  // of a radian a step keeps both.
+  for (const Board& b : boards_) {
+    for (const WindCompartmentLink& link : links_) {
+      if (link.massFlowKgPerSec <= 0.0) continue;
+      if (indexOf(link.firstCompartmentId) != b.at && indexOf(link.secondCompartmentId) != b.at) continue;
+      const double tau = 2.0 * link.refPressureInches * b.fixedVolumeM3 /
+                         (kInchesPerKgPerM3 * link.massFlowKgPerSec);
+      smallest = std::min(smallest, tau * 0.02);
+    }
+    const double omega = std::sqrt(kAtmInches / b.fixedVolumeM3 / b.massPerInch);
+    smallest = std::min(smallest, 0.05 / omega);
+  }
   // A floor, because an organ that needs a microsecond step cannot be
   // integrated under the player's hands and the honest answer is a coarser
   // model, not a hung audio thread.
@@ -165,6 +305,7 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
   lastSweeps_ = 0;
   lastSteps_ = 0;
   if (directSettle_ && solveSteady(engagedSwitches)) {
+    settleBoards(engagedSwitches);
     for (State& st : order_) {
       st.nominalInches = st.pressure;
       st.velocity = 0.0;
@@ -207,12 +348,49 @@ void WindSolver::settle(const std::unordered_set<Id>* engagedSwitches) {
       if (swing < 1.0e-4) break;
     }
   }
+  settleBoards(engagedSwitches);
 
   for (State& st : order_) {
     st.nominalInches = st.pressure;
     st.velocity = 0.0;
   }
   debtSeconds_ = 0.0;
+}
+
+void WindSolver::settleBoards(const std::unordered_set<Id>* engagedSwitches) {
+  // The balance with the boards in place (#812): the steady solve above
+  // leaves every valve open and every board where it was, and the boards
+  // then find where their weight holds the air. Integrated, each board
+  // damped to critical, until neither a pressure nor a board moves.
+  if (boards_.empty()) return;
+  settlingBoards_ = true;
+  readValves(engagedSwitches);
+  constexpr double kSettleSeconds = 60.0;
+  const long long steps = static_cast<long long>(kSettleSeconds / maxStep_);
+  constexpr int kWindow = 1024;
+  std::vector<double> lo(order_.size() + boards_.size()), hi(lo.size());
+  for (long long i = 0; i < steps; ++i) {
+    const int phase = static_cast<int>(i % kWindow);
+    for (size_t j = 0; j < lo.size(); ++j) {
+      // Pressures in inches; a board's height scaled so that the limit below
+      // is a hundred-thousandth of its travel.
+      const double v = j < order_.size()
+                           ? order_[j].pressure
+                           : boards_[j - order_.size()].u / boards_[j - order_.size()].travelM3 * 10.0;
+      if (phase == 0) lo[j] = hi[j] = v;
+      lo[j] = std::min(lo[j], v);
+      hi[j] = std::max(hi[j], v);
+    }
+    integrate(maxStep_, engagedSwitches);
+    ++lastSteps_;
+    if (phase == kWindow - 1) {
+      double swing = 0.0;
+      for (size_t j = 0; j < lo.size(); ++j) swing = std::max(swing, hi[j] - lo[j]);
+      if (swing < 1.0e-4) break;
+    }
+  }
+  for (Board& b : boards_) b.uDot = 0.0;
+  settlingBoards_ = false;
 }
 
 bool WindSolver::solveSteady(const std::unordered_set<Id>* engagedSwitches) {
@@ -535,7 +713,10 @@ void WindSolver::integrate(double dt,
     const int ib = r.b;
     const double pa = ia >= 0 ? order_[static_cast<size_t>(ia)].pressure : r.fixedA;
     const double pb = ib >= 0 ? order_[static_cast<size_t>(ib)].pressure : r.fixedB;
-    const double mul = driftFlow_ && k < linkFlowMul_.size() ? linkFlowMul_[k] : 1.0;
+    double mul = driftFlow_ && k < linkFlowMul_.size() ? linkFlowMul_[k] : 1.0;
+    // A valve its reservoir's board drives (#812), open as far as the board's
+    // height and the set's linkage say.
+    if (!boardValve_.empty() && boardValve_[k] >= 0) mul *= boardValveOpening(k);
     const double flow =
         orificeFlow(link.massFlowKgPerSec * mul, link.refPressureInches, pa - pb);
     if (ia >= 0) {
@@ -547,6 +728,7 @@ void WindSolver::integrate(double dt,
       b.pressure += kInchesPerKgPerM3 * flow * dt / b.volumeM3;
     }
   }
+  if (!boards_.empty()) stepBoards(dt);
 
   // A wind system cannot go negative, and a number that has gone non-finite
   // must not reach the audio path — it would silence the organ permanently

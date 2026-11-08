@@ -435,6 +435,7 @@ void MasterpieceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   tremMods_.assign(tremOrder_.size() + tremWaveSlots_.size(), VoiceEngine::TremMod{});
   tremEnds_.assign(tremOrder_.size(), TremEnds{});
 
+  wind_.setBellowsBoard(graph_.engineSwitch.enableBellowsBoard);
   wind_.reset(model_);
   convolver_.prepare(spec);
   voicingEq_.configure(voicingEqSettings_, sampleRate);
@@ -863,6 +864,8 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
 void MasterpieceProcessor::publishWindPressures() {
   for (const auto& [compartment, control] : windGauges_)
     controls_.setExact(control, 63.5 + wind_.pressureFor(compartment) * 0.5);
+  for (const auto& [compartment, control] : windBoards_)
+    controls_.setExact(control, wind_.extensionFor(compartment));
 }
 
 // The ranks and divisions in id order, as the control API lists them, each
@@ -2036,6 +2039,7 @@ juce::String MasterpieceProcessor::settingsBody() const {
     text << "root " << organRootOverride_.getFullPathName() << "\n";
   text << "simple " << (sw.simpleWavOnly ? 1 : 0) << "\n";
   text << "wind " << (sw.enableWindModel ? 1 : 0) << "\n";
+  text << "bellows " << (sw.enableBellowsBoard ? 1 : 0) << "\n";
   text << "tremulant " << (sw.enableTremulant ? 1 : 0) << "\n";
   text << "enclosure " << (sw.enableEnclosure ? 1 : 0) << "\n";
   text << "voicing " << (sw.enableVoicing ? 1 : 0) << "\n";
@@ -2150,6 +2154,7 @@ void MasterpieceProcessor::applySettingsLine(const juce::String& key,
   else if (key == "root") organRootOverride_ = val.isEmpty() ? juce::File() : juce::File(val);
   else if (key == "simple") sw.simpleWavOnly = on;
   else if (key == "wind") sw.enableWindModel = on;
+  else if (key == "bellows") sw.enableBellowsBoard = on;
   else if (key == "tremulant") sw.enableTremulant = on;
   else if (key == "enclosure") sw.enableEnclosure = on;
   else if (key == "voicing") sw.enableVoicing = on;
@@ -8204,6 +8209,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
 
   // The wind system. Indices are assigned once, in a stable order, so a voice
   // started in one block still points at the right chest in the next.
+  wind_.setBellowsBoard(graph_.engineSwitch.enableBellowsBoard);
   wind_.reset(model_);
   windOrder_.clear();
   windIndexOf_.clear();
@@ -8219,6 +8225,10 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
         model_.continuousControls.count(wc.pressureOutputControlId) != 0)
       windGauges_.emplace_back(id, wc.pressureOutputControlId);
   std::sort(windGauges_.begin(), windGauges_.end());
+  // Moving reservoir boards (#812) report their height; empty while off.
+  windBoards_.clear();
+  for (const auto& [compartment, control] : wind_.extensionOutputs())
+    if (model_.continuousControls.count(control) != 0) windBoards_.emplace_back(compartment, control);
   for (size_t i = 0; i < windOrder_.size(); ++i)
     windIndexOf_[windOrder_[i]] = static_cast<int>(i);
   windMods_.assign(windOrder_.size(), VoiceEngine::WindMod{});

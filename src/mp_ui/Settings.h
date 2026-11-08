@@ -154,6 +154,7 @@ private:
   juce::uint32 savedUntilMs_ = 0;
   juce::ToggleButton simpleWav_{TRANS("Bypass all effects")};
   juce::ToggleButton wind_{TRANS("Wind model")};
+  juce::ToggleButton bellows_{TRANS("Moving reservoir boards")};
   juce::ToggleButton tremulant_{TRANS("Tremulants")};
   juce::ToggleButton enclosure_{TRANS("Enclosures (swell shades)")};
   juce::ToggleButton voicing_{TRANS("Voicing")};
