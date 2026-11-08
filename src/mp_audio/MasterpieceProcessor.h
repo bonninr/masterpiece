@@ -3263,6 +3263,10 @@ private:
   // Set with palletsLive_: the first block after a load opens the pallets of
   // switches that came up engaged -- a blower that runs from the start.
   std::atomic<bool> palletsOpenEngaged_{false};
+  // Set when a load has finished: the first block after it starts timing the
+  // organ's Willis and inertia linkages (#811). The load itself settles them
+  // at once, so the organ comes up ready to play.
+  std::atomic<bool> timeLinkages_{false};
   // Set with palletsLive_: the first block after a load sends every lamp
   // learned on the console as the new organ stands.
   std::atomic<bool> lampsAfterLoad_{false};

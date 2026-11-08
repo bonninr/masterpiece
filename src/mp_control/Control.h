@@ -302,6 +302,17 @@ public:
   void propagate(Id pinned = 0,
                  const std::unordered_set<Id>* engagedSwitches = nullptr);
 
+  // Timed linkages (LinkTypeCode 2 and 3, #811). Until setTimed(true) every
+  // linkage acts at once, as an organ settles while it loads; reset() puts the
+  // bank back there. Once timed, a Willis or inertia linkage sets where its
+  // destination is going, and advance() moves the destination toward it by the
+  // time that has passed: call it once per control block, before propagate().
+  void setTimed(bool on);
+  bool timed() const { return timed_; }
+  void advance(double seconds);
+  // Whether a timed linkage is still on its way.
+  bool moving() const { return !movingList_.empty(); }
+
   // Convenience for the audio graph: shutter position 0..1 for an enclosure,
   // via whichever continuous control drives it. An enclosure with no control
   // is fully open, which is the safe reading — a silent organ is worse than an
@@ -329,8 +340,25 @@ private:
     // Into a drawn or clickable control, or between twins: fires only when
     // its source moves (see propagate).
     bool carriesChange = false;
+    // Index into motions_ for a timed linkage, -1 for one that acts at once.
+    int32_t motion = -1;
     const ContinuousControlLinkage* link = nullptr;
   };
+  // Where a timed linkage's destination is and is going.
+  struct Motion {
+    int32_t dst = -1;
+    int type = 1;
+    double tau = 0.0;          // Willis: seconds
+    double accel = 0.0;        // inertia: per second squared, per step left
+    double damping = 0.0;      // inertia: per second
+    double pos = 0.0, vel = 0.0, target = 0.0;
+    bool live = false;         // its condition met: it owns the destination
+    bool listed = false;       // in movingList_
+  };
+  std::vector<Motion> motions_;
+  std::vector<int32_t> movingList_;
+  bool timed_ = false;
+  void writeMotion(Motion& m, bool settled);
   struct DoubleLink {
     int32_t a = -1, b = -1, dst = -1;
     const ContinuousControlDoubleLinkage* link = nullptr;

@@ -646,6 +646,24 @@ struct ContinuousControlLinkage {
   double apply(double source) const {
     return ((invert ? 127.0 - source : source) + increment) * coefficient;
   }
+  // How the destination reaches that value (LinkTypeCode, #811):
+  //   1  at once;
+  //   2  Willis type: the destination moves toward it at a speed proportional
+  //      to the distance left, one step per willisMsPerStep milliseconds when
+  //      one step is left -- a lag with that time constant. The stop-action and
+  //      start-up delay ramps of most sets are these (Friesach 5..48 ms, a
+  //      blower 3 s, a tremulant start 1 s);
+  //   3  inertia model: a mass on a spring, accelerated by inertiaAccel per
+  //      step left and damped by inertiaDamping per second. Swell shutters
+  //      (44.7, 4.6) and the per-pipe detune of Bueckeburg and St. Maximin.
+  // A figure of 0 leaves the linkage acting at once.
+  int linkType = 1;
+  double willisMsPerStep = 0.0;
+  double inertiaAccel = 0.0;
+  double inertiaDamping = 0.0;
+  bool timed() const {
+    return (linkType == 2 && willisMsPerStep > 0.0) || (linkType == 3 && inertiaAccel > 0.0);
+  }
 };
 
 // Two controls combined into a third. This is how an organ builds a level out

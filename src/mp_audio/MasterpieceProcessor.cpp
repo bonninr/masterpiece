@@ -7445,6 +7445,11 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     releaseAllCoupledInputs();
     sustainedKeys_.clear();
   }
+  // The organ's timed linkages move by the time this block covers: a stop's
+  // action delay, a tremulant starting, a swell shutter catching up with its
+  // shoe, a pipe's detune gliding as its key goes down (#811).
+  if (timeLinkages_.exchange(false, std::memory_order_acq_rel)) controls_.setTimed(true);
+  if (getSampleRate() > 0.0) controls_.advance(buffer.getNumSamples() / getSampleRate());
   controls_.propagate(0, &engagedSwitches_);
   if (stagesReady_.load(std::memory_order_acquire)) fireMovedStages();
   // A pallet switch that was engaged before the organ went live never moved
@@ -7722,6 +7727,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   // organ's audio is in place.
   palletsLive_.store(false, std::memory_order_release);
   palletsOpenEngaged_.store(false, std::memory_order_release);
+  timeLinkages_.store(false, std::memory_order_release);
 
   // Whoever starts a load clears the cancel flag, so a Cancel that arrived
   // after the previous load already finished cannot kill this one.
@@ -8964,6 +8970,7 @@ MasterpieceProcessor::LoadResult MasterpieceProcessor::loadOrganUnguarded(
   stagesReady_.store(true, std::memory_order_release);
   palletsLive_.store(true, std::memory_order_release);
   palletsOpenEngaged_.store(true, std::memory_order_release);
+  timeLinkages_.store(true, std::memory_order_release);
   loadMessageDue_.store(!graphicsOnly, std::memory_order_release);
   lampsAfterLoad_.store(true, std::memory_order_release);
   loadProgress_.phase.store(LoadProgress::Phase::Done,

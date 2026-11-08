@@ -614,6 +614,9 @@ void ContinuousControlBank::reset(const OrganModel& model) {
 
   links_.clear();
   links_.reserve(model.controlLinkages.size());
+  motions_.clear();
+  movingList_.clear();
+  timed_ = false;
   for (const auto& l : model.controlLinkages) {
     if (l.sourceControlId == 0 || l.destControlId == 0) continue;
     Link k;
@@ -636,6 +639,16 @@ void ContinuousControlBank::reset(const OrganModel& model) {
     k.carriesChange = dest.imageSetInstanceId != 0 || dest.clickable || twin ||
                       l.conditionSwitchId != 0 || sharedByShoes;
     k.link = &l;
+    if (l.timed()) {
+      Motion m;
+      m.dst = k.dst;
+      m.type = l.linkType;
+      m.tau = l.willisMsPerStep / 1000.0;
+      m.accel = l.inertiaAccel;
+      m.damping = std::max(0.0, l.inertiaDamping);
+      k.motion = static_cast<int32_t>(motions_.size());
+      motions_.push_back(m);
+    }
     links_.push_back(k);
   }
   doubles_.clear();
@@ -771,6 +784,9 @@ void ContinuousControlBank::propagate(Id pinned,
         const bool on = switches.count(k.condition) != 0;
         if (on != k.whenEngaged) {
           seen = kNotLive;
+          // A timed linkage whose condition lapses lets go of its control
+          // where it stands; the linkage that takes over moves it from there.
+          if (k.motion >= 0) motions_[k.motion].live = false;
           continue;
         }
       }
@@ -795,6 +811,30 @@ void ContinuousControlBank::propagate(Id pinned,
         seen = source;
       }
       if (k.dst == pinnedSlot) continue; // the player's own move stands
+
+      // A timed linkage only says where its control is going; advance()
+      // takes it there. It starts from wherever the control stands when the
+      // linkage comes live: Bueckeburg hands a pipe's detune from the
+      // coupling level to the detune target as its key goes down, and the
+      // pitch glides between the two.
+      if (k.motion >= 0 && timed_) {
+        Motion& m = motions_[k.motion];
+        const double goal = k.link->apply(reading(k.src));
+        if (!m.live) {
+          m.live = true;
+          m.pos = reading(k.dst);
+          m.vel = 0.0;
+          m.target = std::nan("");
+        }
+        if (!(m.target == goal)) {
+          m.target = goal;
+          if (!m.listed) {
+            m.listed = true;
+            movingList_.push_back(k.motion);
+          }
+        }
+        continue;
+      }
 
       const int next = clampSlot(k.dst, k.link->apply(reading(k.src)));
       int& slot = vals_[k.dst];
@@ -838,6 +878,96 @@ void ContinuousControlBank::propagate(Id pinned,
 
     if (!changed) break;
   }
+}
+
+void ContinuousControlBank::setTimed(bool on) {
+  if (on == timed_) return;
+  timed_ = on;
+  // Every timed linkage starts from where the settled graph left its control,
+  // the next time it fires.
+  for (Motion& m : motions_) {
+    m.live = false;
+    m.listed = false;
+  }
+  movingList_.clear();
+}
+
+void ContinuousControlBank::writeMotion(Motion& m, bool settled) {
+  const int i = m.dst;
+  const double lo = lo_[i], hi = hi_[i];
+  if (settled) {
+    // The value the linkage would have written at once, step for step.
+    const double t = m.target;
+    int v = static_cast<int>(t < 0.0 ? t - 0.5 : t + 0.5);
+    v = v < lo_[i] ? lo_[i] : (v > hi_[i] ? hi_[i] : v);
+    m.pos = v;
+    m.vel = 0.0;
+    if (vals_[i] != v || !std::isnan(exact_[i])) dirty_ = true;
+    vals_[i] = v;
+    exact_[i] = std::nan("");
+    flagged_[i] = v;
+    return;
+  }
+  const double p = std::clamp(m.pos, lo, hi);
+  const int step = static_cast<int>(std::ceil(p - 0.5));
+  const bool changed = vals_[i] != step;
+  vals_[i] = step;
+  exact_[i] = p;
+  // As setExact(): the graph is woken for a new step, or for a reading that
+  // has crept an eighth of a step since it last woke it.
+  if (changed || std::fabs(p - flagged_[i]) >= 1.0 / 8.0) {
+    dirty_ = true;
+    flagged_[i] = p;
+  }
+}
+
+void ContinuousControlBank::advance(double seconds) {
+  if (!timed_ || movingList_.empty() || !(seconds > 0.0)) return;
+  // Close enough to call it there: a sixty-fourth of a step, still.
+  constexpr double kNear = 1.0 / 64.0;
+  size_t kept = 0;
+  for (const int32_t idx : movingList_) {
+    Motion& m = motions_[idx];
+    if (!m.live) {
+      m.listed = false;
+      continue;
+    }
+    const double lo = lo_[m.dst], hi = hi_[m.dst];
+    const double goal = std::clamp(m.target, lo, hi);
+    bool settled = false;
+    if (m.type == 2) {
+      // A lag: the speed is the distance left over the time constant.
+      m.pos = goal + (m.pos - goal) * std::exp(-seconds / m.tau);
+      settled = std::fabs(m.pos - goal) < kNear;
+    } else {
+      // A damped spring, integrated in steps short beside its own period
+      // (the damping implicitly, so a heavy one cannot overshoot the
+      // integration). Figures too stiff to follow at all act at once: the
+      // combination steppers of several sets ride on an accelerating
+      // coefficient of 1000 and more, and are meant to be instant.
+      const double omega = std::sqrt(m.accel);
+      const double sub = std::ceil(omega * seconds / 0.25);
+      if (!(sub <= 512.0)) {
+        settled = true;
+      } else {
+        const int n = std::max(1, static_cast<int>(sub));
+        const double h = seconds / n;
+        for (int s = 0; s < n; ++s) {
+          m.vel = (m.vel + m.accel * (goal - m.pos) * h) / (1.0 + m.damping * h);
+          m.pos += m.vel * h;
+          // The ends of the control's range are walls: a shutter that
+          // reaches fully open stops there.
+          if (m.pos <= lo) { m.pos = lo; if (m.vel < 0.0) m.vel = 0.0; }
+          if (m.pos >= hi) { m.pos = hi; if (m.vel > 0.0) m.vel = 0.0; }
+        }
+        settled = std::fabs(m.pos - goal) < kNear && std::fabs(m.vel) < 4.0 * kNear;
+      }
+    }
+    writeMotion(m, settled);
+    if (settled) m.listed = false;
+    else movingList_[kept++] = idx;
+  }
+  movingList_.resize(kept);
 }
 
 double ContinuousControlBank::shutterFor(const Enclosure& e) const {
