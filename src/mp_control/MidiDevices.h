@@ -195,4 +195,50 @@ private:
   std::vector<std::string> names_;
 };
 
+// The MIDI output a send names (#1001): the port with that label in Settings >
+// MIDI output, "Launchpad Mini (USB 1.2)", else the first port of that name, as
+// a GrandOrgue send names its device. -1 where no open port is it. `labels` and
+// `names` describe the open output ports, in order.
+inline int outputForSend(const std::string& device, const std::vector<std::string>& labels,
+                         const std::vector<std::string>& names) {
+  if (device.empty()) return -1;
+  for (size_t i = 0; i < labels.size(); ++i)
+    if (labels[i] == device) return static_cast<int>(i);
+  for (size_t i = 0; i < names.size(); ++i)
+    if (names[i] == device) return static_cast<int>(i);
+  return -1;
+}
+
+// Whether an input and an output identifier name one device. Linux gives the
+// input and the output of a USB port one identifier, "usb-.../0"; Windows
+// names a device's interfaces alike up to their class, the "#{...}" at the end.
+inline bool sameMidiDevice(const std::string& input, const std::string& output) {
+  if (input.empty() || output.empty()) return false;
+  if (input == output) return true;
+  const size_t a = input.rfind("#{"), b = output.rfind("#{");
+  return a != std::string::npos && a > 0 && a == b && input.compare(0, a, output, 0, b) == 0;
+}
+
+// The output port of the input device known by `name` and `identifier`, for
+// the lamps it is sent (#1001): the port with the same identifier, of the same
+// name where several have it; else the only port of the device's name. -1
+// where none can be told, and the lamps go to every port. `names` and
+// `lasting` describe the output ports, in order.
+inline int outputForInput(const std::string& name, const std::string& identifier,
+                          const std::vector<std::string>& names, const std::vector<std::string>& lasting) {
+  int found = -1;
+  for (size_t i = 0; i < lasting.size() && i < names.size(); ++i)
+    if (sameMidiDevice(identifier, lasting[i])) {
+      if (names[i] == name || names[i] == MidiDeviceMap::unnumbered(name)) return static_cast<int>(i);
+      if (found < 0) found = static_cast<int>(i);
+    }
+  if (found >= 0 || name.empty()) return found;
+  for (size_t i = 0; i < names.size(); ++i)
+    if (names[i] == name) {
+      if (found >= 0) return -1;  // two of that name: neither is told apart
+      found = static_cast<int>(i);
+    }
+  return found;
+}
+
 } // namespace mp

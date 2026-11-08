@@ -3271,11 +3271,15 @@ bool MasterpieceProcessor::openMidiOutputs(const juce::StringArray& names) {
     // The audio thread sends through them: swapped between blocks.
     const AudioLock audio(*this);
     midiOut_ = nullptr;
-    moreMidiOuts_.clear();
+    outPorts_.clear();
+    outPortLabels_.clear();
+    outPortNames_.clear();
+    outPortLasting_.clear();
     old.swap(ownedMidiOuts_);
   }
   old.clear();  // outside the lock
   std::vector<std::unique_ptr<juce::MidiOutput>> opened;
+  std::vector<std::string> labelsOpened, namesOpened, lastingOpened;
   // Chosen by label: two ports of one name are two choices (#980). A choice
   // saved as a bare name is kept from then on as the label of the port it
   // opened.
@@ -3286,21 +3290,91 @@ bool MasterpieceProcessor::openMidiOutputs(const juce::StringArray& names) {
     const int i = chosen[k];
     if (i < 0) continue;
     wanted.set(k, labels[i]);
-    if (auto port = juce::MidiOutput::openDevice(devices[i].identifier)) opened.push_back(std::move(port));
+    if (auto port = juce::MidiOutput::openDevice(devices[i].identifier)) {
+      opened.push_back(std::move(port));
+      labelsOpened.push_back(labels[i].toStdString());
+      namesOpened.push_back(devices[i].name.toStdString());
+      lastingOpened.push_back(lastingMidiIdentifier(devices[i]).toStdString());
+    }
   }
   const bool all = opened.size() == static_cast<size_t>(wanted.size());
+  // Each port's own buffer, sized here so the audio thread allocates nothing.
+  std::vector<juce::MidiBuffer> buffers(opened.size());
+  for (auto& b : buffers) b.ensureSize(512);
   {
     const AudioLock audio(*this);
     ownedMidiOuts_.swap(opened);
-    for (const auto& port : ownedMidiOuts_)
+    for (const auto& port : ownedMidiOuts_) {
       if (midiOut_ == nullptr) midiOut_ = port.get();
-      else moreMidiOuts_.push_back(port.get());
+      outPorts_.push_back(port.get());
+    }
+    outPortLabels_.swap(labelsOpened);
+    outPortNames_.swap(namesOpened);
+    outPortLasting_.swap(lastingOpened);
+    portOut_.swap(buffers);
   }
+  routeEchoes();
   if (midiOutputNames_ != wanted) {
     midiOutputNames_ = wanted;
     writeGlobalFile();
   }
   return all;
+}
+
+void MasterpieceProcessor::setMidiOutputPortsForTest(
+    const std::vector<std::pair<std::string, std::string>>& labelsAndNames) {
+  {
+    const AudioLock audio(*this);
+    midiOut_ = nullptr;
+    outPorts_.assign(labelsAndNames.size(), nullptr);
+    outPortLabels_.clear();
+    outPortNames_.clear();
+    for (const auto& [label, name] : labelsAndNames) {
+      outPortLabels_.push_back(label);
+      outPortNames_.push_back(name);
+    }
+    outPortLasting_.assign(labelsAndNames.size(), std::string());
+    portOut_.assign(labelsAndNames.size(), juce::MidiBuffer());
+  }
+  routeEchoes();
+}
+
+void MasterpieceProcessor::sendPortBuffers() {
+  for (size_t i = 0; i < portOut_.size(); ++i) {
+    auto& out = portOut_[i];
+    if (out.isEmpty()) continue;
+    if (outPorts_[i] != nullptr) outPorts_[i]->sendBlockOfMessagesNow(out);
+    if (portProbe) portProbe(outPortLabels_[i], out);
+    out.clear();
+  }
+}
+
+void MasterpieceProcessor::routeEchoes() {
+  const auto& devices = midiMap_.devices();
+  std::vector<int> ports(devices.size() + 1, -1);
+  for (int id = 1; id <= static_cast<int>(devices.size()); ++id)
+    ports[static_cast<size_t>(id)] =
+        outputForInput(devices.nameFor(id), devices.identifierFor(id), outPortNames_, outPortLasting_);
+  // A device past the end goes to every port as -1 does: the list keeps only
+  // what routes somewhere, and with no port open is empty.
+  while (!ports.empty() && ports.back() < 0) ports.pop_back();
+  if (ports == echoPort_) return;
+  const AudioLock audio(*this);
+  echoPort_.swap(ports);
+}
+
+juce::String MasterpieceProcessor::outputLabelForInput(int deviceId) const {
+  const auto& devices = midiMap_.devices();
+  if (deviceId <= MidiDeviceMap::kAnyDevice || deviceId > static_cast<int>(devices.size())) return {};
+  const auto ports = juce::MidiOutput::getAvailableDevices();
+  const auto labels = midiPortLabels(ports);
+  std::vector<std::string> names, lasting;
+  for (const auto& p : ports) {
+    names.push_back(p.name.toStdString());
+    lasting.push_back(lastingMidiIdentifier(p).toStdString());
+  }
+  const int i = outputForInput(devices.nameFor(deviceId), devices.identifierFor(deviceId), names, lasting);
+  return i < 0 ? juce::String() : labels[i];
 }
 
 void MasterpieceProcessor::setLastOrgan(const juce::File& odf) {
@@ -6172,13 +6246,15 @@ void MasterpieceProcessor::setSwitchEngaged(Id switchId, bool engaged) {
         !midiMap_.hasSends(MidiTargetKind::Switch, movedId)) {
       if (const auto* b = midiMap_.bindingFor(MidiTargetKind::Switch, movedId)) {
         const int ch = b->source.channel > 0 ? b->source.channel : 1;
+        // To the console the binding listens to, where its port is known.
+        auto& echo = echoBuffer(b->source.deviceId);
         if (b->source.kind == MidiSourceKind::Note) {
-          outgoing_.addEvent(
+          echo.addEvent(
               nowEngaged ? juce::MidiMessage::noteOn(ch, b->source.number, 1.0f)
                          : juce::MidiMessage::noteOff(ch, b->source.number),
               0);
         } else if (b->source.kind == MidiSourceKind::ControlChange) {
-          outgoing_.addEvent(juce::MidiMessage::controllerEvent(
+          echo.addEvent(juce::MidiMessage::controllerEvent(
                                  ch, b->source.number, nowEngaged ? 127 : 0),
                              0);
         }
@@ -7481,6 +7557,7 @@ void MasterpieceProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     sendOut(outgoing_);
   if (outgoingProbe && !outgoing_.isEmpty()) outgoingProbe(outgoing_);
   outgoing_.clear();
+  sendPortBuffers();
 
   // Each enclosure renders its own voices and filters only those, so an
   // unenclosed Great stays unenclosed while the Swell shades move.
@@ -9516,7 +9593,7 @@ void MasterpieceProcessor::sendKey(Id keyboard, int midiNote, int velocity, bool
   for (const auto& s : midiMap_.sends())
     if (s.targetKind == MidiTargetKind::Keyboard && s.targetId == keyboard &&
         MidiMap::keyMessage(s, midiNote, velocity, on, raw))
-      outgoing_.addEvent(raw.bytes, raw.size, 0);
+      if (auto* into = sendBuffer(s.device)) into->addEvent(raw.bytes, raw.size, 0);
 }
 
 bool MasterpieceProcessor::saveTakeForSequencer(const juce::File& file, bool markers) const {
@@ -9833,12 +9910,13 @@ void MasterpieceProcessor::sendLampsAfterLoad() {
     if (b.targetKind != MidiTargetKind::Switch || midiMap_.hasSends(MidiTargetKind::Switch, b.targetId)) continue;
     const bool on = switches_.engaged(b.targetId);
     const int ch = b.source.channel > 0 ? b.source.channel : 1;
+    auto& echo = echoBuffer(b.source.deviceId);
     if (b.source.kind == MidiSourceKind::Note)
-      outgoing_.addEvent(on ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
-                            : juce::MidiMessage::noteOff(ch, b.source.number),
-                         0);
+      echo.addEvent(on ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
+                       : juce::MidiMessage::noteOff(ch, b.source.number),
+                    0);
     else if (b.source.kind == MidiSourceKind::ControlChange)
-      outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, on ? 127 : 0), 0);
+      echo.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, on ? 127 : 0), 0);
   }
 }
 
@@ -9882,10 +9960,13 @@ void MasterpieceProcessor::emitSends(bool sysExOnly) {
     const bool quiet = sentValues_[i] == kTakeStateQuietly;
     sentValues_[i] = now;
     if (quiet) continue;
+    // To the output it names, or to every one (#1001).
+    juce::MidiBuffer* into = sendBuffer(s.device);
+    if (into == nullptr) continue;
     if (s.display != MidiDisplay::None)
-      addMessages(outgoing_, MidiMap::displayBytes(s, MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now)));
+      addMessages(*into, MidiMap::displayBytes(s, MidiMap::displayText(s, displayNameOf(s.targetKind, s.targetId), now)));
     else
-      addMessages(outgoing_, MidiMap::sendBytes(s, now));
+      addMessages(*into, MidiMap::sendBytes(s, now));
   }
 }
 
@@ -9902,7 +9983,15 @@ std::string MasterpieceProcessor::displayNameOf(MidiTargetKind kind, Id id) cons
   return {};
 }
 
-void MasterpieceProcessor::sendMidiNow(const std::vector<uint8_t>& bytes) {
+void MasterpieceProcessor::sendMidiNow(const std::vector<uint8_t>& bytes, const std::string& device) {
+  if (!device.empty()) {
+    const AudioLock audio(*this);
+    if (auto* into = sendBuffer(device)) {
+      addMessages(*into, bytes);
+      sendPortBuffers();
+    }
+    return;
+  }
   for (size_t at = 0; at < bytes.size();) {
     const size_t n = midiMessageLength(bytes, at);
     if (n == 0) break;
@@ -9935,12 +10024,13 @@ void MasterpieceProcessor::emitPistonLamps() {
     // A button with sends of its own is lit by those, in emitSends().
     if (midiMap_.hasSends(b.targetKind, b.targetId)) continue;
     const int ch = b.source.channel > 0 ? b.source.channel : 1;
+    auto& echo = echoBuffer(b.source.deviceId);
     if (b.source.kind == MidiSourceKind::Note)
-      outgoing_.addEvent(lit != 0 ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
-                                  : juce::MidiMessage::noteOff(ch, b.source.number),
-                         0);
+      echo.addEvent(lit != 0 ? juce::MidiMessage::noteOn(ch, b.source.number, 1.0f)
+                             : juce::MidiMessage::noteOff(ch, b.source.number),
+                    0);
     else if (b.source.kind == MidiSourceKind::ControlChange)
-      outgoing_.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, lit != 0 ? 127 : 0), 0);
+      echo.addEvent(juce::MidiMessage::controllerEvent(ch, b.source.number, lit != 0 ? 127 : 0), 0);
   }
 }
 
