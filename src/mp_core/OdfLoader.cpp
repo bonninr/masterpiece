@@ -743,6 +743,18 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
       p.tremDepthRandom.maxPct = fieldDouble(
           row, "TremulantDepthRandomisation_MaxDepthFluctuationPct", "j1", 0.0);
     }
+    // The drift of the air this pipe draws (#807): the same four figures.
+    p.windFlowRandom.on = fieldBool(row, "WindSupply_FlowRandomisation_RandomiseFlow", "a1", false);
+    if (p.windFlowRandom.on) {
+      p.windFlowRandom.accel = fieldDouble(
+          row, "WindSupply_FlowRandomisation_PositiveAcceleratingCoeff", "b1", 0.0);
+      p.windFlowRandom.damping = fieldDouble(
+          row, "WindSupply_FlowRandomisation_PositiveDampingCoeff", "c1", 0.0);
+      p.windFlowRandom.fn = fieldInt(
+          row, "WindSupply_FlowRandomisation_IndexGeneratingProbabilityFn", "d1", 0);
+      p.windFlowRandom.maxPct = fieldDouble(
+          row, "WindSupply_FlowRandomisation_MaxFlowFluctuationPct", "e1", 0.0);
+    }
     // M2: harmonicNum (f), original-organ pitch (l/m) feed the temperament solver.
     if (p.pipeId == 0) return;
     auto rankIt = outModel.ranks.find(rankId);
@@ -1272,6 +1284,16 @@ bool OdfLoader::loadFromXmlString(const std::string& xml, const std::string& fil
     l.refPressureInches =
         fieldDouble(row, "ReferencePressureDifferenceInches", "i", 1.0);
     if (l.refPressureInches <= 0.0) l.refPressureInches = 1.0;
+    // The drift of the air through it (#807).
+    l.flowRandom.on = fieldBool(row, "FlowRandomisation_RandomiseFlow", "j", false);
+    if (l.flowRandom.on) {
+      l.flowRandom.accel =
+          fieldDouble(row, "FlowRandomisation_PositiveAcceleratingCoeff", "k", 0.0);
+      l.flowRandom.damping = fieldDouble(row, "FlowRandomisation_PositiveDampingCoeff", "l", 0.0);
+      l.flowRandom.fn = fieldInt(row, "FlowRandomisation_IndexGeneratingProbabilityFn", "m", 0);
+      l.flowRandom.maxPct =
+          fieldDouble(row, "FlowRandomisation_MaxFlowFluctuationPct", "n", 0.0);
+    }
     for (Id id : {l.firstCompartmentId, l.secondCompartmentId})
       if (outModel.wind.count(id) == 0) outDiag.danglingIds.push_back(id);
     outModel.windLinks.push_back(l);

@@ -217,6 +217,8 @@ struct Pipe {
   // The slow drift of this pipe's share of its tremulant (#806); see
   // RandomWalk.
   RandomWalk tremDepthRandom;
+  // The drift of the air it draws while it speaks (#807).
+  RandomWalk windFlowRandom;
 };
 
 struct Rank {
@@ -781,6 +783,9 @@ struct WindCompartmentLink {
   // curve.
   double massFlowKgPerSec = 0.0;
   double refPressureInches = 1.0;
+  // The drift of the air through it (#807): the wind's own unsteadiness,
+  // which every pipe on the chest it feeds shares.
+  RandomWalk flowRandom;
 };
 
 struct ImageSetElement {

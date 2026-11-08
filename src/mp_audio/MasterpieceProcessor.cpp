@@ -824,8 +824,8 @@ void MasterpieceProcessor::advanceWind(int numFrames) {
   // What is drawing air. The engine knows which voices are speaking; the voices
   // carry what their pipes cost.
   windDemand_.assign(windOrder_.size(), 0.0f);
-  voices_.gatherWindDemand(windDemand_.data(),
-                           static_cast<int>(windDemand_.size()));
+  voices_.gatherWindDemand(windDemand_.data(), static_cast<int>(windDemand_.size()),
+                           static_cast<double>(numFrames) / sampleRate_);
 
   wind_.clearDemand();
   wind_.addDemandDirect(windOrder_, windDemand_);
@@ -4636,6 +4636,11 @@ bool MasterpieceProcessor::startPipeLayers(const Pipe& pipe, Id rankId,
           pipe.windMassFlowKgPerSec > 0.0
               ? static_cast<float>(pipe.windMassFlowKgPerSec)
               : 0.0005f;
+      // The drift of that draw (#807), seeded per voice as the tremulant's.
+      if (vs.windIndex >= 0 && pipe.windFlowRandom.active()) {
+        vs.windFlowRandom = pipe.windFlowRandom;
+        vs.windRandomSeed = (static_cast<uint64_t>(pipe.pipeId) << 24) ^ ++windSeedCount_;
+      }
 
       // Which tremulant reaches this pipe, and how far it moves it. The
       // organ states the depth per pipe, so a flute and a reed on the

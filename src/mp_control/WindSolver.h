@@ -161,6 +161,13 @@ private:
   // steps: the switches do not move inside a block, and looking each valve's
   // switch up again on every step of it cost a hash lookup per link per step.
   std::vector<char> valveOpen_;
+  // The drift of each resolved link's flow (#807), stepped once a block while
+  // the organ plays; the factor stays 1 for a link whose set states none, and
+  // for settling, which finds the working pressures of the steady organ.
+  std::vector<RandomWalkState> linkWalks_;
+  std::vector<double> linkFlowMul_;
+  bool anyLinkWalk_ = false;
+  bool driftFlow_ = false;
   void readValves(const std::unordered_set<Id>* engagedSwitches);
   void resolveLinks();
   // The largest step this system can be integrated at without ringing.
