@@ -109,7 +109,14 @@ public:
     partial.deleteFile();
     {
       juce::FileOutputStream out(partial);
-      if (!out.openedOk()) { failure_ = TRANS("There is no room to copy it."); return; }
+      if (!out.openedOk()) {
+        // Space is the cause only when the volume lacks it; otherwise the
+        // folder refuses the file (its owner or its permissions).
+        failure_ = (size > 0 && folder.getBytesFreeOnVolume() < size)
+                       ? TRANS("There is no room to copy it.")
+                       : TRANS("Masterpiece cannot write to its organ folder.");
+        return;
+      }
       juce::HeapBlock<char> buffer(1 << 20);
       juce::int64 copied = 0;
       for (;;) {
